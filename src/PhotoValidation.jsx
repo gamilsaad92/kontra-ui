@@ -18,22 +18,29 @@ export default function PhotoValidation() {
   const handleUpload = async () => {
     if (!file) return;
     setLoading(true);
+  
     const formData = new FormData();
     formData.append('image', file);
-
+  
+    const apiURL = import.meta.env.VITE_BACKEND_URL + '/api/validate-photo';
+    console.log("🔗 Calling:", apiURL);
+  
     try {
-      const res = await fetch(`${import.meta.env.VITE_BACKEND_URL}/api/validate-photo`, {
+      const res = await fetch(apiURL, {
         method: 'POST',
-        body: formData
+        body: formData,
       });
+  
       const data = await res.json();
       setResult(data.result || 'Unknown');
     } catch (err) {
+      console.error("❌ Upload error:", err);
       setResult('Error validating image');
     } finally {
       setLoading(false);
     }
   };
+  
 
   return (
     <div className="bg-white mt-8 rounded-xl shadow-md p-6 w-full max-w-xl">
