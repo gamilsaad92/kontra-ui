@@ -22,8 +22,9 @@ export default function PhotoValidation() {
     const formData = new FormData();
     formData.append('image', file);
   
-    const apiURL = import.meta.env.VITE_BACKEND_URL + '/api/validate-photo';
-    console.log("🔗 Calling:", apiURL);
+    const apiURL = "https://kontra-api.onrender.com/api/validate-photo";
+console.log("🔗 Hardcoded call to:", apiURL);
+
   
     try {
       const res = await fetch(apiURL, {

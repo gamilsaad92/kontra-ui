@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import PhotoValidation from './PhotoValidation';
+import DrawCard from './components/DrawCard'; // ✅ Make sure this path is correct
 
 export default function App() {
   const [formData, setFormData] = useState({
@@ -29,8 +30,25 @@ export default function App() {
     }
   };
 
+  // ✅ Mock draw data for preview
+  const mockDraw = {
+    id: 1,
+    status: 'submitted',
+    submittedAt: '2025-04-20 13:00',
+    reviewedAt: null,
+    approvedAt: null,
+    rejectedAt: null,
+    reviewComment: ''
+  };
+
+  const handleDrawAction = (action, id, comment) => {
+    alert(`${action.toUpperCase()} draw #${id}${comment ? `: ${comment}` : ''}`);
+    // Optional: Send to backend here
+  };
+
   return (
-    <div className="min-h-screen bg-gray-100 flex flex-col items-center p-8">
+    <div className="min-h-screen bg-gray-100 flex flex-col items-center p-8 space-y-10">
+      {/* ✅ Submit Form */}
       <div className="bg-white rounded-xl shadow-md p-6 w-full max-w-xl">
         <h1 className="text-xl font-bold text-gray-800 mb-4">Submit Draw Request</h1>
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -68,7 +86,12 @@ export default function App() {
         </form>
         {message && <p className="mt-4 font-medium text-green-700">{message}</p>}
       </div>
+
+      {/* ✅ AI Validation */}
       <PhotoValidation />
+
+      {/* ✅ Draw Preview UI */}
+      <DrawCard draw={mockDraw} isAdmin={true} onAction={handleDrawAction} />
     </div>
   );
 }
