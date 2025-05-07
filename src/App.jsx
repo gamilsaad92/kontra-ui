@@ -1,4 +1,4 @@
-iimport React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import PhotoValidation from './PhotoValidation';
 import DrawCard from './components/DrawCard';
 
