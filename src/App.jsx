@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+iimport React, { useState, useEffect } from 'react';
 import PhotoValidation from './PhotoValidation';
-import DrawCard from './components/DrawCard'; // ✅ Make sure this path is correct
+import DrawCard from './components/DrawCard';
 
 export default function App() {
   const [formData, setFormData] = useState({
@@ -9,6 +9,7 @@ export default function App() {
     description: ''
   });
   const [message, setMessage] = useState('');
+  const [draws, setDraws] = useState([]);
 
   const handleChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
@@ -25,25 +26,34 @@ export default function App() {
       });
       const data = await res.json();
       setMessage(data.message || 'Submitted successfully');
+
+      // Refresh draw list after submission
+      fetchDraws();
+
+      // Clear form
+      setFormData({ project: '', amount: '', description: '' });
     } catch (err) {
       setMessage('Failed to submit');
     }
   };
 
-  // ✅ Mock draw data for preview
-  const mockDraw = {
-    id: 1,
-    status: 'submitted',
-    submittedAt: '2025-04-20 13:00',
-    reviewedAt: null,
-    approvedAt: null,
-    rejectedAt: null,
-    reviewComment: ''
+  const fetchDraws = async () => {
+    try {
+      const res = await fetch(`${import.meta.env.VITE_BACKEND_URL}/api/get-draws`);
+      const data = await res.json();
+      setDraws(data.draws || []);
+    } catch (err) {
+      console.error('Failed to load draws', err);
+    }
   };
+
+  useEffect(() => {
+    fetchDraws();
+  }, []);
 
   const handleDrawAction = (action, id, comment) => {
     alert(`${action.toUpperCase()} draw #${id}${comment ? `: ${comment}` : ''}`);
-    // Optional: Send to backend here
+    // Optional: call /api/review-draw here
   };
 
   return (
@@ -90,8 +100,21 @@ export default function App() {
       {/* ✅ AI Validation */}
       <PhotoValidation />
 
-      {/* ✅ Draw Preview UI */}
-      <DrawCard draw={mockDraw} isAdmin={true} onAction={handleDrawAction} />
+      {/* ✅ Draw Requests List */}
+      <div className="w-full max-w-2xl space-y-4">
+        {draws.length === 0 ? (
+          <p className="text-gray-500 text-center">No draw requests yet.</p>
+        ) : (
+          draws.map((draw) => (
+            <DrawCard
+              key={draw.id}
+              draw={draw}
+              isAdmin={true}
+              onAction={handleDrawAction}
+            />
+          ))
+        )}
+      </div>
     </div>
   );
 }
