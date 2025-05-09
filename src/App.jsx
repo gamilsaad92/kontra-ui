@@ -1,120 +1,149 @@
-import React, { useState, useEffect } from 'react';
-import PhotoValidation from './PhotoValidation';
-import DrawCard from './components/DrawCard';
+import React, { useState } from 'react';
 
-export default function App() {
-  const [formData, setFormData] = useState({
-    project: '',
-    amount: '',
-    description: ''
-  });
-  const [message, setMessage] = useState('');
-  const [draws, setDraws] = useState([]);
+const statusColors = {
+  draft: 'bg-gray-300 text-gray-800',
+  submitted: 'bg-blue-100 text-blue-800',
+  under_review: 'bg-yellow-100 text-yellow-800',
+  approved: 'bg-green-100 text-green-800',
+  rejected: 'bg-red-100 text-red-800'
+};
 
-  const handleChange = (e) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value });
+const Badge = ({ status }) => (
+  <span className={`px-2 py-1 rounded text-xs font-semibold ${statusColors[status] || 'bg-gray-200 text-black'}`}>
+    {status.replace('_', ' ').toUpperCase()}
+  </span>
+);
+
+const DrawCard = ({ draw, isAdmin, onAction }) => {
+  const [inspector, setInspector] = useState('');
+  const [notes, setNotes] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [inspectionMessage, setInspectionMessage] = useState('');
+
+  const handleApprove = () => {
+    onAction('approve', draw.id);
   };
 
-  const handleSubmit = async (e) => {
+  const handleReject = () => {
+    const reason = prompt("Enter rejection comment:");
+    if (reason) {
+      onAction('reject', draw.id, reason);
+    }
+  };
+
+  const handleInspectionSubmit = async (e) => {
     e.preventDefault();
-    setMessage('Submitting...');
+    setSubmitting(true);
+    setInspectionMessage('');
     try {
-      const res = await fetch(`${import.meta.env.VITE_BACKEND_URL}/api/draw-request`, {
+      const res = await fetch(`${import.meta.env.VITE_BACKEND_URL}/api/add-inspection`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData)
+        body: JSON.stringify({
+          draw_id: draw.id,
+          inspector,
+          notes,
+          photos: [] // You can wire up photo upload later
+        })
       });
       const data = await res.json();
-      setMessage(data.message || 'Submitted successfully');
-
-      // Refresh draw list after submission
-      fetchDraws();
-
-      // Clear form
-      setFormData({ project: '', amount: '', description: '' });
+      if (res.ok) {
+        setInspectionMessage('✅ Inspection submitted');
+        setInspector('');
+        setNotes('');
+      } else {
+        setInspectionMessage(data.message || 'Submission failed');
+      }
     } catch (err) {
-      setMessage('Failed to submit');
+      setInspectionMessage('⚠️ Error submitting inspection');
     }
-  };
-
-  const fetchDraws = async () => {
-    try {
-      const res = await fetch(`${import.meta.env.VITE_BACKEND_URL}/api/get-draws`);
-      const data = await res.json();
-      setDraws(data.draws || []);
-    } catch (err) {
-      console.error('Failed to load draws', err);
-    }
-  };
-
-  useEffect(() => {
-    fetchDraws();
-  }, []);
-
-  const handleDrawAction = (action, id, comment) => {
-    alert(`${action.toUpperCase()} draw #${id}${comment ? `: ${comment}` : ''}`);
-    // Optional: call /api/review-draw here
+    setSubmitting(false);
   };
 
   return (
-    <div className="min-h-screen bg-gray-100 flex flex-col items-center p-8 space-y-10">
-      {/* ✅ Submit Form */}
-      <div className="bg-white rounded-xl shadow-md p-6 w-full max-w-xl">
-        <h1 className="text-xl font-bold text-gray-800 mb-4">Submit Draw Request</h1>
-        <form onSubmit={handleSubmit} className="space-y-4">
+    <div className="border rounded-xl p-4 shadow-md bg-white max-w-xl mx-auto mt-6 space-y-4">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <img src="/logo.png" alt="Kontra Logo" className="h-8 w-auto" />
+          <h2 className="text-lg font-bold">Draw Request #{draw.id}</h2>
+        </div>
+        <Badge status={draw.status} />
+      </div>
+
+      <div className="text-sm text-gray-600">
+        <p>Project: {draw.project}</p>
+        <p>Amount: ${draw.amount}</p>
+        <p>Submitted: {draw.submitted_at || '—'}</p>
+        <p>Reviewed: {draw.reviewedAt || '—'}</p>
+        <p>Approved: {draw.approvedAt || '—'}</p>
+        <p>Rejected: {draw.rejectedAt || '—'}</p>
+      </div>
+
+      {draw.reviewComment && (
+        <div className="mt-1 text-sm text-red-600 italic">
+          Reviewer Comment: "{draw.reviewComment}"
+        </div>
+      )}
+
+      {typeof draw.risk_score === 'number' && (
+        <div className="text-sm font-medium">
+          Risk Score:{' '}
+          <span className={
+            draw.risk_score < 50 ? 'text-red-600' :
+            draw.risk_score < 75 ? 'text-yellow-600' :
+            'text-green-600'
+          }>
+            {draw.risk_score}/100
+          </span>
+        </div>
+      )}
+
+      {isAdmin && draw.status === 'submitted' && (
+        <div className="flex gap-2">
+          <button
+            onClick={handleApprove}
+            className="px-3 py-1 bg-green-500 text-white rounded hover:bg-green-600"
+          >
+            ✅ Approve
+          </button>
+          <button
+            onClick={handleReject}
+            className="px-3 py-1 bg-red-500 text-white rounded hover:bg-red-600"
+          >
+            ❌ Reject
+          </button>
+        </div>
+      )}
+
+      {isAdmin && (
+        <form onSubmit={handleInspectionSubmit} className="pt-4 border-t mt-4 space-y-2 text-sm">
+          <p className="font-semibold text-gray-700">Submit Inspection</p>
           <input
-            className="w-full border p-2 rounded"
-            name="project"
-            placeholder="Project Name"
-            value={formData.project}
-            onChange={handleChange}
-            required
-          />
-          <input
-            className="w-full border p-2 rounded"
-            name="amount"
-            type="number"
-            placeholder="Amount"
-            value={formData.amount}
-            onChange={handleChange}
+            type="text"
+            placeholder="Inspector name"
+            value={inspector}
+            onChange={(e) => setInspector(e.target.value)}
+            className="w-full border p-1 rounded"
             required
           />
           <textarea
-            className="w-full border p-2 rounded"
-            name="description"
-            placeholder="Description"
-            value={formData.description}
-            onChange={handleChange}
-            required
+            placeholder="Notes"
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            className="w-full border p-1 rounded"
           />
           <button
             type="submit"
-            className="bg-red-600 hover:bg-red-700 text-white font-semibold py-2 px-4 rounded w-full"
+            disabled={submitting}
+            className="bg-blue-600 text-white px-3 py-1 rounded hover:bg-blue-700"
           >
-            Submit
+            {submitting ? 'Submitting...' : 'Submit Inspection'}
           </button>
+          {inspectionMessage && <p className="text-sm mt-1">{inspectionMessage}</p>}
         </form>
-        {message && <p className="mt-4 font-medium text-green-700">{message}</p>}
-      </div>
-
-      {/* ✅ AI Validation */}
-      <PhotoValidation />
-
-      {/* ✅ Draw Requests List */}
-      <div className="w-full max-w-2xl space-y-4">
-        {draws.length === 0 ? (
-          <p className="text-gray-500 text-center">No draw requests yet.</p>
-        ) : (
-          draws.map((draw) => (
-            <DrawCard
-              key={draw.id}
-              draw={draw}
-              isAdmin={true}
-              onAction={handleDrawAction}
-            />
-          ))
-        )}
-      </div>
+      )}
     </div>
   );
-}
+};
+
+export default DrawCard;
