@@ -10,7 +10,7 @@ const statusColors = {
 
 const Badge = ({ status }) => (
   <span className={`px-2 py-1 rounded text-xs font-semibold ${statusColors[status] || 'bg-gray-200 text-black'}`}>
-    {status.replace('_', ' ').toUpperCase()}
+    {status?.replace('_', ' ').toUpperCase()}
   </span>
 );
 
@@ -19,6 +19,14 @@ const DrawCard = ({ draw, isAdmin, onAction }) => {
   const [notes, setNotes] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [inspectionMessage, setInspectionMessage] = useState('');
+
+  if (!draw || !draw.id) {
+    return (
+      <div className="border rounded-xl p-4 shadow-md bg-white max-w-xl mx-auto mt-6 text-red-600">
+        ⚠️ Invalid draw data.
+      </div>
+    );
+  }
 
   const handleApprove = () => {
     onAction('approve', draw.id);
@@ -43,7 +51,7 @@ const DrawCard = ({ draw, isAdmin, onAction }) => {
           draw_id: draw.id,
           inspector,
           notes,
-          photos: [] // You can wire up photo upload later
+          photos: [] // placeholder for future photo upload
         })
       });
       const data = await res.json();
@@ -71,8 +79,8 @@ const DrawCard = ({ draw, isAdmin, onAction }) => {
       </div>
 
       <div className="text-sm text-gray-600">
-        <p>Project: {draw.project}</p>
-        <p>Amount: ${draw.amount}</p>
+        <p>Project: {draw.project ?? '—'}</p>
+        <p>Amount: ${draw.amount ?? '—'}</p>
         <p>Submitted: {draw.submitted_at || '—'}</p>
         <p>Reviewed: {draw.reviewedAt || '—'}</p>
         <p>Approved: {draw.approvedAt || '—'}</p>
