@@ -18,20 +18,21 @@ export default function PhotoValidation() {
   const handleUpload = async () => {
     if (!file) return;
     setLoading(true);
-  
+
     const formData = new FormData();
     formData.append('image', file);
-  
-    const apiURL = "https://kontra-api.onrender.com/api/validate-photo";
-console.log("🔗 Hardcoded call to:", apiURL);
 
-  
+    const backend = import.meta.env.VITE_BACKEND_URL;
+    const apiURL = `${backend}/api/validate-photo`;
+
+    console.log("🔗 Uploading to:", apiURL);
+
     try {
       const res = await fetch(apiURL, {
         method: 'POST',
         body: formData,
       });
-  
+
       const data = await res.json();
       setResult(data.result || 'Unknown');
     } catch (err) {
@@ -41,7 +42,6 @@ console.log("🔗 Hardcoded call to:", apiURL);
       setLoading(false);
     }
   };
-  
 
   return (
     <div className="bg-white mt-8 rounded-xl shadow-md p-6 w-full max-w-xl">
