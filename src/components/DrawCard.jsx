@@ -30,7 +30,8 @@ const DrawCard = ({ draw, isAdmin, onAction }) => {
     <div className="border rounded-xl p-4 shadow-md bg-white max-w-xl mx-auto mt-6">
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-3">
-          <img src="/logo.png" alt="Kontra Logo" className="h-8 w-auto" />
+          {/* 🔄 Replaced image logo with text brand */}
+          <span className="text-lg font-bold text-red-700">Kontra</span>
           <h2 className="text-lg font-bold">Draw Request #{draw.id}</h2>
         </div>
         <Badge status={draw.status} />
