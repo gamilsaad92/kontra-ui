@@ -1,4 +1,5 @@
 import React from 'react';
+import LienWaiverForm from './LienWaiverForm';
 
 const statusColors = {
   draft: 'bg-gray-300 text-gray-800',
@@ -15,33 +16,27 @@ const Badge = ({ status }) => (
 );
 
 const DrawCard = ({ draw, isAdmin, onAction }) => {
-  const handleApprove = () => {
-    onAction('approve', draw.id);
-  };
-
+  const handleApprove = () => onAction('approve', draw.id);
   const handleReject = () => {
-    const reason = prompt("Enter rejection comment:");
-    if (reason) {
-      onAction('reject', draw.id, reason);
-    }
+    const reason = prompt('Enter rejection comment:');
+    if (reason) onAction('reject', draw.id, reason);
   };
 
   return (
-    <div className="border rounded-xl p-4 shadow-md bg-white max-w-xl mx-auto mt-6">
+    <div className="border rounded-xl p-4 shadow-md bg-white max-w-xl mx-auto mt-6 space-y-4">
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-3">
-          {/* 🔄 Replaced image logo with text brand */}
           <span className="text-lg font-bold text-red-700">Kontra</span>
           <h2 className="text-lg font-bold">Draw Request #{draw.id}</h2>
         </div>
         <Badge status={draw.status} />
       </div>
 
-      <div className="text-sm text-gray-600">
-        <p>Submitted: {draw.submittedAt || '—'}</p>
-        <p>Reviewed: {draw.reviewedAt || '—'}</p>
-        <p>Approved: {draw.approvedAt || '—'}</p>
-        <p>Rejected: {draw.rejectedAt || '—'}</p>
+      <div className="text-sm text-gray-600 space-y-1">
+        <p><strong>Submitted:</strong> {draw.submitted_at || '—'}</p>
+        <p><strong>Reviewed:</strong> {draw.reviewedAt || '—'}</p>
+        <p><strong>Approved:</strong> {draw.approvedAt || '—'}</p>
+        <p><strong>Rejected:</strong> {draw.rejectedAt || '—'}</p>
       </div>
 
       {draw.reviewComment && (
@@ -52,26 +47,24 @@ const DrawCard = ({ draw, isAdmin, onAction }) => {
 
       {isAdmin && draw.status === 'submitted' && (
         <div className="flex gap-2 mt-4">
-          <button
-            onClick={handleApprove}
-            className="px-3 py-1 bg-green-500 text-white rounded hover:bg-green-600"
-          >
+          <button onClick={handleApprove} className="px-3 py-1 bg-green-500 text-white rounded hover:bg-green-600">
             ✅ Approve
           </button>
-          <button
-            onClick={handleReject}
-            className="px-3 py-1 bg-red-500 text-white rounded hover:bg-red-600"
-          >
+          <button onClick={handleReject} className="px-3 py-1 bg-red-500 text-white rounded hover:bg-red-600">
             ❌ Reject
           </button>
         </div>
       )}
+
+      {/* Lien Waiver Upload Form for Admins */}
+      {isAdmin && draw.status === 'submitted' && (
+        <LienWaiverForm
+          drawId={draw.id}
+          onUploaded={(waiver) => console.log('Waiver saved:', waiver)}
+        />
+      )}
     </div>
   );
 };
-import LienWaiverForm from './LienWaiverForm';
 
-{isAdmin && draw.status === 'submitted' && (
-  <LienWaiverForm drawId={draw.id} onUploaded={(waiver)=>console.log('Waiver saved:', waiver)} />
-)}
 export default DrawCard;
