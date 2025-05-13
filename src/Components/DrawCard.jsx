@@ -69,5 +69,9 @@ const DrawCard = ({ draw, isAdmin, onAction }) => {
     </div>
   );
 };
+import LienWaiverForm from './LienWaiverForm';
 
+{isAdmin && draw.status === 'submitted' && (
+  <LienWaiverForm drawId={draw.id} onUploaded={(waiver)=>console.log('Waiver saved:', waiver)} />
+)}
 export default DrawCard;
