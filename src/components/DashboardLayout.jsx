@@ -10,6 +10,7 @@ const navItems = [
   { label: 'Photo Validation', icon: '📷' },
   { label: 'Lien Waivers',     icon: '📝' },
   { label: 'Projects',         icon: '🏗️' },
+  { label: 'Loans',            icon: '💰' }
 ];
 
 export default function DashboardLayout() {
@@ -44,6 +45,12 @@ export default function DashboardLayout() {
             <DrawRequestsTable key={refreshKey} onSelect={setSelectedId} />
           </>
         )}
+        {active === 'Loans' && (
+  <>
+    <CreateLoanForm onCreated={() => setRefreshKey(k => k + 1)} />
+    <LoanList key={refreshKey} />
+  </>
+)}
 
         {active === 'Photo Validation' && <PhotoValidation />}
 
