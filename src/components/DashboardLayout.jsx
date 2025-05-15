@@ -1,16 +1,18 @@
+// src/components/DashboardLayout.jsx
 import React, { useState } from 'react';
-import PhotoValidation    from './PhotoValidation';
-import DrawRequestsTable  from './DrawRequestsTable';
-import DrawRequestForm    from './DrawRequestForm';
-import LienWaiverForm     from './LienWaiverForm';
-import LienWaiverList     from './LienWaiverList';
+import PhotoValidation   from './PhotoValidation';
+import DrawRequestsTable from './DrawRequestsTable';
+import CreateLoanForm    from './CreateLoanForm';
+import LoanList          from './LoanList';
+import LienWaiverForm    from './LienWaiverForm';
+import LienWaiverList    from './LienWaiverList';
 
 const navItems = [
   { label: 'Draw Requests',    icon: '📄' },
   { label: 'Photo Validation', icon: '📷' },
   { label: 'Lien Waivers',     icon: '📝' },
-  { label: 'Projects',         icon: '🏗️' },
-  { label: 'Loans',            icon: '💰' }
+  { label: 'Loans',            icon: '💰' },      // ← Added this
+  { label: 'Projects',         icon: '🏗️' }
 ];
 
 export default function DashboardLayout() {
@@ -20,7 +22,7 @@ export default function DashboardLayout() {
 
   return (
     <div className="flex h-screen bg-gray-100">
-      {/* sidebar... unchanged */}
+      {/* Sidebar */}
       <aside className="w-64 bg-gray-800 text-white p-6">
         <h1 className="text-2xl font-bold mb-8">Kontra</h1>
         {navItems.map(i => (
@@ -36,6 +38,7 @@ export default function DashboardLayout() {
         ))}
       </aside>
 
+      {/* Main Content */}
       <main className="flex-1 p-8 overflow-auto">
         <h2 className="text-3xl font-bold mb-6">{active}</h2>
 
@@ -45,22 +48,22 @@ export default function DashboardLayout() {
             <DrawRequestsTable key={refreshKey} onSelect={setSelectedId} />
           </>
         )}
-        {active === 'Loans' && (
-  <>
-    <CreateLoanForm onCreated={() => setRefreshKey(k => k + 1)} />
-    <LoanList key={refreshKey} />
-  </>
-)}
 
         {active === 'Photo Validation' && <PhotoValidation />}
 
-        {active === 'Lien Waivers' && (
-          selectedId
-            ? <>
-                <LienWaiverForm drawId={selectedId} />
-                <LienWaiverList drawId={selectedId} />
-              </>
-            : <p className="text-gray-500">Select a draw first</p>
+        {active === 'Lien Waivers' && (selectedId
+          ? <>
+              <LienWaiverForm drawId={selectedId} />
+              <LienWaiverList drawId={selectedId} />
+            </>
+          : <p className="text-gray-500">Select a draw first</p>
+        )}
+
+        {active === 'Loans' && (
+          <>
+            <CreateLoanForm onCreated={() => setRefreshKey(k => k + 1)} />
+            <LoanList key={refreshKey} />
+          </>
         )}
 
         {active === 'Projects' && (
