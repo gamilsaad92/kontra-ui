@@ -1,22 +1,22 @@
-// src/components/DashboardLayout.jsx
 import React, { useState } from 'react';
-import PhotoValidation   from './PhotoValidation';
-import DrawRequestsTable from './DrawRequestsTable';
-import CreateLoanForm    from './CreateLoanForm';
-import LoanList          from './LoanList';
-import LienWaiverForm    from './LienWaiverForm';
-import LienWaiverList    from './LienWaiverList';
+import PhotoValidation    from './PhotoValidation';
+import DrawRequestsTable  from './DrawRequestsTable';
+import DrawRequestForm    from './DrawRequestForm';
+import LienWaiverForm     from './LienWaiverForm';
+import LienWaiverList     from './LienWaiverList';
+import CreateLoanForm     from './CreateLoanForm';
+import LoanList           from './LoanList';
 
 const navItems = [
   { label: 'Draw Requests',    icon: '📄' },
   { label: 'Photo Validation', icon: '📷' },
   { label: 'Lien Waivers',     icon: '📝' },
-  { label: 'Loans',            icon: '💰' },      // ← Added this
+  { label: 'Loans',            icon: '💰' },
   { label: 'Projects',         icon: '🏗️' }
 ];
 
 export default function DashboardLayout() {
-  const [active,     setActive]     = useState('Draw Requests');
+  const [active, setActive] = useState('Draw Requests');
   const [refreshKey, setRefreshKey] = useState(0);
   const [selectedId, setSelectedId] = useState(null);
 
@@ -25,17 +25,19 @@ export default function DashboardLayout() {
       {/* Sidebar */}
       <aside className="w-64 bg-gray-800 text-white p-6">
         <h1 className="text-2xl font-bold mb-8">Kontra</h1>
-        {navItems.map(i => (
-          <button
-            key={i.label}
-            onClick={() => setActive(i.label)}
-            className={`w-full text-left mb-4 p-2 rounded hover:bg-gray-700 ${
-              active === i.label ? 'bg-gray-700' : ''
-            }`}
-          >
-            {i.icon} {i.label}
-          </button>
-        ))}
+        <nav>
+          {navItems.map(item => (
+            <button
+              key={item.label}
+              onClick={() => setActive(item.label)}
+              className={`w-full text-left mb-4 p-2 rounded hover:bg-gray-700 ${
+                active === item.label ? 'bg-gray-700' : ''
+              }`}
+            >
+              {item.icon} {item.label}
+            </button>
+          ))}
+        </nav>
       </aside>
 
       {/* Main Content */}
@@ -49,14 +51,19 @@ export default function DashboardLayout() {
           </>
         )}
 
-        {active === 'Photo Validation' && <PhotoValidation />}
+        {active === 'Photo Validation' && (
+          <PhotoValidation />
+        )}
 
-        {active === 'Lien Waivers' && (selectedId
-          ? <>
+        {active === 'Lien Waivers' && (
+          selectedId ? (
+            <>
               <LienWaiverForm drawId={selectedId} />
               <LienWaiverList drawId={selectedId} />
             </>
-          : <p className="text-gray-500">Select a draw first</p>
+          ) : (
+            <p className="text-gray-500">Select a draw first</p>
+          )
         )}
 
         {active === 'Loans' && (
