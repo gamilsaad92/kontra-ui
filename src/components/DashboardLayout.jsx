@@ -6,6 +6,8 @@ import LienWaiverForm     from './LienWaiverForm';
 import LienWaiverList     from './LienWaiverList';
 import CreateLoanForm     from './CreateLoanForm';
 import LoanList           from './LoanList';
+import AmortizationTable  from './AmortizationTable';
+import PaymentForm        from './PaymentForm';
 
 const navItems = [
   { label: 'Draw Requests',    icon: '📄' },
@@ -51,9 +53,7 @@ export default function DashboardLayout() {
           </>
         )}
 
-        {active === 'Photo Validation' && (
-          <PhotoValidation />
-        )}
+        {active === 'Photo Validation' && <PhotoValidation />}
 
         {active === 'Lien Waivers' && (
           selectedId ? (
@@ -66,17 +66,20 @@ export default function DashboardLayout() {
           )
         )}
 
-{active === 'Loans' && (
-  selectedId ? (
-    <>
-      <h3 className="text-xl mb-4">Loan Details #{selectedId}</h3>
-      <AmortizationTable loanId={selectedId} />
-      <PaymentForm loanId={selectedId} onPaid={() => setRefreshKey(k => k + 1)} />
-    </>
-  ) : (
-    <LoanList onSelect={setSelectedId} />
-  )
-)}
+        {active === 'Loans' && (
+          selectedId ? (
+            <>
+              <h3 className="text-xl mb-4">Loan Details #{selectedId}</h3>
+              <AmortizationTable loanId={selectedId} />
+              <PaymentForm loanId={selectedId} onPaid={() => setRefreshKey(k => k + 1)} />
+            </>
+          ) : (
+            <>
+              <CreateLoanForm onCreated={() => setRefreshKey(k => k + 1)} />
+              <LoanList key={refreshKey} onSelect={setSelectedId} />
+            </>
+          )
+        )}
 
         {active === 'Projects' && (
           <p className="text-gray-500">Projects section coming soon...</p>
