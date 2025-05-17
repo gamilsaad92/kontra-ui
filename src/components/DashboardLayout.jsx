@@ -66,12 +66,17 @@ export default function DashboardLayout() {
           )
         )}
 
-        {active === 'Loans' && (
-          <>
-            <CreateLoanForm onCreated={() => setRefreshKey(k => k + 1)} />
-            <LoanList key={refreshKey} />
-          </>
-        )}
+{active === 'Loans' && (
+  selectedId ? (
+    <>
+      <h3 className="text-xl mb-4">Loan Details #{selectedId}</h3>
+      <AmortizationTable loanId={selectedId} />
+      <PaymentForm loanId={selectedId} onPaid={() => setRefreshKey(k => k + 1)} />
+    </>
+  ) : (
+    <LoanList onSelect={setSelectedId} />
+  )
+)}
 
         {active === 'Projects' && (
           <p className="text-gray-500">Projects section coming soon...</p>
