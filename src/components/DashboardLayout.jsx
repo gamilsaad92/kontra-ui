@@ -8,6 +8,7 @@ import CreateLoanForm     from './CreateLoanForm';
 import LoanList           from './LoanList';
 import AmortizationTable  from './AmortizationTable';
 import PaymentForm        from './PaymentForm';
+import VirtualAssistant from './VirtualAssistant';
 
 const navItems = [
   { label: 'Draw Requests',    icon: '📄' },
@@ -88,3 +89,7 @@ export default function DashboardLayout() {
     </div>
   );
 }
+const navItems = [
+  // … existing tabs …
+  { label: 'Assistant', icon: '🤖' }
+];
