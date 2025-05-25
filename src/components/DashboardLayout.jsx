@@ -1,13 +1,13 @@
 import React, { useState } from 'react';
-import PhotoValidation    from './PhotoValidation';
-import DrawRequestsTable  from './DrawRequestsTable';
-import DrawRequestForm    from './DrawRequestForm';
-import LienWaiverForm     from './LienWaiverForm';
-import LienWaiverList     from './LienWaiverList';
-import CreateLoanForm     from './CreateLoanForm';
-import LoanList           from './LoanList';
-import AmortizationTable  from './AmortizationTable';
-import PaymentForm        from './PaymentForm';
+import PhotoValidation from './PhotoValidation';
+import DrawRequestsTable from './DrawRequestsTable';
+import DrawRequestForm from './DrawRequestForm';
+import LienWaiverForm from './LienWaiverForm';
+import LienWaiverList from './LienWaiverList';
+import CreateLoanForm from './CreateLoanForm';
+import LoanList from './LoanList';
+import AmortizationTable from './AmortizationTable';
+import PaymentForm from './PaymentForm';
 import VirtualAssistant from './VirtualAssistant';
 
 const navItems = [
@@ -15,6 +15,7 @@ const navItems = [
   { label: 'Photo Validation', icon: '📷' },
   { label: 'Lien Waivers',     icon: '📝' },
   { label: 'Loans',            icon: '💰' },
+  { label: 'Assistant',        icon: '🤖' },
   { label: 'Projects',         icon: '🏗️' }
 ];
 
@@ -47,6 +48,7 @@ export default function DashboardLayout() {
       <main className="flex-1 p-8 overflow-auto">
         <h2 className="text-3xl font-bold mb-6">{active}</h2>
 
+        {/* Draw Requests */}
         {active === 'Draw Requests' && (
           <>
             <DrawRequestForm onSubmitted={() => setRefreshKey(k => k + 1)} />
@@ -54,8 +56,10 @@ export default function DashboardLayout() {
           </>
         )}
 
+        {/* Photo Validation */}
         {active === 'Photo Validation' && <PhotoValidation />}
 
+        {/* Lien Waivers */}
         {active === 'Lien Waivers' && (
           selectedId ? (
             <>
@@ -67,6 +71,7 @@ export default function DashboardLayout() {
           )
         )}
 
+        {/* Loans */}
         {active === 'Loans' && (
           selectedId ? (
             <>
@@ -82,6 +87,14 @@ export default function DashboardLayout() {
           )
         )}
 
+        {/* Assistant */}
+        {active === 'Assistant' && (
+          <div className="h-full flex flex-col">
+            <VirtualAssistant />
+          </div>
+        )}
+
+        {/* Projects */}
         {active === 'Projects' && (
           <p className="text-gray-500">Projects section coming soon...</p>
         )}
@@ -89,7 +102,3 @@ export default function DashboardLayout() {
     </div>
   );
 }
-const navItems = [
-  // … existing tabs …
-  { label: 'Assistant', icon: '🤖' }
-];
