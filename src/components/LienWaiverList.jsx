@@ -1,45 +1,50 @@
-import React, { useState, useEffect } from 'react';
+// src/components/LienWaiverList.jsx
+
+import React, { useEffect, useState } from 'react';
 
 export default function LienWaiverList({ drawId }) {
   const [waivers, setWaivers] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
 
   useEffect(() => {
-    async function loadWaivers() {
-      try {
-        const res = await fetch(
-          `${import.meta.env.VITE_BACKEND_URL}/api/list-lien-waivers?draw_id=${drawId}`
-        );
-        const { waivers } = await res.json();
-        setWaivers(waivers || []);
-      } catch (err) {
-        console.error('Error loading waivers:', err);
-        setError('Failed to load waivers');
-      } finally {
-        setLoading(false);
-      }
-    }
-    if (drawId) loadWaivers();
+    (async () => {
+      setLoading(true);
+      const res = await fetch(
+        `${import.meta.env.VITE_BACKEND_URL}/api/list-lien-waivers?draw_id=${drawId}`
+      );
+      const { waivers } = await res.json();
+      setWaivers(waivers || []);
+      setLoading(false);
+    })();
   }, [drawId]);
 
-  if (!drawId) return <p className="text-gray-500">Select a draw to view waivers.</p>;
-  if (loading) return <p>Loading waivers...</p>;
-  if (error) return <p className="text-red-500">{error}</p>;
-  if (!waivers.length) return <p className="text-gray-500">No waivers found.</p>;
+  if (loading) return <p>Loading waivers…</p>;
+  if (waivers.length === 0) return <p>No waivers uploaded yet.</p>;
 
   return (
-    <ul className="space-y-2">
-      {waivers.map(w => (
-        <li key={w.id} className="p-2 bg-white rounded shadow flex justify-between">
-          <div>
-            <strong>{w.contractor_name}</strong> ({w.waiver_type})
-          </div>
-          <span className={w.verification_passed ? 'text-green-600' : 'text-red-600'}>
-            {w.verification_passed ? 'Verified' : 'Issues'}
-          </span>
-        </li>
-      ))}
-    </ul>
+    <div className="bg-white rounded-lg shadow-md p-4">
+      <h4 className="text-lg font-medium mb-2">Uploaded Waivers</h4>
+      <ul className="space-y-2">
+        {waivers.map(w => (
+          <li key={w.id} className="flex justify-between items-center">
+            <a
+              href={w.file_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-blue-600 hover:underline"
+            >
+              {w.waiver_type} by {w.contractor_name}
+            </a>
+            <span
+              className={`px-2 py-1 rounded text-sm ${
+                w.verification_passed ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+              }`}
+            >
+              {w.verification_passed ? 'Verified' : 'Failed'}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }

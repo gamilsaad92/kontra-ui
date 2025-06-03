@@ -1,26 +1,59 @@
-import React, { useState, useEffect } from 'react';
+// src/components/AmortizationTable.jsx
+
+import React, { useEffect, useState } from 'react';
+
 export default function AmortizationTable({ loanId }) {
   const [schedule, setSchedule] = useState([]);
+  const [loading, setLoading] = useState(true);
+
   useEffect(() => {
-    fetch(`${import.meta.env.VITE_BACKEND_URL}/api/loans/${loanId}/schedule`)
-      .then(r => r.json()).then(d => setSchedule(d.schedule));
+    (async () => {
+      setLoading(true);
+      try {
+        // Generate schedule (if not yet generated) - optional to call generate-schedule endpoint
+        await fetch(
+          `${import.meta.env.VITE_BACKEND_URL}/api/loans/${loanId}/generate-schedule`,
+          { method: 'POST' }
+        );
+        // Fetch the schedule
+        const res = await fetch(
+          `${import.meta.env.VITE_BACKEND_URL}/api/loans/${loanId}/schedule`
+        );
+        const { schedule } = await res.json();
+        setSchedule(schedule || []);
+      } catch {
+        // ignore
+      } finally {
+        setLoading(false);
+      }
+    })();
   }, [loanId]);
 
+  if (loading) return <p>Loading schedule…</p>;
+  if (schedule.length === 0) return <p>No amortization schedule found.</p>;
+
   return (
-    <table className="min-w-full bg-white rounded shadow">
-      <thead className="bg-gray-200"><tr>
-        {['Due Date','Principal','Interest','Balance'].map(h=><th key={h} className="px-4 py-2">{h}</th>)}
-      </tr></thead>
-      <tbody>
-        {schedule.map(s=>(
-          <tr key={s.id} className="border-t">
-            <td className="px-4 py-2">{s.due_date}</td>
-            <td className="px-4 py-2">{s.principal_due.toFixed(2)}</td>
-            <td className="px-4 py-2">{s.interest_due.toFixed(2)}</td>
-            <td className="px-4 py-2">{s.balance_after.toFixed(2)}</td>
+    <div className="bg-white rounded-lg shadow-md mb-6">
+      <table className="w-full text-left">
+        <thead className="bg-gray-100">
+          <tr>
+            <th className="p-2">Due Date</th>
+            <th className="p-2">Principal Due</th>
+            <th className="p-2">Interest Due</th>
+            <th className="p-2">Balance After</th>
           </tr>
-        ))}
-      </tbody>
-    </table>
+        </thead>
+        <tbody>
+          {schedule.map((row, idx) => (
+            <tr key={idx} className="hover:bg-gray-50">
+              <td className="p-2">{row.due_date}</td>
+              <td className="p-2">${row.principal_due.toFixed(2)}</td>
+              <td className="p-2">${row.interest_due.toFixed(2)}</td>
+              <td className="p-2">${row.balance_after.toFixed(2)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
 }

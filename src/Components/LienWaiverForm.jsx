@@ -1,72 +1,92 @@
+// src/components/LienWaiverForm.jsx
+
 import React, { useState } from 'react';
 
 export default function LienWaiverForm({ drawId, onUploaded }) {
-  const [file, setFile] = useState(null);
   const [contractor, setContractor] = useState('');
-  const [type, setType] = useState('conditional');
+  const [waiverType, setWaiverType] = useState('');
+  const [file, setFile] = useState(null);
   const [message, setMessage] = useState('');
+  const [loading, setLoading] = useState(false);
 
-  const handleSubmit = async (e) => {
+  const handleFileChange = e => {
+    setFile(e.target.files[0]);
+    setMessage('');
+  };
+
+  const handleSubmit = async e => {
     e.preventDefault();
-    if (!file || !contractor) return;
-    setMessage('Uploading...');
-    try {
-      const form = new FormData();
-      form.append('file', file);
-      form.append('draw_id', drawId);
-      form.append('contractor_name', contractor);
-      form.append('waiver_type', type);
+    if (!contractor || !waiverType || !file) {
+      setMessage('All fields are required');
+      return;
+    }
+    setLoading(true);
+    setMessage('');
 
-      const res = await fetch(
-        `${import.meta.env.VITE_BACKEND_URL}/api/upload-lien-waiver`,
-        { method: 'POST', body: form }
-      );
+    const formData = new FormData();
+    formData.append('draw_id', drawId);
+    formData.append('contractor_name', contractor);
+    formData.append('waiver_type', waiverType);
+    formData.append('file', file);
+
+    try {
+      const res = await fetch(`${import.meta.env.VITE_BACKEND_URL}/api/upload-lien-waiver`, {
+        method: 'POST',
+        body: formData
+      });
       const data = await res.json();
       if (res.ok) {
-        setMessage('✅ Waiver uploaded successfully');
+        setMessage('Waiver uploaded successfully');
         onUploaded(data.data);
+        setContractor('');
+        setWaiverType('');
+        setFile(null);
       } else {
         setMessage(data.message || 'Upload failed');
       }
-    } catch (err) {
-      console.error('Upload error:', err);
-      setMessage('⚠️ Error uploading waiver');
+    } catch {
+      setMessage('Error uploading waiver');
+    } finally {
+      setLoading(false);
     }
   };
 
   return (
-    <form onSubmit={handleSubmit} className="mt-4 space-y-2 border-t pt-4">
-      <h3 className="font-semibold">Upload Lien Waiver</h3>
-      <input
-        type="text"
-        placeholder="Contractor Name"
-        value={contractor}
-        onChange={(e) => setContractor(e.target.value)}
-        required
-        className="w-full border p-1 rounded"
-      />
-      <select
-        value={type}
-        onChange={(e) => setType(e.target.value)}
-        className="w-full border p-1 rounded"
-      >
-        <option value="conditional">Conditional Waiver</option>
-        <option value="unconditional">Unconditional Waiver</option>
-      </select>
-      <input
-        type="file"
-        accept="application/pdf"
-        onChange={(e) => setFile(e.target.files[0])}
-        required
-        className="w-full"
-      />
-      <button
-        type="submit"
-        className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-1 px-4 rounded"
-      >
-        Upload Waiver
-      </button>
-      {message && <p className="text-sm mt-1">{message}</p>}
-    </form>
+    <div className="bg-white rounded-lg shadow-md p-6 mb-6">
+      <h3 className="text-xl font-semibold mb-4">Upload Lien Waiver (Draw #{drawId})</h3>
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <input
+          type="text"
+          placeholder="Contractor Name"
+          value={contractor}
+          onChange={e => setContractor(e.target.value)}
+          className="w-full border p-2 rounded"
+          required
+        />
+        <input
+          type="text"
+          placeholder="Waiver Type"
+          value={waiverType}
+          onChange={e => setWaiverType(e.target.value)}
+          className="w-full border p-2 rounded"
+          required
+        />
+        <input
+          type="file"
+          accept=".pdf,.doc,.docx"
+          onChange={handleFileChange}
+          className="w-full"
+          required
+        />
+        <button
+          type="submit"
+          disabled={loading}
+          className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 rounded"
+        >
+          {loading ? 'Uploading…' : 'Upload Waiver'}
+        </button>
+      </form>
+      {message && <p className="mt-3 text-gray-700">{message}</p>}
+    </div>
   );
 }

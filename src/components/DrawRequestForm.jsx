@@ -1,3 +1,5 @@
+// src/components/DrawRequestForm.jsx
+
 import React, { useState } from 'react';
 
 export default function DrawRequestForm({ onSubmitted }) {
@@ -10,68 +12,85 @@ export default function DrawRequestForm({ onSubmitted }) {
   });
   const [message, setMessage] = useState('');
 
-  const handleChange = (e) =>
-    setFormData(f => ({ ...f, [e.target.name]: e.target.value }));
+  const handleChange = e => {
+    setFormData({ ...formData, [e.target.name]: e.target.value });
+  };
 
-  const handleSubmit = async (e) => {
+  const handleSubmit = async e => {
     e.preventDefault();
-    setMessage('Submitting...');
+    setMessage('Submitting…');
     try {
-      const res = await fetch(
-        `${import.meta.env.VITE_BACKEND_URL}/api/draw-request`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(formData)
-        }
-      );
-      const data = await res.json();
-      setMessage(data.message || 'Submitted!');
-      setFormData({
-        project: '',
-        project_number: '',
-        property_location: '',
-        amount: '',
-        description: ''
+      const res = await fetch(`${import.meta.env.VITE_BACKEND_URL}/api/draw-request`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(formData)
       });
-      onSubmitted();       // let parent know
+      const data = await res.json();
+      if (res.ok) {
+        setMessage('Draw request submitted!');
+        onSubmitted();
+        setFormData({ project: '', project_number: '', property_location: '', amount: '', description: '' });
+      } else {
+        setMessage(data.message || 'Submission failed');
+      }
     } catch {
-      setMessage('Error');
+      setMessage('Failed to submit');
     }
   };
 
   return (
-    <div className="bg-white p-6 rounded-lg shadow mb-6">
-      <h3 className="text-xl font-semibold mb-4">New Draw Request</h3>
+    <div className="bg-white rounded-lg shadow-md p-6 mb-6">
+      <h3 className="text-xl font-semibold mb-4">Submit Draw Request</h3>
       <form onSubmit={handleSubmit} className="space-y-4">
-        {['project','project_number','property_location','amount'].map(name => (
-          <input
-            key={name}
-            name={name}
-            type={name==='amount'?'number':'text'}
-            placeholder={name.replace('_',' ').replace(/\b\w/g,l=>l.toUpperCase())}
-            value={formData[name]}
-            onChange={handleChange}
-            required
-            className="w-full border p-2 rounded"
-          />
-        ))}
+        <input
+          name="project"
+          placeholder="Project Name"
+          value={formData.project}
+          onChange={handleChange}
+          required
+          className="w-full border p-2 rounded"
+        />
+        <input
+          name="project_number"
+          placeholder="Project #"
+          value={formData.project_number}
+          onChange={handleChange}
+          required
+          className="w-full border p-2 rounded"
+        />
+        <input
+          name="property_location"
+          placeholder="Property Location"
+          value={formData.property_location}
+          onChange={handleChange}
+          required
+          className="w-full border p-2 rounded"
+        />
+        <input
+          name="amount"
+          type="number"
+          placeholder="Amount"
+          value={formData.amount}
+          onChange={handleChange}
+          required
+          className="w-full border p-2 rounded"
+        />
         <textarea
           name="description"
           placeholder="Description"
           value={formData.description}
           onChange={handleChange}
           required
-          className="w-full border p-2 rounded h-20"
+          className="w-full border p-2 rounded h-24"
         />
         <button
           type="submit"
-          className="bg-red-600 hover:bg-red-700 text-white py-2 px-4 rounded"
+          className="w-full bg-red-600 hover:bg-red-700 text-white font-semibold py-2 rounded"
         >
           Submit
         </button>
-        {message && <p className="mt-2 text-green-600">{message}</p>}
       </form>
+      {message && <p className="mt-3 text-green-600">{message}</p>}
     </div>
   );
 }
