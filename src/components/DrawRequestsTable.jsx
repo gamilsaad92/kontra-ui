@@ -68,3 +68,9 @@ export default function DrawRequestsTable({ onSelect }) {
     </div>
   );
 }
+// Only show draws matching project_id if provided
+export default function DrawRequestsTable({ onSelect, filter }) {
+  const [draws, setDraws] = useState([])
+
+  useEffect(() => {
+    (async () => {

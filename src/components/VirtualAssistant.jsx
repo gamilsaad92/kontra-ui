@@ -57,3 +57,19 @@ export default function VirtualAssistant() {
     </div>
   );
 }
+const suggestions = [
+  { label: 'List my active projects', value: 'List my active projects' },
+  { label: 'Show me high-risk projects', value: 'Calculate project risk for project 1' },
+  { label: 'List draws pending approval', value: 'Fetch recent draws' },
+  { label: 'What is the lien status of Project 1?', value: 'Get lien status for project 1' }
+]
+// … in render:
+<select
+  onChange={(e) => setPrompt(e.target.value)}
+  className="border p-2 rounded"
+>
+  <option value="">— Suggested Questions —</option>
+  {suggestions.map((s) => (
+    <option key={s.value} value={s.value}>{s.label}</option>
+  ))}
+</select>
