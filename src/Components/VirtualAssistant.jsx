@@ -1,0 +1,76 @@
+// src/components/VirtualAssistant.jsx
+
+import React, { useState } from 'react';
+
+export default function VirtualAssistant() {
+  const [messages, setMessages] = useState([]);
+  const [input, setInput] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const sendMessage = async () => {
+    if (!input.trim()) return;
+    const userMsg = { role: 'user', content: input };
+    setMessages(msgs => [...msgs, userMsg]);
+    setInput('');
+    setLoading(true);
+
+    try {
+      const res = await fetch(`${import.meta.env.VITE_BACKEND_URL}/api/ask`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ question: userMsg.content })
+      });
+      const { assistant, functionResult } = await res.json();
+
+      let content = assistant.content;
+      if (assistant.function_call && functionResult) {
+        // Format the function result as JSON
+        content = JSON.stringify(functionResult, null, 2);
+      }
+
+      setMessages(msgs => [...msgs, { role: 'assistant', content }]);
+    } catch (err) {
+      setMessages(msgs => [...msgs, { role: 'assistant', content: 'Error contacting assistant.' }]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="flex flex-col h-full">
+      {/* Message Pane */}
+      <div className="flex-1 overflow-auto p-4 space-y-3">
+        {messages.map((m, i) => (
+          <div key={i} className={m.role === 'user' ? 'text-right' : 'text-left'}>
+            <span
+              className={`inline-block p-2 rounded ${
+                m.role === 'user' ? 'bg-blue-100 text-blue-900' : 'bg-gray-200 text-gray-800'
+              }`}
+            >
+              {m.content}
+            </span>
+          </div>
+        ))}
+      </div>
+
+      {/* Input Box */}
+      <div className="p-4 flex border-t">
+        <input
+          className="flex-1 border p-2 rounded-l"
+          value={input}
+          onChange={e => setInput(e.target.value)}
+          onKeyDown={e => e.key === 'Enter' && sendMessage()}
+          placeholder="Ask Kontra..."
+          disabled={loading}
+        />
+        <button
+          className="bg-blue-600 text-white px-4 rounded-r"
+          onClick={sendMessage}
+          disabled={loading}
+        >
+          {loading ? '…' : 'Send'}
+        </button>
+      </div>
+    </div>
+  );
+}
