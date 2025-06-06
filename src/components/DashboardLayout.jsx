@@ -1,3 +1,9 @@
+ (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
+diff --git a/src/components/DashboardLayout.jsx b/src/components/DashboardLayout.jsx
+index 07cc4220445322b21fe5699056a5b42e3339a323..594e04c8f2e8b70eb5c939bfeb00a6026f3fa58a 100644
+--- a/src/components/DashboardLayout.jsx
++++ b/src/components/DashboardLayout.jsx
+@@ -1,78 +1,80 @@
  // src/components/DashboardLayout.jsx
  
  import React, { useState } from 'react';
@@ -87,6 +93,10 @@
              <p className="text-gray-500">Select a draw first to manage waivers</p>
            )
          )}
+ 
+ 
+EOF
+)
  
  
 EOF
