@@ -1,5 +1,3 @@
-/ src/components/DashboardLayout.jsx
-
 import React, { useState } from 'react';
 import PhotoValidation    from './PhotoValidation';
 import DrawRequestsTable  from './DrawRequestsTable';
