@@ -4,6 +4,8 @@ import DrawRequestsTable  from './DrawRequestsTable';
 import DrawRequestForm    from './DrawRequestForm';
 import LienWaiverForm     from './LienWaiverForm';
 import LienWaiverList     from './LienWaiverList';
+import InspectionForm     from './InspectionForm';
+import InspectionList     from './InspectionList';
 import CreateLoanForm     from './CreateLoanForm';
 import LoanList           from './LoanList';
 import AmortizationTable  from './AmortizationTable';
@@ -14,7 +16,6 @@ import VirtualAssistant   from './VirtualAssistant';
 const navItems = [
   { label: 'Loans',            icon: '💰' },
   { label: 'Draw Requests',    icon: '📄' },
-  { label: 'Lien Waivers',     icon: '📝' },
   { label: 'Photo Validation', icon: '📷' },
   { label: 'Assistant',        icon: '🤖' },
   { label: 'Projects',         icon: '🏗️' }
@@ -37,8 +38,8 @@ export default function DashboardLayout() {
               key={item.label}
               onClick={() => {
                 setActive(item.label);
-                // Reset selection when switching sections
-                if (item.label !== 'Lien Waivers' && item.label !== 'Loans') {
+                // Reset selection when switching away from draw/loan views
+                if (item.label !== 'Draw Requests' && item.label !== 'Loans') {
                   setSelectedId(null);
                 }
               }}
@@ -60,21 +61,19 @@ export default function DashboardLayout() {
           <>
             <DrawRequestForm onSubmitted={() => setRefreshKey(k => k + 1)} />
             <DrawRequestsTable key={refreshKey} onSelect={setSelectedId} />
+            {selectedId && (
+              <>
+                <LienWaiverForm drawId={selectedId} />
+                <LienWaiverList drawId={selectedId} />
+                <InspectionForm drawId={selectedId} />
+                <InspectionList drawId={selectedId} />
+              </>
+            )}
           </>
         )}
 
         {active === 'Photo Validation' && <PhotoValidation />}
 
-        {active === 'Lien Waivers' && (
-          selectedId ? (
-            <>
-              <LienWaiverForm drawId={selectedId} />
-              <LienWaiverList drawId={selectedId} />
-            </>
-          ) : (
-            <p className="text-gray-500">Select a draw first to manage waivers</p>
-          )
-        )}
 
         {active === 'Loans' && (
           selectedId ? (
@@ -104,5 +103,3 @@ export default function DashboardLayout() {
     </div>
   );
 }
- 
- 
