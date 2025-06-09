@@ -1,5 +1,8 @@
 name: Merge kontra-api into UI monorepo
 
+permissions:
+  contents: write   # ← grant the token write access so the push step succeeds
+
 on:
   workflow_dispatch:
 
@@ -7,14 +10,12 @@ jobs:
   import-api:
     runs-on: ubuntu-latest
     steps:
-      # 1) Check out the UI repo (this one) with your Actions token
       - name: Checkout UI repo
         uses: actions/checkout@v3
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           persist-credentials: true
 
-      # 2) Check out the API repo into ./api
       - name: Checkout kontra-api
         uses: actions/checkout@v3
         with:
@@ -22,15 +23,13 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
           path: api
 
-      # 3) Remove the API repo’s own .git metadata
       - name: Remove API .git metadata
         run: rm -rf api/.git
 
-      # 4) Commit & push the api/ folder back into your UI repo
       - name: Commit api/ into this repo
         uses: stefanzweifel/git-auto-commit-action@v4
         with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}    # ← this line is critical
+          github_token: ${{ secrets.GITHUB_TOKEN }}
           commit_message: "chore: import kontra-api into /api subfolder"
           branch: main
           file_pattern: "api/**"
