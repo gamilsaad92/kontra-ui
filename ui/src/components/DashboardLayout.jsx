@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useContext } from 'react';
+import { AuthContext }    from '../main';
 import PhotoValidation    from './PhotoValidation';
 import DrawRequestsTable  from './DrawRequestsTable';
 import DrawRequestForm    from './DrawRequestForm';
@@ -11,6 +12,11 @@ import LoanList           from './LoanList';
 import AmortizationTable  from './AmortizationTable';
 import PaymentForm        from './PaymentForm';
 import VirtualAssistant   from './VirtualAssistant';
+import ProjectForm        from './ProjectForm';
+import ProjectsTable      from './ProjectsTable';
+import ProjectDetail      from './ProjectDetail';
+import AnalyticsDashboard from './AnalyticsDashboard';
+import LoginForm          from './LoginForm';
 
 // Nav items arranged to reflect common lender operations
 const navItems = [
@@ -18,7 +24,8 @@ const navItems = [
   { label: 'Draw Requests',    icon: '📄' },
   { label: 'Photo Validation', icon: '📷' },
   { label: 'Assistant',        icon: '🤖' },
-  { label: 'Projects',         icon: '🏗️' }
+  { label: 'Projects',         icon: '🏗️' },
+  { label: 'Analytics',        icon: '📊' }
 ];
 
 export default function DashboardLayout() {
@@ -26,6 +33,13 @@ export default function DashboardLayout() {
   const [active, setActive] = useState('Loans');
   const [refreshKey, setRefreshKey] = useState(0);
   const [selectedId, setSelectedId] = useState(null);
+  const [selectedProjectId, setSelectedProjectId] = useState(null);
+  const [projectRefreshKey, setProjectRefreshKey] = useState(0);
+  const { session, supabase } = useContext(AuthContext);
+
+  if (!session) {
+    return <LoginForm />;
+  }
 
   return (
     <div className="flex flex-col h-screen bg-gray-100">
@@ -33,14 +47,16 @@ export default function DashboardLayout() {
       <header className="bg-gray-800 text-white p-4 flex items-center">
         <h1 className="text-2xl font-bold mr-8">Kontra</h1>
         <nav className="flex space-x-4">
-          {navItems.map(item => (
+          {navItems.map((item) => (
             <button
               key={item.label}
               onClick={() => {
                 setActive(item.label);
-                // Reset selection when switching away from draw/loan views
                 if (item.label !== 'Draw Requests' && item.label !== 'Loans') {
                   setSelectedId(null);
+                }
+                if (item.label !== 'Projects') {
+                  setSelectedProjectId(null);
                 }
               }}
               className={`px-3 py-1 rounded hover:bg-gray-700 ${
@@ -51,6 +67,12 @@ export default function DashboardLayout() {
             </button>
           ))}
         </nav>
+        <button
+          onClick={() => supabase.auth.signOut()}
+          className="ml-auto px-3 py-1 rounded hover:bg-gray-700"
+        >
+          Log Out
+        </button>
       </header>
 
       {/* Main Content */}
@@ -74,7 +96,6 @@ export default function DashboardLayout() {
 
         {active === 'Photo Validation' && <PhotoValidation />}
 
-
         {active === 'Loans' && (
           selectedId ? (
             <>
@@ -97,8 +118,28 @@ export default function DashboardLayout() {
         )}
 
         {active === 'Projects' && (
-          <p className="text-gray-500">Projects section coming soon…</p>
+          selectedProjectId ? (
+            <>
+              <button
+                onClick={() => setSelectedProjectId(null)}
+                className="mb-4 text-blue-600 underline"
+              >
+                ← Back to Projects
+              </button>
+              <ProjectDetail projectId={selectedProjectId} />
+            </>
+          ) : (
+            <>
+              <ProjectForm onCreated={() => setProjectRefreshKey((k) => k + 1)} />
+              <ProjectsTable
+                key={projectRefreshKey}
+                onSelect={setSelectedProjectId}
+              />
+            </>
+          )
         )}
+
+        {active === 'Analytics' && <AnalyticsDashboard />}
       </main>
     </div>
   );
