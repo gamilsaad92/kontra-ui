@@ -1,0 +1,11 @@
+diff --git a/ui/src/components/DashboardLayout.jsx b/ui/src/components/DashboardLayout.jsx
+index 0000000..1111111 100644
+--- a/ui/src/components/DashboardLayout.jsx
++++ b/ui/src/components/DashboardLayout.jsx
+@@ -1,7 +1,7 @@
+ import React, { useState } from 'react';
+-import InspectionForm from '../components/InspectionForm';
++import InspectionForm from './InspectionForm';
+ import PhotoValidation from './PhotoValidation';
+ import DrawCard from './DrawCard';
+ import DrawRequestForm from './DrawRequestForm';
