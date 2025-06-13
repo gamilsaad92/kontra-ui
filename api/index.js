@@ -450,6 +450,10 @@ app.post('/api/ask', async (req, res) => {
 
 // ── Start Server ──────────────────────────────────────────────────────────
 const PORT = process.env.PORT || 5050;
-app.listen(PORT, () => {
-  console.log(`Kontra API listening on port ${PORT}`);
-});
+if (require.main === module) {
+  app.listen(PORT, () => {
+    console.log(`Kontra API listening on port ${PORT}`);
+  });
+}
+
+module.exports = app;
