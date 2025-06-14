@@ -1,5 +1,7 @@
 import React, { useState, useContext } from 'react';
 import { AuthContext }    from '../main';
+import LoginForm          from './LoginForm';
+import SignUpForm         from './SignUpForm';
 import PhotoValidation    from './PhotoValidation';
 import DrawRequestsTable  from './DrawRequestsTable';
 import DrawRequestForm    from './DrawRequestForm';
@@ -34,7 +36,16 @@ export default function DashboardLayout() {
   const [selectedId, setSelectedId] = useState(null);
   const [selectedProjectId, setSelectedProjectId] = useState(null);
   const [projectRefreshKey, setProjectRefreshKey] = useState(0);
-  const { supabase } = useContext(AuthContext);
+  const { session, supabase } = useContext(AuthContext);
+  const [signUp, setSignUp] = useState(false);
+
+  if (!session) {
+    return signUp ? (
+      <SignUpForm onSwitch={() => setSignUp(false)} />
+    ) : (
+      <LoginForm onSwitch={() => setSignUp(true)} />
+    );
+  }
 
   return (
     <div className="flex flex-col h-screen bg-gray-100">
