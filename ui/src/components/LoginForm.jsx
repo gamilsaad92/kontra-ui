@@ -1,7 +1,7 @@
 import React, { useState, useContext } from 'react'
 import { AuthContext } from '../main'
 
-export default function LoginForm() {
+export default function LoginForm({ onSwitch }) {
   const { supabase } = useContext(AuthContext)
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
