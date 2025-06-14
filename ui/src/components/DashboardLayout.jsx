@@ -16,7 +16,6 @@ import ProjectForm        from './ProjectForm';
 import ProjectsTable      from './ProjectsTable';
 import ProjectDetail      from './ProjectDetail';
 import AnalyticsDashboard from './AnalyticsDashboard';
-import LoginForm          from './LoginForm';
 
 // Nav items arranged to reflect common lender operations
 const navItems = [
@@ -35,11 +34,7 @@ export default function DashboardLayout() {
   const [selectedId, setSelectedId] = useState(null);
   const [selectedProjectId, setSelectedProjectId] = useState(null);
   const [projectRefreshKey, setProjectRefreshKey] = useState(0);
-  const { session, supabase } = useContext(AuthContext);
-
-  if (!session) {
-    return <LoginForm />;
-  }
+  const { supabase } = useContext(AuthContext);
 
   return (
     <div className="flex flex-col h-screen bg-gray-100">
