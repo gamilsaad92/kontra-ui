@@ -7,13 +7,22 @@ export default function SignUpForm({ onSwitch }) {
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
+  const [success, setSuccess] = useState(false)
 
   const handleSignUp = async (e) => {
     e.preventDefault()
     setLoading(true)
-    const { error } = await supabase.auth.signUp({ email, password })
+    const { error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: { emailRedirectTo: window.location.origin }
+    })
     setLoading(false)
-    setError(error?.message || null)
+    if (error) {
+      setError(error.message)
+    } else {
+      setSuccess(true)
+    }
   }
 
   return (
@@ -42,6 +51,9 @@ export default function SignUpForm({ onSwitch }) {
       >
         {loading ? 'Signing up…' : 'Sign Up'}
       </button>
+      {success && (
+        <p className="mt-2 text-green-600">Check your email to confirm your account.</p>
+      )}
       {error && <p className="mt-2 text-red-500">{error}</p>}
       {onSwitch && (
         <p className="mt-4 text-sm">
