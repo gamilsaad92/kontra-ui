@@ -4,7 +4,6 @@ import { AuthContext } from '../main'
 export default function SignUpForm({ onSwitch }) {
   const { supabase } = useContext(AuthContext)
   const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
   const [success, setSuccess] = useState(false)
@@ -12,9 +11,8 @@ export default function SignUpForm({ onSwitch }) {
   const handleSignUp = async (e) => {
     e.preventDefault()
     setLoading(true)
-    const { error } = await supabase.auth.signUp({
+    const { error } = await supabase.auth.signInWithOtp({
       email,
-      password,
       options: { emailRedirectTo: window.location.origin }
     })
     setLoading(false)
@@ -33,14 +31,6 @@ export default function SignUpForm({ onSwitch }) {
         placeholder="Email"
         value={email}
         onChange={(e) => setEmail(e.target.value)}
-        required
-        className="w-full border p-2 rounded mb-3"
-      />
-      <input
-        type="password"
-        placeholder="Password"
-        value={password}
-        onChange={(e) => setPassword(e.target.value)}
         required
         className="w-full border p-2 rounded mb-3"
       />
