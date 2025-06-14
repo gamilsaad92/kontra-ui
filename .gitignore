@@ -1,12 +1,14 @@
+# macOS
 .DS_Store
-.DS_Store
+
+# dependencies
 node_modules/
-.DS_Store
-node_modules/
-.DS_Store
+
+# build output
 dist/
-.env.local
-node_modules/
-.DS_Store
-dist/
+
+# environment files
+.env
+*.env
+*.env.*
 .env.local
