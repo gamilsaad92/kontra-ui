@@ -43,6 +43,17 @@ export default function LoginForm() {
         {loading ? 'Logging in…' : 'Log In'}
       </button>
       {error && <p className="mt-2 text-red-500">{error}</p>}
-    </form>
+      {onSwitch && (
+        <p className="mt-4 text-sm">
+          Don't have an account?{' '}
+          <button
+            type="button"
+            onClick={onSwitch}
+            className="text-blue-600 underline"
+          >
+            Sign Up
+          </button>
+        </p>
+      )}    </form>
   )
 }
