@@ -2,7 +2,7 @@
 
 import React, { useContext, useState } from 'react';
 import DashboardLayout from './components/DashboardLayout';
-mport LoginForm from './components/LoginForm';
+import LoginForm from './components/LoginForm';
 import SignUpForm from './components/SignUpForm';
 import { AuthContext } from './main';
 
