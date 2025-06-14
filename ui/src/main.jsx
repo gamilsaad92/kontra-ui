@@ -23,10 +23,16 @@ function AuthProvider({ children }) {
   const [session, setSession] = useState(null);
 
   useEffect(() => {
-    // Fetch initial session
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    async function initSession() {
+      // Handle magic link and other redirects
+      const { data, error } = await supabase.auth.getSessionFromUrl();
+      if (error) console.error('Error getting session from URL', error);
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
       setSession(session);
-    });
+    }
+    initSession();
 
     // Listen for auth state changes
     const { data: listener } = supabase.auth.onAuthStateChange((_event, newSession) => {
