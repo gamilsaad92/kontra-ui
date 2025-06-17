@@ -24,26 +24,46 @@ function AuthProvider({ children }) {
 
   useEffect(() => {
     async function initSession() {
-      // Handle magic link and other redirects
-      const { data, error } = await supabase.auth.getSessionFromUrl();
-      if (error) console.error('Error getting session from URL', error);
+      // 1) Try to pull session out of a magic-link URL (and store it)
       const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      setSession(session);
+        data: { session: newSession },
+        error: urlError
+      } = await supabase.auth.getSessionFromUrl({ storeSession: true });
+
+      if (urlError) {
+        console.error('Error getting session from URL:', urlError.message);
+      }
+
+      if (newSession) {
+        setSession(newSession);
+        // 2) Clear the URL hash so tokens aren’t visible
+        window.history.replaceState({}, document.title, '/');
+      } else {
+        // 3) No magic-link? Check if we already have a session stored
+        const {
+          data: { session: storedSession },
+          error: sessionError
+        } = await supabase.auth.getSession();
+
+        if (sessionError) {
+          console.error('Error getting existing session:', sessionError.message);
+        } else {
+          setSession(storedSession);
+        }
+      }
     }
+
     initSession();
 
-    // Listen for auth state changes
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, newSession) => {
+    // 4) Subscribe to further auth-state changes (e.g. sign‐out)
+    const {
+      data: { subscription }
+    } = supabase.auth.onAuthStateChange((_event, newSession) => {
       setSession(newSession);
     });
 
-    // Cleanup subscription on unmount
     return () => {
-      if (listener?.subscription) {
-        listener.subscription.unsubscribe();
-      }
+      subscription.unsubscribe();
     };
   }, []);
 
