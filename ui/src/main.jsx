@@ -24,29 +24,29 @@ function AuthProvider({ children }) {
 
   useEffect(() => {
     async function initSession() {
-      // 1) Try to pull session out of a magic-link URL (and store it)
+      // 1) Check for magic-link tokens in the URL and store them
       const {
-        data: { session: newSession },
-        error: urlError
+        data: { session: magicSession },
+        error: magicError
       } = await supabase.auth.getSessionFromUrl({ storeSession: true });
 
-      if (urlError) {
-        console.error('Error getting session from URL:', urlError.message);
+      if (magicError) {
+        console.error('Error handling magic-link callback:', magicError.message);
       }
 
-      if (newSession) {
-        setSession(newSession);
-        // 2) Clear the URL hash so tokens aren’t visible
+      if (magicSession) {
+        setSession(magicSession);
+        // 2) Remove the tokens from the URL so they’re not visible
         window.history.replaceState({}, document.title, '/');
       } else {
-        // 3) No magic-link? Check if we already have a session stored
+        // 3) No tokens? Try to load an existing session from storage
         const {
           data: { session: storedSession },
           error: sessionError
         } = await supabase.auth.getSession();
 
         if (sessionError) {
-          console.error('Error getting existing session:', sessionError.message);
+          console.error('Error loading stored session:', sessionError.message);
         } else {
           setSession(storedSession);
         }
@@ -55,7 +55,7 @@ function AuthProvider({ children }) {
 
     initSession();
 
-    // 4) Subscribe to further auth-state changes (e.g. sign‐out)
+    // 4) Listen for auth changes (e.g. sign-out in another tab)
     const {
       data: { subscription }
     } = supabase.auth.onAuthStateChange((_event, newSession) => {
