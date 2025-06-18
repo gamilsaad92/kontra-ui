@@ -1,6 +1,7 @@
 // src/components/DrawRequestForm.jsx
 
 import React, { useState } from 'react';
+import { API_BASE } from '../lib/apiBase';
 
 export default function DrawRequestForm({ onSubmitted }) {
   const [formData, setFormData] = useState({
@@ -20,7 +21,7 @@ export default function DrawRequestForm({ onSubmitted }) {
     e.preventDefault();
     setMessage('Submitting…');
     try {
-      const res = await fetch(`${import.meta.env.VITE_BACKEND_URL}/api/draw-request`, {
+    const res = await fetch(`${API_BASE}/api/draw-request`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(formData)
