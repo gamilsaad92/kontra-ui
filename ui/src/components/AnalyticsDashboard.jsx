@@ -5,21 +5,39 @@ import { BarChart, Bar, XAxis, YAxis, Tooltip, PieChart, Pie, Cell, Legend } fro
 export default function AnalyticsDashboard() {
   const [drawsData, setDrawsData] = useState([])
   const [loanData, setLoanData] = useState([])
+  const [error, setError] = useState('')
 
   useEffect(() => {
-    supabase.rpc('get_draws_volume')
-      .then(({ data }) => setDrawsData(data || []))
+    supabase
+      .rpc('get_draws_volume')
+      .then(({ data, error }) => {
+        if (error) {
+          console.error('Analytics RPC error:', error)
+          setError('Failed to load analytics')
+        } else {
+          setDrawsData(data || [])
+        }
+      })
+
     supabase
       .from('loans')
       .select('status, count:count(*)')
       .group('status')
-      .then(({ data }) => setLoanData(data || []))
+      .then(({ data, error }) => {
+        if (error) {
+          console.error('Analytics loan query error:', error)
+          setError('Failed to load analytics')
+        } else {
+          setLoanData(data || [])
+        }
+      })
   }, [])
 
   const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042']
 
   return (
     <div className="space-y-10">
+      {error && <p className="text-red-600">{error}</p>}
       <div>
         <h3 className="text-xl font-bold mb-4">Monthly Draw Volume</h3>
         <BarChart width={600} height={300} data={drawsData}>
@@ -45,11 +63,3 @@ export default function AnalyticsDashboard() {
             {loanData.map((entry, index) => (
               <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
             ))}
-          </Pie>
-          <Legend />
-          <Tooltip />
-        </PieChart>
-      </div>
-    </div>
-  )
-}
