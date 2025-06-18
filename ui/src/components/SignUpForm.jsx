@@ -1,75 +1,49 @@
 // ui/src/components/SignUpForm.jsx
 
-import React, { useState, useContext } from 'react';
-import { AuthContext } from '../main';
+import React, { useState, useContext } from 'react'
+import { AuthContext } from '../main'
 
 export default function SignUpForm({ onSwitch }) {
-  const { supabase } = useContext(AuthContext);
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [confirm, setConfirm] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
-  const [success, setSuccess] = useState(false);
+  const { supabase } = useContext(AuthContext)
+  const [email, setEmail] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState(null)
+  const [message, setMessage] = useState(null)
 
-  const handleSignUp = async (e) => {
-    e.preventDefault();
-    setError(null);
-    setSuccess(false);
+  const handleMagicLink = async (e) => {
+    e.preventDefault()
+    setError(null)
+    setMessage(null)
+    setLoading(true)
 
-    if (password !== confirm) {
-      setError('Passwords do not match');
-      return;
-    }
-
-    setLoading(true);
-    const { error } = await supabase.auth.signUp({
+    const { error } = await supabase.auth.signInWithOtp({
       email,
-      password,
       options: { emailRedirectTo: window.location.origin }
-    });
-    setLoading(false);
+    })
 
+    setLoading(false)
     if (error) {
-      setError(error.message);
+      setError(error.message)
     } else {
-      setSuccess(true);
+      setMessage(
+        '✅ Magic link sent! Check your inbox and click the link to sign in.'
+      )
     }
-  };
+  }
 
   return (
     <form
-      onSubmit={handleSignUp}
+      onSubmit={handleMagicLink}
       className="max-w-md mx-auto mt-20 p-6 bg-white rounded-lg shadow"
     >
-      <h2 className="text-2xl font-bold mb-4">Sign Up</h2>
+      <h2 className="text-2xl font-bold mb-4">Sign Up / Sign In</h2>
 
       <input
         type="email"
-        placeholder="Email"
+        placeholder="Your email address"
         value={email}
         onChange={(e) => setEmail(e.target.value)}
         required
-        className="w-full border p-2 rounded mb-3"
-      />
-
-      <input
-        type="password"
-        placeholder="Password"
-        value={password}
-        onChange={(e) => setPassword(e.target.value)}
-        required
-        minLength={6}
-        className="w-full border p-2 rounded mb-3"
-      />
-
-      <input
-        type="password"
-        placeholder="Confirm Password"
-        value={confirm}
-        onChange={(e) => setConfirm(e.target.value)}
-        required
-        minLength={6}
         className="w-full border p-2 rounded mb-3"
       />
 
@@ -78,28 +52,22 @@ export default function SignUpForm({ onSwitch }) {
         disabled={loading}
         className="w-full bg-green-600 text-white py-2 rounded hover:bg-green-700"
       >
-        {loading ? 'Signing up…' : 'Sign Up'}
+        {loading ? 'Sending link…' : 'Send Magic Link'}
       </button>
 
-      {success && (
-        <p className="mt-2 text-green-600">
-          Check your email to confirm your account.
-        </p>
-      )}
-      {error && <p className="mt-2 text-red-500">{error}</p>}
+      {message && <p className="mt-2 text-green-600">{message}</p>}
+      {error   && <p className="mt-2 text-red-500">{error}</p>}
 
-      {onSwitch && (
-        <p className="mt-4 text-sm">
-          Already have an account?{' '}
-          <button
-            type="button"
-            onClick={onSwitch}
-            className="text-blue-600 underline"
-          >
-            Log In
-          </button>
-        </p>
-      )}
+      <p className="mt-4 text-sm">
+        Already have a magic link?{' '}
+        <button
+          type="button"
+          onClick={onSwitch}
+          className="text-blue-600 underline"
+        >
+          Go to Login
+        </button>
+      </p>
     </form>
-  );
+  )
 }
