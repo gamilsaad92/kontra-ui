@@ -1,38 +1,49 @@
-import React, { useState, useContext } from 'react'
-import { AuthContext } from '../main'
+// ui/src/components/SignUpForm.jsx
+
+import React, { useState, useContext } from 'react';
+import { AuthContext } from '../main';
 
 export default function SignUpForm({ onSwitch }) {
-  const { supabase } = useContext(AuthContext)
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
-  const [confirm, setConfirm] = useState('')
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState(null)
-  const [success, setSuccess] = useState(false)
+  const { supabase } = useContext(AuthContext);
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [confirm, setConfirm] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [success, setSuccess] = useState(false);
 
   const handleSignUp = async (e) => {
-    e.preventDefault()
+    e.preventDefault();
+    setError(null);
+    setSuccess(false);
+
     if (password !== confirm) {
-    setError('Passwords do not match')
-    return
+      setError('Passwords do not match');
+      return;
     }
-    
-    setLoading(true)
-     const { error } = await supabase.auth.signUp({
+
+    setLoading(true);
+    const { error } = await supabase.auth.signUp({
       email,
-      password
-    })
-    setLoading(false)
+      password,
+      options: { emailRedirectTo: window.location.origin }
+    });
+    setLoading(false);
+
     if (error) {
-      setError(error.message)
+      setError(error.message);
     } else {
-      setSuccess(true)
+      setSuccess(true);
     }
-  }
+  };
 
   return (
-    <form onSubmit={handleSignUp} className="max-w-md mx-auto mt-20 p-6 bg-white rounded-lg shadow">
+    <form
+      onSubmit={handleSignUp}
+      className="max-w-md mx-auto mt-20 p-6 bg-white rounded-lg shadow"
+    >
       <h2 className="text-2xl font-bold mb-4">Sign Up</h2>
+
       <input
         type="email"
         placeholder="Email"
@@ -41,32 +52,42 @@ export default function SignUpForm({ onSwitch }) {
         required
         className="w-full border p-2 rounded mb-3"
       />
-       <input
+
+      <input
         type="password"
         placeholder="Password"
         value={password}
         onChange={(e) => setPassword(e.target.value)}
         required
+        minLength={6}
         className="w-full border p-2 rounded mb-3"
       />
+
       <input
         type="password"
         placeholder="Confirm Password"
         value={confirm}
         onChange={(e) => setConfirm(e.target.value)}
         required
+        minLength={6}
         className="w-full border p-2 rounded mb-3"
-      />      <button
+      />
+
+      <button
         type="submit"
         disabled={loading}
         className="w-full bg-green-600 text-white py-2 rounded hover:bg-green-700"
       >
         {loading ? 'Signing up…' : 'Sign Up'}
       </button>
+
       {success && (
-        <p className="mt-2 text-green-600">Check your email to confirm your account.</p>
+        <p className="mt-2 text-green-600">
+          Check your email to confirm your account.
+        </p>
       )}
       {error && <p className="mt-2 text-red-500">{error}</p>}
+
       {onSwitch && (
         <p className="mt-4 text-sm">
           Already have an account?{' '}
@@ -80,5 +101,5 @@ export default function SignUpForm({ onSwitch }) {
         </p>
       )}
     </form>
-  )
+  );
 }
