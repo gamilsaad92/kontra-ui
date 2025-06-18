@@ -4,16 +4,23 @@ import { AuthContext } from '../main'
 export default function SignUpForm({ onSwitch }) {
   const { supabase } = useContext(AuthContext)
   const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [confirm, setConfirm] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
   const [success, setSuccess] = useState(false)
 
   const handleSignUp = async (e) => {
     e.preventDefault()
+    if (password !== confirm) {
+    setError('Passwords do not match')
+    return
+    }
+    
     setLoading(true)
-    const { error } = await supabase.auth.signInWithOtp({
+     const { error } = await supabase.auth.signUp({
       email,
-      options: { emailRedirectTo: window.location.origin }
+      password
     })
     setLoading(false)
     if (error) {
@@ -34,7 +41,22 @@ export default function SignUpForm({ onSwitch }) {
         required
         className="w-full border p-2 rounded mb-3"
       />
-      <button
+       <input
+        type="password"
+        placeholder="Password"
+        value={password}
+        onChange={(e) => setPassword(e.target.value)}
+        required
+        className="w-full border p-2 rounded mb-3"
+      />
+      <input
+        type="password"
+        placeholder="Confirm Password"
+        value={confirm}
+        onChange={(e) => setConfirm(e.target.value)}
+        required
+        className="w-full border p-2 rounded mb-3"
+      />      <button
         type="submit"
         disabled={loading}
         className="w-full bg-green-600 text-white py-2 rounded hover:bg-green-700"
