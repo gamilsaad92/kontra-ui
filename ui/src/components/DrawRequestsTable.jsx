@@ -1,6 +1,7 @@
 // src/components/DrawRequestsTable.jsx
 
 import React, { useEffect, useState } from 'react';
+import { API_BASE } from '../lib/apiBase';
 
 export default function DrawRequestsTable({ onSelect }) {
   const [draws, setDraws] = useState([]);
@@ -11,7 +12,7 @@ export default function DrawRequestsTable({ onSelect }) {
     (async () => {
       setLoading(true);
       try {
-        const res = await fetch(`${import.meta.env.VITE_BACKEND_URL}/api/get-draws`);
+        const res = await fetch(`${API_BASE}/api/get-draws`);
         const { draws } = await res.json();
         setDraws(draws || []);
       } catch {
