@@ -1,6 +1,7 @@
 // src/components/VirtualAssistant.jsx
 
 import React, { useState } from 'react';
+import { API_BASE } from '../lib/apiBase';
 
 export default function VirtualAssistant() {
   const [messages, setMessages] = useState([]);
@@ -15,7 +16,7 @@ export default function VirtualAssistant() {
     setLoading(true);
 
     try {
-      const res = await fetch(`${import.meta.env.VITE_BACKEND_URL}/api/ask`, {
+       const res = await fetch(`${API_BASE}/api/ask`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ question: userMsg.content })
