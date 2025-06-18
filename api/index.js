@@ -267,6 +267,27 @@ app.get('/api/list-lien-waivers', async (req, res) => {
   res.json({ waivers: data });
 });
 
+// ── List Inspections by Draw or Project ─────────────────────────────────────
+app.get('/api/list-inspections', async (req, res) => {
+  const { draw_id, project_id } = req.query;
+  if (!draw_id && !project_id) {
+    return res.status(400).json({ message: 'Missing draw_id or project_id' });
+  }
+
+  let query = supabase
+    .from('inspections')
+    .select('id, inspection_date, notes, draw_id, project_id');
+
+  if (draw_id) query = query.eq('draw_id', draw_id);
+  if (project_id) query = query.eq('project_id', project_id);
+
+  query = query.order('inspection_date', { ascending: false });
+
+  const { data, error } = await query;
+  if (error) return res.status(500).json({ message: 'Failed to list inspections' });
+  res.json({ inspections: data });
+});
+
 // ── Create a Loan ───────────────────────────────────────────────────────────
 app.post('/api/loans', async (req, res) => {
   const { borrower_name, amount, interest_rate, term_months, start_date } = req.body;
