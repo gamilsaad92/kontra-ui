@@ -110,7 +110,7 @@ app.post('/api/draw-request', async (req, res) => {
 
   if (lastDrawError) {
     console.error('Error fetching last draw:', lastDrawError);
-    return res.status(500).json({ message: 'Error fetching previous draws' });
+   // Continue without previous draw information
   }
 
   // 2) Compute risk score
