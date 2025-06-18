@@ -1,49 +1,90 @@
 // ui/src/components/SignUpForm.jsx
 
 import React, { useState, useContext } from 'react'
-import { AuthContext } from '../main'
+import { AuthContext } from '../main.jsx'
 
 export default function SignUpForm({ onSwitch }) {
   const { supabase } = useContext(AuthContext)
   const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
   const [loading, setLoading] = useState(false)
-  const [error, setError] = useState(null)
-  const [message, setMessage] = useState(null)
+  const [error, setError] = useState('')
+  const [success, setSuccess] = useState('')
 
-  const handleMagicLink = async (e) => {
+  const handleSignUp = async (e) => {
     e.preventDefault()
-    setError(null)
-    setMessage(null)
+    setError('')
+    setSuccess('')
+
+    // 1) Validate inputs
+    if (!email || !password) {
+      setError('Email and password are required.')
+      return
+    }
+    if (password !== confirmPassword) {
+      setError('Passwords do not match.')
+      return
+    }
+
     setLoading(true)
-
-    const { error } = await supabase.auth.signInWithOtp({
+    // 2) Call Supabase signUp; this sends the confirmation email
+    const { data, error: signUpError } = await supabase.auth.signUp({
       email,
-      options: { emailRedirectTo: window.location.origin }
+      password,
+      options: {
+        // After confirming, user will be redirected back here
+        emailRedirectTo: window.location.origin
+      }
     })
-
     setLoading(false)
-    if (error) {
-      setError(error.message)
+
+    if (signUpError) {
+      setError(signUpError.message)
     } else {
-      setMessage(
-        '✅ Magic link sent! Check your inbox and click the link to sign in.'
+      setSuccess(
+        '✅ Signup successful! Check your email for the confirmation link.'
       )
+      // Clear form (optional)
+      setEmail('')
+      setPassword('')
+      setConfirmPassword('')
     }
   }
 
   return (
     <form
-      onSubmit={handleMagicLink}
+      onSubmit={handleSignUp}
       className="max-w-md mx-auto mt-20 p-6 bg-white rounded-lg shadow"
     >
-      <h2 className="text-2xl font-bold mb-4">Sign Up / Sign In</h2>
+      <h2 className="text-2xl font-bold mb-4">Sign Up</h2>
 
       <input
         type="email"
-        placeholder="Your email address"
+        placeholder="Email"
         value={email}
         onChange={(e) => setEmail(e.target.value)}
         required
+        className="w-full border p-2 rounded mb-3"
+      />
+
+      <input
+        type="password"
+        placeholder="Password"
+        value={password}
+        onChange={(e) => setPassword(e.target.value)}
+        required
+        minLength={6}
+        className="w-full border p-2 rounded mb-3"
+      />
+
+      <input
+        type="password"
+        placeholder="Confirm Password"
+        value={confirmPassword}
+        onChange={(e) => setConfirmPassword(e.target.value)}
+        required
+        minLength={6}
         className="w-full border p-2 rounded mb-3"
       />
 
@@ -52,22 +93,24 @@ export default function SignUpForm({ onSwitch }) {
         disabled={loading}
         className="w-full bg-green-600 text-white py-2 rounded hover:bg-green-700"
       >
-        {loading ? 'Sending link…' : 'Send Magic Link'}
+        {loading ? 'Signing up…' : 'Sign Up'}
       </button>
 
-      {message && <p className="mt-2 text-green-600">{message}</p>}
+      {success && <p className="mt-2 text-green-600">{success}</p>}
       {error   && <p className="mt-2 text-red-500">{error}</p>}
 
-      <p className="mt-4 text-sm">
-        Already have a magic link?{' '}
-        <button
-          type="button"
-          onClick={onSwitch}
-          className="text-blue-600 underline"
-        >
-          Go to Login
-        </button>
-      </p>
+      {onSwitch && (
+        <p className="mt-4 text-sm">
+          Already have an account?{' '}
+          <button
+            type="button"
+            onClick={onSwitch}
+            className="text-blue-600 underline"
+          >
+            Log In
+          </button>
+        </p>
+      )}
     </form>
   )
 }
