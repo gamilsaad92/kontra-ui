@@ -63,3 +63,11 @@ export default function AnalyticsDashboard() {
             {loanData.map((entry, index) => (
               <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
             ))}
+</Pie>
+          <Legend />
+          <Tooltip />
+        </PieChart>
+      </div>
+    </div>
+  )
+}
