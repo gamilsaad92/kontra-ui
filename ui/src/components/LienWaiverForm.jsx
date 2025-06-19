@@ -1,6 +1,7 @@
 // src/components/LienWaiverForm.jsx
 
 import React, { useState } from 'react';
+import { API_BASE } from '../lib/apiBase';
 
 export default function LienWaiverForm({ drawId, onUploaded }) {
   const [contractor, setContractor] = useState('');
@@ -30,7 +31,7 @@ export default function LienWaiverForm({ drawId, onUploaded }) {
     formData.append('file', file);
 
     try {
-      const res = await fetch(`${import.meta.env.VITE_BACKEND_URL}/api/upload-lien-waiver`, {
+       const res = await fetch(`${API_BASE}/api/upload-lien-waiver`, {
         method: 'POST',
         body: formData
       });
