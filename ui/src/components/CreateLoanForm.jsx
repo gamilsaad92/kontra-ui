@@ -1,6 +1,7 @@
 // src/components/CreateLoanForm.jsx
 
 import React, { useState } from 'react';
+import { API_BASE } from '../lib/apiBase';
 
 export default function CreateLoanForm({ onCreated }) {
   const [formData, setFormData] = useState({
@@ -20,7 +21,7 @@ export default function CreateLoanForm({ onCreated }) {
     e.preventDefault();
     setMessage('Creating loan…');
     try {
-      const res = await fetch(`${import.meta.env.VITE_BACKEND_URL}/api/loans`, {
+      const res = await fetch(`${API_BASE}/api/loans`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(formData)
