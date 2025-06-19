@@ -1,6 +1,7 @@
 // src/PhotoValidation.jsx
 
 import React, { useState } from 'react';
+import { API_BASE } from '../lib/apiBase';
 
 export default function PhotoValidation() {
   const [file, setFile] = useState(null);
@@ -24,7 +25,7 @@ export default function PhotoValidation() {
     formData.append('image', file);
 
     try {
-      const res = await fetch(`${import.meta.env.VITE_BACKEND_URL}/api/validate-photo`, {
+       const res = await fetch(`${API_BASE}/api/validate-photo`, {
         method: 'POST',
         body: formData
       });
