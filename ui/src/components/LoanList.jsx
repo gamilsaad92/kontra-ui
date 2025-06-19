@@ -1,6 +1,7 @@
 // src/components/LoanList.jsx
 
 import React, { useEffect, useState } from 'react';
+import { API_BASE } from '../lib/apiBase';
 
 export default function LoanList({ onSelect }) {
   const [loans, setLoans] = useState([]);
@@ -10,7 +11,7 @@ export default function LoanList({ onSelect }) {
     (async () => {
       setLoading(true);
       try {
-        const res = await fetch(`${import.meta.env.VITE_BACKEND_URL}/api/loans`);
+        const res = await fetch(`${API_BASE}/api/loans`);
         const { loans } = await res.json();
         setLoans(loans || []);
       } catch {
