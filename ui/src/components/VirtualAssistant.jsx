@@ -16,11 +16,12 @@ export default function VirtualAssistant() {
     setLoading(true)
 
     try {
-      const res = await fetch(`${API_BASE}/ask`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ question: userMsg.content }),
-      })
+  const res = await fetch(`${API_BASE}/api/ask`, {
+     method: 'POST',
+     headers: { 'Content-Type': 'application/json' },
+     body: JSON.stringify({ question: userMsg.content }),
+   })
+      
 
       if (!res.ok) {
         // Read the body so we know why it failed
