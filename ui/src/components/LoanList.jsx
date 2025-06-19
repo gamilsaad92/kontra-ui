@@ -46,7 +46,7 @@ export default function LoanList({ onSelect }) {
             >
               <td className="p-2">{loan.id}</td>
               <td className="p-2">{loan.borrower_name}</td>
-              <td className="p-2">${loan.amount}</td>
+               <td className="p-2">{loan.amount}</td>
               <td className="p-2">{loan.status || '—'}</td>
               <td className="p-2">{new Date(loan.created_at).toLocaleDateString()}</td>
             </tr>
