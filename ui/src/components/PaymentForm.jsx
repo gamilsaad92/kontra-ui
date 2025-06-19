@@ -1,6 +1,7 @@
 // src/components/PaymentForm.jsx
 
 import React, { useState } from 'react';
+import { API_BASE } from '../lib/apiBase';
 
 export default function PaymentForm({ loanId, onPaid }) {
   const [amount, setAmount] = useState('');
@@ -15,7 +16,7 @@ export default function PaymentForm({ loanId, onPaid }) {
     }
     try {
       const res = await fetch(
-        `${import.meta.env.VITE_BACKEND_URL}/api/loans/${loanId}/payments`,
+        ${API_BASE}/api/loans/${loanId}/payments`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
