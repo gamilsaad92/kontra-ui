@@ -16,7 +16,7 @@ export default function PaymentForm({ loanId, onPaid }) {
     }
     try {
       const res = await fetch(
-        ${API_BASE}/api/loans/${loanId}/payments`,
+         `${API_BASE}/api/loans/${loanId}/payments`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
