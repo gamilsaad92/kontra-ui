@@ -48,7 +48,7 @@ export default function DrawRequestsTable({ onSelect }) {
             >
               <td className="p-2">{draw.id}</td>
               <td className="p-2">{draw.project}</td>
-              <td className="p-2">${draw.amount}</td>
+              <td className="p-2">{draw.amount}</td>
               <td className="p-2">{draw.status}</td>
               <td className="p-2">{new Date(draw.submittedAt).toLocaleDateString()}</td>
             </tr>
