@@ -1,6 +1,7 @@
 // src/components/LienWaiverList.jsx
 
 import React, { useEffect, useState } from 'react';
+import { API_BASE } from '../lib/apiBase';
 
 export default function LienWaiverList({ drawId }) {
   const [waivers, setWaivers] = useState([]);
@@ -10,7 +11,7 @@ export default function LienWaiverList({ drawId }) {
     (async () => {
       setLoading(true);
       const res = await fetch(
-        `${import.meta.env.VITE_BACKEND_URL}/api/list-lien-waivers?draw_id=${drawId}`
+        `${API_BASE}/api/list-lien-waivers?draw_id=${drawId}`
       );
       const { waivers } = await res.json();
       setWaivers(waivers || []);
