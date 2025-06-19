@@ -13,7 +13,18 @@ This repository contains the **frontend** and **backend** for the Kontra demo ap
    cd ../ui && npm install
    ```
 
-2. Start the development servers in separate terminals:
+2. Configure environment variables:
+   ```bash
+   # API keys and port
+   cp api/.env.example api/.env
+   # URL of the running API for the frontend
+   cp ui/.env.example ui/.env
+   ```
+
+   Edit `api/.env` with your Supabase and OpenAI credentials. Ensure the API is
+   running on the same URL specified in `ui/.env`.
+
+3. Start the development servers in separate terminals:
    ```bash
    # API (defaults to PORT from `.env` or 5050)
    cd api && npm run dev
@@ -25,7 +36,7 @@ This repository contains the **frontend** and **backend** for the Kontra demo ap
    The signup form sends Supabase magic links back to `window.location.origin`. 
    Ensure the UI is running on the same host/port that served the form (typically `http://localhost:5173`).
 
-3. Run tests:
+4. Run tests:
    ```bash
    cd api && npm test
    ```
