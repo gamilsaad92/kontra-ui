@@ -47,9 +47,9 @@ export default function AmortizationTable({ loanId }) {
           {schedule.map((row, idx) => (
             <tr key={idx} className="hover:bg-gray-50">
               <td className="p-2">{row.due_date}</td>
-              <td className="p-2">${row.principal_due.toFixed(2)}</td>
-              <td className="p-2">${row.interest_due.toFixed(2)}</td>
-              <td className="p-2">${row.balance_after.toFixed(2)}</td>
+              <td className="p-2">{row.principal_due.toFixed(2)}</td>
+              <td className="p-2">{row.interest_due.toFixed(2)}</td>
+              <td className="p-2">{row.balance_after.toFixed(2)}</td>
             </tr>
           ))}
         </tbody>
