@@ -1,41 +1,50 @@
-// src/components/VirtualAssistant.jsx
+// ui/src/components/VirtualAssistant.jsx
 
-import React, { useState } from 'react';
-import { API_BASE } from '../lib/apiBase';
+import React, { useState } from 'react'
+import { API_BASE } from '../lib/apiBase'
 
 export default function VirtualAssistant() {
-  const [messages, setMessages] = useState([]);
-  const [input, setInput] = useState('');
-  const [loading, setLoading] = useState(false);
+  const [messages, setMessages] = useState([])
+  const [input, setInput] = useState('')
+  const [loading, setLoading] = useState(false)
 
   const sendMessage = async () => {
-    if (!input.trim()) return;
-    const userMsg = { role: 'user', content: input };
-    setMessages(msgs => [...msgs, userMsg]);
-    setInput('');
-    setLoading(true);
+    if (!input.trim()) return
+    const userMsg = { role: 'user', content: input }
+    setMessages(prev => [...prev, userMsg])
+    setInput('')
+    setLoading(true)
 
     try {
-       const res = await fetch(`${API_BASE}/api/ask`, {
+      const res = await fetch(`${API_BASE}/ask`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ question: userMsg.content })
-      });
-      const { assistant, functionResult } = await res.json();
+        body: JSON.stringify({ question: userMsg.content }),
+      })
 
-      let content = assistant.content;
-      if (assistant.function_call && functionResult) {
-        // Format the function result as JSON
-        content = JSON.stringify(functionResult, null, 2);
+      if (!res.ok) {
+        // Read the body so we know why it failed
+        const text = await res.text()
+        throw new Error(`HTTP ${res.status}: ${text}`)
       }
 
-      setMessages(msgs => [...msgs, { role: 'assistant', content }]);
+      const { assistant, functionResult } = await res.json()
+      let content = assistant.content ?? ''
+      if (assistant.function_call && functionResult) {
+        content = JSON.stringify(functionResult, null, 2)
+      }
+
+      setMessages(prev => [...prev, { role: 'assistant', content }])
     } catch (err) {
-      setMessages(msgs => [...msgs, { role: 'assistant', content: 'Error contacting assistant.' }]);
+      console.error('Error contacting assistant:', err)
+      setMessages(prev => [
+        ...prev,
+        { role: 'assistant', content: `Error contacting assistant:\n${err.message}` }
+      ])
     } finally {
-      setLoading(false);
+      setLoading(false)
     }
-  };
+  }
 
   return (
     <div className="flex flex-col h-full">
@@ -45,7 +54,9 @@ export default function VirtualAssistant() {
           <div key={i} className={m.role === 'user' ? 'text-right' : 'text-left'}>
             <span
               className={`inline-block p-2 rounded ${
-                m.role === 'user' ? 'bg-blue-100 text-blue-900' : 'bg-gray-200 text-gray-800'
+                m.role === 'user'
+                  ? 'bg-blue-100 text-blue-900'
+                  : 'bg-gray-200 text-gray-800'
               }`}
             >
               {m.content}
@@ -73,5 +84,5 @@ export default function VirtualAssistant() {
         </button>
       </div>
     </div>
-  );
+  )
 }
