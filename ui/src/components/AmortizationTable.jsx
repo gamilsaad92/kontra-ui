@@ -1,6 +1,7 @@
 // src/components/AmortizationTable.jsx
 
 import React, { useEffect, useState } from 'react';
+import { API_BASE } from '../lib/apiBase';
 
 export default function AmortizationTable({ loanId }) {
   const [schedule, setSchedule] = useState([]);
@@ -11,14 +12,11 @@ export default function AmortizationTable({ loanId }) {
       setLoading(true);
       try {
         // Generate schedule (if not yet generated) - optional to call generate-schedule endpoint
-        await fetch(
-          `${import.meta.env.VITE_BACKEND_URL}/api/loans/${loanId}/generate-schedule`,
-          { method: 'POST' }
-        );
+        await fetch(`${API_BASE}/api/loans/${loanId}/generate-schedule`, {
+          method: 'POST'
+        });
         // Fetch the schedule
-        const res = await fetch(
-          `${import.meta.env.VITE_BACKEND_URL}/api/loans/${loanId}/schedule`
-        );
+        const res = await fetch(`${API_BASE}/api/loans/${loanId}/schedule`);
         const { schedule } = await res.json();
         setSchedule(schedule || []);
       } catch {
