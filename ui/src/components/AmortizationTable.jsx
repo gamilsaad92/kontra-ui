@@ -12,7 +12,7 @@ export default function AmortizationTable({ loanId }) {
       setLoading(true);
       try {
         // Generate schedule (if not yet generated) - optional to call generate-schedule endpoint
-        await fetch(`${API_BASE}/api/loans/${loanId}/generate-schedule`, {
+       await fetch(`${API_BASE}/api/loans/${loanId}/generate-schedule`, {
           method: 'POST'
         });
         // Fetch the schedule
