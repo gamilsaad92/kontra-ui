@@ -1,4 +1,4 @@
-/ src/components/LoanApplicationList.jsx
+// LoanApplicationList
 
 import React, { useEffect, useState } from 'react'
 import { API_BASE } from '../lib/apiBase'
