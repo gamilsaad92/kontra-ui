@@ -42,3 +42,12 @@ This repository contains the **frontend** and **backend** for the Kontra demo ap
    ```
 
    Tests require `jest` installed locally.
+
+## Loan Application API
+
+The API exposes basic endpoints for submitting and reviewing loan applications.
+
+* `POST /api/loan-applications` – submit a new application (supports `multipart/form-data` with a `document` upload)
+* `GET /api/loan-applications` – list submitted applications
+
+These routes perform mock KYC and credit checks before storing the application in Supabase.
