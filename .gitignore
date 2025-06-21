@@ -14,4 +14,3 @@ dist/
 .env.local
 !api/.env.example
 !ui/.env.example
-VITE_API_URL=http://localhost:10000
