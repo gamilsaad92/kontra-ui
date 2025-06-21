@@ -18,9 +18,16 @@ import ProjectForm        from './ProjectForm';
 import ProjectsTable      from './ProjectsTable';
 import ProjectDetail      from './ProjectDetail';
 import AnalyticsDashboard from './AnalyticsDashboard';
+import LoanApplicationForm from './LoanApplicationForm';
+import LoanApplicationList from './LoanApplicationList';
 
 // Nav items arranged with optional submenus
 const navItems = [
+  {
+    label: 'Applications',
+    icon: '📝',
+    sub: ['New Application', 'Application List']
+  },
   {
     label: 'Loans',
     icon: '💰',
@@ -46,7 +53,7 @@ export default function DashboardLayout() {
   const [projectRefreshKey, setProjectRefreshKey] = useState(0);
   const { session, supabase } = useContext(AuthContext);
   const [signUp, setSignUp] = useState(false);
-  const [expanded, setExpanded] = useState({ Loans: true });
+   const [expanded, setExpanded] = useState({ Applications: true, Loans: true });
 
   const toggleMenu = (label) => {
     setExpanded((e) => ({ ...e, [label]: !e[label] }));
@@ -54,7 +61,11 @@ export default function DashboardLayout() {
 
   const activate = (label) => {
     setActive(label);
-    if (label !== 'Request List' && label !== 'Loan List') {
+    if (
+      label !== 'Request List' &&
+      label !== 'Loan List' &&
+      label !== 'Application List'
+    ) {
       setSelectedId(null);
     }
     if (label !== 'Projects') {
@@ -129,7 +140,14 @@ export default function DashboardLayout() {
       {/* Main Content */}
       <main className="flex-1 p-8 overflow-auto">
         <h2 className="text-3xl font-bold mb-6">{active}</h2>
+        
+ {active === 'New Application' && (
+          <LoanApplicationForm onSubmitted={() => setRefreshKey((k) => k + 1)} />
+        )}
 
+        {active === 'Application List' && (
+          <LoanApplicationList key={refreshKey} />
+        )}
         {active === 'New Request' && (
           <DrawRequestForm onSubmitted={() => setRefreshKey((k) => k + 1)} />
         )}
