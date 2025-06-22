@@ -5,6 +5,8 @@ const cors = require('cors');
 const multer = require('multer');
 const { createClient } = require('@supabase/supabase-js');
 const OpenAI = require('openai');          // ← v4+ default export
+const fs = require('fs');
+const path = require('path');
 require('dotenv').config();
 
 const app = express();
@@ -18,6 +20,8 @@ const supabase = createClient(
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
+
+const { handleVoice, handleVoiceQuery } = require('./voiceBot');
 
 // Define the functions that the assistant can “call.”
 const functions = [
@@ -33,6 +37,26 @@ const functions = [
   {
     name: 'get_draws',
     description: 'Fetch the five most recent draw requests',
+    parameters: {
+      type: 'object',
+      properties: {},
+      required: []
+    }
+    },
+  {
+    name: 'get_escrow_balance',
+    description: 'Retrieve escrow balance for a given loan id',
+    parameters: {
+      type: 'object',
+      properties: {
+        loan_id: { type: 'integer', description: 'Loan id' }
+      },
+      required: ['loan_id']
+    }
+  },
+  {
+    name: 'get_payoff_instructions',
+    description: 'Provide instructions for requesting a payoff quote',
     parameters: {
       type: 'object',
       properties: {},
@@ -57,6 +81,23 @@ async function get_draws() {
     .order('submitted_at', { ascending: false })
     .limit(5);
   return data;
+}
+
+async function get_escrow_balance({ loan_id }) {
+  const { data } = await supabase
+    .from('escrows')
+    .select('escrow_balance')
+    .eq('loan_id', loan_id)
+    .maybeSingle();
+  return data;
+}
+
+async function get_payoff_instructions() {
+  const text = fs.readFileSync(
+    path.join(__dirname, 'docs', 'payoff_instructions.txt'),
+    'utf8'
+  );
+  return { instructions: text };
 }
 
 // ── Middleware ─────────────────────────────────────────────────────────────
@@ -636,7 +677,7 @@ app.post('/api/ask', async (req, res) => {
     const response = await openai.chat.completions.create({
       model: 'gpt-4o-mini',
       messages: [
-        { role: 'system', content: 'You are Kontra AI, a loan-servicing and draw-management assistant.' },
+         { role: 'system', content: 'You are Kontra AI, a customer care assistant for loan servicing.' },
         { role: 'user', content: question }
       ],
       functions,
@@ -652,6 +693,11 @@ app.post('/api/ask', async (req, res) => {
         result = await get_loans();
       } else if (msg.function_call.name === 'get_draws') {
         result = await get_draws();
+        } else if (msg.function_call.name === 'get_escrow_balance') {
+        const args = JSON.parse(msg.function_call.arguments || '{}');
+        result = await get_escrow_balance(args);
+      } else if (msg.function_call.name === 'get_payoff_instructions') {
+        result = await get_payoff_instructions();
       }
       return res.json({ assistant: msg, functionResult: result });
     }
@@ -761,6 +807,10 @@ app.post('/api/detect-fraud', (req, res) => {
   const result = detectFraud(req.body || {});
   res.json(result);
 });
+
+// ── Voice Bot Endpoints ────────────────────────────────────────────────────
+app.post('/api/voice', express.urlencoded({ extended: false }), handleVoice);
+app.post('/api/voice/query', express.urlencoded({ extended: false }), handleVoiceQuery);
 
 // ── Start Server ──────────────────────────────────────────────────────────
 const PORT = process.env.PORT || 5050;
