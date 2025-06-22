@@ -90,6 +90,37 @@ async function fetchCreditScore(ssn) {
   return { score };
 }
 
+// ── Intelligent Underwriting Helpers ───────────────────────────────────────
+function parseDocumentBuffer(buffer) {
+  // Stub OCR/NLP logic. In reality this would call a service like Textract.
+  const text = buffer.toString('utf8');
+  const fields = {};
+  if (/income/i.test(text)) fields.income = 100000;
+  if (/tax/i.test(text)) fields.taxes = 20000;
+  return fields;
+}
+
+function advancedCreditScore(bureauScore, history) {
+  let score = bureauScore;
+  if (Array.isArray(history) && history.length) {
+    const avg = history.reduce((a, b) => a + b, 0) / history.length;
+    score += Math.round((avg - 650) / 10);
+  }
+  const explanation = `Base ${bureauScore} adjusted with ${history?.length || 0} historical points`;
+  return { score, explanation };
+}
+
+function detectFraud(applicant) {
+  const anomalies = [];
+  if (applicant.address && /p\.o\. box/i.test(applicant.address)) {
+    anomalies.push('PO boxes are suspicious');
+  }
+  if (applicant.income && applicant.income > 1000000) {
+    anomalies.push('Income unusually high');
+  }
+  return { suspicious: anomalies.length > 0, anomalies };
+}
+
 // ── Loan Application Endpoints ─────────────────────────────────────────────
 app.post('/api/loan-applications', upload.single('document'), async (req, res) => {
   const { name, email, ssn, amount } = req.body;
@@ -708,6 +739,27 @@ app.post('/api/assets', async (req, res) => {
 
   if (error) return res.status(500).json({ message: 'Failed to create asset' });
   res.status(201).json({ asset: data });
+});
+
+// ── Intelligent Underwriting Endpoints ─────────────────────────────────────-
+app.post('/api/parse-document', upload.single('file'), (req, res) => {
+  if (!req.file) return res.status(400).json({ message: 'File required' });
+  const fields = parseDocumentBuffer(req.file.buffer);
+  res.json({ fields });
+});
+
+app.post('/api/credit-score', (req, res) => {
+  const { bureauScore, history } = req.body || {};
+  if (bureauScore === undefined) {
+    return res.status(400).json({ message: 'Missing bureauScore' });
+  }
+  const result = advancedCreditScore(parseInt(bureauScore, 10), history || []);
+  res.json(result);
+});
+
+app.post('/api/detect-fraud', (req, res) => {
+  const result = detectFraud(req.body || {});
+  res.json(result);
 });
 
 // ── Start Server ──────────────────────────────────────────────────────────
