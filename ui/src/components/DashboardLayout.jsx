@@ -181,7 +181,7 @@ export default function DashboardLayout() {
               <AmortizationTable loanId={selectedId} />
               <PaymentForm
                 loanId={selectedId}
-                onPaid={() => setRefreshKey((k) => k + 1)}
+                onSubmit={() => setRefreshKey((k) => k + 1)}
               />
             </>
           ) : (
