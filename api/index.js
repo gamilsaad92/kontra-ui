@@ -636,7 +636,6 @@ app.put('/api/tasks/:id', async (req, res) => {
 });
 
 // ── Document Generation from Templates ─────────────────────────────────────
-const fs = require('fs');
 const path = require('path');
 const Handlebars = require('handlebars');
 const PDFDocument = require('pdfkit');
