@@ -22,6 +22,12 @@ import LoanApplicationForm from './LoanApplicationForm';
 import LoanApplicationList from './LoanApplicationList';
 import UnderwritingBoard   from './UnderwritingBoard';
 import EscrowDashboard    from './EscrowDashboard';
+import CollectionForm     from './CollectionForm';
+import CollectionsTable   from './CollectionsTable';
+import InvestorReportForm from './InvestorReportForm';
+import InvestorReportsList from './InvestorReportsList';
+import AssetForm          from './AssetForm';
+import AssetsTable        from './AssetsTable';
 
 // Nav items arranged with optional submenus
 const navItems = [
@@ -41,6 +47,9 @@ const navItems = [
     sub: ['New Request', 'Request List']
   },
   { label: 'Escrows', icon: '🏦' },
+  { label: 'Collections', icon: '📬' },
+  { label: 'Investor Reports', icon: '📑' },
+  { label: 'Assets', icon: '🏘️' },
   { label: 'Projects',         icon: '🏗️' },
   { label: 'Photo Validation', icon: '📷' },
   { label: 'Assistant',        icon: '🤖' },
@@ -197,6 +206,27 @@ export default function DashboardLayout() {
           </div>
         )}
 
+        {active === 'Collections' && (
+          <>
+            <CollectionForm onCreated={() => setRefreshKey(k => k + 1)} />
+            <CollectionsTable refresh={refreshKey} />
+          </>
+        )}
+
+        {active === 'Investor Reports' && (
+          <>
+            <InvestorReportForm onCreated={() => setRefreshKey(k => k + 1)} />
+            <InvestorReportsList refresh={refreshKey} />
+          </>
+        )}
+
+        {active === 'Assets' && (
+          <>
+            <AssetForm onCreated={() => setRefreshKey(k => k + 1)} />
+            <AssetsTable refresh={refreshKey} />
+          </>
+        )}
+        
         {active === 'Escrows' && <EscrowDashboard />}
         
         {active === 'Projects' && (
