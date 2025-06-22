@@ -633,6 +633,83 @@ app.post('/api/ask', async (req, res) => {
   }
 });
 
+// ── Collections CRUD ──────────────────────────────────────────────────────
+app.get('/api/collections', async (req, res) => {
+  const { data, error } = await supabase
+    .from('collections')
+    .select('*')
+    .order('due_date', { ascending: true });
+
+  if (error) return res.status(500).json({ message: 'Failed to fetch collections' });
+  res.json({ collections: data });
+});
+
+app.post('/api/collections', async (req, res) => {
+  const { loan_id, amount, due_date, status } = req.body;
+  if (!loan_id || !amount || !due_date) {
+    return res.status(400).json({ message: 'Missing required fields' });
+  }
+
+  const { data, error } = await supabase
+    .from('collections')
+    .insert([{ loan_id, amount, due_date, status: status || 'pending' }])
+    .select()
+    .single();
+
+  if (error) return res.status(500).json({ message: 'Failed to create collection entry' });
+  res.status(201).json({ collection: data });
+});
+
+// ── Investor Reports CRUD ─────────────────────────────────────────────────-
+app.get('/api/investor-reports', async (req, res) => {
+  const { data, error } = await supabase
+    .from('investor_reports')
+    .select('*')
+    .order('created_at', { ascending: false });
+
+  if (error) return res.status(500).json({ message: 'Failed to fetch reports' });
+  res.json({ reports: data });
+});
+
+app.post('/api/investor-reports', async (req, res) => {
+  const { title, file_url } = req.body;
+  if (!title || !file_url) return res.status(400).json({ message: 'Missing title or file_url' });
+
+  const { data, error } = await supabase
+    .from('investor_reports')
+    .insert([{ title, file_url }])
+    .select()
+    .single();
+
+  if (error) return res.status(500).json({ message: 'Failed to create report' });
+  res.status(201).json({ report: data });
+});
+
+// ── Asset Management CRUD ─────────────────────────────────────────────────-
+app.get('/api/assets', async (req, res) => {
+  const { data, error } = await supabase
+    .from('assets')
+    .select('*')
+    .order('created_at', { ascending: false });
+
+  if (error) return res.status(500).json({ message: 'Failed to fetch assets' });
+  res.json({ assets: data });
+});
+
+app.post('/api/assets', async (req, res) => {
+  const { name, value, status } = req.body;
+  if (!name) return res.status(400).json({ message: 'Missing name' });
+
+  const { data, error } = await supabase
+    .from('assets')
+    .insert([{ name, value, status }])
+    .select()
+    .single();
+
+  if (error) return res.status(500).json({ message: 'Failed to create asset' });
+  res.status(201).json({ asset: data });
+});
+
 // ── Start Server ──────────────────────────────────────────────────────────
 const PORT = process.env.PORT || 5050;
 if (require.main === module) {
