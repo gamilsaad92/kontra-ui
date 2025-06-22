@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 import { API_BASE } from '../lib/apiBase';
 
-export default function PaymentForm({ loanId, onPaid }) {
+export default function PaymentForm({ loanId, onSubmit }) {
   const [amount, setAmount] = useState('');
   const [paymentDate, setPaymentDate] = useState('');
   const [message, setMessage] = useState('');
@@ -20,13 +20,13 @@ export default function PaymentForm({ loanId, onPaid }) {
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ amount, payment_date: paymentDate })
+          body: JSON.stringify({ amount, date: paymentDate })
         }
       );
       const data = await res.json();
       if (res.ok) {
         setMessage('Payment recorded');
-        onPaid();
+        onSubmit && onSubmit();
         setAmount('');
         setPaymentDate('');
       } else {
