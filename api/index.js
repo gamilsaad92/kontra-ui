@@ -437,12 +437,15 @@ app.get('/api/loans/:loanId/schedule', async (req, res) => {
 
 // ── Record a Payment ───────────────────────────────────────────────────────
 app.post('/api/loans/:loanId/payments', async (req, res) => {
-  const { amount, payment_date } = req.body;
+   const { amount, date } = req.body;
+  if (!amount || !date) {
+    return res.status(400).json({ message: 'Missing amount or date' });
+  }
   const { data: lastPayment, error: lastErr } = await supabase
     .from('payments')
     .select('remaining_balance')
     .eq('loan_id', req.params.loanId)
-    .order('payment_date', { ascending: false })
+    .order('date', { ascending: false })
     .limit(1)
     .maybeSingle();
 
@@ -477,7 +480,7 @@ app.post('/api/loans/:loanId/payments', async (req, res) => {
     .from('payments')
     .insert([{
       loan_id: parseInt(req.params.loanId, 10),
-      payment_date,
+      date,
       amount,
       applied_principal: principal,
       applied_interest: interest,
