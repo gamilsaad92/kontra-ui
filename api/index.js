@@ -490,6 +490,82 @@ app.post('/api/loans/:loanId/payments', async (req, res) => {
   res.status(201).json({ payment: paymentData });
 });
 
+// ── Underwriting Tasks CRUD ───────────────────────────────────────────────
+app.get('/api/tasks', async (req, res) => {
+  const { data, error } = await supabase
+    .from('underwriting_tasks')
+    .select('*')
+    .order('id');
+
+  if (error) return res.status(500).json({ message: 'Failed to fetch tasks' });
+  res.json({ tasks: data });
+});
+
+app.post('/api/tasks', async (req, res) => {
+  const { assign, comment, status } = req.body;
+  if (!assign) return res.status(400).json({ message: 'Missing assign' });
+
+  const { data, error } = await supabase
+    .from('underwriting_tasks')
+    .insert([{ assign, comment: comment || '', status: status || 'Underwriting' }])
+    .select()
+    .single();
+
+  if (error) return res.status(500).json({ message: 'Failed to create task' });
+  res.status(201).json({ task: data });
+});
+
+app.put('/api/tasks/:id', async (req, res) => {
+  const { id } = req.params;
+  const { assign, comment, status } = req.body;
+  const updates = {};
+  if (assign !== undefined) updates.assign = assign;
+  if (comment !== undefined) updates.comment = comment;
+  if (status !== undefined) updates.status = status;
+
+  const { data, error } = await supabase
+    .from('underwriting_tasks')
+    .update(updates)
+    .eq('id', id)
+    .select()
+    .single();
+
+  if (error) return res.status(500).json({ message: 'Failed to update task' });
+  res.json({ task: data });
+});
+
+// ── Document Generation from Templates ─────────────────────────────────────
+const fs = require('fs');
+const path = require('path');
+const Handlebars = require('handlebars');
+const PDFDocument = require('pdfkit');
+
+app.post('/api/documents', async (req, res) => {
+  const { template, data } = req.body;
+  if (!template) return res.status(400).json({ message: 'Missing template' });
+
+  const templatePath = path.join(__dirname, 'templates', `${template}.hbs`);
+  if (!fs.existsSync(templatePath)) {
+    return res.status(404).json({ message: 'Template not found' });
+  }
+
+  const source = fs.readFileSync(templatePath, 'utf8');
+  const compiled = Handlebars.compile(source);
+  const text = compiled(data || {});
+
+  const doc = new PDFDocument();
+  const buffers = [];
+  doc.on('data', b => buffers.push(b));
+  doc.on('end', () => {
+    const pdfData = Buffer.concat(buffers);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.send(pdfData);
+  });
+
+  doc.text(text);
+  doc.end();
+});
+
 // ── Virtual-Assistant Endpoint: `/api/ask` ───────────────────────────────────
 app.post('/api/ask', async (req, res) => {
   const { question } = req.body;
