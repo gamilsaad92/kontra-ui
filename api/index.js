@@ -493,6 +493,32 @@ app.post('/api/loans/:loanId/payments', async (req, res) => {
   res.status(201).json({ payment: paymentData });
 });
 
+// ── Escrow Routes ──────────────────────────────────────────────────────────
+app.get('/api/escrows', async (req, res) => {
+  const { data, error } = await supabase
+    .from('escrows')
+    .select('loan_id, tax_amount, insurance_amount, escrow_balance');
+
+  if (error) return res.status(500).json({ message: 'Failed to fetch escrows' });
+  res.json({ escrows: data });
+});
+
+app.get('/api/loans/:loanId/escrow', async (req, res) => {
+  const { loanId } = req.params;
+  if (isNaN(parseInt(loanId, 10))) {
+    return res.status(400).json({ message: 'Invalid loan id' });
+  }
+  const { data, error } = await supabase
+    .from('escrows')
+    .select('loan_id, tax_amount, insurance_amount, escrow_balance')
+    .eq('loan_id', loanId)
+    .maybeSingle();
+
+  if (error) return res.status(500).json({ message: 'Failed to fetch escrow' });
+  if (!data) return res.status(404).json({ message: 'Escrow not found' });
+  res.json({ escrow: data });
+});
+
 // ── Underwriting Tasks CRUD ───────────────────────────────────────────────
 app.get('/api/tasks', async (req, res) => {
   const { data, error } = await supabase
