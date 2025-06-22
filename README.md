@@ -21,8 +21,8 @@ This repository contains the **frontend** and **backend** for the Kontra demo ap
    cp ui/.env.example ui/.env
    ```
 
-   Edit `api/.env` with your Supabase and OpenAI credentials. Ensure the API is
-   running on the same URL specified in `ui/.env`.
+   Edit `api/.env` with your Supabase, OpenAI, Twilio and Dialogflow credentials.
+   Ensure the API is running on the same URL specified in `ui/.env`.
 
 3. Start the development servers in separate terminals:
    ```bash
@@ -72,3 +72,7 @@ Collections, investor reporting and asset management follow the same pattern:
 2. **API routes** – new CRUD endpoints are implemented in `api/index.js` under `/api/collections`, `/api/investor-reports` and `/api/assets`.
 3. **UI pages** – React components in `ui/src/components` display and create records for these tables.
 4. **Workflows** – background jobs (`api/workerCollections.js` and `api/edge-functions/updateAssetValues.js`) illustrate how Render cron jobs or Supabase Scheduled Functions keep data in sync.
+
+## Customer Care AI & Voice Bot
+
+The `/api/ask` endpoint now exposes helper functions `get_escrow_balance` and `get_payoff_instructions` so the Virtual Assistant can answer common loan servicing questions. A Twilio voice webhook (`/api/voice`) sends caller speech to Google Dialogflow and replies using text-to-speech, allowing borrowers to call in and ask for balances or payoff details.
