@@ -20,6 +20,7 @@ import ProjectDetail      from './ProjectDetail';
 import AnalyticsDashboard from './AnalyticsDashboard';
 import LoanApplicationForm from './LoanApplicationForm';
 import LoanApplicationList from './LoanApplicationList';
+import UnderwritingBoard   from './UnderwritingBoard';
 
 // Nav items arranged with optional submenus
 const navItems = [
@@ -41,7 +42,8 @@ const navItems = [
   { label: 'Projects',         icon: '🏗️' },
   { label: 'Photo Validation', icon: '📷' },
   { label: 'Assistant',        icon: '🤖' },
-  { label: 'Analytics',        icon: '📊' }
+  { label: 'Analytics',        icon: '📊' },
+  { label: 'Underwriting Board', icon: '✅' }
 ];
 
 export default function DashboardLayout() {
@@ -216,6 +218,8 @@ export default function DashboardLayout() {
         )}
 
         {active === 'Analytics' && <AnalyticsDashboard />}
+        
+        {active === 'Underwriting Board' && <UnderwritingBoard />}
       </main>
     </div>
   );
