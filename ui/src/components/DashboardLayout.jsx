@@ -21,6 +21,7 @@ import AnalyticsDashboard from './AnalyticsDashboard';
 import LoanApplicationForm from './LoanApplicationForm';
 import LoanApplicationList from './LoanApplicationList';
 import UnderwritingBoard   from './UnderwritingBoard';
+import EscrowDashboard    from './EscrowDashboard';
 
 // Nav items arranged with optional submenus
 const navItems = [
@@ -39,6 +40,7 @@ const navItems = [
     icon: '📄',
     sub: ['New Request', 'Request List']
   },
+  { label: 'Escrows', icon: '🏦' },
   { label: 'Projects',         icon: '🏗️' },
   { label: 'Photo Validation', icon: '📷' },
   { label: 'Assistant',        icon: '🤖' },
@@ -195,6 +197,8 @@ export default function DashboardLayout() {
           </div>
         )}
 
+        {active === 'Escrows' && <EscrowDashboard />}
+        
         {active === 'Projects' && (
           selectedProjectId ? (
             <>
