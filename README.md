@@ -52,6 +52,14 @@ The API exposes basic endpoints for submitting and reviewing loan applications.
 
 These routes perform mock KYC and credit checks before storing the application in Supabase.
 
+### Intelligent Underwriting
+
+Additional endpoints provide simple stubs for OCR parsing, credit scoring and fraud detection:
+
+* `POST /api/parse-document` – upload a financial document and receive extracted fields.
+* `POST /api/credit-score` – calculate a risk score from bureau data and history.
+* `POST /api/detect-fraud` – run lightweight anomaly detection on applicant data.
+  
 ## Escrow Administration
 
 Phase 4 introduces an `escrows` table tracking tax and insurance reserves for each loan. A Supabase Edge Function (`api/edge-functions/fetchTaxBills.js`) can be scheduled monthly to update real-world tax amounts. The UI exposes an "Escrows" dashboard showing the latest amounts and account balance.
