@@ -51,3 +51,7 @@ The API exposes basic endpoints for submitting and reviewing loan applications.
 * `GET /api/loan-applications` – list submitted applications
 
 These routes perform mock KYC and credit checks before storing the application in Supabase.
+
+## Escrow Administration
+
+Phase 4 introduces an `escrows` table tracking tax and insurance reserves for each loan. A Supabase Edge Function (`api/edge-functions/fetchTaxBills.js`) can be scheduled monthly to update real-world tax amounts. The UI exposes an "Escrows" dashboard showing the latest amounts and account balance.
