@@ -62,6 +62,17 @@ const functions = [
       properties: {},
       required: []
     }
+    },
+  {
+    name: 'get_next_insurance_due',
+    description: 'Fetch the next insurance premium due date for a borrower',
+    parameters: {
+      type: 'object',
+      properties: {
+        borrower_name: { type: 'string', description: 'Borrower name' }
+      },
+      required: ['borrower_name']
+    }
   }
 ];
 
@@ -98,6 +109,30 @@ async function get_payoff_instructions() {
     'utf8'
   );
   return { instructions: text };
+}
+
+function calcNextInsuranceDue(startDate) {
+  const start = new Date(startDate);
+  const now = new Date();
+  const due = new Date(now.getFullYear(), start.getMonth(), start.getDate());
+  if (due < now) due.setFullYear(due.getFullYear() + 1);
+  return due.toISOString().slice(0, 10);
+}
+
+async function get_next_insurance_due({ borrower_name }) {
+  const { data: loan } = await supabase
+    .from('loans')
+    .select('id, start_date')
+    .eq('borrower_name', borrower_name)
+    .maybeSingle();
+  if (!loan) return null;
+  const { data: escrow } = await supabase
+    .from('escrows')
+    .select('insurance_amount')
+    .eq('loan_id', loan.id)
+    .maybeSingle();
+  const due_date = calcNextInsuranceDue(loan.start_date);
+  return { loan_id: loan.id, due_date, insurance_amount: escrow?.insurance_amount };
 }
 
 // ── Middleware ─────────────────────────────────────────────────────────────
@@ -731,6 +766,26 @@ app.post('/api/portfolio-summary', async (req, res) => {
   }
 });
 
+app.post('/api/underwriter-chat', async (req, res) => {
+  const { question } = req.body || {};
+  if (!question) return res.status(400).json({ message: 'Missing question' });
+
+  const match = question.match(/borrower\s+([^?]+?)\s*(?:'s|\?|$)/i);
+  const borrower = match ? match[1].trim() : null;
+  if (!borrower) {
+    return res.status(400).json({ message: 'Borrower not identified' });
+  }
+
+  try {
+    const result = await get_next_insurance_due({ borrower_name: borrower });
+    if (!result) return res.status(404).json({ message: 'Borrower not found' });
+    res.json({ answer: `Next insurance premium due on ${result.due_date}.`, result });
+  } catch (err) {
+    console.error('Underwriter chat error:', err);
+    res.status(500).json({ message: 'Failed to answer question' });
+  }
+});
+
 // ── Query Loans via LLM ─────────────────────────────────────────────────────
 app.post('/api/query-loans', async (req, res) => {
   const { query } = req.body || {};
@@ -806,6 +861,9 @@ app.post('/api/ask', async (req, res) => {
         result = await get_escrow_balance(args);
       } else if (msg.function_call.name === 'get_payoff_instructions') {
         result = await get_payoff_instructions();
+      } else if (msg.function_call.name === 'get_next_insurance_due') {
+        const args = JSON.parse(msg.function_call.arguments || '{}');
+        result = await get_next_insurance_due(args);
       }
       return res.json({ assistant: msg, functionResult: result });
     }
@@ -924,6 +982,7 @@ const {
   sendSms,
   notifyInApp
 } = require('./communications');
+const { predictBills } = require('./billPrediction');
 const { scanForCompliance, gatherEvidence } = require('./compliance');
 
 app.post('/api/predict-delinquency', (req, res) => {
@@ -962,6 +1021,30 @@ app.post('/api/optimize-loan-offer', (req, res) => {
     yield_target: parseFloat(yield_target)
   });
   res.json({ offer });
+});
+
+app.post('/api/predict-bills', (req, res) => {
+  const {
+    property_value,
+    tax_history,
+    insurance_history,
+    tax_month,
+    insurance_month
+  } = req.body || {};
+  if (property_value === undefined) {
+    return res.status(400).json({ message: 'Missing property_value' });
+  }
+  const result = predictBills({
+    property_value: parseFloat(property_value),
+    tax_history: Array.isArray(tax_history) ? tax_history.map(Number) : [],
+    insurance_history: Array.isArray(insurance_history)
+      ? insurance_history.map(Number)
+      : [],
+    tax_month: tax_month !== undefined ? parseInt(tax_month, 10) : 7,
+    insurance_month:
+      insurance_month !== undefined ? parseInt(insurance_month, 10) : 1
+  });
+  res.json(result);
 });
 
 // ── Automated Customer Communications ─────────────────────────────────────
