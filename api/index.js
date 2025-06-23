@@ -665,6 +665,116 @@ app.post('/api/documents', async (req, res) => {
   doc.end();
 });
 
+// ── Portfolio Summary as PDF ───────────────────────────────────────────────
+app.post('/api/portfolio-summary', async (req, res) => {
+  const { period } = req.body || {};
+  if (!period) return res.status(400).json({ message: 'Missing period' });
+
+  try {
+    const { data: loans } = await supabase.from('loans').select('id');
+    const { data: collections } = await supabase
+      .from('collections')
+      .select('due_date, status, loan_id');
+    const { data: projects } = await supabase.from('projects').select('address');
+
+    const now = new Date();
+    const delinquents = (collections || []).filter(c =>
+      c.due_date && new Date(c.due_date) < now && c.status !== 'paid'
+    ).length;
+    const delinquency = loans && loans.length ? delinquents / loans.length : 0;
+
+    const stateCounts = {};
+    for (const p of projects || []) {
+      const m = p.address && p.address.match(/,\s*([A-Z]{2})\b/);
+      if (m) stateCounts[m[1]] = (stateCounts[m[1]] || 0) + 1;
+    }
+    const topState = Object.entries(stateCounts).sort((a, b) => b[1] - a[1])[0]?.[0] || 'N/A';
+
+    let summary = `Portfolio has ${loans?.length || 0} loans. Delinquency rate ${
+      (delinquency * 100).toFixed(2)
+    }%. Highest concentration in ${topState}.`;
+
+    if (process.env.OPENAI_API_KEY) {
+      try {
+        const resp = await openai.chat.completions.create({
+          model: 'gpt-4o-mini',
+          messages: [
+            { role: 'system', content: 'You summarize portfolio performance.' },
+            {
+              role: 'user',
+              content: `Generate a ${period} portfolio summary. There are ${
+                loans.length
+              } loans with a delinquency rate of ${(delinquency * 100).toFixed(
+                2
+              )}%. Highest concentration in ${topState}.`
+            }
+          ]
+        });
+        summary = resp.choices[0].message.content || summary;
+      } catch (err) {
+        console.error('OpenAI summary error:', err);
+      }
+    }
+
+    const doc = new PDFDocument();
+    const buffers = [];
+    doc.on('data', b => buffers.push(b));
+    doc.on('end', () => {
+      res.setHeader('Content-Type', 'application/pdf');
+      res.send(Buffer.concat(buffers));
+    });
+    doc.text(summary);
+    doc.end();
+  } catch (err) {
+    console.error('Summary generation failed:', err);
+    res.status(500).json({ message: 'Failed to generate summary' });
+  }
+});
+
+// ── Query Loans via LLM ─────────────────────────────────────────────────────
+app.post('/api/query-loans', async (req, res) => {
+  const { query } = req.body || {};
+  if (!query) return res.status(400).json({ message: 'Missing query' });
+
+  let filters = {};
+  if (process.env.OPENAI_API_KEY) {
+    try {
+      const resp = await openai.chat.completions.create({
+        model: 'gpt-4o-mini',
+        messages: [
+          {
+            role: 'system',
+            content:
+              'Translate loan search queries into JSON with keys min_amount, max_amount, min_interest_rate, max_interest_rate, start_date_from, start_date_to.'
+          },
+          { role: 'user', content: query }
+        ]
+      });
+      filters = JSON.parse(resp.choices[0].message.content || '{}');
+    } catch (err) {
+      console.error('OpenAI query parse error:', err);
+    }
+  }
+
+  try {
+    let sb = supabase.from('loans').select('*');
+    if (filters.min_amount) sb = sb.gte('amount', filters.min_amount);
+    if (filters.max_amount) sb = sb.lte('amount', filters.max_amount);
+    if (filters.min_interest_rate)
+      sb = sb.gte('interest_rate', filters.min_interest_rate);
+    if (filters.max_interest_rate)
+      sb = sb.lte('interest_rate', filters.max_interest_rate);
+    if (filters.start_date_from) sb = sb.gte('start_date', filters.start_date_from);
+    if (filters.start_date_to) sb = sb.lte('start_date', filters.start_date_to);
+    const { data, error } = await sb;
+    if (error) throw error;
+    res.json({ loans: data });
+  } catch (err) {
+    console.error('Loan query error:', err);
+    res.status(500).json({ message: 'Failed to query loans' });
+  }
+});
+
 // ── Virtual-Assistant Endpoint: `/api/ask` ───────────────────────────────────
 app.post('/api/ask', async (req, res) => {
   const { question } = req.body;
