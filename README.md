@@ -81,3 +81,10 @@ The `/api/ask` endpoint now exposes helper functions `get_escrow_balance` and `g
 ## Automated Customer Communications
 
 Endpoint `/api/send-communication` generates reminder messages with OpenAI and delivers them via email, SMS and an in-app notification. SMTP and Twilio credentials must be configured in `.env` for live delivery.
+
+## Enhanced Portfolio Insight
+
+- `POST /api/portfolio-summary` returns a PDF narrative overview of loan performance for a given period.
+- `POST /api/query-loans` interprets natural language filters and returns matching loans.
+  The Analytics dashboard now features a BI widget where you can type queries like
+  "Show me all loans originated in Q1 2025 with >5% interest over $200k" and instantly see the results.
