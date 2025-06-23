@@ -808,6 +808,12 @@ app.post('/api/detect-fraud', (req, res) => {
 
 // ── Predictive Analytics Endpoints ─────────────────────────────────────────
 const { forecastDelinquency, optimizeLoanOffer } = require('./analytics');
+const {
+  generateReminder,
+  sendEmail,
+  sendSms,
+  notifyInApp
+} = require('./communications');
 
 app.post('/api/predict-delinquency', (req, res) => {
   const { credit_score, months_since_origination, ltv, dti } = req.body || {};
@@ -845,6 +851,31 @@ app.post('/api/optimize-loan-offer', (req, res) => {
     yield_target: parseFloat(yield_target)
   });
   res.json({ offer });
+});
+
+// ── Automated Customer Communications ─────────────────────────────────────
+app.post('/api/send-communication', async (req, res) => {
+  const { toEmail, toPhone, user_id, loan_status, risk_score, history, name } = req.body || {};
+  if (!toEmail && !toPhone) {
+    return res.status(400).json({ message: 'Missing recipient contact info' });
+  }
+  try {
+    const { emailText, smsText } = await generateReminder({
+      borrower_name: name || 'Borrower',
+      loan_status: loan_status || 'active',
+      risk_score: risk_score || 0,
+      history: history || ''
+    });
+
+    if (toEmail) await sendEmail(toEmail, 'Loan Update', emailText);
+    if (toPhone) await sendSms(toPhone, smsText);
+    if (user_id) await notifyInApp(user_id, smsText, '/');
+
+    res.json({ emailText, smsText });
+  } catch (err) {
+    console.error('Communication error:', err);
+    res.status(500).json({ message: 'Failed to send communication' });
+  }
 });
 
 // ── Voice Bot Endpoints ────────────────────────────────────────────────────
