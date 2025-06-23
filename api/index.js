@@ -924,6 +924,7 @@ const {
   sendSms,
   notifyInApp
 } = require('./communications');
+const { scanForCompliance, gatherEvidence } = require('./compliance');
 
 app.post('/api/predict-delinquency', (req, res) => {
   const { credit_score, months_since_origination, ltv, dti } = req.body || {};
@@ -985,6 +986,26 @@ app.post('/api/send-communication', async (req, res) => {
   } catch (err) {
     console.error('Communication error:', err);
     res.status(500).json({ message: 'Failed to send communication' });
+  }
+});
+
+// ── Compliance & Audit Automation ─────────────────────────────────────────
+app.post('/api/regulatory-scan', (req, res) => {
+  const { text, rules } = req.body || {};
+  if (!text) return res.status(400).json({ message: 'Missing text' });
+  const result = scanForCompliance(text, rules);
+  res.json(result);
+});
+
+app.get('/api/evidence-dossier/:loanId', async (req, res) => {
+  const { loanId } = req.params;
+  if (!loanId) return res.status(400).json({ message: 'Missing loanId' });
+  try {
+    const dossier = await gatherEvidence(loanId);
+    res.json({ dossier });
+  } catch (err) {
+    console.error('Evidence error:', err);
+    res.status(500).json({ message: 'Failed to gather evidence' });
   }
 });
 
