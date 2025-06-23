@@ -88,3 +88,8 @@ Endpoint `/api/send-communication` generates reminder messages with OpenAI and d
 - `POST /api/query-loans` interprets natural language filters and returns matching loans.
   The Analytics dashboard now features a BI widget where you can type queries like
   "Show me all loans originated in Q1 2025 with >5% interest over $200k" and instantly see the results.
+  
+## Compliance & Audit Automation
+
+- `POST /api/regulatory-scan` analyzes document text against a ruleset and returns any compliance issues.
+- `GET /api/evidence-dossier/:loanId` assembles communications and uploaded files for audit review.
