@@ -806,6 +806,47 @@ app.post('/api/detect-fraud', (req, res) => {
   res.json(result);
 });
 
+// ── Predictive Analytics Endpoints ─────────────────────────────────────────
+const { forecastDelinquency, optimizeLoanOffer } = require('./analytics');
+
+app.post('/api/predict-delinquency', (req, res) => {
+  const { credit_score, months_since_origination, ltv, dti } = req.body || {};
+  if (
+    credit_score === undefined ||
+    months_since_origination === undefined ||
+    ltv === undefined ||
+    dti === undefined
+  ) {
+    return res.status(400).json({ message: 'Missing required fields' });
+  }
+  const result = forecastDelinquency({
+    credit_score: parseFloat(credit_score),
+    months_since_origination: parseFloat(months_since_origination),
+    ltv: parseFloat(ltv),
+    dti: parseFloat(dti)
+  });
+  res.json(result);
+});
+
+app.post('/api/optimize-loan-offer', (req, res) => {
+  const { current_rate, current_term_months, credit_score, yield_target } = req.body || {};
+  if (
+    current_rate === undefined ||
+    current_term_months === undefined ||
+    credit_score === undefined ||
+    yield_target === undefined
+  ) {
+    return res.status(400).json({ message: 'Missing required fields' });
+  }
+  const offer = optimizeLoanOffer({
+    current_rate: parseFloat(current_rate),
+    current_term_months: parseInt(current_term_months, 10),
+    credit_score: parseFloat(credit_score),
+    yield_target: parseFloat(yield_target)
+  });
+  res.json({ offer });
+});
+
 // ── Voice Bot Endpoints ────────────────────────────────────────────────────
 app.post('/api/voice', express.urlencoded({ extended: false }), handleVoice);
 app.post('/api/voice/query', express.urlencoded({ extended: false }), handleVoiceQuery);
