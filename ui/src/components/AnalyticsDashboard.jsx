@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabaseClient'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, PieChart, Pie, Cell, Legend } from 'recharts'
-
+import LoanQueryWidget from './LoanQueryWidget'
+  
 export default function AnalyticsDashboard() {
   const [drawsData, setDrawsData] = useState([])
   const [loanData, setLoanData] = useState([])
@@ -67,6 +68,11 @@ export default function AnalyticsDashboard() {
           <Legend />
           <Tooltip />
         </PieChart>
+      </div>
+      
+      <div>
+        <h3 className="text-xl font-bold mb-4">BI Query</h3>
+        <LoanQueryWidget />
       </div>
     </div>
   )
