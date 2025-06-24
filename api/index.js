@@ -22,6 +22,7 @@ const openai = new OpenAI({
 });
 
 const { handleVoice, handleVoiceQuery } = require('./voiceBot');
+const { recordFeedback, retrainModel } = require('./feedback');
 
 // Define the functions that the assistant can “call.”
 const functions = [
@@ -415,6 +416,13 @@ app.post('/api/review-draw', async (req, res) => {
   }
 
   console.log('🔄 Updated draw request:', data);
+   recordFeedback({
+    decision_type: 'draw',
+    entity_id: id,
+    decision: status,
+    comments: comment || ''
+  });
+  retrainModel();
   res.status(200).json({ message: 'Draw request updated', data });
 });
 
@@ -1215,6 +1223,17 @@ app.get('/api/evidence-dossier/:loanId', async (req, res) => {
     console.error('Evidence error:', err);
     res.status(500).json({ message: 'Failed to gather evidence' });
   }
+});
+
+// ── Operator Feedback ─────────────────────────────────────────────────────
+app.post('/api/feedback', (req, res) => {
+  const { decision_type, decision, entity_id, comments } = req.body || {};
+  if (!decision_type || !decision || !entity_id) {
+    return res.status(400).json({ message: 'Missing required fields' });
+  }
+  recordFeedback({ decision_type, decision, entity_id, comments: comments || '' });
+  retrainModel();
+  res.json({ message: 'Feedback recorded' });
 });
 
 // ── Voice Bot Endpoints ────────────────────────────────────────────────────
