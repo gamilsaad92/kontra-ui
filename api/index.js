@@ -967,12 +967,12 @@ app.get('/api/assets', async (req, res) => {
 });
 
 app.post('/api/assets', async (req, res) => {
-  const { name, value, status } = req.body;
+  const { name, value, status, occupancy } = req.body;
   if (!name) return res.status(400).json({ message: 'Missing name' });
 
   const { data, error } = await supabase
     .from('assets')
-    .insert([{ name, value, status }])
+    .insert([{ name, value, status, occupancy }])
     .select()
     .single();
 
