@@ -1,4 +1,4 @@
-import React, { useState, useContext } from 'react';
+import React, { useState, useContext, useEffect } from 'react';
 import { AuthContext }    from '../main';
 import LoginForm          from './LoginForm';
 import SignUpForm         from './SignUpForm';
@@ -28,6 +28,10 @@ import InvestorReportForm from './InvestorReportForm';
 import InvestorReportsList from './InvestorReportsList';
 import AssetForm          from './AssetForm';
 import AssetsTable        from './AssetsTable';
+
+function sortByUsage(items, counts) {
+  return [...items].sort((a, b) => (counts[b.label] || 0) - (counts[a.label] || 0));
+}
 
 // Nav items arranged with optional submenus
 const navItems = [
@@ -66,13 +70,36 @@ export default function DashboardLayout() {
   const [projectRefreshKey, setProjectRefreshKey] = useState(0);
   const { session, supabase } = useContext(AuthContext);
   const [signUp, setSignUp] = useState(false);
-   const [expanded, setExpanded] = useState({ Applications: true, Loans: true });
+  const [expanded, setExpanded] = useState({ Applications: true, Loans: true });
+  const [usage, setUsage] = useState({});
+  const [orderedNav, setOrderedNav] = useState(navItems);
+  const [lastSwitchTime, setLastSwitchTime] = useState(Date.now());
 
+  useEffect(() => {
+    const stored = JSON.parse(localStorage.getItem('navUsage') || '{}');
+    setUsage(stored);
+    setOrderedNav(sortByUsage(navItems, stored));
+    setLastSwitchTime(Date.now());
+    return () => {
+      const now = Date.now();
+      const latest = JSON.parse(localStorage.getItem('navUsage') || '{}');
+      latest[active] = (latest[active] || 0) + (now - lastSwitchTime);
+      localStorage.setItem('navUsage', JSON.stringify(latest));
+    };
+  }, []);
+  
   const toggleMenu = (label) => {
     setExpanded((e) => ({ ...e, [label]: !e[label] }));
   };
 
   const activate = (label) => {
+    const now = Date.now();
+    const updated = { ...usage };
+    updated[active] = (updated[active] || 0) + (now - lastSwitchTime);
+    setUsage(updated);
+    localStorage.setItem('navUsage', JSON.stringify(updated));
+    setOrderedNav(sortByUsage(navItems, updated));
+    setLastSwitchTime(now);
     setActive(label);
     if (
       label !== 'Request List' &&
@@ -100,7 +127,7 @@ export default function DashboardLayout() {
       <aside className="w-64 bg-gray-800 text-white flex flex-col">
         <div className="p-4 text-2xl font-bold border-b border-gray-700">Kontra</div>
         <nav className="flex-1 overflow-auto p-2">
-          {navItems.map((item) => (
+          {orderedNav.map((item) => (
             <div key={item.label} className="mb-1">
               {item.sub ? (
                 <>
