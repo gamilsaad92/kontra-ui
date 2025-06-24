@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { API_BASE } from '../lib/apiBase';
+import SmartCard from './SmartCard';
 
 export default function CollectionsTable({ refresh }) {
   const [rows, setRows] = useState([]);
@@ -35,14 +36,27 @@ export default function CollectionsTable({ refresh }) {
           </tr>
         </thead>
         <tbody>
-          {rows.map(r => (
-            <tr key={r.id}>
-              <td className="p-2">{r.loan_id}</td>
-              <td className="p-2">{r.amount}</td>
-              <td className="p-2">{r.due_date}</td>
-              <td className="p-2">{r.status}</td>
-            </tr>
-          ))}
+            {rows.map(r => {
+            const pastDue =
+              r.due_date && new Date(r.due_date) < new Date() && r.status !== 'paid';
+            return (
+              <React.Fragment key={r.id}>
+                <tr>
+                  <td className="p-2">{r.loan_id}</td>
+                  <td className="p-2">{r.amount}</td>
+                  <td className="p-2">{r.due_date}</td>
+                  <td className="p-2">{r.status}</td>
+                </tr>
+                {pastDue && (
+                  <tr>
+                    <td colSpan="4">
+                      <SmartCard message="Borrower has past late payments. Consider tightening terms or adding collateral." />
+                    </td>
+                  </tr>
+                )}
+              </React.Fragment>
+            );
+          })}
         </tbody>
       </table>
     </div>
