@@ -93,3 +93,6 @@ Endpoint `/api/send-communication` generates reminder messages with OpenAI and d
 
 - `POST /api/regulatory-scan` analyzes document text against a ruleset and returns any compliance issues.
 - `GET /api/evidence-dossier/:loanId` assembles communications and uploaded files for audit review.
+## Continuous Learning & Feedback
+
+- `POST /api/feedback` records operator feedback on decisions like loan approvals or draw reviews. Logged examples can be used to fine-tune prompts or models over time.
