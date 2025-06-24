@@ -76,6 +76,27 @@ const functions = [
   }
 ];
 
+const chatOpsFunctions = [
+  {
+    name: 'list_past_due_loans',
+    description:
+      'List loans with payments overdue more than a specified number of days. Optional state filter.',
+    parameters: {
+      type: 'object',
+      properties: {
+        days: { type: 'integer', description: 'Days past due' },
+        state: { type: 'string', description: 'State abbreviation' }
+      },
+      required: ['days']
+    }
+  },
+  {
+    name: 'get_overall_occupancy',
+    description: 'Calculate average occupancy rate across all assets',
+    parameters: { type: 'object', properties: {}, required: [] }
+  }
+];
+
 // Helper implementations for those functions:
 async function get_loans() {
   const { data } = await supabase
@@ -133,6 +154,37 @@ async function get_next_insurance_due({ borrower_name }) {
     .maybeSingle();
   const due_date = calcNextInsuranceDue(loan.start_date);
   return { loan_id: loan.id, due_date, insurance_amount: escrow?.insurance_amount };
+}
+
+async function list_past_due_loans({ days, state }) {
+  const cutoff = new Date();
+  cutoff.setDate(cutoff.getDate() - days);
+  let query = supabase
+    .from('collections')
+    .select('loan_id, due_date, status, loans(id, borrower_name, amount, state)')
+    .lt('due_date', cutoff.toISOString().slice(0, 10))
+    .neq('status', 'paid');
+  if (state) query = query.eq('loans.state', state);
+  const { data, error } = await query;
+  if (error || !data) return [];
+  return data.map(c => ({
+    loan_id: c.loan_id,
+    borrower_name: c.loans?.borrower_name,
+    amount: c.loans?.amount,
+    state: c.loans?.state,
+    due_date: c.due_date
+  }));
+}
+
+async function get_overall_occupancy() {
+  const { data, error } = await supabase.from('assets').select('occupancy');
+  if (error || !data) return { occupancy_rate: 0 };
+  const vals = data
+    .map(a => parseFloat(a.occupancy))
+    .filter(v => !isNaN(v));
+  if (!vals.length) return { occupancy_rate: 0 };
+  const avg = vals.reduce((a, b) => a + b, 0) / vals.length;
+  return { occupancy_rate: parseFloat(avg.toFixed(2)) };
 }
 
 // ── Middleware ─────────────────────────────────────────────────────────────
@@ -900,6 +952,41 @@ app.post('/api/ask', async (req, res) => {
   } catch (err) {
     console.error('OpenAI error:', err);
     res.status(500).json({ error: 'AI service failed' });
+  }
+});
+
+// ── ChatOps Endpoint ───────────────────────────────────────────────────────
+app.post('/api/chatops', async (req, res) => {
+  const { question } = req.body || {};
+  if (!question) return res.status(400).json({ message: 'Missing question' });
+
+  try {
+    const response = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages: [
+        { role: 'system', content: 'You assist internal operators with portfolio data and tasks.' },
+        { role: 'user', content: question }
+      ],
+      functions: chatOpsFunctions,
+      function_call: 'auto'
+    });
+
+    const msg = response.choices[0].message;
+    if (msg.function_call) {
+      const args = JSON.parse(msg.function_call.arguments || '{}');
+      let result;
+      if (msg.function_call.name === 'list_past_due_loans') {
+        result = await list_past_due_loans(args);
+      } else if (msg.function_call.name === 'get_overall_occupancy') {
+        result = await get_overall_occupancy();
+      }
+      return res.json({ assistant: msg, functionResult: result });
+    }
+
+    res.json({ assistant: msg });
+  } catch (err) {
+    console.error('ChatOps error:', err);
+    res.status(500).json({ message: 'Failed to answer question' });
   }
 });
 
