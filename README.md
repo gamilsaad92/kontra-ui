@@ -96,3 +96,13 @@ Endpoint `/api/send-communication` generates reminder messages with OpenAI and d
 ## Continuous Learning & Feedback
 
 - `POST /api/feedback` records operator feedback on decisions like loan approvals or draw reviews. Logged examples can be used to fine-tune prompts or models over time.
+
+## Hospitality Features
+
+The API also includes basic hospitality modules:
+
+- `POST /api/guests` and `GET /api/guests` manage guest profiles.
+- `POST /api/rate-recommendation` suggests optimal room pricing.
+- `POST /api/service-request` logs housekeeping or other guest requests.
+- `POST /api/forecast-inventory` predicts upcoming supply needs.
+- `POST /api/suggest-upsells` returns personalized offers for a guest.
