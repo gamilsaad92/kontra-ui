@@ -176,6 +176,33 @@ function parseDocumentBuffer(buffer) {
   return fields;
 }
 
+async function summarizeDocumentBuffer(buffer) {
+  const text = buffer.toString('utf8');
+  let summary = text.slice(0, 200);
+  let key_terms = {};
+  if (process.env.OPENAI_API_KEY) {
+    try {
+      const resp = await openai.chat.completions.create({
+        model: 'gpt-4o-mini',
+        messages: [
+          {
+            role: 'system',
+            content:
+              'Provide a short executive summary and extract key terms (amounts, dates, parties) from the document. Return JSON {"summary": string, "key_terms": object}.'
+          },
+          { role: 'user', content: text.slice(0, 12000) }
+        ]
+      });
+      const data = JSON.parse(resp.choices[0].message.content || '{}');
+      if (typeof data.summary === 'string') summary = data.summary;
+      if (data.key_terms) key_terms = data.key_terms;
+    } catch (err) {
+      console.error('OpenAI doc summary error:', err);
+    }
+  }
+  return { summary, key_terms };
+}
+
 function advancedCreditScore(bureauScore, history) {
   let score = bureauScore;
   if (Array.isArray(history) && history.length) {
@@ -958,6 +985,17 @@ app.post('/api/parse-document', upload.single('file'), (req, res) => {
   if (!req.file) return res.status(400).json({ message: 'File required' });
   const fields = parseDocumentBuffer(req.file.buffer);
   res.json({ fields });
+});
+
+app.post('/api/document-summary', upload.single('file'), async (req, res) => {
+  if (!req.file) return res.status(400).json({ message: 'File required' });
+  try {
+    const result = await summarizeDocumentBuffer(req.file.buffer);
+    res.json(result);
+  } catch (err) {
+    console.error('Document summary error:', err);
+    res.status(500).json({ message: 'Failed to summarize document' });
+  }
 });
 
 app.post('/api/credit-score', (req, res) => {
