@@ -1236,6 +1236,85 @@ app.post('/api/feedback', (req, res) => {
   res.json({ message: 'Feedback recorded' });
 });
 
+// ── Hospitality Features ───────────────────────────────────────────────────
+app.post('/api/guests', async (req, res) => {
+  const { name, email, preferences } = req.body || {};
+  if (!name || !email) return res.status(400).json({ message: 'Missing name or email' });
+  try {
+    const { data, error } = await supabase
+      .from('guests')
+      .insert([{ name, email, preferences }])
+      .select()
+      .single();
+    if (error) throw error;
+    res.status(201).json({ guest: data });
+  } catch (err) {
+    console.error('Guest create error:', err);
+    res.status(500).json({ message: 'Failed to create guest' });
+  }
+});
+
+app.get('/api/guests', async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('guests')
+      .select('*')
+      .order('created_at', { ascending: false });
+    if (error) throw error;
+    res.json({ guests: data });
+  } catch (err) {
+    console.error('List guests error:', err);
+    res.status(500).json({ message: 'Failed to fetch guests' });
+  }
+});
+
+app.post('/api/rate-recommendation', (req, res) => {
+  const { property_id, date } = req.body || {};
+  if (!property_id || !date)
+    return res.status(400).json({ message: 'Missing property_id or date' });
+  const base = 100;
+  const day = new Date(date).getDay();
+  const recommended_rate = base + (day === 5 || day === 6 ? 50 : 20);
+  res.json({ recommended_rate });
+});
+
+app.post('/api/service-request', async (req, res) => {
+  const { guest_id, request: reqText } = req.body || {};
+  if (!guest_id || !reqText)
+    return res.status(400).json({ message: 'Missing guest_id or request' });
+  try {
+    const { data, error } = await supabase
+      .from('service_requests')
+      .insert([
+        { guest_id, request: reqText, status: 'pending', created_at: new Date().toISOString() }
+      ])
+      .select()
+      .single();
+    if (error) throw error;
+    res.status(201).json({ service_request: data });
+  } catch (err) {
+    console.error('Service request error:', err);
+    res.status(500).json({ message: 'Failed to create request' });
+  }
+});
+
+app.post('/api/forecast-inventory', (req, res) => {
+  const { item, history } = req.body || {};
+  if (!item || !Array.isArray(history)) {
+    return res.status(400).json({ message: 'Missing item or history' });
+  }
+  const avg = history.length ? history.reduce((a, b) => a + b, 0) / history.length : 0;
+  const forecast = avg * 1.1;
+  res.json({ item, forecast });
+});
+
+app.post('/api/suggest-upsells', (req, res) => {
+  const { guest_id } = req.body || {};
+  if (!guest_id) return res.status(400).json({ message: 'Missing guest_id' });
+  const suggestions = ['Late checkout', 'Spa discount', 'Room upgrade'];
+  res.json({ suggestions });
+});
+
 // ── Voice Bot Endpoints ────────────────────────────────────────────────────
 app.post('/api/voice', express.urlencoded({ extended: false }), handleVoice);
 app.post('/api/voice/query', express.urlencoded({ extended: false }), handleVoiceQuery);
