@@ -1117,6 +1117,12 @@ const {
 } = require('./communications');
 const { predictBills } = require('./billPrediction');
 const { scanForCompliance, gatherEvidence } = require('./compliance');
+const {
+  validateInvoiceAgainstBudget,
+  forecastProject,
+  auditLienWaiverText,
+  financeScorecard
+} = require('./construction');
 
 app.post('/api/predict-delinquency', (req, res) => {
   const { credit_score, months_since_origination, ltv, dti } = req.body || {};
@@ -1234,6 +1240,84 @@ app.post('/api/feedback', (req, res) => {
   recordFeedback({ decision_type, decision, entity_id, comments: comments || '' });
   retrainModel();
   res.json({ message: 'Feedback recorded' });
+});
+
+// ── Construction & Lending Features ───────────────────────────────────────
+app.post('/api/validate-invoice', upload.single('file'), async (req, res) => {
+  const { project_id } = req.body || {};
+  if (!req.file || !project_id) {
+    return res.status(400).json({ message: 'Missing project_id or file' });
+  }
+  let budget = 0;
+  let spent = 0;
+  try {
+    const { data } = await supabase
+      .from('projects')
+      .select('budget, spent_to_date')
+      .eq('id', project_id)
+      .maybeSingle();
+    if (data) {
+      budget = parseFloat(data.budget) || 0;
+      spent = parseFloat(data.spent_to_date) || 0;
+    }
+  } catch (err) {
+    console.error('Fetch project budget error:', err);
+  }
+  const result = validateInvoiceAgainstBudget(req.file.buffer, budget, spent);
+  res.json(result);
+});
+
+app.post('/api/project-forecast', (req, res) => {
+  const { progress_history, budget_history } = req.body || {};
+  if (!Array.isArray(progress_history) || !Array.isArray(budget_history)) {
+    return res.status(400).json({ message: 'Missing progress_history or budget_history' });
+  }
+  const result = forecastProject({ progress_history, budget_history });
+  res.json(result);
+});
+
+app.post('/api/audit-lien-waiver', (req, res) => {
+  const { text } = req.body || {};
+  if (!text) return res.status(400).json({ message: 'Missing text' });
+  const result = auditLienWaiverText(text);
+  res.json(result);
+});
+
+app.post('/api/assets/:assetId/collateral', async (req, res) => {
+  const { assetId } = req.params;
+  const { permit_url, lien_position, qr_code_url } = req.body || {};
+  if (!assetId) return res.status(400).json({ message: 'Missing assetId' });
+  const { data, error } = await supabase
+    .from('asset_collateral')
+    .insert([{ asset_id: parseInt(assetId, 10), permit_url, lien_position, qr_code_url }])
+    .select()
+    .single();
+  if (error) return res.status(500).json({ message: 'Failed to record collateral' });
+  res.status(201).json({ collateral: data });
+});
+
+app.get('/api/assets/:assetId/collateral', async (req, res) => {
+  const { assetId } = req.params;
+  const { data, error } = await supabase
+    .from('asset_collateral')
+    .select('*')
+    .eq('asset_id', assetId);
+  if (error) return res.status(500).json({ message: 'Failed to fetch collateral' });
+  res.json({ collateral: data });
+});
+
+app.post('/api/financing-scorecard', (req, res) => {
+  const { bureau_score, project_kpis = {}, payment_history = [] } = req.body || {};
+  if (bureau_score === undefined) {
+    return res.status(400).json({ message: 'Missing bureau_score' });
+  }
+  const result = financeScorecard({
+    bureau_score: parseFloat(bureau_score),
+    on_time_rate: parseFloat(project_kpis.on_time_rate || 0),
+    budget_variance: parseFloat(project_kpis.budget_variance || 0),
+    payment_history: Array.isArray(payment_history) ? payment_history.map(Number) : []
+  });
+  res.json(result);
 });
 
 // ── Hospitality Features ───────────────────────────────────────────────────
