@@ -73,7 +73,7 @@ export default function DashboardLayout() {
    const renderContent = () => {
     switch (active) {
       case 'Dashboard':
-        return <DashboardHome />;
+        return <DashboardHome setActive={setActive} />;
       case 'New Application':
         return (
           <LoanApplicationForm onSubmitted={() => setRefreshKey(k => k + 1)} />
