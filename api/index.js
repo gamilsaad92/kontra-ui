@@ -560,13 +560,43 @@ app.post('/api/loans', async (req, res) => {
 
 // ── List All Loans ──────────────────────────────────────────────────────────
 app.get('/api/loans', async (req, res) => {
-  const { data, error } = await supabase
-    .from('loans')
-    .select('id, borrower_name, amount, interest_rate, term_months, start_date, status, created_at')
-    .order('created_at', { ascending: false });
+   const { status, borrower, from, to, minRisk, maxRisk, search } = req.query;
+  try {
+    let q = supabase
+      .from('loans')
+      .select('id, borrower_name, amount, interest_rate, term_months, start_date, status, risk_score, created_at')
+      .order('created_at', { ascending: false });
+    if (status) q = q.eq('status', status);
+    if (borrower) q = q.ilike('borrower_name', `%${borrower}%`);
+    if (from) q = q.gte('start_date', from);
+    if (to) q = q.lte('start_date', to);
+    if (minRisk) q = q.gte('risk_score', parseFloat(minRisk));
+    if (maxRisk) q = q.lte('risk_score', parseFloat(maxRisk));
+    if (search) q = q.textSearch('borrower_name', search, { type: 'plain' });
+    const { data, error } = await q;
+    if (error) throw error;
+    res.json({ loans: data });
+  } catch (err) {
+    console.error('Loan list error:', err);
+    res.status(500).json({ message: 'Failed to fetch loans' });
+  }
+});
 
-  if (error) return res.status(500).json({ message: 'Failed to fetch loans' });
-  res.json({ loans: data });
+ // Batch update loan status
+app.post('/api/loans/batch-update', async (req, res) => {
+  const { ids, status } = req.body || {};
+  if (!Array.isArray(ids) || !ids.length || !status) {
+    return res.status(400).json({ message: 'Missing ids or status' });
+  }
+  const { error } = await supabase
+    .from('loans')
+    .update({ status })
+    .in('id', ids);
+  if (error) {
+    console.error('Batch update error:', error);
+    return res.status(500).json({ message: 'Failed to update loans' });
+  }
+  res.json({ message: 'Updated' });
 });
 
 // ── Generate Amortization Schedule ──────────────────────────────────────────
@@ -687,6 +717,18 @@ app.post('/api/loans/:loanId/payments', async (req, res) => {
   res.status(201).json({ payment: paymentData });
 });
 
+// List Payments for a Loan
+app.get('/api/loans/:loanId/payments', async (req, res) => {
+  const { data, error } = await supabase
+    .from('payments')
+    .select('*')
+    .eq('loan_id', req.params.loanId)
+    .order('date', { ascending: false });
+
+  if (error) return res.status(500).json({ message: 'Failed to fetch payments' });
+  res.json({ payments: data });
+});
+
 // ── Escrow Routes ──────────────────────────────────────────────────────────
 app.get('/api/escrows', async (req, res) => {
   const { data, error } = await supabase
@@ -711,6 +753,40 @@ app.get('/api/loans/:loanId/escrow', async (req, res) => {
   if (error) return res.status(500).json({ message: 'Failed to fetch escrow' });
   if (!data) return res.status(404).json({ message: 'Escrow not found' });
   res.json({ escrow: data });
+});
+
+// Loan detail including schedule, payments and collateral
+app.get('/api/loans/:loanId/details', async (req, res) => {
+  const { loanId } = req.params;
+  try {
+    const { data: loan, error: loanErr } = await supabase
+      .from('loans')
+      .select('*')
+      .eq('id', loanId)
+      .single();
+    if (loanErr) throw loanErr;
+    if (!loan) return res.status(404).json({ message: 'Loan not found' });
+
+    const { data: schedule } = await supabase
+      .from('amortization_schedules')
+      .select('*')
+      .eq('loan_id', loanId)
+      .order('due_date');
+    const { data: payments } = await supabase
+      .from('payments')
+      .select('*')
+      .eq('loan_id', loanId)
+      .order('date', { ascending: false });
+    const { data: collateral } = await supabase
+      .from('asset_collateral')
+      .select('*')
+      .eq('asset_id', loan.asset_id || 0);
+
+    res.json({ loan, schedule, payments, collateral });
+  } catch (err) {
+    console.error('Loan detail error:', err);
+    res.status(500).json({ message: 'Failed to fetch loan details' });
+  }
 });
 
 // ── Underwriting Tasks CRUD ───────────────────────────────────────────────
