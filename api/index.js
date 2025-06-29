@@ -754,6 +754,15 @@ app.get('/api/loans/:loanId/payments', async (req, res) => {
   res.json({ payments: data });
 });
 
+// ── Create Payment Portal Link ────────────────────────────────────────────
+app.post('/api/loans/:loanId/payment-portal', (req, res) => {
+  const { amount } = req.body || {};
+  if (!amount) return res.status(400).json({ message: 'Missing amount' });
+  const token = Math.random().toString(36).slice(2);
+  const url = `https://payments.example.com/pay/${token}`;
+  res.json({ url });
+});
+
 // ── Escrow Routes ──────────────────────────────────────────────────────────
 app.get('/api/escrows', async (req, res) => {
   const { data, error } = await supabase
