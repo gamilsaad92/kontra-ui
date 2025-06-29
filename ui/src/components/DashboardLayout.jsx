@@ -25,6 +25,7 @@ import ProjectsTable from './ProjectsTable';
 import ProjectDetail from './ProjectDetail';
 import AssetForm from './AssetForm';
 import AssetsTable from './AssetsTable';
+import PaymentPortalEmbed from './PaymentPortalEmbed';
 
 const navItems = [
   { label: 'Dashboard', icon: '🏠' },
@@ -48,6 +49,7 @@ const navItems = [
     icon: '🏗️',
     sub: ['Projects', 'Draw Requests']
   },
+  { label: 'Payment Portal', icon: '💳' },
   { label: 'Hospitality', icon: '🏨', sub: ['Assets'] },
   { label: 'Settings', icon: '⚙️' },
   { label: 'Decisions', icon: '📜' },
@@ -142,6 +144,8 @@ export default function DashboardLayout() {
             />
           </>
         );
+              case 'Payment Portal':
+        return <PaymentPortalEmbed />;
       case 'Assets':
         return (
           <>
