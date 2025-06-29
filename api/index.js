@@ -256,6 +256,31 @@ async function summarizeDocumentBuffer(buffer) {
   return { summary, key_terms };
 }
 
+async function autoFillFields(buffer) {
+  const fields = parseDocumentBuffer(buffer);
+  if (process.env.OPENAI_API_KEY) {
+    try {
+      const text = buffer.toString('utf8');
+      const resp = await openai.chat.completions.create({
+        model: 'gpt-4o-mini',
+        messages: [
+          {
+            role: 'system',
+            content:
+              'Extract borrower or business details from IDs or W-9s as JSON {"name":string,"ssn":string,"ein":string,"address":string}'.
+          },
+          { role: 'user', content: text.slice(0, 12000) }
+        ]
+      });
+      const extra = JSON.parse(resp.choices[0].message.content || '{}');
+      Object.assign(fields, extra);
+    } catch (err) {
+      console.error('OpenAI auto fill error:', err);
+    }
+  }
+  return fields;
+}
+
 function advancedCreditScore(bureauScore, history) {
   let score = bureauScore;
   if (Array.isArray(history) && history.length) {
@@ -833,6 +858,20 @@ app.put('/api/tasks/:id', async (req, res) => {
   res.json({ task: data });
 });
 
+app.get('/api/decision-history', async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('underwriting_tasks')
+      .select('id, assign, comment, status, created_at')
+      .order('created_at', { ascending: false });
+    if (error) throw error;
+    res.json({ history: data });
+  } catch (err) {
+    console.error('Decision history error:', err);
+    res.status(500).json({ history: [] });
+  }
+});
+
 // ── Document Generation from Templates ─────────────────────────────────────
 const Handlebars = require('handlebars');
 const PDFDocument = require('pdfkit');
@@ -861,6 +900,41 @@ app.post('/api/documents', async (req, res) => {
 
   doc.text(text);
   doc.end();
+});
+
+app.post('/api/sign-document', async (req, res) => {
+  const { text, signer } = req.body || {};
+  if (!text || !signer) {
+    return res.status(400).json({ message: 'Missing text or signer' });
+  }
+  try {
+    const doc = new PDFDocument();
+    const buffers = [];
+    doc.on('data', b => buffers.push(b));
+    doc.on('end', async () => {
+      const pdf = Buffer.concat(buffers);
+      const filePath = `signed/${Date.now()}_${signer.replace(/\s+/g, '_')}.pdf`;
+      const { error } = await supabase
+        .storage
+        .from('signed-docs')
+        .upload(filePath, pdf, { contentType: 'application/pdf' });
+      if (error) {
+        console.error('Upload sign doc error:', error);
+        return res.status(500).json({ message: 'Failed to store signed doc' });
+      }
+      const url = supabase.storage.from('signed-docs').getPublicUrl(filePath).publicURL;
+      res.json({ url });
+    });
+    doc.text(text);
+    doc.moveDown();
+    doc.text(`Signed by ${signer} on ${new Date().toLocaleDateString()}`, {
+      align: 'right'
+    });
+    doc.end();
+  } catch (err) {
+    console.error('Sign document error:', err);
+    res.status(500).json({ message: 'Failed to sign document' });
+  }
 });
 
 // ── Portfolio Summary as PDF ───────────────────────────────────────────────
@@ -1156,6 +1230,17 @@ app.post('/api/parse-document', upload.single('file'), (req, res) => {
   if (!req.file) return res.status(400).json({ message: 'File required' });
   const fields = parseDocumentBuffer(req.file.buffer);
   res.json({ fields });
+});
+
+app.post('/api/auto-fill', upload.single('file'), async (req, res) => {
+  if (!req.file) return res.status(400).json({ message: 'File required' });
+  try {
+    const fields = await autoFillFields(req.file.buffer);
+    res.json({ fields });
+  } catch (err) {
+    console.error('Auto fill error:', err);
+    res.status(500).json({ message: 'Failed to extract fields' });
+  }
 });
 
 app.post('/api/document-summary', upload.single('file'), async (req, res) => {
