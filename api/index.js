@@ -267,7 +267,7 @@ async function autoFillFields(buffer) {
           {
             role: 'system',
             content:
-              'Extract borrower or business details from IDs or W-9s as JSON {"name":string,"ssn":string,"ein":string,"address":string}'.
+  'Extract borrower or business details from IDs or W-9s as JSON {"name":string,"ssn":string,"ein":string,"address":string}'
           },
           { role: 'user', content: text.slice(0, 12000) }
         ]
