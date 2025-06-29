@@ -6,6 +6,7 @@ import VirtualAssistant from './VirtualAssistant';
 import DashboardHome from './DashboardHome';
 import LoanApplicationForm from './LoanApplicationForm';
 import LoanApplicationList from './LoanApplicationList';
+import DecisionTimeline from './DecisionTimeline';
 import CreateLoanForm from './CreateLoanForm';
 import LoanList from './LoanList';
 import AmortizationTable from './AmortizationTable';
@@ -49,6 +50,7 @@ const navItems = [
   },
   { label: 'Hospitality', icon: '🏨', sub: ['Assets'] },
   { label: 'Settings', icon: '⚙️' },
+  { label: 'Decisions', icon: '📜' },
   { label: 'Assistant', icon: '🤖' }
 ];
 
@@ -147,6 +149,8 @@ export default function DashboardLayout() {
             <AssetsTable refresh={refreshKey} />
           </>
         );
+        case 'Decisions':
+        return <DecisionTimeline />;
       case 'Assistant':
         return (
           <div className="h-full flex flex-col border rounded-lg bg-white">
