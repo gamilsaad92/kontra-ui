@@ -13,6 +13,28 @@ export default function LoanApplicationForm({ onSubmitted }) {
   const [file, setFile] = useState(null)
   const [message, setMessage] = useState('')
 
+    const handleAutoFill = async () => {
+    if (!file) return
+    setMessage('Extracting…')
+    try {
+      const body = new FormData()
+      body.append('file', file)
+      const res = await fetch(`${API_BASE}/api/auto-fill`, {
+        method: 'POST',
+        body
+      })
+      const data = await res.json()
+      if (res.ok && data.fields) {
+        setFormData({ ...formData, ...data.fields })
+        setMessage('Fields populated')
+      } else {
+        setMessage(data.message || 'Extraction failed')
+      }
+    } catch {
+      setMessage('Extraction error')
+    }
+  }
+
   const handleChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value })
   }
@@ -85,6 +107,13 @@ export default function LoanApplicationForm({ onSubmitted }) {
           className="w-full border p-2 rounded"
         />
         <input type="file" onChange={handleFile} className="w-full" />
+                <button
+          type="button"
+          onClick={handleAutoFill}
+          className="w-full bg-gray-200 text-gray-800 py-2 rounded"
+        >
+          Auto Fill
+        </button>
         <button
           type="submit"
           className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 rounded"
