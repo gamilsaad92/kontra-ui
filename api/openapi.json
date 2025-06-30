@@ -1,0 +1,134 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "Kontra API",
+    "version": "1.0.0"
+  },
+  "paths": {
+    "/api/loans": {
+      "post": {
+        "summary": "Create a new loan",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "borrower_name": {"type": "string"},
+                  "amount": {"type": "number"},
+                  "interest_rate": {"type": "number"},
+                  "term_months": {"type": "integer"},
+                  "start_date": {"type": "string", "format": "date"}
+                },
+                "required": ["borrower_name","amount","interest_rate","term_months","start_date"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {"description": "Created"}
+        }
+      }
+    },
+    "/api/loans/{loanId}/payments": {
+      "post": {
+        "summary": "Record a payment",
+        "parameters": [{"in":"path","name":"loanId","required":true,"schema":{"type":"integer"}}],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "amount": {"type": "number"},
+                  "date": {"type": "string", "format": "date"}
+                },
+                "required": ["amount","date"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {"description": "Created"}
+        }
+      }
+    },
+    "/api/bookings": {
+      "get": {"summary": "List bookings","responses":{"200":{"description":"OK"}}},
+      "post": {
+        "summary": "Create a booking",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "guest_id": {"type": "integer"},
+                  "room": {"type": "string"},
+                  "start_date": {"type": "string", "format": "date"},
+                  "end_date": {"type": "string", "format": "date"}
+                },
+                "required": ["guest_id","room","start_date","end_date"]
+              }
+            }
+          }
+        },
+        "responses": {"201":{"description":"Created"}}
+      }
+    },
+    "/api/bookings/{id}": {
+      "get": {
+        "summary": "Get a booking",
+        "parameters": [{"in":"path","name":"id","required":true,"schema":{"type":"integer"}}],
+        "responses": {"200":{"description":"OK"}}
+      }
+    },
+    "/api/webhooks": {
+      "get": {"summary": "List registered webhooks","responses":{"200":{"description":"OK"}}},
+      "post": {
+        "summary": "Register a webhook",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "event": {"type": "string"},
+                  "url": {"type": "string", "format": "uri"}
+                },
+                "required": ["event","url"]
+              }
+            }
+          }
+        },
+        "responses": {"201":{"description":"Created"}}
+      },
+      "delete": {
+        "summary": "Remove a webhook",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {"type":"object","properties":{"event":{"type":"string"},"url":{"type":"string","format":"uri"}},"required":["event","url"]}
+            }
+          }
+        },
+        "responses": {"200":{"description":"Removed"}}
+      }
+    },
+    "/api/integrations": {
+      "get": {"summary":"List connected integrations","responses":{"200":{"description":"OK"}}}
+    },
+    "/api/integrations/{name}/connect": {
+      "post": {
+        "summary": "Connect an integration",
+        "parameters": [{"in":"path","name":"name","required":true,"schema":{"type":"string"}}],
+        "responses": {"200":{"description":"Connected"}}
+      }
+    }
+  }
+}
