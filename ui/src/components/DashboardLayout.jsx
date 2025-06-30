@@ -27,6 +27,9 @@ import AssetForm from './AssetForm';
 import AssetsTable from './AssetsTable';
 import PaymentPortalEmbed from './PaymentPortalEmbed';
 import DrawKanbanBoard from './DrawKanbanBoard';
+import HospitalityDashboard from './HospitalityDashboard';
+import GuestCRM from './GuestCRM';
+import GuestChat from './GuestChat';
 
 const navItems = [
   { label: 'Dashboard', icon: '🏠' },
@@ -51,7 +54,7 @@ const navItems = [
     sub: ['Projects', 'Draw Requests']
   },
   { label: 'Payment Portal', icon: '💳' },
-  { label: 'Hospitality', icon: '🏨', sub: ['Assets'] },
+  { label: 'Hospitality', icon: '🏨', sub: ['Hospitality Dashboard'] },
   { label: 'Settings', icon: '⚙️' },
   { label: 'Decisions', icon: '📜' },
   { label: 'Assistant', icon: '🤖' }
@@ -147,8 +150,14 @@ export default function DashboardLayout() {
             />
           </>
         );
-              case 'Payment Portal':
+       case 'Payment Portal':
         return <PaymentPortalEmbed />;
+              case 'Hospitality Dashboard':
+        return <HospitalityDashboard setActive={setActive} />;
+      case 'Guest CRM':
+        return <GuestCRM />;
+      case 'Guest Chat':
+        return <GuestChat />;
       case 'Assets':
         return (
           <>
