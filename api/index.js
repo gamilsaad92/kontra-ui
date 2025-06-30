@@ -948,6 +948,52 @@ app.post('/api/sign-document', async (req, res) => {
   }
 });
 
+// ── Closing & Tax Document Generation ─────────────────────────────────────-
+app.post('/api/generate-closing-doc', (req, res) => {
+  const { borrower, property, loan_amount, closing_date } = req.body || {};
+  if (!borrower || !property || !loan_amount || !closing_date) {
+    return res.status(400).json({ message: 'Missing required fields' });
+  }
+  const tpl = path.join(__dirname, 'templates', 'closing.hbs');
+  const source = fs.readFileSync(tpl, 'utf8');
+  const compiled = Handlebars.compile(source);
+  const text = compiled({ borrower, property, loan_amount, closing_date });
+
+  const doc = new PDFDocument();
+  const buffers = [];
+  doc.on('data', b => buffers.push(b));
+  doc.on('end', () => {
+    res.setHeader('Content-Type', 'application/pdf');
+    res.send(Buffer.concat(buffers));
+  });
+  doc.text(text);
+  doc.end();
+});
+
+app.post('/api/generate-tax-form', (req, res) => {
+  const { form_type, data } = req.body || {};
+  if (!form_type || !data) {
+    return res.status(400).json({ message: 'Missing form_type or data' });
+  }
+  const allowed = ['1098', '1099'];
+  if (!allowed.includes(form_type)) {
+    return res.status(400).json({ message: 'Invalid form_type' });
+  }
+  const tpl = path.join(__dirname, 'templates', `${form_type}.hbs`);
+  const source = fs.readFileSync(tpl, 'utf8');
+  const compiled = Handlebars.compile(source);
+  const text = compiled(data);
+  const doc = new PDFDocument();
+  const buffers = [];
+  doc.on('data', b => buffers.push(b));
+  doc.on('end', () => {
+    res.setHeader('Content-Type', 'application/pdf');
+    res.send(Buffer.concat(buffers));
+  });
+  doc.text(text);
+  doc.end();
+});
+
 // ── Portfolio Summary as PDF ───────────────────────────────────────────────
 app.post('/api/portfolio-summary', async (req, res) => {
   const { period } = req.body || {};
