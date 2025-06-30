@@ -26,6 +26,7 @@ import ProjectDetail from './ProjectDetail';
 import AssetForm from './AssetForm';
 import AssetsTable from './AssetsTable';
 import PaymentPortalEmbed from './PaymentPortalEmbed';
+import DrawKanbanBoard from './DrawKanbanBoard';
 
 const navItems = [
   { label: 'Dashboard', icon: '🏠' },
@@ -115,6 +116,8 @@ export default function DashboardLayout() {
             )}
           </>
                );
+      case 'Draw Board':
+        return <DrawKanbanBoard />;
       case 'Escrows':
         return <EscrowDashboard />;
       case 'Collections':
