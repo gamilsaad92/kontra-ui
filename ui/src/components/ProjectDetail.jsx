@@ -4,6 +4,8 @@ import { AuthContext } from '../main'
 import DrawRequestsTable from './DrawRequestsTable'
 import LienWaiverList from './LienWaiverList'
 import InspectionList from './InspectionList'
+import ProgressGallery from './ProgressGallery'
+import InvoiceMatcher from './InvoiceMatcher'
 
 export default function ProjectDetail({ projectId }) {
   const { session } = useContext(AuthContext)
@@ -42,6 +44,14 @@ export default function ProjectDetail({ projectId }) {
       {/* Lien Waivers Under This Project */}
       <h4 className="text-xl font-semibold mt-8 mb-2">Lien Waivers</h4>
       <LienWaiverList filter={{ project_id: projectId }} />
+      
+      {/* Progress Photos */}
+      <h4 className="text-xl font-semibold mt-8 mb-2">Progress Photos</h4>
+      <ProgressGallery projectId={projectId} />
+
+      {/* Invoice Matching */}
+      <h4 className="text-xl font-semibold mt-8 mb-2">Invoice Matching</h4>
+      <InvoiceMatcher projectId={projectId} />
     </div>
   )
 }
