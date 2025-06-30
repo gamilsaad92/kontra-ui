@@ -23,6 +23,7 @@ const openai = new OpenAI({
 
 const { handleVoice, handleVoiceQuery } = require('./voiceBot');
 const { recordFeedback, retrainModel } = require('./feedback');
+const authenticate = require('./middlewares/authenticate');
 const dashboard = require('./routers/dashboard');
 
 // ── Webhook & Integration State ────────────────────────────────────────────
