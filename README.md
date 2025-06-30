@@ -118,3 +118,10 @@ The API also includes basic hospitality modules:
 - `POST /api/service-request` logs housekeeping or other guest requests.
 - `POST /api/forecast-inventory` predicts upcoming supply needs.
 - `POST /api/suggest-upsells` returns personalized offers for a guest.
+
+## Integrations & Marketplace
+
+- OpenAPI specification is served at `/openapi.json` with Swagger UI at `/api-docs`.
+- `POST /api/webhooks` registers a URL to receive `loan.created`, `payment.created` and `booking.created` events.
+- `GET /api/integrations` lists connected apps. Connect QuickBooks, Yardi or Procore via `POST /api/integrations/{name}/connect`.
+- Hospitality modules now include `/api/bookings` endpoints for room reservations.
