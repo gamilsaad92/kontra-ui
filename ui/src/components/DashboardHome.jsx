@@ -116,6 +116,12 @@ export default function DashboardHome({ setActive }) {
         >
           New Draw Request
         </button>
+         <button
+          onClick={() => setActive && setActive('Draw Board')}
+          className="bg-blue-600 text-white px-3 py-1 rounded"
+        >
+          Draw Workflow
+        </button>
       </div>
 
       <div className="grid gap-6 grid-cols-2 auto-rows-fr">
