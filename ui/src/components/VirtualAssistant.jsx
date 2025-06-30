@@ -3,7 +3,7 @@
 import React, { useState } from 'react'
 import { API_BASE } from '../lib/apiBase'
 
-export default function VirtualAssistant() {
+export default function VirtualAssistant({ endpoint = '/api/ask', placeholder = 'Ask Kontra...' }) {
   const [messages, setMessages] = useState([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
@@ -16,7 +16,7 @@ export default function VirtualAssistant() {
     setLoading(true)
 
     try {
-  const res = await fetch(`${API_BASE}/api/ask`, {
+   const res = await fetch(`${API_BASE}${endpoint}`, {
      method: 'POST',
      headers: { 'Content-Type': 'application/json' },
      body: JSON.stringify({ question: userMsg.content }),
@@ -73,7 +73,7 @@ export default function VirtualAssistant() {
           value={input}
           onChange={e => setInput(e.target.value)}
           onKeyDown={e => e.key === 'Enter' && sendMessage()}
-          placeholder="Ask Kontra..."
+          placeholder={placeholder}
           disabled={loading}
         />
         <button
