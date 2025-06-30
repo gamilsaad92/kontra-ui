@@ -1159,6 +1159,27 @@ app.post('/api/chatops', async (req, res) => {
   }
 });
 
+app.post('/api/guest-chat', async (req, res) => {
+  const { question } = req.body || {};
+  if (!question) return res.status(400).json({ message: 'Missing question' });
+
+  try {
+    const response = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages: [
+        { role: 'system', content: 'You are a hotel concierge assisting guests.' },
+        { role: 'user', content: question }
+      ]
+    });
+
+    const msg = response.choices[0].message;
+    res.json({ assistant: msg });
+  } catch (err) {
+    console.error('Guest chat error:', err);
+    res.status(500).json({ message: 'Failed to answer question' });
+  }
+});
+
 // ── Collections CRUD ──────────────────────────────────────────────────────
 app.get('/api/collections', async (req, res) => {
   const { data, error } = await supabase
@@ -1625,6 +1646,23 @@ app.post('/api/service-request', async (req, res) => {
   } catch (err) {
     console.error('Service request error:', err);
     res.status(500).json({ message: 'Failed to create request' });
+  }
+});
+
+app.get('/api/service-requests', async (req, res) => {
+  const { guest_id } = req.query || {};
+  if (!guest_id) return res.status(400).json({ message: 'Missing guest_id' });
+  try {
+    const { data, error } = await supabase
+      .from('service_requests')
+      .select('*')
+      .eq('guest_id', guest_id)
+      .order('created_at', { ascending: false });
+    if (error) throw error;
+    res.json({ requests: data });
+  } catch (err) {
+    console.error('Service requests fetch error:', err);
+    res.status(500).json({ message: 'Failed to fetch requests' });
   }
 });
 
