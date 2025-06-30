@@ -1,5 +1,5 @@
 import React from 'react';
-import DelinquencyChart from 'ui/src/components/DelinquencyChart';
+import DelinquencyChart from 'ui/src/components/DelinquencyChart.jsx';
 
 export default function DelinquencyCard() {
   return (
