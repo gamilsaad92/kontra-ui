@@ -23,6 +23,7 @@ const openai = new OpenAI({
 
 const { handleVoice, handleVoiceQuery } = require('./voiceBot');
 const { recordFeedback, retrainModel } = require('./feedback');
+const dashboard = require('./routers/dashboard');
 
 // ── Webhook & Integration State ────────────────────────────────────────────
 const webhooks = [];
@@ -208,6 +209,7 @@ async function get_overall_occupancy() {
 // ── Middleware ─────────────────────────────────────────────────────────────
 app.use(cors());
 app.use(express.json());
+app.use('/api/dashboard-layout', authenticate, dashboard);
 
 // ── Health Checks ──────────────────────────────────────────────────────────
 app.get('/', (req, res) => res.send('Kontra API is running'));
