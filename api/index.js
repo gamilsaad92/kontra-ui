@@ -24,6 +24,23 @@ const openai = new OpenAI({
 const { handleVoice, handleVoiceQuery } = require('./voiceBot');
 const { recordFeedback, retrainModel } = require('./feedback');
 
+// ── Webhook & Integration State ────────────────────────────────────────────
+const webhooks = [];
+const integrations = { quickbooks: false, yardi: false, procore: false };
+
+async function triggerWebhooks(event, payload) {
+  const hooks = webhooks.filter(h => h.event === event);
+  await Promise.all(
+    hooks.map(h =>
+      fetch(h.url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ event, payload })
+      }).catch(err => console.error('Webhook error:', err))
+    )
+  );
+}
+
 // Define the functions that the assistant can “call.”
 const functions = [
   {
@@ -195,6 +212,58 @@ app.use(express.json());
 // ── Health Checks ──────────────────────────────────────────────────────────
 app.get('/', (req, res) => res.send('Kontra API is running'));
 app.get('/api/test', (req, res) => res.send('✅ API is alive'));
+// Serve OpenAPI spec and Swagger UI
+app.get('/openapi.json', (req, res) => {
+  res.sendFile(path.join(__dirname, 'openapi.json'));
+});
+app.get('/api-docs', (req, res) => {
+  res.send(`<!DOCTYPE html>
+  <html>
+    <head>
+      <title>API Docs</title>
+      <link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist/swagger-ui.css" />
+    </head>
+    <body>
+      <div id="swagger-ui"></div>
+      <script src="https://unpkg.com/swagger-ui-dist/swagger-ui-bundle.js"></script>
+      <script>
+        window.onload = () => {
+          window.ui = SwaggerUIBundle({ url: '/openapi.json', dom_id: '#swagger-ui' });
+        };
+      </script>
+    </body>
+  </html>`);
+});
+
+// ── Webhook Registration ─────────────────────────────────────────────────--
+app.get('/api/webhooks', (req, res) => {
+  res.json({ webhooks });
+});
+app.post('/api/webhooks', (req, res) => {
+  const { event, url } = req.body || {};
+  if (!event || !url) return res.status(400).json({ message: 'Missing event or url' });
+  webhooks.push({ event, url });
+  res.status(201).json({ message: 'Webhook registered' });
+});
+app.delete('/api/webhooks', (req, res) => {
+  const { event, url } = req.body || {};
+  const index = webhooks.findIndex(w => w.event === event && w.url === url);
+  if (index !== -1) webhooks.splice(index, 1);
+  res.json({ message: 'Webhook removed' });
+});
+
+// ── App Integrations ─────────────────────────────────────────────────────--
+app.get('/api/integrations', (req, res) => {
+  res.json({ integrations });
+});
+app.post('/api/integrations/:name/connect', (req, res) => {
+  const { name } = req.params;
+  if (!integrations.hasOwnProperty(name)) {
+    return res.status(400).json({ message: 'Unknown integration' });
+  }
+  integrations[name] = true;
+  res.json({ message: `${name} connected` });
+});
 
 // ── AI Photo Validation ────────────────────────────────────────────────────
 app.post('/api/validate-photo', upload.single('image'), (req, res) => {
@@ -582,6 +651,7 @@ app.post('/api/loans', async (req, res) => {
     .single();
 
   if (error) return res.status(500).json({ message: 'Failed to create loan' });
+  await triggerWebhooks('loan.created', data);
   res.status(201).json({ loan: data });
 });
 
@@ -739,7 +809,8 @@ app.post('/api/loans/:loanId/payments', async (req, res) => {
     }])
     .select()
     .single();
-
+  await triggerWebhooks('payment.created', paymentData);
+  
   if (paymentErr) return res.status(500).json({ message: 'Failed to record payment' });
   res.status(201).json({ payment: paymentData });
 });
@@ -1727,6 +1798,43 @@ app.post('/api/suggest-upsells', (req, res) => {
   if (!guest_id) return res.status(400).json({ message: 'Missing guest_id' });
   const suggestions = ['Late checkout', 'Spa discount', 'Room upgrade'];
   res.json({ suggestions });
+});
+
+// ── Booking Endpoints ─────────────────────────────────────────────────────
+app.post('/api/bookings', async (req, res) => {
+  const { guest_id, room, start_date, end_date } = req.body || {};
+  if (!guest_id || !room || !start_date || !end_date) {
+    return res.status(400).json({ message: 'Missing required fields' });
+  }
+  const { data, error } = await supabase
+    .from('bookings')
+    .insert([{ guest_id, room, start_date, end_date }])
+    .select()
+    .single();
+  if (error) return res.status(500).json({ message: 'Failed to create booking' });
+  await triggerWebhooks('booking.created', data);
+  res.status(201).json({ booking: data });
+});
+
+app.get('/api/bookings', async (req, res) => {
+  const { data, error } = await supabase
+    .from('bookings')
+    .select('*')
+    .order('start_date');
+  if (error) return res.status(500).json({ message: 'Failed to fetch bookings' });
+  res.json({ bookings: data });
+});
+
+app.get('/api/bookings/:id', async (req, res) => {
+  const { id } = req.params;
+  const { data, error } = await supabase
+    .from('bookings')
+    .select('*')
+    .eq('id', id)
+    .maybeSingle();
+  if (error) return res.status(500).json({ message: 'Failed to fetch booking' });
+  if (!data) return res.status(404).json({ message: 'Booking not found' });
+  res.json({ booking: data });
 });
 
 // ── Voice Bot Endpoints ────────────────────────────────────────────────────
