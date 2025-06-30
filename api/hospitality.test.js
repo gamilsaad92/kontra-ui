@@ -42,3 +42,17 @@ describe('POST /api/suggest-upsells', () => {
     expect(res.statusCode).toBe(400)
   })
 })
+
+describe('GET /api/service-requests', () => {
+  it('requires guest_id', async () => {
+    const res = await request(app).get('/api/service-requests')
+    expect(res.statusCode).toBe(400)
+  })
+})
+
+describe('POST /api/guest-chat', () => {
+  it('requires question', async () => {
+    const res = await request(app).post('/api/guest-chat').send({})
+    expect(res.statusCode).toBe(400)
+  })
+})
