@@ -1,8 +1,8 @@
 import React, { useContext, useEffect, useState } from 'react';
-import RiskGauge from './RiskGauge';
-import DelinquencyChart from './DelinquencyChart';
-import RecentActivityTable from './RecentActivityTable';
-import GuestOccupancyChart from './GuestOccupancyChart';
+import RiskScoreCard from '../modules/dashboard/RiskScoreCard';
+import DelinquencyCard from '../modules/dashboard/DelinquencyCard';
+import RecentActivityCard from '../modules/dashboard/RecentActivityCard';
+import GuestOccupancyCard from '../modules/dashboard/GuestOccupancyCard';
 import { AuthContext } from '../main';
 import { supabase } from '../lib/supabaseClient';
 
@@ -66,29 +66,10 @@ export default function DashboardHome({ setActive }) {
   }
 
   const widgets = {
-    risk: (
-      <div className="bg-white rounded shadow p-4 flex items-center justify-center h-full">
-        <RiskGauge value={72} />
-      </div>
-         ),
-    delinquency: (
-      <div className="bg-white rounded shadow p-4 h-full">
-        <h3 className="font-bold mb-2">Delinquency Forecast</h3>
-        <DelinquencyChart />
-      </div>
-        ),
-    activity: (
-      <div className="bg-white rounded shadow p-4 h-full">
-        <h3 className="font-bold mb-2">Recent Activity</h3>
-        <RecentActivityTable />
-      </div>
-          ),
-    occupancy: (
-      <div className="bg-white rounded shadow p-4 h-full">
-        <h3 className="font-bold mb-2">Guest Occupancy</h3>
-        <GuestOccupancyChart />
-      </div>
-          )
+      risk: <RiskScoreCard />,
+    delinquency: <DelinquencyCard />,
+    activity: <RecentActivityCard />,
+    occupancy: <GuestOccupancyCard />
   };
 
   if (loading) return <p>Loading dashboard…</p>;
