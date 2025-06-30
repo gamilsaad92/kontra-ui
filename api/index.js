@@ -423,6 +423,7 @@ app.post('/api/review-draw', async (req, res) => {
 
   const updates = { status, reviewed_at: new Date().toISOString() };
   if (status === 'approved') updates.approved_at = new Date().toISOString();
+  if (status === 'funded') updates.funded_at = new Date().toISOString();
   if (status === 'rejected') {
     updates.rejected_at = new Date().toISOString();
     updates.review_comment = comment || '';
@@ -467,6 +468,7 @@ app.get('/api/get-draws', async (req, res) => {
       reviewed_at     as reviewedAt,
       approved_at     as approvedAt,
       rejected_at     as rejectedAt,
+      funded_at       as fundedAt,
       review_comment  as reviewComment,
       risk_score      as riskScore
     `)
@@ -1488,6 +1490,80 @@ app.post('/api/financing-scorecard', (req, res) => {
     payment_history: Array.isArray(payment_history) ? payment_history.map(Number) : []
   });
   res.json(result);
+});
+
+app.post('/api/match-invoice', upload.single('file'), async (req, res) => {
+  const { project_id } = req.body || {};
+  if (!project_id || !req.file) {
+    return res.status(400).json({ message: 'Missing project_id or file' });
+  }
+  let items = [];
+  try {
+    const { data } = await supabase
+      .from('budget_items')
+      .select('id, description, amount')
+      .eq('project_id', project_id);
+    items = data || [];
+  } catch (err) {
+    console.error('Fetch budget items error:', err);
+  }
+  const text = req.file.buffer.toString('utf8');
+  const matches = items.map((it) => ({
+    id: it.id,
+    description: it.description,
+    amount: it.amount,
+    matched: new RegExp(it.description, 'i').test(text)
+  }));
+  res.json({ matches });
+});
+
+app.post('/api/progress-photos/upload', upload.single('file'), async (req, res) => {
+  const { project_id } = req.body || {};
+  if (!project_id || !req.file) {
+    return res.status(400).json({ message: 'Missing project_id or file' });
+  }
+  const filePath = `progress/${project_id}/${Date.now()}_${req.file.originalname}`;
+  const { error: upErr } = await supabase.storage
+    .from('project-photos')
+    .upload(filePath, req.file.buffer, { contentType: req.file.mimetype });
+  if (upErr) {
+    console.error('Upload error:', upErr);
+    return res.status(500).json({ message: 'File upload failed' });
+  }
+  const fileUrl = supabase.storage.from('project-photos').getPublicUrl(filePath).publicURL;
+  const { data, error } = await supabase
+    .from('progress_photos')
+    .insert([{ project_id: parseInt(project_id, 10), file_url: fileUrl, status: 'pending', uploaded_at: new Date().toISOString() }])
+    .select()
+    .single();
+  if (error) return res.status(500).json({ message: 'Failed to record photo' });
+  res.status(201).json({ photo: data });
+});
+
+app.get('/api/progress-photos', async (req, res) => {
+  const { project_id } = req.query;
+  if (!project_id) return res.status(400).json({ message: 'Missing project_id' });
+  const { data, error } = await supabase
+    .from('progress_photos')
+    .select('*')
+    .eq('project_id', project_id)
+    .order('uploaded_at', { ascending: false });
+  if (error) return res.status(500).json({ message: 'Failed to fetch photos' });
+  res.json({ photos: data });
+});
+
+app.post('/api/progress-photos/:id', async (req, res) => {
+  const { id } = req.params;
+  const { status } = req.body || {};
+  if (!id || !status) return res.status(400).json({ message: 'Missing id or status' });
+  const { data, error } = await supabase
+    .from('progress_photos')
+    .update({ status })
+    .eq('id', id)
+    .select()
+    .single();
+  if (error) return res.status(500).json({ message: 'Failed to update photo' });
+  res.json({ photo: data });
 });
 
 // ── Hospitality Features ───────────────────────────────────────────────────
