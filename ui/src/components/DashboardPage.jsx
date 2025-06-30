@@ -1,6 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import GridLayout from 'react-grid-layout';
 import { API_BASE } from '../lib/apiBase';
+import RiskScoreCard from '../modules/dashboard/RiskScoreCard';
+import DelinquencyCard from '../modules/dashboard/DelinquencyCard';
+import RecentActivityCard from '../modules/dashboard/RecentActivityCard';
 
 export default function DashboardPage() {
   const [layout, setLayout] = useState([]);
@@ -29,8 +32,8 @@ export default function DashboardPage() {
       onLayoutChange={onLayoutChange}
     >
       <div key="riskScore"><RiskScoreCard /></div>
-      <div key="delinquencyChart"><DelinquencyChart /></div>
-      <div key="recentActivity"><RecentActivityTable /></div>
+      <div key="delinquencyChart"><DelinquencyCard /></div>
+      <div key="recentActivity"><RecentActivityCard /></div>
       {/* add more cards as you go */}
     </GridLayout>
   );
