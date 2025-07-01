@@ -1508,10 +1508,6 @@ app.post('/api/investor-reports', async (req, res) => {
   res.status(201).json({ report: data });
 });
 
-    res.status(500).json({ assets: [] });
-  }
-});
-
 app.post('/api/financing-scorecard', (req, res) => {
   const { bureau_score, project_kpis = {}, payment_history = [] } = req.body || {};
   if (bureau_score === undefined) {
