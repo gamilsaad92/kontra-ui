@@ -1776,6 +1776,34 @@ app.post('/api/assets/:id/revive', async (req, res) => {
   }
 });
 
+app.get('/api/assets/revived', async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('assets')
+      .select('id, address, status, data_json')
+      .eq('status', 'revived')
+      .order('updated_at', { ascending: false });
+    if (error) throw error;
+    const assets = (data || []).map(a => {
+      let dj = {};
+      try {
+        dj = typeof a.data_json === 'string' ? JSON.parse(a.data_json) : a.data_json || {};
+      } catch {}
+      return {
+        id: a.id,
+        address: a.address,
+        status: a.status,
+        price_suggestion: dj.price_suggestion ?? null,
+        blurb: dj.ai_notes || ''
+      };
+    });
+    res.json({ assets });
+  } catch (err) {
+    console.error('Revived assets fetch error:', err);
+    res.status(500).json({ assets: [] });
+  }
+});
+
 app.post('/api/financing-scorecard', (req, res) => {
   const { bureau_score, project_kpis = {}, payment_history = [] } = req.body || {};
   if (bureau_score === undefined) {
