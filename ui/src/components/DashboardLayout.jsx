@@ -30,7 +30,8 @@ import DrawKanbanBoard from './DrawKanbanBoard';
 import HospitalityDashboard from './HospitalityDashboard';
 import GuestCRM from './GuestCRM';
 import GuestChat from './GuestChat';
-import RevivedAssetsTable from './RevivedAssetsTable';
+import RevivedAssetsTable from '../modules/assets/RevivedAssetsTable';
+import AssetRiskTable from "../modules/assets/AssetRiskTable";
 
 const navItems = [
   { label: 'Dashboard', icon: '🏠' },
@@ -56,7 +57,8 @@ const navItems = [
   },
   { label: 'Payment Portal', icon: '💳' },
   { label: 'Hospitality', icon: '🏨', sub: ['Hospitality Dashboard'] },
-  { label: 'Listings', icon: '🏘️' },
+  { label: 'Troubled Assets', icon: '🚩' },
+  { label: 'Revived Sales', icon: '🏘️' },
   { label: 'Settings', icon: '⚙️' },
   { label: 'Decisions', icon: '📜' },
   { label: 'Assistant', icon: '🤖' }
@@ -167,7 +169,9 @@ export default function DashboardLayout() {
             <AssetsTable refresh={refreshKey} />
           </>
         );
-      case 'Listings':
+      case 'Troubled Assets':
+        return <AssetRiskTable />;
+      case 'Revived Sales':
         return <RevivedAssetsTable />;
       case 'Decisions':
         return <DecisionTimeline />;
