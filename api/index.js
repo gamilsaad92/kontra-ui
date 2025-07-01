@@ -1,4 +1,5 @@
 // index.js
+const Sentry = require('@sentry/node');
 
 const express = require('express');
 const cors = require('cors');
@@ -8,8 +9,11 @@ const OpenAI = require('openai');          // ← v4+ default export
 const fs = require('fs');
 const path = require('path');
 require('dotenv').config();
+["SUPABASE_URL","SUPABASE_SERVICE_ROLE_KEY","OPENAI_API_KEY"].forEach(k=>{if(!process.env[k]){console.error(`Missing ${k}`);process.exit(1);}});
+Sentry.init({ dsn: process.env.SENTRY_DSN });
 
 const app = express();
+app.use(Sentry.Handlers.requestHandler());
 const upload = multer({ storage: multer.memoryStorage() });
 const supabase = createClient(
   process.env.SUPABASE_URL,
@@ -24,6 +28,8 @@ const openai = new OpenAI({
 const { handleVoice, handleVoiceQuery } = require('./voiceBot');
 const { recordFeedback, retrainModel } = require('./feedback');
 const authenticate = require('./middlewares/authenticate');
+const assetsRouter = require("./routers/assets");
+const inspectionsRouter = require("./routers/inspections");
 const dashboard = require('./routers/dashboard');
 
 // ── Webhook & Integration State ────────────────────────────────────────────
@@ -243,6 +249,8 @@ async function get_revived_assets() {
 app.use(cors());
 app.use(express.json());
 app.use('/api/dashboard-layout', authenticate, dashboard);
+app.use("/api/assets", assetsRouter);
+app.use("/api/inspections", inspectionsRouter);
 
 // ── Health Checks ──────────────────────────────────────────────────────────
 app.get('/', (req, res) => res.send('Kontra API is running'));
@@ -1500,354 +1508,6 @@ app.post('/api/investor-reports', async (req, res) => {
   res.status(201).json({ report: data });
 });
 
-// ── Asset Management CRUD ─────────────────────────────────────────────────-
-app.get('/api/assets', async (req, res) => {
-  const { data, error } = await supabase
-    .from('assets')
-    .select('*')
-    .order('created_at', { ascending: false });
-
-  if (error) return res.status(500).json({ message: 'Failed to fetch assets' });
-  res.json({ assets: data });
-});
-
-app.post('/api/assets', async (req, res) => {
-  const { name, value, status, occupancy } = req.body;
-  if (!name) return res.status(400).json({ message: 'Missing name' });
-
-  const { data, error } = await supabase
-    .from('assets')
-    .insert([{ name, value, status, occupancy }])
-    .select()
-    .single();
-
-  if (error) return res.status(500).json({ message: 'Failed to create asset' });
-  res.status(201).json({ asset: data });
-});
-
-// ── Intelligent Underwriting Endpoints ─────────────────────────────────────-
-app.post('/api/parse-document', upload.single('file'), (req, res) => {
-  if (!req.file) return res.status(400).json({ message: 'File required' });
-  const fields = parseDocumentBuffer(req.file.buffer);
-  res.json({ fields });
-});
-
-app.post('/api/auto-fill', upload.single('file'), async (req, res) => {
-  if (!req.file) return res.status(400).json({ message: 'File required' });
-  try {
-    const fields = await autoFillFields(req.file.buffer);
-    res.json({ fields });
-  } catch (err) {
-    console.error('Auto fill error:', err);
-    res.status(500).json({ message: 'Failed to extract fields' });
-  }
-});
-
-app.post('/api/document-summary', upload.single('file'), async (req, res) => {
-  if (!req.file) return res.status(400).json({ message: 'File required' });
-  try {
-    const result = await summarizeDocumentBuffer(req.file.buffer);
-    res.json(result);
-  } catch (err) {
-    console.error('Document summary error:', err);
-    res.status(500).json({ message: 'Failed to summarize document' });
-  }
-});
-
-app.post('/api/credit-score', (req, res) => {
-  const { bureauScore, history } = req.body || {};
-  if (bureauScore === undefined) {
-    return res.status(400).json({ message: 'Missing bureauScore' });
-  }
-  const result = advancedCreditScore(parseInt(bureauScore, 10), history || []);
-  res.json(result);
-});
-
-app.post('/api/detect-fraud', (req, res) => {
-  const result = detectFraud(req.body || {});
-  res.json(result);
-});
-
-// ── Predictive Analytics Endpoints ─────────────────────────────────────────
-const { forecastDelinquency, optimizeLoanOffer } = require('./analytics');
-const {
-  generateReminder,
-  sendEmail,
-  sendSms,
-  notifyInApp
-} = require('./communications');
-const { predictBills } = require('./billPrediction');
-const { scanForCompliance, gatherEvidence } = require('./compliance');
-const {
-  validateInvoiceAgainstBudget,
-  forecastProject,
-  auditLienWaiverText,
-  financeScorecard
-} = require('./construction');
-
-app.post('/api/predict-delinquency', (req, res) => {
-  const { credit_score, months_since_origination, ltv, dti } = req.body || {};
-  if (
-    credit_score === undefined ||
-    months_since_origination === undefined ||
-    ltv === undefined ||
-    dti === undefined
-  ) {
-    return res.status(400).json({ message: 'Missing required fields' });
-  }
-  const result = forecastDelinquency({
-    credit_score: parseFloat(credit_score),
-    months_since_origination: parseFloat(months_since_origination),
-    ltv: parseFloat(ltv),
-    dti: parseFloat(dti)
-  });
-  res.json(result);
-});
-
-app.post('/api/optimize-loan-offer', (req, res) => {
-  const { current_rate, current_term_months, credit_score, yield_target } = req.body || {};
-  if (
-    current_rate === undefined ||
-    current_term_months === undefined ||
-    credit_score === undefined ||
-    yield_target === undefined
-  ) {
-    return res.status(400).json({ message: 'Missing required fields' });
-  }
-  const offer = optimizeLoanOffer({
-    current_rate: parseFloat(current_rate),
-    current_term_months: parseInt(current_term_months, 10),
-    credit_score: parseFloat(credit_score),
-    yield_target: parseFloat(yield_target)
-  });
-  res.json({ offer });
-});
-
-app.post('/api/predict-bills', (req, res) => {
-  const {
-    property_value,
-    tax_history,
-    insurance_history,
-    tax_month,
-    insurance_month
-  } = req.body || {};
-  if (property_value === undefined) {
-    return res.status(400).json({ message: 'Missing property_value' });
-  }
-  const result = predictBills({
-    property_value: parseFloat(property_value),
-    tax_history: Array.isArray(tax_history) ? tax_history.map(Number) : [],
-    insurance_history: Array.isArray(insurance_history)
-      ? insurance_history.map(Number)
-      : [],
-    tax_month: tax_month !== undefined ? parseInt(tax_month, 10) : 7,
-    insurance_month:
-      insurance_month !== undefined ? parseInt(insurance_month, 10) : 1
-  });
-  res.json(result);
-});
-
-// ── Automated Customer Communications ─────────────────────────────────────
-app.post('/api/send-communication', async (req, res) => {
-  const { toEmail, toPhone, user_id, loan_status, risk_score, history, name } = req.body || {};
-  if (!toEmail && !toPhone) {
-    return res.status(400).json({ message: 'Missing recipient contact info' });
-  }
-  try {
-    const { emailText, smsText } = await generateReminder({
-      borrower_name: name || 'Borrower',
-      loan_status: loan_status || 'active',
-      risk_score: risk_score || 0,
-      history: history || ''
-    });
-
-    if (toEmail) await sendEmail(toEmail, 'Loan Update', emailText);
-    if (toPhone) await sendSms(toPhone, smsText);
-    if (user_id) await notifyInApp(user_id, smsText, '/');
-
-    res.json({ emailText, smsText });
-  } catch (err) {
-    console.error('Communication error:', err);
-    res.status(500).json({ message: 'Failed to send communication' });
-  }
-});
-
-// ── Compliance & Audit Automation ─────────────────────────────────────────
-app.post('/api/regulatory-scan', (req, res) => {
-  const { text, rules } = req.body || {};
-  if (!text) return res.status(400).json({ message: 'Missing text' });
-  const result = scanForCompliance(text, rules);
-  res.json(result);
-});
-
-app.get('/api/evidence-dossier/:loanId', async (req, res) => {
-  const { loanId } = req.params;
-  if (!loanId) return res.status(400).json({ message: 'Missing loanId' });
-  try {
-    const dossier = await gatherEvidence(loanId);
-    res.json({ dossier });
-  } catch (err) {
-    console.error('Evidence error:', err);
-    res.status(500).json({ message: 'Failed to gather evidence' });
-  }
-});
-
-// ── Operator Feedback ─────────────────────────────────────────────────────
-app.post('/api/feedback', (req, res) => {
-  const { decision_type, decision, entity_id, comments } = req.body || {};
-  if (!decision_type || !decision || !entity_id) {
-    return res.status(400).json({ message: 'Missing required fields' });
-  }
-  recordFeedback({ decision_type, decision, entity_id, comments: comments || '' });
-  retrainModel();
-  res.json({ message: 'Feedback recorded' });
-});
-
-// ── Construction & Lending Features ───────────────────────────────────────
-app.post('/api/validate-invoice', upload.single('file'), async (req, res) => {
-  const { project_id } = req.body || {};
-  if (!req.file || !project_id) {
-    return res.status(400).json({ message: 'Missing project_id or file' });
-  }
-  let budget = 0;
-  let spent = 0;
-  try {
-    const { data } = await supabase
-      .from('projects')
-      .select('budget, spent_to_date')
-      .eq('id', project_id)
-      .maybeSingle();
-    if (data) {
-      budget = parseFloat(data.budget) || 0;
-      spent = parseFloat(data.spent_to_date) || 0;
-    }
-  } catch (err) {
-    console.error('Fetch project budget error:', err);
-  }
-  const result = validateInvoiceAgainstBudget(req.file.buffer, budget, spent);
-  res.json(result);
-});
-
-app.post('/api/project-forecast', (req, res) => {
-  const { progress_history, budget_history } = req.body || {};
-  if (!Array.isArray(progress_history) || !Array.isArray(budget_history)) {
-    return res.status(400).json({ message: 'Missing progress_history or budget_history' });
-  }
-  const result = forecastProject({ progress_history, budget_history });
-  res.json(result);
-});
-
-app.post('/api/audit-lien-waiver', (req, res) => {
-  const { text } = req.body || {};
-  if (!text) return res.status(400).json({ message: 'Missing text' });
-  const result = auditLienWaiverText(text);
-  res.json(result);
-});
-
-app.post('/api/assets/:assetId/collateral', async (req, res) => {
-  const { assetId } = req.params;
-  const { permit_url, lien_position, qr_code_url } = req.body || {};
-  if (!assetId) return res.status(400).json({ message: 'Missing assetId' });
-  const { data, error } = await supabase
-    .from('asset_collateral')
-    .insert([{ asset_id: parseInt(assetId, 10), permit_url, lien_position, qr_code_url }])
-    .select()
-    .single();
-  if (error) return res.status(500).json({ message: 'Failed to record collateral' });
-  res.status(201).json({ collateral: data });
-});
-
-app.get('/api/assets/:assetId/collateral', async (req, res) => {
-  const { assetId } = req.params;
-  const { data, error } = await supabase
-    .from('asset_collateral')
-    .select('*')
-    .eq('asset_id', assetId);
-  if (error) return res.status(500).json({ message: 'Failed to fetch collateral' });
-  res.json({ collateral: data });
-});
-
-app.post('/api/assets/:id/upload', upload.single('file'), async (req, res) => {
-  const { id } = req.params;
-  if (!req.file) return res.status(400).json({ message: 'File required' });
-  const filePath = `troubled/${id}/${Date.now()}_${req.file.originalname}`;
-  const { error: upErr } = await supabase.storage
-    .from('asset-inspections')
-    .upload(filePath, req.file.buffer, { contentType: req.file.mimetype });
-  if (upErr) {
-    console.error('Upload error:', upErr);
-    return res.status(500).json({ message: 'File upload failed' });
-  }
-  const fileUrl = supabase.storage.from('asset-inspections').getPublicUrl(filePath).publicURL;
-  const ai_notes = await summarizeTroubledAssetBuffer(req.file.buffer);
-  const { data, error } = await supabase
-    .from('troubled_assets')
-    .insert([{ asset_id: parseInt(id, 10), file_url: fileUrl, ai_notes }])
-    .select()
-    .single();
-  if (error) return res.status(500).json({ message: 'Failed to record troubled asset' });
-  res.status(201).json({ troubled_asset: data });
-});
-
-app.post('/api/assets/:id/revive', async (req, res) => {
-  const { id } = req.params;
-  try {
-    const { data: asset, error } = await supabase
-      .from('assets')
-      .select('*')
-      .eq('id', id)
-      .maybeSingle();
-    if (error) throw error;
-    if (!asset) return res.status(404).json({ message: 'Asset not found' });
-    let data_json = {};
-    try {
-      data_json = typeof asset.data_json === 'string' ? JSON.parse(asset.data_json) : asset.data_json || {};
-    } catch {}
-
-    const comps = await fetchRecentComps(asset);
-    const { price_suggestion, blurb } = await suggestPriceAndBlurb(comps, data_json);
-    if (price_suggestion !== null) data_json.price_suggestion = price_suggestion;
-    if (blurb) data_json.ai_notes = blurb;
-
-    const { data: updated, error: upErr } = await supabase
-      .from('assets')
-      .update({ status: 'revived', data_json, updated_at: new Date().toISOString() })
-      .eq('id', id)
-      .select()
-      .single();
-    if (upErr) throw upErr;
-    await triggerWebhooks('asset.revived', updated);
-    res.json({ asset: updated });
-  } catch (err) {
-    console.error('Asset revive error:', err);
-    res.status(500).json({ message: 'Failed to revive asset' });
-  }
-});
-
-app.get('/api/assets/revived', async (req, res) => {
-  try {
-    const { data, error } = await supabase
-      .from('assets')
-      .select('id, address, status, data_json')
-      .eq('status', 'revived')
-      .order('updated_at', { ascending: false });
-    if (error) throw error;
-    const assets = (data || []).map(a => {
-      let dj = {};
-      try {
-        dj = typeof a.data_json === 'string' ? JSON.parse(a.data_json) : a.data_json || {};
-      } catch {}
-      return {
-        id: a.id,
-        address: a.address,
-        status: a.status,
-        price_suggestion: dj.price_suggestion ?? null,
-        blurb: dj.ai_notes || ''
-      };
-    });
-    res.json({ assets });
-  } catch (err) {
-    console.error('Revived assets fetch error:', err);
     res.status(500).json({ assets: [] });
   }
 });
@@ -2076,6 +1736,7 @@ app.get('/api/bookings/:id', async (req, res) => {
 // ── Voice Bot Endpoints ────────────────────────────────────────────────────
 app.post('/api/voice', express.urlencoded({ extended: false }), handleVoice);
 app.post('/api/voice/query', express.urlencoded({ extended: false }), handleVoiceQuery);
+app.use(Sentry.Handlers.errorHandler());
 
 // ── Start Server ──────────────────────────────────────────────────────────
 const PORT = process.env.PORT || 5050;
