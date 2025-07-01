@@ -95,7 +95,7 @@ Endpoint `/api/send-communication` generates reminder messages with OpenAI and d
 - `POST /api/project-forecast` predicts schedule delays or cost overruns.
 - `POST /api/audit-lien-waiver` checks lien waiver text for compliance.
 - `POST /api/assets/:assetId/collateral` and `GET /api/assets/:assetId/collateral` link permits, lien positions and asset QR records.
-- `POST /api/financing-scorecard` returns a Finance Readiness rating.
+- `POST /api/assets/:id/upload` ingests mortgage docs or property photos and stores AI inspection results.- `POST /api/financing-scorecard` returns a Finance Readiness rating.
 
 "Show me all loans originated in Q1 2025 with >5% interest over $200k" and instantly see the results.
 
