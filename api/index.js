@@ -1,7 +1,13 @@
 // index.js
 const express = require('express');
 const Sentry = require('@sentry/node');
-const Tracing = require('@sentry/tracing');
+let Tracing;
+try {
+  Tracing = require('@sentry/tracing');
+} catch (err) {
+  console.warn('Warning: @sentry/tracing not installed, using stub');
+  Tracing = { Integrations: { Express: class Express { constructor() {} } } };
+}
 const cors = require('cors');
 const multer = require('multer');
 const { createClient } = require('@supabase/supabase-js');
