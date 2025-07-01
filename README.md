@@ -75,7 +75,7 @@ Collections, investor reporting and asset management follow the same pattern:
 
 ## Customer Care AI & Voice Bot
 
-The `/api/ask` endpoint now exposes helper functions `get_escrow_balance` and `get_payoff_instructions` so the Virtual Assistant can answer common loan servicing questions. A Twilio voice webhook (`/api/voice`) sends caller speech to Google Dialogflow and replies using text-to-speech, allowing borrowers to call in and ask for balances or payoff details.
+The `/api/ask` endpoint now exposes helper functions `get_escrow_balance` , `get_payoff_instructions`, `get_troubled_assets` and `get_revived_assets` so the Virtual Assistant can answer loan servicing and asset management questions. A Twilio voice webhook (`/api/voice`) sends caller speech to Google Dialogflow and replies using text-to-speech, allowing borrowers to call in and ask for balances or payoff details.
 
 
 ## Automated Customer Communications
