@@ -433,6 +433,47 @@ async function summarizeTroubledAssetBuffer(buffer) {
   return notes;
 }
 
+async function fetchRecentComps(asset) {
+  // Placeholder for CRM or MLS integration
+  const base = asset?.value ? parseFloat(asset.value) : 500000;
+  return [
+    { address: '123 Main St', sale_price: Math.round(base * 0.95) },
+    { address: '456 Oak Ave', sale_price: Math.round(base * 1.05) }
+  ];
+}
+
+async function suggestPriceAndBlurb(comps, features = {}) {
+  let price_suggestion = null;
+  let blurb = '';
+  if (process.env.OPENAI_API_KEY) {
+    try {
+      const resp = await openai.chat.completions.create({
+        model: 'gpt-4o-mini',
+        messages: [
+          {
+            role: 'system',
+            content: 'You are a real estate marketing assistant.'
+          },
+          {
+            role: 'user',
+            content: `Given these sale comps ${JSON.stringify(
+              comps
+            )} and this property’s features ${JSON.stringify(
+              features
+            )}, recommend an asking price and compose a 2-sentence marketing blurb.`
+          }
+        ]
+      });
+      blurb = resp.choices[0].message.content.trim();
+      const m = blurb.match(/\$([0-9,]+)/);
+      if (m) price_suggestion = parseInt(m[1].replace(/,/g, ''), 10);
+    } catch (err) {
+      console.error('OpenAI price suggestion error:', err);
+    }
+  }
+  return { price_suggestion, blurb };
+}
+
 // ── Loan Application Endpoints ─────────────────────────────────────────────
 app.post('/api/loan-applications', upload.single('document'), async (req, res) => {
   const { name, email, ssn, amount } = req.body;
@@ -1698,6 +1739,41 @@ app.post('/api/assets/:id/upload', upload.single('file'), async (req, res) => {
     .single();
   if (error) return res.status(500).json({ message: 'Failed to record troubled asset' });
   res.status(201).json({ troubled_asset: data });
+});
+
+app.post('/api/assets/:id/revive', async (req, res) => {
+  const { id } = req.params;
+  try {
+    const { data: asset, error } = await supabase
+      .from('assets')
+      .select('*')
+      .eq('id', id)
+      .maybeSingle();
+    if (error) throw error;
+    if (!asset) return res.status(404).json({ message: 'Asset not found' });
+    let data_json = {};
+    try {
+      data_json = typeof asset.data_json === 'string' ? JSON.parse(asset.data_json) : asset.data_json || {};
+    } catch {}
+
+    const comps = await fetchRecentComps(asset);
+    const { price_suggestion, blurb } = await suggestPriceAndBlurb(comps, data_json);
+    if (price_suggestion !== null) data_json.price_suggestion = price_suggestion;
+    if (blurb) data_json.ai_notes = blurb;
+
+    const { data: updated, error: upErr } = await supabase
+      .from('assets')
+      .update({ status: 'revived', data_json, updated_at: new Date().toISOString() })
+      .eq('id', id)
+      .select()
+      .single();
+    if (upErr) throw upErr;
+    await triggerWebhooks('asset.revived', updated);
+    res.json({ asset: updated });
+  } catch (err) {
+    console.error('Asset revive error:', err);
+    res.status(500).json({ message: 'Failed to revive asset' });
+  }
 });
 
 app.post('/api/financing-scorecard', (req, res) => {
