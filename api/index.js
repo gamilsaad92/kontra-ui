@@ -409,6 +409,30 @@ async function inspectAssetBuffer(buffer) {
   return report;
 }
 
+async function summarizeTroubledAssetBuffer(buffer) {
+  const text = buffer.toString('utf8');
+  let notes = text.slice(0, 200);
+  if (process.env.OPENAI_API_KEY) {
+    try {
+      const resp = await openai.chat.completions.create({
+        model: 'gpt-4o-mini',
+        messages: [
+          {
+            role: 'system',
+            content:
+              'Summarize the condition issues, outstanding amounts, and next legal deadlines from this document.'
+          },
+          { role: 'user', content: text.slice(0, 12000) }
+        ]
+      });
+      notes = resp.choices[0].message.content.trim();
+    } catch (err) {
+      console.error('OpenAI troubled asset summary error:', err);
+    }
+  }
+  return notes;
+}
+
 // ── Loan Application Endpoints ─────────────────────────────────────────────
 app.post('/api/loan-applications', upload.single('document'), async (req, res) => {
   const { name, email, ssn, amount } = req.body;
@@ -1652,6 +1676,28 @@ app.get('/api/assets/:assetId/collateral', async (req, res) => {
     .eq('asset_id', assetId);
   if (error) return res.status(500).json({ message: 'Failed to fetch collateral' });
   res.json({ collateral: data });
+});
+
+app.post('/api/assets/:id/upload', upload.single('file'), async (req, res) => {
+  const { id } = req.params;
+  if (!req.file) return res.status(400).json({ message: 'File required' });
+  const filePath = `troubled/${id}/${Date.now()}_${req.file.originalname}`;
+  const { error: upErr } = await supabase.storage
+    .from('asset-inspections')
+    .upload(filePath, req.file.buffer, { contentType: req.file.mimetype });
+  if (upErr) {
+    console.error('Upload error:', upErr);
+    return res.status(500).json({ message: 'File upload failed' });
+  }
+  const fileUrl = supabase.storage.from('asset-inspections').getPublicUrl(filePath).publicURL;
+  const ai_notes = await summarizeTroubledAssetBuffer(req.file.buffer);
+  const { data, error } = await supabase
+    .from('troubled_assets')
+    .insert([{ asset_id: parseInt(id, 10), file_url: fileUrl, ai_notes }])
+    .select()
+    .single();
+  if (error) return res.status(500).json({ message: 'Failed to record troubled asset' });
+  res.status(201).json({ troubled_asset: data });
 });
 
 app.post('/api/financing-scorecard', (req, res) => {
