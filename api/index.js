@@ -9,7 +9,12 @@ const OpenAI = require('openai');          // ← v4+ default export
 const fs = require('fs');
 const path = require('path');
 require('dotenv').config();
-["SUPABASE_URL","SUPABASE_SERVICE_ROLE_KEY","OPENAI_API_KEY"].forEach(k=>{if(!process.env[k]){console.error(`Missing ${k}`);process.exit(1);}});
+["SUPABASE_URL","SUPABASE_SERVICE_ROLE_KEY","OPENAI_API_KEY","SENTRY_DSN"].forEach(k => {
+  if (!process.env[k]) {
+    console.error(`Missing ${k}`);
+    process.exit(1);
+  }
+});
 Sentry.init({ dsn: process.env.SENTRY_DSN });
 
 const app = express();
