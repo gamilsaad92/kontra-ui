@@ -1,6 +1,7 @@
 // index.js
 const express = require('express');
 const Sentry = require('@sentry/node');
+const Tracing = require('@sentry/tracing');
 const cors = require('cors');
 const multer = require('multer');
 const { createClient } = require('@supabase/supabase-js');
@@ -14,15 +15,25 @@ require('dotenv').config();
     process.exit(1);
   }
 });
-Sentry.init({
-  dsn: process.env.SENTRY_DSN,
-  environment: process.env.NODE_ENV,
-  tracesSampleRate: 1.0,
-});
 
 const app = express();
-// ✅ New middleware in v9+
-app.use(Sentry.expressMiddleware());
+
+Sentry.init({
+  dsn: process.env.SENTRY_DSN,
+  environment: process.env.NODE_ENV || 'production',
+  tracesSampleRate: 1.0,
+    integrations: [
+    new Sentry.Integrations.Http({ tracing: true }),
+    new Tracing.Integrations.Express({ app }),
+  ],
+});
+// ✅ Use middleware only if available
+if (Sentry.Handlers?.requestHandler) {
+  app.use(Sentry.Handlers.requestHandler());
+  app.use(Sentry.Handlers.tracingHandler());
+} else if (Sentry.expressMiddleware) {
+  app.use(Sentry.expressMiddleware());
+}
 const upload = multer({ storage: multer.memoryStorage() });
 const supabase = createClient(
   process.env.SUPABASE_URL,
@@ -1741,7 +1752,11 @@ app.get('/api/bookings/:id', async (req, res) => {
 // ── Voice Bot Endpoints ────────────────────────────────────────────────────
 app.post('/api/voice', express.urlencoded({ extended: false }), handleVoice);
 app.post('/api/voice/query', express.urlencoded({ extended: false }), handleVoiceQuery);
-app.use(Sentry.errorHandler());
+if (Sentry.Handlers?.errorHandler) {
+  app.use(Sentry.Handlers.errorHandler());
+} else if (Sentry.errorHandler) {
+  app.use(Sentry.errorHandler());
+}
 
 // ── Start Server ──────────────────────────────────────────────────────────
 const PORT = process.env.PORT || 5050;
