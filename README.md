@@ -22,9 +22,10 @@ This repository contains the **frontend** and **backend** for the Kontra demo ap
    ```
 
    Edit `api/.env` with your Supabase, OpenAI, Twilio and Dialogflow credentials.
+   Add your Sentry DSN as `VITE_SENTRY_DSN` in `ui/.env`.
    Ensure the API is running on the same URL specified in `ui/.env`.
 
-3. Start the development servers in separate terminals:
+4. Start the development servers in separate terminals:
    ```bash
    # API (defaults to PORT from `.env` or 5050)
    cd api && npm run dev
@@ -36,7 +37,7 @@ This repository contains the **frontend** and **backend** for the Kontra demo ap
    The signup form sends Supabase magic links back to `window.location.origin`. 
    Ensure the UI is running on the same host/port that served the form (typically `http://localhost:5173`).
 
-4. Run tests:
+5. Run tests:
    ```bash
    cd api && npm test
    ```
