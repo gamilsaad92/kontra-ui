@@ -1,4 +1,5 @@
 const { createClient } = require('@supabase/supabase-js');
+const { sendEmail } = require('../communications');
 require('dotenv').config();
 
 const supabase = createClient(
@@ -40,7 +41,8 @@ module.exports = async function predictAssetRisk() {
     if (predicted_risk > 0.8) {
       console.log('⚠️ High risk asset', asset.id, 'score:', predicted_risk);
     }
-
+    if (predicted_risk > 0.9) { await sendEmail('alerts@kontra.com', 'High risk asset', 'Asset ' + asset.id + ' risk ' + predicted_risk); }
+    
     await supabase
       .from('assets')
       .update({ predicted_risk, updated_at: new Date().toISOString() })
