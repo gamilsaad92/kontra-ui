@@ -30,6 +30,7 @@ import DrawKanbanBoard from './DrawKanbanBoard';
 import HospitalityDashboard from './HospitalityDashboard';
 import GuestCRM from './GuestCRM';
 import GuestChat from './GuestChat';
+import RevivedAssetsTable from './RevivedAssetsTable';
 
 const navItems = [
   { label: 'Dashboard', icon: '🏠' },
@@ -55,6 +56,7 @@ const navItems = [
   },
   { label: 'Payment Portal', icon: '💳' },
   { label: 'Hospitality', icon: '🏨', sub: ['Hospitality Dashboard'] },
+  { label: 'Listings', icon: '🏘️' },
   { label: 'Settings', icon: '⚙️' },
   { label: 'Decisions', icon: '📜' },
   { label: 'Assistant', icon: '🤖' }
@@ -165,7 +167,9 @@ export default function DashboardLayout() {
             <AssetsTable refresh={refreshKey} />
           </>
         );
-        case 'Decisions':
+      case 'Listings':
+        return <RevivedAssetsTable />;
+      case 'Decisions':
         return <DecisionTimeline />;
       case 'Assistant':
         return (
