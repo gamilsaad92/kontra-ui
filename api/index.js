@@ -93,6 +93,20 @@ const functions = [
       },
       required: ['borrower_name']
     }
+   },
+  {
+    name: 'get_troubled_assets',
+    description: 'List assets at highest foreclosure risk',
+    parameters: {
+      type: 'object',
+      properties: { topN: { type: 'number' } },
+      required: []
+    }
+  },
+  {
+    name: 'get_revived_assets',
+    description: 'Fetch recently revived-for-sale assets',
+    parameters: { type: 'object', properties: {}, required: [] }
   }
 ];
 
@@ -205,6 +219,24 @@ async function get_overall_occupancy() {
   if (!vals.length) return { occupancy_rate: 0 };
   const avg = vals.reduce((a, b) => a + b, 0) / vals.length;
   return { occupancy_rate: parseFloat(avg.toFixed(2)) };
+}
+
+async function get_troubled_assets({ topN } = {}) {
+  const { data } = await supabase
+    .from('troubled_assets')
+    .select('*')
+    .order('predicted_risk', { ascending: false })
+    .limit(topN || 5);
+  return data || [];
+}
+
+async function get_revived_assets() {
+  const { data } = await supabase
+    .from('assets')
+    .select('*')
+    .eq('status', 'revived')
+    .order('updated_at', { ascending: false });
+  return data || [];
 }
 
 // ── Middleware ─────────────────────────────────────────────────────────────
@@ -1332,6 +1364,22 @@ app.post('/api/ask', async (req, res) => {
       } else if (msg.function_call.name === 'get_next_insurance_due') {
         const args = JSON.parse(msg.function_call.arguments || '{}');
         result = await get_next_insurance_due(args);
+            } else if (msg.function_call.name === 'get_troubled_assets') {
+        const args =
+          typeof msg.function_call.arguments === 'string'
+            ? JSON.parse(msg.function_call.arguments || '{}')
+            : msg.function_call.arguments || {};
+        result = await supabase
+          .from('troubled_assets')
+          .select('*')
+          .order('predicted_risk', { ascending: false })
+          .limit(args.topN || 5);
+      } else if (msg.function_call.name === 'get_revived_assets') {
+        result = await supabase
+          .from('assets')
+          .select('*')
+          .eq('status', 'revived')
+          .order('updated_at', { ascending: false });
       }
       return res.json({ assistant: msg, functionResult: result });
     }
