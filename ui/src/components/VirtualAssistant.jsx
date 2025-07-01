@@ -3,7 +3,10 @@
 import React, { useState } from 'react'
 import { API_BASE } from '../lib/apiBase'
 
-export default function VirtualAssistant({ endpoint = '/api/ask', placeholder = 'Ask Kontra...' }) {
+export default function VirtualAssistant({
+  endpoint = '/api/ask',
+  placeholder = 'Ask Kontra… e.g. "Which five assets are most likely to foreclose?"'
+}) {
   const [messages, setMessages] = useState([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
