@@ -374,6 +374,41 @@ function detectFraud(applicant) {
   return { suspicious: anomalies.length > 0, anomalies };
 }
 
+async function inspectAssetBuffer(buffer) {
+  const text = buffer.toString('utf8');
+  let report = {
+    outstanding_balance: null,
+    code_violations: [],
+    neglect_signs: []
+  };
+  if (process.env.OPENAI_API_KEY) {
+    try {
+      const resp = await openai.chat.completions.create({
+        model: 'gpt-4o-mini',
+        messages: [
+          {
+            role: 'system',
+            content:
+              'Extract outstanding balance, evidence of code violations and signs of neglect from the document or photo. Return JSON {"outstanding_balance": number, "code_violations": [string], "neglect_signs": [string] }.'
+          },
+          { role: 'user', content: text.slice(0, 12000) }
+        ]
+      });
+      report = JSON.parse(resp.choices[0].message.content || '{}');
+    } catch (err) {
+      console.error('OpenAI asset inspect error:', err);
+    }
+  }
+  if (/\$([0-9,]+)/.test(text)) {
+    const m = text.match(/\$([0-9,]+)/);
+    report.outstanding_balance = parseInt(m[1].replace(/,/g, ''), 10);
+  }
+  if (/violation/i.test(text)) report.code_violations.push('possible violation');
+  if (/boarded/i.test(text)) report.neglect_signs.push('boarded windows');
+  if (/overgrown/i.test(text)) report.neglect_signs.push('overgrown yard');
+  return report;
+}
+
 // ── Loan Application Endpoints ─────────────────────────────────────────────
 app.post('/api/loan-applications', upload.single('document'), async (req, res) => {
   const { name, email, ssn, amount } = req.body;
