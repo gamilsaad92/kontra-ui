@@ -11,7 +11,6 @@
   "dependencies": {
     "@sentry/node": "^9.24.0",
     "@sentry/react": "^9.24.0",
-    "@sentry/tracing": "^7.59.0",
     "@supabase/supabase-js": "^2.49.8",
     "cors": "^2.8.5",
     "dotenv": "^16.3.1",
