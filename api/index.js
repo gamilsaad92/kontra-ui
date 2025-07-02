@@ -1,7 +1,6 @@
 // index.js
 const express = require('express');
 const Sentry = require('@sentry/node');
-const Tracing = require('@sentry/tracing');
 const cors = require('cors');
 const multer = require('multer');
 const { createClient } = require('@supabase/supabase-js');
@@ -22,10 +21,6 @@ Sentry.init({
   dsn: process.env.SENTRY_DSN,
   environment: process.env.NODE_ENV,
   tracesSampleRate: 1.0,
-    integrations: [
-    new Tracing.Http({ tracing: true }),
-    new Tracing.Express({ app }),
-  ],
 });
 // ✅ Use middleware only if available
 if (Sentry.Handlers?.requestHandler) {
