@@ -1,13 +1,7 @@
 // index.js
 const express = require('express');
 const Sentry = require('@sentry/node');
-let Tracing;
-try {
-  Tracing = require('@sentry/tracing');
-} catch (err) {
-  console.warn('Warning: @sentry/tracing not installed, using stub');
-  Tracing = { Integrations: { Express: class Express { constructor() {} } } };
-}
+const Tracing = require('@sentry/tracing');
 const cors = require('cors');
 const multer = require('multer');
 const { createClient } = require('@supabase/supabase-js');
@@ -26,11 +20,11 @@ const app = express();
 
 Sentry.init({
   dsn: process.env.SENTRY_DSN,
-  environment: process.env.NODE_ENV || 'production',
+  environment: process.env.NODE_ENV,
   tracesSampleRate: 1.0,
     integrations: [
-    new Tracing.Integrations.Http({ tracing: true }),
-    new Tracing.Integrations.Express({ app }),
+    new Tracing.Http({ tracing: true }),
+    new Tracing.Express({ app }),
   ],
 });
 // ✅ Use middleware only if available
@@ -279,7 +273,7 @@ app.use("/api/assets", assetsRouter);
 app.use("/api/inspections", inspectionsRouter);
 
 // ── Health Checks ──────────────────────────────────────────────────────────
-app.get('/', (req, res) => res.send('Kontra API is running'));
+app.get('/', (req, res) => res.send('Sentry test running!'));
 app.get('/api/test', (req, res) => res.send('✅ API is alive'));
 // Serve OpenAPI spec and Swagger UI
 app.get('/openapi.json', (req, res) => {
@@ -1765,10 +1759,10 @@ if (Sentry.Handlers?.errorHandler) {
 }
 
 // ── Start Server ──────────────────────────────────────────────────────────
-const PORT = process.env.PORT || 5050;
+const PORT = 10000;
 if (require.main === module) {
   app.listen(PORT, () => {
-    console.log(`Kontra API listening on port ${PORT}`);
+     console.log('Kontra API listening on port 10000');
   });
 }
 
