@@ -128,3 +128,11 @@ The API also includes basic hospitality modules:
 - `POST /api/webhooks` registers a URL to receive `loan.created`, `payment.created` and `booking.created` events.
 - `GET /api/integrations` lists connected apps. Connect QuickBooks, Yardi or Procore via `POST /api/integrations/{name}/connect`.
 - Hospitality modules now include `/api/bookings` endpoints for room reservations.
+
+## Accessibility & Performance
+
+The UI now registers as a Progressive Web App and caches assets for offline use.
+Navigation and search inputs include screen reader labels and focus outlines for
+better keyboard access. Heavy chart pages are code-split using `React.lazy`
+to improve initial load time. A "Suggest a Feature" form lets users send tagged
+feedback directly from the sidebar.
