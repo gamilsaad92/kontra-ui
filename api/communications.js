@@ -52,8 +52,16 @@ async function sendSms(to, body) {
   await client.messages.create({ from: process.env.TWILIO_FROM, to, body });
 }
 
+async function sendPush(token, title, body) {
+  if (!process.env.FCM_SERVER_KEY) {
+    console.log('Push to', token, title, body);
+    return;
+  }
+  // Placeholder: integrate FCM or Expo push in production
+}
+
 async function notifyInApp(user_id, message, link) {
   await supabase.from('notifications').insert([{ user_id, message, link }]);
 }
 
-module.exports = { generateReminder, sendEmail, sendSms, notifyInApp };
+module.exports = { generateReminder, sendEmail, sendSms, sendPush, notifyInApp };
