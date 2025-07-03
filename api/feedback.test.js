@@ -6,4 +6,11 @@ describe('POST /api/feedback', () => {
     const res = await request(app).post('/api/feedback').send({});
     expect(res.statusCode).toBe(400);
   });
+  
+  it('records feedback', async () => {
+    const res = await request(app)
+      .post('/api/feedback')
+      .send({ message: 'Great feature', type: 'feature' });
+    expect(res.statusCode).toBe(201);
+  });
 });
