@@ -55,6 +55,28 @@
         }
       }
     },
+        "/api/loans/{loanId}/balance": {
+      "get": {
+        "summary": "Get loan balance",
+        "parameters": [{"in":"path","name":"loanId","required":true,"schema":{"type":"integer"}}],
+        "responses": {"200":{"description":"OK"}}
+      }
+    },
+    "/api/loans/{loanId}/payoff": {
+      "post": {
+        "summary": "Calculate payoff amount",
+        "parameters": [{"in":"path","name":"loanId","required":true,"schema":{"type":"integer"}}],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {"type":"object","properties":{"payoff_date":{"type":"string","format":"date"}},"required":["payoff_date"]}
+            }
+          }
+        },
+        "responses": {"200":{"description":"OK"}}
+      }
+    },
     "/api/bookings": {
       "get": {"summary": "List bookings","responses":{"200":{"description":"OK"}}},
       "post": {
@@ -83,6 +105,25 @@
       "get": {
         "summary": "Get a booking",
         "parameters": [{"in":"path","name":"id","required":true,"schema":{"type":"integer"}}],
+        "responses": {"200":{"description":"OK"}}
+              },
+      "patch": {
+        "summary": "Update a booking",
+        "parameters": [{"in":"path","name":"id","required":true,"schema":{"type":"integer"}}],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "start_date": {"type":"string","format":"date"},
+                  "end_date": {"type":"string","format":"date"}
+                }
+              }
+            }
+          }
+        },
         "responses": {"200":{"description":"OK"}}
       }
     },
