@@ -8,6 +8,7 @@ export default function SignUpForm({ onSwitch }) {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
+  const [method, setMethod] = useState('password') // 'password' or 'magic'
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
@@ -17,38 +18,54 @@ export default function SignUpForm({ onSwitch }) {
     setError('')
     setSuccess('')
 
-    // 1) Validate inputs
-    if (!email || !password) {
-      setError('Email and password are required.')
-      return
-    }
-    if (password !== confirmPassword) {
-      setError('Passwords do not match.')
+    if (!email) {
+      setError('Email is required.')
       return
     }
 
-    setLoading(true)
-    // 2) Call Supabase signUp; this sends the confirmation email
-    const { data, error: signUpError } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        // After confirming, user will be redirected back here
-        emailRedirectTo: window.location.origin
+    if (method === 'password') {
+      if (!password) {
+        setError('Password is required.')
+        return
       }
-    })
-    setLoading(false)
+      if (password !== confirmPassword) {
+        setError('Passwords do not match.')
+        return
+      }
 
-    if (signUpError) {
-      setError(signUpError.message)
+      setLoading(true)
+      const { error: signUpError } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          emailRedirectTo: window.location.origin
+        }
+      })
+      setLoading(false)
+      if (signUpError) {
+        setError(signUpError.message)
+      } else {
+        setSuccess(
+          '✅ Signup successful! Check your email for the confirmation link.'
+        )
+        setEmail('')
+        setPassword('')
+        setConfirmPassword('')
+      }
     } else {
-      setSuccess(
-        '✅ Signup successful! Check your email for the confirmation link.'
-      )
-      // Clear form (optional)
-      setEmail('')
-      setPassword('')
-      setConfirmPassword('')
+      // magic link sign-up/login
+      setLoading(true)
+      const { error: magicError } = await supabase.auth.signInWithOtp({
+        email,
+        options: { emailRedirectTo: window.location.origin }
+      })
+      setLoading(false)
+      if (magicError) {
+        setError(magicError.message)
+      } else {
+        setSuccess('✅ Magic link sent! Check your email to continue.')
+        setEmail('')
+      }
     }
   }
 
@@ -68,25 +85,50 @@ export default function SignUpForm({ onSwitch }) {
         className="w-full border p-2 rounded mb-3"
       />
 
-      <input
-        type="password"
-        placeholder="Password"
-        value={password}
-        onChange={(e) => setPassword(e.target.value)}
-        required
-        minLength={6}
-        className="w-full border p-2 rounded mb-3"
-      />
+      <div className="flex space-x-4 mb-3 text-sm">
+        <label className="flex items-center space-x-1">
+          <input
+            type="radio"
+            value="password"
+            checked={method === 'password'}
+            onChange={() => setMethod('password')}
+          />
+          <span>Create Password</span>
+        </label>
+        <label className="flex items-center space-x-1">
+          <input
+            type="radio"
+            value="magic"
+            checked={method === 'magic'}
+            onChange={() => setMethod('magic')}
+          />
+          <span>Email Magic Link</span>
+        </label>
+      </div>
 
-      <input
-        type="password"
-        placeholder="Confirm Password"
-        value={confirmPassword}
-        onChange={(e) => setConfirmPassword(e.target.value)}
-        required
-        minLength={6}
-        className="w-full border p-2 rounded mb-3"
-      />
+      {method === 'password' && (
+        <>
+          <input
+            type="password"
+            placeholder="Password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            required
+            minLength={6}
+            className="w-full border p-2 rounded mb-3"
+          />
+
+          <input
+            type="password"
+            placeholder="Confirm Password"
+            value={confirmPassword}
+            onChange={(e) => setConfirmPassword(e.target.value)}
+            required
+            minLength={6}
+            className="w-full border p-2 rounded mb-3"
+          />
+        </>
+      )}
 
       <button
         type="submit"
