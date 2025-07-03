@@ -1,10 +1,12 @@
 // src/components/LoanList.jsx
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useContext } from 'react';
 import LoanDetailPanel from './LoanDetailPanel';
 import { API_BASE } from '../lib/apiBase';
+import { AuthContext } from '../main';
 
 export default function LoanList({ onSelect }) {
+  const { session } = useContext(AuthContext);
   const [loans, setLoans] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filters, setFilters] = useState({
@@ -18,6 +20,16 @@ export default function LoanList({ onSelect }) {
   });
   const [selected, setSelected] = useState([]);
   const [detailId, setDetailId] = useState(null);
+  const [saved, setSaved] = useState([]);
+
+  useEffect(() => {
+    if (!session) return;
+    fetch(`${API_BASE}/api/saved-loan-queries`, {
+      headers: { 'x-user-id': session.user.id }
+    })
+      .then(r => r.json())
+      .then(d => setSaved(d.queries || []));
+  }, [session]);
   
   useEffect(() => {
     (async () => {
@@ -70,6 +82,25 @@ export default function LoanList({ onSelect }) {
       body: JSON.stringify({ ids: selected, status })
     });
     setFilters({ ...filters }); // trigger refresh
+  };
+
+    const saveCurrent = async () => {
+    if (!session) return;
+    const name = prompt('Save filter as:');
+    if (!name) return;
+    await fetch(`${API_BASE}/api/saved-loan-queries`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-user-id': session.user.id
+      },
+      body: JSON.stringify({ name, query: filters })
+    });
+    const res = await fetch(`${API_BASE}/api/saved-loan-queries`, {
+      headers: { 'x-user-id': session.user.id }
+    });
+    const d = await res.json();
+    setSaved(d.queries || []);
   };
 
   return (
@@ -126,6 +157,26 @@ export default function LoanList({ onSelect }) {
             value={filters.maxRisk}
             onChange={e => setFilters({ ...filters, maxRisk: e.target.value })}
           />
+        </div>
+        <div className="flex space-x-2 items-center">
+          <select
+            className="border p-1"
+            onChange={e => {
+              const q = saved.find(s => s.id === parseInt(e.target.value, 10));
+              if (q) setFilters(q.query_json);
+            }}
+          >
+            <option value="">Load Saved</option>
+            {saved.map(s => (
+              <option key={s.id} value={s.id}>{s.name}</option>
+            ))}
+          </select>
+          <button
+            onClick={saveCurrent}
+            className="px-2 py-1 bg-blue-600 text-white rounded"
+          >
+            Save Filter
+          </button>
         </div>
         {selected.length > 0 && (
           <div className="flex space-x-2 items-center">
