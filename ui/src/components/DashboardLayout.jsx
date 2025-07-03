@@ -1,8 +1,9 @@
-import React, { useState, useContext, useEffect } from 'react';
+import React, { useState, useContext, useEffect, lazy, Suspense } from 'react';
 import { AuthContext } from '../main';
 import LoginForm from './LoginForm';
 import SignUpForm from './SignUpForm';
 import VirtualAssistant from './VirtualAssistant';
+import SuggestFeatureWidget from './SuggestFeatureWidget';
 import DashboardHome from './DashboardHome';
 import LoanApplicationForm from './LoanApplicationForm';
 import LoanApplicationList from './LoanApplicationList';
@@ -27,11 +28,11 @@ import AssetForm from './AssetForm';
 import AssetsTable from './AssetsTable';
 import PaymentPortalEmbed from './PaymentPortalEmbed';
 import DrawKanbanBoard from './DrawKanbanBoard';
-import HospitalityDashboard from './HospitalityDashboard';
-import GuestCRM from './GuestCRM';
-import GuestChat from './GuestChat';
-import RevivedAssetsTable from '../modules/assets/RevivedAssetsTable';
-import AssetRiskTable from "../modules/assets/AssetRiskTable";
+const HospitalityDashboard = lazy(() => import('./HospitalityDashboard'));
+const GuestCRM = lazy(() => import('./GuestCRM'));
+const GuestChat = lazy(() => import('./GuestChat'));
+const RevivedAssetsTable = lazy(() => import('../modules/assets/RevivedAssetsTable'));
+const AssetRiskTable = lazy(() => import('../modules/assets/AssetRiskTable'));
 import GuidedSetup from './GuidedSetup';
 import QuickStartTour from './QuickStartTour';
 import SelfServicePayment from './SelfServicePayment';
@@ -205,12 +206,24 @@ export default function DashboardLayout() {
         return <GuestReservations />;
       case 'Bulk Actions':
         return <BulkActionTable rows={[]} columns={[]} />;
-      case 'Hospitality Dashboard':
-        return <HospitalityDashboard setActive={setActive} />;
+            case 'Hospitality Dashboard':
+        return (
+          <Suspense fallback={<p>Loading...</p>}>
+            <HospitalityDashboard setActive={setActive} />
+          </Suspense>
+        );    
       case 'Guest CRM':
-        return <GuestCRM />;
+       return (
+          <Suspense fallback={<p>Loading...</p>}>
+            <GuestCRM />
+          </Suspense>
+        );
       case 'Guest Chat':
-        return <GuestChat />;
+            return (
+          <Suspense fallback={<p>Loading...</p>}>
+            <GuestChat />
+          </Suspense>
+        );
       case 'Assets':
         return (
           <>
@@ -219,9 +232,17 @@ export default function DashboardLayout() {
           </>
         );
       case 'Troubled Assets':
-        return <AssetRiskTable />;
+         return (
+          <Suspense fallback={<p>Loading...</p>}>
+            <AssetRiskTable />
+          </Suspense>
+        );
       case 'Revived Sales':
-        return <RevivedAssetsTable />;
+             return (
+          <Suspense fallback={<p>Loading...</p>}>
+            <RevivedAssetsTable />
+          </Suspense>
+        );
       case 'Decisions':
         return <DecisionTimeline />;
       case 'Assistant':
@@ -249,7 +270,8 @@ export default function DashboardLayout() {
       >
         <button
           onClick={() => setSidebarOpen(o => !o)}
-          className="p-4 text-2xl font-bold border-b border-gray-700 text-left"
+          aria-label="Toggle navigation"
+          className="p-4 text-2xl font-bold border-b border-gray-700 text-left focus:outline-none focus:ring-2 focus:ring-offset-2"
         >
           {sidebarOpen ? 'Kontra' : 'K'}
         </button>
@@ -297,6 +319,7 @@ export default function DashboardLayout() {
             <input
               className="border rounded p-2 w-1/3"
               placeholder="Search…"
+              aria-label="Search"
               type="text"
             />
             <div className="flex items-center space-x-4">
@@ -306,10 +329,11 @@ export default function DashboardLayout() {
               </div>
             </div>
           </header>
-          <main className="flex-1 overflow-auto p-4 space-y-4">{renderContent()}</main>
+          <main id="main" className="flex-1 overflow-auto p-4 space-y-4">{renderContent()}</main>
         </div>
-        <aside className="w-80 border-l bg-white flex flex-col">
+        <aside className="w-80 border-l bg-white flex flex-col p-2 space-y-2">
           <VirtualAssistant />
+          <SuggestFeatureWidget />    
         </aside>
       </div>
     </div>
