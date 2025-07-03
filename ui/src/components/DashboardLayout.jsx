@@ -34,6 +34,9 @@ import RevivedAssetsTable from '../modules/assets/RevivedAssetsTable';
 import AssetRiskTable from "../modules/assets/AssetRiskTable";
 import GuidedSetup from './GuidedSetup';
 import QuickStartTour from './QuickStartTour';
+import SelfServicePayment from './SelfServicePayment';
+import GuestReservations from './GuestReservations';
+import BulkActionTable from './BulkActionTable';
 
 const navItems = [
   { label: 'Dashboard', icon: '🏠' },
@@ -58,6 +61,9 @@ const navItems = [
     sub: ['Projects', 'Draw Requests']
   },
   { label: 'Payment Portal', icon: '💳' },
+  { label: 'Self Service Payment', icon: '💵' },
+  { label: 'Guest Reservations', icon: '📅' },
+  { label: 'Bulk Actions', icon: '📂' },
   { label: 'Hospitality', icon: '🏨', sub: ['Hospitality Dashboard'] },
   { label: 'Troubled Assets', icon: '🚩' },
   { label: 'Revived Sales', icon: '🏘️' },
@@ -189,9 +195,15 @@ export default function DashboardLayout() {
             />
           </>
         );
-       case 'Payment Portal':
+         case 'Payment Portal':
         return <PaymentPortalEmbed />;
-              case 'Hospitality Dashboard':
+            case 'Self Service Payment':
+        return <SelfServicePayment />;
+      case 'Guest Reservations':
+        return <GuestReservations />;
+      case 'Bulk Actions':
+        return <BulkActionTable rows={[]} columns={[]} />;
+      case 'Hospitality Dashboard':
         return <HospitalityDashboard setActive={setActive} />;
       case 'Guest CRM':
         return <GuestCRM />;
