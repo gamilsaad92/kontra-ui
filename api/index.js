@@ -1923,6 +1923,14 @@ app.post('/api/saved-loan-queries', async (req, res) => {
   res.status(201).json({ query: data });
 });
 
+app.post('/api/feedback', (req, res) => {
+  const { type, message } = req.body || {};
+  if (!message) return res.status(400).json({ message: 'Missing message' });
+  recordFeedback({ type: type || 'feature', message });
+  retrainModel();
+  res.status(201).json({ message: 'Feedback recorded' });
+});
+
 // ── Voice Bot Endpoints ────────────────────────────────────────────────────
 app.post('/api/voice', express.urlencoded({ extended: false }), handleVoice);
 app.post('/api/voice/query', express.urlencoded({ extended: false }), handleVoiceQuery);
