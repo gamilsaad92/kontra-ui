@@ -1819,6 +1819,110 @@ app.get('/api/bookings/:id', async (req, res) => {
   res.json({ booking: data });
 });
 
+// ── Personalization & Insights ─────────────────────────────────────────────
+app.get('/api/next-due', async (_req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('amortization_schedules')
+      .select('loan_id, due_date')
+      .gt('due_date', new Date().toISOString().slice(0, 10))
+      .order('due_date')
+      .limit(1)
+      .maybeSingle();
+    if (error) throw error;
+    res.json({ next_due: data || null });
+  } catch (err) {
+    console.error('Next due error:', err);
+    res.status(500).json({ next_due: null });
+  }
+});
+
+app.get('/api/recommendations', async (_req, res) => {
+  try {
+    const { data: loans } = await supabase
+      .from('assets')
+      .select('id, name, predicted_risk')
+      .gt('predicted_risk', 0.5)
+      .order('predicted_risk', { ascending: false })
+      .limit(3);
+    const { data: guests } = await supabase
+      .from('guests')
+      .select('id, name')
+      .order('created_at', { ascending: false })
+      .limit(3);
+    res.json({ at_risk_loans: loans || [], upsell_guests: guests || [] });
+  } catch (err) {
+    console.error('Recommendation error:', err);
+    res.status(500).json({ at_risk_loans: [], upsell_guests: [] });
+  }
+});
+
+app.get('/api/faqs', async (req, res) => {
+  const { user_id } = req.query || {};
+  const faqs = [
+    { q: 'How do I make a payment?', a: 'You can pay online or mail a check.' },
+    {
+      q: 'What is my payoff amount?',
+      a: 'Contact support for an official payoff quote.'
+    }
+  ];
+  if (user_id) {
+    try {
+      const { data: loan } = await supabase
+        .from('loans')
+        .select('id')
+        .eq('borrower_user_id', user_id)
+        .order('start_date')
+        .limit(1)
+        .maybeSingle();
+      if (loan) {
+        const { data: sched } = await supabase
+          .from('amortization_schedules')
+          .select('due_date')
+          .eq('loan_id', loan.id)
+          .gt('due_date', new Date().toISOString().slice(0, 10))
+          .order('due_date')
+          .limit(1)
+          .maybeSingle();
+        if (sched)
+          faqs.push({
+            q: 'When is my next payment due?',
+            a: `Your next payment is due on ${sched.due_date}.`
+          });
+      }
+    } catch (err) {
+      console.error('FAQ fetch error:', err);
+    }
+  }
+  res.json({ faqs });
+});
+
+app.get('/api/saved-loan-queries', async (req, res) => {
+  const userId = req.headers['x-user-id'];
+  if (!userId) return res.json({ queries: [] });
+  const { data, error } = await supabase
+    .from('saved_loan_queries')
+    .select('*')
+    .eq('user_id', userId)
+    .order('created_at');
+  if (error) return res.status(500).json({ queries: [] });
+  res.json({ queries: data });
+});
+
+app.post('/api/saved-loan-queries', async (req, res) => {
+  const userId = req.headers['x-user-id'];
+  const { name, query } = req.body || {};
+  if (!userId || !name || !query)
+    return res.status(400).json({ message: 'Missing fields' });
+  const { data, error } = await supabase
+    .from('saved_loan_queries')
+    .insert([{ user_id: userId, name, query_json: query }])
+    .select()
+    .single();
+  if (error) return res.status(500).json({ message: 'Failed to save' });
+  res.status(201).json({ query: data });
+});
+
 // ── Voice Bot Endpoints ────────────────────────────────────────────────────
 app.post('/api/voice', express.urlencoded({ extended: false }), handleVoice);
 app.post('/api/voice/query', express.urlencoded({ extended: false }), handleVoiceQuery);
