@@ -985,6 +985,61 @@ app.get('/api/loans/:loanId/payments', async (req, res) => {
   res.json({ payments: data });
 });
 
+// Get current loan balance for payoff calculations
+app.get('/api/loans/:loanId/balance', async (req, res) => {
+  const { loanId } = req.params;
+  const { data: last, error } = await supabase
+    .from('payments')
+    .select('remaining_balance')
+    .eq('loan_id', loanId)
+    .order('date', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) return res.status(500).json({ message: 'Failed to fetch balance' });
+
+  if (last) return res.json({ balance: last.remaining_balance });
+
+  const { data: loan, error: loanErr } = await supabase
+    .from('loans')
+    .select('amount')
+    .eq('id', loanId)
+    .single();
+
+  if (loanErr) return res.status(500).json({ message: 'Failed to fetch loan' });
+  if (!loan) return res.status(404).json({ message: 'Loan not found' });
+  res.json({ balance: loan.amount });
+});
+
+// Calculate payoff amount for a given date
+app.post('/api/loans/:loanId/payoff', async (req, res) => {
+  const { payoff_date } = req.body || {};
+  if (!payoff_date) return res.status(400).json({ message: 'Missing payoff_date' });
+
+  const { data: loan, error } = await supabase
+    .from('loans')
+    .select('interest_rate')
+    .eq('id', req.params.loanId)
+    .single();
+  if (error) return res.status(500).json({ message: 'Failed to fetch loan' });
+
+  const balRes = await supabase
+    .from('payments')
+    .select('remaining_balance')
+    .eq('loan_id', req.params.loanId)
+    .order('date', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (balRes.error) return res.status(500).json({ message: 'Failed to fetch balance' });
+
+  const balance = balRes.data ? parseFloat(balRes.data.remaining_balance) : 0;
+  const rate = parseFloat(loan.interest_rate) / 100 / 365;
+  const days = Math.max(0, (new Date(payoff_date) - new Date()) / (1000 * 60 * 60 * 24));
+  const payoff = balance + balance * rate * days;
+  res.json({ payoff });
+});
+
 // ── Create Payment Portal Link ────────────────────────────────────────────
 app.post('/api/loans/:loanId/payment-portal', (req, res) => {
   const { amount } = req.body || {};
@@ -1724,12 +1779,30 @@ app.post('/api/bookings', async (req, res) => {
 });
 
 app.get('/api/bookings', async (req, res) => {
-  const { data, error } = await supabase
-    .from('bookings')
-    .select('*')
-    .order('start_date');
+   const { guest_id } = req.query || {};
+  let query = supabase.from('bookings').select('*');
+  if (guest_id) query = query.eq('guest_id', guest_id);
+  const { data, error } = await query.order('start_date');
   if (error) return res.status(500).json({ message: 'Failed to fetch bookings' });
   res.json({ bookings: data });
+});
+
+app.patch('/api/bookings/:id', async (req, res) => {
+  const { start_date, end_date } = req.body || {};
+  if (!start_date && !end_date) {
+    return res.status(400).json({ message: 'Missing fields' });
+  }
+  const updates = {};
+  if (start_date) updates.start_date = start_date;
+  if (end_date) updates.end_date = end_date;
+  const { data, error } = await supabase
+    .from('bookings')
+    .update(updates)
+    .eq('id', req.params.id)
+    .select()
+    .single();
+  if (error) return res.status(500).json({ message: 'Failed to update booking' });
+  res.json({ booking: data });
 });
 
 app.get('/api/bookings/:id', async (req, res) => {
