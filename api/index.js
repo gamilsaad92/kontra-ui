@@ -7,6 +7,8 @@ const { createClient } = require('@supabase/supabase-js');
 const OpenAI = require('openai');          // ← v4+ default export
 const fs = require('fs');
 const path = require('path');
+const http = require('http');
+const attachChatServer = require('./chatServer');
 require('dotenv').config();
 ["SUPABASE_URL","SUPABASE_SERVICE_ROLE_KEY","OPENAI_API_KEY","SENTRY_DSN"].forEach(k => {
   if (!process.env[k]) {
@@ -1829,7 +1831,9 @@ if (Sentry.Handlers?.errorHandler) {
 // ── Start Server ──────────────────────────────────────────────────────────
 const PORT = 10000;
 if (require.main === module) {
-  app.listen(PORT, () => {
+    const server = http.createServer(app);
+  attachChatServer(server);
+  server.listen(PORT, () => {
      console.log('Kontra API listening on port 10000');
   });
 }
