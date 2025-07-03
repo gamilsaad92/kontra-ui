@@ -37,6 +37,7 @@ import QuickStartTour from './QuickStartTour';
 import SelfServicePayment from './SelfServicePayment';
 import GuestReservations from './GuestReservations';
 import BulkActionTable from './BulkActionTable';
+import LiveChat from './LiveChat';
 
 const navItems = [
   { label: 'Dashboard', icon: '🏠' },
@@ -69,7 +70,8 @@ const navItems = [
   { label: 'Revived Sales', icon: '🏘️' },
   { label: 'Settings', icon: '⚙️' },
   { label: 'Decisions', icon: '📜' },
-  { label: 'Assistant', icon: '🤖' }
+  { label: 'Assistant', icon: '🤖' },
+  { label: 'Live Chat', icon: '💬' }
 ];
 
 export default function DashboardLayout() {
@@ -226,6 +228,12 @@ export default function DashboardLayout() {
         return (
           <div className="h-full flex flex-col border rounded-lg bg-white">
             <VirtualAssistant />
+          </div>
+        );
+      case 'Live Chat':
+        return (
+          <div className="h-full flex flex-col border rounded-lg bg-white">
+            <LiveChat />
           </div>
         );
       default:
