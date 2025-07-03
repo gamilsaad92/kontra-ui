@@ -1,4 +1,4 @@
-import React, { useState, useContext } from 'react';
+import React, { useState, useContext, useEffect } from 'react';
 import { AuthContext } from '../main';
 import LoginForm from './LoginForm';
 import SignUpForm from './SignUpForm';
@@ -32,6 +32,8 @@ import GuestCRM from './GuestCRM';
 import GuestChat from './GuestChat';
 import RevivedAssetsTable from '../modules/assets/RevivedAssetsTable';
 import AssetRiskTable from "../modules/assets/AssetRiskTable";
+import GuidedSetup from './GuidedSetup';
+import QuickStartTour from './QuickStartTour';
 
 const navItems = [
   { label: 'Dashboard', icon: '🏠' },
@@ -73,7 +75,20 @@ export default function DashboardLayout() {
   const [selectedProjectId, setSelectedProjectId] = useState(null);
   const [refreshKey, setRefreshKey] = useState(0);
   const [projectRefreshKey, setProjectRefreshKey] = useState(0);
- 
+  const [showSetup, setShowSetup] = useState(false);
+  const [showTour, setShowTour] = useState(false);
+  const [showLanding, setShowLanding] = useState(true);
+
+  useEffect(() => {
+    if (session) {
+      const visited = localStorage.getItem('visited');
+      if (visited) {
+        setShowLanding(false);
+      }
+      setShowSetup(!visited);
+    }
+  }, [session]); 
+  
   if (!session) {
     return signUp ? (
       <SignUpForm onSwitch={() => setSignUp(false)} />
@@ -82,7 +97,27 @@ export default function DashboardLayout() {
     );
   }
 
-   const renderContent = () => {
+    if (showLanding) {
+    const role = session.user?.user_metadata?.role;
+    const title = role === 'hospitality' ? "Today's Arrivals" : 'My Pending Reviews';
+    return (
+      <div className="p-8 space-y-4">
+        <h2 className="text-2xl font-bold">{title}</h2>
+        <button
+          onClick={() => {
+            localStorage.setItem('visited', 'true');
+            setShowLanding(false);
+            setShowSetup(true);
+          }}
+          className="bg-blue-600 text-white px-4 py-2 rounded"
+        >
+          Continue to Dashboard
+        </button>
+      </div>
+    );
+  }
+
+  const renderContent = () => {
     switch (active) {
       case 'Dashboard':
         return <DashboardHome setActive={setActive} />;
@@ -187,7 +222,8 @@ export default function DashboardLayout() {
   };
 
   return (
-    <div className="flex h-screen">
+        <>
+          <div className="flex h-screen">
       <aside
         className={`${sidebarOpen ? 'w-48' : 'w-16'} bg-gray-800 text-white flex flex-col transition-all`}
       >
@@ -257,5 +293,8 @@ export default function DashboardLayout() {
         </aside>
       </div>
     </div>
+    {showSetup && <GuidedSetup onDone={() => { setShowSetup(false); setShowTour(true); }} />}
+    {showTour && <QuickStartTour onClose={() => setShowTour(false)} />}
+    </>
   );
 }
