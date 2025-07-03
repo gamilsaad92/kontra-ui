@@ -2,6 +2,10 @@ import React, { useContext, useEffect, useState } from 'react';
 import RiskScoreCard from '../modules/dashboard/RiskScoreCard';
 import DelinquencyCard from '../modules/dashboard/DelinquencyCard';
 import RecentActivityCard from '../modules/dashboard/RecentActivityCard';
+import NextDueCard from '../modules/dashboard/NextDueCard';
+import OfferCard from '../modules/dashboard/OfferCard';
+import SmartRecommendations from './SmartRecommendations';
+import InteractiveFAQs from './InteractiveFAQs';
 import GuestOccupancyCard from '../modules/dashboard/GuestOccupancyCard';
 import { AuthContext } from '../main';
 import { supabase } from '../lib/supabaseClient';
@@ -10,7 +14,11 @@ const DEFAULT_LAYOUT = [
   { id: 'risk', w: 1, hidden: false },
   { id: 'delinquency', w: 1, hidden: false },
   { id: 'activity', w: 2, hidden: false },
-  { id: 'occupancy', w: 2, hidden: false }
+  { id: 'occupancy', w: 2, hidden: false },
+  { id: 'nextDue', w: 1, hidden: false },
+  { id: 'offers', w: 1, hidden: false },
+  { id: 'faqs', w: 2, hidden: false },
+  { id: 'recommendations', w: 2, hidden: false }
 ];
 
 export default function DashboardHome({ setActive }) {
@@ -69,7 +77,11 @@ export default function DashboardHome({ setActive }) {
       risk: <RiskScoreCard />,
     delinquency: <DelinquencyCard />,
     activity: <RecentActivityCard />,
-    occupancy: <GuestOccupancyCard />
+    occupancy: <GuestOccupancyCard />,
+    nextDue: <NextDueCard />,
+    offers: <OfferCard />,
+    faqs: <InteractiveFAQs userId={session?.user?.id} />,
+    recommendations: <SmartRecommendations />
   };
 
   if (loading) return <p>Loading dashboard…</p>;
