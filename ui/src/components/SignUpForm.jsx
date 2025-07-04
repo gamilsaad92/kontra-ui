@@ -1,6 +1,6 @@
 // ui/src/components/SignUpForm.jsx
 
-import React, { useState, useContext } from 'react'
+import React, { useState, useContext, useEffect } from 'react'
 import { AuthContext } from '../main.jsx'
 
 export default function SignUpForm({ onSwitch }) {
@@ -12,6 +12,16 @@ export default function SignUpForm({ onSwitch }) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
+
+    useEffect(() => {
+    // reset messages when toggling sign-up method
+    setError('')
+    setSuccess('')
+    if (method === 'magic') {
+      setPassword('')
+      setConfirmPassword('')
+    }
+  }, [method])
 
   const handleSignUp = async (e) => {
     e.preventDefault()
