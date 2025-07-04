@@ -36,10 +36,8 @@ function AuthProvider({ children }) {
 
       if (magicSession) {
         setSession(magicSession)
-        // 2) clean URL
-        window.history.replaceState({}, document.title, '/')
       } else {
-        // 3) no link? load any existing session
+      // 2) no link? load any existing session
         const {
           data: { session: existing },
           error: existingError
@@ -50,6 +48,11 @@ function AuthProvider({ children }) {
         } else {
           setSession(existing)
         }
+      }
+
+      // 3) clean URL hash or query params regardless of outcome
+      if (window.location.hash || window.location.search) {
+        window.history.replaceState({}, document.title, '/')
       }
     }
 
