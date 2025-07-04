@@ -1,11 +1,18 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import RecentActivityTable from '../../components/RecentActivityTable';
+import Card from '../../components/Card';
 
 export default function RecentActivityCard() {
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const t = setTimeout(() => setLoading(false), 500);
+    return () => clearTimeout(t);
+  }, []);
+
   return (
-    <div className="bg-white rounded shadow p-4 h-full">
-      <h3 className="font-bold mb-2">Recent Activity</h3>
-      <RecentActivityTable />
-    </div>
+        <Card title="Recent Activity" loading={loading}>
+          <RecentActivityTable />
+       </Card>
   );
 }
