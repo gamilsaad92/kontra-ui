@@ -1,0 +1,13 @@
+{
+  "rootDirectory": "ui",
+  "projectSettings": {
+    "buildCommand": "npm run build",
+    "outputDirectory": "dist"
+  },
+  "env": {
+    "VITE_API_URL": "https://api.example.com",
+    "VITE_SUPABASE_URL": "https://<your-project-ref>.supabase.co",
+    "VITE_SUPABASE_ANON_KEY": "<YOUR_PUBLIC_ANON_KEY>",
+    "VITE_SENTRY_DSN": "<your-dsn>"
+  }
+}
