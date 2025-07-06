@@ -136,3 +136,11 @@ Navigation and search inputs include screen reader labels and focus outlines for
 better keyboard access. Heavy chart pages are code-split using `React.lazy`
 to improve initial load time. A "Suggest a Feature" form lets users send tagged
 feedback directly from the sidebar.
+
+## Deployment
+
+### Vercel
+Set **ui/** as the project root using `vercel.json`. Define `VITE_API_URL`, `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY` and `VITE_SENTRY_DSN` as environment variables. After pushing changes, Vercel will provide a preview link such as `https://kontra-ui.vercel.app`.
+
+### Render
+The API is configured as a web service in `render.yaml`. It exposes `/health` for health checks and reports errors to Sentry when `SENTRY_DSN` is set.
