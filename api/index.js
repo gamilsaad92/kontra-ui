@@ -272,6 +272,8 @@ app.use("/api/inspections", inspectionsRouter);
 // ── Health Checks ──────────────────────────────────────────────────────────
 app.get('/', (req, res) => res.send('Sentry test running!'));
 app.get('/api/test', (req, res) => res.send('✅ API is alive'));
+// Health check for deployment platforms
+app.get('/health', (req, res) => res.json({ status: 'ok' }));
 // Serve OpenAPI spec and Swagger UI
 app.get('/openapi.json', (req, res) => {
   res.sendFile(path.join(__dirname, 'openapi.json'));
