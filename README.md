@@ -140,7 +140,7 @@ feedback directly from the sidebar.
 ## Deployment
 
 ### Vercel
-Set **ui/** as the project root using `vercel.json`. Define `VITE_API_URL`, `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY` and `VITE_SENTRY_DSN` as environment variables. After pushing changes, Vercel will provide a preview link such as `https://kontra-ui.vercel.app`.
+Place `vercel.json` inside the **ui/** directory so Vercel deploys from that folder. The file defines the `buildCommand`, `outputDirectory` and any environment variables (`VITE_API_URL`, `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `VITE_SENTRY_DSN`). After pushing changes, Vercel will provide a preview link such as `https://kontra-ui.vercel.app`.
 
 ### Render
 The API is configured as a web service in `render.yaml`. It exposes `/health` for health checks and reports errors to Sentry when `SENTRY_DSN` is set.
