@@ -26,7 +26,7 @@ import ProjectsTable from './ProjectsTable';
 import ProjectDetail from './ProjectDetail';
 import AssetForm from './AssetForm';
 import AssetsTable from './AssetsTable';
-import PaymentPortalEmbed from './PaymentPortalEmbed';
+PaymentPortal from './PaymentPortal';
 import DrawKanbanBoard from './DrawKanbanBoard';
 const HospitalityDashboard = lazy(() => import('./HospitalityDashboard'));
 const GuestCRM = lazy(() => import('./GuestCRM'));
@@ -201,7 +201,7 @@ export default function DashboardLayout() {
           </>
         );
       case 'Payment Portal':
-        return <PaymentPortalEmbed />;
+           return <PaymentPortal />;
       case 'Customer Portal':
         return <CustomerPortal />;
       case 'Self Service Payment':
