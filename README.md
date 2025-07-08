@@ -64,6 +64,12 @@ Additional endpoints provide simple stubs for OCR parsing, credit scoring and fr
 ## Escrow Administration
 
 Phase 4 introduces an `escrows` table tracking tax and insurance reserves for each loan. A Supabase Edge Function (`api/edge-functions/fetchTaxBills.js`) can be scheduled monthly to update real-world tax amounts. The UI exposes an "Escrows" dashboard showing the latest amounts and account balance.
+Additional servicing endpoints now provide a complete payment portal and escrow management workflow:
+
+- `GET /api/escrows/upcoming` lists escrow balances with projected balances and next tax/insurance due dates.
+- `POST /api/loans/:id/escrow/pay` records tax or insurance disbursements.
+- `GET /api/loans/:id/escrow/projection` returns a 12‑month balance projection.
+- Background script `api/workerReminders.js` emails and texts borrowers a few days before payments are due.
 
 ## Phase 5
 
