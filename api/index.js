@@ -197,6 +197,14 @@ function calcNextInsuranceDue(startDate) {
   return due.toISOString().slice(0, 10);
 }
 
+function calcNextTaxDue(startDate) {
+  const start = new Date(startDate);
+  const now = new Date();
+  const due = new Date(now.getFullYear(), 11, start.getDate()); // Dec each year
+  if (due < now) due.setFullYear(due.getFullYear() + 1);
+  return due.toISOString().slice(0, 10);
+}
+
 async function get_next_insurance_due({ borrower_name }) {
   const { data: loan } = await supabase
     .from('loans')
@@ -1092,6 +1100,36 @@ app.get('/api/escrows', async (req, res) => {
   res.json({ escrows: data });
 });
 
+app.get('/api/escrows/upcoming', async (req, res) => {
+  const { data, error } = await supabase
+    .from('escrows')
+    .select('loan_id, tax_amount, insurance_amount, escrow_balance');
+  if (error) return res.status(500).json({ message: 'Failed to fetch escrows' });
+
+  const results = [];
+  for (const row of data || []) {
+    const { data: loan } = await supabase
+      .from('loans')
+      .select('start_date')
+      .eq('id', row.loan_id)
+      .maybeSingle();
+    const next_tax_due = loan ? calcNextTaxDue(loan.start_date) : null;
+    const next_insurance_due = loan ? calcNextInsuranceDue(loan.start_date) : null;
+    const projected_balance =
+      parseFloat(row.escrow_balance || 0) -
+      parseFloat(row.tax_amount || 0) -
+      parseFloat(row.insurance_amount || 0);
+    results.push({
+      ...row,
+      next_tax_due,
+      next_insurance_due,
+      projected_balance
+    });
+  }
+
+  res.json({ escrows: results });
+});
+
 app.get('/api/loans/:loanId/escrow', async (req, res) => {
   const { loanId } = req.params;
   if (isNaN(parseInt(loanId, 10))) {
@@ -1106,6 +1144,57 @@ app.get('/api/loans/:loanId/escrow', async (req, res) => {
   if (error) return res.status(500).json({ message: 'Failed to fetch escrow' });
   if (!data) return res.status(404).json({ message: 'Escrow not found' });
   res.json({ escrow: data });
+});
+
+app.post('/api/loans/:loanId/escrow/pay', async (req, res) => {
+  const { loanId } = req.params;
+  const { type, amount } = req.body || {};
+  if (isNaN(parseInt(loanId, 10))) {
+    return res.status(400).json({ message: 'Invalid loan id' });
+  }
+  if (!type || !amount) {
+    return res.status(400).json({ message: 'Missing type or amount' });
+  }
+  if (!['tax', 'insurance'].includes(type)) {
+    return res.status(400).json({ message: 'Invalid type' });
+  }
+  const { data: esc, error } = await supabase
+    .from('escrows')
+    .select('escrow_balance')
+    .eq('loan_id', loanId)
+    .maybeSingle();
+  if (error) return res.status(500).json({ message: 'Failed to fetch escrow' });
+  if (!esc) return res.status(404).json({ message: 'Escrow not found' });
+  const newBal = parseFloat(esc.escrow_balance) - parseFloat(amount);
+  const column = type === 'tax' ? 'tax_amount' : 'insurance_amount';
+  await supabase
+    .from('escrows')
+    .update({ escrow_balance: newBal, [column]: 0 })
+    .eq('loan_id', loanId);
+  res.json({ balance: newBal });
+});
+
+app.get('/api/loans/:loanId/escrow/projection', async (req, res) => {
+  const { loanId } = req.params;
+  if (isNaN(parseInt(loanId, 10))) {
+    return res.status(400).json({ message: 'Invalid loan id' });
+  }
+  const { data, error } = await supabase
+    .from('escrows')
+    .select('escrow_balance, tax_amount, insurance_amount')
+    .eq('loan_id', loanId)
+    .maybeSingle();
+  if (error) return res.status(500).json({ message: 'Failed to fetch escrow' });
+  if (!data) return res.status(404).json({ message: 'Escrow not found' });
+  const projection = [];
+  let bal = parseFloat(data.escrow_balance || 0);
+  const tax = parseFloat(data.tax_amount || 0) / 12;
+  const ins = parseFloat(data.insurance_amount || 0) / 12;
+  for (let i = 1; i <= 12; i++) {
+    bal -= tax + ins;
+    projection.push({ month: i, balance: parseFloat(bal.toFixed(2)) });
+  }
+  res.json({ projection });
 });
 
 // Loan detail including schedule, payments and collateral
