@@ -841,6 +841,35 @@ app.get('/api/loans', async (req, res) => {
   }
 });
 
+// Return loans for a specific borrower user
+app.get('/api/my-loans', async (req, res) => {
+  const { user_id } = req.query || {};
+  if (!user_id) return res.status(400).json({ message: 'Missing user_id' });
+  const { data, error } = await supabase
+    .from('loans')
+    .select('id, amount, status, start_date')
+    .eq('borrower_user_id', user_id)
+    .order('created_at', { ascending: false });
+  if (error) return res.status(500).json({ message: 'Failed to fetch loans' });
+  res.json({ loans: data });
+});
+
+// Return loan applications for the current user by email or id
+app.get('/api/my-applications', async (req, res) => {
+  const { email, user_id } = req.query || {};
+  if (!email && !user_id)
+    return res.status(400).json({ message: 'Missing email or user_id' });
+  let q = supabase
+    .from('loan_applications')
+    .select('id, amount, credit_score, kyc_passed, submitted_at');
+  if (user_id) q = q.eq('user_id', user_id);
+  else q = q.eq('email', email);
+  const { data, error } = await q.order('submitted_at', { ascending: false });
+  if (error)
+    return res.status(500).json({ message: 'Failed to fetch applications' });
+  res.json({ applications: data });
+});
+
  // Batch update loan status
 app.post('/api/loans/batch-update', async (req, res) => {
   const { ids, status } = req.body || {};
