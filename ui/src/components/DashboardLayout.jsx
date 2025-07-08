@@ -39,6 +39,7 @@ import SelfServicePayment from './SelfServicePayment';
 import GuestReservations from './GuestReservations';
 import BulkActionTable from './BulkActionTable';
 import LiveChat from './LiveChat';
+import CustomerPortal from './CustomerPortal';
 
 const navItems = [
   { label: 'Dashboard', icon: '🏠' },
@@ -63,6 +64,7 @@ const navItems = [
     sub: ['Projects', 'Draw Requests']
   },
   { label: 'Payment Portal', icon: '💳' },
+  { label: 'Customer Portal', icon: '👤' },
   { label: 'Self Service Payment', icon: '💵' },
   { label: 'Guest Reservations', icon: '📅' },
   { label: 'Bulk Actions', icon: '📂' },
@@ -198,9 +200,11 @@ export default function DashboardLayout() {
             />
           </>
         );
-         case 'Payment Portal':
+      case 'Payment Portal':
         return <PaymentPortalEmbed />;
-            case 'Self Service Payment':
+      case 'Customer Portal':
+        return <CustomerPortal />;
+      case 'Self Service Payment':
         return <SelfServicePayment />;
       case 'Guest Reservations':
         return <GuestReservations />;
