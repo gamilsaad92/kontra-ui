@@ -10,7 +10,7 @@ export default function EscrowDashboard() {
     (async () => {
       setLoading(true);
       try {
-        const res = await fetch(`${API_BASE}/api/escrows`);
+       const res = await fetch(`${API_BASE}/api/escrows/upcoming`);
         const { escrows } = await res.json();
         setEscrows(escrows || []);
       } catch {
@@ -20,6 +20,18 @@ export default function EscrowDashboard() {
       }
     })();
   }, []);
+
+   const pay = async (loanId, type, amount) => {
+    try {
+      await fetch(`${API_BASE}/api/loans/${loanId}/escrow/pay`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type, amount })
+      });
+    } catch {
+      // ignore errors in demo
+    }
+  };
 
   if (loading) return <p>Loading escrows…</p>;
   if (escrows.length === 0) return <p>No escrow accounts found.</p>;
@@ -31,17 +43,37 @@ export default function EscrowDashboard() {
           <tr>
             <th className="p-2">Loan</th>
             <th className="p-2">Tax Amount</th>
+            <th className="p-2">Next Tax Due</th>
             <th className="p-2">Insurance Amount</th>
-            <th className="p-2">Balance</th>
+            <th className="p-2">Next Insurance Due</th>
+            <th className="p-2">Projected Balance</th>
           </tr>
         </thead>
         <tbody>
           {escrows.map((e) => (
             <tr key={e.loan_id}>
               <td className="p-2">{e.loan_id}</td>
-              <td className="p-2">{e.tax_amount}</td>
-              <td className="p-2">{e.insurance_amount}</td>
-              <td className="p-2">{e.escrow_balance}</td>
+               <td className="p-2">
+                {e.tax_amount}
+                <button
+                  onClick={() => pay(e.loan_id, 'tax', e.tax_amount)}
+                  className="ml-2 text-blue-600 underline"
+                >
+                  Pay
+                </button>
+              </td>
+              <td className="p-2">{e.next_tax_due}</td>
+              <td className="p-2">
+                {e.insurance_amount}
+                <button
+                  onClick={() => pay(e.loan_id, 'insurance', e.insurance_amount)}
+                  className="ml-2 text-blue-600 underline"
+                >
+                  Pay
+                </button>
+              </td>
+              <td className="p-2">{e.next_insurance_due}</td>
+              <td className="p-2">{e.projected_balance}</td>
             </tr>
           ))}
         </tbody>
