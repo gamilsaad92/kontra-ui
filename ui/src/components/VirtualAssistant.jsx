@@ -13,19 +13,23 @@ export default function VirtualAssistant({
 
   const sendMessage = async () => {
     if (!input.trim()) return
-    const userMsg = { role: 'user', content: input }
+      const text = input.trim()
+    const isCommand = text.startsWith('/')
+    const userMsg = { role: 'user', content: text }
+    const url = `${API_BASE}${isCommand ? '/api/chatops' : endpoint}`
+    const payload = { question: isCommand ? text.slice(1) : text }
     setMessages(prev => [...prev, userMsg])
     setInput('')
     setLoading(true)
 
     try {
-   const res = await fetch(`${API_BASE}${endpoint}`, {
-     method: 'POST',
-     headers: { 'Content-Type': 'application/json' },
-     body: JSON.stringify({ question: userMsg.content }),
-   })
-      
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
 
+      
       if (!res.ok) {
         // Read the body so we know why it failed
         const text = await res.text()
