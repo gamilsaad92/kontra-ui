@@ -56,3 +56,10 @@ describe('POST /api/guest-chat', () => {
     expect(res.statusCode).toBe(400)
   })
 })
+
+describe('POST /api/demand-forecast', () => {
+  it('requires occupancy array', async () => {
+    const res = await request(app).post('/api/demand-forecast').send({})
+    expect(res.statusCode).toBe(400)
+  })
+})
