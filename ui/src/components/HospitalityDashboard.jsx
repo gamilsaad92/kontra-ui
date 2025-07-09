@@ -1,37 +1,29 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { LineChart, Line, XAxis, YAxis, Tooltip } from 'recharts';
-
-const occDaily = [
-  { day: 'Mon', occupancy: 72 },
-  { day: 'Tue', occupancy: 75 },
-  { day: 'Wed', occupancy: 78 },
-  { day: 'Thu', occupancy: 80 },
-  { day: 'Fri', occupancy: 85 },
-  { day: 'Sat', occupancy: 90 },
-  { day: 'Sun', occupancy: 88 }
-];
-
-const adrData = [
-  { day: 'Mon', adr: 120 },
-  { day: 'Tue', adr: 125 },
-  { day: 'Wed', adr: 118 },
-  { day: 'Thu', adr: 130 },
-  { day: 'Fri', adr: 140 },
-  { day: 'Sat', adr: 150 },
-  { day: 'Sun', adr: 145 }
-];
-
-const revParData = [
-  { day: 'Mon', revpar: 86 },
-  { day: 'Tue', revpar: 94 },
-  { day: 'Wed', revpar: 92 },
-  { day: 'Thu', revpar: 104 },
-  { day: 'Fri', revpar: 119 },
-  { day: 'Sat', revpar: 135 },
-  { day: 'Sun', revpar: 128 }
-];
+import { API_BASE } from '../lib/apiBase';
 
 export default function HospitalityDashboard({ setActive }) {
+  const [occDaily, setOccDaily] = useState([]);
+  const [adrData, setAdrData] = useState([]);
+  const [revParData, setRevParData] = useState([]);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch(`${API_BASE}/api/hospitality/metrics`);
+        const data = await res.json();
+        setOccDaily(data.occDaily || []);
+        setAdrData(data.adrData || []);
+        setRevParData(data.revParData || []);
+      } catch {
+        // fallback sample data
+        const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+        setOccDaily(days.map((d, i) => ({ day: d, occupancy: 70 + i })));
+        setAdrData(days.map((d, i) => ({ day: d, adr: 120 + i * 2 })));
+        setRevParData(days.map((d, i) => ({ day: d, revpar: 80 + i * 3 })));
+      }
+    })();
+  }, []); 
   return (
     <div className="space-y-6">
       <div className="space-x-2 mb-4">
