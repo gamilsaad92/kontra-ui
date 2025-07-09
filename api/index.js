@@ -9,6 +9,7 @@ const fs = require('fs');
 const path = require('path');
 const http = require('http');
 const attachChatServer = require('./chatServer');
+const { forecastProject } = require('./construction');
 require('dotenv').config();
 ["SUPABASE_URL","SUPABASE_SERVICE_ROLE_KEY","OPENAI_API_KEY","SENTRY_DSN"].forEach(k => {
   if (!process.env[k]) {
@@ -130,6 +131,33 @@ const functions = [
     name: 'get_revived_assets',
     description: 'Fetch recently revived-for-sale assets',
     parameters: { type: 'object', properties: {}, required: [] }
+      },
+  {
+    name: 'get_asset_info',
+    description: 'Retrieve summary info for an asset by id',
+    parameters: {
+      type: 'object',
+      properties: { asset_id: { type: 'integer' } },
+      required: ['asset_id']
+    }
+  },
+  {
+    name: 'get_loan_details',
+    description: 'Fetch loan details by id',
+    parameters: {
+      type: 'object',
+      properties: { loan_id: { type: 'integer' } },
+      required: ['loan_id']
+    }
+  },
+  {
+    name: 'get_guest_profile',
+    description: 'Return guest profile by id',
+    parameters: {
+      type: 'object',
+      properties: { guest_id: { type: 'integer' } },
+      required: ['guest_id']
+    }
   }
 ];
 
@@ -151,6 +179,33 @@ const chatOpsFunctions = [
     name: 'get_overall_occupancy',
     description: 'Calculate average occupancy rate across all assets',
     parameters: { type: 'object', properties: {}, required: [] }
+      },
+  {
+    name: 'get_asset_info',
+    description: 'Retrieve summary info for an asset by id',
+    parameters: {
+      type: 'object',
+      properties: { asset_id: { type: 'integer' } },
+      required: ['asset_id']
+    }
+  },
+  {
+    name: 'get_loan_details',
+    description: 'Fetch loan details by id',
+    parameters: {
+      type: 'object',
+      properties: { loan_id: { type: 'integer' } },
+      required: ['loan_id']
+    }
+  },
+  {
+    name: 'get_guest_profile',
+    description: 'Return guest profile by id',
+    parameters: {
+      type: 'object',
+      properties: { guest_id: { type: 'integer' } },
+      required: ['guest_id']
+    }
   }
 ];
 
@@ -268,6 +323,33 @@ async function get_revived_assets() {
     .eq('status', 'revived')
     .order('updated_at', { ascending: false });
   return data || [];
+}
+
+async function get_asset_info({ asset_id }) {
+  const { data } = await supabase
+    .from('assets')
+    .select('*')
+    .eq('id', asset_id)
+    .maybeSingle();
+  return data;
+}
+
+async function get_loan_details({ loan_id }) {
+  const { data } = await supabase
+    .from('loans')
+    .select('*')
+    .eq('id', loan_id)
+    .maybeSingle();
+  return data;
+}
+
+async function get_guest_profile({ guest_id }) {
+  const { data } = await supabase
+    .from('guests')
+    .select('*')
+    .eq('id', guest_id)
+    .maybeSingle();
+  return data;
 }
 
 // ── Middleware ─────────────────────────────────────────────────────────────
@@ -1580,6 +1662,15 @@ app.post('/api/ask', async (req, res) => {
           .select('*')
           .eq('status', 'revived')
           .order('updated_at', { ascending: false });
+       } else if (msg.function_call.name === 'get_asset_info') {
+        const args = JSON.parse(msg.function_call.arguments || '{}');
+        result = await get_asset_info(args);
+      } else if (msg.function_call.name === 'get_loan_details') {
+        const args = JSON.parse(msg.function_call.arguments || '{}');
+        result = await get_loan_details(args);
+      } else if (msg.function_call.name === 'get_guest_profile') {
+        const args = JSON.parse(msg.function_call.arguments || '{}');
+        result = await get_guest_profile(args);
       }
       return res.json({ assistant: msg, functionResult: result });
     }
@@ -1616,6 +1707,12 @@ app.post('/api/chatops', async (req, res) => {
         result = await list_past_due_loans(args);
       } else if (msg.function_call.name === 'get_overall_occupancy') {
         result = await get_overall_occupancy();
+      } else if (msg.function_call.name === 'get_asset_info') {
+        result = await get_asset_info(args);
+      } else if (msg.function_call.name === 'get_loan_details') {
+        result = await get_loan_details(args);
+      } else if (msg.function_call.name === 'get_guest_profile') {
+        result = await get_guest_profile(args);
       }
       return res.json({ assistant: msg, functionResult: result });
     }
@@ -1711,6 +1808,15 @@ app.post('/api/financing-scorecard', (req, res) => {
     budget_variance: parseFloat(project_kpis.budget_variance || 0),
     payment_history: Array.isArray(payment_history) ? payment_history.map(Number) : []
   });
+  res.json(result);
+});
+
+app.post('/api/project-forecast', (req, res) => {
+  const { progress_history = [], budget_history = [] } = req.body || {};
+  if (!Array.isArray(progress_history) || !Array.isArray(budget_history)) {
+    return res.status(400).json({ message: 'Missing arrays' });
+  }
+  const result = forecastProject({ progress_history, budget_history });
   res.json(result);
 });
 
@@ -1875,6 +1981,16 @@ app.post('/api/forecast-inventory', (req, res) => {
   const avg = history.length ? history.reduce((a, b) => a + b, 0) / history.length : 0;
   const forecast = avg * 1.1;
   res.json({ item, forecast });
+});
+
+app.post('/api/demand-forecast', (req, res) => {
+  const { occupancy } = req.body || {};
+  if (!Array.isArray(occupancy)) {
+    return res.status(400).json({ message: 'Missing occupancy history' });
+  }
+  const avg = occupancy.reduce((a, b) => a + b, 0) / occupancy.length;
+  const forecast = Array(7).fill(Math.round(avg));
+  res.json({ forecast });
 });
 
 app.post('/api/suggest-upsells', (req, res) => {
