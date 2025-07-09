@@ -26,7 +26,7 @@ import ProjectsTable from './ProjectsTable';
 import ProjectDetail from './ProjectDetail';
 import AssetForm from './AssetForm';
 import AssetsTable from './AssetsTable';
-PaymentPortal from './PaymentPortal';
+import PaymentPortal from './PaymentPortal';
 import DrawKanbanBoard from './DrawKanbanBoard';
 const HospitalityDashboard = lazy(() => import('./HospitalityDashboard'));
 const GuestCRM = lazy(() => import('./GuestCRM'));
