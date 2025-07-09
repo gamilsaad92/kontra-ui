@@ -126,7 +126,8 @@ The API also includes basic hospitality modules:
 - `POST /api/rate-recommendation` suggests optimal room pricing.
 - `POST /api/service-request` logs housekeeping or other guest requests.
 - `POST /api/forecast-inventory` predicts upcoming supply needs.
-- `POST /api/suggest-upsells` returns personalized offers for a guest.
+- `POST /api/demand-forecast` returns a simple occupancy forecast for the next week.
+- - `POST /api/suggest-upsells` returns personalized offers for a guest.
 
 ## Integrations & Marketplace
 
