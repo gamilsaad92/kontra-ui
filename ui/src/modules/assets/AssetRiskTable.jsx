@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { API_BASE } from '../../lib/apiBase';
 import AssetDetailDrawer from './AssetDetailDrawer';
+import AssetInspectionUpload from './AssetInspectionUpload';
 
 export default function AssetRiskTable() {
   const [assets, setAssets] = useState([]);
@@ -33,18 +34,23 @@ export default function AssetRiskTable() {
             <th className="p-2">Name</th>
             <th className="p-2">Risk</th>
             <th className="p-2">Status</th>
+            <th className="p-2">Inspect</th>
           </tr>
         </thead>
         <tbody>
           {assets.map(a => (
-            <tr
-              key={a.id}
-              className="hover:bg-gray-50 cursor-pointer"
-              onClick={() => setSelected(a)}
-            >
-              <td className="p-2">{a.name || a.address}</td>
-              <td className="p-2">{a.predicted_risk}</td>
+             <tr key={a.id} className="hover:bg-gray-50">
+              <td
+                className="p-2 cursor-pointer"
+                onClick={() => setSelected(a)}
+              >
+                {a.name || a.address}
+              </td>
+                         <td className="p-2">{a.predicted_risk}</td>
               <td className="p-2">{a.status}</td>
+              <td className="p-2">
+                <AssetInspectionUpload assetId={a.id} />
+              </td>
             </tr>
           ))}
         </tbody>
