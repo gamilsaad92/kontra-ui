@@ -1884,6 +1884,14 @@ app.post('/api/suggest-upsells', (req, res) => {
   res.json({ suggestions });
 });
 
+app.get('/api/hospitality/metrics', (_req, res) => {
+  const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  const occDaily = days.map((d, i) => ({ day: d, occupancy: 70 + i }));
+  const adrData = days.map((d, i) => ({ day: d, adr: 120 + i * 2 }));
+  const revParData = days.map((d, i) => ({ day: d, revpar: 80 + i * 3 }));
+  res.json({ occDaily, adrData, revParData });
+});
+
 // ── Booking Endpoints ─────────────────────────────────────────────────────
 app.post('/api/bookings', async (req, res) => {
   const { guest_id, room, start_date, end_date } = req.body || {};
