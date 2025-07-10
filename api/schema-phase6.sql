@@ -14,3 +14,14 @@ CREATE TABLE IF NOT EXISTS troubled_assets (
   ai_notes TEXT,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- Hazard loss records linked to draw requests
+CREATE TABLE IF NOT EXISTS hazard_losses (
+  id BIGSERIAL PRIMARY KEY,
+  draw_id BIGINT REFERENCES draw_requests(id) ON DELETE CASCADE,
+  part_i JSONB NOT NULL,
+  follow_up JSONB,
+  restoration JSONB,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
