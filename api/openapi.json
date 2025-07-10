@@ -170,6 +170,29 @@
         "parameters": [{"in":"path","name":"name","required":true,"schema":{"type":"string"}}],
         "responses": {"200":{"description":"Connected"}}
       }
+          },
+    "/api/hazard-loss": {
+      "post": {
+        "summary": "Record hazard loss details",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "draw_id": {"type": "integer"},
+                  "part_i": {"type": "object"},
+                  "follow_up": {"type": "object"},
+                  "restoration": {"type": "object"}
+                },
+                "required": ["draw_id","part_i"]
+              }
+            }
+          }
+        },
+        "responses": {"201":{"description":"Created"}}
+      }
     }
   }
 }
