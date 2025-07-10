@@ -889,6 +889,24 @@ app.get('/api/list-inspections', async (req, res) => {
   res.json({ inspections: data });
 });
 
+// ── Record Hazard Loss Information ─────────────────────────────────────────
+app.post('/api/hazard-loss', async (req, res) => {
+  const { draw_id, part_i, follow_up, restoration } = req.body || {};
+  if (!draw_id || !part_i) {
+    return res.status(400).json({ message: 'Missing draw_id or Part I data' });
+  }
+  const { data, error } = await supabase
+    .from('hazard_losses')
+    .insert([{ draw_id, part_i, follow_up: follow_up || null, restoration: restoration || null }])
+    .select()
+    .single();
+  if (error) {
+    console.error('Hazard loss insert error:', error);
+    return res.status(500).json({ message: 'Failed to record hazard loss' });
+  }
+  res.status(201).json({ hazard_loss: data });
+});
+
 // ── Create a Loan ───────────────────────────────────────────────────────────
 app.post('/api/loans', async (req, res) => {
   const { borrower_name, amount, interest_rate, term_months, start_date } = req.body;
