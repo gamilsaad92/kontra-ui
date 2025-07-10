@@ -1,5 +1,6 @@
-import React from 'react';
+import React, { useState } from 'react';
 import LienWaiverForm from './LienWaiverForm';
+import Form1140Stepper from './Form1140/Form1140Stepper';
 
 const statusColors = {
   draft: 'bg-gray-300 text-gray-800',
@@ -16,6 +17,8 @@ const Badge = ({ status }) => (
 );
 
 const DrawCard = ({ draw, isAdmin, onAction }) => {
+  const [showHazard, setShowHazard] = useState(false);
+  
   const handleApprove = () => onAction('approve', draw.id);
   const handleReject = () => {
     const reason = prompt('Enter rejection comment:');
@@ -53,6 +56,19 @@ const DrawCard = ({ draw, isAdmin, onAction }) => {
           <button onClick={handleReject} className="px-3 py-1 bg-red-500 text-white rounded hover:bg-red-600">
             ❌ Reject
           </button>
+        </div>
+      )}
+
+           <button
+        onClick={() => setShowHazard(!showHazard)}
+        className="mt-4 px-3 py-1 bg-yellow-500 text-white rounded hover:bg-yellow-600"
+      >
+        Report Hazard Loss
+      </button>
+
+      {showHazard && (
+        <div className="mt-4">
+          <Form1140Stepper drawId={draw.id} onClose={() => setShowHazard(false)} />
         </div>
       )}
 
