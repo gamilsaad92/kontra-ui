@@ -2,18 +2,27 @@
 
 import React, { useState } from 'react';
 import { API_BASE } from '../lib/apiBase';
+import ErrorBanner from './ErrorBanner.jsx';
 
 export default function PaymentForm({ loanId, onSubmit }) {
   const [amount, setAmount] = useState('');
   const [paymentDate, setPaymentDate] = useState('');
   const [message, setMessage] = useState('');
-
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+  
   const handleSubmit = async e => {
     e.preventDefault();
+    setError('');
     if (!amount || !paymentDate) {
-      setMessage('Both fields are required');
+    setError('Both fields are required');
       return;
     }
+       if (Number(amount) <= 0) {
+      setError('Amount must be positive');
+      return;
+    }
+    setLoading(true);
     try {
       const res = await fetch(
          `${API_BASE}/api/loans/${loanId}/payments`,
@@ -30,11 +39,12 @@ export default function PaymentForm({ loanId, onSubmit }) {
         setAmount('');
         setPaymentDate('');
       } else {
-        setMessage(data.message || 'Failed to record payment');
+        setError(data.message || 'Failed to record payment');
       }
     } catch {
-      setMessage('Error recording payment');
+         setError('Error recording payment'); 
     }
+   setLoading(false);
   };
 
   return (
@@ -59,12 +69,14 @@ export default function PaymentForm({ loanId, onSubmit }) {
         />
         <button
           type="submit"
+          disabled={loading}
           className="w-full bg-purple-600 hover:bg-purple-700 text-white font-semibold py-2 rounded"
         >
-          Record Payment
+       {loading ? 'Recording…' : 'Record Payment'}
         </button>
       </form>
       {message && <p className="mt-3 text-green-600">{message}</p>}
+          <ErrorBanner message={error} onClose={() => setError('')} />
     </div>
   );
 }
