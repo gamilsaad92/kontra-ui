@@ -2,7 +2,8 @@
 
 import React, { useState, useContext, useEffect } from 'react'
 import { AuthContext } from '../main.jsx'
-
+import ErrorBanner from './ErrorBanner.jsx'
+  
 export default function SignUpForm({ onSwitch }) {
   const { supabase } = useContext(AuthContext)
   const [email, setEmail] = useState('')
@@ -149,7 +150,7 @@ export default function SignUpForm({ onSwitch }) {
       </button>
 
       {success && <p className="mt-2 text-green-600">{success}</p>}
-      {error   && <p className="mt-2 text-red-500">{error}</p>}
+      <ErrorBanner message={error} onClose={() => setError('')} />
 
       {onSwitch && (
         <p className="mt-4 text-sm">
