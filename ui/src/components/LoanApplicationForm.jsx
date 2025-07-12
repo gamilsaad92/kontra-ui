@@ -2,7 +2,8 @@
 
 import React, { useState } from 'react'
 import { API_BASE } from '../lib/apiBase'
-
+import ErrorBanner from './ErrorBanner.jsx'
+  
 export default function LoanApplicationForm({ onSubmitted }) {
   const [formData, setFormData] = useState({
     name: '',
@@ -12,10 +13,14 @@ export default function LoanApplicationForm({ onSubmitted }) {
   })
   const [file, setFile] = useState(null)
   const [message, setMessage] = useState('')
+  const [error, setError] = useState('')
+  const [loading, setLoading] = useState(false)
 
     const handleAutoFill = async () => {
     if (!file) return
+    setError('')
     setMessage('Extracting…')
+    setLoading(true)
     try {
       const body = new FormData()
       body.append('file', file)
@@ -28,11 +33,12 @@ export default function LoanApplicationForm({ onSubmitted }) {
         setFormData({ ...formData, ...data.fields })
         setMessage('Fields populated')
       } else {
-        setMessage(data.message || 'Extraction failed')
+        setError(data.message || 'Extraction failed')
       }
     } catch {
       setMessage('Extraction error')
     }
+   setLoading(false)
   }
 
   const handleChange = (e) => {
@@ -45,7 +51,26 @@ export default function LoanApplicationForm({ onSubmitted }) {
 
   const handleSubmit = async (e) => {
     e.preventDefault()
+    setError('')
     setMessage('Submitting…')
+        setLoading(true)
+
+    const emailRegex = /.+@.+\..+/
+    if (!emailRegex.test(formData.email)) {
+      setError('Enter a valid email address')
+      setLoading(false)
+      return
+    }
+    if (!/^\d{9}$/.test(formData.ssn)) {
+      setError('SSN must be 9 digits')
+      setLoading(false)
+      return
+    }
+    if (Number(formData.amount) <= 0) {
+      setError('Amount must be positive')
+      setLoading(false)
+      return
+    }
     try {
       const body = new FormData()
       Object.entries(formData).forEach(([k, v]) => body.append(k, v))
@@ -61,11 +86,12 @@ export default function LoanApplicationForm({ onSubmitted }) {
         setFormData({ name: '', email: '', ssn: '', amount: '' })
         setFile(null)
       } else {
-        setMessage(data.message || 'Submission failed')
+     setError(data.message || 'Submission failed')
       }
-    } catch {
-      setMessage('Submission error')
+    } catch { 
+     setError('Submission error')
     }
+        setLoading(false)
   }
 
   return (
@@ -107,21 +133,24 @@ export default function LoanApplicationForm({ onSubmitted }) {
           className="w-full border p-2 rounded"
         />
         <input type="file" onChange={handleFile} className="w-full" />
-                <button
+              <button
           type="button"
           onClick={handleAutoFill}
+          disabled={loading}
           className="w-full bg-gray-200 text-gray-800 py-2 rounded"
         >
-          Auto Fill
+        {loading ? 'Extracting…' : 'Auto Fill'}
         </button>
         <button
           type="submit"
+          disabled={loading}
           className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 rounded"
         >
-          Submit
+        {loading ? 'Submitting…' : 'Submit'}
         </button>
       </form>
       {message && <p className="mt-3 text-green-600">{message}</p>}
+      <ErrorBanner message={error} onClose={() => setError('')} />
     </div>
   )
 }
