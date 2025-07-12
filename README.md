@@ -144,6 +144,13 @@ better keyboard access. Heavy chart pages are code-split using `React.lazy`
 to improve initial load time. A "Suggest a Feature" form lets users send tagged
 feedback directly from the sidebar.
 
+## Design System
+
+Common tokens for colors, spacing and typography are defined in `ui/src/theme.js`
+and consumed by Tailwind via `tailwind.config.js`. Reusable UI primitives are
+exported from `ui/src/components/ui` including `Button`, `Card`, `Table` and
+`FormField` components.
+
 ## Deployment
 
 ### Vercel
