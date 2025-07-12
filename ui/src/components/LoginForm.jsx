@@ -1,6 +1,7 @@
 import React, { useState, useContext, useEffect } from 'react'
 import { AuthContext } from '../main'
-
+import ErrorBanner from './ErrorBanner.jsx'
+  
 export default function LoginForm({ onSwitch }) {
   const { supabase } = useContext(AuthContext)
   const [email, setEmail] = useState('')
@@ -107,7 +108,7 @@ export default function LoginForm({ onSwitch }) {
       {loading ? 'Logging in…' : method === 'password' ? 'Log In' : 'Send Magic Link'}
       </button>
       {success && <p className="mt-2 text-green-600">{success}</p>}
-      {error   && <p className="mt-2 text-red-500">{error}</p>}   
+      <ErrorBanner message={error} onClose={() => setError('')} />
       {onSwitch && (
         <p className="mt-4 text-sm">
           Don't have an account?{' '}
