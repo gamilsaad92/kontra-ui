@@ -1,7 +1,8 @@
 import React, { useState, useContext, useEffect } from 'react'
 import { AuthContext } from '../main'
 import ErrorBanner from './ErrorBanner.jsx'
-  
+import { Button, FormField } from './ui'
+
 export default function LoginForm({ onSwitch }) {
   const { supabase } = useContext(AuthContext)
   const [email, setEmail] = useState('')
@@ -58,15 +59,14 @@ export default function LoginForm({ onSwitch }) {
   }
 
   return (
-    <form onSubmit={handleLogin} className="max-w-md mx-auto mt-20 p-6 bg-white rounded-lg shadow">
+      <form onSubmit={handleLogin} className="max-w-md mx-auto mt-20 p-6 bg-white rounded shadow">
       <h2 className="text-2xl font-bold mb-4">Log In</h2>
-      <input
+          <FormField
         type="email"
         placeholder="Email"
         value={email}
         onChange={(e) => setEmail(e.target.value)}
         required
-        className="w-full border p-2 rounded mb-3"
       />
       
       <div className="flex space-x-4 mb-3 text-sm">
@@ -91,34 +91,25 @@ export default function LoginForm({ onSwitch }) {
       </div>
 
       {method === 'password' && (
-        <input
+          <FormField
           type="password"
           placeholder="Password"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           required
-          className="w-full border p-2 rounded mb-3"
         />
       )}
-      <button
-        type="submit"
-        disabled={loading}
-        className="w-full bg-blue-600 text-white py-2 rounded hover:bg-blue-700"
-      >
-      {loading ? 'Logging in…' : method === 'password' ? 'Log In' : 'Send Magic Link'}
-      </button>
-      {success && <p className="mt-2 text-green-600">{success}</p>}
+       <Button type="submit" disabled={loading} className="w-full mt-sm">
+        {loading ? 'Logging in…' : method === 'password' ? 'Log In' : 'Send Magic Link'}
+      </Button>
+        {success && <p className="mt-2 text-green-600">{success}</p>}
       <ErrorBanner message={error} onClose={() => setError('')} />
       {onSwitch && (
         <p className="mt-4 text-sm">
           Don't have an account?{' '}
-          <button
-            type="button"
-            onClick={onSwitch}
-            className="text-blue-600 underline"
-          >
-            Sign Up
-          </button>
+         <Button type="button" variant="ghost" onClick={onSwitch} className="underline px-0">
+                   Sign Up
+              </Button>
         </p>
       )}
     </form>
