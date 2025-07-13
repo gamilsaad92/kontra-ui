@@ -3,9 +3,11 @@
 import React, { useState, useContext, useEffect } from 'react'
 import { AuthContext } from '../main.jsx'
 import ErrorBanner from './ErrorBanner.jsx'
-  
+import { useLocale } from '../lib/i18n'
+
 export default function SignUpForm({ onSwitch }) {
   const { supabase } = useContext(AuthContext)
+  const { t } = useLocale()  
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
@@ -30,17 +32,17 @@ export default function SignUpForm({ onSwitch }) {
     setSuccess('')
 
     if (!email) {
-      setError('Email is required.')
+     setError(t('signup.emailRequired'))
       return
     }
 
     if (method === 'password') {
       if (!password) {
-        setError('Password is required.')
+      setError(t('signup.passwordRequired'))
         return
       }
       if (password !== confirmPassword) {
-        setError('Passwords do not match.')
+      setError(t('signup.passwordsNoMatch'))
         return
       }
 
@@ -56,9 +58,7 @@ export default function SignUpForm({ onSwitch }) {
       if (signUpError) {
         setError(signUpError.message)
       } else {
-        setSuccess(
-          '✅ Signup successful! Check your email for the confirmation link.'
-        )
+        setSuccess(t('signup.success'))
         setEmail('')
         setPassword('')
         setConfirmPassword('')
@@ -74,7 +74,7 @@ export default function SignUpForm({ onSwitch }) {
       if (magicError) {
         setError(magicError.message)
       } else {
-        setSuccess('✅ Magic link sent! Check your email to continue.')
+        setSuccess(t('signup.magicSent'))
         setEmail('')
       }
     }
@@ -85,11 +85,11 @@ export default function SignUpForm({ onSwitch }) {
       onSubmit={handleSignUp}
       className="max-w-md mx-auto mt-20 p-6 bg-white rounded-lg shadow"
     >
-      <h2 className="text-2xl font-bold mb-4">Sign Up</h2>
+      <h2 className="text-2xl font-bold mb-4">{t('signup.title')}</h2>
 
       <input
         type="email"
-        placeholder="Email"
+        placeholder={t('signup.email')}
         value={email}
         onChange={(e) => setEmail(e.target.value)}
         required
@@ -104,7 +104,7 @@ export default function SignUpForm({ onSwitch }) {
             checked={method === 'password'}
             onChange={() => setMethod('password')}
           />
-          <span>Create Password</span>
+        <span>{t('signup.createPasswordLabel')}</span>
         </label>
         <label className="flex items-center space-x-1">
           <input
@@ -113,7 +113,7 @@ export default function SignUpForm({ onSwitch }) {
             checked={method === 'magic'}
             onChange={() => setMethod('magic')}
           />
-          <span>Email Magic Link</span>
+         <span>{t('signup.magicLabel')}</span>
         </label>
       </div>
 
@@ -121,7 +121,7 @@ export default function SignUpForm({ onSwitch }) {
         <>
           <input
             type="password"
-            placeholder="Password"
+            placeholder={t('signup.password')}
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             required
@@ -131,7 +131,7 @@ export default function SignUpForm({ onSwitch }) {
 
           <input
             type="password"
-            placeholder="Confirm Password"
+            placeholder={t('signup.confirmPassword')}
             value={confirmPassword}
             onChange={(e) => setConfirmPassword(e.target.value)}
             required
@@ -146,7 +146,7 @@ export default function SignUpForm({ onSwitch }) {
         disabled={loading}
         className="w-full bg-green-600 text-white py-2 rounded hover:bg-green-700"
       >
-        {loading ? 'Signing up…' : 'Sign Up'}
+        {loading ? t('signup.submit') + '…' : t('signup.submit')}
       </button>
 
       {success && <p className="mt-2 text-green-600">{success}</p>}
@@ -154,13 +154,13 @@ export default function SignUpForm({ onSwitch }) {
 
       {onSwitch && (
         <p className="mt-4 text-sm">
-          Already have an account?{' '}
+         {t('signup.signInPrompt')}{' '}
           <button
             type="button"
             onClick={onSwitch}
             className="text-blue-600 underline"
           >
-            Log In
+             {t('signup.login')}
           </button>
         </p>
       )}
