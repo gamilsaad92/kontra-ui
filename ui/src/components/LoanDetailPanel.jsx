@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import AmortizationTable from './AmortizationTable';
 import PaymentHistory from './PaymentHistory';
 import { API_BASE } from '../lib/apiBase';
+import { DetailDrawer } from './ui';
 
 export default function LoanDetailPanel({ loanId, onClose }) {
   const [loan, setLoan] = useState(null);
@@ -23,10 +24,7 @@ export default function LoanDetailPanel({ loanId, onClose }) {
   }, [loanId]);
 
   return (
-    <div className="fixed inset-y-0 right-0 w-96 bg-white shadow-xl overflow-auto p-4">
-      <button className="mb-4 text-blue-600 underline" onClick={onClose}>
-        Close
-      </button>
+      <DetailDrawer open={!!loanId} onClose={onClose}>
       {loading && <p>Loading…</p>}
       {!loading && !loan && <p>Not found.</p>}
       {!loading && loan && (
@@ -52,6 +50,6 @@ export default function LoanDetailPanel({ loanId, onClose }) {
           )}
         </div>
       )}
-    </div>
+    </DetailDrawer>
   );
 }
