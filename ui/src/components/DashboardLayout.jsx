@@ -41,6 +41,7 @@ import GuestReservations from './GuestReservations';
 import BulkActionTable from './BulkActionTable';
 import LiveChat from './LiveChat';
 import CustomerPortal from './CustomerPortal';
+import { isFeatureEnabled } from '../lib/featureFlags';
 
 const navItems = [
   { label: 'Dashboard', icon: '🏠' },
@@ -67,15 +68,15 @@ const navItems = [
   { label: 'Payment Portal', icon: '💳' },
   { label: 'Customer Portal', icon: '👤' },
   { label: 'Self Service Payment', icon: '💵' },
-  { label: 'Guest Reservations', icon: '📅' },
+  { label: 'Guest Reservations', icon: '📅', flag: 'hospitality' },
   { label: 'Bulk Actions', icon: '📂' },
-  { label: 'Hospitality', icon: '🏨', sub: ['Hospitality Dashboard'] },
-  { label: 'Troubled Assets', icon: '🚩' },
-  { label: 'Revived Sales', icon: '🏘️' },
+  { label: 'Hospitality', icon: '🏨', sub: ['Hospitality Dashboard'], flag: 'hospitality' },
+  { label: 'Troubled Assets', icon: '🚩', flag: 'assets' },
+  { label: 'Revived Sales', icon: '🏘️', flag: 'assets' },
   { label: 'Settings', icon: '⚙️' },
   { label: 'Decisions', icon: '📜' },
   { label: 'Assistant', icon: '🤖' },
-   { label: 'Live Chat', icon: '💬' },
+   { label: 'Live Chat', icon: '💬', flag: 'chat' },
   { label: 'Docs', icon: '📄', href: 'https://github.com/kontra-ui/docs' }
 ];
 
@@ -222,27 +223,27 @@ export default function DashboardLayout() {
       case 'Self Service Payment':
         return <SelfServicePayment />;
       case 'Guest Reservations':
-        return <GuestReservations />;
+        return isFeatureEnabled('hospitality') ? <GuestReservations /> : null;
       case 'Bulk Actions':
         return <BulkActionTable rows={[]} columns={[]} />;
             case 'Hospitality Dashboard':
-        return (
+            return isFeatureEnabled('hospitality') ? (
           <Suspense fallback={<p>Loading...</p>}>
             <HospitalityDashboard setActive={setActive} />
           </Suspense>
-        );    
+          ) : null;
       case 'Guest CRM':
-       return (
+           return isFeatureEnabled('hospitality') ? (
           <Suspense fallback={<p>Loading...</p>}>
             <GuestCRM />
           </Suspense>
-        );
+         ) : null;
       case 'Guest Chat':
-            return (
+           return isFeatureEnabled('hospitality') ? (
           <Suspense fallback={<p>Loading...</p>}>
             <GuestChat />
           </Suspense>
-        );
+          ) : null;
       case 'Assets':
         return (
           <>
@@ -251,17 +252,17 @@ export default function DashboardLayout() {
           </>
         );
       case 'Troubled Assets':
-         return (
+           return isFeatureEnabled('assets') ? (
           <Suspense fallback={<p>Loading...</p>}>
             <AssetRiskTable />
           </Suspense>
-        );
+       ) : null;
       case 'Revived Sales':
-             return (
+           return isFeatureEnabled('assets') ? (
           <Suspense fallback={<p>Loading...</p>}>
             <RevivedAssetsTable />
           </Suspense>
-        );
+           ) : null;
       case 'Decisions':
         return <DecisionTimeline />;
       case 'Assistant':
@@ -271,11 +272,11 @@ export default function DashboardLayout() {
           </div>
         );
       case 'Live Chat':
-        return (
+        return isFeatureEnabled('chat') ? (
           <div className="h-full flex flex-col border rounded-lg bg-white">
             <LiveChat />
           </div>
-        );
+          ) : null;
       default:
         return <p className="text-gray-500">Select an option</p>;
     }
@@ -295,7 +296,9 @@ export default function DashboardLayout() {
           {sidebarOpen ? 'Kontra' : 'K'}
         </button>
         <nav className="flex-1 overflow-auto py-4 space-y-1">
-          {navItems.map(item => (
+              {navItems
+            .filter(item => !item.flag || isFeatureEnabled(item.flag))
+            .map(item => (
             <div key={item.label} className="text-sm">
               {item.href ? (
                 <a
