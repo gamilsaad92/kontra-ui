@@ -1032,9 +1032,10 @@ app.post('/api/projects', async (req, res) => {
 });
 
 app.get('/api/projects', async (req, res) => {
-  const { owner_id } = req.query;
+   const { owner_id, status } = req.query;
   let q = supabase.from('projects').select('*');
   if (owner_id) q = q.eq('owner_id', owner_id);
+  if (status) q = q.eq('status', status);
   const { data, error } = await q;
   if (error) return res.status(500).json({ message: 'Failed to list projects' });
   res.json({ projects: data });
@@ -1051,11 +1052,12 @@ app.get('/api/projects/:id', async (req, res) => {
 });
 
 app.get('/api/projects/export', async (req, res) => {
-  const { owner_id } = req.query;
+    const { owner_id, status } = req.query;
   let q = supabase
     .from('projects')
     .select('id, name, number, status, created_at');
   if (owner_id) q = q.eq('owner_id', owner_id);
+  if (status) q = q.eq('status', status);
   const { data, error } = await q;
   if (error) return res.status(500).json({ message: 'Failed to export projects' });
   const header = 'id,name,number,status,created_at';
