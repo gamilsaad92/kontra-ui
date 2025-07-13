@@ -775,7 +775,8 @@ app.post('/api/review-draw', async (req, res) => {
 
 // ── Get All Draws (flatten/alias fields) ────────────────────────────────────
 app.get('/api/get-draws', async (req, res) => {
-  const { data, error } = await supabase
+    const { status, project } = req.query;
+  let q = supabase
     .from('draw_requests')
     .select(`
       id,
@@ -794,12 +795,55 @@ app.get('/api/get-draws', async (req, res) => {
       risk_score      as riskScore
     `)
     .order('submitted_at', { ascending: false });
-
+  if (status) q = q.eq('status', status);
+  if (project) q = q.eq('project', project);
+  const { data, error } = await q;
+  
   if (error) {
     console.error('Get draws error:', error);
     return res.status(500).json({ message: 'Failed to fetch draw requests' });
   }
   res.json({ draws: data });
+});
+
+// Export Draw Requests as CSV
+app.get('/api/draw-requests/export', async (req, res) => {
+  const { status } = req.query;
+  let q = supabase
+    .from('draw_requests')
+    .select('id, project, amount, status, submitted_at');
+  if (status) q = q.eq('status', status);
+  const { data, error } = await q;
+  if (error) return res.status(500).json({ message: 'Failed to export draws' });
+  const header = 'id,project,amount,status,submitted_at';
+  const rows = data.map(d =>
+    [d.id, d.project, d.amount, d.status, d.submitted_at].join(',')
+  );
+  res.setHeader('Content-Type', 'text/csv');
+  res.send([header, ...rows].join('\n'));
+});
+
+// Update a Draw Request
+app.put('/api/draw-requests/:id', async (req, res) => {
+  const updates = req.body || {};
+  const { data, error } = await supabase
+    .from('draw_requests')
+    .update(updates)
+    .eq('id', req.params.id)
+    .select()
+    .single();
+  if (error) return res.status(500).json({ message: 'Failed to update draw' });
+  res.json({ draw: data });
+});
+
+// Delete a Draw Request
+app.delete('/api/draw-requests/:id', async (req, res) => {
+  const { error } = await supabase
+    .from('draw_requests')
+    .delete()
+    .eq('id', req.params.id);
+  if (error) return res.status(500).json({ message: 'Failed to delete draw' });
+  res.json({ message: 'Deleted' });
 });
 
 // ── Upload & Verify Lien Waiver ───────────────────────────────────────────────
@@ -868,6 +912,39 @@ app.get('/api/list-lien-waivers', async (req, res) => {
   res.json({ waivers: data });
 });
 
+// Get single Lien Waiver
+app.get('/api/lien-waivers/:id', async (req, res) => {
+  const { data, error } = await supabase
+    .from('lien_waivers')
+    .select('*')
+    .eq('id', req.params.id)
+    .single();
+  if (error) return res.status(500).json({ message: 'Failed to fetch waiver' });
+  res.json({ waiver: data });
+});
+
+// Update Lien Waiver
+app.put('/api/lien-waivers/:id', async (req, res) => {
+  const { data, error } = await supabase
+    .from('lien_waivers')
+    .update(req.body || {})
+    .eq('id', req.params.id)
+    .select()
+    .single();
+  if (error) return res.status(500).json({ message: 'Failed to update waiver' });
+  res.json({ waiver: data });
+});
+
+// Delete Lien Waiver
+app.delete('/api/lien-waivers/:id', async (req, res) => {
+  const { error } = await supabase
+    .from('lien_waivers')
+    .delete()
+    .eq('id', req.params.id);
+  if (error) return res.status(500).json({ message: 'Failed to delete waiver' });
+  res.json({ message: 'Deleted' });
+});
+
 // ── List Inspections by Draw or Project ─────────────────────────────────────
 app.get('/api/list-inspections', async (req, res) => {
   const { draw_id, project_id } = req.query;
@@ -905,6 +982,50 @@ app.post('/api/hazard-loss', async (req, res) => {
     return res.status(500).json({ message: 'Failed to record hazard loss' });
   }
   res.status(201).json({ hazard_loss: data });
+});
+
+// ── Projects CRUD ───────────────────────────────────────────────────────────
+app.post('/api/projects', async (req, res) => {
+  const { name, number, address, owner_id } = req.body || {};
+  if (!name || !number || !address || !owner_id) {
+    return res.status(400).json({ message: 'Missing required fields' });
+  }
+  const { data, error } = await supabase
+    .from('projects')
+    .insert([{ name, number, address, owner_id }])
+    .select()
+    .single();
+  if (error) return res.status(500).json({ message: 'Failed to create project' });
+  res.status(201).json({ project: data });
+});
+
+app.get('/api/projects', async (req, res) => {
+  const { owner_id } = req.query;
+  let q = supabase.from('projects').select('*');
+  if (owner_id) q = q.eq('owner_id', owner_id);
+  const { data, error } = await q;
+  if (error) return res.status(500).json({ message: 'Failed to list projects' });
+  res.json({ projects: data });
+});
+
+app.put('/api/projects/:id', async (req, res) => {
+  const { data, error } = await supabase
+    .from('projects')
+    .update(req.body || {})
+    .eq('id', req.params.id)
+    .select()
+    .single();
+  if (error) return res.status(500).json({ message: 'Failed to update project' });
+  res.json({ project: data });
+});
+
+app.delete('/api/projects/:id', async (req, res) => {
+  const { error } = await supabase
+    .from('projects')
+    .delete()
+    .eq('id', req.params.id);
+  if (error) return res.status(500).json({ message: 'Failed to delete project' });
+  res.json({ message: 'Deleted' });
 });
 
 // ── Create a Loan ───────────────────────────────────────────────────────────
@@ -947,6 +1068,25 @@ app.get('/api/loans', async (req, res) => {
     console.error('Loan list error:', err);
     res.status(500).json({ message: 'Failed to fetch loans' });
   }
+});
+
+// Export Loans as CSV
+app.get('/api/loans/export', async (req, res) => {
+  req.headers.accept = 'text/csv';
+  const { status, borrower } = req.query;
+  let q = supabase
+    .from('loans')
+    .select('id, borrower_name, amount, status, created_at');
+  if (status) q = q.eq('status', status);
+  if (borrower) q = q.ilike('borrower_name', `%${borrower}%`);
+  const { data, error } = await q;
+  if (error) return res.status(500).json({ message: 'Failed to export loans' });
+  const header = 'id,borrower_name,amount,status,created_at';
+  const rows = data.map(l =>
+    [l.id, l.borrower_name, l.amount, l.status, l.created_at].join(',')
+  );
+  res.setHeader('Content-Type', 'text/csv');
+  res.send([header, ...rows].join('\n'));
 });
 
 // Return loans for a specific borrower user
@@ -993,6 +1133,30 @@ app.post('/api/loans/batch-update', async (req, res) => {
     return res.status(500).json({ message: 'Failed to update loans' });
   }
   res.json({ message: 'Updated' });
+});
+
+// Update a Loan
+app.put('/api/loans/:loanId', async (req, res) => {
+  const { loanId } = req.params;
+  const updates = req.body || {};
+  const { data, error } = await supabase
+    .from('loans')
+    .update(updates)
+    .eq('id', loanId)
+    .select()
+    .single();
+  if (error) return res.status(500).json({ message: 'Failed to update loan' });
+  res.json({ loan: data });
+});
+
+// Delete a Loan
+app.delete('/api/loans/:loanId', async (req, res) => {
+  const { error } = await supabase
+    .from('loans')
+    .delete()
+    .eq('id', req.params.loanId);
+  if (error) return res.status(500).json({ message: 'Failed to delete loan' });
+  res.json({ message: 'Deleted' });
 });
 
 // ── Generate Amortization Schedule ──────────────────────────────────────────
