@@ -36,6 +36,7 @@ const AssetRiskTable = lazy(() => import('../modules/assets/AssetRiskTable'));
 import GuidedSetup from './GuidedSetup';
 import QuickStartTour from './QuickStartTour';
 import SelfServicePayment from './SelfServicePayment';
+import WelcomeWizard from './WelcomeWizard';
 import GuestReservations from './GuestReservations';
 import BulkActionTable from './BulkActionTable';
 import LiveChat from './LiveChat';
@@ -74,7 +75,8 @@ const navItems = [
   { label: 'Settings', icon: '⚙️' },
   { label: 'Decisions', icon: '📜' },
   { label: 'Assistant', icon: '🤖' },
-  { label: 'Live Chat', icon: '💬' }
+   { label: 'Live Chat', icon: '💬' },
+  { label: 'Docs', icon: '📄', href: 'https://github.com/kontra-ui/docs' }
 ];
 
 export default function DashboardLayout() {
@@ -89,16 +91,29 @@ export default function DashboardLayout() {
   const [showSetup, setShowSetup] = useState(false);
   const [showTour, setShowTour] = useState(false);
   const [showLanding, setShowLanding] = useState(true);
+  const [showWelcome, setShowWelcome] = useState(false);
 
+  const handleWelcomeDone = () => {
+    localStorage.setItem('welcomeDone', 'true');
+    setShowWelcome(false);
+    const visited = localStorage.getItem('visited');
+    setShowSetup(!visited);
+  };
+  
   useEffect(() => {
     if (session) {
       const visited = localStorage.getItem('visited');
-      if (visited) {
-        setShowLanding(false);
+           const welcome = localStorage.getItem('welcomeDone');
+      if (!welcome) {
+        setShowWelcome(true);
+      } else {
+        if (visited) {
+          setShowLanding(false);
+        }
+        setShowSetup(!visited);
       }
-      setShowSetup(!visited);
     }
-  }, [session]); 
+    }, [session]);
   
   if (!session) {
     return signUp ? (
@@ -282,21 +297,32 @@ export default function DashboardLayout() {
         <nav className="flex-1 overflow-auto py-4 space-y-1">
           {navItems.map(item => (
             <div key={item.label} className="text-sm">
-              {item.sub ? (
-                <>
-                  <button
-                    onClick={() => setActive(item.sub[0])}
-                    className={`flex items-center w-full px-3 py-2 hover:bg-gray-700 rounded ${
-                      active === item.sub[0] ? 'bg-gray-700' : ''
-                    }`}
-                  >
-                    <span className="text-lg">{item.icon}</span>
-                    {sidebarOpen && <span className="ml-2">{item.label}</span>}
-                  </button>
-                </>
+              {item.href ? (
+                <a
+                  href={item.href}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  title={item.label}
+                  className="flex items-center w-full px-3 py-2 hover:bg-gray-700 rounded"
+                >
+                  <span className="text-lg">{item.icon}</span>
+                  {sidebarOpen && <span className="ml-2">{item.label}</span>}
+                </a>
+              ) : item.sub ? (
+                <button
+                  onClick={() => setActive(item.sub[0])}
+                  title={item.label}
+                  className={`flex items-center w-full px-3 py-2 hover:bg-gray-700 rounded ${
+                    active === item.sub[0] ? 'bg-gray-700' : ''
+                  }`}
+                >
+                  <span className="text-lg">{item.icon}</span>
+                  {sidebarOpen && <span className="ml-2">{item.label}</span>}
+                </button>
               ) : (
                 <button
                   onClick={() => setActive(item.label)}
+                  title={item.label}
                   className={`flex items-center w-full px-3 py-2 hover:bg-gray-700 rounded ${
                     active === item.label ? 'bg-gray-700' : ''
                   }`}
@@ -324,11 +350,15 @@ export default function DashboardLayout() {
               className="border rounded p-2 w-1/3"
               placeholder="Search…"
               aria-label="Search"
+              title="Search across your data"
               type="text"
             />
             <div className="flex items-center space-x-4">
-              <span className="text-xl">🔔</span>
-              <div className="w-8 h-8 bg-gray-300 rounded-full flex items-center justify-center">
+              <span className="text-xl" title="Notifications">🔔</span>
+              <div
+                className="w-8 h-8 bg-gray-300 rounded-full flex items-center justify-center"
+                title="Account"
+              >
                 {session.user?.email[0].toUpperCase()}
               </div>
             </div>
@@ -341,7 +371,15 @@ export default function DashboardLayout() {
         </aside>
       </div>
     </div>
-    {showSetup && <GuidedSetup onDone={() => { setShowSetup(false); setShowTour(true); }} />}
+        {showWelcome && <WelcomeWizard onDone={handleWelcomeDone} />}
+    {showSetup && (
+      <GuidedSetup
+        onDone={() => {
+          setShowSetup(false);
+          setShowTour(true);
+        }}
+      />
+    )}
     {showTour && <QuickStartTour onClose={() => setShowTour(false)} />}
     </>
   );
