@@ -2,9 +2,11 @@ import React, { useState, useContext, useEffect } from 'react'
 import { AuthContext } from '../main'
 import ErrorBanner from './ErrorBanner.jsx'
 import { Button, FormField } from './ui'
-
+import { useLocale } from '../lib/i18n'
+  
 export default function LoginForm({ onSwitch }) {
   const { supabase } = useContext(AuthContext)
+  const { t } = useLocale()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [method, setMethod] = useState('password') // 'password' or 'magic'
@@ -25,13 +27,13 @@ export default function LoginForm({ onSwitch }) {
     setSuccess('')
 
     if (!email) {
-      setError('Email is required.')
+      setError(t('login.emailRequired'))
       return
     }
 
     if (method === 'password') {
       if (!password) {
-        setError('Password is required.')
+        setError(t('login.passwordRequired'))
         return
       }
 
@@ -52,7 +54,7 @@ export default function LoginForm({ onSwitch }) {
       if (error) {
         setError(error.message)
       } else {
-        setSuccess('✅ Magic link sent! Check your email to continue.')
+        setSuccess(t('login.magicSent'))
         setEmail('')
       }
     }
@@ -60,10 +62,10 @@ export default function LoginForm({ onSwitch }) {
 
   return (
       <form onSubmit={handleLogin} className="max-w-md mx-auto mt-20 p-6 bg-white rounded shadow">
-      <h2 className="text-2xl font-bold mb-4">Log In</h2>
+     <h2 className="text-2xl font-bold mb-4">{t('login.title')}</h2>
           <FormField
         type="email"
-        placeholder="Email"
+         placeholder={t('login.email')}
         value={email}
         onChange={(e) => setEmail(e.target.value)}
         required
@@ -77,7 +79,7 @@ export default function LoginForm({ onSwitch }) {
             checked={method === 'password'}
             onChange={() => setMethod('password')}
           />
-          <span>Password</span>
+          <span>{t('login.password')}</span>
         </label>
         <label className="flex items-center space-x-1">
           <input
@@ -86,29 +88,33 @@ export default function LoginForm({ onSwitch }) {
             checked={method === 'magic'}
             onChange={() => setMethod('magic')}
           />
-          <span>Email Magic Link</span>
+         <span>{t('login.magicLabel')}</span>
         </label>
       </div>
 
       {method === 'password' && (
           <FormField
           type="password"
-          placeholder="Password"
+          placeholder={t('login.password')}
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           required
         />
       )}
        <Button type="submit" disabled={loading} className="w-full mt-sm">
-        {loading ? 'Logging in…' : method === 'password' ? 'Log In' : 'Send Magic Link'}
+           {loading
+          ? t('login.loggingIn')
+          : method === 'password'
+          ? t('login.submit')
+          : t('login.sendMagic')}
       </Button>
         {success && <p className="mt-2 text-green-600">{success}</p>}
       <ErrorBanner message={error} onClose={() => setError('')} />
       {onSwitch && (
         <p className="mt-4 text-sm">
-          Don't have an account?{' '}
+       {t('login.noAccount')}{' '}
          <Button type="button" variant="ghost" onClick={onSwitch} className="underline px-0">
-                   Sign Up
+           {t('login.signUp')}
               </Button>
         </p>
       )}
