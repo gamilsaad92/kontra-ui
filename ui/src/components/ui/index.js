@@ -3,3 +3,4 @@ export { default as Card } from './Card.jsx';
 export { default as Table } from './Table.jsx';
 export { default as FormField } from './FormField.jsx';
 export { default as Input } from './Input.jsx';
+export { default as DetailDrawer } from './DetailDrawer.jsx';
