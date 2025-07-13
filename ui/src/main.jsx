@@ -6,6 +6,7 @@ import App from './App.jsx'
 import './index.css'
 import { supabase } from './lib/supabaseClient'
 import * as Sentry from '@sentry/react'
+import { LocaleProvider } from './lib/i18n'
 
 //
 // ── SENTRY INIT ────────────────────────────────────────────────────────────────
@@ -81,8 +82,10 @@ function AuthProvider({ children }) {
 const root = ReactDOM.createRoot(document.getElementById('root'))
 root.render(
   <React.StrictMode>
-    <AuthProvider>
-      <App />
-    </AuthProvider>
+       <LocaleProvider>
+      <AuthProvider>
+        <App />
+      </AuthProvider>
+    </LocaleProvider>
   </React.StrictMode>
 )
