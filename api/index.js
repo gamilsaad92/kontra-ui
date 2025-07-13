@@ -10,6 +10,7 @@ const path = require('path');
 const http = require('http');
 const attachChatServer = require('./chatServer');
 const { forecastProject } = require('./construction');
+const { isFeatureEnabled } = require('./featureFlags');
 require('dotenv').config();
 ["SUPABASE_URL","SUPABASE_SERVICE_ROLE_KEY","OPENAI_API_KEY","SENTRY_DSN"].forEach(k => {
   if (!process.env[k]) {
@@ -346,7 +347,9 @@ async function get_guest_profile({ guest_id }) {
 app.use(cors());
 app.use(express.json());
 app.use('/api/dashboard-layout', authenticate, dashboard);
-app.use("/api/assets", assetsRouter);
+if (isFeatureEnabled('assets')) {
+  app.use("/api/assets", assetsRouter);
+}
 app.use("/api/inspections", inspectionsRouter);
 app.use('/api', loansRouter);
 app.use('/api', drawsRouter);
@@ -1249,7 +1252,8 @@ app.post('/api/progress-photos/:id', async (req, res) => {
 });
 
 // ── Hospitality Features ───────────────────────────────────────────────────
-app.post('/api/guests', async (req, res) => {
+if (isFeatureEnabled('hospitality')) {
+  app.post('/api/guests', async (req, res) => {
   const { name, email, preferences } = req.body || {};
   if (!name || !email) return res.status(400).json({ message: 'Missing name or email' });
   try {
@@ -1361,6 +1365,8 @@ app.get('/api/hospitality/metrics', (_req, res) => {
   const revParData = days.map((d, i) => ({ day: d, revpar: 80 + i * 3 }));
   res.json({ occDaily, adrData, revParData });
 });
+
+} // end hospitality feature block
 
 // ── Booking Endpoints ─────────────────────────────────────────────────────
 app.post('/api/bookings', async (req, res) => {
