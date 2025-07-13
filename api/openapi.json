@@ -193,6 +193,13 @@
         },
         "responses": {"201":{"description":"Created"}}
       }
+   },
+    "/api/projects": {
+      "get": {"summary": "List projects","responses": {"200": {"description": "OK"}}},
+      "post": {"summary": "Create a project","responses": {"201": {"description": "Created"}}}
+    },
+    "/api/draw-request": {
+      "post": {"summary": "Submit a draw request","responses": {"200": {"description": "Submitted"}}}
     }
   }
 }
