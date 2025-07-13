@@ -177,7 +177,7 @@ export default function DashboardLayout() {
             {selectedId && (
               <>
                 <LienWaiverForm drawId={selectedId} />
-                <LienWaiverList drawId={selectedId} />
+                <LienWaiverList filter={{ draw_id: selectedId }} />
                 <InspectionForm drawId={selectedId} />
                 <InspectionList drawId={selectedId} />
               </>
