@@ -806,6 +806,17 @@ app.get('/api/get-draws', async (req, res) => {
   res.json({ draws: data });
 });
 
+// Get single Draw Request
+app.get('/api/draw-requests/:id', async (req, res) => {
+  const { data, error } = await supabase
+    .from('draw_requests')
+    .select('*')
+    .eq('id', req.params.id)
+    .single();
+  if (error) return res.status(500).json({ message: 'Failed to fetch draw request' });
+  res.json({ draw: data });
+});
+
 // Export Draw Requests as CSV
 app.get('/api/draw-requests/export', async (req, res) => {
   const { status } = req.query;
