@@ -910,15 +910,18 @@ app.post('/api/upload-lien-waiver', upload.single('file'), async (req, res) => {
 
 // ── List All Lien Waivers for a Given Draw ─────────────────────────────────
 app.get('/api/list-lien-waivers', async (req, res) => {
-  const { draw_id } = req.query;
-  if (!draw_id) return res.status(400).json({ message: 'Missing draw_id' });
-
-  const { data, error } = await supabase
+    const { draw_id, project_id } = req.query;
+  if (!draw_id && !project_id) {
+    return res.status(400).json({ message: 'Missing draw_id or project_id' });
+  }
+  
+   let q = supabase
     .from('lien_waivers')
-    .select('id, contractor_name, waiver_type, file_url, verified_at, verification_passed')
-    .eq('draw_id', draw_id)
-    .order('verified_at', { ascending: false });
-
+      .select('id, contractor_name, waiver_type, file_url, verified_at, verification_passed, draw_id, project_id');
+  if (draw_id) q = q.eq('draw_id', draw_id);
+  if (project_id) q = q.eq('project_id', project_id);
+  const { data, error } = await q.order('verified_at', { ascending: false });
+  
   if (error) return res.status(500).json({ message: 'Failed to list waivers' });
   res.json({ waivers: data });
 });
@@ -954,6 +957,24 @@ app.delete('/api/lien-waivers/:id', async (req, res) => {
     .eq('id', req.params.id);
   if (error) return res.status(500).json({ message: 'Failed to delete waiver' });
   res.json({ message: 'Deleted' });
+});
+
+// Export Lien Waivers as CSV
+app.get('/api/lien-waivers/export', async (req, res) => {
+  const { draw_id, project_id } = req.query;
+  let q = supabase
+    .from('lien_waivers')
+    .select('id, contractor_name, waiver_type, verification_passed, draw_id, project_id, verified_at');
+  if (draw_id) q = q.eq('draw_id', draw_id);
+  if (project_id) q = q.eq('project_id', project_id);
+  const { data, error } = await q;
+  if (error) return res.status(500).json({ message: 'Failed to export waivers' });
+  const header = 'id,contractor_name,waiver_type,verification_passed,draw_id,project_id,verified_at';
+  const rows = data.map(w =>
+    [w.id, w.contractor_name, w.waiver_type, w.verification_passed, w.draw_id, w.project_id, w.verified_at].join(',')
+  );
+  res.setHeader('Content-Type', 'text/csv');
+  res.send([header, ...rows].join('\n'));
 });
 
 // ── List Inspections by Draw or Project ─────────────────────────────────────
@@ -1017,6 +1038,30 @@ app.get('/api/projects', async (req, res) => {
   const { data, error } = await q;
   if (error) return res.status(500).json({ message: 'Failed to list projects' });
   res.json({ projects: data });
+});
+
+app.get('/api/projects/:id', async (req, res) => {
+  const { data, error } = await supabase
+    .from('projects')
+    .select('*')
+    .eq('id', req.params.id)
+    .single();
+  if (error) return res.status(500).json({ message: 'Failed to fetch project' });
+  res.json({ project: data });
+});
+
+app.get('/api/projects/export', async (req, res) => {
+  const { owner_id } = req.query;
+  let q = supabase
+    .from('projects')
+    .select('id, name, number, status, created_at');
+  if (owner_id) q = q.eq('owner_id', owner_id);
+  const { data, error } = await q;
+  if (error) return res.status(500).json({ message: 'Failed to export projects' });
+  const header = 'id,name,number,status,created_at';
+  const rows = data.map(p => [p.id, p.name, p.number, p.status, p.created_at].join(','));
+  res.setHeader('Content-Type', 'text/csv');
+  res.send([header, ...rows].join('\n'));
 });
 
 app.put('/api/projects/:id', async (req, res) => {
