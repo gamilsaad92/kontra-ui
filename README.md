@@ -23,6 +23,8 @@ This repository contains the **frontend** and **backend** for the Kontra demo ap
 
    Edit `api/.env` with your Supabase, OpenAI, Twilio and Dialogflow credentials.
    Add your Sentry DSN as `VITE_SENTRY_DSN` in `ui/.env`.
+   Optional `FEATURE_FLAGS` and `VITE_FEATURE_FLAGS` entries enable or disable
+   upcoming modules.
    Ensure the API is running on the same URL specified in `ui/.env`.
 
 4. Start the development servers in separate terminals:
