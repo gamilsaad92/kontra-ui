@@ -6,7 +6,8 @@
     "start": "node index.js",
     "dev": "nodemon index.js",
         "test": "jest",
-    "score-assets": "node jobs/scoreAssets.js"
+    "score-assets": "node jobs/scoreAssets.js",
+    "score-loans": "node jobs/scoreLoans.js"
   },
   "dependencies": {
     "@sentry/node": "^9.24.0",
