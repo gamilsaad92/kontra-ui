@@ -38,6 +38,7 @@ import QuickStartTour from './QuickStartTour';
 import SelfServicePayment from './SelfServicePayment';
 import WelcomeWizard from './WelcomeWizard';
 import GuestReservations from './GuestReservations';
+import BookingCalendar from './BookingCalendar';
 import BulkActionTable from './BulkActionTable';
 import LiveChat from './LiveChat';
 import CustomerPortal from './CustomerPortal';
@@ -69,6 +70,7 @@ const navItems = [
   { label: 'Customer Portal', icon: '👤' },
   { label: 'Self Service Payment', icon: '💵' },
   { label: 'Guest Reservations', icon: '📅', flag: 'hospitality' },
+  { label: 'Booking Calendar', icon: '🗓️', flag: 'hospitality' },
   { label: 'Bulk Actions', icon: '📂' },
   { label: 'Hospitality', icon: '🏨', sub: ['Hospitality Dashboard'], flag: 'hospitality' },
   { label: 'Troubled Assets', icon: '🚩', flag: 'assets' },
@@ -224,6 +226,8 @@ export default function DashboardLayout() {
         return <SelfServicePayment />;
       case 'Guest Reservations':
         return isFeatureEnabled('hospitality') ? <GuestReservations /> : null;
+             case 'Booking Calendar':
+        return isFeatureEnabled('hospitality') ? <BookingCalendar /> : null;
       case 'Bulk Actions':
         return <BulkActionTable rows={[]} columns={[]} />;
             case 'Hospitality Dashboard':
