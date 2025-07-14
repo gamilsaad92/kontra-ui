@@ -219,6 +219,23 @@ router.get('/lien-waivers/export', async (req, res) => {
   res.send([header, ...rows].join('\n'));
 });
 
+// Auto-generate lien waiver checklist for a draw
+router.get('/waiver-checklist/:drawId', async (req, res) => {
+  const { drawId } = req.params;
+  const { data, error } = await supabase
+    .from('lien_waivers')
+    .select('waiver_type')
+    .eq('draw_id', drawId);
+  if (error) return res.status(500).json({ message: 'Failed to fetch waivers' });
+  const types = (data || []).map(w => w.waiver_type.toLowerCase());
+  const items = ['general contractor', 'subcontractor', 'supplier'];
+  const checklist = items.map(it => ({
+    item: `${it} waiver`,
+    completed: types.some(t => t.includes(it))
+  }));
+  res.json({ checklist });
+});
+
 // List inspections
 router.get('/list-inspections', async (req, res) => {
   const { draw_id, project_id } = req.query;
