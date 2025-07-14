@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { API_BASE } from '../lib/apiBase';
 import LienWaiverDetailDrawer from './LienWaiverDetailDrawer';
+import LienWaiverChecklist from './LienWaiverChecklist';
 
 export default function LienWaiverList({ filter = {} }) {
   const [waivers, setWaivers] = useState([]);
@@ -42,6 +43,11 @@ export default function LienWaiverList({ filter = {} }) {
 
   return (
     <div className="bg-white rounded-lg shadow-md p-4">
+            {filter.draw_id && (
+        <div className="mb-4">
+          <LienWaiverChecklist drawId={filter.draw_id} />
+        </div>
+      )}
       <div className="flex justify-between items-center mb-2">
         <h4 className="text-lg font-medium">Uploaded Waivers</h4>
         <button
