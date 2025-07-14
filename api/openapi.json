@@ -200,6 +200,33 @@
     },
     "/api/draw-request": {
       "post": {"summary": "Submit a draw request","responses": {"200": {"description": "Submitted"}}}
-    }
+       },
+    "/api/room-blocks": {
+      "get": {"summary": "List room blocks","responses": {"200": {"description": "OK"}}},
+      "post": {
+        "summary": "Create a room block",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "rooms": {"type": "string"},
+                  "start_date": {"type": "string", "format": "date"},
+                  "end_date": {"type": "string", "format": "date"},
+                  "reason": {"type": "string"}
+                },
+                "required": ["rooms","start_date","end_date"]
+              }
+            }
+          }
+        },
+        "responses": {"201": {"description": "Created"}}
+      }
+    },
+    "/api/hospitality/forecast": {
+      "get": {"summary": "Occupancy and revenue forecast","responses": {"200": {"description": "OK"}}}
+          }
   }
 }
