@@ -7,7 +7,9 @@ export default function AssetRiskTable() {
   const [assets, setAssets] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState(null);
-
+  const [revivingId, setRevivingId] = useState(null);
+  const [error, setError] = useState('');
+  
   useEffect(() => {
     (async () => {
       setLoading(true);
@@ -23,6 +25,28 @@ export default function AssetRiskTable() {
     })();
   }, []);
 
+   async function revive(id) {
+    setRevivingId(id);
+    setError('');
+    try {
+      const res = await fetch(`${API_BASE}/api/assets/${id}/revive`, {
+        method: 'POST'
+      });
+      if (res.ok) {
+        const { asset } = await res.json();
+        setAssets(assets =>
+          assets.map(a => (a.id === id ? { ...a, status: asset.status } : a))
+        );
+      } else {
+        setError('Failed to revive asset');
+      }
+    } catch {
+      setError('Failed to revive asset');
+    } finally {
+      setRevivingId(null);
+    }
+  }
+
   if (loading) return <p>Loading assets…</p>;
   if (assets.length === 0) return <p>No troubled assets.</p>;
 
@@ -35,6 +59,7 @@ export default function AssetRiskTable() {
             <th className="p-2">Risk</th>
             <th className="p-2">Status</th>
             <th className="p-2">Inspect</th>
+            <th className="p-2">Revive</th>
           </tr>
         </thead>
         <tbody>
@@ -51,11 +76,25 @@ export default function AssetRiskTable() {
               <td className="p-2">
                 <AssetInspectionUpload assetId={a.id} />
               </td>
+                         <td className="p-2">
+                {a.status === 'revived' ? (
+                  'Revived'
+                ) : (
+                  <button
+                    onClick={() => revive(a.id)}
+                    disabled={revivingId === a.id}
+                    className="px-2 py-1 bg-blue-600 text-white rounded text-xs"
+                  >
+                    {revivingId === a.id ? '…' : 'Revive'}
+                  </button>
+                )}
+              </td>
             </tr>
           ))}
         </tbody>
       </table>
       <AssetDetailDrawer asset={selected} onClose={() => setSelected(null)} />
+         {error && <p className="text-red-600 p-2">{error}</p>}
     </div>
   );
 }
