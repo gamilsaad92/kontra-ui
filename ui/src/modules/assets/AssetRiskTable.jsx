@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { API_BASE } from '../../lib/apiBase';
 import AssetDetailDrawer from './AssetDetailDrawer';
 import AssetInspectionUpload from './AssetInspectionUpload';
+import VirtualAssistant from '../../components/VirtualAssistant';
 
 export default function AssetRiskTable() {
   const [assets, setAssets] = useState([]);
@@ -94,7 +95,10 @@ export default function AssetRiskTable() {
         </tbody>
       </table>
       <AssetDetailDrawer asset={selected} onClose={() => setSelected(null)} />
-         {error && <p className="text-red-600 p-2">{error}</p>}
+          {error && <p className="text-red-600 p-2">{error}</p>}
+      <div className="p-4 border-t mt-4">
+        <VirtualAssistant placeholder="Ask about assets…" />
+      </div>
     </div>
   );
 }
