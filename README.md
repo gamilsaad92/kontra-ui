@@ -25,6 +25,8 @@ This repository contains the **frontend** and **backend** for the Kontra demo ap
    Add your Sentry DSN as `VITE_SENTRY_DSN` in `ui/.env`.
    Optional `FEATURE_FLAGS` and `VITE_FEATURE_FLAGS` entries enable or disable
    upcoming modules.
+   Optional `FEATURE_FLAGS` and `VITE_FEATURE_FLAGS` entries enable or disable
+   upcoming modules.
    Ensure the API is running on the same URL specified in `ui/.env`.
 
 4. Start the development servers in separate terminals:
@@ -152,6 +154,13 @@ Common tokens for colors, spacing and typography are defined in `ui/src/theme.js
 and consumed by Tailwind via `tailwind.config.js`. Reusable UI primitives are
 exported from `ui/src/components/ui` including `Button`, `Card`, `Table` and
 `FormField` components.
+
+## Locale & Config
+
+All UI strings are externalized under `ui/src/locales`. Wrap the app in
+`LocaleProvider` to switch languages. Feature flags can be set via the
+`FEATURE_FLAGS` and `VITE_FEATURE_FLAGS` environment variables to enable
+modules like `hospitality` or `assets`.
 
 ## Deployment
 
