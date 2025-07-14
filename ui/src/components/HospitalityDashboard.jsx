@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { LineChart, Line, XAxis, YAxis, Tooltip } from 'recharts';
 import { API_BASE } from '../lib/apiBase';
+import VirtualAssistant from './VirtualAssistant';
 
 export default function HospitalityDashboard({ setActive }) {
   const [occDaily, setOccDaily] = useState([]);
@@ -70,6 +71,9 @@ export default function HospitalityDashboard({ setActive }) {
           <Tooltip />
           <Line type="monotone" dataKey="revpar" stroke="#ffc658" />
         </LineChart>
+      </div>
+           <div className="border-t pt-4">
+        <VirtualAssistant placeholder="Ask about hospitality…" />
       </div>
     </div>
   );
