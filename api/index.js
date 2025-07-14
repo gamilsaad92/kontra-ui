@@ -1366,6 +1366,17 @@ app.get('/api/hospitality/metrics', (_req, res) => {
   res.json({ occDaily, adrData, revParData });
 });
 
+  app.get('/api/hospitality/forecast', (_req, res) => {
+  const dates = Array.from({ length: 7 }, (_, i) => {
+    const dt = new Date();
+    dt.setDate(dt.getDate() + i + 1);
+    return dt.toISOString().slice(0, 10);
+  });
+  const occupancy = dates.map((d, i) => ({ date: d, occupancy: 75 + i }));
+  const revenue = dates.map((d, i) => ({ date: d, revenue: 10000 + i * 500 }));
+  res.json({ occupancy, revenue });
+});
+
 } // end hospitality feature block
 
 // ── Booking Endpoints ─────────────────────────────────────────────────────
@@ -1421,6 +1432,30 @@ app.get('/api/bookings/:id', async (req, res) => {
   if (error) return res.status(500).json({ message: 'Failed to fetch booking' });
   if (!data) return res.status(404).json({ message: 'Booking not found' });
   res.json({ booking: data });
+});
+
+// ── Room Block Endpoints ──────────────────────────────────────────────────
+app.post('/api/room-blocks', async (req, res) => {
+  const { rooms, start_date, end_date, reason } = req.body || {};
+  if (!rooms || !start_date || !end_date) {
+    return res.status(400).json({ message: 'Missing required fields' });
+  }
+  const { data, error } = await supabase
+    .from('room_blocks')
+    .insert([{ rooms, start_date, end_date, reason }])
+    .select()
+    .single();
+  if (error) return res.status(500).json({ message: 'Failed to create room block' });
+  res.status(201).json({ room_block: data });
+});
+
+app.get('/api/room-blocks', async (_req, res) => {
+  const { data, error } = await supabase
+    .from('room_blocks')
+    .select('*')
+    .order('start_date');
+  if (error) return res.status(500).json({ message: 'Failed to fetch room blocks' });
+  res.json({ room_blocks: data });
 });
 
 // ── Personalization & Insights ─────────────────────────────────────────────
