@@ -38,6 +38,7 @@ export default function RevivedAssetsTable() {
           <tr>
             <th className="p-2">Address</th>
             <th className="p-2">Suggested Price</th>
+            <th className="p-2">Blurb</th>
             <th className="p-2">Status</th>
             <th className="p-2">Publish Listing</th>
           </tr>
@@ -47,6 +48,7 @@ export default function RevivedAssetsTable() {
             <tr key={asset.id} className="hover:bg-gray-50">
               <td className="p-2">{asset.address || '—'}</td>
               <td className="p-2">{asset.price_suggestion ?? '—'}</td>
+              <td className="p-2 text-sm">{asset.blurb || '—'}</td>
               <td className="p-2">
                 <span className="inline-block px-2 py-1 text-xs rounded bg-green-200 text-green-800">
                   {asset.status}
