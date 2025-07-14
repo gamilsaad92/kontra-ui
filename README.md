@@ -62,6 +62,8 @@ These routes perform mock KYC and credit checks before storing the application i
 Additional endpoints provide simple stubs for OCR parsing, credit scoring and fraud detection:
 
 * `POST /api/parse-document` – upload a financial document and receive extracted fields.
+* `POST /api/document-summary` – return a short LLM summary of the uploaded file.
+* `POST /api/auto-fill` – extract borrower details from IDs or W‑9s.
 * `POST /api/credit-score` – calculate a risk score from bureau data and history.
 * `POST /api/detect-fraud` – run lightweight anomaly detection on applicant data.
   
@@ -83,6 +85,7 @@ Collections, investor reporting and asset management follow the same pattern:
 2. **API routes** – new CRUD endpoints are implemented in `api/index.js` under `/api/collections`, `/api/investor-reports` and `/api/assets`.
 3. **UI pages** – React components in `ui/src/components` display and create records for these tables.
 4. **Workflows** – background jobs (`api/workerCollections.js` and `api/edge-functions/updateAssetValues.js`) illustrate how Render cron jobs or Supabase Scheduled Functions keep data in sync.
+5. **Predictive Models** – nightly scripts (`npm run score-assets` and `npm run score-loans`) update risk scores for assets and loans.
 
 ## Customer Care AI & Voice Bot
 
