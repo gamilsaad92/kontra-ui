@@ -25,9 +25,9 @@ This repository contains the **frontend** and **backend** for the Kontra demo ap
    Add your Sentry DSN as `VITE_SENTRY_DSN` in `ui/.env`.
    Optional `FEATURE_FLAGS` and `VITE_FEATURE_FLAGS` entries enable or disable
    upcoming modules.
-   Optional `FEATURE_FLAGS` and `VITE_FEATURE_FLAGS` entries enable or disable
-   upcoming modules.
    Ensure the API is running on the same URL specified in `ui/.env`.
+  Set `SUPABASE_REPLICA_URL` in `api/.env` to route read queries to a replica.
+  Provide `REDIS_URL` to enable caching for hot queries.
 
 4. Start the development servers in separate terminals:
    ```bash
@@ -187,6 +187,13 @@ Organizations are stored in a new `organizations` table with optional
 admins can update logos or primary colors from the Settings page.
 Placeholder SAML/OAuth endpoints live under `/api/sso` illustrating where
 single sign-on would integrate.
+
+## High-Performance Architecture
+
+Read queries can target a Supabase read replica when `SUPABASE_REPLICA_URL` is
+set. Hot query results are cached via Redis when `REDIS_URL` is configured.
+Expensive scoring tasks can be queued by posting to `/api/jobs/score-*` and are
+processed asynchronously by a lightweight worker.
 
 ## Deployment
 
