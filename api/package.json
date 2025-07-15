@@ -5,9 +5,10 @@
   "scripts": {
     "start": "node index.js",
     "dev": "nodemon index.js",
-        "test": "jest",
+          "test": "jest",
     "score-assets": "node jobs/scoreAssets.js",
-    "score-loans": "node jobs/scoreLoans.js"
+     "score-loans": "node jobs/scoreLoans.js",
+     "score-troubled": "node jobs/scoreTroubled.js"
   },
   "dependencies": {
     "@sentry/node": "^9.24.0",
