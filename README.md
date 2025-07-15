@@ -114,6 +114,12 @@ Endpoint `/api/send-communication` generates reminder messages with OpenAI and d
 - `POST /api/portfolio-summary` returns a PDF narrative overview of loan performance for a given period.
 - `POST /api/query-loans` interprets natural language filters and returns matching loans.
   The Analytics dashboard now features a BI widget where you can type queries like
+
+## Advanced Analytics & Reporting
+
+- `POST /api/reports/run` executes custom queries and can return a PDF.
+- `POST /api/reports/schedule` schedules recurring PDF emails.
+- `GET /api/reports/export` exports table data as CSV or JSON.
   
   
 ## Construction & Lending Features
