@@ -178,6 +178,14 @@ All UI strings are externalized under `ui/src/locales`. Wrap the app in
 `FEATURE_FLAGS` and `VITE_FEATURE_FLAGS` environment variables to enable
 modules like `hospitality` or `assets`.
 
+## Multi-Tenancy & SSO
+
+Organizations are stored in a new `organizations` table with optional
+`branding` JSON. Users join an organization via `organization_members` and
+admins can update logos or primary colors from the Settings page.
+Placeholder SAML/OAuth endpoints live under `/api/sso` illustrating where
+single sign-on would integrate.
+
 ## Deployment
 
 ### Vercel
