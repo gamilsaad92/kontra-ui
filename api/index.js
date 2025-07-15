@@ -3,8 +3,10 @@ const express = require('express');
 const Sentry = require('@sentry/node');
 const cors = require('cors');
 const multer = require('multer');
-const { createClient } = require('@supabase/supabase-js');
+{ supabase, replica } = require('./db');
 const OpenAI = require('openai');          // ← v4+ default export
+const cache = require('./cache');
+const { addJob } = require('./jobQueue');
 const fs = require('fs');
 const path = require('path');
 const http = require('http');
@@ -35,10 +37,6 @@ if (Sentry.Handlers?.requestHandler) {
   app.use(Sentry.expressMiddleware());
 }
 const upload = multer({ storage: multer.memoryStorage() });
-const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY
-);
 
 // ── OpenAI Client (v4+ SDK) ────────────────────────────────────────────────
 const openai = new OpenAI({
@@ -225,19 +223,25 @@ const chatOpsFunctions = [
 
 // Helper implementations for those functions:
 async function get_loans() {
-  const { data } = await supabase
+   const cached = await cache.get('loans_all');
+  if (cached) return cached;
+  const { data } = await replica
     .from('loans')
     .select('id, borrower_name, amount, status')
     .order('created_at', { ascending: false });
+   if (data) await cache.set('loans_all', data, 30);
   return data;
 }
 
 async function get_draws() {
-  const { data } = await supabase
+  const cached = await cache.get('draws_recent');
+  if (cached) return cached;
+  const { data } = await replica
     .from('draw_requests')
     .select('id, project, amount, status')
     .order('submitted_at', { ascending: false })
     .limit(5);
+   if (data) await cache.set('draws_recent', data, 30);
   return data;
 }
 
@@ -1722,6 +1726,20 @@ app.post('/api/feedback', (req, res) => {
   recordFeedback({ type: type || 'feature', message });
   retrainModel();
   res.status(201).json({ message: 'Feedback recorded' });
+});
+
+// ── Background Job Queue ─────────────────────────────────────────────────--
+app.post('/api/jobs/score-loans', (_req, res) => {
+  addJob('score-loans');
+  res.json({ queued: true });
+});
+app.post('/api/jobs/score-assets', (_req, res) => {
+  addJob('score-assets');
+  res.json({ queued: true });
+});
+app.post('/api/jobs/score-troubled', (_req, res) => {
+  addJob('score-troubled');
+  res.json({ queued: true });
 });
 
 // ── Voice Bot Endpoints ────────────────────────────────────────────────────
