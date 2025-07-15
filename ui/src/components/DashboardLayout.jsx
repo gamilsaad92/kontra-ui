@@ -42,6 +42,7 @@ import BookingCalendar from './BookingCalendar';
 import BulkActionTable from './BulkActionTable';
 import LiveChat from './LiveChat';
 import CustomerPortal from './CustomerPortal';
+import OrganizationSettings from './OrganizationSettings';
 import { isFeatureEnabled } from '../lib/featureFlags';
 
 const navItems = [
@@ -267,6 +268,8 @@ export default function DashboardLayout() {
             <RevivedAssetsTable />
           </Suspense>
            ) : null;
+              case 'Settings':
+        return <OrganizationSettings />;
       case 'Decisions':
         return <DecisionTimeline />;
       case 'Assistant':
