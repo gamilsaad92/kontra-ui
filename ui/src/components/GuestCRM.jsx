@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { API_BASE } from '../lib/apiBase';
+import VirtualAssistant from './VirtualAssistant';
 
 const sampleStays = [
   { date: '2024-01-05', room: '101' },
@@ -92,6 +93,9 @@ export default function GuestCRM() {
             ))}
           </ul>
         )}
+      </div>
+           <div className="border-t pt-4">
+        <VirtualAssistant placeholder="Ask about guests…" />
       </div>
     </div>
   );
