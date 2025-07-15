@@ -11,6 +11,7 @@ const http = require('http');
 const attachChatServer = require('./chatServer');
 const { forecastProject } = require('./construction');
 const { isFeatureEnabled } = require('./featureFlags');
+const auditLogger = require('./middlewares/auditLogger');
 require('dotenv').config();
 ["SUPABASE_URL","SUPABASE_SERVICE_ROLE_KEY","OPENAI_API_KEY","SENTRY_DSN"].forEach(k => {
   if (!process.env[k]) {
@@ -376,6 +377,7 @@ async function get_hospitality_stats() {
 // ── Middleware ─────────────────────────────────────────────────────────────
 app.use(cors());
 app.use(express.json());
+app.use(auditLogger);
 app.use('/api/dashboard-layout', authenticate, dashboard);
 if (isFeatureEnabled('assets')) {
   app.use("/api/assets", assetsRouter);
