@@ -1,6 +1,7 @@
 // src/components/EscrowDashboard.jsx
 import React, { useEffect, useState } from 'react';
 import { API_BASE } from '../lib/apiBase';
+import VirtualAssistant from './VirtualAssistant';
 
 export default function EscrowDashboard() {
   const [escrows, setEscrows] = useState([]);
@@ -78,6 +79,9 @@ export default function EscrowDashboard() {
           ))}
         </tbody>
       </table>
+      <div className="border-t mt-4 p-4">
+        <VirtualAssistant placeholder="Ask about escrows…" />
+      </div>
     </div>
   );
 }
