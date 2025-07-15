@@ -666,6 +666,99 @@ app.post('/api/auto-fill', upload.single('file'), async (req, res) => {
   res.json({ fields });
 });
 
+// ── LLM-Powered Workflows ──────────────────────────────────────────────────
+app.post('/api/workflows/ingest', upload.single('file'), async (req, res) => {
+  const { type, asset_id } = req.body || {};
+  if (!req.file || !type) {
+    return res.status(400).json({ message: 'Missing file or type' });
+  }
+
+  try {
+    const summary = await summarizeDocumentBuffer(req.file.buffer);
+    let record = null;
+
+    if (type === 'inspection' && asset_id) {
+      const { data, error } = await supabase
+        .from('asset_inspections')
+        .insert([{ asset_id: parseInt(asset_id, 10), report_json: summary }])
+        .select()
+        .single();
+      if (error) throw error;
+      record = data;
+    } else if (type === 'w9') {
+      const fields = await autoFillFields(req.file.buffer);
+      summary.fields = fields;
+    } else if (type === 'contract') {
+      summary.key_terms = Object.assign(
+        {},
+        summary.key_terms,
+        parseDocumentBuffer(req.file.buffer)
+      );
+    }
+
+    res.json({ summary, record });
+  } catch (err) {
+    console.error('Workflow ingest error:', err);
+    res.status(500).json({ message: 'Failed to process file' });
+  }
+});
+
+app.get('/api/smart-recommendations', async (_req, res) => {
+  try {
+    const { data: pending } = await supabase
+      .from('loans')
+      .select('id, borrower_name, amount, risk_score, interest_rate, status')
+      .eq('status', 'pending')
+      .order('risk_score', { ascending: true })
+      .limit(5);
+
+    const { data: refinance } = await supabase
+      .from('loans')
+      .select('id, borrower_name, amount, interest_rate, risk_score')
+      .eq('status', 'active')
+      .gt('interest_rate', 6)
+      .lt('risk_score', 0.5)
+      .order('interest_rate', { ascending: false })
+      .limit(5);
+
+    let recommendation = '';
+    if (process.env.OPENAI_API_KEY) {
+      try {
+        const resp = await openai.chat.completions.create({
+          model: 'gpt-4o-mini',
+          messages: [
+            {
+              role: 'system',
+              content:
+                'Give a short recommendation on which loans to approve first and which could be refinanced.'
+            },
+            {
+              role: 'user',
+              content: JSON.stringify({ pending, refinance })
+            }
+          ]
+        });
+        recommendation = resp.choices[0].message.content.trim();
+      } catch (err) {
+        console.error('AI recommendation error:', err);
+      }
+    }
+
+    res.json({
+      approve_first: (pending || []).slice(0, 3),
+      refinance_candidates: (refinance || []).slice(0, 3),
+      recommendation
+    });
+  } catch (err) {
+    console.error('Smart recommendations error:', err);
+    res.status(500).json({
+      approve_first: [],
+      refinance_candidates: [],
+      recommendation: ''
+    });
+  }
+});
+
 // ── Loan Application Endpoints ─────────────────────────────────────────────
 app.post('/api/loan-applications', upload.single('document'), async (req, res) => {
   const { name, email, ssn, amount } = req.body;
