@@ -207,6 +207,16 @@ const chatOpsFunctions = [
     name: 'get_hospitality_stats',
     description: 'Return occupancy and revenue metrics',
     parameters: { type: 'object', properties: {}, required: [] }
+     },
+  {
+    name: 'get_troubled_assets',
+    description: 'List assets at highest foreclosure risk',
+    parameters: { type: 'object', properties: { topN: { type: 'number' } }, required: [] }
+  },
+  {
+    name: 'get_revived_assets',
+    description: 'Fetch recently revived-for-sale assets',
+    parameters: { type: 'object', properties: {}, required: [] }
   }
 ];
 
@@ -1111,6 +1121,10 @@ app.post('/api/chatops', async (req, res) => {
         result = await get_guest_profile(args);
       } else if (msg.function_call.name === 'get_hospitality_stats') {
         result = await get_hospitality_stats();
+             } else if (msg.function_call.name === 'get_troubled_assets') {
+        result = await get_troubled_assets(args);
+      } else if (msg.function_call.name === 'get_revived_assets') {
+        
       }
       return res.json({ assistant: msg, functionResult: result });
     }
