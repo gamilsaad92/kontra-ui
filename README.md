@@ -66,6 +66,13 @@ Additional endpoints provide simple stubs for OCR parsing, credit scoring and fr
 * `POST /api/auto-fill` – extract borrower details from IDs or W‑9s.
 * `POST /api/credit-score` – calculate a risk score from bureau data and history.
 * `POST /api/detect-fraud` – run lightweight anomaly detection on applicant data.
+
+### LLM-Powered Workflows
+
+New AI endpoints streamline doc ingestion and decision support:
+
+* `POST /api/workflows/ingest` – upload an inspection, W‑9 or contract and receive an OCR + LLM summary. Inspection results are stored in `asset_inspections` when an `asset_id` is supplied.
+* `GET /api/smart-recommendations` – suggests which loans to approve first and highlights refinance opportunities.
   
 ## Escrow Administration
 
