@@ -54,6 +54,7 @@ const drawsRouter = require('./routers/draws');
 const projectsRouter = require('./routers/projects');
 const organizationsRouter = require('./routers/organizations');
 const ssoRouter = require('./routers/sso');
+const reportsRouter = require('./routers/reports');
 const { webhooks, triggerWebhooks } = require('./webhooks');
 
 // ── Webhook & Integration State ────────────────────────────────────────────
@@ -392,6 +393,7 @@ app.use('/api', drawsRouter);
 app.use('/api', projectsRouter);
 app.use('/api/organizations', organizationsRouter);
 app.use('/api/sso', ssoRouter);
+app.use('/api/reports', reportsRouter);
 
 // ── Health Checks ──────────────────────────────────────────────────────────
 app.get('/', (req, res) => res.send('Sentry test running!'));
