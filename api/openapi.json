@@ -228,5 +228,8 @@
     "/api/hospitality/forecast": {
       "get": {"summary": "Occupancy and revenue forecast","responses": {"200": {"description": "OK"}}}
           }
+       "/api/reports/run": {"post": {"summary": "Execute ad hoc report","responses": {"200": {"description": "OK"}}}},
+    "/api/reports/schedule": {"post": {"summary": "Schedule report delivery","responses": {"201": {"description": "Created"}}}},
+    "/api/reports/export": {"get": {"summary": "Export table data","responses": {"200": {"description": "OK"}}}},
   }
 }
