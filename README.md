@@ -74,6 +74,13 @@ New AI endpoints streamline doc ingestion and decision support:
 * `POST /api/workflows/ingest` – upload an inspection, W‑9 or contract and receive an OCR + LLM summary. Inspection results are stored in `asset_inspections` when an `asset_id` is supplied.
 * `GET /api/smart-recommendations` – suggests which loans to approve first and highlights refinance opportunities.
   
+### LLM-Powered Workflows
+
+New AI endpoints streamline doc ingestion and decision support:
+
+* `POST /api/workflows/ingest` – upload an inspection, W‑9 or contract and receive an OCR + LLM summary. Inspection results are stored in `asset_inspections` when an `asset_id` is supplied.
+* `GET /api/smart-recommendations` – suggests which loans to approve first and highlights refinance opportunities.
+  
 ## Escrow Administration
 
 Phase 4 introduces an `escrows` table tracking tax and insurance reserves for each loan. A Supabase Edge Function (`api/edge-functions/fetchTaxBills.js`) can be scheduled monthly to update real-world tax amounts. The UI exposes an "Escrows" dashboard showing the latest amounts and account balance.
