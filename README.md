@@ -132,7 +132,9 @@ Endpoint `/api/send-communication` generates reminder messages with OpenAI and d
 
 - `POST /api/regulatory-scan` analyzes document text against a ruleset and returns any compliance issues.
 - `GET /api/evidence-dossier/:loanId` assembles communications and uploaded files for audit review.
-- - `POST /api/generate-closing-doc` returns a simple closing statement PDF.
+- `POST /api/generate-closing-doc` returns a simple closing statement PDF.
+- Field-level changes are recorded to an encrypted `api/auditLogs.enc` file whenever data is created or modified. Set `ENCRYPTION_KEY` in `api/.env` to secure the log.
+- These controls provide a foundation for SOC‑2 readiness alongside existing Sentry monitoring.
 - `POST /api/generate-tax-form` produces 1098 or 1099 forms.
 - ## Continuous Learning & Feedback
 
