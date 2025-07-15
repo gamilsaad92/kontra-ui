@@ -53,6 +53,8 @@ const dashboard = require('./routers/dashboard');
 const loansRouter = require('./routers/loans');
 const drawsRouter = require('./routers/draws');
 const projectsRouter = require('./routers/projects');
+const organizationsRouter = require('./routers/organizations');
+const ssoRouter = require('./routers/sso');
 const { webhooks, triggerWebhooks } = require('./webhooks');
 
 // ── Webhook & Integration State ────────────────────────────────────────────
@@ -382,6 +384,8 @@ app.use("/api/inspections", inspectionsRouter);
 app.use('/api', loansRouter);
 app.use('/api', drawsRouter);
 app.use('/api', projectsRouter);
+app.use('/api/organizations', organizationsRouter);
+app.use('/api/sso', ssoRouter);
 
 // ── Health Checks ──────────────────────────────────────────────────────────
 app.get('/', (req, res) => res.send('Sentry test running!'));
