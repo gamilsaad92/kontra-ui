@@ -40,6 +40,7 @@ import WelcomeWizard from './WelcomeWizard';
 import GuestReservations from './GuestReservations';
 import BookingCalendar from './BookingCalendar';
 import BulkActionTable from './BulkActionTable';
+import ReportBuilder from './ReportBuilder';
 import LiveChat from './LiveChat';
 import CustomerPortal from './CustomerPortal';
 import OrganizationSettings from './OrganizationSettings';
@@ -73,6 +74,7 @@ const navItems = [
   { label: 'Guest Reservations', icon: '📅', flag: 'hospitality' },
   { label: 'Booking Calendar', icon: '🗓️', flag: 'hospitality' },
   { label: 'Bulk Actions', icon: '📂' },
+  { label: 'Reports', icon: '📊' },
   { label: 'Hospitality', icon: '🏨', sub: ['Hospitality Dashboard'], flag: 'hospitality' },
   { label: 'Troubled Assets', icon: '🚩', flag: 'assets' },
   { label: 'Revived Sales', icon: '🏘️', flag: 'assets' },
@@ -231,6 +233,9 @@ export default function DashboardLayout() {
         return isFeatureEnabled('hospitality') ? <BookingCalendar /> : null;
       case 'Bulk Actions':
         return <BulkActionTable rows={[]} columns={[]} />;
+             case 'Reports':
+        return <ReportBuilder />;
+      case 'Hospitality Dashboard':
             case 'Hospitality Dashboard':
             return isFeatureEnabled('hospitality') ? (
           <Suspense fallback={<p>Loading...</p>}>
