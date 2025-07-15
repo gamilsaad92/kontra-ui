@@ -25,7 +25,7 @@ async function generateReminder({ borrower_name, loan_status, risk_score, histor
   return { emailText: emailText.trim(), smsText: (smsText || emailText).trim() };
 }
 
-async function sendEmail(to, subject, text) {
+async function sendEmail(to, subject, text, attachments = []) {
   if (!process.env.SMTP_HOST) {
     console.log('Email to', to, subject, text);
     return;
@@ -38,7 +38,13 @@ async function sendEmail(to, subject, text) {
       pass: process.env.SMTP_PASS
     }
   });
-  await transporter.sendMail({ from: process.env.SMTP_FROM, to, subject, text });
+   await transporter.sendMail({
+    from: process.env.SMTP_FROM,
+    to,
+    subject,
+    text,
+    attachments
+  });
 }
 
 async function sendSms(to, body) {
