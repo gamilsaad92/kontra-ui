@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import PaymentHistory from './PaymentHistory';
 import { API_BASE } from '../lib/apiBase';
+import VirtualAssistant from './VirtualAssistant';
 
 export default function PaymentPortal() {
   const [loanId, setLoanId] = useState('');
@@ -63,6 +64,9 @@ export default function PaymentPortal() {
       </form>
       {message && <p className="text-green-600">{message}</p>}
       {loanId && <PaymentHistory loanId={loanId} />}
+      <div className="border-t pt-4">
+        <VirtualAssistant placeholder="Ask about payments…" />
+      </div>
     </div>
   );
 }
