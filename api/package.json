@@ -27,7 +27,8 @@
     "twilio": "^4.21.0",
     "ws": "^8.18.0",
     "@google-cloud/dialogflow": "^4.4.0",
-    "uuid": "^9.0.0"
+    "uuid": "^9.0.0",
+    "qrcode": "^1.5.1"
   },
   "devDependencies": {
     "jest": "^29.7.0",
