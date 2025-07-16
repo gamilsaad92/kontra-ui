@@ -55,6 +55,10 @@ const projectsRouter = require('./routers/projects');
 const organizationsRouter = require('./routers/organizations');
 const ssoRouter = require('./routers/sso');
 const reportsRouter = require('./routers/reports');
+const { router: menuRouter } = require('./routers/menu');
+const { router: ordersRouter } = require('./routers/orders');
+const { router: paymentsRouter } = require('./routers/payments');
+const analyticsRouter = require('./routers/analytics');
 const restaurantRouter = require('./routers/restaurant');
 const { webhooks, triggerWebhooks } = require('./webhooks');
 
@@ -395,6 +399,10 @@ app.use('/api', projectsRouter);
 app.use('/api/organizations', organizationsRouter);
 app.use('/api/sso', ssoRouter);
 app.use('/api/reports', reportsRouter);
+app.use('/api', menuRouter);
+app.use('/api', ordersRouter);
+app.use('/api', paymentsRouter);
+app.use('/api', analyticsRouter);
 app.use('/api', restaurantRouter);
 
 // ── Health Checks ──────────────────────────────────────────────────────────
