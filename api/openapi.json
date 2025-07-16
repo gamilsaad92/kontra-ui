@@ -231,5 +231,12 @@
        "/api/reports/run": {"post": {"summary": "Execute ad hoc report","responses": {"200": {"description": "OK"}}}},
     "/api/reports/schedule": {"post": {"summary": "Schedule report delivery","responses": {"201": {"description": "Created"}}}},
     "/api/reports/export": {"get": {"summary": "Export table data","responses": {"200": {"description": "OK"}}}},
+      "/api/menu/items": {
+      "get": {"summary": "List menu items","responses": {"200": {"description": "OK"}}},
+      "post": {"summary": "Create menu item","responses": {"201": {"description": "Created"}}}
+    },
+    "/api/orders": {"post": {"summary": "Create order","responses": {"201": {"description": "Created"}}}},
+    "/api/orders/{id}": {"patch": {"summary": "Update order","responses": {"200": {"description": "OK"}}}},
+    "/api/payments/qr": {"post": {"summary": "Generate QR payment","responses": {"201": {"description": "Created"}}}},
   }
 }
