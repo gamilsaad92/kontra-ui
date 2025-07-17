@@ -16,6 +16,9 @@ This document outlines a staged approach for rolling out QR-code ordering and pa
 ## Phase 3 – Digital Menu & Order Flow
 - Admin UI for managing menu items and modifiers.
 - Public menu display with an "add to order" cart.
+- Dynamic bill view `/api/orders/{id}/bill`.
+- Support for `/api/orders/{id}/split` and `/api/orders/{id}/tip`.
+- Payment links and SoftPOS tap endpoints.
 - Endpoints to submit, modify and cancel orders with kitchen notifications.
 
 ## Phase 4 – Enhanced Billing
