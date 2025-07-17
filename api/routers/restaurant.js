@@ -58,6 +58,33 @@ router.patch('/orders/:id', async (req, res) => {
   res.json({ order: data });
 });
 
+// Return detailed bill for an order ----------------------------------------
+router.get('/orders/:id/bill', async (req, res) => {
+  const { data: order, error } = await supabase
+    .from('orders')
+    .select('items, table, id')
+    .eq('id', req.params.id)
+    .maybeSingle();
+  if (error) return res.status(500).json({ message: 'Failed to fetch order' });
+  if (!order) return res.status(404).json({ message: 'Order not found' });
+
+  let total = 0;
+  const details = [];
+  for (const item of order.items || []) {
+    const { data: menuItem } = await supabase
+      .from('menu_items')
+      .select('name, price')
+      .eq('id', item.id)
+      .maybeSingle();
+    if (menuItem) {
+      const qty = item.qty || 1;
+      total += menuItem.price * qty;
+      details.push({ name: menuItem.name, price: menuItem.price, quantity: qty });
+    }
+  }
+  res.json({ order_id: order.id, table: order.table, items: details, total });
+});
+
 // QR Payment ---------------------------------------------------------------
 router.post('/payments/qr', async (req, res) => {
   const { amount, order_id } = req.body || {};
