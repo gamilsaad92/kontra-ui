@@ -37,4 +37,32 @@ router.get('/orders/:id', (req, res) => {
   res.json({ order });
 });
 
+// Split bill ---------------------------------------------------------------
+router.post('/orders/:id/split', (req, res) => {
+  const { method, count, amounts } = req.body || {};
+  const order = orders.find(o => o.id === parseInt(req.params.id, 10));
+  if (!order) return res.status(404).json({ message: 'Not found' });
+  if (method === 'equal') {
+    if (!count || count <= 0) return res.status(400).json({ message: 'Missing count' });
+    const share = parseFloat((order.total / count).toFixed(2));
+    return res.json({ splits: Array.from({ length: count }, () => ({ amount: share })) });
+  }
+  if (method === 'itemized') {
+    if (!amounts || typeof amounts !== 'object') return res.status(400).json({ message: 'Missing amounts' });
+    return res.json({ splits: amounts });
+  }
+  res.status(400).json({ message: 'Invalid method' });
+});
+
+// Add tip & feedback -------------------------------------------------------
+router.post('/orders/:id/tip', (req, res) => {
+  const { amount, feedback } = req.body || {};
+  if (typeof amount !== 'number') return res.status(400).json({ message: 'Missing amount' });
+  const order = orders.find(o => o.id === parseInt(req.params.id, 10));
+  if (!order) return res.status(404).json({ message: 'Not found' });
+  order.tip = amount;
+  if (feedback) order.feedback = feedback;
+  res.json({ message: 'Tip recorded' });
+});
+
 module.exports = { router, orders };
