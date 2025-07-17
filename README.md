@@ -138,6 +138,9 @@ Endpoint `/api/send-communication` generates reminder messages with OpenAI and d
 
 - `POST /api/regulatory-scan` analyzes document text against a ruleset and returns any compliance issues.
 - `GET /api/evidence-dossier/:loanId` assembles communications and uploaded files for audit review.
+- `POST /api/pci-scan` runs a simple PCI compliance check.
+- `GET /api/gdpr-export/:userId` exports a user's stored data.
+- `DELETE /api/gdpr-delete/:userId` removes the user's data on request.
 - `POST /api/generate-closing-doc` returns a simple closing statement PDF.
 - Field-level changes are recorded to an encrypted `api/auditLogs.enc` file whenever data is created or modified. Set `ENCRYPTION_KEY` in `api/.env` to secure the log.
 - These controls provide a foundation for SOC‑2 readiness alongside existing Sentry monitoring.
@@ -161,7 +164,7 @@ The API also includes basic hospitality modules:
 
 - OpenAPI specification is served at `/openapi.json` with Swagger UI at `/api-docs`.
 - `POST /api/webhooks` registers a URL to receive `loan.created`, `payment.created` and `booking.created` events.
-- `GET /api/integrations` lists connected apps. Connect QuickBooks, Yardi or Procore via `POST /api/integrations/{name}/connect`.
+- `GET /api/integrations` lists connected apps. Connect QuickBooks, Xero, Toast, Square or Procore via `POST /api/integrations/{name}/connect`.
 - Hospitality modules now include `/api/bookings` endpoints for room reservations.
 
 ## Accessibility & Performance
