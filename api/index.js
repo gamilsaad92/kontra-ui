@@ -63,6 +63,8 @@ const paymentsStripeRouter = require('./routers/paymentsStripe');
 const analyticsRouter = require('./routers/analytics');
 const restaurantRouter = require('./routers/restaurant');
 const restaurantsRouter = require('./routers/restaurants');
+const applicationsRouter = require('./routers/applications');
+const riskRouter = require('./routers/risk');
 const { webhooks, triggerWebhooks } = require('./webhooks');
 
 // ── Webhook & Integration State ────────────────────────────────────────────
@@ -402,12 +404,15 @@ app.use('/api/dashboard-layout', authenticate, dashboard);
 if (isFeatureEnabled('assets')) {
   app.use("/api/assets", assetsRouter);
 }
+app.use('/api/applications', applicationsRouter);
+app.use('/api/loan-applications', applicationsRouter);
 app.use("/api/inspections", inspectionsRouter);
 app.use('/api', loansRouter);
 app.use('/api', drawsRouter);
 app.use('/api', projectsRouter);
 app.use('/api/organizations', organizationsRouter);
 app.use('/api/sso', ssoRouter);
+app.use('/api/risk', riskRouter);
 app.use('/api/reports', reportsRouter);
 app.use('/api', menuRouter);
 app.use('/api', ordersRouter);
@@ -826,51 +831,6 @@ app.get('/api/smart-recommendations', async (_req, res) => {
 });
 
 // ── Loan Application Endpoints ─────────────────────────────────────────────
-app.post('/api/loan-applications', upload.single('document'), async (req, res) => {
-  const { name, email, ssn, amount } = req.body;
-  if (!name || !email || !ssn || !amount) {
-    return res.status(400).json({ message: 'Missing required fields' });
-  }
-
-  const kyc = await runKycCheck(req.file ? req.file.buffer : null);
-  const credit = await fetchCreditScore(ssn);
-
-  const { data, error } = await supabase
-    .from('loan_applications')
-    .insert([
-      {
-        name,
-        email,
-        ssn,
-        amount,
-        credit_score: credit.score,
-        kyc_passed: kyc.passed,
-        submitted_at: new Date().toISOString()
-      }
-    ])
-    .select()
-    .single();
-
-  if (error) {
-    console.error('Insert application error:', error);
-    return res.status(500).json({ message: 'Failed to save application' });
-  }
-
-  res.status(201).json({ application: data });
-});
-
-app.get('/api/loan-applications', async (req, res) => {
-  const { data, error } = await supabase
-    .from('loan_applications')
-    .select('id, name, amount, credit_score, kyc_passed, submitted_at')
-    .order('submitted_at', { ascending: false });
-
-  if (error) {
-    console.error('List applications error:', error);
-    return res.status(500).json({ message: 'Failed to fetch applications' });
-  }
-  res.json({ applications: data });
-});
 
 
 // ── Projects CRUD ───────────────────────────────────────────────────────────
