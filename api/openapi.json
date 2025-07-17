@@ -249,5 +249,6 @@
     "/api/payments/qr": {"post": {"summary": "Generate QR payment","responses": {"201": {"description": "Created"}}}},
     "/api/payments/link": {"post": {"summary": "Create payment link","responses": {"201": {"description": "Created"}}}},
     "/api/payments/tap": {"post": {"summary": "SoftPOS tap payment","responses": {"201": {"description": "Created"}}}},
-  }
+    "/api/analytics/restaurant": {"get": {"summary": "Restaurant analytics metrics","responses": {"200": {"description": "OK"}}}},
+    "/api/accounting/entries": {"get": {"summary": "Export accounting entries","responses": {"200": {"description": "OK"}}}}  }
 }
