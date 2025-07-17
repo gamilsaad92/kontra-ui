@@ -238,5 +238,11 @@
     "/api/orders": {"post": {"summary": "Create order","responses": {"201": {"description": "Created"}}}},
     "/api/orders/{id}": {"patch": {"summary": "Update order","responses": {"200": {"description": "OK"}}}},
     "/api/payments/qr": {"post": {"summary": "Generate QR payment","responses": {"201": {"description": "Created"}}}},
+        "/api/orders/{id}/bill": {"get": {"summary": "Get order bill","responses": {"200": {"description": "OK"}}}},
+    "/api/orders/{id}/split": {"post": {"summary": "Split bill","responses": {"200": {"description": "OK"}}}},
+    "/api/orders/{id}/tip": {"post": {"summary": "Add tip","responses": {"200": {"description": "OK"}}}},
+    "/api/payments/qr": {"post": {"summary": "Generate QR payment","responses": {"201": {"description": "Created"}}}},
+    "/api/payments/link": {"post": {"summary": "Create payment link","responses": {"201": {"description": "Created"}}}},
+    "/api/payments/tap": {"post": {"summary": "SoftPOS tap payment","responses": {"201": {"description": "Created"}}}},
   }
 }
