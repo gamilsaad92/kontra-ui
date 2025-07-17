@@ -28,7 +28,8 @@
     "ws": "^8.18.0",
     "@google-cloud/dialogflow": "^4.4.0",
     "uuid": "^9.0.0",
-    "qrcode": "^1.5.1"
+    "qrcode": "^1.5.1",
+    "stripe": "^12.17.0"
   },
   "devDependencies": {
     "jest": "^29.7.0",
