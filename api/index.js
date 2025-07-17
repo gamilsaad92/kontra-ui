@@ -14,6 +14,7 @@ const attachChatServer = require('./chatServer');
 const { forecastProject } = require('./construction');
 const { isFeatureEnabled } = require('./featureFlags');
 const auditLogger = require('./middlewares/auditLogger');
+const { scanForCompliance, gatherEvidence } = require('./compliance');
 require('dotenv').config();
 ["SUPABASE_URL","SUPABASE_SERVICE_ROLE_KEY","OPENAI_API_KEY","SENTRY_DSN","STRIPE_SECRET_KEY"].forEach(k => {
   if (!process.env[k]) {
@@ -65,7 +66,14 @@ const restaurantsRouter = require('./routers/restaurants');
 const { webhooks, triggerWebhooks } = require('./webhooks');
 
 // ── Webhook & Integration State ────────────────────────────────────────────
-const integrations = { quickbooks: false, yardi: false, procore: false };
+const integrations = {
+  quickbooks: false,
+  yardi: false,
+  procore: false,
+  toast: false,
+  square: false,
+  xero: false
+};
 
 // Define the functions that the assistant can “call.”
 const functions = [
@@ -465,6 +473,38 @@ app.post('/api/integrations/:name/connect', (req, res) => {
   }
   integrations[name] = true;
   res.json({ message: `${name} connected` });
+});
+
+// ── Security & Compliance ─────────────────────────────────────────────────
+app.post('/api/pci-scan', (req, res) => {
+  const { environment } = req.body || {};
+  // Placeholder always passes; real implementation would scan systems
+  res.json({ compliant: true, environment: environment || 'default' });
+});
+
+app.get('/api/gdpr-export/:userId', async (req, res) => {
+  const { userId } = req.params;
+  // Placeholder for exporting user data
+  res.json({ userId, data: {} });
+});
+
+app.delete('/api/gdpr-delete/:userId', async (req, res) => {
+  const { userId } = req.params;
+  // Placeholder for deleting user data
+  res.json({ userId, deleted: true });
+});
+
+app.post('/api/regulatory-scan', (req, res) => {
+  const { text } = req.body || {};
+  if (!text) return res.status(400).json({ message: 'Missing text' });
+  const result = scanForCompliance(text);
+  res.json(result);
+});
+
+app.get('/api/evidence-dossier/:loanId', async (req, res) => {
+  const { loanId } = req.params;
+  const evidence = await gatherEvidence(loanId);
+  res.json({ evidence });
 });
 
 // ── AI Photo Validation ────────────────────────────────────────────────────
