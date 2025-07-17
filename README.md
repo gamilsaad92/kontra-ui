@@ -158,7 +158,15 @@ The API also includes basic hospitality modules:
 - `POST /api/service-request` logs housekeeping or other guest requests.
 - `POST /api/forecast-inventory` predicts upcoming supply needs.
 - `POST /api/demand-forecast` returns a simple occupancy forecast for the next week.
-- - `POST /api/suggest-upsells` returns personalized offers for a guest.
+- `POST /api/suggest-upsells` returns personalized offers for a guest.
+
+## Phase 6 – Analytics & Insights
+
+Restaurant dashboards now surface operational metrics:
+
+- `GET /api/analytics/restaurant` returns table turnover, average payment time and tip performance.
+- `GET /api/accounting/entries` exports payment entries as JSON or CSV.
+The staff dashboard visualizes these metrics and provides a one-click accounting export.
 
 ## Integrations & Marketplace
 
