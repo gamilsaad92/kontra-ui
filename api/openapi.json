@@ -171,6 +171,11 @@
         "responses": {"200":{"description":"Connected"}}
       }
           },
+        "/api/pci-scan": {"post": {"summary": "Run PCI compliance scan","responses": {"200": {"description": "OK"}}}},
+    "/api/gdpr-export/{userId}": {"get": {"summary": "Export user data","parameters": [{"in":"path","name":"userId","required":true,"schema":{"type":"string"}}],"responses": {"200": {"description": "OK"}}}},
+    "/api/gdpr-delete/{userId}": {"delete": {"summary": "Delete user data","parameters": [{"in":"path","name":"userId","required":true,"schema":{"type":"string"}}],"responses": {"200": {"description": "Deleted"}}}},
+    "/api/regulatory-scan": {"post": {"summary": "Scan document for compliance","responses": {"200": {"description": "OK"}}}},
+    "/api/evidence-dossier/{loanId}": {"get": {"summary": "Gather compliance evidence","parameters": [{"in":"path","name":"loanId","required":true,"schema":{"type":"integer"}}],"responses": {"200": {"description": "OK"}}}},
     "/api/hazard-loss": {
       "post": {
         "summary": "Record hazard loss details",
