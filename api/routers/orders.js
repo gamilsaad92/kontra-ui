@@ -14,7 +14,7 @@ router.get('/orders', (req, res) => {
 });
 
 router.post('/orders', (req, res) => {
-  const { items } = req.body || {};
+ const { items, table } = req.body || {};
   if (!Array.isArray(items) || items.length === 0) {
     return res.status(400).json({ message: 'Missing items' });
   }
@@ -25,7 +25,13 @@ router.post('/orders', (req, res) => {
     if (!menuItem) return res.status(400).json({ message: 'Invalid item' });
     total += menuItem.price * (quantity || 1);
   }
-  const order = { id: nextOrderId++, items, total };
+   const order = {
+    id: nextOrderId++,
+    items,
+    total,
+    table,
+    created_at: new Date().toISOString()
+  };
   orders.push(order);
   res.status(201).json({ order });
 });
