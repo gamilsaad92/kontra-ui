@@ -28,6 +28,9 @@ import AssetForm from './AssetForm';
 import AssetsTable from './AssetsTable';
 import PaymentPortal from './PaymentPortal';
 import DrawKanbanBoard from './DrawKanbanBoard';
+import UnderwritingBoard from './UnderwritingBoard';
+import InvestorReportForm from './InvestorReportForm';
+import InvestorReportsList from './InvestorReportsList';
 const HospitalityDashboard = lazy(() => import('./HospitalityDashboard'));
 const GuestCRM = lazy(() => import('./GuestCRM'));
 const GuestChat = lazy(() => import('./GuestChat'));
@@ -49,50 +52,20 @@ import StaffRestaurantDashboard from './StaffRestaurantDashboard';
 import { isFeatureEnabled } from '../lib/featureFlags';
 
 const navItems = [
-  { label: 'Dashboard', icon: '🏠' },
-  {
-    label: 'Loans',
-    icon: '💰',
-    sub: ['Create Loan', 'Loan List']
-  },
-  {
-    label: 'Applications',
-    icon: '📝',
-    sub: ['New Application', 'Application List']
-  },
-  {
-    label: 'Servicing',
-    icon: '🛠️',
-    sub: ['Escrows', 'Collections']
-  },
-  {
-    label: 'Projects',
-    icon: '🏗️',
-    sub: ['Projects', 'Draw Requests']
-  },
-  { label: 'Payment Portal', icon: '💳' },
-  { label: 'Customer Portal', icon: '👤' },
-  { label: 'Self Service Payment', icon: '💵' },
-    { label: 'Restaurant Menu', icon: '🍔' },
-  { label: 'Restaurant Dashboard', icon: '🍽️' },
-  { label: 'Guest Reservations', icon: '📅', flag: 'hospitality' },
-  { label: 'Booking Calendar', icon: '🗓️', flag: 'hospitality' },
-  { label: 'Bulk Actions', icon: '📂' },
-  { label: 'Reports', icon: '📊' },
-  { label: 'Hospitality', icon: '🏨', sub: ['Hospitality Dashboard'], flag: 'hospitality' },
-  { label: 'Troubled Assets', icon: '🚩', flag: 'assets' },
-  { label: 'Revived Sales', icon: '🏘️', flag: 'assets' },
-  { label: 'Settings', icon: '⚙️' },
-  { label: 'Decisions', icon: '📜' },
-  { label: 'Assistant', icon: '🤖' },
-   { label: 'Live Chat', icon: '💬', flag: 'chat' },
+  { label: 'Application', icon: '📝', sub: ['New Application', 'Application List'] },
+  { label: 'Underwriting', icon: '✅', sub: ['Underwriting Board', 'Decisions'] },
+  { label: 'Escrow Setup', icon: '💼', sub: ['Escrows'] },
+  { label: 'Servicing', icon: '🛠️', sub: ['Payment Portal', 'Self Service Payment'] },
+  { label: 'Risk Monitoring', icon: '📈', sub: ['Troubled Assets', 'Revived Sales'] },
+  { label: 'Investor Reporting', icon: '📊', sub: ['Reports', 'Investor Reports'] },
+  { label: 'Collections', icon: '💵', sub: ['Collections'] },
   { label: 'Docs', icon: '📄', href: 'https://github.com/kontra-ui/docs' }
 ];
 
 export default function DashboardLayout() {
   const { session, supabase } = useContext(AuthContext);
   const [signUp, setSignUp] = useState(false);
-  const [active, setActive] = useState('Dashboard');
+  const [active, setActive] = useState('Application');
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [selectedId, setSelectedId] = useState(null);
   const [selectedProjectId, setSelectedProjectId] = useState(null);
@@ -163,6 +136,8 @@ export default function DashboardLayout() {
         );
       case 'Application List':
         return <LoanApplicationList key={refreshKey} />;
+          case 'Underwriting Board':
+        return <UnderwritingBoard />;
       case 'Create Loan':
         return <CreateLoanForm onCreated={() => setRefreshKey(k => k + 1)} />;
       case 'Loan List':
@@ -241,8 +216,15 @@ export default function DashboardLayout() {
         return isFeatureEnabled('hospitality') ? <BookingCalendar /> : null;
       case 'Bulk Actions':
         return <BulkActionTable rows={[]} columns={[]} />;
-             case 'Reports':
+            case 'Reports':
         return <ReportBuilder />;
+          case 'Investor Reports':
+        return (
+          <>
+            <InvestorReportForm onCreated={() => setRefreshKey(k => k + 1)} />
+            <InvestorReportsList refresh={refreshKey} />
+          </>
+        );
       case 'Hospitality Dashboard':
             case 'Hospitality Dashboard':
             return isFeatureEnabled('hospitality') ? (
