@@ -48,12 +48,24 @@ This repository contains the **frontend** and **backend** for the Kontra demo ap
 
    Tests require `jest` installed locally.
 
+## End-to-End Workflow
+
+The application now flows through a streamlined sequence:
+
+1. **Application** – submit loan data via `/api/applications`.
+2. **Underwriting** – review tasks and generate decisions using the OCR/LLM endpoints.
+3. **Escrow Setup** – create escrow records for approved loans.
+4. **Servicing** – manage payments and portals.
+5. **Risk Monitoring** – run risk scripts with `/api/risk/run` to update scores.
+6. **Investor Reporting** – generate reports via `/api/reports` and `/api/investor-reports`.
+7. **Collections** – track delinquent amounts in the collections table.
+   
 ## Loan Application API
 
 The API exposes basic endpoints for submitting and reviewing loan applications.
 
-* `POST /api/loan-applications` – submit a new application (supports `multipart/form-data` with a `document` upload)
-* GET /api/loan-applications` – list submitted applications (use `?limit=N` to cap results)
+* `POST /api/applications` – submit a new application (supports `multipart/form-data` with a `document` upload)
+* `GET /api/applications` – list submitted applications (use `?limit=N` to cap results)
 
 These routes perform mock KYC and credit checks before storing the application in Supabase.
 
