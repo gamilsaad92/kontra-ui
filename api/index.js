@@ -15,7 +15,7 @@ const { forecastProject } = require('./construction');
 const { isFeatureEnabled } = require('./featureFlags');
 const auditLogger = require('./middlewares/auditLogger');
 require('dotenv').config();
-["SUPABASE_URL","SUPABASE_SERVICE_ROLE_KEY","OPENAI_API_KEY","SENTRY_DSN"].forEach(k => {
+["SUPABASE_URL","SUPABASE_SERVICE_ROLE_KEY","OPENAI_API_KEY","SENTRY_DSN","STRIPE_SECRET_KEY"].forEach(k => {
   if (!process.env[k]) {
     console.error(`Missing ${k}`);
     process.exit(1);
@@ -58,8 +58,10 @@ const reportsRouter = require('./routers/reports');
 const { router: menuRouter } = require('./routers/menu');
 const { router: ordersRouter } = require('./routers/orders');
 const { router: paymentsRouter } = require('./routers/payments');
+const paymentsStripeRouter = require('./routers/paymentsStripe');
 const analyticsRouter = require('./routers/analytics');
 const restaurantRouter = require('./routers/restaurant');
+const restaurantsRouter = require('./routers/restaurants');
 const { webhooks, triggerWebhooks } = require('./webhooks');
 
 // ── Webhook & Integration State ────────────────────────────────────────────
@@ -402,8 +404,10 @@ app.use('/api/reports', reportsRouter);
 app.use('/api', menuRouter);
 app.use('/api', ordersRouter);
 app.use('/api', paymentsRouter);
+app.use('/api', paymentsStripeRouter);
 app.use('/api', analyticsRouter);
 app.use('/api', restaurantRouter);
+app.use('/api', restaurantsRouter);
 
 // ── Health Checks ──────────────────────────────────────────────────────────
 app.get('/', (req, res) => res.send('Sentry test running!'));
