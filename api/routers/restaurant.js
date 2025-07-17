@@ -103,4 +103,28 @@ router.post('/payments/qr', async (req, res) => {
   }
 });
 
+// Payment link (SMS/email) -------------------------------------------------
+router.post('/payments/link', async (req, res) => {
+  const { amount, order_id } = req.body || {};
+  if (!amount) return res.status(400).json({ message: 'Missing amount' });
+  const sessionId = uuidv4();
+  await supabase
+    .from('payment_sessions')
+    .insert([{ id: sessionId, amount, order_id, status: 'pending', created_at: new Date().toISOString() }]);
+  const url = `${process.env.PAYMENT_BASE_URL}/pay/${sessionId}`;
+  res.status(201).json({ session_id: sessionId, url });
+});
+
+// SoftPOS tap payment ------------------------------------------------------
+router.post('/payments/tap', async (req, res) => {
+  const { amount, order_id } = req.body || {};
+  if (!amount) return res.status(400).json({ message: 'Missing amount' });
+  const paymentId = uuidv4();
+  await supabase
+    .from('payments')
+    .insert([{ id: paymentId, amount, order_id, method: 'tap', created_at: new Date().toISOString() }]);
+  res.status(201).json({ payment_id: paymentId });
+});
+
+
 module.exports = router;
