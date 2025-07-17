@@ -44,6 +44,8 @@ import ReportBuilder from './ReportBuilder';
 import LiveChat from './LiveChat';
 import CustomerPortal from './CustomerPortal';
 import OrganizationSettings from './OrganizationSettings';
+import RestaurantMenu from './RestaurantMenu';
+import StaffRestaurantDashboard from './StaffRestaurantDashboard';
 import { isFeatureEnabled } from '../lib/featureFlags';
 
 const navItems = [
@@ -71,6 +73,8 @@ const navItems = [
   { label: 'Payment Portal', icon: '💳' },
   { label: 'Customer Portal', icon: '👤' },
   { label: 'Self Service Payment', icon: '💵' },
+    { label: 'Restaurant Menu', icon: '🍔' },
+  { label: 'Restaurant Dashboard', icon: '🍽️' },
   { label: 'Guest Reservations', icon: '📅', flag: 'hospitality' },
   { label: 'Booking Calendar', icon: '🗓️', flag: 'hospitality' },
   { label: 'Bulk Actions', icon: '📂' },
@@ -227,6 +231,10 @@ export default function DashboardLayout() {
         return <CustomerPortal />;
       case 'Self Service Payment':
         return <SelfServicePayment />;
+      case 'Restaurant Menu':
+        return <RestaurantMenu />;
+      case 'Restaurant Dashboard':
+        return <StaffRestaurantDashboard />;
       case 'Guest Reservations':
         return isFeatureEnabled('hospitality') ? <GuestReservations /> : null;
              case 'Booking Calendar':
