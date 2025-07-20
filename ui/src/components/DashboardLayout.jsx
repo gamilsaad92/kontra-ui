@@ -51,21 +51,39 @@ import RestaurantMenu from './RestaurantMenu';
 import StaffRestaurantDashboard from './StaffRestaurantDashboard';
 import { isFeatureEnabled } from '../lib/featureFlags';
 
-const navItems = [
-  { label: 'Application', icon: '📝', sub: ['New Application', 'Application List'] },
-  { label: 'Underwriting', icon: '✅', sub: ['Underwriting Board', 'Decisions'] },
-  { label: 'Escrow Setup', icon: '💼', sub: ['Escrows'] },
-  { label: 'Servicing', icon: '🛠️', sub: ['Payment Portal', 'Self Service Payment'] },
-  { label: 'Risk Monitoring', icon: '📈', sub: ['Troubled Assets', 'Revived Sales'] },
-  { label: 'Investor Reporting', icon: '📊', sub: ['Reports', 'Investor Reports'] },
-  { label: 'Collections', icon: '💵', sub: ['Collections'] },
-  { label: 'Docs', icon: '📄', href: 'https://github.com/kontra-ui/docs' }
-];
+const departmentNav = {
+  finance: [
+    { label: 'Application', icon: '📝', sub: ['New Application', 'Application List'] },
+    { label: 'Underwriting', icon: '✅', sub: ['Underwriting Board', 'Decisions'] },
+    { label: 'Escrow Setup', icon: '💼', sub: ['Escrows'] },
+    { label: 'Servicing', icon: '🛠️', sub: ['Payment Portal', 'Self Service Payment'] },
+    { label: 'Risk Monitoring', icon: '📈', sub: ['Troubled Assets', 'Revived Sales'] },
+    { label: 'Investor Reporting', icon: '📊', sub: ['Reports', 'Investor Reports'] },
+    { label: 'Collections', icon: '💵', sub: ['Collections'] },
+    { label: 'Docs', icon: '📄', href: 'https://github.com/kontra-ui/docs' }
+  ],
+  hospitality: [
+    { label: 'Hospitality Dashboard', icon: '🏨' },
+    { label: 'Guest CRM', icon: '👥' },
+    { label: 'Guest Chat', icon: '💬' },
+    { label: 'Guest Reservations', icon: '🛏️', flag: 'hospitality' },
+    { label: 'Booking Calendar', icon: '📅', flag: 'hospitality' },
+    { label: 'Restaurant Menu', icon: '🍽️' },
+    { label: 'Restaurant Dashboard', icon: '📊' },
+    { label: 'Docs', icon: '📄', href: 'https://github.com/kontra-ui/docs' }
+  ]
+};
 
 export default function DashboardLayout() {
   const { session, supabase } = useContext(AuthContext);
   const [signUp, setSignUp] = useState(false);
-  const [active, setActive] = useState('Application');
+   const [department, setDepartment] = useState(() =>
+    session?.user?.user_metadata?.role === 'hospitality' ? 'hospitality' : 'finance'
+  );
+  const defaultItem = departmentNav[department][0];
+  const [active, setActive] = useState(
+    defaultItem.sub ? defaultItem.sub[0] : defaultItem.label
+  );
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [selectedId, setSelectedId] = useState(null);
   const [selectedProjectId, setSelectedProjectId] = useState(null);
@@ -75,6 +93,15 @@ export default function DashboardLayout() {
   const [showTour, setShowTour] = useState(false);
   const [showLanding, setShowLanding] = useState(true);
   const [showWelcome, setShowWelcome] = useState(false);
+
+    const navItems = departmentNav[department] || [];
+
+  useEffect(() => {
+    const first = navItems[0];
+    if (first) {
+      setActive(first.sub ? first.sub[0] : first.label);
+    }
+  }, [department]);
 
   const handleWelcomeDone = () => {
     localStorage.setItem('welcomeDone', 'true');
@@ -297,6 +324,14 @@ export default function DashboardLayout() {
         >
           {sidebarOpen ? 'Kontra' : 'K'}
         </button>
+       <select
+          value={department}
+          onChange={e => setDepartment(e.target.value)}
+          className="m-2 p-1 text-black rounded"
+        >
+          <option value="finance">Finance</option>
+          <option value="hospitality">Hospitality</option>
+        </select>
         <nav className="flex-1 overflow-auto py-4 space-y-1">
               {navItems
             .filter(item => !item.flag || isFeatureEnabled(item.flag))
