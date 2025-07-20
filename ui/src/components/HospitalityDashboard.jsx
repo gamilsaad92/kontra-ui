@@ -3,7 +3,7 @@ import { LineChart, Line, XAxis, YAxis, Tooltip } from 'recharts';
 import { API_BASE } from '../lib/apiBase';
 import VirtualAssistant from './VirtualAssistant';
 
-export default function HospitalityDashboard({ setActive }) {
+export default function HospitalityDashboard({ navigateTo }) {
   const [occDaily, setOccDaily] = useState([]);
   const [adrData, setAdrData] = useState([]);
   const [revParData, setRevParData] = useState([]);
@@ -28,16 +28,16 @@ export default function HospitalityDashboard({ setActive }) {
   return (
     <div className="space-y-6">
       <div className="space-x-2 mb-4">
-        {setActive && (
+              {navigateTo && (
           <>
             <button
-              onClick={() => setActive('Guest CRM')}
+                     onClick={() => navigateTo('Guest CRM')}
               className="bg-blue-600 text-white px-3 py-1 rounded"
             >
               Guest CRM
             </button>
             <button
-              onClick={() => setActive('Guest Chat')}
+                      onClick={() => navigateTo('Guest Chat')}
               className="bg-blue-600 text-white px-3 py-1 rounded"
             >
               Guest Chat
