@@ -65,17 +65,10 @@ const restaurantRouter = require('./routers/restaurant');
 const restaurantsRouter = require('./routers/restaurants');
 const applicationsRouter = require('./routers/applications');
 const riskRouter = require('./routers/risk');
-const { webhooks, triggerWebhooks } = require('./webhooks');
-
-// ── Webhook & Integration State ────────────────────────────────────────────
-const integrations = {
-  quickbooks: false,
-  yardi: false,
-  procore: false,
-  toast: false,
-  square: false,
-  xero: false
-};
+const { triggerWebhooks } = require('./webhooks');
+const webhooksRouter = require('./routers/webhookRoutes');
+const { router: integrationsRouter } = require('./routers/integrations');
+const complianceRouter = require('./routers/compliance');
 
 // Define the functions that the assistant can “call.”
 const functions = [
@@ -450,78 +443,10 @@ app.get('/api-docs', (req, res) => {
   </html>`);
 });
 
-// ── Webhook Registration ─────────────────────────────────────────────────--
-app.get('/api/webhooks', (req, res) => {
-  res.json({ webhooks });
-});
-app.post('/api/webhooks', (req, res) => {
-  const { event, url } = req.body || {};
-  if (!event || !url) return res.status(400).json({ message: 'Missing event or url' });
-  webhooks.push({ event, url });
-  res.status(201).json({ message: 'Webhook registered' });
-});
-app.delete('/api/webhooks', (req, res) => {
-  const { event, url } = req.body || {};
-  const index = webhooks.findIndex(w => w.event === event && w.url === url);
-  if (index !== -1) webhooks.splice(index, 1);
-  res.json({ message: 'Webhook removed' });
-});
-
-// ── App Integrations ─────────────────────────────────────────────────────--
-app.get('/api/integrations', (req, res) => {
-  res.json({ integrations });
-});
-app.post('/api/integrations/:name/connect', (req, res) => {
-  const { name } = req.params;
-  if (!integrations.hasOwnProperty(name)) {
-    return res.status(400).json({ message: 'Unknown integration' });
-  }
-  integrations[name] = true;
-  res.json({ message: `${name} connected` });
-});
-
-// ── Security & Compliance ─────────────────────────────────────────────────
-app.post('/api/pci-scan', (req, res) => {
-  const { environment } = req.body || {};
-  // Placeholder always passes; real implementation would scan systems
-  res.json({ compliant: true, environment: environment || 'default' });
-});
-
-app.get('/api/gdpr-export/:userId', async (req, res) => {
-  const { userId } = req.params;
-  // Placeholder for exporting user data
-  res.json({ userId, data: {} });
-});
-
-app.delete('/api/gdpr-delete/:userId', async (req, res) => {
-  const { userId } = req.params;
-  // Placeholder for deleting user data
-  res.json({ userId, deleted: true });
-});
-
-app.post('/api/regulatory-scan', (req, res) => {
-  const { text } = req.body || {};
-  if (!text) return res.status(400).json({ message: 'Missing text' });
-  const result = scanForCompliance(text);
-  res.json(result);
-});
-
-app.get('/api/evidence-dossier/:loanId', async (req, res) => {
-  const { loanId } = req.params;
-  const evidence = await gatherEvidence(loanId);
-  res.json({ evidence });
-});
-
-// ── AI Photo Validation ────────────────────────────────────────────────────
-app.post('/api/validate-photo', upload.single('image'), (req, res) => {
-  if (!req.file) return res.status(400).json({ result: 'No file uploaded' });
-  const fileSizeKB = req.file.size / 1024;
-  const result =
-    fileSizeKB < 30
-      ? 'Image too small — likely blurry ❌'
-      : 'Image passed validation ✅';
-  res.json({ result });
-});
+// ── Webhooks & Integrations ────────────────────────────────────────────────
+app.use('/api', webhooksRouter);
+app.use('/api', integrationsRouter);
+app.use('/api', complianceRouter);
 
 // ── Mock KYC & Credit Checks ──────────────────────────────────────────────
 async function runKycCheck(buffer) {
