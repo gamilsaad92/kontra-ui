@@ -1,7 +1,6 @@
 import React, { useState, useContext, useEffect, lazy, Suspense } from 'react';
 import { AuthContext } from '../main';
-import LoginForm from './LoginForm';
-import SignUpForm from './SignUpForm';
+import { Routes, Route, Link, useNavigate, useLocation } from 'react-router-dom';
 import VirtualAssistant from './VirtualAssistant';
 import SuggestFeatureWidget from './SuggestFeatureWidget';
 import DashboardHome from './DashboardHome';
@@ -74,16 +73,17 @@ const departmentNav = {
   ]
 };
 
+const slug = str => str.toLowerCase().replace(/\s+/g, '-');
+const toPath = label => (label === 'Dashboard' ? '/' : `/${slug(label)}`);
+
 export default function DashboardLayout() {
   const { session, supabase } = useContext(AuthContext);
-  const [signUp, setSignUp] = useState(false);
+    const navigate = useNavigate();
+  const location = useLocation();
    const [department, setDepartment] = useState(() =>
     session?.user?.user_metadata?.role === 'hospitality' ? 'hospitality' : 'finance'
   );
   const defaultItem = departmentNav[department][0];
-  const [active, setActive] = useState(
-    defaultItem.sub ? defaultItem.sub[0] : defaultItem.label
-  );
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [selectedId, setSelectedId] = useState(null);
   const [selectedProjectId, setSelectedProjectId] = useState(null);
@@ -94,12 +94,13 @@ export default function DashboardLayout() {
   const [showLanding, setShowLanding] = useState(true);
   const [showWelcome, setShowWelcome] = useState(false);
 
-    const navItems = departmentNav[department] || [];
+  const navItems = departmentNav[department] || [];
+  const navigateTo = label => navigate(toPath(label));
 
   useEffect(() => {
     const first = navItems[0];
     if (first) {
-      setActive(first.sub ? first.sub[0] : first.label);
+       navigate(toPath(first.sub ? first.sub[0] : first.label));
     }
   }, [department]);
 
@@ -125,13 +126,6 @@ export default function DashboardLayout() {
     }
     }, [session]);
   
-  if (!session) {
-    return signUp ? (
-      <SignUpForm onSwitch={() => setSignUp(false)} />
-    ) : (
-      <LoginForm onSwitch={() => setSignUp(true)} />
-    );
-  }
 
     if (showLanding) {
     const role = session.user?.user_metadata?.role;
@@ -153,162 +147,139 @@ export default function DashboardLayout() {
     );
   }
 
-  const renderContent = () => {
-    switch (active) {
-      case 'Dashboard':
-        return <DashboardHome setActive={setActive} />;
-      case 'New Application':
-        return (
-          <LoanApplicationForm onSubmitted={() => setRefreshKey(k => k + 1)} />
-        );
-      case 'Application List':
-        return <LoanApplicationList key={refreshKey} />;
-          case 'Underwriting Board':
-        return <UnderwritingBoard />;
-      case 'Create Loan':
-        return <CreateLoanForm onCreated={() => setRefreshKey(k => k + 1)} />;
-      case 'Loan List':
-        return selectedId ? (
-          <>
-            <h3 className="text-xl mb-4">Loan Details #{selectedId}</h3>
-            <AmortizationTable loanId={selectedId} />
-            <PaymentForm
-              loanId={selectedId}
-              onSubmit={() => setRefreshKey(k => k + 1)}
-            />
+   const pages = {
+    Dashboard: () => <DashboardHome navigateTo={navigateTo} />,
+    'New Application': () => (
+      <LoanApplicationForm onSubmitted={() => setRefreshKey(k => k + 1)} />
+    ),
+    'Application List': () => <LoanApplicationList key={refreshKey} />,
+    'Underwriting Board': () => <UnderwritingBoard />,
+    'Create Loan': () => <CreateLoanForm onCreated={() => setRefreshKey(k => k + 1)} />,
+    'Loan List': () =>
+      selectedId ? (
+        <>
+          <h3 className="text-xl mb-4">Loan Details #{selectedId}</h3>
+          <AmortizationTable loanId={selectedId} />
+          <PaymentForm
+            loanId={selectedId}
+            onSubmit={() => setRefreshKey(k => k + 1)}
+          />
+        </>
+      ) : (
+        <LoanList key={refreshKey} onSelect={setSelectedId} />
+      ),
+    'New Request': () => <DrawRequestForm onSubmitted={() => setRefreshKey(k => k + 1)} />,
+    'Request List': () => (
+      <>
+        <DrawRequestsTable key={refreshKey} onSelect={setSelectedId} />
+        {selectedId && (
+        <>
+                  <LienWaiverForm drawId={selectedId} />
+            <LienWaiverList filter={{ draw_id: selectedId }} />
+            <InspectionForm drawId={selectedId} />
+            <InspectionList drawId={selectedId} />
           </>
-        ) : (
-          <LoanList key={refreshKey} onSelect={setSelectedId} />
-        );
-      case 'New Request':
-        return <DrawRequestForm onSubmitted={() => setRefreshKey(k => k + 1)} />;
-      case 'Request List':
-        return (
-          <>
-            <DrawRequestsTable key={refreshKey} onSelect={setSelectedId} />
-            {selectedId && (
-              <>
-                <LienWaiverForm drawId={selectedId} />
-                <LienWaiverList filter={{ draw_id: selectedId }} />
-                <InspectionForm drawId={selectedId} />
-                <InspectionList drawId={selectedId} />
-              </>
-            )}
-          </>
-               );
-      case 'Draw Board':
-        return <DrawKanbanBoard />;
-      case 'Escrows':
-        return <EscrowDashboard />;
-      case 'Collections':
-        return (
-          <>
-            <CollectionForm onCreated={() => setRefreshKey(k => k + 1)} />
-            <CollectionsTable refresh={refreshKey} />
-            </>
-        );
-      case 'Projects':
-        return selectedProjectId ? (
-            <>
-             <button
-              onClick={() => setSelectedProjectId(null)}
-              className="mb-4 text-blue-600 underline"
-            >
-              ← Back to Projects
-            </button>
-            <ProjectDetail projectId={selectedProjectId} />
-            </>
-         ) : (
-          <>
-            <ProjectForm onCreated={() => setProjectRefreshKey(k => k + 1)} />
-            <ProjectsTable
-              key={projectRefreshKey}
-              onSelect={setSelectedProjectId}
-            />
-          </>
-        );
-      case 'Payment Portal':
-           return <PaymentPortal />;
-      case 'Customer Portal':
-        return <CustomerPortal />;
-      case 'Self Service Payment':
-        return <SelfServicePayment />;
-      case 'Restaurant Menu':
-        return <RestaurantMenu />;
-      case 'Restaurant Dashboard':
-        return <StaffRestaurantDashboard />;
-      case 'Guest Reservations':
-        return isFeatureEnabled('hospitality') ? <GuestReservations /> : null;
-             case 'Booking Calendar':
-        return isFeatureEnabled('hospitality') ? <BookingCalendar /> : null;
-      case 'Bulk Actions':
-        return <BulkActionTable rows={[]} columns={[]} />;
-            case 'Reports':
-        return <ReportBuilder />;
-          case 'Investor Reports':
-        return (
-          <>
-            <InvestorReportForm onCreated={() => setRefreshKey(k => k + 1)} />
-            <InvestorReportsList refresh={refreshKey} />
-          </>
-        );
-      case 'Hospitality Dashboard':
-              return (
-          <Suspense fallback={<p>Loading...</p>}>
-            <HospitalityDashboard setActive={setActive} />
-          </Suspense>
-            );
-      case 'Guest CRM':
-           return isFeatureEnabled('hospitality') ? (
-          <Suspense fallback={<p>Loading...</p>}>
-            <GuestCRM />
-          </Suspense>
-         ) : null;
-      case 'Guest Chat':
-           return isFeatureEnabled('hospitality') ? (
-          <Suspense fallback={<p>Loading...</p>}>
-            <GuestChat />
-          </Suspense>
-          ) : null;
-      case 'Assets':
-        return (
-          <>
-            <AssetForm onCreated={() => setRefreshKey(k => k + 1)} />
-            <AssetsTable refresh={refreshKey} />
-          </>
-        );
-      case 'Troubled Assets':
-           return isFeatureEnabled('assets') ? (
-          <Suspense fallback={<p>Loading...</p>}>
-            <AssetRiskTable />
-          </Suspense>
-       ) : null;
-      case 'Revived Sales':
-           return isFeatureEnabled('assets') ? (
-          <Suspense fallback={<p>Loading...</p>}>
-            <RevivedAssetsTable />
-          </Suspense>
-           ) : null;
-              case 'Settings':
-        return <OrganizationSettings />;
-      case 'Decisions':
-        return <DecisionTimeline />;
-      case 'Assistant':
-        return (
-          <div className="h-full flex flex-col border rounded-lg bg-white">
-            <VirtualAssistant />
-          </div>
-        );
-      case 'Live Chat':
-        return isFeatureEnabled('chat') ? (
-          <div className="h-full flex flex-col border rounded-lg bg-white">
-            <LiveChat />
-          </div>
-          ) : null;
-      default:
-        return <p className="text-gray-500">Select an option</p>;
-    }
+       )}
+      </>
+    ),
+    'Draw Board': () => <DrawKanbanBoard />,
+    Escrows: () => <EscrowDashboard />,
+    Collections: () => (
+      <>
+        <CollectionForm onCreated={() => setRefreshKey(k => k + 1)} />
+        <CollectionsTable refresh={refreshKey} />
+      </>
+    ),
+    Projects: () =>
+      selectedProjectId ? (
+        <>
+          <button
+            onClick={() => setSelectedProjectId(null)}
+            className="mb-4 text-blue-600 underline"
+          >
+            ← Back to Projects
+          </button>
+          <ProjectDetail projectId={selectedProjectId} />
+        </>
+      ) : (
+        <>
+          <ProjectForm onCreated={() => setProjectRefreshKey(k => k + 1)} />
+          <ProjectsTable
+            key={projectRefreshKey}
+            onSelect={setSelectedProjectId}
+          />
+        </>
+      ),
+    'Payment Portal': () => <PaymentPortal />,
+    'Customer Portal': () => <CustomerPortal />,
+    'Self Service Payment': () => <SelfServicePayment />,
+    'Restaurant Menu': () => <RestaurantMenu />,
+    'Restaurant Dashboard': () => <StaffRestaurantDashboard />,
+    'Guest Reservations': () =>
+      isFeatureEnabled('hospitality') ? <GuestReservations /> : null,
+    'Booking Calendar': () =>
+      isFeatureEnabled('hospitality') ? <BookingCalendar /> : null,
+    'Bulk Actions': () => <BulkActionTable rows={[]} columns={[]} />,
+    Reports: () => <ReportBuilder />,
+    'Investor Reports': () => (
+      <>
+        <InvestorReportForm onCreated={() => setRefreshKey(k => k + 1)} />
+        <InvestorReportsList refresh={refreshKey} />
+      </>
+    ),
+    'Hospitality Dashboard': () => (
+      <Suspense fallback={<p>Loading...</p>}>
+        <HospitalityDashboard navigateTo={navigateTo} />
+      </Suspense>
+    ),
+    'Guest CRM': () =>
+      isFeatureEnabled('hospitality') ? (
+        <Suspense fallback={<p>Loading...</p>}>
+          <GuestCRM />
+        </Suspense>
+      ) : null,
+    'Guest Chat': () =>
+      isFeatureEnabled('hospitality') ? (
+        <Suspense fallback={<p>Loading...</p>}>
+          <GuestChat />
+        </Suspense>
+      ) : null,
+    Assets: () => (
+      <>
+        <AssetForm onCreated={() => setRefreshKey(k => k + 1)} />
+        <AssetsTable refresh={refreshKey} />
+      </>
+    ),
+    'Troubled Assets': () =>
+      isFeatureEnabled('assets') ? (
+        <Suspense fallback={<p>Loading...</p>}>
+          <AssetRiskTable />
+        </Suspense>
+      ) : null,
+    'Revived Sales': () =>
+      isFeatureEnabled('assets') ? (
+        <Suspense fallback={<p>Loading...</p>}>
+          <RevivedAssetsTable />
+        </Suspense>
+      ) : null,
+    Settings: () => <OrganizationSettings />,
+    Decisions: () => <DecisionTimeline />,
+    Assistant: () => (
+      <div className="h-full flex flex-col border rounded-lg bg-white">
+        <VirtualAssistant />
+      </div>
+    ),
+    'Live Chat': () =>
+      isFeatureEnabled('chat') ? (
+        <div className="h-full flex flex-col border rounded-lg bg-white">
+          <LiveChat />
+        </div>
+      ) : null
   };
+
+ const routes = Object.entries(pages).map(([label, Component]) => (
+    <Route key={label} path={toPath(label)} element={<Component />} />
+  ));
 
   return (
         <>
@@ -332,46 +303,40 @@ export default function DashboardLayout() {
           <option value="hospitality">Hospitality</option>
         </select>
         <nav className="flex-1 overflow-auto py-4 space-y-1">
-              {navItems
+                {navItems
             .filter(item => !item.flag || isFeatureEnabled(item.flag))
-            .map(item => (
-            <div key={item.label} className="text-sm">
-              {item.href ? (
-                <a
-                  href={item.href}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  title={item.label}
-                  className="flex items-center w-full px-3 py-2 hover:bg-gray-700 rounded"
-                >
-                  <span className="text-lg">{item.icon}</span>
-                  {sidebarOpen && <span className="ml-2">{item.label}</span>}
-                </a>
-              ) : item.sub ? (
-                <button
-                  onClick={() => setActive(item.sub[0])}
-                  title={item.label}
-                  className={`flex items-center w-full px-3 py-2 hover:bg-gray-700 rounded ${
-                    active === item.sub[0] ? 'bg-gray-700' : ''
-                  }`}
-                >
-                  <span className="text-lg">{item.icon}</span>
-                  {sidebarOpen && <span className="ml-2">{item.label}</span>}
-                </button>
-              ) : (
-                <button
-                  onClick={() => setActive(item.label)}
-                  title={item.label}
-                  className={`flex items-center w-full px-3 py-2 hover:bg-gray-700 rounded ${
-                    active === item.label ? 'bg-gray-700' : ''
-                  }`}
-                >
-                  <span className="text-lg">{item.icon}</span>
-                  {sidebarOpen && <span className="ml-2">{item.label}</span>}
-                </button>
-              )}
-            </div>
-          ))}
+            .map(item => {
+              const label = item.sub ? item.sub[0] : item.label;
+              const path = toPath(label);
+              const active = location.pathname === path;
+              return (
+                <div key={item.label} className="text-sm">
+                  {item.href ? (
+                    <a
+                      href={item.href}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      title={item.label}
+                      className="flex items-center w-full px-3 py-2 hover:bg-gray-700 rounded"
+                    >
+                      <span className="text-lg">{item.icon}</span>
+                      {sidebarOpen && <span className="ml-2">{item.label}</span>}
+                    </a>
+                  ) : (
+                    <Link
+                      to={path}
+                      title={item.label}
+                      className={`flex items-center w-full px-3 py-2 hover:bg-gray-700 rounded ${
+                        active ? 'bg-gray-700' : ''
+                      }`}
+                    >
+                      <span className="text-lg">{item.icon}</span>
+                      {sidebarOpen && <span className="ml-2">{item.label}</span>}
+                    </Link>
+                  )}
+                </div>
+              );
+            })}
           <button
             onClick={() => supabase.auth.signOut()}
             className="flex items-center px-3 py-2 hover:bg-gray-700 rounded"
@@ -402,7 +367,11 @@ export default function DashboardLayout() {
               </div>
             </div>
           </header>
-          <main id="main" className="flex-1 overflow-auto p-4 space-y-4">{renderContent()}</main>
+          <main id="main" className="flex-1 overflow-auto p-4 space-y-4">
+            <Routes>
+              {routes}
+            </Routes>
+          </main>
         </div>
         <aside className="w-80 border-l bg-white flex flex-col p-2 space-y-2">
           <VirtualAssistant />
