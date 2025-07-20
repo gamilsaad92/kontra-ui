@@ -253,12 +253,11 @@ export default function DashboardLayout() {
           </>
         );
       case 'Hospitality Dashboard':
-            case 'Hospitality Dashboard':
-            return isFeatureEnabled('hospitality') ? (
+              return (
           <Suspense fallback={<p>Loading...</p>}>
             <HospitalityDashboard setActive={setActive} />
           </Suspense>
-          ) : null;
+            );
       case 'Guest CRM':
            return isFeatureEnabled('hospitality') ? (
           <Suspense fallback={<p>Loading...</p>}>
