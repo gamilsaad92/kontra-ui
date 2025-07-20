@@ -21,7 +21,7 @@ const DEFAULT_LAYOUT = [
   { id: 'recommendations', w: 2, hidden: false }
 ];
 
-export default function DashboardHome({ setActive }) {
+export default function DashboardHome({ navigateTo }) {
   const { session } = useContext(AuthContext);
   const [layout, setLayout] = useState(DEFAULT_LAYOUT);
   const [loading, setLoading] = useState(true);
@@ -92,25 +92,25 @@ export default function DashboardHome({ setActive }) {
     <div className="space-y-4">
       <div className="flex space-x-2">
         <button
-          onClick={() => setActive && setActive('Create Loan')}
+               onClick={() => navigateTo && navigateTo('Create Loan')}
           className="bg-blue-600 text-white px-3 py-1 rounded"
         >
           New Loan
         </button>
         <button
-          onClick={() => setActive && setActive('New Application')}
+                 onClick={() => navigateTo && navigateTo('New Application')}
           className="bg-blue-600 text-white px-3 py-1 rounded"
         >
           New Application
         </button>
         <button
-          onClick={() => setActive && setActive('New Request')}
+             onClick={() => navigateTo && navigateTo('New Request')}
           className="bg-blue-600 text-white px-3 py-1 rounded"
         >
           New Draw Request
         </button>
-         <button
-          onClick={() => setActive && setActive('Draw Board')}
+                <button
+          onClick={() => navigateTo && navigateTo('Draw Board')}
           className="bg-blue-600 text-white px-3 py-1 rounded"
         >
           Draw Workflow
