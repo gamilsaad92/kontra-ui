@@ -2,6 +2,7 @@
 
 import React, { createContext, useState, useEffect } from 'react'
 import ReactDOM from 'react-dom/client'
+import { BrowserRouter } from 'react-router-dom'
 import App from './App.jsx'
 import './index.css'
 import { supabase } from './lib/supabaseClient'
@@ -82,10 +83,12 @@ function AuthProvider({ children }) {
 const root = ReactDOM.createRoot(document.getElementById('root'))
 root.render(
   <React.StrictMode>
-       <LocaleProvider>
-      <AuthProvider>
-        <App />
-      </AuthProvider>
-    </LocaleProvider>
+         <BrowserRouter>
+      <LocaleProvider>
+        <AuthProvider>
+          <App />
+        </AuthProvider>
+      </LocaleProvider>
+    </BrowserRouter>
   </React.StrictMode>
 )
