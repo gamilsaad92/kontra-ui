@@ -24,7 +24,8 @@ This repository contains the **frontend** and **backend** for the Kontra demo ap
    Edit `api/.env` with your Supabase, OpenAI, Twilio and Dialogflow credentials.
    Add your Sentry DSN as `VITE_SENTRY_DSN` in `ui/.env`.
    Optional `FEATURE_FLAGS` and `VITE_FEATURE_FLAGS` entries enable or disable
-   upcoming modules.
+  upcoming modules. For example `sso` and `compliance` toggle the placeholder
+  single sign-on and compliance scan routes.
    Ensure the API is running on the same URL specified in `ui/.env`.
   Set `SUPABASE_REPLICA_URL` in `api/.env` to route read queries to a replica.
   Provide `REDIS_URL` to enable caching for hot queries.
@@ -157,6 +158,10 @@ Endpoint `/api/send-communication` generates reminder messages with OpenAI and d
 - Field-level changes are recorded to an encrypted `api/auditLogs.enc` file whenever data is created or modified. Set `ENCRYPTION_KEY` in `api/.env` to secure the log.
 - These controls provide a foundation for SOC‑2 readiness alongside existing Sentry monitoring.
 - `POST /api/generate-tax-form` produces 1098 or 1099 forms.
+  
+-Compliance-related routes are disabled unless the `compliance` feature flag is
+set.
+
 - ## Continuous Learning & Feedback
 
 - `POST /api/feedback` records operator feedback on decisions like loan approvals or draw reviews. Logged examples can be used to fine-tune prompts or models over time.
@@ -215,7 +220,8 @@ Organizations are stored in a new `organizations` table with optional
 `branding` JSON. Users join an organization via `organization_members` and
 admins can update logos or primary colors from the Settings page.
 Placeholder SAML/OAuth endpoints live under `/api/sso` illustrating where
-single sign-on would integrate.
+single sign-on would integrate. These routes are disabled unless the `sso`
+feature flag is enabled.
 
 ## High-Performance Architecture
 
