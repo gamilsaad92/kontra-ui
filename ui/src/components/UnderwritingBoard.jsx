@@ -6,9 +6,31 @@ const STATUSES = ['Underwriting', 'Approved', 'Rejected']
 export default function UnderwritingBoard() {
   const [tasks, setTasks] = useState([])
   const [loading, setLoading] = useState(true)
+  const [socket, setSocket] = useState(null)
+  const [users, setUsers] = useState([])
 
   useEffect(() => {
     fetchTasks()
+      const ws = new WebSocket(`ws://${window.location.host}/collab`)
+    ws.onmessage = (evt) => {
+      try {
+        const msg = JSON.parse(evt.data)
+        if (msg.type === 'presence') {
+          setUsers(msg.users || [])
+        } else if (msg.type === 'taskUpdate') {
+          const task = msg.task
+          setTasks((t) => t.map((x) => (x.id === task.id ? task : x)))
+        }
+      } catch {
+        // ignore
+      }
+    }
+    ws.onopen = () => {
+      const name = window.localStorage.getItem('user') || 'Anonymous'
+      ws.send(JSON.stringify({ type: 'join', user: name }))
+    }
+    setSocket(ws)
+    return () => ws.close()
   }, [])
 
   async function fetchTasks() {
@@ -30,6 +52,11 @@ export default function UnderwritingBoard() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ status })
     })
+      const existing = tasks.find((t) => t.id === parseInt(id)) || { id: parseInt(id) }
+    const updated = { ...existing, status }
+    if (socket && socket.readyState === 1) {
+      socket.send(JSON.stringify({ type: 'taskUpdate', task: updated }))
+    }
   }
 
   function handleDrop(e, status) {
@@ -42,7 +69,9 @@ export default function UnderwritingBoard() {
   if (loading) return <p>Loading tasks…</p>
 
   return (
-    <div className="flex space-x-4">
+   <div>
+      <div className="mb-2 text-sm text-gray-600">Active: {users.join(', ')}</div>
+      <div className="flex space-x-4">
       {STATUSES.map((status) => (
         <div
           key={status}
@@ -66,6 +95,6 @@ export default function UnderwritingBoard() {
             ))}
         </div>
       ))}
-    </div>
+   </div>
   )
 }
