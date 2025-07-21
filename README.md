@@ -223,6 +223,11 @@ Placeholder SAML/OAuth endpoints live under `/api/sso` illustrating where
 single sign-on would integrate. These routes are disabled unless the `sso`
 feature flag is enabled.
 
+Invitations allow admins to onboard members by email. `POST /api/invites`
+creates a token linked to an organization. Visiting the UI with
+`?invite=TOKEN` presents a sign-up form that accepts the invite and sets the
+user's `organization_id` metadata, creating a member record.
+
 ## High-Performance Architecture
 
 Read queries can target a Supabase read replica when `SUPABASE_REPLICA_URL` is
