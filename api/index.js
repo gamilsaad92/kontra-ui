@@ -54,6 +54,7 @@ const loansRouter = require('./routers/loans');
 const drawsRouter = require('./routers/draws');
 const projectsRouter = require('./routers/projects');
 const organizationsRouter = require('./routers/organizations');
+const invitesRouter = require('./routers/invites');
 // Optional routers for unfinished modules
 const ssoRouter = require('./routers/sso');
 const reportsRouter = require('./routers/reports');
@@ -406,6 +407,7 @@ app.use('/api', loansRouter);
 app.use('/api', drawsRouter);
 app.use('/api', projectsRouter);
 app.use('/api/organizations', organizationsRouter);
+app.use('/api/invites', invitesRouter);
 if (isFeatureEnabled('sso')) {
   app.use('/api/sso', ssoRouter);
 }
