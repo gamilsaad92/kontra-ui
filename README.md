@@ -102,7 +102,7 @@ Additional servicing endpoints now provide a complete payment portal and escrow 
 - `GET /api/escrows/upcoming` lists escrow balances with projected balances and next tax/insurance due dates.
 - `POST /api/loans/:id/escrow/pay` records tax or insurance disbursements.
 - `GET /api/loans/:id/escrow/projection` returns a 12‑month balance projection.
-- Background script `api/workerReminders.js` emails and texts borrowers a few days before payments are due.
+- Background script `api/workerReminders.js` emails and texts borrowers a few days before payments are due, batching reminder deliveries for better performance.
 
 ## Phase 5
 
