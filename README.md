@@ -188,8 +188,8 @@ The staff dashboard visualizes these metrics and provides a one-click accounting
 ## Integrations & Marketplace
 
 - OpenAPI specification is served at `/openapi.json` with Swagger UI at `/api-docs`.
-- `POST /api/webhooks` registers a URL to receive `loan.created`, `payment.created` and `booking.created` events.
-- `GET /api/integrations` lists connected apps. Connect QuickBooks, Xero, Toast, Square or Procore via `POST /api/integrations/{name}/connect`.
+- `POST /api/webhooks` registers a URL to receive `loan.created`, `payment.created` and `booking.created` events. Registered hooks are stored in the `webhooks` table so they persist across restarts.
+- `GET /api/integrations` lists connected apps. Connect QuickBooks, Xero, Toast, Square or Procore via `POST /api/integrations/{name}/connect`. Connection status is stored in the `integration_statuses` table.
 - Hospitality modules now include `/api/bookings` endpoints for room reservations.
 
 ## Accessibility & Performance
