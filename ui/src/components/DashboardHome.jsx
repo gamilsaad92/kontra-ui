@@ -7,6 +7,7 @@ import OfferCard from '../modules/dashboard/OfferCard';
 import SmartRecommendations from './SmartRecommendations';
 import InteractiveFAQs from './InteractiveFAQs';
 import GuestOccupancyCard from '../modules/dashboard/GuestOccupancyCard';
+import CustomFeedCard from '../modules/dashboard/CustomFeedCard';
 import { AuthContext } from '../main';
 import { supabase } from '../lib/supabaseClient';
 
@@ -19,6 +20,8 @@ const DEFAULT_LAYOUT = [
   { id: 'offers', w: 1, hidden: false },
   { id: 'faqs', w: 2, hidden: false },
   { id: 'recommendations', w: 2, hidden: false }
+   // Custom feed widgets can be added by the user and will be
+  // persisted in the layout array
 ];
 
 export default function DashboardHome({ navigateTo }) {
@@ -73,8 +76,22 @@ export default function DashboardHome({ navigateTo }) {
     );
   }
 
+   function addCustomFeed() {
+    const url = prompt('Enter JSON feed URL');
+    if (!url) return;
+    setLayout(l => [
+      ...l,
+      {
+        id: `feed-${Date.now()}`,
+        w: 2,
+        hidden: false,
+        dataUrl: url
+      }
+    ]);
+  }
+
   const widgets = {
-      risk: <RiskScoreCard />,
+   risk: <RiskScoreCard />,
     delinquency: <DelinquencyCard />,
     activity: <RecentActivityCard />,
     occupancy: <GuestOccupancyCard />,
@@ -82,6 +99,13 @@ export default function DashboardHome({ navigateTo }) {
     offers: <OfferCard />,
     faqs: <InteractiveFAQs userId={session?.user?.id} />,
     recommendations: <SmartRecommendations />
+  };
+
+    const renderWidget = item => {
+    if (item.id.startsWith('feed-')) {
+      return <CustomFeedCard url={item.dataUrl} />;
+    }
+    return widgets[item.id] || null;
   };
 
   if (loading) return <p>Loading dashboard…</p>;
@@ -109,11 +133,17 @@ export default function DashboardHome({ navigateTo }) {
         >
           New Draw Request
         </button>
-                <button
+              <button
           onClick={() => navigateTo && navigateTo('Draw Board')}
           className="bg-blue-600 text-white px-3 py-1 rounded"
         >
           Draw Workflow
+        </button>
+              <button
+          onClick={addCustomFeed}
+          className="bg-green-600 text-white px-3 py-1 rounded"
+        >
+          Add Custom Feed
         </button>
       </div>
 
@@ -142,7 +172,7 @@ export default function DashboardHome({ navigateTo }) {
                   ×
                 </button>
               </div>
-              {widgets[item.id]}
+                   {renderWidget(item)}
             </div>
           )
         )}
@@ -156,7 +186,7 @@ export default function DashboardHome({ navigateTo }) {
               onClick={() => toggleHide(h.id)}
               className="text-sm underline text-blue-600"
             >
-              Show {h.id}
+            Show {h.id.startsWith('feed-') ? 'Custom Feed' : h.id}
             </button>
           ))}
         </div>
