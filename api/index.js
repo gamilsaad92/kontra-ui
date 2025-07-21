@@ -54,6 +54,7 @@ const loansRouter = require('./routers/loans');
 const drawsRouter = require('./routers/draws');
 const projectsRouter = require('./routers/projects');
 const organizationsRouter = require('./routers/organizations');
+// Optional routers for unfinished modules
 const ssoRouter = require('./routers/sso');
 const reportsRouter = require('./routers/reports');
 const { router: menuRouter } = require('./routers/menu');
@@ -68,6 +69,7 @@ const riskRouter = require('./routers/risk');
 const { triggerWebhooks } = require('./webhooks');
 const webhooksRouter = require('./routers/webhookRoutes');
 const { router: integrationsRouter } = require('./routers/integrations');
+// Compliance automation is still experimental
 const complianceRouter = require('./routers/compliance');
 
 // Define the functions that the assistant can “call.”
@@ -404,7 +406,9 @@ app.use('/api', loansRouter);
 app.use('/api', drawsRouter);
 app.use('/api', projectsRouter);
 app.use('/api/organizations', organizationsRouter);
-app.use('/api/sso', ssoRouter);
+if (isFeatureEnabled('sso')) {
+  app.use('/api/sso', ssoRouter);
+}
 app.use('/api/risk', riskRouter);
 app.use('/api/reports', reportsRouter);
 app.use('/api', menuRouter);
@@ -446,7 +450,9 @@ app.get('/api-docs', (req, res) => {
 // ── Webhooks & Integrations ────────────────────────────────────────────────
 app.use('/api', webhooksRouter);
 app.use('/api', integrationsRouter);
-app.use('/api', complianceRouter);
+if (isFeatureEnabled('compliance')) {
+  app.use('/api', complianceRouter);
+}
 
 // ── Mock KYC & Credit Checks ──────────────────────────────────────────────
 async function runKycCheck(buffer) {
