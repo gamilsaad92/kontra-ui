@@ -17,5 +17,6 @@ module.exports = async function authenticate(req, res, next) {
   }
 
   req.user = user;   // now your dashboard router can do req.user.id
+   req.organizationId = user.user_metadata?.organization_id || null;
   next();
 };
