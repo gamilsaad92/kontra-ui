@@ -12,3 +12,13 @@ CREATE TABLE IF NOT EXISTS organization_members (
   organization_id BIGINT REFERENCES organizations(id) ON DELETE CASCADE,
   role TEXT DEFAULT 'member'
 );
+
+CREATE TABLE IF NOT EXISTS organization_invites (
+  id BIGSERIAL PRIMARY KEY,
+  email TEXT NOT NULL,
+  organization_id BIGINT REFERENCES organizations(id) ON DELETE CASCADE,
+  token UUID NOT NULL,
+  role TEXT DEFAULT 'member',
+  accepted BOOLEAN DEFAULT false,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
