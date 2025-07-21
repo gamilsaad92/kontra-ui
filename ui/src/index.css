@@ -1,3 +1,15 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+:root {
+  --brand-color: #1e40af;
+}
+
+.bg-brand {
+  background-color: var(--brand-color);
+}
+
+.text-brand {
+  color: var(--brand-color);
+}
