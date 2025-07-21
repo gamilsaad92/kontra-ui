@@ -13,12 +13,14 @@ async function fetchLatestValue(assetId) {
 
 module.exports = async function updateAssetValues() {
   const { data: assets } = await supabase.from('assets').select('id');
-  for (const asset of assets || []) {
-    const { value } = await fetchLatestValue(asset.id);
-    await supabase
-      .from('assets')
-      .update({ value, updated_at: new Date().toISOString() })
-      .eq('id', asset.id);
+  const updates = await Promise.all(
+    (assets || []).map(async asset => {
+      const { value } = await fetchLatestValue(asset.id);
+      return { id: asset.id, value, updated_at: new Date().toISOString() };
+    })
+  );
+  if (updates.length) {
+    await supabase.from('assets').upsert(updates);
   }
   return new Response('Asset values updated');
 };
