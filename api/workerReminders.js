@@ -12,17 +12,14 @@ async function run() {
   cutoff.setDate(cutoff.getDate() + 3);
   const { data: upcoming } = await supabase
     .from('amortization_schedules')
-    .select('loan_id, due_date')
+     .select('due_date, loans(borrower_name, borrower_email, borrower_phone, status)')
     .lte('due_date', cutoff.toISOString())
     .eq('paid', false);
 
-  for (const sched of upcoming || []) {
-    const { data: loan } = await supabase
-      .from('loans')
-      .select('borrower_name, borrower_email, borrower_phone, status')
-      .eq('id', sched.loan_id)
-      .maybeSingle();
-    if (!loan) continue;
+    const tasks = [];
+   for (const sched of upcoming || []) {
+      const loan = sched.loans;
+     if (!loan) continue;
 
     const { emailText, smsText } = await generateReminder({
       borrower_name: loan.borrower_name,
@@ -30,13 +27,16 @@ async function run() {
       risk_score: 0,
       history: ''
     });
+  const sends = [];
     if (loan.borrower_email) {
-      await sendEmail(loan.borrower_email, 'Upcoming Payment Due', emailText);
+      sends.push(sendEmail(loan.borrower_email, 'Upcoming Payment Due', emailText));
     }
     if (loan.borrower_phone) {
-      await sendSms(loan.borrower_phone, smsText);
+         sends.push(sendSms(loan.borrower_phone, smsText));
     }
+    if (sends.length) tasks.push(Promise.all(sends));
   }
+    await Promise.all(tasks);
   console.log('✅ Reminders sent');
 }
 
