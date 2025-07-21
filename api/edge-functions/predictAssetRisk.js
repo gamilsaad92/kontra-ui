@@ -12,11 +12,17 @@ function logistic(x) {
 }
 
 function scoreAsset({ loan_balance = 0, comps = 0, delinquencies = 0 }) {
-  // Extremely naive scoring heuristic
-  const score = logistic(
-    -4 + 0.00001 * loan_balance - 0.1 * comps + 0.5 * delinquencies
-  );
-  return parseFloat(score.toFixed(4));
+ const logit = -4 + 0.00001 * loan_balance - 0.1 * comps + 0.5 * delinquencies;
+  const score = logistic(logit);
+  const reasons = [];
+  if (loan_balance > 500000) reasons.push('high loan balance');
+  if (comps < 0) reasons.push('negative comps');
+  if (delinquencies > 0) reasons.push(`${delinquencies} delinquencies`);
+  const explanation =
+    reasons.length > 0
+      ? `Higher risk due to ${reasons.join(', ')}`
+      : 'Low risk based on inputs';
+  return { score: parseFloat(score.toFixed(4)), explanation };
 }
 
 module.exports = async function predictAssetRisk() {
@@ -32,14 +38,14 @@ module.exports = async function predictAssetRisk() {
       console.error('Failed to parse data_json for asset', asset.id, err);
       continue;
     }
-    const predicted_risk = scoreAsset({
+     const { score: predicted_risk, explanation } = scoreAsset({
       loan_balance: data.loan_balance,
       comps: data.comps,
       delinquencies: data.delinquencies
     });
 
     if (predicted_risk > 0.8) {
-      console.log('⚠️ High risk asset', asset.id, 'score:', predicted_risk);
+       console.log('⚠️ High risk asset', asset.id, 'score:', predicted_risk, explanation);
     }
     if (predicted_risk > 0.9) { await sendEmail('alerts@kontra.com', 'High risk asset', 'Asset ' + asset.id + ' risk ' + predicted_risk); }
     
