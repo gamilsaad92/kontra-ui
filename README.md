@@ -226,6 +226,9 @@ Placeholder SAML/OAuth endpoints live under `/api/sso` illustrating where
 single sign-on would integrate. These routes are disabled unless the `sso`
 feature flag is enabled.
 
+Include the organization id in API requests using an `X-Org-Id` header (or via
+authenticated user metadata) so each tenant only accesses its own data.
+
 Invitations allow admins to onboard members by email. `POST /api/invites`
 creates a token linked to an organization. Visiting the UI with
 `?invite=TOKEN` presents a sign-up form that accepts the invite and sets the
