@@ -196,6 +196,8 @@ The staff dashboard visualizes these metrics and provides a one-click accounting
 ## Accessibility & Performance
 
 The UI now registers as a Progressive Web App and caches assets for offline use.
+User actions like draw requests are queued in the browser when offline and
+automatically synced once connectivity is restored.
 Navigation and search inputs include screen reader labels and focus outlines for
 better keyboard access. Heavy chart pages are code-split using `React.lazy`
 to improve initial load time. A "Suggest a Feature" form lets users send tagged
