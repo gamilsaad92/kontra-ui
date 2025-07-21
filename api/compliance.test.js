@@ -1,3 +1,4 @@
+process.env.FEATURE_FLAGS = 'compliance'
 const request = require('supertest')
 const app = require('./index')
 
