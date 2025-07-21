@@ -1,8 +1,48 @@
-const webhooks = [];
+const { createClient } = require('@supabase/supabase-js');
+
+const supabase = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY
+);
+
+async function listWebhooks() {
+  const { data, error } = await supabase
+    .from('webhooks')
+    .select('event, url');
+  if (error) {
+    console.error('List webhooks error:', error);
+    return [];
+  }
+  return data || [];
+}
+
+async function addWebhook(event, url) {
+  const { error } = await supabase
+    .from('webhooks')
+    .insert([{ event, url }]);
+  if (error) console.error('Add webhook error:', error);
+}
+
+async function removeWebhook(event, url) {
+  const { error } = await supabase
+    .from('webhooks')
+    .delete()
+    .eq('event', event)
+    .eq('url', url);
+  if (error) console.error('Remove webhook error:', error);
+}
+
 async function triggerWebhooks(event, payload) {
-  const hooks = webhooks.filter(h => h.event === event);
+  const { data, error } = await supabase
+    .from('webhooks')
+    .select('url')
+    .eq('event', event);
+  if (error) {
+    console.error('Fetch webhooks error:', error);
+    return;
+  }
   await Promise.all(
-    hooks.map(h =>
+       (data || []).map(h =>
       fetch(h.url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -11,4 +51,6 @@ async function triggerWebhooks(event, payload) {
     )
   );
 }
-module.exports = { webhooks, triggerWebhooks };
+
+module.exports = { listWebhooks, addWebhook, removeWebhook, triggerWebhooks };
+
