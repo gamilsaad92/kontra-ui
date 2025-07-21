@@ -3,6 +3,7 @@
 import React, { createContext, useState, useEffect } from 'react'
 import ReactDOM from 'react-dom/client'
 import { BrowserRouter } from 'react-router-dom'
+import { registerSW } from 'virtual:pwa-register'
 import App from './App.jsx'
 import './index.css'
 import { supabase } from './lib/supabaseClient'
@@ -16,6 +17,9 @@ import { BrandingProvider } from './lib/branding'
 Sentry.init({
   dsn: import.meta.env.VITE_SENTRY_DSN,
 })
+
+// register service worker for offline support
+registerSW({ immediate: true })
 
 //
 // ── AUTH CONTEXT & PROVIDER ─────────────────────────────────────────────────────
