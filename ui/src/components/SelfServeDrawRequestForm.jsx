@@ -1,5 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { API_BASE } from '../lib/apiBase';
+import {
+  addQueuedItem,
+  registerFlushOnOnline
+} from '../lib/offlineQueue';
 
 export default function SelfServeDrawRequestForm() {
   const [formData, setFormData] = useState({
@@ -11,6 +15,19 @@ export default function SelfServeDrawRequestForm() {
   });
   const [errors, setErrors] = useState({});
   const [message, setMessage] = useState('');
+    const OFFLINE_KEY = 'drawRequestQueue';
+
+  useEffect(() => {
+    // attempt to flush any queued requests on mount and when back online
+    const unregister = registerFlushOnOnline(OFFLINE_KEY, data =>
+      fetch(`${API_BASE}/api/draw-request`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data)
+      })
+    );
+    return unregister;
+  }, []);
 
   const validate = data => {
     const e = {};
@@ -36,6 +53,15 @@ export default function SelfServeDrawRequestForm() {
       return;
     }
     setMessage('Submitting…');
+    
+    // offline? queue the request and exit
+    if (!navigator.onLine) {
+      addQueuedItem(OFFLINE_KEY, formData);
+      setMessage('Saved offline. It will be submitted when online.');
+      setFormData({ project: '', project_number: '', property_location: '', amount: '', description: '' });
+      return;
+    }
+
     try {
       const res = await fetch(`${API_BASE}/api/draw-request`, {
         method: 'POST',
@@ -50,7 +76,10 @@ export default function SelfServeDrawRequestForm() {
         setMessage(data.message || 'Submission failed');
       }
     } catch {
-      setMessage('Failed to submit');
+         // assume network error - queue for later
+      addQueuedItem(OFFLINE_KEY, formData);
+      setMessage('Saved offline. It will be submitted when online.');
+      setFormData({ project: '', project_number: '', property_location: '', amount: '', description: '' });
     }
   };
 
