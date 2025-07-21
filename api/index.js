@@ -530,6 +530,39 @@ async function autoFillFields(buffer) {
   return fields;
 }
 
+async function classifyDocumentBuffer(buffer) {
+  const text = buffer.toString('utf8').toLowerCase();
+  const heuristics = [
+    { type: 'invoice', regex: /invoice|bill/ },
+    { type: 'bank_statement', regex: /bank[^\n]*statement|statement[^\n]*bank/ },
+    { type: 'w9', regex: /w[- ]?9/ },
+    { type: 'contract', regex: /contract/ },
+    { type: 'loan_application', regex: /loan application|borrower/ }
+  ];
+  for (const h of heuristics) {
+    if (h.regex.test(text)) return h.type;
+  }
+  if (process.env.OPENAI_API_KEY) {
+    try {
+      const resp = await openai.chat.completions.create({
+        model: 'gpt-4o-mini',
+        messages: [
+          {
+            role: 'system',
+            content:
+              'Classify this document with one word like invoice, bank_statement, w9, contract or other.'
+          },
+          { role: 'user', content: text.slice(0, 12000) }
+        ]
+      });
+      return resp.choices[0].message.content.trim().toLowerCase();
+    } catch (err) {
+      console.error('OpenAI classify error:', err);
+    }
+  }
+  return 'other';
+}
+
 function advancedCreditScore(bureauScore, history) {
   let score = bureauScore;
   if (Array.isArray(history) && history.length) {
@@ -668,6 +701,25 @@ app.post('/api/auto-fill', upload.single('file'), async (req, res) => {
   if (!req.file) return res.status(400).json({ message: 'File required' });
   const fields = await autoFillFields(req.file.buffer);
   res.json({ fields });
+});
+
+app.post('/api/classify-document', upload.single('file'), async (req, res) => {
+  if (!req.file) return res.status(400).json({ message: 'File required' });
+  const type = await classifyDocumentBuffer(req.file.buffer);
+  res.json({ type });
+});
+
+app.post('/api/credit-score', async (req, res) => {
+  const { bureauScore, history } = req.body || {};
+  if (!bureauScore) return res.status(400).json({ message: 'Missing bureauScore' });
+  const parsedHistory = Array.isArray(history) ? history.map(Number) : [];
+  const { score, explanation } = advancedCreditScore(Number(bureauScore), parsedHistory);
+  res.json({ score, explanation });
+});
+
+app.post('/api/detect-fraud', async (req, res) => {
+  const result = detectFraud(req.body || {});
+  res.json(result);
 });
 
 // ── LLM-Powered Workflows ──────────────────────────────────────────────────
