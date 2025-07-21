@@ -25,3 +25,18 @@ CREATE TABLE IF NOT EXISTS hazard_losses (
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- Registered webhook endpoints
+CREATE TABLE IF NOT EXISTS webhooks (
+  id BIGSERIAL PRIMARY KEY,
+  event TEXT NOT NULL,
+  url TEXT NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Flags for connected third-party integrations
+CREATE TABLE IF NOT EXISTS integration_statuses (
+  name TEXT PRIMARY KEY,
+  connected BOOLEAN DEFAULT FALSE,
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
