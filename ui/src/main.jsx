@@ -8,6 +8,7 @@ import './index.css'
 import { supabase } from './lib/supabaseClient'
 import * as Sentry from '@sentry/react'
 import { LocaleProvider } from './lib/i18n'
+import { BrandingProvider } from './lib/branding'
 
 //
 // ── SENTRY INIT ────────────────────────────────────────────────────────────────
@@ -86,7 +87,9 @@ root.render(
          <BrowserRouter>
       <LocaleProvider>
         <AuthProvider>
-          <App />
+           <BrandingProvider>
+            <App />
+          </BrandingProvider>
         </AuthProvider>
       </LocaleProvider>
     </BrowserRouter>
