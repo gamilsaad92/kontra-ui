@@ -77,7 +77,8 @@ Additional endpoints provide simple stubs for OCR parsing, credit scoring and fr
 * `POST /api/parse-document` – upload a financial document and receive extracted fields.
 * `POST /api/document-summary` – return a short LLM summary of the uploaded file.
 * `POST /api/auto-fill` – extract borrower details from IDs or W‑9s.
-* `POST /api/credit-score` – calculate a risk score from bureau data and history.
+* `POST /api/classify-document` – quickly detect the type of uploaded files.
+* `POST /api/credit-score` – calculate a risk score from bureau data and history with an explanation of adjustments.
 * `POST /api/detect-fraud` – run lightweight anomaly detection on applicant data.
 
 ### LLM-Powered Workflows
