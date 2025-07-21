@@ -11,6 +11,7 @@ const fs = require('fs');
 const path = require('path');
 const http = require('http');
 const attachChatServer = require('./chatServer');
+const attachCollabServer = require('./collabServer');
 const { forecastProject } = require('./construction');
 const { isFeatureEnabled } = require('./featureFlags');
 const auditLogger = require('./middlewares/auditLogger');
@@ -1755,8 +1756,9 @@ if (Sentry.Handlers?.errorHandler) {
 // ── Start Server ──────────────────────────────────────────────────────────
 const PORT = 10000;
 if (require.main === module) {
-    const server = http.createServer(app);
+     const server = http.createServer(app);
   attachChatServer(server);
+  attachCollabServer(server);
   server.listen(PORT, () => {
      console.log('Kontra API listening on port 10000');
   });
