@@ -1,10 +1,11 @@
 import React, { useState } from 'react'
-
+import SetupChecklist from './SetupChecklist'
+  
 export default function GuidedSetup({ onDone }) {
   const [step, setStep] = useState(0)
 
   const next = () => {
-    if (step < 2) setStep(step + 1)
+  if (step < 3) setStep(step + 1)
     else onDone && onDone()
   }
 
@@ -16,6 +17,16 @@ export default function GuidedSetup({ onDone }) {
         <button onClick={next} className="bg-blue-600 text-white px-4 py-2 rounded">
           Next
         </button>
+      </div>
+    ),
+   (
+      <div className="space-y-4">
+        <SetupChecklist />
+        <div className="text-center">
+          <button onClick={next} className="bg-blue-600 text-white px-4 py-2 rounded">
+            Next
+          </button>
+        </div>
       </div>
     ),
     (
