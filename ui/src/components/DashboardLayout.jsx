@@ -318,13 +318,16 @@ export default function DashboardLayout() {
 
   return (
         <>
-          <div className="flex h-screen">
+             <div className="flex flex-col md:flex-row min-h-screen">
       <aside
-        className={`${sidebarOpen ? 'w-48' : 'w-16'} bg-gray-800 text-white flex flex-col transition-all`}
+             className={`${sidebarOpen ? 'md:w-48 w-full' : 'md:w-16 w-full'} bg-gray-800 text-white flex flex-col transition-all`}
+        role="navigation"
+        aria-label="Main navigation"
       >
         <button
           onClick={() => setSidebarOpen(o => !o)}
           aria-label="Toggle navigation"
+                   aria-expanded={sidebarOpen}
           className="p-4 text-2xl font-bold border-b border-gray-700 text-left focus:outline-none focus:ring-2 focus:ring-offset-2"
         >
           {sidebarOpen ? 'Kontra' : 'K'}
@@ -337,7 +340,7 @@ export default function DashboardLayout() {
           <option value="finance">Finance</option>
           <option value="hospitality">Hospitality</option>
         </select>
-        <nav className="flex-1 overflow-auto py-4 space-y-1">
+                <nav className="flex-1 overflow-auto py-4 space-y-1" tabIndex="0">
                 {frequentItems.length > 0 && (
             <div className="mb-2 space-y-1">
               {frequentItems.map(renderItem)}
@@ -387,7 +390,7 @@ export default function DashboardLayout() {
             </Routes>
           </main>
         </div>
-        <aside className="w-80 border-l bg-white flex flex-col p-2 space-y-2">
+           <aside className="md:w-80 w-full border-l bg-white flex flex-col p-2 space-y-2" role="complementary">
           <VirtualAssistant />
           <SuggestFeatureWidget />    
         </aside>
