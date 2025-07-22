@@ -63,6 +63,7 @@ const invitesRouter = require('./routers/invites');
 const ssoRouter = require('./routers/sso');
 const reportsRouter = require('./routers/reports');
 const { router: menuRouter } = require('./routers/menu');
+const { logUserEvent, suggestNextFeature } = require('./personalization');
 const { router: ordersRouter } = require('./routers/orders');
 const { router: paymentsRouter } = require('./routers/payments');
 const paymentsStripeRouter = require('./routers/paymentsStripe');
@@ -1769,6 +1770,20 @@ app.post('/api/feedback', (req, res) => {
   recordFeedback({ type: type || 'feature', message });
   retrainModel();
   res.status(201).json({ message: 'Feedback recorded' });
+});
+
+app.post('/api/user-events', authenticate, (req, res) => {
+  const userId = req.user.id;
+  const { event } = req.body || {};
+  if (!event) return res.status(400).json({ message: 'Missing event' });
+  logUserEvent(userId, event);
+  res.status(201).json({ logged: true });
+});
+
+app.get('/api/personalized-suggestion', authenticate, async (req, res) => {
+  const userId = req.user.id;
+  const suggestion = await suggestNextFeature(userId, openai);
+  res.json({ suggestion });
 });
 
 // ── Background Job Queue ─────────────────────────────────────────────────--
