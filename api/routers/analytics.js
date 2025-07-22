@@ -3,6 +3,23 @@ const { getOrders } = require('./orders');
 const { getPayments } = require('./payments');
 const requireOrg = require('../middlewares/requireOrg');
 
+const clients = [];
+
+function calcMetrics(orgId) {
+  const orders = getOrders(orgId);
+  const payments = getPayments(orgId);
+  const totalOrders = orders.length;
+  const totalRevenue = payments.reduce((sum, p) => sum + p.amount, 0);
+  return { totalOrders, totalRevenue };
+}
+
+function broadcastAnalytics(orgId) {
+  const data = `data: ${JSON.stringify(calcMetrics(orgId))}\n\n`;
+  clients
+    .filter(c => c.orgId === orgId)
+    .forEach(c => c.res.write(data));
+}
+
 const router = express.Router();
 
 router.use(requireOrg);
@@ -13,6 +30,22 @@ router.get('/analytics/orders', (req, res) => {
   const totalOrders = orders.length;
   const totalRevenue = payments.reduce((sum, p) => sum + p.amount, 0);
   res.json({ totalOrders, totalRevenue });
+});
+
+router.get('/analytics/stream', (req, res) => {
+  res.set({
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache',
+    Connection: 'keep-alive'
+  });
+  res.flushHeaders();
+  const client = { res, orgId: req.orgId };
+  clients.push(client);
+  res.write(`data: ${JSON.stringify(calcMetrics(req.orgId))}\n\n`);
+  req.on('close', () => {
+    const idx = clients.indexOf(client);
+    if (idx !== -1) clients.splice(idx, 1);
+  });
 });
 
 router.get('/analytics/restaurant', (req, res) => {
@@ -67,4 +100,4 @@ router.get('/accounting/entries', (req, res) => {
   res.json({ entries });
 });
 
-module.exports = router;
+module.exports = { router, broadcastAnalytics };
