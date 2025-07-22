@@ -92,6 +92,9 @@ export default function DashboardLayout() {
   );
   const navItems = departmentNav[department] || [];
 
+  const [sidebarOpen, setSidebarOpen] = useState(true)
+  const [refreshKey, setRefreshKey] = useState(0)
+  
   const { usage, recordUsage } = useFeatureUsage();
   const frequentItems = navItems
     .filter(i => usage[i.label])
