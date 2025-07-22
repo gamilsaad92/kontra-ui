@@ -133,6 +133,9 @@ Endpoint `/api/send-communication` generates reminder messages with OpenAI and d
 
 - `POST /api/reports/run` executes custom queries and can return a PDF.
 - `POST /api/reports/schedule` schedules recurring PDF emails.
+- `POST /api/reports/save` stores a named report definition.
+- `GET /api/reports/saved` lists saved reports.
+- `GET /api/reports/fields` retrieves available columns for a table.
 - `GET /api/reports/export` exports table data as CSV or JSON.
   
   
