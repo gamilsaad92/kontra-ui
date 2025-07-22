@@ -9,6 +9,8 @@ let nextOrderId = 1;
 const getMenuItems = () => menuItems;
 const getOrders = orgId => ordersByOrg[orgId] || [];
 
+const { broadcastAnalytics } = require('./analytics');
+
 router.use(requireOrg);
 
 // Get all orders
@@ -42,7 +44,8 @@ router.post('/orders', (req, res) => {
 
   const arr = ordersByOrg[req.orgId] || (ordersByOrg[req.orgId] = []);
   arr.push(order);
-
+ broadcastAnalytics(req.orgId);
+  
   res.status(201).json({ order });
 });
 
