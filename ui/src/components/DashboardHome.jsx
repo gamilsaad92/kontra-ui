@@ -10,6 +10,7 @@ import GuestOccupancyCard from '../modules/dashboard/GuestOccupancyCard';
 import CustomFeedCard from '../modules/dashboard/CustomFeedCard';
 import { AuthContext } from '../main';
 import { supabase } from '../lib/supabaseClient';
+import HelpTooltip from './HelpTooltip';
 
 const DEFAULT_LAYOUT = [
   { id: 'risk', w: 1, hidden: false },
@@ -139,12 +140,13 @@ export default function DashboardHome({ navigateTo }) {
         >
           Draw Workflow
         </button>
-              <button
+            <button
           onClick={addCustomFeed}
           className="bg-green-600 text-white px-3 py-1 rounded"
         >
           Add Custom Feed
         </button>
+      <HelpTooltip text="Import widgets from an external JSON feed" />
       </div>
 
       <div className="grid gap-6 grid-cols-2 auto-rows-fr">
