@@ -13,6 +13,7 @@ const getMenuItems = () => menuItems;
 const getOrders = orgId => ordersByOrg[orgId] || [];
 
 router.use(requireOrg);
+
 router.get('/orders', (req, res) => {
   res.json({ orders: getOrders(req.orgId) });
 });
@@ -36,7 +37,6 @@ router.post('/orders', (req, res) => {
     table,
     created_at: new Date().toISOString()
   };
-  orders.push(order);
  const arr = ordersByOrg[req.orgId] || (ordersByOrg[req.orgId] = []);
   arr.push(order);
   res.status(201).json({ order });
