@@ -1668,7 +1668,8 @@ app.get('/api/recommendations', async (_req, res) => {
 const {
   forecastNextValue,
   detectAnomalies,
-  suggestPlan
+  suggestPlan,
+  predictChurn
 } = require('./predictiveAnalytics');
 
 app.post('/api/forecast-metrics', (req, res) => {
@@ -1696,6 +1697,19 @@ app.post('/api/suggest-plan', (req, res) => {
   }
   const suggestion = suggestPlan({ usage, threshold: Number(threshold) || 100 });
   res.json({ suggestion });
+});
+
+app.post('/api/predict-churn', (req, res) => {
+  const { logins, days_since_login, tickets } = req.body || {};
+  if (logins === undefined || days_since_login === undefined) {
+    return res.status(400).json({ message: 'Missing fields' });
+  }
+  const result = predictChurn({
+    logins: Number(logins),
+    days_since_login: Number(days_since_login),
+    tickets: Number(tickets) || 0
+  });
+  res.json(result);
 });
 
 app.get('/api/faqs', async (req, res) => {
@@ -1778,6 +1792,7 @@ app.post('/api/user-events', authenticate, (req, res) => {
   if (!event) return res.status(400).json({ message: 'Missing event' });
   logUserEvent(userId, event);
   res.status(201).json({ logged: true });
+  
 });
 
 app.get('/api/personalized-suggestion', authenticate, async (req, res) => {
