@@ -237,6 +237,9 @@
           }
        "/api/reports/run": {"post": {"summary": "Execute ad hoc report","responses": {"200": {"description": "OK"}}}},
     "/api/reports/schedule": {"post": {"summary": "Schedule report delivery","responses": {"201": {"description": "Created"}}}},
+       "/api/reports/save": {"post": {"summary": "Save report template","responses": {"201": {"description": "Created"}}}},
+    "/api/reports/saved": {"get": {"summary": "List saved reports","responses": {"200": {"description": "OK"}}}},
+    "/api/reports/fields": {"get": {"summary": "List table fields","responses": {"200": {"description": "OK"}}}},
     "/api/reports/export": {"get": {"summary": "Export table data","responses": {"200": {"description": "OK"}}}},
       "/api/menu/items": {
       "get": {"summary": "List menu items","responses": {"200": {"description": "OK"}}},
