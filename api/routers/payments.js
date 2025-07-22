@@ -9,6 +9,8 @@ let nextPaymentId = 1;
 
 const getPayments = orgId => paymentsByOrg[orgId] || [];
 
+const { broadcastAnalytics } = require('./analytics');
+
 router.use(requireOrg);
 
 router.get('/payments', (req, res) => {
@@ -31,6 +33,7 @@ router.post('/payments', (req, res) => {
   };
 const arr = paymentsByOrg[req.orgId] || (paymentsByOrg[req.orgId] = []);
   arr.push(payment);
+ broadcastAnalytics(req.orgId);
   res.status(201).json({ payment });
 });
 
