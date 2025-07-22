@@ -21,3 +21,10 @@ describe('POST /api/suggest-plan', () => {
     expect(res.statusCode).toBe(400);
   });
 });
+
+describe('POST /api/predict-churn', () => {
+  it('requires logins and days_since_login', async () => {
+    const res = await request(app).post('/api/predict-churn').send({});
+    expect(res.statusCode).toBe(400);
+  });
+});
