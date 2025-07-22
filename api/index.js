@@ -1661,6 +1661,40 @@ app.get('/api/recommendations', async (_req, res) => {
   }
 });
 
+// ── Predictive Analytics ────────────────────────────────────────────────────
+const {
+  forecastNextValue,
+  detectAnomalies,
+  suggestPlan
+} = require('./predictiveAnalytics');
+
+app.post('/api/forecast-metrics', (req, res) => {
+  const { history } = req.body || {};
+  if (!Array.isArray(history) || history.length < 2) {
+    return res.status(400).json({ message: 'Missing history' });
+  }
+  const next = forecastNextValue(history.map(Number));
+  res.json({ next });
+});
+
+app.post('/api/detect-anomalies', (req, res) => {
+  const { values } = req.body || {};
+  if (!Array.isArray(values) || values.length < 2) {
+    return res.status(400).json({ message: 'Missing values' });
+  }
+  const anomalies = detectAnomalies(values.map(Number));
+  res.json({ anomalies });
+});
+
+app.post('/api/suggest-plan', (req, res) => {
+  const { usage, threshold } = req.body || {};
+  if (typeof usage !== 'number') {
+    return res.status(400).json({ message: 'Missing usage' });
+  }
+  const suggestion = suggestPlan({ usage, threshold: Number(threshold) || 100 });
+  res.json({ suggestion });
+});
+
 app.get('/api/faqs', async (req, res) => {
   const { user_id } = req.query || {};
   const faqs = [
