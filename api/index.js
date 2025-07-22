@@ -48,6 +48,7 @@ const openai = new OpenAI({
 const { handleVoice, handleVoiceQuery } = require('./voiceBot');
 const { recordFeedback, retrainModel } = require('./feedback');
 const authenticate = require('./middlewares/authenticate');
+const requireRole = require('./middlewares/requireRole');
 const assetsRouter = require('./routers/assets');
 const inspectionsRouter = require('./routers/inspections');
 const dashboard = require('./routers/dashboard');
@@ -73,6 +74,7 @@ const webhooksRouter = require('./routers/webhookRoutes');
 const { router: integrationsRouter } = require('./routers/integrations');
 // Compliance automation is still experimental
 const complianceRouter = require('./routers/compliance');
+const otpRouter = require('./routers/otp');
 
 // Define the functions that the assistant can “call.”
 const functions = [
@@ -453,8 +455,9 @@ app.get('/api-docs', (req, res) => {
 // ── Webhooks & Integrations ────────────────────────────────────────────────
 app.use('/api', webhooksRouter);
 app.use('/api', integrationsRouter);
+app.use('/api/otp', otpRouter);
 if (isFeatureEnabled('compliance')) {
-  app.use('/api', complianceRouter);
+  app.use('/api', authenticate, requireRole('admin'), complianceRouter);
 }
 
 // ── Mock KYC & Credit Checks ──────────────────────────────────────────────
