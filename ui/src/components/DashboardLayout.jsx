@@ -49,6 +49,7 @@ import OrganizationSettings from './OrganizationSettings';
 import RestaurantMenu from './RestaurantMenu';
 import StaffRestaurantDashboard from './StaffRestaurantDashboard';
 import { isFeatureEnabled } from '../lib/featureFlags';
+import useFeatureUsage from '../lib/useFeatureUsage';
 
 const departmentNav = {
   finance: [
@@ -94,9 +95,42 @@ export default function DashboardLayout() {
   const [showLanding, setShowLanding] = useState(true);
   const [showWelcome, setShowWelcome] = useState(false);
 
+ const { usage, recordUsage } = useFeatureUsage();
+  
   const navItems = departmentNav[department] || [];
+    const frequentItems = navItems
+    .filter(i => usage[i.label])
+    .sort((a, b) => usage[b.label] - usage[a.label])
+    .slice(0, 3);
   const navigateTo = label => navigate(toPath(label));
-
+  const renderItem = item => {
+    const label = item.sub ? item.sub[0] : item.label;
+    const path = toPath(label);
+    const active = location.pathname === path;
+    const common = {
+      className: `flex items-center w-full px-3 py-2 hover:bg-gray-700 rounded ${
+        active ? 'bg-gray-700' : ''
+      }`,
+      title: item.label,
+      onClick: () => recordUsage(item.label)
+    };
+    return (
+      <div key={item.label} className="text-sm">
+        {item.href ? (
+          <a href={item.href} target="_blank" rel="noopener noreferrer" {...common}>
+            <span className="text-lg">{item.icon}</span>
+            {sidebarOpen && <span className="ml-2">{item.label}</span>}
+          </a>
+        ) : (
+          <Link to={path} {...common}>
+            <span className="text-lg">{item.icon}</span>
+            {sidebarOpen && <span className="ml-2">{item.label}</span>}
+          </Link>
+        )}
+      </div>
+    );
+  };
+  
   useEffect(() => {
     const first = navItems[0];
     if (first) {
@@ -303,40 +337,16 @@ export default function DashboardLayout() {
           <option value="hospitality">Hospitality</option>
         </select>
         <nav className="flex-1 overflow-auto py-4 space-y-1">
-                {navItems
+                {frequentItems.length > 0 && (
+            <div className="mb-2 space-y-1">
+              {frequentItems.map(renderItem)}
+              <hr className="border-gray-700" />
+            </div>
+          )}
+          {navItems
             .filter(item => !item.flag || isFeatureEnabled(item.flag))
-            .map(item => {
-              const label = item.sub ? item.sub[0] : item.label;
-              const path = toPath(label);
-              const active = location.pathname === path;
-              return (
-                <div key={item.label} className="text-sm">
-                  {item.href ? (
-                    <a
-                      href={item.href}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      title={item.label}
-                      className="flex items-center w-full px-3 py-2 hover:bg-gray-700 rounded"
-                    >
-                      <span className="text-lg">{item.icon}</span>
-                      {sidebarOpen && <span className="ml-2">{item.label}</span>}
-                    </a>
-                  ) : (
-                    <Link
-                      to={path}
-                      title={item.label}
-                      className={`flex items-center w-full px-3 py-2 hover:bg-gray-700 rounded ${
-                        active ? 'bg-gray-700' : ''
-                      }`}
-                    >
-                      <span className="text-lg">{item.icon}</span>
-                      {sidebarOpen && <span className="ml-2">{item.label}</span>}
-                    </Link>
-                  )}
-                </div>
-              );
-            })}
+          .filter(item => !frequentItems.includes(item))
+            .map(renderItem)}
           <button
             onClick={() => supabase.auth.signOut()}
             className="flex items-center px-3 py-2 hover:bg-gray-700 rounded"
