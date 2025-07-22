@@ -72,6 +72,7 @@ const riskRouter = require('./routers/risk');
 const { triggerWebhooks } = require('./webhooks');
 const webhooksRouter = require('./routers/webhookRoutes');
 const { router: integrationsRouter } = require('./routers/integrations');
+const subscriptionsRouter = require('./routers/subscriptions');
 // Compliance automation is still experimental
 const complianceRouter = require('./routers/compliance');
 const otpRouter = require('./routers/otp');
@@ -420,6 +421,7 @@ app.use('/api', menuRouter);
 app.use('/api', ordersRouter);
 app.use('/api', paymentsRouter);
 app.use('/api', paymentsStripeRouter);
+app.use('/api', subscriptionsRouter);
 app.use('/api', analyticsRouter);
 app.use('/api', restaurantRouter);
 app.use('/api', restaurantsRouter);
