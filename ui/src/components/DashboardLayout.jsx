@@ -45,6 +45,7 @@ import BulkActionTable from './BulkActionTable';
 import ReportBuilder from './ReportBuilder';
 import LiveChat from './LiveChat';
 import CustomerPortal from './CustomerPortal';
+import RealTimeAnalyticsDashboard from './RealTimeAnalyticsDashboard';
 import OrganizationSettings from './OrganizationSettings';
 import RestaurantMenu from './RestaurantMenu';
 import StaffRestaurantDashboard from './StaffRestaurantDashboard';
@@ -60,6 +61,7 @@ const departmentNav = {
     { label: 'Servicing', icon: '🛠️', sub: ['Payment Portal', 'Self Service Payment'] },
     { label: 'Risk Monitoring', icon: '📈', sub: ['Troubled Assets', 'Revived Sales'] },
     { label: 'Investor Reporting', icon: '📊', sub: ['Reports', 'Investor Reports'] },
+    { label: 'Live Analytics', icon: '📈' },
     { label: 'Collections', icon: '💵', sub: ['Collections'] },
     { label: 'Settings', icon: '⚙️' },
     { label: 'Docs', icon: '📄', href: 'https://github.com/kontra-ui/docs' }
@@ -264,6 +266,7 @@ export default function DashboardLayout() {
         <InvestorReportsList refresh={refreshKey} />
       </>
     ),
+    'Live Analytics': () => <RealTimeAnalyticsDashboard />,
     'Hospitality Dashboard': () => (
       <Suspense fallback={<p>Loading...</p>}>
         <HospitalityDashboard navigateTo={navigateTo} />
