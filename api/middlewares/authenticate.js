@@ -18,5 +18,18 @@ module.exports = async function authenticate(req, res, next) {
 
   req.user = user;   // now your dashboard router can do req.user.id
    req.organizationId = user.user_metadata?.organization_id || null;
+
+  try {
+    const { data: member } = await supabase
+      .from('organization_members')
+      .select('role')
+      .eq('user_id', user.id)
+      .maybeSingle();
+    req.role = member?.role || 'member';
+  } catch (err) {
+    console.error('Role fetch failed:', err);
+    req.role = 'member';
+  }
+
   next();
 };
