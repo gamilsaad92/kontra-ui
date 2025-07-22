@@ -47,7 +47,7 @@ router.post('/', upload.single('document'), async (req, res) => {
       {
         name,
         email,
-        ssn: encryptedSsn,,
+        ssn: encryptedSsn,
         amount,
         credit_score: credit.score,
         kyc_passed: kyc.passed,
