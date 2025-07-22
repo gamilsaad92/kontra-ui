@@ -1,6 +1,7 @@
 const express = require('express');
 const multer = require('multer');
 const { createClient } = require('@supabase/supabase-js');
+const crypto = require('crypto');
 
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage() });
@@ -8,6 +9,16 @@ const supabase = createClient(
   process.env.SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
+
+const piiSecret = process.env.PII_ENCRYPTION_KEY || 'default_pii_key';
+const PII_KEY = crypto.createHash('sha256').update(piiSecret).digest();
+
+function encrypt(text) {
+  const iv = crypto.randomBytes(16);
+  const cipher = crypto.createCipheriv('aes-256-cbc', PII_KEY, iv);
+  const enc = Buffer.concat([cipher.update(text, 'utf8'), cipher.final()]);
+  return iv.toString('hex') + ':' + enc.toString('hex');
+}
 
 async function runKycCheck(buffer) {
   // Placeholder for an identity verification service
@@ -28,14 +39,15 @@ router.post('/', upload.single('document'), async (req, res) => {
 
   const kyc = await runKycCheck(req.file ? req.file.buffer : null);
   const credit = await fetchCreditScore(ssn);
-
+  const encryptedSsn = encrypt(ssn);
+  
   const { data, error } = await supabase
     .from('loan_applications')
     .insert([
       {
         name,
         email,
-        ssn,
+        ssn: encryptedSsn,,
         amount,
         credit_score: credit.score,
         kyc_passed: kyc.passed,
