@@ -1,202 +1,92 @@
-import React, { useContext, useEffect, useState } from 'react';
-import { AuthContext } from '../main';
-import { API_BASE } from '../lib/apiBase';
-import Card from './Card';
+import { useState } from "react";
+import { Card, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Menu, MenuItem } from "@/components/ui/menu";
+import { Dropdown } from "@/components/ui/dropdown";
+import { Sidebar } from "@/components/ui/sidebar";
+import { Avatar } from "@/components/ui/avatar";
+import { Search } from "@/components/ui/search";
 
-export default function DashboardHome({ navigateTo }) {
-  const { session } = useContext(AuthContext);
-  const role = session?.user?.user_metadata?.role;
-
-  // Report count (Finance)
-  const [reportCount, setReportCount] = useState(0);
-  const [loadingReports, setLoadingReports] = useState(false);
-  // Loan count (Finance)
-  const [loanCount, setLoanCount] = useState(0);
-  const [loadingLoans, setLoadingLoans] = useState(false);
-  // Occupancy percentage (Hospitality)
-  const [occupancy, setOccupancy] = useState(null);
-  const [loadingOccupancy, setLoadingOccupancy] = useState(false);
-  // Property search state (common)
-  const [searchTerm, setSearchTerm] = useState('');
-  const [searchResults, setSearchResults] = useState(null);  // null = not searched yet
-  const [searchLoading, setSearchLoading] = useState(false);
-  const [allAssets, setAllAssets] = useState([]);  // cache for assets
-  // Real-time analytics data (common)
-  const [analyticsData, setAnalyticsData] = useState(null);
-
-  // Fetch investor reports (for Finance dashboard)
-  useEffect(() => {
-    if (role !== 'hospitality') {
-      setLoadingReports(true);
-      fetch(`${API_BASE}/api/investor-reports`)
-        .then(res => res.json())
-        .then(data => {
-          const reports = data.reports || [];
-          setReportCount(reports.length);
-        })
-        .catch(() => setReportCount(0))
-        .finally(() => setLoadingReports(false));
-    }
-  }, [role]);
-
-  // Fetch active loans (for Finance dashboard)
-  useEffect(() => {
-    if (role !== 'hospitality') {
-      setLoadingLoans(true);
-      fetch(`${API_BASE}/api/loans?status=active`)
-        .then(res => res.json())
-        .then(data => {
-          const loans = data.loans || [];
-          setLoanCount(loans.length);
-        })
-        .catch(() => setLoanCount(0))
-        .finally(() => setLoadingLoans(false));
-    }
-  }, [role]);
-
-  // Fetch occupancy data (for Hospitality dashboard)
-  useEffect(() => {
-    if (role === 'hospitality') {
-      setLoadingOccupancy(true);
-      (async () => {
-        try {
-          const res = await fetch(`${API_BASE}/api/hospitality/metrics`);
-          const data = await res.json();
-          const occDaily = data.occDaily || [];
-          // use latest day’s occupancy percentage
-          setOccupancy(occDaily.length > 0 ? Math.round(occDaily[occDaily.length - 1].occupancy) : 0);
-        } catch {
-          // Fallback sample data if API fails
-          const days = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
-          const sampleOcc = days.map((d, i) => 70 + i);  // 70% -> 76%
-          setOccupancy(sampleOcc[sampleOcc.length - 1]);
-        } finally {
-          setLoadingOccupancy(false);
-        }
-      })();
-    }
-  }, [role]);
-
-  // Open real-time analytics stream (Market Analysis card)
-  useEffect(() => {
-    const es = new EventSource(`${API_BASE}/api/analytics/stream`);
-    es.onmessage = evt => {
-      try {
-        const parsed = JSON.parse(evt.data);
-        setAnalyticsData(parsed);
-      } catch {
-        /* ignore parse errors */
-      }
-    };
-    return () => es.close();
-  }, []);
-
-  // Handle property search form submit
-  const handleSearch = async e => {
-    e.preventDefault();
-    if (!searchTerm) return;
-    setSearchLoading(true);
-    try {
-      // Fetch all assets on first search
-      if (allAssets.length === 0) {
-        const res = await fetch(`${API_BASE}/api/assets`);
-        const data = await res.json();
-        const assets = data.assets || [];
-        setAllAssets(assets);
-        const matches = assets.filter(a =>
-          (a.name || '').toLowerCase().includes(searchTerm.toLowerCase())
-        );
-        setSearchResults(matches);
-      } else {
-        // Use cached assets list for subsequent searches
-        const matches = allAssets.filter(a =>
-          (a.name || '').toLowerCase().includes(searchTerm.toLowerCase())
-        );
-        setSearchResults(matches);
-      }
-    } catch {
-      setSearchResults([]);  // on error, treat as no results
-    } finally {
-      setSearchLoading(false);
-    }
-  };
+export default function Dashboard() {
+  const [user] = useState({ name: "Admin" });
 
   return (
-    <div className="grid gap-6 grid-cols-2 auto-rows-fr">
-      {/* Reports card (Finance only) */}
-      {role !== 'hospitality' && (
-        <Card title={<span style={{ color: 'var(--brand-color)' }}>Reports</span>} loading={loadingReports}>
-          <div className="text-xl">
-            <span className="font-semibold text-3xl">{reportCount}</span> Reports
+    <div className="flex min-h-screen bg-[#111827] text-white">
+      {/* Sidebar */}
+      <Sidebar className="w-64 bg-[#1F2937] text-white">
+        <div className="text-2xl font-bold px-4 py-6">K Kontra</div>
+        <nav className="flex flex-col space-y-2 px-4">
+          <a href="#" className="text-sm text-white hover:text-blue-400">Dashboard</a>
+          <a href="#" className="text-sm text-white hover:text-blue-400">Land Acquisition</a>
+          <a href="#" className="text-sm text-white hover:text-blue-400">Market Analysis</a>
+          <a href="#" className="text-sm text-white hover:text-blue-400">Settings</a>
+        </nav>
+      </Sidebar>
+
+      {/* Main Content */}
+      <main className="flex-1 p-10">
+        {/* Top Bar */}
+        <div className="flex items-center justify-between mb-10">
+          <h1 className="text-4xl font-bold">Dashboard</h1>
+          <div className="flex items-center space-x-4">
+            <Search placeholder="Search..." className="w-64" />
+            <Dropdown label={user.name}>
+              <Menu>
+                <MenuItem>Profile</MenuItem>
+                <MenuItem>Logout</MenuItem>
+              </Menu>
+            </Dropdown>
           </div>
-        </Card>
-      )}
-      {/* Transactions card (Finance only) */}
-      {role !== 'hospitality' && (
-        <Card title={<span style={{ color: 'var(--brand-color)' }}>Transactions</span>} loading={loadingLoans}>
-          <div className="text-xl">
-            <span className="font-semibold text-3xl">{loanCount}</span> Active Loans
-          </div>
-        </Card>
-      )}
-      {/* Occupancy card (Hospitality only) */}
-      {role === 'hospitality' && (
-        <Card title={<span style={{ color: 'var(--brand-color)' }}>Occupancy</span>} loading={loadingOccupancy}>
-          <div className="text-3xl font-semibold">
-            {occupancy !== null ? `${occupancy}%` : 'N/A'}
-          </div>
-        </Card>
-      )}
-      {/* Property Search card (available to both roles) */}
-      <div className="bg-white rounded shadow p-4 flex flex-col justify-between">
-        <h3 className="font-bold mb-3" style={{ color: 'var(--brand-color)' }}>Property Search</h3>
-        <form onSubmit={handleSearch} className="flex space-x-2 mb-2">
-          <input 
-            type="text" 
-            value={searchTerm}
-            onChange={e => setSearchTerm(e.target.value)}
-            placeholder="Search properties..."
-            className="border p-1 flex-1 rounded"
-          />
-          <button 
-            type="submit" 
-            style={{ backgroundColor: 'var(--brand-color)' }} 
-            className="px-3 py-1 text-white rounded"
-            disabled={searchLoading}
-          >
-            {searchLoading ? 'Searching...' : 'Search'}
-          </button>
-        </form>
-        {searchResults !== null && (
-          <div className="text-sm text-gray-700">
-            {searchResults.length > 0 
-              ? `${searchResults.length} properties found` 
-              : 'No properties found'}
-          </div>
-        )}
-      </div>
-      {/* Market Analysis card (real-time analytics, spans full width if needed) */}
-      {role === 'hospitality' ? (
-        <div className="col-span-2">
-          <Card title={<span style={{ color: 'var(--brand-color)' }}>Market Analysis</span>} loading={!analyticsData}>
-            {analyticsData && (
-              <div className="space-y-1 text-sm">
-                <div>Total Orders: {analyticsData.totalOrders}</div>
-                <div>Total Revenue: ${analyticsData.totalRevenue}</div>
+        </div>
+
+        {/* Dashboard Cards */}
+        <div className="grid grid-cols-2 gap-6">
+          <Card className="bg-[#1F2937] text-white">
+            <CardContent>
+              <div className="flex items-center space-x-4">
+                <div className="w-12 h-12 rounded-full bg-[#3B82F6] flex items-center justify-center">
+                  <span className="text-white text-xl">🔍</span>
+                </div>
+                <div>
+                  <p className="text-sm text-gray-300">AI-Powered</p>
+                  <p className="text-lg font-semibold">Property Search</p>
+                </div>
               </div>
-            )}
+            </CardContent>
+          </Card>
+
+          <Card className="bg-[#1F2937] text-white">
+            <CardContent>
+              <div className="flex items-center space-x-4">
+                <div className="w-12 h-12 rounded-full bg-[#3B82F6] flex items-center justify-center">
+                  <span className="text-white text-xl">📍</span>
+                </div>
+                <div>
+                  <p className="text-sm text-gray-300">Site Suitability</p>
+                  <p className="text-lg font-semibold">Analysis</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="bg-[#1F2937] text-white">
+            <CardContent>
+              <p className="text-sm text-gray-400 mb-1">Recent Market Analysis</p>
+              <p className="text-3xl font-bold mb-1">12 <span className="text-lg font-medium">Reports</span></p>
+              <p className="text-sm text-gray-500">Generated this month</p>
+            </CardContent>
+          </Card>
+
+          <Card className="bg-[#1F2937] text-white">
+            <CardContent>
+              <p className="text-sm text-gray-400 mb-1">Pending Property Transactions</p>
+              <p className="text-3xl font-bold mb-1">8 <span className="text-lg font-medium">Transactions</span></p>
+              <p className="text-sm text-gray-500">Awaiting review</p>
+            </CardContent>
           </Card>
         </div>
-      ) : (
-        <Card title={<span style={{ color: 'var(--brand-color)' }}>Market Analysis</span>} loading={!analyticsData}>
-          {analyticsData && (
-            <div className="space-y-1 text-sm">
-              <div>Total Orders: {analyticsData.totalOrders}</div>
-              <div>Total Revenue: ${analyticsData.totalRevenue}</div>
-            </div>
-          )}
-        </Card>
-      )}
+      </main>
     </div>
   );
 }
