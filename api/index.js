@@ -9,6 +9,7 @@ const cache = require('./cache');
 const { addJob } = require('./jobQueue');
 const fs = require('fs');
 const { workflows, addWorkflow } = require('./workflowStore');
+const { runWorkflow } = require('./hyperautomation');
 const path = require('path');
 const http = require('http');
 const attachChatServer = require('./chatServer');
@@ -1796,6 +1797,19 @@ app.post("/api/workflows", (req, res) => {
   const workflow = { id: workflows.length + 1, name, steps };
   addWorkflow(workflow);
   res.status(201).json(workflow);
+});
+
+app.post("/api/workflows/:id/run", async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  const workflow = workflows.find(w => w.id === id);
+  if (!workflow) return res.status(404).json({ message: "Workflow not found" });
+  try {
+    const results = await runWorkflow(workflow);
+    res.json({ results });
+  } catch (err) {
+    console.error("Workflow run error:", err);
+    res.status(500).json({ message: "Failed to run workflow" });
+  }
 });
 
 // ── Voice Bot Endpoints ────────────────────────────────────────────────────
