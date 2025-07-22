@@ -61,6 +61,7 @@ const departmentNav = {
     { label: 'Risk Monitoring', icon: '📈', sub: ['Troubled Assets', 'Revived Sales'] },
     { label: 'Investor Reporting', icon: '📊', sub: ['Reports', 'Investor Reports'] },
     { label: 'Collections', icon: '💵', sub: ['Collections'] },
+    { label: 'Settings', icon: '⚙️' },
     { label: 'Docs', icon: '📄', href: 'https://github.com/kontra-ui/docs' }
   ],
   hospitality: [
@@ -71,6 +72,7 @@ const departmentNav = {
     { label: 'Booking Calendar', icon: '📅', flag: 'hospitality' },
     { label: 'Restaurant Menu', icon: '🍽️' },
     { label: 'Restaurant Dashboard', icon: '📊' },
+    { label: 'Settings', icon: '⚙️' },
     { label: 'Docs', icon: '📄', href: 'https://github.com/kontra-ui/docs' }
   ]
 };
