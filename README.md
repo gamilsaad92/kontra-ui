@@ -23,11 +23,11 @@ This repository contains the **frontend** and **backend** for the Kontra demo ap
 
    Edit `api/.env` with your Supabase, OpenAI, Twilio and Dialogflow credentials.
    Add your Sentry DSN as `VITE_SENTRY_DSN` in `ui/.env`.
-   Optional `FEATURE_FLAGS` and `VITE_FEATURE_FLAGS` entries enable or disable
+  Optional `FEATURE_FLAGS` and `VITE_FEATURE_FLAGS` entries enable or disable
   upcoming modules. For example `sso` and `compliance` toggle the placeholder
   single sign-on and compliance scan routes.
-   Ensure the API is running on the same URL specified in `ui/.env`.
-  Set `SUPABASE_REPLICA_URL` in `api/.env` to route read queries to a replica.
+  Set `PII_ENCRYPTION_KEY` to encrypt sensitive identifiers like SSNs.
+  Ensure the API is running on the same URL specified in `ui/.env`.
   Provide `REDIS_URL` to enable caching for hot queries.
 
 4. Start the development servers in separate terminals:
@@ -159,7 +159,9 @@ Endpoint `/api/send-communication` generates reminder messages with OpenAI and d
 - Field-level changes are recorded to an encrypted `api/auditLogs.enc` file whenever data is created or modified. Set `ENCRYPTION_KEY` in `api/.env` to secure the log.
 - These controls provide a foundation for SOC‑2 readiness alongside existing Sentry monitoring.
 - `POST /api/generate-tax-form` produces 1098 or 1099 forms.
-  
+- Sensitive personal identifiers like SSNs are encrypted at rest using `PII_ENCRYPTION_KEY`.
+- `/api/otp` endpoints provide a basic SMS or email verification step for two-factor authentication.
+- Role-based access control middleware checks member roles from the `organization_members` table.
 -Compliance-related routes are disabled unless the `compliance` feature flag is
 set.
 
