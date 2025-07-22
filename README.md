@@ -194,6 +194,9 @@ The staff dashboard visualizes these metrics and provides a one-click accounting
 ## Integrations & Marketplace
 
 - OpenAPI specification is served at `/openapi.json` with Swagger UI at `/api-docs`.
+- ## Visual Workflow Builder
+
+A drag-and-drop designer lets you automate tasks without code. Create triggers and actions, then save sequences as reusable workflows. The builder uses the new `/api/workflows` endpoints to store your automations.
 - `POST /api/webhooks` registers a URL to receive `loan.created`, `payment.created` and `booking.created` events. Registered hooks are stored in the `webhooks` table so they persist across restarts.
 - `GET /api/integrations` lists connected apps. Connect QuickBooks, Xero, Toast, Square or Procore via `POST /api/integrations/{name}/connect`. Connection status is stored in the `integration_statuses` table.
 - Hospitality modules now include `/api/bookings` endpoints for room reservations.
