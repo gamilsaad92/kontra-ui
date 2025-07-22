@@ -190,6 +190,10 @@ Restaurant dashboards now surface operational metrics:
 - `GET /api/analytics/restaurant` returns table turnover, average payment time and tip performance.
 - `GET /api/accounting/entries` exports payment entries as JSON or CSV.
 The staff dashboard visualizes these metrics and provides a one-click accounting export.
+- `POST /api/forecast-metrics` forecasts the next metric value from a history array.
+- `POST /api/detect-anomalies` identifies outliers in an array of numbers.
+- `POST /api/predict-churn` estimates if a customer is likely to cancel based on usage.
+- `POST /api/suggest-plan` advises when to upgrade a subscription plan.
 
 ## Integrations & Marketplace
 
