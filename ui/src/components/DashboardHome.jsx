@@ -1,197 +1,201 @@
 import React, { useContext, useEffect, useState } from 'react';
-import RiskScoreCard from '../modules/dashboard/RiskScoreCard';
-import DelinquencyCard from '../modules/dashboard/DelinquencyCard';
-import RecentActivityCard from '../modules/dashboard/RecentActivityCard';
-import NextDueCard from '../modules/dashboard/NextDueCard';
-import OfferCard from '../modules/dashboard/OfferCard';
-import SmartRecommendations from './SmartRecommendations';
-import InteractiveFAQs from './InteractiveFAQs';
-import GuestOccupancyCard from '../modules/dashboard/GuestOccupancyCard';
-import CustomFeedCard from '../modules/dashboard/CustomFeedCard';
 import { AuthContext } from '../main';
-import { supabase } from '../lib/supabaseClient';
-import HelpTooltip from './HelpTooltip';
-
-const DEFAULT_LAYOUT = [
-  { id: 'risk', w: 1, hidden: false },
-  { id: 'delinquency', w: 1, hidden: false },
-  { id: 'activity', w: 2, hidden: false },
-  { id: 'occupancy', w: 2, hidden: false },
-  { id: 'nextDue', w: 1, hidden: false },
-  { id: 'offers', w: 1, hidden: false },
-  { id: 'faqs', w: 2, hidden: false },
-  { id: 'recommendations', w: 2, hidden: false }
-   // Custom feed widgets can be added by the user and will be
-  // persisted in the layout array
-];
+import { API_BASE } from '../lib/apiBase';
+import Card from './Card';
 
 export default function DashboardHome({ navigateTo }) {
   const { session } = useContext(AuthContext);
-  const [layout, setLayout] = useState(DEFAULT_LAYOUT);
-  const [loading, setLoading] = useState(true);
+  const role = session?.user?.user_metadata?.role;
 
+  // Report count (Finance)
+  const [reportCount, setReportCount] = useState(0);
+  const [loadingReports, setLoadingReports] = useState(false);
+  // Loan count (Finance)
+  const [loanCount, setLoanCount] = useState(0);
+  const [loadingLoans, setLoadingLoans] = useState(false);
+  // Occupancy percentage (Hospitality)
+  const [occupancy, setOccupancy] = useState(null);
+  const [loadingOccupancy, setLoadingOccupancy] = useState(false);
+  // Property search state (common)
+  const [searchTerm, setSearchTerm] = useState('');
+  const [searchResults, setSearchResults] = useState(null);  // null = not searched yet
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [allAssets, setAllAssets] = useState([]);  // cache for assets
+  // Real-time analytics data (common)
+  const [analyticsData, setAnalyticsData] = useState(null);
+
+  // Fetch investor reports (for Finance dashboard)
   useEffect(() => {
-    async function load() {
-      if (!session) return;
-      const { data } = await supabase
-        .from('user_dashboard_layout')
-        .select('layout')
-        .eq('user_id', session.user.id)
-        .single();
-      if (data?.layout) setLayout(data.layout);
-      setLoading(false);
+    if (role !== 'hospitality') {
+      setLoadingReports(true);
+      fetch(`${API_BASE}/api/investor-reports`)
+        .then(res => res.json())
+        .then(data => {
+          const reports = data.reports || [];
+          setReportCount(reports.length);
+        })
+        .catch(() => setReportCount(0))
+        .finally(() => setLoadingReports(false));
     }
-    load();
-  }, [session]);
+  }, [role]);
 
+  // Fetch active loans (for Finance dashboard)
   useEffect(() => {
-    if (!session) return;
-    supabase
-      .from('user_dashboard_layout')
-      .upsert({ user_id: session.user.id, layout });
-  }, [layout, session]);
+    if (role !== 'hospitality') {
+      setLoadingLoans(true);
+      fetch(`${API_BASE}/api/loans?status=active`)
+        .then(res => res.json())
+        .then(data => {
+          const loans = data.loans || [];
+          setLoanCount(loans.length);
+        })
+        .catch(() => setLoanCount(0))
+        .finally(() => setLoadingLoans(false));
+    }
+  }, [role]);
 
-  function handleDrop(e, index) {
-    const id = e.dataTransfer.getData('id');
-    const from = layout.findIndex(l => l.id === id);
-    if (from === -1) return;
-    const updated = [...layout];
-    const [item] = updated.splice(from, 1);
-    updated.splice(index, 0, item);
-    setLayout(updated);
-  }
+  // Fetch occupancy data (for Hospitality dashboard)
+  useEffect(() => {
+    if (role === 'hospitality') {
+      setLoadingOccupancy(true);
+      (async () => {
+        try {
+          const res = await fetch(`${API_BASE}/api/hospitality/metrics`);
+          const data = await res.json();
+          const occDaily = data.occDaily || [];
+          // use latest day’s occupancy percentage
+          setOccupancy(occDaily.length > 0 ? Math.round(occDaily[occDaily.length - 1].occupancy) : 0);
+        } catch {
+          // Fallback sample data if API fails
+          const days = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+          const sampleOcc = days.map((d, i) => 70 + i);  // 70% -> 76%
+          setOccupancy(sampleOcc[sampleOcc.length - 1]);
+        } finally {
+          setLoadingOccupancy(false);
+        }
+      })();
+    }
+  }, [role]);
 
-  function toggleSize(id) {
-    setLayout(l =>
-      l.map(it =>
-        it.id === id ? { ...it, w: it.w === 2 ? 1 : 2 } : it
-      )
-    );
-  }
-
-  function toggleHide(id) {
-    setLayout(l =>
-      l.map(it =>
-        it.id === id ? { ...it, hidden: !it.hidden } : it
-      )
-    );
-  }
-
-   function addCustomFeed() {
-    const url = prompt('Enter JSON feed URL');
-    if (!url) return;
-    setLayout(l => [
-      ...l,
-      {
-        id: `feed-${Date.now()}`,
-        w: 2,
-        hidden: false,
-        dataUrl: url
+  // Open real-time analytics stream (Market Analysis card)
+  useEffect(() => {
+    const es = new EventSource(`${API_BASE}/api/analytics/stream`);
+    es.onmessage = evt => {
+      try {
+        const parsed = JSON.parse(evt.data);
+        setAnalyticsData(parsed);
+      } catch {
+        /* ignore parse errors */
       }
-    ]);
-  }
+    };
+    return () => es.close();
+  }, []);
 
-  const widgets = {
-   risk: <RiskScoreCard />,
-    delinquency: <DelinquencyCard />,
-    activity: <RecentActivityCard />,
-    occupancy: <GuestOccupancyCard />,
-    nextDue: <NextDueCard />,
-    offers: <OfferCard />,
-    faqs: <InteractiveFAQs userId={session?.user?.id} />,
-    recommendations: <SmartRecommendations />
-  };
-
-    const renderWidget = item => {
-    if (item.id.startsWith('feed-')) {
-      return <CustomFeedCard url={item.dataUrl} />;
+  // Handle property search form submit
+  const handleSearch = async e => {
+    e.preventDefault();
+    if (!searchTerm) return;
+    setSearchLoading(true);
+    try {
+      // Fetch all assets on first search
+      if (allAssets.length === 0) {
+        const res = await fetch(`${API_BASE}/api/assets`);
+        const data = await res.json();
+        const assets = data.assets || [];
+        setAllAssets(assets);
+        const matches = assets.filter(a =>
+          (a.name || '').toLowerCase().includes(searchTerm.toLowerCase())
+        );
+        setSearchResults(matches);
+      } else {
+        // Use cached assets list for subsequent searches
+        const matches = allAssets.filter(a =>
+          (a.name || '').toLowerCase().includes(searchTerm.toLowerCase())
+        );
+        setSearchResults(matches);
+      }
+    } catch {
+      setSearchResults([]);  // on error, treat as no results
+    } finally {
+      setSearchLoading(false);
     }
-    return widgets[item.id] || null;
   };
-
-  if (loading) return <p>Loading dashboard…</p>;
-
-  const hidden = layout.filter(l => l.hidden);
 
   return (
-    <div className="space-y-4">
-      <div className="flex space-x-2">
-        <button
-               onClick={() => navigateTo && navigateTo('Create Loan')}
-          className="bg-blue-600 text-white px-3 py-1 rounded"
-        >
-          New Loan
-        </button>
-        <button
-                 onClick={() => navigateTo && navigateTo('New Application')}
-          className="bg-blue-600 text-white px-3 py-1 rounded"
-        >
-          New Application
-        </button>
-        <button
-             onClick={() => navigateTo && navigateTo('New Request')}
-          className="bg-blue-600 text-white px-3 py-1 rounded"
-        >
-          New Draw Request
-        </button>
-              <button
-          onClick={() => navigateTo && navigateTo('Draw Board')}
-          className="bg-blue-600 text-white px-3 py-1 rounded"
-        >
-          Draw Workflow
-        </button>
-            <button
-          onClick={addCustomFeed}
-          className="bg-green-600 text-white px-3 py-1 rounded"
-        >
-          Add Custom Feed
-        </button>
-      <HelpTooltip text="Import widgets from an external JSON feed" />
-      </div>
-
-      <div className="grid gap-6 grid-cols-2 auto-rows-fr">
-        {layout.map((item, idx) =>
-          !item.hidden && (
-            <div
-              key={item.id}
-              draggable
-              onDragStart={e => e.dataTransfer.setData('id', item.id)}
-              onDragOver={e => e.preventDefault()}
-              onDrop={e => handleDrop(e, idx)}
-              className={`relative ${item.w === 2 ? 'col-span-2' : ''}`}
-            >
-              <div className="absolute top-1 right-1 space-x-1 text-xs">
-                <button
-                  onClick={() => toggleSize(item.id)}
-                  className="bg-gray-200 px-1 rounded"
-                >
-                  ⇔
-                </button>
-                <button
-                  onClick={() => toggleHide(item.id)}
-                  className="bg-gray-200 px-1 rounded"
-                >
-                  ×
-                </button>
-              </div>
-                   {renderWidget(item)}
-            </div>
-          )
+    <div className="grid gap-6 grid-cols-2 auto-rows-fr">
+      {/* Reports card (Finance only) */}
+      {role !== 'hospitality' && (
+        <Card title={<span style={{ color: 'var(--brand-color)' }}>Reports</span>} loading={loadingReports}>
+          <div className="text-xl">
+            <span className="font-semibold text-3xl">{reportCount}</span> Reports
+          </div>
+        </Card>
+      )}
+      {/* Transactions card (Finance only) */}
+      {role !== 'hospitality' && (
+        <Card title={<span style={{ color: 'var(--brand-color)' }}>Transactions</span>} loading={loadingLoans}>
+          <div className="text-xl">
+            <span className="font-semibold text-3xl">{loanCount}</span> Active Loans
+          </div>
+        </Card>
+      )}
+      {/* Occupancy card (Hospitality only) */}
+      {role === 'hospitality' && (
+        <Card title={<span style={{ color: 'var(--brand-color)' }}>Occupancy</span>} loading={loadingOccupancy}>
+          <div className="text-3xl font-semibold">
+            {occupancy !== null ? `${occupancy}%` : 'N/A'}
+          </div>
+        </Card>
+      )}
+      {/* Property Search card (available to both roles) */}
+      <div className="bg-white rounded shadow p-4 flex flex-col justify-between">
+        <h3 className="font-bold mb-3" style={{ color: 'var(--brand-color)' }}>Property Search</h3>
+        <form onSubmit={handleSearch} className="flex space-x-2 mb-2">
+          <input 
+            type="text" 
+            value={searchTerm}
+            onChange={e => setSearchTerm(e.target.value)}
+            placeholder="Search properties..."
+            className="border p-1 flex-1 rounded"
+          />
+          <button 
+            type="submit" 
+            style={{ backgroundColor: 'var(--brand-color)' }} 
+            className="px-3 py-1 text-white rounded"
+            disabled={searchLoading}
+          >
+            {searchLoading ? 'Searching...' : 'Search'}
+          </button>
+        </form>
+        {searchResults !== null && (
+          <div className="text-sm text-gray-700">
+            {searchResults.length > 0 
+              ? `${searchResults.length} properties found` 
+              : 'No properties found'}
+          </div>
         )}
       </div>
-
-      {hidden.length > 0 && (
-        <div className="space-x-2">
-          {hidden.map(h => (
-            <button
-              key={h.id}
-              onClick={() => toggleHide(h.id)}
-              className="text-sm underline text-blue-600"
-            >
-            Show {h.id.startsWith('feed-') ? 'Custom Feed' : h.id}
-            </button>
-          ))}
+      {/* Market Analysis card (real-time analytics, spans full width if needed) */}
+      {role === 'hospitality' ? (
+        <div className="col-span-2">
+          <Card title={<span style={{ color: 'var(--brand-color)' }}>Market Analysis</span>} loading={!analyticsData}>
+            {analyticsData && (
+              <div className="space-y-1 text-sm">
+                <div>Total Orders: {analyticsData.totalOrders}</div>
+                <div>Total Revenue: ${analyticsData.totalRevenue}</div>
+              </div>
+            )}
+          </Card>
         </div>
+      ) : (
+        <Card title={<span style={{ color: 'var(--brand-color)' }}>Market Analysis</span>} loading={!analyticsData}>
+          {analyticsData && (
+            <div className="space-y-1 text-sm">
+              <div>Total Orders: {analyticsData.totalOrders}</div>
+              <div>Total Revenue: ${analyticsData.totalRevenue}</div>
+            </div>
+          )}
+        </Card>
       )}
     </div>
   );
