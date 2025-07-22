@@ -1,13 +1,18 @@
 const express = require('express');
-const { orders } = require('./orders');
+const { getOrders } = require('./orders');
+const requireOrg = require('../middlewares/requireOrg');
 
 const router = express.Router();
 
-const payments = [];
+const paymentsByOrg = {};
 let nextPaymentId = 1;
 
+const getPayments = orgId => paymentsByOrg[orgId] || [];
+
+router.use(requireOrg);
+
 router.get('/payments', (req, res) => {
-  res.json({ payments });
+  res.json({ payments: getPayments(req.orgId) });
 });
 
 router.post('/payments', (req, res) => {
@@ -15,17 +20,18 @@ router.post('/payments', (req, res) => {
   if (!order_id || typeof amount !== 'number') {
     return res.status(400).json({ message: 'Missing order_id or amount' });
   }
-  const order = orders.find(o => o.id === order_id);
+  const order = getOrders(req.orgId).find(o => o.id === order_id);
   if (!order) return res.status(400).json({ message: 'Invalid order' });
-    const payment = {
+ const payment = {
     id: nextPaymentId++,
     order_id,
     amount,
     method,
     created_at: new Date().toISOString()
   };
-  payments.push(payment);
+const arr = paymentsByOrg[req.orgId] || (paymentsByOrg[req.orgId] = []);
+  arr.push(payment);
   res.status(201).json({ payment });
 });
 
-module.exports = { router, payments };
+module.exports = { router, getPayments };
