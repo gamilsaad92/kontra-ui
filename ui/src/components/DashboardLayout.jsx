@@ -48,6 +48,7 @@ import CustomerPortal from './CustomerPortal';
 import OrganizationSettings from './OrganizationSettings';
 import RestaurantMenu from './RestaurantMenu';
 import StaffRestaurantDashboard from './StaffRestaurantDashboard';
+import HelpTooltip from './HelpTooltip';
 import { isFeatureEnabled } from '../lib/featureFlags';
 import useFeatureUsage from '../lib/useFeatureUsage';
 
@@ -360,13 +361,16 @@ export default function DashboardLayout() {
       <div className="flex flex-1">
         <div className="flex flex-col flex-1">
           <header className="flex items-center justify-between bg-white shadow p-4">
-            <input
-              className="border rounded p-2 w-1/3"
-              placeholder="Search…"
-              aria-label="Search"
-              title="Search across your data"
-              type="text"
-            />
+           <div className="flex items-center">
+              <input
+                className="border rounded p-2 w-1/3"
+                placeholder="Search…"
+                aria-label="Search"
+                title="Search across your data"
+                type="text"
+              />
+              <HelpTooltip text="Search across loans, customers and projects" />
+            </div>
             <div className="flex items-center space-x-4">
               <span className="text-xl" title="Notifications">🔔</span>
               <div
