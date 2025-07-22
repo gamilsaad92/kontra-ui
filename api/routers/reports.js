@@ -12,6 +12,7 @@ const supabase = createClient(
 );
 
 const SCHEDULE_FILE = path.join(__dirname, '..', 'scheduledReports.json');
+const SAVED_FILE = path.join(__dirname, '..', 'savedReports.json');
 
 function loadJobs() {
   try {
@@ -23,6 +24,18 @@ function loadJobs() {
 
 function saveJobs(jobs) {
   fs.writeFileSync(SCHEDULE_FILE, JSON.stringify(jobs, null, 2));
+}
+
+function loadSaved() {
+  try {
+    return JSON.parse(fs.readFileSync(SAVED_FILE, 'utf8'));
+  } catch {
+    return [];
+  }
+}
+
+function saveSaved(items) {
+  fs.writeFileSync(SAVED_FILE, JSON.stringify(items, null, 2));
 }
 
 router.post('/run', async (req, res) => {
@@ -55,6 +68,20 @@ router.post('/run', async (req, res) => {
   }
 });
 
+router.get('/fields', async (req, res) => {
+  const { table } = req.query || {};
+  if (!table) return res.status(400).json({ message: 'Missing table' });
+  try {
+    const { data, error } = await supabase.from(table).select('*').limit(1);
+    if (error) throw error;
+    const fields = data && data[0] ? Object.keys(data[0]) : [];
+    res.json({ fields });
+  } catch (err) {
+    console.error('Field lookup error:', err);
+    res.status(500).json({ message: 'Failed to fetch fields' });
+  }
+});
+
 router.post('/schedule', (req, res) => {
   const { email, schedule = 'daily', table, fields = '*', filters = {} } = req.body || {};
   if (!email || !table) return res.status(400).json({ message: 'Missing email or table' });
@@ -62,6 +89,20 @@ router.post('/schedule', (req, res) => {
   jobs.push({ id: Date.now(), email, schedule, table, fields, filters, last_sent: null });
   saveJobs(jobs);
   res.status(201).json({ message: 'Scheduled' });
+});
+
+router.get('/saved', (req, res) => {
+  res.json({ reports: loadSaved() });
+});
+
+router.post('/save', (req, res) => {
+  const { name, table, fields = '*', filters = {} } = req.body || {};
+  if (!name || !table) return res.status(400).json({ message: 'Missing name or table' });
+  const items = loadSaved();
+  const id = Date.now();
+  items.push({ id, name, table, fields, filters });
+  saveSaved(items);
+  res.status(201).json({ id });
 });
 
 router.get('/export', async (req, res) => {
