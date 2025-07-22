@@ -4,6 +4,7 @@ CREATE TABLE IF NOT EXISTS organizations (
   name TEXT NOT NULL,
   parent_id BIGINT REFERENCES organizations(id),
   branding JSONB,
+   plan TEXT DEFAULT 'basic',
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
