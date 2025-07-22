@@ -236,6 +236,19 @@ creates a token linked to an organization. Visiting the UI with
 `?invite=TOKEN` presents a sign-up form that accepts the invite and sets the
 user's `organization_id` metadata, creating a member record.
 
+## Subscription Plans
+
+Choose from three plans to match your organization's needs:
+
+| Plan | Price | Key Features |
+| --- | --- | --- |
+| **Basic** | Free | Up to 3 users, community support |
+| **Pro** | $50/mo | Up to 10 users, priority support |
+| **Enterprise** | $200/mo | Unlimited users, dedicated support |
+
+Change plans via `/api/subscription` by posting `{ plan: 'pro' }` with your
+`X-Org-Id` header. Available plans can be listed from `/api/plans`.
+
 ## High-Performance Architecture
 
 Read queries can target a Supabase read replica when `SUPABASE_REPLICA_URL` is
