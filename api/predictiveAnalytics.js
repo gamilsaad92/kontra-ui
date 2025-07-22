@@ -15,10 +15,20 @@ function detectAnomalies(values = []) {
     .filter(i => i !== -1);
 }
 
+function predictChurn({ logins = 0, days_since_login = 0, tickets = 0 }) {
+  const logit = -3 + 0.04 * days_since_login - 0.05 * logins + 0.3 * tickets;
+  const probability = 1 / (1 + Math.exp(-logit));
+  const reasons = [];
+  if (days_since_login > 14) reasons.push('inactive');
+  if (logins < 5) reasons.push('low usage');
+  if (tickets > 3) reasons.push('high support volume');
+  return { probability: parseFloat(probability.toFixed(4)), reasons };
+}
+
 function suggestPlan({ usage = 0, threshold = 100 }) {
   return usage > threshold
     ? `Usage approaching limit. Consider upgrading next month.`
     : `Current usage within plan.`;
 }
 
-module.exports = { forecastNextValue, detectAnomalies, suggestPlan };
+module.exports = { forecastNextValue, detectAnomalies, suggestPlan, predictChurn };
