@@ -24,7 +24,12 @@ async function run() {
   const jobs = loadJobs();
   const now = new Date();
   for (const job of jobs) {
-    if (!job.last_sent || now - new Date(job.last_sent) >= 24*60*60*1000) {
+    const diff = now - new Date(job.last_sent || 0);
+    const dayMs = 24 * 60 * 60 * 1000;
+    let interval = dayMs;
+    if (job.schedule === 'weekly') interval = 7 * dayMs;
+    if (job.schedule === 'monthly') interval = 30 * dayMs;
+    if (diff >= interval) {
       let q = supabase.from(job.table).select(job.fields).limit(1000);
       for (const [k,v] of Object.entries(job.filters || {})) {
         if (Array.isArray(v)) q = q.in(k, v);
