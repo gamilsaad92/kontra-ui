@@ -8,6 +8,7 @@ const OpenAI = require('openai');          // ← v4+ default export
 const cache = require('./cache');
 const { addJob } = require('./jobQueue');
 const fs = require('fs');
+const { workflows, addWorkflow } = require('./workflowStore');
 const path = require('path');
 const http = require('http');
 const attachChatServer = require('./chatServer');
@@ -1781,6 +1782,20 @@ app.post('/api/jobs/score-assets', (_req, res) => {
 app.post('/api/jobs/score-troubled', (_req, res) => {
   addJob('score-troubled');
   res.json({ queued: true });
+});
+
+// ── Workflow Automation Engine ─────────────────────────────────────────────
+app.get("/api/workflows", (_req, res) => {
+  res.json(workflows);
+});
+app.post("/api/workflows", (req, res) => {
+  const { name, steps } = req.body || {};
+  if (!name || !Array.isArray(steps)) {
+    return res.status(400).json({ message: "Missing name or steps" });
+  }
+  const workflow = { id: workflows.length + 1, name, steps };
+  addWorkflow(workflow);
+  res.status(201).json(workflow);
 });
 
 // ── Voice Bot Endpoints ────────────────────────────────────────────────────
