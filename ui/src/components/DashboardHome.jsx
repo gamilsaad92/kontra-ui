@@ -2,11 +2,12 @@ import { useState } from "react";
 import { Card, CardContent } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
 import { Input } from "../components/ui/Input";
-import { Menu, MenuItem } from "../components/ui/Menu";
 import { Dropdown } from "../components/ui/Dropdown";
 import { Sidebar } from "../components/ui/Sidebar";
 import { Avatar } from "../components/ui/Avatar";
 import { Search } from "../components/ui/Search";
+
+// Removed Menu imports as component doesn't exist
 
 export default function Dashboard() {
   const [user] = useState({ name: "Admin" });
@@ -32,10 +33,10 @@ export default function Dashboard() {
           <div className="flex items-center space-x-4">
             <Search placeholder="Search..." className="w-64" />
             <Dropdown label={user.name}>
-              <Menu>
-                <MenuItem>Profile</MenuItem>
-                <MenuItem>Logout</MenuItem>
-              </Menu>
+              <div className="bg-white text-black rounded-md shadow-md py-1">
+                <button className="block px-4 py-2 text-sm hover:bg-gray-100 w-full text-left">Profile</button>
+                <button className="block px-4 py-2 text-sm hover:bg-gray-100 w-full text-left">Logout</button>
+              </div>
             </Dropdown>
           </div>
         </div>
