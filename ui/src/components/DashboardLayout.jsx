@@ -46,6 +46,7 @@ import ReportBuilder from './ReportBuilder';
 import LiveChat from './LiveChat';
 import CustomerPortal from './CustomerPortal';
 import RealTimeAnalyticsDashboard from './RealTimeAnalyticsDashboard';
+import MarketAnalysis from './MarketAnalysis';
 import OrganizationSettings from './OrganizationSettings';
 import RestaurantMenu from './RestaurantMenu';
 import StaffRestaurantDashboard from './StaffRestaurantDashboard';
@@ -62,6 +63,7 @@ const departmentNav = {
     { label: 'Servicing', icon: '🛠️', sub: ['Payment Portal', 'Self Service Payment'] },
     { label: 'Risk Monitoring', icon: '📈', sub: ['Troubled Assets', 'Revived Sales'] },
     { label: 'Investor Reporting', icon: '📊', sub: ['Reports', 'Investor Reports'] },
+    { label: 'Market Analysis', icon: '🏙️' },
     { label: 'Live Analytics', icon: '📈' },
     { label: 'Collections', icon: '💵', sub: ['Collections'] },
     { label: 'Settings', icon: '⚙️' },
@@ -153,6 +155,7 @@ export default function DashboardLayout() {
         <InvestorReportsList refresh={refreshKey} />
       </>
     ),
+    'Market Analysis': () => <MarketAnalysis />,
     'Live Analytics': () => <RealTimeAnalyticsDashboard />,
     // Removed 'Hospitality Dashboard' route – both roles use DashboardHome now
     'Guest CRM': () => isFeatureEnabled('hospitality') ? (
