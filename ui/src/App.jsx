@@ -1,7 +1,7 @@
 // ui/src/App.jsx
 
 import React, { useContext, useState } from 'react'
-import SimpleDashboard from './components/SimpleDashboard'
+import DashboardLayout from './components/DashboardLayout'
 import LoginForm from './components/LoginForm'
 import SignUpForm from './components/SignUpForm'
 import InviteAcceptForm from './components/InviteAcceptForm'
@@ -24,5 +24,5 @@ export default function App() {
     )
   }
 
-   return <SimpleDashboard />
+  return <DashboardLayout />
 }
