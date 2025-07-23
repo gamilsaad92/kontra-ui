@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useRole } from '../lib/roles';
 import RiskScoreCard from '../modules/dashboard/RiskScoreCard';
 import DelinquencyCard from '../modules/dashboard/DelinquencyCard';
 import RecentActivityCard from '../modules/dashboard/RecentActivityCard';
@@ -7,9 +8,12 @@ import GuestOccupancyCard from '../modules/dashboard/GuestOccupancyCard';
 import OfferCard from '../modules/dashboard/OfferCard';
 import DrawRequestForm from './DrawRequestForm';
 import DrawStatusTracker from './DrawStatusTracker';
+import DrawRequestsTable from './DrawRequestsTable';
+import InspectionList from './InspectionList';
 import { API_BASE } from '../lib/apiBase';
 
 export default function DashboardHome() {
+  const role = useRole();
   const [lastId, setLastId] = useState(null);
   const [email, setEmail] = useState('');
   const [msg, setMsg] = useState('');
@@ -31,11 +35,17 @@ export default function DashboardHome() {
     }
   };
    
-    return (
+ return (
     <div className="space-y-6">
-         <h1 className="text-2xl font-bold">Dashboard</h1>
-      <DrawRequestForm onSubmitted={id => setLastId(id)} />
-     {lastId && (
+     <h1 className="text-2xl font-bold">Dashboard</h1>
+      {(role === 'borrower' || role === 'admin') && (
+        <DrawRequestForm onSubmitted={id => setLastId(id)} />
+      )}
+      {(role === 'lender' || role === 'admin') && (
+        <DrawRequestsTable onSelect={id => setLastId(id)} canReview />
+      )}
+      {role === 'inspector' && <InspectionList />}
+      {lastId && (role === 'borrower' || role === 'admin') && (    
         <>
           <DrawStatusTracker drawId={lastId} />
           <div className="space-y-2 mt-2">
