@@ -6,9 +6,13 @@ export default function DrawRequestForm({ onSubmitted }) {
     project: '',
     draw_number: '',
     description: '',
-    amount: ''  
+     amount: ''
   });
-   const [files, setFiles] = useState([]);
+  const [files, setFiles] = useState([]);
+  const [w9File, setW9File] = useState(null);
+  const [invoiceFile, setInvoiceFile] = useState(null);
+  const [inspectionFile, setInspectionFile] = useState(null);
+  const [autoFillAI, setAutoFillAI] = useState(true);
   const [message, setMessage] = useState('');
 
   const handleChange = e => {
@@ -19,6 +23,30 @@ export default function DrawRequestForm({ onSubmitted }) {
     setFiles(Array.from(e.target.files));
   };
 
+   async function extractAndFill(file, docType) {
+    if (!autoFillAI || !file) return;
+    const fd = new FormData();
+    fd.append('file', file);
+    fd.append('doc_type', docType);
+    try {
+      const res = await fetch(`${API_BASE}/api/document-review/process`, {
+        method: 'POST',
+        body: fd
+      });
+      if (res.ok) {
+        const { extracted } = await res.json();
+        setFormData(f => {
+          const next = { ...f };
+          if (extracted.amount) next.amount = extracted.amount;
+          if (extracted.vendor && !f.description) next.description = extracted.vendor;
+          return next;
+        });
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+
   const handleSubmit = async e => {
     e.preventDefault();
     setMessage('Submitting…');
@@ -26,6 +54,9 @@ export default function DrawRequestForm({ onSubmitted }) {
        const body = new FormData();
       Object.entries(formData).forEach(([k, v]) => body.append(k, v));
       files.forEach(f => body.append('documents', f));
+           if (w9File) body.append('documents', w9File);
+      if (invoiceFile) body.append('documents', invoiceFile);
+      if (inspectionFile) body.append('documents', inspectionFile);
       const res = await fetch(`${API_BASE}/api/draw-requests`, {
         method: 'POST',
         body
@@ -36,6 +67,9 @@ export default function DrawRequestForm({ onSubmitted }) {
         onSubmitted && onSubmitted(data.draw?.id);
         setFormData({ project: '', draw_number: '', description: '', amount: '' });
         setFiles([]);
+                setW9File(null);
+        setInvoiceFile(null);
+        setInspectionFile(null);
       } else {
         setMessage(data.message || 'Submission failed');
       }
@@ -81,7 +115,20 @@ export default function DrawRequestForm({ onSubmitted }) {
           required
           className="w-full border p-2 rounded h-24"
         />
-       <input
+           <label className="flex items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            checked={autoFillAI}
+            onChange={e => setAutoFillAI(e.target.checked)}
+          />
+          Auto-fill with AI
+        </label>
+        <div className="space-y-2">
+          <input type="file" accept="application/pdf,image/*" onChange={e => { setW9File(e.target.files[0]); extractAndFill(e.target.files[0], 'w9'); }} className="w-full" />
+          <input type="file" accept="application/pdf,image/*" onChange={e => { setInvoiceFile(e.target.files[0]); extractAndFill(e.target.files[0], 'invoice'); }} className="w-full" />
+          <input type="file" accept="application/pdf,image/*" onChange={e => { setInspectionFile(e.target.files[0]); extractAndFill(e.target.files[0], 'inspection'); }} className="w-full" />
+        </div>
+        <input
           type="file"
           accept="application/pdf,image/*"
           multiple
