@@ -1,36 +1,41 @@
-// src/components/DrawRequestForm.jsx
-
 import React, { useState } from 'react';
 import { API_BASE } from '../lib/apiBase';
 
 export default function DrawRequestForm({ onSubmitted }) {
   const [formData, setFormData] = useState({
     project: '',
-    project_number: '',
-    property_location: '',
-    amount: '',
-    description: ''
+    draw_number: '',
+    description: '',
+    amount: ''  
   });
+   const [files, setFiles] = useState([]);
   const [message, setMessage] = useState('');
 
   const handleChange = e => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
   };
 
+  const handleFiles = e => {
+    setFiles(Array.from(e.target.files));
+  };
+
   const handleSubmit = async e => {
     e.preventDefault();
     setMessage('Submitting…');
     try {
-    const res = await fetch(`${API_BASE}/api/draw-request`, {
+       const body = new FormData();
+      Object.entries(formData).forEach(([k, v]) => body.append(k, v));
+      files.forEach(f => body.append('documents', f));
+      const res = await fetch(`${API_BASE}/api/draw-requests`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData)
+        body
       });
       const data = await res.json();
       if (res.ok) {
         setMessage('Draw request submitted!');
-        onSubmitted();
-        setFormData({ project: '', project_number: '', property_location: '', amount: '', description: '' });
+        onSubmitted && onSubmitted(data.draw?.id);
+        setFormData({ project: '', draw_number: '', description: '', amount: '' });
+        setFiles([]);
       } else {
         setMessage(data.message || 'Submission failed');
       }
@@ -45,24 +50,16 @@ export default function DrawRequestForm({ onSubmitted }) {
       <form onSubmit={handleSubmit} className="space-y-4">
         <input
           name="project"
-          placeholder="Project Name"
+                placeholder="Project"
           value={formData.project}
           onChange={handleChange}
           required
           className="w-full border p-2 rounded"
         />
         <input
-          name="project_number"
-          placeholder="Project #"
-          value={formData.project_number}
-          onChange={handleChange}
-          required
-          className="w-full border p-2 rounded"
-        />
-        <input
-          name="property_location"
-          placeholder="Property Location"
-          value={formData.property_location}
+         name="draw_number"
+          placeholder="Draw Number"
+          value={formData.draw_number}
           onChange={handleChange}
           required
           className="w-full border p-2 rounded"
@@ -83,6 +80,13 @@ export default function DrawRequestForm({ onSubmitted }) {
           onChange={handleChange}
           required
           className="w-full border p-2 rounded h-24"
+        />
+       <input
+          type="file"
+          accept="application/pdf,image/*"
+          multiple
+          onChange={handleFiles}
+          className="w-full"
         />
         <button
           type="submit"
