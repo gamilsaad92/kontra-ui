@@ -23,7 +23,7 @@ function calculateRiskScore({ amount, description, lastSubmittedAt }) {
   return Math.max(score, 0);
 }
 
-// Submit a draw request
+// Submit a draw request (legacy route)
 router.post('/draw-request', async (req, res) => {
   const { project, amount, description, project_number, property_location } = req.body;
   if (!project || !amount || !description || !project_number || !property_location) {
@@ -49,8 +49,45 @@ router.post('/draw-request', async (req, res) => {
     .select()
     .single();
 
+    if (!error) {
+    await supabase
+      .from('draw_status_history')
+      .insert([{ draw_id: data.id, status: 'submitted', created_at: new Date().toISOString() }]);
+  }
+
   if (error) return res.status(500).json({ message: 'Failed to submit draw request' });
   res.status(200).json({ message: 'Draw request submitted!', data });
+});
+
+// Submit a draw request (RESTful)
+router.post('/draw-requests', upload.array('documents'), async (req, res) => {
+  const { project, draw_number, description, amount } = req.body;
+  if (!project || !draw_number || !description || !amount) {
+    return res.status(400).json({ message: 'Missing required fields' });
+  }
+
+  const { data, error } = await supabase
+    .from('draw_requests')
+    .insert([{ project, draw_number, description, amount, status: 'submitted', submitted_at: new Date().toISOString() }])
+    .select()
+    .single();
+
+  if (error) return res.status(500).json({ message: 'Failed to submit draw request' });
+
+  await supabase
+    .from('draw_status_history')
+    .insert([{ draw_id: data.id, status: 'submitted', created_at: new Date().toISOString() }]);
+
+  if (req.files && req.files.length) {
+    for (const file of req.files) {
+      const filePath = `draw-documents/${data.id}/${Date.now()}_${file.originalname}`;
+      await supabase.storage
+        .from('draw-documents')
+        .upload(filePath, file.buffer, { contentType: file.mimetype });
+    }
+  }
+
+  res.status(201).json({ draw: data });
 });
 
 // Review or approve a draw
@@ -75,12 +112,16 @@ router.post('/review-draw', async (req, res) => {
 
   if (error) return res.status(500).json({ message: 'Failed to update draw request' });
 
+  await supabase
+    .from('draw_status_history')
+    .insert([{ draw_id: id, status, created_at: new Date().toISOString() }]);
+
   recordFeedback({ decision_type: 'draw', entity_id: id, decision: status, comments: comment || '' });
   retrainModel();
   res.status(200).json({ message: 'Draw request updated', data });
 });
 
-// List draw requests
+// List draw requests (legacy)
 router.get('/get-draws', async (req, res) => {
   const { status, project } = req.query;
   let q = supabase
@@ -109,6 +150,20 @@ router.get('/get-draws', async (req, res) => {
   res.json({ draws: data });
 });
 
+// List draw requests (RESTful)
+router.get('/draw-requests', async (req, res) => {
+  const { status, project } = req.query;
+  let q = supabase
+    .from('draw_requests')
+    .select('*')
+    .order('submitted_at', { ascending: false });
+  if (status) q = q.eq('status', status);
+  if (project) q = q.eq('project', project);
+  const { data, error } = await q;
+  if (error) return res.status(500).json({ message: 'Failed to fetch draw requests' });
+  res.json({ draws: data });
+});
+
 // Single draw
 router.get('/draw-requests/:id', async (req, res) => {
   const { data, error } = await supabase
@@ -118,6 +173,17 @@ router.get('/draw-requests/:id', async (req, res) => {
     .single();
   if (error) return res.status(500).json({ message: 'Failed to fetch draw request' });
   res.json({ draw: data });
+});
+
+// Draw status history
+router.get('/draw-requests/:id/history', async (req, res) => {
+  const { data, error } = await supabase
+    .from('draw_status_history')
+    .select('status, created_at')
+    .eq('draw_id', req.params.id)
+    .order('created_at', { ascending: true });
+  if (error) return res.status(500).json({ message: 'Failed to fetch history' });
+  res.json({ history: data });
 });
 
 // Export draws
@@ -143,6 +209,12 @@ router.put('/draw-requests/:id', async (req, res) => {
     .select()
     .single();
   if (error) return res.status(500).json({ message: 'Failed to update draw' });
+  
+  if (updates.status) {
+    await supabase
+      .from('draw_status_history')
+      .insert([{ draw_id: req.params.id, status: updates.status, created_at: new Date().toISOString() }]);
+  }
   res.json({ draw: data });
 });
 
