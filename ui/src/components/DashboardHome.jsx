@@ -1,12 +1,12 @@
 import { useState } from "react";
-import { Card, CardContent } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Menu, MenuItem } from "@/components/ui/menu";
-import { Dropdown } from "@/components/ui/dropdown";
-import { Sidebar } from "@/components/ui/sidebar";
-import { Avatar } from "@/components/ui/avatar";
-import { Search } from "@/components/ui/search";
+import { Card, CardContent } from "../components/ui/card";
+import { Button } from "../components/ui/button";
+import { Input } from "../components/ui/input";
+import { Menu, MenuItem } from "../components/ui/menu";
+import { Dropdown } from "../components/ui/dropdown";
+import { Sidebar } from "../components/ui/sidebar";
+import { Avatar } from "../components/ui/avatar";
+import { Search } from "../components/ui/search";
 
 export default function Dashboard() {
   const [user] = useState({ name: "Admin" });
