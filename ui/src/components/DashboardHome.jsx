@@ -7,15 +7,52 @@ import GuestOccupancyCard from '../modules/dashboard/GuestOccupancyCard';
 import OfferCard from '../modules/dashboard/OfferCard';
 import DrawRequestForm from './DrawRequestForm';
 import DrawStatusTracker from './DrawStatusTracker';
+import { API_BASE } from '../lib/apiBase';
 
 export default function DashboardHome() {
- const [lastId, setLastId] = useState(null);
+  const [lastId, setLastId] = useState(null);
+  const [email, setEmail] = useState('');
+  const [msg, setMsg] = useState('');
+
+  const downloadSummary = () => {
+    if (!lastId) return;
+    window.open(`${API_BASE}/api/draw-requests/${lastId}/summary`, '_blank');
+  };
+
+  const shareSummary = async () => {
+    if (!lastId || !email) return;
+    setMsg('Sending...');
+    try {
+      const res = await fetch(`${API_BASE}/api/draw-requests/${lastId}/summary?email=${encodeURIComponent(email)}`);
+      if (res.ok) setMsg('Email sent');
+      else setMsg('Failed to send');
+    } catch {
+      setMsg('Failed to send');
+    }
+  };
    
     return (
     <div className="space-y-6">
          <h1 className="text-2xl font-bold">Dashboard</h1>
       <DrawRequestForm onSubmitted={id => setLastId(id)} />
-      {lastId && <DrawStatusTracker drawId={lastId} />}
+     {lastId && (
+        <>
+          <DrawStatusTracker drawId={lastId} />
+          <div className="space-y-2 mt-2">
+            <button onClick={downloadSummary} className="px-2 py-1 bg-blue-600 text-white rounded">Generate Draw Summary PDF</button>
+            <div className="flex space-x-2">
+              <input
+                className="border p-1 flex-1"
+                placeholder="Email address"
+                value={email}
+                onChange={e => setEmail(e.target.value)}
+              />
+              <button onClick={shareSummary} className="px-2 py-1 bg-green-600 text-white rounded">Share</button>
+            </div>
+            {msg && <p className="text-sm">{msg}</p>}
+          </div>
+        </>
+      )}
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
         <RiskScoreCard />
         <DelinquencyCard />
