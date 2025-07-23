@@ -169,13 +169,13 @@ export default function DashboardLayout() {
   ));
 
   return (
-    <div className="flex flex-col md:flex-row min-h-screen">
+   <div className="flex flex-col md:flex-row min-h-screen bg-gray-900 text-white">
       {/* Sidebar */}
       <aside className={`${sidebarOpen ? 'md:w-48' : 'md:w-16'} w-full bg-gray-800 text-white flex flex-col transition-all`} aria-label="Main navigation">
         <button onClick={() => setSidebarOpen(o => !o)} className="p-4 text-2xl font-bold border-b border-gray-700 text-left">
           {sidebarOpen ? 'Kontra' : 'K'}
         </button>
-        <select value={department} onChange={e => setDepartment(e.target.value)} className="m-2 p-1 text-black rounded">
+             <select value={department} onChange={e => setDepartment(e.target.value)} className="m-2 p-1 bg-gray-700 text-white rounded">
           <option value="finance">Finance</option>
           <option value="hospitality">Hospitality</option>
         </select>
@@ -198,14 +198,14 @@ export default function DashboardLayout() {
 
       {/* Main Content & Dashboard Routes */}
       <div className="flex flex-1 flex-col">
-        <header className="flex items-center justify-between bg-white shadow p-4">
+             <header className="flex items-center justify-between bg-gray-900 border-b border-gray-700 p-4">
           <div className="flex items-center">
-            <input className="border rounded p-2 w-1/3" placeholder="Search…" type="text" />
+                     <input className="px-3 py-1 rounded bg-gray-700 text-white placeholder-gray-400 focus:outline-none border border-gray-600 w-1/3" placeholder="Search…" type="text" />
             <HelpTooltip text="Search across loans, customers and projects" />
           </div>
           <div className="flex items-center space-x-4">
             <span className="text-xl" title="Notifications">🔔</span>
-            <div className="w-8 h-8 bg-gray-300 rounded-full flex items-center justify-center" title="Account">
+                   <div className="w-8 h-8 bg-gray-600 rounded-full flex items-center justify-center" title="Account">
               {session.user?.email[0].toUpperCase()}
             </div>
           </div>
@@ -216,7 +216,7 @@ export default function DashboardLayout() {
       </div>
 
       {/* Right-side widgets (assistant, etc.) */}
-      <aside className="md:w-80 w-full border-l bg-white p-2 space-y-2">
+     <aside className="md:w-80 w-full border-l border-gray-700 bg-gray-800 p-2 space-y-2 text-white">
         <VirtualAssistant />
         <SuggestFeatureWidget />
       </aside>
