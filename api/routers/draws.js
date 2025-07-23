@@ -1,6 +1,8 @@
 const express = require('express');
 const multer = require('multer');
 const { createClient } = require('@supabase/supabase-js');
+const PDFDocument = require('pdfkit');
+const { sendEmail } = require('../communications');
 const { recordFeedback, retrainModel } = require('../feedback');
 
 const router = express.Router();
@@ -306,6 +308,68 @@ router.get('/waiver-checklist/:drawId', async (req, res) => {
     completed: types.some(t => t.includes(it))
   }));
   res.json({ checklist });
+});
+
+// Generate summary PDF for a draw
+router.get('/draw-requests/:id/summary', async (req, res) => {
+  const { id } = req.params;
+  const { email } = req.query;
+  const { data: draw, error: drawErr } = await supabase
+    .from('draw_requests')
+    .select('*')
+    .eq('id', id)
+    .single();
+  if (drawErr || !draw) return res.status(404).json({ message: 'Draw not found' });
+  const { data: history } = await supabase
+    .from('draw_status_history')
+    .select('status, created_at')
+    .eq('draw_id', id)
+    .order('created_at');
+  const { data: funded } = await supabase
+    .from('draw_requests')
+    .select('amount')
+    .eq('status', 'funded');
+  const disbursements = (funded || []).reduce((s, d) => s + parseFloat(d.amount || 0), 0);
+  const balance = 1000000 - disbursements;
+
+  const doc = new PDFDocument();
+  const buffers = [];
+  doc.on('data', b => buffers.push(b));
+  doc.on('end', async () => {
+    const pdf = Buffer.concat(buffers);
+    if (email) {
+      try {
+        await sendEmail(email, 'Draw Summary', 'See attached draw summary', [
+          { filename: 'draw_summary.pdf', content: pdf }
+        ]);
+        res.json({ sent: true });
+      } catch (err) {
+        console.error('Email error', err);
+        res.status(500).json({ message: 'Failed to send email' });
+      }
+    } else {
+      res.setHeader('Content-Type', 'application/pdf');
+      res.send(pdf);
+    }
+  });
+
+  doc.fontSize(18).text('Draw Summary');
+  doc.moveDown();
+  doc.fontSize(12).text(`Draw #${draw.id}`);
+  doc.text(`Project: ${draw.project}`);
+  doc.text(`Amount: ${draw.amount}`);
+  doc.text(`Status: ${draw.status}`);
+  if (draw.submitted_at) doc.text(`Submitted: ${draw.submitted_at}`);
+  doc.moveDown();
+  doc.text('Status History:');
+  (history || []).forEach(h => {
+    doc.text(`${h.status} - ${h.created_at}`);
+  });
+  doc.moveDown();
+  doc.text('Financial Summary:');
+  doc.text(`Current Balance: ${balance}`);
+  doc.text(`Total Disbursements: ${disbursements}`);
+  doc.end();
 });
 
 // List inspections
