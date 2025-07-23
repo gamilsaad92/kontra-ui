@@ -4,7 +4,7 @@ import React, { useEffect, useState } from 'react';
 import { API_BASE } from '../lib/apiBase';
 import DrawRequestDetail from './DrawRequestDetail';
 
-export default function DrawRequestsTable({ onSelect }) {
+export default function DrawRequestsTable({ onSelect, canReview = false }) {
   const [draws, setDraws] = useState([]);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
@@ -105,7 +105,11 @@ export default function DrawRequestsTable({ onSelect }) {
         </tbody>
         </table>
       {detailId && (
-        <DrawRequestDetail drawId={detailId} onClose={() => setDetailId(null)} />
+           <DrawRequestDetail
+          drawId={detailId}
+          canReview={canReview}
+          onClose={() => setDetailId(null)}
+        />
       )}
     </div>
   );
