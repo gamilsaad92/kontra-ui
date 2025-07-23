@@ -1,93 +1,24 @@
-import { useState } from "react";
-import { Card, CardContent } from "../components/ui/Card";
-import { Button } from "../components/ui/Button";
-import { Input } from "../components/ui/Input";
-import { Dropdown } from "../components/ui/Dropdown";
-import { Sidebar } from "../components/ui/Sidebar";
-import { Avatar } from "../components/ui/Avatar";
-import { Search } from "../components/ui/Search";
+import React from 'react';
+import RiskScoreCard from '../modules/dashboard/RiskScoreCard';
+import DelinquencyCard from '../modules/dashboard/DelinquencyCard';
+import RecentActivityCard from '../modules/dashboard/RecentActivityCard';
+import NextDueCard from '../modules/dashboard/NextDueCard';
+import GuestOccupancyCard from '../modules/dashboard/GuestOccupancyCard';
+import OfferCard from '../modules/dashboard/OfferCard';
 
-// Removed Menu imports as component doesn't exist
+export default function DashboardHome() {
 
-export default function Dashboard() {
-  const [user] = useState({ name: "Admin" });
-
-  return (
-    <div className="flex min-h-screen bg-[#111827] text-white">
-      {/* Sidebar */}
-      <Sidebar className="w-64 bg-[#1F2937] text-white">
-        <div className="text-2xl font-bold px-4 py-6">K Kontra</div>
-        <nav className="flex flex-col space-y-2 px-4">
-          <a href="#" className="text-sm text-white hover:text-blue-400">Dashboard</a>
-          <a href="#" className="text-sm text-white hover:text-blue-400">Land Acquisition</a>
-          <a href="#" className="text-sm text-white hover:text-blue-400">Market Analysis</a>
-          <a href="#" className="text-sm text-white hover:text-blue-400">Settings</a>
-        </nav>
-      </Sidebar>
-
-      {/* Main Content */}
-      <main className="flex-1 p-10">
-        {/* Top Bar */}
-        <div className="flex items-center justify-between mb-10">
-          <h1 className="text-4xl font-bold">Dashboard</h1>
-          <div className="flex items-center space-x-4">
-            <Search placeholder="Search..." className="w-64" />
-            <Dropdown label={user.name}>
-              <div className="bg-white text-black rounded-md shadow-md py-1">
-                <button className="block px-4 py-2 text-sm hover:bg-gray-100 w-full text-left">Profile</button>
-                <button className="block px-4 py-2 text-sm hover:bg-gray-100 w-full text-left">Logout</button>
-              </div>
-            </Dropdown>
-          </div>
-        </div>
-
-        {/* Dashboard Cards */}
-        <div className="grid grid-cols-2 gap-6">
-          <Card className="bg-[#1F2937] text-white">
-            <CardContent>
-              <div className="flex items-center space-x-4">
-                <div className="w-12 h-12 rounded-full bg-[#3B82F6] flex items-center justify-center">
-                  <span className="text-white text-xl">🔍</span>
-                </div>
-                <div>
-                  <p className="text-sm text-gray-300">AI-Powered</p>
-                  <p className="text-lg font-semibold">Property Search</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="bg-[#1F2937] text-white">
-            <CardContent>
-              <div className="flex items-center space-x-4">
-                <div className="w-12 h-12 rounded-full bg-[#3B82F6] flex items-center justify-center">
-                  <span className="text-white text-xl">📍</span>
-                </div>
-                <div>
-                  <p className="text-sm text-gray-300">Site Suitability</p>
-                  <p className="text-lg font-semibold">Analysis</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="bg-[#1F2937] text-white">
-            <CardContent>
-              <p className="text-sm text-gray-400 mb-1">Recent Market Analysis</p>
-              <p className="text-3xl font-bold mb-1">12 <span className="text-lg font-medium">Reports</span></p>
-              <p className="text-sm text-gray-500">Generated this month</p>
-            </CardContent>
-          </Card>
-
-          <Card className="bg-[#1F2937] text-white">
-            <CardContent>
-              <p className="text-sm text-gray-400 mb-1">Pending Property Transactions</p>
-              <p className="text-3xl font-bold mb-1">8 <span className="text-lg font-medium">Transactions</span></p>
-              <p className="text-sm text-gray-500">Awaiting review</p>
-            </CardContent>
-          </Card>
-        </div>
-      </main>
+return (
+   <div className="space-y-6">
+      <h1 className="text-2xl font-bold">Dashboard</h1>
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+        <RiskScoreCard />
+        <DelinquencyCard />
+        <NextDueCard />
+        <RecentActivityCard />
+        <GuestOccupancyCard />
+        <OfferCard />
+      </div>
     </div>
   );
 }
