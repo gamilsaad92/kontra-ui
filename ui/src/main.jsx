@@ -3,6 +3,7 @@
 import React, { createContext, useState, useEffect } from 'react'
 import ReactDOM from 'react-dom/client'
 import { BrowserRouter } from 'react-router-dom'
+import { ClerkProvider, SignedIn, SignedOut, SignIn } from '@clerk/clerk-react'
 import { registerSW } from 'virtual:pwa-register'
 import App from './App.jsx'
 import './index.css'
@@ -10,6 +11,7 @@ import { supabase } from './lib/supabaseClient'
 import * as Sentry from '@sentry/react'
 import { LocaleProvider } from './lib/i18n'
 import { BrandingProvider } from './lib/branding'
+import { RoleProvider } from './lib/roles'
 
 //
 // ── SENTRY INIT ────────────────────────────────────────────────────────────────
@@ -88,14 +90,23 @@ function AuthProvider({ children }) {
 const root = ReactDOM.createRoot(document.getElementById('root'))
 root.render(
   <React.StrictMode>
-         <BrowserRouter>
-      <LocaleProvider>
-        <AuthProvider>
-           <BrandingProvider>
-            <App />
-          </BrandingProvider>
-        </AuthProvider>
-      </LocaleProvider>
-    </BrowserRouter>
+            <ClerkProvider publishableKey={import.meta.env.VITE_CLERK_PUBLISHABLE_KEY}>
+      <SignedIn>
+        <BrowserRouter>
+          <LocaleProvider>
+            <AuthProvider>
+              <BrandingProvider>
+                <RoleProvider>
+                  <App />
+                </RoleProvider>
+              </BrandingProvider>
+            </AuthProvider>
+          </LocaleProvider>
+        </BrowserRouter>
+      </SignedIn>
+      <SignedOut>
+        <SignIn />
+      </SignedOut>
+    </ClerkProvider>
   </React.StrictMode>
 )
