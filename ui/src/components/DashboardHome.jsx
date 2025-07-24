@@ -6,6 +6,7 @@ import RecentActivityCard from '../modules/dashboard/RecentActivityCard';
 import NextDueCard from '../modules/dashboard/NextDueCard';
 import GuestOccupancyCard from '../modules/dashboard/GuestOccupancyCard';
 import OfferCard from '../modules/dashboard/OfferCard';
+import RoleKpiCard from '../modules/dashboard/RoleKpiCard';
 import DrawRequestForm from './DrawRequestForm';
 import DrawStatusTracker from './DrawStatusTracker';
 import DrawRequestsTable from './DrawRequestsTable';
@@ -64,12 +65,13 @@ export default function DashboardHome() {
         </>
       )}
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-        <RiskScoreCard />
-        <DelinquencyCard />
-        <NextDueCard />
-        <RecentActivityCard />
-        <GuestOccupancyCard />
-        <OfferCard />
+           <RoleKpiCard />
+        <RiskScoreCard to="/assets?sort=risk" />
+        <DelinquencyCard to="/collections?status=delinquent" />
+        <NextDueCard to="/payments?next=1" />
+        <RecentActivityCard to="/projects?sort=recent" />
+        <GuestOccupancyCard to="/guest-reservations" />
+        <OfferCard to="/offers" />
       </div>
     </div>
   );
