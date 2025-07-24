@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import RiskGauge from '../../components/RiskGauge';
 import Card from '../../components/Card';
 
-export default function RiskScoreCard({ value = 72 }) {
+export default function RiskScoreCard({ value = 72, to }) {
     const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -11,7 +11,7 @@ export default function RiskScoreCard({ value = 72 }) {
   }, []);
 
   return (
-      <Card title="Risk Score" loading={loading}>
+       <Card title="Risk Score" loading={loading} to={to}>
       <div className="flex items-center justify-center h-full">
         <RiskGauge value={value} />
       </div>
