@@ -56,9 +56,6 @@ export default defineConfig({
             if (reactPkgs.some((pkg) => id.includes(pkg))) {
               return 'react'
             }
-            if (clerkPkgs.some((pkg) => id.includes(pkg))) {
-              return 'clerk'
-            }
             if (shadcnPkgs.some((pkg) => id.includes(pkg))) {
               return 'shadcn'
             }
