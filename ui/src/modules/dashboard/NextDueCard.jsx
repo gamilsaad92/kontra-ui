@@ -1,7 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { API_BASE } from '../../lib/apiBase';
+import Card from '../../components/Card';
+import { BarChart, Bar, XAxis, YAxis, Tooltip } from 'recharts';
 
-export default function NextDueCard() {
+export default function NextDueCard({ to }) {
   const [next, setNext] = useState(null);
   useEffect(() => {
     (async () => {
@@ -15,10 +17,19 @@ export default function NextDueCard() {
     })();
   }, []);
 
+  const chartData = next ? [{ name: 'due', days: next.days_until }] : [];
+
   return (
-    <div className="bg-white rounded shadow p-4 h-full">
-      <h3 className="font-bold mb-2">Your Next Due Date</h3>
-      {next ? <p className="text-lg">{next.due_date}</p> : <p>No upcoming dues.</p>}
-    </div>
+   <Card title="Your Next Due Date" to={to}>
+      {next ? <p className="text-lg mb-2">{next.due_date}</p> : <p>No upcoming dues.</p>}
+      {chartData.length > 0 && (
+        <BarChart width={200} height={120} data={chartData} className="mx-auto">
+          <XAxis dataKey="name" hide />
+          <YAxis allowDecimals={false} />
+          <Tooltip />
+          <Bar dataKey="days" fill="#8884d8" />
+        </BarChart>
+      )}
+    </Card>
   );
 }
