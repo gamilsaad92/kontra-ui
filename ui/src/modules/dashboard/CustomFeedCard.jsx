@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import Card from '../../components/Card';
 
-export default function CustomFeedCard({ url }) {
+export default function CustomFeedCard({ url, to }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
 
@@ -25,7 +25,7 @@ export default function CustomFeedCard({ url }) {
   }, [url]);
 
   return (
-    <Card title="Custom Feed" loading={loading}>
+      <Card title="Custom Feed" loading={loading} to={to}>
       {data ? (
         <pre className="text-xs overflow-x-auto whitespace-pre-wrap">
           {JSON.stringify(data, null, 2)}
