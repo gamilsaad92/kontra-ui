@@ -35,7 +35,6 @@ export default defineConfig({
         manualChunks(id) {
           if (id.includes('node_modules')) {
             const reactPkgs = ['react', 'react-dom', 'react-router-dom']
-            const clerkPkgs = ['@clerk']
             const shadcnPkgs = [
               '@shadcn/ui',
               'class-variance-authority',
