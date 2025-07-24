@@ -1,11 +1,11 @@
 import React from 'react';
 import GuestOccupancyChart from '../../components/GuestOccupancyChart';
+import Card from '../../components/Card';
 
-export default function GuestOccupancyCard() {
+export default function GuestOccupancyCard({ to }) {
   return (
-    <div className="bg-white rounded shadow p-4 h-full">
-      <h3 className="font-bold mb-2">Guest Occupancy</h3>
+     <Card title="Guest Occupancy" to={to}>
       <GuestOccupancyChart />
-    </div>
+      </Card>
   );
 }
