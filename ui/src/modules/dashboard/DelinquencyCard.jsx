@@ -1,11 +1,11 @@
 import React from 'react';
 import DelinquencyChart from '../../components/DelinquencyChart';
+import Card from '../../components/Card';
 
-export default function DelinquencyCard() {
+export default function DelinquencyCard({ to }) {
   return (
-    <div className="bg-white rounded shadow p-4 h-full">
-      <h3 className="font-bold mb-2">Delinquency Forecast</h3>
+      <Card title="Delinquency Forecast" to={to}>
       <DelinquencyChart />
-    </div>
+    </Card>
   );
 }
