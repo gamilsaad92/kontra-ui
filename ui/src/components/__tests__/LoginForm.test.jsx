@@ -1,7 +1,7 @@
 import React from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
 import LoginForm from '../LoginForm.jsx';
-import { AuthContext } from '../../main.jsx';
+import { AuthContext } from '../../lib/authContext';
 
 const supabase = { auth: { signInWithPassword: jest.fn(), signInWithOtp: jest.fn() } };
 
