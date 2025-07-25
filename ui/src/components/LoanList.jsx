@@ -3,7 +3,7 @@
 import React, { useEffect, useState, useContext } from 'react';
 import LoanDetailPanel from './LoanDetailPanel';
 import { API_BASE } from '../lib/apiBase';
-import { AuthContext } from '../main';
+import { AuthContext } from '../lib/authContext';
 
 export default function LoanList({ onSelect }) {
   const { session } = useContext(AuthContext);
