@@ -1,5 +1,5 @@
 import React, { useState, useContext, useEffect, lazy, Suspense } from 'react';
-import { AuthContext } from '../main';
+import { AuthContext } from '../lib/authContext';
 import { Routes, Route, Link, useNavigate, useLocation } from 'react-router-dom';
 import VirtualAssistant from './VirtualAssistant';
 import SuggestFeatureWidget from './SuggestFeatureWidget';
