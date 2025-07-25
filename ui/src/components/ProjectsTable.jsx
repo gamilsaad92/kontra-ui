@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useContext } from 'react'
-import { AuthContext } from '../main'
+import { AuthContext } from '../lib/authContext'
 import { API_BASE } from '../lib/apiBase'
 import ProjectDetailDrawer from './ProjectDetailDrawer'
   
