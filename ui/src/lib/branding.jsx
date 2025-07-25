@@ -14,15 +14,19 @@ export function BrandingProvider({ children }) {
   const { session } = useContext(AuthContext);
   const [branding, setBranding] = useState({ color: '#1e40af', logo: '' });
 
-   // Update brand color based on user role when session changes
+    // Update brand color based on user role when session changes
   useEffect(() => {
-    const role = session?.user?.user_metadata?.role;
+      if (!session) return;
+
+    const role = session.user?.user_metadata?.role;
     const roleColor = roleColors[role] || '#1e40af';
     setBranding(b => ({ ...b, color: roleColor }));
   }, [session]);
 
   useEffect(() => {
-    const orgId = session?.user?.user_metadata?.organization_id;
+    if (!session) return;
+
+    const orgId = session.user?.user_metadata?.organization_id;
     if (!orgId) return;
     fetch(`${API_BASE}/api/organizations/${orgId}`)
       .then(r => r.json())
