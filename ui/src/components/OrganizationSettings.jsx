@@ -1,5 +1,5 @@
 import React, { useState, useContext, useEffect } from 'react';
-import { AuthContext } from '../main';
+import { AuthContext } from '../lib/authContext';
 import { API_BASE } from '../lib/apiBase';
 import ErrorBanner from './ErrorBanner.jsx';
 import { Button, FormField } from './ui';
