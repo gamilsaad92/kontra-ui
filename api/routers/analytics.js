@@ -2,23 +2,15 @@ const express = require('express');
 const { getOrders } = require('./orders');
 const { getPayments } = require('./payments');
 const requireOrg = require('../middlewares/requireOrg');
+const {
+  initAnalytics,
+  broadcastAnalytics,
+  clients,
+  calcMetrics
+} = require('./analyticsShared');
 
-const clients = [];
-
-function calcMetrics(orgId) {
-  const orders = getOrders(orgId);
-  const payments = getPayments(orgId);
-  const totalOrders = orders.length;
-  const totalRevenue = payments.reduce((sum, p) => sum + p.amount, 0);
-  return { totalOrders, totalRevenue };
-}
-
-function broadcastAnalytics(orgId) {
-  const data = `data: ${JSON.stringify(calcMetrics(orgId))}\n\n`;
-  clients
-    .filter(c => c.orgId === orgId)
-    .forEach(c => c.res.write(data));
-}
+// initialize dependency accessors once routers are loaded
+initAnalytics({ getOrders, getPayments });
 
 const router = express.Router();
 
