@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useContext } from 'react'
 import { supabase } from '../lib/supabaseClient'
-import { AuthContext } from '../main'
+import { AuthContext } from '../lib/authContext'
 import DrawRequestsTable from './DrawRequestsTable'
 import LienWaiverList from './LienWaiverList'
 import InspectionList from './InspectionList'
