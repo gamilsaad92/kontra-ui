@@ -1,12 +1,13 @@
 // ui/src/main.jsx
 
-import React, { createContext, useState, useEffect } from 'react'
+import React, { useState, useEffect } from 'react'
 import ReactDOM from 'react-dom/client'
 import { BrowserRouter } from 'react-router-dom'
 import { registerSW } from 'virtual:pwa-register'
 import App from './App.jsx'
 import './index.css'
 import { supabase } from './lib/supabaseClient'
+import { AuthContext } from './lib/authContext'
 import * as Sentry from '@sentry/react'
 import { LocaleProvider } from './lib/i18n'
 import { BrandingProvider } from './lib/branding'
@@ -25,7 +26,7 @@ registerSW({ immediate: true })
 //
 // ── AUTH CONTEXT & PROVIDER ─────────────────────────────────────────────────────
 //
-export const AuthContext = createContext(null)
+
 
 function AuthProvider({ children }) {
   const [session, setSession] = useState(null)
