@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { AuthContext } from '../main';
+import { AuthContext } from './authContext';
 import { supabase } from './supabaseClient';
 
 const RoleContext = createContext('borrower');
