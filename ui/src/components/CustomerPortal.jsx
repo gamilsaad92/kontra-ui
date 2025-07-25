@@ -1,5 +1,5 @@
 import React, { useContext, useEffect, useState } from 'react';
-import { AuthContext } from '../main';
+import { AuthContext } from '../lib/authContext';
 import { API_BASE } from '../lib/apiBase';
 import SelfServeDrawRequestForm from './SelfServeDrawRequestForm';
 
