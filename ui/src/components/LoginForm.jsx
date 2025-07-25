@@ -1,5 +1,5 @@
 import React, { useState, useContext, useEffect } from 'react'
-import { AuthContext } from '../main'
+import { AuthContext } from '../lib/authContext'
 import ErrorBanner from './ErrorBanner.jsx'
 import { Button, FormField } from './ui'
 import { useLocale } from '../lib/i18n'
