@@ -9,7 +9,7 @@ let nextPaymentId = 1;
 
 const getPayments = orgId => paymentsByOrg[orgId] || [];
 
-const { broadcastAnalytics } = require('./analytics');
+const { broadcastAnalytics } = require('./analyticsShared');
 
 router.use(requireOrg);
 
