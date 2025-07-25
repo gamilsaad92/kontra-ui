@@ -1,6 +1,6 @@
 import React, { useState, useContext } from 'react'
 import { supabase } from '../lib/supabaseClient'
-import { AuthContext } from '../main'
+import { AuthContext } from '../lib/authContext'
 
 export default function ProjectForm({ onCreated }) {
   const { session } = useContext(AuthContext)
