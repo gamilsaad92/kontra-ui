@@ -9,7 +9,7 @@ let nextOrderId = 1;
 const getMenuItems = () => menuItems;
 const getOrders = orgId => ordersByOrg[orgId] || [];
 
-const { broadcastAnalytics } = require('./analytics');
+const { broadcastAnalytics } = require('./analyticsShared');
 
 router.use(requireOrg);
 
