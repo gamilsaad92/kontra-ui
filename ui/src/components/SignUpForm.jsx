@@ -1,7 +1,7 @@
 // ui/src/components/SignUpForm.jsx
 
 import React, { useState, useContext, useEffect } from 'react'
-import { AuthContext } from '../main.jsx'
+import { AuthContext } from '../lib/authContext'
 import ErrorBanner from './ErrorBanner.jsx'
 import { useLocale } from '../lib/i18n'
 
