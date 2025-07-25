@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { API_BASE } from './apiBase';
-import { AuthContext } from '../main.jsx';
+import { AuthContext } from './authContext';
 
 const BrandingContext = createContext({ color: '#1e40af', logo: '' });
 
