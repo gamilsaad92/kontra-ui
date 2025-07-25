@@ -1,6 +1,6 @@
-import { defineConfig } from 'vite';
-import react from '@vitejs/plugin-react';
-import { VitePWA } from 'vite-plugin-pwa';
+import { defineConfig } from 'vite'
+import react from '@vitejs/plugin-react'
+import { VitePWA } from 'vite-plugin-pwa'
 
 export default defineConfig({
   plugins: [
@@ -28,40 +28,44 @@ export default defineConfig({
         ]
       }
     })
- ],
+  ],
   build: {
+    sourcemap: true, // ✅ enable source maps to trace real file
     rollupOptions: {
       output: {
         manualChunks(id) {
           if (id.includes('node_modules')) {
-            const reactPkgs = ['react', 'react-dom', 'react-router-dom']
-            const shadcnPkgs = [
-              '@shadcn/ui',
-              'class-variance-authority',
-              'tailwind-merge',
-              'lucide-react'
-            ]
-            const utilPkgs = [
-              '@heroicons',
-              '@sentry',
-              '@supabase',
-              'chart.js',
-              'recharts',
-              'clsx',
-              'react-spinners',
-              'react-context',
-              'morgan'
-            ]
-
-            if (reactPkgs.some((pkg) => id.includes(pkg))) {
+            if (
+              id.includes('react') ||
+              id.includes('react-dom') ||
+              id.includes('react-router-dom')
+            ) {
               return 'react'
             }
-            if (shadcnPkgs.some((pkg) => id.includes(pkg))) {
+
+            if (
+              id.includes('@shadcn/ui') ||
+              id.includes('class-variance-authority') ||
+              id.includes('tailwind-merge') ||
+              id.includes('lucide-react')
+            ) {
               return 'shadcn'
             }
-            if (utilPkgs.some((pkg) => id.includes(pkg))) {
-              return 'utils'
+
+            if (
+              id.includes('@heroicons') ||
+              id.includes('@sentry') ||
+              id.includes('@supabase') ||
+              id.includes('chart.js') ||
+              id.includes('recharts') ||
+              id.includes('clsx') ||
+              id.includes('react-spinners') ||
+              id.includes('react-context') ||
+              id.includes('morgan')
+            ) {
+              return 'vendors'
             }
+
             return 'vendor'
           }
         }
