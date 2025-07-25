@@ -5,7 +5,7 @@ import DashboardLayout from './components/DashboardLayout'
 import LoginForm from './components/LoginForm'
 import SignUpForm from './components/SignUpForm'
 import InviteAcceptForm from './components/InviteAcceptForm'
-import { AuthContext } from './main.jsx'
+import { AuthContext } from './lib/authContext'
 
 export default function App() {
   const { session } = useContext(AuthContext)
