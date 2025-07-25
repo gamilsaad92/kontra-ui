@@ -1,5 +1,5 @@
 import { useState, useEffect, useContext } from 'react';
-import { AuthContext } from '../main.jsx';
+import { AuthContext } from './authContext';
 
 export default function useFeatureUsage() {
   const { session } = useContext(AuthContext);
