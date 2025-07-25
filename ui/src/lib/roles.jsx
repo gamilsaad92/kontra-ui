@@ -5,19 +5,21 @@ import { supabase } from './supabaseClient';
 const RoleContext = createContext('borrower');
 
 export function RoleProvider({ children }) {
-const { session } = useContext(AuthContext);
+  const { session } = useContext(AuthContext);
   const [role, setRole] = useState('borrower');
 
   useEffect(() => {
+       if (!session) return;
+
     async function fetchRole() {
-        if (!session) return;
       const { data } = await supabase
         .from('user_roles')
         .select('role')
-       .eq('user_id', session.user.id)
+            .eq('user_id', session.user.id)
         .maybeSingle();
       if (data?.role) setRole(data.role);
     }
+    
     fetchRole();
   }, [session]);
 
