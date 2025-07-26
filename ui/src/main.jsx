@@ -1,5 +1,3 @@
-// ui/src/main.jsx
-
 import React, { useState, useEffect } from 'react'
 import ReactDOM from 'react-dom/client'
 import { BrowserRouter } from 'react-router-dom'
@@ -10,44 +8,32 @@ import App from './App.jsx'
 import './index.css'
 import { supabase } from './lib/supabaseClient'
 import { AuthContext } from './lib/authContext'
-  import * as Sentry from '@sentry/react'
+import * as Sentry from '@sentry/react'
 import { LocaleProvider } from './lib/i18n'
 import { BrandingProvider } from './lib/branding'
 import { RoleProvider } from './lib/roles'
 
-//
-// ── SENTRY INIT ───────────────────────────────────────────────────────────────
-//
 Sentry.init({
   dsn: import.meta.env.VITE_SENTRY_DSN,
 })
 
-// register service worker for offline support
 registerSW({ immediate: true })
-
-//
-// ── AUTH CONTEXT & PROVIDER ───────────────────────────────────────────────────
-//
 
 function AuthProvider({ children }) {
   const [session, setSession] = useState(null)
 
   useEffect(() => {
     async function init() {
-      // 1) magic-link callback => store session
       const {
         data: { session: magicSession },
         error: magicError,
       } = await supabase.auth.getSessionFromUrl({ storeSession: true })
 
-      if (magicError) {
-        console.error('Error handling magic link:', magicError.message)
-      }
+      if (magicError) console.error('Error handling magic link:', magicError.message)
 
       if (magicSession) {
         setSession(magicSession)
       } else {
-        // 2) no link? load any existing session
         const {
           data: { session: existing },
           error: existingError,
@@ -60,17 +46,15 @@ function AuthProvider({ children }) {
         }
       }
 
-      // 3) clean URL hash or query params regardless of outcome
       if (window.location.hash || window.location.search) {
         window.history.replaceState({}, document.title, '/')
       }
     }
-    
+
     init()
 
-    // 4) subscribe to future sign-in/out events
     const {
-         data: { subscription },
+      data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, newSession) => {
       setSession(newSession)
     })
@@ -85,9 +69,6 @@ function AuthProvider({ children }) {
   )
 }
 
-//
-// ── BOOTSTRAP APP ─────────────────────────────────────────────────────────────
-//
 const root = ReactDOM.createRoot(document.getElementById('root'))
 root.render(
   <React.StrictMode>
@@ -98,7 +79,9 @@ root.render(
             <AuthProvider>
               <BrandingProvider>
                 <RoleProvider>
-                  <App />
+                  <Sentry.ErrorBoundary fallback={<p>Something went wrong loading the app.</p>}>
+                    <App />
+                  </Sentry.ErrorBoundary>
                 </RoleProvider>
               </BrandingProvider>
             </AuthProvider>
@@ -108,6 +91,6 @@ root.render(
       <SignedOut>
         <SignIn />
       </SignedOut>
-      </RootLayout>
+    </RootLayout>
   </React.StrictMode>
 )
