@@ -25,7 +25,7 @@ Sentry.init({
 registerSW({ immediate: true })
 
 //
-/ ── AUTH CONTEXT & PROVIDER ───────────────────────────────────────────────────
+// ── AUTH CONTEXT & PROVIDER ───────────────────────────────────────────────────
 //
 
 function AuthProvider({ children }) {
