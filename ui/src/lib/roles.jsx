@@ -1,27 +1,25 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { AuthContext } from './authContext';
+mport { useUser } from '@clerk/clerk-react';
 import { supabase } from './supabaseClient';
 
 const RoleContext = createContext('borrower');
 
 export function RoleProvider({ children }) {
-  const { session } = useContext(AuthContext);
+   const { user } = useUser();
   const [role, setRole] = useState('borrower');
 
   useEffect(() => {
-       if (!session) return;
-
     async function fetchRole() {
+    if (!user) return;
       const { data } = await supabase
         .from('user_roles')
         .select('role')
-            .eq('user_id', session.user.id)
+              .eq('user_id', user.id)
         .maybeSingle();
       if (data?.role) setRole(data.role);
-    }
-    
+    }  
     fetchRole();
-  }, [session]);
+  }, [user]);
 
   return <RoleContext.Provider value={role}>{children}</RoleContext.Provider>;
 }
