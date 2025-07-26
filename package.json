@@ -1,0 +1,6 @@
+{
+  "dependencies": {
+    "@sentry/node": "^9.34.0",
+    "@sentry/tracing": "^7.120.3"
+  }
+}
