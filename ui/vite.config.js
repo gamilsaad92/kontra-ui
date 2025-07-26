@@ -1,4 +1,15 @@
-@@ -13,63 +13,59 @@ export default defineConfig({
+import { defineConfig } from 'vite';
+import react from '@vitejs/plugin-react';
+import { VitePWA } from 'vite-plugin-pwa';
+
+export default defineConfig({
+  plugins: [
+    react(),
+    VitePWA({
+      registerType: 'autoUpdate',
+      manifest: {
+        name: 'Kontra',
+        short_name: 'Kontra',
         start_url: '/',
         display: 'standalone',
         background_color: '#ffffff',
@@ -17,20 +28,20 @@
         ]
       }
     })
- ],
+  ],
   build: {
     rollupOptions: {
       output: {
         manualChunks(id) {
           if (id.includes('node_modules')) {
-            const reactPkgs = ['react', 'react-dom', 'react-router-dom']
-            const clerkPkgs = ['@clerk']
+                 const reactPkgs = ['react', 'react-dom', 'react-router-dom'];
+            const clerkPkgs = ['@clerk'];
             const shadcnPkgs = [
               '@shadcn/ui',
               'class-variance-authority',
               'tailwind-merge',
               'lucide-react'
-            ]
+                   ];
             const utilPkgs = [
               '@heroicons',
               '@sentry',
@@ -41,24 +52,24 @@
               'react-spinners',
               'react-context',
               'morgan'
-            ]
+                     ];
 
             if (reactPkgs.some((pkg) => id.includes(pkg))) {
-              return 'react'
+               return 'react';
             }
             if (clerkPkgs.some((pkg) => id.includes(pkg))) {
-              return 'clerk'
+             return 'clerk';
             }
             if (shadcnPkgs.some((pkg) => id.includes(pkg))) {
-              return 'shadcn'
+                  return 'shadcn';
             }
             if (utilPkgs.some((pkg) => id.includes(pkg))) {
-              return 'utils'
+             return 'utils';
             }
-            return 'vendor'
+             return 'vendor';
           }
         }
       }
     }
   }
-})
+});
