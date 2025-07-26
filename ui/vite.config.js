@@ -3,9 +3,6 @@ import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
 
 export default defineConfig({
-   optimizeDeps: {
-    include: ["react", "react-dom"],
-  },
   plugins: [
     react(),
     VitePWA({
@@ -32,45 +29,30 @@ export default defineConfig({
       }
     })
   ],
+  optimizeDeps: {
+    include: ['react', 'react-dom']
+  },
   build: {
     rollupOptions: {
       output: {
-        manualChunks(id) {
-          if (id.includes('node_modules')) {
-                 const reactPkgs = ['react', 'react-dom', 'react-router-dom'];
-            const clerkPkgs = ['@clerk'];
-            const shadcnPkgs = [
-              '@shadcn/ui',
-              'class-variance-authority',
-              'tailwind-merge',
-              'lucide-react'
-                   ];
-            const utilPkgs = [
-              '@heroicons',
-              '@sentry',
-              '@supabase',
-              'chart.js',
-              'recharts',
-              'clsx',
-              'react-spinners',
-              'react-context',
-              'morgan'
-                     ];
-
-            if (reactPkgs.some((pkg) => id.includes(pkg))) {
-               return 'react';
-            }
-            if (clerkPkgs.some((pkg) => id.includes(pkg))) {
-             return 'clerk';
-            }
-            if (shadcnPkgs.some((pkg) => id.includes(pkg))) {
-                  return 'shadcn';
-            }
-            if (utilPkgs.some((pkg) => id.includes(pkg))) {
-             return 'utils';
-            }
-             return 'vendor';
-          }
+        manualChunks: {
+          react: ['react', 'react-dom'],
+          clerk: ['@clerk/clerk-react'],
+          shadcn: [
+            '@shadcn/ui',
+            'class-variance-authority',
+            'tailwind-merge',
+            'lucide-react'
+          ],
+          utils: [
+            '@heroicons/react',
+            '@sentry/react',
+            '@supabase/supabase-js',
+            'chart.js',
+            'recharts',
+            'clsx',
+            'react-spinners'
+          ]
         }
       }
     }
