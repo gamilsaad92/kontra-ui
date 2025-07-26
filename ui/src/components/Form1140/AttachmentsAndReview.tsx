@@ -1,3 +1,5 @@
+import React from 'react'
+
 export default function AttachmentsAndReview({ formData, onSubmit }) {
   const handleFinalSubmit = () => {
     // Call backend to persist all parts
