@@ -3,11 +3,19 @@ import AmortizationTable from './AmortizationTable';
 import PaymentHistory from './PaymentHistory';
 import { API_BASE } from '../lib/apiBase';
 import { DetailDrawer } from './ui';
+import useRiskScore from '../hooks/useRiskScore';
+import RiskIndicator from './RiskIndicator';
 
 export default function LoanDetailPanel({ loanId, onClose }) {
   const [loan, setLoan] = useState(null);
   const [loading, setLoading] = useState(true);
-
+    const { score: riskScore } = useRiskScore({
+    loanId,
+    borrowerHistory: {},
+    paymentHistory: {},
+    creditData: { creditScore: loan?.loan?.credit_score }
+  });
+  
   useEffect(() => {
     (async () => {
       setLoading(true);
@@ -31,7 +39,14 @@ export default function LoanDetailPanel({ loanId, onClose }) {
         <div className="space-y-4">
           <h3 className="text-xl font-semibold">Loan #{loan.loan.id}</h3>
           <p>Borrower: {loan.loan.borrower_name}</p>
-          <p>Status: {loan.loan.status}</p>
+             <p>
+            Status: {loan.loan.status}
+            {riskScore !== null && (
+              <span className="ml-2 align-middle">
+                <RiskIndicator score={riskScore} />
+              </span>
+            )}
+          </p>
           <AmortizationTable loanId={loanId} />
           <PaymentHistory loanId={loanId} />
           {loan.collateral && loan.collateral.length > 0 && (
