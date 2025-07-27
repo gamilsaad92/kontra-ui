@@ -7,6 +7,7 @@ import NextDueCard from '../modules/dashboard/NextDueCard';
 import GuestOccupancyCard from '../modules/dashboard/GuestOccupancyCard';
 import OfferCard from '../modules/dashboard/OfferCard';
 import RoleKpiCard from '../modules/dashboard/RoleKpiCard';
+import PortfolioMetricsCard from '../modules/dashboard/PortfolioMetricsCard';
 import DrawRequestForm from './DrawRequestForm';
 import DrawStatusTracker from './DrawStatusTracker';
 import DrawRequestsTable from './DrawRequestsTable';
@@ -65,7 +66,8 @@ export default function DashboardHome() {
         </>
       )}
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-           <RoleKpiCard />
+          <RoleKpiCard />
+        <PortfolioMetricsCard />
         <RiskScoreCard to="/assets?sort=risk" />
         <DelinquencyCard to="/collections?status=delinquent" />
         <NextDueCard to="/payments?next=1" />
