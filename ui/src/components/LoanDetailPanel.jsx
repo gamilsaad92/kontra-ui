@@ -3,6 +3,7 @@ import AmortizationTable from './AmortizationTable';
 import PaymentHistory from './PaymentHistory';
 import { API_BASE } from '../lib/apiBase';
 import { DetailDrawer } from './ui';
+import ExtraPaymentCalculator from './ExtraPaymentCalculator';
 import useRiskScore from '../hooks/useRiskScore';
 import RiskIndicator from './RiskIndicator';
 
@@ -49,6 +50,7 @@ export default function LoanDetailPanel({ loanId, onClose }) {
           </p>
           <AmortizationTable loanId={loanId} />
           <PaymentHistory loanId={loanId} />
+         <ExtraPaymentCalculator loanId={loanId} />
           {loan.collateral && loan.collateral.length > 0 && (
             <div className="bg-white rounded-lg shadow-md p-4">
               <h4 className="text-lg font-medium mb-2">Collateral Docs</h4>
