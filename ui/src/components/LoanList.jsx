@@ -21,7 +21,8 @@ export default function LoanList({ onSelect }) {
   const [selected, setSelected] = useState([]);
   const [detailId, setDetailId] = useState(null);
   const [saved, setSaved] = useState([]);
-
+  const [anomalies, setAnomalies] = useState({});
+  
   useEffect(() => {
     if (!session) return;
     fetch(`${API_BASE}/api/saved-loan-queries`, {
@@ -42,6 +43,17 @@ export default function LoanList({ onSelect }) {
         const res = await fetch(`${API_BASE}/api/loans?${params.toString()}`);
         const { loans } = await res.json();
         setLoans(loans || []);
+        const map = {};
+        await Promise.all(
+          (loans || []).map(async l => {
+            try {
+              const r = await fetch(`${API_BASE}/api/loans/${l.id}/anomalies`);
+              const d = await r.json();
+              if (d.anomalies && d.anomalies.length) map[l.id] = d.anomalies.length;
+            } catch {}
+          })
+        );
+        setAnomalies(map);
       } catch {
         // ignore errors here
       } finally {
@@ -229,7 +241,12 @@ export default function LoanList({ onSelect }) {
                   onChange={() => toggleSelect(loan.id)}
                 />
               </td>
-              <td className="p-2">{loan.id}</td>
+                 <td className="p-2">
+                {loan.id}
+                {anomalies[loan.id] && (
+                  <span className="ml-1" title="Anomalies detected">⚠️</span>
+                )}
+              </td>
               <td className="p-2">{loan.borrower_name}</td>
                <td className="p-2">{loan.amount}</td>
               <td className="p-2">{loan.status || '—'}</td>
