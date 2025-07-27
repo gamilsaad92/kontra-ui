@@ -341,4 +341,15 @@ router.get('/loans/:loanId/details', async (req, res) => {
   }
 });
 
+router.get('/loans/:loanId/anomalies', async (req, res) => {
+  const { loanId } = req.params;
+  const { data, error } = await supabase
+    .from('loan_anomalies')
+    .select('*')
+    .eq('loan_id', loanId)
+    .order('created_at', { ascending: false });
+  if (error) return res.status(500).json({ anomalies: [] });
+  res.json({ anomalies: data });
+});
+
 module.exports = router;
