@@ -55,10 +55,38 @@ import HelpTooltip from './HelpTooltip';
 import { isFeatureEnabled } from '../lib/featureFlags';
 import useFeatureUsage from '../lib/useFeatureUsage';
 import NotificationsList from './NotificationsList';
+import Overview from '../pages/Overview';
+import Exposure from '../pages/Exposure';
+import Events from '../pages/Events';
+import LoanNotes from '../pages/LoanNotes';
+import AnalyticsOverview from '../pages/AnalyticsOverview';
+import LoanMaster from '../pages/LoanMaster';
+import ConsolidatedNotes from '../pages/ConsolidatedNotes';
+import Installments from '../pages/Installments';
+import PaymentAnalysis from '../pages/PaymentAnalysis';
+import AmortizationSchedule from '../pages/AmortizationSchedule';
+import Servicing from '../pages/Servicing';
 
 const departmentNav = {
   finance: [
     { label: 'Dashboard', icon: '🏠' },  // New Dashboard entry for Finance
+        {
+      label: 'Loan Dashboard',
+      icon: '📊',
+      sub: [
+        'Overview',
+        'Exposure',
+        'Events',
+        'Loan Notes',
+        'Analytics Overview',
+        'Loan Master',
+        'Consolidated Notes',
+        'Installments Due/Paid',
+        'Payment Analysis',
+        'Amortization Schedule',
+        'Servicing'
+      ]
+    },
     { label: 'Application', icon: '📝', sub: ['New Application', 'Application List'] },
     { label: 'Underwriting', icon: '✅', sub: ['Underwriting Board', 'Decisions'] },
     { label: 'Escrow Setup', icon: '💼', sub: ['Escrows'] },
@@ -146,7 +174,18 @@ export default function DashboardLayout() {
   // ... (header, sidebar toggle, etc. unchanged for brevity) ...
 
   const pages = {
-    Dashboard: () => <DashboardTabs />,
+      Dashboard: () => <DashboardTabs />, 
+    Overview: () => <Overview />, 
+    Exposure: () => <Exposure />, 
+    Events: () => <Events />, 
+    'Loan Notes': () => <LoanNotes />, 
+    'Analytics Overview': () => <AnalyticsOverview />, 
+    'Loan Master': () => <LoanMaster />, 
+    'Consolidated Notes': () => <ConsolidatedNotes />, 
+    'Installments Due/Paid': () => <Installments />, 
+    'Payment Analysis': () => <PaymentAnalysis />, 
+    'Amortization Schedule': () => <AmortizationSchedule />, 
+    Servicing: () => <Servicing />,
     'New Application': () => <LoanApplicationForm onSubmitted={() => setRefreshKey(k => k + 1)} />,
     'Application List': () => <LoanApplicationList key={refreshKey} />,
     'Underwriting Board': () => <UnderwritingBoard />,
