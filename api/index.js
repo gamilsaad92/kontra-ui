@@ -1143,11 +1143,29 @@ app.post('/api/underwriter-chat', async (req, res) => {
 });
 
 // ── Query Loans via LLM ─────────────────────────────────────────────────────
+function parseSimpleLoanQuery(text) {
+  const f = {};
+  const risk = text.match(/(high|low)-?risk/i);
+  if (risk) {
+    if (risk[1].toLowerCase() === 'high') f.min_risk_score = 0.7;
+    else f.max_risk_score = 0.3;
+  }
+  const m = text.match(/maturing in (\d+) days/i);
+  if (m) {
+    const days = parseInt(m[1], 10);
+    const to = new Date();
+    to.setDate(to.getDate() + days);
+    f.due_date_to = to.toISOString().slice(0, 10);
+  }
+  if (/\bcre\b/i.test(text)) f.asset_type = 'CRE';
+  return f;
+}
+
 app.post('/api/query-loans', async (req, res) => {
   const { query } = req.body || {};
   if (!query) return res.status(400).json({ message: 'Missing query' });
 
-  let filters = {};
+  let filters = { ...parseSimpleLoanQuery(query) };
   if (process.env.OPENAI_API_KEY) {
     try {
       const resp = await openai.chat.completions.create({
@@ -1156,12 +1174,12 @@ app.post('/api/query-loans', async (req, res) => {
           {
             role: 'system',
             content:
-              'Translate loan search queries into JSON with keys min_amount, max_amount, min_interest_rate, max_interest_rate, start_date_from, start_date_to.'
-          },
+              'Translate loan search queries into JSON with keys min_amount, max_amount, min_interest_rate, max_interest_rate, start_date_from, start_date_to, due_date_from, due_date_to, min_risk_score, max_risk_score, asset_type.'
+              },
           { role: 'user', content: query }
         ]
       });
-      filters = JSON.parse(resp.choices[0].message.content || '{}');
+      Object.assign(filters, JSON.parse(resp.choices[0].message.content || '{}'));
     } catch (err) {
       console.error('OpenAI query parse error:', err);
     }
@@ -1177,9 +1195,34 @@ app.post('/api/query-loans', async (req, res) => {
       sb = sb.lte('interest_rate', filters.max_interest_rate);
     if (filters.start_date_from) sb = sb.gte('start_date', filters.start_date_from);
     if (filters.start_date_to) sb = sb.lte('start_date', filters.start_date_to);
+   if (filters.min_risk_score) sb = sb.gte('risk_score', filters.min_risk_score);
+    if (filters.max_risk_score) sb = sb.lte('risk_score', filters.max_risk_score);
+    if (filters.asset_type) sb = sb.eq('asset_type', filters.asset_type);
     const { data, error } = await sb;
     if (error) throw error;
-    res.json({ loans: data });
+  
+    let results = data || [];
+    if (filters.due_date_from || filters.due_date_to) {
+      const from = filters.due_date_from ? new Date(filters.due_date_from) : new Date(0);
+      const to = filters.due_date_to ? new Date(filters.due_date_to) : new Date('9999-12-31');
+      results = results.filter(l => {
+        if (!l.start_date || !l.term_months) return false;
+        const d = new Date(l.start_date);
+        d.setMonth(d.getMonth() + parseInt(l.term_months, 10));
+        return d >= from && d <= to;
+      });
+    }
+    results = results.map(l => {
+      let maturity = null;
+      if (l.start_date && l.term_months) {
+        const d = new Date(l.start_date);
+        d.setMonth(d.getMonth() + parseInt(l.term_months, 10));
+        maturity = d.toISOString().slice(0, 10);
+      }
+      return { ...l, maturity_date: maturity };
+    });
+
+    res.json({ loans: results });
   } catch (err) {
     console.error('Loan query error:', err);
     res.status(500).json({ message: 'Failed to query loans' });
