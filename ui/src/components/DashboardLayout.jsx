@@ -53,6 +53,7 @@ import StaffRestaurantDashboard from './StaffRestaurantDashboard';
 import HelpTooltip from './HelpTooltip';
 import { isFeatureEnabled } from '../lib/featureFlags';
 import useFeatureUsage from '../lib/useFeatureUsage';
+import NotificationsList from './NotificationsList';
 
 const departmentNav = {
   finance: [
@@ -66,6 +67,7 @@ const departmentNav = {
     { label: 'Market Analysis', icon: '🏙️' },
     { label: 'Live Analytics', icon: '📈' },
     { label: 'Collections', icon: '💵', sub: ['Collections'] },
+    { label: 'Alerts', icon: '🔔' },
     { label: 'Settings', icon: '⚙️' },
     { label: 'Docs', icon: '📄', href: 'https://github.com/kontra-ui/docs' }
   ],
@@ -77,6 +79,7 @@ const departmentNav = {
     { label: 'Booking Calendar', icon: '📅', flag: 'hospitality' },
     { label: 'Restaurant Menu', icon: '🍽️' },
     { label: 'Restaurant Dashboard', icon: '📊' },
+    { label: 'Alerts', icon: '🔔' },
     { label: 'Settings', icon: '⚙️' },
     { label: 'Docs', icon: '📄', href: 'https://github.com/kontra-ui/docs' }
   ]
@@ -164,6 +167,7 @@ export default function DashboardLayout() {
     'Guest Chat': () => isFeatureEnabled('hospitality') ? (
       <Suspense fallback={<p>Loading...</p>}><GuestChat /></Suspense>
     ) : null,
+      Alerts: () => <NotificationsList />,
     // ... (Assets, Settings, etc. unchanged) ...
   };
 
