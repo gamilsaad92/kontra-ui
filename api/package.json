@@ -8,7 +8,8 @@
           "test": "jest",
     "score-assets": "node jobs/scoreAssets.js",
      "score-loans": "node jobs/scoreLoans.js",
-     "score-troubled": "node jobs/scoreTroubled.js"
+      "score-troubled": "node jobs/scoreTroubled.js",
+    "scan-anomalies": "node jobs/scanLoanAnomalies.js"
   },
   "dependencies": {
     "@sentry/node": "^9.24.0",
