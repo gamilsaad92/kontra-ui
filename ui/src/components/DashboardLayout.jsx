@@ -167,8 +167,18 @@ export default function DashboardLayout() {
     'Guest Chat': () => isFeatureEnabled('hospitality') ? (
       <Suspense fallback={<p>Loading...</p>}><GuestChat /></Suspense>
     ) : null,
-      Alerts: () => <NotificationsList />,
-    // ... (Assets, Settings, etc. unchanged) ...
+     Alerts: () => <NotificationsList />,
+    Escrows: () => <EscrowDashboard />,
+    'Payment Portal': () => <PaymentPortal />,
+    'Self Service Payment': () => <SelfServicePayment />,
+    'Troubled Assets': () => <AssetRiskTable />,
+    'Revived Sales': () => <RevivedAssetsTable />,
+    Collections: () => <CollectionsTable refresh={refreshKey} />,
+    Settings: () => <OrganizationSettings />,
+    'Guest Reservations': () => <GuestReservations />,
+    'Booking Calendar': () => <BookingCalendar />,
+    'Restaurant Menu': () => <RestaurantMenu />,
+    'Restaurant Dashboard': () => <StaffRestaurantDashboard />
   };
 
   const routes = Object.entries(pages).map(([label, Component]) => (
