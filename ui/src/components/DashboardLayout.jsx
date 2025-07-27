@@ -50,6 +50,7 @@ import MarketAnalysis from './MarketAnalysis';
 import OrganizationSettings from './OrganizationSettings';
 import RestaurantMenu from './RestaurantMenu';
 import StaffRestaurantDashboard from './StaffRestaurantDashboard';
+import DashboardTabs from './DashboardTabs';
 import HelpTooltip from './HelpTooltip';
 import { isFeatureEnabled } from '../lib/featureFlags';
 import useFeatureUsage from '../lib/useFeatureUsage';
@@ -145,7 +146,7 @@ export default function DashboardLayout() {
   // ... (header, sidebar toggle, etc. unchanged for brevity) ...
 
   const pages = {
-    Dashboard: () => <DashboardHome navigateTo={navigateTo} />,          // unified Dashboard for both roles
+    Dashboard: () => <DashboardTabs />,
     'New Application': () => <LoanApplicationForm onSubmitted={() => setRefreshKey(k => k + 1)} />,
     'Application List': () => <LoanApplicationList key={refreshKey} />,
     'Underwriting Board': () => <UnderwritingBoard />,
