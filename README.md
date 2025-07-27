@@ -115,7 +115,8 @@ Collections, investor reporting and asset management follow the same pattern:
 4. **User roles** – `api/schema-user-roles.sql` adds a `user_roles` table used to map Clerk users to roles.
 5. **Workflows** – background jobs (`api/workerCollections.js` and `api/edge-functions/updateAssetValues.js`) illustrate how Render cron jobs or Supabase Scheduled Functions keep data in sync, with asset value updates now batched into a single request.
 6. **Predictive Models** – nightly scripts (`npm run score-assets`, `npm run score-loans` and `npm run score-troubled`) update risk scores for assets, loans and troubled assets.
-## Customer Care AI & Voice Bot
+7. . **Anomaly Detection** – daily job (`npm run scan-anomalies`) flags unusual payments or frequent address changes and stores them in `loan_anomalies`.
+   ## Customer Care AI & Voice Bot
 
 The `/api/ask` endpoint now exposes helper functions `get_escrow_balance` , `get_payoff_instructions`, `get_troubled_assets` and `get_revived_assets` so the Virtual Assistant can answer loan servicing and asset management questions. A Twilio voice webhook (`/api/voice`) sends caller speech to Google Dialogflow and replies using text-to-speech, allowing borrowers to call in and ask for balances or payoff details.
 
