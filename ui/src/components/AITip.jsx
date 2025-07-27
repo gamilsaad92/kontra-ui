@@ -10,7 +10,7 @@ export default function AITip() {
   const tip = tips[Math.floor(Math.random() * tips.length)];
   return (
     <div className="p-4 bg-purple-100 text-purple-800 rounded">
-      \u{1F4A1} {tip}
+ {'💡'} {tip}
     </div>
   );
 }
