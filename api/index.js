@@ -847,6 +847,40 @@ app.get('/api/smart-recommendations', async (_req, res) => {
   }
 });
 
+app.post('/api/loan-recommendations', async (req, res) => {
+  const { borrower, loan } = req.body || {};
+  if (!borrower || !loan) {
+    return res.status(400).json({ message: 'Missing borrower or loan' });
+  }
+
+  let recommendation = '';
+  if (process.env.OPENAI_API_KEY) {
+    try {
+      const resp = await openai.chat.completions.create({
+        model: 'gpt-4o-mini',
+        messages: [
+          {
+            role: 'system',
+            content: 'You are a helpful loan advisor providing personalized suggestions.'
+          },
+          {
+            role: 'user',
+            content: `Borrower data: ${JSON.stringify(borrower)}. Loan data: ${JSON.stringify(loan)}.`
+          },
+          {
+            role: 'user',
+            content: 'Give a short recommendation including potential refinance offers or repayment tips.'
+          }
+        ]
+      });
+      recommendation = resp.choices[0].message.content.trim();
+    } catch (err) {
+      console.error('AI loan recommendation error:', err);
+    }
+  }
+
+  res.json({ recommendation });
+});
 // ── Loan Application Endpoints ─────────────────────────────────────────────
 
 
