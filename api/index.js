@@ -1519,6 +1519,48 @@ app.post('/api/progress-photos/:id', async (req, res) => {
   res.json({ photo: data });
 });
 
+app.get('/api/portfolio-metrics', async (_req, res) => {
+  try {
+    const { data: loans } = await supabase.from('loans').select('id, risk_score, amount, term_months');
+    const { data: collections } = await supabase
+      .from('collections')
+      .select('due_date, status, loan_id');
+    const { data: payments } = await supabase
+      .from('payments')
+      .select('loan_id, date, applied_principal');
+
+    const now = new Date();
+    const delinqCount = (collections || []).filter(c =>
+      c.due_date && new Date(c.due_date) < now && c.status !== 'paid'
+    ).length;
+    const avgDelinquency = loans && loans.length ? delinqCount / loans.length : 0;
+
+    const avgRiskScore =
+      loans && loans.length
+        ? loans.reduce((sum, l) => sum + parseFloat(l.risk_score || 0), 0) / loans.length
+        : 0;
+
+    const monthMap = {};
+    for (const p of payments || []) {
+      const loan = (loans || []).find(l => l.id === p.loan_id);
+      const principal = parseFloat(p.applied_principal || 0);
+      const monthly = loan ? parseFloat(loan.amount) / parseFloat(loan.term_months || 1) : 0;
+      if (principal > monthly * 1.2) {
+        const m = new Date(p.date).toISOString().slice(0, 7);
+        monthMap[m] = (monthMap[m] || 0) + 1;
+      }
+    }
+    const prepayment = Object.entries(monthMap)
+      .map(([month, count]) => ({ month, count }))
+      .sort((a, b) => a.month.localeCompare(b.month));
+
+    res.json({ avgDelinquency, avgRiskScore, prepayment });
+  } catch (err) {
+    console.error('Portfolio metrics error:', err);
+    res.status(500).json({ message: 'Failed to fetch portfolio metrics' });
+  }
+});
+
 // ── Hospitality Features ───────────────────────────────────────────────────
 if (isFeatureEnabled('hospitality')) {
   app.post('/api/guests', async (req, res) => {
