@@ -730,6 +730,25 @@ app.post('/api/credit-score', async (req, res) => {
   res.json({ score, explanation });
 });
 
+function logistic(x) {
+  return 1 / (1 + Math.exp(-x));
+}
+
+function mockDefaultRisk({ borrowerHistory = {}, paymentHistory = {}, creditData = {} }) {
+  const creditScore = parseFloat(creditData.creditScore || 680);
+  const late = parseInt(borrowerHistory.latePayments || 0, 10);
+  const delinq = parseInt(paymentHistory.delinquencies || 0, 10);
+  const logit = -4 + 0.02 * (680 - creditScore) + 0.3 * late + 0.6 * delinq;
+  return parseFloat(logistic(logit).toFixed(4));
+}
+
+app.post('/api/risk-score', async (req, res) => {
+  const { loanId, borrowerHistory, paymentHistory, creditData } = req.body || {};
+  if (!loanId) return res.status(400).json({ message: 'Missing loanId' });
+  const score = mockDefaultRisk({ borrowerHistory, paymentHistory, creditData });
+  res.json({ score });
+});
+
 app.post('/api/detect-fraud', async (req, res) => {
   const result = detectFraud(req.body || {});
   res.json(result);
