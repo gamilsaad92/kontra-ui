@@ -31,7 +31,7 @@ export default function LoanQueryWidget() {
           className="flex-1 border p-2 rounded-l"
           value={query}
           onChange={e => setQuery(e.target.value)}
-          placeholder="Ask about loans…"
+                 placeholder="Search loans…"
           onKeyDown={e => e.key === 'Enter' && runQuery()}
           disabled={loading}
         />
@@ -50,6 +50,8 @@ export default function LoanQueryWidget() {
               <th className="p-2">Borrower</th>
               <th className="p-2">Amount</th>
               <th className="p-2">Rate</th>
+              <th className="p-2">Maturity</th>
+              <th className="p-2">Risk</th>
               <th className="p-2">Start</th>
             </tr>
           </thead>
@@ -59,6 +61,8 @@ export default function LoanQueryWidget() {
                 <td className="p-2">{r.borrower_name}</td>
                 <td className="p-2">{r.amount}</td>
                 <td className="p-2">{r.interest_rate}</td>
+               <td className="p-2">{r.maturity_date || '-'}</td>
+                <td className="p-2">{r.risk_score ?? '-'}</td>
                 <td className="p-2">{r.start_date}</td>
               </tr>
             ))}
