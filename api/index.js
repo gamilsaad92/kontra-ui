@@ -1895,6 +1895,19 @@ app.post('/api/user-events', authenticate, (req, res) => {
   
 });
 
+// ── Notifications ─────────────────────────────────────────────────────────
+app.get('/api/notifications', async (req, res) => {
+  const { user_id } = req.query || {};
+  if (!user_id) return res.status(400).json({ notifications: [] });
+  const { data, error } = await supabase
+    .from('notifications')
+    .select('*')
+    .eq('user_id', user_id)
+    .order('created_at', { ascending: false });
+  if (error) return res.status(500).json({ notifications: [] });
+  res.json({ notifications: data });
+});
+
 app.get('/api/personalized-suggestion', authenticate, async (req, res) => {
   const userId = req.user.id;
   const suggestion = await suggestNextFeature(userId, openai);
