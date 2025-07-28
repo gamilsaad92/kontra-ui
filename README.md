@@ -30,6 +30,12 @@ This repository contains the **frontend** and **backend** for the Kontra demo ap
   Ensure the API is running on the same URL specified in `ui/.env`.
   Provide `REDIS_URL` to enable caching for hot queries.
 
+3. Populate the database with sample loans (optional):
+   ```bash
+   # insert 10 demo records
+   cd api && npm run generate-loans
+   ```
+   Or use the **Dev Tools → Generate Loans** page inside the dashboard.
 4. Start the development servers in separate terminals:
    ```bash
    # API (defaults to PORT from `.env` or 5050)
