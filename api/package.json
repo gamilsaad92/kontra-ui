@@ -7,9 +7,10 @@
     "dev": "nodemon index.js",
           "test": "jest",
     "score-assets": "node jobs/scoreAssets.js",
-     "score-loans": "node jobs/scoreLoans.js",
-      "score-troubled": "node jobs/scoreTroubled.js",
-    "scan-anomalies": "node jobs/scanLoanAnomalies.js"
+      "score-loans": "node jobs/scoreLoans.js",
+    "score-troubled": "node jobs/scoreTroubled.js",
+    "scan-anomalies": "node jobs/scanLoanAnomalies.js",
+    "generate-loans": "node scripts/generateLoans.js"
   },
   "dependencies": {
     "@sentry/node": "^9.24.0",
