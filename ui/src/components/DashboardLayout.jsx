@@ -51,6 +51,7 @@ import OrganizationSettings from './OrganizationSettings';
 import RestaurantMenu from './RestaurantMenu';
 import StaffRestaurantDashboard from './StaffRestaurantDashboard';
 import DashboardTabs from './DashboardTabs';
+import Dashboard from '../pages/Dashboard';
 import HelpTooltip from './HelpTooltip';
 import { isFeatureEnabled } from '../lib/featureFlags';
 import useFeatureUsage from '../lib/useFeatureUsage';
@@ -174,7 +175,7 @@ export default function DashboardLayout() {
   // ... (header, sidebar toggle, etc. unchanged for brevity) ...
 
   const pages = {
-      Dashboard: () => <DashboardTabs />, 
+         Dashboard: () => <Dashboard />,
     Overview: () => <Overview />, 
     Exposure: () => <Exposure />, 
     Events: () => <Events />, 
