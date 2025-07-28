@@ -37,7 +37,7 @@ export default function AnomalyDetectionCard({ anomalies }) {
             {data.map((a, i) => (
               <tr key={i} className="border-t">
                 <td className="pr-2 py-1">{a.id}</td>
-                <               <td className="pr-2 py-1">{a.type || a.description}</td>
+           <td className="pr-2 py-1">{a.type || a.description}</td>
                 <td className="py-1">
                                   <span
                     className={
