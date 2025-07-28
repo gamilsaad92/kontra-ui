@@ -10,8 +10,8 @@ export default function AnomalyDetectionCard({ anomalies }) {
         setTimeout(
           () =>
             resolve([
-              { id: 'L123', description: 'Payment spike', risk: 'High' },
-              { id: 'L456', description: 'Low balance', risk: 'Low' }
+                 { id: 'L123', type: 'Payment spike', severity: 'High' },
+              { id: 'L456', type: 'Low balance', severity: 'Low' }
             ]),
           300
         )
@@ -29,18 +29,26 @@ export default function AnomalyDetectionCard({ anomalies }) {
           <thead>
             <tr>
               <th className="pr-2 py-1">Loan ID</th>
-              <th className="pr-2 py-1">Description</th>
-              <th className="py-1">Risk Issue</th>
+                       <th className="pr-2 py-1">Issue Type</th>
+              <th className="py-1">Severity</th>
             </tr>
           </thead>
           <tbody>
             {data.map((a, i) => (
               <tr key={i} className="border-t">
                 <td className="pr-2 py-1">{a.id}</td>
-                <td className="pr-2 py-1">{a.description}</td>
+                <               <td className="pr-2 py-1">{a.type || a.description}</td>
                 <td className="py-1">
-                  <span className={a.risk === 'High' ? 'text-red-600' : 'text-green-600'}>
-                    {a.risk}
+                                  <span
+                    className={
+                      (a.severity || a.risk) === 'High'
+                        ? 'text-red-600'
+                        : (a.severity || a.risk) === 'Medium'
+                        ? 'text-yellow-600'
+                        : 'text-green-600'
+                    }
+                  >
+                    {a.severity || a.risk}
                   </span>
                 </td>
               </tr>
