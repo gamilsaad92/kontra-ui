@@ -28,7 +28,6 @@ export default function PayoffAccelerationCard() {
         <div className="space-y-1">
           <p>Interest Saved: ${result.interestSaved}</p>
           <p>Months Saved: {result.monthsSaved}</p>
-          <p>Interest Saved: ${result.interestSaved}</p>
         </div>
       )}
       <button className="absolute bottom-2 right-2 bg-purple-600 text-white text-xs rounded-full px-2 py-1">AI</button>
