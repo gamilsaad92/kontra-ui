@@ -67,6 +67,7 @@ import ConsolidatedNotes from '../pages/ConsolidatedNotes';
 import Installments from '../pages/Installments';
 import PaymentAnalysis from '../pages/PaymentAnalysis';
 import AmortizationSchedule from '../pages/AmortizationSchedule';
+import LoanDashboard from '../pages/LoanDashboard';
 import Servicing from '../pages/Servicing';
 import Features from '../pages/Features';
 
@@ -77,6 +78,7 @@ const departmentNav = {
     {
       label: 'Loan Dashboard',
       icon: '📊',
+      to: '/loan-dashboard',
       sub: [
         'Overview',
         'Exposure',
@@ -142,8 +144,7 @@ export default function DashboardLayout() {
 
   const navigateTo = label => navigate(toPath(label));
   const renderItem = item => {
-    const label = item.sub ? item.sub[0] : item.label;
-    const path = toPath(label);
+      const path = item.to || toPath(item.sub ? item.sub[0] : item.label);
     const active = location.pathname === path;
     const commonProps = {
       className: `flex items-center w-full px-3 py-2 hover:bg-gray-700 rounded ${active ? 'bg-gray-700' : ''}`,
@@ -171,8 +172,8 @@ export default function DashboardLayout() {
   useEffect(() => {
     const firstItem = navItems[0];
     if (firstItem) {
-      const targetLabel = firstItem.sub ? firstItem.sub[0] : firstItem.label;
-      navigate(toPath(targetLabel));  // e.g. "/" for Dashboard
+     const targetPath = firstItem.to || toPath(firstItem.sub ? firstItem.sub[0] : firstItem.label);
+      navigate(targetPath);  // e.g. "/" for Dashboard
     }
   }, [department]);
 
@@ -181,7 +182,8 @@ export default function DashboardLayout() {
   const pages = {
          Dashboard: () => <Dashboard />,
     Dashboard: () => <Dashboard />, 
-    Features: () => <Features />, 
+     Features: () => <Features />,
+    'Loan Dashboard': () => <LoanDashboard />,
     Overview: () => <Overview />,
     Events: () => <Events />, 
     'Loan Notes': () => <LoanNotes />, 
