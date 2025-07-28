@@ -52,6 +52,7 @@ import RestaurantMenu from './RestaurantMenu';
 import StaffRestaurantDashboard from './StaffRestaurantDashboard';
 import DashboardTabs from './DashboardTabs';
 import Dashboard from '../pages/Dashboard';
+import GenerateLoans from '../pages/GenerateLoans';
 import HelpTooltip from './HelpTooltip';
 import { isFeatureEnabled } from '../lib/featureFlags';
 import useFeatureUsage from '../lib/useFeatureUsage';
@@ -98,6 +99,7 @@ const departmentNav = {
     { label: 'Live Analytics', icon: '📈' },
     { label: 'Collections', icon: '💵', sub: ['Collections'] },
     { label: 'Alerts', icon: '🔔' },
+    { label: 'Dev Tools', icon: '🛠️', sub: ['Generate Loans'] },
     { label: 'Settings', icon: '⚙️' },
     { label: 'Docs', icon: '📄', href: 'https://github.com/kontra-ui/docs' }
   ],
@@ -218,8 +220,8 @@ export default function DashboardLayout() {
     Settings: () => <OrganizationSettings />,
     'Guest Reservations': () => <GuestReservations />,
     'Booking Calendar': () => <BookingCalendar />,
-    'Restaurant Menu': () => <RestaurantMenu />,
-    'Restaurant Dashboard': () => <StaffRestaurantDashboard />
+    'Restaurant Dashboard': () => <StaffRestaurantDashboard />,
+    'Generate Loans': () => <GenerateLoans />
   };
 
   const routes = Object.entries(pages).map(([label, Component]) => (
