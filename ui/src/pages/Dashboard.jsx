@@ -1,42 +1,37 @@
 import React from 'react';
-import RiskSummaryCard from '../components/RiskSummaryCard';
-import ExposureEventsCard from '../components/ExposureEventsCard';
-import LoanMasterDetailCard from '../components/LoanMasterDetailCard';
-import AnomalyDetectionCard from '../components/AnomalyDetectionCard';
-import PayoffAccelerationCard from '../components/PayoffAccelerationCard';
-import LoanMasterInfoCard from '../components/LoanMasterInfoCard';
-import InstallmentsCard from '../components/InstallmentsCard';
-import AmortizationScheduleCard from '../components/AmortizationScheduleCard';
+import { features } from '../data/features';
 
 export default function Dashboard() {
   return (
-    <div className="min-h-screen flex flex-col bg-gray-100">
-      <nav className="sticky top-0 z-10 bg-white border-b shadow-sm p-4 flex items-center justify-between">
-        <div className="flex items-center space-x-2">
-          <select className="border rounded p-1 text-sm">
-            <option>Serview</option>
-          </select>
+    <div className="min-h-screen bg-gray-50 text-gray-800">
+      <header className="bg-[#0d1b2a] text-white px-6 py-4 flex items-center justify-between shadow">
+        <h1 className="text-xl font-bold">Kontra</h1>
+        <div className="flex items-center gap-4">
           <input
             type="text"
-            placeholder="Search by natural language"
-            className="border rounded p-1 text-sm w-64"
+                 placeholder="Search"
+            className="px-3 py-1.5 rounded-md text-black"
           />
+         <div className="w-8 h-8 bg-white rounded-full" />
         </div>
-        <button className="relative px-3 py-1 bg-purple-600 text-white rounded text-sm">
-          AI
-          <span className="absolute -top-1 -right-1 text-[10px] bg-red-500 text-white rounded-full px-1">!</span>
-        </button>
-      </nav>
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 p-4 flex-1">
-        <RiskSummaryCard />
-        <ExposureEventsCard />
-        <LoanMasterDetailCard />
-        <AnomalyDetectionCard />
-        <PayoffAccelerationCard />
-        <LoanMasterInfoCard />
-        <InstallmentsCard />
-        <AmortizationScheduleCard />
-      </div>
+      </header>
+      <main className="p-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
+          {features.map((feature, idx) => (
+            <div
+              key={idx}
+              className="bg-white p-4 rounded-xl shadow hover:shadow-lg transition"
+            >
+              <div className="flex items-center gap-2 mb-2">
+                <span className="text-2xl">{feature.icon}</span>
+                <h2 className="font-semibold text-lg">{feature.title}</h2>
+              </div>
+              <p className="text-sm text-gray-600">{feature.description}</p>
+            </div>
+          ))}
+        </div>
+      </main>
+     
     </div>
   );
 }
