@@ -1,28 +1,23 @@
 export const features = [
   {
-    title: 'End-to-End Workflow',
-    icon: '🔁',
-    description: 'Application intake, underwriting, escrow, servicing, risk, reporting, and collections.',
-  },
-  {
     title: 'Loan Application API',
     icon: '📤',
     description: 'Endpoints to submit applications, perform KYC and credit checks.',
   },
   {
-    title: 'Intelligent Underwriting',
-    icon: '🤖',
-    description: 'Document parsing, credit scoring, auto-fill, fraud detection.',
-  },
-  {
     title: 'Escrow Administration',
     icon: '📊',
-    description: 'Escrow table, balance projection and reminder engine.',
+    description: 'Escrow tables, balance projections, and reminders.',
   },
   {
-    title: 'Phase 5 Modules',
-    icon: '📦',
-    description: 'Collections, investor reports, asset management, anomaly detection.',
+    title: 'AI Underwriting',
+    icon: '🤖',
+    description: 'Document parsing, credit scoring, fraud detection.',
+  },
+  {
+    title: 'End-to-End Workflow',
+    icon: '🔁',
+    description: 'Application intake, underwriting, escrow, servicing, and collections.',
   },
   {
     title: 'Automated Communications',
