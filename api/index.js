@@ -81,6 +81,7 @@ const siteAnalysisRouter = require('./routers/siteAnalysis');
 // Compliance automation is still experimental
 const complianceRouter = require('./routers/compliance');
 const otpRouter = require('./routers/otp');
+const devRouter = require('./routers/dev');
 
 // Define the functions that the assistant can “call.”
 const functions = [
@@ -432,6 +433,7 @@ app.use('/api/site-analysis', siteAnalysisRouter);
 app.use('/api', analyticsRouter);
 app.use('/api', restaurantRouter);
 app.use('/api', restaurantsRouter);
+app.use('/api/dev', devRouter);
 
 // ── Health Checks ──────────────────────────────────────────────────────────
 app.get('/', (req, res) => res.send('Sentry test running!'));
