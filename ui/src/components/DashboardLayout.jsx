@@ -68,11 +68,13 @@ import Installments from '../pages/Installments';
 import PaymentAnalysis from '../pages/PaymentAnalysis';
 import AmortizationSchedule from '../pages/AmortizationSchedule';
 import Servicing from '../pages/Servicing';
+import Features from '../pages/Features';
 
 const departmentNav = {
   finance: [
     { label: 'Dashboard', icon: '🏠' },  // New Dashboard entry for Finance
-        {
+    { label: 'Features', icon: '✨' },
+    {
       label: 'Loan Dashboard',
       icon: '📊',
       sub: [
@@ -105,7 +107,7 @@ const departmentNav = {
   ],
   hospitality: [
     { label: 'Dashboard', icon: '🏨' },  // New Dashboard entry for Hospitality
-    { label: 'Guest CRM', icon: '👥' },
+    { label: 'Features', icon: '✨' },    { label: 'Guest CRM', icon: '👥' },
     { label: 'Guest Chat', icon: '💬' },
     { label: 'Guest Reservations', icon: '🛏️', flag: 'hospitality' },
     { label: 'Booking Calendar', icon: '📅', flag: 'hospitality' },
@@ -178,8 +180,9 @@ export default function DashboardLayout() {
 
   const pages = {
          Dashboard: () => <Dashboard />,
-    Overview: () => <Overview />, 
-    Exposure: () => <Exposure />, 
+    Dashboard: () => <Dashboard />, 
+    Features: () => <Features />, 
+    Overview: () => <Overview />,
     Events: () => <Events />, 
     'Loan Notes': () => <LoanNotes />, 
     'Analytics Overview': () => <AnalyticsOverview />, 
