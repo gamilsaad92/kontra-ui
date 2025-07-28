@@ -10,8 +10,8 @@ export default function ExposureEventsCard({ events }) {
         setTimeout(
           () =>
             resolve([
-              { summary: 'Late payment', balance: '$10,000', description: 'Loan 123' },
-              { summary: 'New loan', balance: '$50,000', description: 'Loan 456' }
+                  { date: '2024-07-01', description: 'Late payment', impact: '-$10,000' },
+              { date: '2024-07-15', description: 'New loan funded', impact: '+$50,000' }
             ]),
           300
         )
@@ -28,17 +28,17 @@ export default function ExposureEventsCard({ events }) {
         <table className="w-full text-left">
           <thead>
             <tr>
-              <th className="pr-2 py-1">Summary</th>
-              <th className="pr-2 py-1">Balance</th>
-              <th className="py-1">Description</th>
+                 <th className="pr-2 py-1">Event Date</th>
+              <th className="pr-2 py-1">Description</th>
+              <th className="py-1">Balance Impact</th>
             </tr>
           </thead>
           <tbody>
             {data.map((e, i) => (
               <tr key={i} className="border-t">
-                <td className="pr-2 py-1">{e.summary}</td>
-                <td className="pr-2 py-1">{e.balance}</td>
-                <td className="py-1">{e.description}</td>
+                          <td className="pr-2 py-1">{e.date}</td>
+                <td className="pr-2 py-1">{e.description}</td>
+                <td className="py-1">{e.impact}</td>
               </tr>
             ))}
           </tbody>
