@@ -8,7 +8,6 @@ import GuestOccupancyCard from '../modules/dashboard/GuestOccupancyCard';
 import OfferCard from '../modules/dashboard/OfferCard';
 import RoleKpiCard from '../modules/dashboard/RoleKpiCard';
 import PortfolioMetricsCard from '../modules/dashboard/PortfolioMetricsCard';
-import InspectionList from './InspectionList';
 
 export default function DashboardHome() {
   const role = useRole();
@@ -17,9 +16,8 @@ export default function DashboardHome() {
     <div className="space-y-6">
      <h1 className="text-2xl font-bold">Dashboard</h1>
 
-      {role === 'inspector' && <InspectionList />}
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          <RoleKpiCard />
+    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">  
+      <RoleKpiCard />
         <PortfolioMetricsCard />
         <RiskScoreCard to="/assets?sort=risk" />
         <DelinquencyCard to="/collections?status=delinquent" />
