@@ -1,3 +1,6 @@
+import React from 'react';
+import InstallmentsTable from '../components/InstallmentsTable.jsx';
+
 export default function Installments() {
-  return <div>Installments Due/Paid content coming soon.</div>;
+ return <InstallmentsTable />;
 }
