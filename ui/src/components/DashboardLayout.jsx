@@ -13,8 +13,6 @@ import AmortizationTable from './AmortizationTable';
 import PaymentForm from './PaymentForm';
 import LienWaiverForm from './LienWaiverForm';
 import LienWaiverList from './LienWaiverList';
-import InspectionForm from './InspectionForm';
-import InspectionList from './InspectionList';
 import CollectionForm from './CollectionForm';
 import ProjectForm from './ProjectForm';
 import ProjectsTable from './ProjectsTable';
