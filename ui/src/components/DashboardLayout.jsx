@@ -17,15 +17,12 @@ import LienWaiverForm from './LienWaiverForm';
 import LienWaiverList from './LienWaiverList';
 import InspectionForm from './InspectionForm';
 import InspectionList from './InspectionList';
-import EscrowDashboard from './EscrowDashboard';
 import CollectionForm from './CollectionForm';
-import CollectionsTable from './CollectionsTable';
 import ProjectForm from './ProjectForm';
 import ProjectsTable from './ProjectsTable';
 import ProjectDetail from './ProjectDetail';
 import AssetForm from './AssetForm';
 import AssetsTable from './AssetsTable';
-import PaymentPortal from './PaymentPortal';
 import DrawKanbanBoard from './DrawKanbanBoard';
 import UnderwritingBoard from './UnderwritingBoard';
 import InvestorReportForm from './InvestorReportForm';
@@ -37,7 +34,6 @@ const RevivedAssetsTable = lazy(() => import('../modules/assets/RevivedAssetsTab
 const AssetRiskTable = lazy(() => import('../modules/assets/AssetRiskTable'));
 import GuidedSetup from './GuidedSetup';
 import QuickStartTour from './QuickStartTour';
-import SelfServicePayment from './SelfServicePayment';
 import WelcomeWizard from './WelcomeWizard';
 import GuestReservations from './GuestReservations';
 import BookingCalendar from './BookingCalendar';
@@ -95,13 +91,10 @@ const departmentNav = {
     },
     { label: 'Application', icon: '📝', sub: ['New Application', 'Application List'] },
     { label: 'Underwriting', icon: '✅', sub: ['Underwriting Board', 'Decisions'] },
-    { label: 'Escrow Setup', icon: '💼', sub: ['Escrows'] },
-    { label: 'Servicing', icon: '🛠️', sub: ['Payment Portal', 'Self Service Payment'] },
     { label: 'Risk Monitoring', icon: '📈', sub: ['Troubled Assets', 'Revived Sales'] },
     { label: 'Investor Reporting', icon: '📊', sub: ['Reports', 'Investor Reports'] },
     { label: 'Market Analysis', icon: '🏙️' },
     { label: 'Live Analytics', icon: '📈' },
-    { label: 'Collections', icon: '💵', sub: ['Collections'] },
     { label: 'Alerts', icon: '🔔' },
     { label: 'Dev Tools', icon: '🛠️', sub: ['Generate Loans'] },
     { label: 'Settings', icon: '⚙️' },
@@ -191,9 +184,8 @@ export default function DashboardLayout() {
     'Loan Master': () => <LoanMaster />, 
     'Consolidated Notes': () => <ConsolidatedNotes />, 
     'Installments Due/Paid': () => <Installments />, 
-    'Payment Analysis': () => <PaymentAnalysis />, 
-    'Amortization Schedule': () => <AmortizationSchedule />, 
-    Servicing: () => <Servicing />,
+       'Payment Analysis': () => <PaymentAnalysis />,
+    'Amortization Schedule': () => <AmortizationSchedule />,
     'New Application': () => <LoanApplicationForm onSubmitted={() => setRefreshKey(k => k + 1)} />,
     'Application List': () => <LoanApplicationList key={refreshKey} />,
     'Underwriting Board': () => <UnderwritingBoard />,
@@ -216,12 +208,8 @@ export default function DashboardLayout() {
       <Suspense fallback={<p>Loading...</p>}><GuestChat /></Suspense>
     ) : null,
      Alerts: () => <NotificationsList />,
-    Escrows: () => <EscrowDashboard />,
-    'Payment Portal': () => <PaymentPortal />,
-    'Self Service Payment': () => <SelfServicePayment />,
     'Troubled Assets': () => <AssetRiskTable />,
     'Revived Sales': () => <RevivedAssetsTable />,
-    Collections: () => <CollectionsTable refresh={refreshKey} />,
     Settings: () => <OrganizationSettings />,
     'Guest Reservations': () => <GuestReservations />,
     'Booking Calendar': () => <BookingCalendar />,
