@@ -11,8 +11,6 @@ import CreateLoanForm from './CreateLoanForm';
 import LoanList from './LoanList';
 import AmortizationTable from './AmortizationTable';
 import PaymentForm from './PaymentForm';
-import DrawRequestForm from './DrawRequestForm';
-import DrawRequestsTable from './DrawRequestsTable';
 import LienWaiverForm from './LienWaiverForm';
 import LienWaiverList from './LienWaiverList';
 import InspectionForm from './InspectionForm';
@@ -86,7 +84,8 @@ const departmentNav = {
         'Installments Due/Paid',
         'Payment Analysis',
         'Amortization Schedule',
-        'Servicing'
+        'Servicing',
+        'Draw Requests'
       ]
     },
     { label: 'Application', icon: '📝', sub: ['New Application', 'Application List'] },
