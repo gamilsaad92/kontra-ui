@@ -3,7 +3,6 @@ import { useRole } from '../lib/roles';
 import DrawRequestForm from '../components/DrawRequestForm';
 import DrawRequestsTable from '../components/DrawRequestsTable';
 import DrawStatusTracker from '../components/DrawStatusTracker';
-import InspectionList from '../components/InspectionList';
 import { API_BASE } from '../lib/apiBase';
 
 export default function DrawRequests() {
@@ -39,7 +38,6 @@ export default function DrawRequests() {
       {(role === 'lender' || role === 'admin') && (
         <DrawRequestsTable onSelect={id => setLastId(id)} canReview />
       )}
-      {role === 'inspector' && <InspectionList />}
       {lastId && (role === 'borrower' || role === 'admin') && (
         <>
           <DrawStatusTracker drawId={lastId} />
