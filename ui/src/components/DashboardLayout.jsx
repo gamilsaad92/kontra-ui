@@ -6,7 +6,6 @@ import SuggestFeatureWidget from './SuggestFeatureWidget';
 import DashboardHome from './DashboardHome';
 import LoanApplicationForm from './LoanApplicationForm';
 import LoanApplicationList from './LoanApplicationList';
-import DecisionTimeline from './DecisionTimeline';
 import CreateLoanForm from './CreateLoanForm';
 import LoanList from './LoanList';
 import AmortizationTable from './AmortizationTable';
@@ -20,7 +19,6 @@ import ProjectDetail from './ProjectDetail';
 import AssetForm from './AssetForm';
 import AssetsTable from './AssetsTable';
 import DrawKanbanBoard from './DrawKanbanBoard';
-import UnderwritingBoard from './UnderwritingBoard';
 import InvestorReportForm from './InvestorReportForm';
 import InvestorReportsList from './InvestorReportsList';
 // Removed separate HospitalityDashboard – using unified DashboardHome for both roles
@@ -83,11 +81,12 @@ const departmentNav = {
         'Payment Analysis',
         'Amortization Schedule',
         'Servicing',
-        'Draw Requests'
+       'Draw Requests',
+        'Underwriting Board',
+        'Decisions'
       ]
     },
     { label: 'Application', icon: '📝', sub: ['New Application', 'Application List'] },
-    { label: 'Underwriting', icon: '✅', sub: ['Underwriting Board', 'Decisions'] },
     { label: 'Risk Monitoring', icon: '📈', sub: ['Troubled Assets', 'Revived Sales'] },
     { label: 'Investor Reporting', icon: '📊', sub: ['Reports', 'Investor Reports'] },
     { label: 'Market Analysis', icon: '🏙️' },
@@ -185,8 +184,6 @@ export default function DashboardLayout() {
     'Amortization Schedule': () => <AmortizationSchedule />,
     'New Application': () => <LoanApplicationForm onSubmitted={() => setRefreshKey(k => k + 1)} />,
     'Application List': () => <LoanApplicationList key={refreshKey} />,
-    'Underwriting Board': () => <UnderwritingBoard />,
-    'Decisions': () => <DecisionTimeline />,
     // ... (other routes unchanged) ...
     Reports: () => <ReportBuilder />,
     'Investor Reports': () => (
