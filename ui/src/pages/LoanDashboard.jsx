@@ -14,6 +14,8 @@ import DrawRequests from './DrawRequests';
 import Inspections from './Inspections';
 import UnderwritingBoard from '../components/UnderwritingBoard';
 import DecisionTimeline from '../components/DecisionTimeline';
+import LoanApplicationForm from '../components/LoanApplicationForm';
+import LoanApplicationList from '../components/LoanApplicationList';
 
 const tabs = [
   'Overview',
@@ -31,7 +33,9 @@ const tabs = [
   'Inspections',
   'Underwriting Board',
   'Decisions'
-];
+  'New Application',
+  'Application List'
+  ];
 
 const components = {
   Overview,
@@ -49,6 +53,8 @@ const components = {
   Inspections,
   'Underwriting Board': UnderwritingBoard,
   Decisions: DecisionTimeline
+  'New Application': LoanApplicationForm,
+  'Application List': LoanApplicationList
 };
 
 export default function LoanDashboard() {
