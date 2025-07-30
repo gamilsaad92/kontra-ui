@@ -81,12 +81,11 @@ const departmentNav = {
         'Payment Analysis',
         'Amortization Schedule',
         'Servicing',
-       'Draw Requests',
-        'Underwriting Board',
-        'Decisions'
+        'Draw Requests',
+        'New Application',
+        'Application List'
       ]
     },
-    { label: 'Application', icon: '📝', sub: ['New Application', 'Application List'] },
     { label: 'Risk Monitoring', icon: '📈', sub: ['Troubled Assets', 'Revived Sales'] },
     { label: 'Investor Reporting', icon: '📊', sub: ['Reports', 'Investor Reports'] },
     { label: 'Market Analysis', icon: '🏙️' },
