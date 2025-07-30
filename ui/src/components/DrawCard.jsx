@@ -29,7 +29,7 @@ const DrawCard = ({ draw, isAdmin, onAction }) => {
     <div className="border rounded-xl p-4 shadow-md bg-white max-w-xl mx-auto mt-6 space-y-4">
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-3">
-          <span className="text-lg font-bold text-red-700">Kontra</span>
+              <span className="text-lg font-bold text-red-900">Kontra</span>
           <h2 className="text-lg font-bold">Draw Request #{draw.id}</h2>
         </div>
         <Badge status={draw.status} />
