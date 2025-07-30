@@ -52,7 +52,7 @@ const components = {
     'Draw Requests': DrawRequests,
   Inspections,
   'Underwriting Board': UnderwritingBoard,
-  Decisions: DecisionTimeline
+  Decisions: DecisionTimeline,
   'New Application': LoanApplicationForm,
   'Application List': LoanApplicationList
 };
