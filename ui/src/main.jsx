@@ -19,8 +19,10 @@ Sentry.init({
 
 registerSW({ immediate: true })
 
-// Set a light grey background color
-document.body.style.backgroundColor = '#d3d3d3'
+// Set background color based on current time
+const hour = new Date().getHours()
+document.body.style.backgroundColor =
+  hour >= 6 && hour < 18 ? '#808080' : '#000000'
 
 function AuthProvider({ children }) {
   const [session, setSession] = useState(null)
