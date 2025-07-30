@@ -32,7 +32,7 @@ const tabs = [
   'Draw Requests',
   'Inspections',
   'Underwriting Board',
-  'Decisions'
+  'Decisions',
   'New Application',
   'Application List'
   ];
