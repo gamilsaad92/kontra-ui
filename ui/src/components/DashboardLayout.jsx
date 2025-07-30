@@ -218,7 +218,7 @@ export default function DashboardLayout() {
    <div className="flex flex-col md:flex-row min-h-screen bg-gray-900 text-white">
       {/* Sidebar */}
       <aside className={`${sidebarOpen ? 'md:w-48' : 'md:w-16'} w-full bg-gray-800 text-white flex flex-col transition-all`} aria-label="Main navigation">
-        <button onClick={() => setSidebarOpen(o => !o)} className="p-4 text-2xl font-bold border-b border-gray-700 text-left">
+             <button onClick={() => setSidebarOpen(o => !o)} className="p-4 text-2xl font-bold border-b border-gray-700 text-left text-red-900">
           {sidebarOpen ? 'Kontra' : 'K'}
         </button>
              <select value={department} onChange={e => setDepartment(e.target.value)} className="m-2 p-1 bg-gray-700 text-white rounded">
