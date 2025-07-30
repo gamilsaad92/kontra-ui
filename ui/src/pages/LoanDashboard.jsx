@@ -12,6 +12,8 @@ import AmortizationSchedule from './AmortizationSchedule';
 import Servicing from './Servicing';
 import DrawRequests from './DrawRequests';
 import Inspections from './Inspections';
+import UnderwritingBoard from '../components/UnderwritingBoard';
+import DecisionTimeline from '../components/DecisionTimeline';
 
 const tabs = [
   'Overview',
@@ -25,8 +27,10 @@ const tabs = [
   'Payment Analysis',
   'Amortization Schedule',
   'Servicing',
- 'Draw Requests',
-  'Inspections'
+  'Draw Requests',
+  'Inspections',
+  'Underwriting Board',
+  'Decisions'
 ];
 
 const components = {
@@ -41,8 +45,10 @@ const components = {
   'Payment Analysis': PaymentAnalysis,
   'Amortization Schedule': AmortizationSchedule,
   Servicing,
-   'Draw Requests': DrawRequests,
-  Inspections
+    'Draw Requests': DrawRequests,
+  Inspections,
+  'Underwriting Board': UnderwritingBoard,
+  Decisions: DecisionTimeline
 };
 
 export default function LoanDashboard() {
