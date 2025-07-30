@@ -1,3 +1,4 @@
+// src/main.jsx
 import React, { useState, useEffect } from 'react'
 import ReactDOM from 'react-dom/client'
 import { BrowserRouter } from 'react-router-dom'
@@ -19,10 +20,8 @@ Sentry.init({
 
 registerSW({ immediate: true })
 
-// Set background color based on current time
 const hour = new Date().getHours()
-document.body.style.backgroundColor =
-  hour >= 6 && hour < 18 ? '#808080' : '#000000'
+document.body.style.backgroundColor = hour >= 6 && hour < 18 ? '#f9fafb' : '#111827'
 
 function AuthProvider({ children }) {
   const [session, setSession] = useState(null)
