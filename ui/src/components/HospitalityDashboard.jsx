@@ -1,8 +1,11 @@
 import React, { useEffect, useState } from 'react';
-import { LineChart, Line, XAxis, YAxis, Tooltip } from 'recharts';
+// Charts are rendered via dashboard cards
 import { API_BASE } from '../lib/apiBase';
 import VirtualAssistant from './VirtualAssistant';
 import QRCodeDisplay from './QRCodeDisplay';
+import GuestOccupancyCard from '../modules/dashboard/GuestOccupancyCard';
+import AdrCard from '../modules/dashboard/AdrCard';
+import RevParCard from '../modules/dashboard/RevParCard';
 
 export default function HospitalityDashboard({ navigateTo }) {
   const [occDaily, setOccDaily] = useState([]);
@@ -79,32 +82,10 @@ export default function HospitalityDashboard({ navigateTo }) {
           <p>Avg tip %: {metrics.avgTipPercent}</p>
         </div>
       </div>
-      <div>
-        <h3 className="font-bold mb-2">Daily Occupancy</h3>
-        <LineChart width={600} height={200} data={occDaily} className="mx-auto">
-          <XAxis dataKey="day" />
-          <YAxis domain={[0, 100]} />
-          <Tooltip />
-          <Line type="monotone" dataKey="occupancy" stroke="#8884d8" />
-        </LineChart>
-      </div>
-      <div>
-        <h3 className="font-bold mb-2">Average Daily Rate (ADR)</h3>
-        <LineChart width={600} height={200} data={adrData} className="mx-auto">
-          <XAxis dataKey="day" />
-          <YAxis />
-          <Tooltip />
-          <Line type="monotone" dataKey="adr" stroke="#82ca9d" />
-        </LineChart>
-      </div>
-      <div>
-        <h3 className="font-bold mb-2">RevPAR</h3>
-        <LineChart width={600} height={200} data={revParData} className="mx-auto">
-          <XAxis dataKey="day" />
-          <YAxis />
-          <Tooltip />
-          <Line type="monotone" dataKey="revpar" stroke="#ffc658" />
-        </LineChart>
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <GuestOccupancyCard data={occDaily} />
+        <AdrCard data={adrData} />
+        <RevParCard data={revParData} />
       </div>
            <div className="border-t pt-4">
         <VirtualAssistant placeholder="Ask about hospitality…" />
