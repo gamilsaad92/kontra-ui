@@ -5,7 +5,7 @@ export default function Features() {
   return (
     <div className="min-h-screen bg-gray-50 text-gray-800">
       <header className="bg-[#0d1b2a] text-white px-6 py-4 flex items-center justify-between shadow">
-        <h1 className="text-xl font-bold">Kontra</h1>
+        <h1 className="text-xl font-bold text-red-900">Kontra</h1>
         <div className="flex items-center gap-4">
           <input
             type="text"
