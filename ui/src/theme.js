@@ -1,29 +1,20 @@
 export const colors = {
-  primary: '#1e40af',
-  secondary: '#d97706',
-  accent: '#f43f5e',
-  muted: '#64748b',
-  background: '#f8fafc',
-  white: '#ffffff'
+  brand: {
+    primary: '#8B0000',
+    secondary: '#550000'
+  },
+  background: '#F5F5F5',
+  surface: '#FFFFFF',
+  text: {
+    primary: '#1F1F1F',
+    secondary: '#4A4A4A'
+  }
 };
-
-export const spacing = {
-  xs: '0.25rem',
-  sm: '0.5rem',
-  md: '1rem',
-  lg: '1.5rem',
-  xl: '2rem',
-  '2xl': '3rem'
+export const spacing = { xs: '0.5rem', sm: '1rem', md: '1.5rem', lg: '2rem' };
+export const typography = {
+  h1: '2rem',
+  h2: '1.5rem',
+  body: '1rem',
+  small: '0.875rem'
 };
-
-export const fontFamily = {
-  sans: ['Inter', 'sans-serif']
-};
-
-export const fontSize = {
-  base: '1rem',
-  lg: '1.125rem',
-  xl: '1.25rem'
-};
-
-export default { colors, spacing, fontFamily, fontSize };
+export default { colors, spacing, typography };

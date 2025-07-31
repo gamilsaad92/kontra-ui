@@ -1,36 +1,13 @@
-import React from 'react'
-import {
-  ClerkProvider,
-  SignInButton,
-  SignUpButton,
-  SignedIn,
-  SignedOut,
-  UserButton,
-} from '@clerk/clerk-react'
-
+import { Sidebar } from './Sidebar';
+import { TopBar } from './TopBar';
 export default function RootLayout({ children }) {
   return (
-    <ClerkProvider
-      publishableKey={import.meta.env.VITE_CLERK_PUBLISHABLE_KEY}
-      frontendApi={import.meta.env.VITE_CLERK_FRONTEND_API}
-      navigate={(to) => window.history.pushState(null, '', to)}
-    >
-      <div>
-        <header className="flex justify-end items-center p-4 gap-4 h-16">
-          <SignedOut>
-            <SignInButton />
-            <SignUpButton>
-              <button className="bg-[#6c47ff] text-white rounded-full font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 cursor-pointer">
-                Sign Up
-              </button>
-            </SignUpButton>
-          </SignedOut>
-          <SignedIn>
-            <UserButton />
-          </SignedIn>
-        </header>
-        {children}
+    <div className="flex h-screen">
+      <Sidebar className="w-56 bg-surface shadow-lg" />
+      <div className="flex-1 flex flex-col">
+        <TopBar className="h-16 bg-surface shadow-sm px-6 flex items-center" />
+        <main className="p-6 overflow-auto bg-bg-color">{children}</main>
       </div>
-    </ClerkProvider>
-  )
+    </div>
+  );
 }
