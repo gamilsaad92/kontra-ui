@@ -1,36 +1,28 @@
 import React from 'react';
-import { features } from '../data/features';
+import Sidebar from '../components/Sidebar.jsx';
+import TopBar from '../components/TopBar.jsx';
+import DashboardCard from '../components/DashboardCard.jsx';
+import { FiSearch, FiMapPin, FiBarChart2, FiClipboard } from 'react-icons/fi';
+
+const cards = [
+  { icon: <FiSearch />, title: 'AI-Powered Property Search' },
+  { icon: <FiMapPin />, title: 'Site Suitability Analysis' },
+  { icon: <FiBarChart2 />, title: '12 Reports', subtitle: 'Generated this month' },
+  { icon: <FiClipboard />, title: '8 Transactions', subtitle: 'Awaiting review' },
+];
 
 export default function Dashboard() {
   return (
-    <div className="min-h-screen bg-gray-50 text-gray-800">
-      <header className="bg-[#0d1b2a] text-white px-6 py-4 flex items-center justify-between shadow">
-             <h1 className="text-xl font-bold text-red-900">Kontra</h1>
-        <div className="flex items-center gap-4">
-          <input
-            type="text"
-                 placeholder="Search"
-            className="px-3 py-1.5 rounded-md text-black"
-          />
-         <div className="w-8 h-8 bg-white rounded-full" />
-        </div>
-      </header>
-      <main className="p-6">
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
-          {features.map((feature, idx) => (
-            <div
-              key={idx}
-              className="bg-white p-4 rounded-xl shadow hover:shadow-lg transition"
-            >
-              <div className="flex items-center gap-2 mb-2">
-                <span className="text-2xl">{feature.icon}</span>
-                <h2 className="font-semibold text-lg">{feature.title}</h2>
-              </div>
-              <p className="text-sm text-gray-600">{feature.description}</p>
-            </div>
-          ))}
-        </div>
-      </main>
+    <div className="flex">
+      <Sidebar />
+      <div className="flex-1 flex flex-col bg-gray-900">
+        <TopBar />
+        <main className="p-6 grid gap-6 md:grid-cols-2 xl:grid-cols-4">
+          {cards.map(c => (
+            <DashboardCard key={c.title} {...c} />
+    ))}
+             </main>
+      </div>
     </div>
   );
 }
