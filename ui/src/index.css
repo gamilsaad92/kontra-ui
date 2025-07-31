@@ -6,6 +6,10 @@
   --brand-color: #1e40af;
 }
 
+body {
+  background-color: #f9fafb;
+}
+
 .bg-brand {
   background-color: var(--brand-color);
 }
