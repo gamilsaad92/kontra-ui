@@ -13,7 +13,7 @@ const cards = [
 
 export default function Dashboard() {
   return (
-    <div className="flex">
+  <div className="flex min-h-screen">
       <Sidebar />
       <div className="flex-1 flex flex-col bg-gray-900">
         <TopBar />
