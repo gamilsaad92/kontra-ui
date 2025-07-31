@@ -1,19 +1,11 @@
+:root {
+  --brand-color: #8B0000;
+  --bg-color: #F5F5F5;
+  --surface-color: #FFFFFF;
+  --text-primary: #1F1F1F;
+  --text-secondary: #4A4A4A;
+}
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
-
-:root {
-  --brand-color: #1e40af;
-}
-
-body {
-  background-color: #f9fafb;
-}
-
-.bg-brand {
-  background-color: var(--brand-color);
-}
-
-.text-brand {
-  color: var(--brand-color);
-}
+body { background-color: var(--bg-color); color: var(--text-primary); }
