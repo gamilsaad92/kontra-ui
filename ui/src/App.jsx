@@ -1,11 +1,15 @@
 // ui/src/App.jsx
 
 import React, { useContext, useState } from 'react';
-import DashboardLayout from './components/DashboardLayout';
 import LoginForm from './components/LoginForm';
 import SignUpForm from './components/SignUpForm';
 import InviteAcceptForm from './components/InviteAcceptForm';
 import { AuthContext } from './lib/authContext';
+import { Routes, Route } from 'react-router-dom';
+import Dashboard from './pages/Dashboard.jsx';
+import LandAcquisitionPage from './pages/LandAcquisitionPage.jsx';
+import MarketAnalysisPage from './pages/MarketAnalysisPage.jsx';
+import SettingsPage from './pages/SettingsPage.jsx';
 
 export default function App() {
     const { session } = useContext(AuthContext);
@@ -23,5 +27,12 @@ export default function App() {
       );
   }
 
-  return <DashboardLayout />;
+   return (
+    <Routes>
+      <Route path="/" element={<Dashboard />} />
+      <Route path="/land-acquisition" element={<LandAcquisitionPage />} />
+      <Route path="/market-analysis" element={<MarketAnalysisPage />} />
+      <Route path="/settings" element={<SettingsPage />} />
+    </Routes>
+  );
 }
