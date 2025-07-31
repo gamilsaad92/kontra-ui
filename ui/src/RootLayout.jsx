@@ -15,8 +15,8 @@ export default function RootLayout({ children }) {
       frontendApi={import.meta.env.VITE_CLERK_FRONTEND_API}
       navigate={(to) => window.history.pushState(null, '', to)}
     >
-      <div>
-        <header className="flex justify-end items-center p-4 gap-4 h-16">
+    <div className="min-h-screen bg-gray-50">
+        <header className="flex justify-end items-center p-4 gap-4 h-16 bg-gray-50">
           <SignedOut>
             <SignInButton />
             <SignUpButton>
