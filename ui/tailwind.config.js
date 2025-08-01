@@ -1,9 +1,9 @@
-import theme from './src/theme.js';
+const theme = require('./src/theme.js');
 
-export default {
+module.exports = {
   content: ["./index.html", "./src/**/*.{js,ts,jsx,tsx}"],
   theme: {
-     extend: {
+    extend: {
       colors: theme.colors,
       spacing: theme.spacing,
       fontFamily: theme.fontFamily,
