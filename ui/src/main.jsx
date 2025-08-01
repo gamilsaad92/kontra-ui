@@ -3,7 +3,12 @@
 import React, { useState, useEffect } from 'react'
 import ReactDOM from 'react-dom/client'
 import { BrowserRouter } from 'react-router-dom'
-import { SignedIn, SignedOut, SignIn } from '@clerk/clerk-react'
+import {
+  ClerkProvider,
+  SignedIn,
+  SignedOut,
+  SignIn,
+} from '@clerk/clerk-react'
 import RootLayout from './RootLayout.jsx'
 import { registerSW } from 'virtual:pwa-register'
 import App from './App.jsx'
@@ -91,23 +96,29 @@ function AuthProvider({ children }) {
 const root = ReactDOM.createRoot(document.getElementById('root'))
 root.render(
   <React.StrictMode>
-    <RootLayout>
-      <SignedIn>
-        <BrowserRouter>
-          <LocaleProvider>
-            <AuthProvider>
-              <BrandingProvider>
-                <RoleProvider>
-                  <App />
-                </RoleProvider>
-              </BrandingProvider>
-            </AuthProvider>
-          </LocaleProvider>
-        </BrowserRouter>
-      </SignedIn>
-      <SignedOut>
-        <SignIn />
-      </SignedOut>
+       <ClerkProvider
+      publishableKey={import.meta.env.VITE_CLERK_PUBLISHABLE_KEY}
+      frontendApi={import.meta.env.VITE_CLERK_FRONTEND_API}
+      navigate={(to) => window.history.pushState(null, '', to)}
+    >
+      <RootLayout>
+        <SignedIn>
+          <BrowserRouter>
+            <LocaleProvider>
+              <AuthProvider>
+                <BrandingProvider>
+                  <RoleProvider>
+                    <App />
+                  </RoleProvider>
+                </BrandingProvider>
+              </AuthProvider>
+            </LocaleProvider>
+          </BrowserRouter>
+        </SignedIn>
+        <SignedOut>
+          <SignIn />
+        </SignedOut>
       </RootLayout>
+   </ClerkProvider>
   </React.StrictMode>
 )
