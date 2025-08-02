@@ -3,6 +3,7 @@ import { AuthContext } from '../lib/authContext';
 import { Routes, Route, Link, useNavigate, useLocation } from 'react-router-dom';
 import VirtualAssistant from './VirtualAssistant';
 import SuggestFeatureWidget from './SuggestFeatureWidget';
+import LoansDashboard from './LoansDashboard';
 import DashboardHome from './DashboardHome';
 import LoanApplicationForm from './LoanApplicationForm';
 import LoanApplicationList from './LoanApplicationList';
@@ -57,6 +58,7 @@ import useFeatureUsage from '../lib/useFeatureUsage';
 const departmentNav = {
   finance: [
     { label: 'Dashboard', icon: '🏠' },  // New Dashboard entry for Finance
+    { label: 'Loans', icon: '💰' },
     { label: 'Application', icon: '📝', sub: ['New Application', 'Application List'] },
     { label: 'Underwriting', icon: '✅', sub: ['Underwriting Board', 'Decisions'] },
     { label: 'Escrow Setup', icon: '💼', sub: ['Escrows'] },
@@ -143,6 +145,7 @@ export default function DashboardLayout() {
 
   const pages = {
     Dashboard: () => <DashboardHome navigateTo={navigateTo} />,          // unified Dashboard for both roles
+      Loans: () => <LoansDashboard />,
     'New Application': () => <LoanApplicationForm onSubmitted={() => setRefreshKey(k => k + 1)} />,
     'Application List': () => <LoanApplicationList key={refreshKey} />,
     'Underwriting Board': () => <UnderwritingBoard />,
