@@ -31,6 +31,7 @@ import DrawKanbanBoard from './DrawKanbanBoard';
 import UnderwritingBoard from './UnderwritingBoard';
 import InvestorReportForm from './InvestorReportForm';
 import InvestorReportsList from './InvestorReportsList';
+import AssetManagement from '../routes/AssetManagement';
 // Removed separate HospitalityDashboard – using unified DashboardHome for both roles
 const GuestCRM = lazy(() => import('./GuestCRM'));
 const GuestChat = lazy(() => import('./GuestChat'));
@@ -67,6 +68,7 @@ const departmentNav = {
     { label: 'Investor Reporting', icon: '📊', sub: ['Reports', 'Investor Reports'] },
     { label: 'Market Analysis', icon: '🏙️' },
     { label: 'Live Analytics', icon: '📈' },
+    { label: 'Asset Management', icon: '🏢' },
     { label: 'Collections', icon: '💵', sub: ['Collections'] },
     { label: 'Settings', icon: '⚙️' },
     { label: 'Docs', icon: '📄', href: 'https://github.com/kontra-ui/docs' }
@@ -160,6 +162,7 @@ export default function DashboardLayout() {
     ),
     'Market Analysis': () => <MarketAnalysis />,
     'Live Analytics': () => <RealTimeAnalyticsDashboard />,
+    'Asset Management': () => <AssetManagement />,
     // Removed 'Hospitality Dashboard' route – both roles use DashboardHome now
     'Guest CRM': () => isFeatureEnabled('hospitality') ? (
       <Suspense fallback={<p>Loading...</p>}><GuestCRM /></Suspense>
