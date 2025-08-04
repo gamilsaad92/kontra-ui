@@ -1,18 +1,28 @@
 const express = require('express');
-const predictAssetRisk = require('../edge-functions/predictAssetRisk');
-const predictTroubledRisk = require('../edge-functions/predictTroubledRisk');
+const { addJob } = require('../jobQueue');
 
 const router = express.Router();
 
-router.post('/run', async (req, res) => {
+router.post('/run', (req, res) => {
+  const results = [];
+
   try {
-    await predictAssetRisk();
-    await predictTroubledRisk();
-    res.json({ message: 'Risk scripts executed' });
+    addJob('score-assets');
+    results.push({ script: 'predictAssetRisk', status: 'queued' });
   } catch (err) {
-    console.error('Risk run error:', err);
-    res.status(500).json({ message: 'Failed to run risk scripts' });
+    console.error('Failed to enqueue predictAssetRisk:', err);
+    results.push({ script: 'predictAssetRisk', status: 'error', error: err.message });
   }
+
+  try {
+    addJob('score-troubled');
+    results.push({ script: 'predictTroubledRisk', status: 'queued' });
+  } catch (err) {
+    console.error('Failed to enqueue predictTroubledRisk:', err);
+    results.push({ script: 'predictTroubledRisk', status: 'error', error: err.message });
+  }
+
+  res.json({ message: 'Risk scripts enqueued', results });  
 });
 
 module.exports = router;
