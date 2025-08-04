@@ -2,11 +2,14 @@
 import React, { useEffect, useState } from 'react';
 import { API_BASE } from '../lib/apiBase';
 import VirtualAssistant from './VirtualAssistant';
+import ErrorBanner from './ErrorBanner.jsx';
 
 export default function EscrowDashboard() {
   const [escrows, setEscrows] = useState([]);
   const [loading, setLoading] = useState(true);
-
+  const [message, setMessage] = useState('');
+  const [error, setError] = useState('');
+  
   useEffect(() => {
     (async () => {
       setLoading(true);
@@ -22,15 +25,30 @@ export default function EscrowDashboard() {
     })();
   }, []);
 
-   const pay = async (loanId, type, amount) => {
+  const pay = async (loanId, type, amount) => {
+    setMessage('');
+    setError('');
     try {
-      await fetch(`${API_BASE}/api/loans/${loanId}/escrow/pay`, {
+      const res = await fetch(`${API_BASE}/api/loans/${loanId}/escrow/pay`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ type, amount })
       });
+      if (res.ok) {
+        setMessage('Payment recorded');
+        try {
+          const upcomingRes = await fetch(`${API_BASE}/api/escrows/upcoming`);
+          const { escrows } = await upcomingRes.json();
+          setEscrows(escrows || []);
+        } catch {
+          // ignore fetch errors in demo
+        }
+      } else {
+        const data = await res.json().catch(() => ({}));
+        setError(data.message || 'Failed to record payment');
+      }      
     } catch {
-      // ignore errors in demo
+      setError('Failed to record payment');
     }
   };
 
@@ -39,6 +57,8 @@ export default function EscrowDashboard() {
 
   return (
     <div className="bg-white rounded-lg shadow-md">
+        {message && <p className="p-4 text-green-600">{message}</p>}
+      <ErrorBanner message={error} onClose={() => setError('')} />   
       <table className="w-full text-left">
         <thead className="bg-gray-100">
           <tr>
