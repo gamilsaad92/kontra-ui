@@ -1,6 +1,7 @@
 const express = require('express');
 const { createClient } = require('@supabase/supabase-js');
 const { triggerWebhooks } = require('../webhooks');
+const authenticate = require('../middlewares/authenticate');
 
 const router = express.Router();
 const supabase = createClient(
@@ -290,18 +291,51 @@ router.get('/loans/:loanId/escrow', async (req, res) => {
   res.json({ escrow: data });
 });
 
-router.post('/loans/:loanId/escrow/pay', async (req, res) => {
+router.post('/loans/:loanId/escrow/pay', authenticate, async (req, res) => {
   const { loanId } = req.params;
   const { type, amount } = req.body || {};
   if (isNaN(parseInt(loanId, 10))) return res.status(400).json({ message: 'Invalid loan id' });
-  if (!type || !amount) return res.status(400).json({ message: 'Missing type or amount' });
+if (!type || amount === undefined) return res.status(400).json({ message: 'Missing type or amount' });
   if (!['tax', 'insurance'].includes(type)) return res.status(400).json({ message: 'Invalid type' });
-  const { data: esc } = await supabase.from('escrows').select('escrow_balance').eq('loan_id', loanId).maybeSingle();
+
+  const amt = parseFloat(amount);
+  if (isNaN(amt) || amt <= 0) return res.status(400).json({ message: 'Invalid amount' });
+
+  const { data: loan, error: loanErr } = await supabase
+    .from('loans')
+    .select('*')
+    .eq('id', loanId)
+    .maybeSingle();
+  if (loanErr) return res.status(500).json({ message: 'Failed to fetch loan' });
+  if (!loan) return res.status(404).json({ message: 'Loan not found' });
+  if (loan.organization_id && req.organizationId && loan.organization_id !== req.organizationId) {
+    return res.status(403).json({ message: 'Not authorized for this loan' });
+  }
+
+  const { data: esc } = await supabase
+    .from('escrows')
+    .select('escrow_balance, tax_amount, insurance_amount')
+    .eq('loan_id', loanId)
+    .maybeSingle();
   if (!esc) return res.status(404).json({ message: 'Escrow not found' });
-  const newBal = parseFloat(esc.escrow_balance) - parseFloat(amount);
+ 
   const column = type === 'tax' ? 'tax_amount' : 'insurance_amount';
-  await supabase.from('escrows').update({ escrow_balance: newBal, [column]: 0 }).eq('loan_id', loanId);
-  res.json({ balance: newBal });
+   const outstanding = parseFloat(esc[column] || 0);
+  const payment = Math.min(amt, outstanding);
+  const newBal = parseFloat(esc.escrow_balance) - payment;
+
+  const { error: updateErr, data: updated } = await supabase
+    .from('escrows')
+    .update({
+      escrow_balance: newBal,
+      [column]: Math.max(0, outstanding - payment),
+    })
+    .eq('loan_id', loanId)
+    .select('escrow_balance')
+    .single();
+  if (updateErr) return res.status(500).json({ message: 'Failed to update escrow' });
+
+  res.json({ balance: updated.escrow_balance });
 });
 
 router.get('/loans/:loanId/escrow/projection', async (req, res) => {
