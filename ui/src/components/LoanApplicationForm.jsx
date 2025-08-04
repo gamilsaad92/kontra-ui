@@ -12,86 +12,109 @@ export default function LoanApplicationForm({ onSubmitted }) {
     amount: ''
   })
   const [file, setFile] = useState(null)
-  const [message, setMessage] = useState('')
+  const [submitLoading, setSubmitLoading] = useState(false)
+  const [autoFillLoading, setAutoFillLoading] = useState(false)
+  const [submitMessage, setSubmitMessage] = useState('')
+  const [autoFillMessage, setAutoFillMessage] = useState('')
   const [error, setError] = useState('')
-  const [loading, setLoading] = useState(false)
 
-    const handleAutoFill = async () => {
-    if (!file) return
+  // Auto-fill using document upload
+  const handleAutoFill = async () => {
+    if (!file) {
+      setError('Please upload a document for auto-fill')
+      return
+    }
     setError('')
-    setMessage('Extracting…')
-    setLoading(true)
+    setAutoFillMessage('Extracting…')
+    setAutoFillLoading(true)
     try {
       const body = new FormData()
-      body.append('file', file)
-      const res = await fetch(`${API_BASE}/api/auto-fill`, {
+      body.append('document', file) // match backend multer field
+
+      const res = await fetch(`${API_BASE}/api/loan-applications/auto-fill`, {
         method: 'POST',
-        body
+        body,
       })
       const data = await res.json()
       if (res.ok && data.fields) {
-        setFormData({ ...formData, ...data.fields })
-        setMessage('Fields populated')
+        setFormData(prev => ({ ...prev, ...data.fields }))
+        setAutoFillMessage('Fields populated')
       } else {
-        setError(data.message || 'Extraction failed')
+        throw new Error(data.message || 'Extraction failed')
       }
-    } catch {
-      setMessage('Extraction error')
+    } catch (err) {
+      console.error('Auto-fill error:', err)
+      setError(err.message || 'Extraction error')
+    } finally {
+      setAutoFillLoading(false)
     }
-   setLoading(false)
   }
 
-  const handleChange = (e) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value })
+  // Handle form field changes
+  const handleChange = e => {
+    const { name, value } = e.target
+    setFormData(prev => ({ ...prev, [name]: value }))
   }
 
-  const handleFile = (e) => {
-    setFile(e.target.files[0])
+  // Handle file selection
+  const handleFile = e => {
+    const selected = e.target.files && e.target.files[0]
+    setFile(selected || null)
+    setAutoFillMessage('')
+    setError('')
   }
 
-  const handleSubmit = async (e) => {
+  // Submit the loan application
+  const handleSubmit = async e => {
     e.preventDefault()
     setError('')
-    setMessage('Submitting…')
-        setLoading(true)
+    setSubmitMessage('')
+    setSubmitLoading(true)
 
-    const emailRegex = /.+@.+\..+/
-    if (!emailRegex.test(formData.email)) {
+    // Client-side validation
+    if (!/\S+@\S+\.\S+/.test(formData.email)) {
       setError('Enter a valid email address')
-      setLoading(false)
+      setSubmitLoading(false)
       return
     }
     if (!/^\d{9}$/.test(formData.ssn)) {
       setError('SSN must be 9 digits')
-      setLoading(false)
+      setSubmitLoading(false)
       return
     }
-    if (Number(formData.amount) <= 0) {
+    if (!(Number(formData.amount) > 0)) {
       setError('Amount must be positive')
-      setLoading(false)
+      setSubmitLoading(false)
       return
     }
+
     try {
       const body = new FormData()
-      Object.entries(formData).forEach(([k, v]) => body.append(k, v))
+      body.append('name', formData.name)
+      body.append('email', formData.email)
+      body.append('ssn', formData.ssn)
+      body.append('amount', formData.amount)
       if (file) body.append('document', file)
+
       const res = await fetch(`${API_BASE}/api/loan-applications`, {
         method: 'POST',
-        body
+        body,
       })
       const data = await res.json()
-      if (res.ok) {
-        setMessage('Application submitted!')
-        onSubmitted && onSubmitted()
-        setFormData({ name: '', email: '', ssn: '', amount: '' })
-        setFile(null)
-      } else {
-     setError(data.message || 'Submission failed')
+      if (!res.ok) {
+        throw new Error(data.message || 'Submission failed')
       }
-    } catch { 
-     setError('Submission error')
+      setSubmitMessage('Application submitted!')
+      onSubmitted && onSubmitted(data.application)
+      setFormData({ name: '', email: '', ssn: '', amount: '' })
+      setFile(null)
+      setAutoFillMessage('')
+    } catch (err) {
+      console.error('Submission error:', err)
+      setError(err.message || 'Submission error')
+    } finally {
+      setSubmitLoading(false)
     }
-        setLoading(false)
   }
 
   return (
@@ -133,23 +156,30 @@ export default function LoanApplicationForm({ onSubmitted }) {
           className="w-full border p-2 rounded"
         />
         <input type="file" onChange={handleFile} className="w-full" />
-              <button
-          type="button"
-          onClick={handleAutoFill}
-          disabled={loading}
-          className="w-full bg-gray-200 text-gray-800 py-2 rounded"
-        >
-        {loading ? 'Extracting…' : 'Auto Fill'}
-        </button>
-        <button
-          type="submit"
-          disabled={loading}
-          className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 rounded"
-        >
-        {loading ? 'Submitting…' : 'Submit'}
-        </button>
+
+        <div className="space-y-2">
+          <button
+            type="button"
+            onClick={handleAutoFill}
+            disabled={autoFillLoading}
+            className="w-full bg-gray-200 text-gray-800 py-2 rounded"
+          >
+            {autoFillLoading ? 'Extracting…' : 'Auto Fill'}
+          </button>
+          {autoFillMessage && <p className="text-gray-600">{autoFillMessage}</p>}
+        </div>
+
+        <div className="space-y-2">
+          <button
+            type="submit"
+            disabled={submitLoading}
+            className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 rounded"
+          >
+            {submitLoading ? 'Submitting…' : 'Submit'}
+          </button>
+          {submitMessage && <p className="text-green-600">{submitMessage}</p>}
+        </div>
       </form>
-      {message && <p className="mt-3 text-green-600">{message}</p>}
       <ErrorBanner message={error} onClose={() => setError('')} />
     </div>
   )
