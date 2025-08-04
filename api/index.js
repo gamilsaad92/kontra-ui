@@ -1311,7 +1311,7 @@ app.post('/api/collections', async (req, res) => {
 });
 
 // ── Investor Reports CRUD ─────────────────────────────────────────────────-
-app.get('/api/investor-reports', async (req, res) => {
+app.get('/api/investor-reports', authenticate, async (req, res) => {
   const { data, error } = await supabase
     .from('investor_reports')
     .select('*')
@@ -1321,9 +1321,31 @@ app.get('/api/investor-reports', async (req, res) => {
   res.json({ reports: data });
 });
 
-app.post('/api/investor-reports', async (req, res) => {
+app.post('/api/investor-reports', authenticate, async (req, res) => {
   const { title, file_url } = req.body;
   if (!title || !file_url) return res.status(400).json({ message: 'Missing title or file_url' });
+
+   // Validate file_url format
+  try {
+    new URL(file_url);
+  } catch {
+    return res.status(400).json({ message: 'Invalid file_url format' });
+  }
+
+  // Validate file size (max 10MB)
+  try {
+    const head = await fetch(file_url, { method: 'HEAD' });
+    if (!head.ok) {
+      return res.status(400).json({ message: 'Invalid file_url' });
+    }
+    const size = parseInt(head.headers.get('content-length') || '0', 10);
+    const MAX_SIZE = 10 * 1024 * 1024; // 10MB
+    if (size && size > MAX_SIZE) {
+      return res.status(400).json({ message: 'File too large' });
+    }
+  } catch (err) {
+    return res.status(400).json({ message: 'Unable to verify file_url' });
+  }
 
   const { data, error } = await supabase
     .from('investor_reports')
