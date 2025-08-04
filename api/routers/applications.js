@@ -2,6 +2,7 @@ const express = require('express');
 const multer = require('multer');
 const { createClient } = require('@supabase/supabase-js');
 const crypto = require('crypto');
+const { isFeatureEnabled } = require('../featureFlags');
 
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage() });
@@ -11,11 +12,14 @@ const supabase = createClient(
 );
 
 const piiSecret = process.env.PII_ENCRYPTION_KEY;
-if (!piiSecret) {
-  console.error('Missing PII_ENCRYPTION_KEY!');
-  process.exit(1);
-}
 const PII_KEY = crypto.createHash('sha256').update(piiSecret).digest();
+
+const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
+const ALLOWED_DOC_TYPES = [
+  'application/pdf',
+  'image/jpeg',
+  'image/png',
+];
 
 function encrypt(text) {
   const iv = crypto.randomBytes(16);
@@ -25,13 +29,50 @@ function encrypt(text) {
 }
 
 async function runKycCheck(buffer) {
-  // TODO: replace with real KYC integration
-  return { passed: true };
+  if (!isFeatureEnabled('kyc')) {
+    return { passed: true };
+  }
+  if (!process.env.KYC_API_URL || !process.env.KYC_API_KEY) {
+    throw new Error('KYC provider not configured');
+  }
+  try {
+    const resp = await fetch(process.env.KYC_API_URL, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${process.env.KYC_API_KEY}` },
+      body: buffer,
+    });
+    if (!resp.ok) {
+      throw new Error(`status ${resp.status}`);
+    }
+    const data = await resp.json();
+    return { passed: !!data.passed };
+  } catch (err) {
+    throw err;
+  }  
 }
 
 async function fetchCreditScore(ssn) {
-  // TODO: replace with real credit bureau integration
-  return { score: 650 + Math.floor(Math.random() * 101) };
+  if (!isFeatureEnabled('credit')) {
+    return { score: 650 + Math.floor(Math.random() * 101) };
+  }
+  if (!process.env.CREDIT_API_URL || !process.env.CREDIT_API_KEY) {
+    throw new Error('Credit score provider not configured');
+  }
+  try {
+    const resp = await fetch(
+      `${process.env.CREDIT_API_URL}?ssn=${encodeURIComponent(ssn)}`,
+      {
+        headers: { Authorization: `Bearer ${process.env.CREDIT_API_KEY}` },
+      }
+    );
+    if (!resp.ok) {
+      throw new Error(`status ${resp.status}`);
+    }
+    const data = await resp.json();
+    return { score: data.score };
+  } catch (err) {
+    throw err;
+  } 
 }
 
 router.post(
@@ -50,6 +91,17 @@ router.post(
         return res
           .status(400)
           .json({ message: 'Amount must be a positive number' });
+      }
+
+            if (req.file) {
+        if (!ALLOWED_DOC_TYPES.includes(req.file.mimetype)) {
+          return res
+            .status(400)
+            .json({ message: 'Unsupported document type' });
+        }
+        if (req.file.size > MAX_FILE_SIZE) {
+          return res.status(400).json({ message: 'Document too large' });
+        }
       }
 
       // ---- KYC ----
