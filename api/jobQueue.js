@@ -20,7 +20,7 @@ async function processQueue() {
         await require('./edge-functions/predictTroubledRisk')();
       }
     } catch (err) {
-      console.error('Job processing error:', err);
+       console.error(`Job ${job.type} processing error:`, err);
     }
   }
   processing = false;
