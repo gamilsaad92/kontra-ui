@@ -25,8 +25,11 @@ This repository contains the **frontend** and **backend** for the Kontra demo ap
    Add your Sentry DSN as `VITE_SENTRY_DSN` in `ui/.env`.
   Optional `FEATURE_FLAGS` and `VITE_FEATURE_FLAGS` entries enable or disable
   upcoming modules. For example `sso` and `compliance` toggle the placeholder
-  single sign-on and compliance scan routes.
+  single sign-on and compliance scan routes. Enable `kyc` or `credit` to use
+  real identity and credit-score providers instead of mocks.
   Set `PII_ENCRYPTION_KEY` to encrypt sensitive identifiers like SSNs.
+  If `kyc` or `credit` are enabled, also provide the corresponding
+  `KYC_API_URL`/`KYC_API_KEY` and `CREDIT_API_URL`/`CREDIT_API_KEY` values.
   Ensure the API is running on the same URL specified in `ui/.env`.
   Provide `REDIS_URL` to enable caching for hot queries.
 
