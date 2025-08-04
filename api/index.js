@@ -19,7 +19,7 @@ const { isFeatureEnabled } = require('./featureFlags');
 const auditLogger = require('./middlewares/auditLogger');
 const { scanForCompliance, gatherEvidence } = require('./compliance');
 require('dotenv').config();
-["SUPABASE_URL","SUPABASE_SERVICE_ROLE_KEY","OPENAI_API_KEY","SENTRY_DSN","STRIPE_SECRET_KEY"].forEach(k => {
+["SUPABASE_URL","SUPABASE_SERVICE_ROLE_KEY","OPENAI_API_KEY","SENTRY_DSN","STRIPE_SECRET_KEY","PII_ENCRYPTION_KEY"].forEach(k => {
   if (!process.env[k]) {
     console.error(`Missing ${k}`);
     process.exit(1);
