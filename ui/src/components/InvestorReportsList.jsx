@@ -4,15 +4,19 @@ import { API_BASE } from '../lib/apiBase';
 export default function InvestorReportsList({ refresh }) {
   const [reports, setReports] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
 
   useEffect(() => {
     (async () => {
       setLoading(true);
+      setError('');
       try {
         const res = await fetch(`${API_BASE}/api/investor-reports`);
+        if (!res.ok) throw new Error('Failed to fetch reports');
         const { reports } = await res.json();
         setReports(reports || []);
-      } catch {
+          } catch (err) {
+        setError(err.message || 'Failed to load reports');
         setReports([]);
       } finally {
         setLoading(false);
@@ -21,6 +25,7 @@ export default function InvestorReportsList({ refresh }) {
   }, [refresh]);
 
   if (loading) return <p>Loading reports…</p>;
+  if (error) return <p className="text-red-600">{error}</p>;
   if (reports.length === 0) return <p>No reports found.</p>;
 
   return (
