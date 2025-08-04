@@ -14,18 +14,18 @@ export default function LoanApplicationForm({ onSubmitted }) {
   const [file, setFile] = useState(null)
   const [submitLoading, setSubmitLoading] = useState(false)
   const [autoFillLoading, setAutoFillLoading] = useState(false)
-  const [submitMessage, setSubmitMessage] = useState('')
-  const [autoFillMessage, setAutoFillMessage] = useState('')
-  const [error, setError] = useState('')
+   const [status, setStatus] = useState({ type: '', text: '' })
+
+  const MAX_SIZE = 5 * 1024 * 1024 // 5MB
+  const ALLOWED_TYPES = ['application/pdf', 'image/jpeg', 'image/png']
 
   // Auto-fill using document upload
   const handleAutoFill = async () => {
     if (!file) {
-      setError('Please upload a document for auto-fill')
+      setStatus({ type: 'error', text: 'Please upload a document for auto-fill' })
       return
     }
-    setError('')
-    setAutoFillMessage('Extracting…')
+    setStatus({ type: '', text: '' })
     setAutoFillLoading(true)
     try {
       const body = new FormData()
@@ -38,13 +38,13 @@ export default function LoanApplicationForm({ onSubmitted }) {
       const data = await res.json()
       if (res.ok && data.fields) {
         setFormData(prev => ({ ...prev, ...data.fields }))
-        setAutoFillMessage('Fields populated')
+      setStatus({ type: 'success', text: 'Fields populated' })
       } else {
-        throw new Error(data.message || 'Extraction failed')
+       throw new Error(data.message || 'Failed to extract fields')
       }
     } catch (err) {
       console.error('Auto-fill error:', err)
-      setError(err.message || 'Extraction error')
+     setStatus({ type: 'error', text: err.message || 'Extraction error' })
     } finally {
       setAutoFillLoading(false)
     }
@@ -59,31 +59,50 @@ export default function LoanApplicationForm({ onSubmitted }) {
   // Handle file selection
   const handleFile = e => {
     const selected = e.target.files && e.target.files[0]
-    setFile(selected || null)
-    setAutoFillMessage('')
-    setError('')
+      setStatus({ type: '', text: '' })
+    if (!selected) {
+      setFile(null)
+      return
+    }
+    if (!ALLOWED_TYPES.includes(selected.type)) {
+      setStatus({ type: 'error', text: 'Only PDF or image files are allowed' })
+      e.target.value = ''
+      setFile(null)
+      return
+    }
+    if (selected.size > MAX_SIZE) {
+      setStatus({ type: 'error', text: 'File must be 5MB or smaller' })
+      e.target.value = ''
+      setFile(null)
+      return
+    }
+    setFile(selected)
   }
 
   // Submit the loan application
   const handleSubmit = async e => {
     e.preventDefault()
-    setError('')
-    setSubmitMessage('')
+    setStatus({ type: '', text: '' })
     setSubmitLoading(true)
 
     // Client-side validation
     if (!/\S+@\S+\.\S+/.test(formData.email)) {
-      setError('Enter a valid email address')
+      setStatus({ type: 'error', text: 'Enter a valid email address' })
       setSubmitLoading(false)
       return
     }
     if (!/^\d{9}$/.test(formData.ssn)) {
-      setError('SSN must be 9 digits')
+     setStatus({ type: 'error', text: 'SSN must be 9 digits' })
       setSubmitLoading(false)
       return
     }
     if (!(Number(formData.amount) > 0)) {
-      setError('Amount must be positive')
+      setStatus({ type: 'error', text: 'Amount must be positive' })
+      setSubmitLoading(false)
+      return
+    }
+    if (file && (!ALLOWED_TYPES.includes(file.type) || file.size > MAX_SIZE)) {
+      setStatus({ type: 'error', text: 'Invalid document selected' })
       setSubmitLoading(false)
       return
     }
@@ -104,14 +123,13 @@ export default function LoanApplicationForm({ onSubmitted }) {
       if (!res.ok) {
         throw new Error(data.message || 'Submission failed')
       }
-      setSubmitMessage('Application submitted!')
+      setStatus({ type: 'success', text: 'Application submitted!' })
       onSubmitted && onSubmitted(data.application)
       setFormData({ name: '', email: '', ssn: '', amount: '' })
       setFile(null)
-      setAutoFillMessage('')
     } catch (err) {
       console.error('Submission error:', err)
-      setError(err.message || 'Submission error')
+      setStatus({ type: 'error', text: err.message || 'Submission error' })
     } finally {
       setSubmitLoading(false)
     }
@@ -155,7 +173,12 @@ export default function LoanApplicationForm({ onSubmitted }) {
           required
           className="w-full border p-2 rounded"
         />
-        <input type="file" onChange={handleFile} className="w-full" />
+        <input
+          type="file"
+          accept="application/pdf,image/*"
+          onChange={handleFile}
+          className="w-full"
+        />
 
         <div className="space-y-2">
           <button
@@ -166,7 +189,6 @@ export default function LoanApplicationForm({ onSubmitted }) {
           >
             {autoFillLoading ? 'Extracting…' : 'Auto Fill'}
           </button>
-          {autoFillMessage && <p className="text-gray-600">{autoFillMessage}</p>}
         </div>
 
         <div className="space-y-2">
@@ -177,10 +199,15 @@ export default function LoanApplicationForm({ onSubmitted }) {
           >
             {submitLoading ? 'Submitting…' : 'Submit'}
           </button>
-          {submitMessage && <p className="text-green-600">{submitMessage}</p>}
         </div>
       </form>
-      <ErrorBanner message={error} onClose={() => setError('')} />
+            {status.type === 'success' && (
+        <p className="text-green-600 mt-2">{status.text}</p>
+      )}
+      <ErrorBanner
+        message={status.type === 'error' ? status.text : ''}
+        onClose={() => setStatus({ type: '', text: '' })}
+      />
     </div>
   )
 }
