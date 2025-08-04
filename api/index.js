@@ -835,6 +835,15 @@ app.get('/api/smart-recommendations', async (_req, res) => {
 
 // ── Create a Loan ───────────────────────────────────────────────────────────
 // ── Underwriting Tasks CRUD ───────────────────────────────────────────────
+
+function requireCsrf(req, res, next) {
+  const token = req.headers['x-csrf-token'];
+  if (!token || token !== process.env.CSRF_TOKEN) {
+    return res.status(403).json({ message: 'Invalid CSRF token' });
+  }
+  next();
+}
+
 app.get('/api/tasks', async (req, res) => {
   const { data, error } = await supabase
     .from('underwriting_tasks')
@@ -859,7 +868,7 @@ app.post('/api/tasks', async (req, res) => {
   res.status(201).json({ task: data });
 });
 
-app.put('/api/tasks/:id', async (req, res) => {
+app.put('/api/tasks/:id', authenticate, requireCsrf, async (req, res) => {
   const { id } = req.params;
   const { assign, comment, status } = req.body;
   const updates = {};
