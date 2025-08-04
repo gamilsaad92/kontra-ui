@@ -6,7 +6,8 @@ export default function LiveChat() {
   const [input, setInput] = useState('');
 
   useEffect(() => {
-    const ws = new WebSocket(`ws://${window.location.host}/chat`);
+    const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
+    const ws = new WebSocket(`${protocol}://${window.location.host}/chat`);
     ws.onmessage = evt => {
       try {
         const msg = JSON.parse(evt.data);
