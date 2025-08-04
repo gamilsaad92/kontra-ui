@@ -5,23 +5,30 @@ export default function InvestorReportForm({ onCreated }) {
   const [title, setTitle] = useState('');
   const [fileUrl, setFileUrl] = useState('');
   const [message, setMessage] = useState('');
+  const [error, setError] = useState('');
 
   async function handleSubmit(e) {
     e.preventDefault();
-    if (!title || !fileUrl) return;
-    const res = await fetch(`${API_BASE}/api/investor-reports`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ title, file_url: fileUrl })
-    });
-    const data = await res.json();
-    if (res.ok) {
-      setMessage('Report saved');
-      setTitle('');
-      setFileUrl('');
-      onCreated && onCreated();
-    } else {
-      setMessage(data.message || 'Failed');
+
+     setMessage('');
+    setError('');
+    try {
+      const res = await fetch(`${API_BASE}/api/investor-reports`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title, file_url: fileUrl })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        setMessage('Report saved');
+        setTitle('');
+        setFileUrl('');
+        onCreated && onCreated();
+      } else {
+        setError(data.message || 'Failed to save report');
+      }
+    } catch (err) {
+      setError(err.message || 'Failed to save report');
     }
   }
 
@@ -50,6 +57,7 @@ export default function InvestorReportForm({ onCreated }) {
           Save
         </button>
       </form>
+      {error && <p className="mt-3 text-red-600">{error}</p>}
       {message && <p className="mt-3 text-green-600">{message}</p>}
     </div>
   );
