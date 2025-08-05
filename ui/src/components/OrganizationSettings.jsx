@@ -16,6 +16,7 @@ export default function OrganizationSettings() {
   const [currentPlan, setCurrentPlan] = useState('basic');
   const [subError, setSubError] = useState('');
   const [subSuccess, setSubSuccess] = useState('');
+    const [tab, setTab] = useState('details');
   
   useEffect(() => {
     if (!orgId) return;
@@ -95,43 +96,72 @@ export default function OrganizationSettings() {
   };
 
   return (
-    <form onSubmit={handleSave} className="max-w-xl space-y-3 bg-white p-4 rounded shadow">
-      <h2 className="text-xl font-bold">Organization Settings</h2>
-      <FormField label="Name" value={name} onChange={e => setName(e.target.value)} />
-      <FormField label="Logo URL" value={logo} onChange={e => setLogo(e.target.value)} />
-      <FormField label="Primary Color" type="color" value={color} onChange={e => setColor(e.target.value)} />
-      <Button type="submit">Save</Button>
-      {success && <p className="text-green-600">{success}</p>}
-      <ErrorBanner message={error} onClose={() => setError('')} />
-      
-      <hr className="my-4" />
-      <h3 className="text-lg font-bold">Subscription Plan</h3>
-      <ErrorBanner message={subError} onClose={() => setSubError('')} />
-      {subSuccess && <p className="text-green-600">{subSuccess}</p>}
-      <div className="space-y-4" role="region" aria-label="Subscription plans">
-        {plans.map(p => (
-          <div key={p.name} className="border rounded p-3">
-            <div className="flex items-center justify-between">
-              <div>
-                <h4 className="font-semibold capitalize">{p.name}</h4>
-                <p className="text-sm">${p.price}/mo</p>
+    <div className="max-w-xl">
+      <div className="flex border-b mb-4 space-x-4">
+        <button
+          type="button"
+          className={`pb-2 ${tab === 'details' ? 'border-b-2 border-blue-600 font-semibold' : ''}`}
+          onClick={() => setTab('details')}
+        >
+          Details
+        </button>
+        <button
+          type="button"
+          className={`pb-2 ${tab === 'api' ? 'border-b-2 border-blue-600 font-semibold' : ''}`}
+          onClick={() => setTab('api')}
+        >
+          API
+        </button>
+      </div>
+
+      {tab === 'details' && (
+        <form onSubmit={handleSave} className="space-y-3 bg-white p-4 rounded shadow">
+          <h2 className="text-xl font-bold">Organization Settings</h2>
+          <FormField label="Name" value={name} onChange={e => setName(e.target.value)} />
+          <FormField label="Logo URL" value={logo} onChange={e => setLogo(e.target.value)} />
+          <FormField label="Primary Color" type="color" value={color} onChange={e => setColor(e.target.value)} />
+          <Button type="submit">Save</Button>
+          {success && <p className="text-green-600">{success}</p>}
+          <ErrorBanner message={error} onClose={() => setError('')} />
+
+          <hr className="my-4" />
+          <h3 className="text-lg font-bold">Subscription Plan</h3>
+          <ErrorBanner message={subError} onClose={() => setSubError('')} />
+          {subSuccess && <p className="text-green-600">{subSuccess}</p>}
+          <div className="space-y-4" role="region" aria-label="Subscription plans">
+            {plans.map(p => (
+              <div key={p.name} className="border rounded p-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h4 className="font-semibold capitalize">{p.name}</h4>
+                    <p className="text-sm">${p.price}/mo</p>
+                  </div>
+                  {currentPlan === p.name ? (
+                    <span className="text-green-600 font-semibold">Current</span>
+                  ) : (
+                    <Button type="button" onClick={() => handlePlanChange(p.name)}>
+                      Choose
+                    </Button>
+                  )}
+                </div>
+                <ul className="list-disc ml-5 mt-2 text-sm">
+                  {p.features.map(f => (
+                    <li key={f}>{f}</li>
+                  ))}
+                </ul>
               </div>
-              {currentPlan === p.name ? (
-                <span className="text-green-600 font-semibold">Current</span>
-              ) : (
-                <Button type="button" onClick={() => handlePlanChange(p.name)}>
-                  Choose
-                </Button>
-              )}
-            </div>
-            <ul className="list-disc ml-5 mt-2 text-sm">
-              {p.features.map(f => (
-                <li key={f}>{f}</li>
-              ))}
-            </ul>
+                ))}
           </div>
-        ))}
-      </div>  
-    </form>
+           </form>
+      )}
+
+      {tab === 'api' && (
+        <div className="bg-white p-4 rounded shadow space-y-2">
+          <h2 className="text-xl font-bold">API</h2>
+          <p>Organization ID:</p>
+          <code className="block bg-gray-100 p-2 rounded break-all">{orgId || 'N/A'}</code>
+        </div>
+      )}
+    </div>
   );
 }
