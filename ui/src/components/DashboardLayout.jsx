@@ -27,30 +27,27 @@ import ProjectDetail from './ProjectDetail';
 import AssetForm from './AssetForm';
 import AssetsTable from './AssetsTable';
 import PaymentPortal from './PaymentPortal';
-import DrawKanbanBoard from './DrawKanbanBoard';
-import UnderwritingBoard from './UnderwritingBoard';
+import SelfServicePayment from './SelfServicePayment';
+import PayoffCalculator from './PayoffCalculator';
 import InvestorReportForm from './InvestorReportForm';
 import InvestorReportsList from './InvestorReportsList';
 import AssetManagement from '../routes/AssetManagement';
-// Removed separate HospitalityDashboard – using unified DashboardHome for both roles
 const GuestCRM = lazy(() => import('./GuestCRM'));
 const GuestChat = lazy(() => import('./GuestChat'));
 const RevivedAssetsTable = lazy(() => import('../modules/assets/RevivedAssetsTable'));
 const AssetRiskTable = lazy(() => import('../modules/assets/AssetRiskTable'));
+import MarketAnalysis from './MarketAnalysis';
+import RealTimeAnalyticsDashboard from './RealTimeAnalyticsDashboard';
+import OrganizationSettings from './OrganizationSettings';
+import ReportBuilder from './ReportBuilder';
 import GuidedSetup from './GuidedSetup';
 import QuickStartTour from './QuickStartTour';
-import SelfServicePayment from './SelfServicePayment';
-import PayoffCalculator from './PayoffCalculator';
 import WelcomeWizard from './WelcomeWizard';
 import GuestReservations from './GuestReservations';
 import BookingCalendar from './BookingCalendar';
 import BulkActionTable from './BulkActionTable';
-import ReportBuilder from './ReportBuilder';
 import LiveChat from './LiveChat';
 import CustomerPortal from './CustomerPortal';
-import RealTimeAnalyticsDashboard from './RealTimeAnalyticsDashboard';
-import MarketAnalysis from './MarketAnalysis';
-import OrganizationSettings from './OrganizationSettings';
 import RestaurantMenu from './RestaurantMenu';
 import StaffRestaurantDashboard from './StaffRestaurantDashboard';
 import HelpTooltip from './HelpTooltip';
@@ -59,12 +56,12 @@ import useFeatureUsage from '../lib/useFeatureUsage';
 
 const departmentNav = {
   finance: [
-    { label: 'Dashboard', icon: '🏠' },  // New Dashboard entry for Finance
+    { label: 'Dashboard', icon: '🏠' },
     { label: 'Loans', icon: '💰' },
     { label: 'Application', icon: '📝', sub: ['New Application', 'Application List'] },
     { label: 'Underwriting', icon: '✅', sub: ['Underwriting Board', 'Decisions'] },
     { label: 'Escrow Setup', icon: '💼', sub: ['Escrows'] },
-   { label: 'Servicing', icon: '🛠️', sub: ['Payment Portal', 'Self Service Payment', 'Prepayment Calculator'] },
+    { label: 'Servicing', icon: '🛠️', sub: ['Payment Portal', 'Self Service Payment', 'Prepayment Calculator'] },
     { label: 'Risk Monitoring', icon: '📈', sub: ['Troubled Assets', 'Revived Sales'] },
     { label: 'Investor Reporting', icon: '📊', sub: ['Reports', 'Investor Reports'] },
     { label: 'Market Analysis', icon: '🏙️' },
@@ -75,7 +72,7 @@ const departmentNav = {
     { label: 'Docs', icon: '📄', href: 'https://github.com/kontra-ui/docs' }
   ],
   hospitality: [
-    { label: 'Dashboard', icon: '🏨' },  // New Dashboard entry for Hospitality
+    { label: 'Dashboard', icon: '🏨' },
     { label: 'Guest CRM', icon: '👥' },
     { label: 'Guest Chat', icon: '💬' },
     { label: 'Guest Reservations', icon: '🛏️', flag: 'hospitality' },
@@ -99,9 +96,8 @@ export default function DashboardLayout() {
   );
   const navItems = departmentNav[department] || [];
 
-  const [sidebarOpen, setSidebarOpen] = useState(true)
-  const [refreshKey, setRefreshKey] = useState(0)
-  
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [refreshKey, setRefreshKey] = useState(0);
   const { usage, recordUsage } = useFeatureUsage();
   const frequentItems = navItems
     .filter(i => usage[i.label])
@@ -119,7 +115,7 @@ export default function DashboardLayout() {
       onClick: () => recordUsage(item.label)
     };
     return (
-      <div key={item.label} className="text-sm">
+      <div key={item.label} className="text-sm text-white">
         {item.href ? (
           <a href={item.href} target="_blank" rel="noopener noreferrer" {...commonProps}>
             <span className="text-lg">{item.icon}</span>
@@ -135,25 +131,24 @@ export default function DashboardLayout() {
     );
   };
 
-  // On department change, navigate to the first nav item (Dashboard)
   useEffect(() => {
     const firstItem = navItems[0];
     if (firstItem) {
       const targetLabel = firstItem.sub ? firstItem.sub[0] : firstItem.label;
-      navigate(toPath(targetLabel));  // e.g. "/" for Dashboard
+      navigate(toPath(targetLabel));
     }
   }, [department]);
 
-  // ... (header, sidebar toggle, etc. unchanged for brevity) ...
-
   const pages = {
-    Dashboard: () => <DashboardHome navigateTo={navigateTo} />,          // unified Dashboard for both roles
-      Loans: () => <LoansDashboard />,
-    'New Application': () => <LoanApplicationForm onSubmitted={() => setRefreshKey(k => k + 1)} />,
+    Dashboard: () => <DashboardHome navigateTo={navigateTo} />,         
+    Loans: () => <LoansDashboard />,
+    'New Application': () => <LoanApplicationForm onSubmitted={() => setRefreshKey(k => k + 1)} />,  
     'Application List': () => <LoanApplicationList key={refreshKey} />,
     'Underwriting Board': () => <UnderwritingBoard />,
-    'Decisions': () => <DecisionTimeline />,
-    // ... (other routes unchanged) ...
+    Decisions: () => <DecisionTimeline />,
+    'Payment Portal': () => <PaymentPortal />,
+    'Self Service Payment': () => <SelfServicePayment />,
+    'Prepayment Calculator': () => <PayoffCalculator />,
     Reports: () => <ReportBuilder />,
     'Investor Reports': () => (
       <>
@@ -164,73 +159,30 @@ export default function DashboardLayout() {
     'Market Analysis': () => <MarketAnalysis />,
     'Live Analytics': () => <RealTimeAnalyticsDashboard />,
     'Asset Management': () => <AssetManagement />,
-    'Prepayment Calculator': () => <PayoffCalculator />,
-    // Removed 'Hospitality Dashboard' route – both roles use DashboardHome now
     'Guest CRM': () => isFeatureEnabled('hospitality') ? (
       <Suspense fallback={<p>Loading...</p>}><GuestCRM /></Suspense>
     ) : null,
-      'Guest Chat': () => isFeatureEnabled('hospitality') ? (
-        <Suspense fallback={<p>Loading...</p>}><GuestChat /></Suspense>
-      ) : null,
-      Settings: () => <OrganizationSettings />
-    };
+    'Guest Chat': () => isFeatureEnabled('hospitality') ? (
+      <Suspense fallback={<p>Loading...</p>}><GuestChat /></Suspense>
+    ) : null,
+    Settings: () => <OrganizationSettings />
+  };
 
   const routes = Object.entries(pages).map(([label, Component]) => (
     <Route key={label} path={toPath(label)} element={<Component />} />
   ));
 
   return (
-   <div className="flex flex-col md:flex-row min-h-screen bg-gray-900 text-white">
-      {/* Sidebar */}
-      <aside className={`${sidebarOpen ? 'md:w-48' : 'md:w-16'} w-full bg-gray-800 text-white flex flex-col transition-all`} aria-label="Main navigation">
-        <button onClick={() => setSidebarOpen(o => !o)} className="p-4 text-2xl font-bold border-b border-gray-700 text-left">
+    <div className="flex flex-col md:flex-row min-h-screen bg-gray-900">
+      <aside className={`${sidebarOpen ? 'md:w-48' : 'md:w-16'} w-full bg-gray-800 flex flex-col transition-all`} aria-label="Main navigation">
+        <button onClick={() => setSidebarOpen(o => !o)} className="p-4 text-2xl font-bold border-b border-gray-700 text-left text-white">
           {sidebarOpen ? 'Kontra' : 'K'}
         </button>
-             <select value={department} onChange={e => setDepartment(e.target.value)} className="m-2 p-1 bg-gray-700 text-white rounded">
+        <select value={department} onChange={e => setDepartment(e.target.value)} className="m-2 p-1 bg-gray-700 text-white rounded">
           <option value="finance">Finance</option>
           <option value="hospitality">Hospitality</option>
         </select>
         <nav className="flex-1 overflow-auto py-4 space-y-1">
           {frequentItems.length > 0 && (
             <div className="mb-2 space-y-1">
-              {frequentItems.map(renderItem)}
-              <hr className="border-gray-700" />
-            </div>
-          )}
-          {navItems.filter(item => !item.flag || isFeatureEnabled(item.flag))
-                   .filter(item => !frequentItems.includes(item))
-                   .map(renderItem)}
-          <button onClick={() => supabase.auth.signOut()} className="flex items-center px-3 py-2 hover:bg-gray-700 rounded">
-            <span className="text-lg">🔓</span>
-            {sidebarOpen && <span className="ml-2">Log Out</span>}
-          </button>
-        </nav>
-      </aside>
-
-      {/* Main Content & Dashboard Routes */}
-      <div className="flex flex-1 flex-col">
-             <header className="flex items-center justify-between bg-gray-900 border-b border-gray-700 p-4">
-          <div className="flex items-center">
-                     <input className="px-3 py-1 rounded bg-gray-700 text-white placeholder-gray-400 focus:outline-none border border-gray-600 w-1/3" placeholder="Search…" type="text" />
-            <HelpTooltip text="Search across loans, customers and projects" />
-          </div>
-          <div className="flex items-center space-x-4">
-            <span className="text-xl" title="Notifications">🔔</span>
-                   <div className="w-8 h-8 bg-gray-600 rounded-full flex items-center justify-center" title="Account">
-              {session.user?.email[0].toUpperCase()}
-            </div>
-          </div>
-        </header>
-        <main className="flex-1 overflow-auto p-4 space-y-4">
-          <Routes>{routes}</Routes>
-        </main>
-      </div>
-
-      {/* Right-side widgets (assistant, etc.) */}
-     <aside className="md:w-80 w-full border-l border-gray-700 bg-gray-800 p-2 space-y-2 text-white">
-        <VirtualAssistant />
-        <SuggestFeatureWidget />
-      </aside>
-    </div>
-  );
-}
+              {fre
