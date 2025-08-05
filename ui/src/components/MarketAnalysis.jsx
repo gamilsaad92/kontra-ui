@@ -3,7 +3,7 @@ import { API_BASE } from '../lib/apiBase';
 import Card from './Card';
 import SiteAnalysisForm from './SiteAnalysisForm';
 
-// Connects to your Kontra SaaS backend at POST {API_BASE}/site-analysis
+// Connects to your Kontra SaaS backend at POST {API_BASE}/api/site-analysis
 export default function MarketAnalysis() {
   const [result, setResult] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -16,7 +16,7 @@ export default function MarketAnalysis() {
     setResult(null);
 
     try {
-      const response = await fetch(`${API_BASE}/site-analysis`, {
+      const response = await fetch(`${API_BASE}/api/site-analysis`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(formData),
