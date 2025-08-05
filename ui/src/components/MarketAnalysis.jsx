@@ -1,29 +1,42 @@
 import React, { useState } from 'react';
+import { API_BASE } from '../lib/apiBase';
 import Card from './Card';
 import SiteAnalysisForm from './SiteAnalysisForm';
 
-// This component calls your Kontra backend route at POST /api/site-analysis
+// Connects to your Kontra SaaS backend at POST {API_BASE}/site-analysis
 export default function MarketAnalysis() {
   const [result, setResult] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
   const handleAnalyze = async (formData) => {
+    console.log('Submitting formData:', formData);
     setLoading(true);
     setError('');
     setResult(null);
 
     try {
-      const response = await fetch('/api/site-analysis', {
+      const response = await fetch(`${API_BASE}/site-analysis`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(formData),
       });
-      const json = await response.json();
 
-      if (!response.ok) throw new Error(json.message || 'Analysis failed');
-      setResult(json);
+      const text = await response.text();
+      let data;
+      try {
+        data = JSON.parse(text);
+      } catch (parseError) {
+        throw new Error(`Unexpected response from server: ${text}`);
+      }
+
+      if (!response.ok) {
+        throw new Error(data.message || `Server error: ${response.status}`);
+      }
+
+      setResult(data);
     } catch (err) {
+      console.error('Analysis error:', err);
       setError(err.message);
     } finally {
       setLoading(false);
@@ -33,12 +46,9 @@ export default function MarketAnalysis() {
   return (
     <div className="space-y-6">
       <h1 className="text-2xl font-bold">Market Analysis</h1>
-
       <SiteAnalysisForm onAnalyze={handleAnalyze} />
-
       {loading && <p>Analyzing…</p>}
       {error && <p className="text-red-600">Error: {error}</p>}
-
       {result && (
         <Card title="Site Suitability Score">
           <div className="space-y-1">
