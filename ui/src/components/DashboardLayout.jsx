@@ -167,11 +167,11 @@ export default function DashboardLayout() {
     'Guest CRM': () => isFeatureEnabled('hospitality') ? (
       <Suspense fallback={<p>Loading...</p>}><GuestCRM /></Suspense>
     ) : null,
-    'Guest Chat': () => isFeatureEnabled('hospitality') ? (
-      <Suspense fallback={<p>Loading...</p>}><GuestChat /></Suspense>
-    ) : null,
-    // ... (Assets, Settings, etc. unchanged) ...
-  };
+      'Guest Chat': () => isFeatureEnabled('hospitality') ? (
+        <Suspense fallback={<p>Loading...</p>}><GuestChat /></Suspense>
+      ) : null,
+      Settings: () => <OrganizationSettings />
+    };
 
   const routes = Object.entries(pages).map(([label, Component]) => (
     <Route key={label} path={toPath(label)} element={<Component />} />
