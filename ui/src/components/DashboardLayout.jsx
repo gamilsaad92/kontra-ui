@@ -40,6 +40,7 @@ const AssetRiskTable = lazy(() => import('../modules/assets/AssetRiskTable'));
 import GuidedSetup from './GuidedSetup';
 import QuickStartTour from './QuickStartTour';
 import SelfServicePayment from './SelfServicePayment';
+import PayoffCalculator from './PayoffCalculator';
 import WelcomeWizard from './WelcomeWizard';
 import GuestReservations from './GuestReservations';
 import BookingCalendar from './BookingCalendar';
@@ -63,7 +64,7 @@ const departmentNav = {
     { label: 'Application', icon: '📝', sub: ['New Application', 'Application List'] },
     { label: 'Underwriting', icon: '✅', sub: ['Underwriting Board', 'Decisions'] },
     { label: 'Escrow Setup', icon: '💼', sub: ['Escrows'] },
-    { label: 'Servicing', icon: '🛠️', sub: ['Payment Portal', 'Self Service Payment'] },
+   { label: 'Servicing', icon: '🛠️', sub: ['Payment Portal', 'Self Service Payment', 'Prepayment Calculator'] },
     { label: 'Risk Monitoring', icon: '📈', sub: ['Troubled Assets', 'Revived Sales'] },
     { label: 'Investor Reporting', icon: '📊', sub: ['Reports', 'Investor Reports'] },
     { label: 'Market Analysis', icon: '🏙️' },
@@ -163,6 +164,7 @@ export default function DashboardLayout() {
     'Market Analysis': () => <MarketAnalysis />,
     'Live Analytics': () => <RealTimeAnalyticsDashboard />,
     'Asset Management': () => <AssetManagement />,
+    'Prepayment Calculator': () => <PayoffCalculator />,
     // Removed 'Hospitality Dashboard' route – both roles use DashboardHome now
     'Guest CRM': () => isFeatureEnabled('hospitality') ? (
       <Suspense fallback={<p>Loading...</p>}><GuestCRM /></Suspense>
