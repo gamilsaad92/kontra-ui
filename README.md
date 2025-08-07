@@ -97,6 +97,43 @@ New AI endpoints streamline doc ingestion and decision support:
 
 * `POST /api/workflows/ingest` – upload an inspection, W‑9 or contract and receive an OCR + LLM summary. Inspection results are stored in `asset_inspections` when an `asset_id` is supplied.
 * `GET /api/smart-recommendations` – suggests which loans to approve first and highlights refinance opportunities.
+
+## Trading API
+
+Trading endpoints let organizations submit and settle simple equity trades. Set the `trading` feature flag to enable these routes:
+
+```bash
+FEATURE_FLAGS=trading
+```
+
+If KYC/AML checks are desired, also enable the `kyc` flag and provide `KYC_API_URL` and `KYC_API_KEY` so counterparties can be screened.
+
+* `POST /api/trades` – submit a trade order.
+  ```bash
+  curl -X POST $API_URL/api/trades \
+    -H "Content-Type: application/json" \
+    -H "X-Org-Id: 1" \
+    -d '{"symbol":"AAPL","quantity":10,"price":150,"side":"buy","counterparties":["CP-1"]}'
+  ```
+  Response:
+  ```json
+  {"trade":{"id":1,"symbol":"AAPL","quantity":10,"price":150,"side":"buy","counterparties":["CP-1"],"status":"pending","created_at":"2024-01-01T00:00:00.000Z"}}
+  ```
+* `GET /api/trades` – list trades with optional `status` or `symbol` query parameters.
+* `POST /api/trades/{id}/settle` – finalize a trade and mark it settled.
+
+### Webhook events
+
+Register webhooks via `/api/webhooks` to receive trading notifications:
+
+* `trade.created` – sent after a trade order is accepted.
+* `trade.settled` – sent when a trade is settled.
+
+Each webhook delivers the event name and payload containing the trade and `organization_id`, for example:
+
+```json
+{"event":"trade.created","payload":{"trade":{...},"organization_id":1}}
+```
   
 ## Escrow Administration
 
