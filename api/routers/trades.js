@@ -1,6 +1,7 @@
 const express = require('express');
 const authenticate = require('../middlewares/authenticate');
 const { triggerWebhooks } = require('../webhooks');
+const { validateTrade } = require('../compliance');
 
 const router = express.Router();
 
@@ -19,7 +20,7 @@ router.use((req, res, next) => {
 
 // Submit a trade order
 router.post('/trades', async (req, res) => {
-  const { symbol, quantity, price, side } = req.body || {};
+   const { symbol, quantity, price, side, counterparties } = req.body || {};
   if (!symbol || quantity === undefined) {
     return res.status(400).json({ message: 'Missing symbol or quantity' });
   }
@@ -30,9 +31,22 @@ router.post('/trades', async (req, res) => {
     quantity,
     price,
     side,
+    counterparties: counterparties || [],
+    orgId: req.orgId,
     status: 'pending',
     created_at: new Date().toISOString()
   };
+
+    let validation;
+  try {
+    validation = await validateTrade(trade);
+  } catch (err) {
+    console.error('Compliance check error:', err);
+    return res.status(502).json({ message: 'Compliance service failed' });
+  }
+  if (!validation.valid) {
+    return res.status(400).json({ message: validation.message });
+  }
 
   const arr = tradesByOrg[req.orgId] || (tradesByOrg[req.orgId] = []);
   arr.push(trade);
