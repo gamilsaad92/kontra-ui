@@ -1,7 +1,8 @@
 const WebSocket = require('ws');
+let wss;
 
 function attachCollabServer(server) {
-  const wss = new WebSocket.Server({ noServer: true });
+ wss = new WebSocket.Server({ noServer: true });
   const clients = new Map(); // ws -> user
 
   server.on('upgrade', (req, socket, head) => {
@@ -12,7 +13,7 @@ function attachCollabServer(server) {
     }
   });
 
-  function broadcast(msg, sender) {
+   function broadcastInternal(msg, sender) {
     const data = JSON.stringify(msg);
     for (const [client] of clients) {
       if (client.readyState === WebSocket.OPEN && client !== sender) {
@@ -27,9 +28,9 @@ function attachCollabServer(server) {
         const msg = JSON.parse(data.toString());
         if (msg.type === 'join') {
           clients.set(ws, msg.user || 'Anonymous');
-          broadcast({ type: 'presence', users: Array.from(clients.values()) });
+         broadcastInternal({ type: 'presence', users: Array.from(clients.values()) });
         } else {
-          broadcast(msg, ws);
+            broadcastInternal(msg, ws);
         }
       } catch {
         // ignore malformed messages
@@ -38,9 +39,22 @@ function attachCollabServer(server) {
 
     ws.on('close', () => {
       clients.delete(ws);
-      broadcast({ type: 'presence', users: Array.from(clients.values()) });
+        broadcastInternal({ type: 'presence', users: Array.from(clients.values()) });
     });
   });
 }
 
+// Broadcast arbitrary messages to all connected clients. Used for emitting
+// server-side events like trade updates.
+function broadcast(msg) {
+  if (!wss) return;
+  const data = JSON.stringify(msg);
+  for (const client of wss.clients) {
+    if (client.readyState === WebSocket.OPEN) {
+      client.send(data);
+    }
+  }
+}
+
 module.exports = attachCollabServer;
+module.exports.broadcast = broadcast;
