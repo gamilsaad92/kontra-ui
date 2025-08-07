@@ -25,6 +25,7 @@ import ReportBuilder from './ReportBuilder';
 import HelpTooltip from './HelpTooltip';
 import { isFeatureEnabled } from '../lib/featureFlags';
 import useFeatureUsage from '../lib/useFeatureUsage';
+import Trades from '../routes/Trades';
 
 const GuestCRM = lazy(() => import('./GuestCRM'));
 const GuestChat = lazy(() => import('./GuestChat'));
@@ -41,6 +42,7 @@ const departmentNav = {
     { label: 'Investor Reporting', icon: '📊', sub: ['Reports', 'Investor Reports'] },
     { label: 'Market Analysis', icon: '🏙️' },
     { label: 'Live Analytics', icon: '📈' },
+    { label: 'Trades', icon: '🔄', flag: 'trading' },
     { label: 'Asset Management', icon: '🏢' },
     { label: 'Collections', icon: '💵', sub: ['Collections'] },
     { label: 'Settings', icon: '⚙️' },
@@ -141,6 +143,7 @@ export default function DashboardLayout() {
     ),
     'Market Analysis': () => <MarketAnalysis />,
     'Live Analytics': () => <RealTimeAnalyticsDashboard />,
+    'Trades': () => <Trades />,
     'Asset Management': () => <AssetManagement />,
     'Guest CRM': () => isFeatureEnabled('hospitality') ? (
       <Suspense fallback={<p>Loading...</p>}><GuestCRM /></Suspense>
