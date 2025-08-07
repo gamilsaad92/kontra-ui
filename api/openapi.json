@@ -161,6 +161,82 @@
         "responses": {"200":{"description":"Removed"}}
       }
     },
+        "/api/trades": {
+      "post": {
+        "summary": "Submit a trade order",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/TradeInput" }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "trade": { "$ref": "#/components/schemas/Trade" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "summary": "List or filter trades",
+        "parameters": [
+          { "in": "query", "name": "status", "schema": { "type": "string" } },
+          { "in": "query", "name": "symbol", "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "trades": {
+                      "type": "array",
+                      "items": { "$ref": "#/components/schemas/Trade" }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/trades/{id}/settle": {
+      "post": {
+        "summary": "Finalize a trade",
+        "parameters": [
+          { "in": "path", "name": "id", "required": true, "schema": { "type": "integer" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "trade": { "$ref": "#/components/schemas/Trade" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/integrations": {
       "get": {"summary":"List connected integrations","responses":{"200":{"description":"OK"}}}
     },
@@ -255,5 +331,36 @@
     "/api/payments/link": {"post": {"summary": "Create payment link","responses": {"201": {"description": "Created"}}}},
     "/api/payments/tap": {"post": {"summary": "SoftPOS tap payment","responses": {"201": {"description": "Created"}}}},
     "/api/analytics/restaurant": {"get": {"summary": "Restaurant analytics metrics","responses": {"200": {"description": "OK"}}}},
-    "/api/accounting/entries": {"get": {"summary": "Export accounting entries","responses": {"200": {"description": "OK"}}}}  }
+       "/api/accounting/entries": {"get": {"summary": "Export accounting entries","responses": {"200": {"description": "OK"}}}}
+  },
+  "components": {
+    "schemas": {
+      "Trade": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "integer" },
+          "symbol": { "type": "string" },
+          "quantity": { "type": "number" },
+          "price": { "type": "number" },
+          "side": { "type": "string" },
+          "counterparties": { "type": "array", "items": { "type": "string" } },
+          "status": { "type": "string" },
+          "created_at": { "type": "string", "format": "date-time" },
+          "settled_at": { "type": "string", "format": "date-time" }
+        },
+        "required": ["id", "symbol", "quantity", "status", "created_at"]
+      },
+      "TradeInput": {
+        "type": "object",
+        "properties": {
+          "symbol": { "type": "string" },
+          "quantity": { "type": "number" },
+          "price": { "type": "number" },
+          "side": { "type": "string" },
+          "counterparties": { "type": "array", "items": { "type": "string" } }
+        },
+        "required": ["symbol", "quantity"]
+      }
+    }
+  }
 }
