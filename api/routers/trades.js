@@ -1,6 +1,7 @@
 const express = require('express');
 const authenticate = require('../middlewares/authenticate');
 const { triggerWebhooks } = require('../webhooks');
+const collabServer = require('../collabServer');
 const { validateTrade } = require('../compliance');
 
 const router = express.Router();
@@ -52,7 +53,9 @@ router.post('/trades', async (req, res) => {
   arr.push(trade);
 
   await triggerWebhooks('trade.created', { trade, organization_id: req.orgId });
-
+  // Broadcast to any websocket clients that a trade was created
+  collabServer.broadcast && collabServer.broadcast({ type: 'trade.created', trade });
+  
   res.status(201).json({ trade });
 });
 
@@ -76,7 +79,8 @@ router.post('/trades/:id/settle', async (req, res) => {
   trade.settled_at = new Date().toISOString();
 
   await triggerWebhooks('trade.settled', { trade, organization_id: req.orgId });
-
+ collabServer.broadcast && collabServer.broadcast({ type: 'trade.settled', trade });
+  
   res.json({ trade });
 });
 
