@@ -5,6 +5,13 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
+// Known webhook topics. Additional topics can be appended here as the
+// platform grows but we make sure the trade events exist by default.
+const WEBHOOK_TOPICS = [
+  'trade.created',
+  'trade.settled'
+];
+
 async function listWebhooks() {
   const { data, error } = await supabase
     .from('webhooks')
@@ -52,5 +59,11 @@ async function triggerWebhooks(event, payload) {
   );
 }
 
-module.exports = { listWebhooks, addWebhook, removeWebhook, triggerWebhooks };
+module.exports = {
+  listWebhooks,
+  addWebhook,
+  removeWebhook,
+  triggerWebhooks,
+  WEBHOOK_TOPICS
+};
 
