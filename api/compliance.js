@@ -104,7 +104,10 @@ async function validateTrade(trade) {
   }
 
   const limit = ORG_RISK_LIMITS[trade.orgId] || ORG_RISK_LIMITS.default;
-  const notional = (trade.quantity || 0) * (trade.price || 0);
+  const notional =
+    trade.notional_amount !== undefined
+      ? trade.notional_amount
+      : (trade.quantity || 0) * (trade.price || 0);
   if (notional > limit) {
     logAuditEntry({ ...auditBase, result: 'limit_exceeded', notional, limit });
     return { valid: false, message: 'Trade exceeds risk limit' };
