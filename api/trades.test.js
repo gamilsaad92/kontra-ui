@@ -88,14 +88,28 @@ describe('POST /api/trades', () => {
   it('rejects trades exceeding risk limit', async () => {
     const res = await request(app)
       .post('/api/trades')
-       .send({ trade_type: 'loan_sale', notional_amount: 2000000, counterparties: ['cp1'] })
+      .send({
+        trade_type: 'loan_sale',
+        notional_amount: 2000000,
+        price: 100,
+        side: 'buy',
+        counterparties: ['cp1'],
+        symbol: 'AAA'
+      })
     expect(res.statusCode).toBe(400)
   })
 
   it('accepts trades within risk limit', async () => {
     const res = await request(app)
       .post('/api/trades')
-      .send({ trade_type: 'repo', notional_amount: 1000, counterparties: ['cp1'] })
+      .send({
+        trade_type: 'repo',
+        notional_amount: 1000,
+        price: 10,
+        side: 'sell',
+        counterparties: ['cp1'],
+        symbol: 'BBB'
+      })
     expect(res.statusCode).toBe(201)
     expect(res.body.trade).toBeDefined()
   })
