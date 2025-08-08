@@ -11,7 +11,67 @@ jest.mock('./middlewares/authenticate', () => (req, res, next) => {
   next()
 })
 jest.mock('./webhooks', () => ({ triggerWebhooks: jest.fn() }))
-
+jest.mock('./db', () => {
+  const db = { trades: [], trade_participants: [], trade_settlements: [] }
+  let id = 1
+  function from(table) {
+    const data = db[table]
+    const builder = {
+      _filters: [],
+      insert(records) {
+        const rows = records.map(r => ({ id: String(id++), ...r }))
+        data.push(...rows)
+        return {
+          select() {
+            return {
+              single() {
+                return Promise.resolve({ data: rows[0], error: null })
+              }
+            }
+          }
+        }
+      },
+      select() {
+        let rows = [...data]
+        for (const f of builder._filters) {
+          rows = rows.filter(r => r[f.col] === f.val)
+        }
+        return Promise.resolve({ data: rows, error: null })
+      },
+      update(values) {
+        return {
+          eq(col, val) {
+            const row = data.find(r => r[col] === val)
+            if (row) Object.assign(row, values)
+            return {
+              select() {
+                return {
+                  single() {
+                    return Promise.resolve({ data: row || null, error: row ? null : { message: 'not found' } })
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      eq(col, val) {
+        builder._filters.push({ col, val })
+        return builder
+      }
+    }
+    return builder
+  }
+  return {
+    supabase: { from },
+    __reset() {
+      db.trades = []
+      db.trade_participants = []
+      db.trade_settlements = []
+      id = 1
+    }
+  }
+})
 const fs = require('fs')
 const path = require('path')
 const request = require('supertest')
@@ -38,7 +98,9 @@ describe('Trading API', () => {
     delete process.env.KYC_API_KEY
     delete global.fetch
     app = buildApp()
+    require('./db').__reset()
   })
+  
 
   afterEach(() => {
     if (fs.existsSync(AUDIT_PATH)) fs.unlinkSync(AUDIT_PATH)
@@ -48,26 +110,26 @@ describe('Trading API', () => {
     it('creates a trade with valid payload', async () => {
       const res = await request(app)
         .post('/api/trades')
-        .send({ symbol: 'AAPL', quantity: 10, price: 150 })
+        .send({ trade_type: 'loan_sale', notional_amount: 1500 })
       expect(res.statusCode).toBe(201)
-      expect(res.body.trade.symbol).toBe('AAPL')
+      expect(res.body.trade.trade_type).toBe('loan_sale')
     })
 
     it('rejects trade with missing fields', async () => {
       const res = await request(app)
         .post('/api/trades')
-        .send({ quantity: 5 })
+        .send({ notional_amount: 5 })
       expect(res.statusCode).toBe(400)
     })
   })
 
   describe('listing trades with filters', () => {
-    it('filters by symbol and status', async () => {
-      await request(app).post('/api/trades').send({ symbol: 'AAA', quantity: 1, price: 1 })
-      const created = await request(app).post('/api/trades').send({ symbol: 'BBB', quantity: 2, price: 1 })
+     it('filters by type and status', async () => {
+      await request(app).post('/api/trades').send({ trade_type: 'loan_sale', notional_amount: 1 })
+      const created = await request(app).post('/api/trades').send({ trade_type: 'repo', notional_amount: 2 })
       await request(app).post(`/api/trades/${created.body.trade.id}/settle`)
 
-      let res = await request(app).get('/api/trades?symbol=AAA')
+      let res = await request(app).get('/api/trades?trade_type=loan_sale')
       expect(res.body.trades).toHaveLength(1)
       expect(res.body.trades[0].symbol).toBe('AAA')
 
@@ -81,7 +143,7 @@ describe('Trading API', () => {
     it('settles a trade after creation', async () => {
       const created = await request(app)
         .post('/api/trades')
-        .send({ symbol: 'XYZ', quantity: 3, price: 100 })
+        .send({ trade_type: 'repo', notional_amount: 300 })
       const id = created.body.trade.id
 
       const res = await request(app).post(`/api/trades/${id}/settle`)
@@ -104,7 +166,7 @@ describe('Trading API', () => {
       fetch.mockResolvedValue({ ok: true, json: async () => ({ passed: false }) })
       const res = await request(app)
         .post('/api/trades')
-        .send({ symbol: 'FAIL', quantity: 1, price: 1, counterparties: ['cp1'] })
+       .send({ trade_type: 'loan_sale', notional_amount: 1, counterparties: ['cp1'] })
       expect(res.statusCode).toBe(400)
 
       const settle = await request(app).post('/api/trades/1/settle')
@@ -115,7 +177,7 @@ describe('Trading API', () => {
       fetch.mockResolvedValue({ ok: true, json: async () => ({ passed: true }) })
       const created = await request(app)
         .post('/api/trades')
-        .send({ symbol: 'PASS', quantity: 1, price: 1, counterparties: ['cp1'] })
+        .send({ trade_type: 'loan_sale', notional_amount: 1, counterparties: ['cp1'] })
       expect(created.statusCode).toBe(201)
 
       const id = created.body.trade.id
