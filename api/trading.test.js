@@ -110,7 +110,15 @@ describe('Trading API', () => {
     it('creates a trade with valid payload', async () => {
       const res = await request(app)
         .post('/api/trades')
-        .send({ trade_type: 'loan_sale', notional_amount: 1500 })
+         .send({
+          trade_type: 'loan_sale',
+          notional_amount: 1500,
+          price: 100,
+          side: 'buy',
+          counterparties: ['cp1'],
+          symbol: 'AAA',
+          quantity: 10
+        })
       expect(res.statusCode).toBe(201)
       expect(res.body.trade.trade_type).toBe('loan_sale')
     })
@@ -118,15 +126,54 @@ describe('Trading API', () => {
     it('rejects trade with missing fields', async () => {
       const res = await request(app)
         .post('/api/trades')
-        .send({ notional_amount: 5 })
+        .send({ notional_amount: 5, price: 10, side: 'buy', counterparties: ['cp1'] })
+      expect(res.statusCode).toBe(400)
+    })
+
+    it('rejects trade without price', async () => {
+      const res = await request(app)
+        .post('/api/trades')
+        .send({ trade_type: 'loan_sale', notional_amount: 5, side: 'buy', counterparties: ['cp1'] })
+      expect(res.statusCode).toBe(400)
+    })
+
+    it('rejects trade without side', async () => {
+      const res = await request(app)
+        .post('/api/trades')
+        .send({ trade_type: 'loan_sale', notional_amount: 5, price: 10, counterparties: ['cp1'] })
+      expect(res.statusCode).toBe(400)
+    })
+
+    it('rejects trade without counterparties', async () => {
+      const res = await request(app)
+        .post('/api/trades')
+        .send({ trade_type: 'loan_sale', notional_amount: 5, price: 10, side: 'buy' })
       expect(res.statusCode).toBe(400)
     })
   })
 
   describe('listing trades with filters', () => {
      it('filters by type and status', async () => {
-      await request(app).post('/api/trades').send({ trade_type: 'loan_sale', notional_amount: 1 })
-      const created = await request(app).post('/api/trades').send({ trade_type: 'repo', notional_amount: 2 })
+       await request(app)
+        .post('/api/trades')
+        .send({
+          trade_type: 'loan_sale',
+          notional_amount: 1,
+          price: 10,
+          side: 'buy',
+          counterparties: ['cp1'],
+          symbol: 'AAA'
+        })
+      const created = await request(app)
+        .post('/api/trades')
+        .send({
+          trade_type: 'repo',
+          notional_amount: 2,
+          price: 20,
+          side: 'sell',
+          counterparties: ['cp2'],
+          symbol: 'BBB'
+        })
       await request(app).post(`/api/trades/${created.body.trade.id}/settle`)
 
       let res = await request(app).get('/api/trades?trade_type=loan_sale')
@@ -143,7 +190,14 @@ describe('Trading API', () => {
     it('settles a trade after creation', async () => {
       const created = await request(app)
         .post('/api/trades')
-        .send({ trade_type: 'repo', notional_amount: 300 })
+            .send({
+          trade_type: 'repo',
+          notional_amount: 300,
+          price: 30,
+          side: 'buy',
+          counterparties: ['cp1'],
+          symbol: 'CCC'
+        })
       const id = created.body.trade.id
 
       const res = await request(app).post(`/api/trades/${id}/settle`)
@@ -166,7 +220,14 @@ describe('Trading API', () => {
       fetch.mockResolvedValue({ ok: true, json: async () => ({ passed: false }) })
       const res = await request(app)
         .post('/api/trades')
-       .send({ trade_type: 'loan_sale', notional_amount: 1, counterparties: ['cp1'] })
+       .send({
+          trade_type: 'loan_sale',
+          notional_amount: 1,
+          price: 10,
+          side: 'buy',
+          counterparties: ['cp1'],
+          symbol: 'AAA'
+        })
       expect(res.statusCode).toBe(400)
 
       const settle = await request(app).post('/api/trades/1/settle')
@@ -177,7 +238,14 @@ describe('Trading API', () => {
       fetch.mockResolvedValue({ ok: true, json: async () => ({ passed: true }) })
       const created = await request(app)
         .post('/api/trades')
-        .send({ trade_type: 'loan_sale', notional_amount: 1, counterparties: ['cp1'] })
+      .send({
+          trade_type: 'loan_sale',
+          notional_amount: 1,
+          price: 10,
+          side: 'buy',
+          counterparties: ['cp1'],
+          symbol: 'AAA'
+        })
       expect(created.statusCode).toBe(201)
 
       const id = created.body.trade.id
