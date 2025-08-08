@@ -3,11 +3,9 @@ const authenticate = require('../middlewares/authenticate');
 const { triggerWebhooks } = require('../webhooks');
 const collabServer = require('../collabServer');
 const { validateTrade } = require('../compliance');
+const { supabase } = require('../db');
 
 const router = express.Router();
-
-const tradesByOrg = {};
-let nextTradeId = 1;
 
 router.use(authenticate);
 router.use((req, res, next) => {
@@ -21,26 +19,22 @@ router.use((req, res, next) => {
 
 // Submit a trade order
 router.post('/trades', async (req, res) => {
-   const { symbol, quantity, price, side, counterparties } = req.body || {};
-  if (!symbol || quantity === undefined) {
-    return res.status(400).json({ message: 'Missing symbol or quantity' });
+   const { trade_type, notional_amount, counterparties } = req.body || {};
+  if (!trade_type || notional_amount === undefined) {
+    return res.status(400).json({ message: 'Missing trade_type or notional_amount' });
   }
 
-  const trade = {
-    id: nextTradeId++,
-    symbol,
-    quantity,
-    price,
-    side,
+    const tradeForValidation = {
+    ...req.body,
+    trade_type,
+    notional_amount,
     counterparties: counterparties || [],
-    orgId: req.orgId,
-    status: 'pending',
-    created_at: new Date().toISOString()
+    orgId: req.orgId
   };
 
-    let validation;
+   let validation;
   try {
-    validation = await validateTrade(trade);
+   validation = await validateTrade(tradeForValidation);
   } catch (err) {
     console.error('Compliance check error:', err);
     return res.status(502).json({ message: 'Compliance service failed' });
@@ -49,38 +43,98 @@ router.post('/trades', async (req, res) => {
     return res.status(400).json({ message: validation.message });
   }
 
-  const arr = tradesByOrg[req.orgId] || (tradesByOrg[req.orgId] = []);
-  arr.push(trade);
+   const { data: tradeRow, error } = await supabase
+    .from('trades')
+    .insert([{ trade_type, notional_amount, status: 'pending' }])
+    .select()
+    .single();
+
+  if (error) {
+    return res.status(500).json({ message: 'Failed to create trade' });
+  }
+
+  if (counterparties && counterparties.length) {
+    await supabase.from('trade_participants').insert(
+      counterparties.map(cp => ({
+        trade_id: tradeRow.id,
+        counterparty_id: cp,
+        role: 'counterparty'
+      }))
+    );
+  }
+
+  const trade = {
+    id: tradeRow.id,
+    trade_type,
+    notional_amount,
+    status: tradeRow.status,
+    counterparties: counterparties || [],
+    created_at: tradeRow.created_at
+  };
 
   await triggerWebhooks('trade.created', { trade, organization_id: req.orgId });
-  // Broadcast to any websocket clients that a trade was created
   collabServer.broadcast && collabServer.broadcast({ type: 'trade.created', trade });
   
   res.status(201).json({ trade });
 });
 
 // List or filter trades
-router.get('/trades', (req, res) => {
-  const { status, symbol } = req.query;
-  let trades = tradesByOrg[req.orgId] || [];
-  if (status) trades = trades.filter(t => t.status === status);
-  if (symbol) trades = trades.filter(t => t.symbol === symbol);
+router.get('/trades', async (req, res) => {
+  const { status, trade_type } = req.query;
+  let query = supabase.from('trades');
+  if (status) query = query.eq('status', status);
+  if (trade_type) query = query.eq('trade_type', trade_type);
+
+  const { data: tradeRows, error } = await query.select('*');
+  if (error) {
+    return res.status(500).json({ message: 'Failed to list trades' });
+  }
+
+  const trades = await Promise.all(
+    (tradeRows || []).map(async t => {
+      const { data: participants } = await supabase
+        .from('trade_participants')
+        .eq('trade_id', t.id)
+        .select('counterparty_id');
+      return {
+        ...t,
+        counterparties: (participants || []).map(p => p.counterparty_id)
+      };
+    })
+  );
+
   res.json({ trades });
 });
 
 // Finalize a trade
 router.post('/trades/:id/settle', async (req, res) => {
   const { id } = req.params;
-  const trades = tradesByOrg[req.orgId] || [];
-  const trade = trades.find(t => t.id === parseInt(id, 10));
-  if (!trade) return res.status(404).json({ message: 'Trade not found' });
+   const { data: tradeRow } = await supabase
+    .from('trades')
+    .update({ status: 'settled', updated_at: new Date().toISOString() })
+    .eq('id', id)
+    .select()
+    .single();
 
-  trade.status = 'settled';
-  trade.settled_at = new Date().toISOString();
+  if (!tradeRow) return res.status(404).json({ message: 'Trade not found' });
+
+  await supabase
+    .from('trade_settlements')
+    .insert([{ trade_id: id, settlement_date: new Date().toISOString(), status: 'settled' }]);
+
+  const { data: participants } = await supabase
+    .from('trade_participants')
+    .eq('trade_id', id)
+    .select('counterparty_id');
+
+  const trade = {
+    ...tradeRow,
+    counterparties: (participants || []).map(p => p.counterparty_id)
+  };
 
   await triggerWebhooks('trade.settled', { trade, organization_id: req.orgId });
- collabServer.broadcast && collabServer.broadcast({ type: 'trade.settled', trade });
-  
+  collabServer.broadcast && collabServer.broadcast({ type: 'trade.settled', trade });
+
   res.json({ trade });
 });
 
