@@ -359,7 +359,7 @@
           "side": { "type": "string" },
           "counterparties": { "type": "array", "items": { "type": "string" } }
         },
-        "required": ["symbol", "quantity"]
+         "required": ["symbol", "quantity", "price", "side", "counterparties"]
       }
     }
   }
