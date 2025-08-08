@@ -19,20 +19,40 @@ router.use((req, res, next) => {
 
 // Submit a trade order
 router.post('/trades', async (req, res) => {
-   const { trade_type, notional_amount, counterparties } = req.body || {};
-  if (!trade_type || notional_amount === undefined) {
-    return res.status(400).json({ message: 'Missing trade_type or notional_amount' });
+   const {
+    trade_type,
+    notional_amount,
+    symbol,
+    quantity,
+    price,
+    side,
+    counterparties
+  } = req.body || {};
+
+  if (
+    !trade_type ||
+    notional_amount === undefined ||
+    price === undefined ||
+    !side ||
+    !Array.isArray(counterparties) ||
+    counterparties.length === 0
+  ) {
+    return res
+      .status(400)
+      .json({ message: 'Missing trade_type, notional_amount, price, side or counterparties' });
   }
 
-    const tradeForValidation = {
+   const tradeForValidation = {
     ...req.body,
     trade_type,
     notional_amount,
-    counterparties: counterparties || [],
+    price,
+    side,
+    counterparties,
     orgId: req.orgId
   };
 
-   let validation;
+  let validation;
   try {
    validation = await validateTrade(tradeForValidation);
   } catch (err) {
@@ -43,9 +63,19 @@ router.post('/trades', async (req, res) => {
     return res.status(400).json({ message: validation.message });
   }
 
-   const { data: tradeRow, error } = await supabase
+  const { data: tradeRow, error } = await supabase
     .from('trades')
-    .insert([{ trade_type, notional_amount, status: 'pending' }])
+    .insert([
+      {
+        trade_type,
+        notional_amount,
+        symbol,
+        quantity,
+        price,
+        side,
+        status: 'pending'
+      }
+    ])
     .select()
     .single();
 
@@ -53,22 +83,26 @@ router.post('/trades', async (req, res) => {
     return res.status(500).json({ message: 'Failed to create trade' });
   }
 
-  if (counterparties && counterparties.length) {
-    await supabase.from('trade_participants').insert(
+  await supabase
+    .from('trade_participants')
+    .insert(
       counterparties.map(cp => ({
         trade_id: tradeRow.id,
         counterparty_id: cp,
         role: 'counterparty'
       }))
     );
-  }
 
   const trade = {
     id: tradeRow.id,
     trade_type,
     notional_amount,
+    symbol,
+    quantity,
+    price,
+    side,
     status: tradeRow.status,
-    counterparties: counterparties || [],
+    counterparties,
     created_at: tradeRow.created_at
   };
 
