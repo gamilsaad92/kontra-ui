@@ -98,7 +98,7 @@ export default function DashboardLayout() {
     Collections: () => <CollectionsTable refresh={refreshKey} />,
     'Market Analysis': MarketAnalysis,
     'Live Analytics': RealTimeAnalyticsDashboard,
-    Trades: Trades,
+      ...(isFeatureEnabled('trading') ? { Trades } : {}),
     'Asset Management': AssetManagement,
     'Guest CRM': () => (isFeatureEnabled('hospitality') ? <GuestCRM /> : null),
     'Guest Chat': () => (isFeatureEnabled('hospitality') ? <GuestChat /> : null),
