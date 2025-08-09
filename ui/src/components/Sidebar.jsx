@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { isFeatureEnabled } from '../lib/featureFlags';
 import { toPath } from '../lib/navConfig';
@@ -40,16 +40,44 @@ export default function Sidebar({
     );
   }
     
-  const frequentItems = navItems
-    .filter(i => usage[i.label])
+  const [openGroups, setOpenGroups] = useState({});
+
+  const allFrequent = [];
+  navItems.forEach(item => {
+    if (item.sub) {
+      item.sub.forEach(sub => {
+        if (usage[sub]) allFrequent.push({ label: sub, icon: item.icon });
+      });
+    } else if (usage[item.label]) {
+      allFrequent.push(item);
+    }
+  });
+  const frequentItems = allFrequent
     .sort((a, b) => usage[b.label] - usage[a.label])
     .slice(0, 3);
+   const frequentLabels = new Set(frequentItems.map(i => i.label));
 
-  const renderItem = item => {
-    const label = item.sub ? item.sub[0] : item.label;
+  const renderLink = (label, icon) => {
     const path = toPath(label);
     const active = location.pathname === path;
+        return (
+      <Link
+        key={label}
+        to={path}
+        className={`flex items-center w-full px-3 py-2 hover:bg-gray-700 rounded ${active ? 'bg-gray-700 text-white' : 'text-gray-300'}`}
+        title={label}
+        onClick={() => recordUsage(label)}
+      >
+        {icon && <span className="text-lg">{icon}</span>}
+        {sidebarOpen && <span className={icon ? 'ml-2' : ''}>{label}</span>}
+        {!icon && !sidebarOpen && <span className="text-lg">•</span>}
+      </Link>
+    );
+  };
+
+  const renderItem = item => {
     if (item.href) {
+      const active = location.pathname === item.href;
       return (
         <a
           key={item.label}
@@ -65,18 +93,35 @@ export default function Sidebar({
         </a>
       );
     }
-    return (
-      <Link
-        key={item.label}
-        to={path}
-        className={`flex items-center w-full px-3 py-2 hover:bg-gray-700 rounded ${active ? 'bg-gray-700 text-white' : 'text-gray-300'}`}
-        title={item.label}
-        onClick={() => recordUsage(item.label)}
-      >
-        <span className="text-lg">{item.icon}</span>
-        {sidebarOpen && <span className="ml-2">{item.label}</span>}
-      </Link>
-    );
+
+    if (item.sub) {
+      const subLinks = item.sub.filter(sub => !frequentLabels.has(sub));
+      if (subLinks.length === 0) return null;
+      const activeSub = subLinks.some(sub => location.pathname === toPath(sub));
+      const isOpen = openGroups[item.label] ?? activeSub;
+      const toggle = () =>
+        setOpenGroups(g => ({ ...g, [item.label]: !g[item.label] }));
+      return (
+        <div key={item.label}>
+          <button
+            onClick={toggle}
+            className={`flex items-center w-full px-3 py-2 hover:bg-gray-700 rounded ${activeSub ? 'bg-gray-700 text-white' : 'text-gray-300'}`}
+            title={item.label}
+          >
+            <span className="text-lg">{item.icon}</span>
+            {sidebarOpen && <span className="ml-2">{item.label}</span>}
+          </button>
+          {isOpen && (
+            <div className="ml-4 space-y-1">
+              {subLinks.map(sub => renderLink(sub))}
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    if (frequentLabels.has(item.label)) return null;
+    return renderLink(item.label, item.icon);
   };
 
   return (
@@ -103,13 +148,12 @@ export default function Sidebar({
       <nav className="flex-1 overflow-auto py-4 space-y-1">
         {frequentItems.length > 0 && (
           <div className="mb-2 space-y-1">
-            {frequentItems.map(renderItem)}
+           {frequentItems.map(item => renderLink(item.label, item.icon))}
             <hr className="border-gray-700" />
           </div>
         )}
         {navItems
           .filter(item => !item.flag || isFeatureEnabled(item.flag))
-          .filter(item => !frequentItems.includes(item))
           .map(renderItem)}
         {supabase && (
           <button
