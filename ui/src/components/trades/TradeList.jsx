@@ -16,7 +16,7 @@ export default function TradeList({ trades = [], title, onSettle }) {
               <div className="flex flex-col">
                 <span className="font-medium">{trade.symbol}</span>
                 <span className="text-sm text-gray-600">
-                  Qty: {trade.quantity} @ {trade.price}
+                 {trade.trade_type} – Notional: {trade.notional_amount} Qty: {trade.quantity} @ {trade.price}
                 </span>
               </div>
               <div className="flex items-center space-x-2">
