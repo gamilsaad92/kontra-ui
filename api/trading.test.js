@@ -11,6 +11,7 @@ jest.mock('./middlewares/authenticate', () => (req, res, next) => {
   next()
 })
 jest.mock('./webhooks', () => ({ triggerWebhooks: jest.fn() }))
+jest.mock('./collabServer', () => ({ broadcast: jest.fn() }))
 jest.mock('./db', () => {
   const db = { trades: [], trade_participants: [], trade_settlements: [] }
   let id = 1
@@ -190,7 +191,7 @@ describe('Trading API', () => {
     it('settles a trade after creation', async () => {
       const created = await request(app)
         .post('/api/trades')
-            .send({
+       .send({
           trade_type: 'repo',
           notional_amount: 300,
           price: 30,
@@ -203,6 +204,14 @@ describe('Trading API', () => {
       const res = await request(app).post(`/api/trades/${id}/settle`)
       expect(res.statusCode).toBe(200)
       expect(res.body.trade.status).toBe('settled')
+      
+      const collabServer = require('./collabServer')
+      expect(collabServer.broadcast).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'trade.settled',
+          trade: expect.objectContaining({ id })
+        })
+      )
     })
   })
 
