@@ -1,6 +1,6 @@
 import React, { useState, useContext, useEffect, lazy, Suspense } from 'react';
 import { AuthContext } from '../lib/authContext';
-import { Routes, Route, useNavigate } from 'react-router-dom';
+import { Routes, Route, useNavigate, useLocation } from 'react-router-dom';
 import VirtualAssistant from './VirtualAssistant';
 import SuggestFeatureWidget from './SuggestFeatureWidget';
 import Sidebar from './Sidebar';
@@ -32,7 +32,8 @@ const GuestChat = lazy(() => import('./GuestChat'));
 export default function DashboardLayout() {
   const { session, supabase } = useContext(AuthContext);
   const navigate = useNavigate();
-
+  const location = useLocation();
+  
   const [department, setDepartment] = useState(
    () => (session?.user?.user_metadata?.role === 'hospitality' ? 'hospitality' : 'finance')
   );
@@ -44,11 +45,19 @@ export default function DashboardLayout() {
 
   useEffect(() => {
     const firstItem = navItems[0];
-    if (firstItem) {
+    const navSet = new Set(
+      navItems.flatMap(item =>
+        item.sub ? item.sub.map(toPath) : [toPath(item.label)]
+      )
+    );
+    if (
+      firstItem &&
+      (location.pathname === '/' || !navSet.has(location.pathname))
+    ) {
       const targetLabel = firstItem.sub ? firstItem.sub[0] : firstItem.label;
       navigate(toPath(targetLabel));
     }
-  }, [department]);
+  }, [department, location.pathname]);
 
   const pages = {
     Dashboard: DashboardHome,
