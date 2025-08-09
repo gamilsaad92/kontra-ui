@@ -168,7 +168,16 @@
           "required": true,
           "content": {
             "application/json": {
-              "schema": { "$ref": "#/components/schemas/TradeInput" }
+             "schema": { "$ref": "#/components/schemas/TradeInput" },
+              "example": {
+                "trade_type": "repo",
+                "notional_amount": 1000,
+                "symbol": "AAPL",
+                "quantity": 10,
+                "price": 150,
+                "side": "buy",
+                "counterparties": ["CP-1"]
+              }
             }
           }
         },
@@ -182,6 +191,20 @@
                   "properties": {
                     "trade": { "$ref": "#/components/schemas/Trade" }
                   }
+                  },
+                "example": {
+                  "trade": {
+                    "id": 1,
+                    "trade_type": "repo",
+                    "notional_amount": 1000,
+                    "symbol": "AAPL",
+                    "quantity": 10,
+                    "price": 150,
+                    "side": "buy",
+                    "counterparties": ["CP-1"],
+                    "status": "pending",
+                    "created_at": "2024-01-01T00:00:00.000Z"
+                  }                
                 }
               }
             }
@@ -192,7 +215,7 @@
         "summary": "List or filter trades",
         "parameters": [
           { "in": "query", "name": "status", "schema": { "type": "string" } },
-          { "in": "query", "name": "symbol", "schema": { "type": "string" } }
+            { "in": "query", "name": "trade_type", "schema": { "type": "string" } }
         ],
         "responses": {
           "200": {
@@ -207,6 +230,22 @@
                       "items": { "$ref": "#/components/schemas/Trade" }
                     }
                   }
+                },
+                "example": {
+                  "trades": [
+                    {
+                      "id": 1,
+                      "trade_type": "repo",
+                      "notional_amount": 1000,
+                      "symbol": "AAPL",
+                      "quantity": 10,
+                      "price": 150,
+                      "side": "buy",
+                      "counterparties": ["CP-1"],
+                      "status": "pending",
+                      "created_at": "2024-01-01T00:00:00.000Z"
+                    }
+                  ]              
                 }
               }
             }
@@ -230,6 +269,21 @@
                   "properties": {
                     "trade": { "$ref": "#/components/schemas/Trade" }
                   }
+                      },
+                "example": {
+                  "trade": {
+                    "id": 1,
+                    "trade_type": "repo",
+                    "notional_amount": 1000,
+                    "symbol": "AAPL",
+                    "quantity": 10,
+                    "price": 150,
+                    "side": "buy",
+                    "counterparties": ["CP-1"],
+                    "status": "settled",
+                    "created_at": "2024-01-01T00:00:00.000Z",
+                    "updated_at": "2024-01-02T00:00:00.000Z"
+                  }            
                 }
               }
             }
@@ -339,6 +393,8 @@
         "type": "object",
         "properties": {
           "id": { "type": "integer" },
+          "trade_type": { "type": "string" },
+          "notional_amount": { "type": "number" },  
           "symbol": { "type": "string" },
           "quantity": { "type": "number" },
           "price": { "type": "number" },
@@ -347,19 +403,21 @@
           "status": { "type": "string" },
           "created_at": { "type": "string", "format": "date-time" },
           "settled_at": { "type": "string", "format": "date-time" }
-        },
-        "required": ["id", "symbol", "quantity", "status", "created_at"]
+        },    
+         "required": ["id", "trade_type", "notional_amount", "symbol", "quantity", "status", "created_at"]
       },
       "TradeInput": {
         "type": "object",
         "properties": {
+          "trade_type": { "type": "string" },
+          "notional_amount": { "type": "number" },     
           "symbol": { "type": "string" },
           "quantity": { "type": "number" },
           "price": { "type": "number" },
           "side": { "type": "string" },
           "counterparties": { "type": "array", "items": { "type": "string" } }
         },
-         "required": ["symbol", "quantity", "price", "side", "counterparties"]
+         "required": ["trade_type", "notional_amount", "symbol", "quantity", "price", "side", "counterparties"]
       }
     }
   }
