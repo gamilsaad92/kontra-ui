@@ -113,15 +113,28 @@ If KYC/AML checks are desired, also enable the `kyc` flag and provide `KYC_API_U
   curl -X POST $API_URL/api/trades \
     -H "Content-Type: application/json" \
     -H "X-Org-Id: 1" \
-    -d '{"symbol":"AAPL","quantity":10,"price":150,"side":"buy","counterparties":["CP-1"]}'
+       -d '{"trade_type":"repo","notional_amount":1000,"symbol":"AAPL","quantity":10,"price":150,"side":"buy","counterparties":["CP-1"]}'
   ```
   Response:
   ```json
-  {"trade":{"id":1,"symbol":"AAPL","quantity":10,"price":150,"side":"buy","counterparties":["CP-1"],"status":"pending","created_at":"2024-01-01T00:00:00.000Z"}}
+   {"trade":{"id":1,"trade_type":"repo","notional_amount":1000,"symbol":"AAPL","quantity":10,"price":150,"side":"buy","counterparties":["CP-1"],"status":"pending","created_at":"2024-01-01T00:00:00.000Z"}}
   ```
-* `GET /api/trades` – list trades with optional `status` or `symbol` query parameters.
+* `GET /api/trades` – list trades with optional `status` or `trade_type` query parameters.
+  ```bash
+  curl "$API_URL/api/trades?trade_type=repo"
+  ```
+  Response:
+  ```json
+  {"trades":[{"id":1,"trade_type":"repo","notional_amount":1000,"symbol":"AAPL","quantity":10,"price":150,"side":"buy","counterparties":["CP-1"],"status":"pending","created_at":"2024-01-01T00:00:00.000Z"}]}
+  ```
 * `POST /api/trades/{id}/settle` – finalize a trade and mark it settled.
-
+  ```bash
+  curl -X POST $API_URL/api/trades/1/settle
+  ```
+  Response:
+  ```json
+  {"trade":{"id":1,"trade_type":"repo","notional_amount":1000,"symbol":"AAPL","quantity":10,"price":150,"side":"buy","counterparties":["CP-1"],"status":"settled","created_at":"2024-01-01T00:00:00.000Z","updated_at":"2024-01-02T00:00:00.000Z"}}
+  ```
 ### Webhook events
 
 Register webhooks via `/api/webhooks` to receive trading notifications:
