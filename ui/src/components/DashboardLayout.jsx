@@ -28,6 +28,15 @@ const AssetManagement = lazy(() => import('../routes/AssetManagement'));
 const Trades = lazy(() => import('../routes/Trades'));
 const GuestCRM = lazy(() => import('./GuestCRM'));
 const GuestChat = lazy(() => import('./GuestChat'));
+const EscrowDashboard = lazy(() => import('./EscrowDashboard'));
+const AssetRiskTable = lazy(() => import('../modules/assets/AssetRiskTable'));
+const RevivedAssetsTable = lazy(() => import('./RevivedAssetsTable'));
+const CollectionsTable = lazy(() => import('./CollectionsTable'));
+const GuestReservations = lazy(() => import('./GuestReservations'));
+const BookingCalendar = lazy(() => import('./BookingCalendar'));
+const RestaurantMenu = lazy(() => import('./RestaurantMenu'));
+const StaffRestaurantDashboard = lazy(() => import('./StaffRestaurantDashboard'));
+const HospitalityDashboard = lazy(() => import('./HospitalityDashboard'));
 
 export default function DashboardLayout() {
   const { session, supabase } = useContext(AuthContext);
@@ -60,7 +69,12 @@ export default function DashboardLayout() {
   }, [department, location.pathname]);
 
   const pages = {
-    Dashboard: DashboardHome,
+     Dashboard: () =>
+      department === 'hospitality' ? (
+        <HospitalityDashboard navigateTo={label => navigate(toPath(label))} />
+      ) : (
+        <DashboardHome />
+      ),
     Loans: LoansDashboard,
     'New Application': () => (
       <LoanApplicationForm onSubmitted={() => setRefreshKey(k => k + 1)} />
@@ -78,12 +92,24 @@ export default function DashboardLayout() {
         <InvestorReportsList refresh={refreshKey} />
       </>
     ),
+   'Escrows': EscrowDashboard,
+    'Troubled Assets': AssetRiskTable,
+    'Revived Sales': RevivedAssetsTable,
+    Collections: () => <CollectionsTable refresh={refreshKey} />,
     'Market Analysis': MarketAnalysis,
     'Live Analytics': RealTimeAnalyticsDashboard,
     Trades: Trades,
     'Asset Management': AssetManagement,
     'Guest CRM': () => (isFeatureEnabled('hospitality') ? <GuestCRM /> : null),
     'Guest Chat': () => (isFeatureEnabled('hospitality') ? <GuestChat /> : null),
+        'Guest Reservations': () =>
+      isFeatureEnabled('hospitality') ? <GuestReservations /> : null,
+    'Booking Calendar': () =>
+      isFeatureEnabled('hospitality') ? <BookingCalendar /> : null,
+    'Restaurant Menu': () =>
+      isFeatureEnabled('hospitality') ? <RestaurantMenu /> : null,
+    'Restaurant Dashboard': () =>
+      isFeatureEnabled('hospitality') ? <StaffRestaurantDashboard /> : null,
     Settings: OrganizationSettings
   };
 
