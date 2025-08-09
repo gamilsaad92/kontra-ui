@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 
 export default function TradeForm({ onSubmitted }) {
+  const [tradeType, setTradeType] = useState('loan_sale');
+  const [notionalAmount, setNotionalAmount] = useState('');
   const [symbol, setSymbol] = useState('');
   const [quantity, setQuantity] = useState('');
   const [price, setPrice] = useState('');
@@ -13,6 +15,8 @@ export default function TradeForm({ onSubmitted }) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
+        trade_type: tradeType,
+        notional_amount: Number(notionalAmount),  
         symbol,
         quantity: Number(quantity),
         price: Number(price),
@@ -23,6 +27,8 @@ export default function TradeForm({ onSubmitted }) {
           .filter(Boolean)
       })
     });
+    setTradeType('loan_sale');
+    setNotionalAmount('');
     setSymbol('');
     setQuantity('');
     setPrice('');
@@ -33,6 +39,22 @@ export default function TradeForm({ onSubmitted }) {
 
   return (
     <form onSubmit={handleSubmit} className="space-y-2 mb-6">
+            <select
+        aria-label="Trade Type"
+        value={tradeType}
+        onChange={e => setTradeType(e.target.value)}
+        className="border p-2 rounded w-full"
+      >
+        <option value="loan_sale">Loan Sale</option>
+        <option value="repo">Repo</option>
+      </select>
+      <input
+        value={notionalAmount}
+        onChange={e => setNotionalAmount(e.target.value)}
+        placeholder="Notional Amount"
+        aria-label="Notional Amount"
+        className="border p-2 rounded w-full"
+      />
       <input
         value={symbol}
         onChange={e => setSymbol(e.target.value)}
