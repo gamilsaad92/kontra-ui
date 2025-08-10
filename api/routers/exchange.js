@@ -3,6 +3,7 @@ const { z } = require('../lib/zod');
 const { supabase } = require('../db');
 const authenticate = require('../middlewares/authenticate');
 const requireRole = require('../middlewares/requireRole');
+const { updateRecommendations } = require('../matchingEngine');
 
 const router = express.Router();
 
@@ -44,6 +45,12 @@ router.post('/listings', requireRole('lender_trader'), async (req, res) => {
       .select()
       .single();
     if (error) return res.status(400).json({ error: error.message });
+    
+    // Trigger recommendation refresh for this organization
+    updateRecommendations(orgId).catch(err =>
+      console.error('Update recos error:', err)
+    );
+
     res.status(201).json(data);
   } catch (err) {
     if (err instanceof z.ZodError) {
@@ -107,6 +114,11 @@ router.patch('/listings/:id', requireRole('lender_trader'), async (req, res) => 
       .select()
       .single();
     if (error) return res.status(400).json({ error: error.message });
+    
+    updateRecommendations(req.organizationId).catch(err =>
+      console.error('Update recos error:', err)
+    );
+
     res.json(data);
   } catch (err) {
     if (err instanceof z.ZodError) {
@@ -356,6 +368,11 @@ router.put('/me/preferences', async (req, res) => {
       .select()
       .single();
     if (error) return res.status(400).json({ error: error.message });
+    
+    updateRecommendations(req.organizationId).catch(err =>
+      console.error('Update recos error:', err)
+    );
+
     res.json({ preferences: data.preferences });
   } catch (err) {
     if (err instanceof z.ZodError) {
@@ -363,6 +380,30 @@ router.put('/me/preferences', async (req, res) => {
     }
     console.error('Save preferences error:', err);
     res.status(500).json({ error: 'Failed to save preferences' });
+  }
+});
+
+// Get recommendations for this organization
+router.get('/recommendations', async (req, res) => {
+  const orgId = req.organizationId;
+  const { data, error } = await supabase
+    .from('exchange_recos')
+    .select('listing_id, score')
+    .eq('organization_id', orgId)
+    .order('score', { ascending: false });
+  if (error) return res.status(400).json({ error: error.message });
+  res.json({ recommendations: data || [] });
+});
+
+// On-demand matching
+router.post('/match', async (req, res) => {
+  const orgId = req.organizationId;
+  try {
+    const recos = await updateRecommendations(orgId);
+    res.json({ recommendations: recos });
+  } catch (err) {
+    console.error('Match error:', err);
+    res.status(500).json({ error: 'Failed to run matching' });
   }
 });
 
