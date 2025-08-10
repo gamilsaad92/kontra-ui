@@ -19,22 +19,28 @@ export default function Sidebar({
   // Simple sidebar mode used by components like SimpleDashboard
   if (links) {
     const allLinks = [...links];
-    if (isFeatureEnabled('trading')) {
+  if (isFeatureEnabled('trading') && !allLinks.some(l => l.to === '/trades')) {
       allLinks.push({ label: 'Trades', to: '/trades' });
     }
     return (
-      <aside className="bg-gray-800 text-white w-64 min-h-screen flex flex-col">
+     <aside className="bg-gray-800 text-white w-64 min-h-screen flex flex-col" aria-label="Sidebar">
         <div className="p-4 text-2xl font-bold border-b border-gray-700">K Kontra</div>
-        <nav className="flex-1 p-4 space-y-2">
-          {allLinks.map(link => (
-            <Link
-              key={link.label}
-              to={link.to}
-              className="block px-3 py-2 rounded hover:bg-gray-700"
-            >
-              {link.label}
-            </Link>
-          ))}
+            <nav className="flex-1 p-4 space-y-2" aria-label="Main navigation">
+          {allLinks.map(link => {
+            const active = location.pathname === link.to;
+            return (
+              <Link
+                key={link.label}
+                to={link.to}
+                className={`block px-3 py-2 rounded hover:bg-gray-700 ${active ? 'bg-gray-700' : ''}`}
+                aria-current={active ? 'page' : undefined}
+                aria-label={link.label}
+              >
+                {link.label}
+              </Link>
+            );
+          })}  
+       
         </nav>
       </aside>
     );
