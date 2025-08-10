@@ -25,6 +25,14 @@ async function mergeTemplate(templateName, placeholders = {}) {
   return Buffer.from(content, 'utf8');
 }
 
+async function signPath(path) {
+  const { data, error } = await supabase.storage
+    .from(EXCHANGE_BUCKET)
+    .createSignedUrl(path, 60);
+  if (error) throw new Error(`Sign URL failed: ${error.message}`);
+  return data.signedUrl;
+}
+
 async function generateAndStore(tradeId, templateName, placeholders = {}) {
   const buffer = await mergeTemplate(templateName, placeholders);
   const filePath = `trades/${tradeId}/${templateName}.txt`;
@@ -32,7 +40,8 @@ async function generateAndStore(tradeId, templateName, placeholders = {}) {
     .from(EXCHANGE_BUCKET)
     .upload(filePath, buffer, { upsert: true, contentType: 'text/plain' });
   if (error) throw new Error(`Upload failed: ${error.message}`);
-  return filePath;
+  const url = await signPath(filePath);
+  return { path: filePath, url };
 }
 
 async function sendForSignature(tradeId, filePath) {
@@ -42,7 +51,8 @@ async function sendForSignature(tradeId, filePath) {
     .from(EXCHANGE_BUCKET)
     .copy(filePath, signedPath);
   if (copyError) throw new Error(`Signature storage failed: ${copyError.message}`);
-  return signedPath;
+  const url = await signPath(signedPath);
+  return { path: signedPath, url };
 }
 
 async function storeSigned(tradeId, fileName, buffer) {
@@ -51,7 +61,8 @@ async function storeSigned(tradeId, fileName, buffer) {
     .from(EXCHANGE_BUCKET)
     .upload(path, buffer, { upsert: true });
   if (error) throw new Error(`Signed upload failed: ${error.message}`);
-  return path;
+  const url = await signPath(path);
+  return { path, url };
 }
 
 module.exports = {
@@ -59,5 +70,6 @@ module.exports = {
   mergeTemplate,
   generateAndStore,
   sendForSignature,
-  storeSigned
+  storeSigned,
+  signPath
 };
