@@ -6,6 +6,7 @@ const requireRole = require('../middlewares/requireRole');
 const { updateRecommendations } = require('../matchingEngine');
 const { generateAndStore, sendForSignature } = require('../documentService');
 const { v4: uuidv4 } = require('uuid');
+const { sendEmail, sendSms } = require('../communications');
 
 const router = express.Router();
 
@@ -46,6 +47,7 @@ const listingSchema = z.object({
   rate_type: z.enum(['fixed', 'floating']),
   index_rate: z.string().optional(),
   spread_bps: z.number().int().optional(),
+  coupon_bps: z.number().int().optional(),
   maturity_date: z.string().optional(),
   borrower_name: z.string().optional(),
   sector: z.string().optional(),
@@ -58,6 +60,62 @@ const listingSchema = z.object({
   compliance_hold: z.boolean().default(true)
 });
 const listingUpdateSchema = listingSchema.omit({ compliance_hold: true }).partial();
+
+async function notifySavedSearches(listing) {
+  const { data: searches } = await supabase
+    .from('exchange_saved_searches')
+    .select('*');
+  if (!searches) return;
+  for (const s of searches) {
+    const { search_text, filters, notify_email, notify_sms, user_id } = s;
+    if (!matchesSearch(listing, search_text, filters)) continue;
+    const { data: user } = await supabase
+      .from('users')
+      .select('email, phone')
+      .eq('id', user_id)
+      .single();
+    const msg = `New listing matches your saved search: ${listing.title}`;
+    if (notify_email && user?.email) {
+      await sendEmail(user.email, 'New Listing Match', msg);
+    }
+    if (notify_sms && user?.phone) {
+      await sendSms(user.phone, msg);
+    }
+  }
+}
+
+function matchesSearch(listing, text, filters = {}) {
+  if (text) {
+    const haystack = [
+      listing.title,
+      listing.description,
+      listing.sector,
+      listing.borrower_name,
+      listing.geography
+    ]
+      .filter(Boolean)
+      .join(' ')
+      .toLowerCase();
+    if (!haystack.includes(text.toLowerCase())) return false;
+  }
+  if (filters?.par_amount_min && listing.par_amount < filters.par_amount_min)
+    return false;
+  if (filters?.par_amount_max && listing.par_amount > filters.par_amount_max)
+    return false;
+  if (filters?.coupon_bps_min && (listing.coupon_bps || 0) < filters.coupon_bps_min)
+    return false;
+  if (filters?.coupon_bps_max && (listing.coupon_bps || 0) > filters.coupon_bps_max)
+    return false;
+  if (filters?.spread_bps_min && (listing.spread_bps || 0) < filters.spread_bps_min)
+    return false;
+  if (filters?.spread_bps_max && (listing.spread_bps || 0) > filters.spread_bps_max)
+    return false;
+  if (filters?.ltv_min && (listing.ltv || 0) < filters.ltv_min) return false;
+  if (filters?.ltv_max && (listing.ltv || 0) > filters.ltv_max) return false;
+  if (filters?.dscr_min && (listing.dscr || 0) < filters.dscr_min) return false;
+  if (filters?.dscr_max && (listing.dscr || 0) > filters.dscr_max) return false;
+  return true;
+}
 
 // Create listing
 router.post('/listings', requireRole('lender_trader'), async (req, res) => {
@@ -83,6 +141,10 @@ router.post('/listings', requireRole('lender_trader'), async (req, res) => {
       console.error('Update recos error:', err)
     );
 
+      notifySavedSearches(data).catch(err =>
+      console.error('Notify saved search error:', err)
+    );
+
     res.status(201).json(data);
   } catch (err) {
     if (err instanceof z.ZodError) {
@@ -95,14 +157,41 @@ router.post('/listings', requireRole('lender_trader'), async (req, res) => {
 
 // Query listings
 router.get('/listings', async (req, res) => {
-  const { page = 1, pageSize = 20, status, asset_type } = req.query;
+  const {
+    page = 1,
+    pageSize = 20,
+    status,
+    asset_type,
+    q,
+    par_min,
+    par_max,
+    coupon_min,
+    coupon_max,
+    spread_min,
+    spread_max,
+    ltv_min,
+    ltv_max,
+    dscr_min,
+    dscr_max
+  } = req.query;
   let query = supabase
     .from('exchange_listings')
     .select('*')
-    .order('created_at', { ascending: false });
+    .order('created_at', { ascending: false })
+    .eq('compliance_hold', false);
   if (status) query = query.eq('status', status);
   if (asset_type) query = query.eq('asset_type', asset_type);
-  query = query.eq('compliance_hold', false);
+ if (q) query = query.textSearch('search_vector', q);
+  if (par_min) query = query.gte('par_amount', Number(par_min));
+  if (par_max) query = query.lte('par_amount', Number(par_max));
+  if (coupon_min) query = query.gte('coupon_bps', Number(coupon_min));
+  if (coupon_max) query = query.lte('coupon_bps', Number(coupon_max));
+  if (spread_min) query = query.gte('spread_bps', Number(spread_min));
+  if (spread_max) query = query.lte('spread_bps', Number(spread_max));
+  if (ltv_min) query = query.gte('ltv', Number(ltv_min));
+  if (ltv_max) query = query.lte('ltv', Number(ltv_max));
+  if (dscr_min) query = query.gte('dscr', Number(dscr_min));
+  if (dscr_max) query = query.lte('dscr', Number(dscr_max));
   const from = (Number(page) - 1) * Number(pageSize);
   const to = from + Number(pageSize) - 1;
   const { data, error } = await query.range(from, to);
