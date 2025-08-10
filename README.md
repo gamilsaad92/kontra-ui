@@ -119,6 +119,21 @@ Supported `trade_type` values:
 - `securitization_allocation` – CLO allocation referencing a `tranche_id` and `waterfall_config`.
 - `debt_facility_draw` – draw linked to a `facility_line_id`.
 
+### Offer Accept → Trade Creation
+
+```mermaid
+sequenceDiagram
+  participant Seller
+  participant Buyer
+  participant API
+  participant Supabase
+  Seller->>API: Accept Offer
+  API->>Supabase: update offer.status = 'accepted'
+  API->>Supabase: insert exchange_trades (... 'pending_docs')
+  API-->>Buyer: Trade room link
+  API-->>Seller: Trade room link
+```
+
 * `POST /api/trades` – submit a trade order.
   ```bash
   curl -X POST $API_URL/api/trades \
