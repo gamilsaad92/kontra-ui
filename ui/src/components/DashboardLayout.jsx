@@ -36,6 +36,10 @@ const BookingCalendar = lazy(() => import('./BookingCalendar'));
 const RestaurantMenu = lazy(() => import('./RestaurantMenu'));
 const StaffRestaurantDashboard = lazy(() => import('./StaffRestaurantDashboard'));
 const HospitalityDashboard = lazy(() => import('./HospitalityDashboard'));
+const Marketplace = lazy(() => import('./exchange/Marketplace'));
+const ListingForm = lazy(() => import('./exchange/ListingForm'));
+const ListingDetail = lazy(() => import('./exchange/ListingDetail'));
+const TradeRoom = lazy(() => import('./exchange/TradeRoom'));
 
 export default function DashboardLayout() {
   const { session } = useContext(AuthContext);
@@ -103,9 +107,15 @@ export default function DashboardLayout() {
     Settings: OrganizationSettings
   };
 
-  const routes = Object.entries(pages).map(([label, Page]) => (
-    <Route key={label} path={toPath(label)} element={<Page />} />
-  ));
+   const routes = [
+    ...Object.entries(pages).map(([label, Page]) => (
+      <Route key={label} path={toPath(label)} element={<Page />} />
+    )),
+    <Route key="exchange" path="/exchange" element={<Marketplace />} />,
+    <Route key="exchange-new" path="/exchange/listings/new" element={<ListingForm />} />,
+    <Route key="exchange-detail" path="/exchange/listings/:id" element={<ListingDetail />} />,
+    <Route key="trade-room" path="/exchange/trades/:id" element={<TradeRoom />} />
+  ];
 
   return (
     <div className="flex flex-col md:flex-row min-h-screen bg-gray-900">
