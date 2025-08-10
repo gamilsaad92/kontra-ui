@@ -454,13 +454,13 @@ router.post('/trades/:id/documents', requireRole('lender_trader'), async (req, r
     const { template } = docGenSchema.parse(req.body);
     const { id } = req.params;
     const data = req.body.data || {};
-    const path = await generateAndStore(id, template, data);
+   const { path, url } = await generateAndStore(id, template, data);
     const folder = `trades/${id}`;
     await supabase
       .from('exchange_trades')
       .update({ docs_folder_id: folder })
       .eq('id', id);
-    res.json({ path });
+    res.json({ path, url });
   } catch (err) {
     if (err instanceof z.ZodError) {
       return res.status(400).json({ error: err.errors.map(e => e.message).join(', ') });
@@ -479,13 +479,13 @@ router.post('/trades/:id/sign', requireRole('lender_trader'), async (req, res) =
    try {
     const { path } = signSchema.parse(req.body);
     const { id } = req.params;
-    const signedPath = await sendForSignature(id, path);
+     const { path: signedPath, url } = await sendForSignature(id, path);
     const { error } = await supabase
       .from('exchange_trades')
       .update({ status: 'signing' })
       .eq('id', id);
     if (error) return res.status(400).json({ error: error.message });
-    res.json({ signedPath });
+     res.json({ signedPath, url });
   } catch (err) {
     if (err instanceof z.ZodError) {
       return res.status(400).json({ error: err.errors.map(e => e.message).join(', ') });
