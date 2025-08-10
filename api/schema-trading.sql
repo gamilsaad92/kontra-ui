@@ -1,3 +1,5 @@
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
 -- Trading tables for financial operations
 CREATE TABLE IF NOT EXISTS trades (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -49,8 +51,37 @@ CREATE TABLE IF NOT EXISTS exchange_trade_events (
   trade_id UUID REFERENCES exchange_trades(id) ON DELETE CASCADE,
   status TEXT,
   event_payload JSONB,
+  prev_event_hash TEXT,
+  event_hash TEXT,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- Hash chain and immutability for trade events
+CREATE OR REPLACE FUNCTION set_exchange_trade_event_hash()
+RETURNS TRIGGER AS $$
+DECLARE
+  payload TEXT;
+BEGIN
+  payload := row_to_json(NEW)::text;
+  NEW.event_hash := encode(digest(payload || coalesce(NEW.prev_event_hash,''), 'sha256'), 'hex');
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER exchange_trade_events_hash
+BEFORE INSERT ON exchange_trade_events
+FOR EACH ROW EXECUTE FUNCTION set_exchange_trade_event_hash();
+
+CREATE OR REPLACE FUNCTION prevent_exchange_trade_events_mod()
+RETURNS TRIGGER AS $$
+BEGIN
+  RAISE EXCEPTION 'exchange_trade_events are immutable';
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER exchange_trade_events_immutable
+BEFORE UPDATE OR DELETE ON exchange_trade_events
+FOR EACH ROW EXECUTE FUNCTION prevent_exchange_trade_events_mod();
 
 -- Child assets for portfolio sales
 CREATE TABLE IF NOT EXISTS exchange_trade_assets (
@@ -90,3 +121,13 @@ CREATE TABLE IF NOT EXISTS exchange_saved_searches (
   notify_sms BOOLEAN DEFAULT FALSE,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- Composite indexes for performance
+CREATE INDEX IF NOT EXISTS trades_status_created_at_idx
+  ON trades (status, created_at);
+CREATE INDEX IF NOT EXISTS exchange_trade_events_status_created_at_idx
+  ON exchange_trade_events (status, created_at);
+CREATE INDEX IF NOT EXISTS exchange_listings_sector_geography_idx
+  ON exchange_listings (sector, geography);
+CREATE INDEX IF NOT EXISTS exchange_listings_par_amount_idx
+ ON exchange_listings (par_amount);
