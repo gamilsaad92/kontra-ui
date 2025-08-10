@@ -4,6 +4,7 @@ const { supabase } = require('../db');
 const authenticate = require('../middlewares/authenticate');
 const requireRole = require('../middlewares/requireRole');
 const { updateRecommendations } = require('../matchingEngine');
+const { generateAndStore, sendForSignature } = require('../documentService');
 
 const router = express.Router();
 
@@ -215,7 +216,8 @@ const tradeSchema = z.object({
 const tradeUpdateSchema = z.object({
   settlement_date: z.string().optional(),
   documents: z.array(z.string()).optional(),
-  status: z.string().optional()
+  status: z.string().optional(),
+  docs_folder_id: z.string().optional()
 });
 
 // Create trade
@@ -273,15 +275,55 @@ router.patch('/trades/:id', requireRole('lender_trader'), async (req, res) => {
   }
 });
 
+// Generate trade documents from templates
+const docGenSchema = z.object({
+  template: z.string()
+});
+
+router.post('/trades/:id/documents', requireRole('lender_trader'), async (req, res) => {
+  try {
+    const { template } = docGenSchema.parse(req.body);
+    const { id } = req.params;
+    const data = req.body.data || {};
+    const path = await generateAndStore(id, template, data);
+    const folder = `trades/${id}`;
+    await supabase
+      .from('exchange_trades')
+      .update({ docs_folder_id: folder })
+      .eq('id', id);
+    res.json({ path });
+  } catch (err) {
+    if (err instanceof z.ZodError) {
+      return res.status(400).json({ error: err.errors.map(e => e.message).join(', ') });
+    }
+    console.error('Doc generation error:', err);
+    res.status(500).json({ error: 'Failed to generate document' });
+  }
+});
+
 // Trigger e-sign workflow
+const signSchema = z.object({
+  path: z.string()
+});
+
 router.post('/trades/:id/sign', requireRole('lender_trader'), async (req, res) => {
-  const { id } = req.params;
-  const { error } = await supabase
-    .from('exchange_trades')
-    .update({ status: 'signing' })
-    .eq('id', id);
-  if (error) return res.status(400).json({ error: error.message });
-  res.json({ signed: true });
+   try {
+    const { path } = signSchema.parse(req.body);
+    const { id } = req.params;
+    const signedPath = await sendForSignature(id, path);
+    const { error } = await supabase
+      .from('exchange_trades')
+      .update({ status: 'signing' })
+      .eq('id', id);
+    if (error) return res.status(400).json({ error: error.message });
+    res.json({ signedPath });
+  } catch (err) {
+    if (err instanceof z.ZodError) {
+      return res.status(400).json({ error: err.errors.map(e => e.message).join(', ') });
+    }
+    console.error('Sign error:', err);
+    res.status(500).json({ error: 'Failed to sign document' });
+  }
 });
 
 // Settle trade
