@@ -23,3 +23,14 @@ CREATE TABLE IF NOT EXISTS trade_settlements (
   status TEXT,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- Exchange specific settlement tracking
+ALTER TABLE IF EXISTS exchange_trades ADD COLUMN IF NOT EXISTS escrow_account_id UUID;
+
+CREATE TABLE IF NOT EXISTS exchange_trade_events (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  trade_id UUID REFERENCES exchange_trades(id) ON DELETE CASCADE,
+  status TEXT,
+  event_payload JSONB,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
