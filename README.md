@@ -109,6 +109,16 @@ FEATURE_FLAGS=trading
 
 If KYC/AML checks are desired, also enable the `kyc` flag and provide `KYC_API_URL` and `KYC_API_KEY` so counterparties can be screened.
 
+Supported `trade_type` values:
+
+- `loan_sale` – secondary loan sale settled at par × price_pct ± accrued interest.
+- `participation` – servicing remains with seller; pro‑rata distribution schedule stored in `event_payload`.
+- `syndication_assignment` – sale with agent bank consent documentation.
+- `portfolio_sale` – one trade with multiple assets tracked in `exchange_trade_assets`.
+- `repo` / `reverse_repo` – include `repo_rate_bps`, `term_days`, and `collateral_ref`; unwinds automatically.
+- `securitization_allocation` – CLO allocation referencing a `tranche_id` and `waterfall_config`.
+- `debt_facility_draw` – draw linked to a `facility_line_id`.
+
 * `POST /api/trades` – submit a trade order.
   ```bash
   curl -X POST $API_URL/api/trades \
