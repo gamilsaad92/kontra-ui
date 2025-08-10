@@ -1,8 +1,25 @@
 -- Trading tables for financial operations
 CREATE TABLE IF NOT EXISTS trades (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  trade_type TEXT CHECK (trade_type IN ('loan_sale', 'repo')),
+  trade_type TEXT CHECK (
+    trade_type IN (
+      'loan_sale',
+      'participation',
+      'syndication_assignment',
+      'portfolio_sale',
+      'repo',
+      'reverse_repo',
+      'securitization_allocation',
+      'debt_facility_draw'
+    )
+  ),
   notional_amount NUMERIC,
+   repo_rate_bps NUMERIC,
+  term_days INTEGER,
+  collateral_ref UUID,
+  tranche_id UUID,
+  waterfall_config JSONB,
+  facility_line_id UUID,
   status TEXT,
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
@@ -32,6 +49,15 @@ CREATE TABLE IF NOT EXISTS exchange_trade_events (
   trade_id UUID REFERENCES exchange_trades(id) ON DELETE CASCADE,
   status TEXT,
   event_payload JSONB,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Child assets for portfolio sales
+CREATE TABLE IF NOT EXISTS exchange_trade_assets (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  trade_id UUID REFERENCES exchange_trades(id) ON DELETE CASCADE,
+  asset_ref_id UUID NOT NULL,
+  amount NUMERIC,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
