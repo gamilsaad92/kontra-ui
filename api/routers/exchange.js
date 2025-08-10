@@ -54,9 +54,10 @@ const listingSchema = z.object({
   ltv: z.number().optional(),
   dscr: z.number().optional(),
   visibility: z.enum(['network', 'private', 'invite_only']).default('network'),
-  invitee_org_ids: z.array(z.string()).optional()
+  invitee_org_ids: z.array(z.string()).optional(),
+  compliance_hold: z.boolean().default(true)
 });
-const listingUpdateSchema = listingSchema.partial();
+const listingUpdateSchema = listingSchema.omit({ compliance_hold: true }).partial();
 
 // Create listing
 router.post('/listings', requireRole('lender_trader'), async (req, res) => {
@@ -64,9 +65,15 @@ router.post('/listings', requireRole('lender_trader'), async (req, res) => {
   const userId = req.user.id;
   try {
     const input = listingSchema.parse(req.body);
+    const { data: org } = await supabase
+      .from('organizations')
+      .select('kyc_approved')
+      .eq('id', orgId)
+      .single();
+    const hold = org?.kyc_approved ? false : true;
     const { data, error } = await supabase
       .from('exchange_listings')
-      .insert([{ ...input, organization_id: orgId, created_by: userId, status: 'listed' }])
+     .insert([{ ...input, compliance_hold: hold, organization_id: orgId, created_by: userId, status: 'listed' }])
       .select()
       .single();
     if (error) return res.status(400).json({ error: error.message });
@@ -95,6 +102,7 @@ router.get('/listings', async (req, res) => {
     .order('created_at', { ascending: false });
   if (status) query = query.eq('status', status);
   if (asset_type) query = query.eq('asset_type', asset_type);
+  query = query.eq('compliance_hold', false);
   const from = (Number(page) - 1) * Number(pageSize);
   const to = from + Number(pageSize) - 1;
   const { data, error } = await query.range(from, to);
@@ -110,7 +118,7 @@ router.get('/listings/:id', async (req, res) => {
     .select('*')
     .eq('id', id)
     .single();
-  if (error || !listing) return res.status(404).json({ error: 'Listing not found' });
+  if (error || !listing || listing.compliance_hold) return res.status(404).json({ error: 'Listing not found' });
 
   const { count: offerCount } = await supabase
     .from('exchange_offers')
@@ -154,6 +162,18 @@ router.patch('/listings/:id', requireRole('lender_trader'), async (req, res) => 
   }
 });
 
+router.post('/listings/:id/clear_hold', requireRole('compliance_officer'), async (req, res) => {
+  const { id } = req.params;
+  const { data, error } = await supabase
+    .from('exchange_listings')
+    .update({ compliance_hold: false })
+    .eq('id', id)
+    .select()
+    .single();
+  if (error) return res.status(400).json({ error: error.message });
+  res.json(data);
+});
+
 // Add to watchlist
 router.post('/listings/:id/watch', async (req, res) => {
   const userId = req.user.id;
@@ -170,7 +190,8 @@ const offerSchema = z.object({
   listing_id: z.number(),
   amount: z.number().positive(),
   price: z.number().positive(),
-  message: z.string().optional()
+  message: z.string().optional(),
+  compliance_hold: z.boolean().default(true)
 });
 const offerUpdateSchema = z.object({
   amount: z.number().positive().optional(),
@@ -207,6 +228,7 @@ router.get('/offers', async (req, res) => {
     .from('exchange_offers')
     .select('*')
     .eq('listing_id', listingId)
+    .eq('compliance_hold', false)
     .order('created_at', { ascending: false });
   if (error) return res.status(400).json({ error: error.message });
   res.json({ offers: data || [] });
@@ -231,6 +253,18 @@ router.patch('/offers/:id', requireRole('lender_trader'), async (req, res) => {
     console.error('Update offer error:', err);
     res.status(500).json({ error: 'Failed to update offer' });
   }
+});
+
+router.post('/offers/:id/clear_hold', requireRole('compliance_officer'), async (req, res) => {
+  const { id } = req.params;
+  const { data, error } = await supabase
+    .from('exchange_offers')
+    .update({ compliance_hold: false })
+    .eq('id', id)
+    .select()
+    .single();
+  if (error) return res.status(400).json({ error: error.message });
+  res.json(data);
 });
 
 // Trade schemas
@@ -259,7 +293,8 @@ router.post('/trades', requireRole('lender_trader'), async (req, res) => {
           escrow_account_id,
           created_by: userId,
           organization_id: orgId,
-          status: 'pending'
+          status: 'pending',
+          compliance_hold: true
         }
       ])
       .select()
@@ -283,7 +318,7 @@ router.get('/trades/:id', requireRole('lender_trader'), async (req, res) => {
     .select('*')
     .eq('id', id)
     .single();
-  if (error || !data) return res.status(404).json({ error: 'Trade not found' });
+ if (error || !data || data.compliance_hold) return res.status(404).json({ error: 'Trade not found' });
   res.json(data);
 });
 
@@ -306,6 +341,18 @@ router.patch('/trades/:id', requireRole('lender_trader'), async (req, res) => {
     console.error('Update trade error:', err);
     res.status(500).json({ error: 'Failed to update trade' });
   }
+});
+
+router.post('/trades/:id/clear_hold', requireRole('compliance_officer'), async (req, res) => {
+  const { id } = req.params;
+  const { data, error } = await supabase
+    .from('exchange_trades')
+    .update({ compliance_hold: false })
+    .eq('id', id)
+    .select()
+    .single();
+  if (error) return res.status(400).json({ error: error.message });
+  res.json(data);
 });
 
 // Generate trade documents from templates
