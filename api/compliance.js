@@ -117,4 +117,4 @@ async function validateTrade(trade) {
   return { valid: true };
 }
 
-module.exports = { scanForCompliance, gatherEvidence, validateTrade };
+module.exports = { scanForCompliance, gatherEvidence, validateTrade, runKycCheck };
