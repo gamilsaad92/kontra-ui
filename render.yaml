@@ -23,3 +23,13 @@ services:
         sync: false
       - key: VITE_SENTRY_DSN
         sync: false
+      - key: EXCHANGE_ENABLED
+        sync: false
+      - key: DOCSIGN_API_KEY
+        sync: false
+      - key: STORAGE_BUCKET
+        sync: false
+      - key: LISTING_MAX_DOCS
+        sync: false
+      - key: MAX_OFFER_PIECES
+        sync: false
