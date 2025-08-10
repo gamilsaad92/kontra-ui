@@ -121,7 +121,6 @@ export default function DashboardLayout() {
     <div className="flex flex-col md:flex-row min-h-screen bg-gray-900">
        <Sidebar links={navLinks} />
 
-      {/* Main Content */}
       <div className="flex flex-1 flex-col">
         <header className="flex items-center justify-between bg-gray-900 border-b border-gray-700 p-4 text-white">
           <div className="flex items-center">
@@ -145,8 +144,6 @@ export default function DashboardLayout() {
           </Suspense>
         </main>
       </div>
-
-      {/* Right-side Widgets */}
       <aside className="md:w-80 w-full border-l border-gray-700 bg-gray-800 p-2 space-y-2 text-white">
         <VirtualAssistant />
         <SuggestFeatureWidget />
