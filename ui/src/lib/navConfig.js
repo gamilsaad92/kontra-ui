@@ -14,6 +14,7 @@ export const departmentNav = {
     { label: 'Market Analysis', icon: '🏙️' },
     { label: 'Live Analytics', icon: '📈' },
     { label: 'Trades', icon: '🔄', flag: 'trading' },
+    { label: 'Loan Exchange', icon: '🔁', to: '/exchange' },
     { label: 'Asset Management', icon: '🏢' },
     { label: 'Collections', icon: '💵', sub: ['Collections'] },
     { label: 'Settings', icon: '⚙️' },
@@ -40,7 +41,10 @@ export const navLinks = Array.from(
       .flatMap(item => {
         if (item.href) return [];
         const labels = item.sub || [item.label];
-        return labels.map(label => [label, { label, to: toPath(label) }]);
+           return labels.map(label => [
+          label,
+          { label, to: item.to || toPath(label) }
+        ]);
       })
   ).values()
 );
