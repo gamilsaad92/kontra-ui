@@ -80,6 +80,7 @@ const webhooksRouter = require('./routers/webhookRoutes');
 const { router: integrationsRouter } = require('./routers/integrations');
 const subscriptionsRouter = require('./routers/subscriptions');
 const siteAnalysisRouter = require('./routers/siteAnalysis');
+const savedSearchesRouter = require('./routers/savedSearches');
 // Compliance automation is still experimental
 const complianceRouter = require('./routers/compliance');
 const otpRouter = require('./routers/otp');
@@ -432,6 +433,7 @@ app.use('/api', paymentsStripeRouter);
 app.use('/api', tradesRouter);
 app.use('/api/exchange', exchangeRouter);
 app.use('/api', subscriptionsRouter);
+app.use('/api', savedSearchesRouter);
 app.use('/api/site-analysis', siteAnalysisRouter);
 app.use('/api', analyticsRouter);
 app.use('/api', restaurantRouter);
