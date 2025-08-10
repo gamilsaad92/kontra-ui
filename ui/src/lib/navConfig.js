@@ -31,3 +31,16 @@ export const departmentNav = {
     { label: 'Docs', icon: '📄', href: 'https://github.com/kontra-ui/docs' }
   ]
 };
+
+// Flattened list of unique sidebar links used across the app
+export const navLinks = Array.from(
+  new Map(
+    Object.values(departmentNav)
+      .flat()
+      .flatMap(item => {
+        if (item.href) return [];
+        const labels = item.sub || [item.label];
+        return labels.map(label => [label, { label, to: toPath(label) }]);
+      })
+  ).values()
+);
