@@ -78,6 +78,7 @@ const riskRouter = require('./routers/risk');
 const { triggerWebhooks } = require('./webhooks');
 const webhooksRouter = require('./routers/webhookRoutes');
 const { router: integrationsRouter } = require('./routers/integrations');
+const rateLimit = require('./middlewares/rateLimit');
 const subscriptionsRouter = require('./routers/subscriptions');
 const siteAnalysisRouter = require('./routers/siteAnalysis');
 const savedSearchesRouter = require('./routers/savedSearches');
@@ -408,6 +409,7 @@ async function get_hospitality_stats() {
 app.use(cors());
 app.use(express.json());
 app.use(auditLogger);
+app.use(rateLimit);
 app.use('/api/dashboard-layout', authenticate, dashboard);
 if (isFeatureEnabled('assets')) {
   app.use("/api/assets", assetsRouter);
