@@ -393,29 +393,65 @@
         "type": "object",
         "properties": {
           "id": { "type": "integer" },
-          "trade_type": { "type": "string" },
-          "notional_amount": { "type": "number" },  
+          "trade_type": {
+            "type": "string",
+            "enum": [
+              "loan_sale",
+              "participation",
+              "syndication_assignment",
+              "portfolio_sale",
+              "repo",
+              "reverse_repo",
+              "securitization_allocation",
+              "debt_facility_draw"
+            ]
+          },
+          "notional_amount": { "type": "number" },
           "symbol": { "type": "string" },
           "quantity": { "type": "number" },
           "price": { "type": "number" },
           "side": { "type": "string" },
           "counterparties": { "type": "array", "items": { "type": "string" } },
+          "repo_rate_bps": { "type": "number" },
+          "term_days": { "type": "integer" },
+          "collateral_ref": { "type": "string" },
+          "tranche_id": { "type": "string" },
+          "waterfall_config": { "type": "object" },
+          "facility_line_id": { "type": "string" },
           "status": { "type": "string" },
           "created_at": { "type": "string", "format": "date-time" },
           "settled_at": { "type": "string", "format": "date-time" }
-        },    
+        },
          "required": ["id", "trade_type", "notional_amount", "symbol", "quantity", "status", "created_at"]
       },
       "TradeInput": {
         "type": "object",
         "properties": {
-          "trade_type": { "type": "string" },
-          "notional_amount": { "type": "number" },     
+          "trade_type": {
+            "type": "string",
+            "enum": [
+              "loan_sale",
+              "participation",
+              "syndication_assignment",
+              "portfolio_sale",
+              "repo",
+              "reverse_repo",
+              "securitization_allocation",
+              "debt_facility_draw"
+            ]
+          },
+          "notional_amount": { "type": "number" },
           "symbol": { "type": "string" },
           "quantity": { "type": "number" },
           "price": { "type": "number" },
           "side": { "type": "string" },
-          "counterparties": { "type": "array", "items": { "type": "string" } }
+          "counterparties": { "type": "array", "items": { "type": "string" } },
+          "repo_rate_bps": { "type": "number" },
+          "term_days": { "type": "integer" },
+          "collateral_ref": { "type": "string" },
+          "tranche_id": { "type": "string" },
+          "waterfall_config": { "type": "object" },
+          "facility_line_id": { "type": "string" }
         },
          "required": ["trade_type", "notional_amount", "symbol", "quantity", "price", "side", "counterparties"]
       }
