@@ -1,5 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import GridLayout from 'react-grid-layout';
+import 'react-grid-layout/css/styles.css';
+import 'react-resizable/css/styles.css';
 import { API_BASE } from '../lib/apiBase';
 import RiskScoreCard from '../modules/dashboard/RiskScoreCard';
 import DelinquencyCard from '../modules/dashboard/DelinquencyCard';
@@ -23,18 +25,20 @@ export default function DashboardPage() {
   };
 
   return (
-    <GridLayout
-      className="layout"
-      layout={layout}
-      cols={12}
-      rowHeight={30}
-      width={1200}
-      onLayoutChange={onLayoutChange}
-    >
-      <div key="riskScore"><RiskScoreCard /></div>
-      <div key="delinquencyChart"><DelinquencyCard /></div>
-      <div key="recentActivity"><RecentActivityCard /></div>
-      {/* add more cards as you go */}
-    </GridLayout>
+    <div style={{ width: 1200 }}>
+      <GridLayout
+        className="layout"
+        layout={layout}
+        cols={12}
+        rowHeight={30}
+        width={1200}
+        onLayoutChange={onLayoutChange}
+      >
+        <div key="riskScore"><RiskScoreCard /></div>
+        <div key="delinquencyChart"><DelinquencyCard /></div>
+        <div key="recentActivity"><RecentActivityCard /></div>
+        {/* add more cards as you go */}
+      </GridLayout>
+    </div>
   );
 }
