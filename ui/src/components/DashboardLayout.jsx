@@ -6,8 +6,7 @@ import SuggestFeatureWidget from './SuggestFeatureWidget';
 import Sidebar from './Sidebar';
 import HelpTooltip from './HelpTooltip';
 import { isFeatureEnabled } from '../lib/featureFlags';
-import useFeatureUsage from '../lib/useFeatureUsage';
-import { departmentNav, toPath } from '../lib/navConfig';
+import { navLinks, toPath } from '../lib/navConfig';
 
 const DashboardHome = lazy(() => import('./DashboardHome'));
 const LoansDashboard = lazy(() => import('./LoansDashboard'));
@@ -39,34 +38,25 @@ const StaffRestaurantDashboard = lazy(() => import('./StaffRestaurantDashboard')
 const HospitalityDashboard = lazy(() => import('./HospitalityDashboard'));
 
 export default function DashboardLayout() {
-  const { session, supabase } = useContext(AuthContext);
+  const { session } = useContext(AuthContext);
   const navigate = useNavigate();
   const location = useLocation();
-  
-  const [department, setDepartment] = useState(
-   () => (session?.user?.user_metadata?.role === 'hospitality' ? 'hospitality' : 'finance')
-  );
-  const navItems = departmentNav[department] || [];
 
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+   const [department] = useState(
+    () => (session?.user?.user_metadata?.role === 'hospitality' ? 'hospitality' : 'finance')
+  );
   const [refreshKey, setRefreshKey] = useState(0);
-  const { usage, recordUsage } = useFeatureUsage();
 
   useEffect(() => {
-    const firstItem = navItems[0];
-    const navSet = new Set(
-      navItems.flatMap(item =>
-        item.sub ? item.sub.map(toPath) : [toPath(item.label)]
-      )
-    );
+    const firstLink = navLinks[0];
+    const navSet = new Set(navLinks.map(l => l.to));
     if (
-      firstItem &&
+      firstLink &&
       (location.pathname === '/' || !navSet.has(location.pathname))
     ) {
-      const targetLabel = firstItem.sub ? firstItem.sub[0] : firstItem.label;
-      navigate(toPath(targetLabel));
+      navigate(firstLink.to);
     }
-  }, [department, location.pathname]);
+   }, [location.pathname]);
 
   const pages = {
      Dashboard: () =>
@@ -119,16 +109,7 @@ export default function DashboardLayout() {
 
   return (
     <div className="flex flex-col md:flex-row min-h-screen bg-gray-900">
-      <Sidebar
-        navItems={navItems}
-        sidebarOpen={sidebarOpen}
-        setSidebarOpen={setSidebarOpen}
-        department={department}
-        setDepartment={setDepartment}
-        supabase={supabase}
-        usage={usage}
-        recordUsage={recordUsage}
-      />
+       <Sidebar links={navLinks} />
 
       {/* Main Content */}
       <div className="flex flex-1 flex-col">
