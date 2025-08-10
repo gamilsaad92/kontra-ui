@@ -1,5 +1,7 @@
 const express = require('express');
 const { createClient } = require('@supabase/supabase-js');
+const { runKycCheck } = require('../compliance');
+const { logAuditEntry } = require('../auditLogger');
 
 const router = express.Router();
 const supabase = createClient(
@@ -23,11 +25,25 @@ router.post('/', async (req, res) => {
   if (!name) return res.status(400).json({ error: 'Name required' });
   const { data, error } = await supabase
     .from('organizations')
-    .insert([{ name, branding, parent_id }])
+    .insert([{ name, branding, parent_id, kyc_approved: false }])
     .select()
     .single();
   if (error) return res.status(500).json({ error: 'Failed to create organization' });
-  res.status(201).json({ organization: data });
+
+  let approved = false;
+  try {
+    const result = await runKycCheck(data.id);
+    approved = !!result.passed;
+    logAuditEntry({ type: 'kyc', organization_id: data.id, result: approved ? 'passed' : 'failed' });
+  } catch (err) {
+    console.error('KYC check failed:', err);
+  }
+  await supabase
+    .from('organizations')
+    .update({ kyc_approved: approved })
+    .eq('id', data.id);
+
+  res.status(201).json({ organization: { ...data, kyc_approved: approved } });
 });
 
 // Get single organization
