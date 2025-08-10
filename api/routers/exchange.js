@@ -5,8 +5,32 @@ const authenticate = require('../middlewares/authenticate');
 const requireRole = require('../middlewares/requireRole');
 const { updateRecommendations } = require('../matchingEngine');
 const { generateAndStore, sendForSignature } = require('../documentService');
+const { v4: uuidv4 } = require('uuid');
 
 const router = express.Router();
+
+// Settlement webhook from payment rails
+router.post('/settlement/webhook', async (req, res) => {
+  const { trade_id, funds_confirmed, assignments_confirmed, waterfall } = req.body || {};
+  if (!trade_id) {
+    return res.status(400).json({ error: 'trade_id required' });
+  }
+  const status = funds_confirmed && assignments_confirmed ? 'settled' : 'pending';
+  const payload = { funds_confirmed, assignments_confirmed, waterfall };
+  const { error: insertErr } = await supabase
+    .from('exchange_trade_events')
+    .insert([{ trade_id, status, event_payload: payload }]);
+  if (insertErr) {
+    return res.status(400).json({ error: insertErr.message });
+  }
+  if (status === 'settled') {
+    await supabase
+      .from('exchange_trades')
+      .update({ status: 'settled', settled_at: new Date().toISOString() })
+      .eq('id', trade_id);
+  }
+  res.json({ received: true, status });
+});
 
 // All routes require authentication
 router.use(authenticate);
@@ -226,9 +250,18 @@ router.post('/trades', requireRole('lender_trader'), async (req, res) => {
   const orgId = req.organizationId;
   try {
     const input = tradeSchema.parse(req.body);
+    const escrow_account_id = uuidv4();
     const { data, error } = await supabase
       .from('exchange_trades')
-      .insert([{ ...input, created_by: userId, organization_id: orgId, status: 'pending' }])
+       .insert([
+        {
+          ...input,
+          escrow_account_id,
+          created_by: userId,
+          organization_id: orgId,
+          status: 'pending'
+        }
+      ])
       .select()
       .single();
     if (error) return res.status(400).json({ error: error.message });
@@ -336,6 +369,7 @@ router.post('/trades/:id/settle', requireRole('lender_trader'), async (req, res)
   if (error) return res.status(400).json({ error: error.message });
   res.json({ settled: true });
 });
+
 
 // Messaging
 const messageSchema = z.object({
