@@ -1,2 +1,1 @@
-module.exports = { z, ZodError } = require('zod');
- 
+module.exports = require('zod'); 
