@@ -1,5 +1,6 @@
 const express = require('express');
-const { z } = require('../lib/zod');
+const { z, ZodError } = require('../lib/zod');
+console.log('[ZOD CHECK]', { booleanType: typeof z.boolean });
 const { supabase } = require('../db');
 const authenticate = require('../middlewares/authenticate');
 const requireRole = require('../middlewares/requireRole');
@@ -147,7 +148,7 @@ router.post('/listings', requireRole('lender_trader'), async (req, res) => {
 
     res.status(201).json(data);
   } catch (err) {
-    if (err instanceof z.ZodError) {
+    if (err instanceof ZodError) {
       return res.status(400).json({ error: err.errors.map(e => e.message).join(', ') });
     }
     console.error('Create listing error:', err);
@@ -243,7 +244,7 @@ router.patch('/listings/:id', requireRole('lender_trader'), async (req, res) => 
 
     res.json(data);
   } catch (err) {
-    if (err instanceof z.ZodError) {
+    if (err instanceof ZodError) {
       return res.status(400).json({ error: err.errors.map(e => e.message).join(', ') });
     }
     console.error('Update listing error:', err);
@@ -301,7 +302,7 @@ router.post('/offers', requireRole('lender_trader'), async (req, res) => {
     if (error) return res.status(400).json({ error: error.message });
     res.status(201).json(data);
   } catch (err) {
-    if (err instanceof z.ZodError) {
+   if (err instanceof ZodError) {
       return res.status(400).json({ error: err.errors.map(e => e.message).join(', ') });
     }
     console.error('Create offer error:', err);
@@ -336,7 +337,7 @@ router.patch('/offers/:id', requireRole('lender_trader'), async (req, res) => {
     if (error) return res.status(400).json({ error: error.message });
     res.json(data);
   } catch (err) {
-    if (err instanceof z.ZodError) {
+     if (err instanceof ZodError) {
       return res.status(400).json({ error: err.errors.map(e => e.message).join(', ') });
     }
     console.error('Update offer error:', err);
@@ -391,7 +392,7 @@ router.post('/trades', requireRole('lender_trader'), async (req, res) => {
     if (error) return res.status(400).json({ error: error.message });
     res.status(201).json(data);
   } catch (err) {
-    if (err instanceof z.ZodError) {
+       if (err instanceof ZodError) {
       return res.status(400).json({ error: err.errors.map(e => e.message).join(', ') });
     }
     console.error('Create trade error:', err);
@@ -424,7 +425,7 @@ router.patch('/trades/:id', requireRole('lender_trader'), async (req, res) => {
     if (error) return res.status(400).json({ error: error.message });
     res.json(data);
   } catch (err) {
-    if (err instanceof z.ZodError) {
+  if (err instanceof ZodError) {
       return res.status(400).json({ error: err.errors.map(e => e.message).join(', ') });
     }
     console.error('Update trade error:', err);
@@ -462,7 +463,7 @@ router.post('/trades/:id/documents', requireRole('lender_trader'), async (req, r
       .eq('id', id);
     res.json({ path, url });
   } catch (err) {
-    if (err instanceof z.ZodError) {
+   if (err instanceof ZodError) {
       return res.status(400).json({ error: err.errors.map(e => e.message).join(', ') });
     }
     console.error('Doc generation error:', err);
@@ -487,7 +488,7 @@ router.post('/trades/:id/sign', requireRole('lender_trader'), async (req, res) =
     if (error) return res.status(400).json({ error: error.message });
      res.json({ signedPath, url });
   } catch (err) {
-    if (err instanceof z.ZodError) {
+      if (err instanceof ZodError) {
       return res.status(400).json({ error: err.errors.map(e => e.message).join(', ') });
     }
     console.error('Sign error:', err);
@@ -533,7 +534,7 @@ router.post('/messages', async (req, res) => {
     if (error) return res.status(400).json({ error: error.message });
     res.status(201).json(data);
   } catch (err) {
-    if (err instanceof z.ZodError) {
+    if (err instanceof ZodError) {
       return res.status(400).json({ error: err.errors.map(e => e.message).join(', ') });
     }
     console.error('Create message error:', err);
@@ -587,7 +588,7 @@ router.put('/me/preferences', async (req, res) => {
 
     res.json({ preferences: data.preferences });
   } catch (err) {
-    if (err instanceof z.ZodError) {
+   if (err instanceof ZodError) {
       return res.status(400).json({ error: err.errors.map(e => e.message).join(', ') });
     }
     console.error('Save preferences error:', err);
