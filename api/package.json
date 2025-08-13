@@ -5,36 +5,37 @@
   "scripts": {
     "start": "node index.js",
     "dev": "nodemon index.js",
-          "test": "jest",
+    "test": "jest",
     "score-assets": "node jobs/scoreAssets.js",
-     "score-loans": "node jobs/scoreLoans.js",
-     "score-troubled": "node jobs/scoreTroubled.js",
-     "setup-db": "node setupDb.js"
+    "score-loans": "node jobs/scoreLoans.js",
+    "score-troubled": "node jobs/scoreTroubled.js",
+    "setup-db": "node setupDb.js"
   },
   "dependencies": {
+    "@google-cloud/dialogflow": "^4.4.0",
     "@sentry/node": "^9.24.0",
     "@sentry/react": "^9.24.0",
     "@supabase/supabase-js": "^2.49.8",
     "cors": "^2.8.5",
     "dotenv": "^16.3.1",
     "express": "^4.18.2",
+    "handlebars": "^4.7.8",
     "jsonwebtoken": "^9.0.2",
     "morgan": "^1.10.0",
     "multer": "^1.4.5-lts.1",
-    "openai": "^4.103.0",
     "nodemailer": "^6.9.11",
-    "handlebars": "^4.7.8",
+    "openai": "^4.103.0",
     "pdfkit": "^0.13.0",
-    "twilio": "^4.21.0",
-    "ws": "^8.18.0",
-    "@google-cloud/dialogflow": "^4.4.0",
-    "uuid": "^9.0.0",
     "qrcode": "^1.5.1",
-    "stripe": "^12.17.0"
+    "stripe": "^12.17.0",
+    "twilio": "^4.21.0",
+    "uuid": "^9.0.0",
+    "ws": "^8.18.0",
+    "zod": "^3.23.8"
   },
   "devDependencies": {
     "jest": "^29.7.0",
-    "supertest": "^7.1.1",
-    "nodemon": "^3.0.1"
+    "nodemon": "^3.0.1",
+    "supertest": "^7.1.1"
   }
 }
