@@ -1,6 +1,5 @@
 const express = require('express');
 const { z, ZodError } = require('../lib/zod');
-console.log('[ZOD CHECK]', { booleanType: typeof z.boolean });
 const { supabase } = require('../db');
 const authenticate = require('../middlewares/authenticate');
 const requireRole = require('../middlewares/requireRole');
