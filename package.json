@@ -3,6 +3,7 @@
     "@clerk/nextjs": "^6.27.1",
     "@sentry/node": "^9.34.0",
     "@sentry/tracing": "^7.120.3",
-    "@supabase/supabase-js": "^2.50.4"
+   "@supabase/supabase-js": "^2.50.4",
+    "zod": "^3.23.8"
   }
 }
