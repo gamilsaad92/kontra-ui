@@ -1,5 +1,5 @@
 const express = require('express');
-const { z } = require('../lib/zod');
+const { z, ZodError } = require('../lib/zod');
 const { supabase } = require('../db');
 const authenticate = require('../middlewares/authenticate');
 
@@ -37,7 +37,7 @@ router.post('/searches', async (req, res) => {
     if (error) return res.status(400).json({ error: error.message });
     res.status(201).json(data);
   } catch (err) {
-    if (err instanceof z.ZodError) {
+   if (err instanceof ZodError) {
       return res.status(400).json({ error: err.errors.map(e => e.message).join(', ') });
     }
     console.error('Create saved search error:', err);
