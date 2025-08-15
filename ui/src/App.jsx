@@ -24,5 +24,5 @@ export default function App() {
     )
   }
 
-  return <DashboardLayout />
+ return <KontraDashboard role="lender" orgName="Kontra" userName="Jamil" />
 }
