@@ -1,37 +1,47 @@
-import { defineConfig } from 'vite';
-import react from '@vitejs/plugin-react';
-import { VitePWA } from 'vite-plugin-pwa';
+import { defineConfig } from "vite";
+import react from "@vitejs/plugin-react";
+import { VitePWA } from "vite-plugin-pwa";
+import { fileURLToPath, URL } from "node:url";
 
-export default defineConfig({
+  resolve: {
+    alias: {
+      "@": fileURLToPath(new URL("./src", import.meta.url)),
+    },
+  },
+  optimizeDeps: {
    optimizeDeps: {
     include: ["react", "react-dom"],
   },
   plugins: [
     react(),
     VitePWA({
-      registerType: 'autoUpdate',
+      registerType: "autoUpdate",
+      workbox: {
+        globPatterns: ["**/*.{js,css,html,ico,png,svg}"],
+        globIgnores: ["**/sw.js", "**/workbox-*.js"],
+      },
       manifest: {
-        name: 'Kontra',
-        short_name: 'Kontra',
-        start_url: '/',
-        display: 'standalone',
-        background_color: '#ffffff',
-        theme_color: '#1e40af',
+        name: "Kontra",
+        short_name: "Kontra",
+        start_url: "/",
+        display: "standalone",
+        background_color: "#ffffff",
+        theme_color: "#1e40af",
         icons: [
           {
-            src: '/logo.png',
-            sizes: '192x192',
-            type: 'image/png'
+             src: "/logo.png",
+            sizes: "192x192",
+            type: "image/png",
           },
           {
-            src: '/logo.png',
-            sizes: '512x512',
-            type: 'image/png'
-          }
-        ]
-      }
-    })
-  ]
+            src: "/logo.png",
+            sizes: "512x512",
+            type: "image/png",
+          },
+        ],
+      },
+    }),
+  ],
   // build: {
   //   rollupOptions: {
   //     output: {
@@ -75,4 +85,4 @@ export default defineConfig({
   //     }
   //   }
   // }
-     });
+});
