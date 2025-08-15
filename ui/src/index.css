@@ -2,14 +2,19 @@
 @tailwind components;
 @tailwind utilities;
 
-:root {
-  --brand-color: #1e40af;
-}
-
-.bg-brand {
-  background-color: var(--brand-color);
-}
-
-.text-brand {
-  color: var(--brand-color);
+@layer base {
+  :root {
+    --background: 222 47% 6%;
+    --foreground: 210 40% 98%;
+    --card: 222 47% 11%;
+    --card-foreground: 210 40% 98%;
+    --border: 215 25% 27%;
+    --muted: 215 25% 17%;
+    --muted-foreground: 215 20% 65%;
+    --primary: 217 91% 60%;
+    --secondary: 151 80% 52%;
+    --ring: 217 91% 60%;
+    --radius: 1rem;
+  }
+  html, body { background-color: hsl(var(--background)); color: hsl(var(--foreground)); }
 }
