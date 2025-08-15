@@ -1,55 +1,87 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RTooltip, ResponsiveContainer, BarChart, Bar } from "recharts";
+import {
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip as RTooltip,
+  ResponsiveContainer,
+  BarChart,
+  Bar,
+} from "recharts";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from "@/components/ui/sheet";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Toggle } from "@/components/ui/toggle";
-import { AlertTriangle, Bell, CheckCircle2, ChevronDown, Download, Filter, Mail, MoreHorizontal, Plus, Search, Settings, Sparkles, User } from "lucide-react";
+import {
+  AlertTriangle,
+  Bell,
+  CheckCircle2,
+  ChevronDown,
+  Download,
+  Filter,
+  Mail,
+  MoreHorizontal,
+  Plus,
+  Search,
+  Settings,
+  Sparkles,
+  User,
+} from "lucide-react";
+import { supabase } from "@/lib/supabaseClient";
 
-// ----------------------- Mock data loaders (replace with your API/Supabase) -----------------------
+// ----------------------- Data loaders -----------------------
 async function getKpis(role: Role) {
-  // Replace with supabase.rpc or REST
-  return new Promise<KPIs>((resolve) =>
-    setTimeout(() =>
-      resolve({
-        primary: [
-          { label: role === "investor" ? "Yield" : "Active Loans", value: role === "investor" ? "7.8%" : "124" },
-          { label: role === "lender" ? "Delinquency" : "Exposure", value: role === "lender" ? "1.6%" : "$12.3M" },
-          { label: role === "borrower" ? "Next Due" : "DSCR", value: role === "borrower" ? "09/01" : "1.21x" },
-        ],
-        alerts: [
-          { type: "risk", text: "3 loans trending to delinquent", severity: "high" },
-          { type: "ops", text: "5 draw requests awaiting approval", severity: "med" },
-        ],
-      }), 400)
-  );
+ const { data, error } = await supabase.rpc("get_kpis", { role });
+  if (error || !data) throw error || new Error("Failed to load KPIs");
+  return data as KPIs;
 }
 
 async function getChartData(role: Role) {
-  return new Promise<any[]>((r) => setTimeout(() => r([
-    { name: "Jan", a: 12, b: 8 },
-    { name: "Feb", a: 18, b: 12 },
-    { name: "Mar", a: 16, b: 10 },
-    { name: "Apr", a: 22, b: 15 },
-    { name: "May", a: 19, b: 14 },
-    { name: "Jun", a: 24, b: 18 },
-  ]), 480));
+  const { data, error } = await supabase.rpc("get_chart_data", { role });
+  if (error || !data) throw error || new Error("Failed to load chart data");
+  return data as any[];
 }
 
 async function getTableRows(role: Role) {
-  return new Promise<RowType[]>((r) => setTimeout(() => r([
-    { id: "LN-1021", name: "Mulberry Creek", status: "Pending KYC", amount: 450000, date: "2025-08-02" },
-    { id: "LN-1022", name: "Haniston Plaza", status: "Approved", amount: 1200000, date: "2025-08-05" },
-    { id: "LN-1023", name: "Pork Stugton Park", status: "Funded", amount: 900000, date: "2025-08-12" },
-  ]), 520));
+  const { data, error } = await supabase
+    .from("dashboard_rows")
+    .select("id,name,status,amount,date")
+    .eq("role", role)
+    .limit(3);
+  if (error || !data) throw error || new Error("Failed to load table rows");
+  return data as RowType[];
 }
 
 // ----------------------- Types -----------------------
@@ -70,7 +102,7 @@ function SectionTitle({ children }: { children: React.ReactNode }) {
 
 function EmptyState({ title, description, actionLabel, onAction }: { title: string; description: string; actionLabel?: string; onAction?: () => void }) {
   return (
-    <Card className="border border-slate-800/60 bg-slate-900/40">
+   <Card className="rounded-2xl border border-slate-800/60 bg-slate-900/40 shadow-[0_6px_24px_rgba(0,0,0,0.25)]">
       <CardContent className="py-12 text-center">
         <Sparkles className="mx-auto mb-3" aria-hidden />
         <h4 className="text-slate-100 font-medium mb-1">{title}</h4>
@@ -87,7 +119,7 @@ function EmptyState({ title, description, actionLabel, onAction }: { title: stri
 
 function ErrorState({ message, onRetry }: { message: string; onRetry?: () => void }) {
   return (
-    <Card className="border border-red-900/40 bg-red-950/30">
+    <Card className="rounded-2xl border border-red-900/40 bg-red-950/30 shadow-[0_6px_24px_rgba(0,0,0,0.25)]">
       <CardContent className="py-10 text-center">
         <AlertTriangle className="mx-auto mb-2" aria-hidden />
         <p className="text-red-200 mb-4">{message}</p>
@@ -114,11 +146,11 @@ function QuickActions({ role }: { role: Role }) {
   }, [role]);
 
   return (
-    <Card className="border border-slate-800/60 bg-slate-900/40">
+    <Card className="rounded-2xl border border-slate-800/60 bg-slate-900/40 shadow-[0_6px_24px_rgba(0,0,0,0.25)]">
       <CardHeader className="pb-2"><CardTitle className="text-sm text-slate-300">Quick Actions</CardTitle></CardHeader>
       <CardContent className="grid grid-cols-1 sm:grid-cols-2 gap-2">
         {items.map((label) => (
-          <Button key={label} variant="secondary" className="justify-start" aria-label={label}>{label}</Button>
+    <Card className="rounded-2xl border border-slate-800/60 bg-slate-900/40 shadow-[0_6px_24px_rgba(0,0,0,0.25)]">
         ))}
       </CardContent>
     </Card>
@@ -129,7 +161,7 @@ function KpiRow({ kpis }: { kpis: KPIs["primary"] }) {
   return (
     <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
       {kpis.map((k) => (
-        <Card key={k.label} className="border border-slate-800/60 bg-slate-900/40">
+        <Card key={k.label} className="rounded-2xl border border-slate-800/60 bg-slate-900/40 shadow-[0_6px_24px_rgba(0,0,0,0.25)]">
           <CardHeader className="pb-2">
             <CardTitle className="text-xs font-medium text-slate-400">{k.label}</CardTitle>
           </CardHeader>
@@ -151,7 +183,7 @@ function AlertsRow({ alerts }: { alerts: KPIs["alerts"] }) {
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
       {alerts.map((a, i) => (
-        <Card key={i} className={`border ${a.severity === "high" ? "border-rose-800/50" : "border-slate-800/60"} bg-slate-900/40`}>
+         <Card key={i} className={`rounded-2xl border ${a.severity === "high" ? "border-rose-800/50" : "border-slate-800/60"} bg-slate-900/40 shadow-[0_6px_24px_rgba(0,0,0,0.25)]`}>
           <CardContent className="py-4 flex items-center gap-3">
             {a.type === "risk" ? <AlertTriangle aria-hidden /> : <Bell aria-hidden />}
             <span className="text-slate-200">{a.text}</span>
@@ -165,9 +197,9 @@ function AlertsRow({ alerts }: { alerts: KPIs["alerts"] }) {
 
 function ChartPanel({ data, variant = "line", title = "Trends" }: { data: any[]; variant?: "line" | "bar"; title?: string }) {
   return (
-    <Card className="border border-slate-800/60 bg-slate-900/40">
+      <Card className="rounded-2xl border border-slate-800/60 bg-slate-900/40 shadow-[0_6px_24px_rgba(0,0,0,0.25)]">
       <CardHeader className="pb-2"><CardTitle className="text-sm text-slate-300">{title}</CardTitle></CardHeader>
-      <CardContent className="h-56">
+    <CardContent className="h-56 bg-transparent">
         <ResponsiveContainer width="100%" height="100%">
           {variant === "line" ? (
             <LineChart data={data} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
@@ -196,7 +228,7 @@ function ChartPanel({ data, variant = "line", title = "Trends" }: { data: any[];
 
 function TablePanel({ rows, title = "Loan Pipeline" }: { rows: RowType[]; title?: string }) {
   return (
-    <Card className="border border-slate-800/60 bg-slate-900/40">
+   <Card className="rounded-2xl border border-slate-800/60 bg-slate-900/40 shadow-[0_6px_24px_rgba(0,0,0,0.25)]">
       <CardHeader className="pb-2 flex flex-row items-center justify-between">
         <CardTitle className="text-sm text-slate-300">{title}</CardTitle>
         <div className="flex items-center gap-2">
@@ -238,7 +270,7 @@ function NotificationsSheet() {
       <SheetTrigger asChild>
         <Button variant="ghost" size="icon" aria-label="Open notifications"><Bell /></Button>
       </SheetTrigger>
-      <SheetContent className="w-96 bg-slate-950 text-slate-200 border-slate-800">
+      <SheetContent className="z-50 w-96 bg-slate-950 text-slate-200 border-slate-800">
         <SheetHeader><SheetTitle>Notifications</SheetTitle></SheetHeader>
         <div className="mt-4 space-y-3">
           <div className="flex items-start gap-2">
@@ -264,13 +296,13 @@ function NotificationsSheet() {
 function RoleTabs({ role, onChange }: { role: Role; onChange: (r: Role) => void }) {
   return (
     <Tabs value={role} onValueChange={(v) => onChange(v as Role)} className="w-full">
-      <TabsList className="grid grid-cols-5 bg-slate-900 border border-slate-800/60">
-        <TabsTrigger value="lender">Lender/Servicer</TabsTrigger>
-        <TabsTrigger value="investor">Investor</TabsTrigger>
-        <TabsTrigger value="borrower">Borrower</TabsTrigger>
-        <TabsTrigger value="contractor">Contractor</TabsTrigger>
-        <TabsTrigger value="admin">Admin</TabsTrigger>
-      </TabsList>
+     <TabsList className="grid grid-cols-5 bg-slate-900/70 border border-slate-800/60 rounded-2xl p-1 gap-1">
+        <TabsTrigger value="lender" className="rounded-xl data-[state=active]:bg-slate-800/70">Lender/Servicer</TabsTrigger>
+        <TabsTrigger value="investor" className="rounded-xl data-[state=active]:bg-slate-800/70">Investor</TabsTrigger>
+        <TabsTrigger value="borrower" className="rounded-xl data-[state=active]:bg-slate-800/70">Borrower</TabsTrigger>
+        <TabsTrigger value="contractor" className="rounded-xl data-[state=active]:bg-slate-800/70">Contractor</TabsTrigger>
+        <TabsTrigger value="admin" className="rounded-xl data-[state=active]:bg-slate-800/70">Admin</TabsTrigger>
+            </TabsList>
     </Tabs>
   );
 }
@@ -310,7 +342,7 @@ function InvestorView() {
       </div>
       <div className="space-y-4">
         <QuickActions role="investor"/>
-        <Card className="border border-slate-800/60 bg-slate-900/40"><CardContent className="py-6 text-sm text-slate-300">Set risk alert thresholds to get notified when DSCR falls below 1.10x or delinquency > 2%.</CardContent></Card>
+        <Card className="rounded-2xl border border-slate-800/60 bg-slate-900/40 shadow-[0_6px_24px_rgba(0,0,0,0.25)]"><CardContent className="py-6 text-sm text-slate-300">Set risk alert thresholds to get notified when DSCR falls below 1.10x or delinquency > 2%.</CardContent></Card>
       </div>
     </div>
   );
@@ -368,7 +400,7 @@ export default function KontraDashboard({ role: initialRole = "lender", orgName 
     <TooltipProvider>
       <div className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-950 to-slate-900 text-slate-100">
         {/* Top bar */}
-        <div className="sticky top-0 z-20 backdrop-blur supports-[backdrop-filter]:bg-slate-950/70 bg-slate-950/60 border-b border-slate-800/60">
+        <div className="sticky top-0 z-40 backdrop-blur supports-[backdrop-filter]:bg-slate-950/70 bg-slate-950/70 border-b border-slate-800/60">
           <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 h-14 flex items-center gap-2">
             <div className="flex items-center gap-2 mr-2">
               <div className="h-7 w-7 rounded-xl bg-sky-400/20 ring-1 ring-sky-400/30 grid place-items-center font-bold">K</div>
@@ -390,7 +422,7 @@ export default function KontraDashboard({ role: initialRole = "lender", orgName 
                 <DropdownMenuTrigger asChild>
                   <Button variant="secondary" className="gap-2" aria-label="User menu"><User className="h-4 w-4"/>{userName}<ChevronDown className="h-4 w-4"/></Button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-48">
+                <DropdownMenuContent align="end" className="z-50 w-48">
                   <DropdownMenuItem>Profile</DropdownMenuItem>
                   <DropdownMenuItem>Organization Settings</DropdownMenuItem>
                   <DropdownMenuItem>Sign out</DropdownMenuItem>
