@@ -1,5 +1,5 @@
 import React from 'react';
-import Input from './Input.jsx';
+import { Input } from "./input.jsx";
 
 export default function FormField({ label, children, className = '', ...props }) {
   return (
