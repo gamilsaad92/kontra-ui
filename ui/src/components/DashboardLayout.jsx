@@ -1,153 +1,509 @@
-import React, { useState, useContext, useEffect, lazy, Suspense } from 'react';
-import { AuthContext } from '../lib/authContext';
-import { Routes, Route, useNavigate, useLocation } from 'react-router-dom';
-import VirtualAssistant from './VirtualAssistant';
-import SuggestFeatureWidget from './SuggestFeatureWidget';
-import Sidebar from './Sidebar';
-import HelpTooltip from './HelpTooltip';
-import { isFeatureEnabled } from '../lib/featureFlags';
-import { navLinks, toPath } from '../lib/navConfig';
+import React, { useEffect, useMemo, useState } from "react";
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RTooltip, ResponsiveContainer, BarChart, Bar } from "recharts";
+import { Button } from "./ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
+import { Input } from "./ui/input";
+import { Badge } from "./ui/badge";
+import { Tabs, TabsList, TabsTrigger } from "./ui/tabs";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "./ui/dropdown-menu";
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "./ui/sheet";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./ui/tooltip";
+import { Skeleton } from "./ui/skeleton";
+import {
+  AlertTriangle,
+  Bell,
+  CheckCircle2,
+  ChevronDown,
+  Download,
+  Filter,
+  Mail,
+  MoreHorizontal,
+  Plus,
+  Search,
+  Settings,
+  Sparkles,
+  User,
+} from "./icons";
 
-const DashboardHome = lazy(() => import('./DashboardHome'));
-const LoansDashboard = lazy(() => import('./LoansDashboard'));
-const LoanApplicationForm = lazy(() => import('./LoanApplicationForm'));
-const LoanApplicationList = lazy(() => import('./LoanApplicationList'));
-const UnderwritingBoard = lazy(() => import('./UnderwritingBoard'));
-const DecisionTimeline = lazy(() => import('./DecisionTimeline'));
-const PaymentPortal = lazy(() => import('./PaymentPortal'));
-const SelfServicePayment = lazy(() => import('./SelfServicePayment'));
-const PayoffCalculator = lazy(() => import('./PayoffCalculator'));
-const ReportBuilder = lazy(() => import('./ReportBuilder'));
-const InvestorReportForm = lazy(() => import('./InvestorReportForm'));
-const InvestorReportsList = lazy(() => import('./InvestorReportsList'));
-const MarketAnalysis = lazy(() => import('./MarketAnalysis'));
-const RealTimeAnalyticsDashboard = lazy(() => import('./RealTimeAnalyticsDashboard'));
-const OrganizationSettings = lazy(() => import('./OrganizationSettings'));
-const AssetManagement = lazy(() => import('../routes/AssetManagement'));
-const Trades = lazy(() => import('../routes/Trades'));
-const GuestCRM = lazy(() => import('./GuestCRM'));
-const GuestChat = lazy(() => import('./GuestChat'));
-const EscrowDashboard = lazy(() => import('./EscrowDashboard'));
-const AssetRiskTable = lazy(() => import('../modules/assets/AssetRiskTable'));
-const RevivedAssetsTable = lazy(() => import('./RevivedAssetsTable'));
-const CollectionsTable = lazy(() => import('./CollectionsTable'));
-const GuestReservations = lazy(() => import('./GuestReservations'));
-const BookingCalendar = lazy(() => import('./BookingCalendar'));
-const RestaurantMenu = lazy(() => import('./RestaurantMenu'));
-const StaffRestaurantDashboard = lazy(() => import('./StaffRestaurantDashboard'));
-const HospitalityDashboard = lazy(() => import('./HospitalityDashboard'));
-const Marketplace = lazy(() => import('./exchange/Marketplace'));
-const ListingForm = lazy(() => import('./exchange/ListingForm'));
-const ListingDetail = lazy(() => import('./exchange/ListingDetail'));
-const TradeRoom = lazy(() => import('./exchange/TradeRoom'));
-
-export default function DashboardLayout() {
-  const { session } = useContext(AuthContext);
-  const navigate = useNavigate();
-  const location = useLocation();
-
-   const [department] = useState(
-    () => (session?.user?.user_metadata?.role === 'hospitality' ? 'hospitality' : 'finance')
+async function getKpis(role) {
+  return new Promise((resolve) =>
+    setTimeout(
+      () =>
+        resolve({
+          primary: [
+            { label: role === "investor" ? "Yield" : "Active Loans", value: role === "investor" ? "7.8%" : "124" },
+            { label: role === "lender" ? "Delinquency" : "Exposure", value: role === "lender" ? "1.6%" : "$12.3M" },
+            { label: role === "borrower" ? "Next Due" : "DSCR", value: role === "borrower" ? "09/01" : "1.21x" },
+          ],
+          alerts: [
+            { type: "risk", text: "3 loans trending to delinquent", severity: "high" },
+            { type: "ops", text: "5 draw requests awaiting approval", severity: "med" },
+          ],
+        }),
+      400
+    )
   );
-  const [refreshKey, setRefreshKey] = useState(0);
+}
 
-  useEffect(() => {
-    const firstLink = navLinks[0];
-    const navSet = new Set(navLinks.map(l => l.to));
-    if (
-      firstLink &&
-      (location.pathname === '/' || !navSet.has(location.pathname))
-    ) {
-      navigate(firstLink.to);
+async function getChartData(role) {
+  return new Promise((r) =>
+    setTimeout(
+      () =>
+        r([
+          { name: "Jan", a: 12, b: 8 },
+          { name: "Feb", a: 18, b: 12 },
+          { name: "Mar", a: 16, b: 10 },
+          { name: "Apr", a: 22, b: 15 },
+          { name: "May", a: 19, b: 14 },
+          { name: "Jun", a: 24, b: 18 },
+        ]),
+      480
+    )
+  );
+}
+
+async function getTableRows(role) {
+  return new Promise((r) =>
+    setTimeout(
+      () =>
+        r([
+          { id: "LN-1021", name: "Mulberry Creek", status: "Pending KYC", amount: 450000, date: "2025-08-02" },
+          { id: "LN-1022", name: "Haniston Plaza", status: "Approved", amount: 1200000, date: "2025-08-05" },
+          { id: "LN-1023", name: "Pork Stugton Park", status: "Funded", amount: 900000, date: "2025-08-12" },
+        ]),
+      520
+    )
+  );
+}
+
+function SectionTitle({ children }) {
+  return (
+    <div className="flex items-center justify-between mb-3">
+      <h3 className="text-lg font-semibold tracking-tight text-slate-100/90">{children}</h3>
+    </div>
+  );
+}
+
+function EmptyState({ title, description, actionLabel, onAction }) {
+  return (
+    <Card className="border border-slate-800/60 bg-slate-900/40">
+      <CardContent className="py-12 text-center">
+        <Sparkles className="mx-auto mb-3" aria-hidden />
+        <h4 className="text-slate-100 font-medium mb-1">{title}</h4>
+        <p className="text-slate-400 mb-4 max-w-md mx-auto">{description}</p>
+        {actionLabel && (
+          <Button variant="secondary" onClick={onAction} aria-label={actionLabel}>
+            {actionLabel}
+          </Button>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function ErrorState({ message, onRetry }) {
+  return (
+    <Card className="border border-red-900/40 bg-red-950/30">
+      <CardContent className="py-10 text-center">
+        <AlertTriangle className="mx-auto mb-2" aria-hidden />
+        <p className="text-red-200 mb-4">{message}</p>
+        {onRetry && <Button onClick={onRetry}>Retry</Button>}
+      </CardContent>
+    </Card>
+  );
+}
+
+function QuickActions({ role }) {
+  const items = useMemo(() => {
+    switch (role) {
+      case "lender":
+        return ["Create Loan", "Approve Draw", "Send Payoff Quote", "Generate Report"];
+      case "investor":
+        return ["Export Report", "Set Alert Thresholds", "Download Statement"];
+      case "borrower":
+        return ["Request Payoff Quote", "Submit Draw Request", "Upload Document"];
+      case "contractor":
+        return ["Upload Invoice", "Request Inspection", "View Funding Schedule"];
+      case "admin":
+        return ["Add User", "Update Branding", "View Audit Log", "Configure Workflow"];
+      default:
+        return [];
     }
-   }, [location.pathname]);
-
-  const pages = {
-     Dashboard: () =>
-      department === 'hospitality' ? (
-        <HospitalityDashboard navigateTo={label => navigate(toPath(label))} />
-      ) : (
-        <DashboardHome />
-      ),
-    Loans: LoansDashboard,
-    'New Application': () => (
-      <LoanApplicationForm onSubmitted={() => setRefreshKey(k => k + 1)} />
-    ),
-    'Application List': () => <LoanApplicationList key={refreshKey} />,
-    'Underwriting Board': UnderwritingBoard,
-    Decisions: DecisionTimeline,
-    'Payment Portal': PaymentPortal,
-    'Self Service Payment': SelfServicePayment,
-    'Prepayment Calculator': PayoffCalculator,
-    Reports: ReportBuilder,
-    'Investor Reports': () => (
-      <>
-        <InvestorReportForm onCreated={() => setRefreshKey(k => k + 1)} />
-        <InvestorReportsList refresh={refreshKey} />
-      </>
-    ),
-   'Escrows': EscrowDashboard,
-    'Troubled Assets': AssetRiskTable,
-    'Revived Sales': RevivedAssetsTable,
-    Collections: () => <CollectionsTable refresh={refreshKey} />,
-    'Market Analysis': MarketAnalysis,
-    'Live Analytics': RealTimeAnalyticsDashboard,
-      ...(isFeatureEnabled('trading') ? { Trades } : {}),
-    'Asset Management': AssetManagement,
-    'Guest CRM': () => (isFeatureEnabled('hospitality') ? <GuestCRM /> : null),
-    'Guest Chat': () => (isFeatureEnabled('hospitality') ? <GuestChat /> : null),
-        'Guest Reservations': () =>
-      isFeatureEnabled('hospitality') ? <GuestReservations /> : null,
-    'Booking Calendar': () =>
-      isFeatureEnabled('hospitality') ? <BookingCalendar /> : null,
-    'Restaurant Menu': () =>
-      isFeatureEnabled('hospitality') ? <RestaurantMenu /> : null,
-    'Restaurant Dashboard': () =>
-      isFeatureEnabled('hospitality') ? <StaffRestaurantDashboard /> : null,
-    Settings: OrganizationSettings
-  };
-
-   const routes = [
-    ...Object.entries(pages).map(([label, Page]) => (
-      <Route key={label} path={toPath(label)} element={<Page />} />
-    )),
-    <Route key="exchange" path="/exchange" element={<Marketplace />} />,
-    <Route key="exchange-new" path="/exchange/listings/new" element={<ListingForm />} />,
-    <Route key="exchange-detail" path="/exchange/listings/:id" element={<ListingDetail />} />,
-    <Route key="trade-room" path="/exchange/trades/:id" element={<TradeRoom />} />
-  ];
+    }, [role]);
 
   return (
-    <div className="flex flex-col md:flex-row min-h-screen bg-gray-900">
-       <Sidebar links={navLinks} />
+    <Card className="border border-slate-800/60 bg-slate-900/40">
+      <CardHeader className="pb-2">
+        <CardTitle className="text-sm text-slate-300">Quick Actions</CardTitle>
+      </CardHeader>
+      <CardContent className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+        {items.map((label) => (
+          <Button key={label} variant="secondary" className="justify-start" aria-label={label}>
+            {label}
+          </Button>
+        ))}
+      </CardContent>
+    </Card>
+  );
+}
 
-      <div className="flex flex-1 flex-col">
-        <header className="flex items-center justify-between bg-gray-900 border-b border-gray-700 p-4 text-white">
-          <div className="flex items-center">
-            <input
-              className="px-3 py-1 rounded bg-gray-700 text-white placeholder-gray-400 focus:outline-none border border-gray-600 w-1/3"
-              placeholder="Search…"
-              type="text"
-            />
-            <HelpTooltip text="Search across loans, customers and projects" />
-          </div>
-          <div className="flex items-center space-x-4">
-            <span className="text-xl" title="Notifications">🔔</span>
-            <div className="w-8 h-8 bg-gray-600 rounded-full flex items-center justify-center">
-              {session.user?.email[0].toUpperCase()}
+function KpiRow({ kpis }) {
+  return (
+    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+      {kpis.map((k) => (
+        <Card key={k.label} className="border border-slate-800/60 bg-slate-900/40">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-xs font-medium text-slate-400">{k.label}</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-semibold text-slate-100">{k.value}</div>
+          </CardContent>
+        </Card>
+      ))}
+    </div>
+  );
+}
+
+function AlertsRow({ alerts }) {
+  const badge = (sev) =>
+    ({
+      low: "bg-emerald-900/40 text-emerald-200 border-emerald-700/40",
+      med: "bg-amber-900/40 text-amber-200 border-amber-700/40",
+      high: "bg-rose-900/40 text-rose-200 border-rose-700/40",
+    }[sev]);
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+      {alerts.map((a, i) => (
+        <Card
+          key={i}
+          className={`border ${a.severity === "high" ? "border-rose-800/50" : "border-slate-800/60"} bg-slate-900/40`}
+        >
+          <CardContent className="py-4 flex items-center gap-3">
+            {a.type === "risk" ? <AlertTriangle aria-hidden /> : <Bell aria-hidden />}
+            <span className="text-slate-200">{a.text}</span>
+            <span className={`ml-auto rounded-full border px-2 py-0.5 text-xs ${badge(a.severity)}`}>
+              {a.severity.toUpperCase()}
+            </span>
+          </CardContent>
+        </Card>
+      ))}
+    </div>
+  );
+}
+
+function ChartPanel({ data, variant = "line", title = "Trends" }) {
+  return (
+    <Card className="border border-slate-800/60 bg-slate-900/40">
+      <CardHeader className="pb-2">
+        <CardTitle className="text-sm text-slate-300">{title}</CardTitle>
+      </CardHeader>
+      <CardContent className="h-56">
+        <ResponsiveContainer width="100%" height="100%">
+          {variant === "line" ? (
+            <LineChart data={data} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+              <CartesianGrid strokeOpacity={0.1} />
+              <XAxis dataKey="name" stroke="#94a3b8" />
+              <YAxis stroke="#94a3b8" />
+              <RTooltip />
+              <Line type="monotone" dataKey="a" stroke="#60a5fa" strokeWidth={2} dot={false} />
+              <Line type="monotone" dataKey="b" stroke="#34d399" strokeWidth={2} dot={false} />
+            </LineChart>
+          ) : (
+            <BarChart data={data} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+              <CartesianGrid strokeOpacity={0.1} />
+              <XAxis dataKey="name" stroke="#94a3b8" />
+              <YAxis stroke="#94a3b8" />
+              <RTooltip />
+              <Bar dataKey="a" fill="#60a5fa" />
+              <Bar dataKey="b" fill="#34d399" />
+            </BarChart>
+          )}
+        </ResponsiveContainer>
+      </CardContent>
+    </Card>
+  );
+}
+
+function TablePanel({ rows, title = "Loan Pipeline" }) {
+  return (
+    <Card className="border border-slate-800/60 bg-slate-900/40">
+      <CardHeader className="pb-2 flex flex-row items-center justify-between">
+        <CardTitle className="text-sm text-slate-300">{title}</CardTitle>
+        <div className="flex items-center gap-2">
+          <Input placeholder="Search" className="h-8 w-40" aria-label="Search table" />
+          <Button size="sm" variant="secondary">
+            <Filter className="mr-1 h-4 w-4" />
+            Filters
+          </Button>
+        </div>
+      </CardHeader>
+      <CardContent className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead className="text-slate-400 border-b border-slate-800/60">
+            <tr>
+              <th className="text-left py-2 pr-4 font-medium">ID</th>
+              <th className="text-left py-2 pr-4 font-medium">Name</th>
+              <th className="text-left py-2 pr-4 font-medium">Status</th>
+              <th className="text-right py-2 pl-4 font-medium">Amount</th>
+              <th className="text-right py-2 pl-4 font-medium">Date</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r) => (
+              <tr
+                key={r.id}
+                className="border-b border-slate-800/40 hover:bg-slate-800/30 focus-within:bg-slate-800/30"
+              >
+                <td className="py-2 pr-4 text-slate-200">{r.id}</td>
+                <td className="py-2 pr-4 text-slate-200">{r.name}</td>
+                <td className="py-2 pr-4">
+                  <Badge variant="secondary">{r.status}</Badge>
+                </td>
+                <td className="py-2 pl-4 text-right text-slate-200">${" "}{r.amount.toLocaleString()}</td>
+                <td className="py-2 pl-4 text-right text-slate-400">{r.date}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </CardContent>
+    </Card>
+  );
+}
+
+function NotificationsSheet() {
+  return (
+    <Sheet>
+      <SheetTrigger asChild>
+        <Button variant="ghost" size="icon" aria-label="Open notifications">
+          <Bell />
+        </Button>
+      </SheetTrigger>
+      <SheetContent className="w-96 bg-slate-950 text-slate-200 border-slate-800">
+        <SheetHeader>
+          <SheetTitle>Notifications</SheetTitle>
+        </SheetHeader>
+        <div className="mt-4 space-y-3">
+          <div className="flex items-start gap-2">
+            <CheckCircle2 className="mt-0.5" />
+            <div>
+              <div className="text-sm">Report generated</div>
+              <div className="text-xs text-slate-400">2 minutes ago</div>
             </div>
           </div>
-        </header>
-        <main className="flex-1 overflow-auto p-4 space-y-4 bg-white text-gray-900">
-           <Suspense fallback={<p>Loading...</p>}>
-            <Routes>{routes}</Routes>
-          </Suspense>
+                <div className="flex items-start gap-2">
+            <AlertTriangle className="mt-0.5" />
+            <div>
+              <div className="text-sm">Loan LN-1021 at risk</div>
+              <div className="text-xs text-slate-400">1 hour ago</div>
+            </div>
+          </div>
+        </div>
+      </SheetContent>
+    </Sheet>
+  );
+}
+
+function RoleTabs({ role, onChange }) {
+  return (
+    <Tabs value={role} onValueChange={onChange} className="w-full">
+      <TabsList className="grid grid-cols-5 bg-slate-900 border border-slate-800/60">
+        <TabsTrigger value="lender">Lender/Servicer</TabsTrigger>
+        <TabsTrigger value="investor">Investor</TabsTrigger>
+        <TabsTrigger value="borrower">Borrower</TabsTrigger>
+        <TabsTrigger value="contractor">Contractor</TabsTrigger>
+        <TabsTrigger value="admin">Admin</TabsTrigger>
+      </TabsList>
+    </Tabs>
+  );
+}
+
+function LenderView() {
+  const [kpis, setKpis] = useState(null);
+  const [rows, setRows] = useState(null);
+  const [data, setData] = useState(null);
+  useEffect(() => {
+    getKpis("lender").then(setKpis);
+    getTableRows("lender").then(setRows);
+    getChartData("lender").then(setData);
+  }, []);
+  return (
+    <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
+      <div className="xl:col-span-2 space-y-4">
+        {!kpis ? <Skeleton className="h-24 w-full" /> : <KpiRow kpis={kpis.primary} />}
+        {!data ? <Skeleton className="h-56 w-full" /> : <ChartPanel data={data} title="Portfolio & DSCR Trends" />}
+        {!rows ? <Skeleton className="h-64 w-full" /> : <TablePanel rows={rows} title="Loan Pipeline" />}
+        {kpis && <AlertsRow alerts={kpis.alerts} />}
+      </div>
+      <div className="space-y-4">
+        <QuickActions role="lender" />
+        <EmptyState
+          title="5 draw requests pending"
+          description="Review documentation and approve releases. You can bulk approve from the Draws queue."
+          actionLabel="Open Draw Queue"
+          onAction={() => {}}
+        />
+      </div>
+    </div>
+  );
+}
+
+function InvestorView() {
+  const [kpis, setKpis] = useState(null);
+  const [data, setData] = useState(null);
+  useEffect(() => {
+    getKpis("investor").then(setKpis);
+    getChartData("investor").then(setData);
+  }, []);
+  return (
+    <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
+      <div className="xl:col-span-2 space-y-4">
+        {!kpis ? <Skeleton className="h-24 w-full" /> : <KpiRow kpis={kpis.primary} />}
+        {!data ? <Skeleton className="h-56 w-full" /> : <ChartPanel data={data} variant="bar" title="ROI & Exposure" />}
+        <EmptyState
+          title="No new reports"
+          description="Generate a quarterly PDF performance report for your LPs."
+          actionLabel="Generate Report"
+          onAction={() => {}}
+        />
+      </div>
+      <div className="space-y-4">
+        <QuickActions role="investor" />
+        <Card className="border border-slate-800/60 bg-slate-900/40">
+          <CardContent className="py-6 text-sm text-slate-300">
+            Set risk alert thresholds to get notified when DSCR falls below 1.10x or delinquency &gt; 2%.
+          </CardContent>
+        </Card>
+      </div>
+    </div>
+  );
+}
+
+function BorrowerView() {
+  const [kpis, setKpis] = useState(null);
+  const [rows, setRows] = useState(null);
+  useEffect(() => {
+    getKpis("borrower").then(setKpis);
+    getTableRows("borrower").then(setRows);
+  }, []);
+  return (
+    <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
+      <div className="xl:col-span-2 space-y-4">
+        {!kpis ? <Skeleton className="h-24 w-full" /> : <KpiRow kpis={kpis.primary} />}
+        {!rows ? <Skeleton className="h-64 w-full" /> : <TablePanel rows={rows} title="Draw Requests" />}
+      </div>
+      <div className="space-y-4">
+        <QuickActions role="borrower" />
+        <EmptyState
+          title="Need a payoff quote?"
+          description="Request a 10‑day payoff good‑through date. Fees and escrow will be calculated automatically."
+          actionLabel="Request Payoff"
+          onAction={() => {}}
+        />
+      </div>
+    </div>
+  );
+}
+
+function ContractorView() {
+  return (
+    <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
+      <div className="xl:col-span-2 space-y-4">
+        <EmptyState
+          title="No invoices yet"
+          description="Upload your first invoice and lien waiver. We’ll validate docs and notify the lender for approval."
+          actionLabel="Upload Invoice"
+          onAction={() => {}}
+        />
+      </div>
+      <div className="space-y-4">
+        <QuickActions role="contractor" />
+      </div>
+    </div>
+  );
+}
+
+function AdminView() {
+  return (
+    <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
+      <div className="xl:col-span-2 space-y-4">
+        <EmptyState
+          title="No users yet"
+          description="Add your first user and assign a role. You can invite via email and enforce MFA."
+          actionLabel="Add User"
+          onAction={() => {}}
+        />
+      </div>
+      <div className="space-y-4">
+        <QuickActions role="admin" />
+      </div>
+    </div>
+  );
+}
+
+export default function DashboardLayout({ role: initialRole = "lender", orgName = "Kontra", userName = "User" }) {
+  const [role, setRole] = useState(initialRole);
+
+  return (
+    <TooltipProvider>
+      <div className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-950 to-slate-900 text-slate-100">
+        <div className="sticky top-0 z-20 backdrop-blur supports-[backdrop-filter]:bg-slate-950/70 bg-slate-950/60 border-b border-slate-800/60">
+          <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 h-14 flex items-center gap-2">
+            <div className="flex items-center gap-2 mr-2">
+              <div className="h-7 w-7 rounded-xl bg-sky-400/20 ring-1 ring-sky-400/30 grid place-items-center font-bold">K</div>
+              <span className="font-semibold tracking-tight text-slate-100/90">{orgName}</span>
+            </div>
+
+            <div className="hidden md:flex items-center gap-2 ml-2">
+              <RoleTabs role={role} onChange={setRole} />
+            </div>
+
+            <div className="ml-auto flex items-center gap-2">
+              <div className="relative">
+                <Search className="absolute left-2 top-2.5 h-4 w-4 text-slate-400" />
+                <Input
+                  aria-label="Search anything"
+                  placeholder="Search loans, borrowers, docs…"
+                  className="pl-8 w-64 bg-slate-900/60 border-slate-800/60"
+                />
+              </div>
+              <Button variant="ghost" size="icon" aria-label="Settings">
+                <Settings />
+              </Button>
+              <NotificationsSheet />
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="secondary" className="gap-2" aria-label="User menu">
+                    <User className="h-4 w-4" />
+                    {userName}
+                    <ChevronDown className="h-4 w-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-48">
+                  <DropdownMenuItem>Profile</DropdownMenuItem>
+                  <DropdownMenuItem>Organization Settings</DropdownMenuItem>
+                  <DropdownMenuItem>Sign out</DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+          </div>
+        </div>
+
+        <main className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-6 space-y-4">
+          <div className="md:hidden">
+            <RoleTabs role={role} onChange={setRole} />
+          </div>
+
+          {role === "lender" && <LenderView />}
+          {role === "investor" && <InvestorView />}
+          {role === "borrower" && <BorrowerView />}
+          {role === "contractor" && <ContractorView />}
+          {role === "admin" && <AdminView />}
+
+          <div className="text-xs text-slate-500 pt-6">
+            UI kit: Tailwind + shadcn/ui • Charts: Recharts • Built for accessibility and performance
+          </div>
         </main>
       </div>
-      <aside className="md:w-80 w-full border-l border-gray-700 bg-gray-800 p-2 space-y-2 text-white">
-        <VirtualAssistant />
-        <SuggestFeatureWidget />
-      </aside>
-    </div>
+    </TooltipProvider>
   );
 }
