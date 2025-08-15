@@ -1,7 +1,7 @@
 // ui/src/App.jsx
 
 import React, { useContext, useState } from 'react'
-import DashboardLayout from './components/DashboardLayout'
+import KontraDashboard from './components/KontraDashboard'
 import LoginForm from './components/LoginForm'
 import SignUpForm from './components/SignUpForm'
 import InviteAcceptForm from './components/InviteAcceptForm'
