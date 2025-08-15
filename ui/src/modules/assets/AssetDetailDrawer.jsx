@@ -1,5 +1,5 @@
-import React from 'react';
-import { DetailDrawer } from '../../components/ui';
+import React from "react";
+import { DetailDrawer } from "@/components/ui";
 
 export default function AssetDetailDrawer({ asset, onClose }) {
  
