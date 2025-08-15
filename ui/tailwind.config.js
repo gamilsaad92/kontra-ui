@@ -1,6 +1,7 @@
 const theme = require('./src/theme.js');
 
 module.exports = {
+  darkMode: 'class',
   content: ["./index.html", "./src/**/*.{js,ts,jsx,tsx}"],
   theme: {
     extend: {
