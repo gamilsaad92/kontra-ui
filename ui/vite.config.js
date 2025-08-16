@@ -9,10 +9,10 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: "autoUpdate",
-      workbox: {
-        globPatterns: ["**/*.{js,css,html,ico,png,svg}"],
-        globIgnores: ["**/sw.js", "**/workbox-*.js"],
-      },
+      strategies: "generateSW",
+      globDirectory: "dist",
+      globPatterns: ["**/*.{js,css,html,ico,png,svg}"],
+      globIgnores: ["**/sw.js", "**/workbox-*.js"],
       manifest: {
         name: "Kontra",
         short_name: "Kontra",
