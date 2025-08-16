@@ -349,8 +349,12 @@ function InvestorView() {
         <EmptyState title="No new reports" description="Generate a quarterly PDF performance report for your LPs." actionLabel="Generate Report" onAction={() => {}}/>
       </div>
       <div className="space-y-4">
-        <QuickActions role="investor"/>
-        <Card className="rounded-2xl border border-slate-800/60 bg-slate-900/40 shadow-[0_6px_24px_rgba(0,0,0,0.25)]"><CardContent className="py-6 text-sm text-slate-300">Set risk alert thresholds to get notified when DSCR falls below 1.10x or delinquency > 2%.</CardContent></Card>
+        <QuickActions role="investor" />
+        <Card className="rounded-2xl border border-slate-800/60 bg-slate-900/40 shadow-[0_6px_24px_rgba(0,0,0,0.25)]">
+          <CardContent className="py-6 text-sm text-slate-300">
+            Set risk alert thresholds to get notified when DSCR falls below 1.10x or delinquency &gt; 2%.
+          </CardContent>
+        </Card>
       </div>
     </div>
   );
