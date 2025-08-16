@@ -449,7 +449,7 @@ function InvestorView() {
         <QuickActions items={["Export Report", "Set Alert Thresholds", "Download Statement"]} />
         <Card className="border border-slate-800/60 bg-slate-900/40">
           <CardContent className="py-6 text-sm text-slate-300">
-            Set risk alert thresholds to get notified when DSCR falls below 1.10x or delinquency > 2%.
+            Set risk alert thresholds to get notified when DSCR falls below 1.10x or delinquency &gt; 2%.
           </CardContent>
         </Card>
       </div>
