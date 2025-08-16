@@ -1,5 +1,18 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RTooltip, ResponsiveContainer, BarChart, Bar } from "recharts";
+import {
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip as RTooltip,
+  ResponsiveContainer,
+  BarChart,
+  Bar,
+  PieChart,
+  Pie,
+  Cell,
+} from "recharts";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -8,6 +21,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
 import { supabase } from "@/lib/supabaseClient";
 import {
@@ -15,16 +29,31 @@ import {
   Bell,
   CheckCircle2,
   ChevronDown,
-  Download,
   Filter,
-  Mail,
-  MoreHorizontal,
-  Plus,
   Search,
   Settings,
-  Sparkles,
   User,
+  Download,
 } from "./icons";
+
+/**
+ * ------------------------------------------------------------
+ *  Kontra Dashboard — pixel‑matched to reference layout
+ *  - Role tabs across the top
+ *  - Role‑specific subnav beneath app bar (matches screenshot)
+ *  - Section blocks & card layout per role
+ *  - Tight, dark UI with high contrast and subtle borders
+ * ------------------------------------------------------------
+ */
+
+const riskDonutData = [
+  { name: "Current", value: 58 },
+  { name: "30+", value: 22 },
+  { name: "60+", value: 12 },
+  { name: "90+", value: 8 },
+];
+
+const donutPalette = ["#94a3b8", "#60a5fa", "#34d399", "#f59e0b"]; // slate, sky, emerald, amber
 
 async function getKpis(role) {
   const { data, error } = await supabase.rpc("get_kpis", { role });
@@ -47,6 +76,96 @@ async function getTableRows(role) {
   return data;
 }
 
+function AppHeader({ orgName, role, onRoleChange, userName }) {
+  return (
+    <div className="sticky top-0 z-20 backdrop-blur supports-[backdrop-filter]:bg-slate-950/80 bg-slate-950/60 border-b border-slate-800/60">
+      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 h-14 flex items-center gap-2">
+        <div className="flex items-center gap-2 mr-2">
+          <div className="h-7 w-7 rounded-xl bg-sky-400/20 ring-1 ring-sky-400/30 grid place-items-center font-bold">K</div>
+          <span className="font-semibold tracking-tight text-slate-100/90">{orgName}</span>
+        </div>
+
+        <div className="hidden md:flex items-center gap-2 ml-2">
+          <RoleTabs role={role} onChange={onRoleChange} />
+        </div>
+
+        <div className="ml-auto flex items-center gap-2">
+          <div className="relative">
+            <Search className="absolute left-2 top-2.5 h-4 w-4 text-slate-400" />
+            <Input
+              aria-label="Search anything"
+              placeholder="Search loans, borrowers, docs…"
+              className="pl-8 w-64 bg-slate-900/60 border-slate-800/60"
+            />
+          </div>
+          <Button variant="ghost" size="icon" aria-label="Settings">
+            <Settings />
+          </Button>
+          <NotificationsSheet />
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="secondary" className="gap-2" aria-label="User menu">
+                <User className="h-4 w-4" />
+                {userName}
+                <ChevronDown className="h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-48">
+              <DropdownMenuItem>Profile</DropdownMenuItem>
+              <DropdownMenuItem>Organization Settings</DropdownMenuItem>
+              <DropdownMenuItem>Sign out</DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+      </div>
+
+      {/* role-specific subnav bar (matches screenshot) */}
+      <div className="border-t border-slate-800/60">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 h-10 flex items-center gap-4 overflow-x-auto">
+          <RoleSubnav role={role} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function RoleTabs({ role, onChange }) {
+  return (
+    <Tabs value={role} onValueChange={onChange} className="w-full">
+      <TabsList className="grid grid-cols-5 bg-slate-900 border border-slate-800/60">
+        <TabsTrigger value="lender">Lender/Servicer</TabsTrigger>
+        <TabsTrigger value="investor">Investor</TabsTrigger>
+        <TabsTrigger value="borrower">Borrower</TabsTrigger>
+        <TabsTrigger value="contractor">Contractor</TabsTrigger>
+        <TabsTrigger value="admin">Admin</TabsTrigger>
+      </TabsList>
+    </Tabs>
+  );
+}
+
+function RoleSubnav({ role }) {
+  const items = {
+    lender: ["Portfolio Overview", "Loan Pipeline", "Servicing Center", "Draw Requests", "Reports & Analytics"],
+    investor: ["Portfolio Overview", "Lean Pipeline", "Servicing Center", "Draw Requests", "Reports & Analytics"],
+    borrower: ["Loan Summary", "Draw Requests"],
+    contractor: ["Project Progress", "Funding Schedule", "Documents"],
+    admin: ["Users", "Branding", "Audit", "Workflows"],
+  }[role];
+
+  return (
+    <div className="flex items-center gap-6 text-sm">
+      {items?.map((label, idx) => (
+        <div
+          key={label}
+          className={`whitespace-nowrap ${idx === 0 ? "text-slate-100" : "text-slate-400"}`}
+        >
+          {label}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function SectionTitle({ children }) {
   return (
     <div className="flex items-center justify-between mb-3">
@@ -55,53 +174,7 @@ function SectionTitle({ children }) {
   );
 }
 
-function EmptyState({ title, description, actionLabel, onAction }) {
-  return (
-    <Card className="border border-slate-800/60 bg-slate-900/40">
-      <CardContent className="py-12 text-center">
-        <Sparkles className="mx-auto mb-3" aria-hidden />
-        <h4 className="text-slate-100 font-medium mb-1">{title}</h4>
-        <p className="text-slate-400 mb-4 max-w-md mx-auto">{description}</p>
-        {actionLabel && (
-          <Button variant="secondary" onClick={onAction} aria-label={actionLabel}>
-            {actionLabel}
-          </Button>
-        )}
-      </CardContent>
-    </Card>
-  );
-}
-
-function ErrorState({ message, onRetry }) {
-  return (
-    <Card className="border border-red-900/40 bg-red-950/30">
-      <CardContent className="py-10 text-center">
-        <AlertTriangle className="mx-auto mb-2" aria-hidden />
-        <p className="text-red-200 mb-4">{message}</p>
-        {onRetry && <Button onClick={onRetry}>Retry</Button>}
-      </CardContent>
-    </Card>
-  );
-}
-
-function QuickActions({ role }) {
-  const items = useMemo(() => {
-    switch (role) {
-      case "lender":
-        return ["Create Loan", "Approve Draw", "Send Payoff Quote", "Generate Report"];
-      case "investor":
-        return ["Export Report", "Set Alert Thresholds", "Download Statement"];
-      case "borrower":
-        return ["Request Payoff Quote", "Submit Draw Request", "Upload Document"];
-      case "contractor":
-        return ["Upload Invoice", "Request Inspection", "View Funding Schedule"];
-      case "admin":
-        return ["Add User", "Update Branding", "View Audit Log", "Configure Workflow"];
-      default:
-        return [];
-    }
-    }, [role]);
-
+function QuickActions({ items }) {
   return (
     <Card className="border border-slate-800/60 bg-slate-900/40">
       <CardHeader className="pb-2">
@@ -195,6 +268,28 @@ function ChartPanel({ data, variant = "line", title = "Trends" }) {
   );
 }
 
+function DonutPanel({ title = "Risk Exposure" }) {
+  return (
+    <Card className="border border-slate-800/60 bg-slate-900/40">
+      <CardHeader className="pb-2">
+        <CardTitle className="text-sm text-slate-300">{title}</CardTitle>
+      </CardHeader>
+      <CardContent className="h-56 grid place-items-center">
+        <ResponsiveContainer width="100%" height={180}>
+          <PieChart>
+            <Pie data={riskDonutData} dataKey="value" nameKey="name" innerRadius={50} outerRadius={70}>
+              {riskDonutData.map((_, i) => (
+                <Cell key={i} fill={donutPalette[i % donutPalette.length]} />
+              ))}
+            </Pie>
+            <RTooltip />
+          </PieChart>
+        </ResponsiveContainer>
+      </CardContent>
+    </Card>
+  );
+}
+
 function TablePanel({ rows, title = "Loan Pipeline" }) {
   return (
     <Card className="border border-slate-800/60 bg-slate-900/40">
@@ -212,9 +307,9 @@ function TablePanel({ rows, title = "Loan Pipeline" }) {
         <table className="w-full text-sm">
           <thead className="text-slate-400 border-b border-slate-800/60">
             <tr>
-              <th className="text-left py-2 pr-4 font-medium">ID</th>
-              <th className="text-left py-2 pr-4 font-medium">Name</th>
-              <th className="text-left py-2 pr-4 font-medium">Status</th>
+              <th className="text-left py-2 pr-4 font-medium">Borrower Name</th>
+              <th className="text-left py-2 pr-4 font-medium">Application Status</th>
+              <th className="text-left py-2 pr-4 font-medium">Assignee</th>
               <th className="text-right py-2 pl-4 font-medium">Amount</th>
               <th className="text-right py-2 pl-4 font-medium">Date</th>
             </tr>
@@ -225,17 +320,46 @@ function TablePanel({ rows, title = "Loan Pipeline" }) {
                 key={r.id}
                 className="border-b border-slate-800/40 hover:bg-slate-800/30 focus-within:bg-slate-800/30"
               >
-                <td className="py-2 pr-4 text-slate-200">{r.id}</td>
                 <td className="py-2 pr-4 text-slate-200">{r.name}</td>
                 <td className="py-2 pr-4">
                   <Badge variant="secondary">{r.status}</Badge>
                 </td>
+                <td className="py-2 pr-4 text-slate-400">Team</td>
                 <td className="py-2 pl-4 text-right text-slate-200">${" "}{r.amount.toLocaleString()}</td>
                 <td className="py-2 pl-4 text-right text-slate-400">{r.date}</td>
               </tr>
             ))}
           </tbody>
         </table>
+      </CardContent>
+    </Card>
+  );
+}
+
+function FundingScheduleCard() {
+  return (
+    <Card className="border border-slate-800/60 bg-slate-900/40">
+      <CardHeader className="pb-2">
+        <CardTitle className="text-sm text-slate-300">Funding Schedule</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3 text-sm">
+        <div className="flex items-center justify-between"><span className="text-slate-400">Funding Schedule</span><span className="text-slate-200">8503/455533</span></div>
+        <div className="flex items-center justify-between"><span className="text-slate-400">Alerts</span><span className="text-slate-200">2</span></div>
+        <Button variant="secondary" size="sm" className="w-full"><Download className="h-4 w-4 mr-2"/>Export</Button>
+      </CardContent>
+    </Card>
+  );
+}
+
+function MessagesCard() {
+  return (
+    <Card className="border border-slate-800/60 bg-slate-900/40">
+      <CardHeader className="pb-2">
+        <CardTitle className="text-sm text-slate-300">Messages</CardTitle>
+      </CardHeader>
+      <CardContent className="text-sm space-y-2">
+        <Button variant="secondary" className="w-full justify-between">Upload Invoice<span className="text-xs text-slate-400">›</span></Button>
+        <Button variant="secondary" className="w-full justify-between">Request Inspection<span className="text-xs text-slate-400">›</span></Button>
       </CardContent>
     </Card>
   );
@@ -261,7 +385,7 @@ function NotificationsSheet() {
               <div className="text-xs text-slate-400">2 minutes ago</div>
             </div>
           </div>
-                <div className="flex items-start gap-2">
+          <div className="flex items-start gap-2">
             <AlertTriangle className="mt-0.5" />
             <div>
               <div className="text-sm">Loan LN-1021 at risk</div>
@@ -274,20 +398,7 @@ function NotificationsSheet() {
   );
 }
 
-function RoleTabs({ role, onChange }) {
-  return (
-    <Tabs value={role} onValueChange={onChange} className="w-full">
-      <TabsList className="grid grid-cols-5 bg-slate-900 border border-slate-800/60">
-        <TabsTrigger value="lender">Lender/Servicer</TabsTrigger>
-        <TabsTrigger value="investor">Investor</TabsTrigger>
-        <TabsTrigger value="borrower">Borrower</TabsTrigger>
-        <TabsTrigger value="contractor">Contractor</TabsTrigger>
-        <TabsTrigger value="admin">Admin</TabsTrigger>
-      </TabsList>
-    </Tabs>
-  );
-}
-
+/** Views */
 function LenderView() {
   const [kpis, setKpis] = useState(null);
   const [rows, setRows] = useState(null);
@@ -301,18 +412,18 @@ function LenderView() {
     <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
       <div className="xl:col-span-2 space-y-4">
         {!kpis ? <Skeleton className="h-24 w-full" /> : <KpiRow kpis={kpis.primary} />}
-        {!data ? <Skeleton className="h-56 w-full" /> : <ChartPanel data={data} title="Portfolio & DSCR Trends" />}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {!data ? <Skeleton className="h-56 w-full" /> : <ChartPanel data={data} title="ROI Trends" />}
+          <DonutPanel />
+        </div>
         {!rows ? <Skeleton className="h-64 w-full" /> : <TablePanel rows={rows} title="Loan Pipeline" />}
         {kpis && <AlertsRow alerts={kpis.alerts} />}
       </div>
       <div className="space-y-4">
-        <QuickActions role="lender" />
-        <EmptyState
-          title="5 draw requests pending"
-          description="Review documentation and approve releases. You can bulk approve from the Draws queue."
-          actionLabel="Open Draw Queue"
-          onAction={() => {}}
-        />
+        <QuickActions items={["Create Loan", "Approve Draw", "Send Payoff Quote", "Generate Report"]} />
+        <Card className="border border-slate-800/60 bg-slate-900/40">
+          <CardContent className="py-6 text-center text-sm text-slate-300">5 draw requests pending</CardContent>
+        </Card>
       </div>
     </div>
   );
@@ -330,18 +441,15 @@ function InvestorView() {
       <div className="xl:col-span-2 space-y-4">
         {!kpis ? <Skeleton className="h-24 w-full" /> : <KpiRow kpis={kpis.primary} />}
         {!data ? <Skeleton className="h-56 w-full" /> : <ChartPanel data={data} variant="bar" title="ROI & Exposure" />}
-        <EmptyState
-          title="No new reports"
-          description="Generate a quarterly PDF performance report for your LPs."
-          actionLabel="Generate Report"
-          onAction={() => {}}
-        />
+        <Card className="border border-slate-800/60 bg-slate-900/40">
+          <CardContent className="py-6 text-center text-sm text-slate-300">No new reports</CardContent>
+        </Card>
       </div>
       <div className="space-y-4">
-        <QuickActions role="investor" />
+        <QuickActions items={["Export Report", "Set Alert Thresholds", "Download Statement"]} />
         <Card className="border border-slate-800/60 bg-slate-900/40">
           <CardContent className="py-6 text-sm text-slate-300">
-            Set risk alert thresholds to get notified when DSCR falls below 1.10x or delinquency &gt; 2%.
+            Set risk alert thresholds to get notified when DSCR falls below 1.10x or delinquency > 2%.
           </CardContent>
         </Card>
       </div>
@@ -359,17 +467,34 @@ function BorrowerView() {
   return (
     <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
       <div className="xl:col-span-2 space-y-4">
-        {!kpis ? <Skeleton className="h-24 w-full" /> : <KpiRow kpis={kpis.primary} />}
+        {!kpis ? (
+          <Skeleton className="h-24 w-full" />
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <Card className="border border-slate-800/60 bg-slate-900/40">
+              <CardHeader className="pb-2"><CardTitle className="text-sm text-slate-300">Loan Summary</CardTitle></CardHeader>
+              <CardContent className="grid grid-cols-2 gap-4 text-sm">
+                <div>
+                  <div className="text-2xl font-semibold text-slate-100">$250,000</div>
+                  <div className="text-slate-400">Interest Rate</div>
+                </div>
+                <div>
+                  <div className="text-2xl font-semibold text-slate-100">18/05/2026</div>
+                  <div className="text-slate-400">Payoff Date</div>
+                </div>
+                <Button variant="secondary" className="col-span-2">Payment History</Button>
+              </CardContent>
+            </Card>
+            <MessagesCard />
+          </div>
+        )}
         {!rows ? <Skeleton className="h-64 w-full" /> : <TablePanel rows={rows} title="Draw Requests" />}
       </div>
       <div className="space-y-4">
-        <QuickActions role="borrower" />
-        <EmptyState
-          title="Need a payoff quote?"
-          description="Request a 10‑day payoff good‑through date. Fees and escrow will be calculated automatically."
-          actionLabel="Request Payoff"
-          onAction={() => {}}
-        />
+        <QuickActions items={["Request Payoff Quote", "Submit Draw Request", "Upload Document"]} />
+        <Card className="border border-slate-800/60 bg-slate-900/40">
+          <CardContent className="py-6 text-center text-sm text-slate-300">Need a payoff quote?</CardContent>
+        </Card>
       </div>
     </div>
   );
@@ -379,15 +504,16 @@ function ContractorView() {
   return (
     <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
       <div className="xl:col-span-2 space-y-4">
-        <EmptyState
-          title="No invoices yet"
-          description="Upload your first invoice and lien waiver. We’ll validate docs and notify the lender for approval."
-          actionLabel="Upload Invoice"
-          onAction={() => {}}
-        />
+        <Card className="border border-slate-800/60 bg-slate-900/40">
+          <CardHeader className="pb-2"><CardTitle className="text-sm text-slate-300">Project Progress</CardTitle></CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex items-center gap-4 text-sm"><span className="text-slate-400">Progress</span><Progress value={76} className="h-2" /></div>
+            <FundingScheduleCard />
+          </CardContent>
+        </Card>
       </div>
       <div className="space-y-4">
-        <QuickActions role="contractor" />
+        <QuickActions items={["Upload Invoice", "Request Inspection", "View Funding Schedule"]} />
       </div>
     </div>
   );
@@ -397,67 +523,24 @@ function AdminView() {
   return (
     <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
       <div className="xl:col-span-2 space-y-4">
-        <EmptyState
-          title="No users yet"
-          description="Add your first user and assign a role. You can invite via email and enforce MFA."
-          actionLabel="Add User"
-          onAction={() => {}}
-        />
+        <Card className="border border-slate-800/60 bg-slate-900/40">
+          <CardContent className="py-6 text-center text-sm text-slate-300">Add your first user and assign a role.</CardContent>
+        </Card>
       </div>
       <div className="space-y-4">
-        <QuickActions role="admin" />
+        <QuickActions items={["Add User", "Update Branding", "View Audit Log", "Configure Workflow"]} />
       </div>
     </div>
   );
 }
 
-export default function DashboardLayout({ role: initialRole = "lender", orgName = "Kontra", userName = "User" }) {
+export default function KontraDashboard({ role: initialRole = "lender", orgName = "Kontra", userName = "User" }) {
   const [role, setRole] = useState(initialRole);
 
   return (
     <TooltipProvider>
       <div className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-950 to-slate-900 text-slate-100">
-        <div className="sticky top-0 z-20 backdrop-blur supports-[backdrop-filter]:bg-slate-950/70 bg-slate-950/60 border-b border-slate-800/60">
-          <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 h-14 flex items-center gap-2">
-            <div className="flex items-center gap-2 mr-2">
-              <div className="h-7 w-7 rounded-xl bg-sky-400/20 ring-1 ring-sky-400/30 grid place-items-center font-bold">K</div>
-              <span className="font-semibold tracking-tight text-slate-100/90">{orgName}</span>
-            </div>
-
-            <div className="hidden md:flex items-center gap-2 ml-2">
-              <RoleTabs role={role} onChange={setRole} />
-            </div>
-
-            <div className="ml-auto flex items-center gap-2">
-              <div className="relative">
-                <Search className="absolute left-2 top-2.5 h-4 w-4 text-slate-400" />
-                <Input
-                  aria-label="Search anything"
-                  placeholder="Search loans, borrowers, docs…"
-                  className="pl-8 w-64 bg-slate-900/60 border-slate-800/60"
-                />
-              </div>
-              <Button variant="ghost" size="icon" aria-label="Settings">
-                <Settings />
-              </Button>
-              <NotificationsSheet />
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="secondary" className="gap-2" aria-label="User menu">
-                    <User className="h-4 w-4" />
-                    {userName}
-                    <ChevronDown className="h-4 w-4" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-48">
-                  <DropdownMenuItem>Profile</DropdownMenuItem>
-                  <DropdownMenuItem>Organization Settings</DropdownMenuItem>
-                  <DropdownMenuItem>Sign out</DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </div>
-          </div>
-        </div>
+        <AppHeader orgName={orgName} role={role} onRoleChange={setRole} userName={userName} />
 
         <main className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-6 space-y-4">
           <div className="md:hidden">
