@@ -119,7 +119,7 @@ function EmptyState({ title, description, actionLabel, onAction }: { title: stri
 
 function ErrorState({ message, onRetry }: { message: string; onRetry?: () => void }) {
   return (
-    <Card className="rounded-2xl border border-red-900/40 bg-red-950/30 shadow-[0_6px_24px_rgba(0,0,0,0.25)]">
+    <Card className="rounded-2xl border border-slate-800/60 bg-slate-900/40 shadow-[0_6px_24px_rgba(0,0,0,0.25)]">
       <CardContent className="py-10 text-center">
         <AlertTriangle className="mx-auto mb-2" aria-hidden />
         <p className="text-red-200 mb-4">{message}</p>
@@ -150,15 +150,13 @@ function QuickActions({ role }: { role: Role }) {
       <CardHeader className="pb-2"><CardTitle className="text-sm text-slate-300">Quick Actions</CardTitle></CardHeader>
       <CardContent className="grid grid-cols-1 sm:grid-cols-2 gap-2">
         {items.map((label) => (
-          <Card
+         <Button
             key={label}
-            className="rounded-2xl border border-slate-800/60 bg-slate-900/40 shadow-[0_6px_24px_rgba(0,0,0,0.25)]"
+            className="justify-start rounded-xl h-9 px-4"
+            aria-label={label}
           >
-            <CardContent className="p-4">
-              <div className="text-sm text-slate-300">{label}</div>
-              {/* add item content here */}
-            </CardContent>
-          </Card>
+            {label}
+          </Button>
         ))}
       </CardContent>
     </Card>
@@ -191,7 +189,10 @@ function AlertsRow({ alerts }: { alerts: KPIs["alerts"] }) {
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
       {alerts.map((a, i) => (
-         <Card key={i} className={`rounded-2xl border ${a.severity === "high" ? "border-rose-800/50" : "border-slate-800/60"} bg-slate-900/40 shadow-[0_6px_24px_rgba(0,0,0,0.25)]`}>
+        <Card
+          key={i}
+          className="rounded-2xl border border-slate-800/60 bg-slate-900/40 shadow-[0_6px_24px_rgba(0,0,0,0.25)]"
+        >
           <CardContent className="py-4 flex items-center gap-3">
             {a.type === "risk" ? <AlertTriangle aria-hidden /> : <Bell aria-hidden />}
             <span className="text-slate-200">{a.text}</span>
@@ -304,13 +305,13 @@ function NotificationsSheet() {
 function RoleTabs({ role, onChange }: { role: Role; onChange: (r: Role) => void }) {
   return (
     <Tabs value={role} onValueChange={(v) => onChange(v as Role)} className="w-full">
-     <TabsList className="grid grid-cols-5 bg-slate-900/70 border border-slate-800/60 rounded-2xl p-1 gap-1">
-        <TabsTrigger value="lender" className="rounded-xl data-[state=active]:bg-slate-800/70">Lender/Servicer</TabsTrigger>
-        <TabsTrigger value="investor" className="rounded-xl data-[state=active]:bg-slate-800/70">Investor</TabsTrigger>
-        <TabsTrigger value="borrower" className="rounded-xl data-[state=active]:bg-slate-800/70">Borrower</TabsTrigger>
-        <TabsTrigger value="contractor" className="rounded-xl data-[state=active]:bg-slate-800/70">Contractor</TabsTrigger>
-        <TabsTrigger value="admin" className="rounded-xl data-[state=active]:bg-slate-800/70">Admin</TabsTrigger>
-            </TabsList>
+      <TabsList className="grid grid-cols-5 bg-slate-900/70 border border-slate-800/60 rounded-2xl p-1 gap-1">
+        <TabsTrigger value="lender" className="rounded-full data-[state=active]:bg-slate-800/70">Lender/Servicer</TabsTrigger>
+        <TabsTrigger value="investor" className="rounded-full data-[state=active]:bg-slate-800/70">Investor</TabsTrigger>
+        <TabsTrigger value="borrower" className="rounded-full data-[state=active]:bg-slate-800/70">Borrower</TabsTrigger>
+        <TabsTrigger value="contractor" className="rounded-full data-[state=active]:bg-slate-800/70">Contractor</TabsTrigger>
+        <TabsTrigger value="admin" className="rounded-full data-[state=active]:bg-slate-800/70">Admin</TabsTrigger>
+      </TabsList>
     </Tabs>
   );
 }
