@@ -6,7 +6,7 @@ function cn(...classes: Array<string | false | null | undefined>) {
 
 export const Card = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(
   ({ className, ...props }, ref) => (
-    <div ref={ref} className={cn("rounded-2xl border bg-white text-gray-900 shadow-sm", className)} {...props} />
+    <div ref={ref} className={cn("rounded-2xl border shadow-sm", className)} {...props} />
   )
 );
 
