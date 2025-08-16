@@ -150,7 +150,15 @@ function QuickActions({ role }: { role: Role }) {
       <CardHeader className="pb-2"><CardTitle className="text-sm text-slate-300">Quick Actions</CardTitle></CardHeader>
       <CardContent className="grid grid-cols-1 sm:grid-cols-2 gap-2">
         {items.map((label) => (
-    <Card className="rounded-2xl border border-slate-800/60 bg-slate-900/40 shadow-[0_6px_24px_rgba(0,0,0,0.25)]">
+          <Card
+            key={label}
+            className="rounded-2xl border border-slate-800/60 bg-slate-900/40 shadow-[0_6px_24px_rgba(0,0,0,0.25)]"
+          >
+            <CardContent className="p-4">
+              <div className="text-sm text-slate-300">{label}</div>
+              {/* add item content here */}
+            </CardContent>
+          </Card>
         ))}
       </CardContent>
     </Card>
