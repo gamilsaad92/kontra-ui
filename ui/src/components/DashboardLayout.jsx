@@ -9,6 +9,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Skeleton } from "@/components/ui/skeleton";
+import { supabase } from "@/lib/supabaseClient";
 import {
   AlertTriangle,
   Bell,
@@ -26,54 +27,24 @@ import {
 } from "./icons";
 
 async function getKpis(role) {
-  return new Promise((resolve) =>
-    setTimeout(
-      () =>
-        resolve({
-          primary: [
-            { label: role === "investor" ? "Yield" : "Active Loans", value: role === "investor" ? "7.8%" : "124" },
-            { label: role === "lender" ? "Delinquency" : "Exposure", value: role === "lender" ? "1.6%" : "$12.3M" },
-            { label: role === "borrower" ? "Next Due" : "DSCR", value: role === "borrower" ? "09/01" : "1.21x" },
-          ],
-          alerts: [
-            { type: "risk", text: "3 loans trending to delinquent", severity: "high" },
-            { type: "ops", text: "5 draw requests awaiting approval", severity: "med" },
-          ],
-        }),
-      400
-    )
-  );
+  const { data, error } = await supabase.rpc("get_kpis", { role });
+  if (error || !data) throw error || new Error("Failed to load KPIs");
+  return data;
 }
 
 async function getChartData(role) {
-  return new Promise((r) =>
-    setTimeout(
-      () =>
-        r([
-          { name: "Jan", a: 12, b: 8 },
-          { name: "Feb", a: 18, b: 12 },
-          { name: "Mar", a: 16, b: 10 },
-          { name: "Apr", a: 22, b: 15 },
-          { name: "May", a: 19, b: 14 },
-          { name: "Jun", a: 24, b: 18 },
-        ]),
-      480
-    )
-  );
+  const { data, error } = await supabase.rpc("get_chart_data", { role });
+  if (error || !data) throw error || new Error("Failed to load chart data");
+  return data;
 }
 
 async function getTableRows(role) {
-  return new Promise((r) =>
-    setTimeout(
-      () =>
-        r([
-          { id: "LN-1021", name: "Mulberry Creek", status: "Pending KYC", amount: 450000, date: "2025-08-02" },
-          { id: "LN-1022", name: "Haniston Plaza", status: "Approved", amount: 1200000, date: "2025-08-05" },
-          { id: "LN-1023", name: "Pork Stugton Park", status: "Funded", amount: 900000, date: "2025-08-12" },
-        ]),
-      520
-    )
-  );
+  const { data, error } = await supabase
+    .from("dashboard_rows")
+    .select("id,name,status,amount,date")
+    .eq("role", role);
+  if (error || !data) throw error || new Error("Failed to load dashboard rows");
+  return data;
 }
 
 function SectionTitle({ children }) {
