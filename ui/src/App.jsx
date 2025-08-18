@@ -2,7 +2,7 @@
 
 import React from 'react'
 import DashboardLayout from './components/DashboardLayout'
-import KontraDashboard from '@/components/dashboard/KontraDashboard'
+import KontraDashboard from '@/components/KontraDashboard'
 
 export default function App() {
   return import.meta.env.NEXT_PUBLIC_NEW_DASH ? (
