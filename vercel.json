@@ -1,6 +1,7 @@
 {
-   "buildCommand": "npm run build",
-  "outputDirectory": "dist",
+  "installCommand": "npm install --prefix ui",
+  "buildCommand": "npm run build --prefix ui",
+  "outputDirectory": "ui/dist",
   "env": {
     "VITE_API_URL": "https://api.example.com",
     "VITE_SUPABASE_URL": "https://<your-project-ref>.supabase.co",
