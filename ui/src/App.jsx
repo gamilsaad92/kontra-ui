@@ -6,7 +6,7 @@ import KontraDashboard from '@/components/KontraDashboard'
 
 export default function App() {
   return import.meta.env.NEXT_PUBLIC_NEW_DASH ? (
-    <KontraDashboard role="lender" orgName="Kontra" userName="Jamil" />
+<KontraDashboard apiBase={import.meta.env.VITE_API_BASE} initialRole="lender" />
   ) : (
     <DashboardLayout role="lender" orgName="Kontra" userName="Jamil" />
   )
