@@ -1,4 +1,10 @@
 {
+  "name": "kontra-root",
+  "private": true,
+  "scripts": {
+    "build": "npm --prefix ui run build",
+    "test": "npm --prefix ui test"
+  },
   "dependencies": {
     "@clerk/nextjs": "^6.27.1",
     "@sentry/node": "^9.34.0",
