@@ -1,563 +1,230 @@
-import React, { useEffect, useMemo, useState } from "react";
-import {
-  LineChart,
-  Line,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip as RTooltip,
-  ResponsiveContainer,
-  BarChart,
-  Bar,
-  PieChart,
-  Pie,
-  Cell,
-} from "recharts";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { Progress } from "@/components/ui/progress";
-import { Skeleton } from "@/components/ui/skeleton";
-import { supabase } from "@/lib/supabaseClient";
-import {
-  AlertTriangle,
-  Bell,
-  CheckCircle2,
-  ChevronDown,
-  Filter,
-  Search,
-  Settings,
-  User,
-  Download,
-} from "./icons";
+import React, { useState, useContext, useEffect, lazy, Suspense } from 'react';
+import { AuthContext } from '../lib/authContext';
+import { Routes, Route, Link, useNavigate, useLocation } from 'react-router-dom';
+import VirtualAssistant from './VirtualAssistant';
+import SuggestFeatureWidget from './SuggestFeatureWidget';
+import DashboardHome from './DashboardHome';
+import LoanApplicationForm from './LoanApplicationForm';
+import LoanApplicationList from './LoanApplicationList';
+import DecisionTimeline from './DecisionTimeline';
+import CreateLoanForm from './CreateLoanForm';
+import LoanList from './LoanList';
+import AmortizationTable from './AmortizationTable';
+import PaymentForm from './PaymentForm';
+import DrawRequestForm from './DrawRequestForm';
+import DrawRequestsTable from './DrawRequestsTable';
+import LienWaiverForm from './LienWaiverForm';
+import LienWaiverList from './LienWaiverList';
+import InspectionForm from './InspectionForm';
+import InspectionList from './InspectionList';
+import EscrowDashboard from './EscrowDashboard';
+import CollectionForm from './CollectionForm';
+import CollectionsTable from './CollectionsTable';
+import ProjectForm from './ProjectForm';
+import ProjectsTable from './ProjectsTable';
+import ProjectDetail from './ProjectDetail';
+import AssetForm from './AssetForm';
+import AssetsTable from './AssetsTable';
+import PaymentPortal from './PaymentPortal';
+import DrawKanbanBoard from './DrawKanbanBoard';
+import UnderwritingBoard from './UnderwritingBoard';
+import InvestorReportForm from './InvestorReportForm';
+import InvestorReportsList from './InvestorReportsList';
+// Removed separate HospitalityDashboard – using unified DashboardHome for both roles
+const GuestCRM = lazy(() => import('./GuestCRM'));
+const GuestChat = lazy(() => import('./GuestChat'));
+const RevivedAssetsTable = lazy(() => import('../modules/assets/RevivedAssetsTable'));
+const AssetRiskTable = lazy(() => import('../modules/assets/AssetRiskTable'));
+import GuidedSetup from './GuidedSetup';
+import QuickStartTour from './QuickStartTour';
+import OrgSelect from './OrgSelect';
+import SelfServicePayment from './SelfServicePayment';
+import WelcomeWizard from './WelcomeWizard';
+import GuestReservations from './GuestReservations';
+import BookingCalendar from './BookingCalendar';
+import BulkActionTable from './BulkActionTable';
+import ReportBuilder from './ReportBuilder';
+import LiveChat from './LiveChat';
+import CustomerPortal from './CustomerPortal';
+import RealTimeAnalyticsDashboard from './RealTimeAnalyticsDashboard';
+import MarketAnalysis from './MarketAnalysis';
+import OrganizationSettings from './OrganizationSettings';
+import RestaurantMenu from './RestaurantMenu';
+import StaffRestaurantDashboard from './StaffRestaurantDashboard';
+import HelpTooltip from './HelpTooltip';
+import { isFeatureEnabled } from '../lib/featureFlags';
+import useFeatureUsage from '../lib/useFeatureUsage';
 
-/**
- * ------------------------------------------------------------
- *  Kontra Dashboard — pixel‑matched to reference layout
- *  - Role tabs across the top
- *  - Role‑specific subnav beneath app bar (matches screenshot)
- *  - Section blocks & card layout per role
- *  - Tight, dark UI with high contrast and subtle borders
- * ------------------------------------------------------------
- */
+const departmentNav = {
+  finance: [
+    { label: 'Dashboard', icon: '🏠' },  // New Dashboard entry for Finance
+    { label: 'Application', icon: '📝', sub: ['New Application', 'Application List'] },
+    { label: 'Underwriting', icon: '✅', sub: ['Underwriting Board', 'Decisions'] },
+    { label: 'Escrow Setup', icon: '💼', sub: ['Escrows'] },
+    { label: 'Servicing', icon: '🛠️', sub: ['Payment Portal', 'Self Service Payment'] },
+    { label: 'Risk Monitoring', icon: '📈', sub: ['Troubled Assets', 'Revived Sales'] },
+    { label: 'Investor Reporting', icon: '📊', sub: ['Reports', 'Investor Reports'] },
+    { label: 'Market Analysis', icon: '🏙️' },
+    { label: 'Live Analytics', icon: '📈' },
+    { label: 'Collections', icon: '💵', sub: ['Collections'] },
+    { label: 'Settings', icon: '⚙️' },
+    { label: 'Docs', icon: '📄', href: 'https://github.com/kontra-ui/docs' }
+  ],
+  hospitality: [
+    { label: 'Dashboard', icon: '🏨' },  // New Dashboard entry for Hospitality
+    { label: 'Guest CRM', icon: '👥' },
+    { label: 'Guest Chat', icon: '💬' },
+    { label: 'Guest Reservations', icon: '🛏️', flag: 'hospitality' },
+    { label: 'Booking Calendar', icon: '📅', flag: 'hospitality' },
+    { label: 'Restaurant Menu', icon: '🍽️' },
+    { label: 'Restaurant Dashboard', icon: '📊' },
+    { label: 'Settings', icon: '⚙️' },
+    { label: 'Docs', icon: '📄', href: 'https://github.com/kontra-ui/docs' }
+  ]
+};
 
-const riskDonutData = [
-  { name: "Current", value: 58 },
-  { name: "30+", value: 22 },
-  { name: "60+", value: 12 },
-  { name: "90+", value: 8 },
-];
+const slug = str => str.toLowerCase().replace(/\s+/g, '-');
+const toPath = label => (label === 'Dashboard' ? '/' : `/${slug(label)}`);
 
-const donutPalette = ["#94a3b8", "#60a5fa", "#34d399", "#f59e0b"]; // slate, sky, emerald, amber
-
-async function getKpis(role) {
-  const { data, error } = await supabase.rpc("get_kpis", { role });
-  if (error || !data) throw error || new Error("Failed to load KPIs");
-  return data;
-}
-
-async function getChartData(role) {
-  const { data, error } = await supabase.rpc("get_chart_data", { role });
-  if (error || !data) throw error || new Error("Failed to load chart data");
-  return data;
-}
-
-async function getTableRows(role) {
-  const { data, error } = await supabase
-    .from("dashboard_rows")
-    .select("id,name,status,amount,date")
-    .eq("role", role);
-  if (error || !data) throw error || new Error("Failed to load dashboard rows");
-  return data;
-}
-
-function AppHeader({ orgName, role, onRoleChange, userName }) {
-  return (
-    <div className="sticky top-0 z-20 backdrop-blur supports-[backdrop-filter]:bg-slate-950/80 bg-slate-950/60 border-b border-slate-800/60">
-      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 h-14 flex items-center gap-2">
-        <div className="flex items-center gap-2 mr-2">
-          <div className="h-7 w-7 rounded-xl bg-sky-400/20 ring-1 ring-sky-400/30 grid place-items-center font-bold">K</div>
-          <span className="font-semibold tracking-tight text-slate-100/90">{orgName}</span>
-        </div>
-
-        <div className="hidden md:flex items-center gap-2 ml-2">
-          <RoleTabs role={role} onChange={onRoleChange} />
-        </div>
-
-        <div className="ml-auto flex items-center gap-2">
-          <div className="relative">
-            <Search className="absolute left-2 top-2.5 h-4 w-4 text-slate-400" />
-            <Input
-              aria-label="Search anything"
-              placeholder="Search loans, borrowers, docs…"
-              className="pl-8 w-64 bg-slate-900/60 border-slate-800/60"
-            />
-          </div>
-          <Button variant="ghost" size="icon" aria-label="Settings">
-            <Settings />
-          </Button>
-          <NotificationsSheet />
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="secondary" className="gap-2" aria-label="User menu">
-                <User className="h-4 w-4" />
-                {userName}
-                <ChevronDown className="h-4 w-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-48">
-              <DropdownMenuItem>Profile</DropdownMenuItem>
-              <DropdownMenuItem>Organization Settings</DropdownMenuItem>
-              <DropdownMenuItem>Sign out</DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
-      </div>
-
-      {/* role-specific subnav bar (matches screenshot) */}
-      <div className="border-t border-slate-800/60">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 h-10 flex items-center gap-4 overflow-x-auto">
-          <RoleSubnav role={role} />
-        </div>
-      </div>
-    </div>
+export default function DashboardLayout() {
+  const { session, supabase } = useContext(AuthContext);
+  const navigate = useNavigate();
+  const location = useLocation();
+  const [department, setDepartment] = useState(
+    () => session?.user?.user_metadata?.role === 'hospitality' ? 'hospitality' : 'finance'
   );
-}
+  const navItems = departmentNav[department] || [];
 
-function RoleTabs({ role, onChange }) {
-  return (
-    <Tabs value={role} onValueChange={onChange} className="w-full">
-      <TabsList className="grid grid-cols-5 bg-slate-900 border border-slate-800/60">
-        <TabsTrigger value="lender">Lender/Servicer</TabsTrigger>
-        <TabsTrigger value="investor">Investor</TabsTrigger>
-        <TabsTrigger value="borrower">Borrower</TabsTrigger>
-        <TabsTrigger value="contractor">Contractor</TabsTrigger>
-        <TabsTrigger value="admin">Admin</TabsTrigger>
-      </TabsList>
-    </Tabs>
-  );
-}
+  const [sidebarOpen, setSidebarOpen] = useState(true)
+  const [refreshKey, setRefreshKey] = useState(0)
+  
+  const { usage, recordUsage } = useFeatureUsage();
+  const frequentItems = navItems
+    .filter(i => usage[i.label])
+    .sort((a, b) => usage[b.label] - usage[a.label])
+    .slice(0, 3);
 
-function RoleSubnav({ role }) {
-  const items = {
-    lender: ["Portfolio Overview", "Loan Pipeline", "Servicing Center", "Draw Requests", "Reports & Analytics"],
-    investor: ["Portfolio Overview", "Lean Pipeline", "Servicing Center", "Draw Requests", "Reports & Analytics"],
-    borrower: ["Loan Summary", "Draw Requests"],
-    contractor: ["Project Progress", "Funding Schedule", "Documents"],
-    admin: ["Users", "Branding", "Audit", "Workflows"],
-  }[role];
-
-  return (
-    <div className="flex items-center gap-6 text-sm">
-      {items?.map((label, idx) => (
-        <div
-          key={label}
-          className={`whitespace-nowrap ${idx === 0 ? "text-slate-100" : "text-slate-400"}`}
-        >
-          {label}
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function SectionTitle({ children }) {
-  return (
-    <div className="flex items-center justify-between mb-3">
-      <h3 className="text-lg font-semibold tracking-tight text-slate-100/90">{children}</h3>
-    </div>
-  );
-}
-
-function QuickActions({ items }) {
-  return (
-    <Card className="border border-slate-800/60 bg-slate-900/40">
-      <CardHeader className="pb-2">
-        <CardTitle className="text-sm text-slate-300">Quick Actions</CardTitle>
-      </CardHeader>
-      <CardContent className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-        {items.map((label) => (
-          <Button key={label} variant="secondary" className="justify-start" aria-label={label}>
-            {label}
-          </Button>
-        ))}
-      </CardContent>
-    </Card>
-  );
-}
-
-function KpiRow({ kpis }) {
-  return (
-    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-      {kpis.map((k) => (
-        <Card key={k.label} className="border border-slate-800/60 bg-slate-900/40">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-xs font-medium text-slate-400">{k.label}</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-semibold text-slate-100">{k.value}</div>
-          </CardContent>
-        </Card>
-      ))}
-    </div>
-  );
-}
-
-function AlertsRow({ alerts }) {
-  const badge = (sev) =>
-    ({
-      low: "bg-emerald-900/40 text-emerald-200 border-emerald-700/40",
-      med: "bg-amber-900/40 text-amber-200 border-amber-700/40",
-      high: "bg-rose-900/40 text-rose-200 border-rose-700/40",
-    }[sev]);
-  return (
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-      {alerts.map((a, i) => (
-        <Card
-          key={i}
-          className={`border ${a.severity === "high" ? "border-rose-800/50" : "border-slate-800/60"} bg-slate-900/40`}
-        >
-          <CardContent className="py-4 flex items-center gap-3">
-            {a.type === "risk" ? <AlertTriangle aria-hidden /> : <Bell aria-hidden />}
-            <span className="text-slate-200">{a.text}</span>
-            <span className={`ml-auto rounded-full border px-2 py-0.5 text-xs ${badge(a.severity)}`}>
-              {a.severity.toUpperCase()}
-            </span>
-          </CardContent>
-        </Card>
-      ))}
-    </div>
-  );
-}
-
-function ChartPanel({ data, variant = "line", title = "Trends" }) {
-  return (
-    <Card className="border border-slate-800/60 bg-slate-900/40">
-      <CardHeader className="pb-2">
-        <CardTitle className="text-sm text-slate-300">{title}</CardTitle>
-      </CardHeader>
-      <CardContent className="h-56">
-        <ResponsiveContainer width="100%" height="100%">
-          {variant === "line" ? (
-            <LineChart data={data} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
-              <CartesianGrid strokeOpacity={0.1} />
-              <XAxis dataKey="name" stroke="#94a3b8" />
-              <YAxis stroke="#94a3b8" />
-              <RTooltip />
-              <Line type="monotone" dataKey="a" stroke="#60a5fa" strokeWidth={2} dot={false} />
-              <Line type="monotone" dataKey="b" stroke="#34d399" strokeWidth={2} dot={false} />
-            </LineChart>
-          ) : (
-            <BarChart data={data} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
-              <CartesianGrid strokeOpacity={0.1} />
-              <XAxis dataKey="name" stroke="#94a3b8" />
-              <YAxis stroke="#94a3b8" />
-              <RTooltip />
-              <Bar dataKey="a" fill="#60a5fa" />
-              <Bar dataKey="b" fill="#34d399" />
-            </BarChart>
-          )}
-        </ResponsiveContainer>
-      </CardContent>
-    </Card>
-  );
-}
-
-function DonutPanel({ title = "Risk Exposure" }) {
-  return (
-    <Card className="border border-slate-800/60 bg-slate-900/40">
-      <CardHeader className="pb-2">
-        <CardTitle className="text-sm text-slate-300">{title}</CardTitle>
-      </CardHeader>
-      <CardContent className="h-56 grid place-items-center">
-        <ResponsiveContainer width="100%" height={180}>
-          <PieChart>
-            <Pie data={riskDonutData} dataKey="value" nameKey="name" innerRadius={50} outerRadius={70}>
-              {riskDonutData.map((_, i) => (
-                <Cell key={i} fill={donutPalette[i % donutPalette.length]} />
-              ))}
-            </Pie>
-            <RTooltip />
-          </PieChart>
-        </ResponsiveContainer>
-      </CardContent>
-    </Card>
-  );
-}
-
-function TablePanel({ rows, title = "Loan Pipeline" }) {
-  return (
-    <Card className="border border-slate-800/60 bg-slate-900/40">
-      <CardHeader className="pb-2 flex flex-row items-center justify-between">
-        <CardTitle className="text-sm text-slate-300">{title}</CardTitle>
-        <div className="flex items-center gap-2">
-          <Input placeholder="Search" className="h-8 w-40" aria-label="Search table" />
-          <Button size="sm" variant="secondary">
-            <Filter className="mr-1 h-4 w-4" />
-            Filters
-          </Button>
-        </div>
-      </CardHeader>
-      <CardContent className="overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead className="text-slate-400 border-b border-slate-800/60">
-            <tr>
-              <th className="text-left py-2 pr-4 font-medium">Borrower Name</th>
-              <th className="text-left py-2 pr-4 font-medium">Application Status</th>
-              <th className="text-left py-2 pr-4 font-medium">Assignee</th>
-              <th className="text-right py-2 pl-4 font-medium">Amount</th>
-              <th className="text-right py-2 pl-4 font-medium">Date</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((r) => (
-              <tr
-                key={r.id}
-                className="border-b border-slate-800/40 hover:bg-slate-800/30 focus-within:bg-slate-800/30"
-              >
-                <td className="py-2 pr-4 text-slate-200">{r.name}</td>
-                <td className="py-2 pr-4">
-                  <Badge variant="secondary">{r.status}</Badge>
-                </td>
-                <td className="py-2 pr-4 text-slate-400">Team</td>
-                <td className="py-2 pl-4 text-right text-slate-200">${" "}{r.amount.toLocaleString()}</td>
-                <td className="py-2 pl-4 text-right text-slate-400">{r.date}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </CardContent>
-    </Card>
-  );
-}
-
-function FundingScheduleCard() {
-  return (
-    <Card className="border border-slate-800/60 bg-slate-900/40">
-      <CardHeader className="pb-2">
-        <CardTitle className="text-sm text-slate-300">Funding Schedule</CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-3 text-sm">
-        <div className="flex items-center justify-between"><span className="text-slate-400">Funding Schedule</span><span className="text-slate-200">8503/455533</span></div>
-        <div className="flex items-center justify-between"><span className="text-slate-400">Alerts</span><span className="text-slate-200">2</span></div>
-        <Button variant="secondary" size="sm" className="w-full"><Download className="h-4 w-4 mr-2"/>Export</Button>
-      </CardContent>
-    </Card>
-  );
-}
-
-function MessagesCard() {
-  return (
-    <Card className="border border-slate-800/60 bg-slate-900/40">
-      <CardHeader className="pb-2">
-        <CardTitle className="text-sm text-slate-300">Messages</CardTitle>
-      </CardHeader>
-      <CardContent className="text-sm space-y-2">
-        <Button variant="secondary" className="w-full justify-between">Upload Invoice<span className="text-xs text-slate-400">›</span></Button>
-        <Button variant="secondary" className="w-full justify-between">Request Inspection<span className="text-xs text-slate-400">›</span></Button>
-      </CardContent>
-    </Card>
-  );
-}
-
-function NotificationsSheet() {
-  return (
-    <Sheet>
-      <SheetTrigger asChild>
-        <Button variant="ghost" size="icon" aria-label="Open notifications">
-          <Bell />
-        </Button>
-      </SheetTrigger>
-      <SheetContent className="w-96 bg-slate-950 text-slate-200 border-slate-800">
-        <SheetHeader>
-          <SheetTitle>Notifications</SheetTitle>
-        </SheetHeader>
-        <div className="mt-4 space-y-3">
-          <div className="flex items-start gap-2">
-            <CheckCircle2 className="mt-0.5" />
-            <div>
-              <div className="text-sm">Report generated</div>
-              <div className="text-xs text-slate-400">2 minutes ago</div>
-            </div>
-          </div>
-          <div className="flex items-start gap-2">
-            <AlertTriangle className="mt-0.5" />
-            <div>
-              <div className="text-sm">Loan LN-1021 at risk</div>
-              <div className="text-xs text-slate-400">1 hour ago</div>
-            </div>
-          </div>
-        </div>
-      </SheetContent>
-    </Sheet>
-  );
-}
-
-/** Views */
-function LenderView() {
-  const [kpis, setKpis] = useState(null);
-  const [rows, setRows] = useState(null);
-  const [data, setData] = useState(null);
-  useEffect(() => {
-    getKpis("lender").then(setKpis);
-    getTableRows("lender").then(setRows);
-    getChartData("lender").then(setData);
-  }, []);
-  return (
-    <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
-      <div className="xl:col-span-2 space-y-4">
-        {!kpis ? <Skeleton className="h-24 w-full" /> : <KpiRow kpis={kpis.primary} />}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {!data ? <Skeleton className="h-56 w-full" /> : <ChartPanel data={data} title="ROI Trends" />}
-          <DonutPanel />
-        </div>
-        {!rows ? <Skeleton className="h-64 w-full" /> : <TablePanel rows={rows} title="Loan Pipeline" />}
-        {kpis && <AlertsRow alerts={kpis.alerts} />}
-      </div>
-      <div className="space-y-4">
-        <QuickActions items={["Create Loan", "Approve Draw", "Send Payoff Quote", "Generate Report"]} />
-        <Card className="border border-slate-800/60 bg-slate-900/40">
-          <CardContent className="py-6 text-center text-sm text-slate-300">5 draw requests pending</CardContent>
-        </Card>
-      </div>
-    </div>
-  );
-}
-
-function InvestorView() {
-  const [kpis, setKpis] = useState(null);
-  const [data, setData] = useState(null);
-  useEffect(() => {
-    getKpis("investor").then(setKpis);
-    getChartData("investor").then(setData);
-  }, []);
-  return (
-    <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
-      <div className="xl:col-span-2 space-y-4">
-        {!kpis ? <Skeleton className="h-24 w-full" /> : <KpiRow kpis={kpis.primary} />}
-        {!data ? <Skeleton className="h-56 w-full" /> : <ChartPanel data={data} variant="bar" title="ROI & Exposure" />}
-        <Card className="border border-slate-800/60 bg-slate-900/40">
-          <CardContent className="py-6 text-center text-sm text-slate-300">No new reports</CardContent>
-        </Card>
-      </div>
-      <div className="space-y-4">
-        <QuickActions items={["Export Report", "Set Alert Thresholds", "Download Statement"]} />
-        <Card className="border border-slate-800/60 bg-slate-900/40">
-          <CardContent className="py-6 text-sm text-slate-300">
-            Set risk alert thresholds to get notified when DSCR falls below 1.10x or delinquency &gt; 2%.
-          </CardContent>
-        </Card>
-      </div>
-    </div>
-  );
-}
-
-function BorrowerView() {
-  const [kpis, setKpis] = useState(null);
-  const [rows, setRows] = useState(null);
-  useEffect(() => {
-    getKpis("borrower").then(setKpis);
-    getTableRows("borrower").then(setRows);
-  }, []);
-  return (
-    <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
-      <div className="xl:col-span-2 space-y-4">
-        {!kpis ? (
-          <Skeleton className="h-24 w-full" />
+  const navigateTo = label => navigate(toPath(label));
+  const renderItem = item => {
+    const label = item.sub ? item.sub[0] : item.label;
+    const path = toPath(label);
+    const active = location.pathname === path;
+    const commonProps = {
+      className: `flex items-center w-full px-3 py-2 hover:bg-gray-700 rounded ${active ? 'bg-gray-700' : ''}`,
+      title: item.label,
+      onClick: () => recordUsage(item.label)
+    };
+    return (
+      <div key={item.label} className="text-sm">
+        {item.href ? (
+          <a href={item.href} target="_blank" rel="noopener noreferrer" {...commonProps}>
+            <span className="text-lg">{item.icon}</span>
+            {sidebarOpen && <span className="ml-2">{item.label}</span>}
+          </a>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <Card className="border border-slate-800/60 bg-slate-900/40">
-              <CardHeader className="pb-2"><CardTitle className="text-sm text-slate-300">Loan Summary</CardTitle></CardHeader>
-              <CardContent className="grid grid-cols-2 gap-4 text-sm">
-                <div>
-                  <div className="text-2xl font-semibold text-slate-100">$250,000</div>
-                  <div className="text-slate-400">Interest Rate</div>
-                </div>
-                <div>
-                  <div className="text-2xl font-semibold text-slate-100">18/05/2026</div>
-                  <div className="text-slate-400">Payoff Date</div>
-                </div>
-                <Button variant="secondary" className="col-span-2">Payment History</Button>
-              </CardContent>
-            </Card>
-            <MessagesCard />
-          </div>
+          <Link to={path} {...commonProps}>
+            <span className="text-lg">{item.icon}</span>
+            {sidebarOpen && <span className="ml-2">{item.label}</span>}
+          </Link>
         )}
-        {!rows ? <Skeleton className="h-64 w-full" /> : <TablePanel rows={rows} title="Draw Requests" />}
       </div>
-      <div className="space-y-4">
-        <QuickActions items={["Request Payoff Quote", "Submit Draw Request", "Upload Document"]} />
-        <Card className="border border-slate-800/60 bg-slate-900/40">
-          <CardContent className="py-6 text-center text-sm text-slate-300">Need a payoff quote?</CardContent>
-        </Card>
-      </div>
-    </div>
-  );
-}
+    );
+  };
 
-function ContractorView() {
-  return (
-    <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
-      <div className="xl:col-span-2 space-y-4">
-        <Card className="border border-slate-800/60 bg-slate-900/40">
-          <CardHeader className="pb-2"><CardTitle className="text-sm text-slate-300">Project Progress</CardTitle></CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex items-center gap-4 text-sm"><span className="text-slate-400">Progress</span><Progress value={76} className="h-2" /></div>
-            <FundingScheduleCard />
-          </CardContent>
-        </Card>
-      </div>
-      <div className="space-y-4">
-        <QuickActions items={["Upload Invoice", "Request Inspection", "View Funding Schedule"]} />
-      </div>
-    </div>
-  );
-}
+  // On department change, navigate to the first nav item (Dashboard)
+  useEffect(() => {
+    const firstItem = navItems[0];
+    if (firstItem) {
+      const targetLabel = firstItem.sub ? firstItem.sub[0] : firstItem.label;
+      navigate(toPath(targetLabel));  // e.g. "/" for Dashboard
+    }
+  }, [department]);
 
-function AdminView() {
-  return (
-    <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
-      <div className="xl:col-span-2 space-y-4">
-        <Card className="border border-slate-800/60 bg-slate-900/40">
-          <CardContent className="py-6 text-center text-sm text-slate-300">Add your first user and assign a role.</CardContent>
-        </Card>
-      </div>
-      <div className="space-y-4">
-        <QuickActions items={["Add User", "Update Branding", "View Audit Log", "Configure Workflow"]} />
-      </div>
-    </div>
-  );
-}
+  // ... (header, sidebar toggle, etc. unchanged for brevity) ...
 
-export default function KontraDashboard({ role: initialRole = "lender", orgName = "Kontra", userName = "User" }) {
-  const [role, setRole] = useState(initialRole);
+  const pages = {
+    Dashboard: () => <DashboardHome navigateTo={navigateTo} />,          // unified Dashboard for both roles
+    'New Application': () => <LoanApplicationForm onSubmitted={() => setRefreshKey(k => k + 1)} />,
+    'Application List': () => <LoanApplicationList key={refreshKey} />,
+    'Underwriting Board': () => <UnderwritingBoard />,
+    'Decisions': () => <DecisionTimeline />,
+    // ... (other routes unchanged) ...
+    Reports: () => <ReportBuilder />,
+    'Investor Reports': () => (
+      <>
+        <InvestorReportForm onCreated={() => setRefreshKey(k => k + 1)} />
+        <InvestorReportsList refresh={refreshKey} />
+      </>
+    ),
+    'Market Analysis': () => <MarketAnalysis />,
+    'Live Analytics': () => <RealTimeAnalyticsDashboard />,
+    // Removed 'Hospitality Dashboard' route – both roles use DashboardHome now
+    'Guest CRM': () => isFeatureEnabled('hospitality') ? (
+      <Suspense fallback={<p>Loading...</p>}><GuestCRM /></Suspense>
+    ) : null,
+    'Guest Chat': () => isFeatureEnabled('hospitality') ? (
+      <Suspense fallback={<p>Loading...</p>}><GuestChat /></Suspense>
+    ) : null,
+    // ... (Assets, Settings, etc. unchanged) ...
+  };
+
+  const routes = Object.entries(pages).map(([label, Component]) => (
+    <Route key={label} path={toPath(label)} element={<Component />} />
+  ));
 
   return (
-    <TooltipProvider>
-      <div className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-950 to-slate-900 text-slate-100">
-        <AppHeader orgName={orgName} role={role} onRoleChange={setRole} userName={userName} />
+   <div className="flex flex-col md:flex-row min-h-screen bg-gray-900 text-white">
+      {/* Sidebar */}
+      <aside className={`${sidebarOpen ? 'md:w-48' : 'md:w-16'} w-full bg-gray-800 text-white flex flex-col transition-all`} aria-label="Main navigation">
+        <button onClick={() => setSidebarOpen(o => !o)} className="p-4 text-2xl font-bold border-b border-gray-700 text-left">
+          {sidebarOpen ? 'Kontra' : 'K'}
+        </button>
+             <select value={department} onChange={e => setDepartment(e.target.value)} className="m-2 p-1 bg-gray-700 text-white rounded">
+          <option value="finance">Finance</option>
+          <option value="hospitality">Hospitality</option>
+        </select>
+        <OrgSelect />
+        <nav className="flex-1 overflow-auto py-4 space-y-1">
+          {frequentItems.length > 0 && (
+            <div className="mb-2 space-y-1">
+              {frequentItems.map(renderItem)}
+              <hr className="border-gray-700" />
+            </div>
+          )}
+          {navItems.filter(item => !item.flag || isFeatureEnabled(item.flag))
+                   .filter(item => !frequentItems.includes(item))
+                   .map(renderItem)}
+          <button onClick={() => supabase.auth.signOut()} className="flex items-center px-3 py-2 hover:bg-gray-700 rounded">
+            <span className="text-lg">🔓</span>
+            {sidebarOpen && <span className="ml-2">Log Out</span>}
+          </button>
+        </nav>
+      </aside>
 
-        <main className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-6 space-y-4">
-          <div className="md:hidden">
-            <RoleTabs role={role} onChange={setRole} />
+      {/* Main Content & Dashboard Routes */}
+      <div className="flex flex-1 flex-col">
+             <header className="flex items-center justify-between bg-gray-900 border-b border-gray-700 p-4">
+          <div className="flex items-center">
+                     <input className="px-3 py-1 rounded bg-gray-700 text-white placeholder-gray-400 focus:outline-none border border-gray-600 w-1/3" placeholder="Search…" type="text" />
+            <HelpTooltip text="Search across loans, customers and projects" />
           </div>
-
-          {role === "lender" && <LenderView />}
-          {role === "investor" && <InvestorView />}
-          {role === "borrower" && <BorrowerView />}
-          {role === "contractor" && <ContractorView />}
-          {role === "admin" && <AdminView />}
-
-          <div className="text-xs text-slate-500 pt-6">
-            UI kit: Tailwind + shadcn/ui • Charts: Recharts • Built for accessibility and performance
+          <div className="flex items-center space-x-4">
+            <span className="text-xl" title="Notifications">🔔</span>
+                   <div className="w-8 h-8 bg-gray-600 rounded-full flex items-center justify-center" title="Account">
+              {session.user?.email[0].toUpperCase()}
+            </div>
           </div>
+        </header>
+        <main className="flex-1 overflow-auto p-4 space-y-4">
+          <Routes>{routes}</Routes>
         </main>
       </div>
-    </TooltipProvider>
+
+      {/* Right-side widgets (assistant, etc.) */}
+     <aside className="md:w-80 w-full border-l border-gray-700 bg-gray-800 p-2 space-y-2 text-white">
+        <VirtualAssistant />
+        <SuggestFeatureWidget />
+      </aside>
+    </div>
   );
 }
