@@ -5,7 +5,7 @@ import DelinquencyCard from '../modules/dashboard/DelinquencyCard';
 import RecentActivityCard from '../modules/dashboard/RecentActivityCard';
 import NextDueCard from '../modules/dashboard/NextDueCard';
 import GuestOccupancyCard from '../modules/dashboard/GuestOccupancyCard';
-import OfferCard from '../modules/dashboard/OfferCard';
+import AIAssistantCard from '../modules/dashboard/AIAssistantCard';
 import RoleKpiCard from '../modules/dashboard/RoleKpiCard';
 import DrawRequestForm from './DrawRequestForm';
 import DrawStatusTracker from './DrawStatusTracker';
@@ -71,7 +71,7 @@ export default function DashboardHome() {
         <NextDueCard to="/payments?next=1" />
         <RecentActivityCard to="/projects?sort=recent" />
         <GuestOccupancyCard to="/guest-reservations" />
-        <OfferCard to="/offers" />
+        <AIAssistantCard />
       </div>
     </div>
   );
