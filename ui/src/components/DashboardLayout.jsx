@@ -80,7 +80,7 @@ async function getTableRows(role) {
 function AppHeader({ orgName, role, onRoleChange, userName }) {
   return (
     <div className="sticky top-0 z-20 backdrop-blur supports-[backdrop-filter]:bg-slate-950/80 bg-slate-950/60 border-b border-slate-800/60">
-      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 h-14 flex items-center gap-2">
+     <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 h-14 flex items-center gap-2 flex-wrap">
         <div className="flex items-center gap-2 mr-2">
           <div className="h-7 w-7 rounded-xl bg-sky-400/20 ring-1 ring-sky-400/30 grid place-items-center font-bold">K</div>
           <span className="font-semibold tracking-tight text-slate-100/90">{orgName}</span>
@@ -121,18 +121,18 @@ function AppHeader({ orgName, role, onRoleChange, userName }) {
       </div>
 
       <div className="border-t border-slate-800/60">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 h-10 flex items-center gap-4 overflow-x-auto">
+          <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 h-10 flex items-center gap-4 overflow-x-auto flex-wrap">
           <RoleSubnav role={role} />
         </div>
       </div>
     </div>
-  );
+   );
 }
 
 function RoleTabs({ role, onChange }) {
   return (
-    <Tabs value={role} onValueChange={onChange} className="w-full">
-      <TabsList className="grid grid-cols-5 bg-slate-900 border border-slate-800/60">
+   <Tabs value={role} onValueChange={onChange} className="w-full overflow-x-auto">
+      <TabsList className="flex w-max bg-slate-900 border border-slate-800/60">
         <TabsTrigger value="lender">Lender/Servicer</TabsTrigger>
         <TabsTrigger value="investor">Investor</TabsTrigger>
         <TabsTrigger value="borrower">Borrower</TabsTrigger>
@@ -154,13 +154,13 @@ function RoleSubnav({ role }) {
     }[role] || [];
 
   return (
-    <div className="flex items-center gap-6 text-sm">
+   <nav className="flex items-center gap-6 text-sm flex-wrap">
       {items.map((label, idx) => (
         <div key={label} className={`whitespace-nowrap ${idx === 0 ? "text-slate-100" : "text-slate-400"}`}>
           {label}
         </div>
       ))}
-    </div>
+     </nav>
   );
 }
 
