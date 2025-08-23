@@ -1,8 +1,7 @@
 // ui/src/App.jsx
-
-import React from 'react'
-import DashboardHome from './components/DashboardHome'
+import React from "react"
+import DashboardLayout from "./components/DashboardLayout"
 
 export default function App() {
-  return <DashboardHome />
+  return <DashboardLayout />
 }
