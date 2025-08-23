@@ -1,8 +1,8 @@
 // ui/src/App.jsx
 
 import React from 'react'
-import ExecutiveDashboard from './components/ExecutiveDashboard'
+import DashboardHome from './components/DashboardHome'
 
 export default function App() {
-  return <ExecutiveDashboard />
+  return <DashboardHome />
 }
