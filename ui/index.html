@@ -1,12 +1,14 @@
-<!DOCTYPE html>
-<html lang="en" class="dark">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Kontra</title>
-  </head>
- <body class="bg-slate-950 text-slate-100 min-h-screen">
-    <div id="root"></div>
-   <script type="module" src="/src/main.tsx"></script>
-  </body>
-</html>
+import React from "react";
+import ReactDOM from "react-dom/client";
+import { BrowserRouter } from "react-router-dom";
+import App from "./App";       // your main app component (App.jsx)
+import "./index.css";          // Tailwind styles
+
+// Mount the React app to #root in index.html
+ReactDOM.createRoot(document.getElementById("root")).render(
+  <React.StrictMode>
+    <BrowserRouter>
+      <App />
+    </BrowserRouter>
+  </React.StrictMode>
+);
