@@ -1,3 +1,4 @@
+// ui/src/components/DashboardLayout.jsx
 import React, { useEffect, useMemo, useState } from "react";
 import {
   LineChart,
@@ -20,7 +21,7 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
 import { supabase } from "@/lib/supabaseClient";
@@ -38,11 +39,9 @@ import {
 
 /**
  * ------------------------------------------------------------
- *  Kontra Dashboard — matches reference layout
- *  - Dark header/sidebar; light content cards
- *  - Lender view == screenshot: Risk gauge + Delinquency bars,
- *    then Recent Activity / Troubled Assets / Campaign,
- *    then Asset list + AI Assistant
+ *  Dashboard Layout (JSX build-safe)
+ *  - Matches the screenshot layout
+ *  - No TypeScript in this file (pure JSX)
  * ------------------------------------------------------------
  */
 
@@ -55,19 +54,19 @@ const riskDonutData = [
 
 const donutPalette = ["#94a3b8", "#60a5fa", "#34d399", "#f59e0b"]; // slate, sky, emerald, amber
 
-async function getKpis(role: string) {
+async function getKpis(role) {
   const { data, error } = await supabase.rpc("get_kpis", { role });
   if (error || !data) throw error || new Error("Failed to load KPIs");
   return data;
 }
 
-async function getChartData(role: string) {
+async function getChartData(role) {
   const { data, error } = await supabase.rpc("get_chart_data", { role });
   if (error || !data) throw error || new Error("Failed to load chart data");
   return data;
 }
 
-async function getTableRows(role: string) {
+async function getTableRows(role) {
   const { data, error } = await supabase
     .from("dashboard_rows")
     .select("id,name,status,amount,date")
@@ -78,24 +77,12 @@ async function getTableRows(role: string) {
 
 /* ======================== Header & Nav ======================== */
 
-function AppHeader({
-  orgName,
-  role,
-  onRoleChange,
-  userName,
-}: {
-  orgName: string;
-  role: string;
-  onRoleChange: (r: string) => void;
-  userName: string;
-}) {
+function AppHeader({ orgName, role, onRoleChange, userName }) {
   return (
     <div className="sticky top-0 z-20 backdrop-blur supports-[backdrop-filter]:bg-slate-950/80 bg-slate-950/60 border-b border-slate-800/60">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 h-14 flex items-center gap-2">
         <div className="flex items-center gap-2 mr-2">
-          <div className="h-7 w-7 rounded-xl bg-sky-400/20 ring-1 ring-sky-400/30 grid place-items-center font-bold">
-            K
-          </div>
+          <div className="h-7 w-7 rounded-xl bg-sky-400/20 ring-1 ring-sky-400/30 grid place-items-center font-bold">K</div>
           <span className="font-semibold tracking-tight text-slate-100/90">{orgName}</span>
         </div>
 
@@ -133,7 +120,6 @@ function AppHeader({
         </div>
       </div>
 
-      {/* role-specific subnav bar (subtle, like screenshot) */}
       <div className="border-t border-slate-800/60">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 h-10 flex items-center gap-4 overflow-x-auto">
           <RoleSubnav role={role} />
@@ -143,7 +129,7 @@ function AppHeader({
   );
 }
 
-function RoleTabs({ role, onChange }: { role: string; onChange: (v: string) => void }) {
+function RoleTabs({ role, onChange }) {
   return (
     <Tabs value={role} onValueChange={onChange} className="w-full">
       <TabsList className="grid grid-cols-5 bg-slate-900 border border-slate-800/60">
@@ -157,7 +143,7 @@ function RoleTabs({ role, onChange }: { role: string; onChange: (v: string) => v
   );
 }
 
-function RoleSubnav({ role }: { role: string }) {
+function RoleSubnav({ role }) {
   const items =
     {
       lender: ["Portfolio Overview", "Loan Pipeline", "Servicing Center", "Draw Requests", "Reports & Analytics"],
@@ -216,11 +202,10 @@ function NotificationsSheet() {
 /* ======================== Screenshot-Matching Cards ======================== */
 
 function RiskScoreGauge({ score = 56, label = "Moderate" }) {
-  // Semi-donut gauge using Pie (180°)
   const segs = [
-    { name: "good", value: 35, color: "#10b981" }, // emerald
-    { name: "mid", value: 25, color: "#f59e0b" }, // amber
-    { name: "rest1", value: 20, color: "#e2e8f0" }, // slate-200
+    { name: "good", value: 35, color: "#10b981" },
+    { name: "mid", value: 25, color: "#f59e0b" },
+    { name: "rest1", value: 20, color: "#e2e8f0" },
     { name: "rest2", value: 20, color: "#e2e8f0" },
   ];
   return (
@@ -256,7 +241,7 @@ function RiskScoreGauge({ score = 56, label = "Moderate" }) {
   );
 }
 
-function DelinquencyForecast({ data }: { data: { name: string; value: number }[] }) {
+function DelinquencyForecast({ data }) {
   return (
     <Card className="border border-slate-200 bg-white">
       <CardHeader className="pb-2">
@@ -331,11 +316,7 @@ function TroubledAssets() {
               <tr key={i} className="border-t border-slate-200">
                 <td className="py-2 text-slate-800">{r.a}</td>
                 <td className="py-2">
-                  {r.tag ? (
-                    <span className="text-emerald-600 font-medium">{r.tag}</span>
-                  ) : (
-                    <span className="text-slate-700">{r.score}</span>
-                  )}
+                  {r.tag ? <span className="text-emerald-600 font-medium">{r.tag}</span> : <span className="text-slate-700">{r.score}</span>}
                 </td>
               </tr>
             ))}
@@ -416,9 +397,7 @@ function AssistantPanel() {
         <div className="rounded-xl bg-slate-100 px-3 py-3 text-sm text-slate-600">How can I assist you today?</div>
         <div className="rounded-xl bg-slate-100 px-3 py-3 text-sm text-slate-600"></div>
         <div className="flex justify-end">
-          <Button size="icon" variant="secondary" className="rounded-full">
-            ➤
-          </Button>
+          <Button size="icon" variant="secondary" className="rounded-full">➤</Button>
         </div>
       </CardContent>
     </Card>
@@ -428,7 +407,6 @@ function AssistantPanel() {
 /* ======================== Views ======================== */
 
 function LenderView() {
-  // Static chart values to match screenshot spacing/feel
   const forecast = useMemo(
     () => [
       { name: "Apr", value: 15 },
@@ -465,11 +443,9 @@ function LenderView() {
   );
 }
 
-/* You can keep simpler role views below; unchanged except styling harmony */
-
 function InvestorView() {
-  const [kpis, setKpis] = useState<any>(null);
-  const [data, setData] = useState<any>(null);
+  const [kpis, setKpis] = useState(null);
+  const [data, setData] = useState(null);
   useEffect(() => {
     getKpis("investor").then(setKpis).catch(() => setKpis(null));
     getChartData("investor").then(setData).catch(() => setData(null));
@@ -516,8 +492,8 @@ function InvestorView() {
 }
 
 function BorrowerView() {
-  const [kpis, setKpis] = useState<any>(null);
-  const [rows, setRows] = useState<any[]>([]);
+  const [kpis, setKpis] = useState(null);
+  const [rows, setRows] = useState([]);
   useEffect(() => {
     getKpis("borrower").then(setKpis).catch(() => setKpis(null));
     getTableRows("borrower").then(setRows).catch(() => setRows([]));
@@ -550,11 +526,7 @@ function BorrowerView() {
             <MessagesCard />
           </div>
         )}
-        {!rows.length ? (
-          <Skeleton className="h-64 w-full" />
-        ) : (
-          <TablePanel rows={rows} title="Draw Requests" />
-        )}
+        {!rows.length ? <Skeleton className="h-64 w-full" /> : <TablePanel rows={rows} title="Draw Requests" />}
       </div>
       <div className="space-y-4">
         <QuickActions items={["Request Payoff Quote", "Submit Draw Request", "Upload Document"]} />
@@ -607,7 +579,7 @@ function AdminView() {
 
 /* ======================== Reusable Cards (light-styled) ======================== */
 
-function QuickActions({ items }: { items: string[] }) {
+function QuickActions({ items }) {
   return (
     <Card className="border border-slate-200 bg-white">
       <CardHeader className="pb-2">
@@ -624,7 +596,7 @@ function QuickActions({ items }: { items: string[] }) {
   );
 }
 
-function KpiRow({ kpis }: { kpis: { label: string; value: string | number }[] }) {
+function KpiRow({ kpis }) {
   return (
     <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
       {kpis.map((k) => (
@@ -683,7 +655,7 @@ function FundingScheduleCard() {
   );
 }
 
-function TablePanel({ rows, title = "Loan Pipeline" }: { rows: any[]; title?: string }) {
+function TablePanel({ rows, title = "Loan Pipeline" }) {
   return (
     <Card className="border border-slate-200 bg-white">
       <CardHeader className="pb-2 flex flex-row items-center justify-between">
@@ -728,21 +700,14 @@ function TablePanel({ rows, title = "Loan Pipeline" }: { rows: any[]; title?: st
 
 /* ======================== Page Shell ======================== */
 
-export default function KontraDashboard({
-  role: initialRole = "lender",
-  orgName = "SaaS",
-  userName = "Olivia",
-}: {
-  role?: string;
-  orgName?: string;
-  userName?: string;
-}) {
+export default function DashboardLayout({ role: initialRole = "lender", orgName = "SaaS", userName = "Olivia" }) {
   const [role, setRole] = useState(initialRole);
 
   return (
     <TooltipProvider>
       <div className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-950 to-slate-900 text-slate-100">
         <AppHeader orgName={orgName} role={role} onRoleChange={setRole} userName={userName} />
+
         <main className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-6 space-y-4">
           <div className="md:hidden">
             <RoleTabs role={role} onChange={setRole} />
