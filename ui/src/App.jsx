@@ -2,7 +2,7 @@ import { Routes, Route, Navigate } from "react-router-dom";
 import DashboardShell from "./layouts/DashboardShell";
 import PortfolioOverview from "./pages/Lender/PortfolioOverview";
 
-function Placeholder({ title }: { title: string }) {
+function Placeholder({ title }) {
   return (
     <div className="rounded-xl border border-slate-200 dark:border-slate-800 p-6 bg-white dark:bg-slate-900">
       {title}
