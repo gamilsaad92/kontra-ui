@@ -1,6 +1,6 @@
 import { Routes, Route, Navigate } from "react-router-dom";
 import DashboardShell from "./components/DashboardShell.jsx";
-import PortfolioOverview from "./pages/Lender/PortfolioOverview";
+import PortfolioOverview from "./pages/lender/PortfolioOverview.tsx";
 
 function Placeholder({ title }) {
   return (
