@@ -1,152 +1,110 @@
-// ui/src/components/DashboardShell.jsx
-import { useEffect, useMemo, useState } from "react"
-import { Link, NavLink, Outlet, useLocation } from "react-router-dom"
-import { Bell, Settings, Search } from "lucide-react"
-import { useDayNightTheme } from "../hooks/useDayNightTheme"
+import { useEffect, useState } from "react";
+import { Outlet, NavLink, Link, useLocation } from "react-router-dom";
+import { Bell, Search, Settings, LogOut, Building2, Sparkles, LayoutDashboard, ShieldCheck, BarChart3, LineChart, Building, Users, Store, Layers, FolderTree } from "lucide-react";
+import { useDayNightTheme } from "../hooks/useDayNightTheme";
 
-// Top tabs (plain JS; no TS `as const`)
-const topTabs = ["Lender/Servicer", "Investor", "Borrower", "Contractor", "Admin"]
-
-// Only Lender routes are wired right now; others point to "/" until implemented
-const topTabRoutes = {
-  "Lender/Servicer": "/lender/portfolio",
-  Investor: "/",
-  Borrower: "/",
-  Contractor: "/",
-  Admin: "/",
-}
-
-const lenderSubTabs = [
-  { to: "/lender/portfolio", label: "Portfolio Overview" },
-  { to: "/lender/pipeline", label: "Loan Pipeline" },
-  { to: "/lender/servicing", label: "Servicing Center" },
-  { to: "/lender/draws", label: "Draw Requests" },
-  { to: "/lender/analytics", label: "Reports & Analytics" },
-]
+const nav = [
+  { to: "/lender/portfolio", label: "Loan Applications", icon: LayoutDashboard },
+  { to: "/lender/underwriting", label: "Underwriting", icon: ShieldCheck },
+  { to: "/lender/escrow", label: "Escrow", icon: Building2 },
+  { to: "/lender/servicing", label: "Servicing", icon: Users },
+  { to: "/lender/risk", label: "Risk Monitoring", icon: LineChart },
+  { to: "/lender/investor", label: "Investor Reporting", icon: BarChart3 },
+  { to: "/lender/collections", label: "Collections", icon: Layers },
+  { to: "/lender/trading", label: "Trading", icon: FolderTree },
+  { to: "/hospitality", label: "Hospitality", icon: Store },
+  { to: "/analytics", label: "Analytics", icon: Sparkles },
+  { to: "/settings", label: "Settings", icon: Settings },
+] as const;
 
 export default function DashboardShell() {
-  useDayNightTheme() // auto day/night
-  const { pathname } = useLocation()
-  const [activeTop, setActiveTop] = useState("Lender/Servicer")
+  useDayNightTheme(); // applies dark/light
+  const { pathname } = useLocation();
+  const [q, setQ] = useState("");
 
   useEffect(() => {
-    if (pathname.startsWith("/investor")) setActiveTop("Investor")
-    else if (pathname.startsWith("/borrower")) setActiveTop("Borrower")
-    else if (pathname.startsWith("/contractor")) setActiveTop("Contractor")
-    else if (pathname.startsWith("/admin")) setActiveTop("Admin")
-    else setActiveTop("Lender/Servicer")
-  }, [pathname])
-
-  const subTabs = useMemo(() => {
-    switch (activeTop) {
-      case "Lender/Servicer":
-        return lenderSubTabs
-      default:
-        return []
-    }
-  }, [activeTop])
+    // Optionally sync active section / breadcrumbs, etc.
+  }, [pathname]);
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-[rgb(8,12,20)] to-[rgb(6,8,14)] text-slate-100">
-      {/* Top bar */}
-      <header className="flex items-center justify-between px-5 py-3 border-b border-white/10">
-        <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-full bg-indigo-600 grid place-items-center font-semibold">K</div>
-          <nav className="flex items-center gap-2">
-            {topTabs.map((t) => {
-              const to = topTabRoutes[t] || "/"
-              const isActive = t === activeTop
-              return (
-                <Link
-                  key={t}
-                  to={to}
-                  className={`px-3 py-1.5 rounded-full text-sm ${isActive ? "bg-white/10" : "hover:bg-white/5"}`}
-                  title={to === "/" && t !== "Lender/Servicer" ? "Coming soon" : undefined}
-                >
-                  {t}
-                </Link>
-              )
-            })}
-          </nav>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <button className="p-2 rounded-full hover:bg-white/10" aria-label="Search">
-            <Search size={18} />
-          </button>
-          <button className="p-2 rounded-full hover:bg-white/10" aria-label="Settings">
-            <Settings size={18} />
-          </button>
-          <button className="relative p-2 rounded-full hover:bg-white/10" aria-label="Notifications">
-            <Bell size={18} />
-            <span className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-green-500" />
-          </button>
-          <div className="ml-1 w-9 h-9 rounded-full bg-slate-700 grid place-items-center">G</div>
-        </div>
-      </header>
-
-      {/* Sub-tabs (only for Lender for now) */}
-      <div className="px-5 border-b border-white/10">
-        <nav className="flex gap-5 text-sm overflow-x-auto">
-          {subTabs.map((s) => (
-            <NavLink
-              key={s.to}
-              to={s.to}
-              className={({ isActive }) =>
-                `py-3 border-b-2 -mb-px ${
-                  isActive ? "border-indigo-500" : "border-transparent hover:border-white/20"
-                }`
-              }
-              end
-            >
-              {s.label}
-            </NavLink>
-          ))}
-        </nav>
-      </div>
-
-      {/* Content + right rail */}
-      <main className="grid lg:grid-cols-[1fr,360px] gap-6 p-5">
-        <section className="min-w-0">
-          <Outlet />
-        </section>
-
-        <aside className="space-y-4">
-          <div className="rounded-2xl border border-white/10 bg-white/[0.02] backdrop-blur p-4">
-            <h3 className="font-semibold mb-3">Notifications</h3>
-            <ul className="space-y-2 text-sm">
-              <li className="flex items-start gap-2">
-                <span className="mt-1 h-2 w-2 bg-green-500 rounded-full" />
-                <div>
-                  <b>Report generated</b>
-                  <div className="text-xs opacity-60">2 minutes ago</div>
-                </div>
-              </li>
-              <li className="flex items-start gap-2">
-                <span className="mt-1 h-2 w-2 bg-yellow-400 rounded-full" />
-                <div>
-                  <b>Loan LN-1021 at risk</b>
-                  <div className="text-xs opacity-60">1 hour ago</div>
-                </div>
-              </li>
-            </ul>
-          </div>
-
-          <div className="rounded-2xl border border-white/10 bg-white/[0.02] backdrop-blur p-4">
-            <h3 className="font-semibold mb-3">Quick Actions</h3>
-            <div className="grid grid-cols-1 gap-3">
-              <button className="rounded-xl border border-white/10 px-4 py-3 hover:bg-white/10 text-left">Create Loan</button>
-              <button className="rounded-xl border border-white/10 px-4 py-3 hover:bg-white/10 text-left">Approve Draw</button>
-              <button className="rounded-xl border border-white/10 px-4 py-3 hover:bg-white/10 text-left">Send Payoff Quote</button>
-              <button className="rounded-xl border border-white/10 px-4 py-3 hover:bg-white/10 text-left">Generate Report</button>
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-slate-100">
+      {/* Header */}
+      <header className="sticky top-0 z-40 border-b border-slate-200/70 dark:border-slate-800/80 bg-white/80 dark:bg-slate-900/80 backdrop-blur">
+        <div className="mx-auto max-w-[1400px] px-4 md:px-6 h-16 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <Link to="/" className="flex items-center gap-2">
+              <div className="h-8 w-8 rounded-xl bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 grid place-items-center font-bold">K</div>
+              <span className="font-semibold">SaaS</span>
+            </Link>
+            {/* Org / role tabs (compact) */}
+            <div className="hidden md:flex items-center gap-2 ml-4">
+              {["Lender/Servicer","Investor","Borrower","Contractor","Admin"].map((t) => (
+                <span key={t} className="px-2 py-1 rounded-md text-xs border border-slate-200 dark:border-slate-800/80 bg-slate-50 dark:bg-slate-900">{t}</span>
+              ))}
             </div>
           </div>
 
-          <div className="rounded-2xl border border-white/10 bg-white/[0.02] backdrop-blur p-4 text-center text-sm opacity-70">
-            5 draw requests pending
+          <div className="flex items-center gap-3 w-full max-w-xl mx-4">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 opacity-70" />
+              <input
+                value={q}
+                onChange={(e)=>setQ(e.target.value)}
+                placeholder="Search loans, borrowers, docs…"
+                className="w-full pl-9 pr-3 py-2 rounded-lg bg-slate-100 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-800 placeholder:text-slate-400 outline-none focus:ring-2 ring-slate-300 dark:ring-slate-700"
+              />
+            </div>
           </div>
+
+          <div className="flex items-center gap-4">
+            <button className="relative p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800">
+              <Bell className="h-5 w-5" />
+              <span className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full bg-emerald-500" />
+            </button>
+            <div className="group relative">
+              <button className="h-8 w-8 rounded-full bg-slate-200 dark:bg-slate-700 grid place-items-center font-semibold">G</button>
+              {/* Profile dropdown */}
+              <div className="hidden group-hover:block absolute right-0 mt-2 w-64 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-xl p-3">
+                <div className="px-2 py-1.5 text-sm font-medium">Olivia</div>
+                <ul className="text-sm">
+                  <li><Link to="/profile" className="block px-2 py-1.5 rounded-md hover:bg-slate-50 dark:hover:bg-slate-800">Profile</Link></li>
+                  <li><Link to="/org" className="block px-2 py-1.5 rounded-md hover:bg-slate-50 dark:hover:bg-slate-800">Organization Settings</Link></li>
+                  <li><button className="w-full text-left px-2 py-1.5 rounded-md hover:bg-slate-50 dark:hover:bg-slate-800 flex items-center gap-2"><LogOut className="h-4 w-4"/> Sign out</button></li>
+                </ul>
+              </div>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      {/* Content with sidebar */}
+      <div className="mx-auto max-w-[1400px] px-4 md:px-6 py-6 grid grid-cols-12 gap-6">
+        {/* Sidebar */}
+        <aside className="col-span-12 md:col-span-3 lg:col-span-2">
+          <nav className="sticky top-20 space-y-1">
+            {nav.map(({to,label,icon:Icon}) => (
+              <NavLink
+                key={to}
+                to={to}
+                className={({isActive}) =>
+                  `flex items-center gap-3 px-3 py-2 rounded-lg border text-sm
+                   ${isActive
+                    ? "bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900 border-slate-900 dark:border-slate-100"
+                    : "bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800"}`
+                }
+              >
+                <Icon className="h-4 w-4" />
+                <span>{label}</span>
+              </NavLink>
+            ))}
+          </nav>
         </aside>
-      </main>
+
+        {/* Main */}
+        <main className="col-span-12 md:col-span-9 lg:col-span-10">
+          <Outlet />
+        </main>
+      </div>
     </div>
-  )
+  );
 }
