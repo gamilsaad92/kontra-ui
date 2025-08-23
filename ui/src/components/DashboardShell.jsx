@@ -1,30 +1,32 @@
 import { useEffect, useState } from "react";
 import { Outlet, NavLink, Link, useLocation } from "react-router-dom";
-import { Bell, Search, Settings, LogOut, Building2, Sparkles, LayoutDashboard, ShieldCheck, BarChart3, LineChart, Building, Users, Store, Layers, FolderTree } from "lucide-react";
+import {
+  Bell, Search, Settings, LogOut, Building2, Sparkles,
+  LayoutDashboard, ShieldCheck, BarChart3, LineChart,
+  Users, Store, Layers, FolderTree
+} from "lucide-react";
 import { useDayNightTheme } from "../hooks/useDayNightTheme";
 
 const nav = [
-  { to: "/lender/portfolio", label: "Loan Applications", icon: LayoutDashboard },
-  { to: "/lender/underwriting", label: "Underwriting", icon: ShieldCheck },
-  { to: "/lender/escrow", label: "Escrow", icon: Building2 },
-  { to: "/lender/servicing", label: "Servicing", icon: Users },
-  { to: "/lender/risk", label: "Risk Monitoring", icon: LineChart },
-  { to: "/lender/investor", label: "Investor Reporting", icon: BarChart3 },
-  { to: "/lender/collections", label: "Collections", icon: Layers },
-  { to: "/lender/trading", label: "Trading", icon: FolderTree },
-  { to: "/hospitality", label: "Hospitality", icon: Store },
-  { to: "/analytics", label: "Analytics", icon: Sparkles },
-  { to: "/settings", label: "Settings", icon: Settings },
-] as const;
+  { to: "/lender/portfolio",   label: "Loan Applications",  icon: LayoutDashboard },
+  { to: "/lender/underwriting",label: "Underwriting",       icon: ShieldCheck },
+  { to: "/lender/escrow",      label: "Escrow",             icon: Building2 },
+  { to: "/lender/servicing",   label: "Servicing",          icon: Users },
+  { to: "/lender/risk",        label: "Risk Monitoring",    icon: LineChart },
+  { to: "/lender/investor",    label: "Investor Reporting", icon: BarChart3 },
+  { to: "/lender/collections", label: "Collections",        icon: Layers },
+  { to: "/lender/trading",     label: "Trading",            icon: FolderTree },
+  { to: "/hospitality",        label: "Hospitality",        icon: Store },
+  { to: "/analytics",          label: "Analytics",          icon: Sparkles },
+  { to: "/settings",           label: "Settings",           icon: Settings },
+];
 
 export default function DashboardShell() {
-  useDayNightTheme(); // applies dark/light
+  useDayNightTheme();
   const { pathname } = useLocation();
   const [q, setQ] = useState("");
 
-  useEffect(() => {
-    // Optionally sync active section / breadcrumbs, etc.
-  }, [pathname]);
+  useEffect(() => {}, [pathname]);
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-slate-100">
@@ -36,10 +38,11 @@ export default function DashboardShell() {
               <div className="h-8 w-8 rounded-xl bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 grid place-items-center font-bold">K</div>
               <span className="font-semibold">SaaS</span>
             </Link>
-            {/* Org / role tabs (compact) */}
             <div className="hidden md:flex items-center gap-2 ml-4">
               {["Lender/Servicer","Investor","Borrower","Contractor","Admin"].map((t) => (
-                <span key={t} className="px-2 py-1 rounded-md text-xs border border-slate-200 dark:border-slate-800/80 bg-slate-50 dark:bg-slate-900">{t}</span>
+                <span key={t} className="px-2 py-1 rounded-md text-xs border border-slate-200 dark:border-slate-800/80 bg-slate-50 dark:bg-slate-900">
+                  {t}
+                </span>
               ))}
             </div>
           </div>
@@ -63,13 +66,16 @@ export default function DashboardShell() {
             </button>
             <div className="group relative">
               <button className="h-8 w-8 rounded-full bg-slate-200 dark:bg-slate-700 grid place-items-center font-semibold">G</button>
-              {/* Profile dropdown */}
               <div className="hidden group-hover:block absolute right-0 mt-2 w-64 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-xl p-3">
                 <div className="px-2 py-1.5 text-sm font-medium">Olivia</div>
                 <ul className="text-sm">
-                  <li><Link to="/profile" className="block px-2 py-1.5 rounded-md hover:bg-slate-50 dark:hover:bg-slate-800">Profile</Link></li>
-                  <li><Link to="/org" className="block px-2 py-1.5 rounded-md hover:bg-slate-50 dark:hover:bg-slate-800">Organization Settings</Link></li>
-                  <li><button className="w-full text-left px-2 py-1.5 rounded-md hover:bg-slate-50 dark:hover:bg-slate-800 flex items-center gap-2"><LogOut className="h-4 w-4"/> Sign out</button></li>
+                  <li><a className="block px-2 py-1.5 rounded-md hover:bg-slate-50 dark:hover:bg-slate-800">Profile</a></li>
+                  <li><a className="block px-2 py-1.5 rounded-md hover:bg-slate-50 dark:hover:bg-slate-800">Organization Settings</a></li>
+                  <li>
+                    <button className="w-full text-left px-2 py-1.5 rounded-md hover:bg-slate-50 dark:hover:bg-slate-800 flex items-center gap-2">
+                      <LogOut className="h-4 w-4" /> Sign out
+                    </button>
+                  </li>
                 </ul>
               </div>
             </div>
@@ -77,7 +83,7 @@ export default function DashboardShell() {
         </div>
       </header>
 
-      {/* Content with sidebar */}
+      {/* Body */}
       <div className="mx-auto max-w-[1400px] px-4 md:px-6 py-6 grid grid-cols-12 gap-6">
         {/* Sidebar */}
         <aside className="col-span-12 md:col-span-3 lg:col-span-2">
