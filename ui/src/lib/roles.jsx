@@ -2,11 +2,11 @@ import React, { createContext, useContext, useEffect, useState } from 'react';
 import { useUser } from '@clerk/clerk-react';
 import { supabase } from './supabaseClient';
 
-const RoleContext = createContext('borrower');
+const RoleContext = createContext('lender');
 
 export function RoleProvider({ children }) {
    const { user } = useUser();
-  const [role, setRole] = useState('borrower');
+const [role, setRole] = useState('lender');
 
   useEffect(() => {
     async function fetchRole() {
