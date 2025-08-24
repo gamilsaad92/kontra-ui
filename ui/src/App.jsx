@@ -1,4 +1,4 @@
-import { Routes, Route, Navigate } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import DashboardShell from "./components/DashboardShell.jsx";
 import PortfolioOverview from "./pages/lender/PortfolioOverview.tsx";
 import LoansDashboard from "./components/LoansDashboard.jsx";
@@ -13,23 +13,25 @@ function Placeholder({ title }) {
 
 export default function App() {
   return (
-    <Routes>
-      <Route element={<DashboardShell />}>
-        <Route index element={<Navigate to="/lender/portfolio" replace />} />
-        <Route path="/loans" element={<LoansDashboard />} />
-        <Route path="/lender/portfolio" element={<PortfolioOverview />} />
-        <Route path="/lender/underwriting" element={<Placeholder title="Underwriting" />} />
-        <Route path="/lender/escrow" element={<Placeholder title="Escrow" />} />
-        <Route path="/lender/servicing" element={<Placeholder title="Servicing" />} />
-        <Route path="/lender/risk" element={<Placeholder title="Risk Monitoring" />} />
-        <Route path="/lender/investor" element={<Placeholder title="Investor Reporting" />} />
-        <Route path="/lender/collections" element={<Placeholder title="Collections" />} />
-        <Route path="/lender/trading" element={<Placeholder title="Trading" />} />
-        <Route path="/hospitality" element={<Placeholder title="Hospitality" />} />
-        <Route path="/analytics" element={<Placeholder title="Analytics" />} />
-        <Route path="/settings" element={<Placeholder title="Settings" />} />
-        <Route path="*" element={<Placeholder title="Not found" />} />
-      </Route>
-    </Routes>
+    <BrowserRouter>
+      <Routes>
+        <Route element={<DashboardShell />}>
+          <Route index element={<Navigate to="/lender/portfolio" replace />} />
+          <Route path="/loans" element={<LoansDashboard />} />
+          <Route path="/lender/portfolio" element={<PortfolioOverview />} />
+          <Route path="/lender/underwriting" element={<Placeholder title="Underwriting" />} />
+          <Route path="/lender/escrow" element={<Placeholder title="Escrow" />} />
+          <Route path="/lender/servicing" element={<Placeholder title="Servicing" />} />
+          <Route path="/lender/risk" element={<Placeholder title="Risk Monitoring" />} />
+          <Route path="/lender/investor" element={<Placeholder title="Investor Reporting" />} />
+          <Route path="/lender/collections" element={<Placeholder title="Collections" />} />
+          <Route path="/lender/trading" element={<Placeholder title="Trading" />} />
+          <Route path="/hospitality" element={<Placeholder title="Hospitality" />} />
+          <Route path="/analytics" element={<Placeholder title="Analytics" />} />
+          <Route path="/settings" element={<Placeholder title="Settings" />} />
+          <Route path="*" element={<Placeholder title="Not found" />} />
+        </Route>
+      </Routes>
+    </BrowserRouter>
   );
 }
