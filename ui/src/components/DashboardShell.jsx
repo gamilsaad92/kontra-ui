@@ -10,8 +10,6 @@ import {
   Wallet,
   Wrench,
   Folder,
-  Building2,
-  Settings,
 } from "lucide-react"
 
 function SideItem({ to, icon: Icon, label }) {
@@ -35,13 +33,11 @@ function SideItem({ to, icon: Icon, label }) {
 export default function DashboardShell() {
   const items = useMemo(
     () => [
-      { to: "/", icon: LayoutDashboard, label: "Dashboard" },
+      { to: "/lender/portfolio", icon: LayoutDashboard, label: "Dashboard" },
       { to: "/loans", icon: Wallet, label: "Loans" },
-      { to: "/applications", icon: FileText, label: "Applications" },
-      { to: "/servicing", icon: Wrench, label: "Servicing" },
-      { to: "/projects", icon: Folder, label: "Projects" },
-      { to: "/hospitality", icon: Building2, label: "Hospitality" },
-      { to: "/settings", icon: Settings, label: "Settings" },
+      { to: "/lender/underwriting", icon: FileText, label: "Applications" },
+      { to: "/lender/servicing", icon: Wrench, label: "Servicing" },
+      { to: "/lender/escrow", icon: Folder, label: "Projects" },
     ],
     []
   )
