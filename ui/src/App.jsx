@@ -1,6 +1,7 @@
 import { Routes, Route, Navigate } from "react-router-dom";
 import DashboardShell from "./components/DashboardShell.jsx";
 import PortfolioOverview from "./pages/lender/PortfolioOverview.tsx";
+import LoansDashboard from "./components/LoansDashboard.jsx";
 
 function Placeholder({ title }) {
   return (
@@ -15,6 +16,7 @@ export default function App() {
     <Routes>
       <Route element={<DashboardShell />}>
         <Route index element={<Navigate to="/lender/portfolio" replace />} />
+        <Route path="/loans" element={<LoansDashboard />} />
         <Route path="/lender/portfolio" element={<PortfolioOverview />} />
         <Route path="/lender/underwriting" element={<Placeholder title="Underwriting" />} />
         <Route path="/lender/escrow" element={<Placeholder title="Escrow" />} />
