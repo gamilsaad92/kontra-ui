@@ -7,6 +7,7 @@ import NextDueCard from '../modules/dashboard/NextDueCard';
 import GuestOccupancyCard from '../modules/dashboard/GuestOccupancyCard';
 import AIAssistantCard from '../modules/dashboard/AIAssistantCard';
 import RoleKpiCard from '../modules/dashboard/RoleKpiCard';
+import OlbCouponCard from '../modules/dashboard/OlbCouponCard';
 import DrawRequestForm from './DrawRequestForm';
 import DrawStatusTracker from './DrawStatusTracker';
 import DrawRequestsTable from './DrawRequestsTable';
@@ -71,6 +72,7 @@ export default function DashboardHome() {
         <NextDueCard to="/payments?next=1" />
         <RecentActivityCard to="/projects?sort=recent" />
         <GuestOccupancyCard to="/guest-reservations" />
+        <OlbCouponCard to="/olb-coupon" />
         <AIAssistantCard />
       </div>
     </div>
