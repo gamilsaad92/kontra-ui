@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import DashboardShell from "./components/DashboardShell.jsx";
 import PortfolioOverview from "./pages/lender/PortfolioOverview.tsx";
 import LoansDashboard from "./components/LoansDashboard.jsx";
+import OlbCouponPage from "./pages/OlbCouponPage.jsx";
 
 function Placeholder({ title }) {
   return (
@@ -28,6 +29,7 @@ export default function App() {
           <Route path="/lender/trading" element={<Placeholder title="Trading" />} />
           <Route path="/hospitality" element={<Placeholder title="Hospitality" />} />
           <Route path="/analytics" element={<Placeholder title="Analytics" />} />
+          <Route path="/olb-coupon" element={<OlbCouponPage />} />
           <Route path="/settings" element={<Placeholder title="Settings" />} />
           <Route path="*" element={<Placeholder title="Not found" />} />
         </Route>
