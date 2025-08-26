@@ -1,10 +1,13 @@
 // ui/src/App.jsx
 
 import React, { useContext, useState } from 'react'
+import { Routes, Route } from 'react-router-dom'
 import DashboardLayout from './components/DashboardLayout'
+import DashboardShell from './components/DashboardShell'
 import LoginForm from './components/LoginForm'
 import SignUpForm from './components/SignUpForm'
 import InviteAcceptForm from './components/InviteAcceptForm'
+import KontraDashboard from './pages/KontraDashboard'
 import { AuthContext } from './lib/authContext'
 
 export default function App() {
@@ -24,5 +27,12 @@ export default function App() {
     )
   }
 
-  return <DashboardLayout />
+    return (
+    <Routes>
+      <Route element={<DashboardShell />}>
+        <Route path="/dashboard/kontra" element={<KontraDashboard />} />
+      </Route>
+      <Route path="/*" element={<DashboardLayout />} />
+    </Routes>
+  )
 }
