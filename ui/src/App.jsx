@@ -3,6 +3,7 @@ import DashboardShell from "./components/DashboardShell.jsx";
 import PortfolioOverview from "./pages/lender/PortfolioOverview.tsx";
 import LoansDashboard from "./components/LoansDashboard.jsx";
 import OlbCouponPage from "./pages/OlbCouponPage.jsx";
+import RouteGuard from "./components/RouteGuard";
 
 function Placeholder({ title }) {
   return (
@@ -18,15 +19,85 @@ export default function App() {
       <Routes>
         <Route element={<DashboardShell />}>
           <Route index element={<Navigate to="/lender/portfolio" replace />} />
-          <Route path="/loans" element={<LoansDashboard />} />
-          <Route path="/lender/portfolio" element={<PortfolioOverview />} />
-          <Route path="/lender/underwriting" element={<Placeholder title="Underwriting" />} />
-          <Route path="/lender/escrow" element={<Placeholder title="Escrow" />} />
-          <Route path="/lender/servicing" element={<Placeholder title="Servicing" />} />
-          <Route path="/lender/risk" element={<Placeholder title="Risk Monitoring" />} />
-          <Route path="/lender/investor" element={<Placeholder title="Investor Reporting" />} />
-          <Route path="/lender/collections" element={<Placeholder title="Collections" />} />
-          <Route path="/lender/trading" element={<Placeholder title="Trading" />} />
+               <Route
+            path="/loans"
+            element={
+              <RouteGuard roles={["lender", "servicer", "admin"]}>
+                <LoansDashboard />
+              </RouteGuard>
+            }
+          />
+          <Route
+            path="/lender/portfolio"
+            element={
+              <RouteGuard roles={["lender", "servicer", "admin"]}>
+                <PortfolioOverview />
+              </RouteGuard>
+            }
+          />
+          <Route
+            path="/lender/underwriting"
+            element={<RouteGuard roles={["lender", "servicer", "admin"]}>
+                <Placeholder title="Underwriting" />
+              </RouteGuard>
+            }
+          />
+          <Route
+            path="/lender/escrow"
+            element={<RouteGuard roles={["lender", "servicer", "admin"]}>
+                <Placeholder title="Escrow" />
+              </RouteGuard>
+            }
+          />
+          <Route
+            path="/lender/servicing"
+            element={<RouteGuard roles={["lender", "servicer", "admin"]}>
+                <Placeholder title="Servicing" />
+              </RouteGuard>
+            }
+          />
+          <Route
+            path="/lender/risk"
+            element={<RouteGuard roles={["lender", "servicer", "admin"]}>
+                <Placeholder title="Risk Monitoring" />
+              </RouteGuard>
+            }
+          />
+          <Route
+            path="/lender/investor"
+            element={<RouteGuard roles={["lender", "servicer", "admin"]}>
+                <Placeholder title="Investor Reporting" />
+              </RouteGuard>
+            }
+          />
+          <Route
+            path="/lender/collections"
+            element={<RouteGuard roles={["lender", "servicer", "admin"]}>
+                <Placeholder title="Collections" />
+              </RouteGuard>
+            }
+          />
+          <Route
+            path="/lender/trading"
+            element={<RouteGuard roles={["lender", "servicer", "admin"]}>
+                <Placeholder title="Trading" />
+              </RouteGuard>
+            }
+          />
+          <Route
+            path="/investor"
+            element={<RouteGuard roles={["investor", "admin"]}>
+                <Placeholder title="Investor" />
+              </RouteGuard>
+            }
+          />
+          <Route
+            path="/borrower"
+            element={<RouteGuard roles={["borrower", "admin"]}>
+                <Placeholder title="Borrower" />
+              </RouteGuard>
+            }
+          />
           <Route path="/hospitality" element={<Placeholder title="Hospitality" />} />
           <Route path="/analytics" element={<Placeholder title="Analytics" />} />
           <Route path="/olb-coupon" element={<OlbCouponPage />} />
