@@ -7,7 +7,12 @@ import {
   SignIn,
   useUser,
 } from "@clerk/clerk-react";
-import { BrowserRouter } from "react-router-dom";
+import {
+  BrowserRouter,
+  Routes,
+  Route,
+  Navigate,
+} from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import App from "./App";
 import { AuthContext } from "./lib/authContext";
@@ -29,19 +34,33 @@ function AuthProvider({ children }: { children: React.ReactNode }) {
   );
 }
 
+function ProtectedRoutes() {
+  return (
+    <>
+      <SignedIn>
+        <AuthProvider>
+          <App />
+        </AuthProvider>
+      </SignedIn>
+      <SignedOut>
+        <Navigate to="/login" />
+      </SignedOut>
+    </>
+  );
+}
+
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <ClerkProvider publishableKey={clerkKey}>
       <QueryClientProvider client={queryClient}>
         <BrowserRouter>
-          <SignedIn>
-            <AuthProvider>
-              <App />
-            </AuthProvider>
-          </SignedIn>
-          <SignedOut>
-            <SignIn />
-          </SignedOut>
+          <Routes>
+            <Route
+              path="/login/*"
+              element={<SignIn routing="path" path="/login" />}
+            />
+            <Route path="/*" element={<ProtectedRoutes />} />
+          </Routes>
         </BrowserRouter>
       </QueryClientProvider>
     </ClerkProvider>
