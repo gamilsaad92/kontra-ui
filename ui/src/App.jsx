@@ -1,4 +1,5 @@
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { SignIn } from "@clerk/clerk-react";
 import DashboardShell from "./components/DashboardShell.jsx";
 import PortfolioOverview from "./pages/lender/PortfolioOverview.tsx";
 import LoansDashboard from "./components/LoansDashboard.jsx";
@@ -17,9 +18,10 @@ export default function App() {
   return (
     <BrowserRouter>
       <Routes>
+        <Route path="/login" element={<SignIn routing="path" path="/login" />} />
         <Route element={<DashboardShell />}>
           <Route index element={<Navigate to="/lender/portfolio" replace />} />
-               <Route
+          <Route
             path="/loans"
             element={
               <RouteGuard roles={["lender", "servicer", "admin"]}>
