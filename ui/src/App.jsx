@@ -1,18 +1,25 @@
 // ui/src/App.jsx
-
-import React from 'react'
-import { Routes, Route } from 'react-router-dom'
-import DashboardLayout from './components/DashboardLayout'
-import DashboardShell from './components/DashboardShell'
-import KontraDashboard from './pages/KontraDashboard'
+import React from "react";
+import { Routes, Route, Navigate } from "react-router-dom";
+import DashboardLayout from "./components/DashboardLayout";
+import DashboardShell from "./components/DashboardShell";
+import KontraDashboard from "./pages/KontraDashboard";
 
 export default function App() {
-   return (
+  return (
     <Routes>
-      <Route element={<DashboardShell />}>
-        <Route path="/dashboard/kontra" element={<KontraDashboard />} />
+      {/* All app pages live under DashboardLayout */}
+      <Route element={<DashboardLayout />}>
+        {/* App’s inner shell (top nav/side nav) */}
+        <Route element={<DashboardShell />}>
+          {/* Default redirect */}
+          <Route index element={<Navigate to="/dashboard/kontra" replace />} />
+          <Route path="dashboard/kontra" element={<KontraDashboard />} />
+        </Route>
       </Route>
-      <Route path="/*" element={<DashboardLayout />} />
+
+      {/* Hard fallback */}
+      <Route path="*" element={<Navigate to="/dashboard/kontra" replace />} />
     </Routes>
-  )
+  );
 }
