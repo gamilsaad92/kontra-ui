@@ -1,29 +1,37 @@
-import React, { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import React, { useEffect, useState } from "react";
+import { NavLink, useInRouterContext } from "react-router-dom";
 
 /**
- * KontraDashboard.tsx — Dark branded layout, NOW WIRED to backend endpoints (graceful fallbacks)
+ * KontraDashboard.tsx — Dark branded layout, wired to backend endpoints (graceful fallbacks)
  * - Uses fetch to your API routes where available (VITE_API_URL respected)
- * - No external chart libs; inline visualizations avoid extra deps
+ * - Inline visualizations to avoid extra deps
  * - If an endpoint is missing, panels show placeholders (no crashes)
  */
 
+// Debug helper: logs if rendered outside a <Router>
+function RouterTripwire({ name }: { name: string }) {
+  const inside = useInRouterContext();
+  if (!inside) console.error(`[RouterTripwire] ${name} is rendering outside <Router>`);
+  return null;
+}
+
 export default function KontraDashboard() {
-  const [active, setActive] = useState("Overview");
   const primary = [
-    { label: "Portfolio", path: "/lender/portfolio" },
-    { label: "Loan Pipeline", path: "/lender/pipeline" },
-    { label: "Servicing Center", path: "/lender/servicing" },
-    { label: "Draw Requests", path: "/lender/draws" },
-    { label: "Reports & Analytics", path: "/lender/analytics" }
+    { label: "Overview", path: "/dashboard" },
+    { label: "Loans", path: "/dashboard/loans" },
+    { label: "Servicing", path: "/dashboard/servicing" },
+    { label: "Draws", path: "/dashboard/draws" },
+    { label: "Reports", path: "/dashboard/reports" },
   ];
   const secondary = ["General", "Details", "Analytics", "Users"];
 
   // API base (uses your VITE_API_URL if present)
-  const API_BASE = (import.meta as any).env?.VITE_API_URL || "";
+  const API_BASE: string = (import.meta as any).env?.VITE_API_URL || "";
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-200 flex">
+      <RouterTripwire name="KontraDashboard" />
+
       {/* Sidebar */}
       <aside className="hidden md:flex w-64 flex-col bg-red-950 border-r border-red-900">
         <div className="px-4 py-4 border-b border-red-900">
@@ -31,18 +39,18 @@ export default function KontraDashboard() {
         </div>
         <nav className="flex-1 p-2 space-y-1">
           {primary.map((item) => (
-            <Link
+            <NavLink
               key={item.label}
               to={item.path}
-              className={`block rounded px-3 py-2 text-sm transition ${
-                active === item.label
-                  ? "bg-red-800 text-white"
-                  : "hover:bg-red-900/70 text-red-200"
-              }`}
-              onClick={() => setActive(item.label)}
+              end={item.path === "/dashboard"}
+              className={({ isActive }) =>
+                `block rounded px-3 py-2 text-sm transition ${
+                  isActive ? "bg-red-800 text-white" : "hover:bg-red-900/70 text-red-200"
+                }`
+              }
             >
               {item.label}
-            </Link>
+            </NavLink>
           ))}
         </nav>
         <div className="px-4 py-3 border-t border-red-900 text-xs text-red-300">Role: Lender</div>
@@ -54,11 +62,13 @@ export default function KontraDashboard() {
         <div className="sticky top-0 z-10 backdrop-blur bg-slate-950/70 border-b border-red-900">
           <div className="mx-auto max-w-[1440px] px-6 py-4">
             <div className="flex items-center justify-between">
-              {/* Breadcrumbs */}
+              {/* Breadcrumbs (simple) */}
               <div className="text-xs text-red-300 flex items-center gap-2">
-                <Link to="/" className="hover:text-red-100">Home</Link>
+                <NavLink to="/dashboard" end className="hover:text-red-100">
+                  Dashboard
+                </NavLink>
                 <span>/</span>
-                <span className="text-red-200">{active}</span>
+                <span className="text-red-200">Overview</span>
               </div>
               {/* Actions */}
               <div className="flex items-center gap-2">
@@ -68,7 +78,7 @@ export default function KontraDashboard() {
               </div>
             </div>
             {/* Page title */}
-            <h1 className="mt-2 text-2xl font-semibold tracking-tight text-red-100">{active}</h1>
+            <h1 className="mt-2 text-2xl font-semibold tracking-tight text-red-100">Overview</h1>
 
             {/* Secondary tabs */}
             <div className="mt-3 flex items-center gap-1 text-sm">
@@ -112,13 +122,23 @@ export default function KontraDashboard() {
 // --------------------
 // Shared UI Panel
 // --------------------
-function Panel({ title, right, children }: { title: string; right?: React.ReactNode; children: React.ReactNode }) {
+function Panel({
+  title,
+  right,
+  children,
+}: {
+  title: string;
+  right?: React.ReactNode;
+  children: React.ReactNode;
+}) {
   return (
     <section className="rounded-xl border border-red-900 bg-slate-900/40">
       <div className="px-4 py-3 border-b border-red-900 flex items-center justify-between">
         <h2 className="text-sm font-semibold tracking-tight text-red-200">{title}</h2>
         {right || (
-          <button className="text-xs px-2 py-1 rounded border border-red-800 text-red-300 hover:bg-red-900">•••</button>
+          <button className="text-xs px-2 py-1 rounded border border-red-800 text-red-300 hover:bg-red-900">
+            •••
+          </button>
         )}
       </div>
       <div className="p-4 text-sm text-red-200">{children}</div>
@@ -130,14 +150,20 @@ function Loader() {
   return <div className="text-xs text-red-300">Loading…</div>;
 }
 
-async function tryEndpoints<T = any>(base: string, paths: string[], init?: RequestInit): Promise<{ data?: T; error?: string }> {
+async function tryEndpoints<T = any>(
+  base: string,
+  paths: string[],
+  init?: RequestInit
+): Promise<{ data?: T; error?: string }> {
   for (const p of paths) {
     try {
-      const res = await fetch(`${base}${p}`);
+      const res = await fetch(`${base}${p}`, init);
       if (!res.ok) continue;
-      const data = await res.json();
+      const data = (await res.json()) as T;
       return { data };
-    } catch {}
+    } catch {
+      // ignore and try next
+    }
   }
   return { error: `No data from: ${paths.join(", ")}` };
 }
@@ -154,10 +180,14 @@ function FilteredDataPanel({ apiBase }: { apiBase: string }) {
       const { data, error } = await tryEndpoints<any[]>(apiBase, [
         "/api/loans", // preferred if available
         "/api/applications",
-        "/api/portfolio/overview" // may return array of objects
+        "/api/portfolio/overview", // may return array of objects
       ]);
       if (error) setErr(error);
-      const arr = Array.isArray(data) ? data : (Array.isArray((data as any)?.items) ? (data as any).items : []);
+      const arr = Array.isArray(data)
+        ? data
+        : Array.isArray((data as any)?.items)
+        ? (data as any).items
+        : [];
       setRows(arr.slice(0, 10));
     })();
   }, [apiBase]);
@@ -169,9 +199,11 @@ function FilteredDataPanel({ apiBase }: { apiBase: string }) {
       {rows && rows.length > 0 ? (
         <TinyTable
           rows={rows}
-          cols={guessColumns(rows, ["id", "borrower_name", "status", "amount", "created_at"]) }
+          cols={guessColumns(rows, ["id", "borrower_name", "status", "amount", "created_at"])}
         />
-      ) : (!err && <div className="text-xs text-red-300">No rows.</div>)}
+      ) : (
+        !err && <div className="text-xs text-red-300">No rows.</div>
+      )}
     </Panel>
   );
 }
@@ -180,12 +212,12 @@ function TimelinePanel({ apiBase }: { apiBase: string }) {
   const [items, setItems] = useState<any[] | null>(null);
   useEffect(() => {
     (async () => {
-      const { data } = await tryEndpoints<any[]>(apiBase, [
-        "/api/activity",
-        "/api/events",
-        "/api/draw-requests"
-      ]);
-      const arr = Array.isArray(data) ? data : (Array.isArray((data as any)?.items) ? (data as any).items : []);
+      const { data } = await tryEndpoints<any[]>(apiBase, ["/api/activity", "/api/events", "/api/draw-requests"]);
+      const arr = Array.isArray(data)
+        ? data
+        : Array.isArray((data as any)?.items)
+        ? (data as any).items
+        : [];
       setItems(arr.slice(0, 8));
     })();
   }, [apiBase]);
@@ -211,10 +243,7 @@ function ChartPanel({ apiBase }: { apiBase: string }) {
   const [series, setSeries] = useState<number[] | null>(null);
   useEffect(() => {
     (async () => {
-      const { data } = await tryEndpoints<any>(apiBase, [
-        "/api/analytics/loan-status",
-        "/api/portfolio/overview"
-      ]);
+      const { data } = await tryEndpoints<any>(apiBase, ["/api/analytics/loan-status", "/api/portfolio/overview"]);
       const s = toSeries(data);
       setSeries(s);
     })();
@@ -238,12 +267,12 @@ function BoardPanel({ apiBase }: { apiBase: string }) {
   const [cols, setCols] = useState<Record<string, any[]> | null>(null);
   useEffect(() => {
     (async () => {
-      const { data } = await tryEndpoints<any[]>(apiBase, [
-        "/api/tasks",
-        "/api/inspections",
-        "/api/draw-requests"
-      ]);
-      const arr = Array.isArray(data) ? data : (Array.isArray((data as any)?.items) ? (data as any).items : []);
+      const { data } = await tryEndpoints<any[]>(apiBase, ["/api/tasks", "/api/inspections", "/api/draw-requests"]);
+      const arr = Array.isArray(data)
+        ? data
+        : Array.isArray((data as any)?.items)
+        ? (data as any).items
+        : [];
       const grouped: Record<string, any[]> = { Backlog: [], "In Progress": [], Completed: [] };
       for (const r of arr.slice(0, 24)) {
         const st = (r.status || r.state || "Backlog") as string;
@@ -283,12 +312,12 @@ function MapPanel({ apiBase }: { apiBase: string }) {
   const [locs, setLocs] = useState<any[] | null>(null);
   useEffect(() => {
     (async () => {
-      const { data } = await tryEndpoints<any[]>(apiBase, [
-        "/api/properties",
-        "/api/projects",
-        "/api/loans"
-      ]);
-      const arr = Array.isArray(data) ? data : (Array.isArray((data as any)?.items) ? (data as any).items : []);
+      const { data } = await tryEndpoints<any[]>(apiBase, ["/api/properties", "/api/projects", "/api/loans"]);
+      const arr = Array.isArray(data)
+        ? data
+        : Array.isArray((data as any)?.items)
+        ? (data as any).items
+        : [];
       setLocs(arr.slice(0, 8));
     })();
   }, [apiBase]);
@@ -300,7 +329,9 @@ function MapPanel({ apiBase }: { apiBase: string }) {
         <ul className="text-sm space-y-1">
           {locs.map((p, i) => (
             <li key={i} className="flex items-center justify-between">
-              <span className="truncate max-w-[70%]">{p.address || p.property_address || p.name || prettyLabel(p)}</span>
+              <span className="truncate max-w-[70%]">
+                {p.address || p.property_address || p.name || prettyLabel(p)}
+              </span>
               <span className="text-xs text-red-300">{fmtCoord(p)}</span>
             </li>
           ))}
@@ -314,12 +345,12 @@ function RecentActivityPanel({ apiBase }: { apiBase: string }) {
   const [items, setItems] = useState<any[] | null>(null);
   useEffect(() => {
     (async () => {
-      const { data } = await tryEndpoints<any[]>(apiBase, [
-        "/api/activity",
-        "/api/events",
-        "/api/servicing/activity"
-      ]);
-      const arr = Array.isArray(data) ? data : (Array.isArray((data as any)?.items) ? (data as any).items : []);
+      const { data } = await tryEndpoints<any[]>(apiBase, ["/api/activity", "/api/events", "/api/servicing/activity"]);
+      const arr = Array.isArray(data)
+        ? data
+        : Array.isArray((data as any)?.items)
+        ? (data as any).items
+        : [];
       setItems(arr.slice(0, 8));
     })();
   }, [apiBase]);
@@ -351,7 +382,9 @@ function TinyTable({ rows, cols }: { rows: any[]; cols: string[] }) {
         <thead className="bg-slate-900/60">
           <tr>
             {cols.map((h) => (
-              <th key={h} className="px-3 py-2 text-left font-medium text-red-200 whitespace-nowrap">{h}</th>
+              <th key={h} className="px-3 py-2 text-left font-medium text-red-200 whitespace-nowrap">
+                {h}
+              </th>
             ))}
           </tr>
         </thead>
@@ -360,7 +393,7 @@ function TinyTable({ rows, cols }: { rows: any[]; cols: string[] }) {
             <tr key={i} className="odd:bg-slate-900/30">
               {cols.map((c) => (
                 <td key={c} className="px-3 py-2 text-red-100/90 whitespace-nowrap truncate max-w-[240px]">
-                  {toCell(r[c])}
+                  {toCell((r as any)[c])}
                 </td>
               ))}
             </tr>
@@ -385,7 +418,11 @@ function toCell(v: any): string {
   if (typeof v === "number") return String(v);
   if (typeof v === "string") return v;
   if (v?.toString) return v.toString();
-  try { return JSON.stringify(v); } catch { return "—"; }
+  try {
+    return JSON.stringify(v);
+  } catch {
+    return "—";
+  }
 }
 
 function prettyLabel(x: any): string {
@@ -401,7 +438,23 @@ function prettyTime(x: any): string {
 }
 
 function fmtCoord(p: any): string {
-  const lat = p?.lat || p?.latitude; const lng = p?.lng || p?.longitude;
+  const lat = p?.lat || p?.latitude;
+  const lng = p?.lng || p?.longitude;
   if (lat && lng) return `${lat}, ${lng}`;
   return "";
+}
+
+function toSeries(data: any): number[] {
+  // very forgiving conversion to a [0..100] series
+  if (!data) return [20, 40, 60, 40, 20, 30];
+  if (Array.isArray(data) && data.length && typeof data[0] === "number") return data.slice(0, 24);
+  const items = Array.isArray((data as any)?.items) ? (data as any).items : Array.isArray(data) ? data : [];
+  const nums: number[] = [];
+  for (const it of items.slice(0, 24)) {
+    const v = Number((it.value ?? it.count ?? it.total ?? it.amount ?? 0) as any);
+    nums.push(isFinite(v) ? v : 0);
+  }
+  if (nums.length === 0) return [25, 35, 45, 55, 65, 50, 40];
+  const max = Math.max(...nums, 1);
+  return nums.map((n) => Math.round((n / max) * 100));
 }
