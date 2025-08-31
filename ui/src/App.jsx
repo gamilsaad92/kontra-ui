@@ -1,5 +1,4 @@
 import { Routes, Route, Navigate } from "react-router-dom";
-import { SignedIn, SignedOut, RedirectToSignIn } from "@clerk/clerk-react";
 import KontraDashboard from "./pages/KontraDashboard";
 
 export default function App() {
@@ -12,20 +11,8 @@ export default function App() {
       {/* <Route path="/sign-in" element={<SignIn routing="path" path="/sign-in" />} />
       <Route path="/sign-up" element={<SignUp routing="path" path="/sign-up" />} /> */}
 
-      {/* Protected Dashboard */}
-      <Route
-        path="/dashboard/*"
-        element={
-          <>
-            <SignedIn>
-              <KontraDashboard />
-            </SignedIn>
-            <SignedOut>
-              <RedirectToSignIn />
-            </SignedOut>
-          </>
-        }
-      />
+      {/* Dashboard */}
+      <Route path="/dashboard/*" element={<KontraDashboard />} />
     </Routes>
   );
 }
