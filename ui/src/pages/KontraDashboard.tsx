@@ -206,7 +206,6 @@ export default function KontraDashboard() {
               <BoardPanel apiBase={API_BASE} />
               <MapPanel apiBase={API_BASE} />
               <RecentActivityPanel apiBase={API_BASE} />
-              <FunctionsPanel files={FUNCTION_FILES} />
             </section>
           </div>
         )}
@@ -464,25 +463,6 @@ function RecentActivityPanel({ apiBase }: { apiBase: string }) {
           ))}
         </ul>
       )}
-    </Panel>
-  );
-}
-
-function FunctionsPanel({ files }: { files: Record<string, string[]> }) {
-  return (
-    <Panel title="Functions">
-      <div className="space-y-4 text-xs">
-        {Object.entries(files).map(([group, list]) => (
-          <div key={group}>
-            <h3 className="font-semibold capitalize text-red-400">{group}</h3>
-            <ul className="mt-1 pl-4 list-disc space-y-1 text-red-200">
-              {list.map((f) => (
-                <li key={f}>{f}</li>
-              ))}
-            </ul>
-          </div>
-        ))}
-      </div>
     </Panel>
   );
 }
