@@ -27,7 +27,9 @@ export default function KontraDashboard() {
 
   // API base (uses your VITE_API_URL if present)
   const API_BASE: string = (import.meta as any).env?.VITE_API_URL || "";
-
+  const location = useLocation();
+  const isServicing = location.pathname === "/dashboard/servicing";
+  
   return (
     <div className="min-h-screen bg-slate-950 text-slate-200 flex">
       <RouterTripwire name="KontraDashboard" />
@@ -68,7 +70,7 @@ export default function KontraDashboard() {
                   Dashboard
                 </NavLink>
                 <span>/</span>
-                <span className="text-red-200">Overview</span>
+                <span className="text-red-200">{isServicing ? "Servicing" : "Overview"}</span>
               </div>
               {/* Actions */}
               <div className="flex items-center gap-2">
@@ -78,7 +80,9 @@ export default function KontraDashboard() {
               </div>
             </div>
             {/* Page title */}
-            <h1 className="mt-2 text-2xl font-semibold tracking-tight text-red-100">Overview</h1>
+            <h1 className="mt-2 text-2xl font-semibold tracking-tight text-red-100">
+              {isServicing ? "Servicing" : "Overview"}
+            </h1>
 
             {/* Secondary tabs */}
             <div className="mt-3 flex items-center gap-1 text-sm">
@@ -98,22 +102,26 @@ export default function KontraDashboard() {
           </div>
         </div>
 
-        {/* Content grid */}
-        <div className="mx-auto max-w-[1440px] px-6 py-6 grid grid-cols-12 gap-6">
-          {/* Left column */}
-          <section className="col-span-12 xl:col-span-7 space-y-6">
-            <FilteredDataPanel apiBase={API_BASE} />
-            <TimelinePanel apiBase={API_BASE} />
-            <ChartPanel apiBase={API_BASE} />
-          </section>
+        {/* Content */}
+        {isServicing ? (
+          <ServicingTab apiBase={API_BASE} />
+        ) : (
+          <div className="mx-auto max-w-[1440px] px-6 py-6 grid grid-cols-12 gap-6">
+            {/* Left column */}
+            <section className="col-span-12 xl:col-span-7 space-y-6">
+              <FilteredDataPanel apiBase={API_BASE} />
+              <TimelinePanel apiBase={API_BASE} />
+              <ChartPanel apiBase={API_BASE} />
+            </section>
 
-          {/* Right column */}
-          <section className="col-span-12 xl:col-span-5 space-y-6">
-            <BoardPanel apiBase={API_BASE} />
-            <MapPanel apiBase={API_BASE} />
-            <RecentActivityPanel apiBase={API_BASE} />
-          </section>
-        </div>
+            {/* Right column */}
+            <section className="col-span-12 xl:col-span-5 space-y-6">
+              <BoardPanel apiBase={API_BASE} />
+              <MapPanel apiBase={API_BASE} />
+              <RecentActivityPanel apiBase={API_BASE} />
+            </section>
+          </div>
+        )}
       </main>
     </div>
   );
@@ -369,6 +377,107 @@ function RecentActivityPanel({ apiBase }: { apiBase: string }) {
         </ul>
       )}
     </Panel>
+  );
+}
+
+function ServicingTab({ apiBase }: { apiBase: string }) {
+  const [loanId, setLoanId] = useState("1");
+  const [upcoming, setUpcoming] = useState<any[] | null>(null);
+  const [projection, setProjection] = useState<any[] | null>(null);
+  const [type, setType] = useState("tax");
+  const [amount, setAmount] = useState("");
+  const [message, setMessage] = useState("");
+
+  useEffect(() => {
+    (async () => {
+      if (!loanId) return;
+      try {
+        const u = await fetch(`${apiBase}/api/loans/${loanId}/escrow/upcoming`);
+        if (u.ok) {
+          const data = await u.json();
+          setUpcoming(data.upcoming || []);
+        } else setUpcoming([]);
+        const p = await fetch(`${apiBase}/api/loans/${loanId}/escrow/projection`);
+        if (p.ok) {
+          const data = await p.json();
+          setProjection(data.projection || []);
+        } else setProjection([]);
+      } catch {
+        setUpcoming([]);
+        setProjection([]);
+      }
+    })();
+  }, [loanId, apiBase]);
+
+  const pay = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setMessage("");
+    try {
+      const res = await fetch(`${apiBase}/api/loans/${loanId}/escrow/pay`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type, amount: parseFloat(amount) })
+      });
+      const data = await res.json();
+      setMessage(data.message || data.error || "");
+    } catch {
+      setMessage("Payment failed");
+    }
+  };
+
+  return (
+    <div className="mx-auto max-w-[1440px] px-6 py-6 space-y-6">
+      <Panel title="Escrow Overview">
+        <div className="space-y-3">
+          <input
+            className="w-full rounded border border-red-900 bg-slate-900/40 px-3 py-2 text-sm"
+            placeholder="Loan ID"
+            value={loanId}
+            onChange={(e) => setLoanId(e.target.value)}
+          />
+          {upcoming && (
+            <ul className="text-sm space-y-1">
+              {upcoming.map((u, i) => (
+                <li key={i} className="flex justify-between">
+                  <span>{u.type}</span>
+                  <span>${u.amount}</span>
+                  <span className="text-xs text-red-300">{u.due_date}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+          {projection && projection.length > 0 && (
+            <div className="text-xs text-red-300">
+              Projection: {projection.length} months loaded
+            </div>
+          )}
+          <form onSubmit={pay} className="flex gap-2 items-center">
+            <select
+              value={type}
+              onChange={(e) => setType(e.target.value)}
+              className="rounded border border-red-900 bg-slate-900/40 px-2 py-1 text-sm"
+            >
+              <option value="tax">Tax</option>
+              <option value="insurance">Insurance</option>
+            </select>
+            <input
+              type="number"
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              className="flex-1 rounded border border-red-900 bg-slate-900/40 px-2 py-1 text-sm"
+              placeholder="Amount"
+            />
+            <button
+              type="submit"
+              className="px-3 py-1.5 rounded-lg bg-red-800 text-white text-sm"
+            >
+              Pay
+            </button>
+          </form>
+          {message && <div className="text-xs text-red-300">{message}</div>}
+        </div>
+      </Panel>
+    </div>
   );
 }
 
