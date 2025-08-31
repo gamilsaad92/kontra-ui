@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { NavLink, useInRouterContext } from "react-router-dom";
+import { NavLink, useInRouterContext, useLocation } from "react-router-dom";
 
 /**
  * KontraDashboard.tsx — Dark branded layout, wired to backend endpoints (graceful fallbacks)
