@@ -25,6 +25,93 @@ export default function KontraDashboard() {
   ];
   const secondary = ["General", "Details", "Analytics", "Users"];
 
+   // Catalog of backend function file paths surfaced in the dashboard
+  const FUNCTION_FILES: Record<string, string[]> = {
+    root: [
+      "analytics.js",
+      "analyze-financials.js",
+      "auditLogger.js",
+      "billPrediction.js",
+      "cache.js",
+      "chatServer.js",
+      "collabServer.js",
+      "communications.js",
+      "compliance.js",
+      "construction.js",
+      "db.js",
+      "documentService.js",
+      "featureFlags.js",
+      "feedback.js",
+      "hyperautomation.js",
+      "index.js",
+      "inspect-review.js",
+      "jest.config.js",
+      "jobQueue.js",
+      "matchingEngine.js",
+      "personalization.js",
+      "predictiveAnalytics.js",
+      "review-property-change.js",
+      "setupDb.js",
+      "validate-draw.js",
+      "voiceBot.js",
+      "webhooks.js",
+      "worker.js",
+      "workerCollections.js",
+      "workerReminders.js",
+      "workflowStore.js",
+    ],
+    edge: [
+      "fetchTaxBills.js",
+      "predictAssetRisk.js",
+      "predictLoanRisk.js",
+      "predictTroubledRisk.js",
+      "summarizeInspection.js",
+      "updateAssetValues.js",
+    ],
+    jobs: ["scoreAssets.js", "scoreLoans.js", "scoreTroubled.js", "sendScheduledReports.js"],
+    middlewares: [
+      "auditLogger.js",
+      "authenticate.js",
+      "middleware.js",
+      "rateLimit.js",
+      "requireOrg.js",
+      "requireRole.js",
+    ],
+    routers: [
+      "analytics.js",
+      "analyticsShared.js",
+      "applications.js",
+      "assets.js",
+      "compliance.js",
+      "dashboard.js",
+      "documentReview.js",
+      "draws.js",
+      "exchange.js",
+      "inspections.js",
+      "integrations.js",
+      "invites.js",
+      "loans.js",
+      "menu.js",
+      "orders.js",
+      "organizations.js",
+      "otp.js",
+      "payments.js",
+      "paymentsStripe.js",
+      "projects.js",
+      "reports.js",
+      "restaurant.js",
+      "restaurants.js",
+      "risk.js",
+      "savedSearches.js",
+      "servicing.js",
+      "siteAnalysis.js",
+      "sso.js",
+      "subscriptions.js",
+      "trades.js",
+      "webhookRoutes.js",
+    ],
+  };
+
   // API base (uses your VITE_API_URL if present)
   const API_BASE: string = (import.meta as any).env?.VITE_API_URL || "";
   const location = useLocation();
@@ -119,6 +206,7 @@ export default function KontraDashboard() {
               <BoardPanel apiBase={API_BASE} />
               <MapPanel apiBase={API_BASE} />
               <RecentActivityPanel apiBase={API_BASE} />
+              <FunctionsPanel files={FUNCTION_FILES} />
             </section>
           </div>
         )}
@@ -376,6 +464,25 @@ function RecentActivityPanel({ apiBase }: { apiBase: string }) {
           ))}
         </ul>
       )}
+    </Panel>
+  );
+}
+
+function FunctionsPanel({ files }: { files: Record<string, string[]> }) {
+  return (
+    <Panel title="Functions">
+      <div className="space-y-4 text-xs">
+        {Object.entries(files).map(([group, list]) => (
+          <div key={group}>
+            <h3 className="font-semibold capitalize text-red-400">{group}</h3>
+            <ul className="mt-1 pl-4 list-disc space-y-1 text-red-200">
+              {list.map((f) => (
+                <li key={f}>{f}</li>
+              ))}
+            </ul>
+          </div>
+        ))}
+      </div>
     </Panel>
   );
 }
