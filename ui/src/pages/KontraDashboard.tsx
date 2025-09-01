@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import { NavLink, useInRouterContext, useLocation } from "react-router-dom";
 import AmortizationTable from "../components/AmortizationTable";
 import AnalyticsDashboard from "../components/AnalyticsDashboard";
@@ -416,6 +416,7 @@ function BoardPanel({ apiBase }: { apiBase: string }) {
 
 function MapPanel({ apiBase }: { apiBase: string }) {
   const [locs, setLocs] = useState<any[] | null>(null);
+  const mapRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     (async () => {
       const { data } = await tryEndpoints<any[]>(apiBase, ["/api/properties", "/api/projects", "/api/loans"]);
@@ -427,21 +428,53 @@ function MapPanel({ apiBase }: { apiBase: string }) {
       setLocs(arr.slice(0, 8));
     })();
   }, [apiBase]);
+    const project = (lat: number, lng: number) => {
+    const node = mapRef.current;
+    const w = node?.clientWidth || 1;
+    const h = node?.clientHeight || 1;
+    return {
+      left: ((lng + 180) / 360) * w,
+      top: ((90 - lat) / 180) * h,
+    };
+  };
   return (
     <Panel title="Map">
       {!locs ? (
         <Loader />
       ) : (
-        <ul className="text-sm space-y-1">
-          {locs.map((p, i) => (
-            <li key={i} className="flex items-center justify-between">
-              <span className="truncate max-w-[70%]">
-                {p.address || p.property_address || p.name || prettyLabel(p)}
-              </span>
-              <span className="text-xs text-red-300">{fmtCoord(p)}</span>
-            </li>
-          ))}
-        </ul>
+          <>
+          <div ref={mapRef} className="relative w-full h-48 mb-2 overflow-hidden rounded">
+            <img
+              src="https://upload.wikimedia.org/wikipedia/commons/thumb/8/80/World_map_-_low_resolution.svg/1024px-World_map_-_low_resolution.svg.png"
+              alt="World map"
+              className="absolute inset-0 w-full h-full object-cover"
+            />
+            {locs.map((p, i) => {
+              const lat = Number(p?.lat || p?.latitude);
+              const lng = Number(p?.lng || p?.longitude);
+              if (!isFinite(lat) || !isFinite(lng)) return null;
+              const pos = project(lat, lng);
+              return (
+                <span
+                  key={i}
+                  className="absolute w-2 h-2 bg-red-500 border-2 border-white rounded-full -translate-x-1/2 -translate-y-1/2"
+                  style={{ left: pos.left, top: pos.top }}
+                  title={p.address || p.property_address || p.name || prettyLabel(p)}
+                />
+              );
+            })}
+          </div>
+          <ul className="text-sm space-y-1">
+            {locs.map((p, i) => (
+              <li key={i} className="flex items-center justify-between">
+                <span className="truncate max-w-[70%]">
+                  {p.address || p.property_address || p.name || prettyLabel(p)}
+                </span>
+                <span className="text-xs text-red-300">{fmtCoord(p)}</span>
+              </li>
+            ))}
+          </ul>
+        </>    
       )}
     </Panel>
   );
