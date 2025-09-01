@@ -1,5 +1,16 @@
 import React, { useEffect, useState } from "react";
 import { NavLink, useInRouterContext, useLocation } from "react-router-dom";
+import AmortizationTable from "../components/AmortizationTable";
+import AnalyticsDashboard from "../components/AnalyticsDashboard";
+import AssetForm from "../components/AssetForm";
+import AssetsTable from "../components/AssetsTable";
+import CollectionForm from "../components/CollectionForm";
+import CollectionsTable from "../components/CollectionsTable";
+import DelinquencyChart from "../components/DelinquencyChart";
+import DrawRequestForm from "../components/DrawRequestForm";
+import InspectionForm from "../components/InspectionForm";
+import InspectionList from "../components/InspectionList";
+import LienWaiverList from "../components/LienWaiverList";
 
 /**
  * KontraDashboard.tsx — Dark branded layout, wired to backend endpoints (graceful fallbacks)
@@ -474,7 +485,9 @@ function ServicingTab({ apiBase }: { apiBase: string }) {
   const [type, setType] = useState("tax");
   const [amount, setAmount] = useState("");
   const [message, setMessage] = useState("");
-
+  const [assetRefresh, setAssetRefresh] = useState(0);
+  const [collectionRefresh, setCollectionRefresh] = useState(0);
+  
   useEffect(() => {
     (async () => {
       if (!loanId) return;
@@ -563,6 +576,33 @@ function ServicingTab({ apiBase }: { apiBase: string }) {
           </form>
           {message && <div className="text-xs text-red-300">{message}</div>}
         </div>
+      </Panel>
+            <Panel title="Amortization">
+        <AmortizationTable loanId={loanId} />
+      </Panel>
+      <Panel title="Analytics">
+        <AnalyticsDashboard />
+      </Panel>
+      <Panel title="Assets">
+        <AssetForm onCreated={() => setAssetRefresh((r) => r + 1)} />
+        <AssetsTable refresh={assetRefresh} />
+      </Panel>
+      <Panel title="Collections">
+        <CollectionForm onCreated={() => setCollectionRefresh((r) => r + 1)} />
+        <CollectionsTable refresh={collectionRefresh} />
+      </Panel>
+      <Panel title="Delinquency">
+        <DelinquencyChart />
+      </Panel>
+      <Panel title="Draw Request">
+        <DrawRequestForm />
+      </Panel>
+      <Panel title="Inspections">
+        <InspectionForm drawId={loanId} />
+        <InspectionList projectId={loanId} />
+      </Panel>
+      <Panel title="Lien Waivers">
+        <LienWaiverList filter={{ draw_id: loanId }} />
       </Panel>
     </div>
   );
