@@ -23,8 +23,7 @@ export default function AnalyticsDashboard() {
 
     supabase
       .from('loans')
-      .select('status, count:count(*)')
-      .group('status')
+     .select('status, count:count(*)', { group: 'status' })
       .then(({ data, error }) => {
         if (error) {
           console.error('Analytics loan query error:', error)
