@@ -1,5 +1,5 @@
 import { Routes, Route, Navigate } from "react-router-dom";
-import KontraDashboard from "./pages/KontraDashboard";
+import SaasDashboard from "./pages/SaasDashboard";
 
 export default function App() {
   return (
