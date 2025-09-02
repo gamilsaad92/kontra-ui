@@ -10,8 +10,9 @@ export default function OlbCouponCard({ to }) {
     (async () => {
       try {
         const res = await fetch(`${API_BASE}/api/olb-coupon`);
+       if (!res.ok) throw new Error('Failed to fetch coupon');
         const data = await res.json();
-        setCoupon(data.coupon);
+      setCoupon(typeof data.coupon === 'number' ? data.coupon : null);
       } catch {
         setCoupon(null);
       } finally {
@@ -20,10 +21,12 @@ export default function OlbCouponCard({ to }) {
     })();
   }, []);
 
+    const formatted = coupon !== null ? `${coupon.toFixed(2)}%` : null;
+
   return (
     <Card title="OLB Coupon" loading={loading} to={to}>
-      {coupon !== null ? (
-        <p className="text-xl">{coupon}</p>
+      {formatted ? (
+       <p className="text-xl">{formatted}</p>
       ) : (
         <p>Unable to compute coupon.</p>
       )}
