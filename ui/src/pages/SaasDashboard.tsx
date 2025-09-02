@@ -76,7 +76,7 @@ const nav = [
   "Subscriptions",
 ];
 
-export default function App() {
+export default function SaasDashboard() {
   return (
     <div className="flex min-h-screen bg-slate-100 text-slate-900">
       {/* Sidebar */}
