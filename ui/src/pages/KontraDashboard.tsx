@@ -11,6 +11,7 @@ import DrawRequestForm from "../components/DrawRequestForm";
 import InspectionForm from "../components/InspectionForm";
 import InspectionList from "../components/InspectionList";
 import LienWaiverList from "../components/LienWaiverList";
+import OlbCouponPage from "./OlbCouponPage";
 
 /**
  * KontraDashboard.tsx — Dark branded layout, wired to backend endpoints (graceful fallbacks)
@@ -33,6 +34,7 @@ export default function KontraDashboard() {
     { label: "Servicing", path: "/dashboard/servicing" },
     { label: "Draws", path: "/dashboard/draws" },
     { label: "Reports", path: "/dashboard/reports" },
+    { label: "OLB Coupon", path: "/dashboard/olb-coupon" },
   ];
   const secondary = ["General", "Details", "Analytics", "Users"];
 
@@ -127,6 +129,8 @@ export default function KontraDashboard() {
   const API_BASE: string = (import.meta as any).env?.VITE_API_URL || "";
   const location = useLocation();
   const isServicing = location.pathname === "/dashboard/servicing";
+  const isCoupon = location.pathname === "/dashboard/olb-coupon";
+  const currentLabel = isServicing ? "Servicing" : isCoupon ? "OLB Coupon" : "Overview";
   
   return (
     <div className="min-h-screen bg-slate-950 text-slate-200 flex">
@@ -168,7 +172,7 @@ export default function KontraDashboard() {
                   Dashboard
                 </NavLink>
                 <span>/</span>
-                <span className="text-red-200">{isServicing ? "Servicing" : "Overview"}</span>
+               <span className="text-red-200">{currentLabel}</span>
               </div>
               {/* Actions */}
               <div className="flex items-center gap-2">
@@ -178,10 +182,8 @@ export default function KontraDashboard() {
               </div>
             </div>
             {/* Page title */}
-            <h1 className="mt-2 text-2xl font-semibold tracking-tight text-red-100">
-              {isServicing ? "Servicing" : "Overview"}
-            </h1>
-
+           <h1 className="mt-2 text-2xl font-semibold tracking-tight text-red-100">{currentLabel}</h1>
+            
             {/* Secondary tabs */}
             <div className="mt-3 flex items-center gap-1 text-sm">
               {secondary.map((s, i) => (
@@ -203,6 +205,8 @@ export default function KontraDashboard() {
         {/* Content */}
         {isServicing ? (
           <ServicingTab apiBase={API_BASE} />
+              ) : isCoupon ? (
+          <OlbCouponPage />
         ) : (
           <div className="mx-auto max-w-[1440px] px-6 py-6 grid grid-cols-12 gap-6">
             {/* Left column */}
@@ -216,6 +220,7 @@ export default function KontraDashboard() {
             <section className="col-span-12 xl:col-span-5 space-y-6">
               <BoardPanel apiBase={API_BASE} />
               <MapPanel apiBase={API_BASE} />
+              <OlbCouponPanel apiBase={API_BASE} />       
               <RecentActivityPanel apiBase={API_BASE} />
             </section>
           </div>
@@ -475,6 +480,50 @@ function MapPanel({ apiBase }: { apiBase: string }) {
             ))}
           </ul>
         </>    
+      )}
+    </Panel>
+  );
+}
+
+function OlbCouponPanel({ apiBase }: { apiBase: string }) {
+  const [coupon, setCoupon] = useState<number | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState<string | null>(null);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch(`${apiBase}/api/olb-coupon`);
+        if (!res.ok) throw new Error("Failed to load");
+        const data = await res.json();
+        if (typeof data.coupon === "number") setCoupon(data.coupon);
+        else setErr("Invalid response");
+      } catch (e) {
+        setErr((e as any)?.message || "Failed to load");
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, [apiBase]);
+
+  return (
+    <Panel
+      title="OLB Coupon"
+      right={
+        <NavLink
+          to="/dashboard/olb-coupon"
+          className="text-xs text-red-300 hover:text-red-100"
+        >
+          View
+        </NavLink>
+      }
+    >
+      {loading ? (
+        <Loader />
+      ) : coupon !== null ? (
+        <div className="text-2xl">{coupon.toFixed(2)}%</div>
+      ) : (
+        <div className="text-xs text-red-400">{err || "No data"}</div>
       )}
     </Panel>
   );
