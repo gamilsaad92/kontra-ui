@@ -12,7 +12,7 @@ export default function App() {
       <Route path="/sign-up" element={<SignUp routing="path" path="/sign-up" />} /> */}
 
       {/* Dashboard */}
-      <Route path="/dashboard/*" element={<KontraDashboard />} />
+     <Route path="/dashboard" element={<SaasDashboard />} />
     </Routes>
   );
 }
