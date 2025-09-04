@@ -50,30 +50,46 @@ const LeftIcon = () => (
   </svg>
 );
 
-const nav = [
-  "Assets",
-  "Inspections",
-  "Dashboard",
-  "Loans",
-  "Draws",
-  "Projects",
-  "Organizations",
-  "Invites",
-  "Document Review",
-  "SSO",
-  "Reports",
-  "Menu",
-  "Orders",
-  "Payments",
-  "Trades",
-  "Exchange",
-  "Analytics",
-  "Restaurant Ops",
-  "Applications",
-  "Risk",
-  "Servicing",
-  "Webhooks",
-  "Subscriptions",
+const navItems = [
+  { label: "Assets", path: "/assets", endpoint: "/api/assets" },
+  { label: "Inspections", path: "/inspections", endpoint: "/api/inspections" },
+  { label: "Dashboard", path: "/dashboard", endpoint: "/api/dashboard" },
+  { label: "Loans", path: "/loans", endpoint: "/api/loans" },
+  { label: "Draws", path: "/draws", endpoint: "/api/draws" },
+  { label: "Projects", path: "/projects", endpoint: "/api/projects" },
+  { label: "Organizations", path: "/organizations", endpoint: "/api/organizations" },
+  { label: "Invites", path: "/invites", endpoint: "/api/invites" },
+  {
+    label: "Document Review",
+    path: "/document-review",
+    endpoint: "/api/documentReview",
+  },
+  { label: "SSO", path: "/sso", endpoint: "/api/sso" },
+  { label: "Reports", path: "/reports", endpoint: "/api/reports" },
+  { label: "Menu", path: "/menu", endpoint: "/api/menu" },
+  { label: "Orders", path: "/orders", endpoint: "/api/orders" },
+  { label: "Payments", path: "/payments", endpoint: "/api/payments" },
+  { label: "Trades", path: "/trades", endpoint: "/api/trades" },
+  { label: "Exchange", path: "/exchange", endpoint: "/api/exchange" },
+  { label: "Analytics", path: "/analytics", endpoint: "/api/analytics" },
+  {
+    label: "Restaurant Ops",
+    path: "/restaurant",
+    endpoint: "/api/restaurant",
+  },
+  {
+    label: "Applications",
+    path: "/applications",
+    endpoint: "/api/applications",
+  },
+  { label: "Risk", path: "/risk", endpoint: "/api/risk" },
+  { label: "Servicing", path: "/servicing", endpoint: "/api/servicing" },
+  { label: "Webhooks", path: "/webhooks", endpoint: "/api/webhookRoutes" },
+  {
+    label: "Subscriptions",
+    path: "/subscriptions",
+    endpoint: "/api/subscriptions",
+  },
 ];
 
 export default function SaasDashboard() {
@@ -90,10 +106,10 @@ export default function SaasDashboard() {
           <span>Saas popular</span>
         </div>
         <nav className="flex-1 overflow-y-auto px-2 pb-4 space-y-1">
-          {nav.map((label) => (
+         {navItems.map(({ label, path }) => (
             <a
               key={label}
-              href="#"
+                href={path}
               className="group flex items-center gap-3 rounded-md px-3 py-2 text-sm text-slate-300 hover:bg-slate-800 hover:text-white"
             >
               <LeftIcon />
