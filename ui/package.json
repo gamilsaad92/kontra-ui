@@ -25,6 +25,7 @@
     "recharts": "^2.15.3",
     "framer-motion": "^11.0.0",
     "lucide-react": "^0.453.0"
+    "axios": "^1.7.7",
   },
   "devDependencies": {
     "@babel/preset-env": "^7.26.10",
