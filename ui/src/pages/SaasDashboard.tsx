@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { getPortfolioSnapshot } from "../services/analytics";
 import { listDrawRequests } from "../services/servicing";
+import type { DrawRequest } from "../lib/sdk/types";
 
 // ---- Tiny UI atoms
 const Pill = ({ children, tone = "slate" }) => (
@@ -79,28 +80,35 @@ const nav = [
 ];
 
 export default function SaasDashboard() {
-    const [portfolio, setPortfolio] = useState<{ delinqPct: number; points: number[] } | null>(null);
-  const [draws, setDraws] = useState<any[]>([]);
+   const [portfolio, setPortfolio] =
+    useState<{ delinqPct: number; points: number[] } | null>(null);
+  const [draws, setDraws] = useState<DrawRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    let isMounted = true;
     async function fetchData() {
       try {
         const [p, d] = await Promise.all([
           getPortfolioSnapshot(),
           listDrawRequests(),
         ]);
+        if (!isMounted) return;
         setPortfolio(p);
-        setDraws(d);
+        setDraws(Array.isArray(d) ? d : []);
       } catch (err) {
         console.error(err);
-        setError("Failed to load metrics");
+        if (isMounted)
+          setError(err instanceof Error ? err.message : "Failed to load metrics");
       } finally {
-        setLoading(false);
+        if (isMounted) setLoading(false);
       }
     }
     fetchData();
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
   const drawCount = draws.length;
