@@ -1,4 +1,6 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
+import { getPortfolioSnapshot } from "../services/analytics";
+import { listDrawRequests } from "../services/servicing";
 
 // ---- Tiny UI atoms
 const Pill = ({ children, tone = "slate" }) => (
@@ -77,6 +79,65 @@ const nav = [
 ];
 
 export default function SaasDashboard() {
+    const [portfolio, setPortfolio] = useState<{ delinqPct: number; points: number[] } | null>(null);
+  const [draws, setDraws] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    async function fetchData() {
+      try {
+        const [p, d] = await Promise.all([
+          getPortfolioSnapshot(),
+          listDrawRequests(),
+        ]);
+        setPortfolio(p);
+        setDraws(d);
+      } catch (err) {
+        console.error(err);
+        setError("Failed to load metrics");
+      } finally {
+        setLoading(false);
+      }
+    }
+    fetchData();
+  }, []);
+
+  const drawCount = draws.length;
+  const escrowBalance = draws.reduce((sum, r) => sum + (r?.amount ?? 0), 0);
+
+  const formatCurrency = (n: number) =>
+    new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(n);
+
+  const formatSpark = (points: number[]) => {
+    if (!points || points.length === 0) return undefined;
+    const step = 200 / (points.length - 1);
+    const max = Math.max(...points);
+    const min = Math.min(...points);
+    return points
+      .map((p, i) => {
+        const y = 60 - ((p - min) / (max - min || 1)) * 60;
+        return `${i * step},${y}`;
+      })
+      .join(" ");
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">Loading...</div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex items-center justify-center min-h-screen text-red-500">
+        {error}
+      </div>
+    );
+  }
+
+  const spark = portfolio ? formatSpark(portfolio.points) : undefined;
+
   return (
     <div className="flex min-h-screen bg-slate-100 text-slate-900">
       {/* Sidebar */}
@@ -111,13 +172,17 @@ export default function SaasDashboard() {
             <div className="flex items-start justify-between gap-6">
               <div>
                 <h3 className="text-sm font-medium text-slate-600">Loans & Draws</h3>
-                <p className="mt-2 text-3xl font-bold tracking-tight">1,542</p>
+                  <p className="mt-2 text-3xl font-bold tracking-tight">{drawCount}</p>
                 <div className="mt-3">
-                  <div className="text-xs text-slate-500">Loans Past Due</div>
-                  <MiniSpark />
+                      <div className="text-xs text-slate-500">
+                    Loans Past Due {portfolio ? `(${portfolio.delinqPct}%)` : ""}
+                  </div>
+                  <MiniSpark points={spark} />
                 </div>
                 <div className="mt-2 text-xs text-slate-600">Escrow Balance</div>
-                <div className="text-2xl font-semibold tracking-tight">$12,506,038</div>
+                     <div className="text-2xl font-semibold tracking-tight">
+                  {formatCurrency(escrowBalance)}
+                </div>
               </div>
             </div>
           </div>
