@@ -1,10 +1,15 @@
 import { api, withOrg } from "../lib/api";
 
 export async function getPortfolioSnapshot() {
-  // If no API URL is configured, provide mock data so the dashboard
-  // can render without network calls in local demos.
-  if (!import.meta.env.VITE_API_URL) {
-    return { delinqPct: 1.24, points: [3, 5, 4, 6, 7, 8] };
+  const { data } = await api.post(
+    "/portfolio-summary",
+    { period: "MTD" },
+    withOrg(1)
+  );
+  return {
+    delinqPct: data?.delinquency_pct ?? 1.24,
+    points: data?.spark ?? [3, 5, 4, 6, 7, 8],
+  };
   }
 
   const { data } = await api.post(
