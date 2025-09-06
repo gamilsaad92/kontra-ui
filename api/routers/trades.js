@@ -18,7 +18,7 @@ router.use((req, res, next) => {
 });
 
 // Submit a trade order
-router.post('/trades', async (req, res) => {
+router.post('/', async (req, res) => {
    const {
     trade_type,
     notional_amount,
@@ -113,7 +113,7 @@ router.post('/trades', async (req, res) => {
 });
 
 // List or filter trades
-router.get('/trades', async (req, res) => {
+router.get('/', async (req, res) => {
   const { status, trade_type } = req.query;
   let query = supabase.from('trades');
   if (status) query = query.eq('status', status);
@@ -141,7 +141,7 @@ router.get('/trades', async (req, res) => {
 });
 
 // Finalize a trade
-router.post('/trades/:id/settle', async (req, res) => {
+router.post('/:id/settle', async (req, res) => {
   const { id } = req.params;
    const { data: tradeRow } = await supabase
     .from('trades')
