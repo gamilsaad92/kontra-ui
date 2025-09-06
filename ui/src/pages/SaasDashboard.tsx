@@ -95,7 +95,7 @@ export default function SaasDashboard() {
           listDrawRequests(),
         ]);
         if (!isMounted) return;
-        setPortfolio(p);
+      setPortfolio(p ?? null);
         setDraws(Array.isArray(d) ? d : []);
       } catch (err) {
         console.error(err);
@@ -182,10 +182,18 @@ export default function SaasDashboard() {
                 <h3 className="text-sm font-medium text-slate-600">Loans & Draws</h3>
                   <p className="mt-2 text-3xl font-bold tracking-tight">{drawCount}</p>
                 <div className="mt-3">
+                                  {portfolio ? (
+                    <>
                       <div className="text-xs text-slate-500">
-                    Loans Past Due {portfolio ? `(${portfolio.delinqPct}%)` : ""}
-                  </div>
-                  <MiniSpark points={spark} />
+                                 Loans Past Due ({portfolio.delinqPct}%)
+                      </div>
+                      <MiniSpark points={spark} />
+                    </>
+                  ) : (
+                    <div className="text-xs text-slate-500">
+                      Portfolio summary unavailable
+                    </div>
+                  )}      
                 </div>
                 <div className="mt-2 text-xs text-slate-600">Escrow Balance</div>
                      <div className="text-2xl font-semibold tracking-tight">
