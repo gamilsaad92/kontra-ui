@@ -1,15 +1,23 @@
+import axios from "axios";
 import { api, withOrg } from "../lib/api";
 
 export async function getPortfolioSnapshot() {
-  const { data } = await api.post(
-    "/portfolio-summary",
-    { period: "MTD" },
-    withOrg(1)
-  );
-  return {
-    delinqPct: data?.delinquency_pct ?? 1.24,
-    points: data?.spark ?? [3, 5, 4, 6, 7, 8],
-  };
+  try {
+    const { data } = await api.post(
+      "/portfolio-summary",
+      { period: "MTD" },
+      withOrg(1)
+    );
+    return {
+      delinqPct: data?.delinquency_pct ?? 1.24,
+      points: data?.spark ?? [3, 5, 4, 6, 7, 8],
+    };
+  } catch (err) {
+    if (axios.isAxiosError(err) && err.response?.status === 404) {
+      return { delinqPct: 1.24, points: [3, 5, 4, 6, 7, 8] };
+    }
+    throw err;
+  }  
 }
 
 export async function getRiskSummary() {
