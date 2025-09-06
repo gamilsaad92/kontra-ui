@@ -87,7 +87,6 @@ const departmentNav = {
     { label: 'Settings', icon: Cog6ToothIcon },
     { label: 'Docs', icon: DocumentTextIcon, href: 'https://github.com/kontra-ui/docs' },
   ],
-  ]
 };
 
 const slug = str => str.toLowerCase().replace(/\s+/g, '-');
