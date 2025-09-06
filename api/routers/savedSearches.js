@@ -26,7 +26,7 @@ const searchSchema = z.object({
   notify_sms: z.boolean().default(false)
 });
 
-router.post('/searches', async (req, res) => {
+router.post('/', async (req, res) => {
   try {
     const input = searchSchema.parse(req.body);
     const { data, error } = await supabase
@@ -45,7 +45,7 @@ router.post('/searches', async (req, res) => {
   }
 });
 
-router.get('/searches', async (req, res) => {
+router.get('/', async (req, res) => {
   const { data, error } = await supabase
     .from('exchange_saved_searches')
     .select('*')
@@ -54,7 +54,7 @@ router.get('/searches', async (req, res) => {
   res.json({ searches: data || [] });
 });
 
-router.delete('/searches/:id', async (req, res) => {
+router.delete('/:id', async (req, res) => {
   const { id } = req.params;
   const { error } = await supabase
     .from('exchange_saved_searches')
