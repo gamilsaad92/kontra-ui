@@ -114,10 +114,11 @@ export default function DashboardLayout() {
   const renderItem = item => {
     const label = item.sub ? item.sub[0] : item.label;
     const path = toPath(label);
-        const Icon = item.icon;
+     const Icon = item.icon;
     const base =
       'group flex items-center w-full gap-3 rounded-md px-3 py-2 text-sm font-medium';
-    const state = active
+    const active = location.pathname === path;
+      const state = active
       ? 'bg-slate-800 text-white'
       : 'text-slate-300 hover:bg-slate-800 hover:text-white focus:bg-slate-800 focus:text-white active:bg-slate-900';
     const content = (
@@ -126,7 +127,8 @@ export default function DashboardLayout() {
         {sidebarOpen && <span className="truncate">{item.label}</span>}
       </>
     );
-    const active = location.pathname === path;
+
+    return (
       <div key={item.label}>
         {item.href ? (
           <a
@@ -137,16 +139,16 @@ export default function DashboardLayout() {
             title={item.label}
             onClick={() => recordUsage(item.label)}
           >
-               {content}
+           {content}
           </a>
         ) : (
           <Link
-          to={path}   
-             className={`${base} ${state}`}
+             to={path}
+            className={`${base} ${state}`}
             title={item.label}
             onClick={() => recordUsage(item.label)}
           >
-                   {content}
+             {content}
           </Link>
         )}
       </div>
