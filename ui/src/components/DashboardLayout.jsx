@@ -259,7 +259,7 @@ export default function DashboardLayout() {
             <div className="flex items-center gap-4">
             <BellIcon className="h-5 w-5 text-slate-500" title="Notifications" />
             <div className="w-8 h-8 bg-slate-200 rounded-full flex items-center justify-center text-sm font-medium">
-              {session.user?.email[0].toUpperCase()}
+            {session?.user?.email?.[0]?.toUpperCase() ?? ''}
             </div>
           </div>
         </header>
