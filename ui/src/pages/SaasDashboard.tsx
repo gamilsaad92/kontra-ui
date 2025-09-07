@@ -156,7 +156,8 @@ export default function SaasDashboard() {
               <path className="fill-white/90" d="M12 2 3 7v10l9 5 9-5V7zM6 9l6 3 6-3" />
             </svg>
           </span>
-          <span>Saas popular</span>
+           <span><span className="text-red-900">Kontra</span> popular</span>
+        </div>
         </div>
         <nav className="flex-1 overflow-y-auto px-2 pb-4 space-y-1">
           {nav.map((label) => (
