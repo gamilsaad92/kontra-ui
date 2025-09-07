@@ -14,15 +14,29 @@ export default function ProjectForm({ onCreated }) {
     e.preventDefault()
     setLoading(true)
     setError(null)
+        if (!session) {
+      setError('Please sign in.')
+      setLoading(false)
+      return
+    }
+    const ownerId = session.user?.id
+    const project = { name, number, address }
+    if (ownerId) project.owner_id = ownerId
     const { data, error } = await supabase
       .from('projects')
-      .insert([{ name, number, address, owner_id: session.user.id }])
+         .insert([project])
       .select()
       .single()
     setLoading(false)
     if (error) return setError(error.message)
     onCreated()
     setName(''); setNumber(''); setAddress('')
+  }
+
+    if (!session) {
+    return (
+      <p className="mb-6 text-gray-500">Please sign in to create a project.</p>
+    )
   }
 
   return (
