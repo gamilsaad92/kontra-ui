@@ -13,7 +13,11 @@ export default function ProjectsTable({ onSelect }) {
   useEffect(() => {
     (async () => {
       setLoading(true)
-     const params = new URLSearchParams()
+        if (!session) {
+        setLoading(false)
+        return
+      }
+      const params = new URLSearchParams()
       params.append('owner_id', session.user.id)
       if (filters.status) params.append('status', filters.status)
       const res = await fetch(`${API_BASE}/api/projects?${params.toString()}`)
@@ -24,6 +28,10 @@ export default function ProjectsTable({ onSelect }) {
    }, [session, filters])
 
   const exportCsv = async () => {
+        if (!session) {
+      alert('Please log in to export projects')
+      return
+    }
     const params = new URLSearchParams()
     params.append('owner_id', session.user.id)
     if (filters.status) params.append('status', filters.status)
@@ -37,7 +45,8 @@ export default function ProjectsTable({ onSelect }) {
     a.click()
     URL.revokeObjectURL(url)
   }
-  
+
+  if (!session) return <p>Please log in to view projects.</p>
   if (loading) return <p>Loading projects…</p>
   if (projects.length === 0) return <p>No projects. Create one above.</p>
 
