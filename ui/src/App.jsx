@@ -1,11 +1,10 @@
 import { Routes, Route } from "react-router-dom";
-import DashboardLayout from "./components/DashboardLayout";
+import SaasDashboard from "./pages/SaasDashboard";
 
 export default function App() {
   return (
     <Routes>
-      {/* Dashboard layout */}
-      <Route path="/*" element={<DashboardLayout />} />
+      <Route path="/*" element={<SaasDashboard />} />
     </Routes>
   );
 }
