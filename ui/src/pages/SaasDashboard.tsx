@@ -2,82 +2,11 @@ import React, { useEffect, useState } from "react";
 import { getPortfolioSnapshot } from "../services/analytics";
 import { listDrawRequests } from "../services/servicing";
 import type { DrawRequest } from "../lib/sdk/types";
-
-// ---- Tiny UI atoms
-const Pill = ({ children, tone = "slate" }) => (
-  <span
-    className={
-      "inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium " +
-      (tone === "green"
-        ? "bg-emerald-50 text-emerald-700 ring-1 ring-inset ring-emerald-200"
-        : tone === "sky"
-        ? "bg-sky-50 text-sky-700 ring-1 ring-inset ring-sky-200"
-        : tone === "rose"
-        ? "bg-rose-50 text-rose-700 ring-1 ring-inset ring-rose-200"
-        : "bg-slate-50 text-slate-700 ring-1 ring-inset ring-slate-200")
-    }
-  >
-    {children}
-  </span>
-);
-
-const MiniSpark = ({ points = "0,36 20,30 40,32 60,24 80,28 100,18 120,22 140,16 160,24 180,14 200,20" }) => (
-  <svg viewBox="0 0 200 60" className="w-full h-16 text-sky-500">
-    <polyline
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="3"
-      points={points}
-      strokeLinejoin="round"
-      strokeLinecap="round"
-    />
-  </svg>
-);
-
-const Card = ({ title, children, right, className = "" }) => (
-  <div className={"bg-white rounded-xl border border-slate-200 p-6 " + className}>
-    <div className="flex items-start justify-between gap-4">
-      <h3 className="text-sm font-medium text-slate-600">{title}</h3>
-      {right}
-    </div>
-    <div className="mt-4">{children}</div>
-  </div>
-);
-
-const LeftIcon = () => (
-  <svg viewBox="0 0 24 24" className="h-4 w-4 shrink-0" aria-hidden>
-    <path
-      className="fill-current"
-      d="M12 2a10 10 0 1 0 .001 20.001A10 10 0 0 0 12 2Zm0 4.75a1.25 1.25 0 1 1 0 2.5 1.25 1.25 0 0 1 0-2.5Zm-2 4.5h4a1 1 0 1 1 0 2h-1v4a1 1 0 1 1-2 0v-4h-1a1 1 0 1 1 0-2Z"
-    />
-  </svg>
-);
-
-const nav = [
-  "Assets",
-  "Inspections",
-  "Dashboard",
-  "Loans",
-  "Draws",
-  "Projects",
-  "Organizations",
-  "Invites",
-  "Document Review",
-  "SSO",
-  "Reports",
-  "Menu",
-  "Orders",
-  "Payments",
-  "Trades",
-  "Exchange",
-  "Analytics",
-  "Restaurant Ops",
-  "Applications",
-  "Risk",
-  "Servicing",
-  "Webhooks",
-  "Subscriptions",
-];
+import Pill from "../components/Pill";
+import MiniSpark from "../components/MiniSpark";
+import Card from "../components/SaasCard";
+import LeftIcon from "../components/LeftIcon";
+import { nav } from "../constants/nav";
 
 export default function SaasDashboard() {
    const [portfolio, setPortfolio] =
@@ -158,7 +87,6 @@ export default function SaasDashboard() {
           </span>
            <span><span className="text-red-900">Kontra</span> popular</span>
         </div>
-        </div>
         <nav className="flex-1 overflow-y-auto px-2 pb-4 space-y-1">
           {nav.map((label) => (
             <a
@@ -177,32 +105,27 @@ export default function SaasDashboard() {
       <main className="flex-1 p-6 overflow-y-auto">
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
           {/* Row 1 */}
-          <div className="bg-white rounded-xl border border-slate-200 p-6">
-            <div className="flex items-start justify-between gap-6">
-              <div>
-                <h3 className="text-sm font-medium text-slate-600">Loans & Draws</h3>
-                  <p className="mt-2 text-3xl font-bold tracking-tight">{drawCount}</p>
-                <div className="mt-3">
-                                  {portfolio ? (
-                    <>
-                      <div className="text-xs text-slate-500">
-                                 Loans Past Due ({portfolio.delinqPct}%)
-                      </div>
-                      <MiniSpark points={spark} />
-                    </>
-                  ) : (
-                    <div className="text-xs text-slate-500">
-                      Portfolio summary unavailable
-                    </div>
-                  )}      
+              <Card title="Loans & Draws">
+            <p className="mt-2 text-3xl font-bold tracking-tight">{drawCount}</p>
+            <div className="mt-3">
+              {portfolio ? (
+                <>
+                  <div className="text-xs text-slate-500">
+                    Loans Past Due ({portfolio.delinqPct}%)
+                  </div>
+                  <MiniSpark points={spark} />
+                </>
+              ) : (
+                <div className="text-xs text-slate-500">
+                  Portfolio summary unavailable
                 </div>
-                <div className="mt-2 text-xs text-slate-600">Escrow Balance</div>
-                     <div className="text-2xl font-semibold tracking-tight">
-                  {formatCurrency(escrowBalance)}
-                </div>
-              </div>
+             c  )}
             </div>
-          </div>
+            <div className="mt-2 text-xs text-slate-600">Escrow Balance</div>
+            <div className="text-2xl font-semibold tracking-tight">
+              {formatCurrency(escrowBalance)}
+            </div>
+          </Card>
 
           <Card title="Predictive Analytics">
             <MiniSpark />
