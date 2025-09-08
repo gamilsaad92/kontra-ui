@@ -250,6 +250,43 @@ router.post('/loans/:loanId/payoff', async (req, res) => {
   res.json({ payoff });
 });
 
+router.post('/loans/:loanId/defer', async (req, res) => {
+  const { loanId } = req.params;
+  const { months } = req.body || {};
+  const extra = parseInt(months, 10);
+  if (isNaN(extra) || extra <= 0) {
+    return res.status(400).json({ message: 'Missing or invalid months' });
+  }
+  const { data: loan, error: loanErr } = await supabase
+    .from('loans')
+    .select('term_months')
+    .eq('id', loanId)
+    .single();
+  if (loanErr) return res.status(500).json({ message: 'Failed to fetch loan' });
+  if (!loan) return res.status(404).json({ message: 'Loan not found' });
+  const newTerm = parseInt(loan.term_months, 10) + extra;
+  const { data: updated, error: updateErr } = await supabase
+    .from('loans')
+    .update({ term_months: newTerm })
+    .eq('id', loanId)
+    .select()
+    .single();
+  if (updateErr) {
+    return res.status(500).json({ message: 'Failed to defer maturity' });
+  }
+  try {
+    await supabase.from('loan_modifications').insert({
+      loan_id: parseInt(loanId, 10),
+      type: 'deferral',
+      delta_months: extra,
+      created_at: new Date().toISOString(),
+    });
+  } catch (e) {
+    // ignore if table missing
+  }
+  res.json({ loan: updated });
+});
+
 router.post('/loans/:loanId/payment-portal', (req, res) => {
   const { amount } = req.body || {};
   if (!amount) return res.status(400).json({ message: 'Missing amount' });
