@@ -8,6 +8,7 @@ import Card from "../components/SaasCard";
 import LeftIcon from "../components/LeftIcon";
 import { nav } from "../constants/nav";
 import AssetsDashboard from "../modules/assets/AssetsDashboard";
+import Inspections from "../routes/Inspections";
 
 export default function SaasDashboard() {
    const [portfolio, setPortfolio] =
@@ -113,6 +114,8 @@ export default function SaasDashboard() {
       <main className="flex-1 p-6 overflow-y-auto">
             {active === "Assets" ? (
           <AssetsDashboard />
+               ) : active === "Inspections" ? (
+          <Inspections />
         ) : (
           <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
                 {/* Row 1 */}
