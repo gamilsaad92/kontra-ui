@@ -11,7 +11,11 @@ export default defineConfig({
       strategies: "generateSW",
        registerType: "autoUpdate",
       workbox: {
-        globPatterns: ["**/*.{js,css,html,ico,png,svg,wasm}"],
+        globDirectory: "dist",
+        globPatterns: [
+          "**/*.{js,css,html,ico,png,svg,wasm}",
+          "assets/**",
+        ],
       },
       manifest: {
         name: "Kontra",
