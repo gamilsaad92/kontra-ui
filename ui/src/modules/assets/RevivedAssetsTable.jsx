@@ -12,7 +12,7 @@ export default function RevivedAssetsTable() {
       try {
         const res = await fetch(`${API_BASE}/api/assets/revived`);
         const { assets } = await res.json();
-        setAssets(assets || []);
+       setAssets((assets || []).map(a => ({ ...a, published: a.published ?? false })));
         setError('');
       } catch {
         setError('Failed to load revived assets');
@@ -24,15 +24,28 @@ export default function RevivedAssetsTable() {
   }, []);
 
   if (loading) return <p>Loading revived assets…</p>;
-  if (error) return <p className="text-red-600">{error}</p>;
+ if (error && assets.length === 0) return <p className="text-red-600">{error}</p>;
   if (assets.length === 0) return <p>No revived assets.</p>;
-
-  const togglePublish = (id, publish) => {
-    console.log('Publish listing', id, publish);
+  const togglePublish = async (id, publish) => {
+    try {
+      const res = await fetch(`${API_BASE}/api/assets/${id}/publish`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ publish })
+      });
+      if (!res.ok) throw new Error('Request failed');
+      setAssets(prev =>
+        prev.map(a => (a.id === id ? { ...a, published: publish } : a))
+      );
+      setError('');
+    } catch {
+      setError('Failed to update publish status');
+    }
   };
 
   return (
     <div className="bg-white rounded-lg shadow-md">
+   c  {error && <p className="text-red-600 p-2">{error}</p>}
       <table className="w-full text-left">
         <thead className="bg-gray-100">
           <tr>
@@ -55,7 +68,11 @@ export default function RevivedAssetsTable() {
                 </span>
               </td>
               <td className="p-2">
-                <input type="checkbox" onChange={e => togglePublish(asset.id, e.target.checked)} />
+                  <input
+                  type="checkbox"
+                  checked={!!asset.published}
+                  onChange={e => togglePublish(asset.id, e.target.checked)}
+                />
               </td>
             </tr>
           ))}
