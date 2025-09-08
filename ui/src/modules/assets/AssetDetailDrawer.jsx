@@ -34,10 +34,10 @@ export default function AssetDetailDrawer({ asset, onClose }) {
   const a = full || asset;
  
   return (
-       {asset && (
-    <DetailDrawer open={!!asset}
+    asset && (
+      <DetailDrawer open={!!asset} onClose={onClose}>
         <div>
-                <h3 className="text-xl mb-2">{a.name || a.address}</h3>
+        <h3 className="text-xl mb-2">{a.name || a.address}</h3>
           <p>ID: {a.id}</p>
           <p>Address: {a.address}</p>
           <p>Type: {a.type || '—'}</p>
@@ -54,13 +54,13 @@ export default function AssetDetailDrawer({ asset, onClose }) {
               </ul>
             </div>
           )}
-             <div className="mt-2 space-y-1">
+         <div className="mt-2 space-y-1">
             <p className="font-medium">Upload Reports:</p>
             <AssetFileUpload assetId={a.id} kind="inspection" />
             <AssetFileUpload assetId={a.id} kind="appraisal" />
           </div>
         </div>
-      )}
-     </DetailDrawer>
+      </DetailDrawer>
+    )
   );
 }
