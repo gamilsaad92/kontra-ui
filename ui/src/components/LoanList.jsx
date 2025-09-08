@@ -119,8 +119,9 @@ export default function LoanList({ onSelect }) {
             onChange={e => setFilters({ ...filters, status: e.target.value })}
           >
             <option value="">Any Status</option>
-            <option value="active">active</option>
-            <option value="paid">paid</option>
+            <option value="current">current</option>
+            <option value="delinquent">delinquent</option>
+            <option value="matured">matured</option>
           </select>
           <input
             type="text"
