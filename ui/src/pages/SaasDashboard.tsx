@@ -7,6 +7,7 @@ import MiniSpark from "../components/MiniSpark";
 import Card from "../components/SaasCard";
 import LeftIcon from "../components/LeftIcon";
 import { nav } from "../constants/nav";
+import AssetsDashboard from "../modules/assets/AssetsDashboard";
 
 export default function SaasDashboard() {
    const [portfolio, setPortfolio] =
@@ -14,7 +15,8 @@ export default function SaasDashboard() {
   const [draws, setDraws] = useState<DrawRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-
+  const [active, setActive] = useState("Dashboard");
+   
   useEffect(() => {
     let isMounted = true;
     async function fetchData() {
@@ -92,8 +94,14 @@ export default function SaasDashboard() {
             <a
               key={label}
               href="#"
-              className="group flex items-center gap-3 rounded-md px-3 py-2 text-sm text-slate-300 hover:bg-slate-800 hover:text-white"
-            >
+             onClick={(e) => {
+                e.preventDefault();
+                setActive(label);
+              }}
+              className={`group flex items-center gap-3 rounded-md px-3 py-2 text-sm hover:bg-slate-800 hover:text-white ${
+                active === label ? "bg-slate-800 text-white" : "text-slate-300"
+              }`}     
+               >
               <LeftIcon />
               <span className="truncate">{label}</span>
             </a>
@@ -103,8 +111,11 @@ export default function SaasDashboard() {
 
       {/* Main */}
       <main className="flex-1 p-6 overflow-y-auto">
-        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-          {/* Row 1 */}
+            {active === "Assets" ? (
+          <AssetsDashboard />
+        ) : (
+          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+                {/* Row 1 */}
               <Card title="Loans & Draws">
             <p className="mt-2 text-3xl font-bold tracking-tight">{drawCount}</p>
             <div className="mt-3">
@@ -325,7 +336,8 @@ export default function SaasDashboard() {
               </tbody>
             </table>
           </Card>
-        </div>
+          </div>
+        )}
       </main>
     </div>
   );
