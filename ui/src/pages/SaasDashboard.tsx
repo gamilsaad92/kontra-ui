@@ -9,6 +9,7 @@ import LeftIcon from "../components/LeftIcon";
 import { nav } from "../constants/nav";
 import AssetsDashboard from "../modules/assets/AssetsDashboard";
 import Inspections from "../routes/Inspections";
+import LoansDashboard from "../components/LoansDashboard";
 
 export default function SaasDashboard() {
    const [portfolio, setPortfolio] =
@@ -112,10 +113,12 @@ export default function SaasDashboard() {
 
       {/* Main */}
       <main className="flex-1 p-6 overflow-y-auto">
-            {active === "Assets" ? (
+          {active === "Assets" ? (
           <AssetsDashboard />
-               ) : active === "Inspections" ? (
+         ) : active === "Inspections" ? (
           <Inspections />
+             ) : active === "Loans" ? (
+          <LoansDashboard />
         ) : (
           <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
                 {/* Row 1 */}
