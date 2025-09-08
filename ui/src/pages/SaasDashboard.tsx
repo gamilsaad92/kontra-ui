@@ -119,7 +119,7 @@ export default function SaasDashboard() {
                 <div className="text-xs text-slate-500">
                   Portfolio summary unavailable
                 </div>
-             c  )}
+             )}
             </div>
             <div className="mt-2 text-xs text-slate-600">Escrow Balance</div>
             <div className="text-2xl font-semibold tracking-tight">
