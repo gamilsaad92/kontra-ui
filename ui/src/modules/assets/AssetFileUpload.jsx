@@ -1,11 +1,12 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { API_BASE } from '../../lib/apiBase';
 
 export default function AssetFileUpload({ assetId, kind = 'inspection' }) {
   const [file, setFile] = useState(null);
   const [notes, setNotes] = useState('');
   const [loading, setLoading] = useState(false);
-
+  const fileInputRef = useRef(null);
+  
   async function upload() {
     if (!file || loading) return;
         const allowed = ['application/pdf', 'image/jpeg', 'image/png'];
@@ -24,6 +25,7 @@ export default function AssetFileUpload({ assetId, kind = 'inspection' }) {
       if (res.ok) {
            const { file: uploaded } = await res.json();
         setNotes(uploaded?.ai_notes || 'Uploaded');
+       if (fileInputRef.current) fileInputRef.current.value = null;
       } else {
         setNotes('Upload failed');
       }
@@ -36,7 +38,12 @@ export default function AssetFileUpload({ assetId, kind = 'inspection' }) {
   }
 
   return (
-    <div className="text-sm space-y-1">
+        <input
+          type="file"
+          accept="application/pdf,image/jpeg,image/png"
+          ref={fileInputRef}
+          onChange={e => setFile(e.target.files[0])}
+        />
       <div className="flex items-center gap-2">
         <input type="file" onChange={e => setFile(e.target.files[0])} />
         <button
