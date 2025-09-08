@@ -38,14 +38,14 @@ export default function AssetFileUpload({ assetId, kind = 'inspection' }) {
   }
 
   return (
+        <div>
+      <div className="flex items-center gap-2">
         <input
           type="file"
           accept="application/pdf,image/jpeg,image/png"
           ref={fileInputRef}
           onChange={e => setFile(e.target.files[0])}
         />
-      <div className="flex items-center gap-2">
-        <input type="file" onChange={e => setFile(e.target.files[0])} />
         <button
           onClick={upload}
           disabled={!file || loading}
