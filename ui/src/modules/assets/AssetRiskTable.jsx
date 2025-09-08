@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { API_BASE } from '../../lib/apiBase';
 import AssetDetailDrawer from './AssetDetailDrawer';
-import AssetInspectionUpload from './AssetInspectionUpload';
+import AssetFileUpload from './AssetFileUpload';
 import VirtualAssistant from '../../components/VirtualAssistant';
 
 export default function AssetRiskTable() {
@@ -75,7 +75,7 @@ export default function AssetRiskTable() {
                          <td className="p-2">{a.predicted_risk}</td>
               <td className="p-2">{a.status}</td>
               <td className="p-2">
-                <AssetInspectionUpload assetId={a.id} />
+              <AssetFileUpload assetId={a.id} kind="inspection" />
               </td>
                          <td className="p-2">
                 {a.status === 'revived' ? (
