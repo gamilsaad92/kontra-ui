@@ -11,24 +11,27 @@ const supabase = createClient(
 );
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-async function summarizeTroubledAssetBuffer(buffer) {
+async function summarizeAssetBuffer(buffer, purpose = 'report') {
   const text = buffer.toString('utf8');
-  let notes = text.slice(0, 200);
+  let summary = text.slice(0, 200);
   if (process.env.OPENAI_API_KEY) {
     try {
       const resp = await openai.chat.completions.create({
         model: 'gpt-4o-mini',
         messages: [
-          { role: 'system', content: 'Summarize the condition issues and next steps.' },
+          {
+            role: 'system',
+            content: `Summarize the asset ${purpose} highlighting condition and compliance issues.`
+          },
           { role: 'user', content: text.slice(0, 12000) }
         ]
       });
-      notes = resp.choices[0].message.content.trim();
+      summary = resp.choices[0].message.content.trim();
     } catch (err) {
-      console.error('OpenAI troubled asset summary error:', err);
+     console.error('OpenAI asset summary error:', err);
     }
   }
-  return notes;
+  return summary;
 }
 
 async function fetchRecentComps(asset) {
@@ -97,26 +100,31 @@ router.get('/troubled', async (_req, res) => {
 
 router.post('/:id/upload', upload.single('file'), async (req, res) => {
   const { id } = req.params;
+   const kind = (req.query.kind || 'inspection').toLowerCase();
   if (!req.file) return res.status(400).json({ message: 'File required' });
-  const filePath = `troubled/${id}/${Date.now()}_${req.file.originalname}`;
+  const allowed = ['application/pdf', 'image/jpeg', 'image/png'];
+  if (!allowed.includes(req.file.mimetype)) {
+    return res.status(400).json({ message: 'Unsupported file type' });
+  }
+  const bucket = kind === 'appraisal' ? 'asset-appraisals' : 'asset-inspections';
+  const filePath = `${kind}/${id}/${Date.now()}_${req.file.originalname}`;
   const { error: upErr } = await supabase.storage
-    .from('asset-inspections')
+   .from(bucket)
     .upload(filePath, req.file.buffer, { contentType: req.file.mimetype });
   if (upErr) {
     console.error('Upload error:', upErr);
     return res.status(500).json({ message: 'File upload failed' });
   }
-  const fileUrl = supabase.storage
-    .from('asset-inspections')
-    .getPublicUrl(filePath).publicURL;
-  const ai_notes = await summarizeTroubledAssetBuffer(req.file.buffer);
+  const fileUrl = supabase.storage.from(bucket).getPublicUrl(filePath).publicURL;
+  const ai_summary = await summarizeAssetBuffer(req.file.buffer, kind);
+  const table = kind === 'appraisal' ? 'asset_appraisals' : 'troubled_assets';
   const { data, error } = await supabase
     .from('troubled_assets')
     .insert([{ asset_id: parseInt(id, 10), file_url: fileUrl, ai_notes }])
     .select()
     .single();
-  if (error) return res.status(500).json({ message: 'Failed to record troubled asset' });
-  res.status(201).json({ troubled_asset: data });
+  .from(table)
+  .insert([{ asset_id: parseInt(id, 10), file_url: fileUrl, ai_notes: ai_summary }])
 });
 
 router.post('/:id/revive', async (req, res) => {
@@ -176,6 +184,43 @@ router.get('/revived', async (_req, res) => {
   } catch (err) {
     console.error('Revived assets fetch error:', err);
     res.status(500).json({ assets: [] });
+  }
+});
+
+router.get('/watchlist', async (_req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('assets')
+      .select('id, address, status, value, predicted_risk')
+      .eq('status', 'watchlist')
+      .order('updated_at', { ascending: false });
+    if (error) throw error;
+    res.json({ assets: data || [] });
+  } catch (err) {
+    console.error('Watchlist assets fetch error:', err);
+    res.status(500).json({ assets: [] });
+  }
+});
+
+router.get('/:id', async (req, res) => {
+  const { id } = req.params;
+  try {
+    const { data: asset, error } = await supabase
+      .from('assets')
+      .select('id, address, type, value, status, predicted_risk')
+      .eq('id', id)
+      .single();
+    if (error || !asset) return res.status(404).json({ message: 'Asset not found' });
+    const { data: loans, error: loanErr } = await supabase
+      .from('loans')
+      .select('id, status')
+      .eq('asset_id', id)
+      .neq('status', 'paid_off');
+    if (loanErr) throw loanErr;
+    res.json({ asset: { ...asset, loans: loans || [] } });
+  } catch (err) {
+    console.error('Asset details error:', err);
+    res.status(500).json({ message: 'Failed to fetch asset' });
   }
 });
 
