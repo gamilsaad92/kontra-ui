@@ -119,12 +119,12 @@ router.post('/:id/upload', upload.single('file'), async (req, res) => {
   const ai_summary = await summarizeAssetBuffer(req.file.buffer, kind);
   const table = kind === 'appraisal' ? 'asset_appraisals' : 'troubled_assets';
   const { data, error } = await supabase
-    .from('troubled_assets')
-    .insert([{ asset_id: parseInt(id, 10), file_url: fileUrl, ai_notes }])
+    .from(table)
+    .insert([{ asset_id: parseInt(id, 10), file_url: fileUrl, ai_notes: ai_summary }])
     .select()
     .single();
-  .from(table)
-  .insert([{ asset_id: parseInt(id, 10), file_url: fileUrl, ai_notes: ai_summary }])
+  if (error) return res.status(500).json({ message: 'Failed to store file' });
+  res.status(201).json({ record: data });
 });
 
 router.post('/:id/revive', async (req, res) => {
