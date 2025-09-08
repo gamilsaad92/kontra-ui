@@ -1,24 +1,29 @@
 import React, { useState } from 'react';
 import { API_BASE } from '../../lib/apiBase';
 
-export default function AssetInspectionUpload({ assetId }) {
+export default function AssetFileUpload({ assetId, kind = 'inspection' }) {
   const [file, setFile] = useState(null);
   const [notes, setNotes] = useState('');
   const [loading, setLoading] = useState(false);
 
   async function upload() {
     if (!file || loading) return;
+        const allowed = ['application/pdf', 'image/jpeg', 'image/png'];
+    if (!allowed.includes(file.type)) {
+      setNotes('Invalid file type');
+      return;
+    }
     setLoading(true);
     const fd = new FormData();
     fd.append('file', file);
     try {
-      const res = await fetch(`${API_BASE}/api/assets/${assetId}/upload`, {
+   const res = await fetch(`${API_BASE}/api/assets/${assetId}/upload?kind=${kind}`, {
         method: 'POST',
         body: fd
       });
       if (res.ok) {
-        const { troubled_asset } = await res.json();
-        setNotes(troubled_asset?.ai_notes || 'Uploaded');
+           const { file: uploaded } = await res.json();
+        setNotes(uploaded?.ai_notes || 'Uploaded');
       } else {
         setNotes('Upload failed');
       }
