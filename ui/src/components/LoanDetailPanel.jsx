@@ -1,6 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import AmortizationTable from './AmortizationTable';
 import PaymentHistory from './PaymentHistory';
+import EscrowInfo from './EscrowInfo';
+import LoanPayoffCalculator from './LoanPayoffCalculator';
+import LoanDeferralForm from './LoanDeferralForm';
 import { API_BASE } from '../lib/apiBase';
 import { DetailDrawer } from './ui';
 
@@ -34,6 +37,9 @@ export default function LoanDetailPanel({ loanId, onClose }) {
           <p>Status: {loan.loan.status}</p>
           <AmortizationTable loanId={loanId} />
           <PaymentHistory loanId={loanId} />
+          <EscrowInfo loanId={loanId} startDate={loan.loan.start_date} />
+          <LoanPayoffCalculator loanId={loanId} />
+          <LoanDeferralForm loanId={loanId} />
           {loan.collateral && loan.collateral.length > 0 && (
             <div className="bg-white rounded-lg shadow-md p-4">
               <h4 className="text-lg font-medium mb-2">Collateral Docs</h4>
