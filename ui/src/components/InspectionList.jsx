@@ -10,9 +10,7 @@ export default function InspectionList({ drawId, projectId }) {
       setLoading(true);
       try {
         const params = drawId ? `draw_id=${drawId}` : `project_id=${projectId}`;
-        const res = await fetch(
-          `${API_BASE}/api/list-inspections?${params}`
-        );
+        const res = await fetch(`${API_BASE}/api/inspections?${params}`);
         const { inspections } = await res.json();
         setInspections(inspections || []);
       } catch {
