@@ -10,10 +10,10 @@ export default defineConfig({
     VitePWA({
       strategies: "generateSW",
        registerType: "autoUpdate",
-      // Do not set globDirectory here
       workbox: {
+        globDirectory: "dist",
         globPatterns: ["**/*.{js,css,html,ico,png,svg,wasm}"],
-        globIgnores: ["**/node_modules/**/*", "**/sw.js", "**/workbox-*.js"],
+        globIgnores: ["**/node_modules/**/*", "sw.js", "workbox-*.js"],
       },
       manifest: {
         name: "Kontra",
