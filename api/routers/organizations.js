@@ -2,6 +2,8 @@ const express = require('express');
 const { createClient } = require('@supabase/supabase-js');
 const { runKycCheck } = require('../compliance');
 const { logAuditEntry } = require('../auditLogger');
+const authenticate = require('../middlewares/authenticate');
+const requireRole = require('../middlewares/requireRole');
 
 const router = express.Router();
 const supabase = createClient(
@@ -71,6 +73,39 @@ router.put('/:id', async (req, res) => {
     .maybeSingle();
   if (error) return res.status(500).json({ error: 'Failed to update organization' });
   res.json({ organization: data });
+});
+
+// List organization accounts
+router.get('/:id/accounts', authenticate, async (req, res) => {
+  const { id } = req.params;
+  if (req.organizationId && String(req.organizationId) !== String(id) && req.role !== 'admin') {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+  const { data, error } = await supabase
+    .from('organization_members')
+    .select('user_id, role, account_type')
+    .eq('organization_id', id);
+  if (error) return res.status(500).json({ error: 'Failed to fetch accounts' });
+  res.json({ accounts: data });
+});
+
+// Add or update an organization account
+router.post('/:id/accounts', authenticate, requireRole('admin'), async (req, res) => {
+  const { id } = req.params;
+  const { user_id, role, account_type } = req.body || {};
+  if (!user_id) return res.status(400).json({ error: 'user_id required' });
+  const { data, error } = await supabase
+    .from('organization_members')
+    .upsert({
+      user_id,
+      organization_id: id,
+      role: role || 'borrower',
+      account_type: account_type || 'borrower'
+    }, { onConflict: 'user_id' })
+    .select()
+    .single();
+  if (error) return res.status(500).json({ error: 'Failed to save account' });
+  res.status(201).json({ account: data });
 });
 
 module.exports = router;
