@@ -2,7 +2,8 @@ import React, { useEffect, useState, useContext } from 'react'
 import { AuthContext } from '../lib/authContext'
 import { API_BASE } from '../lib/apiBase'
 import ProjectDetailDrawer from './ProjectDetailDrawer'
-  
+import { calculateRiskScore } from '../lib/riskScore'
+
 export default function ProjectsTable({ onSelect }) {
   const { session } = useContext(AuthContext)
   const [projects, setProjects] = useState([])
@@ -22,7 +23,11 @@ export default function ProjectsTable({ onSelect }) {
       if (filters.status) params.append('status', filters.status)
       const res = await fetch(`${API_BASE}/api/projects?${params.toString()}`)
       const { projects } = await res.json()
-      setProjects(projects || [])
+        const withRisk = (projects || []).map(p => ({
+        ...p,
+        risk: calculateRiskScore(p)
+      }))
+      setProjects(withRisk)
       setLoading(false)
     })()
    }, [session, filters])
@@ -74,6 +79,9 @@ export default function ProjectsTable({ onSelect }) {
           <tr className="bg-gray-200">
             <th className="px-4 py-2">Name</th>
             <th className="px-4 py-2">Number</th>
+            <th className="px-4 py-2">Budget</th>
+            <th className="px-4 py-2">Actual</th>
+            <th className="px-4 py-2">Risk</th>
             <th className="px-4 py-2">Status</th>
           </tr>
         </thead>
@@ -87,6 +95,9 @@ export default function ProjectsTable({ onSelect }) {
               <td className="border px-4 py-2">{p.name}</td>
               <td className="border px-4 py-2">{p.number}</td>
               <td className="border px-4 py-2">{p.status}</td>
+              <td className="border px-4 py-2">{p.budget || '-'}</td>
+              <td className="border px-4 py-2">{p.actual_cost || '-'}</td>
+              <td className="border px-4 py-2">{p.risk}</td>
             </tr>
           ))}
         </tbody>
