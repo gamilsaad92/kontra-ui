@@ -90,7 +90,7 @@ export default function SaasDashboard() {
               <path className="fill-white/90" d="M12 2 3 7v10l9 5 9-5V7zM6 9l6 3 6-3" />
             </svg>
           </span>
-           <span><span className="text-red-900">Kontra</span> popular</span>
+          <span><span className="text-red-900">Kontra</span> Popular</span>
         </div>
         <nav className="flex-1 overflow-y-auto px-2 pb-4 space-y-1">
           {nav.map((label) => (
@@ -166,7 +166,7 @@ export default function SaasDashboard() {
               </div>
               <div>
                 <div className="text-xs text-slate-500">Tip Percent</div>
-                <div className="text-2xl font-semibold">17,3%</div>
+                <div className="text-2xl font-semibold">17.3%</div>
               </div>
             </div>
             <div className="mt-3">
@@ -197,7 +197,7 @@ export default function SaasDashboard() {
                 </tr>
                 <tr>
                   <td className="py-1">04/20/2024</td>
-                  <td className="py-1">Push Tietjufs</td>
+                  <td className="py-1">Push Notifications</td>
                   <td className="py-1">Alert</td>
                 </tr>
               </tbody>
@@ -287,36 +287,7 @@ export default function SaasDashboard() {
               </table>
             </div>
           </div>
-
-          <Card title="Voice Bot">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="text-left text-slate-500">
-                  <th className="py-1 font-medium">Date</th>
-                  <th className="py-1 font-medium">Caller</th>
-                  <th className="py-1 font-medium">&nbsp;</th>
-                </tr>
-              </thead>
-              <tbody className="text-slate-700">
-                <tr>
-                  <td className="py-1">04/22/2024</td>
-                  <td className="py-1">+1‑555‑0134</td>
-                  <td className="py-1"></td>
-                </tr>
-                <tr>
-                  <td className="py-1">04/20/2024</td>
-                  <td className="py-1">+1‑555‑0275</td>
-                  <td className="py-1"></td>
-                </tr>
-                <tr>
-                  <td className="py-1">04/18/2024</td>
-                  <td className="py-1">+1‑555‑0312</td>
-                  <td className="py-1"></td>
-                </tr>
-              </tbody>
-            </table>
-          </Card>
-
+             
           <Card title="Voice Bot">
             <table className="w-full text-sm">
               <thead>
