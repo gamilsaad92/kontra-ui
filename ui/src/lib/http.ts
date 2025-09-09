@@ -8,12 +8,7 @@ export interface ApiError {
   details?: unknown;
 }
 
-async function apiFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-    ...(init.headers as Record<string, string> | undefined)
-  };
-
+export async function getSessionToken(): Promise<string | null> {
   let token: string | null = null;
   try {
     token = typeof localStorage !== "undefined" ? localStorage.getItem("sessionToken") : null;
@@ -30,6 +25,16 @@ async function apiFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
     }
   }
 
+    return token;
+}
+
+async function apiFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    ...(init.headers as Record<string, string> | undefined)
+  };
+
+  const token = await getSessionToken();
   if (token) headers["Authorization"] = `Bearer ${token}`;
 
   const res = await fetch(`${BASE_URL}${path}`, { ...init, headers });
