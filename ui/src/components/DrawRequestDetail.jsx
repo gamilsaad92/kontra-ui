@@ -11,6 +11,7 @@ export default function DrawRequestDetail({ drawId, onClose, canReview = false }
   const [loading, setLoading] = useState(true);
   const [showForm1140, setShowForm1140] = useState(false);
   const [refreshWaivers, setRefreshWaivers] = useState(0);
+  const [actionLoading, setActionLoading] = useState(false);
   
   useEffect(() => {
     if (!drawId) return;
@@ -29,17 +30,26 @@ export default function DrawRequestDetail({ drawId, onClose, canReview = false }
   }, [drawId]);
 
   const handleAction = async (status, comment) => {
-    await fetch(`${API_BASE}/api/review-draw`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id: drawId, status, comment })
-    });
-    setDraw(d => d ? { ...d, status } : d);
+      setActionLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/review-draw`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: drawId, status, comment })
+      });
+      if (!res.ok) throw new Error('Request failed');
+      setDraw(d => (d ? { ...d, status } : d));
+    } catch (err) {
+      alert('Failed to update draw request');
+    } finally {
+      setActionLoading(false);
+    }  
   };
 
   return (
     <DetailDrawer open={!!drawId} onClose={onClose}>
       {loading && <p>Loading…</p>}
+      {actionLoading && <p>Processing…</p>}
       {!loading && !draw && <p>Not found.</p>}
       {!loading && draw && (
             <div className="space-y-4">
@@ -54,6 +64,7 @@ export default function DrawRequestDetail({ drawId, onClose, canReview = false }
                 <button
                   onClick={() => handleAction('approved')}
                   className="px-2 py-1 bg-green-600 text-white rounded"
+                   disabled={actionLoading}
                 >
                   Approve
                 </button>
@@ -63,6 +74,7 @@ export default function DrawRequestDetail({ drawId, onClose, canReview = false }
                     if (c) handleAction('rejected', c);
                   }}
                   className="px-2 py-1 bg-red-600 text-white rounded"
+                    disabled={actionLoading}
                 >
                   Reject
                 </button>
