@@ -13,8 +13,7 @@ export default defineConfig({
       workbox: {
         globDirectory: "dist",
         globPatterns: [
-          "**/*.{js,css,html,ico,png,svg,wasm}",
-          "assets/**",
+       "**/*.{js,css,html,ico,png,svg,wasm}"
         ],
       },
       manifest: {
