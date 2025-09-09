@@ -25,10 +25,10 @@ module.exports = async function authenticate(req, res, next) {
       .select('role')
       .eq('user_id', user.id)
       .maybeSingle();
-    req.role = member?.role || 'member';
+   req.role = member?.role || 'borrower';
   } catch (err) {
     console.error('Role fetch failed:', err);
-    req.role = 'member';
+     req.role = 'borrower';
   }
 
   next();
