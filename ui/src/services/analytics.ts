@@ -13,11 +13,23 @@ export async function getPortfolioSnapshot() {
       points: data?.spark ?? [3, 5, 4, 6, 7, 8],
     };
   } catch (err) {
-    if (axios.isAxiosError(err) && err.response?.status === 404) {
-      return { delinqPct: 1.24, points: [3, 5, 4, 6, 7, 8] };
+      if (axios.isAxiosError(err)) {
+      if (err.response?.status === 404) {
+        return { delinqPct: 1.24, points: [3, 5, 4, 6, 7, 8] };
+      }
+      if (err.response?.status === 401) {
+        if (typeof window !== "undefined") {
+          window.location.href = "/login";
+        }
+        return {
+          delinqPct: 1.24,
+          points: [3, 5, 4, 6, 7, 8],
+          message: "Authentication required",
+        };
+      }
     }
     throw err;
-  }  
+ }
 }
 
 export async function getRiskSummary() {
