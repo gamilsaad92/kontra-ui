@@ -48,10 +48,10 @@ This repository contains the **frontend** and **backend** for the Kontra demo ap
 
 5. Run tests:
    ```bash
-   cd api && npm test
+  npm test
    ```
 
-   Tests require `jest` installed locally.
+This runs the UI unit tests with Jest and React Testing Library. Ensure dependencies have been installed in `ui/`.
 
 ## End-to-End Workflow
 
