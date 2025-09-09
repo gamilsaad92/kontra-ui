@@ -11,7 +11,8 @@ CREATE TABLE IF NOT EXISTS organizations (
 CREATE TABLE IF NOT EXISTS organization_members (
   user_id UUID PRIMARY KEY,
   organization_id BIGINT REFERENCES organizations(id) ON DELETE CASCADE,
-  role TEXT DEFAULT 'member'
+  role TEXT DEFAULT 'borrower',
+  account_type TEXT DEFAULT 'borrower'
 );
 
 CREATE TABLE IF NOT EXISTS organization_invites (
