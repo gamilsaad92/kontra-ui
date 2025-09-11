@@ -9,13 +9,36 @@ export default function PaymentPortal() {
   const [method, setMethod] = useState('card');
   const [message, setMessage] = useState('');
 
-  const handleSubmit = e => {
+ const handleSubmit = async e => {
     e.preventDefault();
     if (!loanId || !amount) {
       setMessage('Loan and amount required');
       return;
     }
-    setMessage(`Processed $${amount} via ${method}`);
+   try {
+      const res = await fetch(`${API_BASE}/api/payments/stripe`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          amount: parseFloat(amount),
+          method,
+          order_id: loanId,
+          metadata: { loanId }
+        })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setMessage(
+          data.client_secret
+            ? `Payment intent created: ${data.client_secret}`
+            : 'Payment processed'
+        );
+      } else {
+        setMessage(data.message || 'Payment failed');
+      }
+    } catch {
+      setMessage('Payment failed');
+    }
   };
 
   return (
