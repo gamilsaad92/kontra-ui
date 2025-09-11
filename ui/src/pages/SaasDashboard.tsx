@@ -9,6 +9,7 @@ import LeftIcon from "../components/LeftIcon";
 import { nav } from "../constants/nav";
 import AssetsDashboard from "../modules/assets/AssetsDashboard";
 import Inspections from "../routes/Inspections";
+import Trades from "../routes/Trades";
 import LoansDashboard from "../components/LoansDashboard";
 import DrawsDashboard from "../components/DrawsDashboard";
 import ProjectsTable from "../components/ProjectsTable";
@@ -141,7 +142,9 @@ export default function SaasDashboard() {
           <EscrowDisbursementTracker />
         ) : active === "Delinquency Alerts" ? (
           <DelinquencyAlertForm />
-              ) : active === "Reports" ? (
+          ) : active === "Trades" ? (
+          <Trades />
+        ) : active === "Reports" ? (
           <Reports />
         ) : (
           <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
