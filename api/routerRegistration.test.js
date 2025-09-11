@@ -25,6 +25,7 @@ const { router: paymentsRouter } = require('./routers/payments');
 const paymentsStripeRouter = require('./routers/paymentsStripe');
 const tradesRouter = require('./routers/trades');
 const exchangeRouter = require('./routers/exchange');
+const marketplaceRouter = require('./routers/marketplace');
 const { router: analyticsRouter } = require('./routers/analytics');
 const restaurantRouter = require('./routers/restaurant');
 const restaurantsRouter = require('./routers/restaurants');
@@ -62,6 +63,7 @@ describe('API server router registration', () => {
     ['payments stripe', paymentsStripeRouter],
     ['trades', tradesRouter],
     ['exchange', exchangeRouter],
+    ['marketplace', marketplaceRouter],
     ['analytics', analyticsRouter],
     ['restaurant', restaurantRouter],
     ['restaurants', restaurantsRouter],
