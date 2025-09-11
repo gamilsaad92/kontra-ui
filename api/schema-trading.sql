@@ -43,6 +43,27 @@ CREATE TABLE IF NOT EXISTS trade_settlements (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- Marketplace for investor bids and asks
+CREATE TABLE IF NOT EXISTS trade_marketplace (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  type TEXT CHECK (type IN ('bid', 'ask')),
+  symbol TEXT NOT NULL,
+  quantity NUMERIC NOT NULL,
+  price NUMERIC NOT NULL,
+  investor_id UUID NOT NULL,
+  status TEXT DEFAULT 'open',
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Generic trade event log for audit trails
+CREATE TABLE IF NOT EXISTS trade_events (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  trade_id UUID REFERENCES trades(id) ON DELETE CASCADE,
+  event_type TEXT NOT NULL,
+  event_payload JSONB,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
 -- Exchange specific settlement tracking
 ALTER TABLE IF EXISTS exchange_trades ADD COLUMN IF NOT EXISTS escrow_account_id UUID;
 
