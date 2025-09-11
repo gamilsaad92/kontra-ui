@@ -19,6 +19,7 @@ router.post('/process', upload.single('file'), async (req, res) => {
   }
   const text = req.file.buffer.toString('utf8');
   let extracted = {};
+  let summary = text.slice(0, 200);
   if (process.env.OPENAI_API_KEY) {
     try {
       const prompt = `Extract vendor name, amount, and date from this ${doc_type} text as JSON {"vendor":string,"amount":number,"date":string}.`;
@@ -32,19 +33,46 @@ router.post('/process', upload.single('file'), async (req, res) => {
     } catch (err) {
       console.error('Document AI extraction error:', err);
     }
-  }
-
-  await supabase.from('document_review_logs').insert([
-    {
-      doc_type,
-      vendor_name: extracted.vendor || null,
-      amount: extracted.amount || null,
-      document_date: extracted.date || null,
-      created_at: new Date().toISOString()
+       try {
+      const sumResp = await openai.chat.completions.create({
+        model: 'gpt-4o-mini',
+        messages: [
+          { role: 'user', content: `Summarize this ${doc_type} in 3 sentences:\n${text.slice(0, 12000)}` }
+        ]
+      });
+      summary = sumResp.choices[0].message.content || summary;
+    } catch (err) {
+      console.error('Document AI summary error:', err);
     }
-  ]);
-
-  res.json({ extracted });
+  }
+  const missingSignature = !/signature/i.test(text);
+  const complianceIssues = !/compliance/i.test(text);
+  let version = 1;
+  if (process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY) {
+    try {
+      const { data: existing } = await supabase
+        .from('document_review_logs')
+        .select('id')
+        .eq('doc_type', doc_type);
+      version = (existing?.length || 0) + 1;
+      await supabase.from('document_review_logs').insert([
+        {
+          doc_type,
+          vendor_name: extracted.vendor || null,
+          amount: extracted.amount || null,
+          document_date: extracted.date || null,
+          summary,
+          missing_signature: missingSignature,
+          compliance_issues: complianceIssues,
+          version,
+          created_at: new Date().toISOString()
+        }
+      ]);
+    } catch (err) {
+      console.error('Supabase document review log error:', err);
+    }
+   }
+  res.json({ extracted, summary, version, missingSignature, complianceIssues });
 });
 
 module.exports = router;
