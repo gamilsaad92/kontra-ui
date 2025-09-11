@@ -9,7 +9,7 @@ try {
 const router = express.Router();
 
 router.post('/payments/stripe', async (req, res) => {
-  const { amount, currency = 'usd', order_id, metadata } = req.body || {};
+  const { amount, currency = 'usd', order_id, metadata, method } = req.body || {};
   if (!amount) {
     return res.status(400).json({ message: 'Missing amount' });
   }
@@ -21,12 +21,17 @@ router.post('/payments/stripe', async (req, res) => {
     return res.status(201).json({ client_secret: 'test_secret', test: true });
   }
   try {
-    const intent = await stripe.paymentIntents.create({
+ let params = {
       amount: Math.round(amount * 100),
       currency,
-      automatic_payment_methods: { enabled: true },
       metadata: { order_id, ...(metadata || {}) },
-    });
+    };
+    if (method === 'ach') {
+      params.payment_method_types = ['us_bank_account'];
+    } else {
+      params.automatic_payment_methods = { enabled: true };
+    }
+    const intent = await stripe.paymentIntents.create(params);
     return res.status(201).json({ client_secret: intent.client_secret });
   } catch (err) {
     console.error('Stripe error:', err);
