@@ -19,14 +19,19 @@ router.use((req, res, next) => {
 
 // Submit a trade order
 router.post('/', async (req, res) => {
-   const {
+  const {
     trade_type,
     notional_amount,
     symbol,
     quantity,
     price,
     side,
-    counterparties
+   counterparties,
+    repo_rate_bps,
+    term_days,
+    collateral_ref,
+    distribution_schedule,
+    agent_bank
   } = req.body || {};
 
   if (
@@ -73,6 +78,9 @@ router.post('/', async (req, res) => {
         quantity,
         price,
         side,
+        repo_rate_bps,
+        term_days,
+        collateral_ref,
         status: 'pending'
       }
     ])
@@ -92,6 +100,24 @@ router.post('/', async (req, res) => {
         role: 'counterparty'
       }))
     );
+
+   const eventPayload = {};
+  if (trade_type === 'participation' && distribution_schedule) {
+    eventPayload.distribution_schedule = distribution_schedule;
+  }
+  if (trade_type === 'repo' || trade_type === 'reverse_repo') {
+    if (repo_rate_bps !== undefined) eventPayload.repo_rate_bps = repo_rate_bps;
+    if (term_days !== undefined) eventPayload.term_days = term_days;
+    if (collateral_ref) eventPayload.collateral_ref = collateral_ref;
+  }
+  if (trade_type === 'syndication_assignment' && agent_bank) {
+    eventPayload.agent_bank = agent_bank;
+  }
+  if (['participation', 'syndication_assignment', 'repo', 'reverse_repo'].includes(trade_type)) {
+    await supabase
+      .from('trade_events')
+      .insert([{ trade_id: tradeRow.id, event_type: trade_type, event_payload: eventPayload }]);
+  }
 
   const trade = {
     id: tradeRow.id,
