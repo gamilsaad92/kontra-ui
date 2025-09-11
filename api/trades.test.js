@@ -12,7 +12,7 @@ jest.mock('./middlewares/authenticate', () => (req, res, next) => {
 })
 jest.mock('./webhooks', () => ({ triggerWebhooks: jest.fn() }))
 jest.mock('./db', () => {
-  const db = { trades: [], trade_participants: [], trade_settlements: [] }
+ const db = { trades: [], trade_participants: [], trade_settlements: [], trade_events: [], trade_marketplace: [] }
   let id = 1
   function from(table) {
     const data = db[table]
@@ -68,6 +68,8 @@ jest.mock('./db', () => {
       db.trades = []
       db.trade_participants = []
       db.trade_settlements = []
+      db.trade_events = []
+      db.trade_marketplace = []
       id = 1
     }
   }
