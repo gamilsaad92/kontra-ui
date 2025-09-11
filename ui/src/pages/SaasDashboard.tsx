@@ -14,6 +14,10 @@ import DrawsDashboard from "../components/DrawsDashboard";
 import ProjectsTable from "../components/ProjectsTable";
 import DocumentReview from "../components/DocumentReview";
 import Reports from "../components/Reports";
+import PaymentPortal from "../components/PaymentPortal";
+import PayoffInstructions from "../components/PayoffInstructions";
+import EscrowDisbursementTracker from "../components/EscrowDisbursementTracker";
+import DelinquencyAlertForm from "../components/DelinquencyAlertForm";
 
 export default function SaasDashboard() {
    const [portfolio, setPortfolio] =
@@ -127,8 +131,16 @@ export default function SaasDashboard() {
           <DrawsDashboard />
        ) : active === "Projects" ? (
           <ProjectsTable />
-             ) : active === "Document Review" ? (
+        ) : active === "Document Review" ? (
           <DocumentReview />
+                    ) : active === "Payments" ? (
+          <PaymentPortal />
+        ) : active === "Payoff Instructions" ? (
+          <PayoffInstructions />
+        ) : active === "Escrow" ? (
+          <EscrowDisbursementTracker />
+        ) : active === "Delinquency Alerts" ? (
+          <DelinquencyAlertForm />
               ) : active === "Reports" ? (
           <Reports />
         ) : (
