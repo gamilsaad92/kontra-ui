@@ -10,6 +10,7 @@ import { nav } from "../constants/nav";
 import AssetsDashboard from "../modules/assets/AssetsDashboard";
 import Inspections from "../routes/Inspections";
 import Trades from "../routes/Trades";
+import Exchange from "../routes/Exchange";
 import LoansDashboard from "../components/LoansDashboard";
 import DrawsDashboard from "../components/DrawsDashboard";
 import ProjectsTable from "../components/ProjectsTable";
@@ -144,6 +145,8 @@ export default function SaasDashboard() {
           <DelinquencyAlertForm />
           ) : active === "Trades" ? (
           <Trades />
+           ) : active === "Exchange" ? (
+          <Exchange />
         ) : active === "Reports" ? (
           <Reports />
         ) : (
