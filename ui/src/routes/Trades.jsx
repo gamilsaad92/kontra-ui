@@ -1,9 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import TradeList from '../components/trades/TradeList';
 import TradeForm from '../components/trades/TradeForm';
+import Marketplace from '../components/trades/Marketplace';
 
 export default function Trades() {
   const [trades, setTrades] = useState([]);
+  const [marketEntries, setMarketEntries] = useState([]);
   const [toast, setToast] = useState(null);
   
   const fetchTrades = async () => {
@@ -11,9 +13,15 @@ export default function Trades() {
     const data = await res.json();
     setTrades(data.trades || []);
   };
-
+  const fetchMarketplace = async () => {
+    const res = await fetch('/api/marketplace');
+    const data = await res.json();
+    setMarketEntries(data.entries || []);
+  };
+  
   useEffect(() => {
     fetchTrades();
+    fetchMarketplace();
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const ws = new WebSocket(`${protocol}//${window.location.host}/collab`);
     ws.onmessage = evt => {
@@ -54,7 +62,8 @@ export default function Trades() {
         </div>
       )}
       <TradeForm onSubmitted={fetchTrades} />
-      <TradeList trades={openTrades} title="Open Trades" onSettle={settleTrade} />
+      <TradeForm onSubmitted={() => { fetchTrades(); fetchMarketplace(); }} />
+      <Marketplace entries={marketEntries} onSubmitted={fetchMarketplace} />
       <TradeList trades={completedTrades} title="Settled Trades" />
     </div>
   );
