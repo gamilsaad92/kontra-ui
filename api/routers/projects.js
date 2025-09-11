@@ -6,11 +6,6 @@ const supabase = createClient(
   process.env.SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
-const authenticate = require('../middlewares/authenticate');
-const requireOrg = require('../middlewares/requireOrg');
-
-router.use(authenticate);
-router.use(requireOrg);
 
 router.post('/projects', async (req, res) => {
   const { name, number, address, owner_id } = req.body || {};
@@ -19,7 +14,7 @@ router.post('/projects', async (req, res) => {
   }
   const { data, error } = await supabase
     .from('projects')
-   .insert([{ name, number, address, owner_id, organization_id: req.orgId }])
+    .insert([{ name, number, address, owner_id }])
     .select()
     .single();
   if (error) return res.status(500).json({ message: 'Failed to create project' });
@@ -28,7 +23,7 @@ router.post('/projects', async (req, res) => {
 
 router.get('/projects', async (req, res) => {
   const { owner_id, status } = req.query;
-  let q = supabase.from('projects').select('*').eq('organization_id', req.orgId);
+ let q = supabase.from('projects').select('*');
   if (owner_id) q = q.eq('owner_id', owner_id);
   if (status) q = q.eq('status', status);
   const { data, error } = await q;
@@ -41,7 +36,6 @@ router.get('/projects/:id', async (req, res) => {
     .from('projects')
     .select('*')
     .eq('id', req.params.id)
-    .eq('organization_id', req.orgId)
     .single();
   if (error) return res.status(500).json({ message: 'Failed to fetch project' });
   res.json({ project: data });
@@ -49,10 +43,7 @@ router.get('/projects/:id', async (req, res) => {
 
 router.get('/projects/export', async (req, res) => {
   const { owner_id, status } = req.query;
- let q = supabase
-    .from('projects')
-    .select('id, name, number, status, created_at')
-    .eq('organization_id', req.orgId);
+ let q = supabase.from('projects').select('id, name, number, status, created_at');
   if (owner_id) q = q.eq('owner_id', owner_id);
   if (status) q = q.eq('status', status);
   const { data, error } = await q;
@@ -68,7 +59,6 @@ router.put('/projects/:id', async (req, res) => {
     .from('projects')
     .update(req.body || {})
     .eq('id', req.params.id)
-    .eq('organization_id', req.orgId)
     .select()
     .single();
   if (error) return res.status(500).json({ message: 'Failed to update project' });
@@ -76,11 +66,7 @@ router.put('/projects/:id', async (req, res) => {
 });
 
 router.delete('/projects/:id', async (req, res) => {
-  const { error } = await supabase
-    .from('projects')
-    .delete()
-    .eq('id', req.params.id)
-    .eq('organization_id', req.orgId);
+   const { error } = await supabase.from('projects').delete().eq('id', req.params.id);
   if (error) return res.status(500).json({ message: 'Failed to delete project' });
   res.json({ message: 'Deleted' });
 });
