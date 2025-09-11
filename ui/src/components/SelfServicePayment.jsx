@@ -44,13 +44,36 @@ export default function SelfServicePayment() {
 
   const valid = balance !== null && amount && parseFloat(amount) <= balance;
 
-  const handleSubmit = e => {
+ const handleSubmit = async e => {
     e.preventDefault();
     if (!valid) {
       setMessage('Amount exceeds balance');
       return;
     }
-    setMessage(`Paid ${amount} via ${method}`);
+    try {
+      const res = await fetch(`${API_BASE}/api/payments/stripe`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          amount: parseFloat(amount),
+          method: method === 'bank' ? 'ach' : 'card',
+          order_id: loanId,
+          metadata: { loanId }
+        })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setMessage(
+          data.client_secret
+            ? `Payment intent created: ${data.client_secret}`
+            : 'Payment processed'
+        );
+      } else {
+        setMessage(data.message || 'Payment failed');
+      }
+    } catch {
+      setMessage('Payment failed');
+    }
   };
 
   return (
