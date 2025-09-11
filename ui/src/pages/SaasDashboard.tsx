@@ -12,6 +12,7 @@ import Inspections from "../routes/Inspections";
 import LoansDashboard from "../components/LoansDashboard";
 import DrawsDashboard from "../components/DrawsDashboard";
 import ProjectsTable from "../components/ProjectsTable";
+import DocumentReview from "../components/DocumentReview";
 
 export default function SaasDashboard() {
    const [portfolio, setPortfolio] =
@@ -125,6 +126,8 @@ export default function SaasDashboard() {
           <DrawsDashboard />
            ) : active === "Projects" ? (
           <ProjectsTable />
+             ) : active === "Document Review" ? (
+          <DocumentReview />
         ) : (
           <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
                 {/* Row 1 */}
