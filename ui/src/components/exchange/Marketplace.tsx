@@ -6,7 +6,7 @@ import ListingGrid from './ListingGrid';
 import Spinner from './Spinner';
 
 export default function Marketplace() {
-  const { data, isLoading } = useListings({ status: 'listed' });
+  const { data, error, isLoading } = useListings({ status: 'listed' });
   return (
     <div className="p-6">
       <header className="flex items-center gap-3 mb-4">
@@ -17,7 +17,13 @@ export default function Marketplace() {
         Trade tokenized asset fractions with other investors.
       </p>
       <Filters />
-       {isLoading ? <Spinner /> : <ListingGrid items={data || []} />}
+       {error ? (
+        <div className="text-red-500">{error.message}</div>
+      ) : isLoading ? (
+        <Spinner />
+      ) : (
+        <ListingGrid items={data} />
+      )}
     </div>
   );
 }
