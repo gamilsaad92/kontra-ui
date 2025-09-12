@@ -6,8 +6,11 @@ const KycCheck: React.FC = () => {
 
   useEffect(() => {
     let cancelled = false;
-      fetch(`${API_BASE}/api/compliance/kyc`)
-      .then(res => res.json())
+    fetch(`${API_BASE}/kyc`)
+      .then(res => {
+        if (!res.ok) throw new Error(`status ${res.status}`);
+        return res.json();
+      })
       .then(data => {
         if (!cancelled) {
           setStatus(data.status || 'pending');
