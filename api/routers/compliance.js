@@ -10,6 +10,10 @@ router.post('/pci-scan', (req, res) => {
   res.json({ compliant: true, environment: environment || 'default' });
 });
 
+router.get('/kyc', (_req, res) => {
+  res.json({ status: 'approved' });
+});
+
 router.get('/gdpr-export/:userId', (req, res) => {
   const { userId } = req.params;
   res.json({ userId, data: {} });
