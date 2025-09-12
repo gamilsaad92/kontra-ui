@@ -10,7 +10,7 @@ const AssetTokenizationForm: React.FC = () => {
     e.preventDefault();
     setStatus('pending');
     try {
-      await fetch(`${API_BASE}/exchange/tokenize`, {
+     await fetch(`${API_BASE}/api/exchange/tokenize`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ asset, supply: Number(supply) })
