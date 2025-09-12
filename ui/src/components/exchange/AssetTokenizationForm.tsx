@@ -5,20 +5,27 @@ const AssetTokenizationForm: React.FC = () => {
   const [asset, setAsset] = useState('');
   const [supply, setSupply] = useState('');
   const [status, setStatus] = useState<'idle' | 'pending' | 'success' | 'error'>('idle');
-
+ const [tokenId, setTokenId] = useState<string | null>(null);
+  const [error, setError] = useState('');
+  
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setStatus('pending');
     try {
-     await fetch(`${API_BASE}/api/exchange/tokenize`, {
+     const res = await fetch(`${API_BASE}/exchange/tokenize`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ asset, supply: Number(supply) })
       });
+            const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Tokenization failed');
+      setTokenId(data.token?.id || null);
       setStatus('success');
       setAsset('');
       setSupply('');
-    } catch (err) {
+      setError('');
+    } catch (err: any) {
+      setError(err.message || 'Tokenization failed');
       setStatus('error');
     }
   };
@@ -49,11 +56,11 @@ const AssetTokenizationForm: React.FC = () => {
       {status === 'pending' && (
         <p className="text-sm text-gray-500 mt-2">Submitting...</p>
       )}
-      {status === 'success' && (
-        <p className="text-sm text-green-600 mt-2">Tokenization submitted</p>
+      {status === 'success' && tokenId && (
+        <p className="text-sm text-green-600 mt-2">Token created with ID {tokenId}</p>
       )}
       {status === 'error' && (
-        <p className="text-sm text-red-600 mt-2">Failed to tokenize asset</p>
+         <p className="text-sm text-red-600 mt-2">{error}</p>
       )}
     </div>
   );
