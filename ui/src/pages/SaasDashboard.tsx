@@ -21,6 +21,8 @@ import PayoffInstructions from "../components/PayoffInstructions";
 import EscrowDisbursementTracker from "../components/EscrowDisbursementTracker";
 import DelinquencyAlertForm from "../components/DelinquencyAlertForm";
 import AnalyticsDashboard from "../components/AnalyticsDashboard";
+import LoanApplicationForm from "../components/LoanApplicationForm";
+import LoanApplicationList from "../components/LoanApplicationList";
 
 export default function SaasDashboard() {
    const [portfolio, setPortfolio] =
@@ -29,7 +31,7 @@ export default function SaasDashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [active, setActive] = useState("Dashboard");
-   
+ const [appKey, setAppKey] = useState(0);
   useEffect(() => {
     let isMounted = true;
     async function fetchData() {
@@ -152,6 +154,11 @@ export default function SaasDashboard() {
           <Reports />
         ) : active === "Analytics" ? (
           <AnalyticsDashboard />
+             ) : active === "Applications" ? (
+          <div className="space-y-6">
+            <LoanApplicationForm onSubmitted={() => setAppKey((k) => k + 1)} />
+            <LoanApplicationList key={appKey} />
+          </div>
         ) : (
           <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
                 {/* Row 1 */}
