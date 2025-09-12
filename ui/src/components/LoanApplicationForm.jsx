@@ -14,7 +14,8 @@ export default function LoanApplicationForm({ onSubmitted }) {
   const [file, setFile] = useState(null)
   const [submitLoading, setSubmitLoading] = useState(false)
   const [autoFillLoading, setAutoFillLoading] = useState(false)
-   const [status, setStatus] = useState({ type: '', text: '' })
+ const [status, setStatus] = useState({ type: '', text: '' })
+  const [step, setStep] = useState(1)
 
   const MAX_SIZE = 5 * 1024 * 1024 // 5MB
   const ALLOWED_TYPES = ['application/pdf', 'image/jpeg', 'image/png']
@@ -31,7 +32,7 @@ export default function LoanApplicationForm({ onSubmitted }) {
       const body = new FormData()
       body.append('document', file) // match backend multer field
 
-      const res = await fetch(`${API_BASE}/api/loan-applications/auto-fill`, {
+    const res = await fetch(`${API_BASE}/api/auto-fill`, {
         method: 'POST',
         body,
       })
@@ -127,6 +128,7 @@ export default function LoanApplicationForm({ onSubmitted }) {
       onSubmitted && onSubmitted(data.application)
       setFormData({ name: '', email: '', ssn: '', amount: '' })
       setFile(null)
+      setStep(1)
     } catch (err) {
       console.error('Submission error:', err)
       setStatus({ type: 'error', text: err.message || 'Submission error' })
@@ -138,70 +140,96 @@ export default function LoanApplicationForm({ onSubmitted }) {
   return (
     <div className="bg-white rounded-lg shadow-md p-6 mb-6">
       <h3 className="text-xl font-semibold mb-4">Apply for a Loan</h3>
+      <p className="mb-4 text-sm text-gray-600">Step {step} of 2</p>
       <form onSubmit={handleSubmit} className="space-y-4">
-        <input
-          name="name"
-          placeholder="Full Name"
-          value={formData.name}
-          onChange={handleChange}
-          required
-          className="w-full border p-2 rounded"
-        />
-        <input
-          name="email"
-          type="email"
-          placeholder="Email"
-          value={formData.email}
-          onChange={handleChange}
-          required
-          className="w-full border p-2 rounded"
-        />
-        <input
-          name="ssn"
-          placeholder="SSN"
-          value={formData.ssn}
-          onChange={handleChange}
-          required
-          className="w-full border p-2 rounded"
-        />
-        <input
-          name="amount"
-          type="number"
-          placeholder="Amount"
-          value={formData.amount}
-          onChange={handleChange}
-          required
-          className="w-full border p-2 rounded"
-        />
-        <input
-          type="file"
-          accept="application/pdf,image/*"
-          onChange={handleFile}
-          className="w-full"
-        />
+           {step === 1 && (
+          <>
+            <input
+              name="name"
+              placeholder="Full Name"
+              value={formData.name}
+              onChange={handleChange}
+              required
+              className="w-full border p-2 rounded"
+            />
+            <input
+              name="email"
+              type="email"
+              placeholder="Email"
+              value={formData.email}
+              onChange={handleChange}
+              required
+              className="w-full border p-2 rounded"
+            />
+            <input
+              name="ssn"
+              placeholder="SSN"
+              value={formData.ssn}
+              onChange={handleChange}
+              required
+              className="w-full border p-2 rounded"
+            />
+            <div className="space-y-2">
+              <button
+                type="button"
+                onClick={() => setStep(2)}
+                className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 rounded"
+              >
+                Next
+              </button>
+            </div>
+          </>
+        )}
 
-        <div className="space-y-2">
-          <button
-            type="button"
-            onClick={handleAutoFill}
-            disabled={autoFillLoading}
-            className="w-full bg-gray-200 text-gray-800 py-2 rounded"
-          >
-            {autoFillLoading ? 'Extracting…' : 'Auto Fill'}
-          </button>
-        </div>
+           {step === 2 && (
+          <>
+            <input
+              name="amount"
+              type="number"
+              placeholder="Amount"
+              value={formData.amount}
+              onChange={handleChange}
+              required
+              className="w-full border p-2 rounded"
+            />
+            <input
+              type="file"
+              accept="application/pdf,image/*"
+              onChange={handleFile}
+              className="w-full"
+            />     
 
-        <div className="space-y-2">
-          <button
-            type="submit"
-            disabled={submitLoading}
-            className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 rounded"
-          >
-            {submitLoading ? 'Submitting…' : 'Submit'}
-          </button>
-        </div>
+               <div className="space-y-2">
+              <button
+                type="button"
+                onClick={handleAutoFill}
+                disabled={autoFillLoading}
+                className="w-full bg-gray-200 text-gray-800 py-2 rounded"
+              >
+                {autoFillLoading ? 'Extracting…' : 'Auto Fill'}
+              </button>
+            </div>
+
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setStep(1)}
+                className="flex-1 bg-gray-200 text-gray-800 py-2 rounded"
+              >
+                Back
+              </button>
+              <button
+                type="submit"
+                disabled={submitLoading}
+                className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 rounded"
+              >
+                {submitLoading ? 'Submitting…' : 'Submit'}
+              </button>
+            </div>
+          </>
+        )}     
       </form>
-            {status.type === 'success' && (
+        {status.type === 'success' && (
         <p className="text-green-600 mt-2">{status.text}</p>
       )}
       <ErrorBanner
