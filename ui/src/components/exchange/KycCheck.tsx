@@ -6,7 +6,7 @@ const KycCheck: React.FC = () => {
 
   useEffect(() => {
     let cancelled = false;
-    fetch(`${API_BASE}/compliance/kyc`)
+      fetch(`${API_BASE}/api/compliance/kyc`)
       .then(res => res.json())
       .then(data => {
         if (!cancelled) {
