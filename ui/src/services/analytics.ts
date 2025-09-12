@@ -33,16 +33,46 @@ export async function getPortfolioSnapshot() {
 }
 
 export async function getRiskSummary() {
-  const { data } = await api.get("/risk/run", withOrg(1)); // or a cached /risk/summary you expose
-  return {
-    buckets:
-      data?.buckets ?? [
+  try {
+    const { data } = await api.get("/risk/summary", withOrg(1));
+    return {
+      buckets:
+        data?.buckets ?? [
+          { label: "Low", value: 58 },
+          { label: "Med", value: 22 },
+          { label: "High", value: 14 },
+        ],
+      stress:
+        data?.stress ?? {
+          scenario: "rate+200bps",
+          buckets: [
+            { label: "Low", value: 48 },
+            { label: "Med", value: 30 },
+            { label: "High", value: 20 },
+          ],
+        },
+      flags: data?.flags ?? [],
+      penalties: data?.penalties ?? [],
+    };
+  } catch (err) {
+    return {
+      buckets: [
         { label: "Low", value: 58 },
         { label: "Med", value: 22 },
         { label: "High", value: 14 },
-        { label: "Severe", value: 6 },
       ],
-  };
+      stress: {
+        scenario: "rate+200bps",
+        buckets: [
+          { label: "Low", value: 48 },
+          { label: "Med", value: 30 },
+          { label: "High", value: 20 },
+        ],
+      },
+      flags: [],
+      penalties: [],
+    };
+  }
 }
 
 export async function getRoiSeries() {
