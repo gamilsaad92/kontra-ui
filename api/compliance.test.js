@@ -24,6 +24,14 @@ describe('POST /api/pci-scan', () => {
   })
 })
 
+describe('GET /api/kyc', () => {
+  it('returns KYC status', async () => {
+    const res = await request(app).get('/api/kyc')
+    expect(res.statusCode).toBe(200)
+    expect(res.body.status).toBeDefined()
+  })
+})
+
 describe('GET /api/gdpr-export/:userId', () => {
   it('endpoint exists', async () => {
     const res = await request(app).get('/api/gdpr-export/1')
