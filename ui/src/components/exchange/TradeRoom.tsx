@@ -5,15 +5,19 @@ import ComplianceBanner from './ComplianceBanner';
 
 const TradeRoom: React.FC = () => {
   const { id } = useParams();
-  const { data: trade } = useTrade(id);
+   const { data: trade, error } = useTrade(id);
 
   return (
     <div className="space-y-4">
       <ComplianceBanner />
       <h2 className="text-xl font-bold">Trade Room {id}</h2>
-      <pre className="bg-gray-100 p-2 rounded text-xs overflow-auto">
-        {JSON.stringify(trade, null, 2)}
-      </pre>
+         {error ? (
+        <div className="text-red-500">{error.message}</div>
+      ) : (
+        <pre className="bg-gray-100 p-2 rounded text-xs overflow-auto">
+          {JSON.stringify(trade, null, 2)}
+        </pre>
+      )}
       <section>
         <h3 className="font-semibold">Documents</h3>
       </section>
