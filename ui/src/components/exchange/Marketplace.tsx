@@ -17,7 +17,7 @@ export default function Marketplace() {
         Trade tokenized asset fractions with other investors.
       </p>
       <Filters />
-      {isLoading ? <Spinner /> : <ListingGrid items={data} />}
+       {isLoading ? <Spinner /> : <ListingGrid items={data || []} />}
     </div>
   );
 }
