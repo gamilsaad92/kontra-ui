@@ -40,15 +40,15 @@ function useFetch<T>(url: string | null): FetchResult<T> {
 
 export function useListings(params?: Record<string, string>) {
   const query = params ? `?${new URLSearchParams(params).toString()}` : '';
-  return useFetch<any[]>(`${API_BASE}/exchange/listings${query}`);
+ return useFetch<any[]>(`${API_BASE}/api/exchange/listings${query}`);
 }
 
 export function useOffers(listingId?: string) {
-  const url = listingId ? `${API_BASE}/exchange/listings/${listingId}/offers` : null;
+  const url = listingId ? `${API_BASE}/api/exchange/listings/${listingId}/offers` : null;
   return useFetch<any[]>(url);
 }
 
 export function useTrade(tradeId?: string) {
-  const url = tradeId ? `${API_BASE}/exchange/trades/${tradeId}` : null;
+ const url = tradeId ? `${API_BASE}/api/exchange/trades/${tradeId}` : null;
   return useFetch<any>(url);
 }
