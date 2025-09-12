@@ -36,6 +36,28 @@ router.post('/settlement/webhook', async (req, res) => {
 // All routes require authentication
 router.use(authenticate);
 
+// Tokenization schema
+const tokenSchema = z.object({
+  asset: z.string(),
+  supply: z.number().positive()
+});
+
+// Tokenize an asset
+router.post('/tokenize', requireRole('lender_trader'), async (req, res) => {
+  try {
+    const { asset, supply } = tokenSchema.parse(req.body);
+    const tokenId = uuidv4();
+    // Mock persistence of the tokenized asset
+    res.status(201).json({ token: { id: tokenId, asset, supply } });
+  } catch (err) {
+    if (err instanceof ZodError) {
+      return res.status(400).json({ error: err.errors.map(e => e.message).join(', ') });
+    }
+    console.error('Tokenize error:', err);
+    res.status(500).json({ error: 'Failed to tokenize asset' });
+  }
+});
+
 // Listing schemas
 const listingSchema = z.object({
   asset_type: z.string(),
