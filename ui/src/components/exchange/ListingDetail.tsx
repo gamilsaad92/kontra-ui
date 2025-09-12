@@ -6,7 +6,7 @@ import ComplianceBanner from './ComplianceBanner';
 
 const ListingDetail: React.FC = () => {
   const { id } = useParams();
-  const { data: offers } = useOffers(id);
+  const { data: offers, error } = useOffers(id);
 
   return (
     <div className="space-y-4">
@@ -14,11 +14,15 @@ const ListingDetail: React.FC = () => {
       <h2 className="text-xl font-bold">Listing {id}</h2>
       <section>
         <h3 className="font-semibold">Offers</h3>
-        <ul className="list-disc pl-6">
-          {offers?.map((o: any) => (
-            <li key={o.id}>{o.amount}</li>
-          ))}
-        </ul>
+          {error ? (
+          <div className="text-red-500">{error.message}</div>
+        ) : (
+          <ul className="list-disc pl-6">
+            {offers?.map((o: any) => (
+              <li key={o.id}>{o.amount}</li>
+            ))}
+          </ul>
+        )}
       </section>
       <OfferPanel listingId={id || ''} />
       <section>
