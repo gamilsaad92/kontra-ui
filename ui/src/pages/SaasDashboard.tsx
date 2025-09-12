@@ -21,6 +21,7 @@ import PayoffInstructions from "../components/PayoffInstructions";
 import EscrowDisbursementTracker from "../components/EscrowDisbursementTracker";
 import DelinquencyAlertForm from "../components/DelinquencyAlertForm";
 import AnalyticsDashboard from "../components/AnalyticsDashboard";
+import RiskDashboard from "../components/RiskDashboard";
 import LoanApplicationForm from "../components/LoanApplicationForm";
 import LoanApplicationList from "../components/LoanApplicationList";
 
@@ -154,6 +155,8 @@ export default function SaasDashboard() {
           <Reports />
         ) : active === "Analytics" ? (
           <AnalyticsDashboard />
+              ) : active === "Risk" ? (
+          <RiskDashboard />
              ) : active === "Applications" ? (
           <div className="space-y-6">
             <LoanApplicationForm onSubmitted={() => setAppKey((k) => k + 1)} />
