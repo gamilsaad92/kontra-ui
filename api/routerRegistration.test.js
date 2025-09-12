@@ -32,6 +32,7 @@ const restaurantsRouter = require('./routers/restaurants');
 const applicationsRouter = require('./routers/applications');
 const riskRouter = require('./routers/risk');
 const servicingRouter = require('./routers/servicing');
+const communicationsLogRouter = require('./routers/communicationsLog');
 const webhooksRouter = require('./routers/webhookRoutes');
 const { router: integrationsRouter } = require('./routers/integrations');
 const subscriptionsRouter = require('./routers/subscriptions');
@@ -70,6 +71,7 @@ describe('API server router registration', () => {
     ['applications', applicationsRouter],
     ['risk', riskRouter],
     ['servicing', servicingRouter],
+    ['communications log', communicationsLogRouter],
     ['webhooks', webhooksRouter],
     ['integrations', integrationsRouter],
     ['subscriptions', subscriptionsRouter],
