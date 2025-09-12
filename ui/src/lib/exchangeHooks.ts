@@ -16,20 +16,42 @@ function useFetch<T>(url: string | null): FetchResult<T> {
     if (!url) return;
     let cancelled = false;
     setIsLoading(true);
-    fetch(url)
-      .then(r => r.json())
-      .then(json => {
+      setError(null);
+
+    const doFetch = async () => {
+      try {
+        const response = await fetch(url);
+        if (cancelled) return;
+
+        if (!response.ok) {
+          const err = new Error(`Request failed with status ${response.status}`);
+          setError(err);
+          setIsLoading(false);
+          return;
+        }
+
+        const contentType = response.headers.get('content-type');
+        if (contentType && contentType.includes('application/json')) {
+          const json = await response.json();
+          if (!cancelled) {
+            setData(json);
+          }
+        } else if (!cancelled) {
+          setData(null);
+        }
+
         if (!cancelled) {
-          setData(json);
           setIsLoading(false);
         }
-      })
-      .catch(e => {
-         if (!cancelled) {
-          setError(e);
+           } catch (e) {
+        if (!cancelled) {
+          setError(e as Error);
           setIsLoading(false);
         }
-      });
+        }
+    };
+
+    doFetch();
     return () => {
       cancelled = true;
     };
