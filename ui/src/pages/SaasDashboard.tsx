@@ -20,6 +20,7 @@ import PaymentPortal from "../components/PaymentPortal";
 import PayoffInstructions from "../components/PayoffInstructions";
 import EscrowDisbursementTracker from "../components/EscrowDisbursementTracker";
 import DelinquencyAlertForm from "../components/DelinquencyAlertForm";
+import AnalyticsDashboard from "../components/AnalyticsDashboard";
 
 export default function SaasDashboard() {
    const [portfolio, setPortfolio] =
@@ -145,10 +146,12 @@ export default function SaasDashboard() {
           <DelinquencyAlertForm />
           ) : active === "Trades" ? (
           <Trades />
-           ) : active === "Exchange" ? (
+          ) : active === "Exchange" ? (
           <Exchange />
         ) : active === "Reports" ? (
           <Reports />
+        ) : active === "Analytics" ? (
+          <AnalyticsDashboard />
         ) : (
           <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
                 {/* Row 1 */}
