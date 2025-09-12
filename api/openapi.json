@@ -302,6 +302,7 @@
       }
           },
         "/api/pci-scan": {"post": {"summary": "Run PCI compliance scan","responses": {"200": {"description": "OK"}}}},
+      "/api/kyc": {"get": {"summary": "Run KYC check","responses": {"200": {"description": "OK"}}}},
     "/api/gdpr-export/{userId}": {"get": {"summary": "Export user data","parameters": [{"in":"path","name":"userId","required":true,"schema":{"type":"string"}}],"responses": {"200": {"description": "OK"}}}},
     "/api/gdpr-delete/{userId}": {"delete": {"summary": "Delete user data","parameters": [{"in":"path","name":"userId","required":true,"schema":{"type":"string"}}],"responses": {"200": {"description": "Deleted"}}}},
     "/api/regulatory-scan": {"post": {"summary": "Scan document for compliance","responses": {"200": {"description": "OK"}}}},
