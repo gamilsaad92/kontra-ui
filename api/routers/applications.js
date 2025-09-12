@@ -126,6 +126,14 @@ router.post(
           .json({ message: 'Credit bureau service failed' });
       }
 
+           // ---- Decision & Status ----
+      let decision = 'review';
+      let status = 'under_review';
+      if (credit.score >= 700 && kyc.passed) {
+        decision = 'approve';
+        status = 'approved';
+      }
+
       // ---- Encrypt SSN ----
       let encryptedSsn;
       try {
@@ -171,6 +179,8 @@ router.post(
             amount: parsedAmount,
             credit_score: credit.score,
             kyc_passed: kyc.passed,
+            decision,
+            status,
             document_url: documentUrl,
             submitted_at: new Date().toISOString(),
           },
@@ -200,7 +210,7 @@ router.get('/', async (req, res) => {
     const { data, error } = await supabase
       .from('loan_applications')
       .select(
-        'id, name, amount, credit_score, kyc_passed, submitted_at, document_url'
+      'id, name, amount, credit_score, kyc_passed, decision, status, submitted_at, document_url'
       )
       .order('submitted_at', { ascending: false });
 
