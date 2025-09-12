@@ -34,6 +34,8 @@ export default function LoanApplicationList() {
             <th className="p-2">Name</th>
             <th className="p-2">Amount</th>
             <th className="p-2">Credit</th>
+            <th className="p-2">Decision</th>
+            <th className="p-2">Status</th>
             <th className="p-2">KYC</th>
             <th className="p-2">Submitted</th>
           </tr>
@@ -45,6 +47,8 @@ export default function LoanApplicationList() {
               <td className="p-2">{a.name}</td>
               <td className="p-2">{a.amount}</td>
               <td className="p-2">{a.credit_score}</td>
+              <td className="p-2">{a.decision}</td>
+              <td className="p-2">{a.status}</td>
               <td className="p-2">{a.kyc_passed ? '✅' : '❌'}</td>
               <td className="p-2">
                 {new Date(a.submitted_at).toLocaleDateString()}
