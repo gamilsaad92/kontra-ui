@@ -9,7 +9,10 @@ const supabase = createClient(
 // platform grows but we make sure the trade events exist by default.
 const WEBHOOK_TOPICS = [
   'trade.created',
-  'trade.settled'
+  'trade.settled',
+  'loan.approved',
+  'draw.funded',
+  'payment.missed'
 ];
 
 async function listWebhooks() {
