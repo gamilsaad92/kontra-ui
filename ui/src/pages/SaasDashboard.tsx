@@ -25,6 +25,7 @@ import RiskDashboard from "../components/RiskDashboard";
 import LoanApplicationForm from "../components/LoanApplicationForm";
 import LoanApplicationList from "../components/LoanApplicationList";
 import ServicingDashboard from "../components/ServicingDashboard";
+import WebhooksManager from "../components/WebhooksManager";
 
 export default function SaasDashboard() {
   const [portfolio, setPortfolio] =
@@ -169,8 +170,10 @@ export default function SaasDashboard() {
           <AnalyticsDashboard />
               ) : active === "Risk" ? (
           <RiskDashboard />
-                   ) : active === "Servicing" ? (
+            ) : active === "Servicing" ? (
           <ServicingDashboard />
+              ) : active === "Webhooks" ? (
+          <WebhooksManager />
              ) : active === "Applications" ? (
           <div className="space-y-6">
             <LoanApplicationForm onSubmitted={() => setAppKey((k) => k + 1)} />
