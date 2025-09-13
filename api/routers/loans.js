@@ -115,6 +115,9 @@ router.put('/loans/:loanId', async (req, res) => {
   const updates = req.body || {};
   const { data, error } = await supabase.from('loans').update(updates).eq('id', loanId).select().single();
   if (error) return res.status(500).json({ message: 'Failed to update loan' });
+   if (updates.status === 'approved') {
+    await triggerWebhooks('loan.approved', data);
+  }
   res.json({ loan: data });
 });
 
