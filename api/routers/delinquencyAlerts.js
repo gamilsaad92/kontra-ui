@@ -1,5 +1,6 @@
 const express = require('express');
 const nodemailer = require('nodemailer');
+const { triggerWebhooks } = require('../webhooks');
 let twilioClient;
 try {
   twilioClient = require('twilio')(process.env.TWILIO_SID, process.env.TWILIO_TOKEN);
@@ -56,6 +57,7 @@ router.post('/loans/:loanId/alerts/delinquency', async (req, res) => {
       result.sms = true;
     }
   }
+   await triggerWebhooks('payment.missed', { loanId });
   res.json({ sent: result });
 });
 
