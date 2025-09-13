@@ -4,6 +4,7 @@ const { createClient } = require('@supabase/supabase-js');
 const PDFDocument = require('pdfkit');
 const { sendEmail } = require('../communications');
 const { recordFeedback, retrainModel } = require('../feedback');
+const { triggerWebhooks } = require('../webhooks');
 
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage() });
@@ -117,6 +118,10 @@ router.post('/review-draw', async (req, res) => {
   await supabase
     .from('draw_status_history')
     .insert([{ draw_id: id, status, created_at: new Date().toISOString() }]);
+
+   if (status === 'funded') {
+    await triggerWebhooks('draw.funded', data);
+  }
 
   recordFeedback({ decision_type: 'draw', entity_id: id, decision: status, comments: comment || '' });
   retrainModel();
