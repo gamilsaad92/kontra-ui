@@ -27,24 +27,38 @@ import LoanApplicationList from "../components/LoanApplicationList";
 import ServicingDashboard from "../components/ServicingDashboard";
 
 export default function SaasDashboard() {
-   const [portfolio, setPortfolio] =
+  const [portfolio, setPortfolio] =
     useState<{ delinqPct: number; points: number[] } | null>(null);
   const [draws, setDraws] = useState<DrawRequest[]>([]);
+  const [drawError, setDrawError] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [active, setActive] = useState("Dashboard");
- const [appKey, setAppKey] = useState(0);
+  const [appKey, setAppKey] = useState(0);
   useEffect(() => {
     let isMounted = true;
     async function fetchData() {
       try {
-        const [p, d] = await Promise.all([
+       const [p, d] = await Promise.allSettled([
           getPortfolioSnapshot(),
           listDrawRequests(),
         ]);
         if (!isMounted) return;
-      setPortfolio(p ?? null);
-        setDraws(Array.isArray(d) ? d : []);
+    
+        if (p.status === "fulfilled") {
+          setPortfolio(p.value ?? null);
+        } else {
+          setPortfolio(null);
+          setError((prev) => prev ?? "Failed to load portfolio metrics");
+        }
+
+        if (d.status === "fulfilled") {
+          setDraws(Array.isArray(d.value) ? d.value : []);
+        } else {
+          setDraws([]);
+          setDrawError(true);
+          setError((prev) => prev ?? "Failed to load draw metrics");
+        }
       } catch (err) {
         console.error(err);
         if (isMounted)
@@ -84,14 +98,6 @@ export default function SaasDashboard() {
     );
   }
 
-  if (error) {
-    return (
-      <div className="flex items-center justify-center min-h-screen text-red-500">
-        {error}
-      </div>
-    );
-  }
-
   const spark = portfolio ? formatSpark(portfolio.points) : undefined;
 
   return (
@@ -128,6 +134,11 @@ export default function SaasDashboard() {
 
       {/* Main */}
       <main className="flex-1 p-6 overflow-y-auto">
+                 {error && (
+          <div className="mb-4 rounded bg-red-50 p-4 text-sm text-red-500">
+            {error}
+          </div>
+        )}
           {active === "Assets" ? (
           <AssetsDashboard />
          ) : active === "Inspections" ? (
@@ -167,29 +178,31 @@ export default function SaasDashboard() {
           </div>
         ) : (
           <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-                {/* Row 1 */}
-              <Card title="Loans & Draws">
-            <p className="mt-2 text-3xl font-bold tracking-tight">{drawCount}</p>
-            <div className="mt-3">
-              {portfolio ? (
-                <>
+                 {/* Row 1 */}
+            <Card title="Loans & Draws">
+              <p className="mt-2 text-3xl font-bold tracking-tight">
+                {drawError ? "—" : drawCount}
+              </p>
+              <div className="mt-3">
+                {portfolio ? (
+                  <>
+                    <div className="text-xs text-slate-500">
+                      Loans Past Due ({portfolio.delinqPct}%)
+                    </div>
+                    <MiniSpark points={spark} />
+                  </>
+                ) : (
                   <div className="text-xs text-slate-500">
-                    Loans Past Due ({portfolio.delinqPct}%)
+                   Portfolio summary unavailable
                   </div>
-                  <MiniSpark points={spark} />
-                </>
-              ) : (
-                <div className="text-xs text-slate-500">
-                  Portfolio summary unavailable
-                </div>
-             )}
-            </div>
-            <div className="mt-2 text-xs text-slate-600">Escrow Balance</div>
-            <div className="text-2xl font-semibold tracking-tight">
-              {formatCurrency(escrowBalance)}
-            </div>
-          </Card>
-
+                )}
+              </div>
+              <div className="mt-2 text-xs text-slate-600">Escrow Balance</div>
+              <div className="text-2xl font-semibold tracking-tight">
+                {drawError ? "—" : formatCurrency(escrowBalance)}
+              </div>
+            </Card>
+             
           <Card title="Predictive Analytics">
             <MiniSpark />
           </Card>
