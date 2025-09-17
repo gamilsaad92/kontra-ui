@@ -2,12 +2,18 @@ import React, { useEffect, useState } from 'react';
 import TradeList from '../components/trades/TradeList';
 import TradeForm from '../components/trades/TradeForm';
 import Marketplace from '../components/trades/Marketplace';
+import MiniCmbsPools from '../components/trades/MiniCmbsPools';
+import ParticipationMarketplace from '../components/trades/ParticipationMarketplace';
+import PreferredEquityTokens from '../components/trades/PreferredEquityTokens';
 
 export default function Trades() {
   const [trades, setTrades] = useState([]);
   const [marketEntries, setMarketEntries] = useState([]);
+  const [cmbsPools, setCmbsPools] = useState([]);
+  const [participations, setParticipations] = useState([]);
+  const [preferredEquity, setPreferredEquity] = useState([]);
   const [toast, setToast] = useState(null);
-  
+ 
   const fetchTrades = async () => {
     const res = await fetch('/api/trades');
     const data = await res.json();
@@ -18,11 +24,32 @@ export default function Trades() {
     const data = await res.json();
     setMarketEntries(data.entries || []);
   };
-  
+   const fetchMiniCmbs = async () => {
+    const res = await fetch('/api/exchange-programs/mini-cmbs');
+    if (!res.ok) return;
+    const data = await res.json();
+    setCmbsPools(data.pools || []);
+  };
+  const fetchParticipations = async () => {
+    const res = await fetch('/api/exchange-programs/participations');
+    if (!res.ok) return;
+    const data = await res.json();
+    setParticipations(data.participations || []);
+  };
+  const fetchPreferredEquity = async () => {
+    const res = await fetch('/api/exchange-programs/preferred-equity');
+    if (!res.ok) return;
+    const data = await res.json();
+    setPreferredEquity(data.tokens || []);
+  };
+ 
   useEffect(() => {
     fetchTrades();
-    fetchMarketplace();
-        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    fetchMarketplace(); 
+    fetchMiniCmbs();
+    fetchParticipations();
+    fetchPreferredEquity();
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const ws = new WebSocket(`${protocol}//${window.location.host}/collab`);
     ws.onmessage = evt => {
       try {
@@ -39,15 +66,19 @@ export default function Trades() {
     return () => ws.close();
   }, []);
 
+    const notify = message => {
+    setToast(message);
+    setTimeout(() => setToast(null), 3000);
+  };
+
   const settleTrade = async id => {
     const res = await fetch(`/api/trades/${id}/settle`, { method: 'POST' });
     if (res.ok) {
-      setToast('Trade settled');
+     notify('Trade settled');
       fetchTrades();
     } else {
-      setToast('Failed to settle trade');
+     notify('Failed to settle trade');
     }
-    setTimeout(() => setToast(null), 3000);
   };
 
   const openTrades = trades.filter(t => t.status === 'pending');
@@ -61,10 +92,47 @@ export default function Trades() {
           {toast}
         </div>
       )}
-      <TradeForm onSubmitted={fetchTrades} />
-      <TradeForm onSubmitted={() => { fetchTrades(); fetchMarketplace(); }} />
-      <Marketplace entries={marketEntries} onSubmitted={fetchMarketplace} />
-      <TradeList trades={completedTrades} title="Settled Trades" />
+        <section className="mb-8">
+        <div className="grid gap-6 lg:grid-cols-2">
+          <div className="border rounded p-4 bg-white shadow-sm">
+            <h2 className="text-xl font-semibold mb-2">Submit Trade</h2>
+            <TradeForm
+              onSubmitted={() => {
+                fetchTrades();
+                notify('Trade submitted');
+              }}
+            />
+          </div>
+          <div className="border rounded p-4 bg-white shadow-sm">
+            <Marketplace
+              entries={marketEntries}
+              onSubmitted={() => {
+                fetchMarketplace();
+                notify('Marketplace order posted');
+              }}
+            />
+          </div>
+        </div>
+        <div className="grid gap-6 lg:grid-cols-2 mt-6">
+          <TradeList trades={openTrades} title="Open Trades" onSettle={settleTrade} />
+          <TradeList trades={completedTrades} title="Settled Trades" />
+        </div>
+      </section>
+      <MiniCmbsPools
+        pools={cmbsPools}
+        onRefresh={fetchMiniCmbs}
+        onNotify={notify}
+      />
+      <ParticipationMarketplace
+        listings={participations}
+        onRefresh={fetchParticipations}
+        onNotify={notify}
+      />
+      <PreferredEquityTokens
+        tokens={preferredEquity}
+        onRefresh={fetchPreferredEquity}
+        onNotify={notify}
+      /> 
     </div>
   );
 }
