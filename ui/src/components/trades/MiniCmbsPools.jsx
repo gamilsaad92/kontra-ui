@@ -80,7 +80,7 @@ export default function MiniCmbsPools({ pools = [], onRefresh, onNotify }) {
         coupon_rate: Number(couponRate),
         structure,
         auction_type: auctionType,
-        collateral
+        collateral: collateral
           .split('\n')
           .map(item => item.trim())
           .filter(Boolean)
