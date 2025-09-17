@@ -55,6 +55,76 @@ CREATE TABLE IF NOT EXISTS trade_marketplace (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+CREATE TABLE IF NOT EXISTS mini_cmbs_pools (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  organization_id UUID NOT NULL,
+  pool_name TEXT NOT NULL,
+  total_balance NUMERIC NOT NULL,
+  coupon_rate NUMERIC NOT NULL,
+  structure TEXT,
+  auction_type TEXT DEFAULT 'order_book',
+  collateral JSONB DEFAULT '[]'::jsonb,
+  status TEXT DEFAULT 'open',
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS mini_cmbs_orders (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  pool_id UUID REFERENCES mini_cmbs_pools(id) ON DELETE CASCADE,
+  organization_id UUID NOT NULL,
+  investor_id UUID,
+  side TEXT CHECK (side IN ('bid', 'ask')) NOT NULL,
+  price NUMERIC NOT NULL,
+  size NUMERIC NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS loan_participations (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  organization_id UUID NOT NULL,
+  loan_name TEXT NOT NULL,
+  available_amount NUMERIC NOT NULL,
+  min_piece NUMERIC NOT NULL,
+  target_yield NUMERIC,
+  notes TEXT,
+  status TEXT DEFAULT 'open',
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS loan_participation_bids (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  listing_id UUID REFERENCES loan_participations(id) ON DELETE CASCADE,
+  organization_id UUID NOT NULL,
+  investor_id UUID,
+  bidder TEXT NOT NULL,
+  size NUMERIC NOT NULL,
+  rate NUMERIC NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS preferred_equity_tokens (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  organization_id UUID NOT NULL,
+  token_name TEXT NOT NULL,
+  project TEXT,
+  price_per_token NUMERIC NOT NULL,
+  total_supply NUMERIC NOT NULL,
+  target_irr NUMERIC,
+  distribution_frequency TEXT,
+  waterfall_notes TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS preferred_equity_distributions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  token_id UUID REFERENCES preferred_equity_tokens(id) ON DELETE CASCADE,
+  organization_id UUID NOT NULL,
+  distribution_date DATE NOT NULL,
+  amount NUMERIC NOT NULL,
+  memo TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
 -- Generic trade event log for audit trails
 CREATE TABLE IF NOT EXISTS trade_events (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
