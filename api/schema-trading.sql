@@ -222,3 +222,9 @@ CREATE INDEX IF NOT EXISTS exchange_listings_sector_geography_idx
   ON exchange_listings (sector, geography);
 CREATE INDEX IF NOT EXISTS exchange_listings_par_amount_idx
  ON exchange_listings (par_amount);
+CREATE INDEX IF NOT EXISTS mini_cmbs_orders_pool_id_idx
+  ON mini_cmbs_orders (pool_id);
+CREATE INDEX IF NOT EXISTS loan_participation_bids_listing_id_idx
+  ON loan_participation_bids (listing_id);
+CREATE INDEX IF NOT EXISTS preferred_equity_distributions_token_id_idx
+  ON preferred_equity_distributions (token_id);
