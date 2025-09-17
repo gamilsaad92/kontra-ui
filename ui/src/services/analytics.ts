@@ -53,6 +53,90 @@ export async function getRiskSummary() {
         },
       flags: data?.flags ?? [],
       penalties: data?.penalties ?? [],
+          occupancyDerivatives:
+        data?.occupancyDerivatives ?? [
+          {
+            id: "OCC-001",
+            property: "Midtown Office Tower",
+            trigger: "Occupancy < 85%",
+            coverage: "$2.5M",
+            premium: "$35k / quarter",
+            venue: "Internal",
+            side: "Buy",
+          },
+          {
+            id: "OCC-002",
+            property: "Riverside Multifamily",
+            trigger: "Occupancy < 90%",
+            coverage: "$1.8M",
+            premium: "$24k / quarter",
+            venue: "DEX",
+            side: "Sell",
+          },
+          {
+            id: "OCC-003",
+            property: "Sunset Retail Plaza",
+            trigger: "Occupancy < 80%",
+            coverage: "$1.2M",
+            premium: "$16k / quarter",
+            venue: "DEX",
+            side: "Buy",
+          },
+        ],
+      maintenanceSwaps:
+        data?.maintenanceSwaps ?? [
+          {
+            id: "RM-114",
+            asset: "Harbor Industrial Park",
+            forecast: "$420k (next 12m)",
+            cap: "$350k",
+            counterparty: "Evergreen Facilities",
+            status: "Matched",
+          },
+          {
+            id: "RM-208",
+            asset: "Oakwood Senior Living",
+            forecast: "$310k (next 12m)",
+            cap: "$275k",
+            counterparty: "In Negotiation",
+            status: "Sourcing",
+          },
+          {
+            id: "RM-305",
+            asset: "Metro Logistics Hub",
+            forecast: "$510k (next 12m)",
+            cap: "$400k",
+            counterparty: "FacilityShield",
+            status: "Pending Docs",
+          },
+        ],
+      prepaymentSwaps:
+        data?.prepaymentSwaps ?? [
+          {
+            id: "PP-901",
+            loan: "Loan #4512",
+            penalty: "$180k",
+            window: "Months 24-30",
+            counterparty: "Atlas Finance",
+            fee: "$12k upfront",
+          },
+          {
+            id: "PP-917",
+            loan: "Loan #4620",
+            penalty: "$240k",
+            window: "Months 18-24",
+            counterparty: "Westbridge Capital",
+            fee: "$15k upfront",
+          },
+          {
+            id: "PP-926",
+            loan: "Loan #4705",
+            penalty: "$95k",
+            window: "Months 12-18",
+            counterparty: "Horizon Partners",
+            fee: "$7.5k upfront",
+          },
+        ],  
     };
   } catch (err) {
     return {
@@ -71,6 +155,87 @@ export async function getRiskSummary() {
       },
       flags: [],
       penalties: [],
+           occupancyDerivatives: [
+        {
+          id: "OCC-001",
+          property: "Midtown Office Tower",
+          trigger: "Occupancy < 85%",
+          coverage: "$2.5M",
+          premium: "$35k / quarter",
+          venue: "Internal",
+          side: "Buy",
+        },
+        {
+          id: "OCC-002",
+          property: "Riverside Multifamily",
+          trigger: "Occupancy < 90%",
+          coverage: "$1.8M",
+          premium: "$24k / quarter",
+          venue: "DEX",
+          side: "Sell",
+        },
+        {
+          id: "OCC-003",
+          property: "Sunset Retail Plaza",
+          trigger: "Occupancy < 80%",
+          coverage: "$1.2M",
+          premium: "$16k / quarter",
+          venue: "DEX",
+          side: "Buy",
+        },
+      ],
+      maintenanceSwaps: [
+        {
+          id: "RM-114",
+          asset: "Harbor Industrial Park",
+          forecast: "$420k (next 12m)",
+          cap: "$350k",
+          counterparty: "Evergreen Facilities",
+          status: "Matched",
+        },
+        {
+          id: "RM-208",
+          asset: "Oakwood Senior Living",
+          forecast: "$310k (next 12m)",
+          cap: "$275k",
+          counterparty: "In Negotiation",
+          status: "Sourcing",
+        },
+        {
+          id: "RM-305",
+          asset: "Metro Logistics Hub",
+          forecast: "$510k (next 12m)",
+          cap: "$400k",
+          counterparty: "FacilityShield",
+          status: "Pending Docs",
+        },
+      ],
+      prepaymentSwaps: [
+        {
+          id: "PP-901",
+          loan: "Loan #4512",
+          penalty: "$180k",
+          window: "Months 24-30",
+          counterparty: "Atlas Finance",
+          fee: "$12k upfront",
+        },
+        {
+          id: "PP-917",
+          loan: "Loan #4620",
+          penalty: "$240k",
+          window: "Months 18-24",
+          counterparty: "Westbridge Capital",
+          fee: "$15k upfront",
+        },
+        {
+          id: "PP-926",
+          loan: "Loan #4705",
+          penalty: "$95k",
+          window: "Months 12-18",
+          counterparty: "Horizon Partners",
+          fee: "$7.5k upfront",
+        },
+      ],
     };
   }
 }
