@@ -3,6 +3,9 @@ import DrawRequestForm from './DrawRequestForm';
 import DrawRequestsTable from './DrawRequestsTable';
 import LienWaiverForm from './LienWaiverForm';
 import LienWaiverList from './LienWaiverList';
+import TokenizedDrawNotes from './draws/TokenizedDrawNotes';
+import EscrowCommercialPaperPanel from './draws/EscrowCommercialPaperPanel';
+import SyndicationWorkflow from './draws/SyndicationWorkflow';
 
 export default function DrawsDashboard() {
   const [selected, setSelected] = useState(null);
@@ -10,6 +13,9 @@ export default function DrawsDashboard() {
 
   return (
     <div className="space-y-6">
+      <TokenizedDrawNotes />
+      <EscrowCommercialPaperPanel />
+      <SyndicationWorkflow />
       <DrawRequestForm onSubmitted={id => setSelected(id)} />
       {selected && (
         <>
