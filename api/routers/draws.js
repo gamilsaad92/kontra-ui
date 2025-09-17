@@ -1,5 +1,7 @@
 const express = require('express');
 const multer = require('multer');
+const { randomBytes } = require('crypto');
+const { v4: uuidv4 } = require('uuid');
 const { createClient } = require('@supabase/supabase-js');
 const PDFDocument = require('pdfkit');
 const { sendEmail } = require('../communications');
@@ -12,6 +14,39 @@ const supabase = createClient(
   process.env.SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
+
+const tokenizedNotes = new Map();
+const syndicationCampaigns = new Map();
+const OVER_COLLATERALIZATION_RATIO = 1.25;
+const escrowNoteState = {
+  lockedCollateral: 0,
+  notes: []
+};
+
+function formatNumber(value, fallback = 0) {
+  const num = typeof value === 'string' ? parseFloat(value) : value;
+  return Number.isFinite(num) ? num : fallback;
+}
+
+async function fetchDraw(drawId) {
+  const { data, error } = await supabase
+    .from('draw_requests')
+    .select('id, project, amount, status, approved_at, funded_at')
+    .eq('id', drawId)
+    .maybeSingle();
+  if (error || !data) return null;
+  return data;
+}
+
+async function aggregateEscrowBalance() {
+  const { data, error } = await supabase
+    .from('escrows')
+    .select('escrow_balance');
+  if (error || !data) {
+    return 0;
+  }
+  return data.reduce((sum, row) => sum + formatNumber(row.escrow_balance), 0);
+}
 
 function calculateRiskScore({ amount, description, lastSubmittedAt }) {
   let score = 100;
@@ -388,6 +423,240 @@ router.get('/list-inspections', async (req, res) => {
   const { data, error } = await query;
   if (error) return res.status(500).json({ message: 'Failed to list inspections' });
   res.json({ inspections: data });
+});
+
+router.get('/draw-requests/tokenizations', async (_req, res) => {
+  res.json({ notes: Array.from(tokenizedNotes.values()) });
+});
+
+router.post('/draw-requests/:id/tokenize', async (req, res) => {
+  const drawId = parseInt(req.params.id, 10);
+  if (!Number.isInteger(drawId)) {
+    return res.status(400).json({ message: 'Invalid draw id' });
+  }
+  const draw = await fetchDraw(drawId);
+  if (!draw) return res.status(404).json({ message: 'Draw not found' });
+  if (!['approved', 'funded'].includes(draw.status)) {
+    return res.status(400).json({ message: 'Draw must be approved before tokenization' });
+  }
+
+  let note = tokenizedNotes.get(drawId);
+  if (!note) {
+    note = {
+      id: `NOTE-${drawId}-${Date.now()}`,
+      drawId,
+      project: draw.project,
+      faceValue: formatNumber(draw.amount),
+      contractAddress: `0x${randomBytes(20).toString('hex')}`,
+      status: 'deployed',
+      createdAt: new Date().toISOString(),
+      fractionsMinted: 0,
+      fractionPrice: null,
+      investors: []
+    };
+    tokenizedNotes.set(drawId, note);
+    return res.status(201).json({ note });
+  }
+
+  res.json({ note });
+});
+
+router.post('/draw-requests/:id/tokenizations/mint', async (req, res) => {
+  const drawId = parseInt(req.params.id, 10);
+  const { fractions, pricePerFraction, allocations } = req.body || {};
+  if (!Number.isInteger(drawId)) {
+    return res.status(400).json({ message: 'Invalid draw id' });
+  }
+  const note = tokenizedNotes.get(drawId);
+  if (!note) return res.status(404).json({ message: 'Tokenized note not found' });
+
+  const fractionCount = parseInt(fractions, 10);
+  if (!Number.isFinite(fractionCount) || fractionCount <= 0) {
+    return res.status(400).json({ message: 'Fractions must be a positive number' });
+  }
+  const price = formatNumber(pricePerFraction, note.faceValue / fractionCount);
+
+  const investorAllocations = Array.isArray(allocations)
+    ? allocations.map(entry => ({
+        investor: entry.investor || 'Unnamed Investor',
+        amount: formatNumber(entry.amount)
+      }))
+    : note.investors.length
+    ? note.investors
+    : [{ investor: 'Lead Investor', amount: fractionCount * price }];
+
+  note.fractionsMinted = fractionCount;
+  note.fractionPrice = price;
+  note.investors = investorAllocations;
+  note.status = 'fractionalized';
+  note.lastMintedAt = new Date().toISOString();
+  tokenizedNotes.set(drawId, note);
+
+  res.json({ note });
+});
+
+router.get('/draws/escrow-notes', async (_req, res) => {
+  const balance = await aggregateEscrowBalance();
+  const locked = escrowNoteState.lockedCollateral;
+  const availableCollateral = Math.max(balance - locked, 0);
+  const availableCapacity = availableCollateral / OVER_COLLATERALIZATION_RATIO;
+  res.json({
+    balance,
+    lockedCollateral: locked,
+    ratio: OVER_COLLATERALIZATION_RATIO,
+    availableCapacity,
+    notes: escrowNoteState.notes
+  });
+});
+
+router.post('/draws/escrow-notes', async (req, res) => {
+  const { amount, maturityDate, rate } = req.body || {};
+  const issueAmount = formatNumber(amount);
+  if (!Number.isFinite(issueAmount) || issueAmount <= 0) {
+    return res.status(400).json({ message: 'Amount must be greater than zero' });
+  }
+
+  const balance = await aggregateEscrowBalance();
+  const collateralRequired = issueAmount * OVER_COLLATERALIZATION_RATIO;
+  const availableCollateral = Math.max(balance - escrowNoteState.lockedCollateral, 0);
+  if (collateralRequired > availableCollateral) {
+    return res.status(400).json({
+      message: 'Insufficient escrow balance to maintain over-collateralization',
+      requiredCollateral: collateralRequired,
+      availableCollateral
+    });
+  }
+
+  const note = {
+    id: uuidv4(),
+    amount: issueAmount,
+    rate: formatNumber(rate, 0.08),
+    maturityDate: maturityDate || null,
+    collateral: collateralRequired,
+    issuedAt: new Date().toISOString()
+  };
+  escrowNoteState.lockedCollateral += collateralRequired;
+  escrowNoteState.notes.push(note);
+
+  const remainingCollateral = Math.max(balance - escrowNoteState.lockedCollateral, 0);
+
+  res.status(201).json({
+    note,
+    balance,
+    lockedCollateral: escrowNoteState.lockedCollateral,
+    availableCapacity: remainingCollateral / OVER_COLLATERALIZATION_RATIO
+  });
+});
+
+router.get('/draws/syndications', async (_req, res) => {
+  res.json({ campaigns: Array.from(syndicationCampaigns.values()) });
+});
+
+router.get('/draw-requests/:id/syndication', async (req, res) => {
+  const drawId = parseInt(req.params.id, 10);
+  if (!Number.isInteger(drawId)) {
+    return res.status(400).json({ message: 'Invalid draw id' });
+  }
+  const campaign = syndicationCampaigns.get(drawId);
+  if (!campaign) return res.status(404).json({ message: 'Syndication not found' });
+  res.json({ campaign });
+});
+
+router.post('/draw-requests/:id/syndication', async (req, res) => {
+  const drawId = parseInt(req.params.id, 10);
+  if (!Number.isInteger(drawId)) {
+    return res.status(400).json({ message: 'Invalid draw id' });
+  }
+  const draw = await fetchDraw(drawId);
+  if (!draw) return res.status(404).json({ message: 'Draw not found' });
+
+  const { targetAmount, minVotes, deadline } = req.body || {};
+  const target = formatNumber(targetAmount, formatNumber(draw.amount));
+  if (!Number.isFinite(target) || target <= 0) {
+    return res.status(400).json({ message: 'Target amount must be greater than zero' });
+  }
+
+  const minimumVotes = Math.max(parseInt(minVotes ?? 3, 10), 1);
+  let campaign = syndicationCampaigns.get(drawId);
+  const now = new Date().toISOString();
+  if (!campaign) {
+    campaign = {
+      id: `SYN-${drawId}`,
+      drawId,
+      draw: {
+        id: drawId,
+        project: draw.project,
+        amount: formatNumber(draw.amount)
+      },
+      createdAt: now,
+      targetAmount: target,
+      pledged: 0,
+      minVotes: minimumVotes,
+      deadline: deadline || null,
+      participants: [],
+      votes: [],
+      status: 'collecting',
+      thresholdMet: false
+    };
+  } else {
+    campaign.targetAmount = target;
+    campaign.minVotes = minimumVotes;
+    campaign.deadline = deadline || campaign.deadline;
+  }
+  syndicationCampaigns.set(drawId, campaign);
+
+  res.status(campaign.createdAt === now ? 201 : 200).json({ campaign });
+});
+
+router.post('/draw-requests/:id/syndication/pledge', (req, res) => {
+  const drawId = parseInt(req.params.id, 10);
+  if (!Number.isInteger(drawId)) {
+    return res.status(400).json({ message: 'Invalid draw id' });
+  }
+  const campaign = syndicationCampaigns.get(drawId);
+  if (!campaign) return res.status(404).json({ message: 'Syndication not found' });
+
+  const { investor, amount, vote } = req.body || {};
+  if (!investor) {
+    return res.status(400).json({ message: 'Investor name is required' });
+  }
+  const pledgeAmount = formatNumber(amount);
+  if (!Number.isFinite(pledgeAmount) || pledgeAmount <= 0) {
+    return res.status(400).json({ message: 'Pledge amount must be greater than zero' });
+  }
+
+  const support = vote === undefined ? true : Boolean(vote);
+  const entry = {
+    id: uuidv4(),
+    investor,
+    amount: pledgeAmount,
+    vote: support,
+    pledgedAt: new Date().toISOString()
+  };
+  campaign.participants.push(entry);
+  campaign.pledged = (campaign.pledged || 0) + pledgeAmount;
+  campaign.votes.push({ investor, support });
+
+  const positiveVotes = campaign.votes.filter(v => v.support).length;
+  const pledgedTotal = campaign.participants.reduce((sum, p) => sum + formatNumber(p.amount), 0);
+  const thresholdMet = pledgedTotal >= campaign.targetAmount || positiveVotes >= campaign.minVotes;
+  campaign.thresholdMet = thresholdMet;
+  if (thresholdMet) {
+    const allocationBase = Math.min(pledgedTotal, campaign.targetAmount);
+    campaign.allocations = campaign.participants.map(p => ({
+      investor: p.investor,
+      allocation: Number(((formatNumber(p.amount) / pledgedTotal) * allocationBase).toFixed(2))
+    }));
+    campaign.status = 'allocated';
+    campaign.allocatedAt = new Date().toISOString();
+  } else {
+    campaign.status = 'collecting';
+    campaign.allocations = null;
+  }
+
+  syndicationCampaigns.set(drawId, campaign);
+
+  res.status(201).json({ campaign, pledge: entry });
 });
 
 router.post('/hazard-loss', async (req, res) => {
