@@ -207,33 +207,74 @@ router.delete('/loans/:loanId', async (req, res) => {
 router.post('/loans/:loanId/generate-schedule', async (req, res) => {
   if (!ensureOrganization(req, res)) return;
   const { loanId } = req.params;
-  const loan = await getLoanForOrg(loanId, req.organizationId, 'amount, interest_rate, term_months, start_date', res);
+   const loan = await getLoanForOrg(
+    loanId,
+    req.organizationId,
+    'amount, interest_rate, term_months, start_date',
+    res
+  );
   if (!loan) return;
+  
+  const { data: existingSchedule, error: existingErr } = await supabase
+    .from('amortization_schedules')
+    .select('*')
+    .eq('loan_id', loanId)
+    .order('due_date', { ascending: true });
+
+  if (existingErr) {
+    return res.status(500).json({ message: 'Failed to generate schedule' });
+  }
+
+  if (Array.isArray(existingSchedule) && existingSchedule.length > 0) {
+    return res.json({ schedule: existingSchedule });
+  }
+
   const P = parseFloat(loan.amount);
   const r = parseFloat(loan.interest_rate) / 100 / 12;
   const n = parseInt(loan.term_months, 10);
-  const A = (P * r) / (1 - Math.pow(1 + r, -n));
+ 
+  if (!Number.isFinite(P) || !Number.isFinite(r) || !Number.isFinite(n) || n <= 0) {
+    return res.status(400).json({ message: 'Invalid loan terms' });
+  }
+
+  const payment =
+    r === 0 ? P / n : (P * r) / (1 - Math.pow(1 + r, -n));
+
+  if (!Number.isFinite(payment)) {
+    return res.status(400).json({ message: 'Invalid loan terms' });
+  }
+
   const inserts = [];
   let balance = P;
   let date = new Date(loan.start_date);
+  
   for (let i = 1; i <= n; i++) {
-    const interestDue = balance * r;
-    const principalDue = A - interestDue;
+    const interestDue = r === 0 ? 0 : balance * r;
+    let principalDue = payment - interestDue;
     balance -= principalDue;
+        if (i === n) {
+      principalDue += balance;
+      balance = 0;
+    }
     inserts.push({
       loan_id: parseInt(loanId, 10),
       due_date: date.toISOString().slice(0, 10),
-      principal_due: principalDue,
-      interest_due: interestDue,
-      balance_after: balance
+      principal_due: parseFloat(principalDue.toFixed(2)),
+      interest_due: parseFloat(interestDue.toFixed(2)),
+      balance_after: parseFloat(Math.max(balance, 0).toFixed(2)),
     });
     date.setMonth(date.getMonth() + 1);
   }
+  
   const { data: scheduleData, error: insertErr } = await supabase
     .from('amortization_schedules')
     .insert(inserts)
     .select();
-  if (insertErr) return res.status(500).json({ message: 'Failed to generate schedule' });
+
+  if (insertErr) {
+    return res.status(500).json({ message: 'Failed to generate schedule' });
+  }
+
   res.json({ schedule: scheduleData });
 });
 
