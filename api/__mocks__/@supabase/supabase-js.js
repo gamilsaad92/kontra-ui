@@ -50,20 +50,44 @@ const createBuilder = (table, config) => {
         (Array.isArray(config.records) ? config.records[0] ?? null : null),
       error: config.error ?? null,
     });
-  builder.insert = rows => ({
-    select: () => ({
+  builder.insert = rows => {
+    const inputRows = Array.isArray(rows) ? rows : [rows];
+    const resolved =
+      typeof config.insert === 'function' ? config.insert(rows) : config.insert;
+
+    if (config.insert === undefined) {
+      if (!Array.isArray(config.records)) {
+        config.records = [];
+      }
+      config.records.push(...inputRows);
+    }
+
+    const dataArray =
+      resolved === undefined
+        ? inputRows
+        : Array.isArray(resolved)
+        ? resolved
+        : [resolved];
+
+    const payload = {
+      data: dataArray,
+      error: config.error ?? null,
+    };
+
+    return {
+      select: () => Promise.resolve(payload),
       single: () =>
         Promise.resolve({
-          data: config.insert ?? (Array.isArray(rows) ? rows[0] : rows),
+          data: dataArray[0] ?? null,
           error: config.error ?? null,
         }),
       maybeSingle: () =>
         Promise.resolve({
-          data: config.insert ?? (Array.isArray(rows) ? rows[0] : rows),
+            data: dataArray[0] ?? null,
           error: config.error ?? null,
         }),
-    }),
-  });
+    };
+  };
   builder.update = () => ({
     in: () => ({
       eq: () => ({
