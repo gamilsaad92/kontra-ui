@@ -6,21 +6,40 @@ import { API_BASE } from '../lib/apiBase';
 export default function AmortizationTable({ loanId }) {
   const [schedule, setSchedule] = useState([]);
   const [loading, setLoading] = useState(true);
-
+  const normalizeSchedule = data =>
+    Array.isArray(data)
+      ? data.map(row => ({
+          ...row,
+          principal_due: Number(row.principal_due),
+          interest_due: Number(row.interest_due),
+          balance_after: Number(row.balance_after),
+        }))
+      : [];
+  
   useEffect(() => {
     (async () => {
       setLoading(true);
       try {
-        // Generate schedule (if not yet generated) - optional to call generate-schedule endpoint
-       await fetch(`${API_BASE}/api/loans/${loanId}/generate-schedule`, {
-          method: 'POST'
+         const scheduleRes = await fetch(`${API_BASE}/api/loans/${loanId}/schedule`);
+        if (!scheduleRes.ok) throw new Error('Failed to load schedule');
+        const { schedule: existingSchedule } = await scheduleRes.json();
+        if (Array.isArray(existingSchedule) && existingSchedule.length > 0) {
+          setSchedule(normalizeSchedule(existingSchedule));
+          return;
+        }
+
+        const generateRes = await fetch(`${API_BASE}/api/loans/${loanId}/generate-schedule`, {
+          method: 'POST',
         });
-        // Fetch the schedule
-        const res = await fetch(`${API_BASE}/api/loans/${loanId}/schedule`);
-        const { schedule } = await res.json();
-        setSchedule(schedule || []);
+ 
+        if (!generateRes.ok && generateRes.status !== 409) {
+          throw new Error('Failed to generate schedule');
+        }
+
+        const { schedule: generatedSchedule } = await generateRes.json();
+        setSchedule(normalizeSchedule(generatedSchedule));
       } catch {
-        // ignore
+         setSchedule([]);
       } finally {
         setLoading(false);
       }
