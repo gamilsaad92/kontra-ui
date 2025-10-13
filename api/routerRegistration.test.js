@@ -41,6 +41,7 @@ const siteAnalysisRouter = require('./routers/siteAnalysis');
 const savedSearchesRouter = require('./routers/savedSearches');
 const complianceRouter = require('./routers/compliance');
 const otpRouter = require('./routers/otp');
+const mobileRouter = require('./routers/mobile');
 
 function isRegistered(router) {
   return app._router.stack.some(layer => layer.handle === router);
@@ -81,6 +82,7 @@ describe('API server router registration', () => {
     ['saved searches', savedSearchesRouter],
     ['compliance', complianceRouter],
     ['otp', otpRouter],
+    ['mobile', mobileRouter],
   ];
 
   test.each(routers)('registers %s router', (_name, router) => {
