@@ -4,7 +4,7 @@ This repository contains the **frontend** and **backend** for the Kontra demo ap
 
 - `ui/` – React + Vite web interface
 - `api/` – Express API with Supabase integration
-
+- ios/` – SwiftUI mobile app that consumes the same API
 ## Getting Started
 
 1. Install dependencies for each package:
