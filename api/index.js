@@ -92,6 +92,7 @@ const savedSearchesRouter = require('./routers/savedSearches');
 // Compliance automation is still experimental
 const complianceRouter = require('./routers/compliance');
 const otpRouter = require('./routers/otp');
+const mobileRouter = require('./routers/mobile');
 
 // Define the functions that the assistant can “call.”
 const functions = [
@@ -452,6 +453,7 @@ app.use('/api', subscriptionsRouter);
 app.use('/api/searches', savedSearchesRouter);
 app.use('/api/site-analysis', siteAnalysisRouter);
 app.use('/api', analyticsRouter);
+app.use('/api', mobileRouter);
 app.use('/api', restaurantRouter);
 app.use('/api', restaurantsRouter);
 
