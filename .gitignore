@@ -15,3 +15,4 @@ dist/
 .env.local
 !api/.env.example
 !ui/.env.example
+ios/KontraMobile/Resources/Config.plist
