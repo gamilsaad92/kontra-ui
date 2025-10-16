@@ -89,6 +89,7 @@ const rateLimit = require('./middlewares/rateLimit');
 const subscriptionsRouter = require('./routers/subscriptions');
 const siteAnalysisRouter = require('./routers/siteAnalysis');
 const savedSearchesRouter = require('./routers/savedSearches');
+const creditGraphRouter = require('./routers/creditGraph');
 // Compliance automation is still experimental
 const complianceRouter = require('./routers/compliance');
 const otpRouter = require('./routers/otp');
@@ -436,6 +437,7 @@ if (isFeatureEnabled('sso')) {
   app.use('/api/sso', ssoRouter);
 }
 app.use('/api/risk', riskRouter);
+app.use('/api/credit-graph', creditGraphRouter);
 app.use('/api/reports', reportsRouter);
 app.use('/api', menuRouter);
 app.use('/api', ordersRouter);
