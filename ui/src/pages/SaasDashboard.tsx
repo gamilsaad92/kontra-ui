@@ -26,6 +26,7 @@ import LoanApplicationForm from "../components/LoanApplicationForm";
 import LoanApplicationList from "../components/LoanApplicationList";
 import ServicingDashboard from "../components/ServicingDashboard";
 import WebhooksManager from "../components/WebhooksManager";
+import CreditFabricPanel from "../components/CreditFabricPanel";
 
 export default function SaasDashboard() {
   const [portfolio, setPortfolio] =
@@ -36,11 +37,12 @@ export default function SaasDashboard() {
   const [error, setError] = useState<string | null>(null);
   const [active, setActive] = useState("Dashboard");
   const [appKey, setAppKey] = useState(0);
+  const apiBase = (import.meta.env?.VITE_API_BASE as string | undefined) ?? "/api";
   useEffect(() => {
     let isMounted = true;
     async function fetchData() {
       try {
-       const [p, d] = await Promise.allSettled([
+      const [p, d] = await Promise.allSettled([
           getPortfolioSnapshot(),
           listDrawRequests(),
         ]);
@@ -181,7 +183,10 @@ export default function SaasDashboard() {
           </div>
         ) : (
           <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-                 {/* Row 1 */}
+             <div className="md:col-span-2 lg:col-span-3">
+              <CreditFabricPanel apiBase={apiBase} />
+            </div>
+            {/* Row 1 */}
             <Card title="Loans & Draws">
               <p className="mt-2 text-3xl font-bold tracking-tight">
                 {drawError ? "—" : drawCount}
