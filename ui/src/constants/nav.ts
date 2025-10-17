@@ -1,7 +1,7 @@
 export const nav = [
+  "Dashboard",
   "Assets",
   "Inspections",
-  "Dashboard",
   "Loans",
   "Draws",
   "Projects",
