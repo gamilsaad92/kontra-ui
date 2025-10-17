@@ -141,6 +141,14 @@ export default function SaasDashboard() {
           <div className="mb-4 rounded bg-red-50 p-4 text-sm text-red-500">
             {error}
           </div>
+              )}
+        {active === "Dashboard" && (
+          <header className="mb-6 space-y-1">
+            <h1 className="text-xl font-semibold tracking-tight text-slate-900">Dashboard overview</h1>
+            <p className="text-sm text-slate-500">
+              Autonomous credit intelligence, live borrower telemetry, and lending health for the active Kontra SaaS tenant.
+            </p>
+          </header>
         )}
           {active === "Assets" ? (
           <AssetsDashboard />
