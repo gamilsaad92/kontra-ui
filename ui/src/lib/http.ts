@@ -40,8 +40,13 @@ export async function getSessionToken(): Promise<string | null> {
 async function apiFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
+       "X-Org-Id": "1",
     ...(init.headers as Record<string, string> | undefined)
   };
+
+    if (!headers["X-Org-Id"]) {
+    headers["X-Org-Id"] = "1";
+  }
 
   const token = await getSessionToken();
   if (token) headers["Authorization"] = `Bearer ${token}`;
@@ -111,6 +116,10 @@ export function installAuthFetchInterceptor(): void {
     }
 
     const headers = normalizeHeaders(init.headers);
+
+     if (!headers.has("X-Org-Id")) {
+      headers.set("X-Org-Id", "1");
+    }
 
     if (!headers.has("Authorization")) {
       const token = await getSessionToken();
