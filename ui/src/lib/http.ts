@@ -2,6 +2,12 @@ import { supabase } from "./supabaseClient.js";
 
 const BASE_URL = import.meta.env.VITE_API_URL ?? "/api";
 
+let retrievingSessionToken = false;
+
+function isRetrievingSessionToken(): boolean {
+  return retrievingSessionToken;
+}
+
 export interface ApiError {
   status: number;
   message: string;
@@ -18,14 +24,17 @@ export async function getSessionToken(): Promise<string | null> {
 
   if (!token && supabase?.auth) {
     try {
+      retrievingSessionToken = true;
       const { data } = await supabase.auth.getSession();
       token = data?.session?.access_token ?? null;
     } catch {
       token = null;
+     } finally {
+      retrievingSessionToken = false;
     }
   }
 
-    return token;
+  return token;
 }
 
 async function apiFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
@@ -82,3 +91,35 @@ export function request<T>(
 }
 
 export { apiFetch };
+
+let authFetchInstalled = false;
+
+function normalizeHeaders(headers?: HeadersInit): Headers {
+  if (headers instanceof Headers) return new Headers(headers);
+  return new Headers(headers ?? {});
+}
+
+export function installAuthFetchInterceptor(): void {
+  if (authFetchInstalled) return;
+  if (typeof window === "undefined" || typeof window.fetch !== "function") return;
+
+  const originalFetch = window.fetch.bind(window);
+
+  window.fetch = async (input: RequestInfo | URL, init: RequestInit = {}): Promise<Response> => {
+    if (isRetrievingSessionToken()) {
+      return originalFetch(input as any, init);
+    }
+
+    const headers = normalizeHeaders(init.headers);
+
+    if (!headers.has("Authorization")) {
+      const token = await getSessionToken();
+      if (token) headers.set("Authorization", `Bearer ${token}`);
+    }
+
+    const finalInit: RequestInit = { ...init, headers };
+    return originalFetch(input as any, finalInit);
+  };
+
+  authFetchInstalled = true;
+}
