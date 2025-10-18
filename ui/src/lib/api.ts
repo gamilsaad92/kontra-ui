@@ -10,8 +10,13 @@ export const api = axios.create({
 
 api.interceptors.request.use(async (config) => {
   const token = await getSessionToken();
-  if (token) {
     config.headers = config.headers ?? {};
+
+  if (!(config.headers as any)["X-Org-Id"]) {
+    (config.headers as any)["X-Org-Id"] = "1";
+  }
+
+  if (token) {
     (config.headers as any)["Authorization"] = `Bearer ${token}`;
   }
   return config;
