@@ -1,5 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { API_BASE } from '../../lib/apiBase';
+import {
+  fetchTroubledAssets,
+  reviveAsset,
+} from '../../services/assets';
 import AssetDetailDrawer from './AssetDetailDrawer';
 import AssetFileUpload from './AssetFileUpload';
 import VirtualAssistant from '../../components/VirtualAssistant';
@@ -15,11 +18,13 @@ export default function AssetRiskTable() {
     (async () => {
       setLoading(true);
       try {
-        const res = await fetch(`${API_BASE}/api/assets/troubled`);
-        const { assets } = await res.json();
-        setAssets(assets || []);
-      } catch {
+         const data = await fetchTroubledAssets();
+        setAssets(data);
+        setError('');
+      } catch (err) {
+        console.error('Failed to load troubled assets', err);
         setAssets([]);
+        setError('Failed to load troubled assets');
       } finally {
         setLoading(false);
       }
@@ -30,18 +35,12 @@ export default function AssetRiskTable() {
     setRevivingId(id);
     setError('');
     try {
-      const res = await fetch(`${API_BASE}/api/assets/${id}/revive`, {
-        method: 'POST'
-      });
-      if (res.ok) {
-        const { asset } = await res.json();
-        setAssets(assets =>
-          assets.map(a => (a.id === id ? { ...a, status: asset.status } : a))
-        );
-      } else {
-        setError('Failed to revive asset');
-      }
-    } catch {
+     const asset = await reviveAsset(id);
+      setAssets((prev) =>
+        prev.map((a) => (a.id === id ? { ...a, status: asset.status ?? 'revived' } : a))
+      );
+    } catch (err) {
+      console.error('Failed to revive asset', err);
       setError('Failed to revive asset');
     } finally {
       setRevivingId(null);
@@ -49,6 +48,7 @@ export default function AssetRiskTable() {
   }
 
   if (loading) return <p>Loading assets…</p>;
+  if (error && assets.length === 0) return <p className="text-red-600">{error}</p>;
   if (assets.length === 0) return <p>No troubled assets.</p>;
 
   return (
@@ -65,19 +65,19 @@ export default function AssetRiskTable() {
         </thead>
         <tbody>
           {assets.map(a => (
-             <tr key={a.id} className="hover:bg-gray-50">
+           <tr key={a.id} className="hover:bg-gray-50">
               <td
                 className="p-2 cursor-pointer"
                 onClick={() => setSelected(a)}
               >
                 {a.name || a.address}
               </td>
-                         <td className="p-2">{a.predicted_risk}</td>
+              <td className="p-2">{a.predicted_risk}</td>
               <td className="p-2">{a.status}</td>
               <td className="p-2">
               <AssetFileUpload assetId={a.id} kind="inspection" />
               </td>
-                         <td className="p-2">
+              <td className="p-2">
                 {a.status === 'revived' ? (
                   'Revived'
                 ) : (
@@ -95,7 +95,9 @@ export default function AssetRiskTable() {
         </tbody>
       </table>
       <AssetDetailDrawer asset={selected} onClose={() => setSelected(null)} />
-          {error && <p className="text-red-600 p-2">{error}</p>}
+      {error && assets.length > 0 && (
+        <p className="text-red-600 p-2">{error}</p>
+      )}
       <div className="p-4 border-t mt-4">
         <VirtualAssistant placeholder="Ask about assets…" />
       </div>
