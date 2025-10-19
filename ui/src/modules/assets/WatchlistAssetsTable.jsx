@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { API_BASE } from '../../lib/apiBase';
+import { fetchWatchlistAssets } from '../../services/assets';
 import AssetDetailDrawer from './AssetDetailDrawer';
 
 export default function WatchlistAssetsTable() {
@@ -10,10 +10,10 @@ export default function WatchlistAssetsTable() {
   useEffect(() => {
     (async () => {
       try {
-        const res = await fetch(`${API_BASE}/api/assets/watchlist`);
-        const { assets } = await res.json();
-        setAssets(assets || []);
-      } catch {
+        const data = await fetchWatchlistAssets();
+        setAssets(data);
+      } catch (err) {
+        console.error('Failed to load watchlist assets', err);
         setAssets([]);
       } finally {
         setLoading(false);
