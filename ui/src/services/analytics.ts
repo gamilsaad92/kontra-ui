@@ -1,6 +1,9 @@
 import axios from "axios";
 import { api, withOrg } from "../lib/api";
 
+const FALLBACK_PORTFOLIO = { delinqPct: 1.24, points: [3, 5, 4, 6, 7, 8] };
+const RECOVERABLE_STATUSES = new Set([401, 403, 404, 429]);
+
 export async function getPortfolioSnapshot() {
   try {
     const { data } = await api.post(
@@ -9,27 +12,23 @@ export async function getPortfolioSnapshot() {
       withOrg(1)
     );
     return {
-      delinqPct: data?.delinquency_pct ?? 1.24,
-      points: data?.spark ?? [3, 5, 4, 6, 7, 8],
+       delinqPct: data?.delinquency_pct ?? FALLBACK_PORTFOLIO.delinqPct,
+      points: data?.spark ?? FALLBACK_PORTFOLIO.points,
     };
   } catch (err) {
       if (axios.isAxiosError(err)) {
-      if (err.response?.status === 404) {
-        return { delinqPct: 1.24, points: [3, 5, 4, 6, 7, 8] };
+      const status = err.response?.status;
+      if (status === 401 && typeof window !== "undefined") {
+        window.location.href = "/login";
       }
-      if (err.response?.status === 401) {
-        if (typeof window !== "undefined") {
-          window.location.href = "/login";
-        }
-        return {
-          delinqPct: 1.24,
-          points: [3, 5, 4, 6, 7, 8],
-          message: "Authentication required",
+       if (status && RECOVERABLE_STATUSES.has(status)) {
+        return FALLBACK_PORTFOLIO;
         };
       }
     }
-    throw err;
- }
+     console.warn("Failed to load portfolio snapshot", err);
+    return FALLBACK_PORTFOLIO;
+  }
 }
 
 export async function getRiskSummary() {
