@@ -1,7 +1,10 @@
 import axios from "axios";
 import { api, withOrg } from "../lib/api";
 
-type SparkPoint = number;
+type PortfolioSnapshot = {
+  delinqPct: number;
+  points: number[];
+};
 
 type RiskBucket = {
   label: string;
@@ -11,6 +14,18 @@ type RiskBucket = {
 type StressScenario = {
   scenario: string;
   buckets: RiskBucket[];
+};
+
+type RiskFlag = {
+  type: string;
+  id: string;
+  due: string;
+};
+
+type RiskPenalty = {
+  id: string;
+  defaultInterest: number;
+  penalty: number;
 };
 
 type OccupancyDerivative = {
@@ -39,23 +54,6 @@ type PrepaymentSwap = {
   window: string;
   counterparty: string;
   fee: string;
-};
-
-type RiskPenalty = {
-  id: string;
-  defaultInterest: number;
-  penalty: number;
-};
-
-type RiskFlag = {
-  type: string;
-  id: string;
-  due: string;
-};
-
-type PortfolioSnapshot = {
-  delinqPct: number;
-  points: SparkPoint[];
 };
 
 type RiskSummary = {
@@ -174,11 +172,12 @@ const FALLBACK_RISK_SUMMARY: RiskSummary = {
 
 const RECOVERABLE_STATUSES = new Set([401, 403, 404, 429]);
 
-function shouldRedirectToLogin(status?: number): boolean {
-  return status === 401 && typeof window !== "undefined";
-}
+function shouldFallback(error: unknown): boolean {
+  if (!axios.isAxiosError(error)) {
+    return false;
+  }
 
-function isRecoverableStatus(status?: number): status is number {
+  const status = error.response?.status;
   return typeof status === "number" && RECOVERABLE_STATUSES.has(status);
 }
 
@@ -195,20 +194,10 @@ export async function getPortfolioSnapshot(): Promise<PortfolioSnapshot> {
       points: data?.spark ?? FALLBACK_PORTFOLIO.points,
     };
   } catch (error) {
-    if (axios.isAxiosError(error)) {
-      const status = error.response?.status;
-
-      if (shouldRedirectToLogin(status)) {
-        window.location.href = "/login";
-      }
-
-      if (isRecoverableStatus(status)) {
-        return FALLBACK_PORTFOLIO;
-      }
+    if (shouldFallback(error)) {
+      return FALLBACK_PORTFOLIO;
     }
-
-    console.warn("Failed to load portfolio snapshot", error);
-    return FALLBACK_PORTFOLIO;
+    throw error;
   }
 }
 
@@ -228,16 +217,11 @@ export async function getRiskSummary(): Promise<RiskSummary> {
       prepaymentSwaps:
         data?.prepaymentSwaps ?? FALLBACK_RISK_SUMMARY.prepaymentSwaps,
     };
-      } catch (error) {
-    if (axios.isAxiosError(error)) {
-      const status = error.response?.status;
-      if (isRecoverableStatus(status)) {
-        return FALLBACK_RISK_SUMMARY;
-      }
+  } catch (error) {
+    if (shouldFallback(error)) {
+      return FALLBACK_RISK_SUMMARY;
     }
-
-    console.warn("Failed to load risk summary", error);
-    return FALLBACK_RISK_SUMMARY;
+    throw error;
   }
 }
 
