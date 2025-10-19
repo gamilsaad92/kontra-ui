@@ -1,7 +1,8 @@
 // src/components/DrawRequestsTable.jsx
 
 import React, { useEffect, useState } from 'react';
-import { API_BASE } from '../lib/apiBase';
+import { api, withOrg } from '../lib/api';
+import { listDrawRequests } from '../services/servicing';
 import DrawRequestDetail from './DrawRequestDetail';
 
 export default function DrawRequestsTable({ onSelect, canReview = false }) {
@@ -12,40 +13,57 @@ export default function DrawRequestsTable({ onSelect, canReview = false }) {
   const [detailId, setDetailId] = useState(null);
   
   useEffect(() => {
+    let isMounted = true;
     (async () => {
       setLoading(true);
       try {
-        const params = new URLSearchParams();
-        Object.entries(filters).forEach(([k, v]) => {
-          if (v) params.append(k, v);
+          const data = await listDrawRequests({
+          status: filters.status || undefined,
+          project: filters.project || undefined,
+          limit: 25,
         });
-        const res = await fetch(`${API_BASE}/api/get-draws?${params.toString()}`);
-        const { draws } = await res.json();
-        setDraws(draws || []);
-      } catch {
+         if (!isMounted) return;
+        setDraws(data);
+        setError('');
+      } catch (err) {
+        console.error('Failed to load draw requests', err);
+        if (!isMounted) return;
+        setDraws([]);
         setError('Failed to load draw requests');
       } finally {
-        setLoading(false);
+    if (isMounted) setLoading(false);
       }
     })();
-   }, [filters]);
+    return () => {
+      isMounted = false;
+    };
+  }, [filters]);
 
   const exportCsv = async () => {
-    const params = new URLSearchParams();
-    if (filters.status) params.append('status', filters.status);
-    const res = await fetch(`${API_BASE}/api/draw-requests/export?${params.toString()}`);
-    const csv = await res.text();
-    const blob = new Blob([csv], { type: 'text/csv' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'draw_requests.csv';
-    a.click();
-    URL.revokeObjectURL(url);
+       try {
+      const params = {};
+      if (filters.status) params.status = filters.status;
+      if (filters.project) params.project = filters.project;
+      const { data } = await api.get('/draw-requests/export', {
+        ...withOrg(1),
+        params,
+        responseType: 'blob',
+      });
+      const blob = new Blob([data], { type: 'text/csv' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'draw_requests.csv';
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('Failed to export draw requests', err);
+      setError('Failed to export draw requests');
+    }
   };
   
   if (loading) return <p>Loading draw requests…</p>;
-  if (error) return <p className="text-red-600">{error}</p>;
+ if (error && draws.length === 0) return <p className="text-red-600">{error}</p>;
   if (draws.length === 0) return <p>No draw requests yet.</p>;
 
   return (
@@ -90,10 +108,10 @@ export default function DrawRequestsTable({ onSelect, canReview = false }) {
             <tr
               key={draw.id}
               className="hover:bg-gray-50 cursor-pointer"
-                           onClick={() => {
+               onClick={() => {
                 setDetailId(draw.id);
                 onSelect && onSelect(draw.id);
-              }}     
+                }}
             >
               <td className="p-2">{draw.id}</td>
               <td className="p-2">{draw.project}</td>
@@ -105,7 +123,7 @@ export default function DrawRequestsTable({ onSelect, canReview = false }) {
         </tbody>
         </table>
       {detailId && (
-           <DrawRequestDetail
+      <DrawRequestDetail
           drawId={detailId}
           canReview={canReview}
           onClose={() => setDetailId(null)}
