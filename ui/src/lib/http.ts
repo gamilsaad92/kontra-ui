@@ -1,6 +1,7 @@
 import { supabase } from "./supabaseClient.js";
 
-const BASE_URL = import.meta.env.VITE_API_URL ?? "/api";
+const base = import.meta.env.VITE_API_URL ?? "";
+const BASE_URL = base.endsWith("/api") ? base : `${base}/api`;
 
 let retrievingSessionToken = false;
 
@@ -51,7 +52,8 @@ async function apiFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
   const token = await getSessionToken();
   if (token) headers["Authorization"] = `Bearer ${token}`;
 
-  const res = await fetch(`${BASE_URL}${path}`, { ...init, headers });
+ const normalizedPath = path.startsWith("/") ? path : `/${path}`;
+ const res = await fetch(`${BASE_URL}${normalizedPath}`, { ...init, headers });
 
   const text = await res.text();
   let data: any = undefined;
