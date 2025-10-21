@@ -26,6 +26,53 @@ require('dotenv').config();
   }
 });
 
+const normalizeOrigin = (origin = '') => origin.replace(/\/$/, '');
+const parseOrigins = (value = '') =>
+  value
+    .split(',')
+    .map((part) => normalizeOrigin(part.trim()))
+    .filter(Boolean);
+
+const resolvedOrigins = [
+  ...parseOrigins(process.env.CORS_ORIGINS || ''),
+];
+
+if (process.env.FRONTEND_URL) {
+  resolvedOrigins.push(normalizeOrigin(process.env.FRONTEND_URL));
+}
+
+const fallbackOrigins = ['http://localhost:3000', 'http://127.0.0.1:3000'];
+const allowedOrigins = Array.from(
+  new Set(resolvedOrigins.length ? resolvedOrigins : fallbackOrigins)
+);
+
+const corsOptions = {
+  origin(origin, callback) {
+    if (!origin) {
+      return callback(null, true);
+    }
+
+    const normalizedOrigin = normalizeOrigin(origin);
+
+    if (allowedOrigins.includes(normalizedOrigin)) {
+      return callback(null, true);
+    }
+
+    return callback(new Error(`Origin ${origin} not allowed by CORS`));
+  },
+  credentials: true,
+  allowedHeaders: [
+    'Authorization',
+    'Content-Type',
+    'X-Org-Id',
+    'X-Requested-With',
+    'Accept',
+    'Origin',
+  ],
+  methods: ['GET', 'HEAD', 'PUT', 'PATCH', 'POST', 'DELETE', 'OPTIONS'],
+  optionsSuccessStatus: 204,
+};
+
 const app = express();
 
 Sentry.init({
@@ -415,7 +462,8 @@ async function get_hospitality_stats() {
 }
 
 // ── Middleware ─────────────────────────────────────────────────────────────
-app.use(cors());
+app.options('*', cors(corsOptions));
+app.use(cors(corsOptions));
 app.use(express.json());
 app.use(auditLogger);
 app.use(rateLimit);
