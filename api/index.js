@@ -51,6 +51,8 @@ if (process.env.FRONTEND_URL) {
   resolvedOrigins.push(normalizeOrigin(process.env.FRONTEND_URL));
 }
 
+const previewWildcardOrigin = normalizeOrigin('https://kontra-*.vercel.app');
+
 const fallbackOrigins = [
   'http://localhost:3000',
   'http://127.0.0.1:3000',
@@ -59,8 +61,17 @@ const fallbackOrigins = [
   'https://kontra-*.vercel.app',
 ].map(normalizeOrigin);
 
+const includePreviewWildcard = (origins) =>
+  origins.includes(previewWildcardOrigin)
+    ? origins
+    : [...origins, previewWildcardOrigin];
+
 const allowedOrigins = Array.from(
-  new Set(resolvedOrigins.length ? resolvedOrigins : fallbackOrigins)
+  new Set(
+    (resolvedOrigins.length
+      ? includePreviewWildcard([...resolvedOrigins])
+      : [...fallbackOrigins])
+  )
 );
 
 const originMatchers = allowedOrigins.map((origin) => ({
@@ -76,11 +87,12 @@ const corsOptions = {
 
     const normalizedOrigin = normalizeOrigin(origin);
 
-     if (originMatchers.some(({ test }) => test(normalizedOrigin))) {
+    if (originMatchers.some(({ test }) => test(normalizedOrigin))) {
       return callback(null, true);
     }
 
-    return callback(new Error(`Origin ${origin} not allowed by CORS`));
+    console.warn(`[CORS] Origin "${normalizedOrigin}" rejected`);
+    return callback(null, false);
   },
   credentials: true,
   allowedHeaders: [
