@@ -33,6 +33,16 @@ const parseOrigins = (value = '') =>
     .map((part) => normalizeOrigin(part.trim()))
     .filter(Boolean);
 
+const escapeForRegex = (value = '') => value.replace(/[-/\\^$+?.()|[\]{}]/g, '\\$&');
+const createOriginTester = (origin) => {
+  if (origin.includes('*')) {
+    const pattern = escapeForRegex(origin).replace(/\\\*/g, '[^/]+');
+    const regex = new RegExp(`^${pattern}$`);
+    return (candidate) => regex.test(candidate);
+  }
+  return (candidate) => candidate === origin;
+};
+
 const resolvedOrigins = [
   ...parseOrigins(process.env.CORS_ORIGINS || ''),
 ];
@@ -41,10 +51,22 @@ if (process.env.FRONTEND_URL) {
   resolvedOrigins.push(normalizeOrigin(process.env.FRONTEND_URL));
 }
 
-const fallbackOrigins = ['http://localhost:3000', 'http://127.0.0.1:3000'];
+const fallbackOrigins = [
+  'http://localhost:3000',
+  'http://127.0.0.1:3000',
+  'https://kontra.vercel.app',
+  'https://kontra-ui.vercel.app',
+  'https://kontra-*.vercel.app',
+].map(normalizeOrigin);
+
 const allowedOrigins = Array.from(
   new Set(resolvedOrigins.length ? resolvedOrigins : fallbackOrigins)
 );
+
+const originMatchers = allowedOrigins.map((origin) => ({
+  origin,
+  test: createOriginTester(origin),
+}));
 
 const corsOptions = {
   origin(origin, callback) {
@@ -54,7 +76,7 @@ const corsOptions = {
 
     const normalizedOrigin = normalizeOrigin(origin);
 
-    if (allowedOrigins.includes(normalizedOrigin)) {
+     if (originMatchers.some(({ test }) => test(normalizedOrigin))) {
       return callback(null, true);
     }
 
