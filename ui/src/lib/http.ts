@@ -9,6 +9,25 @@ function isRetrievingSessionToken(): boolean {
   return retrievingSessionToken;
 }
 
+export function shouldAttachOrgHeader(targetUrl?: string): boolean {
+  if (!targetUrl) {
+    return true;
+  }
+
+  if (typeof window === "undefined") {
+    return true;
+  }
+
+  try {
+    const absolute = targetUrl.startsWith("http://") || targetUrl.startsWith("https://")
+      ? new URL(targetUrl)
+      : new URL(targetUrl, window.location.origin);
+    return absolute.origin === window.location.origin;
+  } catch {
+    return true;
+  }
+}
+
 export interface ApiError {
   status: number;
   message: string;
@@ -39,21 +58,22 @@ export async function getSessionToken(): Promise<string | null> {
 }
 
 async function apiFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
+    const normalizedPath = path.startsWith("/") ? path : `/${path}`;
+  const requestUrl = `${BASE_URL}${normalizedPath}`;
+
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
-       "X-Org-Id": "1",
     ...(init.headers as Record<string, string> | undefined)
   };
 
-    if (!headers["X-Org-Id"]) {
+  if (!headers["X-Org-Id"] && shouldAttachOrgHeader(requestUrl)) {
     headers["X-Org-Id"] = "1";
   }
 
   const token = await getSessionToken();
   if (token) headers["Authorization"] = `Bearer ${token}`;
 
- const normalizedPath = path.startsWith("/") ? path : `/${path}`;
- const res = await fetch(`${BASE_URL}${normalizedPath}`, { ...init, headers });
+  const res = await fetch(requestUrl, { ...init, headers });
 
   const text = await res.text();
   let data: any = undefined;
@@ -106,6 +126,22 @@ function normalizeHeaders(headers?: HeadersInit): Headers {
   return new Headers(headers ?? {});
 }
 
+function extractRequestUrl(input: RequestInfo | URL): string | undefined {
+  if (typeof input === "string") {
+    return input;
+  }
+
+  if (input instanceof URL) {
+    return input.toString();
+  }
+
+  if (typeof Request !== "undefined" && input instanceof Request) {
+    return input.url;
+  }
+
+  return undefined;
+}
+
 export function installAuthFetchInterceptor(): void {
   if (authFetchInstalled) return;
   if (typeof window === "undefined" || typeof window.fetch !== "function") return;
@@ -119,7 +155,8 @@ export function installAuthFetchInterceptor(): void {
 
     const headers = normalizeHeaders(init.headers);
 
-     if (!headers.has("X-Org-Id")) {
+    const targetUrl = extractRequestUrl(input);
+    if (!headers.has("X-Org-Id") && shouldAttachOrgHeader(targetUrl)) {
       headers.set("X-Org-Id", "1");
     }
 
