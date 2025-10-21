@@ -1,5 +1,5 @@
 import axios from "axios";
-import { getSessionToken } from "./http";
+import { getSessionToken, shouldAttachOrgHeader } from "./http";
 
 function normalizeApiBase(value?: string): string | undefined {
   if (!value) {
@@ -27,6 +27,32 @@ export function resolveApiBase(): string {
 
 const baseURL = resolveApiBase();
 
+function isAbsoluteUrl(url: string): boolean {
+  return /^([a-z][a-z\d+\-.]*:)?\/\//i.test(url);
+}
+
+function combineUrls(base: string, relative?: string): string {
+  if (!relative) {
+    return base;
+  }
+
+  const trimmedBase = base.replace(/\/+$/, "");
+  const trimmedRelative = relative.replace(/^\/+/, "");
+  return `${trimmedBase}/${trimmedRelative}`;
+}
+
+function resolveRequestUrl(url?: string, base?: string): string | undefined {
+  if (url && isAbsoluteUrl(url)) {
+    return url;
+  }
+
+  if (!base) {
+    return url;
+  }
+
+  return combineUrls(base, url ?? "");
+}
+
 export const api = axios.create({
   baseURL,
   headers: { "Content-Type": "application/json" }
@@ -34,9 +60,10 @@ export const api = axios.create({
 
 api.interceptors.request.use(async (config) => {
   const token = await getSessionToken();
-    config.headers = config.headers ?? {};
+  config.headers = config.headers ?? {};
 
-  if (!(config.headers as any)["X-Org-Id"]) {
+  const targetUrl = resolveRequestUrl(config.url, config.baseURL ?? baseURL);
+  if (shouldAttachOrgHeader(targetUrl) && !(config.headers as any)["X-Org-Id"]) {
     (config.headers as any)["X-Org-Id"] = "1";
   }
 
