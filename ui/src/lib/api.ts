@@ -1,8 +1,32 @@
 import axios from "axios";
 import { getSessionToken } from "./http";
 
-const base = import.meta.env.VITE_API_URL ?? "";
-const baseURL = base.endsWith("/api") ? base : `${base}/api`;
+function normalizeApiBase(value?: string): string | undefined {
+  if (!value) {
+    return undefined;
+  }
+
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+
+  const withoutTrailingSlash = trimmed.replace(/\/+$/, "");
+  return withoutTrailingSlash.endsWith("/api")
+    ? withoutTrailingSlash
+    : `${withoutTrailingSlash}/api`;
+}
+
+export function resolveApiBase(): string {
+  return (
+    normalizeApiBase(import.meta.env?.VITE_API_BASE as string | undefined) ??
+    normalizeApiBase(import.meta.env?.VITE_API_URL as string | undefined) ??
+    "/api"
+  );
+}
+
+const baseURL = resolveApiBase();
+
 export const api = axios.create({
   baseURL,
   headers: { "Content-Type": "application/json" }
