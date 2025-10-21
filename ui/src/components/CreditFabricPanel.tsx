@@ -226,9 +226,9 @@ type CreditFabricPanelProps = {
   className?: string;
 };
 
-export default function CreditFabricPanel({ apiBase = resolveApiBase(), className }: CreditFabricPanelProps) {
-export default function CreditFabricPanel({ apiBase = "/api", className }: CreditFabricPanelProps) {
-  const { snapshot, loading, error } = useCreditGraphSnapshot(apiBase);
+export default function CreditFabricPanel({ apiBase, className }: CreditFabricPanelProps) {
+  const effectiveApiBase = apiBase ?? resolveApiBase();
+  const { snapshot, loading, error } = useCreditGraphSnapshot(effectiveApiBase);
 
   const borrowerSummary = useMemo(
     () =>
