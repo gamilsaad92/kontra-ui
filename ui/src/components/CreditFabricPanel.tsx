@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { resolveApiBase } from "../lib/api";
 
 type CreditGraphSignals = Record<string, number | undefined>;
 
@@ -225,6 +226,7 @@ type CreditFabricPanelProps = {
   className?: string;
 };
 
+export default function CreditFabricPanel({ apiBase = resolveApiBase(), className }: CreditFabricPanelProps) {
 export default function CreditFabricPanel({ apiBase = "/api", className }: CreditFabricPanelProps) {
   const { snapshot, loading, error } = useCreditGraphSnapshot(apiBase);
 
