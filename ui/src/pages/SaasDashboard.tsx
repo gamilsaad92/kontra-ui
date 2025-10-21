@@ -27,6 +27,7 @@ import LoanApplicationList from "../components/LoanApplicationList";
 import ServicingDashboard from "../components/ServicingDashboard";
 import WebhooksManager from "../components/WebhooksManager";
 import CreditFabricPanel from "../components/CreditFabricPanel";
+import { resolveApiBase } from "../lib/api";
 
 export default function SaasDashboard() {
   const [portfolio, setPortfolio] =
@@ -37,7 +38,7 @@ export default function SaasDashboard() {
   const [error, setError] = useState<string | null>(null);
   const [active, setActive] = useState("Dashboard");
   const [appKey, setAppKey] = useState(0);
-  const apiBase = (import.meta.env?.VITE_API_BASE as string | undefined) ?? "/api";
+  const apiBase = resolveApiBase();
   useEffect(() => {
     let isMounted = true;
     async function fetchData() {
