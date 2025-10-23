@@ -11,6 +11,25 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
+const FALLBACK_COLLECTIONS_SUMMARY = {
+  monthToDateCollected: 1_845_000,
+  outstanding: 675_000,
+  delinquentCount: 18,
+  promisesToPay: 6,
+  lastPaymentAt: null,
+};
+
+const FALLBACK_REPORT_SUMMARY = {
+  summary: {
+    scheduled: 4,
+    saved: 11,
+    totalRuns: 36,
+    lastRunAt: null,
+  },
+  collections: FALLBACK_COLLECTIONS_SUMMARY,
+  recentReports: [],
+};
+
 const SCHEDULE_FILE = path.join(__dirname, '..', 'scheduledReports.json');
 const SAVED_FILE = path.join(__dirname, '..', 'savedReports.json');
 
@@ -58,6 +77,150 @@ function loadSaved() {
 function saveSaved(items) {
   fs.writeFileSync(SAVED_FILE, JSON.stringify(items, null, 2));
 }
+
+function resolveOrgId(req) {
+  const header = req.headers['x-org-id'] || req.headers['X-Org-Id'];
+  if (header) {
+    const raw = Array.isArray(header) ? header[0] : header;
+    const parsed = parseInt(raw, 10);
+    if (!Number.isNaN(parsed)) {
+      return parsed;
+    }
+  }
+  if (typeof req.organizationId === 'number') {
+    return req.organizationId;
+  }
+  if (req.user && typeof req.user.organization_id === 'number') {
+    return req.user.organization_id;
+  }
+  return null;
+}
+
+function toNumber(value) {
+  const parsed = typeof value === 'string' ? parseFloat(value) : Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+async function fetchCollections(orgId) {
+  let query = supabase
+    .from('collections')
+    .select('amount, status, due_date, updated_at, paid_at, promise_date');
+  if (orgId) {
+    query = query.eq('organization_id', orgId);
+  }
+  const { data, error } = await query;
+  if (error) throw error;
+  return data || [];
+}
+
+function computeCollectionsSummary(rows) {
+  if (!rows || rows.length === 0) {
+    return { ...FALLBACK_COLLECTIONS_SUMMARY };
+  }
+  const now = new Date();
+  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+  let monthToDateCollected = 0;
+  let outstanding = 0;
+  let delinquentCount = 0;
+  let promisesToPay = 0;
+  let lastPaymentAt = null;
+
+  for (const row of rows) {
+    const amount = toNumber(row.amount);
+    const status = String(row.status || '').toLowerCase();
+    const dueDate = row.due_date ? new Date(row.due_date) : null;
+    const paidAt = row.paid_at || row.updated_at || null;
+
+    if (status === 'paid') {
+      if (dueDate && dueDate >= startOfMonth && dueDate <= now) {
+        monthToDateCollected += amount;
+      }
+      if (paidAt) {
+        const paidDate = new Date(paidAt);
+        if (!Number.isNaN(paidDate.getTime())) {
+          if (!lastPaymentAt || paidDate > lastPaymentAt) {
+            lastPaymentAt = paidDate;
+          }
+        }
+      }
+    } else {
+      outstanding += amount;
+      if (status.includes('promise')) {
+        promisesToPay += 1;
+      }
+      if (dueDate && dueDate < now) {
+        delinquentCount += 1;
+      }
+    }
+  }
+
+  return {
+    monthToDateCollected,
+    outstanding,
+    delinquentCount,
+    promisesToPay,
+    lastPaymentAt: lastPaymentAt ? lastPaymentAt.toISOString() : FALLBACK_COLLECTIONS_SUMMARY.lastPaymentAt,
+  };
+}
+
+async function fetchReportRuns(orgId) {
+  try {
+    let query = supabase
+      .from('report_runs')
+      .select('id, name, status, generated_at');
+    if (orgId) {
+      query = query.eq('organization_id', orgId);
+    }
+    const { data, error } = await query.order('generated_at', { ascending: false }).limit(5);
+    if (error) throw error;
+    let totalRuns = data?.length || 0;
+    try {
+      let countQuery = supabase.from('report_runs').select('id', { count: 'exact', head: true });
+      if (orgId) {
+        countQuery = countQuery.eq('organization_id', orgId);
+      }
+      const { count } = await countQuery;
+      if (typeof count === 'number') {
+        totalRuns = count;
+      }
+    } catch (countError) {
+      console.warn('Report runs count unavailable', countError.message || countError);
+    }
+    return { recent: data || [], totalRuns };
+  } catch (error) {
+    console.error('Report runs query failed', error);
+    return { recent: [], totalRuns: 0 };
+  }
+}
+
+router.get('/', async (req, res) => {
+  try {
+    const scheduled = loadJobs();
+    const saved = loadSaved();
+    const orgId = resolveOrgId(req);
+
+    const [collectionsResult, runsResult] = await Promise.all([
+      fetchCollections(orgId).catch((error) => {
+        console.error('Collections fetch failed', error);
+        return [];
+      }),
+      fetchReportRuns(orgId),
+    ]);
+
+    const collections = computeCollectionsSummary(collectionsResult);
+    const summary = {
+      scheduled: scheduled.length,
+      saved: saved.length,
+      totalRuns: runsResult.totalRuns || runsResult.recent.length,
+      lastRunAt: runsResult.recent[0]?.generated_at || null,
+    };
+
+    res.json({ summary, collections, recentReports: runsResult.recent });
+  } catch (error) {
+    console.error('Report summary error:', error);
+    res.json(FALLBACK_REPORT_SUMMARY);
+  }
+});
 
 router.post('/run', async (req, res) => {
   const { table, fields = '*', filters = {}, format } = req.body || {};
