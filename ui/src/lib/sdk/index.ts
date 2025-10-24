@@ -1,5 +1,12 @@
 import { request } from "../http";
-import type { Loan, Application, DrawRequest, Escrow, PortfolioSummary } from "./types";
+import type {
+  Loan,
+  Application,
+  DrawRequest,
+  Escrow,
+  PortfolioSummary,
+  ApplicationOrchestration,
+} from "./types";
 
 function withParams(params?: Record<string, any>): string {
   if (!params) return "";
@@ -15,7 +22,23 @@ export const applications = {
   get: (id: string | number): Promise<Application> =>
     request<Application>("GET", `/applications/${id}`),
   update: (id: string | number, payload: Partial<Application>): Promise<Application> =>
-    request<Application>("PUT", `/applications/${id}`, payload)
+    request<Application>("PUT", `/applications/${id}`, payload),
+  orchestrate: (payload: FormData): Promise<ApplicationOrchestration> =>
+    request<{ orchestration: ApplicationOrchestration }>(
+      "POST",
+      "/applications/orchestrations",
+      payload
+    ).then((response) => response.orchestration),
+  listOrchestrations: (params?: Record<string, any>): Promise<ApplicationOrchestration[]> =>
+    request<{ orchestrations: ApplicationOrchestration[] }>(
+      "GET",
+      `/applications/orchestrations${withParams(params)}`
+    ).then((response) => response.orchestrations),
+  getOrchestration: (id: string | number): Promise<ApplicationOrchestration> =>
+    request<{ orchestration: ApplicationOrchestration }>(
+      "GET",
+      `/applications/orchestrations/${id}`
+    ).then((response) => response.orchestration),
 };
 
 export const loans = {
