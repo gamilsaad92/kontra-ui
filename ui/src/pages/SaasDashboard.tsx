@@ -23,7 +23,7 @@ export default function SaasDashboard() {
   const [activeLabel, setActiveLabel] = useState<string>(
     () => navItems[0]?.label ?? "Dashboard"
   );
-        }
+      
   useEffect(() => {
     if (!navItems.some((item) => item.label === activeLabel)) {
       const fallback = navItems[0];
