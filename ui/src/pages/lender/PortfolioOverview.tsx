@@ -2,7 +2,8 @@ import { useEffect, useMemo, useState } from "react";
 import RiskScoreCard from "../../modules/dashboard/RiskScoreCard";
 import DelinquencyCard from "../../modules/dashboard/DelinquencyCard";
 import NextDueCard from "../../modules/dashboard/NextDueCard";
-import type { Application, Escrow } from "../../lib/sdk/types";
+import type { Application, Escrow, ApplicationOrchestration } from "../../lib/sdk/types";
+import { applications as applicationsClient } from "../../lib/sdk";
 import {
   listApplications,
   listUpcomingEscrows,
@@ -21,6 +22,10 @@ type KpiProps = {
   value: string;
   caption?: string;
 };
+
+type AiScorecard = NonNullable<
+  NonNullable<ApplicationOrchestration["outputs"]>["scorecard"]
+>;
 
 function Kpi({ title, value, caption }: KpiProps) {
   return (
@@ -118,18 +123,31 @@ export default function PortfolioOverview() {
   const [loading, setLoading] = useState(true);
   const [projectionLoading, setProjectionLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
+  const [aiScorecard, setAiScorecard] = useState<AiScorecard | null>(null);
+  const [aiRecommendations, setAiRecommendations] = useState<string[]>([]);
+  const [latestOrchestration, setLatestOrchestration] = useState<ApplicationOrchestration | null>(null);
+  
   useEffect(() => {
     let cancelled = false;
     async function load() {
       setLoading(true);
       setError(null);
       try {
-        const [overviewResult, appsResult, escrowResult, reportsResult] = await Promise.all([
+        const orchestrationRequest = applicationsClient
+          .listOrchestrations({ limit: 1 })
+          .catch(() => [] as ApplicationOrchestration[]);
+        const [
+          overviewResult,
+          appsResult,
+          escrowResult,
+          reportsResult,
+          orchestrationsResult,
+        ] = await Promise.all([
           getLenderOverview(),
           listApplications({ limit: 6 }),
           listUpcomingEscrows({ limit: 5 }),
           getReportSummary(),
+          orchestrationRequest,
         ]);
         if (cancelled) return;
         setOverview(overviewResult);
@@ -140,6 +158,20 @@ export default function PortfolioOverview() {
           setSelectedEscrowId(escrowResult[0]?.loan_id ?? null);
         } else {
           setSelectedEscrowId(null);
+        }
+        const latest = orchestrationsResult?.[0] ?? null;
+        setLatestOrchestration(latest ?? null);
+        if (latest?.outputs?.scorecard) {
+          setAiScorecard(latest.outputs.scorecard as AiScorecard);
+          const baseRecommendations = latest.outputs.scorecard.recommendations ?? [];
+          const fraudAlerts =
+            latest.outputs?.fraud?.suspicious && latest.outputs?.fraud?.anomalies?.length
+              ? [`Fraud watch: ${latest.outputs.fraud.anomalies.join('; ')}`]
+              : [];
+          setAiRecommendations([...fraudAlerts, ...baseRecommendations]);
+        } else {
+          setAiScorecard(null);
+          setAiRecommendations([]);
         }
       } catch (err) {
         if (!cancelled) {
@@ -191,6 +223,16 @@ export default function PortfolioOverview() {
     if (overview?.collections) return overview.collections;
     return null;
   }, [overview, reports]);
+
+    const aiSummary = useMemo(() => {
+    if (!aiScorecard) return null;
+    const adjustment = aiScorecard.adjustment ?? 0;
+    const direction = adjustment >= 0 ? '↑' : '↓';
+    const forecastLoss = aiScorecard.forecast?.expectedLossRate;
+    const lossLabel =
+      typeof forecastLoss === 'number' ? `${forecastLoss}% expected loss` : 'Loss forecast pending';
+    return `${direction}${Math.abs(adjustment)}pt adjustment · ${lossLabel}`;
+  }, [aiScorecard]);
 
   if (loading) {
     return (
@@ -245,6 +287,9 @@ export default function PortfolioOverview() {
               <div>
                 <h3 className="text-sm font-semibold text-slate-800">Recent applications</h3>
                 <p className="text-xs text-slate-500">Latest borrower submissions across channels</p>
+                       {aiSummary && (
+                  <p className="mt-1 text-xs font-medium text-emerald-600">{aiSummary}</p>
+                )}
               </div>
             </header>
             <div className="overflow-x-auto">
@@ -397,7 +442,29 @@ export default function PortfolioOverview() {
        </section>
        
          <aside className="space-y-6">
-          <RiskScoreCard value={overview?.riskScore ?? 0} />
+          <RiskScoreCard value={overview?.riskScore ?? 0} scorecard={aiScorecard ?? undefined} />
+          <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+            <h3 className="mb-2 text-sm font-semibold text-slate-800">AI recommendations</h3>
+            {aiRecommendations.length > 0 ? (
+              <ul className="space-y-2 text-xs text-slate-600">
+                {aiRecommendations.map((item, index) => (
+                  <li key={`${item}-${index}`} className="flex items-start gap-2">
+                    <span className="mt-[5px] h-1.5 w-1.5 flex-none rounded-full bg-emerald-400" />
+                    <span>{item}</span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-xs text-slate-500">
+                Run an AI document review to surface tailored underwriting actions.
+              </p>
+            )}
+            {latestOrchestration?.submitted_at && (
+              <p className="mt-3 text-[11px] text-slate-400">
+                Last reviewed {formatDate(latestOrchestration.submitted_at)}
+              </p>
+            )}
+          </div>
           <DelinquencyCard />
           <NextDueCard />
 
