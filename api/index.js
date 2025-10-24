@@ -127,6 +127,14 @@ const upload = multer({ storage: multer.memoryStorage() });
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
+const {
+  parseDocumentBuffer,
+  summarizeDocumentBuffer,
+  autoFillFields,
+  classifyDocumentBuffer,
+  advancedCreditScore,
+  detectFraud,
+} = require('./services/underwriting');
 
 const { handleVoice, handleVoiceQuery } = require('./voiceBot');
 const { recordFeedback, retrainModel } = require('./feedback');
@@ -587,122 +595,6 @@ async function fetchCreditScore(ssn) {
   // Placeholder for credit bureau integration
   const score = 650 + Math.floor(Math.random() * 101); // 650-750
   return { score };
-}
-
-// ── Intelligent Underwriting Helpers ───────────────────────────────────────
-function parseDocumentBuffer(buffer) {
-  // Stub OCR/NLP logic. In reality this would call a service like Textract.
-  const text = buffer.toString('utf8');
-  const fields = {};
-  if (/income/i.test(text)) fields.income = 100000;
-  if (/tax/i.test(text)) fields.taxes = 20000;
-  return fields;
-}
-
-async function summarizeDocumentBuffer(buffer) {
-  const text = buffer.toString('utf8');
-  let summary = text.slice(0, 200);
-  let key_terms = {};
-  if (process.env.OPENAI_API_KEY) {
-    try {
-      const resp = await openai.chat.completions.create({
-        model: 'gpt-4o-mini',
-        messages: [
-          {
-            role: 'system',
-            content:
-              'Provide a short executive summary and extract key terms (amounts, dates, parties) from the document. Return JSON {"summary": string, "key_terms": object}.'
-          },
-          { role: 'user', content: text.slice(0, 12000) }
-        ]
-      });
-      const data = JSON.parse(resp.choices[0].message.content || '{}');
-      if (typeof data.summary === 'string') summary = data.summary;
-      if (data.key_terms) key_terms = data.key_terms;
-    } catch (err) {
-      console.error('OpenAI doc summary error:', err);
-    }
-  }
-  return { summary, key_terms };
-}
-
-async function autoFillFields(buffer) {
-  const fields = parseDocumentBuffer(buffer);
-  if (process.env.OPENAI_API_KEY) {
-    try {
-      const text = buffer.toString('utf8');
-      const resp = await openai.chat.completions.create({
-        model: 'gpt-4o-mini',
-        messages: [
-          {
-            role: 'system',
-            content:
-  'Extract borrower or business details from IDs or W-9s as JSON {"name":string,"ssn":string,"ein":string,"address":string}'
-          },
-          { role: 'user', content: text.slice(0, 12000) }
-        ]
-      });
-      const extra = JSON.parse(resp.choices[0].message.content || '{}');
-      Object.assign(fields, extra);
-    } catch (err) {
-      console.error('OpenAI auto fill error:', err);
-    }
-  }
-  return fields;
-}
-
-async function classifyDocumentBuffer(buffer) {
-  const text = buffer.toString('utf8').toLowerCase();
-  const heuristics = [
-    { type: 'invoice', regex: /invoice|bill/ },
-    { type: 'bank_statement', regex: /bank[^\n]*statement|statement[^\n]*bank/ },
-    { type: 'w9', regex: /w[- ]?9/ },
-    { type: 'contract', regex: /contract/ },
-    { type: 'loan_application', regex: /loan application|borrower/ }
-  ];
-  for (const h of heuristics) {
-    if (h.regex.test(text)) return h.type;
-  }
-  if (process.env.OPENAI_API_KEY) {
-    try {
-      const resp = await openai.chat.completions.create({
-        model: 'gpt-4o-mini',
-        messages: [
-          {
-            role: 'system',
-            content:
-              'Classify this document with one word like invoice, bank_statement, w9, contract or other.'
-          },
-          { role: 'user', content: text.slice(0, 12000) }
-        ]
-      });
-      return resp.choices[0].message.content.trim().toLowerCase();
-    } catch (err) {
-      console.error('OpenAI classify error:', err);
-    }
-  }
-  return 'other';
-}
-
-function advancedCreditScore(bureauScore, history) {
-  let score = bureauScore;
-  if (Array.isArray(history) && history.length) {
-    const avg = history.reduce((a, b) => a + b, 0) / history.length;
-    score += Math.round((avg - 650) / 10);
-  }
-  const explanation = `Base ${bureauScore} adjusted with ${history?.length || 0} historical points`;
-  return { score, explanation };
-}
-
-function detectFraud(applicant) {
-  const anomalies = [];
-  if (applicant.address && /p\.o\. box/i.test(applicant.address)) {
-    anomalies.push('PO boxes are suspicious');
-  }
-  if (applicant.income && applicant.income > 1000000) {
-    anomalies.push('Income unusually high');
-  }
-  return { suspicious: anomalies.length > 0, anomalies };
 }
 
 async function inspectAssetBuffer(buffer) {
