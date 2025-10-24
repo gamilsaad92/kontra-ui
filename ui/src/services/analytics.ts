@@ -172,6 +172,77 @@ const FALLBACK_RISK_SUMMARY: RiskSummary = {
 
 const RECOVERABLE_STATUSES = new Set([401, 403, 404, 429]);
 
+export type CollectionsSummary = {
+  monthToDateCollected: number;
+  outstanding: number;
+  delinquentCount: number;
+  promisesToPay: number;
+  lastPaymentAt: string | null;
+};
+
+export type LenderOverview = {
+  totals: {
+    totalLoans: number;
+    delinquencyRate: number;
+    avgInterestRate: number;
+    outstandingPrincipal: number;
+  };
+  riskScore: number;
+  collections: CollectionsSummary;
+};
+
+export type ReportRunSummary = {
+  id: string | number;
+  name?: string;
+  status?: string;
+  generated_at?: string;
+};
+
+export type ReportSummarySnapshot = {
+  summary: {
+    scheduled: number;
+    saved: number;
+    totalRuns: number;
+    lastRunAt: string | null;
+  };
+  collections: CollectionsSummary;
+  recentReports: ReportRunSummary[];
+};
+
+const FALLBACK_COLLECTIONS_SUMMARY: CollectionsSummary = {
+  monthToDateCollected: 1845000,
+  outstanding: 675000,
+  delinquentCount: 18,
+  promisesToPay: 6,
+  lastPaymentAt: new Date().toISOString(),
+};
+
+const FALLBACK_LENDER_OVERVIEW: LenderOverview = {
+  totals: {
+    totalLoans: 1280,
+    delinquencyRate: 0.038,
+    avgInterestRate: 0.052,
+    outstandingPrincipal: 52_500_000,
+  },
+  riskScore: 72,
+  collections: FALLBACK_COLLECTIONS_SUMMARY,
+};
+
+const FALLBACK_REPORT_SUMMARY: ReportSummarySnapshot = {
+  summary: {
+    scheduled: 4,
+    saved: 11,
+    totalRuns: 36,
+    lastRunAt: new Date(Date.now() - 1000 * 60 * 60 * 6).toISOString(),
+  },
+  collections: FALLBACK_COLLECTIONS_SUMMARY,
+  recentReports: [
+    { id: "collections-mtd", name: "Collections MTD", status: "delivered", generated_at: new Date().toISOString() },
+    { id: "delinquency-roll", name: "Delinquency Roll", status: "processing" },
+    { id: "investor-pack", name: "Investor Pack", status: "scheduled" },
+  ],
+};
+
 function shouldFallback(error: unknown): boolean {
   if (!axios.isAxiosError(error)) {
     return false;
@@ -228,4 +299,100 @@ export async function getRiskSummary(): Promise<RiskSummary> {
 export async function getRoiSeries(): Promise<number[]> {
   const { data } = await api.get("/investor-reports?series=roi", withOrg(1));
   return data?.roi ?? [1, 2, 1.5, 2.2, 2.8, 3.1];
+}
+
+function ensureCollections(value: Partial<CollectionsSummary> | null | undefined): CollectionsSummary {
+  if (!value) {
+    return { ...FALLBACK_COLLECTIONS_SUMMARY };
+  }
+  return {
+    monthToDateCollected:
+      typeof value.monthToDateCollected === "number"
+        ? value.monthToDateCollected
+        : FALLBACK_COLLECTIONS_SUMMARY.monthToDateCollected,
+    outstanding:
+      typeof value.outstanding === "number" ? value.outstanding : FALLBACK_COLLECTIONS_SUMMARY.outstanding,
+    delinquentCount:
+      typeof value.delinquentCount === "number"
+        ? value.delinquentCount
+        : FALLBACK_COLLECTIONS_SUMMARY.delinquentCount,
+    promisesToPay:
+      typeof value.promisesToPay === "number"
+        ? value.promisesToPay
+        : FALLBACK_COLLECTIONS_SUMMARY.promisesToPay,
+    lastPaymentAt: value.lastPaymentAt ?? FALLBACK_COLLECTIONS_SUMMARY.lastPaymentAt,
+  };
+}
+
+export async function getLenderOverview(): Promise<LenderOverview> {
+  try {
+    const { data } = await api.get("/dashboard-layout/overview", withOrg(1));
+    const overview = data?.overview ?? data;
+    if (!overview) {
+      return FALLBACK_LENDER_OVERVIEW;
+    }
+
+    return {
+      totals: {
+        totalLoans: Number(overview?.totals?.totalLoans ?? FALLBACK_LENDER_OVERVIEW.totals.totalLoans),
+        delinquencyRate:
+          typeof overview?.totals?.delinquencyRate === "number"
+            ? overview.totals.delinquencyRate
+            : FALLBACK_LENDER_OVERVIEW.totals.delinquencyRate,
+        avgInterestRate:
+          typeof overview?.totals?.avgInterestRate === "number"
+            ? overview.totals.avgInterestRate
+            : FALLBACK_LENDER_OVERVIEW.totals.avgInterestRate,
+        outstandingPrincipal:
+          typeof overview?.totals?.outstandingPrincipal === "number"
+            ? overview.totals.outstandingPrincipal
+            : FALLBACK_LENDER_OVERVIEW.totals.outstandingPrincipal,
+      },
+      riskScore:
+        typeof overview?.riskScore === "number" ? overview.riskScore : FALLBACK_LENDER_OVERVIEW.riskScore,
+      collections: ensureCollections(overview?.collections),
+    };
+  } catch (error) {
+    if (shouldFallback(error)) {
+      return FALLBACK_LENDER_OVERVIEW;
+    }
+    console.error("Failed to load lender overview", error);
+    return FALLBACK_LENDER_OVERVIEW;
+  }
+}
+
+export async function getReportSummary(): Promise<ReportSummarySnapshot> {
+  try {
+    const { data } = await api.get("/reports", withOrg(1));
+    if (!data) {
+      return FALLBACK_REPORT_SUMMARY;
+    }
+    return {
+      summary: {
+        scheduled:
+          typeof data?.summary?.scheduled === "number"
+            ? data.summary.scheduled
+            : FALLBACK_REPORT_SUMMARY.summary.scheduled,
+        saved:
+          typeof data?.summary?.saved === "number"
+            ? data.summary.saved
+            : FALLBACK_REPORT_SUMMARY.summary.saved,
+        totalRuns:
+          typeof data?.summary?.totalRuns === "number"
+            ? data.summary.totalRuns
+            : FALLBACK_REPORT_SUMMARY.summary.totalRuns,
+        lastRunAt: data?.summary?.lastRunAt ?? FALLBACK_REPORT_SUMMARY.summary.lastRunAt,
+      },
+      collections: ensureCollections(data?.collections),
+      recentReports: Array.isArray(data?.recentReports)
+        ? data.recentReports
+        : FALLBACK_REPORT_SUMMARY.recentReports,
+    };
+  } catch (error) {
+    if (shouldFallback(error)) {
+      return FALLBACK_REPORT_SUMMARY;
+    }
+    console.error("Failed to load report summary", error);
+    return FALLBACK_REPORT_SUMMARY;
+  }
 }
