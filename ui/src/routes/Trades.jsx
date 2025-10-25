@@ -368,7 +368,7 @@ export default function Trades() {
       }
     }));
   }, []);
-  const settleTrade = async id => {
+ 
   const resetForm = useCallback(type => {
     setForms(prev => ({
       ...prev,
