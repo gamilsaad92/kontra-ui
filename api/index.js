@@ -179,10 +179,28 @@ const subscriptionsRouter = require('./routers/subscriptions');
 const siteAnalysisRouter = require('./routers/siteAnalysis');
 const savedSearchesRouter = require('./routers/savedSearches');
 const creditGraphRouter = require('./routers/creditGraph');
+const investorsRouter = require('./routers/investors');
 // Compliance automation is still experimental
 const complianceRouter = require('./routers/compliance');
 const otpRouter = require('./routers/otp');
 const mobileRouter = require('./routers/mobile');
+
+const JOB_SCHEDULES = [
+  { type: 'score-assets', intervalMs: 6 * 60 * 60 * 1000 },
+  { type: 'score-loans', intervalMs: 6 * 60 * 60 * 1000 },
+  { type: 'score-troubled', intervalMs: 12 * 60 * 60 * 1000 }
+];
+let jobSchedulersStarted = false;
+
+function startJobSchedulers() {
+  if (jobSchedulersStarted || !JOB_SCHEDULES.length) return;
+  jobSchedulersStarted = true;
+  JOB_SCHEDULES.forEach(({ type, intervalMs }) => {
+    // Kick off immediately on boot to hydrate dashboards, then schedule interval.
+    addJob(type);
+    setInterval(() => addJob(type), intervalMs);
+  });
+}
 
 // Define the functions that the assistant can “call.”
 const functions = [
@@ -540,6 +558,7 @@ app.use('/api', communicationsLogRouter);
 app.use('/api/trades', tradesRouter);
 app.use('/api/exchange', exchangeRouter);
 app.use('/api/exchange-programs', exchangeProgramsRouter);
+app.use('/api/investors', investorsRouter);
 app.use('/api/marketplace', marketplaceRouter);
 app.use('/api', subscriptionsRouter);
 app.use('/api/searches', savedSearchesRouter);
@@ -1889,7 +1908,10 @@ if (Sentry.Handlers?.errorHandler) {
 // ── Start Server ──────────────────────────────────────────────────────────
 const PORT = 10000;
 if (require.main === module) {
-     const server = http.createServer(app);
+  if (process.env.NODE_ENV === 'production') {
+    startJobSchedulers();
+  }
+  const server = http.createServer(app);
   attachChatServer(server);
   attachCollabServer(server);
   server.listen(PORT, () => {
