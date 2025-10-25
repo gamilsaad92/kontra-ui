@@ -1,9 +1,12 @@
 const express = require('express');
 const multer = require('multer');
 const { scanForCompliance, gatherEvidence } = require('../compliance');
+const auditLogger = require('../middlewares/auditLogger');
 
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage() });
+
+router.use(auditLogger);
 
 router.post('/pci-scan', (req, res) => {
   const { environment } = req.body || {};
