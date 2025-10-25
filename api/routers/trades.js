@@ -4,8 +4,16 @@ const { triggerWebhooks } = require('../webhooks');
 const collabServer = require('../collabServer');
 const { validateTrade } = require('../compliance');
 const { supabase } = require('../db');
+const { isFeatureEnabled } = require('../featureFlags');
 
 const router = express.Router();
+
+router.use((req, res, next) => {
+  if (!isFeatureEnabled('trading')) {
+    return res.status(404).json({ message: 'Trading module is disabled' });
+  }
+  next();
+});
 
 router.use(authenticate);
 router.use((req, res, next) => {
