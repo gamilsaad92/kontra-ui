@@ -1,6 +1,5 @@
-
-import PortfolioOverview from "./pages/lender/PortfolioOverview";
 import AssetManagement from "./routes/AssetManagement";
+import SaasDashboardHome from "./components/SaasDashboardHome";
 import Inspections from "./routes/Inspections";
 import Trades from "./routes/Trades";
 import Exchange from "./routes/Exchange";
@@ -42,7 +41,7 @@ export const lenderNavRoutes = [
     label: "Dashboard",
     path: "/",
     icon: HomeIcon,
-    component: PortfolioOverview,
+   component: SaasDashboardHome,
     requiresAuth: true,
   },
   {
