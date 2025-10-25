@@ -3,6 +3,7 @@ import SaasDashboardHome from "./components/SaasDashboardHome";
 import Inspections from "./routes/Inspections";
 import Trades from "./routes/Trades";
 import Exchange from "./routes/Exchange";
+import Compliance from "./routes/Compliance";
 import LoansDashboard from "./components/LoansDashboard";
 import DrawsDashboard from "./components/DrawsDashboard";
 import ProjectsTable from "./components/ProjectsTable";
@@ -34,6 +35,7 @@ import {
   DocumentPlusIcon,
   ChartBarSquareIcon,
   WrenchScrewdriverIcon,
+  ShieldCheckIcon,
 } from "@heroicons/react/24/outline";
 
 export const lenderNavRoutes = [
@@ -147,6 +149,12 @@ export const lenderNavRoutes = [
     label: "Applications",
     icon: DocumentPlusIcon,
     component: LoanApplicationList,
+    requiresAuth: true,
+  },
+  {
+    label: "Compliance",
+    icon: ShieldCheckIcon,
+    component: Compliance,
     requiresAuth: true,
   },
   {
