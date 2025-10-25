@@ -2,7 +2,7 @@ jest.mock('@supabase/supabase-js');
 
 const { createClient } = require('@supabase/supabase-js');
 
-['SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY', 'OPENAI_API_KEY', 'SENTRY_DSN', 'STRIPE_SECRET_KEY', 'PII_ENCRYPTION_KEY'].forEach(
+['SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY', 'OPENAI_API_KEY', 'SENTRY_DSN', 'STRIPE_SECRET_KEY', 'ENCRYPTION_KEY', 'PII_ENCRYPTION_KEY'].forEach(
   key => {
     if (!process.env[key]) {
       process.env[key] = `${key.toLowerCase()}-test-value`;
