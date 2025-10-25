@@ -7,8 +7,18 @@ const { updateRecommendations } = require('../matchingEngine');
 const { generateAndStore, sendForSignature } = require('../documentService');
 const { v4: uuidv4 } = require('uuid');
 const { sendEmail, sendSms } = require('../communications');
+const { isFeatureEnabled } = require('../featureFlags');
+const collabServer = require('../collabServer');
+const { triggerWebhooks } = require('../webhooks');
 
 const router = express.Router();
+
+router.use((req, res, next) => {
+  if (!isFeatureEnabled('trading')) {
+    return res.status(404).json({ message: 'Trading module is disabled' });
+  }
+  next();
+});
 
 // Settlement webhook from payment rails
 router.post('/settlement/webhook', async (req, res) => {
@@ -29,6 +39,16 @@ router.post('/settlement/webhook', async (req, res) => {
       .from('exchange_trades')
       .update({ status: 'settled', settled_at: new Date().toISOString() })
       .eq('id', trade_id);
+  }
+    const { data: tradeRow } = await supabase
+    .from('exchange_trades')
+    .select('id, trade_type, notional_amount, price, status')
+    .eq('id', trade_id)
+    .single();
+  const event = { trade_id, status, payload, trade: tradeRow || null };
+  await triggerWebhooks('exchange.trade.settlement', event);
+  if (collabServer.broadcast) {
+    collabServer.broadcast({ type: 'exchange.trade.settlement', ...event });
   }
   res.json({ received: true, status });
 });
