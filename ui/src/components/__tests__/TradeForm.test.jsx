@@ -4,43 +4,66 @@ import TradeForm from '../trades/TradeForm';
 import TradeList from '../trades/TradeList';
 
 describe('Trade UI', () => {
-  beforeEach(() => {
-    global.fetch = jest.fn(() => Promise.resolve({ ok: true }));
-  });
+ const definition = {
+    type: 'repo',
+    title: 'Repo',
+    description: 'Short-term financing secured by collateral.',
+    submitLabel: 'Submit Repo'
+  };
+  const fields = [
+    { name: 'symbol', label: 'Symbol', type: 'text', placeholder: 'Symbol' },
+    { name: 'notional_amount', label: 'Notional Amount', type: 'number', placeholder: 'Notional Amount' },
+    { name: 'quantity', label: 'Quantity', type: 'number', placeholder: 'Quantity' },
+    { name: 'price', label: 'Price', type: 'number', placeholder: 'Price' },
+    {
+      name: 'side',
+      label: 'Side',
+      type: 'select',
+      options: [
+        { value: 'buy', label: 'Buy' },
+        { value: 'sell', label: 'Sell' }
+      ]
+    },
+    { name: 'counterparties', label: 'Counterparties', type: 'text', placeholder: 'Counterparties (comma separated)' },
+    { name: 'repo_rate_bps', label: 'Repo Rate (bps)', type: 'number', placeholder: 'Repo Rate (bps)' },
+    { name: 'term_days', label: 'Term (days)', type: 'number', placeholder: 'Term (days)' },
+    { name: 'collateral_ref', label: 'Collateral Reference', type: 'text', placeholder: 'Collateral Reference' }
+  ];
+  const values = {
+    symbol: '',
+    notional_amount: '',
+    quantity: '',
+    price: '',
+    side: 'buy',
+    counterparties: '',
+    repo_rate_bps: '',
+    term_days: '',
+    collateral_ref: ''
+  };
 
-  afterEach(() => {
-    jest.resetAllMocks();
-  });
-
-  it('submits trade with new fields', async () => {
-    const onSubmitted = jest.fn();
-    render(<TradeForm onSubmitted={onSubmitted} />);
-
-    fireEvent.change(screen.getByLabelText(/trade type/i), { target: { value: 'repo' } });
-    fireEvent.change(screen.getByLabelText(/notional amount/i), { target: { value: '1000' } });
-    fireEvent.change(screen.getByPlaceholderText('Symbol'), { target: { value: 'AAPL' } });
-    fireEvent.change(screen.getByPlaceholderText('Quantity'), { target: { value: '10' } });
-    fireEvent.change(screen.getByPlaceholderText('Price'), { target: { value: '150' } });
-    fireEvent.change(screen.getByPlaceholderText(/Counterparties/), { target: { value: 'CP-1' } });
-    fireEvent.click(screen.getByRole('button', { name: /submit trade/i }));
-
-    expect(global.fetch).toHaveBeenCalledWith(
-      '/api/trades',
-      expect.objectContaining({
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          trade_type: 'repo',
-          notional_amount: 1000,
-          symbol: 'AAPL',
-          quantity: 10,
-          price: 150,
-          side: 'buy',
-          counterparties: ['CP-1'],
-        }),
-      })
+  it('renders fields and triggers change and submit handlers', () => {
+    const handleChange = jest.fn();
+    const handleSubmit = jest.fn();
+    render(
+      <TradeForm
+        definition={definition}
+        fields={fields}
+        values={values}
+        errors={{}}
+        onChange={handleChange}
+        onSubmit={handleSubmit}
+        isSubmitting={false}
+      />
     );
-    expect(onSubmitted).toHaveBeenCalled();
+
+    fireEvent.change(screen.getByLabelText(/Symbol/i), { target: { value: 'AAPL' } });
+    expect(handleChange).toHaveBeenCalledWith('symbol', 'AAPL');
+
+    fireEvent.change(screen.getByLabelText(/Repo Rate/i), { target: { value: '425' } });
+    expect(handleChange).toHaveBeenCalledWith('repo_rate_bps', '425');
+
+  fireEvent.click(screen.getByRole('button', { name: /Submit Repo/i }));
+    expect(handleSubmit).toHaveBeenCalled();
   });
 
   it('calls onSettle when settle button clicked', () => {
@@ -48,21 +71,23 @@ describe('Trade UI', () => {
     render(
       <TradeList
         title="Open Trades"
-        trades={[{
-          id: 1,
-          trade_type: 'repo',
-          notional_amount: 1000,
-          symbol: 'AAPL',
-          quantity: 10,
-          price: 150,
-          side: 'buy',
-          status: 'pending',
-        }]}
+        trades={[
+          {
+            id: 1,
+            trade_type: 'repo',
+            notional_amount: 1000,
+            symbol: 'AAPL',
+            quantity: 10,
+            price: 150,
+            side: 'buy',
+            status: 'pending'
+          }
+        ]}
         onSettle={onSettle}
       />
     );
 
-    fireEvent.click(screen.getByRole('button', { name: /settle/i }));
+   fireEvent.click(screen.getByRole('button', { name: /Settle/i }));
     expect(onSettle).toHaveBeenCalledWith(1);
   });
 });
