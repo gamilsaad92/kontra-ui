@@ -1,5 +1,6 @@
 const express = require('express');
 const authenticate = require('../middlewares/authenticate');
+const auditLogger = require('../middlewares/auditLogger');
 const { triggerWebhooks } = require('../webhooks');
 const collabServer = require('../collabServer');
 const { validateTrade } = require('../compliance');
@@ -16,6 +17,7 @@ router.use((req, res, next) => {
 });
 
 router.use(authenticate);
+router.use(auditLogger);
 router.use((req, res, next) => {
   const orgId = req.organizationId;
   if (!orgId) {
