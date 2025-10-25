@@ -13,6 +13,7 @@ const Placeholder = ({ title }: { title: string }) => (
 type NavItem = (typeof lenderNavRoutes)[number];
 
 export default function SaasDashboard() {
+   const apiBase = (import.meta as any)?.env?.VITE_API_URL || "/api";
   const { usage, recordUsage } = useFeatureUsage();
 
   const navItems = useMemo(
@@ -33,15 +34,9 @@ export default function SaasDashboard() {
     }
   }, [activeLabel, navItems]);
 
-  const routeComponentMap = useMemo(() => {
-    const map = new Map<string, ComponentType>();
-    navItems.forEach((item) => {
-      if (item.component) {
-        map.set(item.label, item.component as ComponentType);
-      }
-    });
-    return map;
-  }, [navItems]);
+  const activeItem = useMemo(() => {
+    return navItems.find((item) => item.label === activeLabel);
+  }, [navItems, activeLabel]);
 
   const frequentItems = useMemo(() => {
     return navItems
@@ -76,24 +71,30 @@ export default function SaasDashboard() {
   };
 
   const renderContent = () => {
-    if (routeComponentMap.has(activeLabel)) {
-      const Component = routeComponentMap.get(activeLabel)!;
+     if (activeItem?.component) {
+      const Component = activeItem.component as ComponentType<any>;
+      if (activeLabel === "Dashboard") {
+        return <Component apiBase={apiBase} />;
+      }
       return <Component />;
     }
     return <Placeholder title={activeLabel} />;
   };
 
+  const isDashboard = activeLabel === "Dashboard";
+  const content = renderContent();
+
   return (
     <div className="flex min-h-screen bg-slate-100 text-slate-900">
-     <aside className="flex w-64 flex-col bg-slate-950 text-slate-100">
-        <div className="px-4 py-4 flex items-center gap-2 text-sm font-semibold tracking-tight">
+      <aside className="flex w-64 flex-col bg-slate-950 text-slate-100">
+        <div className="flex items-center gap-2 px-4 py-4 text-sm font-semibold tracking-tight">
           <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-slate-800">
             <svg viewBox="0 0 24 24" className="h-4 w-4">
               <path className="fill-white/90" d="M12 2 3 7v10l9 5 9-5V7zM6 9l6 3 6-3" />
             </svg>
           </span>
-           <span>
-            <span className="text-red-900">Kontra</span> Popular
+           <span className="leading-tight">
+            <span className="text-slate-100">SaaS</span> Control
           </span>
         </div>
         <nav className="flex-1 space-y-1 overflow-y-auto px-2 pb-4">
@@ -106,19 +107,16 @@ export default function SaasDashboard() {
           {navItems.map((item) => renderNavItem(item))}
         </nav>
       </aside>
-        <main className="flex-1 overflow-y-auto p-6">
-        {activeLabel === "Dashboard" && (
+      <main className="flex-1 overflow-y-auto p-6">
+        {!isDashboard && (
           <header className="mb-6 space-y-1">
-           <h1 className="text-xl font-semibold tracking-tight text-slate-900">
-              Portfolio overview
-            </h1>
+            <h1 className="text-xl font-semibold tracking-tight text-slate-900">{activeLabel}</h1>
             <p className="text-sm text-slate-500">
-              Autonomous credit intelligence, live borrower telemetry, and lending health for the
-              active Kontra SaaS tenant.
+               Connected lending, trading, and servicing workspaces for your active SaaS tenant.
             </p>
           </header>
         )}
-       <div className="space-y-6">{renderContent()}</div>
+      {isDashboard ? content : <div className="space-y-6">{content}</div>}
       </main>
     </div>
   );
