@@ -137,6 +137,7 @@ const {
 
 const { handleVoice, handleVoiceQuery } = require('./voiceBot');
 const { recordFeedback, retrainModel } = require('./feedback');
+const auditLogger = require('./middlewares/auditLogger');
 const authenticate = require('./middlewares/authenticate');
 const requireRole = require('./middlewares/requireRole');
 const assetsRouter = require('./routers/assets');
