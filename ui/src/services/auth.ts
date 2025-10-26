@@ -10,7 +10,7 @@ export interface OtpState {
 }
 
 const OTP_KEY = "kontra.otp.state";
-export const OTP_TTL_MS = 15 * 60 * 1000;
+export const OTP_TTL_MS = 15 * 60 * 1000; // 15 minutes; keep in sync with api/constants/otp.js
 
 function getStorage(): Storage | null {
   if (typeof window === "undefined") return null;
