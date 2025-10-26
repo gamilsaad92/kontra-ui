@@ -1,2 +1,3 @@
-export const API_BASE =
-  import.meta.env.VITE_API_URL || 'http://localhost:5050'
+const configured = import.meta.env.VITE_API_URL?.trim() || "";
+export const API_BASE = configured.replace(/\/+$/, "");
+
