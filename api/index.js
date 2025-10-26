@@ -32,7 +32,7 @@ const parseOrigins = (value = '') =>
     .map((part) => normalizeOrigin(part.trim()))
     .filter(Boolean);
 
-const escapeForRegex = (value = '') => value.replace(/[-/\\^$+?.()|[\]{}]/g, '\\$&');
+const escapeForRegex = (value = '') => value.replace(/[-/\\^$+?.()|[\]{}*]/g, '\\$&');
 const createOriginTester = (origin) => {
   if (origin.includes('*')) {
     const pattern = escapeForRegex(origin).replace(/\\\*/g, '[^/]+');
