@@ -5,7 +5,7 @@ import { Button, FormField } from './ui'
 import { useLocale } from '../lib/i18n'
   
 export default function LoginForm({ onSwitch }) {
-  const { supabase } = useContext(AuthContext)
+ const { supabase, isLoading } = useContext(AuthContext)
   const { t } = useLocale()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -21,10 +21,16 @@ export default function LoginForm({ onSwitch }) {
     if (method === 'magic') setPassword('')
   }, [method])
   
-  const handleLogin = async (e) => {
+const authUnavailableMessage = 'Authentication is currently unavailable. Please try again later.'
+    const handleLogin = async (e) => {
     e.preventDefault()
     setError('')
     setSuccess('')
+
+     if (!supabase) {
+      setError(authUnavailableMessage)
+      return
+    }
 
     if (!email) {
       setError(t('login.emailRequired'))
@@ -101,13 +107,16 @@ export default function LoginForm({ onSwitch }) {
           required
         />
       )}
-       <Button type="submit" disabled={loading} className="w-full mt-sm">
+       <Button type="submit" disabled={loading || isLoading || !supabase} className="w-full mt-sm">
            {loading
           ? t('login.loggingIn')
           : method === 'password'
           ? t('login.submit')
           : t('login.sendMagic')}
       </Button>
+             {!isLoading && !supabase && (
+        <p className="mt-2 text-red-600 text-sm">{authUnavailableMessage}</p>
+      )}
         {success && <p className="mt-2 text-green-600">{success}</p>}
       <ErrorBanner message={error} onClose={() => setError('')} />
       {onSwitch && (
