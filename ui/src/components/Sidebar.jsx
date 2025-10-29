@@ -163,10 +163,11 @@ export default function Sidebar({
           .map(renderItem)}
         {supabase && (
           <button
-            onClick={() => supabase.auth.signOut()}
+             type="button"
+            onClick={() => supabase?.auth?.signOut?.()}
             className="flex items-center w-full px-3 py-2 hover:bg-gray-700 rounded text-gray-300"
           >
-                  <span className="text-lg">🔓</span>
+          <span className="text-lg">🔓</span>
             {sidebarOpen && <span className="ml-2">Log Out</span>}
           </button>
         )}      
