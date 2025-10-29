@@ -7,7 +7,7 @@ const supabase = { auth: { signUp: jest.fn(), signInWithOtp: jest.fn() } };
 
 function renderForm() {
   render(
-    <AuthContext.Provider value={{ supabase }}>
+   <AuthContext.Provider value={{ supabase, isLoading: false }}>
       <SignUpForm />
     </AuthContext.Provider>
   );
