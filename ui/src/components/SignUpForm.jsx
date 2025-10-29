@@ -6,7 +6,7 @@ import ErrorBanner from './ErrorBanner.jsx'
 import { useLocale } from '../lib/i18n'
 
 export default function SignUpForm({ onSwitch }) {
-  const { supabase } = useContext(AuthContext)
+const { supabase, isLoading } = useContext(AuthContext)
   const { t } = useLocale()  
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -26,10 +26,16 @@ export default function SignUpForm({ onSwitch }) {
     }
   }, [method])
 
+  const authUnavailableMessage = 'Authentication is currently unavailable. Please try again later.'
   const handleSignUp = async (e) => {
     e.preventDefault()
     setError('')
     setSuccess('')
+
+        if (!supabase) {
+      setError(authUnavailableMessage)
+      return
+    }
 
     if (!email) {
      setError(t('signup.emailRequired'))
@@ -143,11 +149,15 @@ export default function SignUpForm({ onSwitch }) {
 
       <button
         type="submit"
-        disabled={loading}
+       disabled={loading || isLoading || !supabase}
         className="w-full bg-green-600 text-white py-2 rounded hover:bg-green-700"
       >
         {loading ? t('signup.submit') + '…' : t('signup.submit')}
       </button>
+
+          {!isLoading && !supabase && (
+        <p className="mt-2 text-red-600 text-sm">{authUnavailableMessage}</p>
+      )}
 
       {success && <p className="mt-2 text-green-600">{success}</p>}
       <ErrorBanner message={error} onClose={() => setError('')} />
