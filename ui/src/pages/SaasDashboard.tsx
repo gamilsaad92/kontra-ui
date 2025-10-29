@@ -1,7 +1,8 @@
-import { FormEvent, useEffect, useMemo, useState, type ComponentType } from "react";
+import { FormEvent, useContext, useEffect, useMemo, useState, type ComponentType } from "react";
 import { isFeatureEnabled } from "../lib/featureFlags";
 import useFeatureUsage from "../lib/useFeatureUsage";
 import { lenderNavRoutes } from "../routes";
+import { AuthContext } from "../lib/authContext";
 import {
   clearOtpState,
   isOtpVerified,
@@ -25,6 +26,7 @@ const Placeholder = ({ title }: { title: string }) => (
 type NavItem = (typeof lenderNavRoutes)[number];
 
 export default function SaasDashboard() {
+  const { supabase, isLoading } = useContext(AuthContext);
   const apiBase = (import.meta as any)?.env?.VITE_API_URL || "/api";
   const { usage, recordUsage } = useFeatureUsage();
 
@@ -126,6 +128,19 @@ export default function SaasDashboard() {
   const overlayVisible = !otpVerified;
   const hasRequestedOtp = Boolean(otpState);
   const otpWindowMinutes = Math.floor(OTP_TTL_MS / 60000);
+
+    const handleSignOut = () => {
+    if (!supabase) return;
+    void supabase.auth.signOut();
+  };
+
+  if (isLoading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-slate-100 text-slate-600">
+        Loading authentication…
+      </div>
+    );
+  }
 
   const runRequestOtp = async () => {
     const destination = otpDestination.trim();
@@ -324,6 +339,21 @@ export default function SaasDashboard() {
               </div>
             )}
             {navItems.map((item) => renderNavItem(item))}
+                       <div className="pt-4">
+              <button
+                type="button"
+                onClick={handleSignOut}
+                disabled={!supabase}
+                className="w-full rounded-lg border border-slate-800 px-3 py-2 text-sm font-semibold text-slate-200 transition hover:bg-slate-900 disabled:cursor-not-allowed disabled:text-slate-500 disabled:hover:bg-transparent"
+              >
+                Log Out
+              </button>
+              {!supabase && (
+                <p className="mt-2 text-xs text-slate-500">
+                  Connect Supabase to enable authentication actions.
+                </p>
+              )}
+            </div>
           </nav>
         </aside>
         <main className="flex-1 overflow-y-auto p-6">
