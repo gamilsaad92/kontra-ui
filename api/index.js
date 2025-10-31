@@ -57,6 +57,8 @@ const fallbackOrigins = [
   'http://127.0.0.1:3000',
   'https://kontra.vercel.app',
   'https://kontra-ui.vercel.app',
+   'https://kontraui.com',
+  'https://www.kontraui.com',
   'https://kontra-*.vercel.app',
 ].map(normalizeOrigin);
 
