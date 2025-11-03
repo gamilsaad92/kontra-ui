@@ -1,7 +1,36 @@
 import { supabase } from "./supabaseClient.js";
 
-const base = import.meta.env.VITE_API_URL ?? "";
-const BASE_URL = base.endsWith("/api") ? base : `${base}/api`;
+type EnvRecord = Record<string, string | undefined>;
+
+function normalizeApiBase(value?: string): string | undefined {
+  if (!value) {
+    return undefined;
+  }
+
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+
+  const withoutTrailingSlash = trimmed.replace(/\/+$/, "");
+  return withoutTrailingSlash.endsWith("/api")
+    ? withoutTrailingSlash
+    : `${withoutTrailingSlash}/api`;
+}
+
+function resolveBaseUrl(): string {
+  const env = (import.meta.env ?? {}) as EnvRecord;
+  const configured =
+    normalizeApiBase(env.VITE_API_BASE) ?? normalizeApiBase(env.VITE_API_URL);
+
+  if (configured) {
+    return configured;
+  }
+
+  return "/api";
+}
+
+const BASE_URL = resolveBaseUrl();
 
 let retrievingSessionToken = false;
 
@@ -49,7 +78,7 @@ export async function getSessionToken(): Promise<string | null> {
       token = data?.session?.access_token ?? null;
     } catch {
       token = null;
-     } finally {
+    } finally {
       retrievingSessionToken = false;
     }
   }
@@ -57,23 +86,102 @@ export async function getSessionToken(): Promise<string | null> {
   return token;
 }
 
+function isFetchDebugEnabled(): boolean {
+  if (typeof window !== "undefined" && "__FETCH_DEBUG__" in window) {
+    return Boolean((window as Record<string, unknown>).__FETCH_DEBUG__);
+  }
+
+  const env = (import.meta.env ?? {}) as EnvRecord & { DEV?: boolean };
+  return Boolean(env.DEV);
+}
+
+function logFetchDebug(message: string): void {
+  if (!isFetchDebugEnabled() || typeof console === "undefined") {
+    return;
+  }
+
+  console.debug(`[fetch-debug] ${message}`);
+}
+
+function sanitizeRequestInit(init: RequestInit = {}): RequestInit {
+  const sanitized: RequestInit = { ...init };
+  if (sanitized.mode === "no-cors") {
+    if (isFetchDebugEnabled() && typeof console !== "undefined") {
+      console.warn("[fetch-debug] Removed unsupported fetch mode \"no-cors\" to avoid opaque responses.");
+    }
+    delete (sanitized as Record<string, unknown>).mode;
+  }
+  return sanitized;
+}
+
+function normalizeHeaders(headers?: HeadersInit): Headers {
+  if (headers instanceof Headers) return new Headers(headers);
+  return new Headers(headers ?? {});
+}
+
+function extractRequestUrl(input: RequestInfo | URL): string | undefined {
+  if (typeof input === "string") {
+    return input;
+  }
+
+  if (input instanceof URL) {
+    return input.toString();
+  }
+
+  if (typeof Request !== "undefined" && input instanceof Request) {
+    return input.url;
+  }
+
+  return undefined;
+}
+
+function resolveRequestMethodFromInit(init?: RequestInit): string {
+  if (init?.method) {
+    return String(init.method).toUpperCase();
+  }
+  return "GET";
+}
+
+function resolveRequestMethod(input: RequestInfo | URL, init?: RequestInit): string {
+  if (init?.method) {
+    return String(init.method).toUpperCase();
+  }
+
+  if (typeof Request !== "undefined" && input instanceof Request && input.method) {
+    return input.method.toUpperCase();
+  }
+
+  return "GET";
+}
+
 async function apiFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
-    const normalizedPath = path.startsWith("/") ? path : `/${path}`;
+  const sanitizedInit = sanitizeRequestInit(init);
+  const normalizedPath = path.startsWith("/") ? path : `/${path}`;
   const requestUrl = `${BASE_URL}${normalizedPath}`;
 
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-    ...(init.headers as Record<string, string> | undefined)
-  };
+ const headers = normalizeHeaders(sanitizedInit.headers);
 
-  if (!headers["X-Org-Id"] && shouldAttachOrgHeader(requestUrl)) {
-    headers["X-Org-Id"] = "1";
+  if (!headers.has("Content-Type") && sanitizedInit.body !== undefined && !(sanitizedInit.body instanceof FormData)) {
+    headers.set("Content-Type", "application/json");
+  }
+
+  if (!headers.has("X-Org-Id") && shouldAttachOrgHeader(requestUrl)) {
+    headers.set("X-Org-Id", "1");
   }
 
   const token = await getSessionToken();
-  if (token) headers["Authorization"] = `Bearer ${token}`;
+  if (token && !headers.has("Authorization")) {
+    headers.set("Authorization", `Bearer ${token}`);
+  }
 
-  const res = await fetch(requestUrl, { ...init, headers });
+  const finalInit: RequestInit = { ...sanitizedInit, headers };
+
+  const method = resolveRequestMethodFromInit(finalInit);
+  logFetchDebug(`→ ${method} ${requestUrl}`);
+
+  const res = await fetch(requestUrl, finalInit);
+
+ logFetchDebug(`← ${method} ${requestUrl} ${res.status}${res.ok ? "" : " (error)"}`);
 
   const text = await res.text();
   let data: any = undefined;
@@ -121,27 +229,6 @@ export { apiFetch };
 
 let authFetchInstalled = false;
 
-function normalizeHeaders(headers?: HeadersInit): Headers {
-  if (headers instanceof Headers) return new Headers(headers);
-  return new Headers(headers ?? {});
-}
-
-function extractRequestUrl(input: RequestInfo | URL): string | undefined {
-  if (typeof input === "string") {
-    return input;
-  }
-
-  if (input instanceof URL) {
-    return input.toString();
-  }
-
-  if (typeof Request !== "undefined" && input instanceof Request) {
-    return input.url;
-  }
-
-  return undefined;
-}
-
 export function installAuthFetchInterceptor(): void {
   if (authFetchInstalled) return;
   if (typeof window === "undefined" || typeof window.fetch !== "function") return;
@@ -149,11 +236,13 @@ export function installAuthFetchInterceptor(): void {
   const originalFetch = window.fetch.bind(window);
 
   window.fetch = async (input: RequestInfo | URL, init: RequestInit = {}): Promise<Response> => {
+       const sanitizedInit = sanitizeRequestInit(init);
+
     if (isRetrievingSessionToken()) {
-      return originalFetch(input as any, init);
+     return originalFetch(input as any, sanitizedInit);
     }
 
-    const headers = normalizeHeaders(init.headers);
+    const headers = normalizeHeaders(sanitizedInit.headers);
 
     const targetUrl = extractRequestUrl(input);
     if (!headers.has("X-Org-Id") && shouldAttachOrgHeader(targetUrl)) {
@@ -165,8 +254,16 @@ export function installAuthFetchInterceptor(): void {
       if (token) headers.set("Authorization", `Bearer ${token}`);
     }
 
-    const finalInit: RequestInit = { ...init, headers };
-    return originalFetch(input as any, finalInit);
+   const finalInit: RequestInit = { ...sanitizedInit, headers };
+
+    const method = resolveRequestMethod(input, finalInit);
+    logFetchDebug(`→ ${method} ${targetUrl ?? "[unknown-url]"}`);
+
+    const response = await originalFetch(input as any, finalInit);
+
+    logFetchDebug(`← ${method} ${targetUrl ?? "[unknown-url]"} ${response.status}${response.ok ? "" : " (error)"}`);
+
+    return response;
   };
 
   authFetchInstalled = true;
