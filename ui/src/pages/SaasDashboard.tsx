@@ -26,7 +26,7 @@ const Placeholder = ({ title }: { title: string }) => (
 type NavItem = (typeof lenderNavRoutes)[number];
 
 export default function SaasDashboard() {
-  const { supabase, isLoading } = useContext(AuthContext);
+  const { session, supabase, isLoading } = useContext(AuthContext);
   const apiBase = (import.meta as any)?.env?.VITE_API_URL || "/api";
   const { usage, recordUsage } = useFeatureUsage();
 
@@ -110,6 +110,15 @@ export default function SaasDashboard() {
       setOtpChannel(otpState.channel);
     }
   }, [otpState]);
+
+   useEffect(() => {
+    if (otpState || otpDestination) return;
+    const user = session?.user;
+    const candidate = (user?.email || user?.phone || user?.user_metadata?.email || user?.user_metadata?.phone || '').trim();
+    if (candidate) {
+      setOtpDestination(candidate);
+    }
+  }, [session, otpState, otpDestination]);
 
   useEffect(() => {
     if (!otpState?.verifiedAt) return;
