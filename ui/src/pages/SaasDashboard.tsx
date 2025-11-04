@@ -1,8 +1,18 @@
-import { FormEvent, useContext, useEffect, useMemo, useState, type ComponentType } from "react";
+import {
+  FormEvent,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+  type ComponentType,
+} from "react";
+import type { Session, SupabaseClient } from "@supabase/supabase-js";
 import { isFeatureEnabled } from "../lib/featureFlags";
 import useFeatureUsage from "../lib/useFeatureUsage";
 import { lenderNavRoutes } from "../routes";
 import { AuthContext } from "../lib/authContext";
+import LoginForm from "../components/LoginForm.jsx";
+import SignUpForm from "../components/SignUpForm.jsx";
 import {
   clearOtpState,
   isOtpVerified,
@@ -24,9 +34,105 @@ const Placeholder = ({ title }: { title: string }) => (
 );
 
 type NavItem = (typeof lenderNavRoutes)[number];
+type AuthMode = "login" | "signup";
 
 export default function SaasDashboard() {
   const { session, supabase, isLoading } = useContext(AuthContext);
+    const [authMode, setAuthMode] = useState<AuthMode>("login");
+
+  if (isLoading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-slate-100 text-slate-600">
+        Loading authentication…
+      </div>
+    );
+  }
+
+  if (!supabase) {
+    return <SupabaseConfigNotice />;
+  }
+
+  if (!session) {
+    return <AuthenticationScreen mode={authMode} onModeChange={setAuthMode} />;
+  }
+
+  return <AuthenticatedDashboard session={session} supabase={supabase} />;
+}
+
+function AuthenticationScreen({
+  mode,
+  onModeChange,
+}: {
+  mode: AuthMode;
+  onModeChange: (mode: AuthMode) => void;
+}) {
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-slate-950 px-4 py-12 text-slate-100">
+      <div className="w-full max-w-xl space-y-6">
+        <div className="space-y-2 text-center">
+          <h1 className="text-2xl font-semibold">Access your Kontra workspace</h1>
+          <p className="text-sm text-slate-300">
+            Sign in with your Supabase credentials to manage lending, trading, and servicing tools.
+          </p>
+        </div>
+        <div className="flex justify-center gap-2 text-sm font-medium">
+          <button
+            type="button"
+            onClick={() => onModeChange("login")}
+            className={`rounded-full px-4 py-1 transition ${
+              mode === "login"
+                ? "bg-white text-slate-900 shadow"
+                : "bg-slate-900 text-slate-200 hover:bg-slate-800"
+            }`}
+          >
+            Sign in
+          </button>
+          <button
+            type="button"
+            onClick={() => onModeChange("signup")}
+            className={`rounded-full px-4 py-1 transition ${
+              mode === "signup"
+                ? "bg-white text-slate-900 shadow"
+                : "bg-slate-900 text-slate-200 hover:bg-slate-800"
+            }`}
+          >
+            Create account
+          </button>
+        </div>
+        <div className="rounded-2xl bg-white p-6 shadow-xl">
+          {mode === "login" ? (
+            <LoginForm className="w-full" onSwitch={() => onModeChange("signup")} />
+          ) : (
+            <SignUpForm className="w-full" onSwitch={() => onModeChange("login")} />
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SupabaseConfigNotice() {
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-slate-950 px-4 text-slate-100">
+      <div className="max-w-lg space-y-4 text-center">
+        <h1 className="text-2xl font-semibold">Connect Supabase to enable authentication</h1>
+        <p className="text-sm text-slate-300">
+          Provide <code className="rounded bg-slate-900 px-1">VITE_SUPABASE_URL</code> and
+          <code className="ml-1 rounded bg-slate-900 px-1">VITE_SUPABASE_ANON_KEY</code> in your environment to
+          turn on secure sign-in. Once configured, reload this page to access the dashboard.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function AuthenticatedDashboard({
+  session,
+  supabase,
+}: {
+  session: Session;
+  supabase: SupabaseClient;
+}) {
   const apiBase = (import.meta as any)?.env?.VITE_API_URL || "/api";
   const { usage, recordUsage } = useFeatureUsage();
 
@@ -96,7 +202,7 @@ export default function SaasDashboard() {
   const isDashboard = activeLabel === "Dashboard";
   const content = renderContent();
 
-    const [otpState, setOtpState] = useState<OtpState | null>(() => loadOtpState());
+  const [otpState, setOtpState] = useState<OtpState | null>(() => loadOtpState());
   const [otpDestination, setOtpDestination] = useState(otpState?.destination ?? "");
   const [otpChannel, setOtpChannel] = useState<OtpChannel>(otpState?.channel ?? "email");
   const [otpCode, setOtpCode] = useState("");
@@ -111,10 +217,16 @@ export default function SaasDashboard() {
     }
   }, [otpState]);
 
-   useEffect(() => {
+  useEffect(() => {
     if (otpState || otpDestination) return;
     const user = session?.user;
-    const candidate = (user?.email || user?.phone || user?.user_metadata?.email || user?.user_metadata?.phone || '').trim();
+    const candidate = (
+      user?.email ||
+      user?.phone ||
+      (user?.user_metadata as Record<string, string | undefined>)?.email ||
+      (user?.user_metadata as Record<string, string | undefined>)?.phone ||
+      ""
+    ).trim();
     if (candidate) {
       setOtpDestination(candidate);
     }
@@ -138,18 +250,9 @@ export default function SaasDashboard() {
   const hasRequestedOtp = Boolean(otpState);
   const otpWindowMinutes = Math.floor(OTP_TTL_MS / 60000);
 
-    const handleSignOut = () => {
-    if (!supabase) return;
+  const handleSignOut = () => {
     void supabase.auth.signOut();
   };
-
-  if (isLoading) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-slate-100 text-slate-600">
-        Loading authentication…
-      </div>
-    );
-  }
 
   const runRequestOtp = async () => {
     const destination = otpDestination.trim();
@@ -326,7 +429,7 @@ export default function SaasDashboard() {
             </form>
           </div>
         </div>
-     )}
+      )}
 
       <div className="flex min-h-screen bg-slate-100 text-slate-900">
         <aside className="flex w-64 flex-col bg-slate-950 text-slate-100">
@@ -348,20 +451,14 @@ export default function SaasDashboard() {
               </div>
             )}
             {navItems.map((item) => renderNavItem(item))}
-                       <div className="pt-4">
+          <div className="pt-4">
               <button
                 type="button"
                 onClick={handleSignOut}
-                disabled={!supabase}
-                className="w-full rounded-lg border border-slate-800 px-3 py-2 text-sm font-semibold text-slate-200 transition hover:bg-slate-900 disabled:cursor-not-allowed disabled:text-slate-500 disabled:hover:bg-transparent"
+                  className="w-full rounded-lg border border-slate-800 px-3 py-2 text-sm font-semibold text-slate-200 transition hover:bg-slate-900"
               >
                 Log Out
               </button>
-              {!supabase && (
-                <p className="mt-2 text-xs text-slate-500">
-                  Connect Supabase to enable authentication actions.
-                </p>
-              )}
             </div>
           </nav>
         </aside>
@@ -374,7 +471,7 @@ export default function SaasDashboard() {
               </p>
             </header>
           )}
-           {isDashboard ? content : <div className="space-y-6">{content}</div>}
+          {isDashboard ? content : <div className="space-y-6">{content}</div>}
         </main>
       </div>
     </>
