@@ -1,5 +1,6 @@
 {
   "login.title": "Log In",
+  "login.subtitle": "Enter your credentials to continue.",
   "login.email": "Email",
   "login.password": "Password",
   "login.magicLabel": "Email Magic Link",
@@ -12,6 +13,7 @@
   "login.noAccount": "Don't have an account?",
   "login.signUp": "Sign Up",
   "signup.title": "Sign Up",
+  "signup.subtitle": "Create a Kontra account to unlock your workspace.",
   "signup.email": "Email",
   "signup.password": "Password",
   "signup.confirmPassword": "Confirm Password",
