@@ -1,5 +1,6 @@
 {
   "login.title": "Iniciar sesión",
+  "login.subtitle": "Introduce tus credenciales para continuar.",
   "login.email": "Correo electrónico",
   "login.password": "Contraseña",
   "login.magicLabel": "Enlace mágico al correo",
@@ -12,6 +13,7 @@
   "login.noAccount": "¿No tienes una cuenta?",
   "login.signUp": "Regístrate",
   "signup.title": "Regístrate",
+  "signup.subtitle": "Crea una cuenta Kontra para acceder a tu espacio de trabajo.",
   "signup.email": "Correo electrónico",
   "signup.password": "Contraseña",
   "signup.confirmPassword": "Confirmar contraseña",
