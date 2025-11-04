@@ -3,9 +3,9 @@ import { AuthContext } from '../lib/authContext'
 import ErrorBanner from './ErrorBanner.jsx'
 import { Button, FormField } from './ui'
 import { useLocale } from '../lib/i18n'
-  
-export default function LoginForm({ onSwitch }) {
- const { supabase, isLoading } = useContext(AuthContext)
+
+export default function LoginForm({ onSwitch, className = '' }) {
+  const { supabase, isLoading } = useContext(AuthContext)
   const { t } = useLocale()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -21,13 +21,14 @@ export default function LoginForm({ onSwitch }) {
     if (method === 'magic') setPassword('')
   }, [method])
   
-const authUnavailableMessage = 'Authentication is currently unavailable. Please try again later.'
-    const handleLogin = async (e) => {
+ const authUnavailableMessage = 'Authentication is currently unavailable. Please try again later.'
+
+  const handleLogin = async (e) => {
     e.preventDefault()
     setError('')
     setSuccess('')
 
-     if (!supabase) {
+    if (!supabase) {
       setError(authUnavailableMessage)
       return
     }
@@ -66,18 +67,23 @@ const authUnavailableMessage = 'Authentication is currently unavailable. Please 
     }
   }
 
+   const rootClass = ['space-y-4', className].filter(Boolean).join(' ')
+
   return (
-      <form onSubmit={handleLogin} className="max-w-md mx-auto mt-20 p-6 bg-white rounded shadow">
-     <h2 className="text-2xl font-bold mb-4">{t('login.title')}</h2>
-          <FormField
+    <form onSubmit={handleLogin} className={rootClass}>
+      <div className="space-y-2 text-slate-900">
+        <h2 className="text-2xl font-bold">{t('login.title')}</h2>
+        <p className="text-sm text-slate-600">{t('login.subtitle')}</p>
+      </div>
+      <FormField
         type="email"
-         placeholder={t('login.email')}
+     placeholder={t('login.email')}
         value={email}
         onChange={(e) => setEmail(e.target.value)}
         required
       />
       
-      <div className="flex space-x-4 mb-3 text-sm">
+    <div className="flex space-x-4 text-sm text-slate-700">
         <label className="flex items-center space-x-1">
           <input
             type="radio"
@@ -94,12 +100,12 @@ const authUnavailableMessage = 'Authentication is currently unavailable. Please 
             checked={method === 'magic'}
             onChange={() => setMethod('magic')}
           />
-         <span>{t('login.magicLabel')}</span>
+          <span>{t('login.magicLabel')}</span>
         </label>
       </div>
 
       {method === 'password' && (
-          <FormField
+        <FormField
           type="password"
           placeholder={t('login.password')}
           value={password}
@@ -108,23 +114,23 @@ const authUnavailableMessage = 'Authentication is currently unavailable. Please 
         />
       )}
        <Button type="submit" disabled={loading || isLoading || !supabase} className="w-full mt-sm">
-           {loading
+        {loading
           ? t('login.loggingIn')
           : method === 'password'
           ? t('login.submit')
           : t('login.sendMagic')}
       </Button>
-             {!isLoading && !supabase && (
-        <p className="mt-2 text-red-600 text-sm">{authUnavailableMessage}</p>
+      {!isLoading && !supabase && (
+        <p className="text-sm text-red-600">{authUnavailableMessage}</p>
       )}
-        {success && <p className="mt-2 text-green-600">{success}</p>}
+      {success && <p className="text-sm text-emerald-600">{success}</p>}
       <ErrorBanner message={error} onClose={() => setError('')} />
       {onSwitch && (
-        <p className="mt-4 text-sm">
-       {t('login.noAccount')}{' '}
-         <Button type="button" variant="ghost" onClick={onSwitch} className="underline px-0">
-           {t('login.signUp')}
-              </Button>
+       <p className="text-sm text-slate-600">
+          {t('login.noAccount')}{' '}
+          <Button type="button" variant="ghost" onClick={onSwitch} className="px-0 underline">
+            {t('login.signUp')}
+          </Button>
         </p>
       )}
     </form>
