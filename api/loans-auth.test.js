@@ -23,6 +23,16 @@ describe('loans router authentication', () => {
     expect(res.statusCode).toBe(403);
   });
 
+   it('accepts an organization id passed via header when metadata is missing', async () => {
+    createClient.__setAuthUser({ id: 'user-1', user_metadata: {} });
+    const res = await request(app)
+      .get('/api/loans')
+      .set('Authorization', 'Bearer test-token')
+      .set('X-Org-Id', 'org-42');
+    expect(res.statusCode).toBe(200);
+    expect(res.body.loans).toEqual([{ id: 'loan-1' }]);
+  });
+
   it('allows access for authenticated organization', async () => {
     const res = await request(app)
       .get('/api/loans')
