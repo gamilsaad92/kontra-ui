@@ -292,7 +292,7 @@ function AuthenticatedDashboard({
     setOtpBusy(true);
     try {
       const result = await verifyOtp(otpState.destination, code);
-      if (!result.verified) {
+     if (!result.ok) {
         setOtpError("Incorrect or expired code.");
         return;
       }
