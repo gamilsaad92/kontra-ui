@@ -97,16 +97,16 @@ async function sendJson<T>(url: string, payload: Record<string, unknown>): Promi
 
 type OtpResponse = { ok: boolean };
 
-export function requestOtp(channel: OtpChannel, destination: string) {
+export function requestOtp(channel: OtpChannel, subject: string): Promise<OtpResponse> {
   return sendJson<OtpResponse>(`${API_BASE}/api/otp/request`, {
     channel,
-    subject: destination,
+    subject,
   });
 }
 
+export function verifyOtp(subject: string, code: string): Promise<OtpResponse> {
   return sendJson<OtpResponse>(`${API_BASE}/api/otp/verify`, {
-    subject: destination,
+    subject,
     code,
   });
-  return sendJson<{ verified: boolean }>(`${API_BASE}/api/otp/verify`, { destination, code });
 }
