@@ -1,6 +1,7 @@
 import { useCallback, useContext, useEffect, useMemo, useState, type ComponentType } from "react";
 import type { Session, SupabaseClient } from "@supabase/supabase-js";
 import { isFeatureEnabled } from "../lib/featureFlags";
+import { resolveApiBase } from "../lib/api";
 import useFeatureUsage from "../lib/useFeatureUsage";
 import { lenderNavRoutes } from "../routes";
 import { AuthContext } from "../lib/authContext";
@@ -114,7 +115,7 @@ function AuthenticatedDashboard({
   session: Session;
   supabase: SupabaseClient;
 }) {
-  const apiBase = (import.meta as any)?.env?.VITE_API_URL || "/api";
+  const apiBase = resolveApiBase();
   const { usage, recordUsage } = useFeatureUsage();
 
   const navItems = useMemo(
