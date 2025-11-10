@@ -22,6 +22,7 @@ This repository contains the **frontend** and **backend** for the Kontra demo ap
    ```
 
    Edit `api/.env` with your Supabase, OpenAI, Twilio and Dialogflow credentials.
+      Choose a shared development access token and set it as `DEV_ACCESS_TOKEN` in `api/.env` and `VITE_DEV_ACCESS_TOKEN` in `ui/.env` before starting either server. Optionally set `DEV_ORG_ID` or `DEV_USER_ID` to mimic a specific organization or user in local flows.
    Add your Sentry DSN as `VITE_SENTRY_DSN` in `ui/.env`.
      Optional `FEATURE_FLAGS` and `VITE_FEATURE_FLAGS` entries enable or disable
     upcoming modules. For example `sso` and `compliance` toggle the placeholder
