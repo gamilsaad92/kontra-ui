@@ -105,6 +105,7 @@ function resolveDevAccessToken(): string | null {
 }
 
 let retrievingSessionToken = false;
+let hasLoggedMissingDevTokenWarning = false;
 
 function isRetrievingSessionToken(): boolean {
   return retrievingSessionToken;
@@ -173,10 +174,17 @@ export async function getSessionToken(): Promise<string | null> {
     }
   }
 
-   if (!token) {
+  if (!token) {
     const fallbackToken = resolveDevAccessToken();
     if (fallbackToken) {
       return fallbackToken;
+    }
+    
+    if (!hasLoggedMissingDevTokenWarning && typeof console !== "undefined") {
+      hasLoggedMissingDevTokenWarning = true;
+      console.warn(
+        "No session token found. Configure matching VITE_DEV_ACCESS_TOKEN and DEV_ACCESS_TOKEN values for local development."
+      );
     }
   }
 
