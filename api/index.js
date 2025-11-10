@@ -159,6 +159,8 @@ const { logUserEvent, suggestNextFeature } = require('./personalization');
 const { router: ordersRouter } = require('./routers/orders');
 const { router: paymentsRouter } = require('./routers/payments');
 const paymentsStripeRouter = require('./routers/paymentsStripe');
+const analyzeFinancialsRouter = require('./analyze-financials');
+const inspectReviewRouter = require('./inspect-review');
 const payoffsRouter = require('./routers/payoffs');
 const escrowDisbursementsRouter = require('./routers/escrowDisbursements');
 const delinquencyAlertsRouter = require('./routers/delinquencyAlerts');
@@ -542,6 +544,8 @@ app.use('/api', projectsRouter);
 app.use('/api', servicingRouter);
 app.use('/api/organizations', organizationsRouter);
 app.use('/api/invites', invitesRouter);
+app.use('/api/analyze-financials', analyzeFinancialsRouter);
+app.use('/api/inspect-review', inspectReviewRouter);
 app.use('/api/document-review', documentReviewRouter);
 if (isFeatureEnabled('sso')) {
   app.use('/api/sso', ssoRouter);
