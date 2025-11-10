@@ -11,6 +11,367 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
+const FALLBACK_DSCR_LOANS = [
+  {
+    id: 'LN-2045',
+    borrower: 'Redwood Capital Partners',
+    principal: 12000000,
+    dscr: 1.32,
+    targetDscr: 1.25,
+    baseCoupon: 6.1,
+    rateFloor: 5.2,
+    rateCap: 7.4,
+    rateSensitivity: 1.6,
+    interestAccruedMonth: 61250,
+    lastRecalculated: '2024-09-30T09:00:00Z',
+    nextReset: '2024-10-31T09:00:00Z',
+    automationNotes:
+      'Coupon stepped down 10 bps after DSCR beat target for two consecutive periods.',
+  },
+  {
+    id: 'LN-2110',
+    borrower: 'Hudson River Holdings',
+    principal: 8800000,
+    dscr: 1.11,
+    targetDscr: 1.2,
+    baseCoupon: 6.85,
+    rateFloor: 6.35,
+    rateCap: 8,
+    rateSensitivity: 1.8,
+    interestAccruedMonth: 53420,
+    lastRecalculated: '2024-09-30T08:30:00Z',
+    nextReset: '2024-10-31T08:30:00Z',
+    automationNotes: 'Monitoring for step-up trigger; assigned to workout analyst for trend review.',
+  },
+  {
+    id: 'LN-1988',
+    borrower: 'Cedar Grove Apartments',
+    principal: 15300000,
+    dscr: 1.47,
+    targetDscr: 1.25,
+    baseCoupon: 5.95,
+    rateFloor: 5.35,
+    rateCap: 7.2,
+    rateSensitivity: 1.4,
+    interestAccruedMonth: 78110,
+    lastRecalculated: '2024-09-30T07:45:00Z',
+    nextReset: '2024-10-31T07:45:00Z',
+    automationNotes: 'Eligible for green incentive stack; auto-applied blended step-down.',
+  },
+];
+
+const FALLBACK_PERFORMANCE_LOANS = [
+  {
+    id: 'LN-2045',
+    borrower: 'Redwood Capital Partners',
+    profitSharePct: 0.18,
+    noiTarget: 850000,
+    actualNoi: 910000,
+    prefReturn: 0.07,
+    lenderSplit: 0.8,
+    sponsorSplit: 0.2,
+    reserveBalance: 135000,
+    lastWaterfall: '2024-09-25T18:00:00Z',
+  },
+  {
+    id: 'LN-2110',
+    borrower: 'Hudson River Holdings',
+    profitSharePct: 0.22,
+    noiTarget: 620000,
+    actualNoi: 574000,
+    prefReturn: 0.065,
+    lenderSplit: 0.78,
+    sponsorSplit: 0.22,
+    reserveBalance: 91000,
+    lastWaterfall: '2024-09-26T17:00:00Z',
+  },
+  {
+    id: 'LN-1988',
+    borrower: 'Cedar Grove Apartments',
+    profitSharePct: 0.2,
+    noiTarget: 1320000,
+    actualNoi: 1395000,
+    prefReturn: 0.072,
+    lenderSplit: 0.82,
+    sponsorSplit: 0.18,
+    reserveBalance: 210000,
+    lastWaterfall: '2024-09-24T17:30:00Z',
+  },
+];
+
+const FALLBACK_GREEN_LOANS = [
+  {
+    id: 'LN-2045',
+    borrower: 'Redwood Capital Partners',
+    baseCoupon: 5.85,
+    rateFloor: 5.25,
+    rateCap: 7,
+    lastIngested: '2024-09-28T13:00:00Z',
+    energyProvider: 'Aurora Energy Cloud',
+    kpis: [
+      {
+        name: 'Energy Intensity',
+        unit: 'kWh/sf',
+        baseline: 22,
+        current: 18,
+        target: 17,
+        direction: 'decrease',
+        rateDeltaBps: -12,
+        source: 'BMS telemetry',
+      },
+      {
+        name: 'Water Usage',
+        unit: 'gal/unit',
+        baseline: 3200,
+        current: 2950,
+        target: 3000,
+        direction: 'decrease',
+        rateDeltaBps: -6,
+        source: 'Utility API',
+      },
+      {
+        name: 'Carbon Intensity',
+        unit: 'kgCO₂e/sf',
+        baseline: 18,
+        current: 16.5,
+        target: 15,
+        direction: 'decrease',
+        rateDeltaBps: -8,
+        source: 'Energy Star Portfolio Manager',
+      },
+    ],
+  },
+  {
+    id: 'LN-2110',
+    borrower: 'Hudson River Holdings',
+    baseCoupon: 6.45,
+    rateFloor: 6,
+    rateCap: 7.6,
+    lastIngested: '2024-09-28T12:30:00Z',
+    energyProvider: 'GridSync Monitoring',
+    kpis: [
+      {
+        name: 'Solar Yield',
+        unit: 'MWh',
+        baseline: 0,
+        current: 145,
+        target: 160,
+        direction: 'increase',
+        rateDeltaBps: -10,
+        source: 'PV monitoring',
+      },
+      {
+        name: 'GHG Emissions',
+        unit: 'tCO₂e',
+        baseline: 420,
+        current: 415,
+        target: 380,
+        direction: 'decrease',
+        rateDeltaBps: -5,
+        source: 'Utility API',
+      },
+    ],
+  },
+  {
+    id: 'LN-1988',
+    borrower: 'Cedar Grove Apartments',
+    baseCoupon: 5.65,
+    rateFloor: 5.1,
+    rateCap: 6.9,
+    lastIngested: '2024-09-28T11:45:00Z',
+    energyProvider: 'Evergreen IoT',
+    kpis: [
+      {
+        name: 'Energy Intensity',
+        unit: 'kWh/sf',
+        baseline: 24,
+        current: 19,
+        target: 18,
+        direction: 'decrease',
+        rateDeltaBps: -10,
+        source: 'BMS telemetry',
+      },
+      {
+        name: 'LEED Recertification',
+        unit: 'score',
+        baseline: 62,
+        current: 68,
+        target: 65,
+        direction: 'increase',
+        rateDeltaBps: -7,
+        source: 'Certification upload',
+      },
+    ],
+  },
+];
+
+const FALLBACK_DSCR_JOB = {
+  lastRun: FALLBACK_DSCR_LOANS[0].lastRecalculated,
+  nextRun: FALLBACK_DSCR_LOANS[0].nextReset,
+  status: 'Simulated',
+};
+
+function cloneFallbackDscrLoans() {
+  return FALLBACK_DSCR_LOANS.map(loan => ({ ...loan }));
+}
+
+function cloneFallbackPerformanceLoans() {
+  return FALLBACK_PERFORMANCE_LOANS.map(loan => ({ ...loan }));
+}
+
+function cloneFallbackGreenLoans() {
+  return FALLBACK_GREEN_LOANS.map(loan => ({
+    ...loan,
+    kpis: loan.kpis.map(kpi => ({ ...kpi })),
+  }));
+}
+
+function toNumber(value, fallback = 0) {
+  const num = Number(value);
+  return Number.isFinite(num) ? num : fallback;
+}
+
+function normalizeDate(value) {
+  if (!value) return null;
+  if (typeof value === 'string') return value;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  return date.toISOString();
+}
+
+function normalizeDscrLoans(rows) {
+  if (!Array.isArray(rows) || rows.length === 0) return [];
+  return rows.map((row, index) => {
+    const fallback = FALLBACK_DSCR_LOANS[index % FALLBACK_DSCR_LOANS.length];
+    return {
+      id: String(row.loan_id ?? row.id ?? row.loanId ?? fallback.id),
+      borrower: row.borrower_name ?? row.borrower ?? fallback.borrower,
+      principal: toNumber(row.principal ?? row.balance ?? row.outstanding_principal, fallback.principal),
+      dscr: toNumber(row.dscr ?? row.current_dscr ?? row.dscr_ratio, fallback.dscr),
+      targetDscr: toNumber(row.target_dscr ?? row.targetDscr, fallback.targetDscr),
+      baseCoupon: toNumber(row.base_coupon ?? row.baseCoupon ?? row.base_rate, fallback.baseCoupon),
+      rateFloor: toNumber(row.rate_floor ?? row.rateFloor ?? row.floor_rate, fallback.rateFloor),
+      rateCap: toNumber(row.rate_cap ?? row.rateCap ?? row.cap_rate, fallback.rateCap),
+      rateSensitivity: toNumber(row.rate_sensitivity ?? row.rateSensitivity ?? row.coupon_sensitivity, fallback.rateSensitivity),
+      interestAccruedMonth: toNumber(
+        row.interest_accrued_month ?? row.monthly_interest_accrued ?? row.interestAccruedMonth,
+        fallback.interestAccruedMonth
+      ),
+      lastRecalculated: normalizeDate(row.last_recalculated ?? row.lastRecalculated) ?? fallback.lastRecalculated,
+      nextReset: normalizeDate(row.next_reset ?? row.nextReset ?? row.next_recalculation) ?? fallback.nextReset,
+      automationNotes: row.automation_notes ?? row.automationNotes ?? fallback.automationNotes,
+    };
+  });
+}
+
+function normalizePerformanceLoans(rows) {
+  if (!Array.isArray(rows) || rows.length === 0) return [];
+  return rows.map((row, index) => {
+    const fallback = FALLBACK_PERFORMANCE_LOANS[index % FALLBACK_PERFORMANCE_LOANS.length];
+    return {
+      id: String(row.loan_id ?? row.id ?? row.loanId ?? fallback.id),
+      borrower: row.borrower_name ?? row.borrower ?? fallback.borrower,
+      profitSharePct: toNumber(row.profit_share_pct ?? row.profitSharePct ?? row.profit_share, fallback.profitSharePct),
+      noiTarget: toNumber(row.noi_target ?? row.noiTarget ?? row.target_noi, fallback.noiTarget),
+      actualNoi: toNumber(row.actual_noi ?? row.actualNoi ?? row.current_noi, fallback.actualNoi),
+      prefReturn: toNumber(row.pref_return ?? row.prefReturn ?? row.preferred_return, fallback.prefReturn),
+      lenderSplit: toNumber(row.lender_split ?? row.lenderSplit ?? row.lender_share, fallback.lenderSplit),
+      sponsorSplit: toNumber(row.sponsor_split ?? row.sponsorSplit ?? row.sponsor_share, fallback.sponsorSplit),
+      reserveBalance: toNumber(row.reserve_balance ?? row.reserveBalance ?? row.reserves, fallback.reserveBalance),
+      lastWaterfall: normalizeDate(row.last_waterfall ?? row.lastWaterfall ?? row.last_run) ?? fallback.lastWaterfall,
+    };
+  });
+}
+
+function normalizeKpi(entry, fallback) {
+  return {
+    name: entry.name ?? entry.kpi_name ?? fallback.name,
+    unit: entry.unit ?? entry.kpi_unit ?? fallback.unit,
+    baseline: toNumber(entry.baseline ?? entry.baseline_value, fallback.baseline),
+    current: toNumber(entry.current ?? entry.current_value, fallback.current),
+    target: toNumber(entry.target ?? entry.target_value, fallback.target),
+    direction: entry.direction ?? entry.directionality ?? fallback.direction,
+    rateDeltaBps: toNumber(entry.rate_delta_bps ?? entry.rateDeltaBps ?? entry.rate_delta, fallback.rateDeltaBps),
+    source: entry.source ?? entry.data_source ?? fallback.source,
+  };
+}
+
+function normalizeGreenLoans(rows) {
+  if (!Array.isArray(rows) || rows.length === 0) return [];
+
+  const rowsWithArrays = rows.filter(row => Array.isArray(row.kpis) && row.kpis.length);
+  if (rowsWithArrays.length === rows.length && rowsWithArrays.length > 0) {
+    return rowsWithArrays.map((row, index) => {
+      const fallback = FALLBACK_GREEN_LOANS[index % FALLBACK_GREEN_LOANS.length];
+      const rawKpis = Array.isArray(row.kpis) && row.kpis.length ? row.kpis : fallback.kpis;
+      return {
+        id: String(row.loan_id ?? row.id ?? row.loanId ?? fallback.id),
+        borrower: row.borrower_name ?? row.borrower ?? fallback.borrower,
+        baseCoupon: toNumber(row.base_coupon ?? row.baseCoupon ?? row.base_rate, fallback.baseCoupon),
+        rateFloor: toNumber(row.rate_floor ?? row.rateFloor ?? row.floor_rate, fallback.rateFloor),
+        rateCap: toNumber(row.rate_cap ?? row.rateCap ?? row.cap_rate, fallback.rateCap),
+        lastIngested: normalizeDate(row.last_ingested ?? row.lastIngested ?? row.last_sync) ?? fallback.lastIngested,
+        energyProvider: row.energy_provider ?? row.energyProvider ?? fallback.energyProvider,
+        kpis: rawKpis.map((kpi, kIndex) =>
+          normalizeKpi(kpi, fallback.kpis[kIndex % fallback.kpis.length])
+        ),
+      };
+    });
+  }
+
+  const grouped = new Map();
+  rows.forEach(row => {
+    const identifier = String(row.loan_id ?? row.id ?? row.loanId ?? row.reference ?? '');
+    const key = identifier || `loan-${grouped.size + 1}`;
+    if (!grouped.has(key)) {
+      grouped.set(key, { base: row, entries: [] });
+    }
+    grouped.get(key).entries.push(row);
+  });
+
+  return Array.from(grouped.values()).map((group, index) => {
+    const fallback = FALLBACK_GREEN_LOANS[index % FALLBACK_GREEN_LOANS.length];
+    const base = group.base;
+    return {
+      id: String(base.loan_id ?? base.id ?? base.loanId ?? fallback.id),
+      borrower: base.borrower_name ?? base.borrower ?? fallback.borrower,
+      baseCoupon: toNumber(base.base_coupon ?? base.baseCoupon ?? base.base_rate, fallback.baseCoupon),
+      rateFloor: toNumber(base.rate_floor ?? base.rateFloor ?? base.floor_rate, fallback.rateFloor),
+      rateCap: toNumber(base.rate_cap ?? base.rateCap ?? base.cap_rate, fallback.rateCap),
+      lastIngested: normalizeDate(base.last_ingested ?? base.lastIngested ?? base.last_sync) ?? fallback.lastIngested,
+      energyProvider: base.energy_provider ?? base.energyProvider ?? fallback.energyProvider,
+      kpis: group.entries.map((entry, kIndex) =>
+        normalizeKpi(entry, fallback.kpis[kIndex % fallback.kpis.length])
+      ),
+    };
+  });
+}
+
+function normalizeDscrJob(row) {
+  if (!row) return { ...FALLBACK_DSCR_JOB };
+  return {
+    lastRun: normalizeDate(row.last_run ?? row.lastRun) ?? FALLBACK_DSCR_JOB.lastRun,
+    nextRun: normalizeDate(row.next_run ?? row.nextRun) ?? FALLBACK_DSCR_JOB.nextRun,
+    status: row.status ?? FALLBACK_DSCR_JOB.status,
+  };
+}
+
+function normalizeGreenFeed(feed, loans) {
+  const fallbackLoan = loans[0] ?? FALLBACK_GREEN_LOANS[0];
+  if (!feed) {
+    return {
+      provider: fallbackLoan.energyProvider,
+      lastSync: fallbackLoan.lastIngested,
+      status: 'Simulated',
+    };
+  }
+  return {
+    provider: feed.provider ?? feed.name ?? fallbackLoan.energyProvider,
+    lastSync: normalizeDate(feed.last_sync ?? feed.lastSync) ?? fallbackLoan.lastIngested,
+    status: feed.status ?? 'Streaming',
+  };
+}
+
 function ensureOrganization(req, res) {
   if (!req.organizationId) {
     res.status(403).json({ message: 'Organization context required' });
@@ -148,6 +509,120 @@ router.get('/my-applications', async (req, res) => {
   const { data, error } = await q.order('submitted_at', { ascending: false });
   if (error) return res.status(500).json({ message: 'Failed to fetch applications' });
   res.json({ applications: data });
+});
+
+router.get('/loans/dscr-metrics', async (req, res) => {
+  if (!ensureOrganization(req, res)) return;
+  const organizationId = req.organizationId;
+
+  let dscrRows = [];
+  try {
+    let query = supabase.from('loan_dscr_metrics').select('*');
+    if (organizationId) {
+      query = query.eq('organization_id', organizationId);
+    }
+    const { data, error } = await query;
+    if (error) throw error;
+    dscrRows = Array.isArray(data) ? data : [];
+  } catch (error) {
+    console.warn('loan_dscr_metrics unavailable, using fallback', error?.message || error);
+    dscrRows = [];
+  }
+
+  let jobRow = null;
+  try {
+    let jobQuery = supabase
+      .from('loan_dscr_jobs')
+      .select('last_run, next_run, status');
+    if (organizationId) {
+      jobQuery = jobQuery.eq('organization_id', organizationId);
+    }
+    jobQuery = jobQuery.order('last_run', { ascending: false }).limit(1);
+    const { data, error } = await jobQuery.maybeSingle();
+    if (error) throw error;
+    jobRow = data || null;
+  } catch (error) {
+    console.warn('loan_dscr_jobs unavailable, using fallback job data', error?.message || error);
+    jobRow = null;
+  }
+
+  const normalizedLoans = normalizeDscrLoans(dscrRows);
+  const loans = normalizedLoans.length ? normalizedLoans : cloneFallbackDscrLoans();
+  const job = normalizeDscrJob(jobRow);
+
+  res.json({
+    loans,
+    job,
+    lastRun: job.lastRun,
+    nextRun: job.nextRun,
+  });
+});
+
+router.get('/loans/performance-fees', async (req, res) => {
+  if (!ensureOrganization(req, res)) return;
+  const organizationId = req.organizationId;
+
+  let rows = [];
+  try {
+    let query = supabase.from('loan_performance_fees').select('*');
+    if (organizationId) {
+      query = query.eq('organization_id', organizationId);
+    }
+    const { data, error } = await query;
+    if (error) throw error;
+    rows = Array.isArray(data) ? data : [];
+  } catch (error) {
+    console.warn('loan_performance_fees unavailable, using fallback', error?.message || error);
+    rows = [];
+  }
+
+  const normalized = normalizePerformanceLoans(rows);
+  const loans = normalized.length ? normalized : cloneFallbackPerformanceLoans();
+
+  res.json({ loans });
+});
+
+router.get('/loans/green-kpis', async (req, res) => {
+  if (!ensureOrganization(req, res)) return;
+  const organizationId = req.organizationId;
+
+  let rows = [];
+  try {
+    let query = supabase.from('loan_green_kpis').select('*');
+    if (organizationId) {
+      query = query.eq('organization_id', organizationId);
+    }
+    const { data, error } = await query;
+    if (error) throw error;
+    rows = Array.isArray(data) ? data : [];
+  } catch (error) {
+    console.warn('loan_green_kpis unavailable, using fallback', error?.message || error);
+    rows = [];
+  }
+
+  const normalizedLoans = normalizeGreenLoans(rows);
+  const loans = normalizedLoans.length ? normalizedLoans : cloneFallbackGreenLoans();
+
+  let feedRow = null;
+  try {
+    let feedQuery = supabase
+      .from('loan_green_feed_status')
+      .select('provider, last_sync, status');
+    if (organizationId) {
+      feedQuery = feedQuery.eq('organization_id', organizationId);
+    }
+    feedQuery = feedQuery.order('last_sync', { ascending: false }).limit(1);
+    const { data, error } = await feedQuery.maybeSingle();
+    if (error) throw error;
+    feedRow = data || null;
+  } catch (error) {
+    console.warn('loan_green_feed_status unavailable, using fallback feed', error?.message || error);
+    feedRow = null;
+  }
+
+  const feed = normalizeGreenFeed(feedRow, loans);
+
+  res.json({ loans, feed });
 });
 
 router.post('/loans/batch-update', async (req, res) => {
