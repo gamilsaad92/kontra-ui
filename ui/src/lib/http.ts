@@ -279,7 +279,11 @@ async function apiFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
     headers.set("Authorization", `Bearer ${token}`);
   }
 
-  const finalInit: RequestInit = { ...sanitizedInit, headers };
+ const finalInit: RequestInit = {
+    ...sanitizedInit,
+    headers,
+    credentials: sanitizedInit.credentials ?? "include"
+  };
 
   const method = resolveRequestMethodFromInit(finalInit);
   logFetchDebug(`→ ${method} ${requestUrl}`);
@@ -359,7 +363,11 @@ export function installAuthFetchInterceptor(): void {
       if (token) headers.set("Authorization", `Bearer ${token}`);
     }
 
-   const finalInit: RequestInit = { ...sanitizedInit, headers };
+     const finalInit: RequestInit = {
+      ...sanitizedInit,
+      headers,
+      credentials: sanitizedInit.credentials ?? "include"
+    };
 
     const method = resolveRequestMethod(input, finalInit);
     logFetchDebug(`→ ${method} ${targetUrl ?? "[unknown-url]"}`);
