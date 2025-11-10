@@ -38,6 +38,18 @@ function isRetrievingSessionToken(): boolean {
   return retrievingSessionToken;
 }
 
+function resolveApiBaseOrigin(): string | undefined {
+  if (typeof window === "undefined") {
+    return undefined;
+  }
+
+  try {
+    return new URL(BASE_URL, window.location.origin).origin;
+  } catch {
+    return undefined;
+  }
+}
+
 export function shouldAttachOrgHeader(targetUrl?: string): boolean {
   if (!targetUrl) {
     return true;
@@ -47,11 +59,17 @@ export function shouldAttachOrgHeader(targetUrl?: string): boolean {
     return true;
   }
 
+    const trustedOrigins = new Set<string>([window.location.origin]);
+  const apiBaseOrigin = resolveApiBaseOrigin();
+  if (apiBaseOrigin) {
+    trustedOrigins.add(apiBaseOrigin);
+  }
+
   try {
     const absolute = targetUrl.startsWith("http://") || targetUrl.startsWith("https://")
       ? new URL(targetUrl)
       : new URL(targetUrl, window.location.origin);
-    return absolute.origin === window.location.origin;
+   return trustedOrigins.has(absolute.origin);
   } catch {
     return true;
   }
