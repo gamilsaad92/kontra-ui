@@ -32,6 +32,78 @@ function resolveBaseUrl(): string {
 
 const BASE_URL = resolveBaseUrl();
 
+function resolveDefaultOrgId(): string {
+  const env = (import.meta.env ?? {}) as EnvRecord & {
+    VITE_DEV_ORG_ID?: string;
+    DEV_ORG_ID?: string;
+  };
+
+  const fromEnv = env.VITE_DEV_ORG_ID ?? env.DEV_ORG_ID;
+  if (fromEnv && fromEnv.trim()) {
+    return fromEnv.trim();
+  }
+
+  if (
+    typeof process !== "undefined" &&
+    typeof process.env !== "undefined" &&
+    (process.env.VITE_DEV_ORG_ID || process.env.DEV_ORG_ID)
+  ) {
+    const raw = (process.env.VITE_DEV_ORG_ID || process.env.DEV_ORG_ID || "").trim();
+    if (raw) {
+      return raw;
+    }
+  }
+
+  const globalValue =
+    (typeof globalThis !== "undefined" &&
+      typeof (globalThis as Record<string, unknown>).__DEV_ORG_ID__ === "string"
+      ? ((globalThis as Record<string, unknown>).__DEV_ORG_ID__ as string)
+      : null) ?? null;
+
+  if (globalValue && globalValue.trim()) {
+    return globalValue.trim();
+  }
+
+  return "1";
+}
+
+const DEFAULT_ORG_ID = resolveDefaultOrgId();
+
+function resolveDevAccessToken(): string | null {
+  const env = (import.meta.env ?? {}) as EnvRecord & {
+    VITE_DEV_ACCESS_TOKEN?: string;
+    DEV_ACCESS_TOKEN?: string;
+  };
+
+  const fromEnv = env.VITE_DEV_ACCESS_TOKEN ?? env.DEV_ACCESS_TOKEN;
+  if (fromEnv && fromEnv.trim()) {
+    return fromEnv.trim();
+  }
+
+  if (
+    typeof process !== "undefined" &&
+    typeof process.env !== "undefined" &&
+    (process.env.VITE_DEV_ACCESS_TOKEN || process.env.DEV_ACCESS_TOKEN)
+  ) {
+    const raw = (process.env.VITE_DEV_ACCESS_TOKEN || process.env.DEV_ACCESS_TOKEN || "").trim();
+    if (raw) {
+      return raw;
+    }
+  }
+
+  if (
+    typeof globalThis !== "undefined" &&
+    typeof (globalThis as Record<string, unknown>).__DEV_ACCESS_TOKEN__ === "string"
+  ) {
+    const token = (globalThis as Record<string, unknown>).__DEV_ACCESS_TOKEN__ as string;
+    if (token.trim()) {
+      return token.trim();
+    }
+  }
+
+  return null;
+}
+
 let retrievingSessionToken = false;
 
 function isRetrievingSessionToken(): boolean {
@@ -59,7 +131,7 @@ export function shouldAttachOrgHeader(targetUrl?: string): boolean {
     return true;
   }
 
-    const trustedOrigins = new Set<string>([window.location.origin]);
+  const trustedOrigins = new Set<string>([window.location.origin]);
   const apiBaseOrigin = resolveApiBaseOrigin();
   if (apiBaseOrigin) {
     trustedOrigins.add(apiBaseOrigin);
@@ -69,7 +141,7 @@ export function shouldAttachOrgHeader(targetUrl?: string): boolean {
     const absolute = targetUrl.startsWith("http://") || targetUrl.startsWith("https://")
       ? new URL(targetUrl)
       : new URL(targetUrl, window.location.origin);
-   return trustedOrigins.has(absolute.origin);
+    return trustedOrigins.has(absolute.origin);
   } catch {
     return true;
   }
@@ -98,6 +170,13 @@ export async function getSessionToken(): Promise<string | null> {
       token = null;
     } finally {
       retrievingSessionToken = false;
+    }
+  }
+
+   if (!token) {
+    const fallbackToken = resolveDevAccessToken();
+    if (fallbackToken) {
+      return fallbackToken;
     }
   }
 
@@ -177,14 +256,14 @@ async function apiFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
   const normalizedPath = path.startsWith("/") ? path : `/${path}`;
   const requestUrl = `${BASE_URL}${normalizedPath}`;
 
- const headers = normalizeHeaders(sanitizedInit.headers);
+  const headers = normalizeHeaders(sanitizedInit.headers);
 
   if (!headers.has("Content-Type") && sanitizedInit.body !== undefined && !(sanitizedInit.body instanceof FormData)) {
     headers.set("Content-Type", "application/json");
   }
 
   if (!headers.has("X-Org-Id") && shouldAttachOrgHeader(requestUrl)) {
-    headers.set("X-Org-Id", "1");
+   headers.set("X-Org-Id", DEFAULT_ORG_ID);
   }
 
   const token = await getSessionToken();
@@ -199,7 +278,7 @@ async function apiFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
 
   const res = await fetch(requestUrl, finalInit);
 
- logFetchDebug(`← ${method} ${requestUrl} ${res.status}${res.ok ? "" : " (error)"}`);
+  logFetchDebug(`← ${method} ${requestUrl} ${res.status}${res.ok ? "" : " (error)"}`);
 
   const text = await res.text();
   let data: any = undefined;
@@ -254,17 +333,17 @@ export function installAuthFetchInterceptor(): void {
   const originalFetch = window.fetch.bind(window);
 
   window.fetch = async (input: RequestInfo | URL, init: RequestInit = {}): Promise<Response> => {
-       const sanitizedInit = sanitizeRequestInit(init);
+    const sanitizedInit = sanitizeRequestInit(init);
 
     if (isRetrievingSessionToken()) {
-     return originalFetch(input as any, sanitizedInit);
+    return originalFetch(input as any, sanitizedInit);
     }
 
     const headers = normalizeHeaders(sanitizedInit.headers);
 
     const targetUrl = extractRequestUrl(input);
     if (!headers.has("X-Org-Id") && shouldAttachOrgHeader(targetUrl)) {
-      headers.set("X-Org-Id", "1");
+     headers.set("X-Org-Id", DEFAULT_ORG_ID);
     }
 
     if (!headers.has("Authorization")) {
