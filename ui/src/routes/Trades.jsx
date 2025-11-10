@@ -5,7 +5,7 @@ import Marketplace from '../components/trades/Marketplace';
 import MiniCmbsPools from '../components/trades/MiniCmbsPools';
 import ParticipationMarketplace from '../components/trades/ParticipationMarketplace';
 import PreferredEquityTokens from '../components/trades/PreferredEquityTokens';
-import { api } from '../lib/api';
+import { api, resolveApiBase } from '../lib/api';
 
 const COMMON_FIELDS = [
   { name: 'symbol', label: 'Symbol', type: 'text', placeholder: 'Symbol', required: true, defaultValue: '' },
@@ -329,8 +329,22 @@ export default function Trades() {
     fetchParticipations();
     fetchPreferredEquity();
     
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const ws = new WebSocket(`${protocol}//${window.location.host}/collab`);
+    const fallbackProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const fallbackUrl = `${fallbackProtocol}//${window.location.host}/collab`;
+    const apiBase = resolveApiBase();
+
+    let socketUrl = fallbackUrl;
+    try {
+      const resolvedApiUrl = new URL(apiBase, window.location.origin);
+      if (resolvedApiUrl.origin !== window.location.origin) {
+        const wsProtocol = resolvedApiUrl.protocol === 'https:' ? 'wss:' : 'ws:';
+        socketUrl = `${wsProtocol}//${resolvedApiUrl.host}/collab`;
+      }
+    } catch {
+      // ignore and use fallbackUrl
+    }
+
+    const ws = new WebSocket(socketUrl);
     ws.onmessage = evt => {
       try {
         const msg = JSON.parse(evt.data);
