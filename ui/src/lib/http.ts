@@ -69,6 +69,8 @@ function resolveDefaultOrgId(): string {
 
 const DEFAULT_ORG_ID = resolveDefaultOrgId();
 
+const DEFAULT_DEV_ACCESS_TOKEN = "dev-token-change-me";
+
 function resolveDevAccessToken(): string | null {
   const env = (import.meta.env ?? {}) as EnvRecord & {
     VITE_DEV_ACCESS_TOKEN?: string;
@@ -99,6 +101,10 @@ function resolveDevAccessToken(): string | null {
     if (token.trim()) {
       return token.trim();
     }
+  }
+
+    if (DEFAULT_DEV_ACCESS_TOKEN.trim()) {
+    return DEFAULT_DEV_ACCESS_TOKEN.trim();
   }
 
   return null;
