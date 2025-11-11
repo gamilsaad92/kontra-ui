@@ -16,7 +16,7 @@ function useFetch<T>(path: string | null): FetchResult<T> {
    if (!path) return;
     let cancelled = false;
     setIsLoading(true);
-   setError(null);
+    setError(null);
 
     const doFetch = async () => {
       try {
@@ -25,7 +25,7 @@ function useFetch<T>(path: string | null): FetchResult<T> {
           return;
         }
 
-         const nextData = (result as T | null | undefined) ?? null;
+      const nextData = (result as T | null | undefined) ?? null;
         setData(nextData);
         setIsLoading(false);
       } catch (e) {
@@ -33,7 +33,7 @@ function useFetch<T>(path: string | null): FetchResult<T> {
           return;
         }
 
-           const err =
+        const err =
           e instanceof Error ? e : new Error((e as { message?: string }).message ?? 'Request failed');
         setError(err);
         setIsLoading(false);
@@ -49,9 +49,17 @@ function useFetch<T>(path: string | null): FetchResult<T> {
   return { data, error, isLoading };
 }
 
-export function useListings(params?: Record<string, string>) {
+export function useListings(params?: Record<string, string>): FetchResult<any[]> {
   const query = params ? `?${new URLSearchParams(params).toString()}` : '';
- return useFetch<any[]>(`/exchange/listings${query}`);
+ const { data, error, isLoading } = useFetch<{ listings?: any[] | null }>(
+    `/exchange/listings${query}`
+  );
+
+  return {
+    data: Array.isArray(data) ? data : data?.listings ?? [],
+    error,
+    isLoading,
+  };
 }
 
 export function useOffers(listingId?: string) {
