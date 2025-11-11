@@ -288,8 +288,8 @@ async function apiFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
  const finalInit: RequestInit = {
     ...sanitizedInit,
     headers,
-    credentials: sanitizedInit.credentials ?? "include"
-  };
+    credentials: sanitizedInit.credentials ?? "same-origin"
+ };
 
   const method = resolveRequestMethodFromInit(finalInit);
   logFetchDebug(`→ ${method} ${requestUrl}`);
@@ -372,7 +372,7 @@ export function installAuthFetchInterceptor(): void {
      const finalInit: RequestInit = {
       ...sanitizedInit,
       headers,
-      credentials: sanitizedInit.credentials ?? "include"
+     credentials: sanitizedInit.credentials ?? "same-origin"
     };
 
     const method = resolveRequestMethod(input, finalInit);
