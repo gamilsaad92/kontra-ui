@@ -6,7 +6,7 @@ const KycCheck: React.FC = () => {
 
   useEffect(() => {
     let cancelled = false;
-    fetch(`${API_BASE}/kyc`)
+   fetch(`${API_BASE}/api/kyc`)
       .then(res => {
         if (!res.ok) throw new Error(`status ${res.status}`);
         return res.json();
