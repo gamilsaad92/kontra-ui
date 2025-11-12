@@ -102,7 +102,7 @@ export default function AnalyticsDashboard() {
 
     Promise.all([
       supabase.rpc('get_draws_volume'),
-      supabase.from('loans').select('status, count:count(*)', { group: 'status' }),
+     supabase.from('loans').select('status'),
     ])
       .then(([drawsResponse, loansResponse]) => {
         if (!isMounted) return
@@ -124,7 +124,22 @@ export default function AnalyticsDashboard() {
           setLoanData(FALLBACK_LOAN_STATUS)
           setError((prev) => prev || 'We could not retrieve the live analytics feed.')
         } else if (Array.isArray(loansResponse?.data) && loansResponse.data.length > 0) {
-          setLoanData(loansResponse.data)
+          const countsByStatus = loansResponse.data.reduce((acc, row) => {
+            const statusKey = row?.status ?? 'Unknown'
+            acc[statusKey] = (acc[statusKey] || 0) + 1
+            return acc
+          }, {})
+
+          const formattedLoanData = Object.entries(countsByStatus).map(([status, count]) => ({
+            status,
+            count,
+          }))
+
+          if (formattedLoanData.length > 0) {
+            setLoanData(formattedLoanData)
+          } else {
+            setLoanData(FALLBACK_LOAN_STATUS)
+          }
         }
 
            if (!encounteredError) {
