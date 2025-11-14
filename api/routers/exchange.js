@@ -56,6 +56,305 @@ router.post('/settlement/webhook', async (req, res) => {
 // All routes require authentication
 router.use(authenticate);
 
+function toNumber(value) {
+  if (value === null || value === undefined || value === '') return null;
+  const num = Number(value);
+  return Number.isFinite(num) ? num : null;
+}
+
+function cleanObject(obj, { dropNull = false } = {}) {
+  if (!obj || typeof obj !== 'object') return {};
+  return Object.fromEntries(
+    Object.entries(obj).filter(([, value]) => {
+      if (value === undefined) return false;
+      if (dropNull && value === null) return false;
+      return true;
+    })
+  );
+}
+
+async function fetchFirstRow(table, selectFields, organizationId, filters = []) {
+  try {
+    let query = supabase.from(table).select(selectFields);
+    if (organizationId) {
+      query = query.eq('organization_id', organizationId);
+    }
+    for (const apply of filters) {
+      if (typeof apply === 'function') {
+        query = apply(query);
+      }
+    }
+    const { data, error } = await query.limit(1);
+    if (error || !Array.isArray(data) || !data.length) return null;
+    return data[0];
+  } catch (err) {
+    console.warn(`Failed to query ${table}`, err);
+    return null;
+  }
+}
+
+async function fetchWithFallbacks(table, selectFields, organizationId, filterSets = []) {
+  for (const filters of filterSets) {
+    const row = await fetchFirstRow(table, selectFields, organizationId, filters);
+    if (row) return row;
+  }
+  return null;
+}
+
+function normalizeKpiShape(entry = {}) {
+  const rawValue = entry.value ?? entry.current ?? entry.current_value;
+  const rawTarget = entry.target ?? entry.target_value;
+  const normalized = cleanObject(
+    {
+      name: entry.name ?? entry.kpi_name ?? entry.metric ?? 'KPI',
+      value:
+        typeof rawValue === 'number' || typeof rawValue === 'string'
+          ? rawValue
+          : undefined,
+      target:
+        typeof rawTarget === 'number' || typeof rawTarget === 'string'
+          ? rawTarget
+          : undefined,
+      unit: entry.unit ?? entry.kpi_unit ?? entry.measure ?? undefined,
+      trend: entry.trend ?? entry.direction ?? entry.directionality ?? undefined,
+      delta_bps: toNumber(
+        entry.delta_bps ?? entry.deltaBps ?? entry.rate_delta_bps ?? entry.rateDeltaBps
+      ) ?? undefined,
+    },
+    { dropNull: true }
+  );
+  return normalized;
+}
+
+function buildLoanFilterSets({ loanId, borrowerName }) {
+  const sets = [];
+  if (loanId) {
+    sets.push([query => query.eq('loan_id', loanId)]);
+    sets.push([query => query.eq('id', loanId)]);
+  }
+  if (borrowerName) {
+    sets.push([query => query.ilike('borrower_name', `%${borrowerName}%`)]);
+    sets.push([query => query.ilike('borrower', `%${borrowerName}%`)]);
+  }
+  sets.push([]);
+  return sets;
+}
+
+function buildAssetFilterSets({ assetId, borrowerName }) {
+  const sets = [];
+  if (assetId) {
+    sets.push([query => query.eq('id', assetId)]);
+  }
+  if (borrowerName) {
+    sets.push([query => query.ilike('name', `%${borrowerName}%`)]);
+  }
+  sets.push([]);
+  return sets;
+}
+
+function assignEnriched(target, enrichments) {
+  if (!enrichments || typeof enrichments !== 'object') return;
+  for (const [key, value] of Object.entries(enrichments)) {
+    if (value === undefined) continue;
+    if (Array.isArray(value)) {
+      if (!value.length) continue;
+      if (Array.isArray(target[key]) && target[key].length) {
+        const mergedMap = new Map();
+        for (const item of target[key]) {
+          const identifier =
+            item && typeof item === 'object' && 'name' in item
+              ? item.name
+              : JSON.stringify(item);
+          mergedMap.set(identifier, item);
+        }
+        for (const entry of value) {
+          const identifier =
+            entry && typeof entry === 'object' && 'name' in entry
+              ? entry.name
+              : JSON.stringify(entry);
+          mergedMap.set(identifier, entry);
+        }
+        target[key] = Array.from(mergedMap.values());
+      } else {
+        target[key] = value;
+      }
+      continue;
+    }
+    if (value && typeof value === 'object' && !Array.isArray(value)) {
+      const cleaned = cleanObject(value, { dropNull: true });
+      if (!Object.keys(cleaned).length) continue;
+      if (target[key] && typeof target[key] === 'object' && !Array.isArray(target[key])) {
+        target[key] = { ...target[key], ...cleaned };
+      } else {
+        target[key] = cleaned;
+      }
+      continue;
+    }
+    target[key] = value;
+  }
+}
+
+async function gatherListingMetrics({ loan_id: loanId, asset_id: assetId, borrower_name: borrowerName, organizationId }) {
+  const metrics = {};
+  const loanFilterSets = buildLoanFilterSets({ loanId, borrowerName });
+
+  const dscrRow = await fetchWithFallbacks(
+    'loan_dscr_metrics',
+    'loan_id,id,borrower_name,borrower,dscr,current_dscr,currentDscr,target_dscr,targetDscr,interest_accrued_month,interestAccruedMonth,last_recalculated,lastRecalculated,next_reset,nextReset',
+    organizationId,
+    loanFilterSets
+  );
+  if (dscrRow) {
+    const currentDscr = toNumber(dscrRow.dscr ?? dscrRow.current_dscr ?? dscrRow.currentDscr);
+    const targetDscr = toNumber(dscrRow.target_dscr ?? dscrRow.targetDscr);
+    if (currentDscr !== null) {
+      metrics.dscr = currentDscr;
+    }
+    if (currentDscr !== null || targetDscr !== null) {
+      const dscrTrend = [];
+      if (currentDscr !== null) dscrTrend.push({ period: 'current', dscr: currentDscr });
+      if (targetDscr !== null) dscrTrend.push({ period: 'target', dscr: targetDscr });
+      if (dscrTrend.length) metrics.dscr_trend = dscrTrend;
+    }
+    const paymentSummary = cleanObject(
+      {
+        lastRecalculated: dscrRow.last_recalculated ?? dscrRow.lastRecalculated ?? null,
+        nextReset: dscrRow.next_reset ?? dscrRow.nextReset ?? null,
+        interestAccruedMonth: toNumber(
+          dscrRow.interest_accrued_month ?? dscrRow.interestAccruedMonth
+        ),
+      },
+      { dropNull: true }
+    );
+    if (Object.keys(paymentSummary).length) {
+      metrics.payment_history_summary = paymentSummary;
+    }
+    const dscrBuffer =
+      currentDscr !== null && targetDscr !== null
+        ? Number((currentDscr - targetDscr).toFixed(3))
+        : null;
+    if (dscrBuffer !== null) {
+      metrics.marketplace_metrics = {
+        ...(metrics.marketplace_metrics || {}),
+        dscrBuffer,
+        targetDscr,
+      };
+    } else if (targetDscr !== null) {
+      metrics.marketplace_metrics = {
+        ...(metrics.marketplace_metrics || {}),
+        targetDscr,
+      };
+    }
+  }
+
+  const perfRow = await fetchWithFallbacks(
+    'loan_performance_fees',
+    'loan_id,id,borrower_name,borrower,profit_share_pct,profitSharePct,noi_target,noiTarget,actual_noi,actualNoi,pref_return,prefReturn,lender_split,lenderSplit,sponsor_split,sponsorSplit,reserve_balance,reserveBalance,last_waterfall,lastWaterfall',
+    organizationId,
+    loanFilterSets
+  );
+  if (perfRow) {
+    const cashflowSummary = cleanObject(
+      {
+        profitSharePct: toNumber(perfRow.profit_share_pct ?? perfRow.profitSharePct),
+        noiTarget: toNumber(perfRow.noi_target ?? perfRow.noiTarget),
+        actualNoi: toNumber(perfRow.actual_noi ?? perfRow.actualNoi),
+        prefReturn: toNumber(perfRow.pref_return ?? perfRow.prefReturn),
+        lenderSplit: toNumber(perfRow.lender_split ?? perfRow.lenderSplit),
+        sponsorSplit: toNumber(perfRow.sponsor_split ?? perfRow.sponsorSplit),
+        reserveBalance: toNumber(perfRow.reserve_balance ?? perfRow.reserveBalance),
+        lastWaterfall: perfRow.last_waterfall ?? perfRow.lastWaterfall ?? undefined,
+      },
+      { dropNull: true }
+    );
+    if (Object.keys(cashflowSummary).length) {
+      metrics.cashflow_summary = cashflowSummary;
+      if (
+        typeof cashflowSummary.actualNoi === 'number' &&
+        typeof cashflowSummary.noiTarget === 'number' &&
+        cashflowSummary.noiTarget !== 0
+      ) {
+        const noiMargin = Number(
+          (
+            (cashflowSummary.actualNoi - cashflowSummary.noiTarget) /
+            Math.abs(cashflowSummary.noiTarget)
+          ).toFixed(3)
+        );
+        metrics.marketplace_metrics = {
+          ...(metrics.marketplace_metrics || {}),
+          noiMargin,
+        };
+      }
+    }
+  }
+
+  const kpiRow = await fetchWithFallbacks(
+    'loan_green_kpis',
+    'loan_id,id,borrower_name,borrower,kpis,energy_provider,energyProvider,last_ingested,lastIngested',
+    organizationId,
+    loanFilterSets
+  );
+  if (kpiRow) {
+    let borrowerKpis = [];
+    if (Array.isArray(kpiRow.kpis) && kpiRow.kpis.length) {
+      borrowerKpis = kpiRow.kpis.map(normalizeKpiShape).filter(kpi => Object.keys(kpi).length);
+    }
+    if (borrowerKpis.length) {
+      metrics.borrower_kpis = borrowerKpis;
+    }
+    metrics.marketplace_metrics = {
+      ...(metrics.marketplace_metrics || {}),
+      sustainabilityProvider: kpiRow.energy_provider ?? kpiRow.energyProvider ?? undefined,
+      lastSustainabilitySync: kpiRow.last_ingested ?? kpiRow.lastIngested ?? undefined,
+    };
+  }
+
+  const assetRow = await fetchWithFallbacks(
+    'assets',
+    'id,name,occupancy,status,value,occupancy_trend,occupancyTrend',
+    null,
+    buildAssetFilterSets({ assetId, borrowerName })
+  );
+  if (assetRow) {
+    const occupancyRaw = toNumber(assetRow.occupancy);
+    let occupancyRate = occupancyRaw;
+    if (occupancyRaw !== null && occupancyRaw <= 1 && occupancyRaw >= 0) {
+      occupancyRate = Number((occupancyRaw * 100).toFixed(2));
+    }
+    if (occupancyRate !== null) {
+      metrics.occupancy_rate = occupancyRate;
+    }
+    metrics.marketplace_metrics = {
+      ...(metrics.marketplace_metrics || {}),
+      occupancyStatus: assetRow.status ?? undefined,
+      occupancyTrend: assetRow.occupancy_trend ?? assetRow.occupancyTrend ?? undefined,
+      assetValue: toNumber(assetRow.value) ?? undefined,
+      occupancyScore:
+        occupancyRate !== null && occupancyRate !== undefined
+          ? Number((occupancyRate / 100).toFixed(3))
+          : undefined,
+    };
+  }
+
+  if (metrics.marketplace_metrics) {
+    const cleaned = cleanObject(metrics.marketplace_metrics, { dropNull: true });
+    metrics.marketplace_metrics = Object.fromEntries(
+      Object.entries(cleaned).filter(([, value]) => value !== undefined)
+    );
+    if (!Object.keys(metrics.marketplace_metrics).length) {
+      delete metrics.marketplace_metrics;
+    }
+  }
+
+  if (metrics.payment_history_summary) {
+    if (!Object.keys(metrics.payment_history_summary).length) {
+      delete metrics.payment_history_summary;
+    }
+  }
+
+  return metrics;
+}
+
 // Tokenization schema
 const tokenSchema = z.object({
   asset: z.string(),
@@ -79,6 +378,17 @@ router.post('/tokenize', requireRole('lender_trader'), async (req, res) => {
 });
 
 // Listing schemas
+const borrowerKpiSchema = z.object({
+  name: z.string(),
+  value: z.union([z.number(), z.string()]).optional(),
+  unit: z.string().optional(),
+  target: z.union([z.number(), z.string()]).optional(),
+  trend: z.string().optional(),
+  delta_bps: z.number().optional()
+});
+const dscrTrendPointSchema = z.object({ period: z.string(), dscr: z.number() });
+const jsonRecordSchema = z.record(z.any());
+
 const listingSchema = z.object({
   asset_type: z.string(),
   title: z.string().min(3),
@@ -97,6 +407,14 @@ const listingSchema = z.object({
   risk_rating: z.string().optional(),
   ltv: z.number().optional(),
   dscr: z.number().optional(),
+    loan_id: z.string().optional(),
+  asset_id: z.string().optional(),
+  occupancy_rate: z.number().min(0).max(100).optional(),
+  cashflow_summary: jsonRecordSchema.optional(),
+  borrower_kpis: z.array(borrowerKpiSchema).optional(),
+  marketplace_metrics: jsonRecordSchema.optional(),
+  dscr_trend: z.array(dscrTrendPointSchema).optional(),
+  payment_history_summary: jsonRecordSchema.optional(),
   visibility: z.enum(['network', 'private', 'invite_only']).default('network'),
   invitee_org_ids: z.array(z.string()).optional(),
   compliance_hold: z.boolean().default(true)
@@ -156,6 +474,37 @@ function matchesSearch(listing, text, filters = {}) {
   if (filters?.ltv_max && (listing.ltv || 0) > filters.ltv_max) return false;
   if (filters?.dscr_min && (listing.dscr || 0) < filters.dscr_min) return false;
   if (filters?.dscr_max && (listing.dscr || 0) > filters.dscr_max) return false;
+    const occupancy = typeof listing.occupancy_rate === 'number' ? listing.occupancy_rate : null;
+  if (filters?.occupancy_min && (occupancy ?? 0) < filters.occupancy_min) return false;
+  if (filters?.occupancy_max && (occupancy ?? 100) > filters.occupancy_max) return false;
+  const dscrBuffer = listing?.marketplace_metrics?.dscrBuffer;
+  if (
+    filters?.dscr_buffer_min !== undefined &&
+    (typeof dscrBuffer !== 'number' || dscrBuffer < filters.dscr_buffer_min)
+  )
+    return false;
+  if (
+    filters?.dscr_buffer_max !== undefined &&
+    (typeof dscrBuffer !== 'number' || dscrBuffer > filters.dscr_buffer_max)
+  )
+    return false;
+  const noiMargin = listing?.marketplace_metrics?.noiMargin;
+  if (
+    filters?.noi_margin_min !== undefined &&
+    (typeof noiMargin !== 'number' || noiMargin < filters.noi_margin_min)
+  )
+    return false;
+  if (
+    filters?.noi_margin_max !== undefined &&
+    (typeof noiMargin !== 'number' || noiMargin > filters.noi_margin_max)
+  )
+    return false;
+  if (Array.isArray(filters?.focus_kpis) && filters.focus_kpis.length) {
+    const hasFocusMatch = Array.isArray(listing.borrower_kpis)
+      ? listing.borrower_kpis.some(kpi => filters.focus_kpis.includes(kpi.name))
+      : false;
+    if (!hasFocusMatch) return false;
+  }
   return true;
 }
 
@@ -171,19 +520,33 @@ router.post('/listings', requireRole('lender_trader'), async (req, res) => {
       .eq('id', orgId)
       .single();
     const hold = org?.kyc_approved ? false : true;
+    const metrics = await gatherListingMetrics({
+      loan_id: input.loan_id,
+      asset_id: input.asset_id,
+      borrower_name: input.borrower_name,
+      organizationId: orgId
+    });
+    const insertPayload = {
+      ...input,
+      compliance_hold: hold,
+      organization_id: orgId,
+      created_by: userId,
+      status: 'listed'
+    };
+    assignEnriched(insertPayload, metrics);
     const { data, error } = await supabase
       .from('exchange_listings')
-     .insert([{ ...input, compliance_hold: hold, organization_id: orgId, created_by: userId, status: 'listed' }])
+     .insert([insertPayload])
       .select()
       .single();
     if (error) return res.status(400).json({ error: error.message });
-    
+
     // Trigger recommendation refresh for this organization
     updateRecommendations(orgId).catch(err =>
       console.error('Update recos error:', err)
     );
 
-      notifySavedSearches(data).catch(err =>
+   notifySavedSearches(data).catch(err =>
       console.error('Notify saved search error:', err)
     );
 
@@ -214,7 +577,13 @@ router.get('/listings', async (req, res) => {
     ltv_min,
     ltv_max,
     dscr_min,
-    dscr_max
+    dscr_max,
+    occupancy_min,
+    occupancy_max,
+    dscr_buffer_min,
+    dscr_buffer_max,
+    noi_margin_min,
+    noi_margin_max
   } = req.query;
   let query = supabase
     .from('exchange_listings')
@@ -223,7 +592,7 @@ router.get('/listings', async (req, res) => {
     .eq('compliance_hold', false);
   if (status) query = query.eq('status', status);
   if (asset_type) query = query.eq('asset_type', asset_type);
- if (q) query = query.textSearch('search_vector', q);
+  if (q) query = query.textSearch('search_vector', q);
   if (par_min) query = query.gte('par_amount', Number(par_min));
   if (par_max) query = query.lte('par_amount', Number(par_max));
   if (coupon_min) query = query.gte('coupon_bps', Number(coupon_min));
@@ -234,11 +603,44 @@ router.get('/listings', async (req, res) => {
   if (ltv_max) query = query.lte('ltv', Number(ltv_max));
   if (dscr_min) query = query.gte('dscr', Number(dscr_min));
   if (dscr_max) query = query.lte('dscr', Number(dscr_max));
+  const occMin = toNumber(occupancy_min);
+  const occMax = toNumber(occupancy_max);
+  if (occMin !== null) query = query.gte('occupancy_rate', occMin);
+  if (occMax !== null) query = query.lte('occupancy_rate', occMax);
   const from = (Number(page) - 1) * Number(pageSize);
   const to = from + Number(pageSize) - 1;
   const { data, error } = await query.range(from, to);
   if (error) return res.status(500).json({ error: error.message });
-  res.json({ listings: data || [] });
+  let listings = data || [];
+  const dscrBufferMin = toNumber(dscr_buffer_min);
+  const dscrBufferMax = toNumber(dscr_buffer_max);
+  if (dscrBufferMin !== null) {
+    listings = listings.filter(item =>
+      typeof item?.marketplace_metrics?.dscrBuffer === 'number' &&
+      item.marketplace_metrics.dscrBuffer >= dscrBufferMin
+    );
+  }
+  if (dscrBufferMax !== null) {
+    listings = listings.filter(item =>
+      typeof item?.marketplace_metrics?.dscrBuffer === 'number' &&
+      item.marketplace_metrics.dscrBuffer <= dscrBufferMax
+    );
+  }
+  const noiMarginMinVal = toNumber(noi_margin_min);
+  const noiMarginMaxVal = toNumber(noi_margin_max);
+  if (noiMarginMinVal !== null) {
+    listings = listings.filter(item =>
+      typeof item?.marketplace_metrics?.noiMargin === 'number' &&
+      item.marketplace_metrics.noiMargin >= noiMarginMinVal
+    );
+  }
+  if (noiMarginMaxVal !== null) {
+    listings = listings.filter(item =>
+      typeof item?.marketplace_metrics?.noiMargin === 'number' &&
+      item.marketplace_metrics.noiMargin <= noiMarginMaxVal
+    );
+  }
+  res.json({ listings });
 });
 
 // Listing detail
@@ -270,10 +672,35 @@ router.get('/listings/:id', async (req, res) => {
 // Update listing
 router.patch('/listings/:id', requireRole('lender_trader'), async (req, res) => {
   try {
-    const updates = listingUpdateSchema.parse(req.body);
+    const { refresh_metrics, ...rawBody } = req.body || {};
+    const updates = listingUpdateSchema.parse(rawBody);
+    const refreshMetrics = refresh_metrics === true || refresh_metrics === 'true';
+    const { data: existing, error: existingErr } = await supabase
+      .from('exchange_listings')
+      .select('*')
+      .eq('id', req.params.id)
+      .single();
+    if (existingErr || !existing) {
+      return res.status(404).json({ error: 'Listing not found' });
+    }
+
+    const merged = { ...existing, ...updates };
+    let metricUpdates = {};
+    if (refreshMetrics || updates.loan_id || updates.asset_id || updates.borrower_name) {
+      metricUpdates = await gatherListingMetrics({
+        loan_id: merged.loan_id,
+        asset_id: merged.asset_id,
+        borrower_name: merged.borrower_name,
+        organizationId: existing.organization_id
+      });
+    }
+
+    const payload = { ...updates };
+    assignEnriched(payload, metricUpdates);
+
     const { data, error } = await supabase
       .from('exchange_listings')
-      .update(updates)
+      .update(payload)
       .eq('id', req.params.id)
       .select()
       .single();
