@@ -137,15 +137,67 @@ const toneStyles: Record<QuickAction["tone"], string> = {
   violet: "bg-violet-50 text-violet-700 border border-violet-100 hover:border-violet-200"
 };
 
+type MarketplaceHighlight = {
+  id: string | number;
+  title: string;
+  sector: string | null;
+  geography: string | null;
+  parAmount: number | null;
+  occupancyRate: number | null;
+  dscr: number | null;
+  dscrBuffer: number | null;
+  noiMargin: number | null;
+};
+
+type MarketplaceSummary = {
+  totals: {
+    activeListings: number;
+    avgOccupancyRate: number | null;
+    avgDscr: number | null;
+    avgDscrBuffer: number | null;
+    avgNoiMargin: number | null;
+    totalParAmount: number | null;
+  };
+  highlights: MarketplaceHighlight[];
+  borrowerKpiLeaders: Array<{ name: string; count: number }>;
+  updatedAt: string | null;
+};
+
+function formatPercentValue(value?: number | null, decimals = 0): string {
+  if (value === undefined || value === null || Number.isNaN(value)) {
+    return "—";
+  }
+  return `${value.toFixed(decimals)}%`;
+}
+
+function formatRatio(value?: number | null, decimals = 2): string {
+  if (value === undefined || value === null || Number.isNaN(value)) {
+    return "—";
+  }
+  return value.toFixed(decimals);
+}
+
+function formatSignedPercent(value?: number | null, decimals = 1): string {
+  if (value === undefined || value === null || Number.isNaN(value)) {
+    return "—";
+  }
+  const formatted = (value * 100).toFixed(decimals);
+  return `${value > 0 ? "+" : value < 0 ? "" : ""}${formatted}%`;
+}
+
 export default function SaasDashboardHome({ apiBase }: Props) {
   const [riskSummary, setRiskSummary] = useState<RiskSummary | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [riskError, setRiskError] = useState<string | null>(null);
+  const [riskLoading, setRiskLoading] = useState(true);
+  const [marketplaceSummary, setMarketplaceSummary] = useState<MarketplaceSummary | null>(null);
+  const [marketplaceError, setMarketplaceError] = useState<string | null>(null);
+  const [marketplaceLoading, setMarketplaceLoading] = useState(true);
+
 
   useEffect(() => {
     let cancelled = false;
-    async function loadRisk() {
-      setLoading(true);
+      setRiskLoading(true);
+      setRiskError(null);
       setError(null);
       const baseURL = normalizeApiBase(apiBase);
       try {
@@ -156,19 +208,53 @@ export default function SaasDashboardHome({ apiBase }: Props) {
       } catch (err: any) {
         if (cancelled) return;
         const status = err?.response?.status;
-        if (status === 404) {
+          setRiskError("Trading module is disabled for this environment.");
           setError("Trading module is disabled for this environment.");
-        } else {
+        setRiskError("Unable to load investor risk summary.");
           setError("Unable to load investor risk summary.");
         }
         setRiskSummary(null);
       } finally {
-        if (!cancelled) {
-          setLoading(false);
+         setRiskLoading(false);
         }
       }
     }
     loadRisk();
+    return () => {
+      cancelled = true;
+    };
+  }, [apiBase]);
+
+ useEffect(() => {
+    let cancelled = false;
+    async function loadMarketplace() {
+      setMarketplaceLoading(true);
+      setMarketplaceError(null);
+      const baseURL = normalizeApiBase(apiBase);
+      try {
+        const response = await api.get<MarketplaceSummary>(
+          "/dashboard/marketplace",
+          baseURL ? { baseURL } : undefined
+        );
+        if (!cancelled) {
+          setMarketplaceSummary(response.data);
+        }
+      } catch (err: any) {
+        if (cancelled) return;
+        const status = err?.response?.status;
+        if (status === 404) {
+          setMarketplaceError("Trading module is disabled for this environment.");
+        } else {
+          setMarketplaceError("Unable to load marketplace metrics.");
+        }
+        setMarketplaceSummary(null);
+      } finally {
+        if (!cancelled) {
+          setMarketplaceLoading(false);
+        }
+      }
+    }
+    loadMarketplace();
     return () => {
       cancelled = true;
     };
@@ -199,19 +285,19 @@ export default function SaasDashboardHome({ apiBase }: Props) {
         )}
       </header>
 
-      {loading && (
+      {riskLoading && (
         <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
           <p className="text-sm text-slate-500">Loading risk telemetry…</p>
         </div>
       )}
 
-      {!loading && error && (
+    {!riskLoading && riskError && (
         <div className="rounded-lg border border-rose-200 bg-rose-50 p-6 text-sm text-rose-700">
-          {error}
+         {riskError}
         </div>
       )}
 
-      {!loading && !error && riskSummary && (
+     {!riskLoading && !riskError && riskSummary && (
         <>
           <section className="grid gap-6 lg:grid-cols-3">
             <article className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm lg:col-span-1">
@@ -308,6 +394,136 @@ export default function SaasDashboardHome({ apiBase }: Props) {
           </section>
         </>
       )}
+
+           <section className="space-y-4">
+        <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Marketplace Pulse</h2>
+            <p className="text-sm text-slate-500">Live insight into exchange listing health and traction.</p>
+          </div>
+          {marketplaceSummary?.updatedAt && (
+            <p className="text-xs text-slate-400">
+              Updated {formatTimestamp(marketplaceSummary.updatedAt)}
+            </p>
+          )}
+        </div>
+
+        {marketplaceLoading ? (
+          <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+            <p className="text-sm text-slate-500">Loading marketplace metrics…</p>
+          </div>
+        ) : marketplaceError ? (
+          <div className="rounded-lg border border-rose-200 bg-rose-50 p-6 text-sm text-rose-700">
+            {marketplaceError}
+          </div>
+        ) : marketplaceSummary ? (
+          <div className="grid gap-6 lg:grid-cols-3">
+            <article className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+              <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Listing Overview</h3>
+              <dl className="mt-4 space-y-2 text-sm">
+                <div className="flex items-center justify-between">
+                  <dt className="text-slate-500">Active listings</dt>
+                  <dd className="font-semibold text-slate-900">
+                    {marketplaceSummary.totals.activeListings}
+                  </dd>
+                </div>
+                <div className="flex items-center justify-between">
+                  <dt className="text-slate-500">Avg. occupancy</dt>
+                  <dd className="font-semibold text-slate-900">
+                    {formatPercentValue(marketplaceSummary.totals.avgOccupancyRate ?? null, 1)}
+                  </dd>
+                </div>
+                <div className="flex items-center justify-between">
+                  <dt className="text-slate-500">Avg. DSCR</dt>
+                  <dd className="font-semibold text-slate-900">
+                    {formatRatio(marketplaceSummary.totals.avgDscr ?? null, 2)}
+                  </dd>
+                </div>
+                <div className="flex items-center justify-between">
+                  <dt className="text-slate-500">Avg. DSCR buffer</dt>
+                  <dd className="font-semibold text-slate-900">
+                    {formatRatio(marketplaceSummary.totals.avgDscrBuffer ?? null, 2)}
+                  </dd>
+                </div>
+                <div className="flex items-center justify-between">
+                  <dt className="text-slate-500">Avg. NOI margin</dt>
+                  <dd className="font-semibold text-slate-900">
+                    {formatSignedPercent(marketplaceSummary.totals.avgNoiMargin ?? null, 1)}
+                  </dd>
+                </div>
+                <div className="flex items-center justify-between">
+                  <dt className="text-slate-500">Total par marketed</dt>
+                  <dd className="font-semibold text-slate-900">
+                    {formatCurrency(marketplaceSummary.totals.totalParAmount ?? undefined)}
+                  </dd>
+                </div>
+              </dl>
+            </article>
+
+            <article className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+              <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Lead Listings</h3>
+              {marketplaceSummary.highlights.length === 0 ? (
+                <p className="mt-3 text-sm text-slate-500">No listings have been published yet.</p>
+              ) : (
+                <ul className="mt-4 space-y-3">
+                  {marketplaceSummary.highlights.slice(0, 3).map((listing) => (
+                    <li key={listing.id} className="rounded-lg border border-slate-100 bg-slate-50 px-4 py-3">
+                      <p className="text-sm font-semibold text-slate-800">{listing.title}</p>
+                      <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-slate-500">
+                        {listing.sector && <span>{listing.sector}</span>}
+                        {listing.geography && <span>{listing.geography}</span>}
+                        {listing.parAmount !== null && (
+                          <span>{formatCurrency(listing.parAmount)}</span>
+                        )}
+                      </div>
+                      <dl className="mt-3 grid grid-cols-2 gap-2 text-xs text-slate-600">
+                        <div>
+                          <dt className="text-slate-500">Occupancy</dt>
+                          <dd className="font-medium text-slate-900">
+                            {formatPercentValue(listing.occupancyRate ?? null, 1)}
+                          </dd>
+                        </div>
+                        <div>
+                          <dt className="text-slate-500">DSCR</dt>
+                          <dd className="font-medium text-slate-900">{formatRatio(listing.dscr ?? null, 2)}</dd>
+                        </div>
+                        <div>
+                          <dt className="text-slate-500">Buffer</dt>
+                          <dd className="font-medium text-slate-900">
+                            {formatRatio(listing.dscrBuffer ?? null, 2)}
+                          </dd>
+                        </div>
+                        <div>
+                          <dt className="text-slate-500">NOI margin</dt>
+                          <dd className="font-medium text-slate-900">
+                            {formatSignedPercent(listing.noiMargin ?? null, 1)}
+                          </dd>
+                        </div>
+                      </dl>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </article>
+
+            <article className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+              <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Borrower KPI Signals</h3>
+              {marketplaceSummary.borrowerKpiLeaders.length === 0 ? (
+                <p className="mt-3 text-sm text-slate-500">KPI feeds have not been ingested yet.</p>
+              ) : (
+                <ul className="mt-4 space-y-2 text-sm">
+                  {marketplaceSummary.borrowerKpiLeaders.map((item) => (
+                    <li key={item.name} className="flex items-center justify-between rounded-lg border border-slate-100 bg-slate-50 px-3 py-2">
+                      <span className="font-medium text-slate-800">{item.name}</span>
+                      <span className="text-xs text-slate-500">{item.count} listings</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </article>
+          </div>
+        ) : null}
+      </section>
 
       <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Trading Shortcuts</h2>
