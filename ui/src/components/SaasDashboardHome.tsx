@@ -193,31 +193,36 @@ export default function SaasDashboardHome({ apiBase }: Props) {
   const [marketplaceError, setMarketplaceError] = useState<string | null>(null);
   const [marketplaceLoading, setMarketplaceLoading] = useState(true);
 
-
   useEffect(() => {
     let cancelled = false;
+    function loadRisk() {
       setRiskLoading(true);
       setRiskError(null);
-      setError(null);
       const baseURL = normalizeApiBase(apiBase);
-      try {
-        const response = await api.get<RiskSummary>("/investors/risk", baseURL ? { baseURL } : undefined);
-        if (!cancelled) {
-          setRiskSummary(response.data);
-        }
-      } catch (err: any) {
-        if (cancelled) return;
-        const status = err?.response?.status;
-          setRiskError("Trading module is disabled for this environment.");
-          setError("Trading module is disabled for this environment.");
-        setRiskError("Unable to load investor risk summary.");
-          setError("Unable to load investor risk summary.");
-        }
-        setRiskSummary(null);
-      } finally {
-         setRiskLoading(false);
-        }
-      }
+      api
+        .get<RiskSummary>("/investors/risk", baseURL ? { baseURL } : undefined)
+        .then((response) => {
+          if (!cancelled) {
+            setRiskSummary(response.data);
+          }
+        })
+        .catch((err: any) => {
+          if (cancelled) {
+            return;
+          }
+          const status = err?.response?.status;
+          if (status === 404) {
+            setRiskError("Trading module is disabled for this environment.");
+          } else {
+            setRiskError("Unable to load investor risk summary.");
+          }
+          setRiskSummary(null);
+        })
+        .finally(() => {
+          if (!cancelled) {
+            setRiskLoading(false);
+          }
+        });
     }
     loadRisk();
     return () => {
@@ -225,34 +230,36 @@ export default function SaasDashboardHome({ apiBase }: Props) {
     };
   }, [apiBase]);
 
- useEffect(() => {
+  useEffect(() => {
     let cancelled = false;
-    async function loadMarketplace() {
+    function loadMarketplace() {
       setMarketplaceLoading(true);
       setMarketplaceError(null);
       const baseURL = normalizeApiBase(apiBase);
-      try {
-        const response = await api.get<MarketplaceSummary>(
-          "/dashboard/marketplace",
-          baseURL ? { baseURL } : undefined
-        );
-        if (!cancelled) {
-          setMarketplaceSummary(response.data);
-        }
-      } catch (err: any) {
-        if (cancelled) return;
-        const status = err?.response?.status;
-        if (status === 404) {
-          setMarketplaceError("Trading module is disabled for this environment.");
-        } else {
-          setMarketplaceError("Unable to load marketplace metrics.");
-        }
-        setMarketplaceSummary(null);
-      } finally {
-        if (!cancelled) {
-          setMarketplaceLoading(false);
-        }
-      }
+      api
+        .get<MarketplaceSummary>("/dashboard/marketplace", baseURL ? { baseURL } : undefined)
+        .then((response) => {
+          if (!cancelled) {
+            setMarketplaceSummary(response.data);
+          }
+        })
+        .catch((err: any) => {
+          if (cancelled) {
+            return;
+          }
+          const status = err?.response?.status;
+          if (status === 404) {
+            setMarketplaceError("Trading module is disabled for this environment.");
+          } else {
+            setMarketplaceError("Unable to load marketplace metrics.");
+          }
+          setMarketplaceSummary(null);
+        })
+        .finally(() => {
+          if (!cancelled) {
+            setMarketplaceLoading(false);
+          }
+        });
     }
     loadMarketplace();
     return () => {
@@ -291,13 +298,13 @@ export default function SaasDashboardHome({ apiBase }: Props) {
         </div>
       )}
 
-    {!riskLoading && riskError && (
+      {!riskLoading && riskError && (
         <div className="rounded-lg border border-rose-200 bg-rose-50 p-6 text-sm text-rose-700">
-         {riskError}
+          {riskError}
         </div>
       )}
 
-     {!riskLoading && !riskError && riskSummary && (
+      {!riskLoading && !riskError && riskSummary && (
         <>
           <section className="grid gap-6 lg:grid-cols-3">
             <article className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm lg:col-span-1">
@@ -395,7 +402,7 @@ export default function SaasDashboardHome({ apiBase }: Props) {
         </>
       )}
 
-           <section className="space-y-4">
+      <section className="space-y-4">
         <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Marketplace Pulse</h2>
@@ -532,7 +539,7 @@ export default function SaasDashboardHome({ apiBase }: Props) {
             <a
               key={action.label}
               href={action.href}
-              className={`flex h-full flex-col justify-between rounded-lg px-4 py-3 text-sm font-medium transition-colors ${toneStyles[action.tone]}`}
+              className={`flex h full flex-col justify-between rounded-lg px-4 py-3 text-sm font-medium transition-colors ${toneStyles[action.tone]}`}
             >
               <div>
                 <p className="text-base font-semibold">{action.label}</p>
