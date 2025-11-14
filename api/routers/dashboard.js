@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { createClient } = require('@supabase/supabase-js');
+const { isFeatureEnabled } = require('../featureFlags');
 
 // initialize your Supabase client (or import it if you have a shared lib)
 const supabase = createClient(
@@ -46,6 +47,19 @@ function resolveOrgId(req) {
 function toNumber(value) {
   const parsed = typeof value === 'string' ? parseFloat(value) : Number(value);
   return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function toNullableNumber(value) {
+  if (value === null || value === undefined) {
+    return null;
+  }
+  const parsed = typeof value === 'string' ? parseFloat(value) : Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function average(sum, count, precision = 3) {
+  if (!count) return null;
+  return Number((sum / count).toFixed(precision));
 }
 
 async function fetchLoans(orgId) {
@@ -204,6 +218,135 @@ router.get('/overview', async (req, res) => {
   }
 
   res.json({ overview });
+});
+
+router.get('/marketplace', async (req, res) => {
+  if (!isFeatureEnabled('trading')) {
+    return res.status(404).json({ error: 'Trading module is disabled' });
+  }
+
+  const orgId = resolveOrgId(req);
+  try {
+    let query = supabase
+      .from('exchange_listings')
+      .select(
+        'id,title,par_amount,occupancy_rate,dscr,marketplace_metrics,borrower_kpis,sector,geography,updated_at'
+      )
+      .eq('compliance_hold', false)
+      .order('updated_at', { ascending: false });
+
+    if (orgId) {
+      query = query.eq('organization_id', orgId);
+    }
+
+    const { data, error } = await query.limit(100);
+    if (error) {
+      throw error;
+    }
+
+    const listings = Array.isArray(data) ? data : [];
+    let occupancySum = 0;
+    let occupancyCount = 0;
+    let dscrSum = 0;
+    let dscrCount = 0;
+    let dscrBufferSum = 0;
+    let dscrBufferCount = 0;
+    let noiMarginSum = 0;
+    let noiMarginCount = 0;
+    let parAmountSum = 0;
+
+    const highlights = [];
+    const kpiCounter = new Map();
+    let latestTimestamp = 0;
+
+    for (const listing of listings) {
+      const occupancyRate = toNullableNumber(listing.occupancy_rate);
+      if (occupancyRate !== null) {
+        occupancySum += occupancyRate;
+        occupancyCount += 1;
+      }
+
+      const dscr = toNullableNumber(listing.dscr);
+      if (dscr !== null) {
+        dscrSum += dscr;
+        dscrCount += 1;
+      }
+
+      const metrics = listing.marketplace_metrics || {};
+      const dscrBuffer = toNullableNumber(metrics.dscrBuffer ?? metrics.dscr_buffer);
+      if (dscrBuffer !== null) {
+        dscrBufferSum += dscrBuffer;
+        dscrBufferCount += 1;
+      }
+
+      const noiMargin = toNullableNumber(metrics.noiMargin ?? metrics.noi_margin);
+      if (noiMargin !== null) {
+        noiMarginSum += noiMargin;
+        noiMarginCount += 1;
+      }
+
+      const parAmount = toNullableNumber(listing.par_amount);
+      if (parAmount !== null) {
+        parAmountSum += parAmount;
+      }
+
+      const highlight = {
+        id: listing.id,
+        title: listing.title,
+        sector: listing.sector ?? null,
+        geography: listing.geography ?? null,
+        parAmount: parAmount,
+        occupancyRate,
+        dscr,
+        dscrBuffer,
+        noiMargin,
+      };
+      highlights.push(highlight);
+
+      if (Array.isArray(listing.borrower_kpis)) {
+        for (const kpi of listing.borrower_kpis) {
+          if (!kpi || typeof kpi !== 'object') continue;
+          const label = typeof kpi.name === 'string' && kpi.name.trim() ? kpi.name.trim() : 'KPI';
+          kpiCounter.set(label, (kpiCounter.get(label) || 0) + 1);
+        }
+      }
+
+      if (listing.updated_at) {
+        const ts = new Date(listing.updated_at).getTime();
+        if (!Number.isNaN(ts)) {
+          latestTimestamp = Math.max(latestTimestamp, ts);
+        }
+      }
+    }
+
+    highlights.sort((a, b) => {
+      const scoreA = (a.dscrBuffer ?? 0) * 2 + (a.noiMargin ?? 0) + ((a.occupancyRate ?? 0) / 100);
+      const scoreB = (b.dscrBuffer ?? 0) * 2 + (b.noiMargin ?? 0) + ((b.occupancyRate ?? 0) / 100);
+      return scoreB - scoreA;
+    });
+
+    const borrowerKpiLeaders = Array.from(kpiCounter.entries())
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5)
+      .map(([name, count]) => ({ name, count }));
+
+    res.json({
+      totals: {
+        activeListings: listings.length,
+        avgOccupancyRate: average(occupancySum, occupancyCount, 2),
+        avgDscr: average(dscrSum, dscrCount, 3),
+        avgDscrBuffer: average(dscrBufferSum, dscrBufferCount, 3),
+        avgNoiMargin: average(noiMarginSum, noiMarginCount, 3),
+        totalParAmount: parAmountSum ? Number(parAmountSum.toFixed(2)) : null,
+      },
+      highlights: highlights.slice(0, 5),
+      borrowerKpiLeaders,
+      updatedAt: latestTimestamp ? new Date(latestTimestamp).toISOString() : null,
+    });
+  } catch (error) {
+    console.error('Dashboard marketplace metrics error', error);
+    res.status(500).json({ error: 'Failed to load marketplace metrics' });
+  }
 });
 
 module.exports = router;
