@@ -1,15 +1,17 @@
 const request = require('supertest');
 const app = require('../index');
 
-describe('/api/dashboard-layout', () => {
+const dashboardRoutes = ['/api/dashboard-layout', '/api/dashboard'];
+
+describe.each(dashboardRoutes)('%s', (route) => {
   it('GET requires auth', async () => {
-    const res = await request(app).get('/api/dashboard-layout');
+   const res = await request(app).get(route);
     expect(res.statusCode).toBe(401);
   });
 
   it('POST requires auth', async () => {
     const res = await request(app)
-      .post('/api/dashboard-layout')
+      .post(route)
       .send({ key: 'home', layout: [] });
     expect(res.statusCode).toBe(401);
   });
