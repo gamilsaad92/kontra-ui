@@ -532,6 +532,7 @@ app.use(express.json());
 app.use(auditLogger);
 app.use(rateLimit);
 app.use('/api/dashboard-layout', authenticate, dashboard);
+app.use('/api/dashboard', authenticate, dashboard);
 if (isFeatureEnabled('assets')) {
   app.use("/api/assets", assetsRouter);
 }
