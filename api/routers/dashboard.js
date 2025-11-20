@@ -9,6 +9,13 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
+const EMPTY_MARKETPLACE_SUMMARY = {
+  totals: null,
+  highlights: [],
+  borrowerKpiLeaders: [],
+  updatedAt: null,
+};
+
 const FALLBACK_OVERVIEW = {
   totals: {
     totalLoans: 1280,
@@ -225,6 +232,15 @@ router.get('/marketplace', async (req, res) => {
     return res.status(404).json({ error: 'Trading module is disabled' });
   }
 
+  const supabaseUrl = process.env.SUPABASE_URL;
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!supabaseUrl || !serviceRoleKey) {
+    console.warn('Marketplace unavailable: missing Supabase configuration');
+    return res
+      .status(503)
+      .json({ error: 'Trading module is disabled', summary: EMPTY_MARKETPLACE_SUMMARY });
+  }
+
   const orgId = resolveOrgId(req);
   try {
     let query = supabase
@@ -344,6 +360,14 @@ router.get('/marketplace', async (req, res) => {
       updatedAt: latestTimestamp ? new Date(latestTimestamp).toISOString() : null,
     });
   } catch (error) {
+        const authError = error?.status === 401 || error?.status === 403;
+    if (authError) {
+      console.warn('Marketplace unavailable: Supabase credentials rejected');
+      return res
+        .status(400)
+        .json({ error: 'Trading module is disabled', summary: EMPTY_MARKETPLACE_SUMMARY });
+    }
+
     console.error('Dashboard marketplace metrics error', error);
     res.status(500).json({ error: 'Failed to load marketplace metrics' });
   }
