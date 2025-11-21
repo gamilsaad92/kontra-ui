@@ -59,6 +59,37 @@ type TokenProduct = {
   summary: string;
 };
 
+type BlockchainStack = {
+  family: string;
+  devNetwork: string;
+  mainnetTargets: string[];
+  rationale: string;
+};
+
+type PoolTokenStandard = {
+  standard: string;
+  usage: string;
+  status: string;
+  notes: string;
+};
+
+type LoanTokenStandard = {
+  standard: string;
+  usage: string;
+  status: string;
+  notes?: string;
+};
+
+type TokenizationStack = {
+  blockchain: BlockchainStack;
+  poolToken: PoolTokenStandard;
+  loanTokens: LoanTokenStandard[];
+  integration: {
+    frontend: string;
+    backend: string;
+  };
+};
+
 type Props = {
   apiBase?: string;
 };
@@ -217,7 +248,10 @@ export default function SaasDashboardHome({ apiBase }: Props) {
   const [marketplaceSummary, setMarketplaceSummary] = useState<MarketplaceSummary | null>(null);
   const [marketplaceError, setMarketplaceError] = useState<string | null>(null);
   const [marketplaceLoading, setMarketplaceLoading] = useState(true);
-
+  const [tokenizationStack, setTokenizationStack] = useState<TokenizationStack | null>(null);
+  const [tokenizationError, setTokenizationError] = useState<string | null>(null);
+  const [tokenizationLoading, setTokenizationLoading] = useState(true);
+  
   useEffect(() => {
     let cancelled = false;
     function loadRisk() {
@@ -292,6 +326,39 @@ export default function SaasDashboardHome({ apiBase }: Props) {
     };
   }, [apiBase]);
 
+   useEffect(() => {
+    let cancelled = false;
+
+    function loadTokenizationStack() {
+      setTokenizationLoading(true);
+      setTokenizationError(null);
+      const baseURL = normalizeApiBase(apiBase);
+      api
+        .get<TokenizationStack>('/tokenization/stack', baseURL ? { baseURL } : undefined)
+        .then((response) => {
+          if (!cancelled) {
+            setTokenizationStack(response.data);
+          }
+        })
+        .catch(() => {
+          if (cancelled) return;
+          setTokenizationError('Unable to load blockchain and token standard.');
+          setTokenizationStack(null);
+        })
+        .finally(() => {
+          if (!cancelled) {
+            setTokenizationLoading(false);
+          }
+        });
+    }
+
+    loadTokenizationStack();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [apiBase]);
+
   const combinedTotal = useMemo(() => bucketTotal(riskSummary?.combinedBuckets), [riskSummary]);
 
   const sections = useMemo(
@@ -317,7 +384,92 @@ export default function SaasDashboardHome({ apiBase }: Props) {
         )}
       </header>
 
-           <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+      <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+        <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Blockchain & Token Standard</h2>
+            <p className="text-sm text-slate-500">
+              Baseline chain selection for pooled tokens today and loan-specific tokens later.
+            </p>
+          </div>
+          {tokenizationStack?.blockchain?.devNetwork && (
+            <span className="inline-flex items-center rounded-full bg-sky-50 px-3 py-1 text-xs font-semibold text-sky-700">
+              {tokenizationStack.blockchain.devNetwork}
+            </span>
+          )}
+        </div>
+
+        {tokenizationLoading && (
+          <p className="mt-3 text-sm text-slate-500">Loading chain and token defaults…</p>
+        )}
+
+        {tokenizationError && !tokenizationLoading && (
+          <p className="mt-3 text-sm text-rose-600">{tokenizationError}</p>
+        )}
+
+        {!tokenizationLoading && !tokenizationError && tokenizationStack && (
+          <div className="mt-4 grid gap-4 lg:grid-cols-3">
+            <article className="flex flex-col gap-3 rounded-lg border border-slate-100 bg-slate-50 p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Blockchain</p>
+                  <h3 className="text-lg font-semibold text-slate-900">{tokenizationStack.blockchain.family}</h3>
+                </div>
+                <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-800">EVM</span>
+              </div>
+              <dl className="space-y-2 text-sm text-slate-700">
+                <div>
+                  <dt className="text-xs uppercase tracking-wide text-slate-500">Development</dt>
+                  <dd className="font-semibold">{tokenizationStack.blockchain.devNetwork}</dd>
+                </div>
+                <div>
+                  <dt className="text-xs uppercase tracking-wide text-slate-500">Mainnet targets</dt>
+                  <dd className="font-semibold">{tokenizationStack.blockchain.mainnetTargets.join(', ')}</dd>
+                </div>
+                <div>
+                  <dt className="text-xs uppercase tracking-wide text-slate-500">Rationale</dt>
+                  <dd>{tokenizationStack.blockchain.rationale}</dd>
+                </div>
+              </dl>
+            </article>
+
+            <article className="flex flex-col gap-3 rounded-lg border border-slate-100 bg-slate-50 p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Pool Token</p>
+                  <h3 className="text-lg font-semibold text-slate-900">{tokenizationStack.poolToken.standard}</h3>
+                </div>
+                <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-800">
+                  {tokenizationStack.poolToken.status}
+                </span>
+              </div>
+              <p className="text-sm text-slate-700">{tokenizationStack.poolToken.usage}</p>
+              <p className="text-xs text-slate-500">{tokenizationStack.poolToken.notes}</p>
+            </article>
+
+            <article className="flex flex-col gap-3 rounded-lg border border-slate-100 bg-slate-50 p-4">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Loan Tokens (later)</p>
+                <h3 className="text-lg font-semibold text-slate-900">ERC-721 & ERC-1155</h3>
+              </div>
+              <ul className="space-y-3 text-sm text-slate-700">
+                {tokenizationStack.loanTokens.map((token) => (
+                  <li key={token.standard} className="rounded-lg bg-white/70 p-3 shadow-sm">
+                    <div className="flex items-center justify-between text-xs text-slate-500">
+                      <span className="font-semibold uppercase tracking-wide">{token.standard}</span>
+                      <span className="rounded-full bg-amber-100 px-2 py-1 font-semibold text-amber-800">{token.status}</span>
+                    </div>
+                    <p className="mt-1 text-sm font-semibold text-slate-900">{token.usage}</p>
+                    {token.notes && <p className="text-xs text-slate-500">{token.notes}</p>}
+                  </li>
+                ))}
+              </ul>
+            </article>
+          </div>
+        )}
+      </section>
+
+      <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
         <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Token Products</h2>
