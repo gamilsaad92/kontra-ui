@@ -197,6 +197,15 @@ describe('Trading API', () => {
           price: 30,
           side: 'buy',
           counterparties: ['cp1'],
+                  counterparty_profiles: [
+            {
+              id: 'cp1',
+              wallet_address: 'cp1',
+              jurisdiction: 'US',
+              investor_type: 'institutional',
+              kycApproved: true
+            }
+          ],
           symbol: 'CCC'
         })
       const id = created.body.trade.id
@@ -229,12 +238,21 @@ describe('Trading API', () => {
       fetch.mockResolvedValue({ ok: true, json: async () => ({ passed: false }) })
       const res = await request(app)
         .post('/api/trades')
-       .send({
+         .send({
           trade_type: 'loan_sale',
           notional_amount: 1,
           price: 10,
           side: 'buy',
           counterparties: ['cp1'],
+                    counterparty_profiles: [
+            {
+              id: 'cp1',
+              wallet_address: 'cp1',
+              jurisdiction: 'US',
+              investor_type: 'institutional',
+              kycApproved: true
+            }
+          ],
           symbol: 'AAA'
         })
       expect(res.statusCode).toBe(400)
@@ -247,12 +265,21 @@ describe('Trading API', () => {
       fetch.mockResolvedValue({ ok: true, json: async () => ({ passed: true }) })
       const created = await request(app)
         .post('/api/trades')
-      .send({
+       .send({
           trade_type: 'loan_sale',
           notional_amount: 1,
           price: 10,
           side: 'buy',
           counterparties: ['cp1'],
+                 counterparty_profiles: [
+            {
+              id: 'cp1',
+              wallet_address: 'cp1',
+              jurisdiction: 'US',
+              investor_type: 'institutional',
+              kycApproved: true
+            }
+          ],
           symbol: 'AAA'
         })
       expect(created.statusCode).toBe(201)
@@ -263,5 +290,30 @@ describe('Trading API', () => {
       expect(settle.body.trade.status).toBe('settled')
       expect(fetch).toHaveBeenCalled()
     })
+  })
+  
+  it('blocks trades from restricted jurisdictions', async () => {
+    const res = await request(app)
+      .post('/api/trades')
+      .send({
+        trade_type: 'loan_sale',
+        notional_amount: 1,
+        price: 10,
+        side: 'buy',
+        counterparties: ['cp1'],
+        counterparty_profiles: [
+          {
+            id: 'cp1',
+            wallet_address: 'cp1',
+            jurisdiction: 'KP',
+            investor_type: 'institutional',
+            kycApproved: true
+          }
+        ],
+        symbol: 'AAA'
+      })
+
+    expect(res.statusCode).toBe(400)
+    expect(res.body.message).toMatch(/restricted/i)
   })
 })
