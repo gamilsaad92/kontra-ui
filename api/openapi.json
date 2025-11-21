@@ -176,7 +176,15 @@
                 "quantity": 10,
                 "price": 150,
                 "side": "buy",
-                "counterparties": ["CP-1"]
+                 "counterparties": ["0xCP1"],
+                "counterparty_profiles": [
+                  {
+                    "wallet_address": "0xCP1",
+                    "jurisdiction": "US",
+                    "investor_type": "institutional",
+                    "kycApproved": true
+                  }
+                ]
               }
             }
           }
@@ -201,10 +209,18 @@
                     "quantity": 10,
                     "price": 150,
                     "side": "buy",
-                    "counterparties": ["CP-1"],
+                       "counterparties": ["0xCP1"],
+                    "counterparty_profiles": [
+                      {
+                        "wallet_address": "0xCP1",
+                        "jurisdiction": "US",
+                        "investor_type": "institutional",
+                        "kycApproved": true
+                      }
+                    ],
                     "status": "pending",
                     "created_at": "2024-01-01T00:00:00.000Z"
-                  }                
+                  }       
                 }
               }
             }
@@ -251,6 +267,12 @@
             }
           }
         }
+      }
+    },
+        "/api/trades/compliance": {
+      "get": {
+        "summary": "Get trading compliance policy",
+        "responses": { "200": { "description": "OK" } }
       }
     },
     "/api/trades/{id}/settle": {
@@ -421,7 +443,8 @@
           "facility_line_id": { "type": "string" },
           "status": { "type": "string" },
           "created_at": { "type": "string", "format": "date-time" },
-          "settled_at": { "type": "string", "format": "date-time" }
+           "settled_at": { "type": "string", "format": "date-time" },
+          "compliance_flags": { "type": "array", "items": { "type": "object" } }
         },
          "required": ["id", "trade_type", "notional_amount", "symbol", "quantity", "status", "created_at"]
       },
@@ -447,6 +470,18 @@
           "price": { "type": "number" },
           "side": { "type": "string" },
           "counterparties": { "type": "array", "items": { "type": "string" } },
+                    "counterparty_profiles": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "wallet_address": { "type": "string" },
+                "jurisdiction": { "type": "string" },
+                "investor_type": { "type": "string" },
+                "kycApproved": { "type": "boolean" }
+              }
+            }
+          },
           "repo_rate_bps": { "type": "number" },
           "term_days": { "type": "integer" },
           "collateral_ref": { "type": "string" },
