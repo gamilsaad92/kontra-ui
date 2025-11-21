@@ -17,6 +17,36 @@ const defaultRules = [
   { name: 'Placeholder', deprecated: '[INSERT CLAUSE]' }
 ];
 
+const INVESTOR_WHITELIST = {
+  cp1: {
+    id: 'cp1',
+    wallet_address: '0xCP1',
+    jurisdiction: 'US',
+    investor_type: 'institutional',
+    kycApproved: true
+  },
+  cp2: {
+    id: 'cp2',
+    wallet_address: '0xCP2',
+    jurisdiction: 'GB',
+    investor_type: 'qualified_purchaser',
+    kycApproved: true
+  },
+  '0xSAFEWALLET': {
+    id: '0xSAFEWALLET',
+    wallet_address: '0xSAFEWALLET',
+    jurisdiction: 'US',
+    investor_type: 'institutional',
+    kycApproved: true
+  }
+};
+
+const RESTRICTED_JURISDICTIONS = (process.env.RESTRICTED_JURISDICTIONS || 'IR,KP,SY,CU,SD')
+  .split(',')
+  .map(j => j.trim().toUpperCase())
+  .filter(Boolean);
+const RESTRICTED_INVESTOR_TYPES = ['sanctioned', 'unaccredited'];
+
 function scanForCompliance(text, rules = defaultRules) {
   const issues = [];
   for (const rule of rules) {
@@ -34,6 +64,76 @@ function scanForCompliance(text, rules = defaultRules) {
     }
   }
   return { issues };
+}
+
+function isTransfersPaused() {
+  return process.env.TRANSFERS_PAUSED === 'true';
+}
+
+function normalizeCounterpartyProfile(counterparty) {
+  if (!counterparty) return null;
+  const raw =
+    typeof counterparty === 'string'
+      ? { id: counterparty, wallet_address: counterparty }
+      : { ...counterparty };
+  const lookupKey = raw.wallet_address || raw.id;
+  const whitelisted = lookupKey ? INVESTOR_WHITELIST[lookupKey] : null;
+  const merged = {
+    ...whitelisted,
+    ...raw,
+    id: raw.id || whitelisted?.id || raw.wallet_address,
+    wallet_address: raw.wallet_address || whitelisted?.wallet_address || raw.id,
+    jurisdiction: (raw.jurisdiction || whitelisted?.jurisdiction || '').toUpperCase(),
+    investor_type: raw.investor_type || whitelisted?.investor_type || 'unspecified',
+    kycApproved:
+      raw.kycApproved ?? raw.kyc_status === 'approved' ?? whitelisted?.kycApproved ?? false
+  };
+  return merged;
+}
+
+function evaluateCounterparties(counterparties = [], counterpartyProfiles = []) {
+  const profiles = (counterpartyProfiles.length ? counterpartyProfiles : counterparties)
+    .map(normalizeCounterpartyProfile)
+    .filter(Boolean);
+  const flags = [];
+
+  if (!profiles.length) {
+    return { valid: false, message: 'Counterparties are required for compliance review' };
+  }
+
+  for (const profile of profiles) {
+    const whitelistKey = profile.wallet_address || profile.id;
+    if (!whitelistKey || !INVESTOR_WHITELIST[whitelistKey]) {
+      return { valid: false, message: `Counterparty ${profile.id || 'unknown'} is not whitelisted` };
+    }
+
+    if (!profile.kycApproved) {
+      return {
+        valid: false,
+        message: `Counterparty ${profile.id || profile.wallet_address} must complete KYC before trading`
+      };
+    }
+
+    if (profile.jurisdiction && RESTRICTED_JURISDICTIONS.includes(profile.jurisdiction)) {
+      return {
+        valid: false,
+        message: `Jurisdiction ${profile.jurisdiction} is restricted for transfers`
+      };
+    }
+
+    if (RESTRICTED_INVESTOR_TYPES.includes((profile.investor_type || '').toLowerCase())) {
+      return {
+        valid: false,
+        message: `Investor type ${profile.investor_type} is not eligible for this token`
+      };
+    }
+
+    if (!profile.jurisdiction) {
+      flags.push({ code: 'missing_jurisdiction', message: 'Jurisdiction not provided for counterparty' });
+    }
+  }
+
+  return { valid: true, profiles, flags };
 }
 
 async function gatherEvidence(loanId) {
@@ -89,17 +189,32 @@ async function validateTrade(trade) {
     organization_id: trade.orgId
   };
 
-  for (const cp of trade.counterparties || []) {
+ if (isTransfersPaused()) {
+    logAuditEntry({ ...auditBase, result: 'transfers_paused' });
+    return { valid: false, message: 'Transfers are currently paused for compliance review' };
+  }
+
+  const counterpartyCheck = evaluateCounterparties(
+    trade.counterparties,
+    trade.counterparty_profiles || []
+  );
+  if (!counterpartyCheck.valid) {
+    logAuditEntry({ ...auditBase, result: 'counterparty_rejected', reason: counterpartyCheck.message });
+    return { valid: false, message: counterpartyCheck.message };
+  }
+
+  for (const cp of counterpartyCheck.profiles || []) {
     let kyc;
     try {
-      kyc = await runKycCheck(cp);
+    const identifier = cp.wallet_address || cp.id || cp;
+      kyc = await runKycCheck(identifier);
     } catch (err) {
       logAuditEntry({ ...auditBase, result: 'kyc_error', counterparty: cp, error: err.message });
       throw err;
     }
     if (!kyc.passed) {
       logAuditEntry({ ...auditBase, result: 'kyc_failed', counterparty: cp });
-      return { valid: false, message: `KYC failed for counterparty ${cp}` };
+     return { valid: false, message: `KYC failed for counterparty ${cp.id || cp}` };
     }
   }
 
@@ -114,7 +229,28 @@ async function validateTrade(trade) {
   }
 
   logAuditEntry({ ...auditBase, result: 'passed', notional, limit });
-  return { valid: true };
+ return { valid: true, flags: counterpartyCheck.flags };
 }
 
-module.exports = { scanForCompliance, gatherEvidence, validateTrade, runKycCheck };
+function getComplianceConstraints() {
+  return {
+    paused: isTransfersPaused(),
+    restrictedJurisdictions: RESTRICTED_JURISDICTIONS,
+    restrictedInvestorTypes: RESTRICTED_INVESTOR_TYPES,
+    whitelist: Object.values(INVESTOR_WHITELIST).map(entry => ({
+      id: entry.id || entry.wallet_address,
+      wallet_address: entry.wallet_address,
+      jurisdiction: entry.jurisdiction,
+      investor_type: entry.investor_type
+    }))
+  };
+}
+
+module.exports = {
+  scanForCompliance,
+  gatherEvidence,
+  validateTrade,
+  runKycCheck,
+  getComplianceConstraints,
+  evaluateCounterparties
+};
