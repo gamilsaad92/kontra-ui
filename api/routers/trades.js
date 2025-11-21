@@ -3,7 +3,7 @@ const authenticate = require('../middlewares/authenticate');
 const auditLogger = require('../middlewares/auditLogger');
 const { triggerWebhooks } = require('../webhooks');
 const collabServer = require('../collabServer');
-const { validateTrade } = require('../compliance');
+const { validateTrade, getComplianceConstraints } = require('../compliance');
 const { supabase } = require('../db');
 const { isFeatureEnabled } = require('../featureFlags');
 
@@ -27,6 +27,11 @@ router.use((req, res, next) => {
   next();
 });
 
+router.get('/compliance', (_req, res) => {
+  const policy = getComplianceConstraints();
+  res.json({ policy });
+});
+
 // Submit a trade order
 router.post('/', async (req, res) => {
   const {
@@ -44,26 +49,31 @@ router.post('/', async (req, res) => {
     agent_bank
   } = req.body || {};
 
-  if (
-    !trade_type ||
-    notional_amount === undefined ||
-    price === undefined ||
-    !side ||
-    !Array.isArray(counterparties) ||
-    counterparties.length === 0
-  ) {
-    return res
-      .status(400)
-      .json({ message: 'Missing trade_type, notional_amount, price, side or counterparties' });
+  const counterpartyProfiles = Array.isArray(req.body.counterparty_profiles)
+    ? req.body.counterparty_profiles
+    : [];
+
+  const normalizedCounterparties =
+    Array.isArray(counterparties) && counterparties.length
+      ? counterparties
+      : counterpartyProfiles.map(cp => cp.wallet_address || cp.id).filter(Boolean);
+
+  if (!trade_type || notional_amount === undefined || price === undefined || !side) {
+    return res.status(400).json({ message: 'Missing trade_type, notional_amount, price or side' });
   }
 
-   const tradeForValidation = {
+  if (!normalizedCounterparties.length) {
+    return res.status(400).json({ message: 'At least one whitelisted counterparty is required' });
+  }
+
+ const tradeForValidation = {
     ...req.body,
     trade_type,
     notional_amount,
     price,
     side,
-    counterparties,
+   counterparties: normalizedCounterparties,
+    counterparty_profiles: counterpartyProfiles,
     orgId: req.orgId
   };
 
@@ -104,12 +114,24 @@ router.post('/', async (req, res) => {
   await supabase
     .from('trade_participants')
     .insert(
-      counterparties.map(cp => ({
+      normalizedCounterparties.map(cp => ({
         trade_id: tradeRow.id,
         counterparty_id: cp,
         role: 'counterparty'
       }))
     );
+
+    if (validation.flags?.length) {
+    await supabase
+      .from('trade_events')
+      .insert([
+        {
+          trade_id: tradeRow.id,
+          event_type: 'compliance_flags',
+          event_payload: { flags: validation.flags }
+        }
+      ]);
+  }
 
    const eventPayload = {};
   if (trade_type === 'participation' && distribution_schedule) {
@@ -138,8 +160,9 @@ router.post('/', async (req, res) => {
     price,
     side,
     status: tradeRow.status,
-    counterparties,
-    created_at: tradeRow.created_at
+     counterparties: normalizedCounterparties,
+    created_at: tradeRow.created_at,
+    compliance_flags: validation.flags || []
   };
 
   await triggerWebhooks('trade.created', { trade, organization_id: req.orgId });
@@ -151,11 +174,11 @@ router.post('/', async (req, res) => {
 // List or filter trades
 router.get('/', async (req, res) => {
   const { status, trade_type } = req.query;
-  let query = supabase.from('trades');
+ let query = supabase.from('trades').select('*, trade_events(event_type, event_payload)');
   if (status) query = query.eq('status', status);
   if (trade_type) query = query.eq('trade_type', trade_type);
 
-  const { data: tradeRows, error } = await query.select('*');
+  const { data: tradeRows, error } = await query;
   if (error) {
     return res.status(500).json({ message: 'Failed to list trades' });
   }
@@ -166,9 +189,13 @@ router.get('/', async (req, res) => {
         .from('trade_participants')
         .eq('trade_id', t.id)
         .select('counterparty_id');
+           const compliance_flags = (t.trade_events || [])
+        .filter(event => event.event_type === 'compliance_flags')
+        .flatMap(event => event.event_payload?.flags || []);
       return {
         ...t,
-        counterparties: (participants || []).map(p => p.counterparty_id)
+        counterparties: (participants || []).map(p => p.counterparty_id),
+        compliance_flags
       };
     })
   );
