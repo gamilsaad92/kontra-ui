@@ -4,7 +4,7 @@ import TradeForm from '../trades/TradeForm';
 import TradeList from '../trades/TradeList';
 
 describe('Trade UI', () => {
- const definition = {
+const definition = {
     type: 'repo',
     title: 'Repo',
     description: 'Short-term financing secured by collateral.',
@@ -24,7 +24,34 @@ describe('Trade UI', () => {
         { value: 'sell', label: 'Sell' }
       ]
     },
-    { name: 'counterparties', label: 'Counterparties', type: 'text', placeholder: 'Counterparties (comma separated)' },
+     { name: 'wallet_address', label: 'Whitelisted Investor Wallet', type: 'text', placeholder: '0xCP1' },
+    {
+      name: 'jurisdiction',
+      label: 'Investor Jurisdiction',
+      type: 'select',
+      options: [
+        { value: 'US', label: 'United States' },
+        { value: 'GB', label: 'United Kingdom' }
+      ]
+    },
+    {
+      name: 'investor_type',
+      label: 'Investor Type',
+      type: 'select',
+      options: [
+        { value: 'institutional', label: 'Institutional' },
+        { value: 'retail', label: 'Retail' }
+      ]
+    },
+    {
+      name: 'kyc_status',
+      label: 'KYC Status',
+      type: 'select',
+      options: [
+        { value: 'approved', label: 'Approved' },
+        { value: 'pending', label: 'Pending' }
+      ]
+    },
     { name: 'repo_rate_bps', label: 'Repo Rate (bps)', type: 'number', placeholder: 'Repo Rate (bps)' },
     { name: 'term_days', label: 'Term (days)', type: 'number', placeholder: 'Term (days)' },
     { name: 'collateral_ref', label: 'Collateral Reference', type: 'text', placeholder: 'Collateral Reference' }
@@ -35,7 +62,10 @@ describe('Trade UI', () => {
     quantity: '',
     price: '',
     side: 'buy',
-    counterparties: '',
+    wallet_address: '',
+    jurisdiction: 'US',
+    investor_type: 'institutional',
+    kyc_status: 'approved',
     repo_rate_bps: '',
     term_days: '',
     collateral_ref: ''
@@ -62,7 +92,7 @@ describe('Trade UI', () => {
     fireEvent.change(screen.getByLabelText(/Repo Rate/i), { target: { value: '425' } });
     expect(handleChange).toHaveBeenCalledWith('repo_rate_bps', '425');
 
-  fireEvent.click(screen.getByRole('button', { name: /Submit Repo/i }));
+   fireEvent.click(screen.getByRole('button', { name: /Submit Repo/i }));
     expect(handleSubmit).toHaveBeenCalled();
   });
 
@@ -87,7 +117,7 @@ describe('Trade UI', () => {
       />
     );
 
-   fireEvent.click(screen.getByRole('button', { name: /Settle/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Settle/i }));
     expect(onSettle).toHaveBeenCalledWith(1);
   });
 });
