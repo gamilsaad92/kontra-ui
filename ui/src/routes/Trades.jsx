@@ -32,13 +32,52 @@ const COMMON_FIELDS = [
     validate: value => (value === 'buy' || value === 'sell' ? null : 'Side must be buy or sell')
   },
   {
-    name: 'counterparties',
-    label: 'Counterparties',
+  name: 'wallet_address',
+    label: 'Whitelisted Investor Wallet',
     type: 'text',
-    placeholder: 'Counterparties (comma separated)',
+   placeholder: '0xCP1 or investor ID',
     required: true,
     defaultValue: '',
-    helpText: 'Provide at least one counterparty identifier.'
+    helpText: 'Transfers are limited to investors that pass KYC and are on the whitelist.'
+  },
+  {
+    name: 'jurisdiction',
+    label: 'Investor Jurisdiction',
+    type: 'select',
+    options: [
+      { value: 'US', label: 'United States' },
+      { value: 'CA', label: 'Canada' },
+      { value: 'GB', label: 'United Kingdom' },
+      { value: 'DE', label: 'Germany' },
+      { value: 'SG', label: 'Singapore' }
+    ],
+    required: true,
+    defaultValue: 'US'
+  },
+  {
+    name: 'investor_type',
+    label: 'Investor Type',
+    type: 'select',
+    options: [
+      { value: 'institutional', label: 'Institutional' },
+      { value: 'qualified_purchaser', label: 'Qualified Purchaser' },
+      { value: 'retail', label: 'Retail' }
+    ],
+    required: true,
+    defaultValue: 'institutional'
+  },
+  {
+    name: 'kyc_status',
+    label: 'KYC Status',
+    type: 'select',
+    options: [
+      { value: 'approved', label: 'Approved' },
+      { value: 'pending', label: 'Pending' },
+      { value: 'failed', label: 'Failed' }
+    ],
+    required: true,
+    defaultValue: 'approved',
+    helpText: 'Transfers only execute between addresses with approved KYC.'
   }
 ];
 
@@ -171,7 +210,7 @@ function cloneInitialValues(type) {
   return { ...INITIAL_FORM_VALUES[type] };
 }
 
-function validateValues(definition, fields, values) {
+function validateValues(definition, fields, values, policy) {
   const errors = {};
   fields.forEach(field => {
     const rawValue = values?.[field.name];
@@ -199,19 +238,21 @@ function validateValues(definition, fields, values) {
       }
     }
   });
-  if (!errors.counterparties) {
-    const counterparties = String(values?.counterparties || '')
-      .split(',')
-      .map(entry => entry.trim())
-      .filter(Boolean);
-    if (!counterparties.length) {
-      errors.counterparties = 'Enter at least one counterparty';
-    }
+   const jurisdiction = String(values?.jurisdiction || '').toUpperCase();
+  if (policy?.restrictedJurisdictions?.includes(jurisdiction)) {
+    errors.jurisdiction = 'Transfers are blocked for this jurisdiction';
   }
+  if (values?.kyc_status && values.kyc_status !== 'approved') {
+    errors.kyc_status = 'KYC must be approved before submitting a trade';
+    }
   return errors;
 }
 
 function buildPayload(definition, values) {
+   const wallet = values.wallet_address?.trim();
+  const jurisdiction = values.jurisdiction?.trim();
+  const investorType = values.investor_type;
+  const kycStatus = values.kyc_status;
   const payload = {
     trade_type: definition.type,
     symbol: values.symbol?.trim(),
@@ -219,10 +260,18 @@ function buildPayload(definition, values) {
     quantity: Number(values.quantity),
     price: Number(values.price),
     side: values.side,
-    counterparties: String(values.counterparties || '')
-      .split(',')
-      .map(entry => entry.trim())
-      .filter(Boolean)
+    counterparties: wallet ? [wallet] : [],
+    counterparty_profiles: wallet
+      ? [
+          {
+            id: wallet,
+            wallet_address: wallet,
+            jurisdiction,
+            investor_type: investorType,
+            kycApproved: kycStatus === 'approved'
+          }
+        ]
+      : []
   };
 
   if (definition.type === 'participation') {
@@ -246,7 +295,8 @@ export default function Trades() {
   const [participations, setParticipations] = useState([]);
   const [preferredEquity, setPreferredEquity] = useState([]);
   const [toast, setToast] = useState(null);
- 
+   const [compliancePolicy, setCompliancePolicy] = useState({});
+  
  const [forms, setForms] = useState(() =>
     TRADE_DEFINITIONS.reduce((acc, def) => {
       acc[def.type] = cloneInitialValues(def.type);
@@ -262,9 +312,34 @@ export default function Trades() {
     () => TRADE_DEFINITIONS.find(def => def.type === activeType) || TRADE_DEFINITIONS[0],
     [activeType]
   );
+   const complianceAwareFields = useMemo(() => {
+    const restrictedJurisdictions = (compliancePolicy?.restrictedJurisdictions || []).map(j =>
+      String(j).toUpperCase()
+    );
+    const restrictedInvestorTypes = (compliancePolicy?.restrictedInvestorTypes || []).map(t =>
+      String(t).toLowerCase()
+    );
+
+    return COMMON_FIELDS.map(field => {
+      if (field.name === 'jurisdiction') {
+        const allowed = field.options.filter(
+          option => !restrictedJurisdictions.includes(String(option.value).toUpperCase())
+        );
+        return { ...field, options: allowed.length ? allowed : field.options };
+      }
+      if (field.name === 'investor_type') {
+        const allowedTypes = field.options.filter(
+          option => !restrictedInvestorTypes.includes(String(option.value).toLowerCase())
+        );
+        return { ...field, options: allowedTypes.length ? allowedTypes : field.options };
+      }
+      return field;
+    });
+  }, [compliancePolicy]);
+
   const activeFields = useMemo(
-    () => [...COMMON_FIELDS, ...(activeDefinition?.fields || [])],
-    [activeDefinition]
+    () => [...complianceAwareFields, ...(activeDefinition?.fields || [])],
+    [activeDefinition, complianceAwareFields]
   );
   const activeValues = forms[activeDefinition.type] || cloneInitialValues(activeDefinition.type);
   const activeErrors = formErrors[activeDefinition.type] || {};
@@ -322,12 +397,22 @@ export default function Trades() {
     }
   }, []);
  
+  const fetchCompliancePolicy = useCallback(async () => {
+    try {
+      const { data } = await api.get('/trades/compliance');
+      setCompliancePolicy(data.policy || {});
+    } catch (err) {
+      console.error('Failed to load compliance guardrails', err);
+    }
+  }, []);
+  
   useEffect(() => {
     fetchTrades();
    fetchMarketplace();
     fetchMiniCmbs();
     fetchParticipations();
     fetchPreferredEquity();
+     fetchCompliancePolicy();
     
     const fallbackProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const fallbackUrl = `${fallbackProtocol}//${window.location.host}/collab`;
@@ -365,7 +450,15 @@ export default function Trades() {
     return () => {
       ws.close();
     };
-  }, [fetchTrades, fetchMarketplace, fetchMiniCmbs, fetchParticipations, fetchPreferredEquity, notify]);
+  }, [
+    fetchTrades,
+    fetchMarketplace,
+    fetchMiniCmbs,
+    fetchParticipations,
+    fetchPreferredEquity,
+    fetchCompliancePolicy,
+    notify
+  ]);
 
   useEffect(() => () => {
     if (toastTimer.current) {
@@ -398,8 +491,8 @@ export default function Trades() {
     async definition => {
       const type = definition.type;
       const values = forms[type];
-      const fieldDefs = [...COMMON_FIELDS, ...(definition.fields || [])];
-      const validation = validateValues(definition, fieldDefs, values);
+     const fieldDefs = activeFields;
+      const validation = validateValues(definition, fieldDefs, values, compliancePolicy);
       if (Object.keys(validation).length) {
         setFormErrors(prev => ({
           ...prev,
@@ -415,8 +508,13 @@ export default function Trades() {
       }));
 
       try {
-        await api.post('/trades', buildPayload(definition, values));
-        notify('Trade submitted');
+          const { data } = await api.post('/trades', buildPayload(definition, values));
+        const flags = data?.trade?.compliance_flags || [];
+        notify(
+          flags.length
+            ? `Trade submitted with ${flags.length} compliance note${flags.length > 1 ? 's' : ''}`
+            : 'Trade submitted'
+        );
         resetForm(type);
         fetchTrades();
       } catch (err) {
@@ -430,7 +528,7 @@ export default function Trades() {
         setSubmittingType(null);
       }
     },
-    [fetchTrades, forms, notify, resetForm]
+   [activeFields, compliancePolicy, fetchTrades, forms, notify, resetForm]
   );
 
   const settleTrade = useCallback(
@@ -449,7 +547,10 @@ export default function Trades() {
 
   const openTrades = trades.filter(t => t.status === 'pending');
   const completedTrades = trades.filter(t => t.status === 'settled');
-
+ const restrictedJurisdictions = compliancePolicy?.restrictedJurisdictions || [];
+  const restrictedInvestorTypes = compliancePolicy?.restrictedInvestorTypes || [];
+  const whitelistedInvestors = compliancePolicy?.whitelist || [];
+  
   return (
     <div className="p-6">
       <h1 className="text-2xl font-bold mb-4">Trades</h1>
@@ -459,6 +560,60 @@ export default function Trades() {
         </div>
       )}
       <section className="mb-8">
+           <div className="border rounded p-4 bg-white shadow-sm mb-6">
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+            <div>
+              <h2 className="text-lg font-semibold">Compliance guardrails</h2>
+              <p className="text-sm text-gray-600">
+                {compliancePolicy?.paused
+                  ? 'Transfers are paused until legal completes a review.'
+                  : 'Whitelist, KYC, and jurisdiction restrictions are enforced on every trade.'}
+              </p>
+            </div>
+            <span
+              className={`px-3 py-1 rounded text-sm font-medium ${
+                compliancePolicy?.paused
+                  ? 'bg-red-100 text-red-700'
+                  : 'bg-green-100 text-green-700'
+              }`}
+            >
+              {compliancePolicy?.paused ? 'Paused' : 'Active'}
+            </span>
+          </div>
+          <div className="grid gap-3 md:grid-cols-3 text-sm text-gray-700 mt-4">
+            <div>
+              <p className="font-medium">Whitelisted investors</p>
+              {whitelistedInvestors.length ? (
+                <ul className="list-disc list-inside text-gray-700 mt-1 space-y-1">
+                  {whitelistedInvestors.map(entry => (
+                    <li key={entry.wallet_address || entry.id}>
+                      {entry.wallet_address || entry.id}{' '}
+                      {entry.jurisdiction ? `(${entry.jurisdiction})` : ''}
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="text-gray-500">No whitelist loaded yet.</p>
+              )}
+            </div>
+            <div>
+              <p className="font-medium">Restricted jurisdictions</p>
+              <p className="text-gray-600 mt-1">
+                {restrictedJurisdictions.length
+                  ? restrictedJurisdictions.join(', ')
+                  : 'None configured'}
+              </p>
+            </div>
+            <div>
+              <p className="font-medium">Excluded investor types</p>
+              <p className="text-gray-600 mt-1">
+                {restrictedInvestorTypes.length
+                  ? restrictedInvestorTypes.join(', ')
+                  : 'All eligible investor types allowed'}
+              </p>
+            </div>
+          </div>
+        </div>     
         <div className="grid gap-6 lg:grid-cols-2">
           <div className="border rounded p-4 bg-white shadow-sm">
             <div className="flex flex-wrap gap-2 mb-4">
