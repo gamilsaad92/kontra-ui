@@ -50,6 +50,15 @@ type QuickAction = {
   tone: "emerald" | "sky" | "amber" | "violet";
 };
 
+type TokenProduct = {
+  name: string;
+  status: "Live" | "In Pilot" | "In Discovery";
+  underlying: string;
+  denomination: string;
+  rights: string[];
+  summary: string;
+};
+
 type Props = {
   apiBase?: string;
 };
@@ -78,6 +87,22 @@ const quickActions: QuickAction[] = [
     description: "Update allocations across your syndication book.",
     href: "/trades?type=syndication_assignment",
     tone: "violet"
+  }
+];
+
+const tokenProducts: TokenProduct[] = [
+  {
+    name: "Kontra Pool Token",
+    status: "Live",
+    underlying: "Pool of CRE loans",
+    denomination: "1 token = 1 USD of NAV at issuance (NAV tracked in Kontra)",
+    rights: [
+      "Pro-rata share of interest and principal collections after fees",
+      "Recoveries",
+      "Share of losses"
+    ],
+    summary:
+      "Kontra's first on-chain instrument captures pooled CRE loan performance with transparent NAV tracking and pro-rata economics."
   }
 ];
 
@@ -291,6 +316,63 @@ export default function SaasDashboardHome({ apiBase }: Props) {
           </p>
         )}
       </header>
+
+           <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+        <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Token Products</h2>
+            <p className="text-sm text-slate-500">
+              Live instruments available to investors, mapped to underlying collateral and economic rights.
+            </p>
+          </div>
+          <span className="inline-flex items-center rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">
+            First product live
+          </span>
+        </div>
+
+        <div className="mt-4 grid gap-4 lg:grid-cols-2">
+          {tokenProducts.map((product) => (
+            <article
+              key={product.name}
+              className="flex flex-col gap-4 rounded-lg border border-slate-100 bg-slate-50 p-4"
+            >
+              <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">First live product</p>
+                  <h3 className="text-lg font-semibold text-slate-900">{product.name}</h3>
+                  <p className="text-sm text-slate-600">{product.summary}</p>
+                </div>
+                <span className="inline-flex items-center self-start rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-800">
+                  {product.status}
+                </span>
+              </div>
+
+              <dl className="grid gap-3 sm:grid-cols-2">
+                <div>
+                  <dt className="text-xs uppercase tracking-wide text-slate-500">Underlying</dt>
+                  <dd className="text-sm font-semibold text-slate-900">{product.underlying}</dd>
+                </div>
+                <div>
+                  <dt className="text-xs uppercase tracking-wide text-slate-500">Denomination</dt>
+                  <dd className="text-sm font-semibold text-slate-900">{product.denomination}</dd>
+                </div>
+              </dl>
+
+              <div>
+                <p className="text-xs uppercase tracking-wide text-slate-500">Investor rights</p>
+                <ul className="mt-2 space-y-2 text-sm text-slate-700">
+                  {product.rights.map((right) => (
+                    <li key={right} className="flex items-start gap-2">
+                      <span className="mt-1 h-2 w-2 rounded-full bg-emerald-500" aria-hidden="true" />
+                      <span>{right}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </article>
+          ))}
+        </div>
+      </section>
 
       {riskLoading && (
         <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
