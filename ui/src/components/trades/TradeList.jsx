@@ -9,7 +9,7 @@ export default function TradeList({ trades = [], title, onSettle }) {
       ) : (
         <ul className="space-y-2">
           {trades.map(trade => (
-              <li
+            <li
               key={trade.id}
               className="p-2 border rounded flex justify-between items-center"
             >
@@ -18,6 +18,15 @@ export default function TradeList({ trades = [], title, onSettle }) {
                 <span className="text-sm text-gray-600">
                  {trade.trade_type} – Notional: {trade.notional_amount} Qty: {trade.quantity} @ {trade.price}
                 </span>
+                                {Array.isArray(trade.compliance_flags) && trade.compliance_flags.length > 0 && (
+                  <ul className="text-xs text-amber-700 list-disc list-inside mt-1">
+                    {trade.compliance_flags.map((flag, index) => (
+                      <li key={`${trade.id}-flag-${index}`}>
+                        ⚠️ {flag.message || flag.code || 'Compliance notice'}
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </div>
               <div className="flex items-center space-x-2">
                 <span className="text-sm capitalize">{trade.status}</span>
