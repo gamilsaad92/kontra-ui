@@ -7,6 +7,7 @@ const PDFDocument = require('pdfkit');
 const { sendEmail } = require('../communications');
 const { recordFeedback, retrainModel } = require('../feedback');
 const { triggerWebhooks } = require('../webhooks');
+const { poolFactory, whitelistRegistry, describeDeployment } = require('../services/tokenizationContracts');
 
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage() });
@@ -17,11 +18,36 @@ const supabase = createClient(
 
 const tokenizedNotes = new Map();
 const syndicationCampaigns = new Map();
+const TREASURY_ADDRESS = '0xkontra-treasury-000000000000000001';
 const OVER_COLLATERALIZATION_RATIO = 1.25;
 const escrowNoteState = {
   lockedCollateral: 0,
   notes: []
 };
+
+function randomInvestorAddress() {
+  return `0x${randomBytes(20).toString('hex')}`;
+}
+
+function whitelistAddress(address, investorType = 'investor', kycProviderRef = 'kyc-provider') {
+  return whitelistRegistry.upsert(address, {
+    isWhitelisted: true,
+    investorType,
+    kycProviderRef
+  });
+}
+
+function serializeNote(note) {
+  const deployment = describeDeployment();
+  const pool = note.poolId ? poolFactory.getPool(note.poolId) : null;
+
+  return {
+    ...note,
+    whitelistRegistry: deployment.whitelistRegistry,
+    poolFactory: deployment.poolFactory,
+    pool: pool ? pool.summary() : null
+  };
+}
 
 function formatNumber(value, fallback = 0) {
   const num = typeof value === 'string' ? parseFloat(value) : value;
@@ -426,7 +452,8 @@ router.get('/list-inspections', async (req, res) => {
 });
 
 router.get('/draw-requests/tokenizations', async (_req, res) => {
-  res.json({ notes: Array.from(tokenizedNotes.values()) });
+  const notes = Array.from(tokenizedNotes.values()).map(note => serializeNote(note));
+  res.json({ notes });
 });
 
 router.post('/draw-requests/:id/tokenize', async (req, res) => {
@@ -442,23 +469,46 @@ router.post('/draw-requests/:id/tokenize', async (req, res) => {
 
   let note = tokenizedNotes.get(drawId);
   if (!note) {
+       const poolId = `DRAW-${drawId}`;
+    const adminAddress = TREASURY_ADDRESS;
+    whitelistAddress(adminAddress, 'treasury', 'treasury-ledger');
+
+    let poolToken;
+    try {
+      poolToken = poolFactory.createPool({
+        poolId,
+        name: `${draw.project} Draw ${draw.id}`,
+        symbol: `DRW${draw.id}`,
+        initialSupply: 0,
+        adminAddress
+      });
+    } catch (err) {
+      return res.status(400).json({ message: err.message || 'Failed to deploy pool token' });
+    }
+
+    const deployment = describeDeployment();
     note = {
       id: `NOTE-${drawId}-${Date.now()}`,
       drawId,
       project: draw.project,
       faceValue: formatNumber(draw.amount),
-      contractAddress: `0x${randomBytes(20).toString('hex')}`,
+     contractAddress: poolToken.contractAddress,
       status: 'deployed',
       createdAt: new Date().toISOString(),
-      fractionsMinted: 0,
+     fractionsMinted: poolToken.totalSupply,
       fractionPrice: null,
-      investors: []
+      investors: [],
+      poolId,
+      tokenName: poolToken.name,
+      tokenSymbol: poolToken.symbol,
+      adminAddress,
+      whitelistRegistryAddress: deployment.whitelistRegistry.address
     };
     tokenizedNotes.set(drawId, note);
-    return res.status(201).json({ note });
+   return res.status(201).json({ note: serializeNote(note) });
   }
 
-  res.json({ note });
+  res.json({ note: serializeNote(note) });
 });
 
 router.post('/draw-requests/:id/tokenizations/mint', async (req, res) => {
@@ -469,30 +519,50 @@ router.post('/draw-requests/:id/tokenizations/mint', async (req, res) => {
   }
   const note = tokenizedNotes.get(drawId);
   if (!note) return res.status(404).json({ message: 'Tokenized note not found' });
-
+  const pool = note.poolId ? poolFactory.getPool(note.poolId) : null;
+  if (!pool) return res.status(404).json({ message: 'Pool token not found for this draw' });
+  if (!pool.active) return res.status(400).json({ message: 'Pool is closed' });
+  
   const fractionCount = parseInt(fractions, 10);
   if (!Number.isFinite(fractionCount) || fractionCount <= 0) {
     return res.status(400).json({ message: 'Fractions must be a positive number' });
   }
   const price = formatNumber(pricePerFraction, note.faceValue / fractionCount);
 
-  const investorAllocations = Array.isArray(allocations)
-    ? allocations.map(entry => ({
-        investor: entry.investor || 'Unnamed Investor',
-        amount: formatNumber(entry.amount)
-      }))
-    : note.investors.length
-    ? note.investors
-    : [{ investor: 'Lead Investor', amount: fractionCount * price }];
+  const allocationCandidates = Array.isArray(allocations) && allocations.length
+    ? allocations
+    : [{ investor: 'Lead Investor', amount: fractionCount * price, investorType: 'us_accredited' }];
 
-  note.fractionsMinted = fractionCount;
+  const normalizedAllocations = allocationCandidates.slice(0, Math.max(1, Math.min(allocationCandidates.length, fractionCount)));
+  let remainingFractions = fractionCount;
+  const investorAllocations = normalizedAllocations.map((entry, index) => {
+    const address = (entry.address || randomInvestorAddress()).toLowerCase();
+    const investorType = entry.investorType || 'investor';
+    whitelistAddress(address, investorType, entry.kycProviderRef || 'kyc-review-pass');
+    const shareCount = index === normalizedAllocations.length - 1
+      ? Math.max(remainingFractions, 1)
+      : Math.max(1, Math.floor(fractionCount / normalizedAllocations.length));
+    remainingFractions = Math.max(remainingFractions - shareCount, 0);
+    pool.mint(address, shareCount);
+    return {
+      investor: entry.investor || 'Unnamed Investor',
+      amount: formatNumber(entry.amount, shareCount * price),
+      address,
+      investorType,
+      kycProviderRef: entry.kycProviderRef || 'kyc-review-pass',
+      isWhitelisted: true,
+      fractions: shareCount
+    };
+  });
+  
+  note.fractionsMinted = pool.totalSupply;
   note.fractionPrice = price;
   note.investors = investorAllocations;
   note.status = 'fractionalized';
   note.lastMintedAt = new Date().toISOString();
   tokenizedNotes.set(drawId, note);
 
-  res.json({ note });
+  res.json({ note: serializeNote(note) });
 });
 
 router.get('/draws/escrow-notes', async (_req, res) => {
