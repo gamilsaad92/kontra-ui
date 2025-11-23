@@ -1,3 +1,4 @@
+import React from 'react';
 import { getDistributionSnapshot, updateNetAssetValue } from '../services/servicing';
 
 function formatCurrency(value = 0, maximumFractionDigits = 2) {
@@ -22,14 +23,14 @@ function resolveDefaultPeriod() {
 }
 
 export default function DistributionPlanner() {
-  const [poolId, setPoolId] = useState('POOL-DIST-1');
-  const [period, setPeriod] = useState(resolveDefaultPeriod());
-  const [navAmount, setNavAmount] = useState('');
-  const [snapshot, setSnapshot] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const [message, setMessage] = useState('');
+  const [poolId, setPoolId] = React.useState('POOL-DIST-1');
+  const [period, setPeriod] = React.useState(resolveDefaultPeriod());
+  const [navAmount, setNavAmount] = React.useState('');
+  const [snapshot, setSnapshot] = React.useState(null);
+  const [loading, setLoading] = React.useState(false);
+  const [message, setMessage] = React.useState('');
 
-  const statusBadge = useMemo(() => {
+  const statusBadge = React.useMemo(() => {
     if (!snapshot?.distribution?.status) return null;
     const status = snapshot.distribution.status;
     const isReady = status === 'calculated';
@@ -59,7 +60,7 @@ export default function DistributionPlanner() {
     }
   }
 
-  useEffect(() => {
+  React.useEffect(() => {
     loadSnapshot();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [poolId, period]);
