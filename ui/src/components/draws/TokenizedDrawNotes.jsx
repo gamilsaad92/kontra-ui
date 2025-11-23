@@ -7,6 +7,12 @@ const formatCurrency = (value) =>
     currency: 'USD'
   }).format(Number(value ?? 0));
 
+const shortenAddress = (address) => {
+  if (!address) return '—';
+  if (address.length <= 10) return address;
+  return `${address.slice(0, 6)}…${address.slice(-4)}`;
+};
+
 const mergeDraws = (lists) => {
   const map = new Map();
   lists.forEach((arr) => {
@@ -187,11 +193,12 @@ export default function TokenizedDrawNotes() {
                 {note && (
                   <div className="rounded-lg bg-slate-50 p-3 text-sm text-slate-700 space-y-1">
                     <p>
-                      <span className="font-medium">Contract:</span> {note.contractAddress}
-                    </p>
+                        <span className="font-medium">Contract:</span> {shortenAddress(note.contractAddress)} · Pool{' '}
+                      {note.pool?.poolId || note.poolId || '—'}
+                      </p>
                     <p className="flex flex-wrap gap-x-4">
                       <span>
-                        <span className="font-medium">Supply:</span> {note.fractionsMinted || 0} fractions
+                      <span className="font-medium">Supply:</span> {note.pool?.totalSupply ?? note.fractionsMinted ?? 0} fractions
                       </span>
                       <span>
                         <span className="font-medium">Price/Fraction:</span>{' '}
@@ -199,6 +206,19 @@ export default function TokenizedDrawNotes() {
                       </span>
                       <span>
                         <span className="font-medium">Status:</span> {note.status}
+                      </span>
+                    </p>
+                                        <p className="flex flex-wrap gap-x-4">
+                      <span>
+                        <span className="font-medium">Whitelist:</span>{' '}
+                        {shortenAddress(note.whitelistRegistry?.address || note.whitelistRegistryAddress)}
+                      </span>
+                      <span>
+                        <span className="font-medium">Factory:</span>{' '}
+                        {shortenAddress(note.poolFactory?.address)}
+                      </span>
+                      <span>
+                        <span className="font-medium">Holders:</span> {note.pool?.holders?.length ?? 0}
                       </span>
                     </p>
                   </div>
