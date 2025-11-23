@@ -71,6 +71,8 @@ type PoolTokenStandard = {
   usage: string;
   status: string;
   notes: string;
+  factory?: string;
+  whitelistRegistry?: string;
 };
 
 type LoanTokenStandard = {
@@ -84,6 +86,26 @@ type TokenizationStack = {
   blockchain: BlockchainStack;
   poolToken: PoolTokenStandard;
   loanTokens: LoanTokenStandard[];
+    whitelistRegistry: {
+    address: string;
+    entries: number;
+    investorTypes: Record<string, number>;
+  };
+  poolFactory: {
+    address: string;
+    poolsDeployed: number;
+  };
+  pools: Array<{
+    poolId: string;
+    name: string;
+    symbol: string;
+    contractAddress: string;
+    whitelistRegistry: string;
+    admin?: string | null;
+    active: boolean;
+    totalSupply: number;
+    holders: Array<{ address: string; balance: number }>;
+  }>;
   integration: {
     frontend: string;
     backend: string;
@@ -167,6 +189,12 @@ function formatCurrency(value?: number | null): string {
     currency: "USD",
     maximumFractionDigits: 0
   }).format(value);
+}
+
+function shortenAddress(address?: string | null): string {
+  if (!address) return "—";
+  if (address.length <= 10) return address;
+  return `${address.slice(0, 6)}…${address.slice(-4)}`;
 }
 
 function formatTimestamp(timestamp?: string | null): string {
@@ -408,64 +436,144 @@ export default function SaasDashboardHome({ apiBase }: Props) {
         )}
 
         {!tokenizationLoading && !tokenizationError && tokenizationStack && (
-          <div className="mt-4 grid gap-4 lg:grid-cols-3">
-            <article className="flex flex-col gap-3 rounded-lg border border-slate-100 bg-slate-50 p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Blockchain</p>
-                  <h3 className="text-lg font-semibold text-slate-900">{tokenizationStack.blockchain.family}</h3>
+          <>
+            <div className="mt-4 grid gap-4 lg:grid-cols-3">
+              <article className="flex flex-col gap-3 rounded-lg border border-slate-100 bg-slate-50 p-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Blockchain</p>
+                    <h3 className="text-lg font-semibold text-slate-900">{tokenizationStack.blockchain.family}</h3>
+                  </div>
+                  <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-800">EVM</span>
                 </div>
-                <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-800">EVM</span>
-              </div>
-              <dl className="space-y-2 text-sm text-slate-700">
-                <div>
-                  <dt className="text-xs uppercase tracking-wide text-slate-500">Development</dt>
-                  <dd className="font-semibold">{tokenizationStack.blockchain.devNetwork}</dd>
-                </div>
-                <div>
-                  <dt className="text-xs uppercase tracking-wide text-slate-500">Mainnet targets</dt>
-                  <dd className="font-semibold">{tokenizationStack.blockchain.mainnetTargets.join(', ')}</dd>
-                </div>
-                <div>
-                  <dt className="text-xs uppercase tracking-wide text-slate-500">Rationale</dt>
-                  <dd>{tokenizationStack.blockchain.rationale}</dd>
-                </div>
-              </dl>
-            </article>
+                   <dl className="space-y-2 text-sm text-slate-700">
+                  <div>
+                    <dt className="text-xs uppercase tracking-wide text-slate-500">Development</dt>
+                    <dd className="font-semibold">{tokenizationStack.blockchain.devNetwork}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-xs uppercase tracking-wide text-slate-500">Mainnet targets</dt>
+                    <dd className="font-semibold">{tokenizationStack.blockchain.mainnetTargets.join(', ')}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-xs uppercase tracking-wide text-slate-500">Rationale</dt>
+                    <dd>{tokenizationStack.blockchain.rationale}</dd>
+                  </div>
+                </dl>
+              </article>
 
-            <article className="flex flex-col gap-3 rounded-lg border border-slate-100 bg-slate-50 p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Pool Token</p>
-                  <h3 className="text-lg font-semibold text-slate-900">{tokenizationStack.poolToken.standard}</h3>
+              <article className="flex flex-col gap-3 rounded-lg border border-slate-100 bg-slate-50 p-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Pool Token</p>
+                    <h3 className="text-lg font-semibold text-slate-900">{tokenizationStack.poolToken.standard}</h3>
+                  </div>
+                  <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-800">
+                    {tokenizationStack.poolToken.status}
+                  </span>
                 </div>
-                <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-800">
-                  {tokenizationStack.poolToken.status}
-                </span>
-              </div>
-              <p className="text-sm text-slate-700">{tokenizationStack.poolToken.usage}</p>
-              <p className="text-xs text-slate-500">{tokenizationStack.poolToken.notes}</p>
-            </article>
-
-            <article className="flex flex-col gap-3 rounded-lg border border-slate-100 bg-slate-50 p-4">
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Loan Tokens (later)</p>
-                <h3 className="text-lg font-semibold text-slate-900">ERC-721 & ERC-1155</h3>
-              </div>
-              <ul className="space-y-3 text-sm text-slate-700">
-                {tokenizationStack.loanTokens.map((token) => (
-                  <li key={token.standard} className="rounded-lg bg-white/70 p-3 shadow-sm">
-                    <div className="flex items-center justify-between text-xs text-slate-500">
-                      <span className="font-semibold uppercase tracking-wide">{token.standard}</span>
-                      <span className="rounded-full bg-amber-100 px-2 py-1 font-semibold text-amber-800">{token.status}</span>
+                    <p className="text-sm text-slate-700">{tokenizationStack.poolToken.usage}</p>
+                <p className="text-xs text-slate-500">{tokenizationStack.poolToken.notes}</p>
+                <dl className="space-y-1 text-xs text-slate-500">
+                  {tokenizationStack.poolToken.factory && (
+                    <div className="flex items-center justify-between">
+                      <dt>Factory</dt>
+                      <dd className="font-semibold text-slate-800">{shortenAddress(tokenizationStack.poolToken.factory)}</dd>
                     </div>
-                    <p className="mt-1 text-sm font-semibold text-slate-900">{token.usage}</p>
-                    {token.notes && <p className="text-xs text-slate-500">{token.notes}</p>}
-                  </li>
-                ))}
-              </ul>
-            </article>
-          </div>
+                  )}
+                  {tokenizationStack.poolToken.whitelistRegistry && (
+                    <div className="flex items-center justify-between">
+                      <dt>Whitelist</dt>
+                      <dd className="font-semibold text-slate-800">
+                        {shortenAddress(tokenizationStack.poolToken.whitelistRegistry)}
+                      </dd>
+                    </div>
+                  )}
+                </dl>
+              </article>
+
+              <article className="flex flex-col gap-3 rounded-lg border border-slate-100 bg-slate-50 p-4">            
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Loan Tokens (later)</p>
+                  <h3 className="text-lg font-semibold text-slate-900">ERC-721 & ERC-1155</h3>
+                </div>
+                <ul className="space-y-3 text-sm text-slate-700">
+                  {tokenizationStack.loanTokens.map((token) => (
+                    <li key={token.standard} className="rounded-lg bg-white/70 p-3 shadow-sm">
+                      <div className="flex items-center justify-between text-xs text-slate-500">
+                        <span className="font-semibold uppercase tracking-wide">{token.standard}</span>
+                        <span className="rounded-full bg-amber-100 px-2 py-1 font-semibold text-amber-800">{token.status}</span>
+                      </div>
+                      <p className="mt-1 text-sm font-semibold text-slate-900">{token.usage}</p>
+                      {token.notes && <p className="text-xs text-slate-500">{token.notes}</p>}
+                    </li>
+                  ))}
+                </ul>
+              </article>
+            </div>
+
+               <div className="mt-6 grid gap-4 lg:grid-cols-2">
+              <article className="flex flex-col gap-3 rounded-lg border border-slate-100 bg-white p-4 shadow-sm">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Whitelist Registry</p>
+                    <h3 className="text-lg font-semibold text-slate-900">
+                      {shortenAddress(tokenizationStack.whitelistRegistry.address)}
+                    </h3>
+                  </div>
+                  <span className="rounded-full bg-sky-100 px-3 py-1 text-xs font-semibold text-sky-800">
+                    {tokenizationStack.whitelistRegistry.entries} entries
+                  </span>
+                </div>
+                 <p className="text-sm text-slate-700">
+                  Enforces KYC/AML before mint or transfer. Investor types and provider refs are persisted per address.
+                </p>
+                <dl className="space-y-2 text-sm text-slate-700">
+                  {Object.entries(tokenizationStack.whitelistRegistry.investorTypes || {}).map(([type, count]) => (
+                    <div key={type} className="flex items-center justify-between rounded bg-slate-50 px-3 py-2 text-xs">
+                      <dt className="font-semibold uppercase tracking-wide text-slate-500">{type}</dt>
+                      <dd className="font-semibold text-slate-800">{count}</dd>
+                    </div>
+                  ))}
+                </dl>
+              </article>
+                 
+              <article className="flex flex-col gap-3 rounded-lg border border-slate-100 bg-white p-4 shadow-sm">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Pool Factory</p>
+                    <h3 className="text-lg font-semibold text-slate-900">{shortenAddress(tokenizationStack.poolFactory.address)}</h3>
+                  </div>
+                  <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-800">
+                    {tokenizationStack.poolFactory.poolsDeployed} pools
+                  </span>
+                </div>
+                <p className="text-sm text-slate-700">
+                  Deploys ERC-20 pool tokens with embedded whitelist enforcement and admin-controlled lifecycle.
+                </p>
+                <div className="space-y-2">
+                  {tokenizationStack.pools.length === 0 && (
+                    <p className="text-sm text-slate-500">No pools have been deployed yet.</p>
+                  )}
+                  {tokenizationStack.pools.slice(0, 3).map((pool) => (
+                    <div key={pool.poolId} className="rounded border border-slate-100 bg-slate-50 p-3 text-sm">
+                      <div className="flex items-center justify-between text-xs text-slate-500">
+                        <span className="font-semibold uppercase tracking-wide">{pool.symbol}</span>
+                        <span className="rounded-full bg-white px-2 py-1 text-[11px] font-semibold text-emerald-700">
+                          {pool.active ? 'Active' : 'Closed'}
+                        </span>
+                      </div>
+                      <p className="font-semibold text-slate-900">{pool.name}</p>
+                      <p className="text-xs text-slate-500">{shortenAddress(pool.contractAddress)}</p>
+                      <p className="text-xs text-slate-600">
+                        Supply: {pool.totalSupply} · Holders: {pool.holders?.length ?? 0}
+                      </p>
+                    </div>
+                    ))}
+                </div>
+              </article>
+            </div>
+          </>
         )}
       </section>
 
