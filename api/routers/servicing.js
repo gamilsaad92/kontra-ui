@@ -5,6 +5,8 @@ const {
   ingestPaymentFile,
   getCashflowHistory,
   buildRemittanceSummary,
+  updateNetAssetValue,
+  calculateDistributionForPeriod,
 } = require('../services/servicing');
 
 const router = express.Router();
@@ -62,11 +64,13 @@ router.post('/servicing/pools/:poolId/payments/import', (req, res) => {
 
     const remittance_summary = buildRemittanceSummary(poolId, period);
     const cashflows = getCashflowHistory(poolId, { period });
-
+    const { distribution } = calculateDistributionForPeriod(poolId, period);
+    
     return res.status(201).json({
       ingested: ingested.length,
       remittance_summary,
       cashflows,
+      distribution,
     });
   } catch (err) {
     return res.status(400).json({ message: err.message });
@@ -83,8 +87,37 @@ router.get('/servicing/pools/:poolId/cashflows', (req, res) => {
 router.get('/servicing/pools/:poolId/remittance/:period', (req, res) => {
   const { poolId, period } = req.params;
   try {
-    const remittance_summary = buildRemittanceSummary(poolId, period);
-    return res.json({ remittance_summary });
+    const { remittance_summary, distribution } = calculateDistributionForPeriod(poolId, period);
+    return res.json({ remittance_summary, distribution });
+  } catch (err) {
+    return res.status(400).json({ message: err.message });
+  }
+});
+
+router.post('/servicing/pools/:poolId/nav', (req, res) => {
+  const { poolId } = req.params;
+  const { nav_amount: navAmount, nav, period, as_of: asOf } = req.body || {};
+  const resolvedNav = navAmount ?? nav;
+
+  try {
+    const navRecord = updateNetAssetValue({ poolId, navAmount: resolvedNav, period, asOf });
+    const { remittance_summary, distribution } = calculateDistributionForPeriod(
+      poolId,
+      period || navRecord.period
+    );
+
+    return res.status(201).json({ nav: navRecord, remittance_summary, distribution });
+  } catch (err) {
+    return res.status(400).json({ message: err.message });
+  }
+});
+
+router.get('/servicing/pools/:poolId/distribution/:period', (req, res) => {
+  const { poolId, period } = req.params;
+
+  try {
+    const { remittance_summary, distribution } = calculateDistributionForPeriod(poolId, period);
+    return res.json({ remittance_summary, distribution });
   } catch (err) {
     return res.status(400).json({ message: err.message });
   }
