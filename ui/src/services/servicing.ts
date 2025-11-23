@@ -334,3 +334,54 @@ export const sendPayoffQuote = async (
     );
   }
 };
+
+export interface RemittanceSummary {
+  pool_id: string;
+  period: string;
+  gross_interest: number;
+  gross_principal: number;
+  fees: number;
+  default_interest: number;
+  advances: number;
+  recoveries: number;
+  net_to_investors: number;
+}
+
+export interface DistributionSnapshot {
+  pool_id: string;
+  period: string;
+  nav: number | null;
+  nav_updated_at?: string | null;
+  tokens_outstanding: number;
+  net_to_investors: number;
+  per_token_distribution: number;
+  status?: string;
+}
+
+export interface DistributionResponse {
+  nav?: { pool_id: string; period: string; amount: number; updated_at: string } | null;
+  remittance_summary?: RemittanceSummary;
+  distribution?: DistributionSnapshot;
+}
+
+export async function updateNetAssetValue(
+  poolId: string,
+  navAmount: number,
+  period?: string
+): Promise<DistributionResponse> {
+  const payload = {
+    nav_amount: navAmount,
+    period,
+  };
+
+  const { data } = await api.post(`/servicing/pools/${poolId}/nav`, payload, withOrg(1));
+  return data as DistributionResponse;
+}
+
+export async function getDistributionSnapshot(
+  poolId: string,
+  period: string
+): Promise<DistributionResponse> {
+  const { data } = await api.get(`/servicing/pools/${poolId}/distribution/${period}`, withOrg(1));
+  return data as DistributionResponse;
+}
