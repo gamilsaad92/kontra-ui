@@ -21,14 +21,14 @@ const toNumber = (value) => {
 
 const ensurePool = (poolId) => {
   if (!servicingState.pools[poolId]) {
-    servicingState.pools[poolId] = { periods: {}, ingestions: [] };
+   servicingState.pools[poolId] = { periods: {}, ingestions: [], navHistory: [] };
   }
   return servicingState.pools[poolId];
 };
 
 const ensurePeriod = (pool, period) => {
   if (!pool.periods[period]) {
-    pool.periods[period] = { payments: [] };
+    pool.periods[period] = { payments: [], nav: null, distribution: null };
   }
   return pool.periods[period];
 };
@@ -224,6 +224,77 @@ const buildRemittanceSummary = (poolId, period) => {
   };
 };
 
+const updateNetAssetValue = ({ poolId, navAmount, period, asOf }) => {
+  if (!poolId) throw new Error('poolId is required');
+
+  const normalizedPeriod = normalizePeriod(period || new Date().toISOString());
+  if (!normalizedPeriod) throw new Error('Valid period is required (YYYY-MM-DD)');
+
+  const amount = Number(navAmount);
+  if (!Number.isFinite(amount) || amount < 0) {
+    throw new Error('navAmount must be a non-negative number');
+  }
+
+  const pool = ensurePool(poolId);
+  const periodBucket = ensurePeriod(pool, normalizedPeriod);
+
+  const navRecord = {
+    pool_id: poolId,
+    period: normalizedPeriod,
+    amount,
+    updated_at: asOf ? new Date(asOf).toISOString() : new Date().toISOString(),
+  };
+
+  periodBucket.nav = navRecord;
+  pool.navHistory.push(navRecord);
+
+  return navRecord;
+};
+
+const getNetAssetValue = (poolId, period) => {
+  const pool = servicingState.pools[poolId];
+  if (!pool) return null;
+  const normalizedPeriod = normalizePeriod(period);
+  if (!normalizedPeriod) return null;
+  return pool.periods[normalizedPeriod]?.nav || null;
+};
+
+const calculateDistributionForPeriod = (poolId, period) => {
+  const { poolFactory } = require('./tokenizationContracts');
+
+  const normalizedPeriod = normalizePeriod(period);
+  if (!normalizedPeriod) {
+    throw new Error('Valid period is required for distribution calculation');
+  }
+
+  const remittance_summary = buildRemittanceSummary(poolId, normalizedPeriod);
+  const pool = ensurePool(poolId);
+  const periodBucket = ensurePeriod(pool, normalizedPeriod);
+  const nav = periodBucket.nav;
+
+  const poolToken = poolFactory.getPool(poolId);
+  const tokens_outstanding = poolToken?.totalSupply || 0;
+  const per_token_distribution =
+    tokens_outstanding > 0
+      ? parseFloat((remittance_summary.net_to_investors / tokens_outstanding).toFixed(6))
+      : 0;
+
+  const distribution = {
+    pool_id: poolId,
+    period: normalizedPeriod,
+    nav: nav?.amount ?? null,
+    nav_updated_at: nav?.updated_at ?? null,
+    tokens_outstanding,
+    net_to_investors: remittance_summary.net_to_investors,
+    per_token_distribution,
+    status: tokens_outstanding > 0 ? 'calculated' : 'pending_token_supply',
+  };
+
+  periodBucket.distribution = distribution;
+
+  return { distribution, remittance_summary };
+};
+
 const resetServicingState = () => {
   servicingState.pools = {};
 };
@@ -234,6 +305,9 @@ module.exports = {
   getCashflowHistory,
   getPaymentsForPool,
   buildRemittanceSummary,
+   updateNetAssetValue,
+  getNetAssetValue,
+  calculateDistributionForPeriod,
   resetServicingState,
   normalizePeriod,
 };
