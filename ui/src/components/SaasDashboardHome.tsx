@@ -82,10 +82,24 @@ type LoanTokenStandard = {
   notes?: string;
 };
 
+type TokenizationServiceMeta = {
+  rpcUrl: string;
+  network: {
+    name?: string;
+    chainId?: number;
+  };
+  adminAddress: string | null;
+  contracts: {
+    poolFactory: string;
+    whitelistRegistry: string;
+  };
+};
+
 type TokenizationStack = {
   blockchain: BlockchainStack;
   poolToken: PoolTokenStandard;
   loanTokens: LoanTokenStandard[];
+  service: TokenizationServiceMeta;
     whitelistRegistry: {
     address: string;
     entries: number;
@@ -195,6 +209,12 @@ function shortenAddress(address?: string | null): string {
   if (!address) return "—";
   if (address.length <= 10) return address;
   return `${address.slice(0, 6)}…${address.slice(-4)}`;
+}
+
+function formatRpcEndpoint(url?: string | null): string {
+  if (!url) return "—";
+  if (url.length <= 48) return url;
+  return `${url.slice(0, 32)}…${url.slice(-10)}`;
 }
 
 function formatTimestamp(timestamp?: string | null): string {
@@ -437,7 +457,7 @@ export default function SaasDashboardHome({ apiBase }: Props) {
 
         {!tokenizationLoading && !tokenizationError && tokenizationStack && (
           <>
-            <div className="mt-4 grid gap-4 lg:grid-cols-3">
+           <div className="mt-4 grid gap-4 lg:grid-cols-4">
               <article className="flex flex-col gap-3 rounded-lg border border-slate-100 bg-slate-50 p-4">
                 <div className="flex items-center justify-between">
                   <div>
@@ -492,7 +512,7 @@ export default function SaasDashboardHome({ apiBase }: Props) {
                 </dl>
               </article>
 
-              <article className="flex flex-col gap-3 rounded-lg border border-slate-100 bg-slate-50 p-4">            
+              <article className="flex flex-col gap-3 rounded-lg border border-slate-100 bg-slate-50 p-4">  
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Loan Tokens (later)</p>
                   <h3 className="text-lg font-semibold text-slate-900">ERC-721 & ERC-1155</h3>
@@ -509,6 +529,39 @@ export default function SaasDashboardHome({ apiBase }: Props) {
                     </li>
                   ))}
                 </ul>
+              </article>
+                          <article className="flex flex-col gap-3 rounded-lg border border-slate-100 bg-white p-4 shadow-sm">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Tokenization Service</p>
+                    <h3 className="text-lg font-semibold text-slate-900">
+                      {tokenizationStack.service.network?.name || 'Custom network'}
+                    </h3>
+                  </div>
+                  <span className="rounded-full bg-sky-100 px-3 py-1 text-xs font-semibold text-sky-800">RPC</span>
+                </div>
+                <dl className="space-y-2 text-sm text-slate-700">
+                  <div className="flex items-center justify-between">
+                    <dt className="text-xs uppercase tracking-wide text-slate-500">Chain ID</dt>
+                    <dd className="font-semibold">{tokenizationStack.service.network?.chainId ?? '—'}</dd>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <dt className="text-xs uppercase tracking-wide text-slate-500">Admin Wallet</dt>
+                    <dd className="font-semibold">{shortenAddress(tokenizationStack.service.adminAddress)}</dd>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <dt className="text-xs uppercase tracking-wide text-slate-500">Pool Factory</dt>
+                    <dd className="font-semibold">{shortenAddress(tokenizationStack.service.contracts.poolFactory)}</dd>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <dt className="text-xs uppercase tracking-wide text-slate-500">Whitelist Registry</dt>
+                    <dd className="font-semibold">{shortenAddress(tokenizationStack.service.contracts.whitelistRegistry)}</dd>
+                  </div>
+                </dl>
+                <div className="rounded-lg border border-slate-100 bg-slate-50 p-3 text-xs text-slate-600">
+                  <p className="font-semibold uppercase tracking-wide text-slate-500">RPC Endpoint</p>
+                  <p className="break-words font-mono text-xs text-slate-700">{formatRpcEndpoint(tokenizationStack.service.rpcUrl)}</p>
+                </div>
               </article>
             </div>
 
