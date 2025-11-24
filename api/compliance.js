@@ -2,6 +2,7 @@ const OpenAI = require('openai');
 const { createClient } = require('@supabase/supabase-js');
 const { logAuditEntry } = require('./auditLogger');
 const { isFeatureEnabled } = require('./featureFlags');
+const { getLegalConfiguration, enforceTransferControls } = require('./legalConfiguration');
 require('dotenv').config();
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
@@ -131,6 +132,28 @@ function evaluateCounterparties(counterparties = [], counterpartyProfiles = []) 
     if (!profile.jurisdiction) {
       flags.push({ code: 'missing_jurisdiction', message: 'Jurisdiction not provided for counterparty' });
     }
+    
+    const legalConfig = getLegalConfiguration();
+    const restrictions = legalConfig.transferRestrictions || {};
+    const investorType = (profile.investor_type || '').toLowerCase();
+    const isUsPerson = profile.jurisdiction === 'US' || profile.jurisdiction === 'USA';
+
+    if (restrictions.regDAccreditedOnly && isUsPerson) {
+      const accreditedTypes = new Set(['institutional', 'qualified_purchaser', 'accredited', 'qib']);
+      if (!accreditedTypes.has(investorType)) {
+        return {
+          valid: false,
+          message: 'US investors must be accredited or QIB to participate in the SPV tokens',
+        };
+      }
+    }
+
+    if (restrictions.regSOffshoreOnly && !isUsPerson && !profile.jurisdiction) {
+      flags.push({
+        code: 'offshore_jurisdiction_required',
+        message: 'Non-US investors need a jurisdiction for Reg S controls',
+      });
+    }
   }
 
   return { valid: true, profiles, flags };
@@ -189,7 +212,7 @@ async function validateTrade(trade) {
     organization_id: trade.orgId
   };
 
- if (isTransfersPaused()) {
+  if (isTransfersPaused()) {
     logAuditEntry({ ...auditBase, result: 'transfers_paused' });
     return { valid: false, message: 'Transfers are currently paused for compliance review' };
   }
@@ -214,8 +237,18 @@ async function validateTrade(trade) {
     }
     if (!kyc.passed) {
       logAuditEntry({ ...auditBase, result: 'kyc_failed', counterparty: cp });
-     return { valid: false, message: `KYC failed for counterparty ${cp.id || cp}` };
+    return { valid: false, message: `KYC failed for counterparty ${cp.id || cp}` };
     }
+  }
+
+   const legalControls = enforceTransferControls({
+    trade,
+    counterpartyProfiles: counterpartyCheck.profiles,
+  });
+
+  if (!legalControls.valid) {
+    logAuditEntry({ ...auditBase, result: 'legal_controls_failed', reason: legalControls.message });
+    return { valid: false, message: legalControls.message };
   }
 
   const limit = ORG_RISK_LIMITS[trade.orgId] || ORG_RISK_LIMITS.default;
@@ -229,14 +262,18 @@ async function validateTrade(trade) {
   }
 
   logAuditEntry({ ...auditBase, result: 'passed', notional, limit });
- return { valid: true, flags: counterpartyCheck.flags };
+  const flags = [...(counterpartyCheck.flags || []), ...(legalControls.flags || [])];
+  return { valid: true, flags };
 }
 
 function getComplianceConstraints() {
+    const legal = getLegalConfiguration();
   return {
     paused: isTransfersPaused(),
     restrictedJurisdictions: RESTRICTED_JURISDICTIONS,
     restrictedInvestorTypes: RESTRICTED_INVESTOR_TYPES,
+    transferRestrictions: legal.transferRestrictions,
+    legalStructure: legal.structure,
     whitelist: Object.values(INVESTOR_WHITELIST).map(entry => ({
       id: entry.id || entry.wallet_address,
       wallet_address: entry.wallet_address,
