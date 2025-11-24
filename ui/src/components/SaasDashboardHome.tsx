@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { api } from "../lib/api";
+import TokenizationApiPanel from "./TokenizationApiPanel";
 
 type RiskBucket = {
   label: string;
@@ -628,6 +629,10 @@ export default function SaasDashboardHome({ apiBase }: Props) {
             </div>
           </>
         )}
+      </section>
+
+         <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+        <TokenizationApiPanel apiBase={apiBase} />
       </section>
 
       <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
