@@ -14,6 +14,7 @@ import AnalyticsDashboard from "./components/AnalyticsDashboard";
 import RiskDashboard from "./components/RiskDashboard";
 import ServicingDashboard from "./components/ServicingDashboard";
 import WebhooksManager from "./components/WebhooksManager";
+import PoolingWorkspace from "./routes/PoolingWorkspace";
 import LoanApplicationList from "./components/LoanApplicationList";
 import OrganizationSettings from "./components/OrganizationSettings";
 import StaffRestaurantDashboard from "./components/StaffRestaurantDashboard";
@@ -36,6 +37,7 @@ import {
   ChartBarSquareIcon,
   WrenchScrewdriverIcon,
   ShieldCheckIcon,
+  BuildingLibraryIcon,
 } from "@heroicons/react/24/outline";
 
 export const lenderNavRoutes = [
@@ -62,6 +64,12 @@ export const lenderNavRoutes = [
     label: "Loans",
     icon: BanknotesIcon,
     component: LoansDashboard,
+    requiresAuth: true,
+  },
+    {
+    label: "Pools & Tokens",
+    icon: BuildingLibraryIcon,
+    component: PoolingWorkspace,
     requiresAuth: true,
   },
   {
