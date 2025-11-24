@@ -1,10 +1,12 @@
 const express = require('express');
 const { poolFactory, whitelistRegistry, describeDeployment } = require('../services/tokenizationContracts');
+const tokenizationService = require('../services/tokenizationService');
 
 const router = express.Router();
 
-function buildTokenizationStack() {
+async function buildTokenizationStack() {
   const deployment = describeDeployment();
+  const service = await tokenizationService.describeService();
   return {
     blockchain: {
       family: 'EVM-compatible',
@@ -30,6 +32,7 @@ function buildTokenizationStack() {
       address: deployment.poolFactory.address,
       poolsDeployed: deployment.poolFactory.poolsDeployed,
     },
+    service,
     pools: deployment.pools,
     loanTokens: [
       {
@@ -52,49 +55,85 @@ function buildTokenizationStack() {
   };
 }
 
-router.get('/tokenization/stack', (req, res) => {
-  res.json(buildTokenizationStack());
+router.get('/tokenization/stack', async (req, res) => {
+  const stack = await buildTokenizationStack();
+  res.json(stack);
 });
 
-router.get('/tokenization/contracts', (req, res) => {
-  res.json(buildTokenizationStack());
+router.get('/tokenization/contracts', async (req, res) => {
+  const stack = await buildTokenizationStack();
+  res.json(stack);
 });
 
 router.get('/tokenization/whitelist', (req, res) => {
   res.json({ entries: whitelistRegistry.all(), registry: describeDeployment().whitelistRegistry });
 });
 
-router.post('/tokenization/whitelist', (req, res) => {
+router.post('/tokenization/whitelist', async (req, res) => {
   const { address, investorType, kycProviderRef, isWhitelisted = true } = req.body || {};
   if (!address) {
     return res.status(400).json({ message: 'Address is required' });
   }
-  const entry = whitelistRegistry.upsert(address, { isWhitelisted, investorType, kycProviderRef });
-  res.status(201).json({ entry, registry: describeDeployment().whitelistRegistry });
+  try {
+    const result = await tokenizationService.whitelistInvestor(address, { isWhitelisted, investorType, kycProviderRef });
+    res.status(201).json({ entry: result.entry, transaction: result.transaction, registry: describeDeployment().whitelistRegistry });
+  } catch (err) {
+    res.status(400).json({ message: err.message || 'Unable to update whitelist' });
+  }
 });
 
 router.get('/tokenization/pools', (req, res) => {
   res.json({ pools: poolFactory.describePools() });
 });
 
-router.post('/tokenization/pools', (req, res) => {
+router.post('/tokenization/pools', async (req, res) => {
   const { poolId, name, symbol, initialSupply = 0, adminAddress } = req.body || {};
-  if (!poolId || !name || !symbol || !adminAddress) {
-    return res.status(400).json({ message: 'poolId, name, symbol, and adminAddress are required' });
+  if (!poolId || !name || !symbol) {
+    return res.status(400).json({ message: 'poolId, name, and symbol are required' });
   }
   try {
-    const pool = poolFactory.createPool({ poolId, name, symbol, initialSupply: Number(initialSupply), adminAddress });
-    const event = {
-      event: 'PoolCreated',
-      poolId,
-      factory: poolFactory.address,
-      whitelistRegistry: pool.whitelistRegistry.address,
-      admin: adminAddress,
-    };
-    res.status(201).json({ pool: pool.summary(), event });
+   const result = await tokenizationService.createPoolToken({ poolId, name, symbol, initialSupply: Number(initialSupply), adminAddress });
+    res.status(201).json({ pool: result.pool, transaction: result.transaction });
   } catch (err) {
     res.status(400).json({ message: err.message || 'Unable to deploy pool token' });
   }
+});
+
+router.post('/tokenization/pools/:poolId/mint', async (req, res) => {
+  const { poolId } = req.params;
+  const { to, amount } = req.body || {};
+  if (!to || !amount) {
+    return res.status(400).json({ message: 'Recipient address and amount are required' });
+  }
+  try {
+    const result = await tokenizationService.mintPoolTokens(poolId, to, amount);
+    res.json({ pool: result.pool, transaction: result.transaction });
+  } catch (err) {
+    res.status(400).json({ message: err.message || 'Unable to mint tokens' });
+  }
+});
+
+router.post('/tokenization/pools/:poolId/burn', async (req, res) => {
+  const { poolId } = req.params;
+  const { from, amount } = req.body || {};
+  if (!from || !amount) {
+    return res.status(400).json({ message: 'Sender address and amount are required' });
+  }
+  try {
+    const result = await tokenizationService.burnPoolTokens(poolId, from, amount);
+    res.json({ pool: result.pool, transaction: result.transaction });
+  } catch (err) {
+    res.status(400).json({ message: err.message || 'Unable to burn tokens' });
+  }
+});
+
+router.get('/tokenization/pools/:poolId/address', (req, res) => {
+  const { poolId } = req.params;
+  const address = tokenizationService.getPoolTokenAddress(poolId);
+  if (!address) {
+    return res.status(404).json({ message: 'Pool not found' });
+  }
+  res.json({ poolId, address });
 });
 
 module.exports = { router };
