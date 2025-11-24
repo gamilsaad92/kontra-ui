@@ -12,6 +12,61 @@ const inMemory = {
   investments: [],
 };
 
+const FALLBACK_HOLDINGS = [
+  {
+    poolId: 'POOL-2024-1',
+    poolName: 'Kontra Bridge 2024-1',
+    tokens: 1200000,
+    ownership: 0.12,
+    lastCashflow: '2024-07-15',
+    yield: 0.084,
+  },
+  {
+    poolId: 'POOL-2024-2',
+    poolName: 'Sunbelt CRE 2024-2',
+    tokens: 800000,
+    ownership: 0.08,
+    lastCashflow: '2024-07-01',
+    yield: 0.079,
+  },
+];
+
+const FALLBACK_DEAL_ROOM = [
+  {
+    id: 'POOL-2024-1',
+    name: 'Kontra Bridge 2024-1',
+    strategy: 'Bridge loans • Multifamily & light industrial',
+    targetSize: 50000000,
+    currentRaise: 36500000,
+    minTicket: 250000,
+    apy: 0.085,
+    docsUrl: 'https://docs.kontra.dev/pools/kontra-bridge-2024-1.pdf',
+    status: 'open',
+  },
+  {
+    id: 'POOL-2024-2',
+    name: 'Sunbelt CRE 2024-2',
+    strategy: 'Stabilized multifamily debt • TX / GA / FL',
+    targetSize: 42000000,
+    currentRaise: 19000000,
+    minTicket: 150000,
+    apy: 0.079,
+    docsUrl: 'https://docs.kontra.dev/pools/sunbelt-cre-2024-2.pdf',
+    status: 'open',
+  },
+  {
+    id: 'POOL-2024-ESG',
+    name: 'Impact Green 2024',
+    strategy: 'Energy‑efficient retrofit loans • ESG overlay',
+    targetSize: 27000000,
+    currentRaise: 11000000,
+    minTicket: 100000,
+    apy: 0.082,
+    docsUrl: 'https://docs.kontra.dev/pools/impact-green-2024.pdf',
+    status: 'open',
+  },
+];
+
 function normalizeLoans(loans) {
   if (!Array.isArray(loans)) return [];
   return loans
@@ -175,6 +230,32 @@ async function listInvestments(poolId) {
   }
 }
 
+async function listInvestmentsByWallet(walletAddress) {
+  const memoryInvestments = inMemory.investments.filter((inv) => inv.wallet === walletAddress);
+  try {
+    const { data, error } = await supabase
+      .from(INVESTMENT_TABLE)
+      .select('*')
+      .eq('wallet', walletAddress);
+
+    if (error) {
+      return memoryInvestments;
+    }
+
+    const mapped = (data || []).map(mapInvestmentRow);
+    const merged = [...memoryInvestments];
+    mapped.forEach((row) => {
+      if (!merged.find((inv) => inv.id === row.id)) {
+        merged.push(row);
+      }
+    });
+    return merged;
+  } catch (err) {
+    console.warn('Investment listing fallback:', err.message || err);
+    return memoryInvestments;
+  }
+}
+
 async function fetchInvestor(investorId) {
   if (inMemory.investors.has(investorId)) {
     return inMemory.investors.get(investorId);
@@ -246,6 +327,26 @@ function buildPoolPayload(poolRecord, tokenSummary, investments = []) {
     underlyingLoans: summarizeLoans(poolRecord.loans),
     token: tokenSummary,
     investments,
+  };
+}
+
+function buildHoldingFromInvestment(investment, poolRecord) {
+  if (!investment) return null;
+  const lastCashflow = Array.isArray(poolRecord?.cashflows)
+    ? poolRecord.cashflows[0]?.distributionDate || poolRecord.cashflows[0]?.period
+    : null;
+  const ownership = poolRecord?.targetSize
+    ? Math.min(investment.amount / poolRecord.targetSize, 1)
+    : null;
+
+  return {
+    poolId: investment.poolId,
+    poolName: poolRecord?.name || investment.poolId,
+    tokenAddress: poolRecord?.tokenAddress || null,
+    tokens: investment.amount,
+    ownership,
+    lastCashflow,
+    yield: poolRecord?.metrics?.waCoupon || null,
   };
 }
 
@@ -379,9 +480,65 @@ async function getPoolDetails(poolId) {
   return buildPoolPayload(poolRecord, token, investments);
 }
 
+async function listOpenPools() {
+  const pools = Array.from(inMemory.pools.values()).map((pool) => ({
+    id: pool.id,
+    name: pool.name,
+    strategy: pool.portfolioManager || 'Actively managed credit',
+    targetSize: pool.targetSize || null,
+    currentRaise: null,
+    minTicket: 100000,
+    apy: 0.075,
+    docsUrl: pool.dataRoom || null,
+    status: pool.status || 'active',
+  }));
+
+  const merged = [...FALLBACK_DEAL_ROOM];
+  pools.forEach((p) => {
+    if (!merged.find((m) => m.id === p.id)) {
+      merged.push(p);
+    }
+  });
+
+  return merged.filter((p) => (p.status || '').toLowerCase() !== 'closed');
+}
+
+async function getInvestorPortfolio(walletAddress) {
+  if (!walletAddress) {
+    throw new Error('wallet is required');
+  }
+
+  const investments = await listInvestmentsByWallet(walletAddress);
+  if (!investments.length) {
+    return {
+      wallet: walletAddress,
+      holdings: FALLBACK_HOLDINGS,
+      totals: {
+        tokens: FALLBACK_HOLDINGS.reduce((sum, h) => sum + h.tokens, 0),
+      },
+    };
+  }
+
+  const holdings = [];
+  for (const investment of investments) {
+    const pool = await loadPool(investment.poolId);
+    holdings.push(buildHoldingFromInvestment(investment, pool));
+  }
+
+  return {
+    wallet: walletAddress,
+    holdings,
+    totals: {
+      tokens: holdings.reduce((sum, h) => sum + (Number(h?.tokens) || 0), 0),
+    },
+  };
+}
+
 module.exports = {
   createPool,
   whitelistInvestor,
   recordInvestment,
   getPoolDetails,
+  listOpenPools,
+  getInvestorPortfolio,
 };
