@@ -2,6 +2,7 @@ const express = require('express');
 const authenticate = require('../middlewares/authenticate');
 const { supabase } = require('../db');
 const { isFeatureEnabled } = require('../featureFlags');
+const { whitelistInvestor } = require('../services/poolInvestmentService');
 
 const router = express.Router();
 
@@ -213,7 +214,18 @@ router.get('/risk', async (req, res) => {
       notifications
     });
   } catch (err) {
-    console.error('Investor risk summary error:', err);
+   res.json(buildFallbackRiskSummary());
+  }
+});
+
+router.post('/whitelist', async (req, res) => {
+  const { investor_id, wallet, investorId } = req.body || {};
+  try {
+    const result = await whitelistInvestor(investor_id || investorId, wallet);
+    res.status(201).json(result);
+  } catch (err) {
+    const message = err?.message || 'Unable to whitelist investor';
+    res.status(400).json({ message });
  res.json(buildFallbackRiskSummary());
   }
 });
