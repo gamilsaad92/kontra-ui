@@ -174,6 +174,66 @@ const tokenProducts: TokenProduct[] = [
   }
 ];
 
+const DEFAULT_INVESTOR_WALLET = "0x21F3...82d1";
+
+const fallbackPortfolio: InvestorPortfolio = {
+  wallet: DEFAULT_INVESTOR_WALLET,
+  holdings: [
+    {
+      poolId: "POOL-2024-1",
+      poolName: "Kontra Bridge 2024-1",
+      tokens: 1_200_000,
+      ownership: 0.12,
+      lastCashflow: "2024-07-15",
+      yield: 0.084
+    },
+    {
+      poolId: "POOL-2024-2",
+      poolName: "Sunbelt CRE 2024-2",
+      tokens: 800_000,
+      ownership: 0.08,
+      lastCashflow: "2024-07-01",
+      yield: 0.079
+    }
+  ]
+};
+
+const fallbackDealRoom: DealRoomPool[] = [
+  {
+    id: "POOL-2024-1",
+    name: "Kontra Bridge 2024-1",
+    strategy: "Bridge loans • Multifamily & light industrial",
+    targetSize: 50_000_000,
+    currentRaise: 36_500_000,
+    minTicket: 250_000,
+    apy: 0.085,
+    docsUrl: "https://docs.kontra.dev/pools/kontra-bridge-2024-1.pdf",
+    status: "open"
+  },
+  {
+    id: "POOL-2024-2",
+    name: "Sunbelt CRE 2024-2",
+    strategy: "Stabilized multifamily debt • TX / GA / FL",
+    targetSize: 42_000_000,
+    currentRaise: 19_000_000,
+    minTicket: 150_000,
+    apy: 0.079,
+    docsUrl: "https://docs.kontra.dev/pools/sunbelt-cre-2024-2.pdf",
+    status: "open"
+  },
+  {
+    id: "POOL-2024-ESG",
+    name: "Impact Green 2024",
+    strategy: "Energy‑efficient retrofit loans • ESG overlay",
+    targetSize: 27_000_000,
+    currentRaise: 11_000_000,
+    minTicket: 100_000,
+    apy: 0.082,
+    docsUrl: "https://docs.kontra.dev/pools/impact-green-2024.pdf",
+    status: "open"
+  }
+];
+
 function normalizeApiBase(base?: string): string | undefined {
   if (!base) return undefined;
   const trimmed = base.trim();
@@ -268,6 +328,32 @@ type MarketplaceSummary = {
   updatedAt: string | null;
 };
 
+type InvestorHolding = {
+  poolId: string;
+  poolName: string;
+  tokens: number;
+  ownership: number;
+  lastCashflow: string;
+  yield: number;
+};
+
+type InvestorPortfolio = {
+  wallet: string;
+  holdings: InvestorHolding[];
+};
+
+type DealRoomPool = {
+  id: string;
+  name: string;
+  strategy?: string;
+  targetSize?: number;
+  currentRaise?: number;
+  minTicket?: number;
+  apy?: number;
+  docsUrl?: string;
+  status?: string;
+};
+
 function formatPercentValue(value?: number | null, decimals = 0): string {
   if (value === undefined || value === null || Number.isNaN(value)) {
     return "—";
@@ -300,6 +386,19 @@ export default function SaasDashboardHome({ apiBase }: Props) {
   const [tokenizationStack, setTokenizationStack] = useState<TokenizationStack | null>(null);
   const [tokenizationError, setTokenizationError] = useState<string | null>(null);
   const [tokenizationLoading, setTokenizationLoading] = useState(true);
+ const [portfolio, setPortfolio] = useState<InvestorPortfolio>(fallbackPortfolio);
+  const [portfolioWallet, setPortfolioWallet] = useState(DEFAULT_INVESTOR_WALLET);
+  const [walletAddress, setWalletAddress] = useState(DEFAULT_INVESTOR_WALLET);
+  const [portfolioLoading, setPortfolioLoading] = useState(false);
+  const [portfolioError, setPortfolioError] = useState<string | null>(null);
+  const [dealRoom, setDealRoom] = useState<DealRoomPool[]>(fallbackDealRoom);
+  const [dealRoomLoading, setDealRoomLoading] = useState(true);
+  const [dealRoomError, setDealRoomError] = useState<string | null>(null);
+  const [selectedPoolId, setSelectedPoolId] = useState<string>(fallbackDealRoom[0]?.id ?? "");
+  const [walletConnected, setWalletConnected] = useState(false);
+  const [ticketSize, setTicketSize] = useState("250000");
+  const [subscriptionStatus, setSubscriptionStatus] = useState<string | null>(null);
+  const [subscriptionLoading, setSubscriptionLoading] = useState(false);
   
   useEffect(() => {
     let cancelled = false;
@@ -410,6 +509,84 @@ export default function SaasDashboardHome({ apiBase }: Props) {
 
   const combinedTotal = useMemo(() => bucketTotal(riskSummary?.combinedBuckets), [riskSummary]);
 
+   useEffect(() => {
+    let cancelled = false;
+    const baseURL = normalizeApiBase(apiBase);
+
+    setDealRoomLoading(true);
+    setDealRoomError(null);
+
+    api
+      .get<{ pools: DealRoomPool[] }>("/investors/deal-room", baseURL ? { baseURL } : undefined)
+      .then((response) => {
+        if (cancelled) return;
+        const pools = response.data?.pools ?? [];
+        const nextPools = pools.length ? pools : fallbackDealRoom;
+        setDealRoom(nextPools);
+        setSelectedPoolId((current) => {
+          if (nextPools.length === 0) return "";
+          const stillValid = nextPools.find((pool) => pool.id === current);
+          return stillValid ? stillValid.id : nextPools[0].id;
+        });
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setDealRoomError("Unable to load open pools. Showing defaults.");
+        setDealRoom(fallbackDealRoom);
+        setSelectedPoolId((current) => {
+          const fallback = fallbackDealRoom[0]?.id ?? "";
+          const stillValid = fallbackDealRoom.find((pool) => pool.id === current);
+          return stillValid ? stillValid.id : fallback;
+        });
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setDealRoomLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [apiBase]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const baseURL = normalizeApiBase(apiBase);
+
+    setPortfolioLoading(true);
+    setPortfolioError(null);
+
+    api
+      .get<InvestorPortfolio>(`/investors/${encodeURIComponent(portfolioWallet)}/portfolio`, baseURL ? { baseURL } : undefined)
+      .then((response) => {
+        if (cancelled) return;
+        const nextPortfolio = response.data?.holdings
+          ? response.data
+          : { ...fallbackPortfolio, wallet: portfolioWallet };
+        setPortfolio(nextPortfolio);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setPortfolioError("Unable to load holdings. Showing fallback data.");
+        setPortfolio({ ...fallbackPortfolio, wallet: portfolioWallet });
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setPortfolioLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [apiBase, portfolioWallet]);
+
+  const selectedPool = useMemo(() => {
+    if (dealRoom.length === 0) return null;
+    return dealRoom.find((pool) => pool.id === selectedPoolId) ?? dealRoom[0];
+  }, [dealRoom, selectedPoolId]);
+
   const sections = useMemo(
     () => [
       { key: "assets", label: "Assets", summary: riskSummary?.assets },
@@ -418,6 +595,55 @@ export default function SaasDashboardHome({ apiBase }: Props) {
     ],
     [riskSummary]
   );
+
+   const handleConnectWallet = () => {
+    const cleanedWallet = walletAddress.trim() || DEFAULT_INVESTOR_WALLET;
+    setWalletAddress(cleanedWallet);
+    setPortfolioWallet(cleanedWallet);
+    setWalletConnected(true);
+    setSubscriptionStatus(`Wallet ${cleanedWallet} ready. Holdings refreshed.`);
+  };
+
+  const handleSubscribe = async () => {
+    if (!selectedPool) {
+      setSubscriptionStatus("Select a pool to subscribe to.");
+      return;
+    }
+
+    if (!walletConnected) {
+      setSubscriptionStatus("Connect a wallet before subscribing.");
+      return;
+    }
+
+    const amount = Number(ticketSize);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      setSubscriptionStatus("Enter a valid ticket size.");
+      return;
+    }
+
+    const baseURL = normalizeApiBase(apiBase);
+    const payload = {
+      investor_id: "demo-investor",
+      wallet: walletAddress,
+      pool_id: selectedPool.id,
+      amount
+    };
+
+    setSubscriptionLoading(true);
+    setSubscriptionStatus(null);
+
+    try {
+      await api.post("/investors/subscribe", payload, baseURL ? { baseURL } : undefined);
+      setSubscriptionStatus(
+        `Minted ${amount.toLocaleString()} tokens for ${selectedPool.name || selectedPool.id}. Portfolio refreshed.`
+      );
+      setPortfolioWallet(walletAddress.trim() || DEFAULT_INVESTOR_WALLET);
+    } catch (err) {
+      setSubscriptionStatus("Unable to submit subscription right now.");
+    } finally {
+      setSubscriptionLoading(false);
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -633,6 +859,267 @@ export default function SaasDashboardHome({ apiBase }: Props) {
 
          <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
         <TokenizationApiPanel apiBase={apiBase} />
+      </section>
+
+          <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+          <div>
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Investor Portfolio & Deal Room</h2>
+            <p className="text-sm text-slate-600">
+              See holdings, browse open pools, and run subscription approvals without leaving the SaaS dashboard.
+            </p>
+          </div>
+          <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
+            <input
+              className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-slate-400 focus:outline-none"
+              value={walletAddress}
+              onChange={(e) => setWalletAddress(e.target.value)}
+              placeholder="0x... investor wallet"
+            />
+            <button
+              type="button"
+              onClick={handleConnectWallet}
+              className="inline-flex items-center justify-center rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-800"
+            >
+              {walletConnected ? "Refresh wallet" : "Connect wallet"}
+            </button>
+          </div>
+        </div>
+
+        {portfolioError && (
+          <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">{portfolioError}</p>
+        )}
+
+        <div className="mt-4 grid gap-4 lg:grid-cols-2">
+          <article className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Holdings</p>
+                <h3 className="text-lg font-semibold text-slate-900">Wallet {portfolio.wallet}</h3>
+              </div>
+              <span className="rounded-full bg-slate-900 px-3 py-1 text-xs font-semibold text-white">
+                {portfolio.holdings.length} pools
+              </span>
+            </div>
+            {portfolioLoading ? (
+              <p className="mt-3 text-sm text-slate-600">Loading holdings…</p>
+            ) : portfolio.holdings.length === 0 ? (
+              <p className="mt-3 text-sm text-slate-600">No holdings for this wallet yet.</p>
+            ) : (
+              <div className="mt-3 overflow-x-auto">
+                <table className="min-w-full text-sm">
+                  <thead>
+                    <tr className="text-left text-xs uppercase tracking-wide text-slate-500">
+                      <th className="pb-2">Pool</th>
+                      <th className="pb-2">Tokens held</th>
+                      <th className="pb-2">% of pool</th>
+                      <th className="pb-2">Last cashflow</th>
+                      <th className="pb-2">Yield</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-200">
+                    {portfolio.holdings.map((row) => (
+                      <tr key={row.poolId} className="align-top">
+                        <td className="py-2">
+                          <div className="font-semibold text-slate-900">{row.poolName}</div>
+                          <p className="text-xs text-slate-500">{row.poolId}</p>
+                        </td>
+                        <td className="py-2 text-slate-800">{row.tokens.toLocaleString()}</td>
+                        <td className="py-2 text-slate-800">{(row.ownership * 100).toFixed(1)}%</td>
+                        <td className="py-2 text-slate-800">{new Date(row.lastCashflow).toLocaleDateString()}</td>
+                        <td className="py-2 text-slate-800">{(row.yield * 100).toFixed(1)}%</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </article>
+
+          <article className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Deal Room</p>
+                <h3 className="text-lg font-semibold text-slate-900">Open for subscription</h3>
+              </div>
+              {dealRoomLoading ? (
+                <span className="text-xs text-slate-500">Syncing…</span>
+              ) : (
+                <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">
+                  {dealRoom.length} pools
+                </span>
+              )}
+            </div>
+            {dealRoomError && (
+              <p className="mt-2 text-xs text-amber-700">{dealRoomError}</p>
+            )}
+            {dealRoomLoading ? (
+              <p className="mt-3 text-sm text-slate-600">Loading available pools…</p>
+            ) : dealRoom.length === 0 ? (
+              <p className="mt-3 text-sm text-slate-600">No active pools are open for subscription.</p>
+            ) : (
+              <div className="mt-3 space-y-3">
+                {dealRoom.map((pool) => (
+                  <div key={pool.id} className="rounded-lg border border-slate-100 bg-slate-50 p-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-semibold text-slate-900">{pool.name}</p>
+                        <p className="text-xs text-slate-500">{pool.strategy}</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedPoolId(pool.id)}
+                        className={`rounded-full px-3 py-1 text-xs font-semibold transition ${
+                          selectedPoolId === pool.id
+                            ? "bg-slate-900 text-white"
+                            : "bg-white text-slate-800 ring-1 ring-slate-200 hover:bg-slate-100"
+                        }`}
+                      >
+                        {selectedPoolId === pool.id ? "Selected" : "Review"}
+                      </button>
+                    </div>
+                    <div className="mt-2 grid grid-cols-3 gap-2 text-xs text-slate-600">
+                      <div>
+                        <p className="text-[11px] uppercase tracking-wide text-slate-500">Target</p>
+                        <p className="font-semibold text-slate-900">{formatCurrency(pool.targetSize ?? null)}</p>
+                      </div>
+                      <div>
+                        <p className="text-[11px] uppercase tracking-wide text-slate-500">Min ticket</p>
+                        <p className="font-semibold text-slate-900">
+                          {pool.minTicket ? `$${pool.minTicket.toLocaleString()}` : "—"}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-[11px] uppercase tracking-wide text-slate-500">Est. APY</p>
+                        <p className="font-semibold text-slate-900">{pool.apy ? `${(pool.apy * 100).toFixed(1)}%` : "—"}</p>
+                      </div>
+                    </div>
+                    {pool.docsUrl && (
+                      <a
+                        href={pool.docsUrl}
+                        className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-slate-700"
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        Data room →
+                      </a>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </article>
+        </div>
+
+        <div className="mt-4 grid gap-4 lg:grid-cols-2">
+          <article className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Subscription Workflow</p>
+                <h3 className="text-lg font-semibold text-slate-900">Approve & Mint</h3>
+              </div>
+              <span
+                className={`rounded-full px-3 py-1 text-xs font-semibold ${
+                  walletConnected ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-700"
+                }`}
+              >
+                {walletConnected ? "Wallet connected" : "Wallet required"}
+              </span>
+            </div>
+
+            <div className="mt-3 space-y-3 text-sm text-slate-700">
+              <div>
+                <p className="text-xs uppercase tracking-wide text-slate-500">Pool</p>
+                <p className="font-semibold text-slate-900">{selectedPool?.name || "Select a pool"}</p>
+                <p className="text-xs text-slate-500">{selectedPool?.strategy || "Choose any open raise to proceed."}</p>
+              </div>
+              <div className="grid gap-3 md:grid-cols-2">
+                <label className="space-y-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  <span className="text-slate-500">Wallet</span>
+                  <input
+                    className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-800 focus:border-slate-400 focus:outline-none"
+                    value={walletAddress}
+                    onChange={(e) => setWalletAddress(e.target.value)}
+                    placeholder="0x..."
+                  />
+                </label>
+                <label className="space-y-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  <span className="text-slate-500">Ticket size (USD)</span>
+                  <input
+                    className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-800 focus:border-slate-400 focus:outline-none"
+                    value={ticketSize}
+                    onChange={(e) => setTicketSize(e.target.value)}
+                  />
+                </label>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={handleConnectWallet}
+                  className="inline-flex items-center justify-center rounded-lg bg-slate-100 px-3 py-2 text-sm font-semibold text-slate-900 transition hover:bg-slate-200"
+                >
+                  {walletConnected ? "Wallet ready" : "Connect wallet"}
+                </button>
+                <button
+                  type="button"
+                  disabled={!selectedPool || subscriptionLoading}
+                  onClick={handleSubscribe}
+                  className="inline-flex items-center justify-center rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-500"
+                >
+                  {subscriptionLoading ? "Processing…" : "Approve & Mint"}
+                </button>
+              </div>
+              {subscriptionStatus && <p className="text-xs text-slate-600">{subscriptionStatus}</p>}
+            </div>
+          </article>
+
+          <article className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Pool Snapshot</p>
+            {selectedPool ? (
+              <div className="mt-3 space-y-3 text-sm text-slate-800">
+                <div>
+                  <p className="text-xs uppercase tracking-wide text-slate-500">Raise Progress</p>
+                  <p className="font-semibold text-slate-900">
+                    {selectedPool.currentRaise && selectedPool.targetSize
+                      ? `${formatCurrency(selectedPool.currentRaise)} of ${formatCurrency(selectedPool.targetSize)}`
+                      : "Raise progress pending"}
+                  </p>
+                </div>
+                <div className="grid grid-cols-2 gap-3 text-sm text-slate-700">
+                  <div className="rounded-lg bg-white p-3 shadow-sm">
+                    <p className="text-[11px] uppercase tracking-wide text-slate-500">Minimum Ticket</p>
+                    <p className="text-base font-semibold text-slate-900">
+                      {selectedPool.minTicket ? `$${selectedPool.minTicket.toLocaleString()}` : "TBD"}
+                    </p>
+                  </div>
+                  <div className="rounded-lg bg-white p-3 shadow-sm">
+                    <p className="text-[11px] uppercase tracking-wide text-slate-500">Estimated APY</p>
+                    <p className="text-base font-semibold text-slate-900">
+                      {selectedPool.apy ? `${(selectedPool.apy * 100).toFixed(1)}%` : "—"}
+                    </p>
+                  </div>
+                </div>
+                <div className="rounded-lg bg-white p-3 shadow-sm text-sm text-slate-700">
+                  <p className="text-[11px] uppercase tracking-wide text-slate-500">Data Room</p>
+                  {selectedPool.docsUrl ? (
+                    <a
+                      href={selectedPool.docsUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="font-semibold text-slate-900 underline"
+                    >
+                      {selectedPool.docsUrl}
+                    </a>
+                  ) : (
+                    <p className="text-slate-600">Documentation link coming soon.</p>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <p className="mt-3 text-sm text-slate-600">Connect your wallet to see open pools.</p>
+            )}
+          </article>
+        </div>
       </section>
 
       <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
