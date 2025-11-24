@@ -81,6 +81,19 @@ class PoolToken {
     this.totalSupply += amount;
   }
 
+    burn(from, amount) {
+    if (!Number.isFinite(amount) || amount <= 0) {
+      throw new Error('Amount must be positive');
+    }
+    this._beforeTokenTransfer(from, null);
+    const fromBalance = this.balances.get(from) || 0;
+    if (fromBalance < amount) {
+      throw new Error('Insufficient balance');
+    }
+    this.balances.set(from, fromBalance - amount);
+    this.totalSupply -= amount;
+  }
+
   transfer(from, to, amount) {
     if (!Number.isFinite(amount) || amount <= 0) {
       throw new Error('Amount must be positive');
