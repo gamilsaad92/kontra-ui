@@ -18,6 +18,7 @@ import PoolingWorkspace from "./routes/PoolingWorkspace";
 import LoanApplicationList from "./components/LoanApplicationList";
 import OrganizationSettings from "./components/OrganizationSettings";
 import StaffRestaurantDashboard from "./components/StaffRestaurantDashboard";
+import LegalConfiguration from "./routes/LegalConfiguration";
 
 import {
   HomeIcon,
@@ -27,6 +28,7 @@ import {
   BriefcaseIcon,
   UserGroupIcon,
   DocumentTextIcon,
+  DocumentCheckIcon,
   Cog6ToothIcon,
   ChartBarIcon,
   CurrencyDollarIcon,
@@ -66,10 +68,16 @@ export const lenderNavRoutes = [
     component: LoansDashboard,
     requiresAuth: true,
   },
-    {
+   {
     label: "Pools & Tokens",
     icon: BuildingLibraryIcon,
     component: PoolingWorkspace,
+    requiresAuth: true,
+  },
+    {
+    label: "Legal",
+    icon: DocumentCheckIcon,
+    component: LegalConfiguration,
     requiresAuth: true,
   },
   {
