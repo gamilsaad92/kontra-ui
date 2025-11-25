@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { ArrowPathIcon, BanknotesIcon, BoltIcon, ChartPieIcon, ShieldCheckIcon } from "@heroicons/react/24/outline";
 import { ConnectButton } from "@rainbow-me/rainbowkit";
-import { useAccount, useNetwork } from "wagmi";
+import { useAccount, useChainId, useChains } from "wagmi";
 import {
   type OnchainOverview,
   type OnchainPosition,
@@ -66,7 +66,9 @@ function TransactionRow({ transaction }: { transaction: OnchainTransaction }) {
 
 export default function OnchainDashboard() {
   const { address } = useAccount();
-  const { chain } = useNetwork();
+  const chainId = useChainId();
+  const chains = useChains();
+  const chain = useMemo(() => chains.find((item) => item.id === chainId), [chains, chainId]);
   const [overview, setOverview] = useState<OnchainOverview | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
