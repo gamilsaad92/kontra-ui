@@ -186,4 +186,3 @@ export default function DashboardHome() {
       </div>
     </div>
   );
-ui/src/components/Dashboa
