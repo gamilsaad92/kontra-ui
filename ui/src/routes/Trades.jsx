@@ -238,21 +238,35 @@ function validateValues(definition, fields, values, policy) {
       }
     }
   });
-   const jurisdiction = String(values?.jurisdiction || '').toUpperCase();
+ const jurisdiction = String(values?.jurisdiction || '').toUpperCase();
   if (policy?.restrictedJurisdictions?.includes(jurisdiction)) {
     errors.jurisdiction = 'Transfers are blocked for this jurisdiction';
   }
   if (values?.kyc_status && values.kyc_status !== 'approved') {
     errors.kyc_status = 'KYC must be approved before submitting a trade';
+      }
+  const wallet = String(values?.wallet_address || '').trim();
+  if (wallet && policy?.walletWhitelist?.enforced) {
+    const whitelisted = (policy.whitelist || []).some(entry => {
+      const id = String(entry.wallet_address || entry.id || '').toLowerCase();
+      return id === wallet.toLowerCase();
+    });
+    if (!whitelisted) {
+      errors.wallet_address = 'Wallet must be whitelisted and verified before trading';
     }
+  }
   return errors;
 }
 
-function buildPayload(definition, values) {
-   const wallet = values.wallet_address?.trim();
+function buildPayload(definition, values, policy) {
+  const wallet = values.wallet_address?.trim();
   const jurisdiction = values.jurisdiction?.trim();
   const investorType = values.investor_type;
   const kycStatus = values.kyc_status;
+   const whitelisted = (policy?.whitelist || []).find(entry => {
+    const id = String(entry.wallet_address || entry.id || '').toLowerCase();
+    return wallet && id === wallet.toLowerCase();
+  });
   const payload = {
     trade_type: definition.type,
     symbol: values.symbol?.trim(),
@@ -268,7 +282,11 @@ function buildPayload(definition, values) {
             wallet_address: wallet,
             jurisdiction,
             investor_type: investorType,
-            kycApproved: kycStatus === 'approved'
+           kycApproved: kycStatus === 'approved',
+            amlApproved: whitelisted?.amlApproved ?? kycStatus === 'approved',
+            verified: whitelisted?.verified ?? false,
+            kyc_provider: whitelisted?.kyc_provider || policy?.kycProvider?.name,
+            aml_provider: whitelisted?.aml_provider || policy?.amlProvider?.name
           }
         ]
       : []
@@ -491,7 +509,7 @@ export default function Trades() {
     async definition => {
       const type = definition.type;
       const values = forms[type];
-     const fieldDefs = activeFields;
+      const fieldDefs = activeFields;
       const validation = validateValues(definition, fieldDefs, values, compliancePolicy);
       if (Object.keys(validation).length) {
         setFormErrors(prev => ({
@@ -508,7 +526,7 @@ export default function Trades() {
       }));
 
       try {
-          const { data } = await api.post('/trades', buildPayload(definition, values));
+        const { data } = await api.post('/trades', buildPayload(definition, values, compliancePolicy));
         const flags = data?.trade?.compliance_flags || [];
         notify(
           flags.length
@@ -547,7 +565,7 @@ export default function Trades() {
 
   const openTrades = trades.filter(t => t.status === 'pending');
   const completedTrades = trades.filter(t => t.status === 'settled');
- const restrictedJurisdictions = compliancePolicy?.restrictedJurisdictions || [];
+   const restrictedJurisdictions = compliancePolicy?.restrictedJurisdictions || [];
   const restrictedInvestorTypes = compliancePolicy?.restrictedInvestorTypes || [];
   const whitelistedInvestors = compliancePolicy?.whitelist || [];
   
@@ -656,6 +674,38 @@ export default function Trades() {
         <div className="grid gap-6 lg:grid-cols-2 mt-6">
           <TradeList trades={openTrades} title="Open Trades" onSettle={settleTrade} />
           <TradeList trades={completedTrades} title="Settled Trades" />
+        </div>
+                <div className="mt-6 grid gap-3 rounded-lg border border-slate-200 bg-white p-4 text-sm text-gray-700 shadow-sm md:grid-cols-3">
+          <div className="space-y-1">
+            <p className="font-medium">KYC / AML provider</p>
+            <p className="text-gray-900">{compliancePolicy?.kycProvider?.name || 'Not configured'}</p>
+            <p className="text-gray-600">
+              {compliancePolicy?.amlProvider?.name
+                ? `${compliancePolicy.amlProvider.name} watchlist + sanctions checks enforced.`
+                : 'Add a provider to block unsettled addresses.'}
+            </p>
+          </div>
+          <div className="space-y-1">
+            <p className="font-medium">Issuance partner</p>
+            <p className="text-gray-900">{compliancePolicy?.issuancePartner?.name || 'Pending'}</p>
+            <p className="text-gray-600">
+              {compliancePolicy?.issuancePartner?.services?.join(', ') ||
+                'Configure Securitize, Polymesh, or Tokeny for Reg D / Reg S transfer legends.'}
+            </p>
+          </div>
+          <div className="space-y-1">
+            <p className="font-medium">Wallet whitelist</p>
+            <p className="text-gray-900">
+              {compliancePolicy?.walletWhitelist?.enforced
+                ? 'Only verified investors can hold tokens'
+                : 'Whitelist not enforced'}
+            </p>
+            <p className="text-gray-600">
+              {compliancePolicy?.walletWhitelist?.registrySize
+                ? `${compliancePolicy.walletWhitelist.registrySize} wallets synced from transfer agent registry.`
+                : 'Connect the transfer agent registry to enforce custody limits.'}
+            </p>
+          </div>
         </div>
       </section>
       <MiniCmbsPools pools={cmbsPools} onRefresh={fetchMiniCmbs} onNotify={notify} />
