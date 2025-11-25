@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { api } from "../lib/api";
 import TokenizationApiPanel from "./TokenizationApiPanel";
+import AssetDigitizationPanel from "./AssetDigitizationPanel";
 
 type RiskBucket = {
   label: string;
@@ -857,11 +858,13 @@ export default function SaasDashboardHome({ apiBase }: Props) {
         )}
       </section>
 
-         <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+      <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
         <TokenizationApiPanel apiBase={apiBase} />
       </section>
 
-          <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+      <AssetDigitizationPanel apiBase={apiBase} />
+
+      <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
           <div>
             <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Investor Portfolio & Deal Room</h2>
