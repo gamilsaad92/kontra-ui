@@ -12,6 +12,7 @@
   "dependencies": {
     "@clerk/clerk-react": "^5.35.3",
     "@heroicons/react": "^2.2.0",
+    "@rainbow-me/rainbowkit": "^2.2.1",
     "@sentry/node": "^9.24.0",
     "@sentry/react": "^9.24.0",
     "@supabase/supabase-js": "^2.49.8",
@@ -28,7 +29,9 @@
     "react-router-dom": "^7.6.2",
     "react-spinners": "^0.17.0",
     "recharts": "^2.15.3",
-    "serve": "^14.2.3"
+    "serve": "^14.2.3",
+    "viem": "^2.21.17",
+    "wagmi": "^2.14.6"
   },
   "devDependencies": {
     "@babel/preset-env": "^7.26.10",
