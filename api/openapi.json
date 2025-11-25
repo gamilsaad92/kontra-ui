@@ -272,7 +272,28 @@
         "/api/trades/compliance": {
       "get": {
         "summary": "Get trading compliance policy",
-        "responses": { "200": { "description": "OK" } }
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "example": {
+                  "policy": {
+                    "paused": false,
+                    "kycProvider": { "name": "Sumsub", "amlProvider": "Dow Jones PEP/Sanctions" },
+                    "issuancePartner": { "name": "Securitize", "services": ["ATS onboarding", "transfer restriction legends"] },
+                    "walletWhitelist": { "enforced": true, "requiresVerification": true, "registrySize": 4 },
+                    "restrictedJurisdictions": ["IR", "KP"],
+                    "restrictedInvestorTypes": ["sanctioned", "unaccredited"],
+                    "whitelist": [
+                      { "wallet_address": "0xCP1", "jurisdiction": "US", "investor_type": "institutional", "verified": true }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/api/trades/{id}/settle": {
