@@ -278,6 +278,10 @@ export default function TokenizationApiPanel({ apiBase }: Props) {
               POST /api/investors/whitelist
             </span>
           </div>
+                  <p className="text-sm text-slate-600">
+            Onboard investors via Sumsub, Persona, or Parallel Markets and sync the cleared wallets into the
+            transfer-agent registry so only verified addresses can receive tokens.
+          </p>
           <form className="space-y-3" onSubmit={handleWhitelist}>
             <input
               className="w-full rounded border border-slate-200 px-3 py-2 text-sm"
@@ -304,9 +308,10 @@ export default function TokenizationApiPanel({ apiBase }: Props) {
           {whitelistError && <p className="text-sm text-rose-600">{whitelistError}</p>}
           {whitelistResult?.whitelist && (
             <div className="rounded-md border border-emerald-100 bg-emerald-50 p-3 text-xs text-emerald-800">
-              <p className="font-semibold">KYC approved</p>
+              <p className="font-semibold">KYC + AML cleared</p>
               <p className="text-emerald-900">{shortenAddress(whitelistResult.whitelist.address)}</p>
               <p className="text-emerald-900">Status: {whitelistResult.whitelist.isWhitelisted ? "Whitelisted" : "Pending"}</p>
+               <p className="text-emerald-900">Transfer agent: Securitize / Polymesh registry</p>
             </div>
           )}
         </article>
