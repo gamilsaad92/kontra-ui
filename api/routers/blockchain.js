@@ -5,6 +5,7 @@ const {
   listTransactions,
   recordCashflow,
   recordTransaction,
+  getPerformanceSnapshot,
 } = require('../services/blockchainLedger');
 
 const router = express.Router();
@@ -17,6 +18,12 @@ router.get('/blockchain/overview', async (req, res) => {
   const { wallet } = req.query;
   const snapshot = await getPortfolioSnapshot(wallet);
   res.json(snapshot);
+});
+
+router.get('/blockchain/performance', async (req, res) => {
+  const { wallet } = req.query;
+  const performance = await getPerformanceSnapshot(wallet);
+  res.json(performance);
 });
 
 router.get('/blockchain/transactions', async (req, res) => {
