@@ -1,6 +1,7 @@
 const { v4: uuidv4 } = require('uuid');
 const { supabase } = require('../db');
 const { describeContracts } = require('./blockchainContracts');
+const { scoreTokenPricing, buildRwaExpansions } = require('./tokenPricingAi');
 
 const TX_TABLE = 'blockchain_transactions';
 const CASHFLOW_TABLE = 'blockchain_cashflows';
@@ -90,6 +91,61 @@ const fallbackPositions = [
     nextPayout: '2024-08-30',
   },
 ];
+
+const fallbackOnchainPerformance = [
+  {
+    loanId: 'LN-4219',
+    chain: 'Base',
+    dscr: 1.32,
+    ltv: 0.63,
+    delinquencyRate: 0,
+    realizedYield: 0.071,
+    projectedYield: 0.074,
+    paydownProgress: 0.18,
+    navPerToken: 1.04,
+    marketPrice: 1.02,
+    volatility: 0.045,
+    status: 'current',
+    lastPaymentTx: '0xabc002',
+  },
+  {
+    loanId: 'LN-4177',
+    chain: 'Base',
+    dscr: 1.21,
+    ltv: 0.69,
+    delinquencyRate: 0.02,
+    realizedYield: 0.066,
+    projectedYield: 0.071,
+    paydownProgress: 0.11,
+    navPerToken: 0.99,
+    marketPrice: 0.97,
+    volatility: 0.058,
+    status: 'watchlist',
+    lastPaymentTx: '0xdef001',
+  },
+  {
+    loanId: 'LN-4255',
+    chain: 'Polygon',
+    dscr: 1.18,
+    ltv: 0.66,
+    delinquencyRate: 0.01,
+    realizedYield: 0.062,
+    projectedYield: 0.068,
+    paydownProgress: 0.07,
+    navPerToken: 1.01,
+    marketPrice: 1.0,
+    volatility: 0.053,
+    status: 'current',
+    lastPaymentTx: '0xghi001',
+  },
+];
+
+const fallbackChainHealth = {
+  finalitySeconds: 2.1,
+  settlementLagSeconds: 9,
+  uptime: 0.999,
+  oracleCoverage: 0.92,
+};
 
 async function recordTransaction(entry = {}) {
   const normalized = {
@@ -227,9 +283,53 @@ async function getPortfolioSnapshot(wallet) {
   };
 }
 
+function buildPerformanceRows(wallet) {
+  const positions = computePositions(wallet);
+  const byLoan = positions.reduce((acc, position) => ({ ...acc, [position.loanId]: position }), {});
+  return fallbackOnchainPerformance.map((row) => ({
+    ...row,
+    borrower: byLoan[row.loanId]?.borrower,
+    property: byLoan[row.loanId]?.property,
+  }));
+}
+
+function getPerformanceSnapshot(wallet) {
+  const performance = buildPerformanceRows(wallet);
+  const aiValuations = performance.map((row) => ({
+    loanId: row.loanId,
+    ...scoreTokenPricing({
+      navPerToken: row.navPerToken,
+      marketPrice: row.marketPrice,
+      dscr: row.dscr,
+      ltv: row.ltv,
+      delinquencyRate: row.delinquencyRate,
+      volatility: row.volatility,
+      chain: row.chain,
+      assetType: row.assetType || (row.chain === 'Polygon' ? 'equipment lease' : 'cre loan'),
+    }),
+  }));
+
+  const tokenPricing = {
+    navPerToken: 1.02,
+    secondaryPrice: 1.0,
+    premiumPct: -0.0196,
+    volume24h: 165000,
+  };
+
+  return {
+    wallet,
+    chainHealth: fallbackChainHealth,
+    loanPerformance: performance,
+    tokenPricing,
+    aiValuations,
+    rwaPipeline: buildRwaExpansions(),
+  };
+}
+
 module.exports = {
   recordTransaction,
   listTransactions,
   getPortfolioSnapshot,
   recordCashflow,
+  getPerformanceSnapshot,
 };
