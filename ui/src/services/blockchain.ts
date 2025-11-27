@@ -49,6 +49,57 @@ export type OnchainOverview = {
   contracts: ContractsResponse;
 };
 
+export type ChainHealth = {
+  finalitySeconds: number;
+  settlementLagSeconds: number;
+  uptime: number;
+  oracleCoverage: number;
+};
+
+export type LoanPerformance = {
+  loanId: string;
+  property?: string;
+  borrower?: string;
+  chain: string;
+  dscr: number;
+  ltv: number;
+  delinquencyRate: number;
+  realizedYield: number;
+  projectedYield: number;
+  paydownProgress: number;
+  navPerToken: number;
+  marketPrice: number;
+  volatility: number;
+  status: string;
+  lastPaymentTx?: string;
+};
+
+export type AiValuation = {
+  loanId: string;
+  fairValue: number;
+  riskPremiumBps: number;
+  confidence: number;
+  rationale: string;
+  drivers: string[];
+};
+
+export type RwaPipelineItem = {
+  type: string;
+  chain: string;
+  status: string;
+  launchQuarter: string;
+  notes: string;
+};
+
+export type OnchainPerformance = {
+  wallet?: string | null;
+  chainHealth: ChainHealth;
+  loanPerformance: LoanPerformance[];
+  tokenPricing: { navPerToken: number; secondaryPrice: number; premiumPct: number; volume24h: number };
+  aiValuations: AiValuation[];
+  rwaPipeline: RwaPipelineItem[];
+};
+
 const FALLBACK_OVERVIEW: OnchainOverview = {
   wallet: null,
   totals: { exposure: 7900000, averageYield: 0.071, nextPayout: "2024-08-15" },
@@ -143,6 +194,23 @@ export async function fetchOnchainOverview(wallet?: string | null): Promise<Onch
   } catch (error) {
     console.warn("Falling back to sample on-chain overview", error);
     return FALLBACK_OVERVIEW;
+  }
+}
+
+export async function fetchOnchainPerformance(wallet?: string | null): Promise<OnchainPerformance> {
+  try {
+    const { data } = await api.get("/blockchain/performance", { params: { wallet } });
+    return data as OnchainPerformance;
+  } catch (error) {
+    console.warn("Falling back to sample on-chain performance", error);
+    return {
+      wallet: wallet ?? null,
+      chainHealth: { finalitySeconds: 2.1, settlementLagSeconds: 9, uptime: 0.999, oracleCoverage: 0.92 },
+      loanPerformance: [],
+      tokenPricing: { navPerToken: 1, secondaryPrice: 1, premiumPct: 0, volume24h: 0 },
+      aiValuations: [],
+      rwaPipeline: [],
+    };
   }
 }
 
