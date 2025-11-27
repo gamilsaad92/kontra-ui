@@ -51,6 +51,15 @@ CREATE TABLE IF NOT EXISTS trade_marketplace (
   quantity NUMERIC NOT NULL,
   price NUMERIC NOT NULL,
   investor_id UUID NOT NULL,
+  loan_id TEXT,
+  loan_name TEXT,
+  expected_apy NUMERIC,
+  settlement_type TEXT DEFAULT 'p2p',
+  stablecoin TEXT DEFAULT 'USDC',
+  wallet_address TEXT,
+  payout_frequency TEXT DEFAULT 'monthly',
+  amm_pool TEXT,
+  metadata JSONB DEFAULT '{}'::jsonb,
   status TEXT DEFAULT 'open',
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
