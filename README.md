@@ -195,6 +195,9 @@ Collections, investor reporting and asset management follow the same pattern:
 4. **User roles** – `api/schema-user-roles.sql` adds a `user_roles` table used to map Clerk users to roles.
 5. **Workflows** – background jobs (`api/workerCollections.js` and `api/edge-functions/updateAssetValues.js`) illustrate how Render cron jobs or Supabase Scheduled Functions keep data in sync, with asset value updates now batched into a single request.
 6. **Predictive Models** – nightly scripts (`npm run score-assets`, `npm run score-loans` and `npm run score-troubled`) update risk scores for assets, loans and troubled assets.
+7. **On-chain dashboards** – `/api/blockchain/performance` streams loan-level DSCR, LTV, delinquency and paydown metrics from on-chain receipts into the On-Chain dashboard, alongside Supabase-backed transactions and cashflows.
+8. **AI token pricing** – `api/services/tokenPricingAi.js` blends DSCR, LTV, market volatility and chain premiums to price ERC-20 participation tokens and exposes the valuations to the UI.
+9. **RWA expansion** – the backlog now covers CRE bridge loans, equipment leases and revenue-based financing so additional collateral types can be added to the same blockchain + pricing rails.
 ## Customer Care AI & Voice Bot
 
 The `/api/ask` endpoint now exposes helper functions `get_escrow_balance` , `get_payoff_instructions`, `get_troubled_assets` and `get_revived_assets` so the Virtual Assistant can answer loan servicing and asset management questions. A Twilio voice webhook (`/api/voice`) sends caller speech to Google Dialogflow and replies using text-to-speech, allowing borrowers to call in and ask for balances or payoff details.
