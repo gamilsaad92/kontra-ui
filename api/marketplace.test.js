@@ -61,10 +61,45 @@ describe('Marketplace API', () => {
   it('creates and lists marketplace entries', async () => {
     const create = await request(app)
       .post('/api/marketplace')
-      .send({ type: 'bid', symbol: 'AAA', quantity: 10, price: 100 });
+      .send({
+        type: 'bid',
+        symbol: 'AAA',
+        quantity: 10,
+        price: 100,
+        loanId: 'LN-100',
+        loanName: 'Flagler Industrial',
+        settlementType: 'amm',
+        expectedApy: 0.087,
+        walletAddress: '0xabc',
+        payoutFrequency: 'quarterly',
+      });
     expect(create.statusCode).toBe(201);
+    expect(create.body.entry.settlementType).toBe('amm');
+    expect(create.body.entry.stablecoinPayment.token).toBe('USDC');
+    expect(create.body.entry.payoutFrequency).toBe('quarterly');
+    expect(create.body.entry.expectedApy).toBeCloseTo(0.087);
+
     const list = await request(app).get('/api/marketplace');
     expect(list.body.entries).toHaveLength(1);
-    expect(list.body.entries[0].symbol).toBe('AAA');
+    expect(list.body.entries[0].loanId).toBe('LN-100');
+    expect(list.body.entries[0].distributionPlan.strategy).toBe('pro-rata');
+  });
+
+  it('simulates yield distribution to token holders', async () => {
+    const response = await request(app)
+      .post('/api/marketplace/distribute')
+      .send({
+        loanId: 'LN-22',
+        paymentAmount: 125000,
+        holders: [
+          { wallet: '0xholder1', ownership: 0.6 },
+          { wallet: '0xholder2', ownership: 0.4 },
+        ],
+      });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body.distributions).toHaveLength(2);
+    expect(response.body.distributions[0].amount).toBeCloseTo(75000);
+    expect(response.body.summary.stablecoin.token).toBe('USDC');
   });
 });
