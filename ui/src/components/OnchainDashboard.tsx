@@ -1,5 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
-import { ArrowPathIcon, BanknotesIcon, BoltIcon, ChartPieIcon, ShieldCheckIcon } from "@heroicons/react/24/outline";
+import {
+  ArrowPathIcon,
+  BanknotesIcon,
+  BoltIcon,
+  ChartBarIcon,
+  ChartPieIcon,
+  ShieldCheckIcon,
+} from "@heroicons/react/24/outline";
 import { ConnectButton } from "@rainbow-me/rainbowkit";
 import { useAccount, useChainId, useChains } from "wagmi";
 import {
@@ -7,7 +14,9 @@ import {
   type OnchainPosition,
   type OnchainTransaction,
   fetchOnchainOverview,
+   fetchOnchainPerformance,
   recordOnchainTransaction,
+   type OnchainPerformance,
 } from "../services/blockchain";
 
 function formatCurrency(value?: number | null, maximumFractionDigits = 0) {
@@ -70,6 +79,7 @@ export default function OnchainDashboard() {
   const chains = useChains();
   const chain = useMemo(() => chains.find((item) => item.id === chainId), [chains, chainId]);
   const [overview, setOverview] = useState<OnchainOverview | null>(null);
+  const [performance, setPerformance] = useState<OnchainPerformance | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -77,8 +87,12 @@ export default function OnchainDashboard() {
     setIsLoading(true);
     setError(null);
     try {
-      const data = await fetchOnchainOverview(wallet ?? undefined);
-      setOverview(data);
+      const [overviewData, performanceData] = await Promise.all([
+        fetchOnchainOverview(wallet ?? undefined),
+        fetchOnchainPerformance(wallet ?? undefined),
+      ]);
+      setOverview(overviewData);
+      setPerformance(performanceData);
     } catch (err) {
       setError("Unable to load on-chain data");
     } finally {
@@ -112,7 +126,9 @@ export default function OnchainDashboard() {
 
   const positions = overview?.positions ?? [];
   const transactions = overview?.transactions ?? [];
-
+  const loanPerformance = performance?.loanPerformance ?? [];
+  const aiValuations = performance?.aiValuations ?? [];
+  
   return (
     <div className="space-y-6">
       <header className="flex flex-wrap items-center justify-between gap-4">
@@ -156,6 +172,24 @@ export default function OnchainDashboard() {
         <SummaryCard title="Next payout" value={overview?.totals.nextPayout ?? '—'} helper="CashFlowSplitter schedule" />
       </section>
 
+            <section className="grid gap-4 lg:grid-cols-3">
+        <SummaryCard
+          title="Chain finality"
+          value={`${performance?.chainHealth.finalitySeconds ?? "-"}s`}
+          helper="Block finality from RPC health checks"
+        />
+        <SummaryCard
+          title="Settlement lag"
+          value={`${performance?.chainHealth.settlementLagSeconds ?? "-"}s`}
+          helper="On-chain → Supabase index delay"
+        />
+        <SummaryCard
+          title="Oracle coverage"
+          value={formatPercent(performance?.chainHealth.oracleCoverage ?? 0.9, 0)}
+          helper="Price feeds powering AI valuations"
+        />
+      </section>
+
       <section className="rounded-xl border border-slate-200 bg-white shadow-sm">
         <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
           <div>
@@ -193,6 +227,60 @@ export default function OnchainDashboard() {
                 <tr>
                   <td colSpan={6} className="px-4 py-4 text-center text-sm text-slate-500">
                     Connect a wallet to load holdings.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+            <section className="rounded-xl border border-slate-200 bg-white shadow-sm">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-4 py-3">
+          <div>
+            <p className="text-sm font-semibold text-slate-900">On-chain loan performance</p>
+            <p className="text-xs text-slate-500">DSCR, LTV, delinquency and paydown progress streamed from blockchain receipts.</p>
+          </div>
+          <span className="inline-flex items-center gap-1 rounded-full bg-indigo-50 px-3 py-1 text-[11px] font-semibold text-indigo-700">
+            <ChartBarIcon className="h-4 w-4" /> Chain dashboards
+          </span>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="min-w-full divide-y divide-slate-200 text-sm">
+            <thead className="bg-slate-50">
+              <tr>
+                <th className="px-4 py-2 text-left font-semibold text-slate-700">Loan</th>
+                <th className="px-4 py-2 text-left font-semibold text-slate-700">Chain</th>
+                <th className="px-4 py-2 text-left font-semibold text-slate-700">DSCR</th>
+                <th className="px-4 py-2 text-left font-semibold text-slate-700">LTV</th>
+                <th className="px-4 py-2 text-left font-semibold text-slate-700">Delinquency</th>
+                <th className="px-4 py-2 text-left font-semibold text-slate-700">Realized / Projected</th>
+                <th className="px-4 py-2 text-left font-semibold text-slate-700">Paydown</th>
+                <th className="px-4 py-2 text-left font-semibold text-slate-700">Last payment</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {loanPerformance.map((row) => (
+                <tr key={row.loanId} className="hover:bg-slate-50/60">
+                  <td className="px-4 py-3">
+                    <div className="font-semibold text-slate-900">{row.property || row.loanId}</div>
+                    <div className="text-xs text-slate-500">{row.borrower || '—'} • {row.status}</div>
+                  </td>
+                  <td className="px-4 py-3 text-slate-800">{row.chain}</td>
+                  <td className="px-4 py-3 text-slate-800">{row.dscr.toFixed(2)}</td>
+                  <td className="px-4 py-3 text-slate-800">{formatPercent(row.ltv, 0)}</td>
+                  <td className="px-4 py-3 text-slate-800">{formatPercent(row.delinquencyRate, 1)}</td>
+                  <td className="px-4 py-3 text-slate-800">
+                    {formatPercent(row.realizedYield, 2)} / {formatPercent(row.projectedYield, 2)}
+                  </td>
+                  <td className="px-4 py-3 text-slate-800">{formatPercent(row.paydownProgress, 0)}</td>
+                  <td className="px-4 py-3 text-slate-800">{row.lastPaymentTx}</td>
+                </tr>
+              ))}
+              {loanPerformance.length === 0 && (
+                <tr>
+                  <td colSpan={8} className="px-4 py-4 text-center text-sm text-slate-500">
+                    Connect a wallet to see live on-chain performance.
                   </td>
                 </tr>
               )}
@@ -269,6 +357,79 @@ export default function OnchainDashboard() {
               <p className="font-semibold text-slate-900">Deployment note</p>
               <p>{overview?.contracts.deploymentNotes ?? 'Replace demo addresses with live deployments as soon as audits complete.'}</p>
             </div>
+          </div>
+        </div>
+      </section>
+      
+      <section className="grid gap-4 lg:grid-cols-2">
+        <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
+          <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
+            <div>
+              <p className="text-sm font-semibold text-slate-900">AI valuation & token pricing</p>
+              <p className="text-xs text-slate-500">Risk-adjusted pricing powered by DSCR, LTV, volatility and chain premiums.</p>
+            </div>
+            <span className="rounded-full bg-slate-100 px-3 py-1 text-[11px] font-semibold text-slate-700">
+              NAV ${performance ? performance.tokenPricing.navPerToken.toFixed(2) : "-"} • Secondary ${performance ? performance.tokenPricing.secondaryPrice.toFixed(2) : "-"}
+            </span>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-slate-200 text-sm">
+              <thead className="bg-slate-50">
+                <tr>
+                  <th className="px-4 py-2 text-left font-semibold text-slate-700">Loan</th>
+                  <th className="px-4 py-2 text-left font-semibold text-slate-700">Fair value</th>
+                  <th className="px-4 py-2 text-left font-semibold text-slate-700">Risk prem.</th>
+                  <th className="px-4 py-2 text-left font-semibold text-slate-700">Confidence</th>
+                  <th className="px-4 py-2 text-left font-semibold text-slate-700">Drivers</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {aiValuations.map((valuation) => (
+                  <tr key={valuation.loanId} className="hover:bg-slate-50/80">
+                    <td className="px-4 py-3 font-semibold text-slate-900">{valuation.loanId}</td>
+                    <td className="px-4 py-3 text-slate-800">{formatCurrency(valuation.fairValue, 2)}</td>
+                    <td className="px-4 py-3 text-slate-800">{valuation.riskPremiumBps} bps</td>
+                    <td className="px-4 py-3 text-slate-800">{formatPercent(valuation.confidence, 0)}</td>
+                    <td className="px-4 py-3 text-slate-600">{valuation.drivers.join(', ')}</td>
+                  </tr>
+                ))}
+                {aiValuations.length === 0 && (
+                  <tr>
+                    <td colSpan={5} className="px-4 py-4 text-center text-sm text-slate-500">
+                      Token pricing runs once on connect.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
+          <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
+            <div>
+              <p className="text-sm font-semibold text-slate-900">RWA expansion backlog</p>
+              <p className="text-xs text-slate-500">Upcoming asset classes with chain selection and launch timing.</p>
+            </div>
+            <ChartPieIcon className="h-5 w-5 text-slate-400" />
+          </div>
+          <div className="divide-y divide-slate-100">
+            {performance?.rwaPipeline.map((item) => (
+              <div key={item.type} className="flex items-start justify-between px-4 py-3">
+                <div>
+                  <p className="font-semibold text-slate-900">{item.type}</p>
+                  <p className="text-xs text-slate-500">{item.notes}</p>
+                </div>
+                <div className="text-right text-xs text-slate-600">
+                  <div className="font-semibold text-slate-800">{item.chain}</div>
+                  <div className="text-emerald-700">{item.status}</div>
+                  <div className="text-slate-500">Launch {item.launchQuarter}</div>
+                </div>
+              </div>
+            ))}
+            {(performance?.rwaPipeline?.length ?? 0) === 0 && (
+              <div className="px-4 py-4 text-sm text-slate-500">No RWA backlog defined yet.</div>
+            )}
           </div>
         </div>
       </section>
