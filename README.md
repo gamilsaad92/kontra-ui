@@ -349,6 +349,8 @@ Read queries can target a Supabase read replica when `SUPABASE_REPLICA_URL` is
 set. Hot query results are cached via Redis when `REDIS_URL` is configured.
 Expensive scoring tasks can be queued by posting to `/api/jobs/score-*` and are
 processed asynchronously by a lightweight worker.
+The dashboard overview and integration marketplace endpoints now read from the
+replica and populate Redis-backed caches for high-traffic requests.
 
 ## Deployment
 
