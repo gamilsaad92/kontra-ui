@@ -1,13 +1,19 @@
 let redisClient = null;
-try {
-  const { createClient } = require('redis');
-  redisClient = createClient({ url: process.env.REDIS_URL });
-  redisClient.connect().catch(err => {
-    console.error('Redis connection failed:', err);
-    redisClient = null;
-  });
-} catch (err) {
-  console.warn('Redis package not installed, falling back to memory cache');
+const redisUrl = process.env.REDIS_URL;
+
+if (redisUrl) {
+  try {
+    const { createClient } = require('redis');
+    redisClient = createClient({ url: redisUrl });
+    redisClient.connect().catch(err => {
+      console.error('Redis connection failed:', err);
+      redisClient = null;
+    });
+  } catch (err) {
+    console.warn('Redis package not installed, falling back to memory cache');
+  }
+} else {
+  console.warn('REDIS_URL not set, using in-memory cache only');
 }
 
 const memoryCache = new Map();
@@ -41,4 +47,15 @@ async function set(key, data, ttlSec = 60) {
   memoryCache.set(key, { data, exp: Date.now() + ttlSec * 1000 });
 }
 
-module.exports = { get, set };
+async function del(key) {
+  if (redisClient) {
+    try {
+      await redisClient.del(key);
+    } catch (err) {
+      console.error('Redis delete error:', err);
+    }
+  }
+  memoryCache.delete(key);
+}
+
+module.exports = { get, set, del };
