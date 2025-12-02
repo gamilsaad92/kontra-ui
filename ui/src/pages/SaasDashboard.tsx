@@ -179,6 +179,9 @@ function AuthenticatedDashboard({
     if (activeItem?.component) {
       const Component = activeItem.component as ComponentType<any>;
       if (activeLabel === "Dashboard") {
+                return <Component orgId={session.user?.id} />;
+      }
+      if (activeLabel === "SaaS Overview") {
         return <Component apiBase={apiBase} />;
       }
       return <Component />;
