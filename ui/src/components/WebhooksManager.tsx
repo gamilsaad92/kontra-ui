@@ -1,4 +1,6 @@
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
+import { resolveApiBase } from "../lib/api";
+import { addQueuedItem, registerFlushOnOnline } from "../lib/offlineQueue";
 
 interface Webhook {
   event: string;
@@ -10,38 +12,61 @@ export default function WebhooksManager() {
   const [event, setEvent] = useState("loan.approved");
   const [url, setUrl] = useState("");
   const [topics, setTopics] = useState<string[]>([]);
+  const [status, setStatus] = useState<string | null>(null);
 
-  async function load() {
+ const apiBase = resolveApiBase();
+
+  const load = useCallback(async () => {
     try {
-      const res = await fetch("/api/webhooks");
+      const res = await fetch(`${apiBase}/webhooks`);
       const data = await res.json();
       setWebhooks(data.webhooks || []);
     } catch (err) {
       console.error(err);
     }
-  }
+  }, [apiBase]);
 
+  const processQueuedWebhook = useCallback(async ({ event: queuedEvent, url: queuedUrl }: Webhook) => {
+    await fetch(`${apiBase}/webhooks`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ event: queuedEvent, url: queuedUrl }),
+    });
+    setStatus("Queued webhook delivered");
+    await load();
+  }, [apiBase, load]);
+  
   useEffect(() => {
     load();
-    fetch("/api/webhooks/topics")
+    const stopFlush = registerFlushOnOnline("webhookQueue", processQueuedWebhook);
+
+    fetch(`${apiBase}/webhooks/topics`)
       .then((r) => r.json())
       .then((d) => setTopics(d.topics || []))
       .catch((e) => console.error(e));
-  }, []);
 
+    return () => {
+      stopFlush();
+    };
+  }, [apiBase, load, processQueuedWebhook]);
+  
   const add = async () => {
     if (!event || !url) return;
-    await fetch("/api/webhooks", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ event, url }),
-    });
+    const payload = { event, url };
+    if (!navigator.onLine) {
+      addQueuedItem("webhookQueue", payload);
+      setStatus("Saved offline and will sync once you reconnect");
+      setUrl("");
+      return;
+    }
+
+    await processQueuedWebhook(payload);
     setUrl("");
     load();
   };
 
   const remove = async (e: string, u: string) => {
-    await fetch("/api/webhooks", {
+    await fetch(`${apiBase}/webhooks`, {
       method: "DELETE",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ event: e, url: u }),
@@ -76,7 +101,7 @@ export default function WebhooksManager() {
           Add
         </button>
       </div>
-      <table className="min-w-full bg-white border">
+      {status && <div className="text-sm text-emerald-500">{status}</div>}
         <thead>
           <tr className="text-left">
             <th className="p-2 border-b">Event</th>
