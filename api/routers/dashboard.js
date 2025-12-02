@@ -1,13 +1,8 @@
 const express = require('express');
 const router = express.Router();
-const { createClient } = require('@supabase/supabase-js');
+const { supabase, replica } = require('../db');
+const cache = require('../cache');
 const { isFeatureEnabled } = require('../featureFlags');
-
-// initialize your Supabase client (or import it if you have a shared lib)
-const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY
-);
 
 const EMPTY_MARKETPLACE_SUMMARY = {
   totals: null,
@@ -70,7 +65,7 @@ function average(sum, count, precision = 3) {
 }
 
 async function fetchLoans(orgId) {
-  let query = supabase
+ let query = replica
     .from('loans')
     .select('id, amount, outstanding_principal, interest_rate, status, risk_score, days_late');
   if (orgId) {
@@ -82,7 +77,7 @@ async function fetchLoans(orgId) {
 }
 
 async function fetchCollections(orgId) {
-  let query = supabase
+ let query = replica
     .from('collections')
     .select('amount, status, due_date, updated_at, paid_at, promise_date');
   if (orgId) {
@@ -138,6 +133,9 @@ router.post('/', async (req, res) => {
 
 router.get('/overview', async (req, res) => {
   const orgId = resolveOrgId(req);
+   const cacheKey = `dashboard:overview:${orgId || 'all'}`;
+  const cached = await cache.get(cacheKey);
+  if (cached) return res.json(cached);
   const overview = JSON.parse(JSON.stringify(FALLBACK_OVERVIEW));
 
   try {
@@ -224,7 +222,9 @@ router.get('/overview', async (req, res) => {
     console.error('Dashboard overview collections query failed', error);
   }
 
-  res.json({ overview });
+ const payload = { overview };
+  await cache.set(cacheKey, payload, 120);
+  res.json(payload);
 });
 
 router.get('/marketplace', async (req, res) => {
