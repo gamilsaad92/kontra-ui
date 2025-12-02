@@ -1,17 +1,13 @@
 const express = require('express');
-const { createClient } = require('@supabase/supabase-js');
 const { runKycCheck } = require('../compliance');
 const { logAuditEntry } = require('../auditLogger');
+const { supabase, replica } = require('../db');
 
 const router = express.Router();
-const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY
-);
 
 // List organizations
 router.get('/', async (_req, res) => {
-  const { data, error } = await supabase
+  const { data, error } = await replica
     .from('organizations')
     .select('*')
     .order('created_at', { ascending: false });
@@ -49,7 +45,7 @@ router.post('/', async (req, res) => {
 // Get single organization
 router.get('/:id', async (req, res) => {
   const { id } = req.params;
-  const { data, error } = await supabase
+ const { data, error } = await replica
     .from('organizations')
     .select('*')
     .eq('id', id)
