@@ -6,14 +6,20 @@ import { API_BASE } from '../lib/apiBase';
 import RiskScoreCard from '../modules/dashboard/RiskScoreCard';
 import DelinquencyCard from '../modules/dashboard/DelinquencyCard';
 import RecentActivityCard from '../modules/dashboard/RecentActivityCard';
+import AIAssistantCard from '../modules/dashboard/AIAssistantCard';
+import CommunicationsLogCard from '../modules/dashboard/CommunicationsLogCard';
+import PortfolioCampaignCard from '../modules/dashboard/PortfolioCampaignCard';
 
 const ResponsiveGridLayout = WidthProvider(Responsive);
 
 // Always render something first; ids MUST match child keys below
 const DEFAULT_LAYOUT = [
-  { i: 'riskScore',        x: 0,  y: 0,  w: 6, h: 8, minW: 3, minH: 5 },
-  { i: 'delinquencyChart', x: 6,  y: 0,  w: 6, h: 8, minW: 3, minH: 5 },
-  { i: 'recentActivity',   x: 0,  y: 8,  w: 12,h: 7, minW: 4, minH: 5 },
+  { i: 'riskScore',        x: 0,  y: 0,  w: 4, h: 8, minW: 3, minH: 5 },
+  { i: 'delinquencyChart', x: 4,  y: 0,  w: 4, h: 8, minW: 3, minH: 5 },
+  { i: 'recentActivity',   x: 8,  y: 0,  w: 4, h: 8, minW: 3, minH: 5 },
+  { i: 'assistant',        x: 0,  y: 8,  w: 4, h: 10, minW: 3, minH: 6 },
+  { i: 'commsLog',         x: 4,  y: 8,  w: 4, h: 10, minW: 3, minH: 6 },
+  { i: 'campaigns',        x: 8,  y: 8,  w: 4, h: 10, minW: 3, minH: 6 },
 ];
 
 const API = API_BASE || ''; // prefer relative paths on Vercel
@@ -107,6 +113,21 @@ export default function DashboardPage({ orgId }) {
         <div key="recentActivity" className="bg-white rounded-xl shadow p-3">
           <div className="card-drag cursor-move text-sm opacity-60 mb-2">Recent Activity</div>
           <RecentActivityCard />
+        </div>
+        
+        <div key="assistant" className="bg-white rounded-xl shadow p-3">
+          <div className="card-drag cursor-move text-sm opacity-60 mb-2">AI Assistant</div>
+          <AIAssistantCard />
+        </div>
+
+        <div key="commsLog" className="bg-white rounded-xl shadow p-3">
+          <div className="card-drag cursor-move text-sm opacity-60 mb-2">Communications Log</div>
+          <CommunicationsLogCard />
+        </div>
+
+        <div key="campaigns" className="bg-white rounded-xl shadow p-3">
+          <div className="card-drag cursor-move text-sm opacity-60 mb-2">Portfolio Campaigns</div>
+          <PortfolioCampaignCard />
         </div>
       </ResponsiveGridLayout>
     </div>
