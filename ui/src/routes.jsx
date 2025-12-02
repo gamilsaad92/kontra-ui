@@ -1,5 +1,6 @@
 import AssetManagement from "./routes/AssetManagement";
 import SaasDashboardHome from "./components/SaasDashboardHome";
+import DashboardPage from "./components/DashboardPage";
 import Inspections from "./routes/Inspections";
 import Trades from "./routes/Trades";
 import Exchange from "./routes/Exchange";
@@ -9,6 +10,7 @@ import DrawsDashboard from "./components/DrawsDashboard";
 import ProjectsTable from "./components/ProjectsTable";
 import DocumentReview from "./components/DocumentReview";
 import PaymentPortal from "./components/PaymentPortal";
+import BorrowerPortal from "./routes/BorrowerPortal";
 import ReportBuilder from "./components/ReportBuilder";
 import AnalyticsDashboard from "./components/AnalyticsDashboard";
 import RiskDashboard from "./components/RiskDashboard";
@@ -49,7 +51,13 @@ export const lenderNavRoutes = [
     label: "Dashboard",
     path: "/",
     icon: HomeIcon,
-   component: SaasDashboardHome,
+   component: DashboardPage,
+    requiresAuth: true,
+  },
+  {
+    label: "SaaS Overview",
+    icon: HomeIcon,
+    component: SaasDashboardHome,
     requiresAuth: true,
   },
   {
@@ -142,6 +150,12 @@ export const lenderNavRoutes = [
     label: "Payments",
     icon: CurrencyDollarIcon,
     component: PaymentPortal,
+    requiresAuth: true,
+  },
+   {
+    label: "Borrower Portal",
+    icon: UserGroupIcon,
+    component: BorrowerPortal,
     requiresAuth: true,
   },
   {
