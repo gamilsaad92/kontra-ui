@@ -9,11 +9,37 @@ export default defineConfig({
     react(),
     VitePWA({
       strategies: "generateSW",
-       registerType: "autoUpdate",
+      registerType: "autoUpdate",
+      devOptions: {
+        enabled: process.env.NODE_ENV === "development",
+      },
       workbox: {
         globDirectory: "dist",
         globPatterns: [
-       "**/*.{js,css,html,ico,png,svg,wasm}"
+            "**/*.{js,css,html,ico,png,svg,wasm}"
+        ],
+        navigateFallback: "/index.html",
+        runtimeCaching: [
+          {
+            urlPattern: ({ url }) => url.pathname.startsWith("/api"),
+            handler: "NetworkFirst",
+            options: {
+              cacheName: "api-cache",
+              networkTimeoutSeconds: 5,
+            },
+          },
+          {
+            urlPattern: ({ request }) => request.destination === "document",
+            handler: "NetworkFirst",
+            options: {
+              cacheName: "html-cache",
+            },
+          },
+          {
+            urlPattern: ({ request }) => ["style", "script", "image"].includes(request.destination),
+            handler: "StaleWhileRevalidate",
+            options: { cacheName: "asset-cache" },
+          },
         ],
       },
       manifest: {
@@ -24,7 +50,7 @@ export default defineConfig({
         background_color: "#ffffff",
         theme_color: "#1e40af",
         icons: [
-         { src: "/icon-192.png", sizes: "192x192", type: "image/png" },
+          { src: "/icon-192.png", sizes: "192x192", type: "image/png" },
           { src: "/icon-512.png", sizes: "512x512", type: "image/png" },
         ],
       },
