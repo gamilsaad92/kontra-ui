@@ -1,5 +1,6 @@
 const express = require('express');
-const { createClient } = require('@supabase/supabase-js');
+const { supabase, replica } = require('../db');
+const cache = require('../cache');
 
 const allowedIntegrations = [
   'quickbooks',
@@ -10,15 +11,13 @@ const allowedIntegrations = [
   'xero'
 ];
 
-const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY
-);
-
 const router = express.Router();
 
 router.get('/integrations', async (req, res) => {
-  const { data, error } = await supabase
+  const cached = await cache.get('integrations:list');
+  if (cached) return res.json(cached);
+
+  const { data, error } = await replica
     .from('integration_statuses')
     .select('name, connected');
   if (error) {
@@ -31,7 +30,9 @@ router.get('/integrations', async (req, res) => {
       return [name, row ? row.connected : false];
     })
   );
-  res.json({ integrations });
+  const payload = { integrations };
+  await cache.set('integrations:list', payload, 120);
+  res.json(payload);
 });
 
 router.post('/integrations/:name/connect', async (req, res) => {
@@ -46,6 +47,7 @@ router.post('/integrations/:name/connect', async (req, res) => {
     console.error('Connect integration error:', error);
     return res.status(500).json({ message: 'Failed to connect integration' });
   }
+  await cache.del('integrations:list');
   res.json({ message: `${name} connected` });
 });
 module.exports = { router };
