@@ -1,5 +1,6 @@
-const flags = (import.meta.env.VITE_FEATURE_FLAGS || '')
-  .split(',')
+const defaults = ['sso'];
+const flags = defaults
+  .concat((import.meta.env.VITE_FEATURE_FLAGS || '').split(','))
   .map(f => f.trim())
   .filter(Boolean);
 
