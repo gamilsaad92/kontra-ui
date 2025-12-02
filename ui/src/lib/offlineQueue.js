@@ -1,11 +1,32 @@
+function readQueue(key) {
+  try {
+    return JSON.parse(localStorage.getItem(key) || '[]');
+  } catch (err) {
+    console.error('Failed to read offline queue', err);
+    return [];
+  }
+}
+
+function writeQueue(key, values) {
+  try {
+    if (values.length) {
+      localStorage.setItem(key, JSON.stringify(values));
+    } else {
+      localStorage.removeItem(key);
+    }
+  } catch (err) {
+    console.error('Failed to persist offline queue', err);
+  }
+}
+
 export function addQueuedItem(key, item) {
-  const queue = JSON.parse(localStorage.getItem(key) || '[]');
+ const queue = readQueue(key);
   queue.push(item);
-  localStorage.setItem(key, JSON.stringify(queue));
+   writeQueue(key, queue);
 }
 
 export function flushQueue(key, handler) {
-  const queue = JSON.parse(localStorage.getItem(key) || '[]');
+  const queue = readQueue(key);
   if (!queue.length) return;
   const remaining = [];
   const process = async () => {
@@ -17,11 +38,7 @@ export function flushQueue(key, handler) {
         remaining.push(item);
       }
     }
-    if (remaining.length) {
-      localStorage.setItem(key, JSON.stringify(remaining));
-    } else {
-      localStorage.removeItem(key);
-    }
+    writeQueue(key, remaining);
   };
   process();
 }
@@ -31,7 +48,11 @@ export function registerFlushOnOnline(key, handler) {
     if (navigator.onLine) flushQueue(key, handler);
   };
   window.addEventListener('online', listener);
+   window.addEventListener('visibilitychange', listener);
   // attempt immediately if online
   if (navigator.onLine) flushQueue(key, handler);
-  return () => window.removeEventListener('online', listener);
+ return () => {
+    window.removeEventListener('online', listener);
+    window.removeEventListener('visibilitychange', listener);
+  };
 }
