@@ -22,6 +22,7 @@ import LoanApplicationList from "./components/LoanApplicationList";
 import OrganizationSettings from "./components/OrganizationSettings";
 import StaffRestaurantDashboard from "./components/StaffRestaurantDashboard";
 import LegalConfiguration from "./routes/LegalConfiguration";
+import Integrations from "./routes/Integrations";
 
 import {
   HomeIcon,
@@ -44,6 +45,7 @@ import {
   ShieldCheckIcon,
   BuildingLibraryIcon,
   CubeTransparentIcon,
+  BoltIcon,
 } from "@heroicons/react/24/outline";
 
 export const lenderNavRoutes = [
@@ -211,6 +213,12 @@ export const lenderNavRoutes = [
     label: "Webhooks",
     icon: Cog6ToothIcon,
     component: WebhooksManager,
+    requiresAuth: true,
+  },
+   {
+    label: "Integrations",
+    icon: BoltIcon,
+    component: Integrations,
     requiresAuth: true,
   },
   {
