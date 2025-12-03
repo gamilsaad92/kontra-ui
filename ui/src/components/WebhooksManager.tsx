@@ -14,7 +14,7 @@ export default function WebhooksManager() {
   const [topics, setTopics] = useState<string[]>([]);
   const [status, setStatus] = useState<string | null>(null);
 
- const apiBase = resolveApiBase();
+  const apiBase = resolveApiBase();
 
   const load = useCallback(async () => {
     try {
@@ -102,6 +102,7 @@ export default function WebhooksManager() {
         </button>
       </div>
       {status && <div className="text-sm text-emerald-500">{status}</div>}
+        <table className="w-full border-collapse">
         <thead>
           <tr className="text-left">
             <th className="p-2 border-b">Event</th>
