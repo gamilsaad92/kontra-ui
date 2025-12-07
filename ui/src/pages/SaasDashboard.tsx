@@ -81,7 +81,7 @@ function AuthenticationScreen({
             Create account
           </button>
         </div>
-        <div className="rounded-2xl bg-white p-6 shadow-xl">
+      <div className="rounded-2xl bg-white p-6 shadow-xl text-slate-900">
           {mode === "login" ? (
             <LoginForm className="w-full" onSwitch={() => onModeChange("signup")} />
           ) : (
