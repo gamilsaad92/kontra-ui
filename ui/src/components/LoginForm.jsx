@@ -21,7 +21,7 @@ export default function LoginForm({ onSwitch, className = '' }) {
     if (method === 'magic') setPassword('')
   }, [method])
   
- const authUnavailableMessage = 'Authentication is currently unavailable. Please try again later.'
+  const authUnavailableMessage = 'Authentication is currently unavailable. Please try again later.'
 
   const handleLogin = async (e) => {
     e.preventDefault()
@@ -67,7 +67,7 @@ export default function LoginForm({ onSwitch, className = '' }) {
     }
   }
 
-   const rootClass = ['space-y-4', className].filter(Boolean).join(' ')
+ const rootClass = ['space-y-4', 'text-slate-900', className].filter(Boolean).join(' ')
 
   return (
     <form onSubmit={handleLogin} className={rootClass}>
