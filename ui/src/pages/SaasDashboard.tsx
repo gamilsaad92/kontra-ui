@@ -7,6 +7,8 @@ import { lenderNavRoutes } from "../routes";
 import { AuthContext } from "../lib/authContext";
 import LoginForm from "../components/LoginForm.jsx";
 import SignUpForm from "../components/SignUpForm.jsx";
+import DashboardPage from "../components/DashboardPage";
+import SaasDashboardHome from "../components/SaasDashboardHome";
 
 const Placeholder = ({ title }: { title: string }) => (
   <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
@@ -51,6 +53,9 @@ function AuthenticationScreen({
   return (
     <div className="flex min-h-screen items-center justify-center bg-slate-950 px-4 py-12 text-slate-100">
       <div className="w-full max-w-xl space-y-6">
+               <div className="flex justify-start">
+          <img src="/logo-dark.png" alt="Kontra" className="h-8 w-auto" />
+        </div>
         <div className="space-y-2 text-center">
           <h1 className="text-2xl font-semibold">Access your Kontra workspace</h1>
           <p className="text-sm text-slate-300">
@@ -176,14 +181,17 @@ function AuthenticatedDashboard({
   };
 
   const renderContent = () => {
+       if (activeLabel === "Dashboard") {
+      return (
+        <div className="space-y-6">
+          <DashboardPage orgId={session.user?.id} />
+          <SaasDashboardHome apiBase={apiBase} />
+        </div>
+      );
+    }
+
     if (activeItem?.component) {
       const Component = activeItem.component as ComponentType<any>;
-      if (activeLabel === "Dashboard") {
-                return <Component orgId={session.user?.id} />;
-      }
-      if (activeLabel === "SaaS Overview") {
-        return <Component apiBase={apiBase} />;
-      }
       return <Component />;
     }
     return <Placeholder title={activeLabel} />;
@@ -201,14 +209,8 @@ function AuthenticatedDashboard({
       <div className="flex min-h-screen bg-slate-100 text-slate-900">
         <aside className="flex w-64 flex-col bg-slate-950 text-slate-100">
           <div className="flex items-center gap-2 px-4 py-4 text-sm font-semibold tracking-tight">
-            <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-slate-800">
-              <svg viewBox="0 0 24 24" className="h-4 w-4">
-                <path className="fill-white/90" d="M12 2 3 7v10l9 5 9-5V7zM6 9l6 3 6-3" />
-              </svg>
-            </span>
-            <span className="leading-tight">
-              <span className="text-slate-100">SaaS</span> Control
-            </span>
+              <img src="/logo-dark.png" alt="Kontra" className="h-6 w-auto" />
+            <span className="leading-tight text-slate-100">Control</span>
           </div>
           <nav className="flex-1 space-y-1 overflow-y-auto px-2 pb-4">
             {frequentItems.length > 0 && (
