@@ -178,14 +178,8 @@ export default function DashboardLayout() {
       >
         {/* Brand exactly like the pic */}
         <div className="px-4 py-4 flex items-center gap-3 border-b border-slate-800">
-          <div className="h-6 w-6 rounded-full bg-slate-200" />
-          {sidebarOpen && (
-            <div className="flex items-center gap-1">
-              <span className="text-sm font-semibold">Saas</span>
-              <span className="text-sm text-slate-300">popular</span>
-            </div>
-          )}
-          {!sidebarOpen && <span className="text-sm font-semibold">S</span>}
+         <img src="/logo-dark.png" alt="Kontra" className="h-6 w-auto" />
+          {sidebarOpen && <span className="text-sm font-semibold">Dashboard</span>}
           <button
             onClick={() => setSidebarOpen((o) => !o)}
             className="ml-auto text-slate-400 hover:text-white"
