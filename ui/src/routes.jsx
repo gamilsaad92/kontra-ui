@@ -1,5 +1,4 @@
 import AssetManagement from "./routes/AssetManagement";
-import SaasDashboardHome from "./components/SaasDashboardHome";
 import DashboardPage from "./components/DashboardPage";
 import Inspections from "./routes/Inspections";
 import Trades from "./routes/Trades";
@@ -57,12 +56,6 @@ export const lenderNavRoutes = [
     requiresAuth: true,
   },
   {
-    label: "SaaS Overview",
-    icon: HomeIcon,
-    component: SaasDashboardHome,
-    requiresAuth: true,
-  },
-  {
     label: "Assets",
     icon: BuildingOfficeIcon,
     component: AssetManagement,
@@ -85,14 +78,14 @@ export const lenderNavRoutes = [
     icon: BuildingLibraryIcon,
     component: PoolingWorkspace,
     requiresAuth: true,
-      },
+   },
   {
     label: "On-Chain",
     icon: CubeTransparentIcon,
     component: OnchainDashboard,
     requiresAuth: true,
   },
-    {
+   {
     label: "Legal",
     icon: DocumentCheckIcon,
     component: LegalConfiguration,
