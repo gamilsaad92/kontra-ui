@@ -3,7 +3,7 @@
 import React, { useState, useContext, useEffect } from 'react'
 import { AuthContext } from '../lib/authContext'
 import ErrorBanner from './ErrorBanner.jsx'
-import { Button, FormField } from './ui'
+import { Button, FormField, Input } from './ui'
 import { useLocale } from '../lib/i18n'
 
 export default function SignUpForm({ onSwitch, className = '' }) {
@@ -17,7 +17,7 @@ export default function SignUpForm({ onSwitch, className = '' }) {
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
 
- useEffect(() => {
+useEffect(() => {
     // reset messages when toggling sign-up method
     setError('')
     setSuccess('')
@@ -28,69 +28,77 @@ export default function SignUpForm({ onSwitch, className = '' }) {
   }, [method])
 
   const authUnavailableMessage = 'Authentication is currently unavailable. Please try again later.'
+    const redirectTo = `${window.location.origin}/auth/callback`
+
   const handleSignUp = async (e) => {
     e.preventDefault()
     setError('')
     setSuccess('')
 
-   if (!supabase) {
+    if (!supabase) {
       setError(authUnavailableMessage)
       return
     }
 
     if (!email) {
-     setError(t('signup.emailRequired'))
+    setError(t('signup.emailRequired'))
       return
     }
 
     if (method === 'password') {
       if (!password) {
-      setError(t('signup.passwordRequired'))
+          setError(t('signup.passwordRequired'))
         return
       }
       if (password !== confirmPassword) {
-       setError(t('signup.passwordsNoMatch'))
+      setError(t('signup.passwordsNoMatch'))
         return
       }
+  }
+    
+    setLoading(true)
+    try {
+      if (method === 'password') {
+        const { error: signUpError } = await supabase.auth.signUp({
+          email,
+          password,
+          options: {
+            emailRedirectTo: redirectTo,
+          },
+        })
 
-      setLoading(true)
-      const { error: signUpError } = await supabase.auth.signUp({
-        email,
-        password,
-        options: {
-          emailRedirectTo: window.location.origin
+        if (signUpError) {
+          throw signUpError
         }
-      })
-      setLoading(false)
-      if (signUpError) {
-        setError(signUpError.message)
-      } else {
+   
         setSuccess(t('signup.success'))
         setEmail('')
         setPassword('')
         setConfirmPassword('')
-      }
-    } else {
-      // magic link sign-up/login
-      setLoading(true)
-      const { error: magicError } = await supabase.auth.signInWithOtp({
-        email,
-        options: { emailRedirectTo: window.location.origin }
-      })
-      setLoading(false)
-      if (magicError) {
-        setError(magicError.message)
       } else {
+         const { error: magicError } = await supabase.auth.signInWithOtp({
+          email,
+          options: { emailRedirectTo: redirectTo },
+        })
+
+        if (magicError) {
+          throw magicError
+        }
+
         setSuccess(t('signup.magicSent'))
         setEmail('')
       }
+        } catch (err) {
+      setError(err?.message || t('common.genericError'))
+    } finally {
+      setLoading(false)
     }
   }
 
-   const rootClass = ['space-y-4', className].filter(Boolean).join(' ')
+ const rootClass = ['space-y-4', 'text-slate-900', className].filter(Boolean).join(' ')
 
   return (
-     <form onSubmit={handleSignUp} className={rootClass}>
+  <form onSubmit={handleSignUp} className={rootClass}>
       <div className="space-y-2 text-slate-900">
         <h2 className="text-2xl font-bold">{t('signup.title')}</h2>
         <p className="text-sm text-slate-600">{t('signup.subtitle')}</p>
@@ -112,7 +120,7 @@ export default function SignUpForm({ onSwitch, className = '' }) {
             checked={method === 'password'}
             onChange={() => setMethod('password')}
           />
-         <span>{t('signup.createPasswordLabel')}</span>
+        <span>{t('signup.createPasswordLabel')}</span>
         </label>
         <label className="flex items-center space-x-1">
           <input
@@ -121,13 +129,13 @@ export default function SignUpForm({ onSwitch, className = '' }) {
             checked={method === 'magic'}
             onChange={() => setMethod('magic')}
           />
-        <span>{t('signup.magicLabel')}</span>
+       <span>{t('signup.magicLabel')}</span>
         </label>
       </div>
 
       {method === 'password' && (
         <>
-         <FormField
+       <FormField
             type="password"
             placeholder={t('signup.password')}
             value={password}
@@ -136,7 +144,7 @@ export default function SignUpForm({ onSwitch, className = '' }) {
             minLength={6}
           />
 
-          <input
+            <Input
             type="password"
             placeholder={t('signup.confirmPassword')}
             value={confirmPassword}
@@ -147,9 +155,9 @@ export default function SignUpForm({ onSwitch, className = '' }) {
         </>
       )}
 
-    <Button
+      <Button
         type="submit"
-       disabled={loading || isLoading || !supabase}
+      disabled={loading || isLoading || !supabase}
         className="w-full mt-sm"
       >
         {loading ? `${t('signup.submit')}…` : t('signup.submit')}
