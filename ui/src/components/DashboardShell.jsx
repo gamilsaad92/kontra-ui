@@ -49,7 +49,7 @@ export default function DashboardShell() {
         <div className="flex">
           {/* Left Sidebar (dark) */}
           <aside className="w-60 shrink-0 bg-slate-900 text-slate-100 p-5 space-y-6">
-            <div className="text-2xl font-semibold">SaaS</div>
+            <img src="/logo-dark.png" alt="Kontra" className="h-6 w-auto" />
             <nav className="space-y-1">
               {items.map((it) => (
                 <SideItem key={it.label} {...it} />
