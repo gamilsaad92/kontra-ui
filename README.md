@@ -110,6 +110,8 @@ FEATURE_FLAGS=trading
 
 If KYC/AML checks are desired, also enable the `kyc` flag and provide `KYC_API_URL` and `KYC_API_KEY` so counterparties can be screened.
 
+The UI exposes a Trades dashboard when `VITE_FEATURE_FLAGS` includes `trading`, showing blotter, settlement status and webhook delivery. Trades can be tied to downstream tokenization flows when pool tokens are used as the settlement asset.
+
 Supported `trade_type` values:
 
 - `loan_sale` – secondary loan sale settled at par × price_pct ± accrued interest.
@@ -174,7 +176,19 @@ Each webhook delivers the event name and payload containing the trade and `organ
 ```json
 {"event":"trade.created","payload":{"trade":{...},"organization_id":1}}
 ```
-  
+
+## Tokenization rails
+
+Express routes under `/api/tokenization` expose a demo ERC-20 pool factory and whitelist registry so trades and draw notes can be settled as on-chain tokens:
+
+* `GET /api/tokenization/stack` returns the active network, admin wallet and deployed contract addresses for the pool factory and whitelist registry.
+* `POST /api/tokenization/whitelist` upserts an investor entry (e.g., `{ "address": "0xabc", "investorType": "qualified" }`).
+* `POST /api/tokenization/pools` mints a new pool token; follow with `POST /api/tokenization/pools/{poolId}/mint` or `/burn` to adjust supply.
+* `GET /api/tokenization/pools` and `/api/tokenization/pools/{poolId}/address` list deployed pools and their contract addresses.
+* Construction draws that reach an approved state can be tokenized via `/api/draw-requests/tokenizations` and `/api/draw-requests/{id}/tokenizations/mint` to issue notes against funded amounts.
+
+Set `CHAIN_RPC_URL` (or `ALCHEMY_RPC_URL`) to point at a devnet RPC and `CHAIN_PRIVATE_KEY` to derive the admin wallet used in tokenization transactions. Including `tokenization` in `VITE_FEATURE_FLAGS` unlocks the Tokenization panel in the SaaS dashboard so operators can inspect the stack, whitelist status and minted pools.
+
 ## Escrow Administration
 
 Phase 4 introduces an `escrows` table tracking tax and insurance reserves for each loan. A Supabase Edge Function (`api/edge-functions/fetchTaxBills.js`) can be scheduled monthly to update real-world tax amounts. The UI exposes an "Escrows" dashboard showing the latest amounts and account balance.
