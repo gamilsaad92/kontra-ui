@@ -237,6 +237,29 @@ export default function PoolingWorkspace() {
   const [poolAdmin, setPoolAdmin] = useState<PoolAdminOverview | null>(null);
   const [loading, setLoading] = useState(true);
 
+    const validationErrors = useMemo(() => {
+    return {
+      targetSize:
+        poolParams.targetSize > 0 && !Number.isNaN(poolParams.targetSize)
+          ? ""
+          : "Target raise must be greater than zero.",
+      advanceRate:
+        poolParams.advanceRate >= 0 && poolParams.advanceRate <= 1 && !Number.isNaN(poolParams.advanceRate)
+          ? ""
+          : "Advance rate must be between 0 and 1.",
+      minDscr:
+        poolParams.minDscr > 0 && !Number.isNaN(poolParams.minDscr)
+          ? ""
+          : "Minimum DSCR must be greater than zero.",
+      adminWallet: poolParams.adminWallet.trim() !== "" ? "" : "Admin wallet is required.",
+    };
+  }, [poolParams]);
+
+  const hasValidationErrors = useMemo(
+    () => Object.values(validationErrors).some((message) => message.length > 0),
+    [validationErrors]
+  );
+
   useEffect(() => {
     let cancelled = false;
     async function load() {
@@ -266,6 +289,8 @@ export default function PoolingWorkspace() {
 
   const totalSelected = selectedLoans.reduce((sum, loan) => sum + loan.upb, 0);
 
+    const isTokenizeDisabled = tokenizing || hasValidationErrors || selectedLoans.length === 0;
+
   const toggleLoan = (loanId: string) => {
     setSelectedLoanIds((prev) => {
       const next = new Set(prev);
@@ -279,6 +304,9 @@ export default function PoolingWorkspace() {
   };
 
   const handleTokenize = async () => {
+        if (hasValidationErrors) {
+      return;
+    }
     if (selectedLoans.length === 0) {
       setError("Select at least one loan before tokenizing.");
       return;
@@ -376,6 +404,9 @@ export default function PoolingWorkspace() {
                       value={poolParams.adminWallet}
                       onChange={(e) => setPoolParams((prev) => ({ ...prev, adminWallet: e.target.value }))}
                     />
+                      {validationErrors.adminWallet && (
+                      <p className="text-xs text-rose-600">{validationErrors.adminWallet}</p>
+                    )}
                   </div>
                   <div className="space-y-3">
                     <label className="block text-xs font-semibold uppercase tracking-wide text-slate-500">Target raise</label>
@@ -383,24 +414,42 @@ export default function PoolingWorkspace() {
                       type="number"
                       className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
                       value={poolParams.targetSize}
-                      onChange={(e) => setPoolParams((prev) => ({ ...prev, targetSize: Number(e.target.value) }))}
+                                            onChange={(e) => {
+                        const value = e.target.value === "" ? Number.NaN : Number(e.target.value);
+                        setPoolParams((prev) => ({ ...prev, targetSize: value }));
+                      }}
                     />
+                                {validationErrors.targetSize && (
+                      <p className="text-xs text-rose-600">{validationErrors.targetSize}</p>
+                    )}
                     <label className="block text-xs font-semibold uppercase tracking-wide text-slate-500">Advance rate</label>
                     <input
                       type="number"
                       step="0.01"
                       className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
                       value={poolParams.advanceRate}
-                      onChange={(e) => setPoolParams((prev) => ({ ...prev, advanceRate: Number(e.target.value) }))}
+                                 onChange={(e) => {
+                        const value = e.target.value === "" ? Number.NaN : Number(e.target.value);
+                        setPoolParams((prev) => ({ ...prev, advanceRate: value }));
+                      }}
                     />
+                                        {validationErrors.advanceRate && (
+                      <p className="text-xs text-rose-600">{validationErrors.advanceRate}</p>
+                    )}
                     <label className="block text-xs font-semibold uppercase tracking-wide text-slate-500">Minimum DSCR</label>
                     <input
                       type="number"
                       step="0.01"
                       className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
                       value={poolParams.minDscr}
-                      onChange={(e) => setPoolParams((prev) => ({ ...prev, minDscr: Number(e.target.value) }))}
+                              onChange={(e) => {
+                        const value = e.target.value === "" ? Number.NaN : Number(e.target.value);
+                        setPoolParams((prev) => ({ ...prev, minDscr: value }));
+                      }}
                     />
+                                       {validationErrors.minDscr && (
+                      <p className="text-xs text-rose-600">{validationErrors.minDscr}</p>
+                    )}
                   </div>
                 </div>
 
@@ -415,7 +464,7 @@ export default function PoolingWorkspace() {
                   </div>
                   <button
                     type="button"
-                    disabled={tokenizing}
+              disabled={isTokenizeDisabled}
                     onClick={handleTokenize}
                     className="inline-flex items-center justify-center rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-emerald-400"
                   >
