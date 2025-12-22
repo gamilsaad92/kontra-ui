@@ -9,7 +9,6 @@ import DrawsDashboard from "./components/DrawsDashboard";
 import ProjectsTable from "./components/ProjectsTable";
 import DocumentReview from "./components/DocumentReview";
 import PaymentPortal from "./components/PaymentPortal";
-import BorrowerPortal from "./routes/BorrowerPortal";
 import ReportBuilder from "./components/ReportBuilder";
 import AnalyticsDashboard from "./components/AnalyticsDashboard";
 import RiskDashboard from "./components/RiskDashboard";
@@ -20,7 +19,6 @@ import PoolingWorkspace from "./routes/PoolingWorkspace";
 import LoanApplicationList from "./components/LoanApplicationList";
 import OrganizationSettings from "./components/OrganizationSettings";
 import StaffRestaurantDashboard from "./components/StaffRestaurantDashboard";
-import LegalConfiguration from "./routes/LegalConfiguration";
 import Integrations from "./routes/Integrations";
 
 import {
@@ -29,7 +27,6 @@ import {
   ClipboardDocumentListIcon,
   BanknotesIcon,
   BriefcaseIcon,
-  UserGroupIcon,
   DocumentTextIcon,
   DocumentCheckIcon,
   Cog6ToothIcon,
@@ -37,7 +34,6 @@ import {
   CurrencyDollarIcon,
   ArrowsRightLeftIcon,
   ChartPieIcon,
-  PresentationChartLineIcon,
   DocumentPlusIcon,
   ChartBarSquareIcon,
   WrenchScrewdriverIcon,
@@ -110,11 +106,6 @@ export const lenderNavRoutes = [
     requiresAuth: true,
   },
   {
-    label: "Invites",
-    icon: UserGroupIcon,
-    requiresAuth: true,
-  },
-  {
     label: "Document Review",
     icon: DocumentTextIcon,
     component: DocumentReview,
@@ -132,25 +123,9 @@ export const lenderNavRoutes = [
     requiresAuth: true,
   },
   {
-    label: "Menu",
-    icon: ClipboardDocumentListIcon,
-    requiresAuth: true,
-  },
-  {
-    label: "Orders",
-    icon: ClipboardDocumentListIcon,
-    requiresAuth: true,
-  },
-  {
     label: "Payments",
     icon: CurrencyDollarIcon,
     component: PaymentPortal,
-    requiresAuth: true,
-  },
-   {
-    label: "Borrower Portal",
-    icon: UserGroupIcon,
-    component: BorrowerPortal,
     requiresAuth: true,
   },
   {
@@ -170,12 +145,6 @@ export const lenderNavRoutes = [
     label: "Analytics",
     icon: ChartPieIcon,
     component: AnalyticsDashboard,
-    requiresAuth: true,
-  },
-  {
-    label: "Restaurant Ops",
-    icon: PresentationChartLineIcon,
-    component: StaffRestaurantDashboard,
     requiresAuth: true,
   },
   {
