@@ -16,6 +16,7 @@ import ServicingDashboard from "./components/ServicingDashboard";
 import WebhooksManager from "./components/WebhooksManager";
 import OnchainDashboard from "./components/OnchainDashboard";
 import PoolingWorkspace from "./routes/PoolingWorkspace";
+import LegalConfiguration from "./routes/LegalConfiguration";
 import LoanApplicationList from "./components/LoanApplicationList";
 import OrganizationSettings from "./components/OrganizationSettings";
 import StaffRestaurantDashboard from "./components/StaffRestaurantDashboard";
