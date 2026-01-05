@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowPathIcon, BanknotesIcon, BuildingLibraryIcon, SparklesIcon } from "@heroicons/react/24/outline";
 import {
   createPoolToken,
@@ -233,10 +233,12 @@ export default function PoolingWorkspace() {
   const [tokenizing, setTokenizing] = useState(false);
   const [tokenAddress, setTokenAddress] = useState<string | undefined>();
   const [activePoolId, setActivePoolId] = useState<string | undefined>();
+  const [dataError, setDataError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [poolAdmin, setPoolAdmin] = useState<PoolAdminOverview | null>(null);
   const [loading, setLoading] = useState(true);
-
+  const isMounted = useRef(true);
+  
     const validationErrors = useMemo(() => {
     return {
       targetSize:
@@ -260,27 +262,55 @@ export default function PoolingWorkspace() {
     [validationErrors]
   );
 
-  useEffect(() => {
-    let cancelled = false;
-    async function load() {
+  const loadData = useCallback(
+    async (poolId?: string) => {
+      if (!isMounted.current) return;
       setLoading(true);
+      setDataError(null);
+
       try {
-        const [inventory, admin] = await Promise.all([fetchLoanInventory(), fetchPoolAdmin()]);
-        if (cancelled) return;
-        setLoans(inventory);
-        setPoolAdmin(admin);
-        setActivePoolId(admin.id);
+        const [inventoryResult, adminResult] = await Promise.all([
+          fetchLoanInventory(),
+          fetchPoolAdmin(poolId ?? activePoolId),
+        ]);
+
+        if (!isMounted.current) return;
+
+        setLoans(inventoryResult.loans);
+        setPoolAdmin(adminResult.poolAdmin);
+        setActivePoolId(adminResult.poolAdmin.id);
+
+        if (inventoryResult.usedFallback || adminResult.usedFallback) {
+          const fallbackSources = [
+            inventoryResult.usedFallback ? "loan inventory" : null,
+            adminResult.usedFallback ? "pool overview" : null,
+          ].filter(Boolean);
+          const details = [inventoryResult.errorMessage, adminResult.errorMessage]
+            .filter(Boolean)
+            .join("; ");
+          const detailText = details ? ` (${details})` : "";
+          setDataError(`Unable to load live ${fallbackSources.join(" and ")}. Showing fallback data${detailText}.`);
+        }
       } catch (err) {
-        console.error(err);
+          if (!isMounted.current) return;
+        const message = err instanceof Error ? err.message : "Unable to load live data.";
+        setDataError(`${message} Showing fallback data.`);
       } finally {
-        if (!cancelled) setLoading(false);
+         if (isMounted.current) {
+          setLoading(false);
+        }
       }
-    }
-    load();
+    },
+    [activePoolId]
+  );
+
+  useEffect(() => {
+    isMounted.current = true;
+    loadData();
     return () => {
-      cancelled = true;
+     isMounted.current = false;
     };
-  }, []);
+  }, [loadData]);
 
   const selectedLoans = useMemo(
     () => loans.filter((loan) => selectedLoanIds.has(loan.id)),
@@ -289,7 +319,7 @@ export default function PoolingWorkspace() {
 
   const totalSelected = selectedLoans.reduce((sum, loan) => sum + loan.upb, 0);
 
-    const isTokenizeDisabled = tokenizing || hasValidationErrors || selectedLoans.length === 0;
+  const isTokenizeDisabled = tokenizing || hasValidationErrors || selectedLoans.length === 0;
 
   const toggleLoan = (loanId: string) => {
     setSelectedLoanIds((prev) => {
@@ -304,7 +334,7 @@ export default function PoolingWorkspace() {
   };
 
   const handleTokenize = async () => {
-        if (hasValidationErrors) {
+     if (hasValidationErrors) {
       return;
     }
     if (selectedLoans.length === 0) {
@@ -325,8 +355,16 @@ export default function PoolingWorkspace() {
       setTokenAddress(response.tokenAddress);
       const nextPoolId = response.poolId ?? activePoolId;
       setActivePoolId(nextPoolId);
-      const admin = await fetchPoolAdmin(nextPoolId);
-      setPoolAdmin(admin);
+      const adminResult = await fetchPoolAdmin(nextPoolId);
+      setPoolAdmin(adminResult.poolAdmin);
+      if (adminResult.poolAdmin.id) {
+        setActivePoolId(adminResult.poolAdmin.id);
+      }
+      if (adminResult.usedFallback) {
+        setDataError("Unable to refresh live pool data. Showing fallback admin details.");
+      } else {
+        setDataError(null);
+      }
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Unable to tokenize pool";
       setError(message);
@@ -359,6 +397,24 @@ export default function PoolingWorkspace() {
           )}
         </div>
       </header>
+
+            {dataError && (
+        <div className="flex flex-col gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 md:flex-row md:items-center md:justify-between">
+          <div>
+            <p className="font-semibold">Live data unavailable</p>
+            <p className="text-amber-700">{dataError}</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => loadData()}
+            disabled={loading}
+            className="inline-flex items-center gap-2 self-start rounded-md bg-white px-3 py-2 text-xs font-semibold text-amber-800 shadow-sm ring-1 ring-amber-200 transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            <ArrowPathIcon className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
+            {loading ? "Retrying…" : "Retry live data"}
+          </button>
+        </div>
+      )}
 
       {loading ? (
         <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white p-4 text-slate-700">
