@@ -206,19 +206,32 @@ function normalizePoolResponse(pool: any): PoolAdminOverview {
   };
 }
 
-export async function fetchLoanInventory(): Promise<LoanInventoryItem[]> {
+export type LoanInventoryResult = {
+  loans: LoanInventoryItem[];
+  usedFallback: boolean;
+  errorMessage?: string;
+};
+
+export type PoolAdminResult = {
+  poolAdmin: PoolAdminOverview;
+  usedFallback: boolean;
+  errorMessage?: string;
+};
+
+export async function fetchLoanInventory(): Promise<LoanInventoryResult> {
   try {
     const { data } = await api.get("/loans");
     if (Array.isArray(data?.loans) && data.loans.length > 0) {
-      return data.loans as LoanInventoryItem[];
+    return { loans: data.loans as LoanInventoryItem[], usedFallback: false };
     }
     if (Array.isArray(data) && data.length > 0) {
-      return data as LoanInventoryItem[];
+       return { loans: data as LoanInventoryItem[], usedFallback: false };
     }
   } catch (error) {
     console.warn("Falling back to static loan inventory", error);
+        return { loans: FALLBACK_LOANS, usedFallback: true, errorMessage: extractErrorMessage(error) };
   }
-  return FALLBACK_LOANS;
+  return { loans: FALLBACK_LOANS, usedFallback: true, errorMessage: "Live loan inventory unavailable" };
 }
 
 export async function createPoolToken(payload: CreatePoolRequest): Promise<CreatePoolResponse> {
@@ -236,18 +249,19 @@ export async function createPoolToken(payload: CreatePoolRequest): Promise<Creat
   }
 }
 
-export async function fetchPoolAdmin(poolId?: string): Promise<PoolAdminOverview> {
+export async function fetchPoolAdmin(poolId?: string): Promise<PoolAdminResult> {
   try {
     const path = poolId ? `/pools/${poolId}` : "/pools/latest";
     const { data } = await api.get(path);
     if (data?.pool) {
-      return normalizePoolResponse(data.pool);
+     return { poolAdmin: normalizePoolResponse(data.pool), usedFallback: false };
     }
     if (data) {
-      return normalizePoolResponse(data);
+     return { poolAdmin: normalizePoolResponse(data), usedFallback: false };
     }
   } catch (error) {
     console.warn("Falling back to static pool data", error);
+        return { poolAdmin: FALLBACK_POOL, usedFallback: true, errorMessage: extractErrorMessage(error) };
   }
-  return FALLBACK_POOL;
+   return { poolAdmin: FALLBACK_POOL, usedFallback: true, errorMessage: "Live pool data unavailable" };
 }
