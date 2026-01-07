@@ -46,16 +46,16 @@ function transformPool(row, groupedOrders) {
 }
 
 router.get('/mini-cmbs', async (req, res) => {
-  let poolQuery = supabase.from('mini_cmbs_pools').eq('organization_id', req.orgId);
-  const { data: pools, error } = await poolQuery.select('*');
+let poolQuery = supabase.from('mini_cmbs_pools').select('*').eq('organization_id', req.orgId);
+  const { data: pools, error } = await poolQuery;
   if (error) {
     return res.status(500).json({ message: 'Failed to list CMBS pools' });
   }
 
   const { data: orders } = await supabase
     .from('mini_cmbs_orders')
-    .eq('organization_id', req.orgId)
-    .select('*');
+    .select('*')
+    .eq('organization_id', req.orgId);
 
   const groupedOrders = new Map();
   for (const order of orders || []) {
@@ -149,16 +149,16 @@ function transformParticipation(row, groupedBids) {
 router.get('/participations', async (req, res) => {
   const { data: listings, error } = await supabase
     .from('loan_participations')
-    .eq('organization_id', req.orgId)
-    .select('*');
+     .select('*')
+    .eq('organization_id', req.orgId);
   if (error) {
     return res.status(500).json({ message: 'Failed to list participations' });
   }
 
   const { data: bids } = await supabase
     .from('loan_participation_bids')
-    .eq('organization_id', req.orgId)
-    .select('*');
+     .select('*')
+    .eq('organization_id', req.orgId);
 
   const groupedBids = new Map();
   for (const bid of bids || []) {
@@ -243,17 +243,17 @@ function transformToken(row, groupedDistributions) {
 router.get('/preferred-equity', async (req, res) => {
   const { data: tokens, error } = await supabase
     .from('preferred_equity_tokens')
-    .eq('organization_id', req.orgId)
-    .select('*');
+   .select('*')
+    .eq('organization_id', req.orgId);
   if (error) {
     return res.status(500).json({ message: 'Failed to list preferred equity programs' });
   }
 
   const { data: distributions } = await supabase
     .from('preferred_equity_distributions')
-    .eq('organization_id', req.orgId)
-    .select('*');
-
+    .select('*')
+    .eq('organization_id', req.orgId);
+  
   const grouped = new Map();
   for (const dist of distributions || []) {
     const collection = grouped.get(dist.token_id) || [];
