@@ -10,8 +10,9 @@ const supabase = createClient(
 );
 
 function bucketize(items = [], key) {
+   const rows = Array.isArray(items) ? items : [];
   const buckets = { low: 0, medium: 0, high: 0 };
-  items.forEach((i) => {
+rows.forEach((i) => {
     const val = Number(i?.[key] || 0);
     if (val > 0.7) buckets.high += 1;
     else if (val > 0.4) buckets.medium += 1;
