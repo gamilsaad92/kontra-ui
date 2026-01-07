@@ -19,15 +19,14 @@ function isMissingTable(error) {
   return error?.code === '42P01';
 }
 
-async func
 async function listWebhooks() {
   const { data, error } = await supabase
     .from('webhooks')
     .select('event, url');
-  if (!isMissingTable(error)) {
-      console.error('List webhooks error:', error);
-    }
+   if (error) {
+    if (!isMissingTable(error)) {
     console.error('List webhooks error:', error);
+    }
     return [];
   }
   return data || [];
@@ -36,8 +35,10 @@ async function listWebhooks() {
 async function addWebhook(event, url) {
   const { error } = await supabase
     .from('webhooks')
-  if (error && !isMissingTable(error)) console.error('Add webhook error:', error);
-  if (error) console.error('Add webhook error:', error);
+    .insert({ event, url });
+  if (error && !isMissingTable(error)) {
+    console.error('Add webhook error:', error);
+  }
 }
 
 async function removeWebhook(event, url) {
@@ -45,8 +46,10 @@ async function removeWebhook(event, url) {
     .from('webhooks')
     .delete()
     .eq('event', event)
- if (error && !isMissingTable(error)) console.error('Remove webhook error:', error);
-  if (error) console.error('Remove webhook error:', error);
+   .eq('url', url);
+  if (error && !isMissingTable(error)) {
+    console.error('Remove webhook error:', error);
+  }
 }
 
 async function triggerWebhooks(event, payload) {
@@ -54,14 +57,16 @@ async function triggerWebhooks(event, payload) {
     .from('webhooks')
     .select('url')
     .eq('event', event);
+    if (error) {
     if (!isMissingTable(error)) {
       console.error('Fetch webhooks error:', error);
     }
     return;
   }
+  
   await Promise.all(
-       (data || []).map(h =>
-      fetch(h.url, {
+     (data || []).map(hook =>
+      fetch(hook.url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ event, payload })
@@ -77,4 +82,3 @@ module.exports = {
   triggerWebhooks,
   WEBHOOK_TOPICS
 };
-
