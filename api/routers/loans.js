@@ -460,8 +460,27 @@ router.get('/loans', async (req, res) => {
     if (maxRisk) q = q.lte('risk_score', parseFloat(maxRisk));
     if (search) q = q.textSearch('borrower_name', search, { type: 'plain' });
     const { data, error } = await q;
-    if (error) throw error;
-    res.json({ loans: data });
+    if (!error) {
+      return res.json({ loans: data });
+    }
+    if (error.code === '42703' && String(error.message).includes('risk_score')) {
+      let fallbackQuery = supabase
+        .from('loans')
+        .select('id, borrower_name, amount, interest_rate, term_months, start_date, status, created_at')
+        .order('created_at', { ascending: false });
+      fallbackQuery = fallbackQuery.eq('organization_id', req.organizationId);
+      if (status) fallbackQuery = fallbackQuery.eq('status', status);
+      if (borrower) fallbackQuery = fallbackQuery.ilike('borrower_name', `%${borrower}%`);
+      if (from) fallbackQuery = fallbackQuery.gte('start_date', from);
+      if (to) fallbackQuery = fallbackQuery.lte('start_date', to);
+      if (search) fallbackQuery = fallbackQuery.textSearch('borrower_name', search, { type: 'plain' });
+      const { data: fallbackData, error: fallbackError } = await fallbackQuery;
+      if (fallbackError) throw fallbackError;
+      return res.json({
+        loans: (fallbackData || []).map((row) => ({ ...row, risk_score: null })),
+      });
+    }
+    throw error;
   } catch (err) {
     console.error('Loan list error:', err);
     res.status(500).json({ message: 'Failed to fetch loans' });
