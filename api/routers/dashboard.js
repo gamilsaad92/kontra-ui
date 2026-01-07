@@ -65,14 +65,27 @@ function average(sum, count, precision = 3) {
 }
 
 async function fetchLoans(orgId) {
- let query = replica
+  let query = replica
     .from('loans')
     .select('id, amount, outstanding_principal, interest_rate, status, risk_score, days_late');
   if (orgId) {
     query = query.eq('organization_id', orgId);
   }
-  const { data, error } = await query;
-  if (error) throw error;
+ if (!error) {
+    return data || [];
+  }
+  if (error.code === '42703' && String(error.message).includes('risk_score')) {
+    let fallbackQuery = replica
+      .from('loans')
+      .select('id, amount, outstanding_principal, interest_rate, status, days_late');
+    if (orgId) {
+      fallbackQuery = fallbackQuery.eq('organization_id', orgId);
+    }
+    const { data: fallbackData, error: fallbackError } = await fallbackQuery;
+    if (fallbackError) throw fallbackError;
+    return (fallbackData || []).map((row) => ({ ...row, risk_score: null }));
+  }
+  throw error;
   return data || [];
 }
 
@@ -243,11 +256,21 @@ router.get('/marketplace', async (req, res) => {
 
   const orgId = resolveOrgId(req);
   try {
+        const baseFields = [
+      'id',
+      'title',
+      'par_amount',
+      'occupancy_rate',
+      'dscr',
+      'marketplace_metrics',
+      'borrower_kpis',
+      'sector',
+      'geography',
+      'updated_at',
+    ];
     let query = supabase
       .from('exchange_listings')
-      .select(
-        'id,title,par_amount,occupancy_rate,dscr,marketplace_metrics,borrower_kpis,sector,geography,updated_at'
-      )
+        .select(baseFields.join(','))
       .eq('compliance_hold', false)
       .order('updated_at', { ascending: false });
 
@@ -255,7 +278,23 @@ router.get('/marketplace', async (req, res) => {
       query = query.eq('organization_id', orgId);
     }
 
-    const { data, error } = await query.limit(100);
+   let { data, error } = await query.limit(100);
+    if (error && error.code === '42703' && String(error.message).includes('occupancy_rate')) {
+      let fallbackQuery = supabase
+        .from('exchange_listings')
+        .select(baseFields.filter((field) => field !== 'occupancy_rate').join(','))
+        .eq('compliance_hold', false)
+        .order('updated_at', { ascending: false });
+      if (orgId) {
+        fallbackQuery = fallbackQuery.eq('organization_id', orgId);
+      }
+      const fallback = await fallbackQuery.limit(100);
+      data = fallback.data;
+      error = fallback.error;
+      if (!error && Array.isArray(data)) {
+        data = data.map((listing) => ({ ...listing, occupancy_rate: null }));
+      }
+    }
     if (error) {
       throw error;
     }
