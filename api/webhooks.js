@@ -15,11 +15,18 @@ const WEBHOOK_TOPICS = [
   'payment.missed'
 ];
 
+function isMissingTable(error) {
+  return error?.code === '42P01';
+}
+
+async func
 async function listWebhooks() {
   const { data, error } = await supabase
     .from('webhooks')
     .select('event, url');
-  if (error) {
+  if (!isMissingTable(error)) {
+      console.error('List webhooks error:', error);
+    }
     console.error('List webhooks error:', error);
     return [];
   }
@@ -29,7 +36,7 @@ async function listWebhooks() {
 async function addWebhook(event, url) {
   const { error } = await supabase
     .from('webhooks')
-    .insert([{ event, url }]);
+  if (error && !isMissingTable(error)) console.error('Add webhook error:', error);
   if (error) console.error('Add webhook error:', error);
 }
 
@@ -38,7 +45,7 @@ async function removeWebhook(event, url) {
     .from('webhooks')
     .delete()
     .eq('event', event)
-    .eq('url', url);
+ if (error && !isMissingTable(error)) console.error('Remove webhook error:', error);
   if (error) console.error('Remove webhook error:', error);
 }
 
@@ -47,8 +54,9 @@ async function triggerWebhooks(event, payload) {
     .from('webhooks')
     .select('url')
     .eq('event', event);
-  if (error) {
-    console.error('Fetch webhooks error:', error);
+    if (!isMissingTable(error)) {
+      console.error('Fetch webhooks error:', error);
+    }
     return;
   }
   await Promise.all(
