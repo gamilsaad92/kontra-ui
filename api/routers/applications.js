@@ -511,12 +511,29 @@ router.post(
 
 router.get('/', async (req, res) => {
   try {
-    const { data, error } = await supabase
+    const selectFields =
+      'id, name, amount, credit_score, kyc_passed, decision, status, submitted_at, document_url';
+    let { data, error } = await supabase
       .from('loan_applications')
-      .select(
-       'id, name, amount, credit_score, kyc_passed, decision, status, submitted_at, document_url'
-      )
+          .select(selectFields)
       .order('submitted_at', { ascending: false });
+
+       if (error && error.code === '42703' && String(error.message).includes('decision')) {
+      const fallbackFields =
+        'id, name, amount, credit_score, kyc_passed, status, submitted_at, document_url';
+      const fallback = await supabase
+        .from('loan_applications')
+        .select(fallbackFields)
+        .order('submitted_at', { ascending: false });
+      data = fallback.data;
+      error = fallback.error;
+      if (!error && Array.isArray(data)) {
+        data = data.map((row) => ({
+          ...row,
+          decision: row.status || null,
+        }));
+      }
+    }
 
     if (error) {
       console.error('List applications error:', error);
@@ -526,7 +543,7 @@ router.get('/', async (req, res) => {
       });
     }
 
-   return res.json({ applications: data, from_cache: false });
+    return res.json({ applications: data, from_cache: false });
   } catch (err) {
     console.error('Unexpected error listing applications:', err);
     return res.json({
