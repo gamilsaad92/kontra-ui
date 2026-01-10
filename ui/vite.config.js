@@ -18,7 +18,7 @@ export default defineConfig(({ mode }) => {
             devOptions: {
               enabled: process.env.NODE_ENV === "development",
             },
-         workbox: {
+           workbox: {
               globDirectory: "dist",
               globPatterns: ["**/*.{js,css,html,ico,png,svg,wasm}"],
               navigateFallback: "/index.html",
@@ -32,20 +32,25 @@ export default defineConfig(({ mode }) => {
                   },
                 },
                 {
-                  urlPattern: ({ request }) => request.destination === "document",
+                   urlPattern: ({ request }) =>
+                    request.destination === "document",
                   handler: "NetworkFirst",
                   options: {
                     cacheName: "html-cache",
                   },
                 },
                 {
-                 urlPattern: ({ request }) =>
-                    ["style", "script", "image"].includes(request.destination),
-                  options: { cacheName: "asset-cache" },
+                    urlPattern: ({ request }) =>
+                    ["style", "script", "image"].includes(
+                      request.destination,
+                    ),
+                  handler: "CacheFirst",
+                  options: {
+                    cacheName: "asset-cache",
+                  },
                 },
               ],
             },
-                manifest: {
              manifest: {
               short_name: "Kontra",
               start_url: "/",
@@ -59,18 +64,17 @@ export default defineConfig(({ mode }) => {
             },
           })
         : null,
-    ].filter(Boolean),    
+   ].filter(Boolean),
     publicDir: "Public",
     resolve: {
       alias: {
         "@": fileURLToPath(new URL("./src", import.meta.url)),
       },
     },
-
-  optimizeDeps: {
-    include: ["react", "react-dom"],
+    optimizeDeps: {
+      include: ["react", "react-dom"],
     },
- // Optional: bring this back if you want custom chunks
+    // Optional: bring this back if you want custom chunks
     // build: {
     //   rollupOptions: {
     //     output: {
@@ -104,5 +108,5 @@ export default defineConfig(({ mode }) => {
     //     },
     //   },
     // },
-     };
+  };
 });
