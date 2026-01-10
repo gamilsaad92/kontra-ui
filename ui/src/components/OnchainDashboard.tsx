@@ -9,6 +9,7 @@ import {
 } from "@heroicons/react/24/outline";
 import { ConnectButton } from "@rainbow-me/rainbowkit";
 import { useAccount, useChainId, useChains } from "wagmi";
+import { isWalletConnectConfigured } from "../providers/Web3Provider";
 import {
   type OnchainOverview,
   type OnchainPosition,
@@ -138,8 +139,13 @@ export default function OnchainDashboard() {
           <p className="text-sm text-slate-600">Track ERC-721 whole loans, ERC-20 participations, and pro-rata distributions.</p>
         </div>
         <div className="flex items-center gap-3">
-          <ConnectButton accountStatus="address" showBalance={false} label="Connect wallet" />
-          <button
+          {isWalletConnectConfigured ? (
+            <ConnectButton accountStatus="address" showBalance={false} label="Connect wallet" />
+          ) : (
+            <span className="rounded-full bg-slate-100 px-3 py-2 text-xs font-semibold text-slate-600">
+              Wallet connect disabled
+            </span>
+          )}          <button
             type="button"
             onClick={handleLogSync}
             className="inline-flex items-center gap-2 rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-800"
