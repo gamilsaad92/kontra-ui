@@ -4,8 +4,12 @@ import { createClient } from '@supabase/supabase-js';
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-export const isSupabaseConfigured = Boolean(supabaseUrl && supabaseAnonKey);
 
+const isPlaceholder = value =>
+  typeof value === 'string' && (value.includes('<') || value.includes('YOUR_') || value.includes('your-project-ref'));
+const isMeaningful = value => Boolean(value && !isPlaceholder(value));
+
+export const isSupabaseConfigured = isMeaningful(supabaseUrl) && isMeaningful(supabaseAnonKey);
 let supabase;
 
 if (isSupabaseConfigured) {
