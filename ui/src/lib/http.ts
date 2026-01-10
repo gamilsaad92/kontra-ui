@@ -1,4 +1,4 @@
-import { supabase } from "./supabaseClient.js";
+import { supabase, isSupabaseConfigured } from "./supabaseClient.js";
 
 type EnvRecord = Record<string, string | undefined>;
 
@@ -75,11 +75,16 @@ function resolveDevAccessToken(): string | null {
   const env = (import.meta.env ?? {}) as EnvRecord & {
     VITE_DEV_ACCESS_TOKEN?: string;
     DEV_ACCESS_TOKEN?: string;
+    DEV?: boolean;
   };
 
   const fromEnv = env.VITE_DEV_ACCESS_TOKEN ?? env.DEV_ACCESS_TOKEN;
   if (fromEnv && fromEnv.trim()) {
     return fromEnv.trim();
+  }
+
+    if (!env.DEV) {
+    return null;
   }
 
   if (
@@ -103,7 +108,7 @@ function resolveDevAccessToken(): string | null {
     }
   }
 
-    if (DEFAULT_DEV_ACCESS_TOKEN.trim()) {
+  if (DEFAULT_DEV_ACCESS_TOKEN.trim()) {
     return DEFAULT_DEV_ACCESS_TOKEN.trim();
   }
 
@@ -151,6 +156,25 @@ export function shouldAttachOrgHeader(targetUrl?: string): boolean {
     return trustedOrigins.has(absolute.origin);
   } catch {
     return true;
+  }
+}
+
+function isApiRequest(targetUrl?: string): boolean {
+  if (!targetUrl) {
+    return false;
+  }
+
+  if (typeof window === "undefined") {
+    return targetUrl.startsWith("/api");
+  }
+
+  try {
+    const resolved = targetUrl.startsWith("http://") || targetUrl.startsWith("https://")
+      ? new URL(targetUrl)
+      : new URL(targetUrl, window.location.origin);
+    return resolved.pathname.startsWith("/api");
+  } catch {
+    return targetUrl.startsWith("/api");
   }
 }
 
@@ -285,11 +309,11 @@ async function apiFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
     headers.set("Authorization", `Bearer ${token}`);
   }
 
- const finalInit: RequestInit = {
+  const finalInit: RequestInit = {
     ...sanitizedInit,
     headers,
     credentials: sanitizedInit.credentials ?? "same-origin"
- };
+  };
 
   const method = resolveRequestMethodFromInit(finalInit);
   logFetchDebug(`→ ${method} ${requestUrl}`);
@@ -360,19 +384,31 @@ export function installAuthFetchInterceptor(): void {
     const headers = normalizeHeaders(sanitizedInit.headers);
 
     const targetUrl = extractRequestUrl(input);
+        const isApiCall = isApiRequest(targetUrl);
+
+    let token: string | null = null;
+    if (isApiCall && !isSupabaseConfigured) {
+      token = await getSessionToken();
+      if (!token) {
+        return new Response(JSON.stringify({ error: "Authentication unavailable." }), {
+          status: 401,
+          headers: { "Content-Type": "application/json" }
+        });
+      }
+    }
     if (!headers.has("X-Org-Id") && shouldAttachOrgHeader(targetUrl)) {
-     headers.set("X-Org-Id", DEFAULT_ORG_ID);
+    headers.set("X-Org-Id", DEFAULT_ORG_ID);
     }
 
     if (!headers.has("Authorization")) {
-      const token = await getSessionToken();
+    token = token ?? (await getSessionToken());
       if (token) headers.set("Authorization", `Bearer ${token}`);
     }
 
-     const finalInit: RequestInit = {
+      const finalInit: RequestInit = {
       ...sanitizedInit,
       headers,
-     credentials: sanitizedInit.credentials ?? "same-origin"
+    credentials: sanitizedInit.credentials ?? "same-origin"
     };
 
     const method = resolveRequestMethod(input, finalInit);
