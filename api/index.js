@@ -101,6 +101,7 @@ const corsOptions = {
     'Content-Type',
     'X-Org-Id',
     'X-Requested-With',
+    'X-User-Id',
     'Accept',
     'Origin',
   ],
