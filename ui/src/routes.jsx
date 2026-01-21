@@ -15,6 +15,7 @@ import RiskDashboard from "./components/RiskDashboard";
 import ServicingDashboard from "./components/ServicingDashboard";
 import WebhooksManager from "./components/WebhooksManager";
 import OnchainDashboard from "./components/OnchainDashboard";
+import ExecutiveDashboard from "./components/ExecutiveDashboard";
 import PoolingWorkspace from "./routes/PoolingWorkspace";
 import LegalConfiguration from "./routes/LegalConfiguration";
 import LoanApplicationList from "./components/LoanApplicationList";
@@ -52,6 +53,13 @@ export const lenderNavRoutes = [
     icon: HomeIcon,
    component: DashboardPage,
     requiresAuth: true,
+  },
+    {
+    label: "Executive",
+    icon: ChartBarIcon,
+    component: ExecutiveDashboard,
+    requiresAuth: true,
+    roles: ["exec"],
   },
   {
     label: "Assets",
