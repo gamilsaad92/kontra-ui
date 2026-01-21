@@ -32,6 +32,7 @@ export default function KontraDashboard() {
     { label: "Overview", path: "/dashboard" },
     { label: "Loans", path: "/dashboard/loans" },
     { label: "Servicing", path: "/dashboard/servicing" },
+    { label: "Draws", path: "/dashboard/servicing/draws" },
     { label: "Draws", path: "/dashboard/draws" },
     { label: "Reports", path: "/dashboard/reports" },
     { label: "OLB Coupon", path: "/dashboard/olb-coupon" },
@@ -127,7 +128,7 @@ export default function KontraDashboard() {
 
   // API base (uses your VITE_API_URL if present)
   const API_BASE: string = (import.meta as any).env?.VITE_API_URL || "";
-  const location = useLocation();
+  const isServicing = location.pathname.startsWith("/dashboard/servicing");
   const isServicing = location.pathname === "/dashboard/servicing";
   const isCoupon = location.pathname === "/dashboard/olb-coupon";
   const currentLabel = isServicing ? "Servicing" : isCoupon ? "OLB Coupon" : "Overview";
