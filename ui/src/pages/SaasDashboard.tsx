@@ -122,10 +122,16 @@ function AuthenticatedDashboard({
 }) {
   const apiBase = resolveApiBase();
   const { usage, recordUsage } = useFeatureUsage();
+  const userRole = session.user?.user_metadata?.role;
 
   const navItems = useMemo(
-    () => lenderNavRoutes.filter((item) => !item.flag || isFeatureEnabled(item.flag)),
-    [isFeatureEnabled]
+    () =>
+      lenderNavRoutes.filter(
+        (item) =>
+          (!item.flag || isFeatureEnabled(item.flag)) &&
+          (!item.roles || (userRole && item.roles.includes(userRole)))
+      ),
+    [isFeatureEnabled, userRole]
   );
 
   const [activeLabel, setActiveLabel] = useState<string>(() => navItems[0]?.label ?? "Dashboard");
