@@ -1,4 +1,5 @@
 import { useCallback, useContext, useEffect, useMemo, useState, type ComponentType } from "react";
+import { NavLink, Navigate, Route, Routes, useLocation } from "react-router-dom";
 import type { Session, SupabaseClient } from "@supabase/supabase-js";
 import { isFeatureEnabled } from "../lib/featureFlags";
 import { resolveApiBase } from "../lib/api";
@@ -9,6 +10,11 @@ import LoginForm from "../components/LoginForm.jsx";
 import SignUpForm from "../components/SignUpForm.jsx";
 import DashboardPage from "../components/DashboardPage";
 import SaasDashboardHome from "../components/SaasDashboardHome";
+import ServicingDrawsPage from "./dashboard/servicing/ServicingDrawsPage";
+import ServicingHome from "./dashboard/servicing/ServicingHome";
+import ServicingInspectionsPage from "./dashboard/servicing/ServicingInspectionsPage";
+import ServicingLayout from "./dashboard/servicing/ServicingLayout";
+import ServicingPaymentsPage from "./dashboard/servicing/ServicingPaymentsPage";
 
 const Placeholder = ({ title }: { title: string }) => (
   <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
@@ -19,6 +25,11 @@ const Placeholder = ({ title }: { title: string }) => (
 
 type NavItem = (typeof lenderNavRoutes)[number];
 type AuthMode = "login" | "signup";
+
+function LegacyRedirect({ to }: { to: string }) {
+  const location = useLocation();
+  return <Navigate to={{ pathname: to, search: location.search }} replace />;
+}
 
 export default function SaasDashboard() {
   const { session, supabase, isLoading } = useContext(AuthContext);
@@ -123,14 +134,28 @@ function AuthenticatedDashboard({
   const apiBase = resolveApiBase();
   const { usage, recordUsage } = useFeatureUsage();
   const userRole = session.user?.user_metadata?.role;
-
+  const location = useLocation();
+  const isServicingRoute = location.pathname.startsWith("/dashboard/servicing");
+  
   const navItems = useMemo(
     () =>
-      lenderNavRoutes.filter(
-        (item) =>
-          (!item.flag || isFeatureEnabled(item.flag)) &&
-          (!item.roles || (userRole && item.roles.includes(userRole)))
-      ),
+      lenderNavRoutes
+        .filter(
+          (item) =>
+            (!item.flag || isFeatureEnabled(item.flag)) &&
+            (!item.roles || (userRole && item.roles.includes(userRole)))
+        )
+        .map((item) => {
+          if (!item.children) {
+            return item;
+          }
+          const children = item.children.filter(
+            (child) =>
+              (!child.flag || isFeatureEnabled(child.flag)) &&
+              (!child.roles || (userRole && child.roles.includes(userRole)))
+          );
+          return { ...item, children };
+        }),
     [isFeatureEnabled, userRole]
   );
 
@@ -144,6 +169,12 @@ function AuthenticatedDashboard({
       }
     }
   }, [activeLabel, navItems]);
+
+    useEffect(() => {
+    if (isServicingRoute && activeLabel !== "Servicing") {
+      setActiveLabel("Servicing");
+    }
+  }, [activeLabel, isServicingRoute]);
 
   const activeItem = useMemo(() => {
     return navItems.find((item) => item.label === activeLabel);
@@ -166,23 +197,63 @@ function AuthenticatedDashboard({
 
   const renderNavItem = (item: NavItem) => {
     const Icon = item.icon as ComponentType<{ className?: string }> | undefined;
-    const active = item.label === activeLabel;
+      const active = item.path
+      ? location.pathname === item.path || location.pathname.startsWith(`${item.path}/`)
+      : item.label === activeLabel;
     const base = "group flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm font-medium";
     const state = active
       ? "bg-slate-800 text-white"
       : "text-slate-300 hover:bg-slate-800 hover:text-white focus:bg-slate-800 focus:text-white active:bg-slate-900";
-
-    return (
-      <button
-        key={item.label}
-        type="button"
-        className={`${base} ${state}`}
-        title={item.label}
-        onClick={() => handleSelectNavItem(item)}
-      >
+      const content = (
+      <>
         {Icon && <Icon className="h-5 w-5 shrink-0" />}
         <span className="truncate">{item.label}</span>
-      </button>
+      </>
+    );
+
+    return (
+      <div key={item.label} className="space-y-1">
+        {item.path ? (
+          <NavLink
+            to={item.path}
+            className={`${base} ${state}`}
+            title={item.label}
+            onClick={() => handleSelectNavItem(item)}
+          >
+            {content}
+          </NavLink>
+        ) : (
+          <button
+            type="button"
+            className={`${base} ${state}`}
+            title={item.label}
+            onClick={() => handleSelectNavItem(item)}
+          >
+            {content}
+          </button>
+        )}
+        {item.children && item.children.length > 0 ? (
+          <div className="ml-8 space-y-1">
+            {item.children.map((child) => (
+              <NavLink
+                key={child.label}
+                to={child.path ?? "#"}
+                className={({ isActive }) =>
+                  [
+                    "block rounded-md px-3 py-1.5 text-xs font-medium transition",
+                    isActive
+                      ? "bg-slate-800 text-white"
+                      : "text-slate-400 hover:bg-slate-800 hover:text-white",
+                  ].join(" ")
+                }
+                onClick={() => recordUsage(child.label)}
+              >
+                {child.label}
+              </NavLink>
+            ))}
+          </div>
+        ) : null}
+      </div>
     );
   };
 
@@ -204,7 +275,23 @@ function AuthenticatedDashboard({
   };
 
   const isDashboard = activeLabel === "Dashboard";
-  const content = renderContent();
+ const content = (
+    <Routes>
+      <Route path="/dashboard/servicing" element={<ServicingLayout />}>
+        <Route index element={<ServicingHome />} />
+        <Route path="draws" element={<ServicingDrawsPage />} />
+        <Route path="inspections" element={<ServicingInspectionsPage />} />
+        <Route path="payments" element={<ServicingPaymentsPage />} />
+      </Route>
+      <Route path="/dashboard/draws" element={<LegacyRedirect to="/dashboard/servicing/draws" />} />
+      <Route
+        path="/dashboard/inspections"
+        element={<LegacyRedirect to="/dashboard/servicing/inspections" />}
+      />
+      <Route path="/dashboard/payments" element={<LegacyRedirect to="/dashboard/servicing/payments" />} />
+      <Route path="*" element={renderContent()} />
+    </Routes>
+  );
 
   const handleSignOut = () => {
     void supabase.auth.signOut();
@@ -238,7 +325,7 @@ function AuthenticatedDashboard({
           </nav>
         </aside>
         <main className="flex-1 overflow-y-auto p-6">
-          {!isDashboard && (
+          {!isDashboard && !isServicingRoute && (
             <header className="mb-6 space-y-1">
               <h1 className="text-xl font-semibold tracking-tight text-slate-900">{activeLabel}</h1>
               <p className="text-sm text-slate-500">
@@ -246,7 +333,7 @@ function AuthenticatedDashboard({
               </p>
             </header>
           )}
-          {isDashboard ? content : <div className="space-y-6">{content}</div>}
+         {isDashboard || isServicingRoute ? content : <div className="space-y-6">{content}</div>}
         </main>
       </div>
     </>
