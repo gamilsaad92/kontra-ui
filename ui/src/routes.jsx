@@ -42,6 +42,7 @@ import {
   BuildingLibraryIcon,
   CubeTransparentIcon,
   BoltIcon,
+  ArrowsRightLeftIcon,
 } from "@heroicons/react/24/outline";
 
 export const lenderNavRoutes = [
