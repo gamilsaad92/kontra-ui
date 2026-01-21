@@ -21,6 +21,7 @@ import LoanApplicationList from "./components/LoanApplicationList";
 import OrganizationSettings from "./components/OrganizationSettings";
 import StaffRestaurantDashboard from "./components/StaffRestaurantDashboard";
 import Integrations from "./routes/Integrations";
+import OlbCouponPage from "./pages/OlbCouponPage";
 
 import {
   HomeIcon,
@@ -122,6 +123,13 @@ export const lenderNavRoutes = [
     icon: ChartBarIcon,
     component: ReportBuilder,
     requiresAuth: true,
+  },
+   {
+    label: "OLB Coupon",
+    icon: DocumentTextIcon,
+    component: OlbCouponPage,
+    requiresAuth: true,
+    flag: "olb-coupon",
   },
   {
     label: "Payments",
