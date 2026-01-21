@@ -27,7 +27,6 @@ import OlbCouponPage from "./pages/OlbCouponPage";
 import {
   HomeIcon,
   BuildingOfficeIcon,
-  ClipboardDocumentListIcon,
   BanknotesIcon,
   BriefcaseIcon,
   DocumentTextIcon,
@@ -35,7 +34,6 @@ import {
   Cog6ToothIcon,
   ChartBarIcon,
   CurrencyDollarIcon,
-  ArrowsRightLeftIcon,
   ChartPieIcon,
   DocumentPlusIcon,
   ChartBarSquareIcon,
@@ -68,12 +66,6 @@ export const lenderNavRoutes = [
     requiresAuth: true,
   },
   {
-    label: "Inspections",
-    icon: ClipboardDocumentListIcon,
-    component: Inspections,
-    requiresAuth: true,
-  },
-  {
     label: "Loans",
     icon: BanknotesIcon,
     component: LoansDashboard,
@@ -95,12 +87,6 @@ export const lenderNavRoutes = [
     label: "Legal",
     icon: DocumentCheckIcon,
     component: LegalConfiguration,
-    requiresAuth: true,
-  },
-  {
-    label: "Draws",
-    icon: ClipboardDocumentListIcon,
-    component: DrawsDashboard,
     requiresAuth: true,
   },
   {
@@ -138,12 +124,6 @@ export const lenderNavRoutes = [
     component: OlbCouponPage,
     requiresAuth: true,
     flag: "olb-coupon",
-  },
-  {
-    label: "Payments",
-    icon: CurrencyDollarIcon,
-    component: PaymentPortal,
-    requiresAuth: true,
   },
   {
     label: "Trades",
@@ -187,6 +167,27 @@ export const lenderNavRoutes = [
     icon: WrenchScrewdriverIcon,
     component: ServicingDashboard,
     requiresAuth: true,
+       path: "/dashboard/servicing",
+    children: [
+      {
+        label: "Draws",
+        component: DrawsDashboard,
+        requiresAuth: true,
+        path: "/dashboard/servicing/draws",
+      },
+      {
+        label: "Inspections",
+        component: Inspections,
+        requiresAuth: true,
+        path: "/dashboard/servicing/inspections",
+      },
+      {
+        label: "Payments",
+        component: PaymentPortal,
+        requiresAuth: true,
+        path: "/dashboard/servicing/payments",
+      },
+    ],
   },
   {
     label: "Webhooks",
