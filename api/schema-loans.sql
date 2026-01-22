@@ -58,3 +58,15 @@ CREATE TABLE IF NOT EXISTS loan_docs (
 );
 
 CREATE INDEX IF NOT EXISTS idx_loan_docs_loan_id ON loan_docs(loan_id);
+
+CREATE TABLE IF NOT EXISTS drafts (
+  id BIGSERIAL PRIMARY KEY,
+  loan_id BIGINT REFERENCES loans(id) ON DELETE CASCADE,
+  type TEXT NOT NULL,
+  subject TEXT,
+  body TEXT,
+  created_by TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_drafts_loan_id ON drafts(loan_id);
