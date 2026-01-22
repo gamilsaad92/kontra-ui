@@ -6,6 +6,7 @@ import LoanPayoffCalculator from './LoanPayoffCalculator';
 import LoanDeferralForm from './LoanDeferralForm';
 import { API_BASE } from '../lib/apiBase';
 import { DetailDrawer } from './ui';
+import InsightsCard from './InsightsCard';
 import {
   calculateAdjustedCoupon,
   computeFeeWaterfall,
@@ -137,6 +138,7 @@ export default function LoanDetailPanel({ loanId, onClose }) {
           <h3 className="text-xl font-semibold">Loan #{loan.loan.id}</h3>
           <p>Borrower: {loan.loan.borrower_name}</p>
           <p>Status: {loan.loan.status}</p>
+                 <InsightsCard loanId={loanId} title="Servicing Insights" />
                     {productLoading && (
             <p className="text-sm text-slate-500">Updating automation data…</p>
           )}
