@@ -1,4 +1,5 @@
 import { NavLink, Outlet } from "react-router-dom";
+import ServicingCommandCenter from "../../../components/ServicingCommandCenter";
 
 const tabs = [
   { label: "Draws", to: "/dashboard/servicing/draws" },
@@ -15,6 +16,7 @@ export default function ServicingLayout() {
           Manage draws, inspections, and payments for active servicing workflows.
         </p>
       </header>
+            <ServicingCommandCenter />
       <nav className="flex flex-wrap gap-2 border-b border-slate-200 pb-3">
         {tabs.map((tab) => (
           <NavLink
