@@ -19,7 +19,6 @@ import SelfServicePayment from "./SelfServicePayment";
 import PayoffCalculator from "./PayoffCalculator";
 import InvestorReportForm from "./InvestorReportForm";
 import InvestorReportsList from "./InvestorReportsList";
-import AssetManagement from "../routes/AssetManagement";
 import MarketAnalysis from "./MarketAnalysis";
 import RealTimeAnalyticsDashboard from "./RealTimeAnalyticsDashboard";
 import OrganizationSettings from "./OrganizationSettings";
@@ -59,7 +58,6 @@ const GuestChat = lazy(() => import("./GuestChat"));
 
 const departmentNav = {
   finance: [
-    { label: "Assets", icon: BuildingOfficeIcon },
     { label: "Inspections", icon: ClipboardDocumentListIcon },
     { label: "Dashboard", icon: HomeIcon }, // "/"
     { label: "Loans", icon: BanknotesIcon },
@@ -163,7 +161,6 @@ export default function DashboardLayout() {
     "Market Analysis": () => <MarketAnalysis />,
     "Live Analytics": () => <RealTimeAnalyticsDashboard />,
     Trades: () => <Trades />,
-    "Asset Management": () => <AssetManagement />,
     Settings: () => <OrganizationSettings />,
   };
 
