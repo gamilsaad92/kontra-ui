@@ -11,10 +11,16 @@ import SignUpForm from "../components/SignUpForm.jsx";
 import DashboardPage from "../components/DashboardPage";
 import SaasDashboardHome from "../components/SaasDashboardHome";
 import ServicingDrawsPage from "./dashboard/servicing/ServicingDrawsPage";
+import ServicingBorrowerFinancialsPage from "./dashboard/servicing/ServicingBorrowerFinancialsPage";
+import ServicingEscrowPage from "./dashboard/servicing/ServicingEscrowPage";
 import ServicingHome from "./dashboard/servicing/ServicingHome";
 import ServicingInspectionsPage from "./dashboard/servicing/ServicingInspectionsPage";
+import ServicingLoansPage from "./dashboard/servicing/ServicingLoansPage";
 import ServicingLayout from "./dashboard/servicing/ServicingLayout";
+import ServicingManagementPage from "./dashboard/servicing/ServicingManagementPage";
+import ServicingOverviewPage from "./dashboard/servicing/ServicingOverviewPage";
 import ServicingPaymentsPage from "./dashboard/servicing/ServicingPaymentsPage";
+import ServicingAIValidationPage from "./dashboard/servicing/ServicingAIValidationPage";
 
 const Placeholder = ({ title }: { title: string }) => (
   <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
@@ -279,8 +285,14 @@ function AuthenticatedDashboard({
     <Routes>
       <Route path="/dashboard/servicing" element={<ServicingLayout />}>
         <Route index element={<ServicingHome />} />
+                <Route path="overview" element={<ServicingOverviewPage />} />
+        <Route path="loans" element={<ServicingLoansPage />} />
         <Route path="draws" element={<ServicingDrawsPage />} />
         <Route path="inspections" element={<ServicingInspectionsPage />} />
+                <Route path="borrower-financials" element={<ServicingBorrowerFinancialsPage />} />
+        <Route path="escrow" element={<ServicingEscrowPage />} />
+        <Route path="management" element={<ServicingManagementPage />} />
+        <Route path="ai-validation" element={<ServicingAIValidationPage />} />
         <Route path="payments" element={<ServicingPaymentsPage />} />
       </Route>
       <Route path="/dashboard/draws" element={<LegacyRedirect to="/dashboard/servicing/draws" />} />
@@ -289,6 +301,8 @@ function AuthenticatedDashboard({
         element={<LegacyRedirect to="/dashboard/servicing/inspections" />}
       />
       <Route path="/dashboard/payments" element={<LegacyRedirect to="/dashboard/servicing/payments" />} />
+            <Route path="/dashboard/assets" element={<LegacyRedirect to="/dashboard/servicing/loans" />} />
+      <Route path="/assets" element={<LegacyRedirect to="/dashboard/servicing/loans" />} />
       <Route path="*" element={renderContent()} />
     </Routes>
   );
