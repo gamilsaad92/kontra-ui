@@ -1,5 +1,11 @@
 import Inspections from "../../../routes/Inspections";
+import ServicingPhotoValidationPanel from "./ServicingPhotoValidationPanel";
 
 export default function ServicingInspectionsPage() {
-  return <Inspections />;
+   return (
+    <div className="space-y-6">
+      <Inspections />
+      <ServicingPhotoValidationPanel context="Inspections" />
+    </div>
+  );
 }
