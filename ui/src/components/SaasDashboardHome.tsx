@@ -3,6 +3,8 @@ import { api } from "../lib/api";
 import TokenizationApiPanel from "./TokenizationApiPanel";
 import AssetDigitizationPanel from "./AssetDigitizationPanel";
 import ChainlinkOraclePanel from "./ChainlinkOraclePanel";
+import InsightsCard from "./InsightsCard";
+import ServicingCommandCenter from "./ServicingCommandCenter";
 
 type RiskBucket = {
   label: string;
@@ -382,6 +384,7 @@ export default function SaasDashboardHome({ apiBase }: Props) {
   const [riskSummary, setRiskSummary] = useState<RiskSummary | null>(null);
   const [riskError, setRiskError] = useState<string | null>(null);
   const [riskLoading, setRiskLoading] = useState(true);
+   const [servicingLoanId, setServicingLoanId] = useState("");
   const [marketplaceSummary, setMarketplaceSummary] = useState<MarketplaceSummary | null>(null);
   const [marketplaceError, setMarketplaceError] = useState<string | null>(null);
   const [marketplaceLoading, setMarketplaceLoading] = useState(true);
@@ -660,6 +663,27 @@ export default function SaasDashboardHome({ apiBase }: Props) {
           </p>
         )}
       </header>
+
+           <section className="space-y-4">
+        <ServicingCommandCenter />
+        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
+            Loan Insights Composer
+          </h2>
+          <p className="mt-1 text-sm text-slate-600">
+            Pull a single-loan insight summary directly from servicing data.
+          </p>
+          <input
+            className="mt-3 w-full rounded border border-slate-200 px-3 py-2 text-sm"
+            placeholder="Loan ID"
+            value={servicingLoanId}
+            onChange={(event) => setServicingLoanId(event.target.value)}
+          />
+          <div className="mt-4">
+            <InsightsCard loanId={servicingLoanId} title="Loan Insights" />
+          </div>
+        </div>
+      </section>
 
       <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
         <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
