@@ -15,7 +15,6 @@ export const departmentNav = {
     { label: 'Live Analytics', icon: '📈' },
     { label: 'Trades', icon: '🔄', flag: 'trading' },
     { label: 'Loan Exchange', icon: '🔁', to: '/exchange' },
-    { label: 'Asset Management', icon: '🏢' },
     { label: 'Collections', icon: '💵', sub: ['Collections'] },
     { label: 'Settings', icon: '⚙️' },
     { label: 'Docs', icon: '📄', href: 'https://github.com/kontra-ui/docs' }
