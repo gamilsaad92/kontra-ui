@@ -1,4 +1,3 @@
-import AssetManagement from "./routes/AssetManagement";
 import DashboardPage from "./components/DashboardPage";
 import Inspections from "./routes/Inspections";
 import Trades from "./routes/Trades";
@@ -59,12 +58,6 @@ export const lenderNavRoutes = [
     component: ExecutiveDashboard,
     requiresAuth: true,
     roles: ["exec"],
-  },
-  {
-    label: "Assets",
-    icon: BuildingOfficeIcon,
-    component: AssetManagement,
-    requiresAuth: true,
   },
   {
     label: "Loans",
@@ -170,6 +163,16 @@ export const lenderNavRoutes = [
     requiresAuth: true,
        path: "/dashboard/servicing",
     children: [
+           {
+        label: "Overview",
+        requiresAuth: true,
+        path: "/dashboard/servicing/overview",
+      },
+      {
+        label: "Loans",
+        requiresAuth: true,
+        path: "/dashboard/servicing/loans",
+      },
       {
         label: "Draws",
         component: DrawsDashboard,
@@ -181,6 +184,26 @@ export const lenderNavRoutes = [
         component: Inspections,
         requiresAuth: true,
         path: "/dashboard/servicing/inspections",
+      },
+            {
+        label: "Borrower Financials",
+        requiresAuth: true,
+        path: "/dashboard/servicing/borrower-financials",
+      },
+      {
+        label: "Escrow",
+        requiresAuth: true,
+        path: "/dashboard/servicing/escrow",
+      },
+      {
+        label: "Management",
+        requiresAuth: true,
+        path: "/dashboard/servicing/management",
+      },
+      {
+        label: "AI Validation",
+        requiresAuth: true,
+        path: "/dashboard/servicing/ai-validation",
       },
       {
         label: "Payments",
