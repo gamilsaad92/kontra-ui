@@ -3,15 +3,15 @@ import ServicingCommandCenter from "../../../components/ServicingCommandCenter";
 import { ServicingProvider } from "./ServicingContext";
 
 const tabs = [
-    { label: "Overview", to: "/dashboard/servicing/overview" },
-  { label: "Loans", to: "/dashboard/servicing/loans" },
-  { label: "Draws", to: "/dashboard/servicing/draws" },
-  { label: "Inspections", to: "/dashboard/servicing/inspections" },
-   { label: "Borrower Financials", to: "/dashboard/servicing/borrower-financials" },
-  { label: "Escrow", to: "/dashboard/servicing/escrow" },
-  { label: "Management", to: "/dashboard/servicing/management" },
-  { label: "AI Validation", to: "/dashboard/servicing/ai-validation" },
-  { label: "Payments", to: "/dashboard/servicing/payments" },
+  { label: "Overview", to: "/servicing/overview" },
+  { label: "Loans", to: "/servicing/loans" },
+  { label: "Draws", to: "/servicing/draws" },
+  { label: "Inspections", to: "/servicing/inspections" },
+  { label: "Borrower Financials", to: "/servicing/borrower-financials" },
+  { label: "Escrow", to: "/servicing/escrow" },
+  { label: "Management", to: "/servicing/management" },
+  { label: "AI Validation", to: "/servicing/ai-validation" },
+  { label: "Payments", to: "/servicing/payments" },
 ];
 
 export default function ServicingLayout() {
