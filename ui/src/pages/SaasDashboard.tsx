@@ -9,7 +9,7 @@ import { AuthContext } from "../lib/authContext";
 import LoginForm from "../components/LoginForm.jsx";
 import SignUpForm from "../components/SignUpForm.jsx";
 import SaasDashboardHome from "../components/SaasDashboardHome";
-import AnalyticsDashboard from "../components/AnalyticsDashboard";
+import AiInsightsPage from "../features/ai-insights/page/AiInsightsPage";
 import DocumentReview from "../components/DocumentReview";
 import LoansDashboard from "../components/LoansDashboard";
 import OnchainDashboard from "../components/OnchainDashboard";
@@ -333,7 +333,7 @@ function AuthenticatedDashboard({
         <Route path="risk" element={<RiskDashboard />} />
       </Route>
       <Route path="/organizations" element={<OrganizationSettings />} />
-      <Route path="/analytics" element={<AnalyticsDashboard />} />
+    <Route path="/analytics" element={<AiInsightsPage />} />
       <Route path="/reports" element={<ReportBuilder />} />
       <Route path="/settings" element={<Navigate to="/settings/sso" replace />} />
       <Route path="/settings/sso" element={<Placeholder title="SSO" />} />
