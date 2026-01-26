@@ -1,6 +1,4 @@
 import { useEffect, useMemo, useState } from "react";
-import RiskScoreCard from "../../modules/dashboard/RiskScoreCard";
-import DelinquencyCard from "../../modules/dashboard/DelinquencyCard";
 import NextDueCard from "../../modules/dashboard/NextDueCard";
 import type { Application, Escrow, ApplicationOrchestration } from "../../lib/sdk/types";
 import { applications as applicationsClient } from "../../lib/sdk";
@@ -442,7 +440,6 @@ export default function PortfolioOverview() {
        </section>
        
          <aside className="space-y-6">
-          <RiskScoreCard value={overview?.riskScore ?? 0} scorecard={aiScorecard ?? undefined} />
           <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
             <h3 className="mb-2 text-sm font-semibold text-slate-800">AI recommendations</h3>
             {aiRecommendations.length > 0 ? (
@@ -465,7 +462,6 @@ export default function PortfolioOverview() {
               </p>
             )}
           </div>
-          <DelinquencyCard />
           <NextDueCard />
 
            <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
