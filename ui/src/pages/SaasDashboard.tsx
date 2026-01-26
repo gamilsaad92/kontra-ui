@@ -1,4 +1,4 @@
-import { useCallback, useContext, useEffect, useMemo, useState, type ComponentType } from "react";
+import { useCallback, useContext, useMemo, useState, type ComponentType } from "react";
 import { NavLink, Navigate, Route, Routes, useLocation } from "react-router-dom";
 import type { Session, SupabaseClient } from "@supabase/supabase-js";
 import { isFeatureEnabled } from "../lib/featureFlags";
@@ -10,6 +10,14 @@ import LoginForm from "../components/LoginForm.jsx";
 import SignUpForm from "../components/SignUpForm.jsx";
 import DashboardPage from "../components/DashboardPage";
 import SaasDashboardHome from "../components/SaasDashboardHome";
+import AnalyticsDashboard from "../components/AnalyticsDashboard";
+import DocumentReview from "../components/DocumentReview";
+import LoansDashboard from "../components/LoansDashboard";
+import OnchainDashboard from "../components/OnchainDashboard";
+import OrganizationSettings from "../components/OrganizationSettings";
+import ProjectsTable from "../components/ProjectsTable";
+import ReportBuilder from "../components/ReportBuilder";
+import RiskDashboard from "../components/RiskDashboard";
 import ServicingDrawsPage from "./dashboard/servicing/ServicingDrawsPage";
 import ServicingBorrowerFinancialsPage from "./dashboard/servicing/ServicingBorrowerFinancialsPage";
 import ServicingEscrowPage from "./dashboard/servicing/ServicingEscrowPage";
@@ -21,6 +29,15 @@ import ServicingManagementPage from "./dashboard/servicing/ServicingManagementPa
 import ServicingOverviewPage from "./dashboard/servicing/ServicingOverviewPage";
 import ServicingPaymentsPage from "./dashboard/servicing/ServicingPaymentsPage";
 import ServicingAIValidationPage from "./dashboard/servicing/ServicingAIValidationPage";
+import PortfolioOverview from "./lender/PortfolioOverview";
+import PortfolioLayout from "./dashboard/portfolio/PortfolioLayout";
+import MarketsLayout from "./dashboard/markets/MarketsLayout";
+import GovernanceLayout from "./dashboard/governance/GovernanceLayout";
+import PoolingWorkspace from "../routes/PoolingWorkspace";
+import Trades from "../routes/Trades";
+import Exchange from "../routes/Exchange";
+import Compliance from "../routes/Compliance";
+import LegalConfiguration from "../routes/LegalConfiguration";
 
 const Placeholder = ({ title }: { title: string }) => (
   <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
@@ -29,12 +46,32 @@ const Placeholder = ({ title }: { title: string }) => (
   </div>
 );
 
+function DashboardOverview({ orgId, apiBase }: { orgId?: string; apiBase: string }) {
+  return (
+    <div className="space-y-6">
+      <DashboardPage orgId={orgId} />
+      <SaasDashboardHome apiBase={apiBase} />
+    </div>
+  );
+}
+
 type NavItem = (typeof lenderNavRoutes)[number];
 type AuthMode = "login" | "signup";
 
 function LegacyRedirect({ to }: { to: string }) {
   const location = useLocation();
   return <Navigate to={{ pathname: to, search: location.search }} replace />;
+}
+
+function LegacyServicingRedirect() {
+  const location = useLocation();
+  const suffix = location.pathname.replace(/^\\/dashboard\\/servicing/, "");
+  return (
+    <Navigate
+      to={{ pathname: `/servicing${suffix}`, search: location.search }}
+      replace
+    />
+  );
 }
 
 export default function SaasDashboard() {
@@ -141,7 +178,9 @@ function AuthenticatedDashboard({
   const { usage, recordUsage } = useFeatureUsage();
   const userRole = session.user?.user_metadata?.role;
   const location = useLocation();
-  const isServicingRoute = location.pathname.startsWith("/dashboard/servicing");
+  const isServicingRoute =
+    location.pathname.startsWith("/servicing") ||
+    location.pathname.startsWith("/dashboard/servicing");
   
   const navItems = useMemo(
     () =>
@@ -165,27 +204,19 @@ function AuthenticatedDashboard({
     [isFeatureEnabled, userRole]
   );
 
-  const [activeLabel, setActiveLabel] = useState<string>(() => navItems[0]?.label ?? "Dashboard");
-
-  useEffect(() => {
-    if (!navItems.some((item) => item.label === activeLabel)) {
-      const fallback = navItems[0];
-      if (fallback) {
-        setActiveLabel(fallback.label);
-      }
-    }
-  }, [activeLabel, navItems]);
-
-    useEffect(() => {
-    if (isServicingRoute && activeLabel !== "Servicing") {
-      setActiveLabel("Servicing");
-    }
-  }, [activeLabel, isServicingRoute]);
-
   const activeItem = useMemo(() => {
-    return navItems.find((item) => item.label === activeLabel);
-  }, [navItems, activeLabel]);
+    return (
+      navItems.find(
+        (item) =>
+          item.path &&
+          (location.pathname === item.path ||
+            location.pathname.startsWith(`${item.path}/`))
+      ) ?? navItems[0]
+    );
+  }, [location.pathname, navItems]);
 
+  const activeLabel = activeItem?.label ?? "Dashboard";
+  
   const frequentItems = useMemo(() => {
     return navItems
       .filter((item) => usage[item.label])
@@ -195,7 +226,6 @@ function AuthenticatedDashboard({
 
   const handleSelectNavItem = useCallback(
     (item: NavItem) => {
-      setActiveLabel(item.label);
       recordUsage(item.label);
     },
     [recordUsage]
@@ -263,47 +293,90 @@ function AuthenticatedDashboard({
     );
   };
 
-  const renderContent = () => {
-       if (activeLabel === "Dashboard") {
-      return (
-        <div className="space-y-6">
-          <DashboardPage orgId={session.user?.id} />
-          <SaasDashboardHome apiBase={apiBase} />
-        </div>
-      );
-    }
-
-    if (activeItem?.component) {
-      const Component = activeItem.component as ComponentType<any>;
-      return <Component />;
-    }
-    return <Placeholder title={activeLabel} />;
-  };
-
-  const isDashboard = activeLabel === "Dashboard";
- const content = (
+   const isDashboardRoute = location.pathname === "/dashboard";
+  const content = (
     <Routes>
-      <Route path="/dashboard/servicing" element={<ServicingLayout />}>
+            <Route path="/" element={<Navigate to="/dashboard" replace />} />
+      <Route
+        path="/dashboard"
+        element={<DashboardOverview orgId={session.user?.id} apiBase={apiBase} />}
+      />
+      <Route path="/portfolio" element={<PortfolioLayout />}>
+        <Route index element={<PortfolioOverview />} />
+        <Route path="loans" element={<LoansDashboard />} />
+        <Route path="projects" element={<ProjectsTable />} />
+      </Route>
+      <Route path="/servicing" element={<ServicingLayout />}>
         <Route index element={<ServicingHome />} />
-                <Route path="overview" element={<ServicingOverviewPage />} />
+       <Route path="overview" element={<ServicingOverviewPage />} />
         <Route path="loans" element={<ServicingLoansPage />} />
         <Route path="draws" element={<ServicingDrawsPage />} />
         <Route path="inspections" element={<ServicingInspectionsPage />} />
-                <Route path="borrower-financials" element={<ServicingBorrowerFinancialsPage />} />
+        <Route
+          path="borrower-financials"
+          element={<ServicingBorrowerFinancialsPage />}
+        />
         <Route path="escrow" element={<ServicingEscrowPage />} />
         <Route path="management" element={<ServicingManagementPage />} />
         <Route path="ai-validation" element={<ServicingAIValidationPage />} />
         <Route path="payments" element={<ServicingPaymentsPage />} />
       </Route>
-      <Route path="/dashboard/draws" element={<LegacyRedirect to="/dashboard/servicing/draws" />} />
+      <Route path="/markets" element={<MarketsLayout />}>
+        <Route index element={<Navigate to="/markets/pools" replace />} />
+        <Route path="pools" element={<PoolingWorkspace />} />
+        <Route path="tokens" element={<Placeholder title="Tokens" />} />
+        <Route path="trades" element={<Trades />} />
+        <Route path="exchange" element={<Exchange />} />
+      </Route>
+      <Route path="/onchain" element={<OnchainDashboard />} />
+      <Route path="/governance" element={<GovernanceLayout />}>
+        <Route index element={<Navigate to="/governance/compliance" replace />} />
+        <Route path="compliance" element={<Compliance />} />
+        <Route path="legal" element={<LegalConfiguration />} />
+        <Route path="document-review" element={<DocumentReview />} />
+        <Route path="risk" element={<RiskDashboard />} />
+      </Route>
+      <Route path="/organizations" element={<OrganizationSettings />} />
+      <Route path="/analytics" element={<AnalyticsDashboard />} />
+      <Route path="/reports" element={<ReportBuilder />} />
+      <Route path="/settings" element={<Navigate to="/settings/sso" replace />} />
+      <Route path="/settings/sso" element={<Placeholder title="SSO" />} />
+      <Route path="/loans" element={<LegacyRedirect to="/portfolio/loans" />} />
+      <Route path="/projects" element={<LegacyRedirect to="/portfolio/projects" />} />
+      <Route path="/pools" element={<LegacyRedirect to="/markets/pools" />} />
+      <Route path="/pools-and-tokens" element={<LegacyRedirect to="/markets/pools" />} />
+      <Route path="/tokens" element={<LegacyRedirect to="/markets/tokens" />} />
+      <Route path="/trades" element={<LegacyRedirect to="/markets/trades" />} />
+      <Route path="/exchange" element={<LegacyRedirect to="/markets/exchange" />} />
+      <Route path="/legal" element={<LegacyRedirect to="/governance/legal" />} />
+      <Route path="/compliance" element={<LegacyRedirect to="/governance/compliance" />} />
+      <Route
+        path="/document-review"
+        element={<LegacyRedirect to="/governance/document-review" />}
+      />
+      <Route path="/risk" element={<LegacyRedirect to="/governance/risk" />} />
+      <Route path="/applications" element={<LegacyRedirect to="/portfolio" />} />
+      <Route path="/applications/*" element={<LegacyRedirect to="/portfolio" />} />
+      <Route path="/application/*" element={<LegacyRedirect to="/portfolio" />} />
+      <Route path="/dashboard/servicing/*" element={<LegacyServicingRedirect />} />
+      <Route
+        path="/dashboard/draws"
+        element={<LegacyRedirect to="/servicing/draws" />}
+      />
       <Route
         path="/dashboard/inspections"
-        element={<LegacyRedirect to="/dashboard/servicing/inspections" />}
+        element={<LegacyRedirect to="/servicing/inspections" />}
       />
+      <Route
+        path="/dashboard/payments"
+        element={<LegacyRedirect to="/servicing/payments" />}
+      />
+      <Route
+        path="/dashboard/assets"
+        element={<LegacyRedirect to="/servicing/loans" />}      />
       <Route path="/dashboard/payments" element={<LegacyRedirect to="/dashboard/servicing/payments" />} />
-            <Route path="/dashboard/assets" element={<LegacyRedirect to="/dashboard/servicing/loans" />} />
-      <Route path="/assets" element={<LegacyRedirect to="/dashboard/servicing/loans" />} />
-      <Route path="*" element={renderContent()} />
+       <Route path="/assets" element={<LegacyRedirect to="/servicing/loans" />} />
+      <Route path="*" element={<Navigate to="/dashboard" replace />} />
     </Routes>
   );
 
@@ -339,7 +412,7 @@ function AuthenticatedDashboard({
           </nav>
         </aside>
         <main className="flex-1 overflow-y-auto p-6">
-          {!isDashboard && !isServicingRoute && (
+         {!isDashboardRoute && !isServicingRoute && (
             <header className="mb-6 space-y-1">
               <h1 className="text-xl font-semibold tracking-tight text-slate-900">{activeLabel}</h1>
               <p className="text-sm text-slate-500">
@@ -347,7 +420,7 @@ function AuthenticatedDashboard({
               </p>
             </header>
           )}
-         {isDashboard || isServicingRoute ? content : <div className="space-y-6">{content}</div>}
+           {isDashboardRoute || isServicingRoute ? content : <div className="space-y-6">{content}</div>}
         </main>
       </div>
     </>
