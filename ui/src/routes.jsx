@@ -55,8 +55,8 @@ export const lenderNavRoutes = [
     requiresAuth: true,
   },
   {
-    label: "Analytics",
-     path: "/analytics",
+    label: "AI Insights",
+    path: "/analytics",
     icon: ChartPieIcon,
     requiresAuth: true,
   },
