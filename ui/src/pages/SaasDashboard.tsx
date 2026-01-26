@@ -315,6 +315,7 @@ function AuthenticatedDashboard({
         <Route path="escrow" element={<ServicingEscrowPage />} />
         <Route path="management" element={<ServicingManagementPage />} />
         <Route path="ai-validation" element={<ServicingAIValidationPage />} />
+        <Route path="ai-validation/:reviewId" element={<ServicingAIValidationPage />} />
         <Route path="payments" element={<ServicingPaymentsPage />} />
       </Route>
       <Route path="/markets" element={<MarketsLayout />}>
