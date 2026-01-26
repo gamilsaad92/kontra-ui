@@ -13,7 +13,7 @@ const ListingForm: React.FC = () => {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     // submit to API
-    navigate('/exchange');
+    navigate('/markets/exchange');
   };
 
   return (
