@@ -6,12 +6,12 @@ const tabs = [
   { label: "Overview", to: "/servicing/overview" },
   { label: "Loans", to: "/servicing/loans" },
   { label: "Draws", to: "/servicing/draws" },
-  { label: "Inspections", to: "/servicing/inspections" },
+  { label: "AI Inspection Review", to: "/servicing/inspections" },
   { label: "Borrower Financials", to: "/servicing/borrower-financials" },
   { label: "Escrow", to: "/servicing/escrow" },
   { label: "Management", to: "/servicing/management" },
   { label: "AI Validation", to: "/servicing/ai-validation" },
-  { label: "Payments", to: "/servicing/payments" },
+{ label: "AI Payment Ops", to: "/servicing/payments" },
 ];
 
 export default function ServicingLayout() {
