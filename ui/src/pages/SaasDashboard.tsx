@@ -8,7 +8,6 @@ import { lenderNavRoutes } from "../routes";
 import { AuthContext } from "../lib/authContext";
 import LoginForm from "../components/LoginForm.jsx";
 import SignUpForm from "../components/SignUpForm.jsx";
-import DashboardPage from "../components/DashboardPage";
 import SaasDashboardHome from "../components/SaasDashboardHome";
 import AnalyticsDashboard from "../components/AnalyticsDashboard";
 import DocumentReview from "../components/DocumentReview";
@@ -48,10 +47,7 @@ const Placeholder = ({ title }: { title: string }) => (
 
 function DashboardOverview({ orgId, apiBase }: { orgId?: string; apiBase: string }) {
   return (
-    <div className="space-y-6">
-      <DashboardPage orgId={orgId} />
-      <SaasDashboardHome apiBase={apiBase} />
-    </div>
+   <SaasDashboardHome apiBase={apiBase} />
   );
 }
 
