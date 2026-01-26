@@ -139,25 +139,25 @@ const quickActions: QuickAction[] = [
   {
     label: "Submit Loan Sale",
     description: "Move whole loans with automated settlement tracking.",
-    href: "/trades?type=loan_sale",
+   href: "/markets/trades?type=loan_sale",
     tone: "emerald"
   },
   {
     label: "Launch Participation",
     description: "Coordinate participations with shared schedules.",
-    href: "/trades?type=participation",
+   href: "/markets/trades?type=participation",
     tone: "sky"
   },
   {
     label: "Book Repo",
     description: "Capture short-term liquidity across repo lines.",
-    href: "/trades?type=repo",
+  href: "/markets/trades?type=repo",
     tone: "amber"
   },
   {
     label: "Assign Syndication",
     description: "Update allocations across your syndication book.",
-    href: "/trades?type=syndication_assignment",
+   href: "/markets/trades?type=syndication_assignment",
     tone: "violet"
   }
 ];
