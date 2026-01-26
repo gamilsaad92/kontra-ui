@@ -17,7 +17,7 @@ export const nav = [
   "Delinquency Alerts",
   "Trades",
   "Exchange",
-  "Analytics",
+ "AI Insights",
   "Restaurant Ops",
   "Risk",
   "Servicing",
