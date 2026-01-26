@@ -65,7 +65,7 @@ function LegacyRedirect({ to }: { to: string }) {
 
 function LegacyServicingRedirect() {
   const location = useLocation();
-  const suffix = location.pathname.replace(/^\\/dashboard\\/servicing/, "");
+ const suffix = location.pathname.replace(/^\/dashboard\/servicing/, "");
   return (
     <Navigate
       to={{ pathname: `/servicing${suffix}`, search: location.search }}
