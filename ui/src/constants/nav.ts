@@ -19,7 +19,6 @@ export const nav = [
   "Exchange",
   "Analytics",
   "Restaurant Ops",
-  "Applications",
   "Risk",
   "Servicing",
   "Webhooks",
