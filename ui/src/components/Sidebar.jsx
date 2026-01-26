@@ -19,8 +19,8 @@ export default function Sidebar({
   // Simple sidebar mode used by components like SimpleDashboard
   if (links) {
     const allLinks = [...links];
-  if (isFeatureEnabled('trading') && !allLinks.some(l => l.to === '/trades')) {
-      allLinks.push({ label: 'Trades', to: '/trades' });
+    if (isFeatureEnabled('trading') && !allLinks.some(l => l.to === '/markets/trades')) {
+      allLinks.push({ label: 'Trades', to: '/markets/trades' });
     }
     return (
      <aside className="bg-gray-800 text-white w-64 min-h-screen flex flex-col" aria-label="Sidebar">
