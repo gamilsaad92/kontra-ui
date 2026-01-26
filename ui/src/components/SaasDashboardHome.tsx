@@ -406,6 +406,10 @@ export default function SaasDashboardHome({ apiBase }: Props) {
   const [subscriptionLoading, setSubscriptionLoading] = useState(false);
   
   useEffect(() => {
+    document.title = "Kontra Platform Overview";
+  }, []);
+  
+  useEffect(() => {
     let cancelled = false;
     function loadRisk() {
       setRiskLoading(true);
@@ -653,7 +657,7 @@ export default function SaasDashboardHome({ apiBase }: Props) {
   return (
     <div className="space-y-6">
       <header className="flex flex-col gap-2">
-        <h1 className="text-2xl font-semibold text-slate-900">SaaS Portfolio Overview</h1>
+       <h1 className="text-2xl font-semibold text-slate-900">Kontra Platform Overview</h1>
         <p className="text-sm text-slate-500">
           Monitor investor risk, trading workflows, and notifications from the unified SaaS control center.
         </p>
