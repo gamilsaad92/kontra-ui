@@ -8,10 +8,27 @@ const {
   getInvestorPortfolio,
   whitelistInvestor,
 } = require('../services/poolInvestmentService');
+const asyncHandler = require('../lib/asyncHandler');
 
 const router = express.Router();
 
 router.use(authenticate);
+
+function wrapRouter(routerInstance) {
+  const methods = ['get', 'post', 'put', 'patch', 'delete'];
+  methods.forEach((method) => {
+    const original = routerInstance[method].bind(routerInstance);
+    routerInstance[method] = (path, ...handlers) =>
+      original(
+        path,
+        ...handlers.map((handler) =>
+          typeof handler === 'function' ? asyncHandler(handler) : handler
+        )
+      );
+  });
+}
+
+wrapRouter(router);
 
 router.post('/pools', async (req, res) => {
   try {
@@ -23,9 +40,23 @@ router.post('/pools', async (req, res) => {
   }
 });
 
-router.get('/pools/:id', async (req, res) => {
+router.get('/pools/latest', async (req, res) => {
   try {
-    const pool = await getPoolDetails(req.params.id);
+    const pools = await listOpenPools();
+    const latest = Array.isArray(pools) && pools.length > 0 ? pools[0] : null;
+    if (!latest) {
+      return res.status(200).json({ pool: null });
+    }
+    return res.json({ pool: latest });
+  } catch (err) {
+    const message = err?.message || 'Unable to load pool';
+    return res.status(400).json({ message });
+  }
+});
+
+router.get('/pools/:poolId', async (req, res) => {
+  try {
+  const pool = await getPoolDetails(req.params.poolId);
     if (!pool) {
       return res.status(404).json({ message: 'Pool not found' });
     }
@@ -38,13 +69,13 @@ router.get('/pools/:id', async (req, res) => {
 
 router.get('/investors/deal-room', async (req, res) => {
   const pools = await listOpenPools();
-  return res.json({ pools });
+ return res.json({ pools: Array.isArray(pools) ? pools : [] });
 });
 
 router.get('/investors/:wallet/portfolio', async (req, res) => {
   try {
     const portfolio = await getInvestorPortfolio(req.params.wallet);
-    return res.json(portfolio);
+   return res.json(portfolio || {});
   } catch (err) {
     const message = err?.message || 'Unable to load investor portfolio';
     return res.status(400).json({ message });
