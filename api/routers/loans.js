@@ -2,10 +2,27 @@ const express = require('express');
 const { createClient } = require('@supabase/supabase-js');
 const { triggerWebhooks } = require('../webhooks');
 const authenticate = require('../middlewares/authenticate');
+const asyncHandler = require('../lib/asyncHandler');
 
 const router = express.Router();
 
 router.use(authenticate);
+
+function wrapRouter(routerInstance) {
+  const methods = ['get', 'post', 'put', 'patch', 'delete'];
+  methods.forEach((method) => {
+    const original = routerInstance[method].bind(routerInstance);
+    routerInstance[method] = (path, ...handlers) =>
+      original(
+        path,
+        ...handlers.map((handler) =>
+          typeof handler === 'function' ? asyncHandler(handler) : handler
+        )
+      );
+  });
+}
+
+wrapRouter(router);
 const supabase = createClient(
   process.env.SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -372,9 +389,10 @@ function normalizeGreenFeed(feed, loans) {
   };
 }
 
-function ensureOrganization(req, res) {
-  if (!req.organizationId) {
-    res.status(403).json({ message: 'Organization context required' });
+function ensureOrganization(req, res, { defaults } = {}) {
+  if (!req.orgId) {
+    const status = req.user ? 400 : 401;
+    res.status(status).json({ message: 'Organization context required', ...(defaults || {}) });
     return false;
   }
   return true;
@@ -433,7 +451,7 @@ router.post('/loans', async (req, res) => {
         interest_rate,
         term_months,
         start_date,
-        organization_id: req.organizationId,
+        organization_id: req.orgId,
       },
     ])
     .select()
@@ -444,14 +462,14 @@ router.post('/loans', async (req, res) => {
 });
 
 router.get('/loans', async (req, res) => {
-  if (!ensureOrganization(req, res)) return;
+   if (!ensureOrganization(req, res, { defaults: { loans: [] } })) return;
   const { status, borrower, from, to, minRisk, maxRisk, search } = req.query;
   try {
     let q = supabase
       .from('loans')
       .select('id, borrower_name, amount, interest_rate, term_months, start_date, status, risk_score, created_at')
       .order('created_at', { ascending: false });
-    q = q.eq('organization_id', req.organizationId);
+   q = q.eq('organization_id', req.orgId);
     if (status) q = q.eq('status', status);
     if (borrower) q = q.ilike('borrower_name', `%${borrower}%`);
     if (from) q = q.gte('start_date', from);
@@ -461,14 +479,14 @@ router.get('/loans', async (req, res) => {
     if (search) q = q.textSearch('borrower_name', search, { type: 'plain' });
     const { data, error } = await q;
     if (!error) {
-      return res.json({ loans: data });
+     return res.json({ loans: Array.isArray(data) ? data : [] });
     }
     if (error.code === '42703' && String(error.message).includes('risk_score')) {
       let fallbackQuery = supabase
         .from('loans')
         .select('id, borrower_name, amount, interest_rate, term_months, start_date, status, created_at')
         .order('created_at', { ascending: false });
-      fallbackQuery = fallbackQuery.eq('organization_id', req.organizationId);
+      fallbackQuery = fallbackQuery.eq('organization_id', req.orgId);
       if (status) fallbackQuery = fallbackQuery.eq('status', status);
       if (borrower) fallbackQuery = fallbackQuery.ilike('borrower_name', `%${borrower}%`);
       if (from) fallbackQuery = fallbackQuery.gte('start_date', from);
@@ -483,7 +501,7 @@ router.get('/loans', async (req, res) => {
     throw error;
   } catch (err) {
     console.error('Loan list error:', err);
-    res.status(500).json({ message: 'Failed to fetch loans' });
+    res.status(500).json({ message: 'Failed to fetch loans', loans: [] });
   }
 });
 
@@ -492,13 +510,13 @@ router.get('/loans/export', async (req, res) => {
   req.headers.accept = 'text/csv';
   const { status, borrower } = req.query;
   let q = supabase.from('loans').select('id, borrower_name, amount, status, created_at');
-  q = q.eq('organization_id', req.organizationId);
+  q = q.eq('organization_id', req.orgId);
   if (status) q = q.eq('status', status);
   if (borrower) q = q.ilike('borrower_name', `%${borrower}%`);
   const { data, error } = await q;
   if (error) return res.status(500).json({ message: 'Failed to export loans' });
   const header = 'id,borrower_name,amount,status,created_at';
-  const rows = data.map(l => [l.id, l.borrower_name, l.amount, l.status, l.created_at].join(','));
+ const rows = (data || []).map(l => [l.id, l.borrower_name, l.amount, l.status, l.created_at].join(','));
   res.setHeader('Content-Type', 'text/csv');
   res.send([header, ...rows].join('\n'));
 });
@@ -511,10 +529,10 @@ router.get('/my-loans', async (req, res) => {
     .from('loans')
     .select('id, amount, status, start_date')
     .eq('borrower_user_id', user_id)
-    .eq('organization_id', req.organizationId)
+    .eq('organization_id', req.orgId)
     .order('created_at', { ascending: false });
   if (error) return res.status(500).json({ message: 'Failed to fetch loans' });
-  res.json({ loans: data });
+  res.json({ loans: Array.isArray(data) ? data : [] });
 });
 
 router.get('/my-applications', async (req, res) => {
@@ -522,17 +540,17 @@ router.get('/my-applications', async (req, res) => {
   const { email, user_id } = req.query || {};
   if (!email && !user_id) return res.status(400).json({ message: 'Missing email or user_id' });
   let q = supabase.from('loan_applications').select('id, amount, credit_score, kyc_passed, submitted_at');
-  q = q.eq('organization_id', req.organizationId);
+ q = q.eq('organization_id', req.orgId);
   if (user_id) q = q.eq('user_id', user_id);
   else q = q.eq('email', email);
   const { data, error } = await q.order('submitted_at', { ascending: false });
   if (error) return res.status(500).json({ message: 'Failed to fetch applications' });
-  res.json({ applications: data });
+  res.json({ applications: Array.isArray(data) ? data : [] });
 });
 
 router.get('/loans/dscr-metrics', async (req, res) => {
   if (!ensureOrganization(req, res)) return;
-  const organizationId = req.organizationId;
+   const organizationId = req.orgId;
 
   let dscrRows = [];
   try {
@@ -579,7 +597,7 @@ router.get('/loans/dscr-metrics', async (req, res) => {
 
 router.get('/loans/performance-fees', async (req, res) => {
   if (!ensureOrganization(req, res)) return;
-  const organizationId = req.organizationId;
+   const organizationId = req.orgId;
 
   let rows = [];
   try {
@@ -603,7 +621,7 @@ router.get('/loans/performance-fees', async (req, res) => {
 
 router.get('/loans/green-kpis', async (req, res) => {
   if (!ensureOrganization(req, res)) return;
-  const organizationId = req.organizationId;
+  const organizationId = req.orgId;
 
   let rows = [];
   try {
@@ -654,7 +672,7 @@ router.post('/loans/batch-update', async (req, res) => {
     .from('loans')
     .update({ status })
     .in('id', ids)
-    .eq('organization_id', req.organizationId)
+     .eq('organization_id', req.orgId)
     .select('id');
   if (!error && (!data || !data.length)) {
     return res.status(404).json({ message: 'No loans updated' });
@@ -673,7 +691,7 @@ router.put('/loans/:loanId', async (req, res) => {
     .from('loans')
     .update(sanitizedUpdates)
     .eq('id', loanId)
-    .eq('organization_id', req.organizationId)
+    .eq('organization_id', req.orgId)
     .select()
     .maybeSingle();
   if (error) return res.status(500).json({ message: 'Failed to update loan' });
@@ -690,7 +708,7 @@ router.delete('/loans/:loanId', async (req, res) => {
     .from('loans')
     .delete()
     .eq('id', req.params.loanId)
-    .eq('organization_id', req.organizationId)
+   .eq('organization_id', req.orgId)
     .select('id')
     .maybeSingle();
   if (error) return res.status(500).json({ message: 'Failed to delete loan' });
@@ -703,7 +721,7 @@ router.post('/loans/:loanId/generate-schedule', async (req, res) => {
   const { loanId } = req.params;
    const loan = await getLoanForOrg(
     loanId,
-    req.organizationId,
+     req.orgId,
     'amount, interest_rate, term_months, start_date',
     res
   );
@@ -769,13 +787,13 @@ router.post('/loans/:loanId/generate-schedule', async (req, res) => {
     return res.status(500).json({ message: 'Failed to generate schedule' });
   }
 
-  res.json({ schedule: scheduleData });
+ res.json({ schedule: Array.isArray(scheduleData) ? scheduleData : [] });
 });
 
 router.get('/loans/:loanId/schedule', async (req, res) => {
   if (!ensureOrganization(req, res)) return;
   const { loanId } = req.params;
-  const loan = await getLoanForOrg(loanId, req.organizationId, 'id', res);
+   const loan = await getLoanForOrg(loanId, req.orgId, 'id', res);
   if (!loan) return;
   const { data, error } = await supabase
     .from('amortization_schedules')
@@ -783,7 +801,7 @@ router.get('/loans/:loanId/schedule', async (req, res) => {
     .eq('loan_id', loanId)
     .order('due_date', { ascending: true });
   if (error) return res.status(500).json({ message: 'Failed to fetch schedule' });
-  res.json({ schedule: data });
+ res.json({ schedule: Array.isArray(data) ? data : [] });
 });
 
 router.post('/loans/:loanId/payments', async (req, res) => {
@@ -791,13 +809,13 @@ router.post('/loans/:loanId/payments', async (req, res) => {
   const { loanId } = req.params;
   const { amount, date } = req.body;
   if (!amount || !date) return res.status(400).json({ message: 'Missing amount or date' });
-  const loan = await getLoanForOrg(loanId, req.organizationId, 'amount, interest_rate', res);
+   const loan = await getLoanForOrg(loanId, req.orgId, 'amount, interest_rate', res);
   if (!loan) return;
   const { data: lastPayment } = await supabase
     .from('payments')
     .select('remaining_balance')
     .eq('loan_id', loanId)
-    .eq('organization_id', req.organizationId)
+     .eq('organization_id', req.orgId)
     .order('date', { ascending: false })
     .limit(1)
     .maybeSingle();
@@ -817,7 +835,7 @@ router.post('/loans/:loanId/payments', async (req, res) => {
         applied_principal: principal,
         applied_interest: interest,
         remaining_balance: remaining,
-        organization_id: req.organizationId,
+         organization_id: req.orgId,
       },
     ])
     .select()
@@ -830,28 +848,28 @@ router.post('/loans/:loanId/payments', async (req, res) => {
 router.get('/loans/:loanId/payments', async (req, res) => {
   if (!ensureOrganization(req, res)) return;
   const { loanId } = req.params;
-  const loan = await getLoanForOrg(loanId, req.organizationId, 'id', res);
+ const loan = await getLoanForOrg(loanId, req.orgId, 'id', res);
   if (!loan) return;
   const { data, error } = await supabase
     .from('payments')
     .select('*')
     .eq('loan_id', loanId)
-    .eq('organization_id', req.organizationId)
+    .eq('organization_id', req.orgId)
     .order('date', { ascending: false });
   if (error) return res.status(500).json({ message: 'Failed to fetch payments' });
-  res.json({ payments: data });
+ res.json({ payments: Array.isArray(data) ? data : [] });
 });
 
 router.get('/loans/:loanId/balance', async (req, res) => {
   if (!ensureOrganization(req, res)) return;
   const { loanId } = req.params;
-  const loan = await getLoanForOrg(loanId, req.organizationId, 'amount', res);
+ const loan = await getLoanForOrg(loanId, req.orgId, 'amount', res);
   if (!loan) return;
   const { data: last, error } = await supabase
     .from('payments')
     .select('remaining_balance')
     .eq('loan_id', loanId)
-    .eq('organization_id', req.organizationId)
+     .eq('organization_id', req.orgId)
     .order('date', { ascending: false })
     .limit(1)
     .maybeSingle();
@@ -865,13 +883,13 @@ router.post('/loans/:loanId/payoff', async (req, res) => {
   const { payoff_date } = req.body || {};
   if (!payoff_date) return res.status(400).json({ message: 'Missing payoff_date' });
   const { loanId } = req.params;
-  const loan = await getLoanForOrg(loanId, req.organizationId, 'interest_rate', res);
+ const loan = await getLoanForOrg(loanId, req.orgId, 'interest_rate', res);
   if (!loan) return;
   const balRes = await supabase
     .from('payments')
     .select('remaining_balance')
     .eq('loan_id', loanId)
-    .eq('organization_id', req.organizationId)
+   .eq('organization_id', req.orgId)
     .order('date', { ascending: false })
     .limit(1)
     .maybeSingle();
@@ -891,14 +909,14 @@ router.post('/loans/:loanId/defer', async (req, res) => {
   if (isNaN(extra) || extra <= 0) {
     return res.status(400).json({ message: 'Missing or invalid months' });
   }
-  const loan = await getLoanForOrg(loanId, req.organizationId, 'term_months', res);
+  const loan = await getLoanForOrg(loanId, req.orgId, 'term_months', res);
   if (!loan) return;
   const newTerm = parseInt(loan.term_months, 10) + extra;
   const { data: updated, error: updateErr } = await supabase
     .from('loans')
     .update({ term_months: newTerm })
     .eq('id', loanId)
-    .eq('organization_id', req.organizationId)
+   .eq('organization_id', req.orgId)
     .select()
     .maybeSingle();
   if (updateErr) {
@@ -913,7 +931,7 @@ router.post('/loans/:loanId/defer', async (req, res) => {
       type: 'deferral',
       delta_months: extra,
       created_at: new Date().toISOString(),
-      organization_id: req.organizationId,
+      organization_id: req.orgId,
     });
   } catch (e) {
     // ignore if table missing
@@ -926,7 +944,7 @@ router.post('/loans/:loanId/payment-portal', async (req, res) => {
   const { loanId } = req.params;
   const { amount } = req.body || {};
   if (!amount) return res.status(400).json({ message: 'Missing amount' });
-  const loan = await getLoanForOrg(loanId, req.organizationId, 'id', res);
+  const loan = await getLoanForOrg(loanId, req.orgId, 'id', res);
   if (!loan) return;
   const token = Math.random().toString(36).slice(2);
   const url = `https://payments.example.com/pay/${token}`;
@@ -938,9 +956,9 @@ router.get('/escrows', async (req, res) => {
   const { data, error } = await supabase
     .from('escrows')
     .select('loan_id, tax_amount, insurance_amount, escrow_balance')
-    .eq('organization_id', req.organizationId);
+    .eq('organization_id', req.orgId);
   if (error) return res.status(500).json({ message: 'Failed to fetch escrows' });
-  res.json({ escrows: data });
+   res.json({ escrows: Array.isArray(data) ? data : [] });
 });
 
 router.get('/escrows/upcoming', async (req, res) => {
@@ -948,7 +966,7 @@ router.get('/escrows/upcoming', async (req, res) => {
   const { data, error } = await supabase
     .from('escrows')
     .select('loan_id, tax_amount, insurance_amount, escrow_balance')
-    .eq('organization_id', req.organizationId);
+    .eq('organization_id', req.orgId);
   if (error) return res.status(500).json({ message: 'Failed to fetch escrows' });
   const results = [];
   for (const row of data || []) {
@@ -956,7 +974,7 @@ router.get('/escrows/upcoming', async (req, res) => {
       .from('loans')
       .select('start_date')
       .eq('id', row.loan_id)
-      .eq('organization_id', req.organizationId)
+      .eq('organization_id', req.orgId)
       .maybeSingle();
     const next_tax_due = loan ? calcNextTaxDue(loan.start_date) : null;
     const next_insurance_due = loan ? calcNextInsuranceDue(loan.start_date) : null;
@@ -970,13 +988,13 @@ router.get('/loans/:loanId/escrow', async (req, res) => {
   if (!ensureOrganization(req, res)) return;
   const { loanId } = req.params;
   if (isNaN(parseInt(loanId, 10))) return res.status(400).json({ message: 'Invalid loan id' });
-  const loan = await getLoanForOrg(loanId, req.organizationId, 'id', res);
+   const loan = await getLoanForOrg(loanId, req.orgId, 'id', res);
   if (!loan) return;
   const { data, error } = await supabase
     .from('escrows')
     .select('loan_id, tax_amount, insurance_amount, escrow_balance')
     .eq('loan_id', loanId)
-    .eq('organization_id', req.organizationId)
+     .eq('organization_id', req.orgId)
     .maybeSingle();
   if (error) return res.status(500).json({ message: 'Failed to fetch escrow' });
   if (!data) return res.status(404).json({ message: 'Escrow not found' });
@@ -994,14 +1012,14 @@ router.post('/loans/:loanId/escrow/pay', async (req, res) => {
   const amt = parseFloat(amount);
   if (isNaN(amt) || amt <= 0) return res.status(400).json({ message: 'Invalid amount' });
 
-  const loan = await getLoanForOrg(loanId, req.organizationId, 'id', res);
+   const loan = await getLoanForOrg(loanId, req.orgId, 'id', res);
   if (!loan) return;
 
   const { data: esc } = await supabase
     .from('escrows')
     .select('escrow_balance, tax_amount, insurance_amount')
     .eq('loan_id', loanId)
-    .eq('organization_id', req.organizationId)
+   .eq('organization_id', req.orgId)
     .maybeSingle();
   if (!esc) return res.status(404).json({ message: 'Escrow not found' });
 
@@ -1017,11 +1035,12 @@ router.post('/loans/:loanId/escrow/pay', async (req, res) => {
       [column]: Math.max(0, outstanding - payment),
     })
     .eq('loan_id', loanId)
-    .eq('organization_id', req.organizationId)
+    .eq('organization_id', req.orgId)
     .select('escrow_balance')
     .single();
   if (updateErr) return res.status(500).json({ message: 'Failed to update escrow' });
-
+ if (!updated) return res.status(404).json({ message: 'Escrow not found' });
+  
   res.json({ balance: updated.escrow_balance });
 });
 
@@ -1029,13 +1048,13 @@ router.get('/loans/:loanId/escrow/projection', async (req, res) => {
   if (!ensureOrganization(req, res)) return;
   const { loanId } = req.params;
   if (isNaN(parseInt(loanId, 10))) return res.status(400).json({ message: 'Invalid loan id' });
-  const loan = await getLoanForOrg(loanId, req.organizationId, 'id', res);
+ const loan = await getLoanForOrg(loanId, req.orgId, 'id', res);
   if (!loan) return;
   const { data, error } = await supabase
     .from('escrows')
     .select('escrow_balance, tax_amount, insurance_amount')
     .eq('loan_id', loanId)
-    .eq('organization_id', req.organizationId)
+      .eq('organization_id', req.orgId)
     .maybeSingle();
   if (error) return res.status(500).json({ message: 'Failed to fetch escrow' });
   if (!data) return res.status(404).json({ message: 'Escrow not found' });
@@ -1054,27 +1073,27 @@ router.get('/loans/:loanId/details', async (req, res) => {
   if (!ensureOrganization(req, res)) return;
   const { loanId } = req.params;
   try {
-    const loan = await getLoanForOrg(loanId, req.organizationId, '*', res);
+   const loan = await getLoanForOrg(loanId, req.orgId, '*', res);
     if (!loan) return;
     const { data: schedule, error: scheduleErr } = await supabase
       .from('amortization_schedules')
       .select('*')
       .eq('loan_id', loanId)
-      .eq('organization_id', req.organizationId)
+    .eq('organization_id', req.orgId)
       .order('due_date');
     if (scheduleErr) throw scheduleErr;
     const { data: payments, error: paymentsErr } = await supabase
       .from('payments')
       .select('*')
       .eq('loan_id', loanId)
-      .eq('organization_id', req.organizationId)
+    .eq('organization_id', req.orgId)
       .order('date', { ascending: false });
     if (paymentsErr) throw paymentsErr;
     const { data: collateral, error: collateralErr } = await supabase
       .from('asset_collateral')
       .select('*')
       .eq('asset_id', loan.asset_id || 0)
-      .eq('organization_id', req.organizationId);
+         .eq('organization_id', req.orgId);
     if (collateralErr) throw collateralErr;
     res.json({ loan, schedule, payments, collateral });
   } catch (err) {
