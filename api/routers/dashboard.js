@@ -3,12 +3,26 @@ const router = express.Router();
 const { supabase, replica } = require('../db');
 const cache = require('../cache');
 const { isFeatureEnabled } = require('../featureFlags');
+const asyncHandler = require('../lib/asyncHandler');
+const { handleMissingSchemaError } = require('../lib/schemaErrors');
 
 const EMPTY_MARKETPLACE_SUMMARY = {
   totals: null,
   highlights: [],
   borrowerKpiLeaders: [],
   updatedAt: null,
+};
+
+const EMPTY_OVERVIEW = {
+  totals: null,
+  riskScore: null,
+  collections: {
+    monthToDateCollected: 0,
+    outstanding: 0,
+    delinquentCount: 0,
+    promisesToPay: 0,
+    lastPaymentAt: null,
+  },
 };
 
 const FALLBACK_OVERVIEW = {
@@ -71,26 +85,15 @@ async function fetchLoans(orgId) {
   if (orgId) {
     query = query.eq('organization_id', orgId);
   }
- if (!error) {
-    return data || [];
+   const { data, error } = await query;
+  if (error) {
+    throw error;
   }
-  if (error.code === '42703' && String(error.message).includes('risk_score')) {
-    let fallbackQuery = replica
-      .from('loans')
-      .select('id, amount, outstanding_principal, interest_rate, status, days_late');
-    if (orgId) {
-      fallbackQuery = fallbackQuery.eq('organization_id', orgId);
-    }
-    const { data: fallbackData, error: fallbackError } = await fallbackQuery;
-    if (fallbackError) throw fallbackError;
-    return (fallbackData || []).map((row) => ({ ...row, risk_score: null }));
-  }
-  throw error;
   return data || [];
 }
 
 async function fetchCollections(orgId) {
- let query = replica
+  let query = replica
     .from('collections')
     .select('amount, status, due_date, updated_at, paid_at, promise_date');
   if (orgId) {
@@ -102,7 +105,7 @@ async function fetchCollections(orgId) {
 }
 
 // GET /api/dashboard-layout?key=home
-router.get('/', async (req, res) => {
+router.get('/', asyncHandler(async (req, res) => {
   const userId = req.user.id;                        // make sure you have an auth middleware that sets req.user
   const key    = req.query.key || 'home';
 
@@ -119,10 +122,10 @@ router.get('/', async (req, res) => {
   }
 
   res.json({ layout: data?.layout_json || [] });
-});
+}));
 
 // POST /api/dashboard-layout
-router.post('/', async (req, res) => {
+router.post('/', asyncHandler(async (req, res) => {
   const userId = req.user.id;
   const { key, layout } = req.body;
 
@@ -139,14 +142,14 @@ router.post('/', async (req, res) => {
   if (error) {
     console.error('Dashboard POST error:', error);
     return res.status(500).json({ error: error.message });
-  }
+}));
 
   res.json(data);
 });
 
-router.get('/overview', async (req, res) => {
+router.get('/overview', asyncHandler(async (req, res) => {
   const orgId = resolveOrgId(req);
-   const cacheKey = `dashboard:overview:${orgId || 'all'}`;
+  const cacheKey = `dashboard:overview:${orgId || 'all'}`;
   const cached = await cache.get(cacheKey);
   if (cached) return res.json(cached);
   const overview = JSON.parse(JSON.stringify(FALLBACK_OVERVIEW));
@@ -180,6 +183,9 @@ router.get('/overview', async (req, res) => {
         : overview.riskScore;
     }
   } catch (error) {
+       if (handleMissingSchemaError(res, error, 'Dashboard overview', { overview: EMPTY_OVERVIEW })) {
+      return;
+    }
     console.error('Dashboard overview loan query failed', error);
   }
 
@@ -232,15 +238,18 @@ router.get('/overview', async (req, res) => {
       };
     }
   } catch (error) {
+        if (handleMissingSchemaError(res, error, 'Dashboard overview', { overview: EMPTY_OVERVIEW })) {
+      return;
+    }
     console.error('Dashboard overview collections query failed', error);
   }
 
- const payload = { overview };
+  const payload = { overview };
   await cache.set(cacheKey, payload, 120);
   res.json(payload);
-});
+}));
 
-router.get('/marketplace', async (req, res) => {
+router.get('/marketplace', asyncHandler(async (req, res) => {
   if (!isFeatureEnabled('trading')) {
     return res.status(404).json({ error: 'Trading module is disabled' });
   }
@@ -256,7 +265,7 @@ router.get('/marketplace', async (req, res) => {
 
   const orgId = resolveOrgId(req);
   try {
-        const baseFields = [
+    const baseFields = [
       'id',
       'title',
       'par_amount',
@@ -270,7 +279,7 @@ router.get('/marketplace', async (req, res) => {
     ];
     let query = supabase
       .from('exchange_listings')
-        .select(baseFields.join(','))
+      .select(baseFields.join(','))
       .eq('compliance_hold', false)
       .order('updated_at', { ascending: false });
 
@@ -278,23 +287,7 @@ router.get('/marketplace', async (req, res) => {
       query = query.eq('organization_id', orgId);
     }
 
-   let { data, error } = await query.limit(100);
-    if (error && error.code === '42703' && String(error.message).includes('occupancy_rate')) {
-      let fallbackQuery = supabase
-        .from('exchange_listings')
-        .select(baseFields.filter((field) => field !== 'occupancy_rate').join(','))
-        .eq('compliance_hold', false)
-        .order('updated_at', { ascending: false });
-      if (orgId) {
-        fallbackQuery = fallbackQuery.eq('organization_id', orgId);
-      }
-      const fallback = await fallbackQuery.limit(100);
-      data = fallback.data;
-      error = fallback.error;
-      if (!error && Array.isArray(data)) {
-        data = data.map((listing) => ({ ...listing, occupancy_rate: null }));
-      }
-    }
+    const { data, error } = await query.limit(100);
     if (error) {
       throw error;
     }
@@ -399,7 +392,11 @@ router.get('/marketplace', async (req, res) => {
       updatedAt: latestTimestamp ? new Date(latestTimestamp).toISOString() : null,
     });
   } catch (error) {
-        const authError = error?.status === 401 || error?.status === 403;
+    if (handleMissingSchemaError(res, error, 'Marketplace metrics', EMPTY_MARKETPLACE_SUMMARY)) {
+      return;
+    }
+
+    const authError = error?.status === 401 || error?.status === 403;
     if (authError) {
       console.warn('Marketplace unavailable: Supabase credentials rejected');
       return res
@@ -410,6 +407,6 @@ router.get('/marketplace', async (req, res) => {
     console.error('Dashboard marketplace metrics error', error);
     res.status(500).json({ error: 'Failed to load marketplace metrics' });
   }
-});
+}));
 
 module.exports = router;
