@@ -1,4 +1,5 @@
 const express = require('express');
+const multer = require('multer');
 const authenticate = require('../middlewares/authenticate');
 const requireOrg = require('../middlewares/requireOrg');
 const {
@@ -10,6 +11,7 @@ const {
 } = require('../services/servicing');
 
 const router = express.Router();
+const upload = multer({ storage: multer.memoryStorage() });
 
 router.use(authenticate);
 router.use(requireOrg);
@@ -109,6 +111,30 @@ router.post('/servicing/pools/:poolId/nav', (req, res) => {
     return res.status(201).json({ nav: navRecord, remittance_summary, distribution });
   } catch (err) {
     return res.status(400).json({ message: err.message });
+  }
+});
+
+router.post('/servicing/financials/analyze', upload.single('file'), (req, res) => {
+  console.info('[servicing] Financial analysis endpoint hit.');
+
+  try {
+    if (!req.file) {
+      return res.status(400).json({ message: 'Financial file upload required.' });
+    }
+
+    const { originalname, size } = req.file;
+
+    return res.status(201).json({
+      filename: originalname,
+      size,
+      status: 'received',
+    });
+  } catch (err) {
+    console.error('[servicing] Financial analysis failed.', err);
+    return res.status(500).json({
+      message: 'Financial analysis failed.',
+      details: err.message,
+    });
   }
 });
 
