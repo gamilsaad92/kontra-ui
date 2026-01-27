@@ -1,8 +1,23 @@
 const express = require('express');
 const authenticate = require('../middlewares/authenticate');
 const { supabase } = require('../db');
+const asyncHandler = require('../lib/asyncHandler');
 
 const router = express.Router();
+
+function wrapRouter(routerInstance) {
+  const methods = ['get', 'post', 'put', 'patch', 'delete'];
+  methods.forEach((method) => {
+    const original = routerInstance[method].bind(routerInstance);
+    routerInstance[method] = (path, ...handlers) =>
+      original(
+        path,
+        ...handlers.map((handler) =>
+          typeof handler === 'function' ? asyncHandler(handler) : handler
+        )
+      );
+  });
+}
 
 const DEFAULT_STABLECOIN = {
   token: 'USDC',
@@ -62,6 +77,7 @@ function normalizeEntry(raw) {
 }
 
 router.use(authenticate);
+wrapRouter(router);
 
 // List all marketplace entries
 router.get('/', async (req, res) => {
@@ -105,7 +121,10 @@ router.post('/', async (req, res) => {
   if (Number(quantity) <= 0 || Number(price) <= 0) {
     return res.status(400).json({ message: 'Quantity and price must be positive' });
   }
-
+  if (!req.user) {
+    return res.status(401).json({ message: 'Authentication required' });
+  }
+  
   const { data, error } = await supabase
     .from('trade_marketplace')
     .insert([
@@ -142,7 +161,10 @@ router.post('/', async (req, res) => {
   if (error) {
     return res.status(500).json({ message: 'Failed to create entry' });
   }
-   res.status(201).json({ entry: normalizeEntry(data) });
+  if (!data) {
+    return res.status(201).json({ entry: normalizeEntry({ ...req.body, investor_id: req.user.id }) });
+  }
+  res.status(201).json({ entry: normalizeEntry(data) });
 });
 
 router.post('/distribute', async (req, res) => {
