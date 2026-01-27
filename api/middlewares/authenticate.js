@@ -13,6 +13,10 @@ const devOrgId = process.env.DEV_ORG_ID?.trim() || null;
 const devRole = process.env.DEV_USER_ROLE?.trim() || 'admin';
 
 module.exports = async function authenticate(req, res, next) {
+    req.user = null;
+  req.orgId = null;
+  req.organizationId = null;
+  req.role = 'member';
   const auth = req.headers.authorization;
   if (!auth || !auth.startsWith('Bearer ')) {
     return res.status(401).json({ error: 'Missing or invalid Authorization header' });
@@ -22,9 +26,7 @@ module.exports = async function authenticate(req, res, next) {
 
   if (devAccessToken && token === devAccessToken) {
     const headerOrgId = req.headers['x-org-id'];
-    const normalizedOrgId = Array.isArray(headerOrgId)
-      ? headerOrgId[0]
-      : headerOrgId;
+      const normalizedOrgId = Array.isArray(headerOrgId) ? headerOrgId[0] : headerOrgId;
     const fallbackOrgId = devOrgId || normalizedOrgId || '1';
 
     req.user = {
@@ -33,6 +35,7 @@ module.exports = async function authenticate(req, res, next) {
         organization_id: fallbackOrgId,
       },
     };
+       req.orgId = fallbackOrgId;
     req.organizationId = fallbackOrgId;
     req.role = devRole;
     return next();
@@ -51,9 +54,11 @@ module.exports = async function authenticate(req, res, next) {
     return res.status(401).json({ error: 'Invalid or expired token' });
   }
 
-  req.user = user; // now your dashboard router can do req.user.id
-  req.organizationId =
-    user.user_metadata?.organization_id || req.headers['x-org-id'] || null;
+  req.user = user;
+  const headerOrgId = req.headers['x-org-id'];
+  const normalizedOrgId = Array.isArray(headerOrgId) ? headerOrgId[0] : headerOrgId;
+  req.orgId = user.user_metadata?.organization_id || normalizedOrgId || null;
+  req.organizationId = req.orgId;
 
   try {
     const { data: member } = await supabase
