@@ -142,10 +142,10 @@ router.post('/', asyncHandler(async (req, res) => {
   if (error) {
     console.error('Dashboard POST error:', error);
     return res.status(500).json({ error: error.message });
-}));
+ }
 
   res.json(data);
-});
+}));
 
 router.get('/overview', asyncHandler(async (req, res) => {
   const orgId = resolveOrgId(req);
