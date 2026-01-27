@@ -4,6 +4,7 @@ const PDFDocument = require('pdfkit');
 const fs = require('fs');
 const path = require('path');
 const { sendEmail } = require('../communications');
+const { handleMissingSchemaError, isMissingSchemaError } = require('../lib/schemaErrors');
 
 const router = express.Router();
 const supabase = createClient(
@@ -27,6 +28,25 @@ const FALLBACK_REPORT_SUMMARY = {
     lastRunAt: null,
   },
   collections: FALLBACK_COLLECTIONS_SUMMARY,
+  recentReports: [],
+};
+
+const EMPTY_COLLECTIONS_SUMMARY = {
+  monthToDateCollected: 0,
+  outstanding: 0,
+  delinquentCount: 0,
+  promisesToPay: 0,
+  lastPaymentAt: null,
+};
+
+const EMPTY_REPORT_SUMMARY = {
+  summary: {
+    scheduled: 0,
+    saved: 0,
+    totalRuns: 0,
+    lastRunAt: null,
+  },
+  collections: EMPTY_COLLECTIONS_SUMMARY,
   recentReports: [],
 };
 
@@ -188,6 +208,9 @@ async function fetchReportRuns(orgId) {
     }
     return { recent: data || [], totalRuns };
   } catch (error) {
+        if (isMissingSchemaError(error)) {
+      throw error;
+    }
     console.error('Report runs query failed', error);
     return { recent: [], totalRuns: 0 };
   }
@@ -199,14 +222,30 @@ router.get('/', async (req, res) => {
     const saved = loadSaved();
     const orgId = resolveOrgId(req);
 
-    const [collectionsResult, runsResult] = await Promise.all([
-      fetchCollections(orgId).catch((error) => {
-        console.error('Collections fetch failed', error);
-        return [];
-      }),
-      fetchReportRuns(orgId),
-    ]);
-
+    let collectionsResult;
+    let runsResult;
+    try {
+      [collectionsResult, runsResult] = await Promise.all([
+        fetchCollections(orgId),
+        fetchReportRuns(orgId),
+      ]);
+    } catch (error) {
+      const emptyPayload = {
+        summary: {
+          scheduled: scheduled.length,
+          saved: saved.length,
+          totalRuns: 0,
+          lastRunAt: null,
+        },
+        collections: EMPTY_COLLECTIONS_SUMMARY,
+        recentReports: [],
+      };
+      if (handleMissingSchemaError(res, error, 'Report summary', emptyPayload)) {
+        return;
+      }
+      throw error;
+    }
+      
     const collections = computeCollectionsSummary(collectionsResult);
     const summary = {
       scheduled: scheduled.length,
@@ -217,6 +256,9 @@ router.get('/', async (req, res) => {
 
     res.json({ summary, collections, recentReports: runsResult.recent });
   } catch (error) {
+        if (handleMissingSchemaError(res, error, 'Report summary', EMPTY_REPORT_SUMMARY)) {
+      return;
+    }
     console.error('Report summary error:', error);
     res.json(FALLBACK_REPORT_SUMMARY);
   }
