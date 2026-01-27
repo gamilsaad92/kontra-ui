@@ -3,6 +3,7 @@ const multer = require('multer');
 const { createClient } = require('@supabase/supabase-js');
 const crypto = require('crypto');
 const { isFeatureEnabled } = require('../featureFlags');
+const { handleMissingSchemaError } = require('../lib/schemaErrors');
 const {
   parseDocumentBuffer,
   autoFillFields,
@@ -344,12 +345,18 @@ router.get('/orchestrations', async (req, res) => {
       .limit(limit);
 
     if (error) {
+            if (handleMissingSchemaError(res, error, 'Orchestrations', { orchestrations: [] })) {
+        return;
+      }
       console.error('Failed to list orchestration runs:', error);
       return res.status(500).json({ message: 'Failed to fetch orchestration runs' });
     }
 
     return res.json({ orchestrations: data });
   } catch (err) {
+       if (handleMissingSchemaError(res, err, 'Orchestrations', { orchestrations: [] })) {
+      return;
+    }
     console.error('Unexpected error listing orchestrations:', err);
     return res.status(500).json({ message: 'Internal server error' });
   }
@@ -365,6 +372,9 @@ router.get('/orchestrations/:id', async (req, res) => {
       .single();
 
     if (error) {
+            if (handleMissingSchemaError(res, error, 'Orchestration detail', { orchestration: null })) {
+        return;
+      }
       if (error.code === 'PGRST116') {
         return res.status(404).json({ message: 'Orchestration not found' });
       }
@@ -374,6 +384,9 @@ router.get('/orchestrations/:id', async (req, res) => {
 
     return res.json({ orchestration: data });
   } catch (err) {
+        if (handleMissingSchemaError(res, err, 'Orchestration detail', { orchestration: null })) {
+      return;
+    }
     console.error('Unexpected error fetching orchestration:', err);
     return res.status(500).json({ message: 'Internal server error' });
   }
@@ -515,27 +528,13 @@ router.get('/', async (req, res) => {
       'id, name, amount, credit_score, kyc_passed, decision, status, submitted_at, document_url';
     let { data, error } = await supabase
       .from('loan_applications')
-          .select(selectFields)
+       .select(selectFields)
       .order('submitted_at', { ascending: false });
 
-       if (error && error.code === '42703' && String(error.message).includes('decision')) {
-      const fallbackFields =
-        'id, name, amount, credit_score, kyc_passed, status, submitted_at, document_url';
-      const fallback = await supabase
-        .from('loan_applications')
-        .select(fallbackFields)
-        .order('submitted_at', { ascending: false });
-      data = fallback.data;
-      error = fallback.error;
-      if (!error && Array.isArray(data)) {
-        data = data.map((row) => ({
-          ...row,
-          decision: row.status || null,
-        }));
-      }
-    }
-
     if (error) {
+           if (handleMissingSchemaError(res, error, 'Loan applications', { applications: [], from_cache: false })) {
+        return;
+      }
       console.error('List applications error:', error);
       return res.json({
         applications: FALLBACK_LOAN_APPLICATIONS,
@@ -545,6 +544,9 @@ router.get('/', async (req, res) => {
 
     return res.json({ applications: data, from_cache: false });
   } catch (err) {
+       if (handleMissingSchemaError(res, err, 'Loan applications', { applications: [], from_cache: false })) {
+      return;
+    }
     console.error('Unexpected error listing applications:', err);
     return res.json({
       applications: FALLBACK_LOAN_APPLICATIONS,
