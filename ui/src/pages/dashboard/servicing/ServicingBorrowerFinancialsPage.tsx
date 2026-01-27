@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { getSessionToken } from "../../../lib/http";
 import { useServicingContext } from "./ServicingContext";
 
 const varianceDrivers = [
@@ -16,31 +17,68 @@ const riskFlags = [
 export default function ServicingBorrowerFinancialsPage() {
   const { addAlert, addTask, logAudit, requestApproval } = useServicingContext();
   const [fileName, setFileName] = useState<string>("");
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [analysisReady, setAnalysisReady] = useState(false);
 
-  const handleUpload = () => {
-    setAnalysisReady(true);
-    addAlert({
-      id: "alert-financial-upload",
-      title: "Borrower financial upload received",
-      detail: "May 2024 package uploaded; AI summary ready for review.",
-      severity: "medium",
-      category: "Borrower Financials",
-    });
-    addTask({
-      id: "task-financial-summary",
-      title: "Review AI financial summary",
-      detail: "Validate variance drivers and confirm borrower explanations.",
-      status: "open",
-      category: "Borrower Financials",
-    });
-    logAudit({
-      id: `audit-upload-${Date.now()}`,
-      action: "Borrower financials uploaded",
-      detail: `Uploaded package: ${fileName || "Financials-May-2024.xlsx"}`,
-      timestamp: new Date().toISOString(),
-      status: "logged",
-    });
+ const handleUpload = async () => {
+    if (!selectedFile) {
+      console.error("Financial analysis failed: no file selected.");
+      return;
+    }
+
+    const formData = new FormData();
+    formData.append("file", selectedFile);
+
+    const token = await getSessionToken();
+    const headers: HeadersInit = {};
+    if (token) {
+      headers.Authorization = `Bearer ${token}`;
+    }
+
+    try {
+      const response = await fetch("/api/servicing/financials/analyze", {
+        method: "POST",
+        headers,
+        body: formData,
+      });
+
+      if (!response.ok) {
+        const errorBody = await response.text();
+        console.error("Financial analysis failed.", {
+          status: response.status,
+          body: errorBody,
+        });
+        return;
+      }
+
+      const result = await response.json();
+      console.info("Financial analysis succeeded.", result);
+
+      setAnalysisReady(true);
+      addAlert({
+        id: "alert-financial-upload",
+        title: "Borrower financial upload received",
+        detail: "May 2024 package uploaded; AI summary ready for review.",
+        severity: "medium",
+        category: "Borrower Financials",
+      });
+      addTask({
+        id: "task-financial-summary",
+        title: "Review AI financial summary",
+        detail: "Validate variance drivers and confirm borrower explanations.",
+        status: "open",
+        category: "Borrower Financials",
+      });
+      logAudit({
+        id: `audit-upload-${Date.now()}`,
+        action: "Borrower financials uploaded",
+        detail: `Uploaded package: ${fileName || "Financials-May-2024.xlsx"}`,
+        timestamp: new Date().toISOString(),
+        status: "logged",
+      });
+    } catch (error) {
+      console.error("Financial analysis failed.", error);
+    }
   };
 
   const handleRequestClarification = () => {
@@ -61,7 +99,11 @@ export default function ServicingBorrowerFinancialsPage() {
           <input
             type="file"
             className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-            onChange={(event) => setFileName(event.target.files?.[0]?.name || "")}
+            onChange={(event) => {
+              const file = event.target.files?.[0] ?? null;
+              setSelectedFile(file);
+              setFileName(file?.name || "");
+            }}
           />
           <button
             type="button"
