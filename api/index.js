@@ -1927,6 +1927,16 @@ if (Sentry.Handlers?.errorHandler) {
   app.use(Sentry.errorHandler());
 }
 
+app.use((err, req, res, next) => {
+  if (res.headersSent) {
+    return next(err);
+  }
+  const status = err?.status || err?.statusCode || 500;
+  const message = err?.message || 'Internal server error';
+  const details = err?.details || (status >= 500 ? undefined : err);
+  res.status(status).json({ message, ...(details ? { details } : {}) });
+});
+
 // ── Start Server ──────────────────────────────────────────────────────────
 const PORT = 10000;
 if (require.main === module) {
