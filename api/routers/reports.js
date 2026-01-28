@@ -1,10 +1,18 @@
 const express = require('express');
 const { createClient } = require('@supabase/supabase-js');
 const PDFDocument = require('pdfkit');
+const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 const { sendEmail } = require('../communications');
 const { handleMissingSchemaError, isMissingSchemaError } = require('../lib/schemaErrors');
+const { logAuditEntry } = require('../auditLogger');
+const {
+  ROLE_TEMPLATES,
+  SCHEMA_CATALOG,
+  proposeReportPlan,
+  validateReportSpec,
+} = require('../ai/agents/reportAgent');
 
 const router = express.Router();
 const supabase = createClient(
@@ -119,6 +127,19 @@ function resolveOrgId(req) {
 function toNumber(value) {
   const parsed = typeof value === 'string' ? parseFloat(value) : Number(value);
   return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function hashSpec(spec) {
+  return crypto.createHash('sha256').update(JSON.stringify(spec)).digest('hex');
+}
+
+function normalizeFilters(filters) {
+  if (!filters || typeof filters !== 'object') return {};
+  return Object.entries(filters).reduce((acc, [key, value]) => {
+    if (value === undefined || value === null || value === '') return acc;
+    acc[key] = value;
+    return acc;
+  }, {});
 }
 
 async function fetchCollections(orgId) {
@@ -292,6 +313,134 @@ router.post('/run', async (req, res) => {
     console.error('Report run error:', err);
     res.status(500).json({ message: 'Failed to run report' });
   }
+});
+
+router.get('/ai/catalog', (req, res) => {
+  res.json({ catalog: SCHEMA_CATALOG, templates: Object.keys(ROLE_TEMPLATES) });
+});
+
+router.post('/ai/propose', (req, res) => {
+  const { description, role, outlook_days, include_executive_summary } = req.body || {};
+  const plan = proposeReportPlan({
+    description,
+    role,
+    outlook_days,
+    include_executive_summary,
+  });
+  const validation = validateReportSpec(plan.spec);
+  if (!validation.valid) {
+    return res.status(400).json({ message: 'Invalid report spec', errors: validation.errors });
+  }
+  const specHash = hashSpec(plan.spec);
+  logAuditEntry({
+    event: 'ai_report_plan',
+    tenant_id: resolveOrgId(req),
+    spec_hash: specHash,
+    explanation: plan.explanation,
+    confidence: plan.confidence,
+    warnings: plan.warnings,
+    role: plan.roleUsed,
+  });
+  res.json({
+    spec: plan.spec,
+    explanation: plan.explanation,
+    confidence: plan.confidence,
+    warnings: plan.warnings,
+    executiveSummary: plan.executiveSummary,
+    automationHooks: plan.automationHooks,
+    roleUsed: plan.roleUsed,
+    specHash,
+  });
+});
+
+router.post('/ai/run', async (req, res) => {
+  const {
+    spec,
+    approved,
+    explanation,
+    confidence,
+    selectedAutomationHooks = [],
+    include_executive_summary,
+  } = req.body || {};
+  if (!approved) {
+    return res.status(400).json({ message: 'Approval is required to run this report.' });
+  }
+  const validation = validateReportSpec(spec);
+  if (!validation.valid) {
+    return res.status(400).json({ message: 'Invalid report spec', errors: validation.errors });
+  }
+  const start = Date.now();
+  try {
+    const fields = Array.isArray(spec.fields) ? spec.fields.join(',') : '*';
+    const filters = normalizeFilters(spec.filters);
+    let q = supabase.from(spec.table).select(fields).limit(1000);
+    for (const [key, value] of Object.entries(filters)) {
+      if (Array.isArray(value)) q = q.in(key, value);
+      else q = q.eq(key, value);
+    }
+    const { data, error } = await q;
+    if (error) throw error;
+    const durationMs = Date.now() - start;
+    const specHash = hashSpec(spec);
+    logAuditEntry({
+      event: 'ai_report_execution',
+      tenant_id: resolveOrgId(req),
+      spec_hash: specHash,
+      rows_returned: data?.length || 0,
+      duration_ms: durationMs,
+      explanation,
+      confidence,
+      approved: true,
+      selected_automation_hooks: selectedAutomationHooks,
+      include_executive_summary: Boolean(include_executive_summary),
+    });
+    res.json({ rows: data, durationMs, specHash });
+  } catch (error) {
+    logAuditEntry({
+      event: 'ai_report_execution_failed',
+      tenant_id: resolveOrgId(req),
+      spec_hash: spec ? hashSpec(spec) : null,
+      explanation,
+      confidence,
+      error: error.message || String(error),
+    });
+    console.error('AI report run error:', error);
+    res.status(500).json({ message: 'Failed to run report' });
+  }
+});
+
+router.post('/ai/save', (req, res) => {
+  const { name, spec, approved, explanation, confidence } = req.body || {};
+  if (!approved) {
+    return res.status(400).json({ message: 'Approval is required to save this report.' });
+  }
+  if (!name || !spec?.table) {
+    return res.status(400).json({ message: 'Missing name or table' });
+  }
+  const validation = validateReportSpec(spec);
+  if (!validation.valid) {
+    return res.status(400).json({ message: 'Invalid report spec', errors: validation.errors });
+  }
+  const items = loadSaved();
+  const id = Date.now();
+  items.push({
+    id,
+    name,
+    table: spec.table,
+    fields: Array.isArray(spec.fields) ? spec.fields.join(',') : '*',
+    filters: spec.filters || {},
+    groupBy: spec.groupBy || '',
+  });
+  saveSaved(items);
+  logAuditEntry({
+    event: 'ai_report_saved',
+    tenant_id: resolveOrgId(req),
+    spec_hash: hashSpec(spec),
+    explanation,
+    confidence,
+    approved: true,
+  });
+  res.status(201).json({ id });
 });
 
 router.get('/fields', async (req, res) => {
