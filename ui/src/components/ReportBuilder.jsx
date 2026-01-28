@@ -15,7 +15,16 @@ export default function ReportBuilder() {
    const [schedule, setSchedule] = useState('daily');
   const [saved, setSaved] = useState([]);
   const [message, setMessage] = useState('');
-
+  const [aiDescription, setAiDescription] = useState('');
+  const [aiRole, setAiRole] = useState('Servicing');
+  const [aiOutlook, setAiOutlook] = useState('');
+  const [aiIncludeSummary, setAiIncludeSummary] = useState(true);
+  const [aiProposal, setAiProposal] = useState(null);
+  const [aiApproval, setAiApproval] = useState(false);
+  const [aiHooks, setAiHooks] = useState({});
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiError, setAiError] = useState('');
+  
     useEffect(() => {
     if (!table) return;
     fetch(`${API_BASE}/api/reports/fields?table=${table}`)
@@ -47,6 +56,103 @@ export default function ReportBuilder() {
       setRows(data.rows || []);
     } catch (err) {
       setMessage('Failed to run report');
+    }
+  };
+
+    const requestAiProposal = async () => {
+    setAiLoading(true);
+    setAiError('');
+    try {
+      const res = await fetch(`${API_BASE}/api/reports/ai/propose`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          description: aiDescription,
+          role: aiRole,
+          outlook_days: aiOutlook ? Number(aiOutlook) : null,
+          include_executive_summary: aiIncludeSummary
+        })
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setAiError(data.message || 'Failed to generate AI proposal');
+        return;
+      }
+      setAiProposal(data);
+      setAiApproval(false);
+      const hookDefaults = (data.automationHooks || []).reduce((acc, hook) => {
+        acc[hook.action_type] = false;
+        return acc;
+      }, {});
+      setAiHooks(hookDefaults);
+      if (data.spec) {
+        setTable(data.spec.table || '');
+        setFields(Array.isArray(data.spec.fields) ? data.spec.fields : []);
+        setFilters(JSON.stringify(data.spec.filters || {}, null, 2));
+        setGroupBy(data.spec.groupBy || '');
+      }
+    } catch (err) {
+      setAiError('Failed to generate AI proposal');
+    } finally {
+      setAiLoading(false);
+    }
+  };
+
+  const runAiReport = async () => {
+    if (!aiProposal?.spec) return;
+    try {
+      const selectedHooks = Object.entries(aiHooks)
+        .filter(([, enabled]) => enabled)
+        .map(([action_type]) => action_type);
+      const res = await fetch(`${API_BASE}/api/reports/ai/run`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          spec: aiProposal.spec,
+          approved: aiApproval,
+          explanation: aiProposal.explanation,
+          confidence: aiProposal.confidence,
+          include_executive_summary: aiIncludeSummary,
+          selectedAutomationHooks: selectedHooks
+        })
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setMessage(data.message || 'Failed to run AI report');
+        return;
+      }
+      setRows(data.rows || []);
+      setMessage(`AI report ran in ${data.durationMs}ms`);
+    } catch (err) {
+      setMessage('Failed to run AI report');
+    }
+  };
+
+  const saveAiReport = async () => {
+    if (!aiProposal?.spec) return;
+    if (!name) {
+      setMessage('Add a report name before saving.');
+      return;
+    }
+    try {
+      const res = await fetch(`${API_BASE}/api/reports/ai/save`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name,
+          spec: aiProposal.spec,
+          approved: aiApproval,
+          explanation: aiProposal.explanation,
+          confidence: aiProposal.confidence
+        })
+      });
+      if (res.ok) setMessage('AI report saved');
+      else {
+        const data = await res.json();
+        setMessage(data.message || 'Failed to save AI report');
+      }
+    } catch {
+      setMessage('Failed to save AI report');
     }
   };
 
@@ -103,6 +209,112 @@ export default function ReportBuilder() {
   return (
     <div className="space-y-4">
     <h3 className="text-xl font-bold">Custom Report</h3>
+            <div className="rounded border border-slate-200 bg-slate-50 p-4 space-y-3">
+        <div className="flex items-center justify-between">
+          <h4 className="text-lg font-semibold text-slate-800">AI Report Agent</h4>
+          <span className="text-xs uppercase tracking-wide text-slate-500">Proposal → Review → Run</span>
+        </div>
+        <div className="space-y-2">
+          <textarea
+            className="border p-2 rounded w-full"
+            rows="2"
+            placeholder="Describe the report you want"
+            value={aiDescription}
+            onChange={e => setAiDescription(e.target.value)}
+          />
+          <div className="flex flex-wrap gap-2">
+            <select className="border p-2 rounded" value={aiRole} onChange={e => setAiRole(e.target.value)}>
+              <option value="Servicing">Servicing</option>
+              <option value="Risk">Risk</option>
+              <option value="Capital Markets">Capital Markets</option>
+              <option value="Compliance">Compliance</option>
+            </select>
+            <select className="border p-2 rounded" value={aiOutlook} onChange={e => setAiOutlook(e.target.value)}>
+              <option value="">No outlook</option>
+              <option value="30">30-day outlook</option>
+              <option value="60">60-day outlook</option>
+              <option value="90">90-day outlook</option>
+            </select>
+            <label className="flex items-center space-x-2 text-sm text-slate-700">
+              <input
+                type="checkbox"
+                checked={aiIncludeSummary}
+                onChange={e => setAiIncludeSummary(e.target.checked)}
+              />
+              <span>Generate executive summary</span>
+            </label>
+          </div>
+          <button
+            className="bg-indigo-600 text-white px-3 py-1 rounded"
+            onClick={requestAiProposal}
+            disabled={aiLoading}
+          >
+            {aiLoading ? 'Generating...' : 'Generate AI Proposal'}
+          </button>
+          {aiError && <p className="text-sm text-red-600">{aiError}</p>}
+        </div>
+        {aiProposal && (
+          <div className="space-y-3">
+            <div className="rounded border border-indigo-200 bg-white p-3 space-y-2">
+              <div className="flex flex-wrap items-center gap-3 text-sm text-slate-700">
+                <span className="font-semibold text-slate-800">AI Proposal</span>
+                <span>Confidence: {(aiProposal.confidence * 100).toFixed(0)}%</span>
+                <span>Spec hash: {aiProposal.specHash}</span>
+              </div>
+              <p className="text-sm text-slate-700">{aiProposal.explanation}</p>
+              {aiProposal.executiveSummary && (
+                <p className="text-sm text-slate-700">{aiProposal.executiveSummary}</p>
+              )}
+              {aiProposal.warnings && aiProposal.warnings.length > 0 && (
+                <ul className="list-disc list-inside text-sm text-amber-700">
+                  {aiProposal.warnings.map((warning, idx) => (
+                    <li key={`${warning}-${idx}`}>{warning}</li>
+                  ))}
+                </ul>
+              )}
+              <div>
+                <p className="text-sm font-semibold text-slate-700">Suggested automation hooks</p>
+                <div className="flex flex-wrap gap-3 text-sm text-slate-600">
+                  {(aiProposal.automationHooks || []).map((hook) => (
+                    <label key={hook.action_type} className="flex items-center space-x-2">
+                      <input
+                        type="checkbox"
+                        checked={Boolean(aiHooks[hook.action_type])}
+                        onChange={e => setAiHooks({ ...aiHooks, [hook.action_type]: e.target.checked })}
+                      />
+                      <span>{hook.label}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+              <label className="flex items-center space-x-2 text-sm text-slate-700">
+                <input
+                  type="checkbox"
+                  checked={aiApproval}
+                  onChange={e => setAiApproval(e.target.checked)}
+                />
+                <span>I approve this AI proposal for execution or saving.</span>
+              </label>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  className="bg-emerald-600 text-white px-3 py-1 rounded disabled:opacity-50"
+                  onClick={runAiReport}
+                  disabled={!aiApproval}
+                >
+                  Run approved AI report
+                </button>
+                <button
+                  className="bg-slate-700 text-white px-3 py-1 rounded disabled:opacity-50"
+                  onClick={saveAiReport}
+                  disabled={!aiApproval}
+                >
+                  Save approved AI report
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
       <div className="space-y-2">
         <input className="border p-2 rounded w-full" placeholder="report name" value={name} onChange={e => setName(e.target.value)} />
         <input className="border p-2 rounded w-full" placeholder="table" value={table} onChange={e => setTable(e.target.value)} />
