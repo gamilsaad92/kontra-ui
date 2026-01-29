@@ -138,13 +138,13 @@ export default function ReportBuilder() {
     return Object.keys(errors).length === 0;
   };
 
-    const runReport = async () => {
+   const runReport = async () => {
     setIsRunning(true);
     setMessage("");
     setError("");
 
     try {
-        // Build spec safely from current UI state
+       // Build spec safely from current UI state
       const spec = {
         spec_version: 1,
         table: table?.trim() || "",
@@ -170,15 +170,15 @@ export default function ReportBuilder() {
         headers: { "Content-Type": "application/json" },
         credentials: "include",
         body: JSON.stringify({ spec }),
-        }),
-  
+       });
+
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data?.error || "Report run failed.");
 
       setRows(Array.isArray(data.rows) ? data.rows : []);
       setMessage(`Report ran in ${data.durationMs ?? "?"}ms`);
     } catch (err) {
-       setRows([]);
+     setRows([]);
       setError(err?.message || "Unexpected error running report.");
     } finally {
       setIsRunning(false);
