@@ -3,6 +3,8 @@ export { Card, CardContent, CardHeader, CardFooter, CardTitle } from "./card";
 export { default as Table } from "./Table.jsx";
 export { default as FormField } from "./FormField.jsx";
 export { Input } from "./input";
+export { Textarea } from "./textarea";
+export { Select } from "./select";
 export { default as DetailDrawer } from "./DetailDrawer.jsx";
 export { Badge } from "./badge.jsx";
 export { Tabs, TabsList, TabsTrigger, TabsContent } from "./tabs.jsx";
