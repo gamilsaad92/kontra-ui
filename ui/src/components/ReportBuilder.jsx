@@ -6,6 +6,7 @@ import { kontraTheme, cx } from "../theme/kontraTheme";
 import { useAiReportAgent } from "../hooks/useAiReportAgent";
 
 const AI_STEPS = ["Proposal", "Review", "Run"];
+const API_BASE_URL = API_BASE;
 
 function Stepper({ currentStep }) {
   return (
@@ -46,18 +47,20 @@ function buildCsv(rows) {
 }
 
 export default function ReportBuilder() {
-   const [name, setName] = useState("");
+ const [name, setName] = useState("");
   const [table, setTable] = useState("");
   const [available, setAvailable] = useState([]);
-  const [fields, setFields] = useState([]);
-  const [filters, setFilters] = useState("{}");
+ const [selectedFields, setSelectedFields] = useState([]);
+  const [jsonSpecText, setJsonSpecText] = useState("{}");
   const [groupBy, setGroupBy] = useState("");
   const [viz, setViz] = useState("table");
   const [rows, setRows] = useState([]);
-  const [email, setEmail] = useState('');
-   const [schedule, setSchedule] = useState('daily');
+  const [isRunning, setIsRunning] = useState(false);
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
+  const [email, setEmail] = useState("");
+  const [schedule, setSchedule] = useState("daily");
   const [saved, setSaved] = useState([]);
- const [message, setMessage] = useState("");
   const [jsonError, setJsonError] = useState("");
   const [validationErrors, setValidationErrors] = useState({});
   const aiAgent = useAiReportAgent(API_BASE);
@@ -109,7 +112,7 @@ export default function ReportBuilder() {
 
   const parseFilters = () => {
     try {
-      const parsed = JSON.parse(filters || "{}");
+      const parsed = JSON.parse(jsonSpecText || "{}");
       setJsonError("");
       return parsed;
     } catch (err) {
@@ -128,49 +131,71 @@ export default function ReportBuilder() {
   const validateBuilderInputs = ({ requireName = false, requireEmail = false } = {}) => {
     const errors = {};
     if (!table) errors.table = "Select a table to run a report.";
-    if (!fields.length) errors.fields = "Pick at least one field.";
+  if (!selectedFields.length) errors.fields = "Pick at least one field.";
     if (requireName && !name) errors.name = "Add a report name before saving.";
     if (requireEmail && !email) errors.email = "Enter an email for scheduling.";
     setValidationErrors(errors);
     return Object.keys(errors).length === 0;
   };
 
-  const run = async () => {
-    if (!validateBuilderInputs()) return;
-    const parsedFilters = parseFilters();
-    if (!parsedFilters) return;
+    const runReport = async () => {
+    setIsRunning(true);
+    setMessage("");
+    setError("");
+
     try {
-        const res = await fetch(`${API_BASE}/api/reports/run`, {
+        // Build spec safely from current UI state
+      const spec = {
+        spec_version: 1,
+        table: table?.trim() || "",
+        select: Array.isArray(selectedFields) ? selectedFields : [],
+        groupBy: groupBy?.trim() ? [groupBy.trim()] : [],
+        ...(() => {
+          // JSON editor content is optional; merge only if valid
+          if (!jsonSpecText?.trim()) return {};
+          try {
+            const parsed = JSON.parse(jsonSpecText);
+            return parsed && typeof parsed === "object" ? parsed : {};
+          } catch {
+            throw new Error("Invalid JSON in Report Spec editor.");
+          }
+        })(),
+      };
+
+      if (!spec.table) throw new Error("Table is required.");
+      if (!spec.select?.length) throw new Error("Select at least 1 field.");
+
+      const res = await fetch(`${API_BASE_URL}/api/reports/run`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          table,
-          fields: fields.join(","),
-          filters: parsedFilters,
-          format: "json",
-          groupBy,
+        credentials: "include",
+        body: JSON.stringify({ spec }),
         }),
-      });
-      const data = await res.json();
-       setRows(data.rows || []);
-      setMessage("Report run complete.");
+  
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data?.error || "Report run failed.");
+
+      setRows(Array.isArray(data.rows) ? data.rows : []);
+      setMessage(`Report ran in ${data.durationMs ?? "?"}ms`);
     } catch (err) {
-     setMessage("Failed to run report");
+       setRows([]);
+      setError(err?.message || "Unexpected error running report.");
+    } finally {
+      setIsRunning(false);
     }
   };
 
   const runAiReport = async () => {
     if (!proposal?.spec) return;
     try {
-        const selectedHooks = Object.entries(aiAgent.state.hooks)
+       const selectedHooks = Object.entries(aiAgent.state.hooks)
         .filter(([, enabled]) => enabled)
         .map(([action_type]) => action_type);
       const res = await fetch(`${API_BASE}/api/reports/ai/run`, {
-       method: "POST",
+          method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          spec: aiProposal.spec,
-            spec: proposal.spec,
+             spec: proposal.spec,
           approved: aiAgent.state.approval,
           explanation: proposal.explanation,
           confidence: proposal.confidence,
@@ -178,14 +203,15 @@ export default function ReportBuilder() {
           selectedAutomationHooks: selectedHooks,
         }),
       });
-      const data = await res.json();
-       setMessage(data.message || "Failed to run AI report");
+       const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setMessage(data.message || "Failed to run AI report");
         return;
       }
       setRows(data.rows || []);
-      setMessage(`AI report ran in ${data.durationMs}ms`);
+        setMessage(`AI report ran in ${data.durationMs ?? "?"}ms`);
     } catch (err) {
-     setMessage("Failed to run AI report");
+       setMessage("Failed to run AI report");
     }
   };
 
@@ -225,7 +251,7 @@ export default function ReportBuilder() {
         body: JSON.stringify({
           name,
           table,
-          fields: fields.join(","),
+           fields: selectedFields.join(","),
           filters: parsedFilters,
           groupBy,
         }),
@@ -249,7 +275,7 @@ export default function ReportBuilder() {
           email,
         schedule,
           table,
-          fields: fields.join(","),
+            fields: selectedFields.join(","),
           filters: parsedFilters,
         }),
       });
@@ -267,9 +293,9 @@ export default function ReportBuilder() {
   const handleApplyProposal = () => {
     if (!proposalSpec) return;
     setTable(proposalSpec.table || "");
-    setFields(proposedFields);
+     setSelectedFields(proposedFields);
     setGroupBy(proposalSpec.groupBy || "");
-    setFilters(JSON.stringify(proposalSpec.filters || {}, null, 2));
+    setJsonSpecText(JSON.stringify(proposalSpec.filters || {}, null, 2));
     aiAgent.markApplied();
   };
 
@@ -303,13 +329,13 @@ export default function ReportBuilder() {
   const onDrop = (e) => {
     e.preventDefault();
     const field = e.dataTransfer.getData("text/plain");
-    if (field && !fields.includes(field)) {
-      setFields([...fields, field]);
+   if (field && !selectedFields.includes(field)) {
+      setSelectedFields([...selectedFields, field]);
     }
   };
 
   const removeField = (fieldToRemove) => {
-    setFields(fields.filter((field) => field !== fieldToRemove));
+    setSelectedFields(selectedFields.filter((field) => field !== fieldToRemove));
   };
 
   const resultsColumns = rows.length ? Object.keys(rows[0]) : [];
@@ -476,7 +502,7 @@ export default function ReportBuilder() {
                     </p>
                     <p>
                       <span className="font-semibold text-slate-900 dark:text-slate-100">Fields:</span>{" "}
-                      {(fields.length ? fields.join(", ") : "—") || "—"} →{" "}
+                     {(selectedFields.length ? selectedFields.join(", ") : "—") || "—"} →{" "}
                       {proposedFields.length ? proposedFields.join(", ") : "—"}
                     </p>
                     <p>
@@ -596,8 +622,8 @@ export default function ReportBuilder() {
                 rows={4}
                 className={jsonError ? "border-red-500" : ""}
                 placeholder="{ \"filters\": { \"status\": \"open\" }, \"order\": [\"-created_at\"] }"
-                value={filters}
-                onChange={(e) => setFilters(e.target.value)}
+                       value={jsonSpecText}
+                onChange={(e) => setJsonSpecText(e.target.value)}
               />
               {jsonError && <p className="text-xs text-red-500">{jsonError}</p>}
             </div>
@@ -650,10 +676,10 @@ export default function ReportBuilder() {
                 onDragOver={(e) => e.preventDefault()}
                 onDrop={onDrop}
               >
-                {fields.length === 0 && (
+            {selectedFields.length === 0 && (
                   <p className={cx("text-sm", kontraTheme.textMuted)}>Drag fields here to build your report.</p>
                 )}
-                {fields.map((field) => (
+                 {selectedFields.map((field) => (
                   <div
                     key={field}
                     className="flex items-center justify-between rounded-lg bg-red-50 px-2 py-1 text-sm text-red-700 dark:bg-red-500/10 dark:text-red-200"
@@ -720,8 +746,8 @@ export default function ReportBuilder() {
         <CardFooter className="sticky bottom-0 z-10 flex flex-wrap items-center justify-between gap-3 bg-white/90 dark:bg-slate-900/90">
           <p className={cx("text-sm", kontraTheme.textMuted)}>Ready to run or save?</p>
           <div className="flex flex-wrap gap-2">
-            <Button variant="primary" onClick={run}>
-              Run
+                   <Button variant="primary" onClick={runReport} disabled={isRunning}>
+              {isRunning ? "Running..." : "Run"}
             </Button>
             <Button variant="secondary" onClick={save}>
               Save
@@ -798,7 +824,7 @@ export default function ReportBuilder() {
                   <XAxis dataKey={groupBy} />
                   <YAxis />
                   <Tooltip />
-                  <Bar dataKey={fields[0]} fill="#dc2626" />
+                <Bar dataKey={selectedFields[0]} fill="#dc2626" />
                 </BarChart>
               </ResponsiveContainer>
             </div>
@@ -819,6 +845,12 @@ export default function ReportBuilder() {
             </ul>
           </CardContent>
         </Card>
+      )}
+
+              {error && (
+        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 shadow-sm dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-200">
+          {error}
+        </div>
       )}
 
       {message && (
