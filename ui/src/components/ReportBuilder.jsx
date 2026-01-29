@@ -617,12 +617,12 @@ export default function ReportBuilder() {
                   Validate JSON
                 </Button>
               </div>
-                           <Textarea
+               <Textarea
                 id="report-spec"
                 rows={4}
                 className={jsonError ? "border-red-500" : ""}
-                placeholder="{ \"filters\": { \"status\": \"open\" }, \"order\": [\"-created_at\"] }"
-                       value={jsonSpecText}
+                  placeholder='{"filters": {"status": "open"}, "order": ["-created_at"]}'
+                value={jsonSpecText}
                 onChange={(e) => setJsonSpecText(e.target.value)}
               />
               {jsonError && <p className="text-xs text-red-500">{jsonError}</p>}
