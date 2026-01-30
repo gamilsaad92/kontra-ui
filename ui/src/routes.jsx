@@ -35,6 +35,13 @@ export const lenderNavRoutes = [
     path: "/markets",
     icon: BuildingLibraryIcon,
     requiresAuth: true,
+    children: [
+      { label: "Pools", path: "/markets/pools" },
+      { label: "Tokens", path: "/markets/tokens" },
+      { label: "Trades", path: "/markets/trades" },
+      { label: "Exchange", path: "/markets/exchange" },
+      { label: "Distribution", path: "/markets/distribution" },
+    ],
  },
   {
     label: "On-Chain",
