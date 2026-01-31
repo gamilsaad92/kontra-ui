@@ -31,6 +31,12 @@ import ServicingAIValidationPage from "./dashboard/servicing/ServicingAIValidati
 import PortfolioOverview from "./lender/PortfolioOverview";
 import PortfolioLayout from "./dashboard/portfolio/PortfolioLayout";
 import MarketsLayout from "./dashboard/markets/MarketsLayout";
+import DistributionLayout from "./dashboard/markets/distribution/DistributionLayout";
+import TokenizeLoan from "./dashboard/markets/distribution/TokenizeLoan";
+import CreateOffering from "./dashboard/markets/distribution/CreateOffering";
+import DistributionMarketplace from "./dashboard/markets/distribution/DistributionMarketplace";
+import RfqsTrades from "./dashboard/markets/distribution/RfqsTrades";
+import Approvals from "./dashboard/markets/distribution/Approvals";
 import GovernanceLayout from "./dashboard/governance/GovernanceLayout";
 import PoolingWorkspace from "../routes/PoolingWorkspace";
 import Trades from "../routes/Trades";
@@ -324,6 +330,14 @@ function AuthenticatedDashboard({
         <Route path="tokens" element={<Placeholder title="Tokens" />} />
         <Route path="trades" element={<Trades />} />
         <Route path="exchange" element={<Exchange />} />
+          <Route path="distribution" element={<DistributionLayout />}>
+          <Route index element={<Navigate to="/markets/distribution/tokenize" replace />} />
+          <Route path="tokenize" element={<TokenizeLoan />} />
+          <Route path="offering" element={<CreateOffering />} />
+          <Route path="marketplace" element={<DistributionMarketplace />} />
+          <Route path="rfqs" element={<RfqsTrades />} />
+          <Route path="approvals" element={<Approvals />} />
+        </Route>
       </Route>
       <Route path="/onchain" element={<OnchainDashboard />} />
       <Route path="/governance" element={<GovernanceLayout />}>
