@@ -1,4 +1,5 @@
 import { api } from "../lib/api";
+import type { ApiError } from "../lib/apiClient";
 
 export type LoanInventoryItem = {
   id: string;
@@ -161,13 +162,13 @@ const FALLBACK_POOL: PoolAdminOverview = {
 
 function extractErrorMessage(error: unknown): string {
   if (error && typeof error === "object") {
-    const maybeAny = error as any;
-    const axiosMessage = maybeAny?.response?.data?.message;
-    if (typeof axiosMessage === "string" && axiosMessage.trim()) {
-      return axiosMessage;
+    const maybeError = error as ApiError;
+    if (typeof maybeError?.message === "string" && maybeError.message.trim()) {
+      return maybeError.message;
     }
-    if (typeof maybeAny?.message === "string" && maybeAny.message.trim()) {
-      return maybeAny.message;
+     const details = maybeError?.details as { message?: string } | undefined;
+    if (details?.message && details.message.trim()) {
+      return details.message;
     }
   }
   return "Unable to complete request";
