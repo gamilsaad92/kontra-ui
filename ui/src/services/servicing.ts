@@ -1,6 +1,6 @@
-import axios from "axios";
 import { api, withOrg } from "../lib/api";
 import type { Application, DrawRequest, Escrow } from "../lib/sdk/types";
+import { api, withOrg } from "../lib/api";
 
 const FALLBACK_DRAWS: DrawRequest[] = [
   {
@@ -197,11 +197,10 @@ function applyFilters(draws: DrawRequest[], filters: DrawRequestFilters): DrawRe
 }
 
 function withFallbackDraws(error: unknown): DrawRequest[] {
-  if (axios.isAxiosError(error)) {
-    const status = error.response?.status;
-    if (status && RECOVERABLE_STATUSES.has(status)) {
-      return FALLBACK_DRAWS;
-    }
+ const maybeError = error as ApiError;
+  const status = maybeError?.status;
+  if (status && RECOVERABLE_STATUSES.has(status)) {
+    return FALLBACK_DRAWS;
   }
   return [];
 }
