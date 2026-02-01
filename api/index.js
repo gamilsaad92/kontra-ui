@@ -53,12 +53,13 @@ if (process.env.FRONTEND_URL) {
 const previewWildcardOrigin = normalizeOrigin('https://kontra-*.vercel.app');
 
 const fallbackOrigins = [
-  'http://localhost:3000',
-  'http://127.0.0.1:3000',
+   'http://localhost:5173',
+  'http://127.0.0.1:5173',
   'https://kontra.vercel.app',
   'https://kontra-ui.vercel.app',
-   'https://kontraui.com',
+ 'https://kontraui.com',
   'https://www.kontraui.com',
+  'https://*.vercel.app',
   'https://kontra-*.vercel.app',
 ].map(normalizeOrigin);
 
@@ -95,7 +96,7 @@ const corsOptions = {
     console.warn(`[CORS] Origin "${normalizedOrigin}" rejected`);
     return callback(null, false);
   },
-  credentials: true,
+ credentials: false,
   allowedHeaders: [
     'Authorization',
     'Content-Type',
@@ -110,6 +111,11 @@ const corsOptions = {
 };
 
 const app = express();
+
+app.use((req, _res, next) => {
+  console.log("[REQ]", req.method, req.path);
+  next();
+});
 
 Sentry.init({
   dsn: process.env.SENTRY_DSN,
@@ -537,6 +543,7 @@ async function get_hospitality_stats() {
 // ── Middleware ─────────────────────────────────────────────────────────────
 app.options('*', cors(corsOptions));
 app.use(cors(corsOptions));
+app.options("*", cors(corsOptions));
 app.use(express.json());
 app.use(auditLogger);
 app.use(rateLimit);
@@ -596,7 +603,23 @@ app.use('/api', restaurantsRouter);
 app.get('/', (req, res) => res.send('Sentry test running!'));
 app.get('/api/test', (req, res) => res.send('✅ API is alive'));
 // Health check for deployment platforms
-app.get('/health', (req, res) => res.json({ status: 'ok' }));
+app.get('/api/health', (req, res) => {
+  const version =
+    process.env.RENDER_GIT_COMMIT ||
+    process.env.GIT_COMMIT ||
+    process.env.COMMIT_SHA ||
+    "unknown";
+  res.json({ ok: true, time: new Date().toISOString(), version });
+});
+app.get('/health', (req, res) => res.json({ ok: true }));
+app.get('/api/whoami', authenticate, (req, res) => {
+  res.json({
+    ok: true,
+    user: req.user ?? null,
+    tenant_id: req.tenant_id ?? req.orgId ?? null,
+    roles: req.role ?? "member",
+  });
+});
 // Serve OpenAPI spec and Swagger UI
 app.get('/openapi.json', (req, res) => {
   res.sendFile(path.join(__dirname, 'openapi.json'));
