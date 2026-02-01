@@ -38,6 +38,7 @@ import DistributionMarketplace from "./dashboard/markets/distribution/Distributi
 import RfqsTrades from "./dashboard/markets/distribution/RfqsTrades";
 import Approvals from "./dashboard/markets/distribution/Approvals";
 import GovernanceLayout from "./dashboard/governance/GovernanceLayout";
+import ApiDiagnostics from "./settings/ApiDiagnostics";
 import PoolingWorkspace from "../routes/PoolingWorkspace";
 import Trades from "../routes/Trades";
 import Exchange from "../routes/Exchange";
@@ -352,6 +353,7 @@ function AuthenticatedDashboard({
       <Route path="/reports" element={<ReportBuilder />} />
       <Route path="/settings" element={<Navigate to="/settings/sso" replace />} />
       <Route path="/settings/sso" element={<Placeholder title="SSO" />} />
+      <Route path="/settings/api-diagnostics" element={<ApiDiagnostics />} />
       <Route path="/loans" element={<LegacyRedirect to="/portfolio/loans" />} />
       <Route path="/projects" element={<LegacyRedirect to="/portfolio/projects" />} />
       <Route path="/pools" element={<LegacyRedirect to="/markets/pools" />} />
