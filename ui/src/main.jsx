@@ -2,9 +2,9 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
 import App from "./App";
-import { installAuthFetchInterceptor } from "./lib/http";
+import { installApiFetchInterceptor } from "./lib/apiClient";
 
-installAuthFetchInterceptor();
+installApiFetchInterceptor();
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
      <BrowserRouter>
