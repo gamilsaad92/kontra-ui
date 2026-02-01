@@ -1,14 +1,16 @@
 // ui/src/RootLayout.jsx
 import React, { useContext, useEffect, useMemo, useState } from 'react'
 import { AuthContext } from './lib/authContext'
-import { resolveApiBase } from './lib/api'
-import { getSessionToken } from './lib/http'
+import { apiRequest } from './lib/apiClient'
+import { apiRoutes } from './lib/apiRoutes'
 
 export default function RootLayout({ children }) {
   const { session } = useContext(AuthContext)
   const [branding, setBranding] = useState(null)
   const [orgName, setOrgName] = useState('Kontra')
   const [role, setRole] = useState('guest')
+    const [apiError, setApiError] = useState(null)
+  const [apiToast, setApiToast] = useState(null)
   
   // Apply global html/body classes safely for a Vite SPA
   useEffect(() => {
@@ -34,16 +36,10 @@ export default function RootLayout({ children }) {
     let isMounted = true
     const loadBranding = async () => {
       try {
-        const apiBase = resolveApiBase()
         const headers = {}
         const orgId = session?.user?.user_metadata?.organization_id
         if (orgId) headers['X-Org-Id'] = orgId
-        const token = await getSessionToken()
-        if (token) headers['Authorization'] = `Bearer ${token}`
-
-        const res = await fetch(`${apiBase}/sso/config`, { headers })
-        if (!res.ok) throw new Error('Failed to load organization theme')
-        const data = await res.json()
+       const data = await apiRequest('GET', apiRoutes.ssoConfig, undefined, { headers })
         if (!isMounted) return
         setBranding(data.organization?.branding || null)
         setOrgName(data.organization?.name || 'Kontra')
@@ -63,8 +59,67 @@ export default function RootLayout({ children }) {
     }
   }, [session?.user?.user_metadata?.organization_id])
 
+    useEffect(() => {
+    if (!session?.user) {
+      return
+    }
+
+    let active = true
+    const checkWhoami = async () => {
+      try {
+        const data = await apiRequest('GET', apiRoutes.whoami, undefined, {}, { requireAuth: true })
+        if (active) {
+          console.info('[API] whoami', data)
+        }
+      } catch (error) {
+        if (active) {
+          console.warn('[API] whoami failed', error)
+        }
+      }
+    }
+
+    checkWhoami()
+    return () => {
+      active = false
+    }
+  }, [session?.user])
+
+  useEffect(() => {
+    let timer
+    const handler = (event) => {
+      setApiError(event.detail)
+      setApiToast(event.detail)
+      if (timer) {
+        clearTimeout(timer)
+      }
+      timer = setTimeout(() => setApiToast(null), 4000)
+    }
+
+    window.addEventListener('api:error', handler)
+    return () => {
+      window.removeEventListener('api:error', handler)
+      if (timer) {
+        clearTimeout(timer)
+      }
+    }
+  }, [])
+
   return (
     <div className="min-h-screen flex flex-col" style={{ '--brand-accent': accentColor }}>
+          {import.meta.env.DEV && apiError && (
+        <div className="bg-rose-600/90 text-white text-xs px-4 py-2 flex items-center justify-between">
+          <span>
+            API Error: {apiError.message || 'Request failed'} {apiError.status ? `(${apiError.status})` : ''}
+          </span>
+          <button
+            type="button"
+            onClick={() => setApiError(null)}
+            className="text-white/80 hover:text-white"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
       <header className="flex justify-between items-center p-4 gap-4 h-16 border-b border-slate-800 bg-slate-900/60 backdrop-blur">
         <div className="flex items-center gap-3">
           {branding?.logo_url && (
@@ -89,6 +144,11 @@ export default function RootLayout({ children }) {
       </header>
 
       <main className="flex-1">{children}</main>
+            {apiToast && (
+        <div className="fixed bottom-4 right-4 z-50 rounded-lg bg-slate-900 px-4 py-3 text-sm text-white shadow-lg">
+          {apiToast.message || 'Request failed'} {apiToast.status ? `(${apiToast.status})` : ''}
+        </div>
+      )}
     </div>
   )
 }
