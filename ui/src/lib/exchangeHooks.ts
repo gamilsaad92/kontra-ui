@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { apiFetch } from './http';
+import { apiRequest } from './apiClient';
 
 interface FetchResult<T> {
   data: T | null;
@@ -20,7 +20,7 @@ function useFetch<T>(path: string | null): FetchResult<T> {
 
     const doFetch = async () => {
       try {
-        const result = await apiFetch<T>(path, { credentials: 'include' });
+       const result = await apiRequest<T>("GET", path);
         if (cancelled) {
           return;
         }
