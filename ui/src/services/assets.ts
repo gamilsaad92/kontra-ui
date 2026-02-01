@@ -1,5 +1,5 @@
-import type { ApiError } from "../lib/http";
-import { apiFetch } from "../lib/http";
+import type { ApiError } from "../lib/apiClient";
+import { apiRequest } from "../lib/apiClient";
 
 export interface AssetSummary {
   id: string | number;
@@ -112,7 +112,7 @@ function normalizeAssets(response: AssetsResponse, fallback: AssetSummary[]): As
 
 export async function fetchTroubledAssets(): Promise<AssetSummary[]> {
   try {
-    const data = await apiFetch<AssetsResponse>("/assets/troubled");
+   const data = await apiRequest<AssetsResponse>("GET", "/assets/troubled");
     return normalizeAssets(data, FALLBACK_TROUBLED_ASSETS);
   } catch (error) {
     if (isRecoverable(error)) {
@@ -124,7 +124,7 @@ export async function fetchTroubledAssets(): Promise<AssetSummary[]> {
 
 export async function fetchWatchlistAssets(): Promise<AssetSummary[]> {
   try {
-    const data = await apiFetch<AssetsResponse>("/assets/watchlist");
+    const data = await apiRequest<AssetsResponse>("GET", "/assets/watchlist");
     return normalizeAssets(data, FALLBACK_WATCHLIST_ASSETS);
   } catch (error) {
     if (isRecoverable(error)) {
@@ -136,7 +136,7 @@ export async function fetchWatchlistAssets(): Promise<AssetSummary[]> {
 
 export async function fetchRevivedAssets(): Promise<AssetSummary[]> {
   try {
-    const data = await apiFetch<AssetsResponse>("/assets/revived");
+   const data = await apiRequest<AssetsResponse>("GET", "/assets/revived");
     const assets = normalizeAssets(data, FALLBACK_REVIVED_ASSETS);
     return assets.map((asset) => ({
       ...asset,
@@ -152,9 +152,7 @@ export async function fetchRevivedAssets(): Promise<AssetSummary[]> {
 
 export async function reviveAsset(assetId: string | number): Promise<AssetSummary> {
   try {
-    const data = await apiFetch<{ asset?: AssetSummary }>(`/assets/${assetId}/revive`, {
-      method: "POST",
-    });
+ const data = await apiRequest<{ asset?: AssetSummary }>("POST", `/assets/${assetId}/revive`);
     return data?.asset ?? { id: assetId, status: "revived" };
   } catch (error) {
     if (isRecoverable(error)) {
@@ -169,10 +167,11 @@ export async function publishAssetListing(
   publish: boolean
 ): Promise<AssetSummary> {
   try {
-    const data = await apiFetch<{ asset?: AssetSummary }>(`/assets/${assetId}/publish`, {
-      method: "POST",
-      body: JSON.stringify({ publish }),
-    });
+     const data = await apiRequest<{ asset?: AssetSummary }>(
+      "POST",
+      `/assets/${assetId}/publish`,
+      { publish }
+    );
     return data?.asset ?? { id: assetId, published: publish };
   } catch (error) {
     if (isRecoverable(error)) {
