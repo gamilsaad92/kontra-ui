@@ -168,7 +168,6 @@ export default function ReportBuilder() {
       const res = await fetch(`${API_BASE_URL}/api/reports/run`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        credentials: "include",
         body: JSON.stringify({ spec }),
        });
 
