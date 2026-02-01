@@ -15,7 +15,7 @@ import OlbCouponPage from "./OlbCouponPage";
 
 /**
  * KontraDashboard.tsx — Dark branded layout, wired to backend endpoints (graceful fallbacks)
- * - Uses fetch to your API routes where available (VITE_API_URL respected)
+ * - Uses fetch to your API routes where available (VITE_API_BASE_URL respected)
  * - Inline visualizations to avoid extra deps
  * - If an endpoint is missing, panels show placeholders (no crashes)
  */
@@ -125,8 +125,8 @@ export default function KontraDashboard() {
     ],
   };
 
-  // API base (uses your VITE_API_URL if present)
-  const API_BASE: string = (import.meta as any).env?.VITE_API_URL || "";
+   // API base (uses your VITE_API_BASE_URL if present)
+  const API_BASE: string = (import.meta as any).env?.VITE_API_BASE_URL || "";
   const isServicing = location.pathname.startsWith("/dashboard/servicing");
   const isCoupon = location.pathname === "/dashboard/olb-coupon";
   const currentLabel = isServicing ? "Servicing" : isCoupon ? "OLB Coupon" : "Overview";
