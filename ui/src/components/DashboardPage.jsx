@@ -47,9 +47,7 @@ export default function DashboardPage({ orgId }) {
     let cancelled = false;
     (async () => {
       try {
-        const res = await fetch(`${API}/api/dashboard-layout?key=home${orgId ? `&orgId=${encodeURIComponent(orgId)}`:''}`, {
-          credentials: 'include',
-        });
+         const res = await fetch(`${API}/api/dashboard-layout?key=home${orgId ? `&orgId=${encodeURIComponent(orgId)}`:''}`);
         if (!res.ok) throw new Error(`GET layout ${res.status}`);
         const data = await res.json();
         if (!cancelled && Array.isArray(data?.layout)) {
@@ -70,7 +68,6 @@ export default function DashboardPage({ orgId }) {
       await fetch(`${API}/api/dashboard-layout`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
         body: JSON.stringify({ key: 'home', orgId, layout: newLayout }),
       });
     } catch (_e) { /* swallow */ }
