@@ -184,7 +184,7 @@ function useCreditGraphSnapshot(apiBase: string) {
       setLoading(true);
       setError(null);
       try {
-        const res = await fetch(`${apiBase}/credit-graph/snapshot`, { credentials: "include" });
+       const res = await fetch(`${apiBase}/api/credit-graph/snapshot`);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const payload = (await res.json()) as CreditGraphSnapshot;
         if (cancelled) return;
