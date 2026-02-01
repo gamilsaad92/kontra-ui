@@ -20,8 +20,7 @@ function normalizeApiBase(value?: string): string | undefined {
 
 function resolveBaseUrl(): string {
   const env = (import.meta.env ?? {}) as EnvRecord;
-  const configured =
-    normalizeApiBase(env.VITE_API_BASE) ?? normalizeApiBase(env.VITE_API_URL);
+  const configured = normalizeApiBase(env.VITE_API_BASE_URL);
 
   if (configured) {
     return configured;
@@ -312,7 +311,7 @@ async function apiFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
   const finalInit: RequestInit = {
     ...sanitizedInit,
     headers,
-    credentials: sanitizedInit.credentials ?? "same-origin"
+   credentials: sanitizedInit.credentials ?? "omit"
   };
 
   const method = resolveRequestMethodFromInit(finalInit);
@@ -408,7 +407,7 @@ export function installAuthFetchInterceptor(): void {
       const finalInit: RequestInit = {
       ...sanitizedInit,
       headers,
-    credentials: sanitizedInit.credentials ?? "same-origin"
+   credentials: sanitizedInit.credentials ?? "omit"
     };
 
     const method = resolveRequestMethod(input, finalInit);
