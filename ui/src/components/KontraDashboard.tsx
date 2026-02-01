@@ -50,7 +50,7 @@ import {
  * - API wiring hooks with graceful mock fallbacks
  *
  * Usage:
- *   export default function App() { return <KontraDashboard apiBase={import.meta.env.VITE_API_BASE} /> }
+*   export default function App() { return <KontraDashboard apiBase={import.meta.env.VITE_API_BASE_URL} /> }
  *
  * Expected backend endpoints (override via props if different):
  *   GET /api/portfolio/overview
@@ -98,7 +98,7 @@ function useApi<T>(url?: string, fallback?: T) {
     (async () => {
       try {
         if (!url) throw new Error("No URL");
-        const res = await fetch(url, { credentials: "include" });
+       const res = await fetch(url);
         if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
         const j = (await res.json()) as T;
         if (!cancelled) setData(j);
