@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { getSessionToken } from "../../../lib/http";
+import { getAuthToken } from "../../../lib/authToken";
 import { useServicingContext } from "./ServicingContext";
 
 const varianceDrivers = [
@@ -29,7 +29,7 @@ export default function ServicingBorrowerFinancialsPage() {
     const formData = new FormData();
     formData.append("file", selectedFile);
 
-    const token = await getSessionToken();
+     const token = await getAuthToken();
     const headers: HeadersInit = {};
     if (token) {
       headers.Authorization = `Bearer ${token}`;
