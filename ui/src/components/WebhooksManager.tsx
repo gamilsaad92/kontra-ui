@@ -18,7 +18,7 @@ export default function WebhooksManager() {
 
   const load = useCallback(async () => {
     try {
-      const res = await fetch(`${apiBase}/webhooks`);
+        const res = await fetch(`${apiBase}/api/webhooks`);
       const data = await res.json();
       setWebhooks(data.webhooks || []);
     } catch (err) {
@@ -27,7 +27,7 @@ export default function WebhooksManager() {
   }, [apiBase]);
 
   const processQueuedWebhook = useCallback(async ({ event: queuedEvent, url: queuedUrl }: Webhook) => {
-    await fetch(`${apiBase}/webhooks`, {
+    await fetch(`${apiBase}/api/webhooks`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ event: queuedEvent, url: queuedUrl }),
@@ -40,7 +40,7 @@ export default function WebhooksManager() {
     load();
     const stopFlush = registerFlushOnOnline("webhookQueue", processQueuedWebhook);
 
-    fetch(`${apiBase}/webhooks/topics`)
+     fetch(`${apiBase}/api/webhooks/topics`)
       .then((r) => r.json())
       .then((d) => setTopics(d.topics || []))
       .catch((e) => console.error(e));
@@ -66,7 +66,7 @@ export default function WebhooksManager() {
   };
 
   const remove = async (e: string, u: string) => {
-    await fetch(`${apiBase}/webhooks`, {
+       await fetch(`${apiBase}/api/webhooks`, {
       method: "DELETE",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ event: e, url: u }),
