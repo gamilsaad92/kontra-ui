@@ -1,5 +1,5 @@
 import axios from "axios";
-import { api, withOrg } from "../lib/api";
+import type { ApiError } from "../lib/apiClient";
 
 type PortfolioSnapshot = {
   delinqPct: number;
@@ -244,11 +244,9 @@ const FALLBACK_REPORT_SUMMARY: ReportSummarySnapshot = {
 };
 
 function shouldFallback(error: unknown): boolean {
-  if (!axios.isAxiosError(error)) {
-    return false;
-  }
-
-  const status = error.response?.status;
+ const maybeError = error as ApiError;
+  const status = maybeError?.status;
+  
   return typeof status === "number" && RECOVERABLE_STATUSES.has(status);
 }
 
