@@ -16,10 +16,11 @@ module.exports = async function authenticate(req, res, next) {
     req.user = null;
   req.orgId = null;
   req.organizationId = null;
+   req.tenant_id = null;
   req.role = 'member';
   const auth = req.headers.authorization;
   if (!auth || !auth.startsWith('Bearer ')) {
-    return res.status(401).json({ error: 'Missing or invalid Authorization header' });
+   return res.status(401).json({ error: 'Unauthorized: Missing or invalid Authorization header' });
   }
 
   const token = auth.split(' ')[1];
@@ -37,6 +38,7 @@ module.exports = async function authenticate(req, res, next) {
     };
        req.orgId = fallbackOrgId;
     req.organizationId = fallbackOrgId;
+        req.tenant_id = fallbackOrgId;
     req.role = devRole;
     return next();
   }
@@ -51,7 +53,7 @@ module.exports = async function authenticate(req, res, next) {
   } = await supabase.auth.getUser(token);
 
   if (error || !user) {
-    return res.status(401).json({ error: 'Invalid or expired token' });
+   return res.status(401).json({ error: 'Unauthorized: Invalid or expired token' });
   }
 
   req.user = user;
@@ -59,7 +61,7 @@ module.exports = async function authenticate(req, res, next) {
   const normalizedOrgId = Array.isArray(headerOrgId) ? headerOrgId[0] : headerOrgId;
   req.orgId = user.user_metadata?.organization_id || normalizedOrgId || null;
   req.organizationId = req.orgId;
-
+ req.tenant_id = req.orgId;
   try {
     const { data: member } = await supabase
       .from('organization_members')
