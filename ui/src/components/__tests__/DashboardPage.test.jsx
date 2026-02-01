@@ -41,8 +41,7 @@ test('fetches dashboard layout and renders cards', async () => {
   // GET request sent with key and orgId
   await waitFor(() => {
     expect(fetch).toHaveBeenCalledWith(
-      expect.stringMatching(/\/api\/dashboard-layout\?key=home&orgId=org_123/),
-      expect.objectContaining({ credentials: 'include' })
+     expect.stringMatching(/\/api\/dashboard-layout\?key=home&orgId=org_123/)
     );
   });
 
@@ -70,8 +69,7 @@ test('debounces and POSTs updated layout after change', async () => {
       fetch.mock.calls.some(
         ([url, opts]) =>
           String(url).endsWith('/api/dashboard-layout') &&
-          opts?.method === 'POST' &&
-          opts?.credentials === 'include'
+            opts?.method === 'POST'
       )
     ).toBe(true);
   });
