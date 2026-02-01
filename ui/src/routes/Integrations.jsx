@@ -71,7 +71,7 @@ export default function Integrations() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`${apiBase}/integrations`);
+        const res = await fetch(`${apiBase}/api/integrations`);
       if (!res.ok) throw new Error("Failed to load integrations");
       const data = await res.json();
       setConnections(data.integrations || {});
@@ -89,7 +89,7 @@ export default function Integrations() {
 
   useEffect(() => {
     const stop = registerFlushOnOnline("integration-connect", async ({ name }) => {
-      await fetch(`${apiBase}/integrations/${name}/connect`, { method: "POST" });
+     await fetch(`${apiBase}/api/integrations/${name}/connect`, { method: "POST" });
       await load();
       setQueuedMessage("Queued integration connects have been applied.");
     });
@@ -102,7 +102,7 @@ export default function Integrations() {
       setQueuedMessage("Saved offline and will connect once you are back online.");
       return;
     }
-    await fetch(`${apiBase}/integrations/${name}/connect`, { method: "POST" });
+   await fetch(`${apiBase}/api/integrations/${name}/connect`, { method: "POST" });
     await load();
   }, [apiBase, load]);
 
