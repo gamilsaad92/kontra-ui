@@ -83,8 +83,9 @@ export default function SaasDashboard() {
 
   if (isLoading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-slate-100 text-slate-600">
-        Loading authentication…
+      <div className="flex min-h-screen flex-col items-center justify-center gap-3 bg-slate-100 text-slate-600">
+        <span className="h-10 w-10 animate-spin rounded-full border-4 border-slate-200 border-t-slate-500" />
+        <p className="text-sm font-medium tracking-wide">Loading authentication…</p>
       </div>
     );
   }
