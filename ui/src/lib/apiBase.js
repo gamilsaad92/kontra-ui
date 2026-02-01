@@ -1,4 +1,4 @@
-const configured = import.meta.env.VITE_API_URL?.trim();
+const configured = import.meta.env.VITE_API_BASE_URL?.trim();
 
 function resolveFallbackBase() {
   const origin =
@@ -12,7 +12,8 @@ function resolveFallbackBase() {
 }
 
 const fallback = resolveFallbackBase();
-const normalized = (configured && configured.length ? configured : fallback).replace(/\/+$/, "");
+const normalized = (configured && configured.length ? configured : fallback)
+  .replace(/\/+$/, "")
+  .replace(/\/api$/, "");
 
 export const API_BASE = normalized;
-
