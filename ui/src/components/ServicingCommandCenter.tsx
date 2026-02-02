@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { API_BASE } from "../lib/apiBase";
+import { api } from "../lib/apiClient";
 
 type AttentionItem = {
   loan_id: number | string;
@@ -31,16 +31,11 @@ export default function ServicingCommandCenter({ orgId }: Props) {
     const load = async () => {
       setLoading(true);
       try {
-        const res = await fetch(`${API_BASE}/api/servicing/insights?range=30d`, {
-          headers: orgId ? { "X-Org-Id": String(orgId) } : undefined
+         const { data: payload } = await api.get<ServicingInsights>("/servicing/insights", {
+          params: { range: "30d" },
         });
-        const payload = await res.json();
         if (!active) return;
-        if (res.ok) {
-          setData(payload);
-        } else {
-          setData(null);
-        }
+         setData(payload);
       } catch {
         if (active) setData(null);
       } finally {
@@ -52,7 +47,7 @@ export default function ServicingCommandCenter({ orgId }: Props) {
     return () => {
       active = false;
     };
-  }, []);
+  }, [orgId]);
 
   return (
     <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
