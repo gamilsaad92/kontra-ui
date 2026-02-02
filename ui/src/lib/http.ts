@@ -19,8 +19,8 @@ function normalizeApiBase(value?: string): string | undefined {
 }
 
 function resolveBaseUrl(): string {
-  const env = (import.meta.env ?? {}) as EnvRecord;
-  const configured = normalizeApiBase(env.VITE_API_BASE_URL);
+  const env = (import.meta.env ?? {}) as EnvRecord & { VITE_API_URL?: string };
+  const configured = normalizeApiBase(env.VITE_API_BASE_URL ?? env.VITE_API_URL);
 
   if (configured) {
     return configured;
