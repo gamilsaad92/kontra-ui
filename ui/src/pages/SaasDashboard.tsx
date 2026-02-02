@@ -1,6 +1,6 @@
 import { useCallback, useContext, useMemo, useState, type ComponentType } from "react";
-import { NavLink, Navigate, Route, Routes, useLocation } from "react-router-dom";
-import type { Session, SupabaseClient } from "@supabase/supabase-js";
+import { NavLink, Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
+import type { Session } from "@supabase/supabase-js";
 import { isFeatureEnabled } from "../lib/featureFlags";
 import { resolveApiBase } from "../lib/api";
 import useFeatureUsage from "../lib/useFeatureUsage";
@@ -78,7 +78,7 @@ function LegacyServicingRedirect() {
 }
 
 export default function SaasDashboard() {
-  const { session, supabase, isLoading } = useContext(AuthContext);
+ const { session, supabase, isLoading, signOut } = useContext(AuthContext);
   const [authMode, setAuthMode] = useState<AuthMode>("login");
 
   if (isLoading) {
@@ -101,7 +101,7 @@ export default function SaasDashboard() {
     return <AuthenticationScreen mode={authMode} onModeChange={setAuthMode} />;
   }
 
-  return <AuthenticatedDashboard session={session} supabase={supabase} />;
+  return <AuthenticatedDashboard session={session} signOut={signOut} />;
 }
 
 function AuthenticationScreen({
@@ -176,15 +176,18 @@ function SupabaseConfigNotice() {
 
 function AuthenticatedDashboard({
   session,
-  supabase,
+  signOut,
 }: {
   session: Session;
-  supabase: SupabaseClient;
+ signOut: () => Promise<{ error: Error | null }>;
 }) {
   const apiBase = resolveApiBase();
   const { usage, recordUsage } = useFeatureUsage();
   const userRole = session.user?.user_metadata?.role;
   const location = useLocation();
+    const navigate = useNavigate();
+  const [isSigningOut, setIsSigningOut] = useState(false);
+  const [signOutError, setSignOutError] = useState<string | null>(null);
   const isServicingRoute =
     location.pathname.startsWith("/servicing") ||
     location.pathname.startsWith("/dashboard/servicing");
@@ -397,8 +400,16 @@ function AuthenticatedDashboard({
     </Routes>
   );
 
-  const handleSignOut = () => {
-    void supabase.auth.signOut();
+  const handleSignOut = async () => {
+    setIsSigningOut(true);
+    setSignOutError(null);
+    const { error } = await signOut();
+    if (error) {
+      setIsSigningOut(false);
+      setSignOutError("Unable to log out. Please try again.");
+      return;
+    }
+    navigate("/", { replace: true });
   };
 
   return (
@@ -421,10 +432,16 @@ function AuthenticatedDashboard({
               <button
                 type="button"
                 onClick={handleSignOut}
-                className="w-full rounded-lg border border-slate-800 px-3 py-2 text-sm font-semibold text-slate-200 transition hover:bg-slate-900"
+                  className="w-full rounded-lg border border-slate-800 px-3 py-2 text-sm font-semibold text-slate-200 transition hover:bg-slate-900 disabled:cursor-not-allowed disabled:opacity-60"
+                disabled={isSigningOut}
               >
-                Log Out
+              {isSigningOut ? "Logging out..." : "Log Out"}
               </button>
+                          {signOutError && (
+                <p className="mt-2 text-xs text-rose-200" role="alert">
+                  {signOutError}
+                </p>
+              )}
             </div>
           </nav>
         </aside>
