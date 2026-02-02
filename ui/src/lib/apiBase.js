@@ -1,5 +1,5 @@
-const configured = import.meta.env.VITE_API_BASE_URL?.trim();
-
+const configured =
+  import.meta.env.VITE_API_BASE_URL?.trim() ?? import.meta.env.VITE_API_URL?.trim();
 function resolveFallbackBase() {
   const origin =
     (typeof globalThis !== "undefined" &&
