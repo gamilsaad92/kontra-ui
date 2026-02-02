@@ -40,7 +40,7 @@ export default function OrganizationSettings() {
       .catch(() => {});
     if (!orgId) return;
     fetch(`${API_BASE}/api/subscription`, {
-      headers: { 'X-Org-Id': orgId }
+    headers: { 'x-organization-id': orgId }
     })
       .then(r => r.json())
       .then(d => setCurrentPlan(d.plan || 'basic'))
@@ -79,7 +79,7 @@ export default function OrganizationSettings() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'X-Org-Id': orgId
+        'x-organization-id': orgId
         },
         body: JSON.stringify({ plan })
       });
