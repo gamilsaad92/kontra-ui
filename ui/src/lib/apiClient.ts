@@ -37,7 +37,10 @@ const normalizeBaseUrl = (value?: string): string => {
   return trimmed.replace(/\/+$/, "").replace(/\/api$/, "");
 };
 
-const API_BASE_URL = normalizeBaseUrl((import.meta.env ?? ({} as EnvRecord)).VITE_API_BASE_URL);
+const API_BASE_URL = normalizeBaseUrl(
+  (import.meta.env ?? ({} as EnvRecord & { VITE_API_URL?: string })).VITE_API_BASE_URL ??
+    (import.meta.env ?? ({} as EnvRecord & { VITE_API_URL?: string })).VITE_API_URL
+);
 
 export function getApiBaseUrl(): string {
   return API_BASE_URL;
