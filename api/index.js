@@ -100,7 +100,7 @@ const corsOptions = {
   allowedHeaders: [
     'Authorization',
     'Content-Type',
-    'X-Org-Id',
+    'X-Organization-Id',
     'X-Requested-With',
     'X-User-Id',
     'Accept',
@@ -113,7 +113,12 @@ const corsOptions = {
 const app = express();
 
 app.use((req, _res, next) => {
-  console.log("[REQ]", req.method, req.path);
+  const org = req.headers['x-organization-id'];
+  if (req.path.includes('/api/servicing') || req.path.includes('/api/marketplace')) {
+    console.log('[REQ]', req.method, req.path, 'org:', org || 'NONE');
+  } else {
+    console.log('[REQ]', req.method, req.path);
+  }
   next();
 });
 
