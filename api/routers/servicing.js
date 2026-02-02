@@ -2,7 +2,7 @@ const express = require('express');
 const multer = require('multer');
 const { buildAnalysis, summarizeStatement } = require('../services/financialsAnalysis');
 const authenticate = require('../middlewares/authenticate');
-const requireOrg = require('../middlewares/requireOrg');
+const { orgContext } = require('../middleware/orgContext');
 const {
   ingestPaymentFile,
   getCashflowHistory,
@@ -15,7 +15,7 @@ const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage() });
 
 router.use(authenticate);
-router.use(requireOrg);
+router.use(orgContext);
 
 router.get('/escrows/upcoming', (req, res) => {
   return res.status(200).json({
