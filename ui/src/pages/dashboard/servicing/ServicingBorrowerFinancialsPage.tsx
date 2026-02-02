@@ -19,12 +19,16 @@ export default function ServicingBorrowerFinancialsPage() {
   const [fileName, setFileName] = useState<string>("");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [analysisReady, setAnalysisReady] = useState(false);
- const [uploadError, setUploadError] = useState<string>("");
+  const [analysisSummary, setAnalysisSummary] = useState<string>("");
+  const [analysisNotice, setAnalysisNotice] = useState<string>("");
+  const [uploadError, setUploadError] = useState<string>("");
   
   const handleUpload = async () => {
     if (!selectedFile) {
       const message = "Select a borrower financial file before uploading.";
       setUploadError(message);
+      setAnalysisSummary("");
+      setAnalysisNotice("");
       addAlert({
         id: "alert-financial-missing-file",
         title: "Borrower financial upload needed",
@@ -35,6 +39,8 @@ export default function ServicingBorrowerFinancialsPage() {
       return;
     }
     setUploadError("");
+    setAnalysisSummary("");
+    setAnalysisNotice(""); 
     
     const formData = new FormData();
     formData.append("file", selectedFile);
@@ -64,7 +70,9 @@ export default function ServicingBorrowerFinancialsPage() {
       const result = await response.json();
       console.info("Financial analysis succeeded.", result);
 
-      setAnalysisReady(true);
+      setAnalysisSummary(result.analysis || "");
+      setAnalysisNotice(result.notice || "");
+      setAnalysisReady(Boolean(result.analysis));
       addAlert({
         id: "alert-financial-upload",
         title: "Borrower financial upload received",
@@ -121,7 +129,7 @@ export default function ServicingBorrowerFinancialsPage() {
           <button
             type="button"
             onClick={handleUpload}
-                  disabled={!selectedFile}
+             disabled={!selectedFile}
             className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
           >
             Upload & analyze
@@ -130,7 +138,7 @@ export default function ServicingBorrowerFinancialsPage() {
         <p className="mt-2 text-xs text-slate-400">
           {fileName ? `Selected: ${fileName}` : "No file selected yet."}
         </p>
-      {uploadError ? <p className="text-xs text-rose-500">{uploadError}</p> : null}
+           {uploadError ? <p className="text-xs text-rose-500">{uploadError}</p> : null}
       </section>
 
       <section className="grid gap-6 lg:grid-cols-[2fr,1fr]">
@@ -140,10 +148,7 @@ export default function ServicingBorrowerFinancialsPage() {
           </h3>
           {analysisReady ? (
             <div className="mt-3 space-y-4 text-sm text-slate-700">
-              <p>
-                Q2 revenue held at $1.82M with NOI compressing 4% due to utilities and insurance
-                increases. Operating cash flow remains positive, but DSCR dipped to 1.17x.
-              </p>
+               <p>{analysisSummary}</p>
               <div>
                 <p className="text-xs font-semibold uppercase text-slate-500">Variance drivers</p>
                 <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-slate-600">
@@ -162,9 +167,10 @@ export default function ServicingBorrowerFinancialsPage() {
               </div>
             </div>
           ) : (
-            <p className="mt-3 text-sm text-slate-500">
-              Upload the borrower package to generate an AI summary for review.
-            </p>
+            <div className="mt-3 space-y-2 text-sm text-slate-500">
+              <p>Upload the borrower package to generate an AI summary for review.</p>
+              {analysisNotice ? <p className="text-xs text-amber-600">{analysisNotice}</p> : null}
+            </div>
           )}
         </div>
 
