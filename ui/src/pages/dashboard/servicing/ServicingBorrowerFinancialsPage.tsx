@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { getAuthToken } from "../../../lib/authToken";
+import { api } from "../../../lib/apiClient";
 import { useServicingContext } from "./ServicingContext";
 
 const varianceDrivers = [
@@ -45,29 +45,8 @@ export default function ServicingBorrowerFinancialsPage() {
     const formData = new FormData();
     formData.append("file", selectedFile);
 
-    const token = await getAuthToken();
-    const headers: HeadersInit = {};
-    if (token) {
-      headers.Authorization = `Bearer ${token}`;
-    }
-
     try {
-      const response = await fetch("/api/servicing/financials/analyze", {
-        method: "POST",
-        headers,
-        body: formData,
-      });
-
-      if (!response.ok) {
-        const errorBody = await response.text();
-        console.error("Financial analysis failed.", {
-          status: response.status,
-          body: errorBody,
-        });
-        return;
-      }
-
-      const result = await response.json();
+      const { data: result } = await api.post("/servicing/financials/analyze", formData);
       console.info("Financial analysis succeeded.", result);
 
       setAnalysisSummary(result.analysis || "");
