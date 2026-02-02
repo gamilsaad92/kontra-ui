@@ -24,15 +24,30 @@ export function AuthProvider({ children }) {
 
     const loadSession = async () => {
       setIsLoading(true);
-      const { data, error } = await supabaseClient.auth.getSession();
-      if (!isMounted) return;
-      if (error) {
-        console.error('Failed to fetch Supabase session', error);
+        let didTimeout = false;
+      const timeoutId = setTimeout(() => {
+        if (!isMounted) return;
+        didTimeout = true;
+        console.warn('Supabase session request timed out. Falling back to unauthenticated state.');
         setSession(null);
-      } else {
-        setSession(data?.session ?? null);
+           setIsLoading(false);
+      }, 8000);
+
+      try {
+        const { data, error } = await supabaseClient.auth.getSession();
+        if (!isMounted) return;
+        if (error) {
+          console.error('Failed to fetch Supabase session', error);
+          setSession(null);
+        } else {
+          setSession(data?.session ?? null);
+        }
+        if (!didTimeout) {
+          setIsLoading(false);
+        }
+      } finally {
+        clearTimeout(timeoutId);
       }
-      setIsLoading(false);
     };
 
     loadSession();
@@ -40,6 +55,7 @@ export function AuthProvider({ children }) {
     const { data } = supabaseClient.auth.onAuthStateChange((_event, nextSession) => {
       if (isMounted) {
         setSession(nextSession ?? null);
+        setIsLoading(false);
       }
     });
 
