@@ -1,5 +1,17 @@
 import { getAuthToken } from "./authToken";
 
+type OrgContext = {
+  orgId?: string;
+  userId?: string;
+  token?: string;
+};
+
+let orgContext: OrgContext = {};
+
+export function setOrgContext(ctx: OrgContext) {
+  orgContext = ctx ?? {};
+}
+
 type EnvRecord = Record<string, string | undefined>;
 
 export type ApiRequestLogEntry = {
@@ -141,7 +153,14 @@ export async function apiFetch(
     headers.set("Content-Type", "application/json");
   }
 
-  const token = await getAuthToken();
+  if (orgContext.orgId) {
+    headers.set("x-organization-id", orgContext.orgId);
+  }
+  if (orgContext.userId) {
+    headers.set("x-user-id", orgContext.userId);
+  }
+
+  const token = orgContext.token ?? (await getAuthToken());
   if (token) {
     headers.set("Authorization", `Bearer ${token}`);
   } else if (options.requireAuth) {
