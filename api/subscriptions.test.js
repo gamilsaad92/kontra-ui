@@ -13,7 +13,7 @@ describe('POST /api/subscription', () => {
   it('rejects invalid plan', async () => {
     const res = await request(app)
       .post('/api/subscription')
-      .set('X-Org-Id', '1')
+       .set('X-Organization-Id', '1')
       .send({ plan: 'invalid' });
     expect(res.statusCode).toBe(400);
   });
