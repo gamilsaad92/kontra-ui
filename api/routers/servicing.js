@@ -1,5 +1,6 @@
 const express = require('express');
 const multer = require('multer');
+const { buildAnalysis, summarizeStatement } = require('../services/financialsAnalysis');
 const authenticate = require('../middlewares/authenticate');
 const requireOrg = require('../middlewares/requireOrg');
 const {
@@ -122,12 +123,34 @@ router.post('/servicing/financials/analyze', upload.single('file'), (req, res) =
       return res.status(400).json({ message: 'Financial file upload required.' });
     }
 
-    const { originalname, size } = req.file;
+   const { originalname, size, mimetype, buffer } = req.file;
+    let analysis = null;
+    let notice = null;
 
+    if (buffer && buffer.length) {
+      const textSample = buffer.slice(0, Math.min(buffer.length, 8000)).toString('utf8');
+      const nonPrintableCount = textSample.replace(/[\t\n\r\x20-\x7E]/g, '').length;
+      const nonPrintableRatio = textSample.length
+        ? nonPrintableCount / textSample.length
+        : 1;
+
+      if (nonPrintableRatio <= 0.2) {
+        const summary = summarizeStatement(textSample);
+        analysis = buildAnalysis(summary);
+      } else {
+        notice = 'Uploaded file received, but only text-based statements are supported for analysis.';
+      }
+    } else {
+      notice = 'Uploaded file received, but the statement could not be read for analysis.';
+    }
+    
     return res.status(201).json({
       filename: originalname,
       size,
+      mimetype,
       status: 'received',
+      analysis,
+      notice
     });
   } catch (err) {
     console.error('[servicing] Financial analysis failed.', err);
