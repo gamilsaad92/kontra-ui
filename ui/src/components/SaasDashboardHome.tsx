@@ -494,7 +494,7 @@ export default function SaasDashboardHome({ apiBase, orgId }: Props) {
     };
   }, [apiBase, orgHeaders]);
 
-   useEffect(() => {
+  useEffect(() => {
     let cancelled = false;
 
     function loadTokenizationStack() {
@@ -502,11 +502,11 @@ export default function SaasDashboardHome({ apiBase, orgId }: Props) {
       setTokenizationError(null);
       const baseURL = normalizeApiBase(apiBase);
       api
-        .get<TokenizationStack>('/tokenization/stack', baseURL ? { baseURL } : undefined)
-       .get<TokenizationStack>("/tokenization/stack", {
+         .get<TokenizationStack>("/tokenization/stack", {
           ...(baseURL ? { baseURL } : {}),
           headers: orgHeaders
         })
+           .then((response) => {
           if (!cancelled) {
             setTokenizationStack(response.data);
           }
