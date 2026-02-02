@@ -14,7 +14,12 @@ function normalizeApiBase(value?: string): string | undefined {
 }
 
 export function resolveApiBase(): string {
-return normalizeApiBase(import.meta.env?.VITE_API_BASE_URL as string | undefined) ?? getApiBaseUrl() ?? "";
+  const env = import.meta.env as { VITE_API_BASE_URL?: string; VITE_API_URL?: string } | undefined;
+  return (
+    normalizeApiBase(env?.VITE_API_BASE_URL ?? env?.VITE_API_URL) ??
+    getApiBaseUrl() ??
+    ""
+  );
 }
 
 export function withOrg(orgId?: number) {
