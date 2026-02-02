@@ -26,7 +26,7 @@ module.exports = async function authenticate(req, res, next) {
   const token = auth.split(' ')[1];
 
   if (devAccessToken && token === devAccessToken) {
-    const headerOrgId = req.headers['x-org-id'];
+     const headerOrgId = req.headers['x-organization-id'] || req.headers['x-org-id'];
       const normalizedOrgId = Array.isArray(headerOrgId) ? headerOrgId[0] : headerOrgId;
     const fallbackOrgId = devOrgId || normalizedOrgId || '1';
 
@@ -57,7 +57,7 @@ module.exports = async function authenticate(req, res, next) {
   }
 
   req.user = user;
-  const headerOrgId = req.headers['x-org-id'];
+  const headerOrgId = req.headers['x-organization-id'] || req.headers['x-org-id'];
   const normalizedOrgId = Array.isArray(headerOrgId) ? headerOrgId[0] : headerOrgId;
   req.orgId = user.user_metadata?.organization_id || normalizedOrgId || null;
   req.organizationId = req.orgId;
