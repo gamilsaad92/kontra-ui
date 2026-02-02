@@ -1,6 +1,6 @@
 const express = require('express');
 const authenticate = require('../middlewares/authenticate');
-const requireOrg = require('../middlewares/requireOrg');
+const { orgContext } = require('../middleware/orgContext');
 const { supabase } = require('../db');
 const { getLoanServicingSnapshot } = require('../services/insightsComposer');
 const { evaluateServicingExceptions } = require('../services/servicingRules');
@@ -44,9 +44,9 @@ async function storeDraft({ loanId, type, subject, body, userId }) {
   }
 }
 
-router.get('/loans/:loanId/insights', requireOrg, async (req, res) => {
+router.get('/loans/:loanId/insights', orgContext, async (req, res) => {
   const { loanId } = req.params;
-  const snapshot = await getLoanServicingSnapshot(loanId, req.orgId || req.organizationId);
+ const snapshot = await getLoanServicingSnapshot(loanId, req.orgId);
   if (!snapshot?.loan) {
     return res.status(404).json({ message: 'Loan not found' });
   }
@@ -63,9 +63,9 @@ router.get('/loans/:loanId/insights', requireOrg, async (req, res) => {
   });
 });
 
-router.get('/servicing/insights', requireOrg, async (req, res) => {
+router.get('/servicing/insights', orgContext, async (req, res) => {
   const rangeDays = parseRangeDays(req.query.range);
-  const orgId = req.orgId || req.organizationId;
+  const orgId = req.orgId;
 
   const { data: loans, error } = await supabase
     .from('loans')
