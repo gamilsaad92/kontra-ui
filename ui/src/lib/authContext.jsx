@@ -1,7 +1,12 @@
-import { createContext, useEffect, useMemo, useState } from 'react';
+import { createContext, useCallback, useEffect, useMemo, useState } from 'react';
 import { supabase as supabaseClient, isSupabaseConfigured } from './supabaseClient';
 
-export const AuthContext = createContext({ session: null, supabase: null, isLoading: true });
+export const AuthContext = createContext({
+  session: null,
+  supabase: null,
+  isLoading: true,
+  signOut: async () => ({ error: null }),
+});
 
 export function AuthProvider({ children }) {
   const [session, setSession] = useState(null);
@@ -44,13 +49,29 @@ export function AuthProvider({ children }) {
     };
   }, []);
 
+    const signOut = useCallback(async () => {
+    if (!isSupabaseConfigured) {
+      setSession(null);
+      return { error: new Error('Supabase not configured') };
+    }
+
+    const { error } = await supabaseClient.auth.signOut();
+    if (error) {
+      console.error('Failed to sign out', error);
+      return { error };
+    }
+    setSession(null);
+    return { error: null };
+  }, []);
+
   const value = useMemo(
     () => ({
       session,
       supabase: isSupabaseConfigured ? supabaseClient : null,
       isLoading,
+      signOut,
     }),
-    [session, isLoading]
+  [session, isLoading, signOut]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
