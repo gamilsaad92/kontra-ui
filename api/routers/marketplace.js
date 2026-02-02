@@ -1,5 +1,6 @@
 const express = require('express');
 const authenticate = require('../middlewares/authenticate');
+const { orgContext } = require('../middleware/orgContext');
 const { supabase } = require('../db');
 const asyncHandler = require('../lib/asyncHandler');
 
@@ -77,6 +78,7 @@ function normalizeEntry(raw) {
 }
 
 router.use(authenticate);
+router.use(orgContext);
 wrapRouter(router);
 
 // List all marketplace entries
