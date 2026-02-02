@@ -14,6 +14,16 @@ const queryClient = new QueryClient();
 
 installApiFetchInterceptor();
 
+if (typeof window !== "undefined") {
+  window.addEventListener("unhandledrejection", (event) => {
+    const reason = event.reason as { name?: string; message?: string } | undefined;
+    const message = reason?.message ?? "";
+    if (reason?.name === "AbortError" || message.includes("signal is aborted")) {
+      event.preventDefault();
+    }
+  });
+}
+
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
    <AuthProvider>
