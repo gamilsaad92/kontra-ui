@@ -37,9 +37,10 @@ type DraftWatchlist = {
 type InsightsCardProps = {
   loanId?: string | number | null;
   title?: string;
+   orgId?: string | number | null;
 };
 
-export default function InsightsCard({ loanId, title = "AI Insights" }: InsightsCardProps) {
+export default function InsightsCard({ loanId, title = "AI Insights", orgId }: InsightsCardProps) {
   const [insights, setInsights] = useState<LoanInsightsResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -63,7 +64,9 @@ export default function InsightsCard({ loanId, title = "AI Insights" }: Insights
       setLoading(true);
       setError("");
       try {
-        const res = await fetch(`${API_BASE}/api/loans/${normalizedLoanId}/insights`);
+        const res = await fetch(`${API_BASE}/api/loans/${normalizedLoanId}/insights`, {
+          headers: { "X-Org-Id": String(orgId ?? 1) }
+        });
         const data = await res.json();
         if (!active) return;
         if (res.ok) {
@@ -85,7 +88,7 @@ export default function InsightsCard({ loanId, title = "AI Insights" }: Insights
     return () => {
       active = false;
     };
-  }, [normalizedLoanId]);
+   }, [normalizedLoanId, orgId]);
 
   const handleDraftEmail = async () => {
     if (!normalizedLoanId) return;
@@ -93,7 +96,10 @@ export default function InsightsCard({ loanId, title = "AI Insights" }: Insights
     try {
       const res = await fetch(`${API_BASE}/api/loans/${normalizedLoanId}/insights/draft-email`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+           headers: {
+          "Content-Type": "application/json",
+          "X-Org-Id": String(orgId ?? 1)
+        },
         body: JSON.stringify({ purpose }),
       });
       const data = await res.json();
@@ -113,7 +119,10 @@ export default function InsightsCard({ loanId, title = "AI Insights" }: Insights
         `${API_BASE}/api/loans/${normalizedLoanId}/insights/draft-watchlist`,
         {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+            headers: {
+            "Content-Type": "application/json",
+            "X-Org-Id": String(orgId ?? 1)
+          },
         }
       );
       const data = await res.json();
