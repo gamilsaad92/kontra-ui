@@ -133,6 +133,7 @@ type TokenizationStack = {
 
 type Props = {
   apiBase?: string;
+    orgId?: string | number | null;
 };
 
 const quickActions: QuickAction[] = [
@@ -380,7 +381,7 @@ function formatSignedPercent(value?: number | null, decimals = 1): string {
   return `${value > 0 ? "+" : value < 0 ? "" : ""}${formatted}%`;
 }
 
-export default function SaasDashboardHome({ apiBase }: Props) {
+export default function SaasDashboardHome({ apiBase, orgId }: Props) {
   const [riskSummary, setRiskSummary] = useState<RiskSummary | null>(null);
   const [riskError, setRiskError] = useState<string | null>(null);
   const [riskLoading, setRiskLoading] = useState(true);
@@ -669,7 +670,7 @@ export default function SaasDashboardHome({ apiBase }: Props) {
       </header>
 
            <section className="space-y-4">
-        <ServicingCommandCenter />
+        <ServicingCommandCenter orgId={orgId} />
         <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
           <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
             Loan Insights Composer
