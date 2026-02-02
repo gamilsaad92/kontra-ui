@@ -14,7 +14,11 @@ const tabs = [
 { label: "AI Payment Ops", to: "/servicing/payments" },
 ];
 
-export default function ServicingLayout() {
+type Props = {
+  orgId?: string | number | null;
+};
+
+export default function ServicingLayout({ orgId }: Props) {
   return (
      <ServicingProvider>
       <div className="space-y-6">
@@ -24,7 +28,7 @@ export default function ServicingLayout() {
             Centralize borrower financials, escrow, and operational workflows under servicing.
           </p>
         </header>
-        <ServicingCommandCenter />
+       <ServicingCommandCenter orgId={orgId} />
         <nav className="flex flex-wrap gap-2 border-b border-slate-200 pb-3">
           {tabs.map((tab) => (
             <NavLink
