@@ -18,7 +18,11 @@ type ServicingInsights = {
   draw_bottlenecks: { draw_id: number | string; loan_id: number | string; submitted_at?: string }[];
 };
 
-export default function ServicingCommandCenter() {
+type Props = {
+  orgId?: string | number | null;
+};
+
+export default function ServicingCommandCenter({ orgId }: Props) {
   const [data, setData] = useState<ServicingInsights | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -27,7 +31,9 @@ export default function ServicingCommandCenter() {
     const load = async () => {
       setLoading(true);
       try {
-        const res = await fetch(`${API_BASE}/api/servicing/insights?range=30d`);
+        const res = await fetch(`${API_BASE}/api/servicing/insights?range=30d`, {
+          headers: orgId ? { "X-Org-Id": String(orgId) } : undefined
+        });
         const payload = await res.json();
         if (!active) return;
         if (res.ok) {
