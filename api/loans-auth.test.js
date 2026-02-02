@@ -28,7 +28,7 @@ describe('loans router authentication', () => {
     const res = await request(app)
       .get('/api/loans')
       .set('Authorization', 'Bearer test-token')
-      .set('X-Org-Id', 'org-42');
+    .set('X-Organization-Id', 'org-42');
     expect(res.statusCode).toBe(200);
     expect(res.body.loans).toEqual([{ id: 'loan-1' }]);
   });
