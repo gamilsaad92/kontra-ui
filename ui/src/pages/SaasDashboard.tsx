@@ -85,7 +85,7 @@ export default function SaasDashboard() {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center gap-3 bg-slate-100 text-slate-600">
         <span className="h-10 w-10 animate-spin rounded-full border-4 border-slate-200 border-t-slate-500" />
-        <p className="text-sm font-medium tracking-wide">Loading authentication…</p>
+        <p className="text-sm font-medium tracking-wide">Loading your Kontra workspace…</p>
       </div>
     );
   }
