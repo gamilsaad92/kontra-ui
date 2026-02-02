@@ -43,7 +43,8 @@ const FALLBACK_OVERVIEW = {
 };
 
 function resolveOrgId(req) {
-  const header = req.headers['x-org-id'] || req.headers['X-Org-Id'];
+  const header =
+    req.headers['x-organization-id'] || req.headers['X-Organization-Id'] || req.headers['x-org-id'];
   if (header) {
     const raw = Array.isArray(header) ? header[0] : header;
     const parsed = parseInt(raw, 10);
