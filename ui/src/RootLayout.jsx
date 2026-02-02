@@ -38,7 +38,7 @@ export default function RootLayout({ children }) {
       try {
         const headers = {}
         const orgId = session?.user?.user_metadata?.organization_id
-        if (orgId) headers['X-Org-Id'] = orgId
+       if (orgId) headers['x-organization-id'] = orgId
        const data = await apiRequest('GET', apiRoutes.ssoConfig, undefined, { headers })
         if (!isMounted) return
         setBranding(data.organization?.branding || null)
