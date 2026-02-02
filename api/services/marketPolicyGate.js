@@ -15,7 +15,7 @@ function normalizeGroups(input) {
 }
 
 function getTenantId(req) {
-  return req.organizationId || req.orgId || req.headers['x-org-id'];
+ return req.organizationId || req.orgId || req.headers['x-organization-id'] || req.headers['x-org-id'];
 }
 
 function getUserWallet(req) {
