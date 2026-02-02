@@ -126,7 +126,10 @@ export default function KontraDashboard() {
   };
 
    // API base (uses your VITE_API_BASE_URL if present)
-  const API_BASE: string = (import.meta as any).env?.VITE_API_BASE_URL || "";
+  const API_BASE: string =
+    (import.meta as any).env?.VITE_API_BASE_URL ||
+    (import.meta as any).env?.VITE_API_URL ||
+    "";
   const isServicing = location.pathname.startsWith("/dashboard/servicing");
   const isCoupon = location.pathname === "/dashboard/olb-coupon";
   const currentLabel = isServicing ? "Servicing" : isCoupon ? "OLB Coupon" : "Overview";
