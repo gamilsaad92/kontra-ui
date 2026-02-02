@@ -54,7 +54,8 @@ async function resolveMemberRole(orgId, userId) {
 }
 
 router.get('/config', async (req, res) => {
-  const orgId = req.headers['x-org-id'] || req.query.orgId || null;
+  const orgId =
+   req.headers['x-organization-id'] || req.headers['x-org-id'] || req.query.orgId || null;
   const organization = await loadOrganization(orgId);
   const user = await resolveUser(req.headers.authorization);
   const role = await resolveMemberRole(orgId, user?.id);
@@ -77,7 +78,8 @@ router.post('/:provider/login', async (req, res) => {
     return res.status(400).json({ message: 'Unsupported SSO provider' });
   }
 
-  const orgId = req.body?.orgId || req.headers['x-org-id'] || null;
+ const orgId =
+    req.body?.orgId || req.headers['x-organization-id'] || req.headers['x-org-id'] || null;
   const loginHint = req.body?.email || '';
   const state = crypto.randomUUID();
   const organization = await loadOrganization(orgId);
