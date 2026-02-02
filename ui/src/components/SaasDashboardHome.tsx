@@ -406,7 +406,7 @@ export default function SaasDashboardHome({ apiBase, orgId }: Props) {
   const [subscriptionStatus, setSubscriptionStatus] = useState<string | null>(null);
   const [subscriptionLoading, setSubscriptionLoading] = useState(false);
  const orgHeaders = useMemo(
-    () => ({ "X-Org-Id": String(orgId ?? 1) }),
+ () => ({ "x-organization-id": String(orgId ?? 1) }),
     [orgId]
   );
   
