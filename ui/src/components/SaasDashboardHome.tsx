@@ -405,6 +405,10 @@ export default function SaasDashboardHome({ apiBase, orgId }: Props) {
   const [ticketSize, setTicketSize] = useState("250000");
   const [subscriptionStatus, setSubscriptionStatus] = useState<string | null>(null);
   const [subscriptionLoading, setSubscriptionLoading] = useState(false);
+ const orgHeaders = useMemo(
+    () => ({ "X-Org-Id": String(orgId ?? 1) }),
+    [orgId]
+  );
   
   useEffect(() => {
     document.title = "Kontra Platform Overview";
@@ -417,7 +421,10 @@ export default function SaasDashboardHome({ apiBase, orgId }: Props) {
       setRiskError(null);
       const baseURL = normalizeApiBase(apiBase);
       api
-        .get<RiskSummary>("/investors/risk", baseURL ? { baseURL } : undefined)
+          .get<RiskSummary>("/investors/risk", {
+          ...(baseURL ? { baseURL } : {}),
+          headers: orgHeaders
+        })
         .then((response) => {
           if (!cancelled) {
             setRiskSummary(response.data);
@@ -445,7 +452,7 @@ export default function SaasDashboardHome({ apiBase, orgId }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [apiBase]);
+  }, [apiBase, orgHeaders]);
 
   useEffect(() => {
     let cancelled = false;
@@ -454,7 +461,10 @@ export default function SaasDashboardHome({ apiBase, orgId }: Props) {
       setMarketplaceError(null);
       const baseURL = normalizeApiBase(apiBase);
       api
-        .get<MarketplaceSummary>("/dashboard/marketplace", baseURL ? { baseURL } : undefined)
+         .get<MarketplaceSummary>("/dashboard/marketplace", {
+          ...(baseURL ? { baseURL } : {}),
+          headers: orgHeaders
+        })
         .then((response) => {
           if (!cancelled) {
             setMarketplaceSummary(response.data);
@@ -482,7 +492,7 @@ export default function SaasDashboardHome({ apiBase, orgId }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [apiBase]);
+  }, [apiBase, orgHeaders]);
 
    useEffect(() => {
     let cancelled = false;
@@ -493,7 +503,10 @@ export default function SaasDashboardHome({ apiBase, orgId }: Props) {
       const baseURL = normalizeApiBase(apiBase);
       api
         .get<TokenizationStack>('/tokenization/stack', baseURL ? { baseURL } : undefined)
-        .then((response) => {
+       .get<TokenizationStack>("/tokenization/stack", {
+          ...(baseURL ? { baseURL } : {}),
+          headers: orgHeaders
+        })
           if (!cancelled) {
             setTokenizationStack(response.data);
           }
@@ -515,7 +528,7 @@ export default function SaasDashboardHome({ apiBase, orgId }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [apiBase]);
+  }, [apiBase, orgHeaders]);
 
   const combinedTotal = useMemo(() => bucketTotal(riskSummary?.combinedBuckets), [riskSummary]);
 
@@ -527,7 +540,10 @@ export default function SaasDashboardHome({ apiBase, orgId }: Props) {
     setDealRoomError(null);
 
     api
-      .get<{ pools: DealRoomPool[] }>("/investors/deal-room", baseURL ? { baseURL } : undefined)
+        .get<{ pools: DealRoomPool[] }>("/investors/deal-room", {
+        ...(baseURL ? { baseURL } : {}),
+        headers: orgHeaders
+      })
       .then((response) => {
         if (cancelled) return;
         const pools = response.data?.pools ?? [];
@@ -558,7 +574,7 @@ export default function SaasDashboardHome({ apiBase, orgId }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [apiBase]);
+  }, [apiBase, orgHeaders]);
 
   useEffect(() => {
     let cancelled = false;
@@ -568,7 +584,10 @@ export default function SaasDashboardHome({ apiBase, orgId }: Props) {
     setPortfolioError(null);
 
     api
-      .get<InvestorPortfolio>(`/investors/${encodeURIComponent(portfolioWallet)}/portfolio`, baseURL ? { baseURL } : undefined)
+       .get<InvestorPortfolio>(`/investors/${encodeURIComponent(portfolioWallet)}/portfolio`, {
+        ...(baseURL ? { baseURL } : {}),
+        headers: orgHeaders
+      })
       .then((response) => {
         if (cancelled) return;
         const nextPortfolio = response.data?.holdings
@@ -590,7 +609,7 @@ export default function SaasDashboardHome({ apiBase, orgId }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [apiBase, portfolioWallet]);
+   }, [apiBase, portfolioWallet, orgHeaders]);
 
   const selectedPool = useMemo(() => {
     if (dealRoom.length === 0) return null;
@@ -643,7 +662,10 @@ export default function SaasDashboardHome({ apiBase, orgId }: Props) {
     setSubscriptionStatus(null);
 
     try {
-      await api.post("/investors/subscribe", payload, baseURL ? { baseURL } : undefined);
+       await api.post("/investors/subscribe", payload, {
+        ...(baseURL ? { baseURL } : {}),
+        headers: orgHeaders
+      });
       setSubscriptionStatus(
         `Minted ${amount.toLocaleString()} tokens for ${selectedPool.name || selectedPool.id}. Portfolio refreshed.`
       );
@@ -685,7 +707,7 @@ export default function SaasDashboardHome({ apiBase, orgId }: Props) {
             onChange={(event) => setServicingLoanId(event.target.value)}
           />
           <div className="mt-4">
-            <InsightsCard loanId={servicingLoanId} title="Loan Insights" />
+             <InsightsCard loanId={servicingLoanId} title="Loan Insights" orgId={orgId} />
           </div>
         </div>
       </section>
