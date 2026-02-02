@@ -23,7 +23,7 @@ export function resolveApiBase(): string {
 }
 
 export function withOrg(orgId?: number) {
-  return { headers: { "X-Org-Id": String(orgId ?? 1) } };
+return { headers: { "x-organization-id": String(orgId ?? 1) } };
 }
 
 export { api };
