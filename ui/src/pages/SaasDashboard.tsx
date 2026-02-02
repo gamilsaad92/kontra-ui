@@ -1,4 +1,4 @@
-import { useCallback, useContext, useMemo, useState, type ComponentType } from "react";
+import { useCallback, useContext, useEffect, useMemo, useState, type ComponentType } from "react";
 import { NavLink, Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import type { Session } from "@supabase/supabase-js";
 import { isFeatureEnabled } from "../lib/featureFlags";
@@ -6,6 +6,7 @@ import { resolveApiBase } from "../lib/api";
 import useFeatureUsage from "../lib/useFeatureUsage";
 import { lenderNavRoutes } from "../routes";
 import { AuthContext } from "../lib/authContext";
+import { setOrgContext } from "../lib/apiClient";
 import LoginForm from "../components/LoginForm.jsx";
 import SignUpForm from "../components/SignUpForm.jsx";
 import SaasDashboardHome from "../components/SaasDashboardHome";
@@ -214,6 +215,14 @@ function AuthenticatedDashboard({
         }),
     [isFeatureEnabled, userRole]
   );
+
+  useEffect(() => {
+    setOrgContext({
+      orgId: session.user?.user_metadata?.organization_id ?? session.user?.id ?? undefined,
+      userId: session.user?.id ?? undefined,
+      token: session.access_token ?? undefined,
+    });
+  }, [session.access_token, session.user?.id, session.user?.user_metadata?.organization_id]);
 
   const activeItem = useMemo(() => {
     return (
