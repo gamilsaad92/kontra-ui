@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { api } from '../../lib/apiClient';
 
 export default function Marketplace({ entries = [], onSubmitted }) {
   const [type, setType] = useState('bid');
@@ -18,22 +19,18 @@ export default function Marketplace({ entries = [], onSubmitted }) {
   
   const handleSubmit = async e => {
     e.preventDefault();
-    await fetch('/api/marketplace', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        type,
-        symbol,
-        quantity: Number(quantity),
-         price: Number(price),
-        settlementType,
-        stablecoin,
-        loanId: loanId || symbol,
-        loanName: loanName || symbol,
-        expectedApy: expectedApy === '' ? undefined : Number(expectedApy),
-        payoutFrequency,
-        walletAddress,
-      }),
+     await api.post('/marketplace', {
+      type,
+      symbol,
+      quantity: Number(quantity),
+      price: Number(price),
+      settlementType,
+      stablecoin,
+      loanId: loanId || symbol,
+      loanName: loanName || symbol,
+      expectedApy: expectedApy === '' ? undefined : Number(expectedApy),
+      payoutFrequency,
+      walletAddress,
     });
     setType('bid');
     setSymbol('');
@@ -59,19 +56,15 @@ export default function Marketplace({ entries = [], onSubmitted }) {
       })
       .filter(h => h.wallet && !Number.isNaN(h.ownership));
 
-    const response = await fetch('/api/marketplace/distribute', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
+     try {
+      const { data: payload } = await api.post('/marketplace/distribute', {
         loanId: loanId || symbol || 'unknown-loan',
         paymentAmount: Number(distributionAmount || 0),
         holders,
-      }),
-    });
-
-    if (response.ok) {
-      const payload = await response.json();
+     });
       setDistributionPreview(payload);
+          } catch (error) {
+      console.error('Marketplace distribution failed.', error);
     }
   };
 
