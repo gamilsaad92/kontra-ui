@@ -19,17 +19,27 @@ export default function ServicingBorrowerFinancialsPage() {
   const [fileName, setFileName] = useState<string>("");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [analysisReady, setAnalysisReady] = useState(false);
-
- const handleUpload = async () => {
+ const [uploadError, setUploadError] = useState<string>("");
+  
+  const handleUpload = async () => {
     if (!selectedFile) {
-      console.error("Financial analysis failed: no file selected.");
+      const message = "Select a borrower financial file before uploading.";
+      setUploadError(message);
+      addAlert({
+        id: "alert-financial-missing-file",
+        title: "Borrower financial upload needed",
+        detail: message,
+        severity: "low",
+        category: "Borrower Financials",
+      });
       return;
     }
-
+    setUploadError("");
+    
     const formData = new FormData();
     formData.append("file", selectedFile);
 
-     const token = await getAuthToken();
+    const token = await getAuthToken();
     const headers: HeadersInit = {};
     if (token) {
       headers.Authorization = `Bearer ${token}`;
@@ -103,12 +113,16 @@ export default function ServicingBorrowerFinancialsPage() {
               const file = event.target.files?.[0] ?? null;
               setSelectedFile(file);
               setFileName(file?.name || "");
+              if (file) {
+                setUploadError("");
+              }
             }}
           />
           <button
             type="button"
             onClick={handleUpload}
-            className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white"
+                  disabled={!selectedFile}
+            className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
           >
             Upload & analyze
           </button>
@@ -116,6 +130,7 @@ export default function ServicingBorrowerFinancialsPage() {
         <p className="mt-2 text-xs text-slate-400">
           {fileName ? `Selected: ${fileName}` : "No file selected yet."}
         </p>
+      {uploadError ? <p className="text-xs text-rose-500">{uploadError}</p> : null}
       </section>
 
       <section className="grid gap-6 lg:grid-cols-[2fr,1fr]">
