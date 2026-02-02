@@ -6,7 +6,8 @@ module.exports = function rateLimit(req, res, next) {
   if (!['POST','PUT','PATCH','DELETE'].includes(req.method)) {
     return next();
   }
-  const orgId = req.organizationId || req.headers['x-org-id'] || req.ip;
+ const orgId =
+    req.organizationId || req.headers['x-organization-id'] || req.headers['x-org-id'] || req.ip;
   const now = Date.now();
   let bucket = buckets.get(orgId);
   if (!bucket || now - bucket.start >= WINDOW_MS) {
