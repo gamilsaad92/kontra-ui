@@ -52,9 +52,9 @@ const Placeholder = ({ title }: { title: string }) => (
   </div>
 );
 
-function DashboardOverview({ orgId, apiBase }: { orgId?: string; apiBase: string }) {
+function DashboardOverview({ orgId, apiBase }: { orgId?: string | number | null; apiBase: string }) {
   return (
-   <SaasDashboardHome apiBase={apiBase} />
+  <SaasDashboardHome apiBase={apiBase} orgId={orgId} />
   );
 }
 
@@ -184,7 +184,8 @@ function AuthenticatedDashboard({
   const apiBase = resolveApiBase();
   const { usage, recordUsage } = useFeatureUsage();
   const userRole = session.user?.user_metadata?.role;
-  const location = useLocation();
+   const location = useLocation();
+ const orgId = session.user?.user_metadata?.organization_id ?? null;
     const navigate = useNavigate();
   const [isSigningOut, setIsSigningOut] = useState(false);
   const [signOutError, setSignOutError] = useState<string | null>(null);
@@ -309,14 +310,14 @@ function AuthenticatedDashboard({
             <Route path="/" element={<Navigate to="/dashboard" replace />} />
       <Route
         path="/dashboard"
-        element={<DashboardOverview orgId={session.user?.id} apiBase={apiBase} />}
+     element={<DashboardOverview orgId={orgId} apiBase={apiBase} />}
       />
       <Route path="/portfolio" element={<PortfolioLayout />}>
         <Route index element={<PortfolioOverview />} />
         <Route path="loans" element={<LoansDashboard />} />
         <Route path="projects" element={<ProjectsTable />} />
       </Route>
-      <Route path="/servicing" element={<ServicingLayout />}>
+     <Route path="/servicing" element={<ServicingLayout orgId={orgId} />}>
         <Route index element={<ServicingHome />} />
        <Route path="overview" element={<ServicingOverviewPage />} />
         <Route path="loans" element={<ServicingLoansPage />} />
