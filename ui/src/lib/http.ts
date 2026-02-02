@@ -299,8 +299,8 @@ async function apiFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
     headers.set("Content-Type", "application/json");
   }
 
-  if (!headers.has("X-Org-Id") && shouldAttachOrgHeader(requestUrl)) {
-   headers.set("X-Org-Id", DEFAULT_ORG_ID);
+  if (!headers.has("x-organization-id") && shouldAttachOrgHeader(requestUrl)) {
+   headers.set("x-organization-id", DEFAULT_ORG_ID);
   }
 
   const token = await getSessionToken();
@@ -395,8 +395,8 @@ export function installAuthFetchInterceptor(): void {
         });
       }
     }
-    if (!headers.has("X-Org-Id") && shouldAttachOrgHeader(targetUrl)) {
-    headers.set("X-Org-Id", DEFAULT_ORG_ID);
+   if (!headers.has("x-organization-id") && shouldAttachOrgHeader(targetUrl)) {
+    headers.set("x-organization-id", DEFAULT_ORG_ID);
     }
 
     if (!headers.has("Authorization")) {
