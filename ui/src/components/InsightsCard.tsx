@@ -65,7 +65,7 @@ export default function InsightsCard({ loanId, title = "AI Insights", orgId }: I
       setError("");
       try {
         const res = await fetch(`${API_BASE}/api/loans/${normalizedLoanId}/insights`, {
-          headers: { "X-Org-Id": String(orgId ?? 1) }
+        headers: { "x-organization-id": String(orgId ?? 1) }
         });
         const data = await res.json();
         if (!active) return;
@@ -98,7 +98,7 @@ export default function InsightsCard({ loanId, title = "AI Insights", orgId }: I
         method: "POST",
            headers: {
           "Content-Type": "application/json",
-          "X-Org-Id": String(orgId ?? 1)
+          "x-organization-id": String(orgId ?? 1)
         },
         body: JSON.stringify({ purpose }),
       });
@@ -121,7 +121,7 @@ export default function InsightsCard({ loanId, title = "AI Insights", orgId }: I
           method: "POST",
             headers: {
             "Content-Type": "application/json",
-            "X-Org-Id": String(orgId ?? 1)
+           "x-organization-id": String(orgId ?? 1)
           },
         }
       );
