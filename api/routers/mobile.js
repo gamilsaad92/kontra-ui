@@ -6,7 +6,7 @@ const router = express.Router();
 
 router.get('/mobile/overview', async (req, res) => {
   const userId = req.header('x-user-id') || 'mobile_operator';
-  const orgId = req.header('x-org-id') || null;
+ const orgId = req.header('x-organization-id') || req.header('x-org-id') || null;
 
   const now = new Date();
   const lastThirty = new Date(now);
