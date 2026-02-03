@@ -3,6 +3,9 @@ import { supabase, isSupabaseConfigured } from "./supabaseClient.js";
 type EnvRecord = Record<string, string | undefined>;
 
 const DEFAULT_DEV_ACCESS_TOKEN = "dev-token-change-me";
+const SHOULD_LOG_AUTH_WARNINGS = Boolean(
+  typeof import.meta !== "undefined" && import.meta.env && import.meta.env.DEV,
+);
 
 function resolveDevAccessToken(): string | null {
   const env = (import.meta.env ?? {}) as EnvRecord & {
@@ -54,12 +57,14 @@ export async function getAuthToken(): Promise<string | null> {
       const { data } = await supabase.auth.getSession();
       return data?.session?.access_token ?? null;
     } catch (error) {
-      console.warn("Auth session lookup failed.", error);
+          if (SHOULD_LOG_AUTH_WARNINGS) {
+        console.warn("Auth session lookup failed.", error);
+      }
     }
   }
 
   const token = resolveDevAccessToken();
-  if (!token && typeof console !== "undefined") {
+  if (!token && SHOULD_LOG_AUTH_WARNINGS && typeof console !== "undefined") {
     console.warn("No auth token found. Requests will continue unauthenticated.");
   }
 
