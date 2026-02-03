@@ -406,7 +406,7 @@ export default function PoolingWorkspace() {
         </div>
       </header>
 
-            {dataError && (
+       {dataError && (
         <div className="flex flex-col gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 md:flex-row md:items-center md:justify-between">
           <div>
             <p className="font-semibold">Live data unavailable</p>
@@ -433,8 +433,8 @@ export default function PoolingWorkspace() {
         <div className="space-y-6">
           <InventoryTable loans={loans} selected={selectedLoanIds} onToggle={toggleLoan} />
 
-          <section className="grid gap-6 lg:grid-cols-3">
-            <div className="lg:col-span-2 space-y-4">
+           <section className="space-y-6">
+            <div className="space-y-4">
               <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
                 <div className="flex items-start justify-between gap-3">
                   <div>
@@ -528,7 +528,7 @@ export default function PoolingWorkspace() {
                   </div>
                   <button
                     type="button"
-              disabled={isTokenizeDisabled}
+                     disabled={isTokenizeDisabled}
                     onClick={handleTokenize}
                     className="inline-flex items-center justify-center rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-emerald-400"
                   >
@@ -537,49 +537,48 @@ export default function PoolingWorkspace() {
                 </div>
               </div>
 
-              <WeightedMetrics loans={selectedLoans} />
-            </div>
-
-            <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Pool Admin Dashboard</p>
-                  <h3 className="text-lg font-semibold text-slate-900">{poolAdmin?.name ?? "Pool"}</h3>
-                  <p className="text-sm text-slate-600">NAV, token contract, and on-chain supply.</p>
+                 <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Pool Admin Dashboard</p>
+                    <h3 className="text-lg font-semibold text-slate-900">{poolAdmin?.name ?? "Pool"}</h3>
+                    <p className="text-sm text-slate-600">NAV, token contract, and on-chain supply.</p>
+                  </div>
+                  <BuildingLibraryIcon className="h-6 w-6 text-slate-400" />
                 </div>
-                <BuildingLibraryIcon className="h-6 w-6 text-slate-400" />
-              </div>
-
-              {poolAdmin && (
-                <div className="mt-4 space-y-4">
-                  <div className="grid gap-3 md:grid-cols-2">
-                    <MetricCard label="NAV" value={formatCurrency(poolAdmin.nav)} />
-                    <MetricCard label="Outstanding" value={formatCurrency(poolAdmin.outstanding)} />
-                    <MetricCard label="Total supply" value={formatNumber(poolAdmin.totalSupply)} />
-                     <MetricCard
-                      label="Token address"
-                      value={poolAdmin.tokenAddress ?? "Pending"}
-                      valueClassName="text-base font-semibold text-slate-900 break-all leading-5"
+                   
+                    {poolAdmin && (
+                  <div className="mt-4 space-y-4">
+                    <div className="grid gap-3 md:grid-cols-2">
+                      <MetricCard label="NAV" value={formatCurrency(poolAdmin.nav)} />
+                      <MetricCard label="Outstanding" value={formatCurrency(poolAdmin.outstanding)} />
+                      <MetricCard label="Total supply" value={formatNumber(poolAdmin.totalSupply)} />
+                      <MetricCard
+                        label="Token address"
+                        value={poolAdmin.tokenAddress ?? "Pending"}
+                        valueClassName="text-base font-semibold text-slate-900 break-all leading-5"
                     />
                   </div>
 
-                  <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
-                    <div className="flex items-center gap-2">
-                      <SparklesIcon className="h-4 w-4 text-amber-500" />
-                      WA coupon {formatPercent(poolAdmin.metrics.waCoupon, 2)} · WA DSCR {formatPercent(poolAdmin.metrics.waDscr, 2)} · WA term
-                      {` ${poolAdmin.metrics.waTerm.toFixed(0)} mos`}
+                    <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
+                      <div className="flex items-center gap-2">
+                        <SparklesIcon className="h-4 w-4 text-amber-500" />
+                        WA coupon {formatPercent(poolAdmin.metrics.waCoupon, 2)} · WA DSCR {formatPercent(poolAdmin.metrics.waDscr, 2)} · WA term
+                        {` ${poolAdmin.metrics.waTerm.toFixed(0)} mos`}
+                      </div>
+                      <div className="mt-2 flex flex-wrap gap-2 text-xs text-slate-500">
+                        <span className="rounded-full bg-white px-2 py-1 font-semibold">Leverage {formatPercent(poolAdmin.metrics.leverage, 1)}</span>
+                        <span className="rounded-full bg-white px-2 py-1 font-semibold">Coverage {formatPercent(poolAdmin.metrics.coverage, 1)}</span>
+                        <span className="rounded-full bg-white px-2 py-1 font-semibold">{Object.keys(poolAdmin.geography).length} states</span>
+                      </div>
                     </div>
-                    <div className="mt-2 flex flex-wrap gap-2 text-xs text-slate-500">
-                      <span className="rounded-full bg-white px-2 py-1 font-semibold">Leverage {formatPercent(poolAdmin.metrics.leverage, 1)}</span>
-                      <span className="rounded-full bg-white px-2 py-1 font-semibold">Coverage {formatPercent(poolAdmin.metrics.coverage, 1)}</span>
-                      <span className="rounded-full bg-white px-2 py-1 font-semibold">{Object.keys(poolAdmin.geography).length} states</span>
-                    </div>
+                    
+                    <InvestorTable investors={poolAdmin.investors} />
+                    <CashflowTable entries={poolAdmin.cashflows} />
                   </div>
-
-                  <InvestorTable investors={poolAdmin.investors} />
-                  <CashflowTable entries={poolAdmin.cashflows} />
-                </div>
-              )}
+               )}
+              </div>
+                  <WeightedMetrics loans={selectedLoans} />
             </div>
           </section>
         </div>
