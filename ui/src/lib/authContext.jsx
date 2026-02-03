@@ -28,9 +28,11 @@ export function AuthProvider({ children }) {
       const timeoutId = setTimeout(() => {
         if (!isMounted) return;
         didTimeout = true;
-        console.warn('Supabase session request timed out. Falling back to unauthenticated state.');
+         if (import.meta?.env?.DEV) {
+          console.warn('Supabase session request timed out. Falling back to unauthenticated state.');
+        }
         setSession(null);
-           setIsLoading(false);
+      setIsLoading(false);
       }, 8000);
 
       try {
@@ -65,7 +67,7 @@ export function AuthProvider({ children }) {
     };
   }, []);
 
-    const signOut = useCallback(async () => {
+   const signOut = useCallback(async () => {
     if (!isSupabaseConfigured) {
       setSession(null);
       return { error: new Error('Supabase not configured') };
