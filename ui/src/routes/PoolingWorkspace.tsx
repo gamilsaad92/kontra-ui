@@ -70,11 +70,19 @@ function WeightedMetrics({ loans }: { loans: LoanInventoryItem[] }) {
   );
 }
 
-function MetricCard({ label, value }: { label: string; value: string }) {
+function MetricCard({
+  label,
+  value,
+  valueClassName,
+}: {
+  label: string;
+  value: string;
+  valueClassName?: string;
+}) {
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+    <div className="min-w-0 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
       <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{label}</p>
-      <p className="mt-2 text-xl font-semibold text-slate-900">{value}</p>
+    <p className={`mt-2 ${valueClassName ?? "text-xl font-semibold text-slate-900"}`}>{value}</p>
     </div>
   );
 }
@@ -548,7 +556,11 @@ export default function PoolingWorkspace() {
                     <MetricCard label="NAV" value={formatCurrency(poolAdmin.nav)} />
                     <MetricCard label="Outstanding" value={formatCurrency(poolAdmin.outstanding)} />
                     <MetricCard label="Total supply" value={formatNumber(poolAdmin.totalSupply)} />
-                    <MetricCard label="Token address" value={poolAdmin.tokenAddress ?? "Pending"} />
+                     <MetricCard
+                      label="Token address"
+                      value={poolAdmin.tokenAddress ?? "Pending"}
+                      valueClassName="text-base font-semibold text-slate-900 break-all leading-5"
+                    />
                   </div>
 
                   <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
