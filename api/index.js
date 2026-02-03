@@ -170,6 +170,8 @@ const { router: menuRouter } = require('./routers/menu');
 const { logUserEvent, suggestNextFeature } = require('./personalization');
 const { router: ordersRouter } = require('./routers/orders');
 const { router: paymentsRouter } = require('./routers/payments');
+const { router: paymentsStablecoinRouter } = require('./routers/paymentsStablecoin');
+const { router: paymentsStablecoinWebhookRouter } = require('./routers/paymentsStablecoinWebhook');
 const paymentsStripeRouter = require('./routers/paymentsStripe');
 const analyzeFinancialsRouter = require('./analyze-financials');
 const inspectReviewRouter = require('./inspect-review');
@@ -548,7 +550,13 @@ async function get_hospitality_stats() {
 
 // ── Middleware ─────────────────────────────────────────────────────────────
 app.options('*', cors(corsOptions));
-app.use(cors(corsOptions));
+app.use(
+  express.json({
+    verify: (req, _res, buf) => {
+      req.rawBody = buf.toString('utf8');
+    },
+  })
+);
 app.options("*", cors(corsOptions));
 app.use(express.json());
 app.use(auditLogger);
@@ -580,6 +588,8 @@ app.use('/api/reports', reportsRouter);
 app.use('/api', menuRouter);
 app.use('/api', ordersRouter);
 app.use('/api', paymentsRouter);
+app.use('/api', paymentsStablecoinRouter);
+app.use('/api', paymentsStablecoinWebhookRouter);
 app.use('/api', paymentsStripeRouter);
 app.use('/api', aiReviewsRouter);
 app.use('/api', payoffsRouter);
