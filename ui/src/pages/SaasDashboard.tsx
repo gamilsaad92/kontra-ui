@@ -113,7 +113,7 @@ function AuthenticationScreen({
   onModeChange: (mode: AuthMode) => void;
 }) {
   return (
-    <div className="flex min-h-screen items-center justify-center bg-slate-950 px-4 py-12 text-slate-100">
+    <div className="flex min-h-screen items-center justify-center bg-gradient-to-b from-slate-950 via-slate-950 to-slate-900 px-4 py-12 text-slate-100">
       <div className="w-full max-w-xl space-y-6">
                <div className="flex justify-start">
           <img src="/logo-dark.png" alt="Kontra" className="h-8 w-auto" />
