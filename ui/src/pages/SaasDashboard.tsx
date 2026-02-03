@@ -38,6 +38,7 @@ import CreateOffering from "./dashboard/markets/distribution/CreateOffering";
 import DistributionMarketplace from "./dashboard/markets/distribution/DistributionMarketplace";
 import RfqsTrades from "./dashboard/markets/distribution/RfqsTrades";
 import Approvals from "./dashboard/markets/distribution/Approvals";
+import TokensPage from "./dashboard/markets/TokensPage";
 import GovernanceLayout from "./dashboard/governance/GovernanceLayout";
 import ApiDiagnostics from "./settings/ApiDiagnostics";
 import PoolingWorkspace from "../routes/PoolingWorkspace";
@@ -345,7 +346,7 @@ function AuthenticatedDashboard({
       <Route path="/markets" element={<MarketsLayout />}>
         <Route index element={<Navigate to="/markets/pools" replace />} />
         <Route path="pools" element={<PoolingWorkspace />} />
-        <Route path="tokens" element={<Placeholder title="Tokens" />} />
+         <Route path="tokens" element={<TokensPage />} />
         <Route path="trades" element={<Trades />} />
         <Route path="exchange" element={<Exchange />} />
           <Route path="distribution" element={<DistributionLayout />}>
