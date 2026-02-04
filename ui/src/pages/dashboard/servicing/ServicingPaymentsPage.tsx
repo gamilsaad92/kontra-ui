@@ -6,6 +6,7 @@ import {
   markReview,
   reviewPayment,
 } from "../../../features/ai-reviews/api";
+import StablecoinPaymentsPanel from "../../../components/StablecoinPaymentsPanel";
 
 export default function ServicingPaymentsPage() {
  const [statusFilter, setStatusFilter] = useState<AiReviewStatus | "all">("all");
@@ -425,6 +426,7 @@ export default function ServicingPaymentsPage() {
           )}
         </section>
       </div>
+            <StablecoinPaymentsPanel />
     </div>
   );
 }
