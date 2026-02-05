@@ -1,5 +1,6 @@
 const express = require('express');
 const authenticate = require('../middlewares/authenticate');
+const requireOrg = require('../middlewares/requireOrg');
 const { orgContext } = require('../middleware/orgContext');
 const { supabase } = require('../db');
 const { getLoanServicingSnapshot } = require('../services/insightsComposer');
