@@ -3,6 +3,9 @@ import { NavLink, Outlet } from "react-router-dom";
 export default function GovernanceLayout() {
   const tabs = [
     { label: "Regulatory Scan", to: "/governance/compliance", tone: "alert" },
+    { label: "Policy Packs", to: "/governance/policy/packs" },
+    { label: "Rule Builder", to: "/governance/policy/rules" },
+    { label: "Findings", to: "/governance/policy/findings" },
     { label: "Legal Configuration", to: "/governance/legal" },
     { label: "Document Review", to: "/governance/document-review" },
     { label: "Risk Dashboard", to: "/governance/risk" },
