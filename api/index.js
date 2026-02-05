@@ -211,6 +211,8 @@ const complianceRouter = require('./routers/compliance');
 const legalRouter = require('./routers/legal');
 const otpRouter = require('./routers/otp');
 const mobileRouter = require('./routers/mobile');
+const policyRouter = require('./routers/policy');
+const { orgContext } = require('./middleware/orgContext');
 
 const JOB_SCHEDULES = [
   { type: 'score-assets', intervalMs: 6 * 60 * 60 * 1000 },
@@ -666,6 +668,7 @@ app.use('/api', integrationsRouter);
 app.use('/api/otp', otpRouter);
 if (isFeatureEnabled('compliance')) {
   app.use('/api', authenticate, requireRole('admin'), complianceRouter);
+  app.use('/api/policy', authenticate, orgContext, policyRouter);
 }
 
 // ── Mock KYC & Credit Checks ──────────────────────────────────────────────
