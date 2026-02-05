@@ -46,6 +46,9 @@ import Trades from "../routes/Trades";
 import Exchange from "../routes/Exchange";
 import Compliance from "../routes/Compliance";
 import LegalConfiguration from "../routes/LegalConfiguration";
+import PolicyPacksPage from "./compliance/PolicyPacksPage";
+import PolicyRulesPage from "./compliance/PolicyRulesPage";
+import FindingsPage from "./compliance/FindingsPage";
 
 const Placeholder = ({ title }: { title: string }) => (
   <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
@@ -362,6 +365,9 @@ function AuthenticatedDashboard({
       <Route path="/governance" element={<GovernanceLayout />}>
         <Route index element={<Navigate to="/governance/compliance" replace />} />
         <Route path="compliance" element={<Compliance />} />
+        <Route path="policy/packs" element={<PolicyPacksPage />} />
+        <Route path="policy/rules" element={<PolicyRulesPage />} />
+        <Route path="policy/findings" element={<FindingsPage />} />
         <Route path="legal" element={<LegalConfiguration />} />
         <Route path="document-review" element={<DocumentReview />} />
         <Route path="risk" element={<RiskDashboard />} />
