@@ -123,9 +123,9 @@ function AuthenticationScreen({
           <img src="/logo-dark.png" alt="Kontra" className="h-8 w-auto" />
         </div>
         <div className="space-y-2 text-center">
-          <h1 className="text-2xl font-semibold">Access your Kontra workspace</h1>
+          <h1 className="text-2xl font-semibold">Welcome back to Kontra</h1>
           <p className="text-sm text-slate-300">
-            Sign in with your Supabase credentials to manage lending, trading, and servicing tools.
+              Sign in with your Supabase credentials to manage lending, trading, and servicing workflows.
           </p>
         </div>
         <div className="flex justify-center gap-2 text-sm font-medium">
