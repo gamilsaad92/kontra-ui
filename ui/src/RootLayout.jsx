@@ -5,13 +5,13 @@ import { apiRequest } from './lib/apiClient'
 import { apiRoutes } from './lib/apiRoutes'
 
 export default function RootLayout({ children }) {
-  const { session } = useContext(AuthContext)
+ const { session, signOut } = useContext(AuthContext)
   const [branding, setBranding] = useState(null)
   const [orgName, setOrgName] = useState('Kontra')
   const [role, setRole] = useState('guest')
-    const [apiError, setApiError] = useState(null)
+ const [apiError, setApiError] = useState(null)
   const [apiToast, setApiToast] = useState(null)
-  
+
   // Apply global html/body classes safely for a Vite SPA
   useEffect(() => {
     document.documentElement.lang = 'en'
@@ -23,7 +23,35 @@ export default function RootLayout({ children }) {
     }
   }, [])
 
-   const accentColor = useMemo(() => {
+  useEffect(() => {
+    const onUnauthorized = async () => {
+      await signOut()
+      if (window.location.pathname !== '/login') {
+        window.location.assign('/login')
+      }
+    }
+
+    const onForbidden = () => {
+      setApiToast({ message: 'Insufficient permissions', status: 403 })
+    }
+
+    const onEndpointMissing = (event) => {
+      const detail = event?.detail || {}
+      setApiToast({ message: `Endpoint missing: ${detail.path || 'unknown'}`, status: detail.status || 404 })
+    }
+
+    window.addEventListener('api:unauthorized', onUnauthorized)
+    window.addEventListener('api:forbidden', onForbidden)
+    window.addEventListener('api:endpoint-missing', onEndpointMissing)
+
+    return () => {
+      window.removeEventListener('api:unauthorized', onUnauthorized)
+      window.removeEventListener('api:forbidden', onForbidden)
+      window.removeEventListener('api:endpoint-missing', onEndpointMissing)
+    }
+  }, [signOut])
+
+  const accentColor = useMemo(() => {
     if (!branding) return '#22d3ee'
     return branding.primaryColor || branding.primary_color || '#22d3ee'
   }, [branding])
@@ -38,8 +66,8 @@ export default function RootLayout({ children }) {
       try {
         const headers = {}
         const orgId = session?.user?.user_metadata?.organization_id
-       if (orgId) headers['x-organization-id'] = orgId
-       const data = await apiRequest('GET', apiRoutes.ssoConfig, undefined, { headers })
+        if (orgId) headers['x-organization-id'] = orgId
+        const data = await apiRequest('GET', apiRoutes.ssoConfig, undefined, { headers })
         if (!isMounted) return
         setBranding(data.organization?.branding || null)
         setOrgName(data.organization?.name || 'Kontra')
@@ -106,7 +134,7 @@ export default function RootLayout({ children }) {
 
   return (
     <div className="min-h-screen flex flex-col" style={{ '--brand-accent': accentColor }}>
-          {import.meta.env.DEV && apiError && (
+      {import.meta.env.DEV && apiError && (
         <div className="bg-rose-600/90 text-white text-xs px-4 py-2 flex items-center justify-between">
           <span>
             API Error: {apiError.message || 'Request failed'} {apiError.status ? `(${apiError.status})` : ''}
@@ -144,7 +172,7 @@ export default function RootLayout({ children }) {
       </header>
 
       <main className="flex-1">{children}</main>
-            {apiToast && (
+       {apiToast && (
         <div className="fixed bottom-4 right-4 z-50 rounded-lg bg-slate-900 px-4 py-3 text-sm text-white shadow-lg">
           {apiToast.message || 'Request failed'} {apiToast.status ? `(${apiToast.status})` : ''}
         </div>
