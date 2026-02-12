@@ -7,72 +7,17 @@ import {
   reviewPayment,
 } from "../../../features/ai-reviews/api";
 import StablecoinPaymentsPanel from "../../../components/StablecoinPaymentsPanel";
+import DataState from "../../../components/DataState";
 
 export default function ServicingPaymentsPage() {
  const [statusFilter, setStatusFilter] = useState<AiReviewStatus | "all">("all");
   const [reviews, setReviews] = useState<AiReview[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+    const [loadError, setLoadError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [paymentId, setPaymentId] = useState("");
   const [allocation, setAllocation] = useState<Record<string, number>>({});
-
-  const mockReviews: AiReview[] = [
-    {
-      id: "mock-payment-1",
-      org_id: "org-1",
-      project_id: "project-9",
-      loan_id: "loan-204",
-      type: "payment",
-      source_id: "payment-771",
-      status: "needs_review",
-      confidence: 0.58,
-      title: "Payment exception: Received amount is short by $3,200.",
-      summary: "Payment requires human review before posting or borrower communication.",
-      reasons: [
-        {
-          code: "short_pay",
-          message: "Received amount is short by $3,200.",
-          severity: "high",
-        },
-      ],
-      evidence: [
-        {
-          label: "Remittance advice",
-          url: "https://example.com/remittance-771.pdf",
-          kind: "document",
-        },
-      ],
-      recommended_actions: [
-        {
-          action_type: "approve_posting",
-          label: "Approve posting proposal",
-          payload: { allocation: { principal: 7200, interest: 1800, escrow: 500 } },
-          requires_approval: true,
-        },
-        {
-          action_type: "draft_borrower_email",
-          label: "Draft borrower clarification email",
-          payload: { remitterName: "QRS Capital" },
-          requires_approval: true,
-        },
-      ],
-      proposed_updates: {
-        proposed_allocation: {
-          principal: 7200,
-          interest: 1800,
-          escrow: 500,
-          fees: 0,
-          default_interest: 0,
-          suspense: 0,
-        },
-        posting_notes: "Short pay flagged; hold in suspense pending confirmation.",
-      },
-      created_by: "ai",
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    },
-  ];
 
   const filteredReviews = useMemo(() => {
     if (statusFilter === "all") {
@@ -101,18 +46,16 @@ export default function ServicingPaymentsPage() {
   const loadReviews = async () => {
     setLoading(true);
     setMessage(null);
+    setLoadError(null);
     try {
       const data = await getReviews({
         type: "payment",
         status: statusFilter === "all" ? undefined : statusFilter,
       });
       setReviews(data);
-      if (data.length === 0) {
-        setReviews(mockReviews);
-      }
     } catch (error) {
-      setReviews(mockReviews);
-      setMessage("Live AI reviews unavailable. Showing mock queue.");
+         setReviews([]);
+      setLoadError("Unable to load payment review queue.");
     } finally {
       setLoading(false);
     }
@@ -134,7 +77,7 @@ export default function ServicingPaymentsPage() {
       setSelectedId(review.id);
       setPaymentId("");
     } catch (error) {
-      setMessage("Unable to run AI review. Check backend configuration.");
+       setMessage("Unable to run AI review.");
     }
   };
 
@@ -247,44 +190,50 @@ export default function ServicingPaymentsPage() {
           ))}
         </aside>
 
-        <section className="space-y-3">
-          <div className="flex items-center justify-between">
-            <h3 className="text-sm font-semibold text-slate-700">
-              Payment review queue
-            </h3>
-            <span className="text-xs text-slate-500">
-              {loading ? "Refreshing…" : `${filteredReviews.length} items`}
-            </span>
-          </div>
-          {filteredReviews.map((review) => (
-            <button
-              key={review.id}
-              type="button"
-              onClick={() => setSelectedId(review.id)}
-              className={`w-full rounded-xl border px-4 py-3 text-left shadow-sm transition ${
-                selectedReview?.id === review.id
-                  ? "border-slate-900 bg-slate-900 text-white"
-                  : "border-slate-200 bg-white text-slate-900 hover:border-slate-400"
-              }`}
-            >
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <p className="text-sm font-semibold">{review.title}</p>
-                  <p className="text-xs opacity-70">Loan {review.loan_id ?? "—"}</p>
+          <DataState
+          isLoading={loading}
+          isError={Boolean(loadError)}
+          error={loadError}
+          isEmpty={!loading && filteredReviews.length === 0}
+          emptyTitle="No payment reviews yet. Run AI Review to create your first item."
+        >
+          <section className="space-y-3">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-semibold text-slate-700">
+                Payment review queue
+              </h3>
+              <span className="text-xs text-slate-500">{`${filteredReviews.length} items`}</span>
+            </div>
+            {filteredReviews.map((review) => (
+              <button
+                key={review.id}
+                type="button"
+                onClick={() => setSelectedId(review.id)}
+                className={`w-full rounded-xl border px-4 py-3 text-left shadow-sm transition ${
+                  selectedReview?.id === review.id
+                    ? "border-slate-900 bg-slate-900 text-white"
+                    : "border-slate-200 bg-white text-slate-900 hover:border-slate-400"
+                }`}
+              >
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-semibold">{review.title}</p>
+                    <p className="text-xs opacity-70">Loan {review.loan_id ?? "—"}</p>
+                  </div>
+                  <span
+                    className={`rounded-full px-2.5 py-1 text-xs font-semibold ${
+                      selectedReview?.id === review.id
+                        ? "bg-white/20 text-white"
+                        : statusBadgeClass(review.status)
+                    }`}
+                  >
+                    {review.status.replace("_", " ")}
+                  </span>
                 </div>
-                <span
-                  className={`rounded-full px-2.5 py-1 text-xs font-semibold ${
-                    selectedReview?.id === review.id
-                      ? "bg-white/20 text-white"
-                      : statusBadgeClass(review.status)
-                  }`}
-                >
-                  {review.status.replace("_", " ")}
-                </span>
-              </div>
-            </button>
-          ))}
-        </section>
+                      </button>
+            ))}
+          </section>
+        </DataState>
 
         <section className="space-y-4 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
           {selectedReview ? (
@@ -426,7 +375,7 @@ export default function ServicingPaymentsPage() {
           )}
         </section>
       </div>
-            <StablecoinPaymentsPanel />
+       <StablecoinPaymentsPanel />
     </div>
   );
 }
