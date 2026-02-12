@@ -1,9 +1,23 @@
 const express = require('express');
+const fs = require('fs');
+const path = require('path');
 const { ZodError } = require('../lib/zod');
 const { supabase } = require('../db');
 const requireOrg = require('../middlewares/requireOrg');
 const { runPaymentAgent } = require('../ai/agents/paymentAgent');
 const { runInspectionAgent } = require('../ai/agents/inspectionAgent');
+
+const schemaImportCandidates = [
+  '../src/schemas/servicing/aiReviews',
+  '../../src/schemas/servicing/aiReviews',
+  '../schemas/servicing/aiReviews',
+];
+
+const schemaImportPath = schemaImportCandidates.find((candidate) => {
+  const resolved = path.resolve(__dirname, candidate);
+  return fs.existsSync(`${resolved}.js`) || fs.existsSync(path.join(resolved, 'index.js'));
+}) || schemaImportCandidates[0];
+
 const {
   PaymentReviewRequestSchema,
   ReviewInspectionRequestSchema,
@@ -13,7 +27,7 @@ const {
   ReviewResponseSchema,
   ReviewsListResponseSchema,
   ApproveActionResponseSchema,
-} = require('../src/schemas/servicing/aiReviews');
+}} = require(schemaImportPath);
 
 const router = express.Router();
 
