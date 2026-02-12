@@ -27,6 +27,7 @@ export type ApiRequestLogEntry = {
 
 export type ApiError = Error & {
   status?: number;
+   code?: string;
   path?: string;
   requestId?: string | null;
   details?: unknown;
@@ -128,13 +129,15 @@ const buildError = (
   status: number | undefined,
   path: string,
   requestId: string | null,
-  details?: unknown
+ details?: unknown,
+  code?: string
 ): ApiError => {
   const error = new Error(message) as ApiError;
   error.status = status;
   error.path = path;
   error.requestId = requestId;
   error.details = details;
+   error.code = code;
   return error;
 };
 
@@ -155,6 +158,7 @@ export async function apiFetch(
 
   if (orgContext.orgId) {
     headers.set("x-organization-id", orgContext.orgId);
+    headers.set("x-org-id", orgContext.orgId);
   }
   if (orgContext.userId) {
     headers.set("x-user-id", orgContext.userId);
@@ -217,14 +221,32 @@ export async function apiFetch(
 
   if (!response.ok) {
     const data = await parseJsonSafe(response.clone());
+       const record = typeof data === "object" && data !== null ? (data as Record<string, unknown>) : null;
     const message =
-      typeof data === "object" && data !== null && "error" in (data as Record<string, unknown>)
-        ? String((data as Record<string, unknown>).error)
-        : response.statusText;
+       typeof record?.message === "string"
+        ? record.message
+        : typeof record?.error === "string"
+          ? record.error
+          : response.statusText || "Request failed";
+    const code = typeof record?.code === "string" ? record.code : undefined;
     const requestId = response.headers.get("x-request-id");
-    const apiError = buildError(message, response.status, requestUrl, requestId, data);
+    const apiError = buildError(message, response.status, requestUrl, requestId, data, code);
     logEntry.error = message;
     emitBrowserEvent("api:error", apiError);
+    
+    if (response.status === 401) {
+      emitBrowserEvent("api:unauthorized", { path: requestUrl, status: response.status });
+    }
+
+    if (response.status === 403) {
+      emitBrowserEvent("api:forbidden", { path: requestUrl, status: response.status, message: "Insufficient permissions" });
+    }
+
+    if (response.status === 404 || response.status === 501) {
+      console.warn(`[API] Endpoint missing: ${requestUrl} (${response.status})`);
+      emitBrowserEvent("api:endpoint-missing", { path: requestUrl, status: response.status });
+    }
+
     if (options.throwOnError !== false) {
       throw apiError;
     }
