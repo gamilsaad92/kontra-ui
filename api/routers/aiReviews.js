@@ -27,7 +27,7 @@ const {
   ReviewResponseSchema,
   ReviewsListResponseSchema,
   ApproveActionResponseSchema,
-}} = require(schemaImportPath);
+} = require(schemaImportPath);
 
 const router = express.Router();
 
