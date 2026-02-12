@@ -1,8 +1,19 @@
 const express = require('express');
+const { ZodError } = require('../lib/zod');
 const { supabase } = require('../db');
 const requireOrg = require('../middlewares/requireOrg');
 const { runPaymentAgent } = require('../ai/agents/paymentAgent');
 const { runInspectionAgent } = require('../ai/agents/inspectionAgent');
+const {
+  PaymentReviewRequestSchema,
+  ReviewInspectionRequestSchema,
+  ReviewsListQuerySchema,
+  MarkReviewRequestSchema,
+  ApproveActionRequestSchema,
+  ReviewResponseSchema,
+  ReviewsListResponseSchema,
+  ApproveActionResponseSchema,
+} = require('../src/schemas/servicing/aiReviews');
 
 const router = express.Router();
 
@@ -11,7 +22,7 @@ const isAiExecutionEnabled = () => process.env.AI_EXECUTION_ENABLED === 'true';
 
 const guardAiReviews = (req, res) => {
   if (!isAiReviewsEnabled()) {
-    res.status(404).json({ message: 'AI reviews are disabled.' });
+   res.status(404).json({ code: 'FEATURE_DISABLED', message: 'AI reviews are disabled.' });
     return false;
   }
   return true;
@@ -19,14 +30,37 @@ const guardAiReviews = (req, res) => {
 
 const nowIso = () => new Date().toISOString();
 
+const validationError = (res, error) => {
+  if (!(error instanceof ZodError)) {
+    return res.status(500).json({ code: 'SERVER_ERROR', message: 'Unexpected validation error.' });
+  }
+  return res.status(400).json({
+    code: 'VALIDATION_ERROR',
+    message: 'Request validation failed.',
+    details: error.issues,
+  });
+};
+
+const parseInput = (schema, payload) => schema.parse(payload || {});
+
+const sendValidated = (res, schema, payload, status = 200) => {
+  const parsed = schema.parse(payload);
+  return res.status(status).json(parsed);
+};
+
 router.use(requireOrg);
 
 router.post('/ai/payments/review', async (req, res) => {
   if (!guardAiReviews(req, res)) return;
-  const sourceId = req.body?.paymentId ?? req.body?.sourceId;
-  if (!sourceId) {
-    return res.status(400).json({ message: 'paymentId is required.' });
+
+  let body;
+  try {
+    body = parseInput(PaymentReviewRequestSchema, req.body);
+  } catch (error) {
+    return validationError(res, error);
   }
+
+   const sourceId = body.paymentId ?? body.sourceId;
 
   const { data: payment } = await supabase
     .from('payments')
@@ -35,23 +69,23 @@ router.post('/ai/payments/review', async (req, res) => {
     .eq('org_id', req.orgId)
     .maybeSingle();
 
-  const loanId = req.body?.loanId ?? payment?.loan_id ?? null;
-  const projectId = req.body?.projectId ?? payment?.project_id ?? null;
+  const loanId = body.loanId ?? payment?.loan_id ?? null;
+  const projectId = body.projectId ?? payment?.project_id ?? null;
   const context = {
-    expected_amount: payment?.expected_amount ?? req.body?.context?.expected_amount,
-    due_date: payment?.due_date ?? req.body?.context?.due_date,
-    received_amount: payment?.amount ?? req.body?.context?.received_amount,
-    received_date: payment?.received_date ?? payment?.created_at ?? req.body?.context?.received_date,
-    remitter_name: payment?.remitter_name ?? req.body?.context?.remitter_name,
-    memo: payment?.memo ?? req.body?.context?.memo,
-    expected_remitter: req.body?.context?.expected_remitter,
-    expected_memo: req.body?.context?.expected_memo,
-    last_payment_dates: req.body?.context?.last_payment_dates,
-    escrow_due: req.body?.context?.escrow_due,
-    late_fee_rules: req.body?.context?.late_fee_rules,
-    suspected_fraud: req.body?.context?.suspected_fraud,
-    proposed_allocation: req.body?.context?.proposed_allocation,
-    posting_notes: req.body?.context?.posting_notes,
+      expected_amount: payment?.expected_amount ?? body.context?.expected_amount,
+    due_date: payment?.due_date ?? body.context?.due_date,
+    received_amount: payment?.amount ?? body.context?.received_amount,
+    received_date: payment?.received_date ?? payment?.created_at ?? body.context?.received_date,
+    remitter_name: payment?.remitter_name ?? body.context?.remitter_name,
+    memo: payment?.memo ?? body.context?.memo,
+    expected_remitter: body.context?.expected_remitter,
+    expected_memo: body.context?.expected_memo,
+    last_payment_dates: body.context?.last_payment_dates,
+    escrow_due: body.context?.escrow_due,
+    late_fee_rules: body.context?.late_fee_rules,
+    suspected_fraud: body.context?.suspected_fraud,
+    proposed_allocation: body.context?.proposed_allocation,
+    posting_notes: body.context?.posting_notes,
   };
 
   const input = {
@@ -60,7 +94,7 @@ router.post('/ai/payments/review', async (req, res) => {
     projectId,
     type: 'payment',
     sourceId: String(sourceId),
-    attachments: req.body?.attachments || [],
+    attachments: body.attachments || [],
     context,
   };
 
@@ -92,18 +126,27 @@ router.post('/ai/payments/review', async (req, res) => {
     .single();
 
   if (error) {
-    return res.status(500).json({ message: 'Unable to create AI review.', error });
+    return res.status(500).json({ code: 'AI_REVIEW_CREATE_FAILED', message: 'Unable to create AI review.', details: error });
   }
 
-  return res.status(201).json({ review: data });
+  try {
+    return sendValidated(res, ReviewResponseSchema, { review: data }, 201);
+  } catch (parseError) {
+    return res.status(500).json({ code: 'RESPONSE_VALIDATION_ERROR', message: 'Invalid AI review response.', details: parseError.issues });
+  }
 });
 
 router.post('/ai/inspections/review', async (req, res) => {
   if (!guardAiReviews(req, res)) return;
-  const sourceId = req.body?.inspectionId ?? req.body?.sourceId;
-  if (!sourceId) {
-    return res.status(400).json({ message: 'inspectionId is required.' });
+
+  let body;
+  try {
+    body = parseInput(ReviewInspectionRequestSchema, req.body);
+  } catch (error) {
+    return validationError(res, error);
   }
+
+    const sourceId = body.inspectionId ?? body.sourceId;
 
   const { data: inspection } = await supabase
     .from('inspections')
@@ -112,8 +155,8 @@ router.post('/ai/inspections/review', async (req, res) => {
     .eq('org_id', req.orgId)
     .maybeSingle();
 
-  const loanId = req.body?.loanId ?? inspection?.loan_id ?? null;
-  const projectId = req.body?.projectId ?? inspection?.project_id ?? null;
+  const loanId = body.loanId ?? inspection?.loan_id ?? null;
+  const projectId = body.projectId ?? inspection?.project_id ?? null;
 
   const input = {
     orgId: req.orgId,
@@ -121,11 +164,11 @@ router.post('/ai/inspections/review', async (req, res) => {
     projectId,
     type: 'inspection',
     sourceId: String(sourceId),
-    attachments: req.body?.attachments || inspection?.attachments || [],
+     attachments: body.attachments || inspection?.attachments || [],
     context: {
-      scope_items: req.body?.context?.scope_items ?? inspection?.scope_items ?? [],
-      inspection_notes: req.body?.context?.inspection_notes ?? inspection?.notes,
-      due_date: req.body?.context?.due_date ?? inspection?.due_date,
+        scope_items: body.context?.scope_items ?? inspection?.scope_items ?? [],
+      inspection_notes: body.context?.inspection_notes ?? inspection?.notes,
+      due_date: body.context?.due_date ?? inspection?.due_date,
     },
   };
 
@@ -157,15 +200,27 @@ router.post('/ai/inspections/review', async (req, res) => {
     .single();
 
   if (error) {
-    return res.status(500).json({ message: 'Unable to create AI review.', error });
+   return res.status(500).json({ code: 'AI_REVIEW_CREATE_FAILED', message: 'Unable to create AI review.', details: error });
   }
 
-  return res.status(201).json({ review: data });
+  try {
+    return sendValidated(res, ReviewResponseSchema, { review: data }, 201);
+  } catch (parseError) {
+    return res.status(500).json({ code: 'RESPONSE_VALIDATION_ERROR', message: 'Invalid AI review response.', details: parseError.issues });
+  }
 });
 
 router.get('/ai/reviews', async (req, res) => {
   if (!guardAiReviews(req, res)) return;
-  const { type, status, loanId, projectId } = req.query || {};
+
+  let queryFilters;
+  try {
+    queryFilters = parseInput(ReviewsListQuerySchema, req.query);
+  } catch (error) {
+    return validationError(res, error);
+  }
+
+  const { type, status, loanId, projectId } = queryFilters;
 
   let query = supabase
     .from('ai_reviews')
@@ -180,51 +235,65 @@ router.get('/ai/reviews', async (req, res) => {
 
   const { data, error } = await query;
   if (error) {
-    return res.status(500).json({ message: 'Unable to load AI reviews.', error });
+    return res.status(500).json({ code: 'AI_REVIEW_LIST_FAILED', message: 'Unable to load AI reviews.', details: error });
   }
 
-  return res.json({ reviews: data || [] });
+  try {
+    return sendValidated(res, ReviewsListResponseSchema, { reviews: data || [] });
+  } catch (parseError) {
+    return res.status(500).json({ code: 'RESPONSE_VALIDATION_ERROR', message: 'Invalid AI reviews response.', details: parseError.issues });
+  }
 });
 
 router.post('/ai/reviews/:id/mark', async (req, res) => {
   if (!guardAiReviews(req, res)) return;
   const { id } = req.params;
-  const { status } = req.body || {};
-  if (!['pass', 'needs_review', 'fail'].includes(status)) {
-    return res.status(400).json({ message: 'Invalid status.' });
+
+  let body;
+  try {
+    body = parseInput(MarkReviewRequestSchema, req.body);
+  } catch (error) {
+    return validationError(res, error);
   }
 
   const { data, error } = await supabase
     .from('ai_reviews')
-    .update({ status, updated_at: nowIso() })
+     .update({ status: body.status, updated_at: nowIso() })
     .eq('id', id)
     .eq('org_id', req.orgId)
     .select('*')
     .single();
 
   if (error) {
-    return res.status(500).json({ message: 'Unable to update AI review.', error });
+     return res.status(500).json({ code: 'AI_REVIEW_UPDATE_FAILED', message: 'Unable to update AI review.', details: error });
   }
 
-  return res.json({ review: data });
+  try {
+    return sendValidated(res, ReviewResponseSchema, { review: data });
+  } catch (parseError) {
+    return res.status(500).json({ code: 'RESPONSE_VALIDATION_ERROR', message: 'Invalid AI review response.', details: parseError.issues });
+  }
 });
 
 router.post('/ai/reviews/:id/approve-action', async (req, res) => {
   if (!guardAiReviews(req, res)) return;
   const { id } = req.params;
-  const { action_type, action_payload, notes } = req.body || {};
-  if (!action_type) {
-    return res.status(400).json({ message: 'action_type is required.' });
+ 
+  let body;
+  try {
+    body = parseInput(ApproveActionRequestSchema, req.body);
+  } catch (error) {
+    return validationError(res, error);
   }
 
   const { data, error } = await supabase
     .from('ai_review_actions')
     .insert({
       review_id: id,
-      action_type,
-      action_payload: action_payload || {},
+          action_type: body.action_type,
+      action_payload: body.action_payload || {},
       outcome: 'approved',
-      notes: notes || null,
+        notes: body.notes || null,
       actor_id: req.headers['x-user-id'] || null,
       created_at: nowIso(),
     })
@@ -232,18 +301,22 @@ router.post('/ai/reviews/:id/approve-action', async (req, res) => {
     .single();
 
   if (error) {
-    return res.status(500).json({ message: 'Unable to record approval.', error });
+    return res.status(500).json({ code: 'AI_REVIEW_APPROVAL_FAILED', message: 'Unable to record approval.', details: error });
   }
 
   const executionEnabled = isAiExecutionEnabled();
 
-  return res.json({
-    approval: data,
-    executionEnabled,
-    message: executionEnabled
-      ? 'Approval recorded. Execution enabled.'
-      : 'Approval recorded. Execution disabled.',
-  });
+   try {
+    return sendValidated(res, ApproveActionResponseSchema, {
+      approval: data,
+      executionEnabled,
+      message: executionEnabled
+        ? 'Approval recorded. Execution enabled.'
+        : 'Approval recorded. Execution disabled.',
+    });
+  } catch (parseError) {
+    return res.status(500).json({ code: 'RESPONSE_VALIDATION_ERROR', message: 'Invalid approval response.', details: parseError.issues });
+  }
 });
 
 module.exports = { router };
