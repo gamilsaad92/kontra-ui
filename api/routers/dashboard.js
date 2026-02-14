@@ -148,6 +148,11 @@ router.post('/', asyncHandler(async (req, res) => {
   res.json(data);
 }));
 
+router.get('/summary', asyncHandler(async (req, res, next) => {
+  req.url = '/overview';
+  return next();
+}));
+
 router.get('/overview', asyncHandler(async (req, res) => {
   const orgId = resolveOrgId(req);
   const cacheKey = `dashboard:overview:${orgId || 'all'}`;
