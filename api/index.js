@@ -219,6 +219,7 @@ const otpRouter = require('./routers/otp');
 const mobileRouter = require('./routers/mobile');
 const policyRouter = require('./routers/policy');
 const { orgContext } = require('./middleware/orgContext');
+const { buildRoutesManifest } = require('./src/dev/routesManifest');
 
 const JOB_SCHEDULES = [
   { type: 'score-assets', intervalMs: 6 * 60 * 60 * 1000 },
@@ -666,6 +667,14 @@ app.get('/api-docs', (req, res) => {
 });
 
 // ── Webhooks & Integrations ────────────────────────────────────────────────
+
+if (process.env.NODE_ENV !== 'production') {
+  app.get('/api/dev/routes', authenticate, requireRole('admin'), (req, res) => {
+    const routes = buildRoutesManifest(app);
+    res.json({ routes });
+  });
+}
+
 app.use('/api', webhooksRouter);
 app.use('/api', integrationsRouter);
 app.use('/api/otp', otpRouter);
