@@ -6,6 +6,7 @@ const router = express.Router();
 
 const PROVIDERS = ['saml', 'oauth', 'oidc'];
 const SSO_BASE_URL = process.env.SSO_BASE_URL || 'https://sso.example.com';
+const ssoConfigStore = new Map();
 
 async function loadOrganization(orgId) {
   if (!orgId) return null;
@@ -59,6 +60,8 @@ router.get('/config', async (req, res) => {
   const organization = await loadOrganization(orgId);
   const user = await resolveUser(req.headers.authorization);
   const role = await resolveMemberRole(orgId, user?.id);
+  
+  const savedConfig = orgId ? (ssoConfigStore.get(String(orgId)) || null) : null;
 
   res.json({
     providers: PROVIDERS.map((name) => ({
@@ -69,7 +72,37 @@ router.get('/config', async (req, res) => {
     organization,
     role: role || 'guest',
     requiresOrgMembership: true,
+    savedConfig,
   });
+});
+
+router.post('/config', async (req, res) => {
+  const orgId =
+    req.body?.orgId || req.headers['x-organization-id'] || req.headers['x-org-id'] || null;
+  if (!orgId) {
+    return res.status(400).json({ message: 'orgId is required' });
+  }
+
+  const provider = String(req.body?.provider || '').toLowerCase();
+  const domain = String(req.body?.domain || '').trim().toLowerCase();
+
+  if (!PROVIDERS.includes(provider)) {
+    return res.status(400).json({ message: 'Unsupported SSO provider' });
+  }
+
+  if (!domain) {
+    return res.status(400).json({ message: 'domain is required' });
+  }
+
+  const config = {
+    orgId: String(orgId),
+    provider,
+    domain,
+    updatedAt: new Date().toISOString(),
+  };
+  ssoConfigStore.set(String(orgId), config);
+
+  return res.status(201).json({ config });
 });
 
 router.post('/:provider/login', async (req, res) => {
