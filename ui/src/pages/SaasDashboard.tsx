@@ -41,6 +41,8 @@ import Approvals from "./dashboard/markets/distribution/Approvals";
 import TokensPage from "./dashboard/markets/TokensPage";
 import GovernanceLayout from "./dashboard/governance/GovernanceLayout";
 import ApiDiagnostics from "./settings/ApiDiagnostics";
+import SsoSettingsPage from "./settings/SsoSettingsPage";
+import WiringCheck from "./dev/WiringCheck";
 import PoolingWorkspace from "../routes/PoolingWorkspace";
 import Trades from "../routes/Trades";
 import Exchange from "../routes/Exchange";
@@ -49,13 +51,6 @@ import LegalConfiguration from "../routes/LegalConfiguration";
 import PolicyPacksPage from "./compliance/PolicyPacksPage";
 import PolicyRulesPage from "./compliance/PolicyRulesPage";
 import FindingsPage from "./compliance/FindingsPage";
-
-const Placeholder = ({ title }: { title: string }) => (
-  <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-    <h2 className="text-lg font-semibold text-slate-800">{title}</h2>
-    <p className="mt-2 text-slate-600">Placeholder. Connect this when ready.</p>
-  </div>
-);
 
 function DashboardOverview({ orgId, apiBase }: { orgId?: string | number | null; apiBase: string }) {
   return (
@@ -376,9 +371,9 @@ function AuthenticatedDashboard({
     <Route path="/analytics" element={<AiInsightsPage />} />
       <Route path="/reports" element={<ReportBuilder />} />
       <Route path="/settings" element={<Navigate to="/settings/sso" replace />} />
-      <Route path="/settings/sso" element={<Placeholder title="SSO" />} />
+       <Route path="/settings/sso" element={<SsoSettingsPage />} />
       <Route path="/settings/api-diagnostics" element={<ApiDiagnostics />} />
-      <Route path="/loans" element={<LegacyRedirect to="/portfolio/loans" />} />
+      <Route path="/dev/wiring-check" element={<WiringCheck />} />
       <Route path="/projects" element={<LegacyRedirect to="/portfolio/projects" />} />
       <Route path="/pools" element={<LegacyRedirect to="/markets/pools" />} />
       <Route path="/pools-and-tokens" element={<LegacyRedirect to="/markets/pools" />} />
