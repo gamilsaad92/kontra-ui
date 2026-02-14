@@ -100,7 +100,10 @@ const corsOptions = {
   allowedHeaders: [
     'Authorization',
     'Content-Type',
+    'X-Org-Id',
+    'x-org-id',
     'X-Organization-Id',
+    'x-organization-id',
     'X-Requested-With',
     'X-User-Id',
     'Accept',
@@ -111,6 +114,9 @@ const corsOptions = {
 };
 
 const app = express();
+
+app.use(cors(corsOptions));
+app.options('*', cors(corsOptions));
 
 app.use((req, _res, next) => {
   const org = req.headers['x-organization-id'];
@@ -551,7 +557,6 @@ async function get_hospitality_stats() {
 }
 
 // ── Middleware ─────────────────────────────────────────────────────────────
-app.options('*', cors(corsOptions));
 app.use(
   express.json({
     verify: (req, _res, buf) => {
@@ -559,8 +564,6 @@ app.use(
     },
   })
 );
-app.options("*", cors(corsOptions));
-app.use(express.json());
 app.use(auditLogger);
 app.use(rateLimit);
 app.use('/api/dashboard-layout', authenticate, dashboard);
