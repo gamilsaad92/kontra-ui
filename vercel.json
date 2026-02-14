@@ -2,8 +2,14 @@
   "installCommand": "npm install --prefix ui",
   "buildCommand": "npm run build --prefix ui",
   "outputDirectory": "ui/dist",
+    "rewrites": [
+    {
+      "source": "/((?!api/).*)",
+      "destination": "/index.html"
+    }
+  ],
   "env": {
-   "VITE_API_URL": "https://kontra-api.onrender.com",
+    "VITE_API_URL": "https://kontra-api.onrender.com",
     "VITE_SUPABASE_URL": "https://<your-project-ref>.supabase.co",
     "VITE_SUPABASE_ANON_KEY": "<YOUR_PUBLIC_ANON_KEY>",
     "VITE_SENTRY_DSN": "<your-dsn>"
