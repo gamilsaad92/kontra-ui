@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { apiFetch } from '../lib/apiClient'
 
 export default function PropertyChangeReviewForm() {
   const [requestDetails, setRequestDetails] = useState('')
@@ -9,7 +10,7 @@ export default function PropertyChangeReviewForm() {
   const handleSubmit = async () => {
     setLoading(true)
     try {
-      const res = await fetch('/api/review-property-change', {
+    const res = await apiFetch('/api/review-property-change', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ requestDetails, loanTerms }),
