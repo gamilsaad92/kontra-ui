@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { apiFetch } from '../lib/apiClient'
 
 export default function FinancialAnalyzer() {
   const [statement, setStatement] = useState('')
@@ -8,7 +9,7 @@ export default function FinancialAnalyzer() {
   const handleSubmit = async () => {
     setLoading(true)
     try {
-      const response = await fetch('/api/analyze-financials', {
+     const response = await apiFetch('/api/analyze-financials', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ statement }),
