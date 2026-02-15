@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from 'react';
+import { apiFetch } from '../../lib/apiClient'
 
 function PoolOrderForm({ poolId, onSubmitted, onNotify }) {
   const [side, setSide] = useState('bid');
@@ -7,7 +8,7 @@ function PoolOrderForm({ poolId, onSubmitted, onNotify }) {
 
   const handleSubmit = async e => {
     e.preventDefault();
-    await fetch(`/api/exchange-programs/mini-cmbs/${poolId}/orders`, {
+  await apiFetch(`/api/exchange-programs/mini-cmbs/${poolId}/orders`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ side, price: Number(price), size: Number(size) })
@@ -71,7 +72,7 @@ export default function MiniCmbsPools({ pools = [], onRefresh, onNotify }) {
 
   const handleSubmit = async e => {
     e.preventDefault();
-    await fetch('/api/exchange-programs/mini-cmbs', {
+     await apiFetch('/api/exchange-programs/mini-cmbs', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
