@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { apiFetch } from '../lib/apiClient'
 
 export default function InspectionReview() {
   const [notes, setNotes] = useState('')
@@ -17,7 +18,7 @@ export default function InspectionReview() {
     formData.append('notes', notes)
 
     try {
-      const res = await fetch('/api/inspect-review', {
+       const res = await apiFetch('/api/inspect-review', {
         method: 'POST',
         body: formData,
       })
