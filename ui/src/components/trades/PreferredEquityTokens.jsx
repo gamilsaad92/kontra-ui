@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { apiFetch } from '../../lib/apiClient'
 
 function DistributionForm({ tokenId, onSubmitted, onNotify }) {
   const [distributionDate, setDistributionDate] = useState('');
@@ -7,8 +8,8 @@ function DistributionForm({ tokenId, onSubmitted, onNotify }) {
 
   const handleSubmit = async e => {
     e.preventDefault();
-    await fetch(`/api/exchange-programs/preferred-equity/${tokenId}/distributions`, {
-      method: 'POST',
+   await apiFetch(`/api/exchange-programs/preferred-equity/${tokenId}/distributions`, {
+     method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         distribution_date: distributionDate,
@@ -62,7 +63,7 @@ export default function PreferredEquityTokens({ tokens = [], onRefresh, onNotify
 
   const handleSubmit = async e => {
     e.preventDefault();
-    await fetch('/api/exchange-programs/preferred-equity', {
+    await apiFetch('/api/exchange-programs/preferred-equity', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
