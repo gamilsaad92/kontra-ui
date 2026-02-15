@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { apiFetch } from '../lib/apiClient'
 
 export default function SuggestFeatureWidget() {
   const [message, setMessage] = useState('');
@@ -8,7 +9,7 @@ export default function SuggestFeatureWidget() {
     e.preventDefault();
     if (!message.trim()) return;
     try {
-      await fetch('/api/feedback', {
+      await apiFetch('/api/feedback', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ type: 'feature', message })
