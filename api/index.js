@@ -1978,6 +1978,13 @@ app.post("/api/workflows/:id/run", async (req, res) => {
 // ── Voice Bot Endpoints ────────────────────────────────────────────────────
 app.post('/api/voice', express.urlencoded({ extended: false }), handleVoice);
 app.post('/api/voice/query', express.urlencoded({ extended: false }), handleVoiceQuery);
+
+app.use('/api', (req, res) => {
+  res.status(404).json({
+    code: 'NOT_FOUND',
+    message: `No API route: ${req.method} ${req.originalUrl}`
+  });
+});
 if (Sentry.Handlers?.errorHandler) {
   app.use(Sentry.Handlers.errorHandler());
 } else if (Sentry.errorHandler) {
