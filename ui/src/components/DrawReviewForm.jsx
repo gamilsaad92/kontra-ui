@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { apiFetch } from '../lib/apiClient'
 
 export default function DrawReviewForm() {
   const [formData, setFormData] = useState({
@@ -17,7 +18,7 @@ export default function DrawReviewForm() {
   const handleSubmit = async () => {
     setLoading(true)
     try {
-      const res = await fetch('/api/validate-draw', {
+      const res = await apiFetch('/api/validate-draw', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(formData),
