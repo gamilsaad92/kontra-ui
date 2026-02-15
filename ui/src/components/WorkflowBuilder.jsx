@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { apiFetch } from '../lib/apiClient'
 
 export default function WorkflowBuilder() {
   const [steps, setSteps] = useState([]);
@@ -20,7 +21,7 @@ export default function WorkflowBuilder() {
   }
 
   async function saveWorkflow() {
-    await fetch('/api/workflows', {
+   await apiFetch('/api/workflows', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name: 'My Workflow', steps })
