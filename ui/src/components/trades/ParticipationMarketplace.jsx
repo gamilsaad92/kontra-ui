@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { apiFetch } from '../../lib/apiClient'
 
 function BidForm({ listingId, onSubmitted, onNotify }) {
   const [bidder, setBidder] = useState('');
@@ -7,7 +8,7 @@ function BidForm({ listingId, onSubmitted, onNotify }) {
 
   const handleSubmit = async e => {
     e.preventDefault();
-    await fetch(`/api/exchange-programs/participations/${listingId}/bids`, {
+ await apiFetch(`/api/exchange-programs/participations/${listingId}/bids`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ bidder, size: Number(size), rate: Number(rate) })
@@ -55,7 +56,7 @@ export default function ParticipationMarketplace({ listings = [], onRefresh, onN
 
   const handleSubmit = async e => {
     e.preventDefault();
-    await fetch('/api/exchange-programs/participations', {
+   await apiFetch('/api/exchange-programs/participations', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
