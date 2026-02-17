@@ -148,13 +148,54 @@ router.post('/', asyncHandler(async (req, res) => {
   res.json(data);
 }));
 
-router.get('/summary', asyncHandler(async (_req, res) => {
+router.get('/summary', asyncHandler(async (req, res) => {
+  const orgId = req.orgId;
+
+  const [paymentsCount, inspectionsCount, complianceCount] = await Promise.all([
+    replica.from('payments').select('id', { count: 'exact', head: true }).eq('org_id', orgId).in('status', ['exception', 'needs_review']),
+    replica.from('inspections').select('id', { count: 'exact', head: true }).eq('org_id', orgId).eq('status', 'needs_review'),
+    replica.from('compliance_items').select('id', { count: 'exact', head: true }).eq('org_id', orgId).eq('status', 'open'),
+  ]);
+
+  const [loansResult, inspectionsDueResult, finResult, paymentsActivity, inspectionsActivity, drawsActivity] = await Promise.all([
+    replica.from('loans').select('id,title,data,updated_at').eq('org_id', orgId).order('updated_at', { ascending: false }).limit(25),
+    replica.from('inspections').select('id,title,data,updated_at').eq('org_id', orgId).order('updated_at', { ascending: false }).limit(25),
+    replica.from('borrower_financials').select('id,title,data,updated_at').eq('org_id', orgId).order('updated_at', { ascending: false }).limit(25),
+    replica.from('payments').select('id,title,status,updated_at').eq('org_id', orgId).order('updated_at', { ascending: false }).limit(5),
+    replica.from('inspections').select('id,title,status,updated_at').eq('org_id', orgId).order('updated_at', { ascending: false }).limit(5),
+    replica.from('draws').select('id,title,status,updated_at').eq('org_id', orgId).order('updated_at', { ascending: false }).limit(5),
+  ]);
+
+  const nextDeadlines = [];
+  for (const loan of loansResult.data || []) {
+    const maturity = loan?.data?.maturity_date;
+    if (maturity) nextDeadlines.push({ type: 'loan_maturity', id: loan.id, title: loan.title || 'Loan', due_at: maturity });
+  }
+  for (const item of inspectionsDueResult.data || []) {
+    const due = item?.data?.due_date;
+    if (due) nextDeadlines.push({ type: 'inspection_due', id: item.id, title: item.title || 'Inspection', due_at: due });
+  }
+  for (const item of finResult.data || []) {
+    const due = item?.data?.due_date;
+    if (due) nextDeadlines.push({ type: 'borrower_financial_due', id: item.id, title: item.title || 'Borrower financial', due_at: due });
+  }
+
+  nextDeadlines.sort((a, b) => new Date(a.due_at).getTime() - new Date(b.due_at).getTime());
+
+  const todaysActivity = [...(paymentsActivity.data || []).map((x) => ({ ...x, type: 'payment' })), ...(inspectionsActivity.data || []).map((x) => ({ ...x, type: 'inspection' })), ...(drawsActivity.data || []).map((x) => ({ ...x, type: 'draw' }))]
+    .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())
+    .slice(0, 5);
+
   res.json({
     roleView: 'lender',
-    workQueueCounts: { payments: 0, inspections: 0, compliance: 0 },
+     workQueueCounts: {
+      payments: paymentsCount.count || 0,
+      inspections: inspectionsCount.count || 0,
+      compliance: complianceCount.count || 0,
+    },
     criticalAlerts: [],
-    nextDeadlines: [],
-    todaysActivity: [],
+   nextDeadlines: nextDeadlines.slice(0, 5),
+    todaysActivity,
     aiBrief: [],
     quickActions: [
       { id: 'run_payment_review', label: 'Run Payment Review', href: '/servicing/payments' },
