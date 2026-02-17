@@ -11,46 +11,35 @@ import LoginForm from "../components/LoginForm.jsx";
 import SignUpForm from "../components/SignUpForm.jsx";
 import SaasDashboardHome from "../components/SaasDashboardHome";
 import AiInsightsPage from "../features/ai-insights/page/AiInsightsPage";
-import DocumentReview from "../components/DocumentReview";
-import LoansDashboard from "../components/LoansDashboard";
 import OnchainDashboard from "../components/OnchainDashboard";
-import OrganizationSettings from "../components/OrganizationSettings";
-import ProjectsTable from "../components/ProjectsTable";
-import ReportBuilder from "../components/ReportBuilder";
-import RiskDashboard from "../components/RiskDashboard";
-import ServicingDrawsPage from "./dashboard/servicing/ServicingDrawsPage";
-import ServicingBorrowerFinancialsPage from "./dashboard/servicing/ServicingBorrowerFinancialsPage";
-import ServicingEscrowPage from "./dashboard/servicing/ServicingEscrowPage";
-import ServicingHome from "./dashboard/servicing/ServicingHome";
-import ServicingInspectionsPage from "./dashboard/servicing/ServicingInspectionsPage";
-import ServicingLoansPage from "./dashboard/servicing/ServicingLoansPage";
 import ServicingLayout from "./dashboard/servicing/ServicingLayout";
-import ServicingManagementPage from "./dashboard/servicing/ServicingManagementPage";
-import ServicingOverviewPage from "./dashboard/servicing/ServicingOverviewPage";
-import ServicingPaymentsPage from "./dashboard/servicing/ServicingPaymentsPage";
-import ServicingAIValidationPage from "./dashboard/servicing/ServicingAIValidationPage";
-import PortfolioOverview from "./lender/PortfolioOverview";
 import PortfolioLayout from "./dashboard/portfolio/PortfolioLayout";
 import MarketsLayout from "./dashboard/markets/MarketsLayout";
-import DistributionLayout from "./dashboard/markets/distribution/DistributionLayout";
-import TokenizeLoan from "./dashboard/markets/distribution/TokenizeLoan";
-import CreateOffering from "./dashboard/markets/distribution/CreateOffering";
-import DistributionMarketplace from "./dashboard/markets/distribution/DistributionMarketplace";
-import RfqsTrades from "./dashboard/markets/distribution/RfqsTrades";
-import Approvals from "./dashboard/markets/distribution/Approvals";
-import TokensPage from "./dashboard/markets/TokensPage";
 import GovernanceLayout from "./dashboard/governance/GovernanceLayout";
 import ApiDiagnostics from "./settings/ApiDiagnostics";
 import SsoSettingsPage from "./settings/SsoSettingsPage";
 import WiringCheck from "./dev/WiringCheck";
-import PoolingWorkspace from "../routes/PoolingWorkspace";
-import Trades from "../routes/Trades";
-import Exchange from "../routes/Exchange";
-import Compliance from "../routes/Compliance";
-import LegalConfiguration from "../routes/LegalConfiguration";
-import PolicyPacksPage from "./compliance/PolicyPacksPage";
-import PolicyRulesPage from "./compliance/PolicyRulesPage";
-import FindingsPage from "./compliance/FindingsPage";
+import {
+  GovernanceComplianceCrudPage,
+  GovernanceDocumentCrudPage,
+  GovernanceLegalCrudPage,
+  GovernanceRegulatoryCrudPage,
+  GovernanceRiskCrudPage,
+  MarketsExchangeCrudPage,
+  MarketsPoolsCrudPage,
+  MarketsTokensCrudPage,
+  MarketsTradesCrudPage,
+  OrganizationsCrudPage,
+  PortfolioAssetsPage,
+  PortfolioLoansPage,
+  ReportsCrudPage,
+  ServicingBorrowerFinancialsCrudPage,
+  ServicingDrawsCrudPage,
+  ServicingEscrowsCrudPage,
+  ServicingInspectionsCrudPage,
+  ServicingManagementCrudPage,
+  ServicingPaymentsCrudPage,
+} from './dashboard/canonical/pages';
 
 function DashboardOverview({ orgId, apiBase }: { orgId?: string | number | null; apiBase: string }) {
   return (
@@ -321,60 +310,43 @@ function AuthenticatedDashboard({
      element={<DashboardOverview orgId={orgId} apiBase={apiBase} />}
       />
       <Route path="/portfolio" element={<PortfolioLayout />}>
-        <Route index element={<PortfolioOverview />} />
-        <Route path="loans" element={<LoansDashboard />} />
-        <Route path="projects" element={<ProjectsTable />} />
+        <Route index element={<Navigate to="/portfolio/loans" replace />} />
+        <Route path="loans" element={<PortfolioLoansPage />} />
+        <Route path="assets" element={<PortfolioAssetsPage />} />
       </Route>
      <Route path="/servicing" element={<ServicingLayout orgId={orgId} />}>
-        <Route index element={<ServicingHome />} />
-       <Route path="overview" element={<ServicingOverviewPage />} />
-        <Route path="loans" element={<ServicingLoansPage />} />
-        <Route path="draws" element={<ServicingDrawsPage />} />
-        <Route path="inspections" element={<ServicingInspectionsPage />} />
-        <Route
-          path="borrower-financials"
-          element={<ServicingBorrowerFinancialsPage />}
-        />
-        <Route path="escrow" element={<ServicingEscrowPage />} />
-        <Route path="management" element={<ServicingManagementPage />} />
-        <Route path="ai-validation" element={<ServicingAIValidationPage />} />
-        <Route path="ai-validation/:reviewId" element={<ServicingAIValidationPage />} />
-        <Route path="payments" element={<ServicingPaymentsPage />} />
+          <Route index element={<Navigate to="/servicing/payments" replace />} />
+        <Route path="draws" element={<ServicingDrawsCrudPage />} />
+        <Route path="inspections" element={<ServicingInspectionsCrudPage />} />
+        <Route path="borrower-financials" element={<ServicingBorrowerFinancialsCrudPage />} />
+        <Route path="escrow" element={<ServicingEscrowsCrudPage />} />
+        <Route path="management" element={<ServicingManagementCrudPage />} />
+        <Route path="payments" element={<ServicingPaymentsCrudPage />} />
       </Route>
       <Route path="/markets" element={<MarketsLayout />}>
         <Route index element={<Navigate to="/markets/pools" replace />} />
-        <Route path="pools" element={<PoolingWorkspace />} />
-         <Route path="tokens" element={<TokensPage />} />
-        <Route path="trades" element={<Trades />} />
-        <Route path="exchange" element={<Exchange />} />
-          <Route path="distribution" element={<DistributionLayout />}>
-          <Route index element={<Navigate to="/markets/distribution/tokenize" replace />} />
-          <Route path="tokenize" element={<TokenizeLoan />} />
-          <Route path="offering" element={<CreateOffering />} />
-          <Route path="marketplace" element={<DistributionMarketplace />} />
-          <Route path="rfqs" element={<RfqsTrades />} />
-          <Route path="approvals" element={<Approvals />} />
-        </Route>
+           <Route path="pools" element={<MarketsPoolsCrudPage />} />
+        <Route path="tokens" element={<MarketsTokensCrudPage />} />
+        <Route path="trades" element={<MarketsTradesCrudPage />} />
+        <Route path="exchange" element={<MarketsExchangeCrudPage />} />
       </Route>
       <Route path="/onchain" element={<OnchainDashboard />} />
       <Route path="/governance" element={<GovernanceLayout />}>
         <Route index element={<Navigate to="/governance/compliance" replace />} />
-        <Route path="compliance" element={<Compliance />} />
-        <Route path="policy/packs" element={<PolicyPacksPage />} />
-        <Route path="policy/rules" element={<PolicyRulesPage />} />
-        <Route path="policy/findings" element={<FindingsPage />} />
-        <Route path="legal" element={<LegalConfiguration />} />
-        <Route path="document-review" element={<DocumentReview />} />
-        <Route path="risk" element={<RiskDashboard />} />
+            <Route path="compliance" element={<GovernanceComplianceCrudPage />} />
+        <Route path="legal" element={<GovernanceLegalCrudPage />} />
+        <Route path="regulatory-scans" element={<GovernanceRegulatoryCrudPage />} />
+        <Route path="document-review" element={<GovernanceDocumentCrudPage />} />
+        <Route path="risk" element={<GovernanceRiskCrudPage />} />
       </Route>
-      <Route path="/organizations" element={<OrganizationSettings />} />
+        <Route path="/organizations" element={<OrganizationsCrudPage />} />
     <Route path="/analytics" element={<AiInsightsPage />} />
-      <Route path="/reports" element={<ReportBuilder />} />
+        <Route path="/reports" element={<ReportsCrudPage />} />
       <Route path="/settings" element={<Navigate to="/settings/sso" replace />} />
        <Route path="/settings/sso" element={<SsoSettingsPage />} />
       <Route path="/settings/api-diagnostics" element={<ApiDiagnostics />} />
       <Route path="/dev/wiring-check" element={<WiringCheck />} />
-      <Route path="/projects" element={<LegacyRedirect to="/portfolio/projects" />} />
+        <Route path="/projects" element={<LegacyRedirect to="/portfolio/assets" />} />
       <Route path="/pools" element={<LegacyRedirect to="/markets/pools" />} />
       <Route path="/pools-and-tokens" element={<LegacyRedirect to="/markets/pools" />} />
       <Route path="/tokens" element={<LegacyRedirect to="/markets/tokens" />} />
@@ -391,23 +363,11 @@ function AuthenticatedDashboard({
       <Route path="/applications/*" element={<LegacyRedirect to="/portfolio" />} />
       <Route path="/application/*" element={<LegacyRedirect to="/portfolio" />} />
       <Route path="/dashboard/servicing/*" element={<LegacyServicingRedirect />} />
-      <Route
-        path="/dashboard/draws"
-        element={<LegacyRedirect to="/servicing/draws" />}
-      />
-      <Route
-        path="/dashboard/inspections"
-        element={<LegacyRedirect to="/servicing/inspections" />}
-      />
-      <Route
-        path="/dashboard/payments"
-        element={<LegacyRedirect to="/servicing/payments" />}
-      />
-      <Route
-        path="/dashboard/assets"
-        element={<LegacyRedirect to="/servicing/loans" />}      />
-      <Route path="/dashboard/payments" element={<LegacyRedirect to="/dashboard/servicing/payments" />} />
-       <Route path="/assets" element={<LegacyRedirect to="/servicing/loans" />} />
+         <Route path="/dashboard/draws" element={<LegacyRedirect to="/servicing/draws" />} />
+      <Route path="/dashboard/inspections" element={<LegacyRedirect to="/servicing/inspections" />} />
+      <Route path="/dashboard/payments" element={<LegacyRedirect to="/servicing/payments" />} />
+      <Route path="/dashboard/assets" element={<LegacyRedirect to="/portfolio/assets" />} />
+      <Route path="/assets" element={<LegacyRedirect to="/portfolio/assets" />} />
       <Route path="*" element={<Navigate to="/dashboard" replace />} />
     </Routes>
   );
