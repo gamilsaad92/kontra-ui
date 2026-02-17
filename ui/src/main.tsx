@@ -25,11 +25,12 @@ if (typeof window !== "undefined") {
   
   window.addEventListener("api:error", (event: Event) => {
     const detail = (event as CustomEvent<{ code?: string; message?: string }>).detail;
-    const message = detail?.message ?? "Request failed";
-    window.alert(message);
     if (detail?.code === "ORG_CONTEXT_MISSING") {
       window.location.assign("/organizations");
+            return;
     }
+       const message = detail?.message ?? "Request failed";
+    window.alert(message);
   });
 }
 
