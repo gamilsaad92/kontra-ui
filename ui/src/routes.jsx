@@ -40,7 +40,6 @@ export const lenderNavRoutes = [
       { label: "Tokens", path: "/markets/tokens" },
       { label: "Trades", path: "/markets/trades" },
       { label: "Exchange", path: "/markets/exchange" },
-      { label: "Distribution", path: "/markets/distribution" },
     ],
  },
   {
