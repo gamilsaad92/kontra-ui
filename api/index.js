@@ -226,6 +226,7 @@ const governanceSliceRouter = require('./src/routes/governance');
 const marketsSliceRouter = require('./src/routes/markets');
 const reportsSliceRouter = require('./src/routes/reports');
 const orgsSliceRouter = require('./src/routes/organizations');
+const orgDiscoveryRouter = require('./src/routes/orgDiscovery');
 const aiSliceRouter = require('./src/routes/ai');
 const devSliceRouter = require('./src/routes/dev');
 
@@ -578,6 +579,8 @@ app.use(rateLimit);
 app.get('/api/health', (_req, res) => {
   res.json({ ok: true });
 });
+app.use('/api/orgs', orgDiscoveryRouter);
+app.use('/api/me', orgDiscoveryRouter);
 app.use('/api', requireOrgContext);
 app.use('/api/dashboard-layout', authenticate, dashboard);
 app.use('/api/portfolio', portfolioSliceRouter);
