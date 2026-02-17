@@ -218,7 +218,6 @@ const legalRouter = require('./routers/legal');
 const otpRouter = require('./routers/otp');
 const mobileRouter = require('./routers/mobile');
 const policyRouter = require('./routers/policy');
-const { buildRoutesManifest } = require('./src/dev/routesManifest');
 const { requireOrgContext } = require('./src/middleware/requireOrgContext');
 const { errorHandler } = require('./src/middleware/errorHandler');
 const portfolioSliceRouter = require('./src/routes/portfolio');
@@ -228,6 +227,7 @@ const marketsSliceRouter = require('./src/routes/markets');
 const reportsSliceRouter = require('./src/routes/reports');
 const orgsSliceRouter = require('./src/routes/organizations');
 const aiSliceRouter = require('./src/routes/ai');
+const devSliceRouter = require('./src/routes/dev');
 
 const JOB_SCHEDULES = [
   { type: 'score-assets', intervalMs: 6 * 60 * 60 * 1000 },
@@ -587,6 +587,9 @@ app.use('/api/markets', marketsSliceRouter);
 app.use('/api/reports', reportsSliceRouter);
 app.use('/api/orgs', orgsSliceRouter);
 app.use('/api/ai', aiSliceRouter);
+if (process.env.NODE_ENV !== 'production') {
+  app.use('/api/dev', devSliceRouter);
+}
 app.use('/api/dashboard', authenticate, dashboard);
 if (isFeatureEnabled('assets')) {
   app.use("/api/assets", assetsRouter);
@@ -677,14 +680,6 @@ app.get('/api-docs', (req, res) => {
 });
 
 // ── Webhooks & Integrations ────────────────────────────────────────────────
-
-if (process.env.NODE_ENV !== 'production') {
-  app.get('/api/dev/routes', authenticate, requireRole('admin'), (req, res) => {
-    const routes = buildRoutesManifest(app);
-    res.json({ routes });
-  });
-}
-
 app.use('/api', webhooksRouter);
 app.use('/api', integrationsRouter);
 app.use('/api/otp', otpRouter);
@@ -1992,7 +1987,7 @@ app.post('/api/voice/query', express.urlencoded({ extended: false }), handleVoic
 app.use('/api', (req, res) => {
   res.status(404).json({
     code: 'NOT_FOUND',
-    message: `No API route: ${req.method} ${req.originalUrl}`
+    message: `${req.method} ${req.originalUrl} not found`
   });
 });
 if (Sentry.Handlers?.errorHandler) {
