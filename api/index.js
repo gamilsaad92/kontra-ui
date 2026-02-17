@@ -221,6 +221,12 @@ const policyRouter = require('./routers/policy');
 const { buildRoutesManifest } = require('./src/dev/routesManifest');
 const { requireOrgContext } = require('./src/middleware/requireOrgContext');
 const { errorHandler } = require('./src/middleware/errorHandler');
+const portfolioSliceRouter = require('./src/routes/portfolio');
+const servicingSliceRouter = require('./src/routes/servicing');
+const governanceSliceRouter = require('./src/routes/governance');
+const marketsSliceRouter = require('./src/routes/markets');
+const reportsSliceRouter = require('./src/routes/reports');
+const orgsSliceRouter = require('./src/routes/organizations');
 
 const JOB_SCHEDULES = [
   { type: 'score-assets', intervalMs: 6 * 60 * 60 * 1000 },
@@ -573,6 +579,12 @@ app.get('/api/health', (_req, res) => {
 });
 app.use('/api', requireOrgContext);
 app.use('/api/dashboard-layout', authenticate, dashboard);
+app.use('/api/portfolio', portfolioSliceRouter);
+app.use('/api/servicing', servicingSliceRouter);
+app.use('/api/governance', governanceSliceRouter);
+app.use('/api/markets', marketsSliceRouter);
+app.use('/api/reports', reportsSliceRouter);
+app.use('/api/orgs', orgsSliceRouter);
 app.use('/api/dashboard', authenticate, dashboard);
 if (isFeatureEnabled('assets')) {
   app.use("/api/assets", assetsRouter);
