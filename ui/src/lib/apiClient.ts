@@ -1,4 +1,5 @@
-import { getAuthToken } from "./authToken";
+import { getToken } from "./authContext";
+import { getOrgId, setOrgId } from "./orgContext";
 
 type OrgContext = {
   orgId?: string;
@@ -10,6 +11,7 @@ let orgContext: OrgContext = {};
 
 export function setOrgContext(ctx: OrgContext) {
   orgContext = ctx ?? {};
+   setOrgId(ctx?.orgId ?? null);
 }
 
 type EnvRecord = Record<string, string | undefined>;
@@ -50,10 +52,7 @@ const normalizeBaseUrl = (value?: string): string => {
   return trimmed.replace(/\/+$/, "").replace(/\/api$/, "");
 };
 
-const API_BASE_URL = normalizeBaseUrl(
-  (import.meta.env ?? ({} as EnvRecord & { VITE_API_URL?: string })).VITE_API_BASE_URL ??
-    (import.meta.env ?? ({} as EnvRecord & { VITE_API_URL?: string })).VITE_API_URL
-);
+const API_BASE_URL = normalizeBaseUrl((import.meta.env ?? ({} as EnvRecord)).VITE_API_BASE_URL);
 
 export function getApiBaseUrl(): string {
   return API_BASE_URL;
@@ -152,19 +151,20 @@ export async function apiFetch(
   const requestUrl = buildRequestUrl(rawUrl);
   const headers = normalizeHeaders(init.headers);
 
-  if (!headers.has("Content-Type") && !(init.body instanceof FormData)) {
+if (!headers.has("Content-Type") && init.body && !(init.body instanceof FormData)) {
     headers.set("Content-Type", "application/json");
   }
 
-  if (orgContext.orgId) {
-    headers.set("x-organization-id", orgContext.orgId);
-    headers.set("x-org-id", orgContext.orgId);
+ const orgId = orgContext.orgId ?? getOrgId();
+  if (orgId) {
+    headers.set("X-Org-Id", orgId);
+    headers.set("x-org-id", orgId);
   }
   if (orgContext.userId) {
     headers.set("x-user-id", orgContext.userId);
   }
 
-  const token = orgContext.token ?? (await getAuthToken());
+  const token = orgContext.token ?? (await getToken());
   if (token) {
     headers.set("Authorization", `Bearer ${token}`);
   } else if (options.requireAuth) {
@@ -277,6 +277,9 @@ export async function apiRequest<T>(
   }
 
   const response = await apiFetch(path, requestInit, options);
+    if (response.status === 204) {
+    return undefined as T;
+  }
   return (await parseJsonSafe(response)) as T;
 }
 
