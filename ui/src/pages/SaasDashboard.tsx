@@ -105,16 +105,22 @@ function AuthenticationScreen({
   mode: AuthMode;
   onModeChange: (mode: AuthMode) => void;
 }) {
+    const isLoginMode = mode === "login";
+
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gradient-to-b from-slate-950 via-slate-950 to-slate-900 px-4 py-12 text-slate-100">
-      <div className="w-full max-w-xl space-y-6">
-               <div className="flex justify-start">
+     <div className="flex min-h-screen items-start justify-center bg-gradient-to-b from-slate-950 via-slate-950 to-slate-900 px-4 py-12 text-slate-100 sm:items-center">
+      <div className="w-full max-w-xl space-y-6 rounded-3xl border border-slate-800/80 bg-slate-950/50 p-6 shadow-2xl backdrop-blur sm:p-8">
+        <div className="flex justify-start">
           <img src="/logo-dark.png" alt="Kontra" className="h-8 w-auto" />
         </div>
         <div className="space-y-2 text-center">
-          <h1 className="text-2xl font-semibold">Welcome back to Kontra</h1>
+           <h1 className="text-2xl font-semibold">
+            {isLoginMode ? "Welcome back to Kontra" : "Create your Kontra account"}
+          </h1>
           <p className="text-sm text-slate-300">
-              Sign in with your Supabase credentials to manage lending, trading, and servicing workflows.
+                  {isLoginMode
+              ? "Sign in with your Supabase credentials to manage lending, trading, and servicing workflows."
+              : "Use your Supabase credentials to create an account and start managing lending, trading, and servicing workflows."}
           </p>
         </div>
         <div className="flex justify-center gap-2 text-sm font-medium">
@@ -141,7 +147,7 @@ function AuthenticationScreen({
             Create account
           </button>
         </div>
-      <div className="rounded-2xl bg-white p-6 shadow-xl text-slate-900">
+           <div className="rounded-2xl bg-white p-6 shadow-xl text-slate-900">
           {mode === "login" ? (
             <LoginForm className="w-full" onSwitch={() => onModeChange("signup")} />
           ) : (
