@@ -108,15 +108,18 @@ export const subscribeApiLog = (listener: (entry: ApiRequestLogEntry) => void) =
 
 export const getRequestLog = () => [...requestLog];
 
+const ORGLESS_API_PREFIXES = ["/api/health", "/api/dev/", "/api/orgs", "/api/me"];
+
 const requiresOrgForPath = (requestUrl: string): boolean => {
   try {
     const parsed = new URL(requestUrl, typeof window === "undefined" ? "http://localhost" : window.location.origin);
     const path = parsed.pathname;
     if (!path.startsWith("/api")) return false;
-    if (path === "/api/health" || path.startsWith("/api/dev/")) return false;
+    if (ORGLESS_API_PREFIXES.some((prefix) => path === prefix || path.startsWith(`${prefix}/`))) return false;
     return true;
   } catch {
-    return requestUrl.startsWith("/api") && requestUrl !== "/api/health" && !requestUrl.startsWith("/api/dev/");
+    if (!requestUrl.startsWith("/api")) return false;
+    return !ORGLESS_API_PREFIXES.some((prefix) => requestUrl === prefix || requestUrl.startsWith(`${prefix}/`));
   }
 };
 
