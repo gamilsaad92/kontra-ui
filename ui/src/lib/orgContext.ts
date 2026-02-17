@@ -1,3 +1,6 @@
+const ORG_STORAGE_KEY = "kontra_org_id";
+const LEGACY_KEYS = ["kontra:orgId"];
+
 let currentOrgId: string | null = null;
 
 export function setOrgId(orgId?: string | number | null): void {
@@ -5,11 +8,11 @@ export function setOrgId(orgId?: string | number | null): void {
 
   if (typeof window !== "undefined") {
     if (currentOrgId) {
-      window.localStorage.setItem("kontra:orgId", currentOrgId);
-      window.sessionStorage.setItem("kontra:orgId", currentOrgId);
+      window.localStorage.setItem(ORG_STORAGE_KEY, currentOrgId);
+      LEGACY_KEYS.forEach((key) => window.localStorage.removeItem(key));
     } else {
-      window.localStorage.removeItem("kontra:orgId");
-      window.sessionStorage.removeItem("kontra:orgId");
+        window.localStorage.removeItem(ORG_STORAGE_KEY);
+      LEGACY_KEYS.forEach((key) => window.localStorage.removeItem(key));
     }
   }
 }
@@ -24,8 +27,8 @@ export function getOrgId(): string | null {
   }
 
   const fromStorage =
-    window.localStorage.getItem("kontra:orgId") ||
-    window.sessionStorage.getItem("kontra:orgId");
+    window.localStorage.getItem(ORG_STORAGE_KEY) ||
+    LEGACY_KEYS.map((key) => window.localStorage.getItem(key)).find((value) => Boolean(value));
 
   return fromStorage && fromStorage.trim() ? fromStorage : null;
 }
