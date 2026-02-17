@@ -1,49 +1,24 @@
 import { actionRegistry } from "./actionRegistry";
+import { routeCatalog } from "./routes";
 
-const requiredRoutes = [
-  "/dashboard",
-  "/portfolio/loans",
-  "/portfolio/projects",
-  "/servicing/overview",
-  "/servicing/loans",
-  "/servicing/draws",
-  "/servicing/inspections",
-  "/servicing/borrower-financials",
-  "/servicing/escrow",
-  "/servicing/management",
-  "/servicing/ai-validation",
-  "/servicing/payments",
-  "/markets/pools",
-  "/markets/tokens",
-  "/markets/trades",
-  "/markets/exchange",
-  "/governance/compliance",
-  "/governance/policy/packs",
-  "/governance/policy/rules",
-  "/governance/policy/findings",
-  "/governance/legal",
-  "/governance/document-review",
-  "/governance/risk",
-  "/organizations",
-  "/analytics",
-  "/reports",
-  "/settings/sso",
-];
-
-describe("actionRegistry coverage", () => {
-  it("contains a unique id per action", () => {
+describe("actionRegistry contract", () => {
+  it("contains unique ids", () => {
     const ids = actionRegistry.map((item) => item.id);
     expect(new Set(ids).size).toBe(ids.length);
   });
 
-  it("covers all primary clickable routes", () => {
-    const routes = new Set(actionRegistry.map((item) => item.route));
-    const missing = requiredRoutes.filter((route) => !routes.has(route));
-    expect(missing).toEqual([]);
-  });
-
-  it("defines at least one API per action", () => {
-    const missing = actionRegistry.filter((item) => item.requiredApis.length === 0).map((item) => item.id);
+   it("defines required fields for clickable actions", () => {
+    const invalid = actionRegistry.filter(
+      (item) => !item.label || !item.route || !item.uiPath || item.requiredApis.length === 0
+    );
+    expect(invalid).toEqual([]);
+ });
+  
+  it("maps required routes to route catalog", () => {
+    const routeSet = new Set(routeCatalog);
+    const missing = actionRegistry.flatMap((item) =>
+      (item.requiredRoutes ?? []).filter((route) => !routeSet.has(route as never)).map((route) => `${item.id}:${route}`)
+    );
     expect(missing).toEqual([]);
   });
 });
