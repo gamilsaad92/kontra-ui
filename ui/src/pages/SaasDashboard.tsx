@@ -6,7 +6,6 @@ import { resolveApiBase } from "../lib/api";
 import useFeatureUsage from "../lib/useFeatureUsage";
 import { lenderNavRoutes } from "../routes";
 import { AuthContext } from "../lib/authContext";
-import { setOrgContext } from "../lib/apiClient";
 import LoginForm from "../components/LoginForm.jsx";
 import SignUpForm from "../components/SignUpForm.jsx";
 import SaasDashboardHome from "../components/SaasDashboardHome";
@@ -20,6 +19,8 @@ import ApiDiagnostics from "./settings/ApiDiagnostics";
 import SsoSettingsPage from "./settings/SsoSettingsPage";
 import WiringCheck from "./dev/WiringCheck";
 import RequireOrg from "../app/guards/RequireOrg";
+import OrganizationsPage from "../app/org/OrganizationsPage";
+import { OrgProvider, useOrg } from "../app/org/OrgContext";
 import {
   GovernanceComplianceCrudPage,
   GovernanceDocumentCrudPage,
@@ -30,7 +31,6 @@ import {
   MarketsPoolsCrudPage,
   MarketsTokensCrudPage,
   MarketsTradesCrudPage,
-  OrganizationsCrudPage,
   PortfolioAssetsPage,
   PortfolioLoansPage,
   ReportsCrudPage,
@@ -91,7 +91,11 @@ export default function SaasDashboard() {
     return <AuthenticationScreen mode={authMode} onModeChange={setAuthMode} />;
   }
 
-  return <AuthenticatedDashboard session={session} signOut={signOut} />;
+  return (
+    <OrgProvider>
+      <AuthenticatedDashboard session={session} signOut={signOut} />
+    </OrgProvider>
+  );
 }
 
 function AuthenticationScreen({
@@ -175,7 +179,7 @@ function AuthenticatedDashboard({
   const { usage, recordUsage } = useFeatureUsage();
   const userRole = session.user?.user_metadata?.role;
    const location = useLocation();
- const orgId = session.user?.user_metadata?.organization_id ?? null;
+ const { orgId } = useOrg();
     const navigate = useNavigate();
   const [isSigningOut, setIsSigningOut] = useState(false);
   const [signOutError, setSignOutError] = useState<string | null>(null);
@@ -205,14 +209,7 @@ function AuthenticatedDashboard({
     [isFeatureEnabled, userRole]
   );
 
-  useEffect(() => {
-    setOrgContext({
-     orgId: session.user?.user_metadata?.organization_id ?? undefined,
-      userId: session.user?.id ?? undefined,
-      token: session.access_token ?? undefined,
-    });
-  }, [session.access_token, session.user?.id, session.user?.user_metadata?.organization_id]);
-
+  
   const activeItem = useMemo(() => {
     return (
       navItems.find(
@@ -305,7 +302,7 @@ function AuthenticatedDashboard({
    const isDashboardRoute = location.pathname === "/dashboard";
   const content = (
     <Routes>
-     <Route path="/organizations" element={<OrganizationsCrudPage />} />
+     <Route path="/organizations" element={<OrganizationsPage />} />
       <Route element={<RequireOrg />}>
         <Route path="/" element={<Navigate to="/dashboard" replace />} />
       <Route
