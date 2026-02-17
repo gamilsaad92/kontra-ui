@@ -1,4 +1,7 @@
 import EntityCrudPage from '../../shared/EntityCrudPage';
+
+import { useNavigate } from 'react-router-dom';
+import { useRunInspectionReview, useRunPaymentReview } from '../../../features/ai-reviews/api';
 import { useLoanList, useCreateLoan, useLoan, useUpdateLoan } from '../../../features/portfolio/loans/api';
 import { useAssetList, useCreateAsset, useAsset, useUpdateAsset } from '../../../features/portfolio/assets/api';
 import { usePaymentList, useCreatePayment, usePayment, useUpdatePayment } from '../../../features/servicing/payments/api';
@@ -21,8 +24,26 @@ import { useOrganizationList, useCreateOrganization, useOrganization, useUpdateO
 
 export const PortfolioLoansPage = () => <EntityCrudPage title="Loans" createLabel="Create Loan" hooks={{ useList: useLoanList, useCreate: useCreateLoan, useItem: useLoan, useUpdate: useUpdateLoan }} />;
 export const PortfolioAssetsPage = () => <EntityCrudPage title="Assets" createLabel="Create Asset" hooks={{ useList: useAssetList, useCreate: useCreateAsset, useItem: useAsset, useUpdate: useUpdateAsset }} />;
-export const ServicingPaymentsCrudPage = () => <EntityCrudPage title="Payments" createLabel="Create Payment" hooks={{ useList: usePaymentList, useCreate: useCreatePayment, useItem: usePayment, useUpdate: useUpdatePayment }} />;
-export const ServicingInspectionsCrudPage = () => <EntityCrudPage title="Inspections" createLabel="Create Inspection" hooks={{ useList: useInspectionList, useCreate: useCreateInspection, useItem: useInspection, useUpdate: useUpdateInspection }} />;
+export const ServicingPaymentsCrudPage = () => {
+  const runReview = useRunPaymentReview();
+  const navigate = useNavigate();
+  return <EntityCrudPage title="Payments" createLabel="Create Payment" hooks={{ useList: usePaymentList, useCreate: useCreatePayment, useItem: usePayment, useUpdate: useUpdatePayment }} renderRowActions={(item) => (
+    <button className="rounded border px-2 py-1 text-xs" onClick={async () => {
+      const result = await runReview.mutateAsync({ payment_id: item.id });
+      navigate(`/servicing/ai-validation/${result.review.id}`);
+    }}>Run AI Review</button>
+  )} />;
+};
+export const ServicingInspectionsCrudPage = () => {
+  const runReview = useRunInspectionReview();
+  const navigate = useNavigate();
+  return <EntityCrudPage title="Inspections" createLabel="Create Inspection" hooks={{ useList: useInspectionList, useCreate: useCreateInspection, useItem: useInspection, useUpdate: useUpdateInspection }} renderRowActions={(item) => (
+    <button className="rounded border px-2 py-1 text-xs" onClick={async () => {
+      const result = await runReview.mutateAsync({ inspection_id: item.id });
+      navigate(`/servicing/ai-validation/${result.review.id}`);
+    }}>Run AI Review</button>
+  )} />;
+};
 export const ServicingDrawsCrudPage = () => <EntityCrudPage title="Draws" createLabel="Create Draw" hooks={{ useList: useDrawList, useCreate: useCreateDraw, useItem: useDraw, useUpdate: useUpdateDraw }} />;
 export const ServicingEscrowsCrudPage = () => <EntityCrudPage title="Escrows" createLabel="Create Escrow" hooks={{ useList: useEscrowList, useCreate: useCreateEscrow, useItem: useEscrow, useUpdate: useUpdateEscrow }} />;
 export const ServicingBorrowerFinancialsCrudPage = () => <EntityCrudPage title="Borrower Financials" createLabel="Create Financial" hooks={{ useList: useBorrowerFinancialList, useCreate: useCreateBorrowerFinancial, useItem: useBorrowerFinancial, useUpdate: useUpdateBorrowerFinancial }} />;
