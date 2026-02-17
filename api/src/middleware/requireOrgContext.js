@@ -3,11 +3,7 @@ function requireOrgContext(req, res, next) {
     return next();
   }
 
-  if (
-    req.path === '/api/health' ||
-    req.path.startsWith('/api/auth') ||
-    req.path.startsWith('/api/sso')
-  ) {
+ if (req.path === '/api/health' || req.path.startsWith('/api/dev/')) {
     return next();
   }
 
