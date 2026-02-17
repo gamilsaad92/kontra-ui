@@ -1,5 +1,6 @@
 import { Suspense, lazy } from "react";
 import { Routes, Route } from "react-router-dom";
+import ErrorBoundary from "./app/ErrorBoundary";
 
 const SaasDashboard = lazy(() => import("./pages/SaasDashboard"));
 
@@ -13,10 +14,12 @@ function FullScreenLoader() {
 
 export default function App() {
   return (
-    <Suspense fallback={<FullScreenLoader />}>
-      <Routes>
-        <Route path="/*" element={<SaasDashboard />} />
-      </Routes>
-    </Suspense>
+    <ErrorBoundary>
+      <Suspense fallback={<FullScreenLoader />}>
+        <Routes>
+          <Route path="/*" element={<SaasDashboard />} />
+        </Routes>
+      </Suspense>
+    </ErrorBoundary>
   );
 }
