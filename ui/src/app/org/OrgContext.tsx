@@ -46,13 +46,17 @@ export function OrgProvider({ children }: { children: ReactNode }) {
     const nextOrgs = Array.isArray(bootstrap?.orgs) ? bootstrap.orgs : [];
     setOrgs(nextOrgs);
 
-    if (!orgId) {
-      const selected = bootstrap.default_org_id || (nextOrgs.length === 1 ? nextOrgs[0].id : null);
-      if (selected) {
-        setOrgId(selected);
-      }
+      const hasCurrentOrgAccess = Boolean(orgId && nextOrgs.some((org) => org.id === orgId));
+    if (hasCurrentOrgAccess) {
+      return nextOrgs;
     }
 
+       const bootstrapDefault = bootstrap.default_org_id;
+    const selected = bootstrapDefault && nextOrgs.some((org) => org.id === bootstrapDefault)
+      ? bootstrapDefault
+      : nextOrgs[0]?.id || null;
+
+    setOrgId(selected);
     return nextOrgs;
   }, [orgId, session?.access_token, setOrgId]);
 
