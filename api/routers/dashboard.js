@@ -151,10 +151,12 @@ router.post('/', asyncHandler(async (req, res) => {
 router.get('/summary', asyncHandler(async (req, res) => {
   const orgId = req.orgId;
 
-  const [paymentsCount, inspectionsCount, complianceCount] = await Promise.all([
-    replica.from('payments').select('id', { count: 'exact', head: true }).eq('org_id', orgId).in('status', ['exception', 'needs_review']),
-    replica.from('inspections').select('id', { count: 'exact', head: true }).eq('org_id', orgId).eq('status', 'needs_review'),
-    replica.from('compliance_items').select('id', { count: 'exact', head: true }).eq('org_id', orgId).eq('status', 'open'),
+  const [paymentsCount, inspectionsCount, complianceCount, workQueueTop5Result, aiBriefResult] = await Promise.all([
+    replica.from('ai_reviews').select('id', { count: 'exact', head: true }).eq('org_id', orgId).eq('type', 'payment').eq('status', 'needs_review'),
+    replica.from('ai_reviews').select('id', { count: 'exact', head: true }).eq('org_id', orgId).eq('type', 'inspection').eq('status', 'needs_review'),
+    replica.from('ai_reviews').select('id', { count: 'exact', head: true }).eq('org_id', orgId).eq('type', 'compliance').eq('status', 'needs_review'),
+    replica.from('ai_reviews').select('id,type,status,title,summary,confidence,updated_at').eq('org_id', orgId).eq('status', 'needs_review').order('updated_at', { ascending: false }).limit(5),
+    replica.from('ai_reviews').select('id,type,status,title,summary,confidence,updated_at').eq('org_id', orgId).order('updated_at', { ascending: false }).limit(3),
   ]);
 
   const [loansResult, inspectionsDueResult, finResult, paymentsActivity, inspectionsActivity, drawsActivity] = await Promise.all([
@@ -196,7 +198,8 @@ router.get('/summary', asyncHandler(async (req, res) => {
     criticalAlerts: [],
    nextDeadlines: nextDeadlines.slice(0, 5),
     todaysActivity,
-    aiBrief: [],
+     workQueueTop5: workQueueTop5Result.data || [],
+    aiBrief: aiBriefResult.data || [],
     quickActions: [
       { id: 'run_payment_review', label: 'Run Payment Review', href: '/servicing/payments' },
       { id: 'order_inspection', label: 'Order Inspection', href: '/servicing/inspections' },
