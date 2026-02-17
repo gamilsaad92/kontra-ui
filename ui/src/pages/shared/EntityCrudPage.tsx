@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import DataState from '../../components/DataState';
 import type { CanonicalEntity } from '../../features/crud/types';
 
@@ -13,9 +13,10 @@ type Props = {
   title: string;
   createLabel: string;
   hooks: HookSet;
+  renderRowActions?: (item: CanonicalEntity) => ReactNode;
 };
 
-export default function EntityCrudPage({ title, createLabel, hooks }: Props) {
+export default function EntityCrudPage({ title, createLabel, hooks, renderRowActions }: Props) {
   const { data, isLoading, isError, refetch } = hooks.useList();
   const createMutation = hooks.useCreate();
   const items = (data?.items || []) as CanonicalEntity[];
@@ -54,10 +55,13 @@ export default function EntityCrudPage({ title, createLabel, hooks }: Props) {
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
           <div className="space-y-2 rounded border bg-white p-3">
             {items.map((item) => (
-              <button key={item.id} className="block w-full rounded border p-2 text-left" onClick={() => setSelectedId(item.id)}>
-                <div className="font-medium">{item.title || item.id}</div>
-                <div className="text-xs text-slate-500">{item.status}</div>
-              </button>
+                <div key={item.id} className="rounded border p-2">
+                <button className="block w-full text-left" onClick={() => setSelectedId(item.id)}>
+                  <div className="font-medium">{item.title || item.id}</div>
+                  <div className="text-xs text-slate-500">{item.status}</div>
+                </button>
+                {renderRowActions ? <div className="mt-2">{renderRowActions(item)}</div> : null}
+              </div>
             ))}
           </div>
           <div className="rounded border bg-white p-3">
