@@ -19,6 +19,7 @@ import GovernanceLayout from "./dashboard/governance/GovernanceLayout";
 import ApiDiagnostics from "./settings/ApiDiagnostics";
 import SsoSettingsPage from "./settings/SsoSettingsPage";
 import WiringCheck from "./dev/WiringCheck";
+import RequireOrg from "../app/guards/RequireOrg";
 import {
   GovernanceComplianceCrudPage,
   GovernanceDocumentCrudPage,
@@ -206,7 +207,7 @@ function AuthenticatedDashboard({
 
   useEffect(() => {
     setOrgContext({
-      orgId: session.user?.user_metadata?.organization_id ?? session.user?.id ?? undefined,
+     orgId: session.user?.user_metadata?.organization_id ?? undefined,
       userId: session.user?.id ?? undefined,
       token: session.access_token ?? undefined,
     });
@@ -304,7 +305,9 @@ function AuthenticatedDashboard({
    const isDashboardRoute = location.pathname === "/dashboard";
   const content = (
     <Routes>
-            <Route path="/" element={<Navigate to="/dashboard" replace />} />
+     <Route path="/organizations" element={<OrganizationsCrudPage />} />
+      <Route element={<RequireOrg />}>
+        <Route path="/" element={<Navigate to="/dashboard" replace />} />
       <Route
         path="/dashboard"
      element={<DashboardOverview orgId={orgId} apiBase={apiBase} />}
@@ -339,8 +342,7 @@ function AuthenticatedDashboard({
         <Route path="document-review" element={<GovernanceDocumentCrudPage />} />
         <Route path="risk" element={<GovernanceRiskCrudPage />} />
       </Route>
-        <Route path="/organizations" element={<OrganizationsCrudPage />} />
-    <Route path="/analytics" element={<AiInsightsPage />} />
+       <Route path="/analytics" element={<AiInsightsPage />} />
         <Route path="/reports" element={<ReportsCrudPage />} />
       <Route path="/settings" element={<Navigate to="/settings/sso" replace />} />
        <Route path="/settings/sso" element={<SsoSettingsPage />} />
@@ -369,6 +371,7 @@ function AuthenticatedDashboard({
       <Route path="/dashboard/assets" element={<LegacyRedirect to="/portfolio/assets" />} />
       <Route path="/assets" element={<LegacyRedirect to="/portfolio/assets" />} />
       <Route path="*" element={<Navigate to="/dashboard" replace />} />
+           </Route>
     </Routes>
   );
 
