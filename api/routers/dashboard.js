@@ -148,9 +148,21 @@ router.post('/', asyncHandler(async (req, res) => {
   res.json(data);
 }));
 
-router.get('/summary', asyncHandler(async (req, res, next) => {
-  req.url = '/overview';
-  return next();
+router.get('/summary', asyncHandler(async (_req, res) => {
+  res.json({
+    roleView: 'lender',
+    workQueueCounts: { payments: 0, inspections: 0, compliance: 0 },
+    criticalAlerts: [],
+    nextDeadlines: [],
+    todaysActivity: [],
+    aiBrief: [],
+    quickActions: [
+      { id: 'run_payment_review', label: 'Run Payment Review', href: '/servicing/payments' },
+      { id: 'order_inspection', label: 'Order Inspection', href: '/servicing/inspections' },
+      { id: 'request_rent_roll', label: 'Request Rent Roll', href: '/servicing/borrower-financials' },
+      { id: 'create_compliance_review', label: 'Create Compliance Review', href: '/governance/compliance' }
+    ]
+  });
 }));
 
 router.get('/overview', asyncHandler(async (req, res) => {
