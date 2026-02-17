@@ -259,13 +259,17 @@ export default function SaasDashboardHome({ apiBase, orgId }: Props) {
 
         {roleWidgets.showAiBrief && (
           <SectionCard title="AI Brief" ctaLabel="Open Analytics" ctaHref={buildUrl("/analytics", { filter: "severity_high" })}>
-            <ul className="list-disc space-y-2 pl-5 text-sm text-slate-700">
-              {summary.aiBrief.slice(0, 5).map((point) => (
-                <li key={point.id}>
-                  <a href={point.href} className="hover:text-sky-700">{point.title}</a>
-                </li>
-              ))}
-            </ul>
+            {summary.aiBrief.length === 0 ? (
+              <p className="text-sm text-slate-500">No AI reviews yet.</p>
+            ) : (
+              <ul className="list-disc space-y-2 pl-5 text-sm text-slate-700">
+                {summary.aiBrief.slice(0, 3).map((point) => (
+                  <li key={point.id}>
+                    <a href={point.href ?? '/servicing/ai-validation'} className="hover:text-sky-700">{point.title}</a>
+                  </li>
+                ))}
+              </ul>
+            )}
           </SectionCard>
         )}
 
