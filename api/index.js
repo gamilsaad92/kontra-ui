@@ -227,6 +227,7 @@ const governanceSliceRouter = require('./src/routes/governance');
 const marketsSliceRouter = require('./src/routes/markets');
 const reportsSliceRouter = require('./src/routes/reports');
 const orgsSliceRouter = require('./src/routes/organizations');
+const aiSliceRouter = require('./src/routes/ai');
 
 const JOB_SCHEDULES = [
   { type: 'score-assets', intervalMs: 6 * 60 * 60 * 1000 },
@@ -585,6 +586,7 @@ app.use('/api/governance', governanceSliceRouter);
 app.use('/api/markets', marketsSliceRouter);
 app.use('/api/reports', reportsSliceRouter);
 app.use('/api/orgs', orgsSliceRouter);
+app.use('/api/ai', aiSliceRouter);
 app.use('/api/dashboard', authenticate, dashboard);
 if (isFeatureEnabled('assets')) {
   app.use("/api/assets", assetsRouter);
