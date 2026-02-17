@@ -94,7 +94,7 @@ const corsOptions = {
     }
 
     console.warn(`[CORS] Origin "${normalizedOrigin}" rejected`);
-    return callback(null, false);
+     return callback(new Error(`CORS blocked: ${normalizedOrigin}`));
   },
  credentials: false,
   allowedHeaders: [
@@ -218,8 +218,9 @@ const legalRouter = require('./routers/legal');
 const otpRouter = require('./routers/otp');
 const mobileRouter = require('./routers/mobile');
 const policyRouter = require('./routers/policy');
-const { orgContext } = require('./middleware/orgContext');
 const { buildRoutesManifest } = require('./src/dev/routesManifest');
+const { requireOrgContext } = require('./src/middleware/requireOrgContext');
+const { errorHandler } = require('./src/middleware/errorHandler');
 
 const JOB_SCHEDULES = [
   { type: 'score-assets', intervalMs: 6 * 60 * 60 * 1000 },
@@ -567,6 +568,10 @@ app.use(
 );
 app.use(auditLogger);
 app.use(rateLimit);
+app.get('/api/health', (_req, res) => {
+  res.json({ ok: true });
+});
+app.use('/api', requireOrgContext);
 app.use('/api/dashboard-layout', authenticate, dashboard);
 app.use('/api/dashboard', authenticate, dashboard);
 if (isFeatureEnabled('assets')) {
@@ -625,15 +630,6 @@ app.use('/api', restaurantsRouter);
 // ── Health Checks ──────────────────────────────────────────────────────────
 app.get('/', (req, res) => res.send('Sentry test running!'));
 app.get('/api/test', (req, res) => res.send('✅ API is alive'));
-// Health check for deployment platforms
-app.get('/api/health', (req, res) => {
-  const version =
-    process.env.RENDER_GIT_COMMIT ||
-    process.env.GIT_COMMIT ||
-    process.env.COMMIT_SHA ||
-    "unknown";
-  res.json({ ok: true, time: new Date().toISOString(), version });
-});
 app.get('/health', (req, res) => res.json({ ok: true }));
 app.get('/api/whoami', authenticate, (req, res) => {
   res.json({
@@ -680,7 +676,7 @@ app.use('/api', integrationsRouter);
 app.use('/api/otp', otpRouter);
 if (isFeatureEnabled('compliance')) {
   app.use('/api', authenticate, requireRole('admin'), complianceRouter);
-  app.use('/api/policy', authenticate, orgContext, policyRouter);
+  app.use('/api/policy', authenticate, policyRouter);
 }
 
 // ── Mock KYC & Credit Checks ──────────────────────────────────────────────
@@ -1991,15 +1987,7 @@ if (Sentry.Handlers?.errorHandler) {
   app.use(Sentry.errorHandler());
 }
 
-app.use((err, req, res, next) => {
-  if (res.headersSent) {
-    return next(err);
-  }
-  const status = err?.status || err?.statusCode || 500;
-  const message = err?.message || 'Internal server error';
-  const details = err?.details || (status >= 500 ? undefined : err);
-  res.status(status).json({ message, ...(details ? { details } : {}) });
-});
+app.use(errorHandler);
 
 // ── Start Server ──────────────────────────────────────────────────────────
 const PORT = 10000;
