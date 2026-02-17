@@ -21,7 +21,7 @@ router.use(auditLogger);
 router.use((req, res, next) => {
   const orgId = req.organizationId;
   if (!orgId) {
-    return res.status(400).json({ message: 'Missing organization id' });
+  return res.status(400).json({ code: 'ORG_CONTEXT_MISSING', message: 'Missing X-Org-Id header' });
   }
   req.orgId = orgId;
   next();
