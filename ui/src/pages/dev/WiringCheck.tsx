@@ -23,7 +23,7 @@ function parseEndpoint(definition: string) {
   return { method: normalizedMethod, path };
 }
 
-sync function probeApi(definition: string): Promise<Pick<CheckResult, "status" | "statusCode" | "message">> {
+async function probeApi(definition: string): Promise<Pick<CheckResult, "status" | "statusCode" | "message">> {
   const { method, path } = parseEndpoint(definition);
 
     try {
