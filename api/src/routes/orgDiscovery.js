@@ -2,68 +2,109 @@ const express = require('express');
 const { z } = require('zod');
 const authenticate = require('../../middlewares/authenticate');
 const { supabase, replica } = require('../../db');
+const { getAuthUserId } = require('../lib/auth');
+const { randomUUID } = require('node:crypto');
 
 const router = express.Router();
 
 router.use(authenticate);
 
-async function getMembershipOrgs(userId) {
-  const membershipQueries = [
-    async () => replica.from('org_memberships').select('org_id, role').eq('user_id', userId),
-    async () => replica.from('organization_members').select('organization_id, role').eq('user_id', userId),
-  ];
-
-  for (const query of membershipQueries) {
-    const { data, error } = await query();
-    if (!error) {
-      const items = (data || [])
-        .map((row) => ({
-          id: String(row.org_id ?? row.organization_id ?? ''),
-          role: row.role ?? null,
-        }))
-        .filter((row) => row.id);
-      if (items.length > 0) return items;
-    }
-  }
-
-  return [];
-}
-
 async function getOrgsForUser(userId) {
-  const membershipItems = await getMembershipOrgs(userId);
-  if (membershipItems.length === 0) {
-    return [];
-  }
-
-  const orgIds = [...new Set(membershipItems.map((item) => item.id))];
-  const { data, error } = await replica
-    .from('organizations')
-    .select('id, name, title')
-    .in('id', orgIds);
+   const { data, error } = await replica
+    .from('org_memberships')
+    .select('org_id, role, organizations!inner(id, name, title, created_at)')
+    .eq('user_id', userId)
+    .order('created_at', { foreignTable: 'organizations', ascending: false });
 
   if (error) {
     throw error;
   }
 
-  const orgById = new Map((data || []).map((org) => [String(org.id), org]));
+   const items = (data || [])
+    .map((row) => {
+      const org = Array.isArray(row.organizations) ? row.organizations[0] : row.organizations;
+      if (!org?.id) return null;
 
-  return membershipItems
-    .map((membership) => {
-      const org = orgById.get(membership.id);
-      if (!org) return null;
       return {
         id: String(org.id),
         name: org.name || org.title || 'Organization',
-        role: membership.role || undefined,
+         role: row.role || 'admin',
       };
     })
     .filter(Boolean);
+  
+  return { items, total: items.length };
+}
+
+async function createOrgForUser(userId, name) {
+  const orgId = randomUUID();
+  const { data: organization, error: orgError } = await supabase
+    .from('organizations')
+    .insert({
+      id: orgId,
+      org_id: orgId,
+      name,
+      created_by: userId,
+      title: name,
+      data: {},
+      status: 'active',
+    })
+    .select('id, name, title, created_at')
+    .single();
+
+  if (orgError) {
+    throw orgError;
+  }
+
+  const { data: membership, error: membershipError } = await supabase
+    .from('org_memberships')
+    .insert({
+      org_id: organization.id,
+      user_id: userId,
+      role: 'admin',
+      status: 'active',
+      data: {},
+    })
+    .select('id, org_id, user_id, role, created_at')
+    .single();
+
+  if (membershipError) {
+    throw membershipError;
+  }
+
+  return {
+    org: {
+      id: String(organization.id),
+      name: organization.name || organization.title || name,
+    },
+    membership,
+  };
 }
 
 router.get('/', async (req, res, next) => {
   try {
-    const items = await getOrgsForUser(req.user.id);
-    res.json({ items, total: items.length });
+     const userId = getAuthUserId(req);
+    if (!userId) {
+      return res.status(401).json({ code: 'UNAUTHORIZED', message: 'Missing auth' });
+    }
+
+    const orgs = await getOrgsForUser(userId);
+    res.json(orgs);
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.post('/', async (req, res, next) => {
+  try {
+    const userId = getAuthUserId(req);
+    if (!userId) {
+      return res.status(401).json({ code: 'UNAUTHORIZED', message: 'Missing auth' });
+    }
+
+    const payload = z.object({ name: z.string().trim().min(1).max(120) }).parse(req.body || {});
+    const created = await createOrgForUser(userId, payload.name);
+    res.status(201).json(created);
   } catch (error) {
     next(error);
   }
@@ -71,17 +112,22 @@ router.get('/', async (req, res, next) => {
 
 router.post('/select', async (req, res, next) => {
   try {
+        const userId = getAuthUserId(req);
+    if (!userId) {
+      return res.status(401).json({ code: 'UNAUTHORIZED', message: 'Missing auth' });
+    }
+
     const payload = z.object({ org_id: z.string().min(1) }).parse(req.body || {});
-    const items = await getOrgsForUser(req.user.id);
-    const selected = items.find((org) => org.id === payload.org_id);
+     const orgs = await getOrgsForUser(userId);
+    const selected = orgs.items.find((org) => org.id === payload.org_id);
 
     if (!selected) {
       return res.status(403).json({ code: 'ORG_FORBIDDEN', message: 'Organization access denied' });
     }
 
-    const { error } = await supabase.auth.admin.updateUserById(req.user.id, {
+     const { error } = await supabase.auth.admin.updateUserById(userId, {
       user_metadata: {
-        ...(req.user.user_metadata || {}),
+        ...(req.user?.user_metadata || {}),
         organization_id: payload.org_id,
       },
     });
@@ -90,7 +136,7 @@ router.post('/select', async (req, res, next) => {
       return res.status(400).json({ message: error.message });
     }
 
-    res.json({ ok: true, org_id: payload.org_id });
+  res.json({ ok: true, active_org_id: payload.org_id });
   } catch (error) {
     next(error);
   }
@@ -98,23 +144,31 @@ router.post('/select', async (req, res, next) => {
 
 router.get('/bootstrap', async (req, res, next) => {
   try {
-    const orgs = await getOrgsForUser(req.user.id);
+    const userId = getAuthUserId(req);
+    if (!userId) {
+      return res.status(401).json({ code: 'UNAUTHORIZED', message: 'Missing auth' });
+    }
+
+    let orgs = await getOrgsForUser(userId);
+    if (orgs.total === 0) {
+      await createOrgForUser(userId, 'My Kontra Workspace');
+      orgs = await getOrgsForUser(userId);
+    }
+
     const metadataOrgId = req.user?.user_metadata?.organization_id
       ? String(req.user.user_metadata.organization_id)
       : null;
 
-    const defaultOrgId = orgs.some((org) => org.id === metadataOrgId)
+    const defaultOrgId = orgs.items.some((org) => org.id === metadataOrgId)
       ? metadataOrgId
-      : orgs.length === 1
-        ? orgs[0].id
-        : null;
-
+      : orgs.items[0]?.id || null;
+    
     res.json({
       user: {
-        id: req.user.id,
-        email: req.user.email,
+          id: userId,
+        email: req.user?.email,
       },
-      orgs,
+       orgs: orgs.items,
       default_org_id: defaultOrgId,
     });
   } catch (error) {
