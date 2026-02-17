@@ -1,13 +1,16 @@
 import { useEffect, useMemo, useState } from "react";
-import { actionRegistry } from "../../app/actionRegistry";
+import { actionRegistry, type Severity } from "../../app/actionRegistry";
+import { routeCatalog } from "../../app/routes";
 import { apiFetch } from "../../lib/apiClient";
 
-type CheckStatus = "ok" | "missing" | "unauthorized" | "blocked" | "error";
+type CheckStatus = "ok" | "missing" | "unauthorized" | "cors" | "failed" | "route-missing";
 
 type CheckResult = {
   id: string;
+  label: string;
   route: string;
-  endpoint: string;
+  severity: Severity;
+  target: string;
   status: CheckStatus;
   statusCode?: number;
   message?: string;
@@ -15,23 +18,33 @@ type CheckResult = {
 
 function parseEndpoint(definition: string) {
   const [method, ...pathParts] = definition.trim().split(" ");
-  const path = pathParts.join(" ");
-  return { method: (method || "GET").toUpperCase(), path: path || "/api/health" };
+  const normalizedMethod = (method || "GET").toUpperCase();
+  const path = pathParts.join(" ").replace(/:[^/]+/g, "00000000-0000-0000-0000-000000000000") || "/api/health";
+  return { method: normalizedMethod, path };
 }
 
-async function probe(definition: string): Promise<Pick<CheckResult, "status" | "statusCode" | "message">> {
+sync function probeApi(definition: string): Promise<Pick<CheckResult, "status" | "statusCode" | "message">> {
   const { method, path } = parseEndpoint(definition);
-  try {
-    const response = await apiFetch(path, { method: method === "GET" ? "HEAD" : method }, { throwOnError: false });
 
+    try {
+    const response = await apiFetch(path, { method }, { throwOnError: false });
     if (response.status === 404) return { status: "missing", statusCode: 404, message: "Endpoint not found" };
-    if (response.status === 401) return { status: "unauthorized", statusCode: 401, message: "Auth required (acceptable)" };
-    if (response.status === 403) return { status: "unauthorized", statusCode: 403, message: "Forbidden (acceptable)" };
+      if (response.status === 501) return { status: "failed", statusCode: 501, message: "Not implemented" };
+    if (response.status === 400) {
+      const body = await response.clone().json().catch(() => null);
+      if (body?.code === "ORG_CONTEXT_MISSING") {
+        return { status: "failed", statusCode: 400, message: "ORG_CONTEXT_MISSING" };
+      }
+    }
+    if (response.status === 401 || response.status === 403) {
+      return { status: "unauthorized", statusCode: response.status, message: "Auth required" };
+    }
     if (response.ok) return { status: "ok", statusCode: response.status };
-    return { status: "error", statusCode: response.status, message: response.statusText };
+   
+    return { status: "failed", statusCode: response.status, message: response.statusText };
   } catch (error) {
     return {
-      status: "blocked",
+    status: "cors",
       message: error instanceof Error ? error.message : "Network/CORS blocked",
     };
   }
@@ -44,12 +57,35 @@ export default function WiringCheck() {
   const runChecks = async () => {
     setRunning(true);
     const rows: CheckResult[] = [];
+    
     for (const item of actionRegistry) {
-      for (const endpoint of item.requiredApis) {
-        const result = await probe(endpoint);
-        rows.push({ id: item.id, route: item.route, endpoint, ...result });
+            for (const requiredRoute of item.requiredRoutes ?? []) {
+        if (!routeCatalog.includes(requiredRoute as never)) {
+          rows.push({
+            id: item.id,
+            label: item.label,
+            route: item.route,
+            severity: item.severity,
+            target: requiredRoute,
+            status: "route-missing",
+            message: "Route not declared in route catalog",
+          });
+        }
+      }
+
+        for (const endpoint of item.requiredApis) {
+        const result = await probeApi(endpoint);
+        rows.push({
+          id: item.id,
+          label: item.label,
+          route: item.route,
+          severity: item.severity,
+          target: endpoint,
+          ...result,
+        });
       }
     }
+  
     setResults(rows);
     setRunning(false);
   };
@@ -59,12 +95,14 @@ export default function WiringCheck() {
   }, []);
 
   const summary = useMemo(() => {
-    const total = results.length;
-    const missing = results.filter((r) => r.status === "missing").length;
-    const blocked = results.filter((r) => r.status === "blocked").length;
-    const unauthorized = results.filter((r) => r.status === "unauthorized").length;
-    const ok = results.filter((r) => r.status === "ok").length;
-    return { total, missing, blocked, unauthorized, ok };
+    const failures = results.filter((r) => r.status !== "ok" && r.status !== "unauthorized");
+    const blockerHigh = failures.filter((r) => r.severity === "blocker" || r.severity === "high");
+    return {
+      total: results.length,
+      ok: results.filter((r) => r.status === "ok").length,
+      failures: failures.length,
+      blockerHigh: blockerHigh.length,
+    };
   }, [results]);
 
   return (
@@ -76,28 +114,27 @@ export default function WiringCheck() {
         </button>
       </div>
       <p className="text-sm text-slate-600">
-        OK: {summary.ok} · Missing: {summary.missing} · Unauthorized: {summary.unauthorized} · Blocked: {summary.blocked} · Total: {summary.total}
+        OK: {summary.ok} · Failures: {summary.failures} · Blocker/High Failures: {summary.blockerHigh} · Total: {summary.total}
       </p>
       <div className="overflow-auto rounded border bg-white">
         <table className="min-w-full text-sm">
           <thead className="bg-slate-50 text-left">
             <tr>
-              <th className="p-2">Action</th><th className="p-2">Route</th><th className="p-2">Endpoint</th><th className="p-2">Status</th>
+             <th className="p-2">Action</th>
+              <th className="p-2">Severity</th>
+              <th className="p-2">Route</th>
+              <th className="p-2">Target</th>
+              <th className="p-2">Status</th>
             </tr>
           </thead>
           <tbody>
             {results.map((result) => (
-              <tr key={`${result.id}-${result.endpoint}`} className="border-t">
-                <td className="p-2">{result.id}</td>
+                <tr key={`${result.id}-${result.target}`} className="border-t">
+                <td className="p-2">{result.label}</td>
+                <td className="p-2 uppercase">{result.severity}</td>
                 <td className="p-2">{result.route}</td>
-                <td className="p-2">{result.endpoint}</td>
-                <td className="p-2">
-                  {result.status === "ok" && "✅ OK"}
-                  {result.status === "missing" && "❌ Missing endpoint (404)"}
-                  {result.status === "unauthorized" && "❌ Unauthorized (401/403)"}
-                  {result.status === "blocked" && "❌ CORS/Blocked"}
-                  {result.status === "error" && `❌ Error (${result.statusCode ?? "n/a"})`}
-                </td>
+                  <td className="p-2">{result.target}</td>
+                <td className="p-2">{result.status}{result.message ? `: ${result.message}` : ""}</td>
               </tr>
             ))}
           </tbody>
