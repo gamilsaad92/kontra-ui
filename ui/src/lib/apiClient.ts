@@ -108,6 +108,18 @@ export const subscribeApiLog = (listener: (entry: ApiRequestLogEntry) => void) =
 
 export const getRequestLog = () => [...requestLog];
 
+const requiresOrgForPath = (requestUrl: string): boolean => {
+  try {
+    const parsed = new URL(requestUrl, typeof window === "undefined" ? "http://localhost" : window.location.origin);
+    const path = parsed.pathname;
+    if (!path.startsWith("/api")) return false;
+    if (path === "/api/health" || path.startsWith("/api/dev/")) return false;
+    return true;
+  } catch {
+    return requestUrl.startsWith("/api") && requestUrl !== "/api/health" && !requestUrl.startsWith("/api/dev/");
+  }
+};
+
 const emitBrowserEvent = (name: string, detail: unknown) => {
   if (typeof window === "undefined") return;
   window.dispatchEvent(new CustomEvent(name, { detail }));
@@ -159,6 +171,10 @@ if (!headers.has("Content-Type") && init.body && !(init.body instanceof FormData
   if (orgId) {
     headers.set("X-Org-Id", orgId);
     headers.set("x-org-id", orgId);
+      } else if (requiresOrgForPath(requestUrl)) {
+    const orgError = buildError("Select an organization to continue", 400, requestUrl, null, null, "ORG_CONTEXT_MISSING");
+    emitBrowserEvent("api:error", orgError);
+    throw orgError;
   }
   if (orgContext.userId) {
     headers.set("x-user-id", orgContext.userId);
