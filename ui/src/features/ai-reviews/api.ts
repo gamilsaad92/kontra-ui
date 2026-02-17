@@ -1,82 +1,108 @@
-import { api } from "../../lib/api";
-import type { AiReview, AiReviewStatus, AiReviewType } from "./types";
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { apiFetch } from '../../lib/apiClient';
+import type { AiReview, AiReviewStatus, AiReviewType } from './types';
 
 type ReviewQuery = {
-  type?: AiReviewType;
   status?: AiReviewStatus;
-  loanId?: string;
-  projectId?: string;
+  type?: AiReviewType;
+  entity_type?: string;
+  entity_id?: string;
 };
 
-const isAiReview = (value: unknown): value is AiReview => {
-  if (!value || typeof value !== "object") return false;
-  const record = value as Record<string, unknown>;
-  return (
-    typeof record.id === "string" &&
-    typeof record.org_id === "string" &&
-    typeof record.type === "string" &&
-    typeof record.status === "string" &&
-    typeof record.title === "string" &&
-    typeof record.summary === "string"
-  );
+type ReviewsListResponse = { items: AiReview[]; total: number };
+
+async function readJson<T>(response: Response): Promise<T> {
+  return (await response.json()) as T;
+}
+
+const toQuery = (params: ReviewQuery) => {
+  const search = new URLSearchParams();
+  Object.entries(params).forEach(([k, v]) => {
+    if (v) search.set(k, String(v));
+  });
+  return search.toString();
 };
 
-function assertReviewsResponse(payload: unknown): asserts payload is { reviews: AiReview[] } {
-  if (!payload || typeof payload !== "object") {
-    throw new Error("Invalid reviews response payload.");
-  }
-  const reviews = (payload as Record<string, unknown>).reviews;
-  if (!Array.isArray(reviews) || reviews.some((review) => !isAiReview(review))) {
-    throw new Error("Invalid review records returned by API.");
-  }
-}
-
-function assertReviewResponse(payload: unknown): asserts payload is { review: AiReview } {
-  if (!payload || typeof payload !== "object" || !isAiReview((payload as Record<string, unknown>).review)) {
-    throw new Error("Invalid review response payload.");
-  }
-}
-
-export async function getReviews(params: ReviewQuery = {}): Promise<AiReview[]> {
-  const { data } = await api.get<unknown>("/ai/reviews", { params });
-  assertReviewsResponse(data);
-  return data.reviews;
-}
-
-export async function reviewPayment(paymentId: string) {
- const { data } = await api.post<unknown>("/ai/payments/review", {
-    paymentId,
+export function useAiReviewsList(params: ReviewQuery = {}) {
+  const queryString = toQuery(params);
+  return useQuery<ReviewsListResponse>({
+    queryKey: ['ai-reviews', 'list', queryString],
+    queryFn: async () => {
+      const response = await apiFetch(`/api/ai/reviews${queryString ? `?${queryString}` : ''}`);
+      if (!response.ok) throw new Error('Failed to load AI reviews');
+      return readJson<ReviewsListResponse>(response);
+    },
   });
-  assertReviewResponse(data);
-  return data.review;
 }
 
-export async function reviewInspection(inspectionId: string) {
- const { data } = await api.post<unknown>("/ai/inspections/review", {
-    inspectionId,
+export function useAiReview(id?: string) {
+  return useQuery<{ review: AiReview }>({
+    queryKey: ['ai-reviews', 'detail', id],
+    enabled: Boolean(id),
+    queryFn: async () => {
+      const response = await apiFetch(`/api/ai/reviews/${id}`);
+      if (!response.ok) throw new Error('Failed to load AI review');
+      return readJson<{ review: AiReview }>(response);
+    },
   });
-   assertReviewResponse(data);
-  return data.review;
 }
 
-export async function markReview(id: string, status: AiReviewStatus) {
- const { data } = await api.post<unknown>(`/ai/reviews/${id}/mark`, {
-    status,
+export function useMarkAiReview() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, status }: { id: string; status: AiReviewStatus }) => {
+      const response = await apiFetch(`/api/ai/reviews/${id}/mark`, {
+        method: 'POST',
+        body: JSON.stringify({ status }),
+      });
+      if (!response.ok) throw new Error('Failed to mark AI review');
+      return readJson<{ review: AiReview }>(response);
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['ai-reviews'] }),
   });
-  assertReviewResponse(data);
-  return data.review;
 }
 
-export async function approveAction(
-  id: string,
-  action_type: string,
-  action_payload: Record<string, unknown>,
-  notes?: string
-) {
- const { data } = await api.post<{ message?: string }>(`/ai/reviews/${id}/approve-action`, {
-    action_type,
-    action_payload,
-    notes,
+export function useApproveAiAction() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (payload: { id: string; action_type: string; action_payload: unknown; notes?: string }) => {
+      const response = await apiFetch(`/api/ai/reviews/${payload.id}/approve-action`, {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      });
+      if (!response.ok) throw new Error('Failed to approve AI action');
+      return readJson<{ ok: boolean }>(response);
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['ai-reviews'] }),
   });
-  return data;
+}
+
+export function useRunPaymentReview() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ payment_id }: { payment_id: string }) => {
+      const response = await apiFetch('/api/ai/payments/review', {
+        method: 'POST',
+        body: JSON.stringify({ payment_id }),
+      });
+      if (!response.ok) throw new Error('Failed to run payment AI review');
+      return readJson<{ review: AiReview }>(response);
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['ai-reviews'] }),
+  });
+}
+
+export function useRunInspectionReview() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ inspection_id }: { inspection_id: string }) => {
+      const response = await apiFetch('/api/ai/inspections/review', {
+        method: 'POST',
+        body: JSON.stringify({ inspection_id }),
+      });
+      if (!response.ok) throw new Error('Failed to run inspection AI review');
+      return readJson<{ review: AiReview }>(response);
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['ai-reviews'] }),
+  });
 }
