@@ -15,11 +15,7 @@ function handleMissingSchemaError(res, error, context, payload) {
     details: error?.message,
   });
 
-  if (process.env.NODE_ENV === 'production') {
-    res.status(501).json({ message: `${context} unavailable: ${message}` });
-  } else {
-    res.status(200).json(payload);
-  }
+ res.status(200).json(payload);
   return true;
 }
 
