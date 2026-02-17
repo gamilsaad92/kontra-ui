@@ -7,7 +7,8 @@
     "build": "vite build",
     "start": "serve -s dist -l $PORT",
     "preview": "vite preview",
-    "test": "jest"
+      "test": "jest",
+    "wiring:gate": "node ./scripts/wiring-gate.mjs"
   },
   "dependencies": {
     "@clerk/clerk-react": "^5.35.3",
@@ -48,6 +49,6 @@
     "vite-plugin-pwa": "^0.16.4"
   },
   "engines": {
-  "node": "22.x"
+     "node": "22.x"
   }
 }
