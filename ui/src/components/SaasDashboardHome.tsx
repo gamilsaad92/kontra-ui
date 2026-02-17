@@ -1,30 +1,30 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { api } from "../lib/api";
+import { requireOrgId } from "../lib/orgContext";
 
 type DashboardRole = "lender" | "servicer" | "investor" | "admin";
 
-type DashboardCountSummary = {
-  needsReviewPayments: number;
-  needsReviewInspections: number;
-  openCompliance: number;
-  upcomingDeadlines: number;
-};
-
 type DashboardItem = {
   id: string | number;
-  title: string;
+  title?: string;
+  label?: string;
   subtitle?: string;
   href: string;
   severity?: "high" | "medium" | "low";
 };
 
 type DashboardSummaryResponse = {
-  counts: DashboardCountSummary;
-  workQueueTop5: DashboardItem[];
-  alertsTop5: DashboardItem[];
-  deadlinesTop5: DashboardItem[];
-  activityTop5: DashboardItem[];
+  roleView: DashboardRole;
+  workQueueCounts: {
+    payments: number;
+    inspections: number;
+    compliance: number;
+  };
+  criticalAlerts: DashboardItem[];
+  nextDeadlines: DashboardItem[];
+  todaysActivity: DashboardItem[];
   aiBrief: DashboardItem[];
+  quickActions: DashboardItem[];
 };
 
 type Props = {
@@ -33,60 +33,13 @@ type Props = {
 };
 
 const defaultSummary: DashboardSummaryResponse = {
-  counts: {
-    needsReviewPayments: 0,
-    needsReviewInspections: 0,
-    openCompliance: 0,
-    upcomingDeadlines: 0
-  },
-  workQueueTop5: [],
-  alertsTop5: [],
-  deadlinesTop5: [],
-  activityTop5: [],
-  aiBrief: []
-};
-
-const fallbackSummary: DashboardSummaryResponse = {
-  counts: {
-    needsReviewPayments: 4,
-    needsReviewInspections: 3,
-    openCompliance: 2,
-    upcomingDeadlines: 6
-  },
-  workQueueTop5: [
-    { id: "w-1", title: "Payment exception review", subtitle: "Loan K-1102 · Due today", href: "/servicing/payments?filter=exceptions" },
-    { id: "w-2", title: "Inspection evidence missing", subtitle: "Loan K-2031 · 1 day overdue", href: "/servicing/inspections?filter=missing_evidence" },
-    { id: "w-3", title: "Compliance memo approval", subtitle: "Open covenant package", href: "/governance/compliance?filter=open" },
-    { id: "w-4", title: "Borrower financial review", subtitle: "Sunbelt CRE 2024-2", href: "/servicing/borrower-financials?filter=needs_review" },
-    { id: "w-5", title: "Escrow variance exception", subtitle: "Kontra Bridge 2024-1", href: "/servicing/escrow?filter=exceptions" }
-  ],
-  alertsTop5: [
-    { id: "a-1", title: "Delinquency warning", subtitle: "2 loans moved to 30+ DPD", href: "/portfolio/loans?filter=needs_attention", severity: "high" },
-    { id: "a-2", title: "Covenant breach", subtitle: "DSCR below threshold", href: "/governance/compliance?filter=open", severity: "high" },
-    { id: "a-3", title: "Risk trend deterioration", subtitle: "3 loans downgraded", href: "/analytics?filter=severity_high", severity: "medium" },
-    { id: "a-4", title: "Insurance certificate expired", subtitle: "Borrower upload required", href: "/servicing/management?filter=insurance_expired", severity: "medium" },
-    { id: "a-5", title: "Escrow balance below minimum", subtitle: "Immediate top-up required", href: "/servicing/escrow?filter=below_minimum", severity: "high" }
-  ],
-  deadlinesTop5: [
-    { id: "d-1", title: "Inspection due", subtitle: "5 assets due in next 7 days", href: "/servicing/inspections?filter=due_soon" },
-    { id: "d-2", title: "Borrower financials due", subtitle: "3 submissions due this week", href: "/servicing/borrower-financials?filter=due_soon" },
-    { id: "d-3", title: "Escrow reconciliation", subtitle: "2 reconciliations due", href: "/servicing/escrow?filter=due_soon" },
-    { id: "d-4", title: "Maturity event", subtitle: "Loan K-3390 matures in 12 days", href: "/portfolio/loans?filter=maturity_soon" },
-    { id: "d-5", title: "Compliance attestation", subtitle: "Quarterly filing pending", href: "/governance/compliance?filter=due_soon" }
-  ],
-  activityTop5: [
-    { id: "t-1", title: "AI payment review completed", subtitle: "12 minutes ago", href: "/servicing/ai-validation" },
-    { id: "t-2", title: "Inspection order submitted", subtitle: "34 minutes ago", href: "/servicing/inspections" },
-    { id: "t-3", title: "Compliance packet uploaded", subtitle: "1 hour ago", href: "/governance/document-review" },
-    { id: "t-4", title: "Borrower docs requested", subtitle: "2 hours ago", href: "/servicing/management" },
-    { id: "t-5", title: "Portfolio exception resolved", subtitle: "Today", href: "/portfolio/loans?filter=recently_resolved" }
-  ],
-  aiBrief: [
-    { id: "b-1", title: "Three high-severity anomalies detected in payment timing.", href: "/analytics?filter=severity_high" },
-    { id: "b-2", title: "Two loans now require manual covenant verification.", href: "/governance/compliance?filter=open" },
-    { id: "b-3", title: "Inspection evidence gaps concentrated in two markets.", href: "/servicing/inspections?filter=missing_evidence" },
-    { id: "b-4", title: "Net delinquency risk rose 0.8% week-over-week.", href: "/portfolio/loans?filter=needs_attention" }
-  ]
+  roleView: "lender",
+  workQueueCounts: { payments: 0, inspections: 0, compliance: 0 },
+  criticalAlerts: [],
+  nextDeadlines: [],
+  todaysActivity: [],
+  aiBrief: [],
+  quickActions: []
 };
 
 function normalizeApiBase(base?: string): string | undefined {
@@ -126,7 +79,8 @@ function SectionCard({
   ctaHref,
   children
 }: {
-  title: string;
+  title?: string;
+  label?: string;
   ctaLabel: string;
   ctaHref: string;
   children: React.ReactNode;
@@ -161,19 +115,35 @@ export default function SaasDashboardHome({ apiBase, orgId }: Props) {
     setError(null);
     const baseURL = normalizeApiBase(apiBase);
 
+       let resolvedOrgId: string;
+    try {
+      resolvedOrgId = String(orgId ?? requireOrgId());
+    } catch (requestError: any) {
+      setError(requestError?.message ?? "Select an organization to continue");
+      setLoading(false);
+      return () => {
+        cancelled = true;
+      };
+    }
+
     api
-      .get<DashboardSummaryResponse>("/dashboard/summary", {
+      .get<DashboardSummaryResponse>("/api/dashboard/summary", {
         ...(baseURL ? { baseURL } : {}),
-        headers: { "x-organization-id": String(orgId ?? 1) }
+         headers: { "X-Org-Id": resolvedOrgId }
       })
       .then((response) => {
         if (cancelled) return;
         setSummary(response.data);
+        setRole(response.data.roleView ?? "lender");
       })
-      .catch(() => {
+      .catch((requestError: any) => {
         if (cancelled) return;
-        setError("Using fallback command center summary while dashboard API is unavailable.");
-        setSummary(fallbackSummary);
+          if (requestError?.code === "ORG_CONTEXT_MISSING") {
+          setError("Select an organization to continue");
+          return;
+        }
+        setError(requestError?.message ?? "Unable to load command center summary.");
+        setSummary(defaultSummary);
       })
       .finally(() => {
         if (!cancelled) {
@@ -208,9 +178,9 @@ export default function SaasDashboardHome({ apiBase, orgId }: Props) {
   }, [role]);
 
   const workQueueCounts = [
-    { label: "Payments", value: summary.counts.needsReviewPayments, href: buildUrl("/servicing/payments", { filter: "exceptions" }) },
-    { label: "Inspections", value: summary.counts.needsReviewInspections, href: buildUrl("/servicing/inspections", { filter: "missing_evidence" }) },
-    { label: "Compliance", value: summary.counts.openCompliance, href: buildUrl("/governance/compliance", { filter: "open" }) }
+    { label: "Payments", value: summary.workQueueCounts.payments, href: buildUrl("/servicing/payments", { filter: "exceptions" }) },
+    { label: "Inspections", value: summary.workQueueCounts.inspections, href: buildUrl("/servicing/inspections", { filter: "missing_evidence" }) },
+    { label: "Compliance", value: summary.workQueueCounts.compliance, href: buildUrl("/governance/compliance", { filter: "open" }) }
   ];
 
   return (
@@ -238,9 +208,9 @@ export default function SaasDashboardHome({ apiBase, orgId }: Props) {
               ))}
             </div>
             <ul className="mt-3 space-y-2">
-              {summary.workQueueTop5.slice(0, 5).map((item) => (
+                {summary.quickActions.slice(0, 5).map((item) => (
                 <li key={item.id} className="rounded-md border border-slate-100 p-2">
-                  <a href={item.href} className="text-sm font-medium text-slate-800 hover:text-sky-700">{item.title}</a>
+                   <a href={item.href} className="text-sm font-medium text-slate-800 hover:text-sky-700">{item.title ?? item.label}</a>
                   {item.subtitle && <p className="text-xs text-slate-500">{item.subtitle}</p>}
                 </li>
               ))}
@@ -251,9 +221,9 @@ export default function SaasDashboardHome({ apiBase, orgId }: Props) {
         {roleWidgets.showAlerts && (
           <SectionCard title="Critical Alerts" ctaLabel="Open Governance" ctaHref={buildUrl("/governance/compliance", { filter: "open" })}>
             <ul className="space-y-2">
-              {summary.alertsTop5.slice(0, 5).map((item) => (
+              {summary.criticalAlerts.slice(0, 5).map((item) => (
                 <li key={item.id} className="rounded-md border border-slate-100 p-2">
-                  <a href={item.href} className="text-sm font-medium text-slate-800 hover:text-sky-700">{item.title}</a>
+                   <a href={item.href} className="text-sm font-medium text-slate-800 hover:text-sky-700">{item.title ?? item.label}</a>
                   {item.subtitle && <p className="text-xs text-slate-500">{item.subtitle}</p>}
                 </li>
               ))}
@@ -264,9 +234,9 @@ export default function SaasDashboardHome({ apiBase, orgId }: Props) {
         {roleWidgets.showDeadlines && (
           <SectionCard title="Next Deadlines" ctaLabel="Open Servicing" ctaHref="/servicing/overview">
             <ul className="space-y-2">
-              {summary.deadlinesTop5.slice(0, 5).map((item) => (
+             {summary.nextDeadlines.slice(0, 5).map((item) => (
                 <li key={item.id} className="rounded-md border border-slate-100 p-2">
-                  <a href={item.href} className="text-sm font-medium text-slate-800 hover:text-sky-700">{item.title}</a>
+                  <a href={item.href} className="text-sm font-medium text-slate-800 hover:text-sky-700">{item.title ?? item.label}</a>
                   {item.subtitle && <p className="text-xs text-slate-500">{item.subtitle}</p>}
                 </li>
               ))}
@@ -277,9 +247,9 @@ export default function SaasDashboardHome({ apiBase, orgId }: Props) {
         {roleWidgets.showActivity && (
           <SectionCard title="Today’s Activity" ctaLabel="Open Servicing" ctaHref="/servicing/overview">
             <ul className="space-y-2">
-              {summary.activityTop5.slice(0, 5).map((item) => (
+                {summary.todaysActivity.slice(0, 5).map((item) => (
                 <li key={item.id} className="rounded-md border border-slate-100 p-2">
-                  <a href={item.href} className="text-sm font-medium text-slate-800 hover:text-sky-700">{item.title}</a>
+                  <a href={item.href} className="text-sm font-medium text-slate-800 hover:text-sky-700">{item.title ?? item.label}</a>
                   {item.subtitle && <p className="text-xs text-slate-500">{item.subtitle}</p>}
                 </li>
               ))}
