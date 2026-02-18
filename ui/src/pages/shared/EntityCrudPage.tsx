@@ -31,7 +31,7 @@ export default function EntityCrudPage({ title, createLabel, hooks, renderRowAct
   const current = useMemo(() => detail.data as CanonicalEntity | undefined, [detail.data]);
 
   const syncDraft = () => {
-    setDraftTitle((current?.title as string) || '');
+    setDraftTitle((current?.name as string) || (current?.title as string) || '');
     setDraftStatus(current?.status || 'active');
   };
 
@@ -57,7 +57,7 @@ export default function EntityCrudPage({ title, createLabel, hooks, renderRowAct
             {items.map((item) => (
                 <div key={item.id} className="rounded border p-2">
                 <button className="block w-full text-left" onClick={() => setSelectedId(item.id)}>
-                  <div className="font-medium">{item.title || item.id}</div>
+                       <div className="font-medium">{item.name || item.title || item.id}</div>
                   <div className="text-xs text-slate-500">{item.status}</div>
                 </button>
                 {renderRowActions ? <div className="mt-2">{renderRowActions(item)}</div> : null}
@@ -76,12 +76,12 @@ export default function EntityCrudPage({ title, createLabel, hooks, renderRowAct
               ) : (
                 <div className="space-y-2">
                   <button className="rounded border px-2 py-1 text-xs" onClick={syncDraft}>Load into editor</button>
-                  <input className="w-full rounded border p-2" value={draftTitle} onChange={(e) => setDraftTitle(e.target.value)} placeholder="Title" />
+                         <input className="w-full rounded border p-2" value={draftTitle} onChange={(e) => setDraftTitle(e.target.value)} placeholder={current?.name !== undefined ? 'Organization name' : 'Title'} />
                   <input className="w-full rounded border p-2" value={draftStatus} onChange={(e) => setDraftStatus(e.target.value)} placeholder="Status" />
                   <button
-                    className="rounded bg-slate-900 px-3 py-2 text-white"
-                    onClick={() => updateMutation.mutate({ title: draftTitle, status: draftStatus })}
-                  >
+                  className="rounded bg-slate-900 px-3 py-2 text-white"
+                   onClick={() => updateMutation.mutate(current?.name !== undefined ? { name: draftTitle, status: draftStatus } : { title: draftTitle, status: draftStatus })}                  >
+                     >
                     Save
                   </button>
                   <pre className="max-h-64 overflow-auto rounded bg-slate-100 p-2 text-xs">{JSON.stringify(current?.data || {}, null, 2)}</pre>
