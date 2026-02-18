@@ -92,7 +92,6 @@ export function OrgProvider({ children }: { children: ReactNode }) {
     setOrgContext({
       orgId: orgId ?? undefined,
       userId: session?.user?.id ?? undefined,
-      token: session?.access_token ?? undefined,
     });
   }, [orgId, session?.access_token, session?.user?.id]);
 
