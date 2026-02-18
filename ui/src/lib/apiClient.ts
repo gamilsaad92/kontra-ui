@@ -1,10 +1,9 @@
-import { getToken } from "./authContext";
+import { getToken, redirectToSignIn } from "./authContext";
 import { getOrgId, setOrgId } from "./orgContext";
 
 type OrgContext = {
   orgId?: string;
   userId?: string;
-  token?: string;
 };
 
 let orgContext: OrgContext = {};
@@ -166,36 +165,55 @@ export async function apiFetch(
   const requestUrl = buildRequestUrl(rawUrl);
   const headers = normalizeHeaders(init.headers);
 
-if (!headers.has("Content-Type") && init.body && !(init.body instanceof FormData)) {
+  if (!headers.has("Content-Type") && init.body && !(init.body instanceof FormData)) {
     headers.set("Content-Type", "application/json");
   }
 
- const orgId = orgContext.orgId ?? getOrgId();
+  const orgId = orgContext.orgId ?? getOrgId();
   if (orgId) {
     headers.set("X-Org-Id", orgId);
     headers.set("x-org-id", orgId);
-      } else if (requiresOrgForPath(requestUrl)) {
+ } else if (requiresOrgForPath(requestUrl)) {
     const orgError = buildError("Select an organization to continue", 400, requestUrl, null, null, "ORG_CONTEXT_MISSING");
     emitBrowserEvent("api:error", orgError);
     throw orgError;
   }
+  
   if (orgContext.userId) {
     headers.set("x-user-id", orgContext.userId);
   }
 
-  const token = orgContext.token ?? (await getToken());
-  if (token) {
-    headers.set("Authorization", `Bearer ${token}`);
-  } else if (options.requireAuth) {
-    const error = buildError("Not authenticated", 401, requestUrl, null);
-    emitBrowserEvent("api:error", error);
-    throw error;
-  }
+ const resolveToken = async (forceRefresh = false) => getToken({ forceRefresh });
 
-  const finalInit: RequestInit = {
-    ...init,
-    headers,
-    credentials: init.credentials ?? "omit",
+    const clearOrgSelectionAndReauth = (apiError: ApiError) => {
+    setOrgId(null);
+    orgContext = { userId: orgContext.userId };
+    emitBrowserEvent("api:unauthorized", { path: requestUrl, status: 401, reauthRequired: true });
+    emitBrowserEvent("api:error", apiError);
+    redirectToSignIn();
+  };
+
+  const performFetch = async (forceRefreshToken: boolean): Promise<Response> => {
+    const requestHeaders = normalizeHeaders(headers);
+    const token = await resolveToken(forceRefreshToken);
+
+    if (token) {
+      requestHeaders.set("Authorization", `Bearer ${token}`);
+    } else {
+      requestHeaders.delete("Authorization");
+      if (options.requireAuth) {
+        throw buildError("Not authenticated", 401, requestUrl, null, null, "AUTH_REQUIRED");
+      }
+    }
+
+    const finalInit: RequestInit = {
+      ...init,
+      headers: requestHeaders,
+      credentials: init.credentials ?? "omit",
+    };
+
+    const doFetch = baseFetch ?? fetch;
+    return doFetch(requestUrl, finalInit);
   };
 
   const logEntry: ApiRequestLogEntry = {
@@ -213,20 +231,49 @@ if (!headers.has("Content-Type") && init.body && !(init.body instanceof FormData
 
   let response: Response;
   try {
-    const doFetch = baseFetch ?? fetch;
-    response = await doFetch(requestUrl, finalInit);
+   response = await performFetch(false);
+    if (response.status === 401) {
+      response = await performFetch(true);
+      if (response.status === 401) {
+        const data = await parseJsonSafe(response.clone());
+        const record = typeof data === "object" && data !== null ? (data as Record<string, unknown>) : null;
+        const message = typeof record?.message === "string"
+          ? record.message
+          : typeof record?.error === "string"
+            ? record.error
+            : "Session expired. Please sign in again.";
+        const requestId = response.headers.get("x-request-id");
+        const apiError = buildError(message, 401, requestUrl, requestId, data, "AUTH_INVALID");
+        clearOrgSelectionAndReauth(apiError);
+        if (options.throwOnError !== false) {
+          throw apiError;
+        }
+      }
+    }
   } catch (error) {
     const durationMs = Math.round(performance.now() - start);
     const message = error instanceof Error ? error.message : "Network error";
-    const apiError = buildError(message, undefined, requestUrl, null, error);
+    const apiError = error instanceof Error && "status" in error
+      ? (error as ApiError)
+      : buildError(message, undefined, requestUrl, null, error);
+
     logEntry.durationMs = durationMs;
     logEntry.ok = false;
     logEntry.error = message;
-    emitBrowserEvent("api:error", apiError);
+ 
+    if ((apiError.status === 401 || apiError.code === "AUTH_REQUIRED") && options.requireAuth) {
+      clearOrgSelectionAndReauth(apiError);
+    } else {
+      emitBrowserEvent("api:error", apiError);
+    }
+
     if (isDev) {
       console.error(`[API] ✕ ${method} ${requestUrl} (${durationMs}ms)`, error);
     }
-    throw apiError;
+    if (options.throwOnError !== false || apiError.status === undefined) {
+      throw apiError;
+    }
+    return new Response(JSON.stringify({ error: apiError.message }), { status: apiError.status ?? 500 });
   }
 
   const durationMs = Math.round(performance.now() - start);
@@ -240,9 +287,9 @@ if (!headers.has("Content-Type") && init.body && !(init.body instanceof FormData
 
   if (!response.ok) {
     const data = await parseJsonSafe(response.clone());
-       const record = typeof data === "object" && data !== null ? (data as Record<string, unknown>) : null;
+   const record = typeof data === "object" && data !== null ? (data as Record<string, unknown>) : null;
     const message =
-       typeof record?.message === "string"
+      typeof record?.message === "string"
         ? record.message
         : typeof record?.error === "string"
           ? record.error
@@ -252,7 +299,7 @@ if (!headers.has("Content-Type") && init.body && !(init.body instanceof FormData
     const apiError = buildError(message, response.status, requestUrl, requestId, data, code);
     logEntry.error = message;
     emitBrowserEvent("api:error", apiError);
-    
+
     if (response.status === 401) {
       emitBrowserEvent("api:unauthorized", { path: requestUrl, status: response.status });
     }
