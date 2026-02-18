@@ -9,8 +9,12 @@ type OrgContext = {
 let orgContext: OrgContext = {};
 
 export function setOrgContext(ctx: OrgContext) {
-  orgContext = ctx ?? {};
-   setOrgId(ctx?.orgId ?? null);
+ const normalizedOrgId = ctx?.orgId ? String(ctx.orgId) : undefined;
+  orgContext = {
+    ...ctx,
+    orgId: normalizedOrgId,
+  };
+  setOrgId(normalizedOrgId ?? null);
 }
 
 type EnvRecord = Record<string, string | undefined>;
@@ -173,7 +177,6 @@ export async function apiFetch(
   if (orgId) {
     const normalizedOrgId = String(orgId);
     headers.set("X-Org-Id", normalizedOrgId);
-    headers.set("x-org-id", normalizedOrgId);
  } else if (requiresOrgForPath(requestUrl)) {
     const orgError = buildError("Select an organization to continue", 400, requestUrl, null, null, "ORG_CONTEXT_MISSING");
     emitBrowserEvent("api:error", orgError);
