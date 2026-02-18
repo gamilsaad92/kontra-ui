@@ -79,9 +79,15 @@ export default function EntityCrudPage({ title, createLabel, hooks, renderRowAct
                          <input className="w-full rounded border p-2" value={draftTitle} onChange={(e) => setDraftTitle(e.target.value)} placeholder={current?.name !== undefined ? 'Organization name' : 'Title'} />
                   <input className="w-full rounded border p-2" value={draftStatus} onChange={(e) => setDraftStatus(e.target.value)} placeholder="Status" />
                   <button
-                  className="rounded bg-slate-900 px-3 py-2 text-white"
-                   onClick={() => updateMutation.mutate(current?.name !== undefined ? { name: draftTitle, status: draftStatus } : { title: draftTitle, status: draftStatus })}                  >
-                     >
+                    className="rounded bg-slate-900 px-3 py-2 text-white"
+                    onClick={() =>
+                      updateMutation.mutate(
+                        current?.name !== undefined
+                          ? { name: draftTitle, status: draftStatus }
+                          : { title: draftTitle, status: draftStatus },
+                      )
+                    }
+                  >
                     Save
                   </button>
                   <pre className="max-h-64 overflow-auto rounded bg-slate-100 p-2 text-xs">{JSON.stringify(current?.data || {}, null, 2)}</pre>
