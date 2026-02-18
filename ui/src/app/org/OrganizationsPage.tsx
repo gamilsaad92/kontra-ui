@@ -30,9 +30,10 @@ export default function OrganizationsPage() {
   }, [isLoading, navigate, nextPath, orgId]);
 
   const handleSelect = async (nextOrgId: string) => {
-    setOrgId(nextOrgId);
+    const normalizedOrgId = String(nextOrgId);
+    setOrgId(normalizedOrgId);
     try {
-      await apiRequest("POST", "/api/orgs/select", { org_id: nextOrgId }, {}, { requireAuth: true });
+    await apiRequest("POST", "/api/orgs/select", { org_id: normalizedOrgId }, {}, { requireAuth: true });
     } catch {
       // Selection persistence is best-effort.
     }
@@ -49,7 +50,7 @@ export default function OrganizationsPage() {
 
     try {
       const created = await apiRequest<CreateOrgResponse>("POST", "/api/orgs", { name: trimmedName }, {}, { requireAuth: true });
-      const nextOrgId = created?.org?.id;
+       const nextOrgId = created?.org?.id ? String(created.org.id) : null;
 
       await refreshOrgs();
 
