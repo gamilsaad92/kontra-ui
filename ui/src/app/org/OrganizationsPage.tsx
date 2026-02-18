@@ -50,12 +50,13 @@ export default function OrganizationsPage() {
 
     try {
       const created = await apiRequest<CreateOrgResponse>("POST", "/api/orgs", { name: trimmedName }, {}, { requireAuth: true });
-       const nextOrgId = created?.org?.id ? String(created.org.id) : null;
+      const nextOrgId = created?.org?.id ? String(created.org.id) : null;
 
       await refreshOrgs();
 
       if (nextOrgId) {
-        await handleSelect(nextOrgId);
+      setOrgId(nextOrgId);
+        navigate("/dashboard", { replace: true });
         return;
       }
 
