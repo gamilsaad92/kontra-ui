@@ -1,9 +1,12 @@
 const { supabase } = require('../../db');
 
-function applyListFilters(query, { status, q } = {}) {
+function applyListFilters(query, { status, q } = {}, table) {
   let scoped = query;
   if (status) scoped = scoped.eq('status', status);
-  if (q) scoped = scoped.ilike('title', `%${q}%`);
+  if (q) {
+    const searchColumn = table === 'organizations' ? 'name' : 'title';
+    scoped = scoped.ilike(searchColumn, `%${q}%`);
+  }
   return scoped;
 }
 
@@ -20,7 +23,7 @@ async function listEntity(table, orgId, options = {}) {
     .order('created_at', { ascending: false })
     .range(offset, offset + limit - 1);
 
-  query = applyListFilters(query, options);
+query = applyListFilters(query, options, table);
 
   const { data, error, count } = await query;
   if (error) throw error;
@@ -30,11 +33,13 @@ async function listEntity(table, orgId, options = {}) {
 async function createEntity(table, orgId, payload) {
   const insertPayload = {
     status: payload.status,
-    title: payload.title ?? null,
     data: payload.data ?? {},
   };
 
-    if (table !== 'organizations') {
+  if (table === 'organizations') {
+    insertPayload.name = payload.name ?? payload.title ?? null;
+  } else {
+    insertPayload.title = payload.title ?? null;
     insertPayload.org_id = orgId;
   }
 
