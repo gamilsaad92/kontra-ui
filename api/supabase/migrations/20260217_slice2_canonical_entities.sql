@@ -120,8 +120,8 @@ create index if not exists idx_exchange_listings_org_created_at on public.exchan
 create index if not exists idx_exchange_listings_org_status on public.exchange_listings(org_id, status);
 create index if not exists idx_reports_org_created_at on public.reports(org_id, created_at desc);
 create index if not exists idx_reports_org_status on public.reports(org_id, status);
-create index if not exists idx_organizations_org_created_at on public.organizations(org_id, created_at desc);
-create index if not exists idx_organizations_org_status on public.organizations(org_id, status);
+create index if not exists idx_organizations_id_created_at on public.organizations(id, created_at desc);
+create index if not exists idx_organizations_id_status on public.organizations(id, status);
 create index if not exists idx_org_memberships_org_created_at on public.org_memberships(org_id, created_at desc);
 create index if not exists idx_org_memberships_org_status on public.org_memberships(org_id, status);
 
