@@ -3,16 +3,15 @@ const { z } = require('zod');
 const authenticate = require('../../middlewares/authenticate');
 const { supabase, replica } = require('../../db');
 const { getAuthUserId } = require('../lib/auth');
-const { randomUUID } = require('node:crypto');
 
 const router = express.Router();
 
 router.use(authenticate);
 
 async function getOrgsForUser(userId) {
-   const { data, error } = await replica
+ const { data, error } = await replica
     .from('org_memberships')
-    .select('org_id, role, organizations!inner(id, name, title, created_at)')
+   .select('org_id, role, organizations!inner(id, name, created_by, data, status, title, created_at)')
     .eq('user_id', userId)
     .order('created_at', { foreignTable: 'organizations', ascending: false });
 
@@ -37,19 +36,16 @@ async function getOrgsForUser(userId) {
 }
 
 async function createOrgForUser(userId, name) {
-  const orgId = randomUUID();
   const { data: organization, error: orgError } = await supabase
     .from('organizations')
     .insert({
-      id: orgId,
-      org_id: orgId,
       name,
       created_by: userId,
       title: name,
       data: {},
       status: 'active',
     })
-    .select('id, name, title, created_at')
+  .select('id, name')
     .single();
 
   if (orgError) {
