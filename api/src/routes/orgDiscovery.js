@@ -11,7 +11,7 @@ router.use(authenticate);
 async function getOrgsForUser(userId) {
  const { data, error } = await replica
     .from('org_memberships')
-   .select('org_id, role, organizations!inner(id, name, created_by, data, status, title, created_at)')
+   .select('org_id, role, organizations!inner(id, name, created_by, data, status, created_at)')
     .eq('user_id', userId)
     .order('created_at', { foreignTable: 'organizations', ascending: false });
 
@@ -26,7 +26,7 @@ async function getOrgsForUser(userId) {
 
       return {
         id: String(org.id),
-        name: org.name || org.title || 'Organization',
+     name: org.name || 'Organization',
          role: row.role || 'admin',
       };
     })
@@ -41,7 +41,6 @@ async function createOrgForUser(userId, name) {
     .insert({
       name,
       created_by: userId,
-      title: name,
       data: {},
       status: 'active',
     })
@@ -71,7 +70,7 @@ async function createOrgForUser(userId, name) {
   return {
     org: {
       id: String(organization.id),
-      name: organization.name || organization.title || name,
+     name: organization.name || name,
     },
     membership,
   };
