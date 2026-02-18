@@ -23,9 +23,12 @@ export function createEntityApi(basePath: string, queryKey: string) {
     const queryClient = useQueryClient();
     return useMutation({
       mutationFn: async () => {
+        const defaultLabel = `New ${queryKey}`;
         const response = await apiFetch(listPath, {
           method: 'POST',
-          body: JSON.stringify({ title: `New ${queryKey}`, status: 'active', data: {} }),
+          body: JSON.stringify(basePath === '/orgs'
+            ? { name: defaultLabel, status: 'active', data: {} }
+            : { title: defaultLabel, status: 'active', data: {} }),
         });
         if (!response.ok) throw new Error('Failed to create entity');
         return readJson<CanonicalEntity>(response);
@@ -50,7 +53,7 @@ export function createEntityApi(basePath: string, queryKey: string) {
   const useUpdateEntity = (id?: string) => {
     const queryClient = useQueryClient();
     return useMutation({
-      mutationFn: async (payload: Partial<Pick<CanonicalEntity, 'title' | 'status' | 'data'>>) => {
+    mutationFn: async (payload: Partial<Pick<CanonicalEntity, 'title' | 'name' | 'status' | 'data'>>) => {
         const response = await apiFetch(`${listPath}/${id}`, {
           method: 'PATCH',
           body: JSON.stringify(payload),
