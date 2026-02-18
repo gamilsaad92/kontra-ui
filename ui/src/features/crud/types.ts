@@ -3,6 +3,7 @@ export type CanonicalEntity = {
   org_id: string;
   status: string;
   title?: string | null;
+    name?: string | null;
   data: Record<string, unknown>;
   created_at: string;
   updated_at: string;
