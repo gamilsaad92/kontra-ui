@@ -2,7 +2,7 @@ const { z } = require('zod');
 
 const entitySchema = z.object({
   id: z.string().uuid(),
-  org_id: z.string().uuid(),
+  org_id: z.string().min(1),
   status: z.string(),
   title: z.string().nullable().optional(),
   data: z.record(z.any()),
@@ -32,7 +32,7 @@ const listResponseSchema = z.object({
 
 const memberSchema = z.object({
   id: z.string().uuid(),
-  org_id: z.string().uuid(),
+ org_id: z.string().min(1),
   user_id: z.string(),
   role: z.string(),
   status: z.string(),
