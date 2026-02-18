@@ -11,10 +11,12 @@ async function listEntity(table, orgId, options = {}) {
   const limit = Math.min(Number(options.limit) || 25, 100);
   const offset = Math.max(Number(options.offset) || 0, 0);
 
+    const scopeColumn = table === 'organizations' ? 'id' : 'org_id';
+
   let query = supabase
     .from(table)
     .select('*', { count: 'exact' })
-    .eq('org_id', orgId)
+   .eq(scopeColumn, orgId)
     .order('created_at', { ascending: false })
     .range(offset, offset + limit - 1);
 
@@ -27,11 +29,14 @@ async function listEntity(table, orgId, options = {}) {
 
 async function createEntity(table, orgId, payload) {
   const insertPayload = {
-    org_id: orgId,
     status: payload.status,
     title: payload.title ?? null,
     data: payload.data ?? {},
   };
+
+    if (table !== 'organizations') {
+    insertPayload.org_id = orgId;
+  }
 
   const { data, error } = await supabase
     .from(table)
@@ -44,10 +49,12 @@ async function createEntity(table, orgId, payload) {
 }
 
 async function getEntity(table, orgId, id) {
+    const scopeColumn = table === 'organizations' ? 'id' : 'org_id';
+
   const { data, error } = await supabase
     .from(table)
     .select('*')
-    .eq('org_id', orgId)
+  .eq(scopeColumn, orgId)
     .eq('id', id)
     .maybeSingle();
 
@@ -61,10 +68,12 @@ async function updateEntity(table, orgId, id, patch) {
     updated_at: new Date().toISOString(),
   };
 
+    const scopeColumn = table === 'organizations' ? 'id' : 'org_id';
+
   const { data, error } = await supabase
     .from(table)
     .update(updatePayload)
-    .eq('org_id', orgId)
+      .eq(scopeColumn, orgId)
     .eq('id', id)
     .select('*')
     .maybeSingle();
