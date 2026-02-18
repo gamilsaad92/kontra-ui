@@ -1,4 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import { AuthContext } from "../../lib/authContext";
 import { apiRequest, setOrgContext } from "../../lib/apiClient";
 import { getOrgId, setOrgId as persistOrgId } from "../../lib/orgContext";
@@ -11,9 +12,15 @@ type Organization = {
 
 type BootstrapResponse = {
   user: { id: string; email?: string };
-  orgs: Organization[];
-  default_org_id: string | null;
+  default_org_id: string | number | null;
 };
+
+type OrgsResponse =
+  | Organization[]
+  | {
+      orgs?: Organization[];
+      organizations?: Organization[];
+    };
 
 type OrgContextValue = {
   orgId: string | null;
@@ -27,6 +34,8 @@ const OrgContext = createContext<OrgContextValue | null>(null);
 
 export function OrgProvider({ children }: { children: ReactNode }) {
   const { session, isLoading: isAuthLoading } = useContext(AuthContext);
+    const location = useLocation();
+  const navigate = useNavigate();
   const [orgId, setOrgIdState] = useState<string | null>(() => getOrgId());
   const [orgs, setOrgs] = useState<Organization[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -42,23 +51,18 @@ export function OrgProvider({ children }: { children: ReactNode }) {
       return [];
     }
 
-    const bootstrap = await apiRequest<BootstrapResponse>("GET", "/api/me/bootstrap", undefined, {}, { requireAuth: true });
-    const nextOrgs = Array.isArray(bootstrap?.orgs) ? bootstrap.orgs : [];
+      const response = await apiRequest<OrgsResponse>("GET", "/api/orgs", undefined, {}, { requireAuth: true });
+    const rawOrgs = Array.isArray(response)
+      ? response
+      : Array.isArray(response?.orgs)
+        ? response.orgs
+        : Array.isArray(response?.organizations)
+          ? response.organizations
+          : [];
+    const nextOrgs = rawOrgs.map((org) => ({ ...org, id: String(org.id) }));
     setOrgs(nextOrgs);
-
-      const hasCurrentOrgAccess = Boolean(orgId && nextOrgs.some((org) => org.id === orgId));
-    if (hasCurrentOrgAccess) {
-      return nextOrgs;
-    }
-
-       const bootstrapDefault = bootstrap.default_org_id;
-    const selected = bootstrapDefault && nextOrgs.some((org) => org.id === bootstrapDefault)
-      ? bootstrapDefault
-      : nextOrgs[0]?.id || null;
-
-    setOrgId(selected);
     return nextOrgs;
-  }, [orgId, session?.access_token, setOrgId]);
+  }, [session?.access_token]);
 
   useEffect(() => {
     if (isAuthLoading) return;
@@ -72,7 +76,16 @@ export function OrgProvider({ children }: { children: ReactNode }) {
 
     let isMounted = true;
     setIsLoading(true);
-    refreshOrgs()
+    apiRequest<BootstrapResponse>("GET", "/api/me/bootstrap", undefined, {}, { requireAuth: true })
+      .then(async (bootstrap) => {
+        if (!isMounted) return;
+        const defaultOrgId = bootstrap?.default_org_id == null ? null : String(bootstrap.default_org_id);
+        setOrgId(defaultOrgId);
+        if (!defaultOrgId && location.pathname !== "/organizations") {
+          navigate("/organizations", { replace: true });
+        }
+        await refreshOrgs();
+      })
       .catch(() => {
         if (!isMounted) return;
         setOrgs([]);
@@ -86,7 +99,7 @@ export function OrgProvider({ children }: { children: ReactNode }) {
     return () => {
       isMounted = false;
     };
-  }, [isAuthLoading, refreshOrgs, session?.access_token, setOrgId]);
+  }, [isAuthLoading, location.pathname, navigate, refreshOrgs, session?.access_token, setOrgId]);
 
   useEffect(() => {
     setOrgContext({
