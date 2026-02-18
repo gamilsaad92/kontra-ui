@@ -57,7 +57,7 @@ export async function getAuthToken(): Promise<string | null> {
       const { data } = await supabase.auth.getSession();
       return data?.session?.access_token ?? null;
     } catch (error) {
-          if (SHOULD_LOG_AUTH_WARNINGS) {
+    if (SHOULD_LOG_AUTH_WARNINGS) {
         console.warn("Auth session lookup failed.", error);
       }
     }
@@ -69,4 +69,37 @@ export async function getAuthToken(): Promise<string | null> {
   }
 
   return token;
+}
+
+type GetAuthTokenOptions = {
+  forceRefresh?: boolean;
+};
+
+export async function getFreshAuthToken(options: GetAuthTokenOptions = {}): Promise<string | null> {
+  if (isSupabaseConfigured && supabase?.auth) {
+    try {
+      if (options.forceRefresh) {
+        await supabase.auth.refreshSession();
+      }
+      const { data } = await supabase.auth.getSession();
+      return data?.session?.access_token ?? null;
+    } catch (error) {
+      if (SHOULD_LOG_AUTH_WARNINGS) {
+        console.warn("Auth session lookup failed.", error);
+      }
+    }
+  }
+
+  const token = resolveDevAccessToken();
+  if (!token && SHOULD_LOG_AUTH_WARNINGS && typeof console !== "undefined") {
+    console.warn("No auth token found. Requests will continue unauthenticated.");
+  }
+
+  return token;
+}
+
+export function redirectToSignIn(): void {
+  if (typeof window === "undefined") return;
+  if (window.location.pathname === "/sign-in") return;
+  window.location.assign("/sign-in");
 }
