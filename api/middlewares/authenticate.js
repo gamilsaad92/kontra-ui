@@ -12,6 +12,47 @@ const devUserId = process.env.DEV_USER_ID?.trim() || 'dev-user';
 const devOrgId = process.env.DEV_ORG_ID?.trim() || null;
 const devRole = process.env.DEV_USER_ROLE?.trim() || 'admin';
 
+const expectedIssuer = process.env.SUPABASE_JWT_ISSUER?.trim() || null;
+const expectedAudience = process.env.SUPABASE_JWT_AUDIENCE?.trim() || 'authenticated';
+
+function decodeJwtPayload(token) {
+  const parts = token.split('.');
+  if (parts.length < 2) return null;
+  try {
+    return JSON.parse(Buffer.from(parts[1], 'base64url').toString('utf8'));
+  } catch (_error) {
+    return null;
+  }
+}
+
+function isSupabaseTokenPayloadValid(payload) {
+  if (!payload || typeof payload !== 'object') {
+    return false;
+  }
+
+  const issuer = typeof payload.iss === 'string' ? payload.iss : null;
+  const audience = payload.aud;
+
+  if (expectedIssuer && issuer !== expectedIssuer) {
+    return false;
+  }
+
+  if (!expectedAudience) {
+    return true;
+  }
+
+  if (typeof audience === 'string') {
+    return audience === expectedAudience;
+  }
+
+  if (Array.isArray(audience)) {
+    return audience.includes(expectedAudience);
+  }
+
+  return false;
+}
+
+
 module.exports = async function authenticate(req, res, next) {
     req.user = null;
   req.orgId = null;
