@@ -1,2 +1,2 @@
 export { AuthContext, AuthProvider } from "./authContext.jsx";
-export { getAuthToken as getToken } from "./authToken";
+export { getFreshAuthToken as getToken, redirectToSignIn } from "./authToken";
