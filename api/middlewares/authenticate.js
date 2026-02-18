@@ -88,6 +88,11 @@ module.exports = async function authenticate(req, res, next) {
     return res.status(503).json({ error: 'Authentication unavailable' });
   }
 
+    const tokenPayload = decodeJwtPayload(token);
+  if (!isSupabaseTokenPayloadValid(tokenPayload)) {
+    return res.status(401).json({ error: 'Unauthorized: Invalid token issuer or audience' });
+  }
+
   const {
     data: { user },
     error,
