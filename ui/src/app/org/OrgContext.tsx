@@ -86,9 +86,9 @@ export function OrgProvider({ children }: { children: ReactNode }) {
         }
         await refreshOrgs();
       })
-      .catch(() => {
+      .catch(async () => {
         if (!isMounted) return;
-        setOrgs([]);
+     await refreshOrgs();
       })
       .finally(() => {
         if (isMounted) {
