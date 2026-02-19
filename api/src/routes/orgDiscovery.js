@@ -3,6 +3,7 @@ const { z } = require('zod');
 const authenticate = require('../../middlewares/authenticate');
 const { supabase } = require('../../db');
 const { getAuthUserId } = require('../lib/auth');
+const { selectFor } = require('../lib/selectColumns');
 
 const router = express.Router();
 
@@ -11,7 +12,7 @@ router.use(authenticate);
 async function getOrgsForUser(userId) {
   const { data: rows, error } = await supabase
     .from('org_memberships')
-    .select('role, data, organizations!inner(id, name, data)')
+   .select(`role, organizations!inner(${selectFor('organizations')})`)
     .eq('user_id', userId)
     .eq('status', 'active');
 
@@ -25,10 +26,10 @@ async function getOrgsForUser(userId) {
     return {
       id: String(organization.id),
      name,
-      title: name,
+      title: organization.title ?? name,
       role: row.role || 'admin',
       data: organization.data ?? {},
-      membership: { data: row.data ?? {} },
+       membership: { data: {} },
     };
   });
 
@@ -44,7 +45,7 @@ async function createOrgForUser(userId, name) {
       data: {},
       status: 'active',
     })
-    .select('id, name')
+     .select(selectFor('organizations'))
     .single();
 
   if (orgError) {
@@ -69,7 +70,7 @@ async function createOrgForUser(userId, name) {
     org: {
       id: String(organization.id),
       name: organization.name || name,
-      title: organization.name || name,
+     title: organization.title ?? (organization.name || name),
     },
   };
 }
