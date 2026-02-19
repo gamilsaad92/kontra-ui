@@ -21,9 +21,11 @@ async function getOrgsForUser(userId) {
 
   const items = (rows || []).map((row) => {
     const organization = row.organizations || {};
+    const name = organization.name || 'Organization';
     return {
       id: String(organization.id),
-      name: organization.name || 'Organization',
+     name,
+      title: name,
       role: row.role || 'admin',
       data: organization.data ?? {},
       membership: { data: row.data ?? {} },
@@ -67,6 +69,7 @@ async function createOrgForUser(userId, name) {
     org: {
       id: String(organization.id),
       name: organization.name || name,
+      title: organization.name || name,
     },
   };
 }
