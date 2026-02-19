@@ -9,21 +9,26 @@ const router = express.Router();
 router.use(authenticate);
 
 async function getOrgsForUser(userId) {
-  const { data: rows, error } = await supabase.rpc('get_orgs_for_user', {
-    p_user_id: userId,
-  });
+  const { data: rows, error } = await supabase
+    .from('org_memberships')
+    .select('role, data, organizations!inner(id, name, data)')
+    .eq('user_id', userId)
+    .eq('status', 'active');
 
   if (error) {
     throw error;
   }
 
-  const items = (rows || []).map((row) => ({
-    id: String(row.id),
-    name: row.name || 'Organization',
-    role: row.role || 'admin',
-    data: row.data ?? {},
-    membership: { data: row.membership_data ?? {} },
-  }));
+  const items = (rows || []).map((row) => {
+    const organization = row.organizations || {};
+    return {
+      id: String(organization.id),
+      name: organization.name || 'Organization',
+      role: row.role || 'admin',
+      data: organization.data ?? {},
+      membership: { data: row.data ?? {} },
+    };
+  });
 
   return { items, total: items.length };
 }
