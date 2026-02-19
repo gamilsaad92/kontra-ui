@@ -13,6 +13,7 @@ const {
 } = require('../schemas/ai/reviews');
 const { runPaymentAgent } = require('../ai/agents/paymentAgent');
 const { runInspectionAgent } = require('../ai/agents/inspectionAgent');
+const { selectFor } = require('../lib/selectColumns');
 
 const router = express.Router();
 
@@ -34,7 +35,7 @@ router.get('/reviews', async (req, res) => {
 
   let query = supabase
     .from('ai_reviews')
-    .select('*', { count: 'exact' })
+   .select(selectFor('ai_reviews'), { count: 'exact' })
     .eq('org_id', req.orgId)
     .order('created_at', { ascending: false });
 
@@ -52,7 +53,7 @@ router.get('/reviews', async (req, res) => {
 router.get('/reviews/:id', async (req, res) => {
   const { data, error } = await supabase
     .from('ai_reviews')
-    .select('*')
+    .select(selectFor('ai_reviews'))
     .eq('org_id', req.orgId)
     .eq('id', req.params.id)
     .maybeSingle();
@@ -76,7 +77,7 @@ router.post('/reviews/:id/mark', async (req, res) => {
     .update({ status: body.status, updated_at: new Date().toISOString() })
     .eq('org_id', req.orgId)
     .eq('id', req.params.id)
-    .select('*')
+    .select(selectFor('ai_reviews'))
     .single();
 
   if (error) return res.status(500).json({ code: 'AI_REVIEW_MARK_FAILED', details: error.message });
@@ -105,7 +106,7 @@ router.post('/reviews/:id/approve-action', async (req, res) => {
       notes: body.notes || null,
       actor_id: actorId,
     })
-    .select('*')
+   .select(selectFor('ai_review_actions'))
     .single();
 
   if (actionErr) return res.status(500).json({ code: 'AI_ACTION_APPROVAL_FAILED', details: actionErr.message });
@@ -147,7 +148,7 @@ const createReview = async ({ orgId, type, entityType, entityId, result }) => {
     updated_at: now,
   };
 
-  const { data, error } = await supabase.from('ai_reviews').insert(payload).select('*').single();
+  const { data, error } = await supabase.from('ai_reviews').insert(payload).select(selectFor('ai_reviews')).single();
   if (error) throw error;
   return data;
 };
@@ -162,7 +163,7 @@ router.post('/payments/review', async (req, res) => {
 
   const { data: payment } = await supabase
     .from('payments')
-    .select('*')
+    .select(selectFor('payments'))
     .eq('org_id', req.orgId)
     .eq('id', body.payment_id)
     .maybeSingle();
@@ -198,7 +199,7 @@ router.post('/inspections/review', async (req, res) => {
 
   const { data: inspection } = await supabase
     .from('inspections')
-    .select('*')
+   .select(selectFor('inspections'))
     .eq('org_id', req.orgId)
     .eq('id', body.inspection_id)
     .maybeSingle();
@@ -232,7 +233,7 @@ router.post('/compliance/review', async (req, res) => {
 
   const { data: item } = await supabase
     .from('compliance_items')
-    .select('*')
+   .select(selectFor('compliance_items'))
     .eq('org_id', req.orgId)
     .eq('id', body.compliance_item_id)
     .maybeSingle();
