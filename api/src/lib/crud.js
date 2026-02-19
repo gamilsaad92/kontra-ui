@@ -1,4 +1,5 @@
 const { supabase } = require('../../db');
+const { selectFor } = require('./selectColumns');
 
 function applyListFilters(query, { status, q } = {}, table) {
   let scoped = query;
@@ -18,7 +19,7 @@ async function listEntity(table, orgId, options = {}) {
 
   let query = supabase
     .from(table)
-    .select('*', { count: 'exact' })
+  .select(selectFor(table), { count: 'exact' })
    .eq(scopeColumn, orgId)
     .order('created_at', { ascending: false })
     .range(offset, offset + limit - 1);
@@ -46,7 +47,7 @@ async function createEntity(table, orgId, payload) {
   const { data, error } = await supabase
     .from(table)
     .insert(insertPayload)
-    .select('*')
+   .select(selectFor(table))
     .single();
 
   if (error) throw error;
@@ -58,7 +59,7 @@ async function getEntity(table, orgId, id) {
 
   const { data, error } = await supabase
     .from(table)
-    .select('*')
+   .select(selectFor(table))
   .eq(scopeColumn, orgId)
     .eq('id', id)
     .maybeSingle();
@@ -80,7 +81,7 @@ async function updateEntity(table, orgId, id, patch) {
     .update(updatePayload)
       .eq(scopeColumn, orgId)
     .eq('id', id)
-    .select('*')
+    .select(selectFor(table))
     .maybeSingle();
 
   if (error) throw error;
