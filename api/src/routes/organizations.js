@@ -5,6 +5,14 @@ const { supabase } = require('../../db');
 
 const router = express.Router();
 const run = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
+const withOrgTitle = (org) => {
+  if (!org) return org;
+  return {
+    ...org,
+    name: org.name || 'Organization',
+    title: org.name || 'Organization',
+  };
+};
 
 router.get('/', run(async (req, res) => {
   const { data, error } = await supabase
@@ -14,7 +22,7 @@ router.get('/', run(async (req, res) => {
     .order('created_at', { ascending: false });
 
   if (error) throw error;
-  res.json({ items: data || [], total: data?.length || 0 });
+ res.json({ items: (data || []).map(withOrgTitle), total: data?.length || 0 });
 }));
 
 router.post('/', run(async (req, res) => {
@@ -35,14 +43,14 @@ router.post('/', run(async (req, res) => {
     });
 
   if (membershipError) return res.status(400).json({ message: membershipError.message });
-  res.status(201).json(data);
+  res.status(201).json(withOrgTitle(data));
 }));
 
 router.get('/:id', run(async (req, res) => {
  const id = z.string().min(1).parse(req.params.id);
   const org = await getEntity('organizations', req.orgId, id);
   if (!org) return res.status(404).json({ message: 'Not found' });
-  res.json(org);
+  res.json(withOrgTitle(org));
 }));
 
 router.get('/:id/members', run(async (req, res) => {
