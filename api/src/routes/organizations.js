@@ -2,22 +2,24 @@ const express = require('express');
 const { z } = require('zod');
 const { getEntity } = require('../lib/crud');
 const { supabase } = require('../../db');
+const { selectFor } = require('../lib/selectColumns');
 
 const router = express.Router();
 const run = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 const withOrgTitle = (org) => {
   if (!org) return org;
+  const name = org.name || 'Organization';
   return {
     ...org,
-    name: org.name || 'Organization',
-    title: org.name || 'Organization',
+     name,
+    title: org.title ?? name,
   };
 };
 
 router.get('/', run(async (req, res) => {
   const { data, error } = await supabase
     .from('organizations')
-    .select('*')
+    .select(selectFor('organizations'))
     .eq('id', req.orgId)
     .order('created_at', { ascending: false });
 
@@ -30,7 +32,7 @@ router.post('/', run(async (req, res) => {
   const { data, error } = await supabase
     .from('organizations')
    .insert({ name: payload.name, created_by: req.user?.id || null, data: payload.data || {} })
-    .select('id, name')
+     .select(selectFor('organizations'))
     .single();
   if (error) return res.status(400).json({ message: error.message });
   
@@ -57,7 +59,7 @@ router.get('/:id/members', run(async (req, res) => {
  const id = z.string().min(1).parse(req.params.id);
   const { data, error } = await supabase
     .from('org_memberships')
-    .select('*', { count: 'exact' })
+     .select(selectFor('org_memberships'), { count: 'exact' })
     .eq('org_id', id)
     .order('created_at', { ascending: false });
   if (error) throw error;
@@ -79,10 +81,9 @@ router.post('/:id/members', run(async (req, res) => {
       user_id: payload.user_id,
       role: payload.role || 'member',
       status: 'active',
-      title: null,
       data: payload.data || {},
     })
-    .select('*')
+   .select(selectFor('org_memberships'))
     .single();
 
   if (error) return res.status(400).json({ message: error.message });
