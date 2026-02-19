@@ -3,6 +3,7 @@ const { z } = require('zod');
 const { supabase } = require('../../db');
 const { createEntityRouter } = require('./entityRouter');
 const { getEntity } = require('../lib/crud');
+const { selectFor } = require('../lib/selectColumns');
 
 const router = express.Router();
 router.use(createEntityRouter('/pools', 'pools'));
@@ -28,7 +29,7 @@ router.post('/pools/:id/loans', run(async (req, res) => {
   const { data, error } = await supabase
     .from('pool_loans')
     .insert({ org_id: req.orgId, pool_id: idResult.data, loan_id: bodyResult.data.loan_id })
-    .select('*')
+    .select(selectFor('pool_loans'))
     .single();
 
   if (error) return res.status(400).json({ message: error.message });
@@ -48,7 +49,7 @@ router.delete('/pools/:id/loans/:loanId', run(async (req, res) => {
     .eq('org_id', req.orgId)
     .eq('pool_id', idResult.data)
     .eq('loan_id', loanIdResult.data)
-    .select('*')
+    .select(selectFor('pool_loans'))
     .maybeSingle();
 
   if (error) return res.status(400).json({ message: error.message });
