@@ -2002,6 +2002,48 @@ if (Sentry.Handlers?.errorHandler) {
 app.use(errorHandler);
 
 // ── Start Server ──────────────────────────────────────────────────────────
+
+async function logBaselineSchemaHealth() {
+  const checks = [
+    ['assets', 'id,org_id'],
+    ['loans', 'id,org_id'],
+    ['inspections', 'id,org_id'],
+    ['exchange_listings', 'id,org_id'],
+    ['payments', 'id,org_id,currency'],
+    ['escrows', 'id,org_id'],
+    ['draws', 'id,org_id'],
+    ['borrower_financials', 'id,org_id'],
+    ['management_items', 'id,org_id'],
+    ['pools', 'id,org_id'],
+    ['tokens', 'id,org_id'],
+    ['compliance_items', 'id,org_id'],
+    ['legal_items', 'id,org_id'],
+    ['regulatory_scans', 'id,org_id'],
+    ['risk_items', 'id,org_id'],
+    ['document_reviews', 'id,org_id'],
+    ['reports', 'id,org_id'],
+    ['org_memberships', 'id,org_id,user_id,role'],
+  ];
+
+  const missing = [];
+
+  for (const [table, columns] of checks) {
+    const { error } = await supabase.from(table).select(columns).limit(1);
+    if (error) {
+      missing.push({ table, code: error.code, message: error.message });
+    }
+  }
+
+  if (missing.length > 0) {
+    console.warn('[schema] Baseline migration appears missing or incomplete.');
+    console.warn('[schema] Run: supabase db push (or supabase migration up) before using dev API.');
+    console.warn('[schema] Failing checks:', missing);
+    return;
+  }
+
+  console.log('[schema] Baseline migration check passed.');
+}
+
 const PORT = 10000;
 if (require.main === module) {
   if (process.env.NODE_ENV === 'production') {
@@ -2012,6 +2054,9 @@ if (require.main === module) {
   attachCollabServer(server);
   server.listen(PORT, () => {
      console.log('Kontra API listening on port 10000');
+         if (process.env.NODE_ENV !== 'production') {
+       void logBaselineSchemaHealth();
+     }
   });
 }
 
