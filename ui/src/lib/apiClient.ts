@@ -177,8 +177,9 @@ export async function apiFetch(
   if (orgId) {
     const normalizedOrgId = String(orgId);
     headers.set("X-Org-Id", normalizedOrgId);
- } else if (requiresOrgForPath(requestUrl)) {
-    const orgError = buildError("Select an organization to continue", 400, requestUrl, null, null, "ORG_CONTEXT_MISSING");
+    headers.set("x-organization-id", normalizedOrgId);
+  } else if (requiresOrgForPath(requestUrl)) {
+    const orgError = buildError(`Organization context missing for request: ${requestUrl}`, 400, requestUrl, null, null, "ORG_CONTEXT_MISSING");
     emitBrowserEvent("api:error", orgError);
     throw orgError;
   }
