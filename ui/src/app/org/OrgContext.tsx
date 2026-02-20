@@ -14,7 +14,11 @@ type BootstrapResponse = {
   user?: { id: string; email?: string };
   default_org_id?: string | number | null;
   active_org_id?: string | number | null;
+   activeOrgId?: string | number | null;
   org_id?: string | number | null;
+   orgs?: Organization[];
+  organizations?: Organization[];
+  items?: Organization[];
 };
 
 type OrgsResponse =
@@ -22,13 +26,14 @@ type OrgsResponse =
   | {
       orgs?: Organization[];
       organizations?: Organization[];
+        items?: Organization[];
     };
 
 type OrgContextValue = {
   orgId: string | null;
   orgs: Organization[];
   isLoading: boolean;
-    error: string | null;
+ error: string | null;
   setOrgId: (orgId: string | null) => void;
   refreshOrgs: () => Promise<Organization[]>;
    retryInitialization: () => Promise<void>;
@@ -60,9 +65,28 @@ function normalizeOrgs(response: OrgsResponse): Organization[] {
       ? response.orgs
       : Array.isArray(response?.organizations)
         ? response.organizations
-        : [];
+         : Array.isArray(response?.items)
+          ? response.items
+          : [];
 
-  return rawOrgs.map((org) => ({ ...org, id: String(org.id) }));
+  return rawOrgs
+    .filter((org) => org && org.id != null)
+    .map((org) => ({ ...org, id: String(org.id) }));
+}
+
+function ensureBootstrapShape(response: BootstrapResponse): BootstrapResponse {
+  if (!response || typeof response !== "object") {
+    throw new Error("Organization bootstrap returned an invalid response");
+  }
+
+  const hasOrgArray = Array.isArray(response.orgs) || Array.isArray(response.organizations) || Array.isArray(response.items);
+  const hasOrgPointer = response.active_org_id != null || response.activeOrgId != null || response.default_org_id != null || response.org_id != null;
+
+  if (!hasOrgArray && !hasOrgPointer) {
+    throw new Error("Organization bootstrap response is missing required organization fields");
+  }
+
+  return response;
 }
 
 export function OrgProvider({ children }: { children: ReactNode }) {
@@ -72,7 +96,7 @@ export function OrgProvider({ children }: { children: ReactNode }) {
   const [orgId, setOrgIdState] = useState<string | null>(() => getOrgId());
   const [orgs, setOrgs] = useState<Organization[]>([]);
   const [isLoading, setIsLoading] = useState(true);
- const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
   
   const setOrgId = useCallback((nextOrgId: string | null) => {
     setOrgIdState(nextOrgId);
@@ -91,7 +115,7 @@ export function OrgProvider({ children }: { children: ReactNode }) {
     return nextOrgs;
   }, [session?.access_token]);
 
-   const initializeOrgContext = useCallback(async () => {
+    const initializeOrgContext = useCallback(async () => {
     if (!session?.access_token) {
       setOrgs([]);
       setOrgId(null);
@@ -105,7 +129,7 @@ export function OrgProvider({ children }: { children: ReactNode }) {
     console.info("[OrgInit] Starting organization initialization");
 
     try {
-      const [bootstrap, nextOrgs] = await Promise.all([
+      const [bootstrapRaw, nextOrgs] = await Promise.all([
         withTimeout(
           apiRequest<BootstrapResponse>("GET", "/api/me/bootstrap", undefined, {}, { requireAuth: true }),
           ORG_INIT_TIMEOUT_MS,
@@ -114,16 +138,18 @@ export function OrgProvider({ children }: { children: ReactNode }) {
         withTimeout(refreshOrgs(), ORG_INIT_TIMEOUT_MS, "Organization list fetch"),
       ]);
 
-      const activeOrgCandidate = bootstrap?.active_org_id ?? bootstrap?.default_org_id ?? bootstrap?.org_id;
+      const bootstrap = ensureBootstrapShape(bootstrapRaw);
+      const bootstrapOrgs = normalizeOrgs(bootstrap);
+      const mergedOrgs = nextOrgs.length > 0 ? nextOrgs : bootstrapOrgs;
+      if (nextOrgs.length === 0 && bootstrapOrgs.length > 0) {
+        setOrgs(bootstrapOrgs);
+      }
+
+      const activeOrgCandidate = bootstrap?.active_org_id ?? bootstrap?.activeOrgId ?? bootstrap?.default_org_id ?? bootstrap?.org_id;
       const activeOrgId = activeOrgCandidate == null ? null : String(activeOrgCandidate);
       const lastSelectedOrgId = getOrgId();
-      const firstOrgId = nextOrgs[0]?.id ? String(nextOrgs[0].id) : null;
+       const firstOrgId = mergedOrgs[0]?.id ? String(mergedOrgs[0].id) : null;
       const resolvedOrgId = activeOrgId || lastSelectedOrgId || firstOrgId;
-
-      console.info("[OrgInit] Resolved organization", {
-        resolvedOrgId: resolvedOrgId ?? "none",
-        source: activeOrgId ? "active" : lastSelectedOrgId ? "localStorage" : firstOrgId ? "org-list" : "none",
-      });
 
       if (resolvedOrgId) {
         setOrgId(resolvedOrgId);
