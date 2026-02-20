@@ -80,7 +80,6 @@ router.post('/:id/members', run(async (req, res) => {
       org_id: id,
       user_id: payload.user_id,
       role: payload.role || 'member',
-      status: 'active',
       data: payload.data || {},
     })
    .select(selectFor('org_memberships'))
