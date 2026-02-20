@@ -108,8 +108,8 @@ function AuthenticationScreen({
     const isLoginMode = mode === "login";
 
   return (
-     <div className="flex min-h-screen items-start justify-center bg-gradient-to-b from-slate-950 via-slate-950 to-slate-900 px-4 py-12 text-slate-100 sm:items-center">
-      <div className="w-full max-w-xl space-y-6 rounded-3xl border border-slate-800/80 bg-slate-950/50 p-6 shadow-2xl backdrop-blur sm:p-8">
+     <div className="flex min-h-screen items-center justify-center bg-gradient-to-b from-slate-950 via-slate-950 to-slate-900 px-4 py-12 text-slate-100">
+       <div className="w-full max-w-xl space-y-6 rounded-3xl border border-slate-800/80 bg-slate-950/50 p-6 shadow-2xl backdrop-blur sm:p-8">
         <div className="flex justify-start">
           <img src="/logo-dark.png" alt="Kontra" className="h-8 w-auto" />
         </div>
