@@ -56,7 +56,12 @@ export default function OrganizationsPage() {
 
       if (nextOrgId) {
       setOrgId(nextOrgId);
-        navigate("/dashboard", { replace: true });
+       try {
+          await apiRequest("POST", "/api/orgs/select", { org_id: nextOrgId }, {}, { requireAuth: true });
+        } catch {
+          // Selection persistence is best-effort.
+        }
+        navigate(nextPath, { replace: true });
         return;
       }
 
