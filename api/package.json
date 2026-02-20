@@ -9,7 +9,8 @@
     "score-assets": "node jobs/scoreAssets.js",
     "score-loans": "node jobs/scoreLoans.js",
     "score-troubled": "node jobs/scoreTroubled.js",
-    "setup-db": "node setupDb.js"
+    "setup-db": "node setupDb.js",
+    "test:schema": "node scripts/schemaSmokeTest.js"
   },
   "dependencies": {
     "@google-cloud/dialogflow": "^4.4.0",
