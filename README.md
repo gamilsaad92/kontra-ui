@@ -374,3 +374,26 @@ In your Vercel project settings, set the **Root Directory** to `ui/` so deployme
 
 ### Render
 The API is configured as a web service in `render.yaml`. It exposes `/health` for health checks and reports errors to Sentry when `SENTRY_DSN` is set.
+
+## Backend Schema Migrations (Supabase + Render)
+
+The API expects baseline Supabase tables/columns for multi-tenant routes (`/api/portfolio`, `/api/servicing`, `/api/governance`, `/api/markets`, `/api/reports`).
+
+1. Apply migrations before starting the API:
+   ```bash
+   cd api
+   supabase db push
+   ```
+   (or `supabase migration up` if that matches your workflow)
+
+2. Validate schema after migrating:
+   ```bash
+   cd api
+   npm run test:schema
+   ```
+
+3. Render deployment order:
+   - Run Supabase migrations against production first (`supabase db push --linked` from `api/`).
+   - Deploy/restart the Render API service only after migration completes.
+
+In non-production mode, the API now logs a startup schema health warning if required baseline tables/columns are missing.
