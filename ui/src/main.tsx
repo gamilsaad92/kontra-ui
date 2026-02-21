@@ -7,6 +7,7 @@ import App from "./App";
 import "./index.css";
 import { installApiFetchInterceptor } from "./lib/apiClient";
 import { AuthProvider } from "./lib/authContext";
+import { LocaleProvider } from "./lib/i18n";
 import { Web3Provider } from "./providers/Web3Provider";
 import "@rainbow-me/rainbowkit/styles.css";
 
@@ -36,14 +37,16 @@ if (typeof window !== "undefined") {
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
-   <AuthProvider>
-      <QueryClientProvider client={queryClient}>
+    <LocaleProvider>
+      <AuthProvider>
+        <QueryClientProvider client={queryClient}>
           <Web3Provider>
-          <BrowserRouter>
-            <App />
-          </BrowserRouter>
-        </Web3Provider>
-      </QueryClientProvider>
-    </AuthProvider>
+              <BrowserRouter>
+              <App />
+            </BrowserRouter>
+          </Web3Provider>
+        </QueryClientProvider>
+      </AuthProvider>
+    </LocaleProvider>
   </React.StrictMode>
 );
