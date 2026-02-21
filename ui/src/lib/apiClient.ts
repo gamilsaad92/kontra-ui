@@ -57,6 +57,17 @@ const normalizeBaseUrl = (value?: string): string => {
 
 const API_BASE_URL = normalizeBaseUrl((import.meta.env ?? ({} as EnvRecord)).VITE_API_BASE_URL);
 
+const shouldUseRelativeApiPath = (): boolean => {
+  if (typeof window === "undefined") {
+    return false;
+  }
+
+  const host = window.location.hostname.toLowerCase();
+  const isVercelHost = host.endsWith(".vercel.app");
+  const pointsToRenderApi = API_BASE_URL.includes("onrender.com");
+  return isVercelHost && pointsToRenderApi;
+};
+
 export function getApiBaseUrl(): string {
   return API_BASE_URL;
 }
@@ -83,6 +94,10 @@ const buildRequestUrl = (path: string): string => {
   }
 
   const normalizedPath = normalizePath(path);
+   if (shouldUseRelativeApiPath()) {
+    return normalizedPath;
+  }
+
   if (!API_BASE_URL) {
     return normalizedPath;
   }
