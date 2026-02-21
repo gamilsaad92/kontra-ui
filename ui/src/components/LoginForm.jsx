@@ -14,6 +14,21 @@ export default function LoginForm({ onSwitch, className = '' }) {
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
 
+    const withAuthTimeout = async (requestPromise, timeoutMs = 12000) => {
+    let timeoutId
+    const timeoutPromise = new Promise((_, reject) => {
+      timeoutId = setTimeout(() => {
+        reject(new Error('Authentication request timed out. Please try again.'))
+      }, timeoutMs)
+    })
+
+    try {
+      return await Promise.race([requestPromise, timeoutPromise])
+    } finally {
+      clearTimeout(timeoutId)
+    }
+  }
+
   useEffect(() => {
     // clear state when switching methods
     setError('')
@@ -45,24 +60,40 @@ export default function LoginForm({ onSwitch, className = '' }) {
       }
 
       setLoading(true)
-      const { error } = await supabase.auth.signInWithPassword({ email, password })
-      setLoading(false)
-      if (error) {
-        setError(error.message)
+      try {
+        const { error } = await withAuthTimeout(
+          supabase.auth.signInWithPassword({ email, password })
+        )
+
+        if (error) {
+          setError(error.message)
+        }
+      } catch (err) {
+        setError(err?.message || 'Unable to sign in right now. Please try again.')
+      } finally {
+        setLoading(false)
       }
     } else {
       // magic link sign-in
       setLoading(true)
-      const { error } = await supabase.auth.signInWithOtp({
-        email,
-        options: { emailRedirectTo: window.location.origin }
-      })
-      setLoading(false)
-      if (error) {
-        setError(error.message)
-      } else {
-        setSuccess(t('login.magicSent'))
-        setEmail('')
+         try {
+        const { error } = await withAuthTimeout(
+          supabase.auth.signInWithOtp({
+            email,
+            options: { emailRedirectTo: window.location.origin }
+          })
+        )
+
+        if (error) {
+          setError(error.message)
+        } else {
+          setSuccess(t('login.magicSent'))
+          setEmail('')
+        }
+      } catch (err) {
+        setError(err?.message || 'Unable to send magic link right now. Please try again.')
+      } finally {
+        setLoading(false)
       }
     }
   }
