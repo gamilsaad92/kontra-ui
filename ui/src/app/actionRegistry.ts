@@ -1,13 +1,15 @@
+import type { RestoreFlag } from "./flags";
+
 export type Severity = "blocker" | "high" | "medium";
 
 export type ActionRegistryItem = {
   id: string;
-   label: string;
+  label: string;
   route: string;
  uiPath: string;
   requiredApis: string[];
   requiredRoutes?: string[];
-  featureFlag?: string;
+  featureFlag?: RestoreFlag;
   severity: Severity;
 };
 
@@ -16,18 +18,19 @@ export const actionRegistry: ActionRegistryItem[] = [
     id: "dashboard.summary",
     label: "Dashboard > Summary",
     route: "/dashboard",
-   uiPath: "ui/src/components/SaasDashboardHome.tsx",
+     uiPath: "ui/src/components/SaasDashboardHome.tsx",
     requiredApis: ["GET /api/dashboard/summary"],
-      requiredRoutes: ["/dashboard"],
+   requiredRoutes: ["/dashboard"],
     severity: "blocker",
   },
   {
     id: "portfolio.loans.list",
     label: "Portfolio > Loans list",
     route: "/portfolio/loans",
-   uiPath: "ui/src/pages/dashboard/canonical/pages.tsx",
+    uiPath: "ui/src/pages/dashboard/canonical/pages.tsx",
     requiredApis: ["GET /api/portfolio/loans", "POST /api/portfolio/loans"],
     requiredRoutes: ["/portfolio", "/portfolio/loans"],
+    featureFlag: "RESTORE_OLD_PORTFOLIO",
     severity: "blocker",
   },
   {
@@ -37,6 +40,7 @@ export const actionRegistry: ActionRegistryItem[] = [
     uiPath: "ui/src/pages/dashboard/canonical/pages.tsx",
     requiredApis: ["GET /api/portfolio/assets", "POST /api/portfolio/assets"],
     requiredRoutes: ["/portfolio/assets"],
+    featureFlag: "RESTORE_OLD_PORTFOLIO",
     severity: "blocker",
   },
   {
@@ -46,6 +50,7 @@ export const actionRegistry: ActionRegistryItem[] = [
     uiPath: "ui/src/pages/dashboard/canonical/pages.tsx",
     requiredApis: ["GET /api/servicing/payments", "POST /api/servicing/payments"],
     requiredRoutes: ["/servicing/payments"],
+    featureFlag: "RESTORE_OLD_SERVICING",
     severity: "blocker",
   },
   {
@@ -55,6 +60,7 @@ export const actionRegistry: ActionRegistryItem[] = [
     uiPath: "ui/src/pages/dashboard/canonical/pages.tsx",
     requiredApis: ["GET /api/servicing/inspections", "POST /api/servicing/inspections"],
     requiredRoutes: ["/servicing/inspections"],
+    featureFlag: "RESTORE_OLD_SERVICING",
     severity: "blocker",
   },
   {
@@ -64,6 +70,7 @@ export const actionRegistry: ActionRegistryItem[] = [
     uiPath: "ui/src/pages/dashboard/canonical/pages.tsx",
     requiredApis: ["GET /api/servicing/draws", "POST /api/servicing/draws"],
     requiredRoutes: ["/servicing/draws"],
+    featureFlag: "RESTORE_OLD_SERVICING",
     severity: "blocker",
   },
   {
@@ -73,6 +80,7 @@ export const actionRegistry: ActionRegistryItem[] = [
     uiPath: "ui/src/pages/dashboard/canonical/pages.tsx",
     requiredApis: ["GET /api/servicing/escrows", "POST /api/servicing/escrows"],
     requiredRoutes: ["/servicing/escrow"],
+    featureFlag: "RESTORE_OLD_SERVICING",
     severity: "high",
   },
   {
@@ -82,6 +90,7 @@ export const actionRegistry: ActionRegistryItem[] = [
     uiPath: "ui/src/pages/dashboard/canonical/pages.tsx",
     requiredApis: ["GET /api/servicing/borrower-financials", "POST /api/servicing/borrower-financials"],
     requiredRoutes: ["/servicing/borrower-financials"],
+    featureFlag: "RESTORE_OLD_SERVICING",
     severity: "high",
   },
   {
@@ -91,15 +100,7 @@ export const actionRegistry: ActionRegistryItem[] = [
     uiPath: "ui/src/pages/dashboard/canonical/pages.tsx",
     requiredApis: ["GET /api/servicing/management", "POST /api/servicing/management"],
     requiredRoutes: ["/servicing/management"],
-    severity: "high",
-  },
-  {
-    id: "servicing.aiValidation.list",
-    label: "Servicing > AI Validation",
-    route: "/analytics",
-    uiPath: "ui/src/features/ai-insights/page/AiInsightsPage.tsx",
-    requiredApis: ["GET /api/ai/reviews"],
-    requiredRoutes: ["/analytics"],
+     featureFlag: "RESTORE_OLD_SERVICING",
     severity: "high",
   },
   {
@@ -109,6 +110,7 @@ export const actionRegistry: ActionRegistryItem[] = [
     uiPath: "ui/src/pages/dashboard/canonical/pages.tsx",
     requiredApis: ["GET /api/markets/pools", "POST /api/markets/pools", "POST /api/markets/pools/:id/loans"],
     requiredRoutes: ["/markets/pools"],
+    featureFlag: "RESTORE_OLD_MARKETS",
     severity: "blocker",
   },
   {
@@ -118,6 +120,7 @@ export const actionRegistry: ActionRegistryItem[] = [
     uiPath: "ui/src/pages/dashboard/canonical/pages.tsx",
     requiredApis: ["GET /api/markets/tokens", "POST /api/markets/tokens"],
     requiredRoutes: ["/markets/tokens"],
+    featureFlag: "RESTORE_OLD_MARKETS",
     severity: "high",
   },
   {
@@ -127,15 +130,7 @@ export const actionRegistry: ActionRegistryItem[] = [
     uiPath: "ui/src/pages/dashboard/canonical/pages.tsx",
     requiredApis: ["GET /api/markets/trades", "POST /api/markets/trades"],
     requiredRoutes: ["/markets/trades"],
-    severity: "high",
-  },
-  {
-    id: "markets.exchange.list",
-    label: "Capital Markets > Exchange Listings",
-    route: "/markets/exchange",
-    uiPath: "ui/src/pages/dashboard/canonical/pages.tsx",
-    requiredApis: ["GET /api/markets/exchange-listings", "POST /api/markets/exchange-listings"],
-    requiredRoutes: ["/markets/exchange"],
+    featureFlag: "RESTORE_OLD_MARKETS",
     severity: "high",
   },
   {
@@ -145,6 +140,7 @@ export const actionRegistry: ActionRegistryItem[] = [
     uiPath: "ui/src/pages/dashboard/canonical/pages.tsx",
     requiredApis: ["GET /api/governance/compliance-items", "POST /api/governance/compliance-items"],
     requiredRoutes: ["/governance/compliance"],
+    featureFlag: "RESTORE_OLD_GOVERNANCE",
     severity: "high",
   },
   {
@@ -154,6 +150,7 @@ export const actionRegistry: ActionRegistryItem[] = [
     uiPath: "ui/src/pages/dashboard/canonical/pages.tsx",
     requiredApis: ["GET /api/governance/legal-items", "POST /api/governance/legal-items"],
     requiredRoutes: ["/governance/legal"],
+    featureFlag: "RESTORE_OLD_GOVERNANCE",
     severity: "high",
   },
   {
@@ -163,15 +160,7 @@ export const actionRegistry: ActionRegistryItem[] = [
     uiPath: "ui/src/pages/dashboard/canonical/pages.tsx",
     requiredApis: ["GET /api/governance/regulatory-scans", "POST /api/governance/regulatory-scans"],
     requiredRoutes: ["/governance/regulatory-scans"],
-    severity: "high",
-  },
-  {
-    id: "governance.risk.list",
-    label: "Governance > Risk",
-    route: "/governance/risk",
-    uiPath: "ui/src/pages/dashboard/canonical/pages.tsx",
-    requiredApis: ["GET /api/governance/risk-items", "POST /api/governance/risk-items"],
-    requiredRoutes: ["/governance/risk"],
+    featureFlag: "RESTORE_OLD_GOVERNANCE",
     severity: "high",
   },
   {
@@ -181,44 +170,9 @@ export const actionRegistry: ActionRegistryItem[] = [
     uiPath: "ui/src/pages/dashboard/canonical/pages.tsx",
     requiredApis: ["GET /api/governance/document-reviews", "POST /api/governance/document-reviews"],
     requiredRoutes: ["/governance/document-review"],
+    featureFlag: "RESTORE_OLD_REPORTS",
     severity: "high",
   },
-  {
-    id: "reports.list",
-    label: "Reports > List",
-    route: "/reports",
-    uiPath: "ui/src/pages/dashboard/canonical/pages.tsx",
-    requiredApis: ["GET /api/reports/reports", "POST /api/reports/reports"],
-    requiredRoutes: ["/reports"],
-    severity: "high",
-  },
-  {
-    id: "organizations.list",
-    label: "Organizations > List",
-    route: "/organizations",
-    uiPath: "ui/src/pages/dashboard/canonical/pages.tsx",
-    requiredApis: ["GET /api/orgs", "POST /api/orgs"],
-    requiredRoutes: ["/organizations"],
-    severity: "blocker",
-  },
-  {
-    id: "organizations.members",
-    label: "Organizations > Members",
-    route: "/organizations",
-    uiPath: "ui/src/features/organizations/members/api.ts",
-    requiredApis: ["GET /api/orgs/:id/members", "POST /api/orgs/:id/members"],
-    severity: "high",
-  },
-  {
-    id: "settings.sso",
-    label: "Settings > SSO",
-    route: "/settings/sso",
-    uiPath: "ui/src/pages/settings/SsoSettingsPage.tsx",
-    requiredApis: ["GET /api/sso/config"],
-    requiredRoutes: ["/settings/sso"],
-    featureFlag: "sso",
-    severity: "medium",
-  },
-    ];
-
+ ];
+ 
 export const actionRegistryByRoute = new Map(actionRegistry.map((item) => [item.route, item]));
