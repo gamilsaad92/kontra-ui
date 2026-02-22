@@ -41,7 +41,40 @@ type OrgContextValue = {
 
 const OrgContext = createContext<OrgContextValue | null>(null);
 
-const ORG_INIT_TIMEOUT_MS = 12_000;
+const ORG_INIT_TIMEOUT_MS = 20_000;
+
+function isTimeoutError(error: unknown) {
+  return error instanceof Error && /timed out/i.test(error.message);
+}
+
+function delay(ms: number) {
+  return new Promise((resolve) => {
+    globalThis.setTimeout(resolve, ms);
+  });
+}
+
+async function fetchBootstrapWithRetry() {
+  try {
+    return await withTimeout(
+      apiRequest<BootstrapResponse>("GET", "/api/me/bootstrap", undefined, {}, { requireAuth: true }),
+      ORG_INIT_TIMEOUT_MS,
+      "Organization bootstrap"
+    );
+  } catch (error) {
+    if (!isTimeoutError(error)) {
+      throw error;
+    }
+
+    console.warn("[OrgInit] Bootstrap request timed out. Retrying once...");
+    await delay(500);
+
+    return withTimeout(
+      apiRequest<BootstrapResponse>("GET", "/api/me/bootstrap", undefined, {}, { requireAuth: true }),
+      ORG_INIT_TIMEOUT_MS,
+      "Organization bootstrap"
+    );
+  }
+}
 
 async function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
   let timeoutId: number | undefined;
@@ -129,14 +162,12 @@ export function OrgProvider({ children }: { children: ReactNode }) {
     console.info("[OrgInit] Starting organization initialization");
 
     try {
-      const [bootstrapRaw, nextOrgs] = await Promise.all([
-        withTimeout(
-          apiRequest<BootstrapResponse>("GET", "/api/me/bootstrap", undefined, {}, { requireAuth: true }),
-          ORG_INIT_TIMEOUT_MS,
-          "Organization bootstrap"
-        ),
-        withTimeout(refreshOrgs(), ORG_INIT_TIMEOUT_MS, "Organization list fetch"),
-      ]);
+      const bootstrapRaw = await fetchBootstrapWithRetry();
+      const nextOrgs = await withTimeout(refreshOrgs(), ORG_INIT_TIMEOUT_MS, "Organization list fetch").catch((orgError) => {
+        const message = orgError instanceof Error ? orgError.message : "Unknown organization list error";
+        console.warn("[OrgInit] Proceeding without org list from /api/orgs", message);
+        return [] as Organization[];
+      });
 
       const bootstrap = ensureBootstrapShape(bootstrapRaw);
       const bootstrapOrgs = normalizeOrgs(bootstrap);
