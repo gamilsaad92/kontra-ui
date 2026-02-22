@@ -310,7 +310,11 @@ export async function apiFetch(
     const requestId = response.headers.get("x-request-id");
     const apiError = buildError(message, response.status, requestUrl, requestId, data, code);
     logEntry.error = message;
-    emitBrowserEvent("api:error", apiError);
+    const isSchemaMissing = response.status === 501 && code === "SCHEMA_MISSING";
+
+    if (!isSchemaMissing) {
+      emitBrowserEvent("api:error", apiError);
+    }
 
     if (response.status === 401) {
       emitBrowserEvent("api:unauthorized", { path: requestUrl, status: response.status });
@@ -319,8 +323,6 @@ export async function apiFetch(
     if (response.status === 403) {
       emitBrowserEvent("api:forbidden", { path: requestUrl, status: response.status, message: "Insufficient permissions" });
     }
-
-     const isSchemaMissing = response.status === 501 && code === "SCHEMA_MISSING";
 
     if (response.status === 404 || (response.status === 501 && !isSchemaMissing)) {
       console.warn(`[API] Endpoint missing: ${requestUrl} (${response.status})`);
