@@ -13,9 +13,17 @@ export function createEntityApi(basePath: string, queryKey: string) {
     useQuery<EntityListResponse>({
       queryKey: [queryKey, 'list'],
       queryFn: async () => {
-        const response = await apiFetch(listPath);
-        if (!response.ok) throw new Error('Failed to load list');
-        return readJson<EntityListResponse>(response);
+        try {
+          const response = await apiFetch(listPath);
+          if (!response.ok) throw new Error('Failed to load list');
+          return readJson<EntityListResponse>(response);
+        } catch (error) {
+          const apiError = error as { status?: number; code?: string };
+          if (apiError?.status === 501 && apiError?.code === 'SCHEMA_MISSING') {
+            return { items: [], total: 0 };
+          }
+          throw error;
+        }
       },
     });
 
