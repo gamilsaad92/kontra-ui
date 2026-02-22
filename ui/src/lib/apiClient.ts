@@ -320,7 +320,9 @@ export async function apiFetch(
       emitBrowserEvent("api:forbidden", { path: requestUrl, status: response.status, message: "Insufficient permissions" });
     }
 
-    if (response.status === 404 || response.status === 501) {
+     const isSchemaMissing = response.status === 501 && code === "SCHEMA_MISSING";
+
+    if (response.status === 404 || (response.status === 501 && !isSchemaMissing)) {
       console.warn(`[API] Endpoint missing: ${requestUrl} (${response.status})`);
       emitBrowserEvent("api:endpoint-missing", { path: requestUrl, status: response.status });
     }
