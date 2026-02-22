@@ -388,12 +388,6 @@ export function installAuthFetchInterceptor(): void {
     let token: string | null = null;
     if (isApiCall && !isSupabaseConfigured) {
       token = await getSessionToken();
-      if (!token) {
-        return new Response(JSON.stringify({ error: "Authentication unavailable." }), {
-          status: 401,
-          headers: { "Content-Type": "application/json" }
-        });
-      }
     }
    if (!headers.has("x-organization-id") && shouldAttachOrgHeader(targetUrl)) {
     headers.set("x-organization-id", DEFAULT_ORG_ID);
