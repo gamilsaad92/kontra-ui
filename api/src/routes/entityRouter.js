@@ -19,7 +19,16 @@ function createEntityRouter(path, table) {
   router.get(path, run(async (req, res) => {
     const query = parse(listQuerySchema, req.query, res);
     if (!query) return;
-    const data = await listEntity(table, req.orgId, query);
+    let data;
+    try {
+      data = await listEntity(table, req.orgId, query);
+    } catch (error) {
+      if (error && (error.code === 'SCHEMA_MISSING' || error.code === 'DB_ERROR')) {
+        data = { items: [], total: 0 };
+      } else {
+        throw error;
+      }
+    }
     const validated = parse(listResponseSchema, data, res);
     if (!validated) return;
     res.json(validated);
