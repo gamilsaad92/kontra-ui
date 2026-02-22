@@ -16,10 +16,26 @@ const queryClient = new QueryClient();
 installApiFetchInterceptor();
 
 if (typeof window !== "undefined") {
+    const isIgnorableBrowserNoise = (message: string) => {
+    const normalized = message.toLowerCase();
+    return (
+      normalized.includes("signal is aborted") ||
+      normalized.includes("the user aborted a request") ||
+      normalized.includes("resizeobserver loop")
+    );
+  };
+
   window.addEventListener("unhandledrejection", (event) => {
     const reason = event.reason as { name?: string; message?: string } | undefined;
     const message = reason?.message ?? "";
-    if (reason?.name === "AbortError" || message.includes("signal is aborted")) {
+     if (reason?.name === "AbortError" || isIgnorableBrowserNoise(message)) {
+      event.preventDefault();
+    }
+  });
+
+  window.addEventListener("error", (event) => {
+    const message = event.message ?? "";
+    if (isIgnorableBrowserNoise(message)) {
       event.preventDefault();
     }
   });
