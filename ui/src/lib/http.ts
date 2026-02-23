@@ -393,8 +393,8 @@ export function installAuthFetchInterceptor(): void {
     headers.set("x-organization-id", DEFAULT_ORG_ID);
     }
 
-    if (!headers.has("Authorization")) {
-    token = token ?? (await getSessionToken());
+    if (isApiCall && !headers.has("Authorization")) {
+      token = token ?? (await getSessionToken());
       if (token) headers.set("Authorization", `Bearer ${token}`);
     }
 
