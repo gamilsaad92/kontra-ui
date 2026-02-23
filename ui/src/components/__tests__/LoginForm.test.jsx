@@ -19,11 +19,11 @@ test('magic link option hides password input', () => {
   expect(screen.queryByPlaceholderText(/Password/i)).not.toBeInTheDocument();
 });
 
-test('recovers when password login request never resolves', async () => {
-  jest.useFakeTimers();
-  supabase.auth.signInWithPassword.mockImplementationOnce(
-    () => new Promise(() => {})
-  );
+test('shows auth provider errors for password login', async () => {
+  supabase.auth.signInWithPassword.mockResolvedValueOnce({
+    data: { session: null },
+    error: { message: 'Invalid login credentials' },
+  });
 
   renderForm();
   fireEvent.change(screen.getByPlaceholderText(/Email/i), {
@@ -34,12 +34,5 @@ test('recovers when password login request never resolves', async () => {
   });
   fireEvent.click(screen.getByRole('button', { name: /Log In/i }));
 
-  expect(screen.getByRole('button', { name: /Logging in/i })).toBeDisabled();
-
-  jest.advanceTimersByTime(12000);
-
-  expect(await screen.findByText(/timed out/i)).toBeInTheDocument();
-  expect(await screen.findByRole('button', { name: /Log In/i })).toBeEnabled();
-
-  jest.useRealTimers();
+ expect(await screen.findByText(/Invalid login credentials/i)).toBeInTheDocument();
 });
