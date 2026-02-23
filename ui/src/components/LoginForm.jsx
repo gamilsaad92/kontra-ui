@@ -16,32 +16,18 @@ export default function LoginForm({ onSwitch, className = '' }) {
 
    const authRequestIdRef = useRef(0)
 
-  const runAuthRequest = async (requestFactory, timeoutMs = 12000) => {
+  const runAuthRequest = async (requestFactory) => {
     const requestId = ++authRequestIdRef.current
     setLoading(true)
-
-    let timedOut = false
-    const timeoutId = setTimeout(() => {
-      if (authRequestIdRef.current !== requestId) return
-      timedOut = true
-      setLoading(false)
-      setError('Authentication request timed out. Please check your connection and try again.')
-    }, timeoutMs)
     
     try {
       const result = await requestFactory()
-      if (timedOut || authRequestIdRef.current !== requestId) {
-        return { timedOut: true, result: null }
+         if (authRequestIdRef.current !== requestId) {
+        return null
       }
-      return { timedOut: false, result }
-    } catch (err) {
-      if (!timedOut && authRequestIdRef.current === requestId) {
-        throw err
-      }
-      return { timedOut: true, result: null }
+      return result
     } finally {
-      clearTimeout(timeoutId)
-            if (!timedOut && authRequestIdRef.current === requestId) {
+       if (authRequestIdRef.current === requestId) {
         setLoading(false)
       }
     }
@@ -78,10 +64,10 @@ export default function LoginForm({ onSwitch, className = '' }) {
       }
 
       try {
-        const { timedOut, result } = await runAuthRequest(
+        const result = await runAuthRequest(
           () => supabase.auth.signInWithPassword({ email, password })
         )
-        if (timedOut) return
+         if (!result) return
 
         const { data, error } = result
         
@@ -96,15 +82,15 @@ export default function LoginForm({ onSwitch, className = '' }) {
     } else {
       // magic link sign-in
          try {
-        const { timedOut, result } = await runAuthRequest(
+       const result = await runAuthRequest(
           () => supabase.auth.signInWithOtp({
             email,
             options: { emailRedirectTo: window.location.origin }
           })
         )
-             if (timedOut) return
+          if (!result) return
 
-        const { error } = result      
+          const { error } = result
 
         if (error) {
           setError(error.message)
