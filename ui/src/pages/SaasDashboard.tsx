@@ -106,9 +106,9 @@ function AuthenticationScreen({
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-gradient-to-b from-slate-950 via-slate-950 to-slate-900 px-4 py-12 text-slate-100">
-      <div className="w-full max-w-xl space-y-6 rounded-3xl border border-slate-800/80 bg-slate-950/50 p-6 shadow-2xl backdrop-blur sm:p-8">        <div className="flex justify-start">
-            <div className="flex justify-start">
-        <img src="/logo-dark.png" alt="Kontra" className="h-8 w-auto" />
+      <div className="w-full max-w-xl space-y-6 rounded-3xl border border-slate-800/80 bg-slate-950/50 p-6 shadow-2xl backdrop-blur sm:p-8">
+        <div className="flex justify-start">
+          <img src="/logo-dark.png" alt="Kontra" className="h-8 w-auto" />
         </div>
         <div className="space-y-2 text-center">
           <h1 className="text-2xl font-semibold">
@@ -140,7 +140,7 @@ function AuthenticationScreen({
             Create account
           </button>
         </div>
-       <div className="rounded-2xl bg-white p-6 text-slate-900 shadow-xl">
+           <div className="rounded-2xl bg-white p-6 text-slate-900 shadow-xl">
           {mode === "login" ? (
             <LoginForm className="w-full" onSwitch={() => onModeChange("signup")} />
           ) : (
