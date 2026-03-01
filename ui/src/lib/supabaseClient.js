@@ -10,29 +10,31 @@ const isPlaceholder = value =>
 const isMeaningful = value => Boolean(value && !isPlaceholder(value));
 
 export const isSupabaseConfigured = isMeaningful(supabaseUrl) && isMeaningful(supabaseAnonKey);
-let supabase;
 
-if (isSupabaseConfigured) {
-  supabase = createClient(supabaseUrl, supabaseAnonKey);
-} else {
+export const supabase = isSupabaseConfigured
+  ? createClient(supabaseUrl, supabaseAnonKey, {
+      auth: {
+        persistSession: true,
+        autoRefreshToken: true,
+        detectSessionInUrl: true,
+      },
+    })
+  : {
+      auth: {
+        getSession: async () => ({ error: new Error('Supabase not configured'), data: null }),
+        getSessionFromUrl: async () => ({ error: new Error('Supabase not configured'), data: null }),
+        onAuthStateChange: () => ({ data: { subscription: { unsubscribe() {} } } }),
+        signInWithPassword: async () => ({ error: new Error('Supabase not configured'), data: null }),
+        signInWithOtp: async () => ({ error: new Error('Supabase not configured'), data: null }),
+        signUp: async () => ({ error: new Error('Supabase not configured'), data: null }),
+        signOut: async () => ({ error: new Error('Supabase not configured'), data: null }),
+      },
+      rpc: async () => ({ error: new Error('Supabase not configured'), data: null }),
+      from: () => ({ select: async () => ({ error: new Error('Supabase not configured'), data: null }) }),
+    };
+
+if (!isSupabaseConfigured) {
   console.error(
-    'Supabase environment variables are missing. ' +
-    'Authentication and data features will be disabled.'
+   'Supabase environment variables are missing. Authentication and data features will be disabled.'
   );
-  const stub = async () => ({ error: new Error('Supabase not configured'), data: null });
-  supabase = {
-    auth: {
-      getSession: stub,
-      getSessionFromUrl: stub,
-      onAuthStateChange: () => ({ data: { subscription: { unsubscribe() {} } } }),
-      signInWithPassword: stub,
-      signInWithOtp: stub,
-      signUp: stub,
-      signOut: stub
-     },
-    rpc: () => stub(),
-    from: () => ({ select: () => stub() })
-  };
 }
-
-export { supabase };
