@@ -3,73 +3,67 @@ import { supabase as supabaseClient, isSupabaseConfigured } from './supabaseClie
 
 export const AuthContext = createContext({
   session: null,
+  user: null,
   supabase: null,
+   loading: true,
   isLoading: true,
+    isAuthed: false,
   signOut: async () => ({ error: null }),
 });
 
 export function AuthProvider({ children }) {
   const [session, setSession] = useState(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    let isMounted = true;
-    if (!isSupabaseConfigured) {
-      setSession(null);
-      setIsLoading(false);
-      return () => {
-        isMounted = false;
-      };
-    }
-
-    const loadSession = async () => {
-      setIsLoading(true);
-        let didTimeout = false;
-      const timeoutId = setTimeout(() => {
-        if (!isMounted) return;
-        didTimeout = true;
-         if (import.meta?.env?.DEV) {
-          console.warn('Supabase session request timed out. Falling back to unauthenticated state.');
-        }
-        setSession(null);
-      setIsLoading(false);
-      }, 8000);
-
-      try {
-        const { data, error } = await supabaseClient.auth.getSession();
-        if (!isMounted) return;
-        if (error) {
-          console.error('Failed to fetch Supabase session', error);
+    let isActive = true;
+    
+     const hydrateSession = async () => {
+      if (!isSupabaseConfigured) {
+        if (isActive) {
           setSession(null);
-        } else {
-          setSession(data?.session ?? null);
+             setLoading(false);
         }
-        if (!didTimeout) {
-          setIsLoading(false);
-        }
-      } finally {
-        clearTimeout(timeoutId);
+           return;
       }
+
+      const { data, error } = await supabaseClient.auth.getSession();
+      if (!isActive) {
+        return;
+      }
+
+      if (error) {
+        console.error('Failed to fetch Supabase session', error);
+        setSession(null);
+      } else {
+        setSession(data?.session ?? null);
+      }
+       
+      setLoading(false);   
     };
 
-    loadSession();
+     hydrateSession();
 
-    const { data } = supabaseClient.auth.onAuthStateChange((_event, nextSession) => {
-      if (isMounted) {
-        setSession(nextSession ?? null);
-        setIsLoading(false);
-      }
+    const {
+      data: { subscription },
+    } = supabaseClient.auth.onAuthStateChange((_event, nextSession) => {
+      if (!isActive) {
+        return;
+      }  
+      setSession(nextSession ?? null);
+      setLoading(false);
     });
 
     return () => {
       isMounted = false;
-      data?.subscription?.unsubscribe();
-    };
+     isActive = false;
+      subscription?.unsubscribe();
+       };
   }, []);
 
-   const signOut = useCallback(async () => {
-    if (!isSupabaseConfigured) {
-      setSession(null);
+  const signOut = useCallback(async () => {
+     if (!isSupabaseConfigured) {
+    setSession(null);
       return { error: new Error('Supabase not configured') };
     }
 
@@ -78,6 +72,7 @@ export function AuthProvider({ children }) {
       console.error('Failed to sign out', error);
       return { error };
     }
+    
     setSession(null);
     return { error: null };
   }, []);
@@ -85,11 +80,14 @@ export function AuthProvider({ children }) {
   const value = useMemo(
     () => ({
       session,
+      user: session?.user ?? null,
       supabase: isSupabaseConfigured ? supabaseClient : null,
-      isLoading,
+        loading,
+      isLoading: loading,
+      isAuthed: Boolean(session?.user),
       signOut,
     }),
-  [session, isLoading, signOut]
+    [session, loading, signOut]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
