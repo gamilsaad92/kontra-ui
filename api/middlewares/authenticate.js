@@ -1,4 +1,5 @@
 const { createClient } = require('@supabase/supabase-js');
+const { queryOne } = require('../src/lib/appDb');
 
 const hasSupabaseCredentials =
   Boolean(process.env.SUPABASE_URL) && Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY);
@@ -52,35 +53,52 @@ function isSupabaseTokenPayloadValid(payload) {
   return false;
 }
 
+function parseCookieHeader(cookieHeader = '') {
+  return cookieHeader.split(';').reduce((acc, part) => {
+    const [key, ...rest] = part.trim().split('=');
+    if (!key) return acc;
+    acc[key] = decodeURIComponent(rest.join('='));
+    return acc;
+  }, {});
+}
 
-module.exports = async function authenticate(req, res, next) {
-    req.user = null;
-  req.orgId = null;
-  req.organizationId = null;
-   req.tenant_id = null;
-  req.role = 'member';
+function getAccessToken(req) {
   const auth = req.headers.authorization;
-  if (!auth || !auth.startsWith('Bearer ')) {
-   return res.status(401).json({ error: 'Unauthorized: Missing or invalid Authorization header' });
+  if (auth && auth.startsWith('Bearer ')) {
+    return auth.split(' ')[1];
   }
 
-  const token = auth.split(' ')[1];
+  const cookies = parseCookieHeader(req.headers.cookie || '');
+  return cookies['sb-access-token'] || cookies['access_token'] || null;
+}
+
+module.exports = async function requireAuth(req, res, next) {
+  req.user = null;
+  req.orgId = null;
+  req.organizationId = null;
+ req.tenant_id = null;
+  req.role = 'member';
+
+  const token = getAccessToken(req);
+  if (!token) {
+    return res.status(401).json({ error: 'Unauthorized: Missing access token' });
+  }
 
   if (devAccessToken && token === devAccessToken) {
-     const headerOrgId = req.headers['x-organization-id'] || req.headers['x-org-id'];
-      const normalizedOrgId = Array.isArray(headerOrgId) ? headerOrgId[0] : headerOrgId;
+   const headerOrgId = req.headers['x-organization-id'] || req.headers['x-org-id'];
+    const normalizedOrgId = Array.isArray(headerOrgId) ? headerOrgId[0] : headerOrgId;
     const fallbackOrgId = devOrgId || normalizedOrgId || '1';
 
     req.user = {
       id: devUserId,
-      user_metadata: {
-        organization_id: fallbackOrgId,
-      },
+       email: 'dev@local.test',
+      supabaseUserId: devUserId,
+      user_metadata: { organization_id: fallbackOrgId },
     };
+    req.role = devRole;
        req.orgId = fallbackOrgId;
     req.organizationId = fallbackOrgId;
-        req.tenant_id = fallbackOrgId;
-    req.role = devRole;
+    req.tenant_id = fallbackOrgId;
     return next();
   }
 
@@ -88,38 +106,42 @@ module.exports = async function authenticate(req, res, next) {
     return res.status(503).json({ error: 'Authentication unavailable' });
   }
 
-    const tokenPayload = decodeJwtPayload(token);
+const tokenPayload = decodeJwtPayload(token);
   if (!isSupabaseTokenPayloadValid(tokenPayload)) {
     return res.status(401).json({ error: 'Unauthorized: Invalid token issuer or audience' });
   }
 
   const {
-    data: { user },
+   data: { user: authUser },
     error,
   } = await supabase.auth.getUser(token);
 
-  if (error || !user) {
-   return res.status(401).json({ error: 'Unauthorized: Invalid or expired token' });
+ if (error || !authUser) {
+    return res.status(401).json({ error: 'Unauthorized: Invalid or expired token' });
   }
 
-  req.user = user;
+  const localMembership = await queryOne(
+    `SELECT om.role, o.id AS org_id
+       FROM users u
+       LEFT JOIN org_memberships om ON om.user_id = u.id
+       LEFT JOIN organizations o ON o.id = om.org_id
+      WHERE u.supabase_user_id = $1
+      ORDER BY om.created_at ASC`,
+    [authUser.id]
+  );
+
   const headerOrgId = req.headers['x-organization-id'] || req.headers['x-org-id'];
   const normalizedOrgId = Array.isArray(headerOrgId) ? headerOrgId[0] : headerOrgId;
-  req.orgId = user.user_metadata?.organization_id || normalizedOrgId || null;
-  req.organizationId = req.orgId;
- req.tenant_id = req.orgId;
-  try {
-    const { data: member } = await supabase
-      .from('organization_members')
-      .select('role')
-      .eq('user_id', user.id)
-      .maybeSingle();
 
-    req.role = member?.role || 'member';
-  } catch (err) {
-    console.error('Role fetch failed:', err);
-    req.role = 'member';
-  }
+  req.user = {
+    ...authUser,
+    supabaseUserId: authUser.id,
+    email: authUser.email || null,
+  };
+  req.role = localMembership?.role || 'member';
+  req.orgId = normalizedOrgId || localMembership?.org_id || null;
+  req.organizationId = req.orgId;
+   req.tenant_id = req.orgId;
 
   next();
 };
