@@ -27,6 +27,35 @@ type DashboardSummaryResponse = {
   quickActions: DashboardItem[];
 };
 
+function normalizeSummary(data: unknown): DashboardSummaryResponse {
+  const toCount = (value: unknown) => {
+    const count = Number(value);
+    return Number.isFinite(count) ? count : 0;
+  };
+  const source = data && typeof data === "object" ? (data as Partial<DashboardSummaryResponse>) : {};
+  const nextRole = source.roleView;
+  const roleView: DashboardRole =
+    nextRole === "lender" || nextRole === "servicer" || nextRole === "investor" || nextRole === "admin"
+      ? nextRole
+      : "lender";
+
+  const nextCounts = source.workQueueCounts && typeof source.workQueueCounts === "object" ? source.workQueueCounts : {};
+
+  return {
+    roleView,
+    workQueueCounts: {
+      payments: toCount(nextCounts?.payments),
+      inspections: toCount(nextCounts?.inspections),
+      compliance: toCount(nextCounts?.compliance),
+    },
+    criticalAlerts: Array.isArray(source.criticalAlerts) ? source.criticalAlerts : [],
+    nextDeadlines: Array.isArray(source.nextDeadlines) ? source.nextDeadlines : [],
+    todaysActivity: Array.isArray(source.todaysActivity) ? source.todaysActivity : [],
+    aiBrief: Array.isArray(source.aiBrief) ? source.aiBrief : [],
+    quickActions: Array.isArray(source.quickActions) ? source.quickActions : [],
+  };
+}
+
 type Props = {
   apiBase?: string;
   orgId?: string | number | null;
@@ -133,8 +162,9 @@ export default function SaasDashboardHome({ apiBase, orgId }: Props) {
       })
       .then((response) => {
         if (cancelled) return;
-        setSummary(response.data);
-        setRole(response.data.roleView ?? "lender");
+        const nextSummary = normalizeSummary(response.data);
+        setSummary(nextSummary);
+        setRole(nextSummary.roleView);
       })
       .catch((requestError: any) => {
         if (cancelled) return;
