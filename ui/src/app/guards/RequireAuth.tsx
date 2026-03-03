@@ -29,13 +29,16 @@ function AuthLoadingScreen({ error, showLogin }: { error: AuthBootstrapError; sh
 
 export default function RequireAuth() {
   const location = useLocation();
-const { loading, isAuthed, error } = useContext(AuthContext);
+  const { loading, isAuthed, error } = useContext(AuthContext);
 
- if (loading || error) {
-    return <AuthLoadingScreen error={error} showLogin={!loading && !isAuthed} />;
+  if (loading) {
+    return <AuthLoadingScreen error={null} showLogin={false} />;
   }
 
   if (!isAuthed) {
+        if (error) {
+      return <AuthLoadingScreen error={error} showLogin />;
+    }
     const next = `${location.pathname}${location.search}${location.hash}`;
     return <Navigate to={`/login?next=${encodeURIComponent(next)}`} replace />;
   }
