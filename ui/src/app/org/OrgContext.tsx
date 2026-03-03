@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { AuthContext } from "../../lib/authContext";
 import { apiRequest, setOrgContext } from "../../lib/apiClient";
 import { getOrgId, setOrgId as persistOrgId } from "../../lib/orgContext";
@@ -42,6 +42,7 @@ type OrgContextValue = {
 const OrgContext = createContext<OrgContextValue | null>(null);
 
 const ORG_INIT_TIMEOUT_MS = 20_000;
+const ORG_LIST_TIMEOUT_MS = 6_000;
 
 function isTimeoutError(error: unknown) {
   return error instanceof Error && /timed out/i.test(error.message);
@@ -124,7 +125,6 @@ function ensureBootstrapShape(response: BootstrapResponse): BootstrapResponse {
 
 export function OrgProvider({ children }: { children: ReactNode }) {
   const { session, isLoading: isAuthLoading } = useContext(AuthContext);
-  const location = useLocation();
   const navigate = useNavigate();
   const [orgId, setOrgIdState] = useState<string | null>(() => getOrgId());
   const [orgs, setOrgs] = useState<Organization[]>([]);
@@ -168,8 +168,8 @@ export function OrgProvider({ children }: { children: ReactNode }) {
         ...meResponse,
         active_org_id: activeResponse?.org?.id ?? meResponse?.active_org_id ?? null,
       };
-      const nextOrgs = await withTimeout(refreshOrgs(), ORG_INIT_TIMEOUT_MS, "Organization list fetch").catch((orgError) => {
-        const message = orgError instanceof Error ? orgError.message : "Unknown organization list error";
+     const nextOrgs = await withTimeout(refreshOrgs(), ORG_LIST_TIMEOUT_MS, "Organization list fetch").catch((orgError) => {
+       const message = orgError instanceof Error ? orgError.message : "Unknown organization list error";
         console.warn("[OrgInit] Proceeding without org list from /api/orgs", message);
         return [] as Organization[];
       });
@@ -191,8 +191,8 @@ export function OrgProvider({ children }: { children: ReactNode }) {
         setOrgId(resolvedOrgId);
       } else {
         setOrgId(null);
-        if (location.pathname !== "/organizations") {
-          const nextPath = `${location.pathname}${location.search}${location.hash}` || "/dashboard";
+        if (typeof window !== "undefined" && window.location.pathname !== "/organizations") {
+          const nextPath = `${window.location.pathname}${window.location.search}${window.location.hash}` || "/dashboard";
           navigate(`/organizations?next=${encodeURIComponent(nextPath)}`, { replace: true });
         }
       }
@@ -206,7 +206,7 @@ export function OrgProvider({ children }: { children: ReactNode }) {
     } finally {
       setIsLoading(false);
     }
-  }, [location.hash, location.pathname, location.search, navigate, refreshOrgs, session?.access_token, setOrgId]);
+  }, [navigate, refreshOrgs, session?.access_token, setOrgId]);
 
   useEffect(() => {
     if (isAuthLoading) return;
