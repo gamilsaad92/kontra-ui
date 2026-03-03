@@ -19,8 +19,7 @@ function AuthLoadingScreen({ error, showLogin }: { error: AuthBootstrapError; sh
           <p className="text-sm font-semibold text-rose-100">Workspace bootstrap failed</p>
           <p className="mt-2 text-sm text-rose-100">{error.message}</p>
           <p className="mt-1 text-xs text-rose-200">code: {error.code ?? "unknown"}</p>
-          <p className="mt-2 text-xs text-rose-200">If this persists, check Supabase env vars and RLS policies for profiles/organizations.</p>
-        </div>
+          <p className="mt-2 text-xs text-rose-200">If this persists, check Supabase auth env vars and backend auth/bootstrap endpoints.</p>        </div>
           {showLogin ? <a href="/login" className="text-xs text-sky-200 underline">Go to login</a> : null}
         </>
       ) : null}
