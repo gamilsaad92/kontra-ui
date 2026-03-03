@@ -1,8 +1,9 @@
 import { createContext, useCallback, useEffect, useMemo, useState } from 'react';
 import { supabase as supabaseClient, isSupabaseConfigured } from './supabaseClient';
+import { apiRequest } from './apiClient';
 
 const AUTH_BOOTSTRAP_TIMEOUT_MS = 10_000;
-const WORKSPACE_TIMEOUT_MESSAGE = 'Workspace bootstrap timed out—check Supabase env + RLS';
+const WORKSPACE_TIMEOUT_MESSAGE = 'Workspace bootstrap timed out';
 
 function withTimeout(promise, timeoutMs, timeoutMessage) {
   let timeoutId;
@@ -23,14 +24,11 @@ function withTimeout(promise, timeoutMs, timeoutMessage) {
 }
 
 function normalizeBootstrapError(error, fallbackMessage) {
-  if (!error) {
-    return { message: fallbackMessage, code: 'UNKNOWN_ERROR' };
-  }
+  if (!error) return { message: fallbackMessage, code: 'UNKNOWN_ERROR' };
 
-  const message =
-    typeof error.message === 'string' && error.message.trim().length > 0
-      ? error.message
-      : fallbackMessage;
+  const message = typeof error.message === 'string' && error.message.trim().length > 0
+    ? error.message
+    : fallbackMessage;
 
   const code =
     (typeof error.code === 'string' && error.code) ||
@@ -41,59 +39,12 @@ function normalizeBootstrapError(error, fallbackMessage) {
   return { message, code };
 }
 
-function isAuthOrRlsError(error) {
-  return error.code === '401' || error.code === '403' || error.code === 'PGRST301';
-}
-
-function isMissingRowError(error) {
-  return error.code === 'PGRST116';
-}
-
-async function upsertProfile(userId, userEmail) {
-  const { error } = await withTimeout(
-    supabaseClient.from('profiles').upsert(
-      {
-        id: userId,
-        email: userEmail,
-        updated_at: new Date().toISOString(),
-      },
-      { onConflict: 'id' }
-    ),
+async function bootstrapBackendWorkspace() {
+  return withTimeout(
+    apiRequest('POST', '/api/auth/bootstrap', {}, {}, { requireAuth: true }),
     AUTH_BOOTSTRAP_TIMEOUT_MS,
     WORKSPACE_TIMEOUT_MESSAGE
   );
-
-  if (error) {
-    throw error;
-  }
-}
-
-async function ensureProfileExists(session) {
-  const userId = session?.user?.id;
-  if (!userId) {
-    return;
-  }
-
-  const userEmail = session?.user?.email ?? null;
-
-  const { data, error } = await withTimeout(
-    supabaseClient.from('profiles').select('id').eq('id', userId).single(),
-    AUTH_BOOTSTRAP_TIMEOUT_MS,
-    WORKSPACE_TIMEOUT_MESSAGE
-  );
-
-  if (error && isMissingRowError(error)) {
-    await upsertProfile(userId, userEmail);
-    return;
-  }
-
-  if (error) {
-    throw error;
-  }
-
-  if (!data) {
-    await upsertProfile(userId, userEmail);
-  }
 }
 
 export const AuthContext = createContext({
@@ -145,43 +96,18 @@ export function AuthProvider({ children }) {
         const nextSession = data?.session ?? null;
         setSession(nextSession);
 
-        if (nextSession) {
-          await ensureProfileExists(nextSession);
+        if (nextSession?.access_token) {
+          await bootstrapBackendWorkspace();
         }
       } catch (caughtError) {
         console.error('Failed to bootstrap auth workspace', caughtError);
-
         const normalized = normalizeBootstrapError(caughtError, 'Unable to bootstrap workspace');
-
-        if (normalized.code === 'AuthSessionMissingError') {
+      if (normalized.code === '401') {
           setSession(null);
-          setError({ message: normalized.message, code: normalized.code });
-          return;
         }
-
-        if (normalized.message.includes('Failed to fetch')) {
-          setSession(null);
-          setError({
-            message: 'Failed to fetch Supabase endpoint. Check VITE_SUPABASE_URL and CORS settings.',
-            code: normalized.code,
-          });
-          return;
-        }
-
-        if (isAuthOrRlsError(normalized)) {
-          setSession(null);
-          setError({
-            message: `Auth/RLS problem while loading workspace: ${normalized.message}`,
-            code: normalized.code,
-          });
-          return;
-        }
-
         setError(normalized);
       } finally {
-        if (isActive) {
-          setLoading(false);
-        }
+        if (isActive) setLoading(false);
       }
     };
 
@@ -189,13 +115,18 @@ export function AuthProvider({ children }) {
 
     const {
       data: { subscription },
-    } = supabaseClient.auth.onAuthStateChange((_event, nextSession) => {
-      if (!isActive) {
-        return;
-      }
-
+      } = supabaseClient.auth.onAuthStateChange(async (_event, nextSession) => {
+      if (!isActive) return;
       setSession(nextSession ?? null);
       setError(null);
+            if (nextSession?.access_token) {
+        try {
+          await bootstrapBackendWorkspace();
+        } catch (caughtError) {
+          const normalized = normalizeBootstrapError(caughtError, 'Unable to bootstrap workspace');
+          setError(normalized);
+        }
+      }
       setLoading(false);
     });
 
