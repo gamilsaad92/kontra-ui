@@ -97,12 +97,20 @@ export function AuthProvider({ children }) {
         setSession(nextSession);
 
         if (nextSession?.access_token) {
-          await bootstrapBackendWorkspace();
+            void bootstrapBackendWorkspace().catch((caughtError) => {
+            if (!isActive) return;
+            console.error('Failed to bootstrap auth workspace', caughtError);
+            const normalized = normalizeBootstrapError(caughtError, 'Unable to bootstrap workspace');
+            if (normalized.code === '401') {
+              setSession(null);
+            }
+            setError(normalized);
+          });
         }
       } catch (caughtError) {
         console.error('Failed to bootstrap auth workspace', caughtError);
         const normalized = normalizeBootstrapError(caughtError, 'Unable to bootstrap workspace');
-      if (normalized.code === '401') {
+       if (normalized.code === '401') {
           setSession(null);
         }
         setError(normalized);
@@ -119,13 +127,12 @@ export function AuthProvider({ children }) {
       if (!isActive) return;
       setSession(nextSession ?? null);
       setError(null);
-            if (nextSession?.access_token) {
-        try {
-          await bootstrapBackendWorkspace();
-        } catch (caughtError) {
+       if (nextSession?.access_token) {
+        void bootstrapBackendWorkspace().catch((caughtError) => {
+          if (!isActive) return;
           const normalized = normalizeBootstrapError(caughtError, 'Unable to bootstrap workspace');
           setError(normalized);
-        }
+      });
       }
       setLoading(false);
     });
