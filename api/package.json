@@ -10,7 +10,8 @@
     "score-loans": "node jobs/scoreLoans.js",
     "score-troubled": "node jobs/scoreTroubled.js",
     "setup-db": "node setupDb.js",
-    "test:schema": "node scripts/schemaSmokeTest.js"
+   "test:schema": "node scripts/schemaSmokeTest.js",
+    "migrate:app-db": "psql \"$APP_DATABASE_URL\" -f sql/app_identity_schema.sql"
   },
   "dependencies": {
     "@google-cloud/dialogflow": "^4.4.0",
