@@ -148,7 +148,7 @@ export function OrgProvider({ children }: { children: ReactNode }) {
     return nextOrgs;
   }, [session?.access_token]);
 
-    const initializeOrgContext = useCallback(async () => {
+   const initializeOrgContext = useCallback(async () => {
     if (!session?.access_token) {
       setOrgs([]);
       setOrgId(null);
@@ -162,7 +162,6 @@ export function OrgProvider({ children }: { children: ReactNode }) {
     console.info("[OrgInit] Starting organization initialization");
 
     try {
-       const bootstrapRaw = await fetchBootstrapWithRetry();
       const meResponse = await fetchBootstrapWithRetry();
       const activeResponse = await apiRequest<{ org?: Organization | null }>("GET", "/api/orgs/active", undefined, {}, { requireAuth: true }).catch(() => ({ org: null }));
       const bootstrapRaw: BootstrapResponse = {
@@ -185,7 +184,7 @@ export function OrgProvider({ children }: { children: ReactNode }) {
       const activeOrgCandidate = bootstrap?.active_org_id ?? bootstrap?.activeOrgId ?? bootstrap?.default_org_id ?? bootstrap?.org_id;
       const activeOrgId = activeOrgCandidate == null ? null : String(activeOrgCandidate);
       const lastSelectedOrgId = getOrgId();
-       const firstOrgId = mergedOrgs[0]?.id ? String(mergedOrgs[0].id) : null;
+     const firstOrgId = mergedOrgs[0]?.id ? String(mergedOrgs[0].id) : null;
       const resolvedOrgId = activeOrgId || lastSelectedOrgId || firstOrgId;
 
       if (resolvedOrgId) {
