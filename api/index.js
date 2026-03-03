@@ -227,6 +227,7 @@ const marketsSliceRouter = require('./src/routes/markets');
 const reportsSliceRouter = require('./src/routes/reports');
 const orgsSliceRouter = require('./src/routes/organizations');
 const orgDiscoveryRouter = require('./src/routes/orgDiscovery');
+const authBootstrapRouter = require('./src/routes/auth');
 const aiSliceRouter = require('./src/routes/ai');
 const devSliceRouter = require('./src/routes/dev');
 
@@ -579,6 +580,7 @@ app.use(rateLimit);
 app.get('/api/health', (_req, res) => {
   res.json({ ok: true });
 });
+app.use('/api/auth', authBootstrapRouter);
 app.use('/api/orgs', orgDiscoveryRouter);
 app.use('/api/me', orgDiscoveryRouter);
 app.use('/api', requireOrgContext);
