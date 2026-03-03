@@ -78,7 +78,6 @@ async function fetchBootstrapWithRetry(): Promise<BootstrapResponse | null> {
       if (!isTimeoutError(retryError)) {
         throw retryError;
       }
-    return withTimeout(
       console.warn("[OrgInit] Bootstrap request timed out twice. Proceeding without /api/me response.");
       return null;
     }
