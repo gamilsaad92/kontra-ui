@@ -54,7 +54,7 @@ function delay(ms: number) {
   });
 }
 
-async function fetchBootstrapWithRetry() {
+async function fetchBootstrapWithRetry(): Promise<BootstrapResponse | null> {
   try {
     return await withTimeout(
      apiRequest<BootstrapResponse>("GET", "/api/me", undefined, {}, { requireAuth: true }),
@@ -68,12 +68,20 @@ async function fetchBootstrapWithRetry() {
 
     console.warn("[OrgInit] Bootstrap request timed out. Retrying once...");
     await delay(500);
-
+    try {
+      return await withTimeout(
+        apiRequest<BootstrapResponse>("GET", "/api/me", undefined, {}, { requireAuth: true }),
+        ORG_INIT_TIMEOUT_MS,
+        "Organization bootstrap"
+      );
+    } catch (retryError) {
+      if (!isTimeoutError(retryError)) {
+        throw retryError;
+      }
     return withTimeout(
-      apiRequest<BootstrapResponse>("GET", "/api/me", undefined, {}, { requireAuth: true }),
-      ORG_INIT_TIMEOUT_MS,
-      "Organization bootstrap"
-    );
+      console.warn("[OrgInit] Bootstrap request timed out twice. Proceeding without /api/me response.");
+      return null;
+    }
   }
 }
 
@@ -106,21 +114,6 @@ function normalizeOrgs(response: OrgsResponse): Organization[] {
   return rawOrgs
     .filter((org) => org && org.id != null)
     .map((org) => ({ ...org, id: String(org.id) }));
-}
-
-function ensureBootstrapShape(response: BootstrapResponse): BootstrapResponse {
-  if (!response || typeof response !== "object") {
-    throw new Error("Organization bootstrap returned an invalid response");
-  }
-
-  const hasOrgArray = Array.isArray(response.orgs) || Array.isArray(response.organizations) || Array.isArray(response.items);
-  const hasOrgPointer = response.active_org_id != null || response.activeOrgId != null || response.default_org_id != null || response.org_id != null;
-
-  if (!hasOrgArray && !hasOrgPointer) {
-    throw new Error("Organization bootstrap response is missing required organization fields");
-  }
-
-  return response;
 }
 
 export function OrgProvider({ children }: { children: ReactNode }) {
@@ -165,7 +158,7 @@ export function OrgProvider({ children }: { children: ReactNode }) {
       const meResponse = await fetchBootstrapWithRetry();
       const activeResponse = await apiRequest<{ org?: Organization | null }>("GET", "/api/orgs/active", undefined, {}, { requireAuth: true }).catch(() => ({ org: null }));
       const bootstrapRaw: BootstrapResponse = {
-        ...meResponse,
+        ...(meResponse ?? {}),
         active_org_id: activeResponse?.org?.id ?? meResponse?.active_org_id ?? null,
       };
      const nextOrgs = await withTimeout(refreshOrgs(), ORG_LIST_TIMEOUT_MS, "Organization list fetch").catch((orgError) => {
@@ -174,15 +167,13 @@ export function OrgProvider({ children }: { children: ReactNode }) {
         return [] as Organization[];
       });
 
-      const bootstrap = ensureBootstrapShape(bootstrapRaw);
-      const bootstrapOrgs = normalizeOrgs(bootstrap);
+      const bootstrapOrgs = normalizeOrgs(bootstrapRaw);
       const mergedOrgs = nextOrgs.length > 0 ? nextOrgs : bootstrapOrgs;
       if (nextOrgs.length === 0 && bootstrapOrgs.length > 0) {
         setOrgs(bootstrapOrgs);
       }
 
-      const activeOrgCandidate = bootstrap?.active_org_id ?? bootstrap?.activeOrgId ?? bootstrap?.default_org_id ?? bootstrap?.org_id;
-      const activeOrgId = activeOrgCandidate == null ? null : String(activeOrgCandidate);
+     const activeOrgCandidate = bootstrapRaw?.active_org_id ?? bootstrapRaw?.activeOrgId ?? bootstrapRaw?.default_org_id ?? bootstrapRaw?.org_id;      const activeOrgId = activeOrgCandidate == null ? null : String(activeOrgCandidate);
       const lastSelectedOrgId = getOrgId();
      const firstOrgId = mergedOrgs[0]?.id ? String(mergedOrgs[0].id) : null;
       const resolvedOrgId = activeOrgId || lastSelectedOrgId || firstOrgId;
