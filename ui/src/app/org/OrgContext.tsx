@@ -56,7 +56,7 @@ function delay(ms: number) {
 async function fetchBootstrapWithRetry() {
   try {
     return await withTimeout(
-      apiRequest<BootstrapResponse>("GET", "/api/me/bootstrap", undefined, {}, { requireAuth: true }),
+     apiRequest<BootstrapResponse>("GET", "/api/me", undefined, {}, { requireAuth: true }),
       ORG_INIT_TIMEOUT_MS,
       "Organization bootstrap"
     );
@@ -69,7 +69,7 @@ async function fetchBootstrapWithRetry() {
     await delay(500);
 
     return withTimeout(
-      apiRequest<BootstrapResponse>("GET", "/api/me/bootstrap", undefined, {}, { requireAuth: true }),
+      apiRequest<BootstrapResponse>("GET", "/api/me", undefined, {}, { requireAuth: true }),
       ORG_INIT_TIMEOUT_MS,
       "Organization bootstrap"
     );
@@ -162,7 +162,13 @@ export function OrgProvider({ children }: { children: ReactNode }) {
     console.info("[OrgInit] Starting organization initialization");
 
     try {
-      const bootstrapRaw = await fetchBootstrapWithRetry();
+       const bootstrapRaw = await fetchBootstrapWithRetry();
+      const meResponse = await fetchBootstrapWithRetry();
+      const activeResponse = await apiRequest<{ org?: Organization | null }>("GET", "/api/orgs/active", undefined, {}, { requireAuth: true }).catch(() => ({ org: null }));
+      const bootstrapRaw: BootstrapResponse = {
+        ...meResponse,
+        active_org_id: activeResponse?.org?.id ?? meResponse?.active_org_id ?? null,
+      };
       const nextOrgs = await withTimeout(refreshOrgs(), ORG_INIT_TIMEOUT_MS, "Organization list fetch").catch((orgError) => {
         const message = orgError instanceof Error ? orgError.message : "Unknown organization list error";
         console.warn("[OrgInit] Proceeding without org list from /api/orgs", message);
