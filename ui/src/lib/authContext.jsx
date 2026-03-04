@@ -1,10 +1,11 @@
 import { createContext, useCallback, useEffect, useMemo, useState } from 'react';
 import { supabase as supabaseClient, isSupabaseConfigured } from './supabaseClient';
-import { apiRequest } from './apiClient';
+import { getApiBaseUrl } from './apiClient';
 
-const AUTH_BOOTSTRAP_TIMEOUT_MS = 20_000;
+const AUTH_BOOTSTRAP_TIMEOUT_MS = 30_000;
 const WORKSPACE_BOOTSTRAP_TIMEOUT_MS = 60_000;
 const AUTH_BOOTSTRAP_MAX_RETRIES = 2;
+const AUTH_TIMEOUT_MESSAGE = 'Authentication check timed out';
 const WORKSPACE_TIMEOUT_MESSAGE = 'Workspace bootstrap timed out';
 
 function delay(ms) {
@@ -47,24 +48,101 @@ function normalizeBootstrapError(error, fallbackMessage) {
   return { message, code };
 }
 
-async function bootstrapBackendWorkspace() {
- for (let attempt = 0; attempt <= AUTH_BOOTSTRAP_MAX_RETRIES; attempt += 1) {
+function getBootstrapUrl() {
+  const base = getApiBaseUrl();
+  if (!base) return '/api/auth/bootstrap';
+  return `${base}/api/auth/bootstrap`;
+}
+
+async function parseResponseJsonSafe(response) {
+  const text = await response.text();
+  if (!text) return null;
+
+  try {
+    return JSON.parse(text);
+  } catch {
+    return text;
+  }
+}
+
+async function bootstrapBackendWorkspace(accessToken) {
+  for (let attempt = 0; attempt <= AUTH_BOOTSTRAP_MAX_RETRIES; attempt += 1) {
+    const abortController = new AbortController();
+    const timeoutId = globalThis.setTimeout(() => {
+      abortController.abort();
+    }, WORKSPACE_BOOTSTRAP_TIMEOUT_MS);
+
+    try {
+      const response = await fetch(getBootstrapUrl(), {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({}),
+        signal: abortController.signal,
+      });
+
+      if (response.ok) {
+        return await parseResponseJsonSafe(response);
+      }
+
+      const data = await parseResponseJsonSafe(response);
+      const message =
+        typeof data?.message === 'string'
+          ? data.message
+          : typeof data?.error === 'string'
+            ? data.error
+            : 'Unable to bootstrap workspace';
+
+      const apiError = new Error(message);
+      apiError.status = response.status;
+      apiError.code = typeof data?.code === 'string' ? data.code : String(response.status);
+      throw apiError;
+    } catch (error) {
+      if (error?.name === 'AbortError') {
+        const timeoutError = new Error(WORKSPACE_TIMEOUT_MESSAGE);
+        timeoutError.code = 'BOOTSTRAP_TIMEOUT';
+
+        if (attempt === AUTH_BOOTSTRAP_MAX_RETRIES) {
+          throw timeoutError;
+        }
+
+        await delay(500 * (attempt + 1));
+        continue;
+      }
+
+      if (error?.code !== 'BOOTSTRAP_TIMEOUT' || attempt === AUTH_BOOTSTRAP_MAX_RETRIES) {
+        throw error;
+      }
+
+      await delay(500 * (attempt + 1));
+    } finally {
+      globalThis.clearTimeout(timeoutId);
+    }
+  }
+
+  return null;
+}
+
+async function resolveInitialSession() {
+  for (let attempt = 0; attempt <= AUTH_BOOTSTRAP_MAX_RETRIES; attempt += 1) {
     try {
       return await withTimeout(
-        apiRequest('POST', '/api/auth/bootstrap', {}, {}, { requireAuth: true }),
-      WORKSPACE_BOOTSTRAP_TIMEOUT_MS,
-        WORKSPACE_TIMEOUT_MESSAGE
+        supabaseClient.auth.getSession(),
+        AUTH_BOOTSTRAP_TIMEOUT_MS,
+        AUTH_TIMEOUT_MESSAGE
       );
     } catch (error) {
       if (error?.code !== 'BOOTSTRAP_TIMEOUT' || attempt === AUTH_BOOTSTRAP_MAX_RETRIES) {
         throw error;
       }
-      
-      await delay(500 * (attempt + 1));
+
+      await delay(300 * (attempt + 1));
     }
   }
 
-  return null;
+  return { data: { session: null }, error: null };
 }
 
 export const AuthContext = createContext({
@@ -103,11 +181,7 @@ export function AuthProvider({ children }) {
       setError(null);
 
       try {
-        const { data, error: sessionError } = await withTimeout(
-          supabaseClient.auth.getSession(),
-          AUTH_BOOTSTRAP_TIMEOUT_MS,
-          WORKSPACE_TIMEOUT_MESSAGE
-        );
+        const { data, error: sessionError } = await resolveInitialSession();
 
         if (sessionError) {
           throw sessionError;
@@ -117,7 +191,7 @@ export function AuthProvider({ children }) {
         setSession(nextSession);
 
         if (nextSession?.access_token) {
-            void bootstrapBackendWorkspace().catch((caughtError) => {
+          void bootstrapBackendWorkspace(nextSession.access_token).catch((caughtError) => {
             if (!isActive) return;
             console.error('Failed to bootstrap auth workspace', caughtError);
             const normalized = normalizeBootstrapError(caughtError, 'Unable to bootstrap workspace');
@@ -130,7 +204,7 @@ export function AuthProvider({ children }) {
       } catch (caughtError) {
         console.error('Failed to bootstrap auth workspace', caughtError);
         const normalized = normalizeBootstrapError(caughtError, 'Unable to bootstrap workspace');
-       if (normalized.code === '401') {
+        if (normalized.code === '401') {
           setSession(null);
         }
         setError(normalized);
@@ -143,16 +217,16 @@ export function AuthProvider({ children }) {
 
     const {
       data: { subscription },
-      } = supabaseClient.auth.onAuthStateChange(async (_event, nextSession) => {
+    } = supabaseClient.auth.onAuthStateChange(async (_event, nextSession) => {
       if (!isActive) return;
       setSession(nextSession ?? null);
       setError(null);
-       if (nextSession?.access_token) {
-        void bootstrapBackendWorkspace().catch((caughtError) => {
+      if (nextSession?.access_token) {
+        void bootstrapBackendWorkspace(nextSession.access_token).catch((caughtError) => {
           if (!isActive) return;
           const normalized = normalizeBootstrapError(caughtError, 'Unable to bootstrap workspace');
           setError(normalized);
-      });
+        });
       }
       setLoading(false);
     });
