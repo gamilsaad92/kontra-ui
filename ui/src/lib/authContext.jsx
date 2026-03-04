@@ -2,7 +2,8 @@ import { createContext, useCallback, useEffect, useMemo, useState } from 'react'
 import { supabase as supabaseClient, isSupabaseConfigured } from './supabaseClient';
 import { apiRequest } from './apiClient';
 
-const AUTH_BOOTSTRAP_TIMEOUT_MS = 10_000;
+const AUTH_BOOTSTRAP_TIMEOUT_MS = 20_000;
+const AUTH_BOOTSTRAP_MAX_RETRIES = 1;
 const WORKSPACE_TIMEOUT_MESSAGE = 'Workspace bootstrap timed out';
 
 function withTimeout(promise, timeoutMs, timeoutMessage) {
@@ -40,11 +41,24 @@ function normalizeBootstrapError(error, fallbackMessage) {
 }
 
 async function bootstrapBackendWorkspace() {
-  return withTimeout(
-    apiRequest('POST', '/api/auth/bootstrap', {}, {}, { requireAuth: true }),
-    AUTH_BOOTSTRAP_TIMEOUT_MS,
-    WORKSPACE_TIMEOUT_MESSAGE
-  );
+ let attempt = 0;
+
+  while (attempt <= AUTH_BOOTSTRAP_MAX_RETRIES) {
+    try {
+      return await withTimeout(
+        apiRequest('POST', '/api/auth/bootstrap', {}, {}, { requireAuth: true }),
+        AUTH_BOOTSTRAP_TIMEOUT_MS,
+        WORKSPACE_TIMEOUT_MESSAGE
+      );
+    } catch (error) {
+      if (error?.code !== 'BOOTSTRAP_TIMEOUT' || attempt === AUTH_BOOTSTRAP_MAX_RETRIES) {
+        throw error;
+      }
+      attempt += 1;
+    }
+  }
+
+  return null;
 }
 
 export const AuthContext = createContext({
