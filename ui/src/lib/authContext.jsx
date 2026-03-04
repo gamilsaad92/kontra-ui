@@ -41,9 +41,7 @@ function normalizeBootstrapError(error, fallbackMessage) {
 }
 
 async function bootstrapBackendWorkspace() {
- let attempt = 0;
-
-  while (attempt <= AUTH_BOOTSTRAP_MAX_RETRIES) {
+ for (let attempt = 0; attempt <= AUTH_BOOTSTRAP_MAX_RETRIES; attempt += 1) {
     try {
       return await withTimeout(
         apiRequest('POST', '/api/auth/bootstrap', {}, {}, { requireAuth: true }),
@@ -54,7 +52,6 @@ async function bootstrapBackendWorkspace() {
       if (error?.code !== 'BOOTSTRAP_TIMEOUT' || attempt === AUTH_BOOTSTRAP_MAX_RETRIES) {
         throw error;
       }
-      attempt += 1;
     }
   }
 
