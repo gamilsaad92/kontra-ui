@@ -57,7 +57,7 @@ function delay(ms: number) {
 async function fetchBootstrapWithRetry(): Promise<BootstrapResponse | null> {
   try {
     return await withTimeout(
-     apiRequest<BootstrapResponse>("GET", "/api/me", undefined, {}, { requireAuth: true }),
+    apiRequest<BootstrapResponse>("GET", "/api/me/bootstrap", undefined, {}, { requireAuth: true }),
       ORG_INIT_TIMEOUT_MS,
       "Organization bootstrap"
     );
@@ -70,7 +70,7 @@ async function fetchBootstrapWithRetry(): Promise<BootstrapResponse | null> {
     await delay(500);
     try {
       return await withTimeout(
-        apiRequest<BootstrapResponse>("GET", "/api/me", undefined, {}, { requireAuth: true }),
+      apiRequest<BootstrapResponse>("GET", "/api/me/bootstrap", undefined, {}, { requireAuth: true }),
         ORG_INIT_TIMEOUT_MS,
         "Organization bootstrap"
       );
@@ -78,7 +78,7 @@ async function fetchBootstrapWithRetry(): Promise<BootstrapResponse | null> {
       if (!isTimeoutError(retryError)) {
         throw retryError;
       }
-      console.warn("[OrgInit] Bootstrap request timed out twice. Proceeding without /api/me response.");
+      console.warn("[OrgInit] Bootstrap request timed out twice. Proceeding without /api/me/bootstrap response.");
       return null;
     }
   }
