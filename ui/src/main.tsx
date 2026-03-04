@@ -1,4 +1,3 @@
-// ui/src/main.tsx
 import React from "react";
 import ReactDOM from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
@@ -15,8 +14,14 @@ const queryClient = new QueryClient();
 
 installApiFetchInterceptor();
 
+type ApiErrorEventDetail = {
+  code?: string;
+  status?: number;
+  message?: string;
+};
+
 if (typeof window !== "undefined") {
-    const isIgnorableBrowserNoise = (message: string) => {
+  const isIgnorableBrowserNoise = (message: string) => {
     const normalized = message.toLowerCase();
     return (
       normalized.includes("signal is aborted") ||
@@ -25,10 +30,29 @@ if (typeof window !== "undefined") {
     );
   };
 
+  const isAuthSessionError = (detail: ApiErrorEventDetail | undefined) => {
+    if (!detail) return false;
+
+    if (detail.status === 401) return true;
+
+    const normalizedCode = (detail.code ?? "").toUpperCase();
+    if (normalizedCode === "AUTH_INVALID" || normalizedCode === "AUTH_REQUIRED") {
+      return true;
+    }
+
+    const normalizedMessage = (detail.message ?? "").toLowerCase();
+    return (
+      normalizedMessage.includes("invalid refresh token") ||
+      normalizedMessage.includes("refresh token not found") ||
+      normalizedMessage.includes("jwt expired") ||
+      normalizedMessage.includes("session expired")
+    );
+  };
+
   window.addEventListener("unhandledrejection", (event) => {
     const reason = event.reason as { name?: string; message?: string } | undefined;
     const message = reason?.message ?? "";
-     if (reason?.name === "AbortError" || isIgnorableBrowserNoise(message)) {
+    if (reason?.name === "AbortError" || isIgnorableBrowserNoise(message)) {
       event.preventDefault();
     }
   });
@@ -39,14 +63,21 @@ if (typeof window !== "undefined") {
       event.preventDefault();
     }
   });
-  
+
   window.addEventListener("api:error", (event: Event) => {
-    const detail = (event as CustomEvent<{ code?: string; message?: string }>).detail;
+    const detail = (event as CustomEvent<ApiErrorEventDetail>).detail;
+
     if (detail?.code === "ORG_CONTEXT_MISSING") {
       window.location.assign("/organizations");
-            return;
+      return;
     }
-       const message = detail?.message ?? "Request failed";
+
+    if (isAuthSessionError(detail)) {
+      window.location.assign("/sign-in");
+      return;
+    }
+
+    const message = detail?.message ?? "Request failed";
     window.alert(message);
   });
 }
@@ -57,7 +88,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
       <AuthProvider>
         <QueryClientProvider client={queryClient}>
           <Web3Provider>
-              <BrowserRouter>
+            <BrowserRouter>
               <App />
             </BrowserRouter>
           </Web3Provider>
