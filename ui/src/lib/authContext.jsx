@@ -3,8 +3,15 @@ import { supabase as supabaseClient, isSupabaseConfigured } from './supabaseClie
 import { apiRequest } from './apiClient';
 
 const AUTH_BOOTSTRAP_TIMEOUT_MS = 20_000;
-const AUTH_BOOTSTRAP_MAX_RETRIES = 1;
+const WORKSPACE_BOOTSTRAP_TIMEOUT_MS = 60_000;
+const AUTH_BOOTSTRAP_MAX_RETRIES = 2;
 const WORKSPACE_TIMEOUT_MESSAGE = 'Workspace bootstrap timed out';
+
+function delay(ms) {
+  return new Promise((resolve) => {
+    globalThis.setTimeout(resolve, ms);
+  });
+}
 
 function withTimeout(promise, timeoutMs, timeoutMessage) {
   let timeoutId;
@@ -45,13 +52,15 @@ async function bootstrapBackendWorkspace() {
     try {
       return await withTimeout(
         apiRequest('POST', '/api/auth/bootstrap', {}, {}, { requireAuth: true }),
-        AUTH_BOOTSTRAP_TIMEOUT_MS,
+      WORKSPACE_BOOTSTRAP_TIMEOUT_MS,
         WORKSPACE_TIMEOUT_MESSAGE
       );
     } catch (error) {
       if (error?.code !== 'BOOTSTRAP_TIMEOUT' || attempt === AUTH_BOOTSTRAP_MAX_RETRIES) {
         throw error;
       }
+      
+      await delay(500 * (attempt + 1));
     }
   }
 
