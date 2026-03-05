@@ -3,8 +3,8 @@ import { supabase as supabaseClient, isSupabaseConfigured } from './supabaseClie
 import { getApiBaseUrl } from './apiClient';
 
 const AUTH_BOOTSTRAP_TIMEOUT_MS = 30_000;
-const WORKSPACE_BOOTSTRAP_TIMEOUT_MS = 60_000;
-const AUTH_BOOTSTRAP_MAX_RETRIES = 2;
+const WORKSPACE_BOOTSTRAP_TIMEOUT_MS = 20_000;
+const AUTH_BOOTSTRAP_MAX_RETRIES = 0;
 const AUTH_TIMEOUT_MESSAGE = 'Authentication check timed out';
 const WORKSPACE_TIMEOUT_MESSAGE = 'Workspace bootstrap timed out';
 
@@ -72,7 +72,7 @@ async function parseResponseJsonSafe(response) {
 }
 
 async function warmupBackend() {
-  await fetch(getHealthUrl()).catch(() => null);
+ await fetch(getHealthUrl(), { cache: 'no-store' }).catch(() => null);
 }
 
 async function bootstrapBackendWorkspace(accessToken) {
@@ -164,6 +164,7 @@ export const AuthContext = createContext({
   loading: true,
   isLoading: true,
   isAuthed: false,
+  bootstrapped: false,
   error: null,
   signOut: async () => ({ error: null }),
   retryBootstrap: async () => {},
@@ -172,17 +173,21 @@ export const AuthContext = createContext({
 export function AuthProvider({ children }) {
   const [session, setSession] = useState(null);
   const [loading, setLoading] = useState(true);
+   const [bootstrapped, setBootstrapped] = useState(false);
   const [error, setError] = useState(null);
 
     const runBootstrap = useCallback(async (targetSession) => {
     if (!targetSession?.access_token) {
       setError(null);
-      return;
+       setBootstrapped(false);
+      return false;
     }
 
     try {
       await bootstrapBackendWorkspace(targetSession.access_token);
       setError(null);
+      setBootstrapped(true);
+      return true;
     } catch (caughtError) {
       console.error('Failed to bootstrap auth workspace', caughtError);
       const normalized = normalizeBootstrapError(caughtError, 'Unable to bootstrap workspace');
@@ -190,6 +195,8 @@ export function AuthProvider({ children }) {
         setSession(null);
       }
       setError(normalized);
+      setBootstrapped(false);
+      return false;
     }
   }, []);
 
@@ -223,10 +230,13 @@ export function AuthProvider({ children }) {
         
         if (!isActive) return;
         setSession(nextSession);
-
+        setBootstrapped(false);
+        
         if (nextSession?.access_token) {
           await runBootstrap(nextSession);
-        }
+                } else {
+          setError(null);
+        }   
       } catch (caughtError) {
         console.error('Failed to bootstrap auth workspace', caughtError);
         const normalized = normalizeBootstrapError(caughtError, 'Unable to bootstrap workspace');
@@ -247,6 +257,7 @@ export function AuthProvider({ children }) {
       if (!isActive) return;
       setSession(nextSession ?? null);
       setError(null);
+      setBootstrapped(false);
       if (nextSession?.access_token) {
          await runBootstrap(nextSession);
       }
@@ -282,6 +293,7 @@ export function AuthProvider({ children }) {
 
     setSession(null);
     setError(null);
+    setBootstrapped(false);
     return { error: null };
   }, []);
 
@@ -293,11 +305,12 @@ export function AuthProvider({ children }) {
       loading,
       isLoading: loading,
       isAuthed: Boolean(session?.user),
+      bootstrapped,
       error,
       signOut,
       retryBootstrap,
     }),
-   [session, loading, error, signOut, retryBootstrap]
+  [session, loading, bootstrapped, error, signOut, retryBootstrap]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
