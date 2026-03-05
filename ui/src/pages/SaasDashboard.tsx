@@ -84,7 +84,7 @@ function AuthenticationPage() {
 
   useEffect(() => {
     if (!loading && isAuthed) {
-      navigate("/dashboard", { replace: true });
+     navigate("/organizations", { replace: true });
     }
   }, [loading, isAuthed, navigate]);
 
@@ -296,9 +296,9 @@ function AuthenticatedDashboard({ signOut }: { signOut: () => Promise<{ error: E
  const isDashboardRoute = location.pathname === "/dashboard";
   const content = (
     <Routes>
-    <Route path="/organizations" element={<OrganizationsPage />} />
+      <Route path="/organizations" element={<OrganizationsPage />} />
       <Route element={<RequireOrg />}>
-        <Route path="/" element={<Navigate to="/dashboard" replace />} />
+        <Route path="/" element={<Navigate to="/organizations" replace />} />
          <Route path="/dashboard" element={<DashboardOverview orgId={orgId} apiBase={apiBase} />} />
         <Route path="/portfolio" element={<PortfolioLayout />}>
           <Route index element={<Navigate to="/portfolio/loans" replace />} />
@@ -355,7 +355,7 @@ function AuthenticatedDashboard({ signOut }: { signOut: () => Promise<{ error: E
         <Route path="/dashboard/payments" element={<LegacyRedirect to="/servicing/payments" />} />
         <Route path="/dashboard/assets" element={<LegacyRedirect to="/portfolio/assets" />} />
         <Route path="/assets" element={<LegacyRedirect to="/portfolio/assets" />} />
-        <Route path="*" element={<Navigate to="/dashboard" replace />} />
+        <Route path="*" element={<Navigate to="/organizations" replace />} />
       </Route>
     </Routes>
   );
@@ -369,7 +369,10 @@ function AuthenticatedDashboard({ signOut }: { signOut: () => Promise<{ error: E
       setSignOutError("Unable to log out. Please try again.");
       return;
     }
-   navigate("/login", { replace: true });
+    try {
+      localStorage.removeItem("kontra_org_id");
+    } catch {}
+    navigate("/login", { replace: true });
   };
 
   return (
