@@ -55,7 +55,8 @@ const normalizeBaseUrl = (value?: string): string => {
   return trimmed.replace(/\/+$/, "").replace(/\/api$/, "");
 };
 
-const API_BASE_URL = normalizeBaseUrl((import.meta.env ?? ({} as EnvRecord)).VITE_API_BASE_URL);
+const env = import.meta.env ?? ({} as EnvRecord);
+const API_BASE_URL = normalizeBaseUrl(env.VITE_API_BASE_URL || env.VITE_API_URL);
 const FORCE_RELATIVE_API = ((import.meta.env ?? ({} as EnvRecord)).VITE_FORCE_RELATIVE_API ?? "").toLowerCase() === "true";
 
 const shouldUseRelativeApiPath = (): boolean => FORCE_RELATIVE_API;
