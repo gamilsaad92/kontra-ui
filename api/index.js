@@ -32,54 +32,30 @@ const parseOrigins = (value = '') =>
     .map((part) => normalizeOrigin(part.trim()))
     .filter(Boolean);
 
-const escapeForRegex = (value = '') => value.replace(/[-/\\^$+?.()|[\]{}*]/g, '\\$&');
-const createOriginTester = (origin) => {
-  if (origin.includes('*')) {
-    const pattern = escapeForRegex(origin).replace(/\\\*/g, '[^/]+');
-    const regex = new RegExp(`^${pattern}$`);
-    return (candidate) => regex.test(candidate);
-  }
-  return (candidate) => candidate === origin;
-};
-
-const resolvedOrigins = [
+cconst envOrigins = [
   ...parseOrigins(process.env.CORS_ORIGINS || ''),
-];
+  normalizeOrigin(process.env.FRONTEND_URL || ''),
+].filter(Boolean);
 
-if (process.env.FRONTEND_URL) {
-  resolvedOrigins.push(normalizeOrigin(process.env.FRONTEND_URL));
-}
-
-const previewWildcardOrigin = normalizeOrigin('https://kontra-*.vercel.app');
-
-const fallbackOrigins = [
-   'http://localhost:5173',
+const defaultAllowedOrigins = [
+  'http://localhost:5173',
+  'http://localhost:3000',
   'http://127.0.0.1:5173',
   'https://kontra.vercel.app',
   'https://kontra-ui.vercel.app',
- 'https://kontraui.com',
+  'https://kontraui.com',
   'https://www.kontraui.com',
-  'https://*.vercel.app',
-  'https://kontra-*.vercel.app',
-].map(normalizeOrigin);
+];
 
-const includePreviewWildcard = (origins) =>
-  origins.includes(previewWildcardOrigin)
-    ? origins
-    : [...origins, previewWildcardOrigin];
+const allowedOrigins = Array.from(new Set([
+  ...defaultAllowedOrigins,
+  ...envOrigins,
+]));
 
-const allowedOrigins = Array.from(
-  new Set(
-    (resolvedOrigins.length
-      ? includePreviewWildcard([...resolvedOrigins])
-      : [...fallbackOrigins])
-  )
-);
-
-const originMatchers = allowedOrigins.map((origin) => ({
-  origin,
-  test: createOriginTester(origin),
-}));
+const allowedOriginMatchers = [
+  ...allowedOrigins,
+  /\.vercel\.app$/,
+];
 
 const corsOptions = {
   origin(origin, callback) {
@@ -88,15 +64,20 @@ const corsOptions = {
     }
 
     const normalizedOrigin = normalizeOrigin(origin);
-
-    if (originMatchers.some(({ test }) => test(normalizedOrigin))) {
+   const isAllowed = allowedOriginMatchers.some((matcher) => (
+      matcher instanceof RegExp
+        ? matcher.test(normalizedOrigin)
+        : matcher === normalizedOrigin
+    ));
+    
+   if (isAllowed) {
       return callback(null, true);
     }
 
     console.warn(`[CORS] Origin "${normalizedOrigin}" rejected`);
-     return callback(new Error(`CORS blocked: ${normalizedOrigin}`));
+   return callback(new Error(`CORS blocked: ${normalizedOrigin}`));
   },
- credentials: false,
+  credentials: true,
   allowedHeaders: [
     'Authorization',
     'Content-Type',
