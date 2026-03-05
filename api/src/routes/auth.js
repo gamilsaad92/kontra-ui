@@ -1,60 +1,106 @@
 const express = require('express');
-const authenticate = require('../../middlewares/authenticate');
-const { queryOne } = require('../lib/appDb');
+const { createClient } = require('@supabase/supabase-js');
+const { queryRows } = require('../lib/appDb');
 
 const router = express.Router();
-router.use(authenticate);
 
-router.post('/bootstrap', async (req, res) => {
-  const supabaseUserId = req.user?.supabaseUserId || req.user?.id;
-  const email = req.user?.email || null;
+const hasSupabaseCredentials =
+  Boolean(process.env.SUPABASE_URL) && Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY);
 
-  if (!supabaseUserId) {
-    return res.status(401).json({ code: 'UNAUTHORIZED', message: 'Missing auth' });
+const supabaseAdmin = hasSupabaseCredentials
+  ? createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  })
+  : null;
+
+function getBearerToken(req) {
+  const h = req.headers.authorization || '';
+  if (typeof h !== 'string') return null;
+  if (!h.startsWith('Bearer ')) return null;
+  return h.slice(7).trim();
+}
+
+async function verifyAccessToken(bearerToken) {
+  if (!supabaseAdmin) {
+    throw Object.assign(new Error('Supabase admin client not configured'), { code: 'SUPABASE_ADMIN_MISSING' });
+  }
+  if (!bearerToken) {
+    throw Object.assign(new Error('Missing access token'), { code: 'TOKEN_MISSING' });
+  }
+  
+  const { data, error } = await supabaseAdmin.auth.getUser(bearerToken);
+  if (error || !data?.user) {
+    const e = new Error(error?.message || 'Invalid token');
+    e.code = 'TOKEN_INVALID';
+    throw e;
   }
 
-  try {
-    const result = await queryOne(
-      `WITH upserted_user AS (
-         INSERT INTO users (supabase_user_id, email, name)
-         VALUES ($1::uuid, COALESCE($2, 'unknown@example.com'), NULL)
-         ON CONFLICT (supabase_user_id)
-         DO UPDATE SET email = EXCLUDED.email
-         RETURNING id, supabase_user_id, email, name, created_at
-       ), existing_membership AS (
-         SELECT om.*
-         FROM org_memberships om
-         JOIN upserted_user u ON u.id = om.user_id
-         ORDER BY om.created_at ASC
-         LIMIT 1
-       ), created_org AS (
-         INSERT INTO organizations (name)
-         SELECT CONCAT(COALESCE((SELECT email FROM upserted_user), 'User'), '''s Organization')
-         WHERE NOT EXISTS (SELECT 1 FROM existing_membership)
-         RETURNING id, name, created_at
-       ), ensured_membership AS (
-         INSERT INTO org_memberships (org_id, user_id, role)
-         SELECT created_org.id, upserted_user.id, 'owner'
-         FROM created_org, upserted_user
-         RETURNING id, org_id, user_id, role, created_at
-       ), selected_membership AS (
-         SELECT id, org_id, user_id, role, created_at FROM existing_membership
-         UNION ALL
-         SELECT id, org_id, user_id, role, created_at FROM ensured_membership
-         LIMIT 1
-       )
-       SELECT
-         row_to_json(upserted_user.*) AS "user",
-         row_to_json(org.*) AS "org",
-         row_to_json(selected_membership.*) AS "membership"
-       FROM upserted_user
-       JOIN selected_membership ON true
-       JOIN organizations org ON org.id = selected_membership.org_id`,
-      [supabaseUserId, email]
-    );
+    return data.user;
+}
 
-    return res.status(200).json(result);
+function withTimeout(promise, ms) {
+  let t;
+  const timeout = new Promise((_, reject) => {
+    t = setTimeout(() => reject(Object.assign(new Error('Request timed out'), { code: 'TIMEOUT' })), ms);
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(t));
+}
+
+router.post('/bootstrap', async (req, res) => {
+  try {
+      const response = await withTimeout((async () => {
+      const token = getBearerToken(req);
+      const user = await withTimeout(verifyAccessToken(token), 8000);
+      const requestedOrgId = req.headers['x-org-id'] ? String(req.headers['x-org-id']) : null;
+
+      const orgs = await withTimeout(queryRows(
+        `SELECT o.id, o.name, m.role,
+                (u.default_org_id IS NOT NULL AND o.id = u.default_org_id) AS is_default
+           FROM users u
+           JOIN org_memberships m ON m.user_id = u.id
+           JOIN organizations o ON o.id = m.org_id
+          WHERE u.supabase_user_id = $1
+          ORDER BY (u.default_org_id IS NOT NULL AND o.id = u.default_org_id) DESC,
+                   m.created_at ASC,
+                   o.created_at ASC`,
+        [user.id]
+      ), 8000);
+
+      const normalizedOrgs = Array.isArray(orgs) ? orgs.map((org) => ({
+        id: String(org.id),
+        name: org.name,
+        role: org.role,
+      })) : [];
+
+      const defaultOrg = Array.isArray(orgs) ? orgs.find((org) => Boolean(org.is_default)) : null;
+
+      let activeOrgId = null;
+      if (requestedOrgId && normalizedOrgs.some((org) => String(org.id) === requestedOrgId)) {
+        activeOrgId = requestedOrgId;
+      } else if (defaultOrg?.id) {
+        activeOrgId = String(defaultOrg.id);
+      } else if (normalizedOrgs.length > 0) {
+        activeOrgId = String(normalizedOrgs[0].id);
+      }
+
+      return {
+        user: { id: user.id, email: user.email || null },
+        orgs: normalizedOrgs,
+        active_org_id: activeOrgId,
+        default_org_id: defaultOrg?.id ? String(defaultOrg.id) : (normalizedOrgs[0]?.id || null),
+      };
+    })(), 20000);
+
+    return res.status(200).json(response);
   } catch (error) {
+        if (error?.code === 'TIMEOUT') {
+      return res.status(504).json({ message: error.message, code: error.code });
+    }
+    if (error?.code === 'TOKEN_MISSING' || error?.code === 'TOKEN_INVALID' || error?.code === 'SUPABASE_ADMIN_MISSING') {
+      const statusCode = error.code === 'SUPABASE_ADMIN_MISSING' ? 503 : 401;
+      return res.status(statusCode).json({ message: error.message || 'Unauthorized', code: error.code || 'UNAUTHORIZED' });
+    }
+
     console.error('[AuthBootstrap] Failed to bootstrap user', error);
     return res.status(500).json({ code: 'BOOTSTRAP_FAILED', message: 'Unable to bootstrap account' });
   }
