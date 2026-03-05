@@ -45,6 +45,8 @@ const defaultAllowedOrigins = [
   'https://kontra-ui.vercel.app',
   'https://kontraui.com',
   'https://www.kontraui.com',
+  'https://kontraplatform.com',
+  'https://www.kontraplatform.com',
 ];
 
 const allowedOrigins = Array.from(new Set([
