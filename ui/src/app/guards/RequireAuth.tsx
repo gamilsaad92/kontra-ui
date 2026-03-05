@@ -49,18 +49,25 @@ function AuthLoadingScreen({
 
 export default function RequireAuth() {
   const location = useLocation();
- const { loading, isAuthed, error, retryBootstrap } = useContext(AuthContext);
+ const { loading, isAuthed, bootstrapped, error, retryBootstrap } = useContext(AuthContext);
 
   if (loading) {
     return <AuthLoadingScreen error={null} showLogin={false} />;
   }
 
   if (!isAuthed) {
-   if (error) {
-      return <AuthLoadingScreen error={error} showLogin onRetry={retryBootstrap} />;
-    }
     const next = `${location.pathname}${location.search}${location.hash}`;
     return <Navigate to={`/login?next=${encodeURIComponent(next)}`} replace />;
+  }
+
+    if (!bootstrapped) {
+    return (
+      <AuthLoadingScreen
+        error={error ?? { message: 'Workspace bootstrap failed. Please retry.', code: 'BOOTSTRAP_FAILED' }}
+        showLogin
+        onRetry={retryBootstrap}
+      />
+    );
   }
 
   return <Outlet />;
