@@ -5,16 +5,15 @@ const hasSupabaseCredentials =
   Boolean(process.env.SUPABASE_URL) && Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY);
 
 const supabase = hasSupabaseCredentials
-  ? createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY)
+   ? createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  })
   : null;
 
 const devAccessToken = process.env.DEV_ACCESS_TOKEN?.trim() || null;
 const devUserId = process.env.DEV_USER_ID?.trim() || 'dev-user';
 const devOrgId = process.env.DEV_ORG_ID?.trim() || null;
 const devRole = process.env.DEV_USER_ROLE?.trim() || 'admin';
-
-const expectedIssuer = process.env.SUPABASE_JWT_ISSUER?.trim() || null;
-const expectedAudience = process.env.SUPABASE_JWT_AUDIENCE?.trim() || 'authenticated';
 
 function decodeJwtPayload(token) {
   const parts = token.split('.');
@@ -24,33 +23,6 @@ function decodeJwtPayload(token) {
   } catch (_error) {
     return null;
   }
-}
-
-function isSupabaseTokenPayloadValid(payload) {
-  if (!payload || typeof payload !== 'object') {
-    return false;
-  }
-
-  const issuer = typeof payload.iss === 'string' ? payload.iss : null;
-  const audience = payload.aud;
-
-  if (expectedIssuer && issuer !== expectedIssuer) {
-    return false;
-  }
-
-  if (!expectedAudience) {
-    return true;
-  }
-
-  if (typeof audience === 'string') {
-    return audience === expectedAudience;
-  }
-
-  if (Array.isArray(audience)) {
-    return audience.includes(expectedAudience);
-  }
-
-  return false;
 }
 
 function parseCookieHeader(cookieHeader = '') {
@@ -106,9 +78,11 @@ module.exports = async function requireAuth(req, res, next) {
     return res.status(503).json({ error: 'Authentication unavailable' });
   }
 
-const tokenPayload = decodeJwtPayload(token);
-  if (!isSupabaseTokenPayloadValid(tokenPayload)) {
-    return res.status(401).json({ error: 'Unauthorized: Invalid token issuer or audience' });
+  const tokenPayload = decodeJwtPayload(token);
+  if (tokenPayload) {
+    const issuer = typeof tokenPayload.iss === 'string' ? tokenPayload.iss : null;
+    const audience = tokenPayload.aud ?? null;
+    console.debug('[Auth] token payload decoded', { issuer, audience });
   }
 
   const {
