@@ -82,7 +82,6 @@ export default function RequireAuth() {
 
   const {
     // required (or adapt these names to your context):
-    user,
     session,
     initializing,
 
@@ -93,7 +92,6 @@ export default function RequireAuth() {
   } = useMemo(() => {
     // Make it resilient if some keys don't exist yet
     return {
-      user: (ctx as any)?.user ?? null,
       session: (ctx as any)?.session ?? null,
       initializing: Boolean((ctx as any)?.initializing),
 
@@ -110,8 +108,7 @@ export default function RequireAuth() {
 
   // 2) If NOT logged in: ALWAYS redirect to /login (this fixes the 2nd domain + reopen case)
   // Use user OR session as your truth; use whichever your app relies on.
-  const authed = Boolean(user || session?.access_token);
-  if (!authed) {
+ if (!session?.access_token) {
     return <Navigate to="/login" replace state={{ from: location.pathname }} />;
   }
 
