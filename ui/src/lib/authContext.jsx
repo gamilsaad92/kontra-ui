@@ -54,6 +54,12 @@ function getBootstrapUrl() {
   return `${base}/api/auth/bootstrap`;
 }
 
+function getHealthUrl() {
+  const base = getApiBaseUrl();
+  if (!base) return '/api/health';
+  return `${base}/api/health`;
+}
+
 async function parseResponseJsonSafe(response) {
   const text = await response.text();
   if (!text) return null;
@@ -65,7 +71,13 @@ async function parseResponseJsonSafe(response) {
   }
 }
 
+async function warmupBackend() {
+  await fetch(getHealthUrl()).catch(() => null);
+}
+
 async function bootstrapBackendWorkspace(accessToken) {
+    await warmupBackend();
+
   for (let attempt = 0; attempt <= AUTH_BOOTSTRAP_MAX_RETRIES; attempt += 1) {
     const abortController = new AbortController();
     const timeoutId = globalThis.setTimeout(() => {
@@ -154,12 +166,32 @@ export const AuthContext = createContext({
   isAuthed: false,
   error: null,
   signOut: async () => ({ error: null }),
+  retryBootstrap: async () => {},
 });
 
 export function AuthProvider({ children }) {
   const [session, setSession] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+
+    const runBootstrap = useCallback(async (targetSession) => {
+    if (!targetSession?.access_token) {
+      setError(null);
+      return;
+    }
+
+    try {
+      await bootstrapBackendWorkspace(targetSession.access_token);
+      setError(null);
+    } catch (caughtError) {
+      console.error('Failed to bootstrap auth workspace', caughtError);
+      const normalized = normalizeBootstrapError(caughtError, 'Unable to bootstrap workspace');
+      if (normalized.code === '401') {
+        setSession(null);
+      }
+      setError(normalized);
+    }
+  }, []);
 
   useEffect(() => {
     let isActive = true;
@@ -188,18 +220,12 @@ export function AuthProvider({ children }) {
         }
 
         const nextSession = data?.session ?? null;
+        
+        if (!isActive) return;
         setSession(nextSession);
 
         if (nextSession?.access_token) {
-          void bootstrapBackendWorkspace(nextSession.access_token).catch((caughtError) => {
-            if (!isActive) return;
-            console.error('Failed to bootstrap auth workspace', caughtError);
-            const normalized = normalizeBootstrapError(caughtError, 'Unable to bootstrap workspace');
-            if (normalized.code === '401') {
-              setSession(null);
-            }
-            setError(normalized);
-          });
+          await runBootstrap(nextSession);
         }
       } catch (caughtError) {
         console.error('Failed to bootstrap auth workspace', caughtError);
@@ -222,11 +248,7 @@ export function AuthProvider({ children }) {
       setSession(nextSession ?? null);
       setError(null);
       if (nextSession?.access_token) {
-        void bootstrapBackendWorkspace(nextSession.access_token).catch((caughtError) => {
-          if (!isActive) return;
-          const normalized = normalizeBootstrapError(caughtError, 'Unable to bootstrap workspace');
-          setError(normalized);
-        });
+         await runBootstrap(nextSession);
       }
       setLoading(false);
     });
@@ -235,7 +257,14 @@ export function AuthProvider({ children }) {
       isActive = false;
       subscription?.unsubscribe();
     };
-  }, []);
+  }, [runBootstrap]);
+
+  const retryBootstrap = useCallback(async () => {
+    if (!session?.access_token) return;
+    setLoading(true);
+    await runBootstrap(session);
+    setLoading(false);
+  }, [runBootstrap, session]);
 
   const signOut = useCallback(async () => {
     if (!isSupabaseConfigured) {
@@ -266,9 +295,39 @@ export function AuthProvider({ children }) {
       isAuthed: Boolean(session?.user),
       error,
       signOut,
+      retryBootstrap,
     }),
-    [session, loading, error, signOut]
+   [session, loading, error, signOut, retryBootstrap]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
+
+let latestAuthToken = null;
+
+export async function getToken({ forceRefresh = false } = {}) {
+  if (!isSupabaseConfigured) return null;
+
+  if (!forceRefresh && latestAuthToken) {
+    return latestAuthToken;
+  }
+
+  const { data, error } = await supabaseClient.auth.getSession();
+
+  if (error) {
+    throw error;
+  }
+
+  latestAuthToken = data?.session?.access_token ?? null;
+  return latestAuthToken;
+}
+
+export function redirectToSignIn() {
+  if (typeof window === 'undefined') return;
+  const next = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+  window.location.assign(`/login?next=${encodeURIComponent(next)}`);
+}
+
+supabaseClient.auth.onAuthStateChange((_event, session) => {
+  latestAuthToken = session?.access_token ?? null;
+});
