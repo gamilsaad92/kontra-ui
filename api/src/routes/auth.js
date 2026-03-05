@@ -1,6 +1,6 @@
 const express = require('express');
 const { createClient } = require('@supabase/supabase-js');
-const { queryRows } = require('../lib/appDb');
+const { queryOne, queryRows } = require('../lib/appDb');
 
 const router = express.Router();
 
@@ -35,7 +35,47 @@ async function verifyAccessToken(bearerToken) {
     throw e;
   }
 
-    return data.user;
+return data.user;
+}
+
+async function upsertLocalUser(user) {
+  return queryOne(
+    `INSERT INTO users (supabase_user_id, email)
+     VALUES ($1::uuid, COALESCE($2, 'unknown@example.com'))
+     ON CONFLICT (supabase_user_id)
+     DO UPDATE SET email = COALESCE(EXCLUDED.email, users.email)
+     RETURNING id, supabase_user_id, email`,
+    [user.id, user.email || null]
+  );
+}
+
+async function queryMemberships(localUserId) {
+  try {
+    return await queryRows(
+      `SELECT o.id, o.name, m.role,
+              (u.default_org_id IS NOT NULL AND o.id = u.default_org_id) AS is_default
+         FROM users u
+         JOIN org_memberships m ON m.user_id = u.id
+         JOIN organizations o ON o.id = m.org_id
+        WHERE u.id = $1::uuid
+        ORDER BY (u.default_org_id IS NOT NULL AND o.id = u.default_org_id) DESC,
+                 o.created_at ASC`,
+      [localUserId]
+    );
+  } catch (error) {
+    if (error?.code !== '42703') {
+      throw error;
+    }
+
+    return queryRows(
+      `SELECT o.id, o.name, m.role, FALSE AS is_default
+         FROM org_memberships m
+         JOIN organizations o ON o.id = m.org_id
+        WHERE m.user_id = $1::uuid
+        ORDER BY o.created_at ASC`,
+      [localUserId]
+    );
+  } 
 }
 
 function withTimeout(promise, ms) {
@@ -48,24 +88,14 @@ function withTimeout(promise, ms) {
 
 router.post('/bootstrap', async (req, res) => {
   try {
-      const response = await withTimeout((async () => {
+   const response = await withTimeout((async () => {
       const token = getBearerToken(req);
       const user = await withTimeout(verifyAccessToken(token), 8000);
-      const requestedOrgId = req.headers['x-org-id'] ? String(req.headers['x-org-id']) : null;
+    const localUser = await withTimeout(upsertLocalUser(user), 8000);
 
       const orgs = await withTimeout(queryRows(
-        `SELECT o.id, o.name, m.role,
-                (u.default_org_id IS NOT NULL AND o.id = u.default_org_id) AS is_default
-           FROM users u
-           JOIN org_memberships m ON m.user_id = u.id
-           JOIN organizations o ON o.id = m.org_id
-          WHERE u.supabase_user_id = $1
-          ORDER BY (u.default_org_id IS NOT NULL AND o.id = u.default_org_id) DESC,
-                   m.created_at ASC,
-                   o.created_at ASC`,
-        [user.id]
-      ), 8000);
-
+      const orgs = await withTimeout(queryMemberships(localUser.id), 8000);
+     
       const normalizedOrgs = Array.isArray(orgs) ? orgs.map((org) => ({
         id: String(org.id),
         name: org.name,
@@ -93,7 +123,7 @@ router.post('/bootstrap', async (req, res) => {
 
     return res.status(200).json(response);
   } catch (error) {
-        if (error?.code === 'TIMEOUT') {
+   if (error?.code === 'TIMEOUT') {
       return res.status(504).json({ message: error.message, code: error.code });
     }
     if (error?.code === 'TOKEN_MISSING' || error?.code === 'TOKEN_INVALID' || error?.code === 'SUPABASE_ADMIN_MISSING') {
