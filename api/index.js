@@ -32,7 +32,7 @@ const parseOrigins = (value = '') =>
     .map((part) => normalizeOrigin(part.trim()))
     .filter(Boolean);
 
-cconst envOrigins = [
+const envOrigins = [
   ...parseOrigins(process.env.CORS_ORIGINS || ''),
   normalizeOrigin(process.env.FRONTEND_URL || ''),
 ].filter(Boolean);
