@@ -6,7 +6,9 @@ function runSql(sql, params = [], timeoutMs = DEFAULT_TIMEOUT_MS) {
   return new Promise((resolve, reject) => {
     const databaseUrl = process.env.APP_DATABASE_URL || process.env.DATABASE_URL;
     if (!databaseUrl) {
-      reject(new Error('Missing APP_DATABASE_URL or DATABASE_URL environment variable'));
+       const error = new Error('Missing APP_DATABASE_URL or DATABASE_URL environment variable');
+      error.code = 'APP_DB_URL_MISSING';
+      reject(error);
       return;
     }
 
