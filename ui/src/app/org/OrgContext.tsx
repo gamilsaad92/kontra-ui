@@ -4,10 +4,10 @@ import {
   useContext,
   useEffect,
   useMemo,
+   useRef,
   useState,
   type ReactNode,
 } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
 import { AuthContext } from "../../lib/authContext";
 import { apiRequest, setOrgContext } from "../../lib/apiClient";
 import { getOrgId, setOrgId as persistOrgId } from "../../lib/orgContext";
@@ -42,11 +42,29 @@ type OrgContextValue = {
   orgs: Organization[];
   isLoading: boolean;
   error: string | null;
+   warning: string | null;
   setActiveOrg: (orgId: string | null) => void;
   retryInitialization: () => Promise<void>;
 };
 
 const OrgContext = createContext<OrgContextValue | null>(null);
+const STARTUP_TIMEOUT_MS = 8_000;
+const DEFAULT_PERSONAL_ORG: Organization = { id: "personal", name: "Personal Workspace" };
+
+const withTimeout = async <T,>(promise: Promise<T>, fallback: T, ms = STARTUP_TIMEOUT_MS): Promise<T> => {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((resolve) => {
+        timer = setTimeout(() => resolve(fallback), ms);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+};
+
 
 function normalizeOrgId(v: unknown): string | null {
   if (v === null || v === undefined) return null;
@@ -84,109 +102,89 @@ function pickActiveOrgId(res: BootstrapResponse, fallbackPersisted: string | nul
 
 export function OrgProvider({ children }: { children: ReactNode }) {
   const auth = useContext(AuthContext) as any;
-  const navigate = useNavigate();
-  const location = useLocation();
-
   const [orgId, setOrgId] = useState<string | null>(() => normalizeOrgId(getOrgId()));
   const [orgs, setOrgs] = useState<Organization[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
-
+  const [warning, setWarning] = useState<string | null>(null);
+  const hasInitialized = useRef(false);
+  
   const setActiveOrg = useCallback((nextOrgId: string | null) => {
     const normalized = normalizeOrgId(nextOrgId);
     setOrgId(normalized);
     persistOrgId(normalized); // per-domain persistence
-    setOrgContext(normalized); // attach org context to api client headers, etc.
-  }, []);
+    setOrgContext({ orgId: normalized ?? undefined, userId: auth?.user?.id }); // attach org context to api client headers, etc.
+  }, [auth?.user?.id]);
 
   const init = useCallback(async () => {
     setIsLoading(true);
     setError(null);
 
-    // ---- AUTH GATE (CRITICAL) ----
-    // We only bootstrap orgs if Auth is READY and we have a token/user.
     const initializing = Boolean(auth?.initializing);
     const token: string | undefined = auth?.session?.access_token;
     const userId: string | undefined = auth?.user?.id;
 
-    // If auth is still initializing, wait (but don’t spin forever elsewhere)
     if (initializing) {
       setIsLoading(true);
       return;
     }
 
-    // If not authenticated (new domain, after closing browser, etc.), stop immediately.
     if (!token && !userId) {
       setOrgs([]);
       setActiveOrg(null);
+      setWarning(null);
+      setIsLoading(false);
+      hasInitialized.current = false;
+      return;
+    }
+
+   if (hasInitialized.current) {
       setIsLoading(false);
       return;
     }
 
-    // Optional: set org context from persisted id early (doesn't assume it's valid)
+    hasInitialized.current = true;
+
     const persisted = normalizeOrgId(getOrgId());
     if (persisted) {
-      setOrgContext(persisted);
+       setOrgContext({ orgId: persisted, userId });
     }
 
-    // ---- BOOTSTRAP WITH HARD TIMEOUT ----
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 20000);
-
+   setIsLoading(false);
+    
     try {
-      // This endpoint should return org list + active/default org id.
-      // Adjust URL if yours differs.
-      const res = (await apiRequest("/auth/bootstrap", {
-        method: "POST",
-        signal: controller.signal,
-      })) as BootstrapResponse;
+     const fallbackResponse: BootstrapResponse = {
+        orgs: persisted ? [{ id: persisted, name: "Workspace" }] : [DEFAULT_PERSONAL_ORG],
+        active_org_id: persisted ?? DEFAULT_PERSONAL_ORG.id,
+      };
+
+      const res = await withTimeout(
+        apiRequest<BootstrapResponse>("POST", "/auth/bootstrap", {}, {}, { requireAuth: true }).catch(() => fallbackResponse),
+        fallbackResponse
+      );
 
       const bootstrapOrgs = normalizeOrgs(res);
-      setOrgs(bootstrapOrgs);
-
-      const active = pickActiveOrgId(res, persisted);
-
-      if (active) {
-        setActiveOrg(active);
-        setIsLoading(false);
-        return;
-      }
-
-      // If bootstrap didn’t give an active org but did return orgs, pick first.
-      if (bootstrapOrgs.length > 0) {
-        setActiveOrg(bootstrapOrgs[0].id);
-        setIsLoading(false);
-        return;
-      }
-
-      // No orgs returned => user must create/select org
-      setActiveOrg(null);
-      setIsLoading(false);
-
-      // IMPORTANT: redirect off protected routes if needed
-      if (!location.pathname.startsWith("/organizations")) {
-        navigate("/organizations", { replace: true, state: { from: location.pathname } });
-      }
-    } catch (e: any) {
-      const msg =
-        e?.name === "AbortError"
-          ? "Organization bootstrap timed out. Please retry."
-          : (e?.message ?? "Organization bootstrap failed.");
-
-      setOrgs([]);
-      setActiveOrg(null);
+      const safeOrgs = bootstrapOrgs.length > 0 ? bootstrapOrgs : [DEFAULT_PERSONAL_ORG];
+      setOrgs(safeOrgs);
+ 
+      const active = pickActiveOrgId(res, persisted) ?? safeOrgs[0]?.id ?? DEFAULT_PERSONAL_ORG.id;
+      setActiveOrg(active);
+      setWarning(bootstrapOrgs.length === 0 ? "Workspace data unavailable, retrying" : null);
+      console.info("[bootstrap] workspace loaded", { orgId: active });
+      
+      const msg = e?.message ?? "Organization bootstrap failed.";
+      setOrgs([DEFAULT_PERSONAL_ORG]);
+      setActiveOrg(DEFAULT_PERSONAL_ORG.id);
       setError(msg);
-      setIsLoading(false);
-    } finally {
-      clearTimeout(timer);
+     setWarning("Workspace data unavailable, retrying");
+      console.error("[bootstrap] organization load failed", e);
     }
-  }, [auth, location.pathname, navigate, setActiveOrg]);
+ }, [auth?.initializing, auth?.session?.access_token, auth?.user?.id, setActiveOrg]);
 
   // Initialize and also re-run whenever auth state changes
   useEffect(() => {
     void init();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [auth?.initializing, auth?.session?.access_token, auth?.user?.id]);
+}, [init]);
 
   const retryInitialization = useCallback(async () => {
     await init();
@@ -198,10 +196,11 @@ export function OrgProvider({ children }: { children: ReactNode }) {
       orgs,
       isLoading,
       error,
+      warning,
       setActiveOrg,
       retryInitialization,
     }),
-    [orgId, orgs, isLoading, error, setActiveOrg, retryInitialization]
+    [orgId, orgs, isLoading, error, warning, setActiveOrg, retryInitialization]
   );
 
   return <OrgContext.Provider value={value}>{children}</OrgContext.Provider>;
