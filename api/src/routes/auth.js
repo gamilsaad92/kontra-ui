@@ -88,12 +88,12 @@ function withTimeout(promise, ms) {
 
 router.post('/bootstrap', async (req, res) => {
   try {
-   const response = await withTimeout((async () => {
+  const response = await withTimeout((async () => {
       const token = getBearerToken(req);
       const user = await withTimeout(verifyAccessToken(token), 8000);
-    const localUser = await withTimeout(upsertLocalUser(user), 8000);
+      const localUser = await withTimeout(upsertLocalUser(user), 8000);
+      const requestedOrgId = req.body?.org_id ? String(req.body.org_id) : null;
 
-      const orgs = await withTimeout(queryRows(
       const orgs = await withTimeout(queryMemberships(localUser.id), 8000);
      
       const normalizedOrgs = Array.isArray(orgs) ? orgs.map((org) => ({
