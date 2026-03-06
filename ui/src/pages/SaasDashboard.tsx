@@ -178,7 +178,7 @@ function ProtectedApp({ signOut }: { signOut: () => Promise<{ error: Error | nul
 function AuthenticatedDashboard({ signOut }: { signOut: () => Promise<{ error: Error | null }> }) {
   const apiBase = resolveApiBase();
   const { usage, recordUsage } = useFeatureUsage();
-  const { session } = useContext(AuthContext);
+  const { session, bootstrapWarning } = useContext(AuthContext) as any;
   const userRole = session?.user?.user_metadata?.role;
   const location = useLocation();
   const { orgId } = useOrg();
@@ -408,6 +408,11 @@ function AuthenticatedDashboard({ signOut }: { signOut: () => Promise<{ error: E
         </nav>
       </aside>
       <main className="flex-1 overflow-y-auto p-6">
+            {bootstrapWarning ? (
+          <div className="mb-4 rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900" role="status">
+            {bootstrapWarning}
+          </div>
+        ) : null}    
         {!isDashboardRoute && !isServicingRoute && (
           <header className="mb-6 space-y-1">
             <h1 className="text-xl font-semibold tracking-tight text-slate-900">{activeLabel}</h1>
