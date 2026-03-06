@@ -150,7 +150,7 @@ export function OrgProvider({ children }: { children: ReactNode }) {
        setOrgContext({ orgId: persisted, userId });
     }
 
-   setIsLoading(false);
+    setIsLoading(false);
     
     try {
      const fallbackResponse: BootstrapResponse = {
@@ -171,20 +171,21 @@ export function OrgProvider({ children }: { children: ReactNode }) {
       setActiveOrg(active);
       setWarning(bootstrapOrgs.length === 0 ? "Workspace data unavailable, retrying" : null);
       console.info("[bootstrap] workspace loaded", { orgId: active });
-      
+  
+    } catch (e: any) {
       const msg = e?.message ?? "Organization bootstrap failed.";
       setOrgs([DEFAULT_PERSONAL_ORG]);
       setActiveOrg(DEFAULT_PERSONAL_ORG.id);
       setError(msg);
-     setWarning("Workspace data unavailable, retrying");
+      setWarning("Workspace data unavailable, retrying");
       console.error("[bootstrap] organization load failed", e);
     }
- }, [auth?.initializing, auth?.session?.access_token, auth?.user?.id, setActiveOrg]);
-
+  }, [auth?.initializing, auth?.session?.access_token, auth?.user?.id, setActiveOrg]);
+  
   // Initialize and also re-run whenever auth state changes
   useEffect(() => {
     void init();
-}, [init]);
+  }, [init]);
 
   const retryInitialization = useCallback(async () => {
     await init();
