@@ -1,8 +1,11 @@
-import { createContext, useCallback, useEffect, useMemo, useState } from 'react';
+import { createContext, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { supabase as supabaseClient, isSupabaseConfigured } from './supabaseClient';
-import { getApiBaseUrl } from './apiClient';
+import { apiRequest } from './apiClient';
 
-const WORKSPACE_BOOTSTRAP_TIMEOUT_MS = 20_000;
+const STARTUP_TIMEOUT_MS = 8_000;
+const DEFAULT_PROFILE = null;
+const DEFAULT_WORKSPACE = { id: 'personal', name: 'Personal Workspace' };
+const DEFAULT_ORGANIZATION = { id: 'personal', name: 'Personal Organization' };
 
 function normalizeBootstrapError(error, fallbackMessage) {
   if (!error) return { message: fallbackMessage, code: 'UNKNOWN_ERROR' };
@@ -20,95 +23,32 @@ function normalizeBootstrapError(error, fallbackMessage) {
   return { message, code };
 }
 
-function getBootstrapUrl() {
-  const base = getApiBaseUrl();
-  if (!base) return '/api/auth/bootstrap';
-  return `${base}/api/auth/bootstrap`;
-}
-
-function getHealthUrl() {
-  const base = getApiBaseUrl();
-  if (!base) return '/api/health';
-  return `${base}/api/health`;
-}
-
-async function parseResponseJsonSafe(response) {
-  const text = await response.text();
-  if (!text) return null;
-
+const withTimeout = async (promise, fallback, ms = STARTUP_TIMEOUT_MS) => {
+  let timer;
   try {
-    return JSON.parse(text);
-  } catch {
-    return text;
-  }
-}
-
-async function warmupBackend() {
-  await fetch(getHealthUrl(), { cache: 'no-store' }).catch(() => null);
-}
-
-async function bootstrapBackendWorkspace(accessToken) {
-  await warmupBackend();
-
-  const abortController = new AbortController();
-  const timeoutId = globalThis.setTimeout(() => {
-    abortController.abort();
-  }, WORKSPACE_BOOTSTRAP_TIMEOUT_MS);
-
-  try {
-    const response = await fetch(getBootstrapUrl(), {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({}),
-      signal: abortController.signal,
-    });
-
-    if (response.ok) {
-      return { ok: true, data: await parseResponseJsonSafe(response), error: null };
-    }
-
-    const data = await parseResponseJsonSafe(response);
-    const message =
-      typeof data?.message === 'string'
-        ? data.message
-        : typeof data?.error === 'string'
-          ? data.error
-          : 'Unable to bootstrap workspace';
-
-    return {
-      ok: false,
-      data: null,
-      error: {
-        message,
-        code: typeof data?.code === 'string' ? data.code : String(response.status),
-      },
-    };
-  } catch (error) {
-    if (error?.name === 'AbortError') {
-      return {
-        ok: false,
-        data: null,
-        error: { message: 'Workspace bootstrap timed out', code: 'BOOTSTRAP_TIMEOUT' },
-      };
-    }
-
-    return {
-      ok: false,
-      data: null,
-      error: normalizeBootstrapError(error, 'Unable to bootstrap workspace'),
-    };
+    return await Promise.race([
+      promise,
+      new Promise((resolve) => {
+        timer = setTimeout(() => resolve(fallback), ms);
+      }),
+    ]);
   } finally {
-    globalThis.clearTimeout(timeoutId);
+    if (timer) clearTimeout(timer);
   }
-}
+};
 
 async function safeGetSession() {
   try {
-    const { data, error } = await supabaseClient.auth.getSession();
-    if (error) return { session: null, error: normalizeBootstrapError(error, error.message || 'getSession failed') };
+    const fallback = { data: { session: null }, error: null };
+    const { data, error } = await withTimeout(supabaseClient.auth.getSession(), fallback);
+
+    if (error) {
+      return {
+        session: null,
+        error: normalizeBootstrapError(error, error.message || 'getSession failed'),
+      };
+    }
+
     return { session: data?.session ?? null, error: null };
   } catch (error) {
     return {
@@ -136,6 +76,10 @@ export const AuthContext = createContext({
   bootstrapped: false,
   bootstrapStatus: 'idle',
   bootstrapError: null,
+  bootstrapWarning: null,
+  profile: null,
+  workspace: DEFAULT_WORKSPACE,
+  organization: DEFAULT_ORGANIZATION,
   error: null,
   signOut: async () => ({ error: null }),
   retryBootstrap: async () => {},
@@ -147,72 +91,162 @@ export function AuthProvider({ children }) {
   const [bootstrapped, setBootstrapped] = useState(false);
   const [error, setError] = useState(null);
   const [bootstrapStatus, setBootstrapStatus] = useState('idle');
+  const [profile, setProfile] = useState(DEFAULT_PROFILE);
+  const [workspace, setWorkspace] = useState(DEFAULT_WORKSPACE);
+  const [organization, setOrganization] = useState(DEFAULT_ORGANIZATION);
+  const [bootstrapWarning, setBootstrapWarning] = useState(null);
+
+  const hasBootstrapped = useRef(false);
+  const bootstrapRequestIdRef = useRef(0);
+
+  const resetHydrationState = useCallback(() => {
+    setProfile(DEFAULT_PROFILE);
+    setWorkspace(DEFAULT_WORKSPACE);
+    setOrganization(DEFAULT_ORGANIZATION);
+    setBootstrapWarning(null);
+  }, []);
 
   const failUnauthed = useCallback((nextError, shouldRouteToLogin = false) => {
     setSession(null);
     setBootstrapped(false);
-    setBootstrapStatus('error');
+    setBootstrapStatus('ready');
     setError(nextError);
+    resetHydrationState();
+    hasBootstrapped.current = false;
+
     if (shouldRouteToLogin) routeToLogin();
-  }, []);
+  }, [resetHydrationState]);
 
   const runBootstrap = useCallback(async (targetSession) => {
     if (!targetSession?.access_token) {
       setBootstrapped(false);
       setBootstrapStatus('ready');
       setError(null);
+      resetHydrationState();
+      hasBootstrapped.current = false;
       return false;
     }
 
-    setBootstrapStatus('loading');
-    const result = await bootstrapBackendWorkspace(targetSession.access_token);
-
-    if (result.ok) {
-      setBootstrapped(true);
-      setBootstrapStatus('ready');
-      setError(null);
+    if (hasBootstrapped.current) {
       return true;
     }
 
-    failUnauthed(result.error ?? { message: 'Unable to bootstrap workspace', code: 'BOOTSTRAP_ERROR' }, true);
-    return false;
-  }, [failUnauthed]);
+    hasBootstrapped.current = true;
+    const requestId = Date.now();
+    bootstrapRequestIdRef.current = requestId;
+
+    setBootstrapStatus('loading');
+    setBootstrapWarning(null);
+
+    try {
+      console.info('[bootstrap] session loaded', { userId: targetSession.user?.id ?? null });
+
+      const nextProfile = await withTimeout(
+        apiRequest('GET', '/me', undefined, {}, { requireAuth: true }).catch(() => DEFAULT_PROFILE),
+        DEFAULT_PROFILE
+      );
+      console.info('[bootstrap] profile loaded', { hasProfile: Boolean(nextProfile) });
+
+      const nextWorkspace = await withTimeout(
+        apiRequest('GET', '/workspace', undefined, {}, { requireAuth: true }).catch(() => DEFAULT_WORKSPACE),
+        DEFAULT_WORKSPACE
+      );
+      console.info('[bootstrap] workspace loaded', {
+        workspaceId: nextWorkspace?.id ?? DEFAULT_WORKSPACE.id,
+      });
+
+      const nextOrganization = await withTimeout(
+        apiRequest('GET', '/organizations/current', undefined, {}, { requireAuth: true }).catch(() => DEFAULT_ORGANIZATION),
+        DEFAULT_ORGANIZATION
+      );
+
+      if (bootstrapRequestIdRef.current !== requestId) {
+        return true;
+      }
+
+      const safeProfile = nextProfile ?? DEFAULT_PROFILE;
+      const safeWorkspace = nextWorkspace ?? DEFAULT_WORKSPACE;
+      const safeOrganization =
+        nextOrganization && !Array.isArray(nextOrganization)
+          ? nextOrganization
+          : DEFAULT_ORGANIZATION;
+
+      setProfile(safeProfile);
+      setWorkspace(safeWorkspace);
+      setOrganization(safeOrganization);
+      setBootstrapped(true);
+      setBootstrapStatus('ready');
+      setError(null);
+
+      if (
+        !nextProfile ||
+        !nextWorkspace ||
+        !nextOrganization ||
+        (Array.isArray(nextOrganization) && nextOrganization.length === 0)
+      ) {
+        setBootstrapWarning('Workspace data unavailable, retrying');
+      }
+
+      console.info('[bootstrap] bootstrap complete');
+      return true;
+    } catch (bootstrapError) {
+      if (bootstrapRequestIdRef.current !== requestId) {
+        return false;
+      }
+
+      const normalized = normalizeBootstrapError(bootstrapError, 'Unable to hydrate workspace data');
+      setBootstrapped(true);
+      setBootstrapStatus('ready');
+      setError(normalized);
+      resetHydrationState();
+      setBootstrapWarning('Workspace data unavailable, retrying');
+      console.error('[bootstrap] bootstrap failed', normalized);
+      return false;
+    }
+  }, [resetHydrationState]);
 
   const safeBootstrapAuth = useCallback(async () => {
     setLoading(true);
-    setBootstrapStatus('loading');
     setError(null);
 
-    if (!isSupabaseConfigured) {
-      failUnauthed({
-        message: 'Supabase environment variables are missing. Check VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY.',
-        code: 'SUPABASE_NOT_CONFIGURED',
-      }, true);
+    try {
+      if (!isSupabaseConfigured) {
+        failUnauthed(
+          {
+            message: 'Supabase environment variables are missing. Check VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY.',
+            code: 'SUPABASE_NOT_CONFIGURED',
+          },
+          true
+        );
+        return;
+      }
+
+      const { session: nextSession, error: sessionError } = await safeGetSession();
+
+      if (sessionError) {
+        failUnauthed(
+          { message: sessionError.message, code: sessionError.code ?? 'GET_SESSION_ERROR' },
+          true
+        );
+        return;
+      }
+
+      setSession(nextSession);
+      console.info('[bootstrap] session loaded', { hasSession: Boolean(nextSession?.access_token) });
+
+      if (!nextSession?.access_token) {
+        setBootstrapped(false);
+        setBootstrapStatus('ready');
+        setError(null);
+        resetHydrationState();
+        return;
+      }
+
+      void runBootstrap(nextSession);
+    } finally {
       setLoading(false);
-      return;
     }
-
-    const { session: nextSession, error: sessionError } = await safeGetSession();
-
-    if (sessionError) {
-      failUnauthed({ message: sessionError.message, code: sessionError.code ?? 'GET_SESSION_ERROR' }, true);
-      setLoading(false);
-      return;
-    }
-
-    setSession(nextSession);
-
-    if (!nextSession?.access_token) {
-      setBootstrapped(false);
-      setBootstrapStatus('ready');
-      setError(null);
-      setLoading(false);
-      return;
-    }
-
-    await runBootstrap(nextSession);
-    setLoading(false);
-  }, [failUnauthed, runBootstrap]);
+  }, [failUnauthed, resetHydrationState, runBootstrap]);
 
   useEffect(() => {
     let isActive = true;
@@ -227,23 +261,27 @@ export function AuthProvider({ children }) {
       setSession(nextSession ?? null);
       setLoading(true);
       setError(null);
+      hasBootstrapped.current = false;
 
-      if (!nextSession?.access_token) {
-        setBootstrapped(false);
-        setBootstrapStatus('ready');
+      try {
+        if (!nextSession?.access_token) {
+          setBootstrapped(false);
+          setBootstrapStatus('ready');
+          resetHydrationState();
+          return;
+        }
+
+        void runBootstrap(nextSession);
+      } finally {
         setLoading(false);
-        return;
       }
-
-      await runBootstrap(nextSession);
-      setLoading(false);
     });
 
     return () => {
       isActive = false;
       subscription?.unsubscribe();
     };
-  }, [runBootstrap, safeBootstrapAuth]);
+  }, [runBootstrap, safeBootstrapAuth, resetHydrationState]);
 
   const retryBootstrap = useCallback(async () => {
     if (!session?.access_token) {
@@ -251,9 +289,8 @@ export function AuthProvider({ children }) {
       return;
     }
 
-    setLoading(true);
+    hasBootstrapped.current = false;
     await runBootstrap(session);
-    setLoading(false);
   }, [runBootstrap, session]);
 
   const signOut = useCallback(async () => {
@@ -274,8 +311,11 @@ export function AuthProvider({ children }) {
     setError(null);
     setBootstrapped(false);
     setBootstrapStatus('ready');
+    resetHydrationState();
+    hasBootstrapped.current = false;
+
     return { error: null };
-  }, []);
+  }, [resetHydrationState]);
 
   const value = useMemo(
     () => ({
@@ -289,11 +329,27 @@ export function AuthProvider({ children }) {
       bootstrapped,
       bootstrapStatus,
       bootstrapError: error,
+      bootstrapWarning,
+      profile,
+      workspace,
+      organization,
       error,
       signOut,
       retryBootstrap,
     }),
-    [session, loading, bootstrapped, bootstrapStatus, error, signOut, retryBootstrap]
+    [
+      session,
+      loading,
+      bootstrapped,
+      bootstrapStatus,
+      error,
+      bootstrapWarning,
+      profile,
+      workspace,
+      organization,
+      signOut,
+      retryBootstrap,
+    ]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
@@ -308,7 +364,8 @@ export async function getToken({ forceRefresh = false } = {}) {
     return latestAuthToken;
   }
 
-  const { data, error } = await supabaseClient.auth.getSession();
+  const fallback = { data: { session: null }, error: null };
+  const { data, error } = await withTimeout(supabaseClient.auth.getSession(), fallback);
 
   if (error) {
     throw error;
