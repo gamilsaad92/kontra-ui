@@ -112,26 +112,10 @@ export default function RequireAuth() {
     return <Navigate to="/login" replace state={{ from: location.pathname }} />;
   }
 
-  // 3) If your AuthContext still tries to bootstrap workspace here, DO NOT block forever.
-  // If it's loading, you *may* show spinner briefly, but you must allow navigation if it errors.
-  if (bootstrapStatus === "loading") {
-    return <AuthLoadingScreen error={null} showLogin={false} />;
+  if (bootstrapStatus === "error" && bootstrapError && typeof retryBootstrap === "function") {
+    console.warn("[bootstrap] background bootstrap warning", bootstrapError);
   }
 
-  if (bootstrapStatus === "error") {
-    // Fail-open: still let the user proceed, OR send them to /orgs if that's your flow.
-    // The safest is to NOT brick the app here.
-    return (
-      <>
-        <AuthLoadingScreen
-          error={bootstrapError ?? { message: "Bootstrap failed", code: "BOOTSTRAP_ERROR" }}
-          showLogin={true}
-          onRetry={typeof retryBootstrap === "function" ? retryBootstrap : undefined}
-        />
-      </>
-    );
-  }
-
-  // 4) Auth OK: render protected routes
+  // 3) Auth OK: render protected routes immediately after auth confirmation
   return <Outlet />;
 }
