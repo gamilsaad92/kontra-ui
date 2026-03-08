@@ -94,7 +94,7 @@ const Placeholder = ({ title }) => (
 );
 
 export default function DashboardLayout() {
-  const { session, supabase } = useContext(AuthContext);
+ const { session, signOut } = useContext(AuthContext);
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -166,6 +166,11 @@ export default function DashboardLayout() {
 
   const ensurePage = (label) => pages[label] || (() => <Placeholder title={label} />);
 
+    const handleSidebarSignOut = async () => {
+    await signOut();
+    navigate("/login", { replace: true });
+  };
+
   return (
     <div className="flex min-h-screen flex-col lg:flex-row bg-slate-100 text-slate-900">
       {/* Sidebar */}
@@ -195,7 +200,7 @@ export default function DashboardLayout() {
           )}
           {departmentNav.finance.map(renderItem)}
           <button
-            onClick={() => supabase.auth.signOut()}
+            onClick={handleSidebarSignOut}
             className="group mt-2 flex items-center w-full gap-3 rounded-md px-3 py-2 text-sm font-medium text-slate-300 hover:bg-slate-800 hover:text-white"
           >
             <ArrowRightOnRectangleIcon className="h-5 w-5 shrink-0" />
