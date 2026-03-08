@@ -124,7 +124,7 @@ export function OrgProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-   if (hasInitialized.current) {
+   if (lastBootstrappedTokenRef.current === token) {
       setIsLoading(false);
       return;
     }
