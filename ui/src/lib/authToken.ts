@@ -100,6 +100,6 @@ export async function getFreshAuthToken(options: GetAuthTokenOptions = {}): Prom
 
 export function redirectToSignIn(): void {
   if (typeof window === "undefined") return;
-  if (window.location.pathname === "/sign-in") return;
-  window.location.assign("/sign-in");
+ if (window.location.pathname === "/login") return;
+  window.location.assign("/login");
 }
