@@ -150,13 +150,17 @@ export default function LoginForm({ onSwitch, className = '' }) {
           required
         />
       )}
-       <Button type="submit" disabled={loading || isLoading || !supabase} className="w-full mt-sm">
-        {loading
-          ? t('login.loggingIn')
-          : method === 'password'
-          ? t('login.submit')
-          : t('login.sendMagic')}
-      </Button>
+ <button
+  type="submit"
+  disabled={loading || isLoading || !supabase}
+  className="w-full mt-4 rounded-lg bg-slate-900 px-4 py-2 text-white disabled:cursor-not-allowed disabled:opacity-60"
+>
+  {loading
+    ? t('login.loggingIn')
+    : method === 'password'
+    ? t('login.submit')
+    : t('login.sendMagic')}
+</button>
       {!isLoading && !supabase && (
         <p className="text-sm text-red-600">{authUnavailableMessage}</p>
       )}
