@@ -369,9 +369,6 @@ function AuthenticatedDashboard({ signOut }: { signOut: () => Promise<{ error: E
       setSignOutError("Unable to log out. Please try again.");
       return;
     }
-    try {
-      localStorage.removeItem("kontra_org_id");
-    } catch {}
     navigate("/login", { replace: true });
   };
 
