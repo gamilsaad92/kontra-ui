@@ -68,13 +68,8 @@ if (typeof window !== "undefined") {
   window.addEventListener("api:error", (event: Event) => {
     const detail = (event as CustomEvent<ApiErrorEventDetail>).detail;
 
-    if (detail?.code === "ORG_CONTEXT_MISSING") {
-      window.location.assign("/organizations");
-      return;
-    }
-
     if (isAuthSessionError(detail)) {
-      window.location.assign("/sign-in");
+      window.location.assign("/login");
       return;
     }
 
