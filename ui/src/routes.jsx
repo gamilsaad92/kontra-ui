@@ -1,6 +1,5 @@
 import {
   HomeIcon,
-  BuildingOfficeIcon,
   BanknotesIcon,
   Cog6ToothIcon,
   ChartBarIcon,
@@ -52,12 +51,6 @@ export const lenderNavRoutes = [
     label: "Compliance & Legal",
     path: "/governance",
     icon: ShieldCheckIcon,
-    requiresAuth: true,
-  },
-  {
-    label: "Organizations",
-    path: "/organizations",
-    icon: BuildingOfficeIcon,
     requiresAuth: true,
   },
   {
