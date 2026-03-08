@@ -4,11 +4,11 @@ import {
   useContext,
   useEffect,
   useMemo,
-   useRef,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
-import { AuthContext } from "../../lib/authContext";
+import { AuthContext, clearKontraPersistedState } from "../../lib/authContext";
 import { apiRequest, setOrgContext } from "../../lib/apiClient";
 import { getOrgId, setOrgId as persistOrgId } from "../../lib/orgContext";
 
@@ -29,27 +29,18 @@ type BootstrapResponse = {
   items?: Organization[];
 };
 
-type OrgsResponse =
-  | Organization[]
-  | {
-      orgs?: Organization[];
-      organizations?: Organization[];
-      items?: Organization[];
-    };
-
 type OrgContextValue = {
   orgId: string | null;
   orgs: Organization[];
   isLoading: boolean;
   error: string | null;
-   warning: string | null;
+  warning: string | null;
   setActiveOrg: (orgId: string | null) => void;
   retryInitialization: () => Promise<void>;
 };
 
 const OrgContext = createContext<OrgContextValue | null>(null);
 const STARTUP_TIMEOUT_MS = 8_000;
-const DEFAULT_PERSONAL_ORG: Organization = { id: "personal", name: "Personal Workspace" };
 
 const withTimeout = async <T,>(promise: Promise<T>, fallback: T, ms = STARTUP_TIMEOUT_MS): Promise<T> => {
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -65,39 +56,32 @@ const withTimeout = async <T,>(promise: Promise<T>, fallback: T, ms = STARTUP_TI
   }
 };
 
-
 function normalizeOrgId(v: unknown): string | null {
   if (v === null || v === undefined) return null;
   const s = String(v).trim();
   return s.length ? s : null;
 }
 
-function normalizeOrgs(res: OrgsResponse | BootstrapResponse | null | undefined): Organization[] {
+function normalizeOrgs(res: BootstrapResponse | null | undefined): Organization[] {
   if (!res) return [];
-  if (Array.isArray(res)) return res;
-
-  const items =
-    (res as any).orgs ??
-    (res as any).organizations ??
-    (res as any).items ??
-    [];
-
+ const items = res.orgs ?? res.organizations ?? res.items ?? [];
   return Array.isArray(items) ? items : [];
 }
 
 function pickActiveOrgId(res: BootstrapResponse, fallbackPersisted: string | null): string | null {
-  const candidates = [
-    res.active_org_id,
-    res.activeOrgId,
-    res.org_id,
-    res.default_org_id,
-    fallbackPersisted,
-  ];
+ const candidates = [res.active_org_id, res.activeOrgId, res.org_id, res.default_org_id, fallbackPersisted];
   for (const c of candidates) {
     const id = normalizeOrgId(c);
     if (id) return id;
   }
   return null;
+}
+
+function routeToLogin() {
+  if (typeof window === "undefined") return;
+  if (window.location.pathname !== "/login") {
+    window.location.assign("/login");
+  }
 }
 
 export function OrgProvider({ children }: { children: ReactNode }) {
@@ -107,34 +91,36 @@ export function OrgProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [warning, setWarning] = useState<string | null>(null);
-  const hasInitialized = useRef(false);
-  
+  const lastBootstrappedTokenRef = useRef<string | null>(null);
+
   const setActiveOrg = useCallback((nextOrgId: string | null) => {
     const normalized = normalizeOrgId(nextOrgId);
     setOrgId(normalized);
-    persistOrgId(normalized); // per-domain persistence
-    setOrgContext({ orgId: normalized ?? undefined, userId: auth?.user?.id }); // attach org context to api client headers, etc.
+     persistOrgId(normalized);
+    setOrgContext({ orgId: normalized ?? undefined, userId: auth?.user?.id });
   }, [auth?.user?.id]);
 
-  const init = useCallback(async () => {
-    setIsLoading(true);
+  const resetOrgState = useCallback(() => {
+    setOrgs([]);
+    setActiveOrg(null);
+    setWarning(null);
     setError(null);
-
-    const initializing = Boolean(auth?.initializing);
+  }, [setActiveOrg]);
+  
+   const init = useCallback(async () => {
+    const authLoading = Boolean(auth?.loading);
     const token: string | undefined = auth?.session?.access_token;
     const userId: string | undefined = auth?.user?.id;
 
-    if (initializing) {
+  if (authLoading) {
       setIsLoading(true);
       return;
     }
 
-    if (!token && !userId) {
-      setOrgs([]);
-      setActiveOrg(null);
-      setWarning(null);
+    if (!token) {
+      lastBootstrappedTokenRef.current = null;
+      resetOrgState();
       setIsLoading(false);
-      hasInitialized.current = false;
       return;
     }
 
@@ -143,51 +129,69 @@ export function OrgProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    hasInitialized.current = true;
+   setIsLoading(true);
+    setError(null);
+    setWarning(null);
 
     const persisted = normalizeOrgId(getOrgId());
     if (persisted) {
-       setOrgContext({ orgId: persisted, userId });
+      setOrgContext({ orgId: persisted, userId });
     }
 
-    setIsLoading(false);
-    
     try {
-     const fallbackResponse: BootstrapResponse = {
-        orgs: persisted ? [{ id: persisted, name: "Workspace" }] : [DEFAULT_PERSONAL_ORG],
-        active_org_id: persisted ?? DEFAULT_PERSONAL_ORG.id,
-      };
-
       const res = await withTimeout(
-        apiRequest<BootstrapResponse>("POST", "/auth/bootstrap", {}, {}, { requireAuth: true }).catch(() => fallbackResponse),
-        fallbackResponse
+         apiRequest<BootstrapResponse>("POST", "/auth/bootstrap", {}, {}, { requireAuth: true }),
+        null
       );
 
       const bootstrapOrgs = normalizeOrgs(res);
-      const safeOrgs = bootstrapOrgs.length > 0 ? bootstrapOrgs : [DEFAULT_PERSONAL_ORG];
-      setOrgs(safeOrgs);
- 
-      const active = pickActiveOrgId(res, persisted) ?? safeOrgs[0]?.id ?? DEFAULT_PERSONAL_ORG.id;
-      setActiveOrg(active);
-      setWarning(bootstrapOrgs.length === 0 ? "Workspace data unavailable, retrying" : null);
-      console.info("[bootstrap] workspace loaded", { orgId: active });
-  
+         const active = res ? pickActiveOrgId(res, persisted) : persisted;
+      const resolvedActive = active ?? bootstrapOrgs[0]?.id ?? null;
+
+      if (!resolvedActive || bootstrapOrgs.length === 0) {
+        const orgError = new Error("Organization context missing after bootstrap") as Error & {
+          status?: number;
+          code?: string;
+        };
+        orgError.code = "ORG_REQUIRED";
+        throw orgError;
+      }
+
+      setOrgs(bootstrapOrgs);
+      setActiveOrg(resolvedActive);
+      lastBootstrappedTokenRef.current = token;
+      console.info("[bootstrap] workspace loaded", { orgId: resolvedActive });
     } catch (e: any) {
-      const msg = e?.message ?? "Organization bootstrap failed.";
-      setOrgs([DEFAULT_PERSONAL_ORG]);
-      setActiveOrg(DEFAULT_PERSONAL_ORG.id);
-      setError(msg);
-      setWarning("Workspace data unavailable, retrying");
+     const statusCode = typeof e?.status === "number" ? e.status : Number(e?.code);
+      const errorCode = e?.code;
+      const isUnauthorized = statusCode === 401 || errorCode === "AUTH_REQUIRED" || errorCode === "AUTH_INVALID";
+      const isMissingOrg = errorCode === "ORG_REQUIRED";
+
+      if (isUnauthorized || isMissingOrg) {
+        clearKontraPersistedState();
+        lastBootstrappedTokenRef.current = null;
+        setOrgs([]);
+        setActiveOrg(null);
+        setWarning(null);
+        setError(e?.message ?? "Authentication expired");
+        routeToLogin();
+      } else {
+        setError(e?.message ?? "Organization bootstrap failed.");
+        setWarning("Workspace data unavailable, retrying");
+      }
+      
       console.error("[bootstrap] organization load failed", e);
+         } finally {
+      setIsLoading(false);
     }
-  }, [auth?.initializing, auth?.session?.access_token, auth?.user?.id, setActiveOrg]);
-  
-  // Initialize and also re-run whenever auth state changes
+   }, [auth?.loading, auth?.session?.access_token, auth?.user?.id, resetOrgState, setActiveOrg]);
+
   useEffect(() => {
     void init();
   }, [init]);
 
   const retryInitialization = useCallback(async () => {
+    lastBootstrappedTokenRef.current = null;
     await init();
   }, [init]);
 
