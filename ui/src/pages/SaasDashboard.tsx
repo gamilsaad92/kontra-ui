@@ -84,7 +84,7 @@ function AuthenticationPage() {
 
   useEffect(() => {
     if (!loading && isAuthed) {
-     navigate("/organizations", { replace: true });
+   navigate("/organizations", { replace: true });
     }
   }, [loading, isAuthed, navigate]);
 
@@ -134,13 +134,13 @@ function AuthenticationScreen({
             type="button"
             onClick={() => onModeChange("signup")}
             className={`rounded-full px-4 py-1 transition ${
-               mode === "signup" ? "bg-white text-slate-900 shadow" : "bg-slate-900 text-slate-200 hover:bg-slate-800"
+            mode === "signup" ? "bg-white text-slate-900 shadow" : "bg-slate-900 text-slate-200 hover:bg-slate-800"
             }`}
           >
             Create account
           </button>
         </div>
-           <div className="rounded-2xl bg-white p-6 text-slate-900 shadow-xl">
+       <div className="rounded-2xl bg-white p-6 text-slate-900 shadow-xl">
           {mode === "login" ? (
             <LoginForm className="w-full" onSwitch={() => onModeChange("signup")} />
           ) : (
@@ -185,8 +185,9 @@ function AuthenticatedDashboard({ signOut }: { signOut: () => Promise<{ error: E
   const navigate = useNavigate();
   const [isSigningOut, setIsSigningOut] = useState(false);
   const [signOutError, setSignOutError] = useState<string | null>(null);
-   const isServicingRoute = location.pathname.startsWith("/servicing") || location.pathname.startsWith("/dashboard/servicing");
-
+  const isServicingRoute =
+    location.pathname.startsWith("/servicing") || location.pathname.startsWith("/dashboard/servicing");
+  
   const navItems = useMemo(
     () =>
       lenderNavRoutes
@@ -279,7 +280,7 @@ function AuthenticatedDashboard({ signOut }: { signOut: () => Promise<{ error: E
                 className={({ isActive }) =>
                   [
                     "block rounded-md px-3 py-1.5 text-xs font-medium transition",
-                     isActive ? "bg-slate-800 text-white" : "text-slate-400 hover:bg-slate-800 hover:text-white",
+                    isActive ? "bg-slate-800 text-white" : "text-slate-400 hover:bg-slate-800 hover:text-white",
                   ].join(" ")
                 }
                 onClick={() => recordUsage(child.label)}
@@ -405,8 +406,11 @@ function AuthenticatedDashboard({ signOut }: { signOut: () => Promise<{ error: E
         </nav>
       </aside>
       <main className="flex-1 overflow-y-auto p-6">
-            {bootstrapWarning ? (
-          <div className="mb-4 rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900" role="status">
+           {bootstrapWarning ? (
+          <div
+            className="mb-4 rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900"
+            role="status"
+          >
             {bootstrapWarning}
           </div>
         ) : null}    
