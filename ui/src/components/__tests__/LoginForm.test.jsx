@@ -3,24 +3,23 @@ import { render, screen, fireEvent } from '@testing-library/react';
 import LoginForm from '../LoginForm.jsx';
 import { AuthContext } from '../../lib/authContext';
 
-const supabase = { auth: { signInWithPassword: jest.fn(), signInWithOtp: jest.fn() } };
+const signIn = jest.fn();
 
 function renderForm() {
   render(
-    <AuthContext.Provider value={{ supabase, isLoading: false }}>
+   <AuthContext.Provider value={{ signIn, loading: false, isAuthed: false, session: null }}>
       <LoginForm />
     </AuthContext.Provider>
   );
 }
 
-test('magic link option hides password input', () => {
+test('renders password input for Supabase password login', () => {
   renderForm();
-  fireEvent.click(screen.getByLabelText(/Email Magic Link/i));
-  expect(screen.queryByPlaceholderText(/Password/i)).not.toBeInTheDocument();
+  expect(screen.getByPlaceholderText(/Password/i)).toBeInTheDocument();
 });
 
 test('shows auth provider errors for password login', async () => {
-  supabase.auth.signInWithPassword.mockResolvedValueOnce({
+ signIn.mockResolvedValueOnce({
     data: { session: null },
     error: { message: 'Invalid login credentials' },
   });
@@ -34,5 +33,5 @@ test('shows auth provider errors for password login', async () => {
   });
   fireEvent.click(screen.getByRole('button', { name: /Log In/i }));
 
- expect(await screen.findByText(/Invalid login credentials/i)).toBeInTheDocument();
-});
+  expect(await screen.findByText(/Invalid login credentials/i)).toBeInTheDocument();
+  });
