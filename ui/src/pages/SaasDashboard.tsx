@@ -17,10 +17,7 @@ import GovernanceLayout from "./dashboard/governance/GovernanceLayout";
 import ApiDiagnostics from "./settings/ApiDiagnostics";
 import SsoSettingsPage from "./settings/SsoSettingsPage";
 import WiringCheck from "./dev/WiringCheck";
-import RequireOrg from "../app/guards/RequireOrg";
 import RequireAuth from "../app/guards/RequireAuth";
-import OrganizationsPage from "../app/org/OrganizationsPage";
-import { OrgProvider, useOrg } from "../app/org/OrgContext";
 import {
   GovernanceComplianceCrudPage,
   GovernanceDocumentCrudPage,
@@ -42,8 +39,8 @@ import {
   ServicingPaymentsCrudPage,
 } from "./dashboard/canonical/pages";
 
-function DashboardOverview({ orgId, apiBase }: { orgId?: string | number | null; apiBase: string }) {
-  return <SaasDashboardHome apiBase={apiBase} orgId={orgId} />;
+function DashboardOverview({ apiBase }: { apiBase: string }) {
+  return <SaasDashboardHome apiBase={apiBase} />;
 }
 
 type NavItem = (typeof lenderNavRoutes)[number];
@@ -61,17 +58,13 @@ function LegacyServicingRedirect() {
 }
 
 export default function SaasDashboard() {
-  const { supabase, signOut } = useContext(AuthContext);
-
-  if (!supabase) {
-    return <SupabaseConfigNotice />;
-  }
-
+  const { signOut } = useContext(AuthContext) as { signOut: () => Promise<{ error: Error | null }> };
+  
   return (
     <Routes>
       <Route path="/login" element={<AuthenticationPage />} />
       <Route element={<RequireAuth />}>
-        <Route path="/*" element={<ProtectedApp signOut={signOut} />} />
+         <Route path="/*" element={<AuthenticatedDashboard signOut={signOut} />} />
       </Route>
     </Routes>
   );
@@ -84,7 +77,7 @@ function AuthenticationPage() {
 
   useEffect(() => {
     if (!loading && isAuthed) {
-   navigate("/organizations", { replace: true });
+     navigate("/dashboard", { replace: true });
     }
   }, [loading, isAuthed, navigate]);
 
@@ -152,36 +145,12 @@ function AuthenticationScreen({
   );
 }
 
-function SupabaseConfigNotice() {
-  return (
-    <div className="flex min-h-screen items-center justify-center bg-slate-950 px-4 text-slate-100">
-      <div className="max-w-lg space-y-4 text-center">
-        <h1 className="text-2xl font-semibold">Connect Supabase to enable authentication</h1>
-        <p className="text-sm text-slate-300">
-          Provide <code className="rounded bg-slate-900 px-1">VITE_SUPABASE_URL</code> and
-          <code className="ml-1 rounded bg-slate-900 px-1">VITE_SUPABASE_ANON_KEY</code> in your environment to
-          turn on secure sign-in. Once configured, reload this page to access the dashboard.
-        </p>
-      </div>
-    </div>
-  );
-}
-
-function ProtectedApp({ signOut }: { signOut: () => Promise<{ error: Error | null }> }) {
-  return (
-    <OrgProvider>
-      <AuthenticatedDashboard signOut={signOut} />
-    </OrgProvider>
-  );
-}
-
 function AuthenticatedDashboard({ signOut }: { signOut: () => Promise<{ error: Error | null }> }) {
   const apiBase = resolveApiBase();
   const { usage, recordUsage } = useFeatureUsage();
-  const { session, bootstrapWarning } = useContext(AuthContext) as any;
+ const { session } = useContext(AuthContext) as any;
   const userRole = session?.user?.user_metadata?.role;
   const location = useLocation();
-  const { orgId } = useOrg();
   const navigate = useNavigate();
   const [isSigningOut, setIsSigningOut] = useState(false);
   const [signOutError, setSignOutError] = useState<string | null>(null);
@@ -297,16 +266,14 @@ function AuthenticatedDashboard({ signOut }: { signOut: () => Promise<{ error: E
  const isDashboardRoute = location.pathname === "/dashboard";
   const content = (
     <Routes>
-      <Route path="/organizations" element={<OrganizationsPage />} />
-      <Route element={<RequireOrg />}>
-        <Route path="/" element={<Navigate to="/organizations" replace />} />
-         <Route path="/dashboard" element={<DashboardOverview orgId={orgId} apiBase={apiBase} />} />
+       <Route path="/" element={<Navigate to="/dashboard" replace />} />
+      <Route path="/dashboard" element={<DashboardOverview apiBase={apiBase} />} />
         <Route path="/portfolio" element={<PortfolioLayout />}>
           <Route index element={<Navigate to="/portfolio/loans" replace />} />
           <Route path="loans" element={<PortfolioLoansPage />} />
           <Route path="assets" element={<PortfolioAssetsPage />} />
         </Route>
-        <Route path="/servicing" element={<ServicingLayout orgId={orgId} />}>
+           <Route path="/servicing" element={<ServicingLayout />}>
           <Route index element={<Navigate to="/servicing/payments" replace />} />
             <Route path="draws" element={<ServicingDrawsCrudPage />} />
           <Route path="inspections" element={<ServicingInspectionsCrudPage />} />
@@ -356,8 +323,7 @@ function AuthenticatedDashboard({ signOut }: { signOut: () => Promise<{ error: E
         <Route path="/dashboard/payments" element={<LegacyRedirect to="/servicing/payments" />} />
         <Route path="/dashboard/assets" element={<LegacyRedirect to="/portfolio/assets" />} />
         <Route path="/assets" element={<LegacyRedirect to="/portfolio/assets" />} />
-        <Route path="*" element={<Navigate to="/organizations" replace />} />
-      </Route>
+       <Route path="*" element={<Navigate to="/dashboard" replace />} />
     </Routes>
   );
 
@@ -406,14 +372,6 @@ function AuthenticatedDashboard({ signOut }: { signOut: () => Promise<{ error: E
         </nav>
       </aside>
       <main className="flex-1 overflow-y-auto p-6">
-           {bootstrapWarning ? (
-          <div
-            className="mb-4 rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900"
-            role="status"
-          >
-            {bootstrapWarning}
-          </div>
-        ) : null}    
         {!isDashboardRoute && !isServicingRoute && (
           <header className="mb-6 space-y-1">
             <h1 className="text-xl font-semibold tracking-tight text-slate-900">{activeLabel}</h1>
