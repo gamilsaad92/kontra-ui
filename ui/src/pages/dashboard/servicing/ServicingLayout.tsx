@@ -9,9 +9,7 @@ const tabs = [
   { label: 'Management', to: '/servicing/management' },
 ];
 
-type Props = { orgId?: string | number | null };
-
-export default function ServicingLayout(_props: Props) {
+export default function ServicingLayout() {
   return (
      <div className="space-y-4">
       <h1 className="text-xl font-semibold">Servicing</h1>
