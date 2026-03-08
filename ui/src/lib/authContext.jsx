@@ -65,6 +65,32 @@ function routeToLogin() {
   }
 }
 
+const KONTRA_PREFIXES = ['kontra_', 'kontra:'];
+const KONTRA_EXPLICIT_KEYS = ['sessionToken'];
+
+export function clearKontraPersistedState() {
+  if (typeof window === 'undefined') return;
+
+  const clearStore = (store) => {
+    if (!store) return;
+    const keysToRemove = [];
+
+    for (let i = 0; i < store.length; i += 1) {
+      const key = store.key(i);
+      if (!key) continue;
+
+      if (KONTRA_PREFIXES.some((prefix) => key.startsWith(prefix)) || KONTRA_EXPLICIT_KEYS.includes(key)) {
+        keysToRemove.push(key);
+      }
+    }
+
+    keysToRemove.forEach((key) => store.removeItem(key));
+  };
+
+  clearStore(window.localStorage);
+  clearStore(window.sessionStorage);
+}
+
 export const AuthContext = createContext({
   session: null,
   user: null,
@@ -97,6 +123,7 @@ export function AuthProvider({ children }) {
   const [bootstrapWarning, setBootstrapWarning] = useState(null);
 
   const hasBootstrapped = useRef(false);
+  const lastBootstrappedTokenRef = useRef(null);
   const bootstrapRequestIdRef = useRef(0);
 
   const resetHydrationState = useCallback(() => {
@@ -113,18 +140,25 @@ export function AuthProvider({ children }) {
     setError(nextError);
     resetHydrationState();
     hasBootstrapped.current = false;
+    lastBootstrappedTokenRef.current = null;
 
     if (shouldRouteToLogin) routeToLogin();
   }, [resetHydrationState]);
 
   const runBootstrap = useCallback(async (targetSession) => {
-    if (!targetSession?.access_token) {
+    const targetToken = targetSession?.access_token ?? null;
+    if (!targetToken) {
       setBootstrapped(false);
       setBootstrapStatus('ready');
       setError(null);
       resetHydrationState();
       hasBootstrapped.current = false;
+      lastBootstrappedTokenRef.current = null;
       return false;
+    }
+
+        if (lastBootstrappedTokenRef.current === targetToken) {
+      return true;
     }
 
     if (hasBootstrapped.current) {
@@ -156,8 +190,8 @@ export function AuthProvider({ children }) {
       });
 
       const nextOrganization = await withTimeout(
-        apiRequest('GET', '/organizations/current', undefined, {}, { requireAuth: true }).catch(() => DEFAULT_ORGANIZATION),
-        DEFAULT_ORGANIZATION
+        apiRequest('GET', '/organizations/current', undefined, {}, { requireAuth: true }),
+        null
       );
 
       if (bootstrapRequestIdRef.current !== requestId) {
@@ -171,18 +205,28 @@ export function AuthProvider({ children }) {
           ? nextOrganization
           : DEFAULT_ORGANIZATION;
 
+            if (!safeOrganization?.id || safeOrganization.id === DEFAULT_ORGANIZATION.id) {
+        const missingOrgError = normalizeBootstrapError(
+          { message: 'Organization is missing from bootstrap response', code: 'ORG_REQUIRED' },
+          'Organization is required to continue'
+        );
+        clearKontraPersistedState();
+        failUnauthed(missingOrgError, true);
+        return false;
+      }
+
       setProfile(safeProfile);
       setWorkspace(safeWorkspace);
       setOrganization(safeOrganization);
       setBootstrapped(true);
       setBootstrapStatus('ready');
       setError(null);
+     lastBootstrappedTokenRef.current = targetToken;
 
       if (
         !nextProfile ||
         !nextWorkspace ||
-        !nextOrganization ||
-        (Array.isArray(nextOrganization) && nextOrganization.length === 0)
+        !nextOrganization
       ) {
         setBootstrapWarning('Workspace data unavailable, retrying');
       }
@@ -195,6 +239,14 @@ export function AuthProvider({ children }) {
       }
 
       const normalized = normalizeBootstrapError(bootstrapError, 'Unable to hydrate workspace data');
+            const isUnauthorized = normalized.code === '401' || normalized.code === 'AUTH_INVALID' || normalized.code === 'AUTH_REQUIRED';
+
+      if (isUnauthorized) {
+        clearKontraPersistedState();
+        failUnauthed(normalized, true);
+        return false;
+      }
+
       setBootstrapped(true);
       setBootstrapStatus('ready');
       setError(normalized);
@@ -203,7 +255,7 @@ export function AuthProvider({ children }) {
       console.error('[bootstrap] bootstrap failed', normalized);
       return false;
     }
-  }, [resetHydrationState]);
+  }, [failUnauthed, resetHydrationState]);
 
   const safeBootstrapAuth = useCallback(async () => {
     setLoading(true);
@@ -232,6 +284,7 @@ export function AuthProvider({ children }) {
       }
 
       setSession(nextSession);
+      latestAuthToken = nextSession?.access_token ?? null;
       console.info('[bootstrap] session loaded', { hasSession: Boolean(nextSession?.access_token) });
 
       if (!nextSession?.access_token) {
@@ -239,10 +292,11 @@ export function AuthProvider({ children }) {
         setBootstrapStatus('ready');
         setError(null);
         resetHydrationState();
+        latestAuthToken = null;
         return;
       }
 
-      void runBootstrap(nextSession);
+     await runBootstrap(nextSession);
     } finally {
       setLoading(false);
     }
@@ -258,6 +312,12 @@ export function AuthProvider({ children }) {
     } = supabaseClient.auth.onAuthStateChange(async (_event, nextSession) => {
       if (!isActive) return;
 
+            const incomingToken = nextSession?.access_token ?? null;
+      if (incomingToken === latestAuthToken) {
+        return;
+      }
+
+      latestAuthToken = incomingToken;
       setSession(nextSession ?? null);
       setLoading(true);
       setError(null);
@@ -268,10 +328,11 @@ export function AuthProvider({ children }) {
           setBootstrapped(false);
           setBootstrapStatus('ready');
           resetHydrationState();
+          lastBootstrappedTokenRef.current = null;
           return;
         }
 
-        void runBootstrap(nextSession);
+       await runBootstrap(nextSession);
       } finally {
         setLoading(false);
       }
@@ -290,6 +351,7 @@ export function AuthProvider({ children }) {
     }
 
     hasBootstrapped.current = false;
+    lastBootstrappedTokenRef.current = null;
     await runBootstrap(session);
   }, [runBootstrap, session]);
 
@@ -308,12 +370,15 @@ export function AuthProvider({ children }) {
     }
 
     setSession(null);
+    latestAuthToken = null;
     setError(null);
     setBootstrapped(false);
     setBootstrapStatus('ready');
     resetHydrationState();
     hasBootstrapped.current = false;
-
+   lastBootstrappedTokenRef.current = null;
+    clearKontraPersistedState();
+    
     return { error: null };
   }, [resetHydrationState]);
 
@@ -380,7 +445,3 @@ export function redirectToSignIn() {
   const next = `${window.location.pathname}${window.location.search}${window.location.hash}`;
   window.location.assign(`/login?next=${encodeURIComponent(next)}`);
 }
-
-supabaseClient.auth.onAuthStateChange((_event, nextSession) => {
-  latestAuthToken = nextSession?.access_token ?? null;
-});
