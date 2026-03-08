@@ -23,9 +23,7 @@ function AuthLoadingScreen({
         <span className="h-10 w-10 animate-spin rounded-full border-4 border-slate-700 border-t-slate-200" />
       ) : null}
 
-      <p className="text-center text-sm font-medium tracking-wide text-slate-200">
-        Loading your Kontra workspace…
-      </p>
+     <p className="text-center text-sm font-medium tracking-wide text-slate-200">Loading your Kontra workspace…</p>
 
       {error ? (
         <>
@@ -71,43 +69,20 @@ export default function RequireAuth() {
   const ctx = useContext(AuthContext);
   const location = useLocation();
 
-  // ---- IMPORTANT ----
-  // AuthContext MUST expose a clear separation between:
-  // 1) auth readiness (initializing)
-  // 2) authenticated identity (user/session)
-  // 3) optional workspace bootstrap (org/workspace provisioning)
-  //
-  // This guard should ONLY enforce "must be logged in".
-  // Do NOT block on org/workspace bootstrap here.
-
-  const {
-    // required (or adapt these names to your context):
-    session,
-    initializing,
-
-    // optional (keep if your context has them):
-    bootstrapStatus, // "idle" | "loading" | "ready" | "error"
-    bootstrapError,
-    retryBootstrap,
-  } = useMemo(() => {
-    // Make it resilient if some keys don't exist yet
+ const { session, loading, bootstrapStatus, bootstrapError, retryBootstrap } = useMemo(() => {
     return {
       session: (ctx as any)?.session ?? null,
-      initializing: Boolean((ctx as any)?.initializing),
-
+      loading: Boolean((ctx as any)?.loading),
       bootstrapStatus: (ctx as any)?.bootstrapStatus ?? "idle",
       bootstrapError: (ctx as any)?.bootstrapError ?? null,
       retryBootstrap: (ctx as any)?.retryBootstrap,
     };
   }, [ctx]);
 
-  // 1) While auth is initializing, show a short loading UI
-  if (initializing) {
+  if (loading) {
     return <AuthLoadingScreen error={null} showLogin={false} />;
   }
 
-  // 2) If NOT logged in: ALWAYS redirect to /login (this fixes the 2nd domain + reopen case)
-  // Use user OR session as your truth; use whichever your app relies on.
  if (!session?.access_token) {
     return <Navigate to="/login" replace state={{ from: location.pathname }} />;
   }
@@ -116,6 +91,5 @@ export default function RequireAuth() {
     console.warn("[bootstrap] background bootstrap warning", bootstrapError);
   }
 
-  // 3) Auth OK: render protected routes immediately after auth confirmation
   return <Outlet />;
 }
