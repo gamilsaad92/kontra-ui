@@ -7,6 +7,30 @@ const DEFAULT_PROFILE = null;
 const DEFAULT_WORKSPACE = { id: 'personal', name: 'Personal Workspace' };
 const DEFAULT_ORGANIZATION = { id: 'personal', name: 'Personal Organization' };
 
+function resolveOrganizationFromBootstrap(bootstrapResponse) {
+  const organizations = Array.isArray(bootstrapResponse?.orgs) ? bootstrapResponse.orgs : [];
+  const candidateIds = [
+    bootstrapResponse?.active_org_id,
+    bootstrapResponse?.activeOrgId,
+    bootstrapResponse?.default_org_id,
+    bootstrapResponse?.org_id,
+    organizations[0]?.id,
+  ];
+
+  const resolvedId = candidateIds
+    .map((candidate) => (candidate === null || candidate === undefined ? null : String(candidate).trim()))
+    .find((candidate) => Boolean(candidate));
+
+  if (!resolvedId) return null;
+
+  const matchedOrg = organizations.find((org) => String(org?.id) === resolvedId);
+  return {
+    id: resolvedId,
+    name: matchedOrg?.name || 'Organization',
+    role: matchedOrg?.role,
+  };
+}
+
 function normalizeBootstrapError(error, fallbackMessage) {
   if (!error) return { message: fallbackMessage, code: 'UNKNOWN_ERROR' };
 
@@ -189,11 +213,12 @@ export function AuthProvider({ children }) {
         workspaceId: nextWorkspace?.id ?? DEFAULT_WORKSPACE.id,
       });
 
-      const nextOrganization = await withTimeout(
-        apiRequest('GET', '/organizations/current', undefined, {}, { requireAuth: true }),
+      const nextBootstrap = await withTimeout(
+        apiRequest('POST', '/auth/bootstrap', {}, {}, { requireAuth: true }),
         null
       );
-
+     const nextOrganization = resolveOrganizationFromBootstrap(nextBootstrap);
+      
       if (bootstrapRequestIdRef.current !== requestId) {
         return true;
       }
