@@ -119,7 +119,7 @@ export const subscribeApiLog = (listener: (entry: ApiRequestLogEntry) => void) =
 
 export const getRequestLog = () => [...requestLog];
 
-const ORGLESS_API_PREFIXES = ["/api/health", "/api/dev/", "/api/orgs", "/api/me", "/api/auth"];
+const ORGLESS_API_PREFIXES = ["/api/health", "/api/dev/", "/api/orgs", "/api/me", "/api/auth", "/api/dashboard"];
 
 const requiresOrgForPath = (requestUrl: string): boolean => {
   try {
