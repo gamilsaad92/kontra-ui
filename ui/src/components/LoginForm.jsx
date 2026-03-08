@@ -5,7 +5,8 @@ import { Button, FormField } from './ui'
 import { useLocale } from '../lib/i18n'
 
 export default function LoginForm({ onSwitch, className = '' }) {
-  const { supabase, isLoading } = useContext(AuthContext)
+   const { supabase, loading: authLoading } = useContext(AuthContext)
+  console.log("supabase client:", supabase)
   const { t } = useLocale()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -43,6 +44,7 @@ export default function LoginForm({ onSwitch, className = '' }) {
   const authUnavailableMessage = 'Authentication is currently unavailable. Please try again later.'
 
   const handleLogin = async (e) => {
+    console.log("LOGIN SUBMIT FIRED")
     e.preventDefault()
     setError('')
     setSuccess('')
@@ -152,7 +154,7 @@ export default function LoginForm({ onSwitch, className = '' }) {
       )}
  <button
   type="submit"
-  disabled={loading || isLoading || !supabase}
+  disabled={loading || authLoading || !supabase}
   className="w-full mt-4 rounded-lg bg-slate-900 px-4 py-2 text-white disabled:cursor-not-allowed disabled:opacity-60"
 >
   {loading
@@ -161,7 +163,7 @@ export default function LoginForm({ onSwitch, className = '' }) {
     ? t('login.submit')
     : t('login.sendMagic')}
 </button>
-      {!isLoading && !supabase && (
+        {!authLoading && !supabase && (
         <p className="text-sm text-red-600">{authUnavailableMessage}</p>
       )}
       {success && <p className="text-sm text-emerald-600">{success}</p>}
