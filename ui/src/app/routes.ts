@@ -23,7 +23,6 @@ export const routeCatalog = [
   "/governance/risk",
   "/analytics",
   "/reports",
-  "/organizations",
   "/settings/sso",
   "/settings/api-diagnostics",
   "/dev/wiring-check",
