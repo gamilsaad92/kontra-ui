@@ -1,6 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { api } from "../lib/api";
-import { requireOrgId } from "../lib/orgContext";
 
 type DashboardRole = "lender" | "servicer" | "investor" | "admin";
 
@@ -58,7 +57,6 @@ function normalizeSummary(data: unknown): DashboardSummaryResponse {
 
 type Props = {
   apiBase?: string;
-  orgId?: string | number | null;
 };
 
 const defaultSummary: DashboardSummaryResponse = {
@@ -127,7 +125,7 @@ function SectionCard({
   );
 }
 
-export default function SaasDashboardHome({ apiBase, orgId }: Props) {
+export default function SaasDashboardHome({ apiBase }: Props) {
   const [summary, setSummary] = useState<DashboardSummaryResponse>(defaultSummary);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -143,22 +141,10 @@ export default function SaasDashboardHome({ apiBase, orgId }: Props) {
     setLoading(true);
     setError(null);
     const baseURL = normalizeApiBase(apiBase);
-
-       let resolvedOrgId: string;
-    try {
-      resolvedOrgId = String(orgId ?? requireOrgId());
-    } catch (requestError: any) {
-      setError(requestError?.message ?? "Select an organization to continue");
-      setLoading(false);
-      return () => {
-        cancelled = true;
-      };
-    }
-
-    api
+    
+     api
       .get<DashboardSummaryResponse>("/api/dashboard/summary", {
         ...(baseURL ? { baseURL } : {}),
-         headers: { "X-Org-Id": resolvedOrgId }
       })
       .then((response) => {
         if (cancelled) return;
@@ -168,10 +154,6 @@ export default function SaasDashboardHome({ apiBase, orgId }: Props) {
       })
       .catch((requestError: any) => {
         if (cancelled) return;
-          if (requestError?.code === "ORG_CONTEXT_MISSING") {
-          setError("Select an organization to continue");
-          return;
-        }
         setError(requestError?.message ?? "Unable to load command center summary.");
         setSummary(defaultSummary);
       })
@@ -184,7 +166,7 @@ export default function SaasDashboardHome({ apiBase, orgId }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [apiBase, orgId]);
+  }, [apiBase]);
 
   const roleWidgets = useMemo(() => {
     const base = {
