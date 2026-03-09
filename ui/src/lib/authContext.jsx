@@ -39,6 +39,30 @@ export const AuthContext = createContext({
   signOut: async () => ({ error: null }),
 });
 
+const SESSION_LOOKUP_TIMEOUT_MS = 4000;
+
+async function getSessionWithTimeout() {
+  if (!supabaseClient?.auth) {
+    return { data: { session: null } };
+  }
+
+  let timeoutId;
+  try {
+    const timeoutPromise = new Promise((resolve) => {
+      timeoutId = setTimeout(() => {
+        resolve({ data: { session: null }, timeout: true });
+      }, SESSION_LOOKUP_TIMEOUT_MS);
+    });
+
+    const result = await Promise.race([supabaseClient.auth.getSession(), timeoutPromise]);
+    return result;
+  } finally {
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+    }
+  }
+}
+
 export function AuthProvider({ children }) {
   const [session, setSession] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -56,9 +80,19 @@ export function AuthProvider({ children }) {
       }
 
       try {
-        const { data } = await supabaseClient.auth.getSession();
+        const result = await getSessionWithTimeout();
+        if (!isActive) return;
+
+        if (result?.timeout && typeof console !== 'undefined') {
+          console.warn('Supabase session lookup timed out. Continuing without an active session.');
+          setSession(null);
+          return;
+        }
+
+        setSession(result?.data?.session ?? null);
+      } catch {
         if (isActive) {
-          setSession(data?.session ?? null);
+          setSession(null);
         }
       } finally {
         if (isActive) {
