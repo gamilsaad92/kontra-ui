@@ -95,4 +95,3 @@ export default function LoginForm({ onSwitch, className = '' }) {
     </form>
   )
 }
-ui/src/components/LoginForm
