@@ -4,42 +4,57 @@ import ErrorBanner from './ErrorBanner.jsx'
 import { Button, FormField } from './ui'
 import { useLocale } from '../lib/i18n'
 
+function normalizeEmailForAuth(rawEmail) {
+  const trimmed = (rawEmail || '').trim().toLowerCase()
+  if (!trimmed.includes('@')) return trimmed
+
+  const [localPart, domainPart] = trimmed.split('@')
+  if (!localPart || !domainPart) return trimmed
+
+  if (!domainPart.includes('.')) {
+    return `${localPart}@${domainPart}.com`
+  }
+
+  return trimmed
+}
+
 export default function LoginForm({ onSwitch, className = '' }) {
-const { signIn, loading: authLoading } = useContext(AuthContext)
+  const { signIn, loading: authLoading } = useContext(AuthContext)
   const { t } = useLocale()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
-   
+
   const handleLogin = async (e) => {
     e.preventDefault()
     setError('')
-   
+
     if (!email) {
       setError(t('login.emailRequired'))
       return
     }
 
-     if (!password) {
+    if (!password) {
       setError(t('login.passwordRequired'))
       return
     }
 
-      setLoading(true)
+    setLoading(true)
     try {
-      const { error: signInError } = await signIn({ email, password })
+      const authEmail = normalizeEmailForAuth(email)
+      const { error: signInError } = await signIn({ email: authEmail, password })
       if (signInError) {
         setError(signInError.message)
       }
-      } catch (err) {
+    } catch (err) {
       setError(err?.message || 'Unable to sign in right now. Please try again.')
     } finally {
-      setLoading(false)     
+      setLoading(false)
     }
   }
 
- const rootClass = ['space-y-4', 'text-slate-900', className].filter(Boolean).join(' ')
+  const rootClass = ['space-y-4', 'text-slate-900', className].filter(Boolean).join(' ')
 
   return (
     <form onSubmit={handleLogin} className={rootClass}>
@@ -49,12 +64,12 @@ const { signIn, loading: authLoading } = useContext(AuthContext)
       </div>
       <FormField
         type="email"
-         placeholder={t('login.email')}
+        placeholder={t('login.email')}
         value={email}
         onChange={(e) => setEmail(e.target.value)}
         required
       />
-        <FormField
+      <FormField
         type="password"
         placeholder={t('login.password')}
         value={password}
@@ -70,7 +85,7 @@ const { signIn, loading: authLoading } = useContext(AuthContext)
       </button>
       <ErrorBanner message={error} onClose={() => setError('')} />
       {onSwitch && (
-         <p className="text-sm text-slate-600">
+        <p className="text-sm text-slate-600">
           {t('login.noAccount')}{' '}
           <Button type="button" variant="ghost" onClick={onSwitch} className="px-0 underline">
             {t('login.signUp')}
@@ -80,3 +95,4 @@ const { signIn, loading: authLoading } = useContext(AuthContext)
     </form>
   )
 }
+ui/src/components/LoginForm
