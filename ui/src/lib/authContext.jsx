@@ -40,6 +40,7 @@ export const AuthContext = createContext({
 });
 
 const SESSION_LOOKUP_TIMEOUT_MS = 4000;
+const SIGN_IN_TIMEOUT_MS = 15000;
 
 async function getSessionWithTimeout() {
   if (!supabaseClient?.auth) {
@@ -55,6 +56,24 @@ async function getSessionWithTimeout() {
     });
 
     const result = await Promise.race([supabaseClient.auth.getSession(), timeoutPromise]);
+    return result;
+  } finally {
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+    }
+  }
+}
+
+async function signInWithTimeout({ email, password }) {
+  let timeoutId;
+  try {
+    const timeoutPromise = new Promise((resolve) => {
+      timeoutId = setTimeout(() => {
+        resolve({ data: null, error: new Error('Login timed out. Please try again.') });
+      }, SIGN_IN_TIMEOUT_MS);
+    });
+
+    const result = await Promise.race([supabaseClient.auth.signInWithPassword({ email, password }), timeoutPromise]);
     return result;
   } finally {
     if (timeoutId) {
@@ -128,7 +147,7 @@ export function AuthProvider({ children }) {
       return { data: null, error: new Error('Supabase not configured') };
     }
 
-    return supabaseClient.auth.signInWithPassword({ email, password });
+    return signInWithTimeout({ email, password });
   }, []);
 
   const signOut = useCallback(async () => {
