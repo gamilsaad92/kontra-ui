@@ -18,5 +18,25 @@
     "VITE_SUPABASE_URL": "https://<your-project-ref>.supabase.co",
     "VITE_SUPABASE_ANON_KEY": "<YOUR_PUBLIC_ANON_KEY>",
     "VITE_SENTRY_DSN": "<your-dsn>"
-  }
+  },
+  "headers": [
+    {
+      "source": "/assets/(.*)",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=31536000, immutable"
+        }
+      ]
+    },
+    {
+      "source": "/((?!api|assets|.*\\.).*)",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-store, must-revalidate"
+        }
+      ]
+    }
+  ]
 }
