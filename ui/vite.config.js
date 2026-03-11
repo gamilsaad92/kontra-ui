@@ -9,6 +9,7 @@ export default defineConfig(({ mode }) => {
   const enablePwa = env.VITE_ENABLE_PWA === "true";
 
   return {
+    base: "/",
     plugins: [
       react(),
       enablePwa
