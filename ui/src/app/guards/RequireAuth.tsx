@@ -1,17 +1,22 @@
-import { useContext } from "react";
-import { Navigate, Outlet } from "react-router-dom";
-import { AuthContext } from "../../lib/authContext";
+import { ReactNode } from "react";
+import { Navigate, useLocation } from "react-router-dom";
 
-export default function RequireAuth() {
-    const { session, loading } = useContext(AuthContext) as { session: unknown; loading: boolean };
+type RequireAuthProps = {
+  loading: boolean;
+  session: { access_token?: string | null } | null;
+  children: ReactNode;
+};
 
+export default function RequireAuth({ loading, session, children }: RequireAuthProps) {
+  const location = useLocation();
+    
   if (loading) {
-    return null;
-}
+    return <div style={{ padding: 24 }}>Checking session...</div>;
+  }
 
- if (!session) {
-    return <Navigate to="/login" replace />;
-     }
+  if (!session?.access_token) {
+    return <Navigate to="/login" replace state={{ from: location }} />;
+  }
 
-  return <Outlet />;
+ return <>{children}</>;
 }
