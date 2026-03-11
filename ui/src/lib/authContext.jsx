@@ -1,56 +1,21 @@
-import { createContext, useCallback, useEffect, useMemo, useState } from 'react';
-import { supabase as supabaseClient, isSupabaseConfigured } from './supabaseClient';
-
-const KONTRA_PREFIXES = ['kontra_', 'kontra:'];
-const KONTRA_EXPLICIT_KEYS = ['sessionToken'];
+import { createContext, useEffect, useMemo, useState } from "react";
+import { supabase, isSupabaseConfigured } from "./supabaseClient";
 
 export function clearKontraPersistedState() {
-  if (typeof window === 'undefined') return;
-
-  const clearStore = (store) => {
-    if (!store) return;
-    const keysToRemove = [];
-
-    for (let i = 0; i < store.length; i += 1) {
-      const key = store.key(i);
-      if (!key) continue;
-
-      if (KONTRA_PREFIXES.some((prefix) => key.startsWith(prefix)) || KONTRA_EXPLICIT_KEYS.includes(key)) {
-        keysToRemove.push(key);
-      }
-    }
-
-    keysToRemove.forEach((key) => store.removeItem(key));
-  };
-
-  clearStore(window.localStorage);
-  clearStore(window.sessionStorage);
-}
-
-function clearSupabaseLockKeys() {
-  if (typeof window === 'undefined' || !window.localStorage) return;
-
-  const keysToRemove = [];
-  for (let i = 0; i < window.localStorage.length; i += 1) {
-    const key = window.localStorage.key(i);
-    if (!key) continue;
-    if (key.startsWith('lock:sb-') && key.includes('auth-token')) {
-      keysToRemove.push(key);
-    }
-  }
-
-  keysToRemove.forEach((key) => window.localStorage.removeItem(key));
+  if (typeof window === "undefined") return;
+  window.localStorage?.removeItem("sessionToken");
+  window.sessionStorage?.removeItem("sessionToken");
 }
 
 export const AuthContext = createContext({
   session: null,
+  loading: true,
   user: null,
   supabase: null,
-  loading: true,
   isLoading: true,
   initializing: true,
   isAuthed: false,
-  signIn: async () => ({ data: null, error: new Error('Supabase not configured') }),
+  signIn: async () => ({ data: null, error: new Error("Supabase not configured") }),
   signOut: async () => ({ error: null }),
 });
 
@@ -59,91 +24,66 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    let isActive = true;
+    let mounted = true;
 
-    if (!isSupabaseConfigured || !supabaseClient?.auth) {
+    if (!isSupabaseConfigured || !supabase?.auth) {
       setSession(null);
       setLoading(false);
       return () => {
-        isActive = false;
+        mounted = false;
       };
     }
 
-    clearSupabaseLockKeys();
-
-    const {
-      data: { subscription },
-    } = supabaseClient.auth.onAuthStateChange((_event, nextSession) => {
-      if (!isActive) return;
-      setSession(nextSession ?? null);
+    supabase.auth.getSession().then(({ data }) => {
+      if (!mounted) return;
+      setSession(data?.session || null);
       setLoading(false);
     });
 
-    void supabaseClient.auth
-      .getSession()
-      .then(({ data }) => {
-        if (!isActive) return;
-        setSession(data?.session ?? null);
-      })
-      .catch(() => {
-        if (!isActive) return;
-        setSession(null);
-      })
-      .finally(() => {
-        if (isActive) {
-          setLoading(false);
-        }
-      });
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, newSession) => {
+      if (!mounted) return;
+      setSession(newSession || null);
+      setLoading(false);
+    });
 
     return () => {
-      isActive = false;
-      subscription?.unsubscribe();
+      mounted = false;
+      subscription.unsubscribe();
     };
-  }, []);
-
-  const signIn = useCallback(async ({ email, password }) => {
-    if (!isSupabaseConfigured || !supabaseClient?.auth) {
-      return { data: null, error: new Error('Supabase not configured') };
-    }
-
-    clearSupabaseLockKeys();
-    const result = await supabaseClient.auth.signInWithPassword({ email, password });
-
-    if (result?.error && /lock/i.test(result.error.message || '')) {
-      clearSupabaseLockKeys();
-      return supabaseClient.auth.signInWithPassword({ email, password });
-    }
-
-    return result;
-  }, []);
-
-  const signOut = useCallback(async () => {
-    if (!isSupabaseConfigured || !supabaseClient?.auth) {
-      setSession(null);
-      clearKontraPersistedState();
-      return { error: null };
-    }
-
-    const { error } = await supabaseClient.auth.signOut();
-    setSession(null);
-    clearKontraPersistedState();
-    clearSupabaseLockKeys();
-    return { error };
   }, []);
 
   const value = useMemo(
     () => ({
       session,
-      user: session?.user ?? null,
-      supabase: isSupabaseConfigured ? supabaseClient : null,
       loading,
+      user: session?.user ?? null,
+      supabase: isSupabaseConfigured ? supabase : null,
       isLoading: loading,
       initializing: loading,
-      isAuthed: Boolean(session),
-      signIn,
-      signOut,
+      isAuthed: Boolean(session?.access_token),
+      signIn: async ({ email, password }) => {
+        if (!isSupabaseConfigured || !supabase?.auth) {
+          return { data: null, error: new Error("Supabase not configured") };
+        }
+
+        return supabase.auth.signInWithPassword({ email, password });
+      },
+      signOut: async () => {
+        if (!isSupabaseConfigured || !supabase?.auth) {
+          setSession(null);
+          clearKontraPersistedState();
+          return { error: null };
+        }
+
+        const { error } = await supabase.auth.signOut();
+        setSession(null);
+        clearKontraPersistedState();
+        return { error };
+      },
     }),
-    [loading, session, signIn, signOut]
+    [loading, session],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
