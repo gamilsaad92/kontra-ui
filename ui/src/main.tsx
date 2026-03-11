@@ -1,94 +1,35 @@
+import React from "react";
 import ReactDOM from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import App from "./App";
-import ErrorBoundary from "./app/ErrorBoundary";
+import { ErrorBoundary } from "./app/ErrorBoundary";
 import "./index.css";
-import { installApiFetchInterceptor } from "./lib/apiClient";
-import { AuthProvider } from "./lib/authContext";
-import { LocaleProvider } from "./lib/i18n";
-import { Web3Provider } from "./providers/Web3Provider";
-import "@rainbow-me/rainbowkit/styles.css";
 
-const queryClient = new QueryClient();
-
-installApiFetchInterceptor();
-
-type ApiErrorEventDetail = {
-  code?: string;
-  status?: number;
-  message?: string;
-};
-
-if (typeof window !== "undefined") {
-  const isIgnorableBrowserNoise = (message: string) => {
-    const normalized = message.toLowerCase();
-    return (
-      normalized.includes("signal is aborted") ||
-      normalized.includes("the user aborted a request") ||
-      normalized.includes("resizeobserver loop")
-    );
-  };
-
-  const isAuthSessionError = (detail: ApiErrorEventDetail | undefined) => {
-    if (!detail) return false;
-
-    if (detail.status === 401) return true;
-
-    const normalizedCode = (detail.code ?? "").toUpperCase();
-    if (normalizedCode === "AUTH_INVALID" || normalizedCode === "AUTH_REQUIRED") {
-      return true;
-    }
-
-    const normalizedMessage = (detail.message ?? "").toLowerCase();
-    return (
-      normalizedMessage.includes("invalid refresh token") ||
-      normalizedMessage.includes("refresh token not found") ||
-      normalizedMessage.includes("jwt expired") ||
-      normalizedMessage.includes("session expired")
-    );
-  };
-
-  window.addEventListener("unhandledrejection", (event) => {
-    const reason = event.reason as { name?: string; message?: string } | undefined;
-    const message = reason?.message ?? "";
-    if (reason?.name === "AbortError" || isIgnorableBrowserNoise(message)) {
-      event.preventDefault();
-    }
-  });
-
-  window.addEventListener("error", (event) => {
-    const message = event.message ?? "";
-    if (isIgnorableBrowserNoise(message)) {
-      event.preventDefault();
-    }
-  });
-
-  window.addEventListener("api:error", (event: Event) => {
-    const detail = (event as CustomEvent<ApiErrorEventDetail>).detail;
-
-    if (isAuthSessionError(detail)) {
-      window.location.assign("/login");
-      return;
-    }
-
-    const message = detail?.message ?? "Request failed";
-    window.alert(message);
-  });
+function FatalStartup({ error }: { error: unknown }) {
+  return (
+    <div style={{ padding: 24, fontFamily: "Arial, sans-serif" }}>
+      <h1>Kontra failed to start</h1>
+      <pre style={{ whiteSpace: "pre-wrap" }}>
+        {error instanceof Error ? error.stack || error.message : String(error)}
+      </pre>
+    </div>
+  );
 }
 
-ReactDOM.createRoot(document.getElementById("root")!).render(
-  <ErrorBoundary>
-    <LocaleProvider>
-      <AuthProvider>
-        <QueryClientProvider client={queryClient}>
-          <Web3Provider>
-            <BrowserRouter>
-              <App />
-            </BrowserRouter>
-          </Web3Provider>
-        </QueryClientProvider>
-      </AuthProvider>
-    </LocaleProvider>
-  </ErrorBoundary>
-);
+  try {
+  const rootEl = document.getElementById("root");
+  if (!rootEl) throw new Error("Missing #root element in index.html");
+
+  ReactDOM.createRoot(rootEl).render(
+    <React.StrictMode>
+      <BrowserRouter>
+        <ErrorBoundary>
+          <App />
+        </ErrorBoundary>
+      </BrowserRouter>
+    </React.StrictMode>,
+  );
+} catch (error) {
+  const rootEl = document.getElementById("root") || document.body;
+  ReactDOM.createRoot(rootEl).render(<FatalStartup error={error} />);
+}
