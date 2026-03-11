@@ -2,7 +2,7 @@ import React, { useContext } from "react";
 import { Routes, Route, Navigate } from "react-router-dom";
 import ErrorBoundary from "./components/ErrorBoundary";
 import LoginPage from "./pages/LoginPage";
-import DashboardLayout from "./layouts/DashboardLayout";
+import SaasDashboard from "./pages/SaasDashboard";
 import RequireAuth from "./app/guards/RequireAuth";
 import { AuthContext, AuthProvider } from "./lib/authContext";
 
@@ -24,7 +24,7 @@ function AppRoutes() {
           path="/*"
           element={
             <RequireAuth loading={loading} session={session}>
-              {isAuthenticated ? <DashboardLayout /> : <Navigate to="/login" replace />}
+               {isAuthenticated ? <SaasDashboard /> : <Navigate to="/login" replace />}
             </RequireAuth>
           }
         />
