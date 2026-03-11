@@ -1,13 +1,13 @@
 {
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
-   "rewrites": [
+ "rewrites": [
     {
       "source": "/api/(.*)",
       "destination": "https://kontra-api.onrender.com/api/$1"
     },
     {
-      "source": "/(.*)",
+      "source": "/((?!.*\\.).*)",
       "destination": "/"
     }
   ],
