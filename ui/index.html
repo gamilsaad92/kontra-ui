@@ -11,6 +11,62 @@
     <!-- Optional: replace or remove if causing 404 -->
     <!-- <link rel="icon" type="image/svg+xml" href="/vite.svg" /> -->
     <link rel="icon" href="/favicon.ico" />
+      <script>
+      (() => {
+        const errorPatterns = [
+          /\bui is not defined\b/i,
+          /can't find variable:\s*ui/i,
+          /failed to fetch dynamically imported module/i,
+          /importing a module script failed/i,
+        ];
+
+        const shouldHandle = (value) => {
+          const text = String(value || "");
+          return errorPatterns.some((pattern) => pattern.test(text));
+        };
+
+        const renderFallback = (reason) => {
+          if (window.__kontraStartupErrorShown) return;
+          window.__kontraStartupErrorShown = true;
+
+          const root = document.getElementById("root");
+          if (!root) return;
+
+          root.innerHTML = `
+            <div style="min-height:100vh;display:flex;align-items:center;justify-content:center;background:#020617;color:#e2e8f0;padding:24px;font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,sans-serif;">
+              <div style="max-width:640px;border:1px solid rgba(251,113,133,.35);background:rgba(136,19,55,.22);border-radius:12px;padding:16px;line-height:1.5;">
+                <h1 style="margin:0 0 8px;font-size:18px;">Kontra failed to load</h1>
+                <p style="margin:0 0 12px;font-size:14px;color:#fecdd3;">${String(reason || "A startup error occurred.")}</p>
+                <button id="kontra-reload" style="background:#f8fafc;color:#0f172a;border:none;border-radius:8px;padding:8px 12px;font-weight:600;cursor:pointer;">Reload app</button>
+              </div>
+            </div>
+          `;
+
+          const button = document.getElementById("kontra-reload");
+          if (button) {
+            button.addEventListener("click", () => {
+              const url = new URL(window.location.href);
+              url.searchParams.set("r", String(Date.now()));
+              window.location.replace(url.toString());
+            });
+          }
+        };
+
+        window.addEventListener("error", (event) => {
+          const message = event?.error?.message || event?.message || "";
+          if (shouldHandle(message)) {
+            renderFallback(message);
+          }
+        });
+
+        window.addEventListener("unhandledrejection", (event) => {
+          const message = event?.reason?.message || event?.reason || "";
+          if (shouldHandle(message)) {
+            renderFallback(message);
+          }
+        });
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>
