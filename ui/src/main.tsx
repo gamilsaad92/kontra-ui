@@ -3,6 +3,7 @@ import ReactDOM from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
 import App from "./App";
 import { ErrorBoundary } from "./app/ErrorBoundary";
+import { AuthProvider } from "./lib/authContext";
 import "./index.css";
 
 function FatalStartup({ error }: { error: unknown }) {
@@ -24,7 +25,9 @@ function FatalStartup({ error }: { error: unknown }) {
     <React.StrictMode>
       <BrowserRouter>
         <ErrorBoundary>
-          <App />
+          <AuthProvider>
+            <App />
+          </AuthProvider>
         </ErrorBoundary>
       </BrowserRouter>
     </React.StrictMode>,
