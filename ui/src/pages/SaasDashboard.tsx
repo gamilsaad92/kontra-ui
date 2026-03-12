@@ -1,12 +1,9 @@
-import { useCallback, useContext, useEffect, useMemo, useState, type ComponentType } from "react";
+import { useCallback, useContext, useMemo, useState, type ComponentType } from "react";
 import { NavLink, Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
-import { isFeatureEnabled } from "../lib/featureFlags";
 import { resolveApiBase } from "../lib/api";
 import useFeatureUsage from "../lib/useFeatureUsage";
 import { lenderNavRoutes } from "../routes";
 import { AuthContext } from "../lib/authContext";
-import LoginForm from "../components/LoginForm.jsx";
-import SignUpForm from "../components/SignUpForm.jsx";
 import SaasDashboardHome from "../components/SaasDashboardHome";
 import AiInsightsPage from "../features/ai-insights/page/AiInsightsPage";
 import OnchainDashboard from "../components/OnchainDashboard";
@@ -17,7 +14,6 @@ import GovernanceLayout from "./dashboard/governance/GovernanceLayout";
 import ApiDiagnostics from "./settings/ApiDiagnostics";
 import SsoSettingsPage from "./settings/SsoSettingsPage";
 import WiringCheck from "./dev/WiringCheck";
-import RequireAuth from "../app/guards/RequireAuth";
 import {
   GovernanceComplianceCrudPage,
   GovernanceDocumentCrudPage,
@@ -39,12 +35,11 @@ import {
   ServicingPaymentsCrudPage,
 } from "./dashboard/canonical/pages";
 
+type NavItem = (typeof lenderNavRoutes)[number];
+
 function DashboardOverview({ apiBase }: { apiBase: string }) {
   return <SaasDashboardHome apiBase={apiBase} />;
 }
-
-type NavItem = (typeof lenderNavRoutes)[number];
-type AuthMode = "login" | "signup";
 
 function LegacyRedirect({ to }: { to: string }) {
   const location = useLocation();
@@ -58,273 +53,79 @@ function LegacyServicingRedirect() {
 }
 
 export default function SaasDashboard() {
-  const { signOut } = useContext(AuthContext) as { signOut: () => Promise<{ error: Error | null }> };
-  
-  return (
-    <Routes>
-      <Route path="/login" element={<AuthenticationPage />} />
-      <Route element={<RequireAuth />}>
-         <Route path="/*" element={<AuthenticatedDashboard signOut={signOut} />} />
-      </Route>
-    </Routes>
-  );
-}
-
-function AuthenticationPage() {
-  const navigate = useNavigate();
-  const { loading, isAuthed } = useContext(AuthContext);
-  const [authMode, setAuthMode] = useState<AuthMode>("login");
-
-  useEffect(() => {
-    if (!loading && isAuthed) {
-     navigate("/dashboard", { replace: true });
-    }
-  }, [loading, isAuthed, navigate]);
-
-  if (loading) {
-    return null;
-  }
-
-  return <AuthenticationScreen mode={authMode} onModeChange={setAuthMode} />;
-}
-
-function AuthenticationScreen({
-  mode,
-  onModeChange,
-}: {
-  mode: AuthMode;
-  onModeChange: (mode: AuthMode) => void;
-}) {
-  const isLoginMode = mode === "login";
-
-  return (
-    <div className="flex min-h-screen items-center justify-center bg-gradient-to-b from-slate-950 via-slate-950 to-slate-900 px-4 py-12 text-slate-100">
-      <div className="w-full max-w-xl space-y-6 rounded-3xl border border-slate-800/80 bg-slate-950/50 p-6 shadow-2xl backdrop-blur sm:p-8">
-        <div className="flex justify-start">
-          <img src="/logo-dark.png" alt="Kontra" className="h-8 w-auto" />
-        </div>
-        <div className="space-y-2 text-center">
-          <h1 className="text-2xl font-semibold">
-            {isLoginMode ? "Welcome back to Kontra" : "Create your Kontra account"}
-          </h1>
-          <p className="text-sm text-slate-300">
-            {isLoginMode
-              ? "Sign in with your Supabase credentials to manage lending, trading, and servicing workflows."
-              : "Use your Supabase credentials to create an account and start managing lending, trading, and servicing workflows."}
-          </p>
-        </div>
-        <div className="flex justify-center gap-2 text-sm font-medium">
-          <button
-            type="button"
-            onClick={() => onModeChange("login")}
-            className={`rounded-full px-4 py-1 transition ${
-              mode === "login" ? "bg-white text-slate-900 shadow" : "bg-slate-900 text-slate-200 hover:bg-slate-800"
-            }`}
-          >
-            Sign in
-          </button>
-          <button
-            type="button"
-            onClick={() => onModeChange("signup")}
-            className={`rounded-full px-4 py-1 transition ${
-            mode === "signup" ? "bg-white text-slate-900 shadow" : "bg-slate-900 text-slate-200 hover:bg-slate-800"
-            }`}
-          >
-            Create account
-          </button>
-        </div>
-       <div className="rounded-2xl bg-white p-6 text-slate-900 shadow-xl">
-          {mode === "login" ? (
-            <LoginForm className="w-full" onSwitch={() => onModeChange("signup")} />
-          ) : (
-            <SignUpForm className="w-full" onSwitch={() => onModeChange("login")} />
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function AuthenticatedDashboard({ signOut }: { signOut: () => Promise<{ error: Error | null }> }) {
   const apiBase = resolveApiBase();
   const { usage, recordUsage } = useFeatureUsage();
- const { session } = useContext(AuthContext) as any;
-  const userRole = session?.user?.user_metadata?.role;
+  const { session, signOut } = useContext(AuthContext) as any;
   const location = useLocation();
   const navigate = useNavigate();
   const [isSigningOut, setIsSigningOut] = useState(false);
   const [signOutError, setSignOutError] = useState<string | null>(null);
-  const isServicingRoute =
-    location.pathname.startsWith("/servicing") || location.pathname.startsWith("/dashboard/servicing");
-  
-  const navItems = useMemo(
-    () =>
-      lenderNavRoutes
-        .filter(
-          (item) =>
-            (!item.flag || isFeatureEnabled(item.flag)) &&
-            (!item.roles || (userRole && item.roles.includes(userRole)))
-        )
-        .map((item) => {
-          if (!item.children) {
-            return item;
-          }
-          const children = item.children.filter(
-            (child) =>
-              (!child.flag || isFeatureEnabled(child.flag)) &&
-              (!child.roles || (userRole && child.roles.includes(userRole)))
-          );
-          return { ...item, children };
-        }),
-    [userRole]
-  );
 
-  const activeItem = useMemo(() => {
-    return (
-      navItems.find(
-        (item) => item.path && (location.pathname === item.path || location.pathname.startsWith(`${item.path}/`))
-      ) ?? navItems[0]
-    );
-  }, [location.pathname, navItems]);
-
-  const activeLabel = activeItem?.label ?? "Dashboard";
-  
+  const navItems = useMemo(() => lenderNavRoutes.filter((item) => !item.requiresAuth || session?.access_token), [session]);
+    
   const frequentItems = useMemo(() => {
-    return navItems
-      .filter((item) => usage[item.label])
-      .sort((a, b) => (usage[b.label] ?? 0) - (usage[a.label] ?? 0))
-      .slice(0, 3);
+     const byUsage = [...navItems]
+      .map((item) => ({ item, count: usage[item.path] ?? 0 }))
+      .sort((a, b) => b.count - a.count)
+      .filter((entry) => entry.count > 0)
+      .slice(0, 3)
+      .map((entry) => entry.item);
+
+    return byUsage;
   }, [navItems, usage]);
 
-  const handleSelectNavItem = useCallback(
+ const activeItem = useMemo(
+    () => navItems.find((item) => location.pathname === item.path || location.pathname.startsWith(`${item.path}/`)),
+    [location.pathname, navItems],
+);
+  
+  const activeLabel = activeItem?.label ?? "Dashboard";
+  const isDashboardRoute = location.pathname === "/dashboard";
+  const isServicingRoute = location.pathname.startsWith("/servicing");
+
+  const renderNavItem = useCallback(
     (item: NavItem) => {
-      recordUsage(item.label);
-    },
-    [recordUsage]
-  );
+      const Icon = item.icon as ComponentType<{ className?: string }>;
+      const children = Array.isArray(item.children) ? item.children : [];
 
-  const renderNavItem = (item: NavItem) => {
-    const Icon = item.icon as ComponentType<{ className?: string }> | undefined;
-    const active = item.path
-      ? location.pathname === item.path || location.pathname.startsWith(`${item.path}/`)
-      : item.label === activeLabel;
-    const base = "group flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm font-medium";
-    const state = active
-      ? "bg-slate-800 text-white"
-      : "text-slate-300 hover:bg-slate-800 hover:text-white focus:bg-slate-800 focus:text-white active:bg-slate-900";
-    const content = (
-      <>
-        {Icon && <Icon className="h-5 w-5 shrink-0" />}
-        <span className="truncate">{item.label}</span>
-      </>
-    );
-
-    return (
-      <div key={item.label} className="space-y-1">
-        {item.path ? (
+       return (
+        <div key={item.path} className="space-y-1">
           <NavLink
             to={item.path}
-            className={`${base} ${state}`}
-            title={item.label}
-            onClick={() => handleSelectNavItem(item)}
+             onClick={() => recordUsage(item.path)}
+            className={({ isActive }) =>
+              `flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition ${
+                isActive || location.pathname.startsWith(`${item.path}/`)
+                  ? "bg-white text-slate-900"
+                  : "text-slate-200 hover:bg-slate-900"
+              }`
+            }
           >
-            {content}
+                 <Icon className="h-4 w-4" />
+            <span>{item.label}</span>
           </NavLink>
-        ) : (
-          <button
-            type="button"
-            className={`${base} ${state}`}
-            title={item.label}
-            onClick={() => handleSelectNavItem(item)}
-          >
-            {content}
-          </button>
-        )}
-        {item.children && item.children.length > 0 ? (
-          <div className="ml-8 space-y-1">
-            {item.children.map((child) => (
-              <NavLink
-                key={child.label}
-                to={child.path ?? "#"}
-                className={({ isActive }) =>
-                  [
-                    "block rounded-md px-3 py-1.5 text-xs font-medium transition",
-                    isActive ? "bg-slate-800 text-white" : "text-slate-400 hover:bg-slate-800 hover:text-white",
-                  ].join(" ")
-                }
-                onClick={() => recordUsage(child.label)}
-              >
-                {child.label}
-              </NavLink>
-            ))}
-          </div>
-        ) : null}
-      </div>
-    );
-  };
-
- const isDashboardRoute = location.pathname === "/dashboard";
-  const content = (
-    <Routes>
-       <Route path="/" element={<Navigate to="/dashboard" replace />} />
-      <Route path="/dashboard" element={<DashboardOverview apiBase={apiBase} />} />
-        <Route path="/portfolio" element={<PortfolioLayout />}>
-          <Route index element={<Navigate to="/portfolio/loans" replace />} />
-          <Route path="loans" element={<PortfolioLoansPage />} />
-          <Route path="assets" element={<PortfolioAssetsPage />} />
-        </Route>
-           <Route path="/servicing" element={<ServicingLayout />}>
-          <Route index element={<Navigate to="/servicing/payments" replace />} />
-            <Route path="draws" element={<ServicingDrawsCrudPage />} />
-          <Route path="inspections" element={<ServicingInspectionsCrudPage />} />
-          <Route path="borrower-financials" element={<ServicingBorrowerFinancialsCrudPage />} />
-          <Route path="escrow" element={<ServicingEscrowsCrudPage />} />
-          <Route path="management" element={<ServicingManagementCrudPage />} />
-          <Route path="payments" element={<ServicingPaymentsCrudPage />} />
-        </Route>
-        <Route path="/markets" element={<MarketsLayout />}>
-          <Route index element={<Navigate to="/markets/pools" replace />} />
-          <Route path="pools" element={<MarketsPoolsCrudPage />} />
-          <Route path="tokens" element={<MarketsTokensCrudPage />} />
-          <Route path="trades" element={<MarketsTradesCrudPage />} />
-          <Route path="exchange" element={<MarketsExchangeCrudPage />} />
-        </Route>
-        <Route path="/onchain" element={<OnchainDashboard />} />
-        <Route path="/governance" element={<GovernanceLayout />}>
-          <Route index element={<Navigate to="/governance/compliance" replace />} />
-          <Route path="compliance" element={<GovernanceComplianceCrudPage />} />
-          <Route path="legal" element={<GovernanceLegalCrudPage />} />
-          <Route path="regulatory-scans" element={<GovernanceRegulatoryCrudPage />} />
-          <Route path="document-review" element={<GovernanceDocumentCrudPage />} />
-          <Route path="risk" element={<GovernanceRiskCrudPage />} />
-        </Route>
-        <Route path="/analytics" element={<AiInsightsPage />} />
-        <Route path="/reports" element={<ReportsCrudPage />} />
-           <Route path="/settings" element={<Navigate to="/settings/sso" replace />} />
-        <Route path="/settings/sso" element={<SsoSettingsPage />} />
-        <Route path="/settings/api-diagnostics" element={<ApiDiagnostics />} />
-        <Route path="/dev/wiring-check" element={<WiringCheck />} />
-        <Route path="/projects" element={<LegacyRedirect to="/portfolio/assets" />} />
-        <Route path="/pools" element={<LegacyRedirect to="/markets/pools" />} />
-        <Route path="/pools-and-tokens" element={<LegacyRedirect to="/markets/pools" />} />
-        <Route path="/tokens" element={<LegacyRedirect to="/markets/tokens" />} />
-        <Route path="/trades" element={<LegacyRedirect to="/markets/trades" />} />
-        <Route path="/exchange" element={<LegacyRedirect to="/markets/exchange" />} />
-        <Route path="/legal" element={<LegacyRedirect to="/governance/legal" />} />
-        <Route path="/compliance" element={<LegacyRedirect to="/governance/compliance" />} />
-        <Route path="/document-review" element={<LegacyRedirect to="/governance/document-review" />} />
-        <Route path="/risk" element={<LegacyRedirect to="/governance/risk" />} />
-        <Route path="/applications" element={<LegacyRedirect to="/portfolio" />} />
-        <Route path="/applications/*" element={<LegacyRedirect to="/portfolio" />} />
-        <Route path="/application/*" element={<LegacyRedirect to="/portfolio" />} />
-        <Route path="/dashboard/servicing/*" element={<LegacyServicingRedirect />} />
-        <Route path="/dashboard/draws" element={<LegacyRedirect to="/servicing/draws" />} />
-        <Route path="/dashboard/inspections" element={<LegacyRedirect to="/servicing/inspections" />} />
-        <Route path="/dashboard/payments" element={<LegacyRedirect to="/servicing/payments" />} />
-        <Route path="/dashboard/assets" element={<LegacyRedirect to="/portfolio/assets" />} />
-        <Route path="/assets" element={<LegacyRedirect to="/portfolio/assets" />} />
-       <Route path="*" element={<Navigate to="/dashboard" replace />} />
-    </Routes>
+         {children.length > 0 && location.pathname.startsWith(item.path) && (
+            <div className="ml-7 space-y-1">
+              {children.map((child) => (
+                <NavLink
+                  key={child.path}
+                  to={child.path}
+                  onClick={() => recordUsage(child.path)}
+                  className={({ isActive }) =>
+                    `block rounded px-2 py-1 text-xs ${
+                      isActive ? "bg-slate-800 text-white" : "text-slate-300 hover:bg-slate-900"
+                    }`
+                  }
+                >
+                  {child.label}
+                </NavLink>
+              ))}
+            </div>
+          )}
+        </div>
+      );
+    },
+    [location.pathname, recordUsage],
   );
 
   const handleSignOut = async () => {
@@ -339,8 +140,78 @@ function AuthenticatedDashboard({ signOut }: { signOut: () => Promise<{ error: E
     navigate("/login", { replace: true });
   };
 
+   const content = (
+    <Routes>
+      <Route path="/" element={<Navigate to="/dashboard" replace />} />
+      <Route path="/dashboard" element={<DashboardOverview apiBase={apiBase} />} />
+      <Route path="/portfolio" element={<PortfolioLayout />}>
+        <Route index element={<Navigate to="/portfolio/assets" replace />} />
+        <Route path="assets" element={<PortfolioAssetsPage />} />
+        <Route path="loans" element={<PortfolioLoansPage />} />
+      </Route>
+      <Route path="/servicing" element={<ServicingLayout />}>
+        <Route index element={<Navigate to="/servicing/draws" replace />} />
+        <Route path="draws" element={<ServicingDrawsCrudPage />} />
+        <Route path="inspections" element={<ServicingInspectionsCrudPage />} />
+        <Route path="borrower-financials" element={<ServicingBorrowerFinancialsCrudPage />} />
+        <Route path="escrow" element={<ServicingEscrowsCrudPage />} />
+        <Route path="management" element={<ServicingManagementCrudPage />} />
+        <Route path="payments" element={<ServicingPaymentsCrudPage />} />
+      </Route>
+      <Route path="/markets" element={<MarketsLayout />}>
+        <Route index element={<Navigate to="/markets/pools" replace />} />
+        <Route path="pools" element={<MarketsPoolsCrudPage />} />
+        <Route path="tokens" element={<MarketsTokensCrudPage />} />
+        <Route path="trades" element={<MarketsTradesCrudPage />} />
+        <Route path="exchange" element={<MarketsExchangeCrudPage />} />
+      </Route>
+      <Route path="/onchain" element={<OnchainDashboard />} />
+      <Route path="/governance" element={<GovernanceLayout />}>
+        <Route index element={<Navigate to="/governance/compliance" replace />} />
+        <Route path="compliance" element={<GovernanceComplianceCrudPage />} />
+        <Route path="legal" element={<GovernanceLegalCrudPage />} />
+        <Route path="regulatory-scans" element={<GovernanceRegulatoryCrudPage />} />
+        <Route path="document-review" element={<GovernanceDocumentCrudPage />} />
+        <Route path="risk" element={<GovernanceRiskCrudPage />} />
+      </Route>
+      <Route path="/analytics" element={<AiInsightsPage />} />
+      <Route path="/reports" element={<ReportsCrudPage />} />
+      <Route path="/settings" element={<Navigate to="/settings/sso" replace />} />
+      <Route path="/settings/sso" element={<SsoSettingsPage />} />
+      <Route path="/settings/api-diagnostics" element={<ApiDiagnostics />} />
+      <Route path="/dev/wiring-check" element={<WiringCheck />} />
+      <Route path="/projects" element={<LegacyRedirect to="/portfolio/assets" />} />
+      <Route path="/pools" element={<LegacyRedirect to="/markets/pools" />} />
+      <Route path="/pools-and-tokens" element={<LegacyRedirect to="/markets/pools" />} />
+      <Route path="/tokens" element={<LegacyRedirect to="/markets/tokens" />} />
+      <Route path="/trades" element={<LegacyRedirect to="/markets/trades" />} />
+      <Route path="/exchange" element={<LegacyRedirect to="/markets/exchange" />} />
+      <Route path="/legal" element={<LegacyRedirect to="/governance/legal" />} />
+      <Route path="/compliance" element={<LegacyRedirect to="/governance/compliance" />} />
+      <Route path="/document-review" element={<LegacyRedirect to="/governance/document-review" />} />
+      <Route path="/risk" element={<LegacyRedirect to="/governance/risk" />} />
+      <Route path="/applications" element={<LegacyRedirect to="/portfolio" />} />
+      <Route path="/applications/*" element={<LegacyRedirect to="/portfolio" />} />
+      <Route path="/application/*" element={<LegacyRedirect to="/portfolio" />} />
+      <Route path="/dashboard/servicing/*" element={<LegacyServicingRedirect />} />
+      <Route path="/dashboard/draws" element={<LegacyRedirect to="/servicing/draws" />} />
+      <Route path="/dashboard/inspections" element={<LegacyRedirect to="/servicing/inspections" />} />
+      <Route path="/dashboard/payments" element={<LegacyRedirect to="/servicing/payments" />} />
+      <Route path="/dashboard/assets" element={<LegacyRedirect to="/portfolio/assets" />} />
+      <Route path="/assets" element={<LegacyRedirect to="/portfolio/assets" />} />
+      <Route
+        path="*"
+        element={
+          <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+            Route not found. Redirecting to dashboard...
+          </div>
+        }
+      />
+    </Routes>
+  );
+
   return (
-       <div className="flex min-h-screen bg-slate-100 text-slate-900">
+     <div className="flex min-h-screen bg-slate-100 text-slate-900">
       <aside className="flex w-64 flex-col bg-slate-950 text-slate-100">
         <div className="flex items-center gap-2 px-4 py-4 text-sm font-semibold tracking-tight">
           <img src="/logo-dark.png" alt="Kontra" className="h-6 w-auto" />
@@ -353,7 +224,7 @@ function AuthenticatedDashboard({ signOut }: { signOut: () => Promise<{ error: E
               <hr className="border-slate-800" />
             </div>
           )}
-                   {navItems.map((item) => renderNavItem(item))}
+            {navItems.map((item) => renderNavItem(item))}
           <div className="pt-4">
             <button
               type="button"
