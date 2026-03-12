@@ -25,6 +25,7 @@ export function AuthProvider({ children }) {
 
   useEffect(() => {
     let mounted = true;
+      let fallbackTimer = null;
 
     if (!isSupabaseConfigured || !supabase?.auth) {
       setSession(null);
@@ -34,11 +35,35 @@ export function AuthProvider({ children }) {
       };
     }
 
-    supabase.auth.getSession().then(({ data }) => {
+      fallbackTimer = window.setTimeout(() => {
       if (!mounted) return;
-      setSession(data?.session || null);
       setLoading(false);
-    });
+       }, 5000);
+
+    const initializeSession = async () => {
+      try {
+        const { data, error } = await supabase.auth.getSession();
+
+        if (!mounted) return;
+        if (error) {
+          console.warn("Supabase getSession failed:", error.message);
+        }
+
+        setSession(data?.session || null);
+      } catch (error) {
+        if (!mounted) return;
+        console.warn("Supabase getSession threw:", error);
+        setSession(null);
+      } finally {
+        if (!mounted) return;
+        if (fallbackTimer) {
+          window.clearTimeout(fallbackTimer);
+        }
+        setLoading(false);
+      }
+    };
+
+    initializeSession();
 
     const {
       data: { subscription },
@@ -50,6 +75,9 @@ export function AuthProvider({ children }) {
 
     return () => {
       mounted = false;
+           if (fallbackTimer) {
+        window.clearTimeout(fallbackTimer);
+      }
       subscription.unsubscribe();
     };
   }, []);
