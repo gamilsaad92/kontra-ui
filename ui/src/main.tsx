@@ -5,6 +5,7 @@ import App from "./App";
 import { ErrorBoundary } from "./app/ErrorBoundary";
 import { AuthProvider } from "./lib/authContext";
 import { QueryClientProvider } from "./lib/queryClient";
+import { Web3Provider } from "./providers/Web3Provider";
 import "./index.css";
 
 function FatalStartup({ error }: { error: unknown }) {
@@ -26,10 +27,12 @@ function FatalStartup({ error }: { error: unknown }) {
     <React.StrictMode>
       <BrowserRouter>
         <ErrorBoundary>
-             <QueryClientProvider>
-            <AuthProvider>
-              <App />
-            </AuthProvider>
+                  <QueryClientProvider>
+            <Web3Provider>
+              <AuthProvider>
+                <App />
+              </AuthProvider>
+            </Web3Provider>
           </QueryClientProvider>
         </ErrorBoundary>
       </BrowserRouter>
