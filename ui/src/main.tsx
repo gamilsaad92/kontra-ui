@@ -4,6 +4,7 @@ import { BrowserRouter } from "react-router-dom";
 import App from "./App";
 import { ErrorBoundary } from "./app/ErrorBoundary";
 import { AuthProvider } from "./lib/authContext";
+import { QueryClientProvider } from "./lib/queryClient";
 import "./index.css";
 
 function FatalStartup({ error }: { error: unknown }) {
@@ -25,9 +26,11 @@ function FatalStartup({ error }: { error: unknown }) {
     <React.StrictMode>
       <BrowserRouter>
         <ErrorBoundary>
-          <AuthProvider>
-            <App />
-          </AuthProvider>
+             <QueryClientProvider>
+            <AuthProvider>
+              <App />
+            </AuthProvider>
+          </QueryClientProvider>
         </ErrorBoundary>
       </BrowserRouter>
     </React.StrictMode>,
