@@ -1,0 +1,19 @@
+# macOS
+.DS_Store
+
+# dependencies
+node_modules/
+/package-lock.json
+
+# build output
+dist/
+
+# environment files
+.env
+*.env
+*.env.*
+.env.local
+!api/.env
+!api/.env.example
+!ui/.env.example
+ios/KontraMobile/Resources/Config.plist

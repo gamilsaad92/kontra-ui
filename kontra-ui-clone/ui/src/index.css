@@ -1,0 +1,8 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* light mode page bg */
+:root { color-scheme: light; background: #0b1020; }
+:root:not(.dark) { background: #f7f8fb; color: #0f172a; }
+

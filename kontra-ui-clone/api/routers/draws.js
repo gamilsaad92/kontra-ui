@@ -1,0 +1,744 @@
+const express = require('express');
+const multer = require('multer');
+const { randomBytes } = require('crypto');
+const { v4: uuidv4 } = require('uuid');
+const { createClient } = require('@supabase/supabase-js');
+const PDFDocument = require('pdfkit');
+const { sendEmail } = require('../communications');
+const { recordFeedback, retrainModel } = require('../feedback');
+const { triggerWebhooks } = require('../webhooks');
+const { poolFactory, whitelistRegistry, describeDeployment } = require('../services/tokenizationContracts');
+
+const router = express.Router();
+const upload = multer({ storage: multer.memoryStorage() });
+const supabase = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY
+);
+
+const tokenizedNotes = new Map();
+const syndicationCampaigns = new Map();
+const TREASURY_ADDRESS = '0xkontra-treasury-000000000000000001';
+const OVER_COLLATERALIZATION_RATIO = 1.25;
+const escrowNoteState = {
+  lockedCollateral: 0,
+  notes: []
+};
+
+function randomInvestorAddress() {
+  return `0x${randomBytes(20).toString('hex')}`;
+}
+
+function whitelistAddress(address, investorType = 'investor', kycProviderRef = 'kyc-provider') {
+  return whitelistRegistry.upsert(address, {
+    isWhitelisted: true,
+    investorType,
+    kycProviderRef
+  });
+}
+
+function serializeNote(note) {
+  const deployment = describeDeployment();
+  const pool = note.poolId ? poolFactory.getPool(note.poolId) : null;
+
+  return {
+    ...note,
+    whitelistRegistry: deployment.whitelistRegistry,
+    poolFactory: deployment.poolFactory,
+    pool: pool ? pool.summary() : null
+  };
+}
+
+function formatNumber(value, fallback = 0) {
+  const num = typeof value === 'string' ? parseFloat(value) : value;
+  return Number.isFinite(num) ? num : fallback;
+}
+
+async function fetchDraw(drawId) {
+  const { data, error } = await supabase
+    .from('draw_requests')
+    .select('id, project, amount, status, approved_at, funded_at')
+    .eq('id', drawId)
+    .maybeSingle();
+  if (error || !data) return null;
+  return data;
+}
+
+async function aggregateEscrowBalance() {
+  const { data, error } = await supabase
+    .from('escrows')
+    .select('escrow_balance');
+  if (error || !data) {
+    return 0;
+  }
+  return data.reduce((sum, row) => sum + formatNumber(row.escrow_balance), 0);
+}
+
+function calculateRiskScore({ amount, description, lastSubmittedAt }) {
+  let score = 100;
+  if (amount > 100000) score -= 20;
+  if (description.length < 15) score -= 10;
+  if (lastSubmittedAt) {
+    const lastDate = new Date(lastSubmittedAt);
+    const now = new Date();
+    const diffInDays = (now - lastDate) / (1000 * 60 * 60 * 24);
+    if (diffInDays < 7) score -= 15;
+  }
+  return Math.max(score, 0);
+}
+
+// Submit a draw request (legacy route)
+router.post('/draw-request', async (req, res) => {
+  const { project, amount, description, project_number, property_location } = req.body;
+  if (!project || !amount || !description || !project_number || !property_location) {
+    return res.status(400).json({ message: 'Missing required fields' });
+  }
+  const { data: lastDraw } = await supabase
+    .from('draw_requests')
+    .select('submitted_at')
+    .eq('project', project)
+    .order('submitted_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  const riskScore = calculateRiskScore({
+    amount,
+    description,
+    lastSubmittedAt: lastDraw?.submitted_at
+  });
+
+  const { data, error } = await supabase
+    .from('draw_requests')
+    .insert([{ project, amount, description, project_number, property_location, status: 'submitted', risk_score: riskScore, submitted_at: new Date().toISOString() }])
+    .select()
+    .single();
+
+    if (!error) {
+    await supabase
+      .from('draw_status_history')
+      .insert([{ draw_id: data.id, status: 'submitted', created_at: new Date().toISOString() }]);
+  }
+
+  if (error) return res.status(500).json({ message: 'Failed to submit draw request' });
+  res.status(200).json({ message: 'Draw request submitted!', data });
+});
+
+// Submit a draw request (RESTful)
+router.post('/draw-requests', upload.array('documents'), async (req, res) => {
+  const { project, draw_number, description, amount } = req.body;
+  if (!project || !draw_number || !description || !amount) {
+    return res.status(400).json({ message: 'Missing required fields' });
+  }
+
+  const { data, error } = await supabase
+    .from('draw_requests')
+    .insert([{ project, draw_number, description, amount, status: 'submitted', submitted_at: new Date().toISOString() }])
+    .select()
+    .single();
+
+  if (error) return res.status(500).json({ message: 'Failed to submit draw request' });
+
+  await supabase
+    .from('draw_status_history')
+    .insert([{ draw_id: data.id, status: 'submitted', created_at: new Date().toISOString() }]);
+
+  if (req.files && req.files.length) {
+    for (const file of req.files) {
+      const filePath = `draw-documents/${data.id}/${Date.now()}_${file.originalname}`;
+      await supabase.storage
+        .from('draw-documents')
+        .upload(filePath, file.buffer, { contentType: file.mimetype });
+    }
+  }
+
+  res.status(201).json({ draw: data });
+});
+
+// Review or approve a draw
+router.post('/review-draw', async (req, res) => {
+  const { id, status, comment } = req.body;
+  if (!id || !status) return res.status(400).json({ message: 'Missing id or status' });
+
+  const updates = { status, reviewed_at: new Date().toISOString() };
+  if (status === 'approved') updates.approved_at = new Date().toISOString();
+  if (status === 'funded') updates.funded_at = new Date().toISOString();
+  if (status === 'rejected') {
+    updates.rejected_at = new Date().toISOString();
+    updates.review_comment = comment || '';
+  }
+
+  const { data, error } = await supabase
+    .from('draw_requests')
+    .update(updates)
+    .eq('id', id)
+    .select()
+    .single();
+
+  if (error) return res.status(500).json({ message: 'Failed to update draw request' });
+
+  await supabase
+    .from('draw_status_history')
+    .insert([{ draw_id: id, status, created_at: new Date().toISOString() }]);
+
+   if (status === 'funded') {
+    await triggerWebhooks('draw.funded', data);
+  }
+
+  recordFeedback({ decision_type: 'draw', entity_id: id, decision: status, comments: comment || '' });
+  retrainModel();
+  res.status(200).json({ message: 'Draw request updated', data });
+});
+
+// List draw requests (legacy)
+router.get('/get-draws', async (req, res) => {
+  const { status, project } = req.query;
+  let q = supabase
+    .from('draw_requests')
+    .select(`
+      id,
+      project,
+      amount,
+      description,
+      project_number,
+      property_location,
+      status,
+      submitted_at    as submittedAt,
+      reviewed_at     as reviewedAt,
+      approved_at     as approvedAt,
+      rejected_at     as rejectedAt,
+      funded_at       as fundedAt,
+      review_comment  as reviewComment,
+      risk_score      as riskScore
+    `)
+    .order('submitted_at', { ascending: false });
+  if (status) q = q.eq('status', status);
+  if (project) q = q.eq('project', project);
+  const { data, error } = await q;
+  if (error) return res.status(500).json({ message: 'Failed to fetch draw requests' });
+  res.json({ draws: data });
+});
+
+// List draw requests (RESTful)
+router.get('/draw-requests', async (req, res) => {
+  const { status, project } = req.query;
+  let q = supabase
+    .from('draw_requests')
+    .select('*')
+    .order('submitted_at', { ascending: false });
+  if (status) q = q.eq('status', status);
+  if (project) q = q.eq('project', project);
+  const { data, error } = await q;
+  if (error) return res.status(500).json({ message: 'Failed to fetch draw requests' });
+  res.json({ draws: data });
+});
+
+// Single draw
+router.get('/draw-requests/:id', async (req, res) => {
+  const { data, error } = await supabase
+    .from('draw_requests')
+    .select('*')
+    .eq('id', req.params.id)
+    .single();
+  if (error) return res.status(500).json({ message: 'Failed to fetch draw request' });
+  res.json({ draw: data });
+});
+
+// Draw status history
+router.get('/draw-requests/:id/history', async (req, res) => {
+  const { data, error } = await supabase
+    .from('draw_status_history')
+    .select('status, created_at')
+    .eq('draw_id', req.params.id)
+    .order('created_at', { ascending: true });
+  if (error) return res.status(500).json({ message: 'Failed to fetch history' });
+  res.json({ history: data });
+});
+
+// Export draws
+router.get('/draw-requests/export', async (req, res) => {
+  const { status } = req.query;
+  let q = supabase.from('draw_requests').select('id, project, amount, status, submitted_at');
+  if (status) q = q.eq('status', status);
+  const { data, error } = await q;
+  if (error) return res.status(500).json({ message: 'Failed to export draws' });
+  const header = 'id,project,amount,status,submitted_at';
+  const rows = data.map(d => [d.id, d.project, d.amount, d.status, d.submitted_at].join(','));
+  res.setHeader('Content-Type', 'text/csv');
+  res.send([header, ...rows].join('\n'));
+});
+
+// Update draw
+router.put('/draw-requests/:id', async (req, res) => {
+  const updates = req.body || {};
+  const { data, error } = await supabase
+    .from('draw_requests')
+    .update(updates)
+    .eq('id', req.params.id)
+    .select()
+    .single();
+  if (error) return res.status(500).json({ message: 'Failed to update draw' });
+  
+  if (updates.status) {
+    await supabase
+      .from('draw_status_history')
+      .insert([{ draw_id: req.params.id, status: updates.status, created_at: new Date().toISOString() }]);
+  }
+  res.json({ draw: data });
+});
+
+// Delete draw
+router.delete('/draw-requests/:id', async (req, res) => {
+  const { error } = await supabase.from('draw_requests').delete().eq('id', req.params.id);
+  if (error) return res.status(500).json({ message: 'Failed to delete draw' });
+  res.json({ message: 'Deleted' });
+});
+
+// Upload lien waiver
+router.post('/upload-lien-waiver', upload.single('file'), async (req, res) => {
+  const { draw_id, contractor_name, waiver_type } = req.body;
+  if (!draw_id || !contractor_name || !waiver_type || !req.file) {
+    return res.status(400).json({ message: 'Missing required fields or file' });
+  }
+  const filePath = `lien-waivers/${draw_id}/${Date.now()}_${req.file.originalname}`;
+  const { error: uploadError } = await supabase.storage
+    .from('draw-inspections')
+    .upload(filePath, req.file.buffer, { contentType: req.file.mimetype });
+  if (uploadError) return res.status(500).json({ message: 'File upload failed' });
+  const fileUrl = supabase.storage.from('draw-inspections').getPublicUrl(filePath).publicURL;
+  const aiReport = await Promise.resolve({ errors: [], fields: {} });
+  const passed = aiReport.errors.length === 0;
+  const { data, error } = await supabase
+    .from('lien_waivers')
+    .insert([{ draw_id: parseInt(draw_id, 10), contractor_name, waiver_type, file_url: fileUrl, verified_at: new Date().toISOString(), verification_passed: passed, verification_report: aiReport }])
+    .select()
+    .single();
+  if (error) return res.status(500).json({ message: 'Failed to save waiver' });
+  res.status(200).json({ message: 'Lien waiver uploaded', data });
+});
+
+// List lien waivers
+router.get('/list-lien-waivers', async (req, res) => {
+  const { draw_id, project_id } = req.query;
+  if (!draw_id && !project_id) return res.status(400).json({ message: 'Missing draw_id or project_id' });
+  let q = supabase.from('lien_waivers').select('id, contractor_name, waiver_type, file_url, verified_at, verification_passed, draw_id, project_id');
+  if (draw_id) q = q.eq('draw_id', draw_id);
+  if (project_id) q = q.eq('project_id', project_id);
+  const { data, error } = await q.order('verified_at', { ascending: false });
+  if (error) return res.status(500).json({ message: 'Failed to list waivers' });
+  res.json({ waivers: data });
+});
+
+router.get('/lien-waivers/:id', async (req, res) => {
+  const { data, error } = await supabase.from('lien_waivers').select('*').eq('id', req.params.id).single();
+  if (error) return res.status(500).json({ message: 'Failed to fetch waiver' });
+  res.json({ waiver: data });
+});
+
+router.put('/lien-waivers/:id', async (req, res) => {
+  const { data, error } = await supabase.from('lien_waivers').update(req.body || {}).eq('id', req.params.id).select().single();
+  if (error) return res.status(500).json({ message: 'Failed to update waiver' });
+  res.json({ waiver: data });
+});
+
+router.delete('/lien-waivers/:id', async (req, res) => {
+  const { error } = await supabase.from('lien_waivers').delete().eq('id', req.params.id);
+  if (error) return res.status(500).json({ message: 'Failed to delete waiver' });
+  res.json({ message: 'Deleted' });
+});
+
+router.get('/lien-waivers/export', async (req, res) => {
+  const { draw_id, project_id } = req.query;
+  let q = supabase.from('lien_waivers').select('id, contractor_name, waiver_type, verification_passed, draw_id, project_id, verified_at');
+  if (draw_id) q = q.eq('draw_id', draw_id);
+  if (project_id) q = q.eq('project_id', project_id);
+  const { data, error } = await q;
+  if (error) return res.status(500).json({ message: 'Failed to export waivers' });
+  const header = 'id,contractor_name,waiver_type,verification_passed,draw_id,project_id,verified_at';
+  const rows = data.map(w => [w.id, w.contractor_name, w.waiver_type, w.verification_passed, w.draw_id, w.project_id, w.verified_at].join(','));
+  res.setHeader('Content-Type', 'text/csv');
+  res.send([header, ...rows].join('\n'));
+});
+
+// Auto-generate lien waiver checklist for a draw
+router.get('/waiver-checklist/:drawId', async (req, res) => {
+  const { drawId } = req.params;
+  const { data, error } = await supabase
+    .from('lien_waivers')
+    .select('waiver_type')
+    .eq('draw_id', drawId);
+  if (error) return res.status(500).json({ message: 'Failed to fetch waivers' });
+  const types = (data || []).map(w => w.waiver_type.toLowerCase());
+  const items = ['general contractor', 'subcontractor', 'supplier'];
+  const checklist = items.map(it => ({
+    item: `${it} waiver`,
+    completed: types.some(t => t.includes(it))
+  }));
+  res.json({ checklist });
+});
+
+// Generate summary PDF for a draw
+router.get('/draw-requests/:id/summary', async (req, res) => {
+  const { id } = req.params;
+  const { email } = req.query;
+  const { data: draw, error: drawErr } = await supabase
+    .from('draw_requests')
+    .select('*')
+    .eq('id', id)
+    .single();
+  if (drawErr || !draw) return res.status(404).json({ message: 'Draw not found' });
+  const { data: history } = await supabase
+    .from('draw_status_history')
+    .select('status, created_at')
+    .eq('draw_id', id)
+    .order('created_at');
+  const { data: funded } = await supabase
+    .from('draw_requests')
+    .select('amount')
+    .eq('status', 'funded');
+  const disbursements = (funded || []).reduce((s, d) => s + parseFloat(d.amount || 0), 0);
+  const balance = 1000000 - disbursements;
+
+  const doc = new PDFDocument();
+  const buffers = [];
+  doc.on('data', b => buffers.push(b));
+  doc.on('end', async () => {
+    const pdf = Buffer.concat(buffers);
+    if (email) {
+      try {
+        await sendEmail(email, 'Draw Summary', 'See attached draw summary', [
+          { filename: 'draw_summary.pdf', content: pdf }
+        ]);
+        res.json({ sent: true });
+      } catch (err) {
+        console.error('Email error', err);
+        res.status(500).json({ message: 'Failed to send email' });
+      }
+    } else {
+      res.setHeader('Content-Type', 'application/pdf');
+      res.send(pdf);
+    }
+  });
+
+  doc.fontSize(18).text('Draw Summary');
+  doc.moveDown();
+  doc.fontSize(12).text(`Draw #${draw.id}`);
+  doc.text(`Project: ${draw.project}`);
+  doc.text(`Amount: ${draw.amount}`);
+  doc.text(`Status: ${draw.status}`);
+  if (draw.submitted_at) doc.text(`Submitted: ${draw.submitted_at}`);
+  doc.moveDown();
+  doc.text('Status History:');
+  (history || []).forEach(h => {
+    doc.text(`${h.status} - ${h.created_at}`);
+  });
+  doc.moveDown();
+  doc.text('Financial Summary:');
+  doc.text(`Current Balance: ${balance}`);
+  doc.text(`Total Disbursements: ${disbursements}`);
+  doc.end();
+});
+
+// List inspections
+router.get('/list-inspections', async (req, res) => {
+  const { draw_id, project_id } = req.query;
+  if (!draw_id && !project_id) return res.status(400).json({ message: 'Missing draw_id or project_id' });
+  let query = supabase.from('inspections').select('id, inspection_date, notes, draw_id, project_id');
+  if (draw_id) query = query.eq('draw_id', draw_id);
+  if (project_id) query = query.eq('project_id', project_id);
+  query = query.order('inspection_date', { ascending: false });
+  const { data, error } = await query;
+  if (error) return res.status(500).json({ message: 'Failed to list inspections' });
+  res.json({ inspections: data });
+});
+
+router.get('/draw-requests/tokenizations', async (_req, res) => {
+  const notes = Array.from(tokenizedNotes.values()).map(note => serializeNote(note));
+  res.json({ notes });
+});
+
+router.post('/draw-requests/:id/tokenize', async (req, res) => {
+  const drawId = parseInt(req.params.id, 10);
+  if (!Number.isInteger(drawId)) {
+    return res.status(400).json({ message: 'Invalid draw id' });
+  }
+  const draw = await fetchDraw(drawId);
+  if (!draw) return res.status(404).json({ message: 'Draw not found' });
+  if (!['approved', 'funded'].includes(draw.status)) {
+    return res.status(400).json({ message: 'Draw must be approved before tokenization' });
+  }
+
+  let note = tokenizedNotes.get(drawId);
+  if (!note) {
+       const poolId = `DRAW-${drawId}`;
+    const adminAddress = TREASURY_ADDRESS;
+    whitelistAddress(adminAddress, 'treasury', 'treasury-ledger');
+
+    let poolToken;
+    try {
+      poolToken = poolFactory.createPool({
+        poolId,
+        name: `${draw.project} Draw ${draw.id}`,
+        symbol: `DRW${draw.id}`,
+        initialSupply: 0,
+        adminAddress
+      });
+    } catch (err) {
+      return res.status(400).json({ message: err.message || 'Failed to deploy pool token' });
+    }
+
+    const deployment = describeDeployment();
+    note = {
+      id: `NOTE-${drawId}-${Date.now()}`,
+      drawId,
+      project: draw.project,
+      faceValue: formatNumber(draw.amount),
+     contractAddress: poolToken.contractAddress,
+      status: 'deployed',
+      createdAt: new Date().toISOString(),
+     fractionsMinted: poolToken.totalSupply,
+      fractionPrice: null,
+      investors: [],
+      poolId,
+      tokenName: poolToken.name,
+      tokenSymbol: poolToken.symbol,
+      adminAddress,
+      whitelistRegistryAddress: deployment.whitelistRegistry.address
+    };
+    tokenizedNotes.set(drawId, note);
+   return res.status(201).json({ note: serializeNote(note) });
+  }
+
+  res.json({ note: serializeNote(note) });
+});
+
+router.post('/draw-requests/:id/tokenizations/mint', async (req, res) => {
+  const drawId = parseInt(req.params.id, 10);
+  const { fractions, pricePerFraction, allocations } = req.body || {};
+  if (!Number.isInteger(drawId)) {
+    return res.status(400).json({ message: 'Invalid draw id' });
+  }
+  const note = tokenizedNotes.get(drawId);
+  if (!note) return res.status(404).json({ message: 'Tokenized note not found' });
+  const pool = note.poolId ? poolFactory.getPool(note.poolId) : null;
+  if (!pool) return res.status(404).json({ message: 'Pool token not found for this draw' });
+  if (!pool.active) return res.status(400).json({ message: 'Pool is closed' });
+  
+  const fractionCount = parseInt(fractions, 10);
+  if (!Number.isFinite(fractionCount) || fractionCount <= 0) {
+    return res.status(400).json({ message: 'Fractions must be a positive number' });
+  }
+  const price = formatNumber(pricePerFraction, note.faceValue / fractionCount);
+
+  const allocationCandidates = Array.isArray(allocations) && allocations.length
+    ? allocations
+    : [{ investor: 'Lead Investor', amount: fractionCount * price, investorType: 'us_accredited' }];
+
+  const normalizedAllocations = allocationCandidates.slice(0, Math.max(1, Math.min(allocationCandidates.length, fractionCount)));
+  let remainingFractions = fractionCount;
+  const investorAllocations = normalizedAllocations.map((entry, index) => {
+    const address = (entry.address || randomInvestorAddress()).toLowerCase();
+    const investorType = entry.investorType || 'investor';
+    whitelistAddress(address, investorType, entry.kycProviderRef || 'kyc-review-pass');
+    const shareCount = index === normalizedAllocations.length - 1
+      ? Math.max(remainingFractions, 1)
+      : Math.max(1, Math.floor(fractionCount / normalizedAllocations.length));
+    remainingFractions = Math.max(remainingFractions - shareCount, 0);
+    pool.mint(address, shareCount);
+    return {
+      investor: entry.investor || 'Unnamed Investor',
+      amount: formatNumber(entry.amount, shareCount * price),
+      address,
+      investorType,
+      kycProviderRef: entry.kycProviderRef || 'kyc-review-pass',
+      isWhitelisted: true,
+      fractions: shareCount
+    };
+  });
+  
+  note.fractionsMinted = pool.totalSupply;
+  note.fractionPrice = price;
+  note.investors = investorAllocations;
+  note.status = 'fractionalized';
+  note.lastMintedAt = new Date().toISOString();
+  tokenizedNotes.set(drawId, note);
+
+  res.json({ note: serializeNote(note) });
+});
+
+router.get('/draws/escrow-notes', async (_req, res) => {
+  const balance = await aggregateEscrowBalance();
+  const locked = escrowNoteState.lockedCollateral;
+  const availableCollateral = Math.max(balance - locked, 0);
+  const availableCapacity = availableCollateral / OVER_COLLATERALIZATION_RATIO;
+  res.json({
+    balance,
+    lockedCollateral: locked,
+    ratio: OVER_COLLATERALIZATION_RATIO,
+    availableCapacity,
+    notes: escrowNoteState.notes
+  });
+});
+
+router.post('/draws/escrow-notes', async (req, res) => {
+  const { amount, maturityDate, rate } = req.body || {};
+  const issueAmount = formatNumber(amount);
+  if (!Number.isFinite(issueAmount) || issueAmount <= 0) {
+    return res.status(400).json({ message: 'Amount must be greater than zero' });
+  }
+
+  const balance = await aggregateEscrowBalance();
+  const collateralRequired = issueAmount * OVER_COLLATERALIZATION_RATIO;
+  const availableCollateral = Math.max(balance - escrowNoteState.lockedCollateral, 0);
+  if (collateralRequired > availableCollateral) {
+    return res.status(400).json({
+      message: 'Insufficient escrow balance to maintain over-collateralization',
+      requiredCollateral: collateralRequired,
+      availableCollateral
+    });
+  }
+
+  const note = {
+    id: uuidv4(),
+    amount: issueAmount,
+    rate: formatNumber(rate, 0.08),
+    maturityDate: maturityDate || null,
+    collateral: collateralRequired,
+    issuedAt: new Date().toISOString()
+  };
+  escrowNoteState.lockedCollateral += collateralRequired;
+  escrowNoteState.notes.push(note);
+
+  const remainingCollateral = Math.max(balance - escrowNoteState.lockedCollateral, 0);
+
+  res.status(201).json({
+    note,
+    balance,
+    lockedCollateral: escrowNoteState.lockedCollateral,
+    availableCapacity: remainingCollateral / OVER_COLLATERALIZATION_RATIO
+  });
+});
+
+router.get('/draws/syndications', async (_req, res) => {
+  res.json({ campaigns: Array.from(syndicationCampaigns.values()) });
+});
+
+router.get('/draw-requests/:id/syndication', async (req, res) => {
+  const drawId = parseInt(req.params.id, 10);
+  if (!Number.isInteger(drawId)) {
+    return res.status(400).json({ message: 'Invalid draw id' });
+  }
+  const campaign = syndicationCampaigns.get(drawId);
+  if (!campaign) return res.status(404).json({ message: 'Syndication not found' });
+  res.json({ campaign });
+});
+
+router.post('/draw-requests/:id/syndication', async (req, res) => {
+  const drawId = parseInt(req.params.id, 10);
+  if (!Number.isInteger(drawId)) {
+    return res.status(400).json({ message: 'Invalid draw id' });
+  }
+  const draw = await fetchDraw(drawId);
+  if (!draw) return res.status(404).json({ message: 'Draw not found' });
+
+  const { targetAmount, minVotes, deadline } = req.body || {};
+  const target = formatNumber(targetAmount, formatNumber(draw.amount));
+  if (!Number.isFinite(target) || target <= 0) {
+    return res.status(400).json({ message: 'Target amount must be greater than zero' });
+  }
+
+  const minimumVotes = Math.max(parseInt(minVotes ?? 3, 10), 1);
+  let campaign = syndicationCampaigns.get(drawId);
+  const now = new Date().toISOString();
+  if (!campaign) {
+    campaign = {
+      id: `SYN-${drawId}`,
+      drawId,
+      draw: {
+        id: drawId,
+        project: draw.project,
+        amount: formatNumber(draw.amount)
+      },
+      createdAt: now,
+      targetAmount: target,
+      pledged: 0,
+      minVotes: minimumVotes,
+      deadline: deadline || null,
+      participants: [],
+      votes: [],
+      status: 'collecting',
+      thresholdMet: false
+    };
+  } else {
+    campaign.targetAmount = target;
+    campaign.minVotes = minimumVotes;
+    campaign.deadline = deadline || campaign.deadline;
+  }
+  syndicationCampaigns.set(drawId, campaign);
+
+  res.status(campaign.createdAt === now ? 201 : 200).json({ campaign });
+});
+
+router.post('/draw-requests/:id/syndication/pledge', (req, res) => {
+  const drawId = parseInt(req.params.id, 10);
+  if (!Number.isInteger(drawId)) {
+    return res.status(400).json({ message: 'Invalid draw id' });
+  }
+  const campaign = syndicationCampaigns.get(drawId);
+  if (!campaign) return res.status(404).json({ message: 'Syndication not found' });
+
+  const { investor, amount, vote } = req.body || {};
+  if (!investor) {
+    return res.status(400).json({ message: 'Investor name is required' });
+  }
+  const pledgeAmount = formatNumber(amount);
+  if (!Number.isFinite(pledgeAmount) || pledgeAmount <= 0) {
+    return res.status(400).json({ message: 'Pledge amount must be greater than zero' });
+  }
+
+  const support = vote === undefined ? true : Boolean(vote);
+  const entry = {
+    id: uuidv4(),
+    investor,
+    amount: pledgeAmount,
+    vote: support,
+    pledgedAt: new Date().toISOString()
+  };
+  campaign.participants.push(entry);
+  campaign.pledged = (campaign.pledged || 0) + pledgeAmount;
+  campaign.votes.push({ investor, support });
+
+  const positiveVotes = campaign.votes.filter(v => v.support).length;
+  const pledgedTotal = campaign.participants.reduce((sum, p) => sum + formatNumber(p.amount), 0);
+  const thresholdMet = pledgedTotal >= campaign.targetAmount || positiveVotes >= campaign.minVotes;
+  campaign.thresholdMet = thresholdMet;
+  if (thresholdMet) {
+    const allocationBase = Math.min(pledgedTotal, campaign.targetAmount);
+    campaign.allocations = campaign.participants.map(p => ({
+      investor: p.investor,
+      allocation: Number(((formatNumber(p.amount) / pledgedTotal) * allocationBase).toFixed(2))
+    }));
+    campaign.status = 'allocated';
+    campaign.allocatedAt = new Date().toISOString();
+  } else {
+    campaign.status = 'collecting';
+    campaign.allocations = null;
+  }
+
+  syndicationCampaigns.set(drawId, campaign);
+
+  res.status(201).json({ campaign, pledge: entry });
+});
+
+router.post('/hazard-loss', async (req, res) => {
+  const { draw_id, part_i, follow_up, restoration } = req.body || {};
+  if (!draw_id || !part_i) return res.status(400).json({ message: 'Missing draw_id or Part I data' });
+  const { data, error } = await supabase
+    .from('hazard_losses')
+    .insert([{ draw_id, part_i, follow_up: follow_up || null, restoration: restoration || null }])
+    .select()
+    .single();
+  if (error) return res.status(500).json({ message: 'Failed to record hazard loss' });
+  res.status(201).json({ hazard_loss: data });
+});
+
+module.exports = router;
