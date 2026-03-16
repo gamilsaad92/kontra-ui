@@ -8,6 +8,7 @@ import SaasDashboardHome from "../components/SaasDashboardHome";
 import AiInsightsPage from "../features/ai-insights/page/AiInsightsPage";
 import OnchainDashboard from "../components/OnchainDashboard";
 import ServicingLayout from "./dashboard/servicing/ServicingLayout";
+import ServicingAIValidationPage from "./dashboard/servicing/ServicingAIValidationPage";
 import PortfolioLayout from "./dashboard/portfolio/PortfolioLayout";
 import MarketsLayout from "./dashboard/markets/MarketsLayout";
 import GovernanceLayout from "./dashboard/governance/GovernanceLayout";
@@ -150,13 +151,15 @@ export default function SaasDashboard() {
         <Route path="loans" element={<PortfolioLoansPage />} />
       </Route>
       <Route path="/servicing" element={<ServicingLayout />}>
-        <Route index element={<Navigate to="/servicing/draws" replace />} />
-        <Route path="draws" element={<ServicingDrawsCrudPage />} />
-        <Route path="inspections" element={<ServicingInspectionsCrudPage />} />
-        <Route path="borrower-financials" element={<ServicingBorrowerFinancialsCrudPage />} />
-        <Route path="escrow" element={<ServicingEscrowsCrudPage />} />
-        <Route path="management" element={<ServicingManagementCrudPage />} />
+        <Route index element={<Navigate to="/servicing/payments" replace />} />
         <Route path="payments" element={<ServicingPaymentsCrudPage />} />
+        <Route path="inspections" element={<ServicingInspectionsCrudPage />} />
+        <Route path="draws" element={<ServicingDrawsCrudPage />} />
+        <Route path="escrow" element={<ServicingEscrowsCrudPage />} />
+        <Route path="borrower-financials" element={<ServicingBorrowerFinancialsCrudPage />} />
+        <Route path="management" element={<ServicingManagementCrudPage />} />
+        <Route path="ai-validation/:reviewId" element={<ServicingAIValidationPage />} />
+        <Route path="ai-validation" element={<ServicingAIValidationPage />} />
       </Route>
       <Route path="/markets" element={<MarketsLayout />}>
         <Route index element={<Navigate to="/markets/pools" replace />} />
