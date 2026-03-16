@@ -10,9 +10,19 @@ const {
   PaymentReviewRequestSchema,
   InspectionReviewRequestSchema,
   ComplianceReviewRequestSchema,
+  DrawReviewRequestSchema,
+  FinancialReviewRequestSchema,
+  EscrowReviewRequestSchema,
+  ManagementReviewRequestSchema,
+  NarrativeRequestSchema,
 } = require('../schemas/ai/reviews');
 const { runPaymentAgent } = require('../ai/agents/paymentAgent');
 const { runInspectionAgent } = require('../ai/agents/inspectionAgent');
+const { runDrawAgent } = require('../ai/agents/drawAgent');
+const { runFinancialAgent } = require('../ai/agents/financialAgent');
+const { runEscrowAgent } = require('../ai/agents/escrowAgent');
+const { runManagementAgent } = require('../ai/agents/managementAgent');
+const narrativeGenerator = require('../lib/narrativeGenerator');
 const { selectFor } = require('../lib/selectColumns');
 
 const router = express.Router();
@@ -251,7 +261,7 @@ router.post('/compliance/review', async (req, res) => {
       confidence: status === 'pass' ? 0.8 : 0.6,
       title: status === 'pass' ? 'Compliance item passed AI review' : 'Compliance item requires review',
       summary: status === 'pass' ? 'No open compliance exceptions detected.' : 'Open compliance status requires human review.',
-      reasons: status === 'pass' ? [] : [{ code: 'OPEN_ITEM', message: 'Compliance item is still open.', severity: 'med' }],
+      reasons: status === 'pass' ? [] : [{ code: 'OPEN_ITEM', message: 'Compliance item is still open.', severity: 'medium' }],
       evidence: [],
       recommended_actions: [{ action_type: 'route_to_compliance', label: 'Route to compliance queue', payload: { item_id: item.id }, requires_approval: true }],
       proposed_updates: { current_status: item.status },
@@ -259,6 +269,218 @@ router.post('/compliance/review', async (req, res) => {
   });
 
   return res.status(201).json(validateResponse(AiReviewResponseSchema, { review }));
+});
+
+router.post('/draws/review', async (req, res) => {
+  let body;
+  try { body = parseOrThrow(DrawReviewRequestSchema, req.body); }
+  catch (error) { return sendValidationError(res, error); }
+
+  const { data: draw } = await supabase.from('draws').select(selectFor('draws'))
+    .eq('org_id', req.orgId).eq('id', body.draw_id).maybeSingle();
+  if (!draw) return res.status(404).json({ code: 'DRAW_NOT_FOUND' });
+
+  const d = draw.data || {};
+  const review = await createReview({
+    orgId: req.orgId, type: 'draw', entityType: 'draw', entityId: draw.id,
+    result: runDrawAgent({
+      invoices: d.invoices,
+      lien_waivers: d.lien_waivers,
+      line_items: d.line_items,
+      attachments: d.attachments,
+      prior_draw_total: d.prior_draw_total,
+      requested_amount: d.requested_amount,
+      contract_amount: d.contract_amount,
+      inspector_cert: d.inspector_cert,
+      context: { property_name: draw.title, draw_number: d.draw_number },
+    }),
+  });
+  return res.status(201).json(validateResponse(AiReviewResponseSchema, { review }));
+});
+
+router.post('/financials/review', async (req, res) => {
+  let body;
+  try { body = parseOrThrow(FinancialReviewRequestSchema, req.body); }
+  catch (error) { return sendValidationError(res, error); }
+
+  const { data: fin } = await supabase.from('borrower_financials').select(selectFor('borrower_financials'))
+    .eq('org_id', req.orgId).eq('id', body.financial_id).maybeSingle();
+  if (!fin) return res.status(404).json({ code: 'FINANCIAL_NOT_FOUND' });
+
+  const d = fin.data || {};
+  const review = await createReview({
+    orgId: req.orgId, type: 'financial', entityType: 'borrower_financial', entityId: fin.id,
+    result: runFinancialAgent({
+      current: d.current,
+      prior: d.prior,
+      underwritten: d.underwritten,
+      annual_debt_service: d.annual_debt_service,
+      dscr_covenant: d.dscr_covenant,
+      occupancy_covenant: d.occupancy_covenant,
+      variance_explanations: d.variance_explanations,
+      context: { property_name: fin.title, period: d.period },
+    }),
+  });
+  return res.status(201).json(validateResponse(AiReviewResponseSchema, { review }));
+});
+
+router.post('/escrows/review', async (req, res) => {
+  let body;
+  try { body = parseOrThrow(EscrowReviewRequestSchema, req.body); }
+  catch (error) { return sendValidationError(res, error); }
+
+  const { data: escrow } = await supabase.from('escrows').select(selectFor('escrows'))
+    .eq('org_id', req.orgId).eq('id', body.escrow_id).maybeSingle();
+  if (!escrow) return res.status(404).json({ code: 'ESCROW_NOT_FOUND' });
+
+  const d = escrow.data || {};
+  const review = await createReview({
+    orgId: req.orgId, type: 'escrow', entityType: 'escrow', entityId: escrow.id,
+    result: runEscrowAgent({
+      current_balance: d.current_balance,
+      scheduled_items: d.scheduled_items,
+      transactions: d.transactions,
+      monthly_deposit: d.monthly_deposit,
+      cushion_months: d.cushion_months,
+      context: { property_name: escrow.title },
+    }),
+  });
+  return res.status(201).json(validateResponse(AiReviewResponseSchema, { review }));
+});
+
+router.post('/management/review', async (req, res) => {
+  let body;
+  try { body = parseOrThrow(ManagementReviewRequestSchema, req.body); }
+  catch (error) { return sendValidationError(res, error); }
+
+  const { data: mgmt } = await supabase.from('management_items').select(selectFor('management_items'))
+    .eq('org_id', req.orgId).eq('id', body.management_id).maybeSingle();
+  if (!mgmt) return res.status(404).json({ code: 'MANAGEMENT_NOT_FOUND' });
+
+  const d = mgmt.data || {};
+  const review = await createReview({
+    orgId: req.orgId, type: 'management', entityType: 'management_item', entityId: mgmt.id,
+    result: runManagementAgent({
+      documents: d.documents,
+      change_type: d.change_type,
+      manager_info: d.manager_info,
+      clause_flags: d.clause_flags,
+      lender_consent_obtained: d.lender_consent_obtained,
+      context: { property_name: mgmt.title },
+    }),
+  });
+  return res.status(201).json(validateResponse(AiReviewResponseSchema, { review }));
+});
+
+router.post('/narrative', async (req, res) => {
+  let body;
+  try { body = parseOrThrow(NarrativeRequestSchema, req.body); }
+  catch (error) { return sendValidationError(res, error); }
+
+  const tableMap = {
+    inspection: 'inspections', draw: 'draws', financial: 'borrower_financials',
+    escrow: 'escrows', payment: 'payments', management: 'management_items',
+  };
+  const table = tableMap[body.type];
+
+  const { data: entity } = await supabase.from(table).select('*')
+    .eq('org_id', req.orgId).eq('id', body.entity_id).maybeSingle();
+  if (!entity) return res.status(404).json({ code: 'ENTITY_NOT_FOUND' });
+
+  let review = null;
+  if (body.review_id) {
+    const { data: rv } = await supabase.from('ai_reviews').select('*')
+      .eq('org_id', req.orgId).eq('id', body.review_id).maybeSingle();
+    review = rv;
+  }
+
+  const d = entity.data || {};
+  const overrides = body.overrides || {};
+  const context = { property_name: entity.title, ...overrides.context };
+  let narrative = '';
+
+  try {
+    if (body.type === 'inspection') {
+      narrative = narrativeGenerator.inspectionComment({
+        property_name: context.property_name,
+        inspection_date: d.inspection_date || overrides.inspection_date,
+        inspector: d.inspector || overrides.inspector,
+        status: review?.status || d.status || 'needs_review',
+        findings: d.findings || [],
+        life_safety: d.life_safety_items || [],
+        repairs_completed: d.repairs_completed || [],
+        repairs_pending: d.repairs_pending || [],
+        deferral_amount: d.deferral_amount,
+        context,
+      });
+    } else if (body.type === 'draw') {
+      const pu = review?.proposed_updates || {};
+      narrative = narrativeGenerator.drawComment({
+        property_name: context.property_name,
+        draw_number: d.draw_number,
+        draw_amount: d.requested_amount,
+        cumulative_disbursed: (d.prior_draw_total || 0) + (d.requested_amount || 0),
+        contract_amount: d.contract_amount,
+        work_description: d.work_description || [],
+        lien_waiver_status: pu.lien_waiver_status
+          ? (pu.lien_waiver_status.missing_waivers?.length === 0 ? 'All lien waivers received' : 'Waivers outstanding')
+          : null,
+        inspector_cert: d.inspector_cert,
+        context,
+      });
+    } else if (body.type === 'financial') {
+      const pu = review?.proposed_updates || {};
+      narrative = narrativeGenerator.financialComment({
+        property_name: context.property_name,
+        period: d.period,
+        dscr: pu.dscr ?? d.dscr,
+        occupancy: pu.occupancy ?? d.current?.occupancy,
+        noi: d.current?.noi,
+        prior_dscr: pu.prior_dscr,
+        prior_occupancy: d.prior?.occupancy,
+        dscr_covenant: d.dscr_covenant,
+        occupancy_covenant: d.occupancy_covenant,
+        variance_explanations: d.variance_explanations || [],
+        watchlist: review?.status === 'fail',
+        context,
+      });
+    } else if (body.type === 'escrow') {
+      const pu = review?.proposed_updates || {};
+      narrative = narrativeGenerator.escrowComment({
+        property_name: context.property_name,
+        current_balance: d.current_balance,
+        monthly_deposit: d.monthly_deposit,
+        projected_low: pu.projected_low_balance,
+        shortage_amount: pu.projected_low_balance < 0 ? Math.abs(pu.projected_low_balance) : 0,
+        scheduled_items: d.scheduled_items || [],
+        action_taken: overrides.action_taken,
+        context,
+      });
+    } else if (body.type === 'payment') {
+      narrative = narrativeGenerator.paymentComment({
+        property_name: context.property_name,
+        payment_amount: d.received_amount,
+        expected_amount: d.expected_amount,
+        received_date: d.received_date,
+        due_date: d.due_date,
+        exception_type: d.exception_type,
+        remitter: d.remitter,
+        allocation: d.allocation,
+        context,
+      });
+    } else if (body.type === 'management') {
+      narrative = narrativeGenerator.inspectionComment({
+        property_name: context.property_name,
+        status: review?.status || 'needs_review',
+        findings: (d.clause_flags || []),
+        context,
+      });
+    }
+  } catch (err) {
+    return res.status(500).json({ code: 'NARRATIVE_GENERATION_FAILED', details: err.message });
+  }
+
+  return res.json({ narrative, type: body.type, entity_id: body.entity_id });
 });
 
 module.exports = router;
