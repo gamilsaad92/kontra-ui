@@ -1,17 +1,17 @@
 const { z } = require('../../../lib/zod');
 
 const ReviewStatusSchema = z.enum(['pass', 'needs_review', 'fail']);
-const ReviewTypeSchema = z.enum(['payment', 'inspection', 'compliance', 'general']);
+const ReviewTypeSchema = z.enum(['payment', 'inspection', 'compliance', 'draw', 'financial', 'escrow', 'management', 'general']);
 
 const AiReasonSchema = z.object({
   code: z.string(),
   message: z.string(),
-  severity: z.enum(['low', 'med', 'high']),
+  severity: z.enum(['low', 'medium', 'high']),
 });
 
 const AiEvidenceSchema = z.object({
   label: z.string(),
-  url: z.string().url(),
+  url: z.string(),
   kind: z.enum(['doc', 'image', 'link']),
   excerpt: z.string().optional(),
 });
@@ -67,6 +67,17 @@ const ApproveActionRequestSchema = z.object({
 const PaymentReviewRequestSchema = z.object({ payment_id: z.string().uuid() });
 const InspectionReviewRequestSchema = z.object({ inspection_id: z.string().uuid() });
 const ComplianceReviewRequestSchema = z.object({ compliance_item_id: z.string().uuid() });
+const DrawReviewRequestSchema = z.object({ draw_id: z.string().uuid() });
+const FinancialReviewRequestSchema = z.object({ financial_id: z.string().uuid() });
+const EscrowReviewRequestSchema = z.object({ escrow_id: z.string().uuid() });
+const ManagementReviewRequestSchema = z.object({ management_id: z.string().uuid() });
+
+const NarrativeRequestSchema = z.object({
+  type: z.enum(['inspection', 'draw', 'financial', 'escrow', 'payment', 'management']),
+  entity_id: z.string().uuid(),
+  review_id: z.string().uuid().optional(),
+  overrides: z.record(z.unknown()).optional(),
+});
 
 module.exports = {
   AiReasonSchema,
@@ -81,4 +92,9 @@ module.exports = {
   PaymentReviewRequestSchema,
   InspectionReviewRequestSchema,
   ComplianceReviewRequestSchema,
+  DrawReviewRequestSchema,
+  FinancialReviewRequestSchema,
+  EscrowReviewRequestSchema,
+  ManagementReviewRequestSchema,
+  NarrativeRequestSchema,
 };
