@@ -1,9 +1,9 @@
 function requireOrgContext(req, res, next) {
-  if (!req.path.startsWith('/api')) {
-    return next();
-  }
+  // Use originalUrl so the full path is available regardless of where this
+  // middleware is mounted (e.g. mounted at /api, req.path loses the prefix).
+  const path = (req.originalUrl || '').split('?')[0];
 
- if (req.path === '/api/health' || req.path.startsWith('/api/dev/')) {
+  if (path === '/api/health' || path.startsWith('/api/dev/')) {
     return next();
   }
 
