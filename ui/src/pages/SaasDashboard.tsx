@@ -9,6 +9,13 @@ import AiInsightsPage from "../features/ai-insights/page/AiInsightsPage";
 import OnchainDashboard from "../components/OnchainDashboard";
 import ServicingLayout from "./dashboard/servicing/ServicingLayout";
 import ServicingAIValidationPage from "./dashboard/servicing/ServicingAIValidationPage";
+import ServicingOverviewPage from "./dashboard/servicing/ServicingOverviewPage";
+import ServicingPaymentsPage from "./dashboard/servicing/ServicingPaymentsPage";
+import ServicingInspectionsPage from "./dashboard/servicing/ServicingInspectionsPage";
+import ServicingDrawsPage from "./dashboard/servicing/ServicingDrawsPage";
+import ServicingEscrowPage from "./dashboard/servicing/ServicingEscrowPage";
+import ServicingBorrowerFinancialsPage from "./dashboard/servicing/ServicingBorrowerFinancialsPage";
+import ServicingManagementPage from "./dashboard/servicing/ServicingManagementPage";
 import PortfolioLayout from "./dashboard/portfolio/PortfolioLayout";
 import MarketsLayout from "./dashboard/markets/MarketsLayout";
 import GovernanceLayout from "./dashboard/governance/GovernanceLayout";
@@ -28,12 +35,6 @@ import {
   PortfolioAssetsPage,
   PortfolioLoansPage,
   ReportsCrudPage,
-  ServicingBorrowerFinancialsCrudPage,
-  ServicingDrawsCrudPage,
-  ServicingEscrowsCrudPage,
-  ServicingInspectionsCrudPage,
-  ServicingManagementCrudPage,
-  ServicingPaymentsCrudPage,
 } from "./dashboard/canonical/pages";
 
 type NavItem = (typeof lenderNavRoutes)[number];
@@ -151,13 +152,14 @@ export default function SaasDashboard() {
         <Route path="loans" element={<PortfolioLoansPage />} />
       </Route>
       <Route path="/servicing" element={<ServicingLayout />}>
-        <Route index element={<Navigate to="/servicing/payments" replace />} />
-        <Route path="payments" element={<ServicingPaymentsCrudPage />} />
-        <Route path="inspections" element={<ServicingInspectionsCrudPage />} />
-        <Route path="draws" element={<ServicingDrawsCrudPage />} />
-        <Route path="escrow" element={<ServicingEscrowsCrudPage />} />
-        <Route path="borrower-financials" element={<ServicingBorrowerFinancialsCrudPage />} />
-        <Route path="management" element={<ServicingManagementCrudPage />} />
+        <Route index element={<Navigate to="/servicing/overview" replace />} />
+        <Route path="overview" element={<ServicingOverviewPage />} />
+        <Route path="payments" element={<ServicingPaymentsPage />} />
+        <Route path="inspections" element={<ServicingInspectionsPage />} />
+        <Route path="draws" element={<ServicingDrawsPage />} />
+        <Route path="escrow" element={<ServicingEscrowPage />} />
+        <Route path="borrower-financials" element={<ServicingBorrowerFinancialsPage />} />
+        <Route path="management" element={<ServicingManagementPage />} />
         <Route path="ai-validation/:reviewId" element={<ServicingAIValidationPage />} />
         <Route path="ai-validation" element={<ServicingAIValidationPage />} />
       </Route>
