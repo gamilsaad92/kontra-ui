@@ -9,6 +9,7 @@ const tabs = [
   { label: 'Escrows', to: '/servicing/escrow' },
   { label: 'Borrower Financials', to: '/servicing/borrower-financials' },
   { label: 'Management', to: '/servicing/management' },
+  { label: 'AI Operations', to: '/servicing/ai-ops' },
 ];
 
 export default function ServicingLayout() {

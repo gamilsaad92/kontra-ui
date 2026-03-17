@@ -16,6 +16,7 @@ import ServicingDrawsPage from "./dashboard/servicing/ServicingDrawsPage";
 import ServicingEscrowPage from "./dashboard/servicing/ServicingEscrowPage";
 import ServicingBorrowerFinancialsPage from "./dashboard/servicing/ServicingBorrowerFinancialsPage";
 import ServicingManagementPage from "./dashboard/servicing/ServicingManagementPage";
+import ServicingAIOpsPage from "./dashboard/servicing/ServicingAIOpsPage";
 import PortfolioLayout from "./dashboard/portfolio/PortfolioLayout";
 import MarketsLayout from "./dashboard/markets/MarketsLayout";
 import GovernanceLayout from "./dashboard/governance/GovernanceLayout";
@@ -160,6 +161,7 @@ export default function SaasDashboard() {
         <Route path="escrow" element={<ServicingEscrowPage />} />
         <Route path="borrower-financials" element={<ServicingBorrowerFinancialsPage />} />
         <Route path="management" element={<ServicingManagementPage />} />
+        <Route path="ai-ops" element={<ServicingAIOpsPage />} />
         <Route path="ai-validation/:reviewId" element={<ServicingAIValidationPage />} />
         <Route path="ai-validation" element={<ServicingAIValidationPage />} />
       </Route>
