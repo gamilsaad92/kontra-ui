@@ -106,3 +106,46 @@ export function useRunInspectionReview() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['ai-reviews'] }),
   });
 }
+
+export async function getReviews(params: ReviewQuery = {}): Promise<ReviewsListResponse> {
+  const queryString = toQuery(params);
+  const response = await apiFetch(`/api/ai/reviews${queryString ? `?${queryString}` : ''}`);
+  if (!response.ok) throw new Error('Failed to load AI reviews');
+  return readJson<ReviewsListResponse>(response);
+}
+
+export async function markReview(id: string, status: AiReviewStatus): Promise<{ review: AiReview }> {
+  const response = await apiFetch(`/api/ai/reviews/${id}/mark`, {
+    method: 'POST',
+    body: JSON.stringify({ status }),
+  });
+  if (!response.ok) throw new Error('Failed to mark AI review');
+  return readJson<{ review: AiReview }>(response);
+}
+
+export async function approveAction(payload: { id: string; action_type: string; action_payload: unknown; notes?: string }): Promise<{ ok: boolean }> {
+  const response = await apiFetch(`/api/ai/reviews/${payload.id}/approve-action`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) throw new Error('Failed to approve AI action');
+  return readJson<{ ok: boolean }>(response);
+}
+
+export async function reviewPayment({ payment_id }: { payment_id: string }): Promise<{ review: AiReview }> {
+  const response = await apiFetch('/api/ai/payments/review', {
+    method: 'POST',
+    body: JSON.stringify({ payment_id }),
+  });
+  if (!response.ok) throw new Error('Failed to run payment AI review');
+  return readJson<{ review: AiReview }>(response);
+}
+
+export async function reviewInspection({ inspection_id }: { inspection_id: string }): Promise<{ review: AiReview }> {
+  const response = await apiFetch('/api/ai/inspections/review', {
+    method: 'POST',
+    body: JSON.stringify({ inspection_id }),
+  });
+  if (!response.ok) throw new Error('Failed to run inspection AI review');
+  return readJson<{ review: AiReview }>(response);
+}

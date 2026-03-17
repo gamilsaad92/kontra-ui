@@ -17,6 +17,27 @@ env = { "CI" = "true" }
 [workflows]
 runButton = "Project"
 
+[[workflows.workflow]]
+name = "Project"
+mode = "parallel"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Kontra UI Dashboard"
+
+[[workflows.workflow]]
+name = "Kontra UI Dashboard"
+author = "agent"
+
+[workflows.workflow.metadata]
+outputType = "webview"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "cd kontra-ui-clone/ui && node node_modules/vite/bin/vite.js"
+waitForPort = 5173
+
 [agent]
 stack = "PNPM_WORKSPACE"
 expertMode = true
