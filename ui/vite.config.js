@@ -75,6 +75,14 @@ export default defineConfig(({ mode }) => {
     optimizeDeps: {
       include: ["react", "react-dom"],
     },
+    server: {
+      port: 5173,
+      host: "0.0.0.0",
+      allowedHosts: true,
+    },
+    build: {
+      sourcemap: false,
+    },
     // Optional: bring this back if you want custom chunks
     // build: {
     //   rollupOptions: {
