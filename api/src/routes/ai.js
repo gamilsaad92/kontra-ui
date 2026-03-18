@@ -16,12 +16,13 @@ const {
   ManagementReviewRequestSchema,
   NarrativeRequestSchema,
 } = require('../schemas/ai/reviews');
-const { runPaymentAgent } = require('../ai/agents/paymentAgent');
-const { runInspectionAgent } = require('../ai/agents/inspectionAgent');
-const { runDrawAgent } = require('../ai/agents/drawAgent');
-const { runFinancialAgent } = require('../ai/agents/financialAgent');
-const { runEscrowAgent } = require('../ai/agents/escrowAgent');
-const { runManagementAgent } = require('../ai/agents/managementAgent');
+const { runPaymentAgent } = require('../../ai/agents/paymentAgent');
+const { runInspectionAgent } = require('../../ai/agents/inspectionAgent');
+const { runDrawAgent } = require('../../ai/agents/drawAgent');
+const { runFinancialAgent } = require('../../ai/agents/financialAgent');
+const { runEscrowAgent } = require('../../ai/agents/escrowAgent');
+const { runManagementAgent } = require('../../ai/agents/managementAgent');
+const narrativeGenerator = require('../lib/narrativeGenerator');
 const narrativeGenerator = require('../lib/narrativeGenerator');
 const { selectFor } = require('../lib/selectColumns');
 
