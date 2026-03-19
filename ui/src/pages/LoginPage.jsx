@@ -10,10 +10,10 @@ export default function LoginPage() {
 
   if (loading) {
     return (
-      <div className="flex min-h-screen items-center justify-center" style={{ background: "linear-gradient(160deg, #1a0505 0%, #0f0f0f 60%, #0a0a0a 100%)" }}>
+      <div className="flex min-h-screen items-center justify-center" style={{ background: "#1c1c1c" }}>
         <div className="flex items-center gap-3">
-          <div className="h-5 w-5 animate-spin rounded-full border-2 border-red-800 border-t-transparent" />
-          <span className="text-sm" style={{ color: "#6b7280" }}>Loading Kontra…</span>
+          <div className="h-5 w-5 animate-spin rounded-full border-2 border-red-600 border-t-transparent" />
+          <span className="text-sm" style={{ color: "#888" }}>Loading Kontra…</span>
         </div>
       </div>
     );
@@ -26,50 +26,39 @@ export default function LoginPage() {
   return (
     <div
       className="relative flex min-h-screen items-center justify-center overflow-hidden px-6"
-      style={{ background: "linear-gradient(160deg, #1a0505 0%, #0f0f0f 60%, #0a0a0a 100%)" }}
+      style={{ background: "#1c1c1c" }}
     >
-      {/* Ambient glow */}
+      {/* Red radial halo — the signature glow behind the card */}
       <div
         className="pointer-events-none fixed inset-0"
         style={{
-          background: "radial-gradient(ellipse 60% 40% at 50% 30%, rgba(139,26,26,0.18) 0%, transparent 70%)",
+          background:
+            "radial-gradient(ellipse 55% 45% at 50% 50%, rgba(200,30,30,0.28) 0%, rgba(160,20,20,0.12) 40%, transparent 70%)",
         }}
       />
 
-      <div className="relative w-full max-w-[400px]">
-        {/* Wordmark */}
-        <div className="mb-8 flex items-center justify-center gap-3">
-          <div
-            className="flex h-10 w-10 items-center justify-center rounded-xl"
-            style={{ background: "#8b1a1a", boxShadow: "0 0 24px rgba(139,26,26,0.5)" }}
-          >
-            <svg viewBox="0 0 24 24" fill="none" className="h-5 w-5" aria-hidden="true">
-              <path d="M4 20 L12 4 L20 20" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
-              <path d="M8 14 L16 14" stroke="white" strokeWidth="2" strokeLinecap="round" />
-            </svg>
-          </div>
-          <span className="text-2xl font-bold text-white" style={{ letterSpacing: "-0.03em" }}>Kontra</span>
-        </div>
-
+      <div className="relative w-full max-w-[380px]">
         {/* Card */}
         <div
-          className="rounded-2xl border p-8"
+          className="rounded-3xl px-8 py-10"
           style={{
-            background: "rgba(18,18,18,0.9)",
-            borderColor: "rgba(139,26,26,0.25)",
-            backdropFilter: "blur(20px)",
-            WebkitBackdropFilter: "blur(20px)",
-            boxShadow: "0 0 0 1px rgba(139,26,26,0.1), 0 40px 80px rgba(0,0,0,0.5)",
+            background: "rgba(52,52,52,0.85)",
+            boxShadow:
+              "0 0 0 1px rgba(255,255,255,0.06), 0 32px 80px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.08)",
+            backdropFilter: "blur(24px)",
+            WebkitBackdropFilter: "blur(24px)",
           }}
         >
           {/* Heading */}
-          <div className="mb-6">
-            <h1 className="text-xl font-bold text-white" style={{ letterSpacing: "-0.02em" }}>
-              {mode === "login" ? "Sign in" : "Create account"}
+          <div className="mb-8 text-center">
+            <h1
+              className="text-2xl font-bold text-white"
+              style={{ letterSpacing: "-0.01em" }}
+            >
+              {mode === "login" ? "Sign in to Kontra" : "Create your account"}
             </h1>
-            <p className="mt-1 text-sm" style={{ color: "#6b7280" }}>
-              {mode === "login" ? "Access your Kontra workspace" : "Get started with Kontra"}
-            </p>
+            {/* Red underline accent */}
+            <div className="mx-auto mt-2 h-0.5 w-10 rounded-full" style={{ background: "#e53e3e" }} />
           </div>
 
           {/* Form */}
@@ -77,10 +66,6 @@ export default function LoginPage() {
             ? <LoginForm onSwitch={() => setMode("signup")} />
             : <SignUpForm onSwitch={() => setMode("login")} />}
         </div>
-
-        <p className="mt-6 text-center text-xs" style={{ color: "#374151" }}>
-          © 2026 Kontra — Institutional Loan Servicing
-        </p>
       </div>
     </div>
   );
