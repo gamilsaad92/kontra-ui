@@ -49,6 +49,17 @@ export default function LoginPage() {
             WebkitBackdropFilter: "blur(24px)",
           }}
         >
+          {/* Logo */}
+          <div className="mb-6 flex items-center justify-center gap-2.5">
+            <div
+              className="flex h-9 w-9 items-center justify-center rounded-lg"
+              style={{ background: "#dc2626" }}
+            >
+              <span className="text-lg font-black text-white" style={{ letterSpacing: "-0.05em" }}>K</span>
+            </div>
+            <span className="text-xl font-bold text-white" style={{ letterSpacing: "-0.02em" }}>Kontra</span>
+          </div>
+
           {/* Heading */}
           <div className="mb-8 text-center">
             <h1
