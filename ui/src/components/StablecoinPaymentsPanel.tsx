@@ -27,6 +27,7 @@ const statusTone = (status: string) => {
 
 export default function StablecoinPaymentsPanel() {
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [payments, setPayments] = useState<StablecoinPayment[]>([]);
   const [selected, setSelected] = useState<StablecoinPayment | null>(null);
   const [detail, setDetail] = useState<{ payment: StablecoinPayment; events: StablecoinEvent[] } | null>(null);
@@ -34,9 +35,14 @@ export default function StablecoinPaymentsPanel() {
 
   const refresh = async () => {
     setLoading(true);
+    setError(null);
     try {
       const res = await stablecoinPaymentsApi.list();
       setPayments(res.payments || []);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Failed to load stablecoin payments";
+      setError(msg);
+      setPayments([]);
     } finally {
       setLoading(false);
     }
@@ -44,8 +50,12 @@ export default function StablecoinPaymentsPanel() {
 
   const open = async (payment: StablecoinPayment) => {
     setSelected(payment);
-    const res = await stablecoinPaymentsApi.get(payment.id);
-    setDetail(res);
+    try {
+      const res = await stablecoinPaymentsApi.get(payment.id);
+      setDetail(res);
+    } catch {
+      setDetail(null);
+    }
   };
 
   useEffect(() => {
@@ -86,6 +96,8 @@ export default function StablecoinPaymentsPanel() {
         </div>
         {loading ? (
           <div className="px-4 py-6 text-sm text-slate-500">Loading…</div>
+        ) : error ? (
+          <div className="px-4 py-6 text-sm text-rose-600">{error}</div>
         ) : payments.length === 0 ? (
           <div className="px-4 py-6 text-sm text-slate-500">No stablecoin requests yet.</div>
         ) : (
