@@ -2,11 +2,13 @@ const { createClient } = require('@supabase/supabase-js');
 const OpenAI = require('openai');
 
 const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY
+  process.env.SUPABASE_URL || 'https://placeholder.supabase.co',
+  process.env.SUPABASE_SERVICE_ROLE_KEY || 'placeholder-key'
 );
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+const openai = process.env.OPENAI_API_KEY
+  ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
+  : null;
 
 async function runStep(step) {
   switch (step.type) {
@@ -24,6 +26,7 @@ async function runStep(step) {
     }
     case 'ai_review': {
       const text = step.text || '';
+      if (!openai) return { error: 'openai_not_configured' };
       try {
         const completion = await openai.chat.completions.create({
           model: 'gpt-4o-mini',
