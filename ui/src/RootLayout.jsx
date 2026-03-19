@@ -1,7 +1,7 @@
 // ui/src/RootLayout.jsx
 import React, { useContext, useEffect, useMemo, useState } from 'react'
 import { AuthContext } from './lib/authContext'
-import { apiRequest } from './lib/apiClient'
+import { apiRequest, setOrgContext } from './lib/apiClient'
 import { apiRoutes } from './lib/apiRoutes'
 
 export default function RootLayout({ children }) {
@@ -59,6 +59,20 @@ export default function RootLayout({ children }) {
   useEffect(() => {
     document.documentElement.style.setProperty('--accent-color', accentColor)
   }, [accentColor])
+
+  // Sync org + user context into the API client whenever session changes
+  useEffect(() => {
+    const user = session?.user
+    if (user) {
+      const orgId =
+        user.user_metadata?.organization_id ||
+        user.app_metadata?.organization_id ||
+        null
+      setOrgContext({ orgId: orgId ?? undefined, userId: user.id })
+    } else {
+      setOrgContext({})
+    }
+  }, [session?.user?.id, session?.user?.user_metadata?.organization_id, session?.user?.app_metadata?.organization_id])
 
   useEffect(() => {
     let isMounted = true
