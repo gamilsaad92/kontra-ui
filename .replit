@@ -26,6 +26,10 @@ author = "agent"
 task = "workflow.run"
 args = "Kontra UI Dashboard"
 
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Kontra API Backend"
+
 [[workflows.workflow]]
 name = "Kontra UI Dashboard"
 author = "agent"
@@ -37,6 +41,18 @@ outputType = "webview"
 task = "shell.exec"
 args = "cd kontra-ui-clone/ui && node node_modules/vite/bin/vite.js"
 waitForPort = 5173
+
+[[workflows.workflow]]
+name = "Kontra API Backend"
+author = "agent"
+
+[workflows.workflow.metadata]
+outputType = "console"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "cd kontra-ui-clone/api && PORT=3000 NODE_ENV=development SUPABASE_URL=${SUPABASE_URL:-https://placeholder.supabase.co} SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY:-placeholder-key} node index.js"
+waitForPort = 3000
 
 [agent]
 stack = "PNPM_WORKSPACE"

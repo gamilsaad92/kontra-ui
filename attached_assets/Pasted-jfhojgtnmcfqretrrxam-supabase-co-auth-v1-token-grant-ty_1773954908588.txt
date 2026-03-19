@@ -1,0 +1,22 @@
+jfhojgtnmcfqretrrxam.supabase.co/auth/v1/token?grant_type=password:1  Failed to load resource: the server responded with a status of 400 ()
+kontra-api.onrender.com/api/dashboard/summary:1  Failed to load resource: the server responded with a status of 400 ()
+index-D9JoqqUs.js:94 Uncaught (in promise) Error: Organization context missing for request: https://kontra-api.onrender.com/api/payments/stablecoin
+    at pl (index-D9JoqqUs.js:94:62869)
+    at kt (index-D9JoqqUs.js:94:63401)
+    at ml (index-D9JoqqUs.js:94:66082)
+    at Object.get (index-D9JoqqUs.js:94:66732)
+    at Object.list (index-D9JoqqUs.js:1778:133965)
+    at u (index-D9JoqqUs.js:1778:134673)
+    at index-D9JoqqUs.js:1778:134788
+    at Yf (index-D9JoqqUs.js:41:24263)
+    at Zo (index-D9JoqqUs.js:41:42318)
+    at index-D9JoqqUs.js:41:40661
+payments:1 Uncaught (in promise) Error: A listener indicated an asynchronous response by returning true, but the message channel closed before a response was received
+payments:1 Uncaught (in promise) Error: A listener indicated an asynchronous response by returning true, but the message channel closed before a response was received
+payments:1 Uncaught (in promise) Error: A listener indicated an asynchronous response by returning true, but the message channel closed before a response was received
+payments:1 Uncaught (in promise) Error: A listener indicated an asynchronous response by returning true, but the message channel closed before a response was received
+payments:1 Uncaught (in promise) Error: A listener indicated an asynchronous response by returning true, but the message channel closed before a response was received
+payments:1 Uncaught (in promise) Error: A listener indicated an asynchronous response by returning true, but the message channel closed before a response was received
+payments:1 Uncaught (in promise) Error: A listener indicated an asynchronous response by returning true, but the message channel closed before a response was received
+payments:1 Uncaught (in promise) Error: A listener indicated an asynchronous response by returning true, but the message channel closed before a response was received
+payments:1 Uncaught (in promise) Error: A listener indicated an asynchronous response by returning true, but the message channel closed before a response was received
