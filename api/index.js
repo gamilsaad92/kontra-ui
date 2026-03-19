@@ -1,4 +1,5 @@
 // index.js
+require('dotenv').config();
 const express = require('express');
 const Sentry = require('@sentry/node');
 const cors = require('cors');
@@ -2031,7 +2032,7 @@ async function logBaselineSchemaHealth() {
   console.log('[schema] Baseline migration check passed.');
 }
 
-const PORT = 10000;
+const PORT = process.env.PORT || 3000;
 if (require.main === module) {
   if (process.env.NODE_ENV === 'production') {
     startJobSchedulers();
@@ -2040,10 +2041,10 @@ if (require.main === module) {
   attachChatServer(server);
   attachCollabServer(server);
   server.listen(PORT, () => {
-     console.log('Kontra API listening on port 10000');
-         if (process.env.NODE_ENV !== 'production') {
-       void logBaselineSchemaHealth();
-     }
+    console.log(`Kontra API listening on port ${PORT}`);
+    if (process.env.NODE_ENV !== 'production') {
+      void logBaselineSchemaHealth();
+    }
   });
 }
 
