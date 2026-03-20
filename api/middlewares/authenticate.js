@@ -5,9 +5,9 @@ const hasSupabaseCredentials =
   Boolean(process.env.SUPABASE_URL) && Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY);
 
 const supabase = hasSupabaseCredentials
-   ? createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, {
-    auth: { persistSession: false, autoRefreshToken: false },
-  })
+  ? createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, {
+      auth: { persistSession: false, autoRefreshToken: false },
+    })
   : null;
 
 const devAccessToken = process.env.DEV_ACCESS_TOKEN?.trim() || null;
@@ -42,6 +42,56 @@ function getAccessToken(req) {
 
   const cookies = parseCookieHeader(req.headers.cookie || '');
   return cookies['sb-access-token'] || cookies['access_token'] || null;
+}
+
+/**
+ * Resolve the user's active organization using three sources in priority order:
+ *  1. X-Org-Id header (explicit client selection)
+ *  2. Local PostgreSQL org_memberships (fast, co-located with API)
+ *  3. Supabase org_memberships table (source of truth, always available on Render)
+ *  4. JWT app_metadata / user_metadata organization_id (set by signup trigger)
+ */
+async function resolveOrgId(req, authUser, localMembership) {
+  const headerOrgId = req.headers['x-organization-id'] || req.headers['x-org-id'];
+  const normalizedHeader = Array.isArray(headerOrgId) ? headerOrgId[0] : headerOrgId;
+
+  // Priority 1: explicit header
+  if (normalizedHeader) return String(normalizedHeader);
+
+  // Priority 2: local PostgreSQL
+  if (localMembership?.org_id) return String(localMembership.org_id);
+
+  // Priority 3: Supabase org_memberships table
+  if (supabase) {
+    try {
+      const { data: supabaseMember } = await supabase
+        .from('org_memberships')
+        .select('org_id')
+        .eq('user_id', authUser.id)
+        .eq('status', 'active')
+        .is('deleted_at', null)
+        .limit(1)
+        .single();
+      if (supabaseMember?.org_id) {
+        console.debug('[Auth] org resolved from Supabase org_memberships', supabaseMember.org_id);
+        return String(supabaseMember.org_id);
+      }
+    } catch (err) {
+      console.debug('[Auth] Supabase org_memberships lookup failed', err?.message);
+    }
+  }
+
+  // Priority 4: JWT metadata (set by signup bootstrap trigger)
+  const metaOrgId =
+    authUser.app_metadata?.organization_id ||
+    authUser.user_metadata?.organization_id ||
+    null;
+  if (metaOrgId) {
+    console.debug('[Auth] org resolved from JWT app_metadata', metaOrgId);
+    return String(metaOrgId);
+  }
+
+  return null;
 }
 
 module.exports = async function requireAuth(req, res, next) {
@@ -95,32 +145,42 @@ module.exports = async function requireAuth(req, res, next) {
       return res.status(401).json({ error: 'Unauthorized: Invalid or expired token' });
     }
 
-    const localMembership = await queryOne(
-      `SELECT om.role, o.id AS org_id
-         FROM users u
-         LEFT JOIN org_memberships om ON om.user_id = u.id
-         LEFT JOIN organizations o ON o.id = om.org_id
-        WHERE u.supabase_user_id = $1
-        ORDER BY om.created_at ASC`,
-      [authUser.id]
-    );
+    // Try local PostgreSQL first (may throw APP_DB_URL_MISSING if not configured)
+    let localMembership = null;
+    try {
+      localMembership = await queryOne(
+        `SELECT om.role, o.id AS org_id
+           FROM users u
+           LEFT JOIN org_memberships om ON om.user_id = u.id
+           LEFT JOIN organizations o ON o.id = om.org_id
+          WHERE u.supabase_user_id = $1
+          ORDER BY om.created_at ASC`,
+        [authUser.id]
+      );
+    } catch (dbErr) {
+      // Local DB not available — fall through to Supabase fallback
+      if (dbErr?.code !== 'APP_DB_URL_MISSING') {
+        console.debug('[Auth] local DB lookup failed, falling back to Supabase', dbErr?.message);
+      }
+    }
 
-    const headerOrgId = req.headers['x-organization-id'] || req.headers['x-org-id'];
-    const normalizedOrgId = Array.isArray(headerOrgId) ? headerOrgId[0] : headerOrgId;
+    const orgId = await resolveOrgId(req, authUser, localMembership);
 
     req.user = {
-        ...authUser,
+      ...authUser,
       supabaseUserId: authUser.id,
       email: authUser.email || null,
     };
-     req.role = localMembership?.role || 'member';
-    req.orgId = normalizedOrgId || localMembership?.org_id || null;
-    req.organizationId = req.orgId;
-    req.tenant_id = req.orgId;
+    req.role = localMembership?.role || 'member';
+    req.orgId = orgId;
+    req.organizationId = orgId;
+    req.tenant_id = orgId;
 
     return next();
   } catch (error) {
     if (error?.code === 'APP_DB_URL_MISSING') {
+      // Entire local DB unavailable — still let auth proceed with Supabase only
+      console.warn('[Auth] APP_DB_URL missing, authentication will be Supabase-only');
       return res.status(503).json({
         error: 'Database unavailable for auth lookup',
         code: error.code,
