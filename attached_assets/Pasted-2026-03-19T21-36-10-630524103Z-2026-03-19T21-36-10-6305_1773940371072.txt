@@ -1,0 +1,50 @@
+2026-03-19T21:36:10.630524103Z 
+2026-03-19T21:36:10.630528303Z SyntaxError: Identifier 'narrativeGenerator' has already been declared
+2026-03-19T21:36:10.630531663Z     at wrapSafe (node:internal/modules/cjs/loader:1486:18)
+2026-03-19T21:36:10.630534813Z     at Module._compile (node:internal/modules/cjs/loader:1528:20)
+2026-03-19T21:36:10.630537913Z     at Object..js (node:internal/modules/cjs/loader:1706:10)
+2026-03-19T21:36:10.630540923Z     at Module.load (node:internal/modules/cjs/loader:1289:32)
+2026-03-19T21:36:10.630543953Z     at Function._load (node:internal/modules/cjs/loader:1108:12)
+2026-03-19T21:36:10.630547383Z     at TracingChannel.traceSync (node:diagnostics_channel:322:14)
+2026-03-19T21:36:10.630552173Z     at wrapModuleLoad (node:internal/modules/cjs/loader:220:24)
+2026-03-19T21:36:10.630556903Z     at Module.<anonymous> (node:internal/modules/cjs/loader:1311:12)
+2026-03-19T21:36:10.630563443Z     at Module.patchedRequire (/opt/render/project/src/api/node_modules/require-in-the-middle/index.js:256:27)
+2026-03-19T21:36:10.630572513Z     at Hook._require.Module.require (/opt/render/project/src/api/node_modules/require-in-the-middle/index.js:181:27)
+2026-03-19T21:36:12.337644898Z ==> Exited with status 1
+2026-03-19T21:36:12.341356553Z ==> Common ways to troubleshoot your deploy: https://render.com/docs/troubleshooting-deploys
+2026-03-19T21:36:16.905176859Z ==> Running 'node index.js'
+2026-03-19T21:36:21.704367021Z Redis package not installed, falling back to memory cache
+2026-03-19T21:36:29.895979336Z /opt/render/project/src/api/src/routes/ai.js:26
+2026-03-19T21:36:29.896002326Z const narrativeGenerator = require('../lib/narrativeGenerator');
+2026-03-19T21:36:29.896005746Z       ^
+2026-03-19T21:36:29.896008236Z 
+2026-03-19T21:36:29.896011526Z SyntaxError: Identifier 'narrativeGenerator' has already been declared
+2026-03-19T21:36:29.896014056Z     at wrapSafe (node:internal/modules/cjs/loader:1486:18)
+2026-03-19T21:36:29.896016736Z     at Module._compile (node:internal/modules/cjs/loader:1528:20)
+2026-03-19T21:36:29.896019446Z     at Object..js (node:internal/modules/cjs/loader:1706:10)
+2026-03-19T21:36:29.896021897Z     at Module.load (node:internal/modules/cjs/loader:1289:32)
+2026-03-19T21:36:29.896024277Z     at Function._load (node:internal/modules/cjs/loader:1108:12)
+2026-03-19T21:36:29.896026706Z     at TracingChannel.traceSync (node:diagnostics_channel:322:14)
+2026-03-19T21:36:29.896029247Z     at wrapModuleLoad (node:internal/modules/cjs/loader:220:24)
+2026-03-19T21:36:29.896031697Z     at Module.<anonymous> (node:internal/modules/cjs/loader:1311:12)
+2026-03-19T21:36:29.896034887Z     at Module.patchedRequire (/opt/render/project/src/api/node_modules/require-in-the-middle/index.js:256:27)
+2026-03-19T21:36:29.896039187Z     at Hook._require.Module.require (/opt/render/project/src/api/node_modules/require-in-the-middle/index.js:181:27)
+2026-03-19T21:36:43.420266019Z ==> No open ports detected, continuing to scan...
+2026-03-19T21:36:43.492088398Z ==> Docs on specifying a port: https://render.com/docs/web-services#port-binding
+2026-03-19T21:36:49.350983935Z ==> Running 'node index.js'
+2026-03-19T21:36:53.749761247Z Redis package not installed, falling back to memory cache
+2026-03-19T21:37:02.152797464Z /opt/render/project/src/api/src/routes/ai.js:26
+2026-03-19T21:37:02.152828465Z const narrativeGenerator = require('../lib/narrativeGenerator');
+2026-03-19T21:37:02.152834295Z       ^
+2026-03-19T21:37:02.152839015Z 
+2026-03-19T21:37:02.152844445Z SyntaxError: Identifier 'narrativeGenerator' has already been declared
+2026-03-19T21:37:02.152849065Z     at wrapSafe (node:internal/modules/cjs/loader:1486:18)
+2026-03-19T21:37:02.152853695Z     at Module._compile (node:internal/modules/cjs/loader:1528:20)
+2026-03-19T21:37:02.152858255Z     at Object..js (node:internal/modules/cjs/loader:1706:10)
+2026-03-19T21:37:02.152862935Z     at Module.load (node:internal/modules/cjs/loader:1289:32)
+2026-03-19T21:37:02.152867555Z     at Function._load (node:internal/modules/cjs/loader:1108:12)
+2026-03-19T21:37:02.152871956Z     at TracingChannel.traceSync (node:diagnostics_channel:322:14)
+2026-03-19T21:37:02.152876866Z     at wrapModuleLoad (node:internal/modules/cjs/loader:220:24)
+2026-03-19T21:37:02.152881346Z     at Module.<anonymous> (node:internal/modules/cjs/loader:1311:12)
+2026-03-19T21:37:02.152886846Z     at Module.patchedRequire (/opt/render/project/src/api/node_modules/require-in-the-middle/index.js:256:27)
+2026-03-19T21:37:02.152894556Z     at Hook._require.Module.require (/opt/render/project/src/api/node_modules/require-in-the-middle/index.js:181:27)
