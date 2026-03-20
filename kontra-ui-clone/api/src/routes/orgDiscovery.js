@@ -1,8 +1,88 @@
 const crypto = require('crypto');
 const express = require('express');
 const { z } = require('zod');
+const { createClient } = require('@supabase/supabase-js');
 const authenticate = require('../../middlewares/authenticate');
 const { queryOne, queryRows } = require('../lib/appDb');
+
+// Supabase service-role client (always available on Render, unlike local Postgres)
+const hasSupabaseCredentials =
+  Boolean(process.env.SUPABASE_URL) && Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY);
+const supabase = hasSupabaseCredentials
+  ? createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, {
+      auth: { persistSession: false, autoRefreshToken: false },
+    })
+  : null;
+
+/**
+ * Query org memberships directly from the Supabase database.
+ * Used as a fallback when the local PostgreSQL isn't available or has no records.
+ */
+async function getOrgsFromSupabase(supabaseUserId) {
+  if (!supabase) return [];
+  try {
+    const { data, error } = await supabase
+      .from('org_memberships')
+      .select('org_id, role, id, created_at, organizations(id, name, status, created_at)')
+      .eq('user_id', supabaseUserId)
+      .eq('status', 'active')
+      .is('deleted_at', null)
+      .order('created_at', { ascending: true });
+    if (error || !data) return [];
+    return data.map((m) => ({
+      id: String(m.org_id),
+      name: m.organizations?.name || 'Organization',
+      role: m.role || 'member',
+      membership_id: String(m.id),
+      created_at: m.organizations?.created_at || m.created_at,
+      membership_created_at: m.created_at,
+    }));
+  } catch (err) {
+    console.debug('[OrgDiscovery] Supabase org lookup failed', err?.message);
+    return [];
+  }
+}
+
+/**
+ * Auto-provision a default organization in Supabase for a user who has none.
+ * Mirrors what the handle_new_user trigger does for new signups.
+ */
+async function provisionOrgInSupabase(identity, authUser) {
+  if (!supabase) return null;
+  try {
+    const orgName = authUser?.user_metadata?.full_name ||
+      authUser?.user_metadata?.name ||
+      (identity.email ? identity.email.split('@')[0] : null) ||
+      'My Organization';
+
+    // Create org
+    const { data: org, error: orgErr } = await supabase
+      .from('organizations')
+      .insert({ name: orgName, status: 'active', created_by: identity.supabaseUserId })
+      .select('id, name, created_at')
+      .single();
+    if (orgErr || !org) {
+      console.warn('[OrgDiscovery] org provision failed', orgErr?.message);
+      return null;
+    }
+
+    // Create membership
+    await supabase
+      .from('org_memberships')
+      .insert({ org_id: org.id, user_id: identity.supabaseUserId, role: 'admin', status: 'active' });
+
+    // Enrich JWT app_metadata so future logins include organization_id
+    await supabase.auth.admin.updateUserById(identity.supabaseUserId, {
+      app_metadata: { organization_id: String(org.id) },
+    });
+
+    console.info('[OrgDiscovery] provisioned org for existing user', { orgId: org.id, userId: identity.supabaseUserId });
+    return { id: String(org.id), name: org.name, role: 'admin', membership_id: null, created_at: org.created_at };
+  } catch (err) {
+    console.warn('[OrgDiscovery] provisionOrgInSupabase threw', err?.message);
+    return null;
+  }
+}
 
 const router = express.Router();
 router.use(authenticate);
@@ -139,23 +219,36 @@ router.get('/bootstrap', async (req, res) => {
   const identity = getAuthIdentity(req);
   if (!identity) return res.status(401).json({ code: 'UNAUTHORIZED', message: 'Missing auth' });
 
+  let user = null;
+  let orgRows = [];
+
+  // Step 1: Try local PostgreSQL
   try {
-    const user = await upsertLocalUser(identity);
-    const orgRows = await getOrgRowsBySupabaseUserId(identity.supabaseUserId);
-    const response = toOrgListResponse(orgRows, getRequestedOrgId(req));
-    return res.status(200).json({ user, ...response });
-  } catch (error) {
-    const correlationId = logOrgError(req, 'Failed to bootstrap organization context', error);
-    return res.status(500).json({
-      code: 'BOOTSTRAP_LOAD_FAILED',
-      message: 'Unable to bootstrap organization context',
-      correlationId,
-      orgs: [],
-      activeOrgId: null,
-      active_org_id: null,
-      default_org_id: null,
-    });
+    user = await upsertLocalUser(identity);
+    orgRows = await getOrgRowsBySupabaseUserId(identity.supabaseUserId);
+  } catch (localErr) {
+    console.debug('[OrgDiscovery] local DB unavailable in bootstrap, falling back to Supabase', localErr?.message);
   }
+
+  // Step 2: If local DB returned nothing, query Supabase org_memberships directly
+  if (!orgRows || orgRows.length === 0) {
+    const supabaseOrgs = await getOrgsFromSupabase(identity.supabaseUserId);
+    if (supabaseOrgs.length > 0) {
+      orgRows = supabaseOrgs;
+    }
+  }
+
+  // Step 3: Still no org — auto-provision one for this existing user
+  if (!orgRows || orgRows.length === 0) {
+    const authUser = req.user || {};
+    const provisioned = await provisionOrgInSupabase(identity, authUser);
+    if (provisioned) {
+      orgRows = [provisioned];
+    }
+  }
+
+  const response = toOrgListResponse(orgRows, getRequestedOrgId(req));
+  return res.status(200).json({ user, ...response });
 });
 
 router.get('/active', async (req, res) => {
