@@ -60,17 +60,41 @@ export default function RootLayout({ children }) {
     document.documentElement.style.setProperty('--accent-color', accentColor)
   }, [accentColor])
 
-  // Sync org + user context into the API client whenever session changes
+  // Sync org + user context into the API client whenever session changes.
+  // If the JWT doesn't carry an organization_id, call /api/me/bootstrap (which
+  // bypasses the requireOrgContext middleware) to discover the user's org from
+  // the database, then set it so all subsequent requests include X-Org-Id.
   useEffect(() => {
     const user = session?.user
-    if (user) {
-      const orgId =
-        user.user_metadata?.organization_id ||
-        user.app_metadata?.organization_id ||
-        null
-      setOrgContext({ orgId: orgId ?? undefined, userId: user.id })
-    } else {
+    if (!user) {
       setOrgContext({})
+      return
+    }
+
+    const orgIdFromJwt =
+      user.user_metadata?.organization_id ||
+      user.app_metadata?.organization_id ||
+      null
+
+    setOrgContext({ orgId: orgIdFromJwt ?? undefined, userId: user.id })
+
+    if (!orgIdFromJwt) {
+      const apiBase = import.meta.env.VITE_API_BASE?.replace(/\/+$/, '') || ''
+      const token = session?.access_token
+      fetch(`${apiBase}/api/me/bootstrap`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      })
+        .then((res) => (res.ok ? res.json() : null))
+        .then((data) => {
+          const fetchedOrgId =
+            data?.activeOrgId ||
+            data?.active_org_id ||
+            (Array.isArray(data?.orgs) && data.orgs.length > 0 ? data.orgs[0].id : null)
+          if (fetchedOrgId) {
+            setOrgContext({ orgId: String(fetchedOrgId), userId: user.id })
+          }
+        })
+        .catch((err) => console.warn('[RootLayout] org bootstrap failed', err))
     }
   }, [session?.user?.id, session?.user?.user_metadata?.organization_id, session?.user?.app_metadata?.organization_id])
 
