@@ -2,6 +2,9 @@
 -- Migration: 20260320_rls_tenancy.sql
 -- Full tenancy hardening: RLS, signup bootstrap, JWT enrichment
 -- Idempotent — safe to re-run.
+--
+-- NOTE: organizations.id is bigint (serial) in this project.
+-- All org_id references use bigint to match.
 -- ============================================================
 
 -- 1. Extensions -----------------------------------------------
@@ -18,10 +21,10 @@ create table if not exists public.users (
 );
 create index if not exists idx_users_supabase_user_id on public.users(supabase_user_id);
 
--- 3. Ensure ai_reviews table exists with org_id ---------------
+-- 3. Ensure ai_reviews table exists with org_id (bigint to match organizations.id)
 create table if not exists public.ai_reviews (
   id           uuid primary key default gen_random_uuid(),
-  org_id       uuid,
+  org_id       bigint,
   type         text not null,
   status       text not null default 'needs_review',
   title        text,
@@ -33,7 +36,23 @@ create table if not exists public.ai_reviews (
   created_at   timestamptz not null default now(),
   updated_at   timestamptz not null default now()
 );
-alter table public.ai_reviews add column if not exists org_id uuid;
+
+-- If ai_reviews.org_id was previously created as uuid, migrate it to bigint
+do $$
+begin
+  if exists (
+    select 1 from information_schema.columns
+    where table_schema = 'public'
+      and table_name = 'ai_reviews'
+      and column_name = 'org_id'
+      and data_type = 'uuid'
+  ) then
+    alter table public.ai_reviews drop column org_id;
+    alter table public.ai_reviews add column org_id bigint;
+  end if;
+end $$;
+
+alter table public.ai_reviews add column if not exists org_id bigint;
 create index if not exists idx_ai_reviews_org_id on public.ai_reviews(org_id);
 create index if not exists idx_ai_reviews_org_type_status on public.ai_reviews(org_id, type, status);
 create index if not exists idx_ai_reviews_org_updated on public.ai_reviews(org_id, updated_at desc);
@@ -53,12 +72,10 @@ begin
 exception when others then null;
 end $$;
 
--- 4. Make org_id non-nullable on core tables (after backfill) --
--- First backfill any nulls with a sentinel "default" org.
--- We create a system org if needed.
+-- 4. Backfill null org_ids on tenant tables with a sentinel org ----------
 do $$
 declare
-  sentinel_org_id uuid;
+  sentinel_org_id bigint;
   scoped_table text;
   scoped_tables text[] := array[
     'assets','loans','inspections','exchange_listings','payments','escrows',
@@ -101,11 +118,10 @@ begin
   end loop;
 end $$;
 
--- 5. RLS helper function --------------------------------------
--- Returns the set of org_ids the currently authenticated user belongs to.
--- Uses security definer so it can read org_memberships regardless of RLS.
+-- 5. RLS helper function (returns bigint to match organizations.id) ------
+-- Security-definer so it can read org_memberships bypassing RLS itself.
 create or replace function public.current_user_org_ids()
-returns setof uuid
+returns setof bigint
 language sql
 security definer
 stable
@@ -118,7 +134,7 @@ as $$
     and deleted_at is null
 $$;
 
--- 6. Enable RLS on all tenant tables --------------------------
+-- 6. Enable RLS on all tenant tables ----------------------------
 do $$
 declare
   tbl text;
@@ -143,7 +159,7 @@ begin
   end loop;
 end $$;
 
--- 7. Drop and recreate RLS policies (idempotent) --------------
+-- 7. Drop and recreate RLS policies (idempotent) ----------------
 
 -- organizations: users can only see orgs they belong to
 drop policy if exists "orgs_member_select" on public.organizations;
@@ -224,8 +240,8 @@ begin
   end loop;
 end $$;
 
--- 8. Signup bootstrap trigger ---------------------------------
--- On new auth.users insert: create a default org, membership, and enrich
+-- 8. Signup bootstrap trigger ----------------------------------
+-- On new auth.users insert: creates a default org, membership, and enriches
 -- the user's app_metadata with organization_id so it appears in the JWT.
 
 create or replace function public.handle_new_user()
@@ -235,11 +251,10 @@ security definer
 set search_path = public, auth
 as $$
 declare
-  new_org_id uuid;
+  new_org_id bigint;
   local_user_id uuid;
   org_name text;
 begin
-  -- Derive a friendly org name from sign-up data
   org_name := coalesce(
     new.raw_user_meta_data->>'full_name',
     new.raw_user_meta_data->>'name',
@@ -254,7 +269,7 @@ begin
   do update set email = coalesce(excluded.email, users.email)
   returning id into local_user_id;
 
-  -- Check if user already has an org (idempotent for re-triggers)
+  -- Idempotent: skip if user already has an org
   select org_id into new_org_id
   from public.org_memberships
   where user_id = new.id::text
@@ -263,18 +278,16 @@ begin
   limit 1;
 
   if new_org_id is null then
-    -- Create a fresh organization for this user
     insert into public.organizations (name, status, created_by, data)
     values (org_name, 'active', new.id::text, jsonb_build_object('signup_email', new.email))
     returning id into new_org_id;
 
-    -- Create admin membership
     insert into public.org_memberships (org_id, user_id, role, status)
     values (new_org_id, new.id::text, 'admin', 'active')
     on conflict (org_id, user_id) do nothing;
   end if;
 
-  -- Enrich app_metadata so organization_id appears in the JWT
+  -- Enrich JWT metadata
   update auth.users
   set raw_app_meta_data =
     coalesce(raw_app_meta_data, '{}'::jsonb) ||
@@ -283,7 +296,6 @@ begin
 
   return new;
 exception when others then
-  -- Never block signup even if bootstrap fails
   raise warning '[handle_new_user] bootstrap failed for user %: %', new.id, sqlerrm;
   return new;
 end;
@@ -294,12 +306,11 @@ create trigger on_auth_user_created
   after insert on auth.users
   for each row execute function public.handle_new_user();
 
--- 9. Backfill existing auth users who have no org -------------
--- Runs once; safely skipped if they already have orgs.
+-- 9. Backfill existing users who have no org -------------------
 do $$
 declare
   u record;
-  new_org_id uuid;
+  new_org_id bigint;
   org_name text;
 begin
   for u in
@@ -319,22 +330,18 @@ begin
       'My Organization'
     );
 
-    -- Upsert local user
     insert into public.users (supabase_user_id, email)
     values (u.id, u.email)
     on conflict (supabase_user_id) do update set email = coalesce(excluded.email, users.email);
 
-    -- Create org
     insert into public.organizations (name, status, created_by, data)
     values (org_name, 'active', u.id::text, jsonb_build_object('signup_email', u.email, 'backfilled', true))
     returning id into new_org_id;
 
-    -- Create membership
     insert into public.org_memberships (org_id, user_id, role, status)
     values (new_org_id, u.id::text, 'admin', 'active')
     on conflict (org_id, user_id) do nothing;
 
-    -- Enrich JWT metadata
     update auth.users
     set raw_app_meta_data =
       coalesce(raw_app_meta_data, '{}'::jsonb) ||
@@ -345,7 +352,7 @@ begin
   end loop;
 end $$;
 
--- 10. Updated_at trigger for users table ----------------------
+-- 10. Updated_at trigger for users table -----------------------
 drop trigger if exists trg_users_updated_at on public.users;
 create trigger trg_users_updated_at
   before update on public.users
