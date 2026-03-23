@@ -23,7 +23,8 @@ interface OrgContextValue {
   activeOrganizationId: string | null;
   activeOrg: Org | null;
   loading: boolean;
-   authReady: boolean;
+  authReady: boolean;
+  orgReady: boolean;
   error: string | null;
   setActiveOrg: (org: Org) => void;
   refreshOrgs: () => Promise<void>;
@@ -32,9 +33,10 @@ interface OrgContextValue {
 const OrgContext = createContext<OrgContextValue>({
   orgs: [],
   activeOrg: null,
-    activeOrganizationId: null,
+activeOrganizationId: null,
   loading: true,
-   authReady: false,
+  authReady: false,
+  orgReady: false,
   error: null,
   setActiveOrg: () => undefined,
   refreshOrgs: async () => undefined,
@@ -67,7 +69,7 @@ function normalizeOrgs(raw: unknown): Org[] {
   return raw
     .filter((o) => o && typeof o === "object" && (o as Record<string, unknown>).id)
     .map((o) => ({
-        id: String((o as Record<string, unknown>).id),
+    id: String((o as Record<string, unknown>).id),
       name: String((o as Record<string, unknown>).name || "Organization"),
       role: String((o as Record<string, unknown>).role || (o as Record<string, unknown>).membership_role || "member"),
       status: String((o as Record<string, unknown>).status || "active"),
@@ -100,16 +102,11 @@ async function resolveVerifiedSupabaseUserId(accessToken?: string | null): Promi
   }
 }
 
-export function OrgProvider({
-  children,
-  accessToken,
-  userId,
-  apiBase = "",
-}: OrgProviderProps) {
+export function OrgProvider({ children, accessToken, userId, apiBase = "" }: OrgProviderProps) {
   const [orgs, setOrgs] = useState<Org[]>([]);
   const [activeOrg, setActiveOrgState] = useState<Org | null>(null);
   const [loading, setLoading] = useState(true);
-   const [authReady, setAuthReady] = useState(false);
+ const [authReady, setAuthReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const bootstrappedRef = useRef(false);
 
@@ -121,10 +118,10 @@ export function OrgProvider({
       writeStoredOrgId(validated.id);
       setOrgContext({ orgId: validated.id, userId: userId ?? undefined });
     },
-    [userId]
+   [userId],
   );
 
-   const clearOrgState = useCallback(() => {
+  const clearOrgState = useCallback(() => {
     setOrgs([]);
     setActiveOrgState(null);
     writeStoredOrgId(null);
@@ -141,7 +138,7 @@ export function OrgProvider({
     }
 
     setLoading(true);
-        setAuthReady(false);
+   setAuthReady(false);
     setError(null);
 
     try {
@@ -153,31 +150,31 @@ export function OrgProvider({
       
       const payload = await res.json().catch(() => ({}));
       if (!res.ok) {
-         const message = payload?.message || payload?.error || `Organization bootstrap failed (${res.status})`;
+        const message = payload?.message || payload?.error || `Organization bootstrap failed (${res.status})`;
         throw new Error(message);
       }
 
-    const normalized = normalizeOrgs(payload?.orgs);
+      const normalized = normalizeOrgs(payload?.orgs);
       setOrgs(normalized);
 
       if (normalized.length === 0) {
-       clearOrgState();
+        clearOrgState();
         setError("No organization membership was found for this account.");
         return;
       }
 
       const storedId = readStoredOrgId();
-      const serverActiveId = payload?.activeOrgId || payload?.active_org_id || null;
-      const resolvedId = storedId || serverActiveId || normalized[0].id;
-      const resolved = normalized.find((org) => org.id === resolvedId) || normalized[0];
+       const profileActiveId = payload?.activeOrgId || payload?.active_org_id || payload?.default_org_id || null;
+      const resolvedId = storedId || profileActiveId || normalized[0].id;
+      const resolved = normalized.find((org) => org.id === String(resolvedId)) || normalized[0];
 
       applyActiveOrg(resolved, normalized);
-          if (verifiedUserId && userId && verifiedUserId !== userId) {
+      if (verifiedUserId && userId && verifiedUserId !== userId) {
         console.warn("[OrgProvider] session user id differed from verified user id", { userId, verifiedUserId });
       }
     } catch (err) {
       console.warn("[OrgProvider] org bootstrap failed", err);
-          clearOrgState();
+      clearOrgState();
       setError(err instanceof Error ? err.message : "Failed to initialize organization context.");
     } finally {
       setLoading(false);
@@ -197,7 +194,7 @@ export function OrgProvider({
 
   useEffect(() => {
     if (!accessToken) {
-        clearOrgState();
+      clearOrgState();
       setError(null);
       setLoading(false);
       setAuthReady(true);
@@ -208,21 +205,24 @@ export function OrgProvider({
     (org: Org) => {
       applyActiveOrg(org, orgs);
     },
-    [applyActiveOrg, orgs]
+    [applyActiveOrg, orgs],
   );
 
+    const orgReady = authReady && !loading && Boolean(activeOrg?.id);
+
   const value = useMemo<OrgContextValue>(
-   () => ({
+    () => ({
       orgs,
       activeOrg,
       activeOrganizationId: activeOrg?.id ?? null,
       loading,
       authReady,
+      orgReady,
       error,
       setActiveOrg,
       refreshOrgs,
     }),
-    [orgs, activeOrg, loading, authReady, error, setActiveOrg, refreshOrgs]
+    [orgs, activeOrg, loading, authReady, orgReady, error, setActiveOrg, refreshOrgs],
   );
 
   return <OrgContext.Provider value={value}>{children}</OrgContext.Provider>;
