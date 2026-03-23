@@ -1,6 +1,4 @@
 function requireOrgContext(req, res, next) {
-  // Use originalUrl so the full path is available regardless of where this
-  // middleware is mounted (e.g. mounted at /api, req.path loses the prefix).
   const path = (req.originalUrl || '').split('?')[0];
 
   if (path === '/api/health' || path.startsWith('/api/dev/')) {
@@ -8,17 +6,19 @@ function requireOrgContext(req, res, next) {
   }
 
   const orgHeader = req.get('X-Org-Id') || req.get('x-org-id') || req.get('x-organization-id');
+  const resolvedOrgId = orgHeader || req.organizationId || req.orgId || null;
 
-  // Fall back to orgId already resolved by the authenticate middleware (DB lookup).
-  // This allows requests from authenticated users whose JWT doesn't carry an
-  // organization_id claim — the auth middleware already looked up their org from
-  // the org_memberships table and placed it on req.orgId.
-  const resolvedOrgId = orgHeader || req.orgId || null;
+  if (!req.user) {
+    return res.status(401).json({
+      code: 'UNAUTHORIZED',
+      message: 'Authentication required before organization context can be resolved.',
+    });
+  }
 
   if (!resolvedOrgId) {
     return res.status(400).json({
       code: 'ORG_CONTEXT_MISSING',
-      message: 'Missing X-Org-Id header',
+      message: 'Organization context is required for this request.',
     });
   }
 
