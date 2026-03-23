@@ -4,6 +4,7 @@ import { resolveApiBase } from "../lib/api";
 import useFeatureUsage from "../lib/useFeatureUsage";
 import { lenderNavRoutes } from "../routes";
 import { AuthContext } from "../lib/authContext";
+import { OrgProvider } from "../lib/OrgProvider";
 import SaasDashboardHome from "../components/SaasDashboardHome";
 import AiInsightsPage from "../features/ai-insights/page/AiInsightsPage";
 import OnchainDashboard from "../components/OnchainDashboard";
@@ -85,7 +86,8 @@ export default function SaasDashboard() {
   const activeLabel = activeItem?.label ?? "Dashboard";
   const isDashboardRoute = location.pathname === "/dashboard";
   const isServicingRoute = location.pathname.startsWith("/servicing");
-
+  const isMarketsRoute = location.pathname.startsWith("/markets");
+  
   const renderNavItem = useCallback(
     (item: NavItem) => {
       const Icon = item.icon as ComponentType<{ className?: string }>;
@@ -217,7 +219,14 @@ export default function SaasDashboard() {
     </Routes>
   );
 
+    const apiBaseForOrgProvider = import.meta.env.VITE_API_BASE?.replace(/\/+$/, "") || "";
+
   return (
+      <OrgProvider
+      accessToken={session?.access_token ?? null}
+      userId={session?.user?.id ?? null}
+      apiBase={apiBaseForOrgProvider}
+    >
      <div className="flex min-h-screen bg-slate-100 text-slate-900">
       <aside className="flex w-64 flex-col bg-slate-950 text-slate-100">
         <div className="flex items-center gap-2 px-4 py-4 text-sm font-semibold tracking-tight">
@@ -250,7 +259,7 @@ export default function SaasDashboard() {
         </nav>
       </aside>
       <main className="flex-1 overflow-y-auto p-6">
-        {!isDashboardRoute && !isServicingRoute && (
+       {!isDashboardRoute && !isServicingRoute && !isMarketsRoute && (
           <header className="mb-6 space-y-1">
             <h1 className="text-xl font-semibold tracking-tight text-slate-900">{activeLabel}</h1>
             <p className="text-sm text-slate-500">
@@ -258,8 +267,9 @@ export default function SaasDashboard() {
             </p>
           </header>
         )}
-        {isDashboardRoute || isServicingRoute ? content : <div className="space-y-6">{content}</div>}
+        {isDashboardRoute || isServicingRoute || isMarketsRoute ? content : <div className="space-y-6">{content}</div>}
       </main>
     </div>
+      </OrgProvider>      
   );
 }
