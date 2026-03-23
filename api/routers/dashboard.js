@@ -79,6 +79,13 @@ function average(sum, count, precision = 3) {
   return Number((sum / count).toFixed(precision));
 }
 
+function applyOrganizationScope(query, organizationId) {
+  if (!organizationId) {
+    return query;
+  }
+  return query.eq('organization_id', organizationId);
+}
+
 async function fetchLoans(orgId) {
   let query = replica
     .from('loans')
@@ -152,20 +159,20 @@ router.get('/summary', asyncHandler(async (req, res) => {
   const orgId = req.orgId;
 
   const [paymentsCount, inspectionsCount, complianceCount, workQueueTop5Result, aiBriefResult] = await Promise.all([
-    replica.from('ai_reviews').select('id', { count: 'exact', head: true }).eq('org_id', orgId).eq('type', 'payment').eq('status', 'needs_review'),
-    replica.from('ai_reviews').select('id', { count: 'exact', head: true }).eq('org_id', orgId).eq('type', 'inspection').eq('status', 'needs_review'),
-    replica.from('ai_reviews').select('id', { count: 'exact', head: true }).eq('org_id', orgId).eq('type', 'compliance').eq('status', 'needs_review'),
-    replica.from('ai_reviews').select('id,type,status,title,summary,confidence,updated_at').eq('org_id', orgId).eq('status', 'needs_review').order('updated_at', { ascending: false }).limit(5),
-    replica.from('ai_reviews').select('id,type,status,title,summary,confidence,updated_at').eq('org_id', orgId).order('updated_at', { ascending: false }).limit(3),
+    applyOrganizationScope(replica.from('ai_reviews').select('id', { count: 'exact', head: true }), orgId).eq('type', 'payment').eq('status', 'needs_review'),
+    applyOrganizationScope(replica.from('ai_reviews').select('id', { count: 'exact', head: true }), orgId).eq('type', 'inspection').eq('status', 'needs_review'),
+    applyOrganizationScope(replica.from('ai_reviews').select('id', { count: 'exact', head: true }), orgId).eq('type', 'compliance').eq('status', 'needs_review'),
+    applyOrganizationScope(replica.from('ai_reviews').select('id,type,status,title,summary,confidence,updated_at'), orgId).eq('status', 'needs_review').order('updated_at', { ascending: false }).limit(5),
+    applyOrganizationScope(replica.from('ai_reviews').select('id,type,status,title,summary,confidence,updated_at'), orgId).order('updated_at', { ascending: false }).limit(3),
   ]);
 
   const [loansResult, inspectionsDueResult, finResult, paymentsActivity, inspectionsActivity, drawsActivity] = await Promise.all([
-    replica.from('loans').select('id,title,data,updated_at').eq('org_id', orgId).order('updated_at', { ascending: false }).limit(25),
-    replica.from('inspections').select('id,title,data,updated_at').eq('org_id', orgId).order('updated_at', { ascending: false }).limit(25),
-    replica.from('borrower_financials').select('id,title,data,updated_at').eq('org_id', orgId).order('updated_at', { ascending: false }).limit(25),
-    replica.from('payments').select('id,title,status,updated_at').eq('org_id', orgId).order('updated_at', { ascending: false }).limit(5),
-    replica.from('inspections').select('id,title,status,updated_at').eq('org_id', orgId).order('updated_at', { ascending: false }).limit(5),
-    replica.from('draws').select('id,title,status,updated_at').eq('org_id', orgId).order('updated_at', { ascending: false }).limit(5),
+    applyOrganizationScope(replica.from('loans').select('id,title,data,updated_at'), orgId).order('updated_at', { ascending: false }).limit(25),
+    applyOrganizationScope(replica.from('inspections').select('id,title,data,updated_at'), orgId).order('updated_at', { ascending: false }).limit(25),
+    applyOrganizationScope(replica.from('borrower_financials').select('id,title,data,updated_at'), orgId).order('updated_at', { ascending: false }).limit(25),
+    applyOrganizationScope(replica.from('payments').select('id,title,status,updated_at'), orgId).order('updated_at', { ascending: false }).limit(5),
+    applyOrganizationScope(replica.from('inspections').select('id,title,status,updated_at'), orgId).order('updated_at', { ascending: false }).limit(5),
+    applyOrganizationScope(replica.from('draws').select('id,title,status,updated_at'), orgId).order('updated_at', { ascending: false }).limit(5),
   ]);
 
   const nextDeadlines = [];
