@@ -1,6 +1,7 @@
 const express = require('express');
 const authenticate = require('../middlewares/authenticate');
 const auditLogger = require('../middlewares/auditLogger');
+const requireOrg = require('../middlewares/requireOrg');
 const { triggerWebhooks } = require('../webhooks');
 const collabServer = require('../collabServer');
 const { validateTrade, getComplianceConstraints } = require('../compliance');
@@ -17,22 +18,14 @@ router.use((req, res, next) => {
 });
 
 router.use(authenticate);
+router.use(requireOrg);
 router.use(auditLogger);
-router.use((req, res, next) => {
-  const orgId = req.organizationId;
-  if (!orgId) {
-  return res.status(400).json({ code: 'ORG_CONTEXT_MISSING', message: 'Missing X-Org-Id header' });
-  }
-  req.orgId = orgId;
-  next();
-});
 
 router.get('/compliance', (_req, res) => {
   const policy = getComplianceConstraints();
   res.json({ policy });
 });
 
-// Submit a trade order
 router.post('/', async (req, res) => {
   const {
     trade_type,
@@ -41,7 +34,7 @@ router.post('/', async (req, res) => {
     quantity,
     price,
     side,
-   counterparties,
+    counterparties,
     repo_rate_bps,
     term_days,
     collateral_ref,
@@ -56,7 +49,7 @@ router.post('/', async (req, res) => {
   const normalizedCounterparties =
     Array.isArray(counterparties) && counterparties.length
       ? counterparties
-      : counterpartyProfiles.map(cp => cp.wallet_address || cp.id).filter(Boolean);
+      : counterpartyProfiles.map((cp) => cp.wallet_address || cp.id).filter(Boolean);
 
   if (!trade_type || notional_amount === undefined || price === undefined || !side) {
     return res.status(400).json({ message: 'Missing trade_type, notional_amount, price or side' });
@@ -66,20 +59,20 @@ router.post('/', async (req, res) => {
     return res.status(400).json({ message: 'At least one whitelisted counterparty is required' });
   }
 
- const tradeForValidation = {
+  const tradeForValidation = {
     ...req.body,
     trade_type,
     notional_amount,
     price,
     side,
-   counterparties: normalizedCounterparties,
+    counterparties: normalizedCounterparties,
     counterparty_profiles: counterpartyProfiles,
     orgId: req.orgId
   };
 
   let validation;
   try {
-   validation = await validateTrade(tradeForValidation);
+    validation = await validateTrade(tradeForValidation);
   } catch (err) {
     console.error('Compliance check error:', err);
     return res.status(502).json({ message: 'Compliance service failed' });
@@ -92,6 +85,7 @@ router.post('/', async (req, res) => {
     .from('trades')
     .insert([
       {
+        org_id: req.orgId,
         trade_type,
         notional_amount,
         symbol,
@@ -108,24 +102,26 @@ router.post('/', async (req, res) => {
     .single();
 
   if (error) {
-    return res.status(500).json({ message: 'Failed to create trade' });
+ return res.status(500).json({ message: error.message || 'Failed to create trade' });
   }
 
   await supabase
     .from('trade_participants')
     .insert(
-      normalizedCounterparties.map(cp => ({
+      normalizedCounterparties.map((cp) => ({
+        org_id: req.orgId,
         trade_id: tradeRow.id,
         counterparty_id: cp,
         role: 'counterparty'
       }))
     );
 
-    if (validation.flags?.length) {
+  if (validation.flags?.length) {
     await supabase
       .from('trade_events')
       .insert([
         {
+          org_id: req.orgId,
           trade_id: tradeRow.id,
           event_type: 'compliance_flags',
           event_payload: { flags: validation.flags }
@@ -148,11 +144,12 @@ router.post('/', async (req, res) => {
   if (['participation', 'syndication_assignment', 'repo', 'reverse_repo'].includes(trade_type)) {
     await supabase
       .from('trade_events')
-      .insert([{ trade_id: tradeRow.id, event_type: trade_type, event_payload: eventPayload }]);
+      .insert([{ org_id: req.orgId, trade_id: tradeRow.id, event_type: trade_type, event_payload: eventPayload }]);
   }
 
   const trade = {
     id: tradeRow.id,
+    org_id: req.orgId,
     trade_type,
     notional_amount,
     symbol,
@@ -160,7 +157,7 @@ router.post('/', async (req, res) => {
     price,
     side,
     status: tradeRow.status,
-     counterparties: normalizedCounterparties,
+    counterparties: normalizedCounterparties,
     created_at: tradeRow.created_at,
     compliance_flags: validation.flags || []
   };
@@ -171,30 +168,34 @@ router.post('/', async (req, res) => {
   res.status(201).json({ trade });
 });
 
-// List or filter trades
 router.get('/', async (req, res) => {
   const { status, trade_type } = req.query;
- let query = supabase.from('trades').select('*, trade_events(event_type, event_payload)');
+  let query = supabase
+    .from('trades')
+    .select('*, trade_events(event_type, event_payload)')
+    .eq('org_id', req.orgId
+  
   if (status) query = query.eq('status', status);
   if (trade_type) query = query.eq('trade_type', trade_type);
 
   const { data: tradeRows, error } = await query;
   if (error) {
-    return res.status(500).json({ message: 'Failed to list trades' });
+    return res.status(500).json({ message: error.message || 'Failed to list trades' });
   }
 
   const trades = await Promise.all(
-    (tradeRows || []).map(async t => {
+    (tradeRows || []).map(async (t) => {
       const { data: participants } = await supabase
         .from('trade_participants')
+        .eq('org_id', req.orgId)
         .eq('trade_id', t.id)
         .select('counterparty_id');
-           const compliance_flags = (t.trade_events || [])
-        .filter(event => event.event_type === 'compliance_flags')
-        .flatMap(event => event.event_payload?.flags || []);
+         const compliance_flags = (t.trade_events || [])
+        .filter((event) => event.event_type === 'compliance_flags')
+        .flatMap((event) => event.event_payload?.flags || []);
       return {
         ...t,
-        counterparties: (participants || []).map(p => p.counterparty_id),
+        counterparties: (participants || []).map((p) => p.counterparty_id),
         compliance_flags
       };
     })
@@ -203,30 +204,31 @@ router.get('/', async (req, res) => {
   res.json({ trades });
 });
 
-// Finalize a trade
 router.post('/:id/settle', async (req, res) => {
   const { id } = req.params;
-   const { data: tradeRow } = await supabase
+  const { data: tradeRow, error } = await supabase
     .from('trades')
     .update({ status: 'settled', updated_at: new Date().toISOString() })
+     .eq('org_id', req.orgId)
     .eq('id', id)
     .select()
     .single();
 
-  if (!tradeRow) return res.status(404).json({ message: 'Trade not found' });
+  if (error || !tradeRow) return res.status(404).json({ message: 'Trade not found' });
 
   await supabase
     .from('trade_settlements')
-    .insert([{ trade_id: id, settlement_date: new Date().toISOString(), status: 'settled' }]);
+    .insert([{ org_id: req.orgId, trade_id: id, settlement_date: new Date().toISOString(), status: 'settled' }]);
 
   const { data: participants } = await supabase
     .from('trade_participants')
+     .eq('org_id', req.orgId)
     .eq('trade_id', id)
     .select('counterparty_id');
 
   const trade = {
     ...tradeRow,
-    counterparties: (participants || []).map(p => p.counterparty_id)
+    counterparties: (participants || []).map((p) => p.counterparty_id)
   };
 
   await triggerWebhooks('trade.settled', { trade, organization_id: req.orgId });
