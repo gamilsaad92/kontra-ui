@@ -2,7 +2,7 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
 import App from "./App";
-import { ErrorBoundary } from "./app/ErrorBoundary";
+import ErrorBoundary from "./app/ErrorBoundary";
 import { AuthProvider } from "./lib/authContext";
 import { QueryClientProvider } from "./lib/queryClient";
 import { Web3Provider } from "./providers/Web3Provider";
@@ -19,7 +19,7 @@ function FatalStartup({ error }: { error: unknown }) {
   );
 }
 
-  try {
+try {
   const rootEl = document.getElementById("root");
   if (!rootEl) throw new Error("Missing #root element in index.html");
 
@@ -27,7 +27,7 @@ function FatalStartup({ error }: { error: unknown }) {
     <React.StrictMode>
       <BrowserRouter>
         <ErrorBoundary>
-                  <QueryClientProvider>
+          <QueryClientProvider>
             <Web3Provider>
               <AuthProvider>
                 <App />
