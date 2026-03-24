@@ -1,5 +1,6 @@
 const { createClient } = require('@supabase/supabase-js');
 const { queryOne } = require('../lib/appDb');
+const authenticate = require('../../middlewares/authenticate');
 
 const hasSupabaseCredentials =
   Boolean(process.env.SUPABASE_URL) && Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY);
@@ -71,9 +72,14 @@ async function requireOrgContext(req, res, next) {
   }
 
   if (!req.user) {
-    return res.status(401).json({
-      error: 'Authentication required',
-      code: 'UNAUTHORIZED',
+    return authenticate(req, res, () => {
+      if (!req.user) {
+        return res.status(401).json({
+          error: 'Authentication required',
+          code: 'UNAUTHORIZED',
+        });
+      }
+      return requireOrgContext(req, res, next);
     });
   }
 
