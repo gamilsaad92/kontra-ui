@@ -1,5 +1,6 @@
 import { createContext, useEffect, useMemo, useState } from "react";
 import { supabase, isSupabaseConfigured } from "./supabaseClient";
+import { resetBootstrapSnapshot, updateBootstrapSnapshot } from "./bootstrapState";
 
 export function clearKontraPersistedState() {
   if (typeof window === "undefined") return;
@@ -30,6 +31,12 @@ export function AuthProvider({ children }) {
     if (!isSupabaseConfigured || !supabase?.auth) {
       setSession(null);
       setLoading(false);
+           updateBootstrapSnapshot({
+        sessionReady: true,
+        isAuthenticated: false,
+        orgReady: false,
+        activeOrganizationId: null,
+      });
       return () => {
         mounted = false;
       };
@@ -49,11 +56,24 @@ export function AuthProvider({ children }) {
           console.warn("Supabase getSession failed:", error.message);
         }
 
-        setSession(data?.session || null);
+         const nextSession = data?.session || null;
+        setSession(nextSession);
+        updateBootstrapSnapshot({
+          sessionReady: true,
+          isAuthenticated: Boolean(nextSession?.access_token),
+          orgReady: false,
+          activeOrganizationId: null,
+        });
       } catch (error) {
         if (!mounted) return;
         console.warn("Supabase getSession threw:", error);
         setSession(null);
+               updateBootstrapSnapshot({
+          sessionReady: true,
+          isAuthenticated: false,
+          orgReady: false,
+          activeOrganizationId: null,
+        });
       } finally {
         if (!mounted) return;
         if (fallbackTimer) {
@@ -69,7 +89,14 @@ export function AuthProvider({ children }) {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, newSession) => {
       if (!mounted) return;
-      setSession(newSession || null);
+     const nextSession = newSession || null;
+      setSession(nextSession);
+      updateBootstrapSnapshot({
+        sessionReady: true,
+        isAuthenticated: Boolean(nextSession?.access_token),
+        orgReady: false,
+        activeOrganizationId: null,
+      });
       setLoading(false);
     });
 
@@ -102,12 +129,16 @@ export function AuthProvider({ children }) {
         if (!isSupabaseConfigured || !supabase?.auth) {
           setSession(null);
           clearKontraPersistedState();
+                resetBootstrapSnapshot();
+          updateBootstrapSnapshot({ sessionReady: true });  
           return { error: null };
         }
 
         const { error } = await supabase.auth.signOut();
         setSession(null);
         clearKontraPersistedState();
+              resetBootstrapSnapshot();
+        updateBootstrapSnapshot({ sessionReady: true });
         return { error };
       },
     }),
