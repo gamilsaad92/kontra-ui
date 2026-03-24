@@ -7,8 +7,9 @@ import React, {
   useRef,
   useState,
 } from "react";
-import { setOrgContext } from "./apiClient";
+import { apiFetch, setOrgContext } from "./apiClient";
 import { supabase, isSupabaseConfigured } from "./supabaseClient";
+import { updateBootstrapSnapshot } from "./bootstrapState";
 
 export interface Org {
   id: string;
@@ -33,7 +34,7 @@ interface OrgContextValue {
 const OrgContext = createContext<OrgContextValue>({
   orgs: [],
   activeOrg: null,
-activeOrganizationId: null,
+  activeOrganizationId: null,
   loading: true,
   authReady: false,
   orgReady: false,
@@ -54,11 +55,8 @@ function readStoredOrgId(): string | null {
 
 function writeStoredOrgId(id: string | null): void {
   try {
-    if (id) {
-      localStorage.setItem(STORAGE_KEY, id);
-    } else {
-      localStorage.removeItem(STORAGE_KEY);
-    }
+    if (id) localStorage.setItem(STORAGE_KEY, id);
+    else localStorage.removeItem(STORAGE_KEY);
   } catch {
     // ignore storage errors
   }
@@ -69,7 +67,7 @@ function normalizeOrgs(raw: unknown): Org[] {
   return raw
     .filter((o) => o && typeof o === "object" && (o as Record<string, unknown>).id)
     .map((o) => ({
-    id: String((o as Record<string, unknown>).id),
+      id: String((o as Record<string, unknown>).id),
       name: String((o as Record<string, unknown>).name || "Organization"),
       role: String((o as Record<string, unknown>).role || (o as Record<string, unknown>).membership_role || "member"),
       status: String((o as Record<string, unknown>).status || "active"),
@@ -91,13 +89,9 @@ async function resolveVerifiedSupabaseUserId(accessToken?: string | null): Promi
 
   try {
     const { data, error } = await supabase.auth.getUser(accessToken);
-    if (error) {
-      console.warn("[OrgProvider] verified user lookup failed", error.message);
-      return null;
-    }
+    if (error) return null;
     return data.user?.id ? String(data.user.id) : null;
-  } catch (error) {
-    console.warn("[OrgProvider] verified user lookup threw", error);
+   } catch {
     return null;
   }
 }
@@ -106,17 +100,21 @@ export function OrgProvider({ children, accessToken, userId, apiBase = "" }: Org
   const [orgs, setOrgs] = useState<Org[]>([]);
   const [activeOrg, setActiveOrgState] = useState<Org | null>(null);
   const [loading, setLoading] = useState(true);
- const [authReady, setAuthReady] = useState(false);
+const [authReady, setAuthReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const bootstrappedRef = useRef(false);
 
   const applyActiveOrg = useCallback(
     (org: Org, allOrgs: Org[]) => {
-    const validated = allOrgs.find((candidate) => candidate.id === org.id) || allOrgs[0] || null;
+      const validated = allOrgs.find((candidate) => candidate.id === org.id) || allOrgs[0] || null;
       if (!validated) return;
       setActiveOrgState(validated);
       writeStoredOrgId(validated.id);
       setOrgContext({ orgId: validated.id, userId: userId ?? undefined });
+            updateBootstrapSnapshot({
+        orgReady: true,
+        activeOrganizationId: validated.id,
+      });
     },
    [userId],
   );
@@ -126,6 +124,10 @@ export function OrgProvider({ children, accessToken, userId, apiBase = "" }: Org
     setActiveOrgState(null);
     writeStoredOrgId(null);
     setOrgContext({ userId: userId ?? undefined });
+      updateBootstrapSnapshot({
+      orgReady: false,
+      activeOrganizationId: null,
+    });
   }, [userId]);
 
   const refreshOrgs = useCallback(async () => {
@@ -138,15 +140,17 @@ export function OrgProvider({ children, accessToken, userId, apiBase = "" }: Org
     }
 
     setLoading(true);
-   setAuthReady(false);
+    setAuthReady(false);
     setError(null);
 
     try {
       const verifiedUserId = await resolveVerifiedSupabaseUserId(accessToken);
       const base = apiBase.replace(/\/+$/, "");
-      const res = await fetch(`${base}/api/me/bootstrap`, {
-        headers: { Authorization: `Bearer ${accessToken}` },
-      });
+        const res = await apiFetch(
+        `${base}/api/me/bootstrap`,
+        { headers: { Authorization: `Bearer ${accessToken}` } },
+        { requireAuth: true },
+      );
       
       const payload = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -164,11 +168,12 @@ export function OrgProvider({ children, accessToken, userId, apiBase = "" }: Org
       }
 
       const storedId = readStoredOrgId();
-       const profileActiveId = payload?.activeOrgId || payload?.active_org_id || payload?.default_org_id || null;
+     const profileActiveId = payload?.activeOrgId || payload?.active_org_id || payload?.default_org_id || null;
       const resolvedId = storedId || profileActiveId || normalized[0].id;
       const resolved = normalized.find((org) => org.id === String(resolvedId)) || normalized[0];
 
       applyActiveOrg(resolved, normalized);
+      
       if (verifiedUserId && userId && verifiedUserId !== userId) {
         console.warn("[OrgProvider] session user id differed from verified user id", { userId, verifiedUserId });
       }
@@ -208,7 +213,7 @@ export function OrgProvider({ children, accessToken, userId, apiBase = "" }: Org
     [applyActiveOrg, orgs],
   );
 
-    const orgReady = authReady && !loading && Boolean(activeOrg?.id);
+ const orgReady = authReady && !loading && Boolean(activeOrg?.id);
 
   const value = useMemo<OrgContextValue>(
     () => ({
