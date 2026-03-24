@@ -5,6 +5,7 @@ import App from "./App";
 import ErrorBoundary from "./app/ErrorBoundary";
 import { AuthProvider } from "./lib/authContext";
 import { QueryClientProvider } from "./lib/queryClient";
+import { installApiFetchInterceptor } from "./lib/apiClient";
 import { Web3Provider } from "./providers/Web3Provider";
 import "./index.css";
 
@@ -18,6 +19,8 @@ function FatalStartup({ error }: { error: unknown }) {
     </div>
   );
 }
+
+installApiFetchInterceptor();
 
 try {
   const rootEl = document.getElementById("root");
