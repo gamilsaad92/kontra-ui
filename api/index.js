@@ -33,6 +33,20 @@ const parseOrigins = (value = '') =>
     .map((part) => normalizeOrigin(part.trim()))
     .filter(Boolean);
 
+const toHostname = (origin = '') => {
+  try {
+    return new URL(origin).hostname;
+  } catch {
+    return '';
+  }
+};
+
+const isTrustedVercelPreview = (origin = '') => {
+  const hostname = toHostname(origin);
+  if (!hostname.endsWith('.vercel.app')) return false;
+  return hostname.startsWith('kontra') || hostname.startsWith('kontra-ui') || hostname.startsWith('kontraui');
+};
+
 const envOrigins = [
   ...parseOrigins(process.env.CORS_ORIGINS || ''),
   normalizeOrigin(process.env.FRONTEND_URL || ''),
@@ -57,7 +71,7 @@ const allowedOrigins = Array.from(new Set([
 
 const allowedOriginMatchers = [
   ...allowedOrigins,
-  /\.vercel\.app$/,
+ isTrustedVercelPreview,
 ];
 
 const corsOptions = {
@@ -68,8 +82,8 @@ const corsOptions = {
 
     const normalizedOrigin = normalizeOrigin(origin);
    const isAllowed = allowedOriginMatchers.some((matcher) => (
-      matcher instanceof RegExp
-        ? matcher.test(normalizedOrigin)
+       typeof matcher === 'function'
+        ? matcher(normalizedOrigin)
         : matcher === normalizedOrigin
     ));
     
@@ -83,7 +97,9 @@ const corsOptions = {
   credentials: true,
   allowedHeaders: [
     'Authorization',
+      'authorization',
     'Content-Type',
+     'content-type',
     'X-Org-Id',
     'x-org-id',
     'X-Organization-Id',
@@ -94,6 +110,7 @@ const corsOptions = {
     'Origin',
   ],
   methods: ['GET', 'HEAD', 'PUT', 'PATCH', 'POST', 'DELETE', 'OPTIONS'],
+   exposedHeaders: ['x-request-id'],
   optionsSuccessStatus: 204,
 };
 
@@ -101,6 +118,12 @@ const app = express();
 
 app.use(cors(corsOptions));
 app.options('*', cors(corsOptions));
+app.use((req, res, next) => {
+  if (req.method === 'OPTIONS') {
+    return res.sendStatus(204);
+  }
+  return next();
+});
 
 app.use((req, _res, next) => {
   const org = req.headers['x-organization-id'];
