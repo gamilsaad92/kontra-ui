@@ -173,7 +173,7 @@ router.get('/', async (req, res) => {
   let query = supabase
     .from('trades')
     .select('*, trade_events(event_type, event_payload)')
-    .eq('org_id', req.orgId
+    .eq('org_id', req.orgId);
   
   if (status) query = query.eq('status', status);
   if (trade_type) query = query.eq('trade_type', trade_type);
