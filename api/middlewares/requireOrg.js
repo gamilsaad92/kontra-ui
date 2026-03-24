@@ -1,4 +1,4 @@
-unction normalizeOrgId(value) {
+function normalizeOrgId(value) {
   if (Array.isArray(value)) return value[0] ? String(value[0]) : null;
   if (value === undefined || value === null || value === '') return null;
   return String(value);
