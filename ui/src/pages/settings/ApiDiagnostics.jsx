@@ -9,6 +9,17 @@ export default function ApiDiagnostics() {
   const [whoami, setWhoami] = useState(emptyResult);
   const [logs, setLogs] = useState(getRequestLog());
 
+    const envChecks = [
+    { key: 'VITE_API_URL', value: import.meta.env.VITE_API_URL || '', required: true, note: 'Set to your API origin in Vercel preview + production.' },
+    { key: 'VITE_SUPABASE_URL', value: import.meta.env.VITE_SUPABASE_URL || '', required: true, note: 'Must match your Supabase project URL.' },
+    { key: 'VITE_SUPABASE_ANON_KEY', value: import.meta.env.VITE_SUPABASE_ANON_KEY || '', required: true, note: 'Anon key required for browser auth restore.' },
+    { key: 'VITE_SITE_URL', value: import.meta.env.VITE_SITE_URL || '', required: false, note: 'Recommended: canonical app URL for redirect validation.' },
+  ];
+
+  const envWarnings = envChecks
+    .filter((entry) => entry.required && !String(entry.value || '').trim())
+    .map((entry) => `${entry.key} is missing`);
+
   useEffect(() => {
     const unsubscribe = subscribeApiLog(() => {
       setLogs(getRequestLog());
@@ -62,10 +73,29 @@ export default function ApiDiagnostics() {
 
       <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
         <h2 className="text-sm font-semibold text-slate-700">Environment</h2>
-        <div className="mt-2 text-sm text-slate-600">
+      <div className="mt-2 space-y-2 text-sm text-slate-600">
           <div>
             <span className="font-medium text-slate-700">Base URL:</span> {getApiBaseUrl() || "Not set"}
           </div>
+                 {envChecks.map((entry) => (
+            <div key={entry.key}>
+              <span className="font-medium text-slate-700">{entry.key}:</span>{' '}
+              {entry.value ? 'Configured' : 'Missing'}
+              <span className="ml-2 text-xs text-slate-500">{entry.note}</span>
+            </div>
+          ))}
+          <div className="rounded border border-slate-200 bg-slate-50 p-2 text-xs text-slate-600">
+            Supabase redirect URLs should include:
+            <code className="mx-1">http://localhost:5173/auth/callback</code>,
+            preview domains like
+            <code className="mx-1">https://&lt;branch&gt;--kontra-ui.vercel.app/auth/callback</code>,
+            and production callback URL.
+          </div>
+          {envWarnings.length > 0 && (
+            <div className="rounded border border-amber-300 bg-amber-50 p-2 text-xs text-amber-800">
+              {envWarnings.join(' · ')}
+            </div>
+          )}
         </div>
       </section>
 
