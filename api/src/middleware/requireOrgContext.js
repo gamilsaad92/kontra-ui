@@ -67,7 +67,7 @@ async function userHasOrgMembership(userId, organizationId) {
 async function requireOrgContext(req, res, next) {
   const path = (req.originalUrl || '').split('?')[0];
 
-  if (path === '/api/health' || path.startsWith('/api/dev/')) {
+ if (path === '/api/health' || path.startsWith('/api/dev/') || path === '/api/me/bootstrap') {
     return next();
   }
 
