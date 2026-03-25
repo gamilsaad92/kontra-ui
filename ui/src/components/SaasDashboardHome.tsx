@@ -150,7 +150,7 @@ function SummarySkeleton() {
 }
 
 export default function SaasDashboardHome({ apiBase }: Props) {
-    const { activeOrganizationId, authReady, orgReady, error: orgError, refreshOrgs } = useOrg();
+ const { activeOrganizationId, authReady, orgReady, sessionExpired, error: orgError, refreshOrgs } = useOrg();
   const [summary, setSummary] = useState<DashboardSummaryResponse>(defaultSummary);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -163,8 +163,8 @@ export default function SaasDashboardHome({ apiBase }: Props) {
   }, []);
 
   useEffect(() => {
-        if (!orgReady || !activeOrganizationId) {
-      setLoading(true);
+    if (!orgReady || !activeOrganizationId) {
+      setLoading(false);
       setError(null);
       return;
     }
@@ -230,7 +230,7 @@ export default function SaasDashboardHome({ apiBase }: Props) {
    { label: "Compliance", value: summary.workQueueCounts.compliance, href: buildUrl("/governance/compliance", { filter: "open" }) },
   ];
 
-    const showTenantInitialization = !orgReady;
+ const showTenantInitialization = !sessionExpired && !orgReady;
 
   return (
     <div className="space-y-6">
@@ -247,6 +247,11 @@ export default function SaasDashboardHome({ apiBase }: Props) {
               : "Checking your session and tenant access…"}
           </p>
         )}
+             {sessionExpired && (
+          <p className="text-xs text-rose-700">
+            Session expired. Please sign in again.
+          </p>
+        )}   
         {!showTenantInitialization && error && <p className="text-xs text-amber-700">{error}</p>}
       </header>
 
