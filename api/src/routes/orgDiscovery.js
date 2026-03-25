@@ -101,6 +101,27 @@ function getCorrelationId(req) {
   return headerValue || crypto.randomUUID();
 }
 
+function getBearerToken(req) {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return null;
+  }
+  return authHeader.slice(7).trim() || null;
+}
+
+function sendStructuredError(res, status, code, message, correlationId, details = null) {
+  return res.status(status).json({
+    ok: false,
+    error: {
+      code,
+      message,
+      status,
+      correlationId,
+      ...(details ? { details } : {}),
+    },
+  });
+}
+
 function logOrgError(req, message, error) {
   const correlationId = getCorrelationId(req);
   console.error(`[OrgDiscovery][${correlationId}] ${message}`, {
@@ -216,9 +237,30 @@ router.get('/', async (req, res) => {
 });
 
 router.get('/bootstrap', async (req, res) => {
-  const identity = getAuthIdentity(req);
-  if (!identity) return res.status(401).json({ code: 'UNAUTHORIZED', message: 'Missing auth' });
+    const token = getBearerToken(req);
+  if (!token) {
+    const correlationId = getCorrelationId(req);
+    return sendStructuredError(
+      res,
+      401,
+      'AUTH_TOKEN_MISSING',
+      'Authorization bearer token is required for bootstrap.',
+      correlationId
+    );
+  }
 
+  const identity = getAuthIdentity(req);
+  if (!identity) {
+    const correlationId = getCorrelationId(req);
+    return sendStructuredError(
+      res,
+      401,
+      'AUTH_TOKEN_INVALID',
+      'Invalid or expired Supabase access token.',
+      correlationId
+    );
+  }
+  
   let user = null;
   let orgRows = [];
 
@@ -247,8 +289,23 @@ router.get('/bootstrap', async (req, res) => {
     }
   }
 
-  const response = toOrgListResponse(orgRows, getRequestedOrgId(req));
-  return res.status(200).json({ user, ...response });
+  try {
+    const response = toOrgListResponse(orgRows, getRequestedOrgId(req));
+    return res.status(200).json({
+      ok: true,
+      user,
+      ...response,
+    });
+  } catch (error) {
+    const correlationId = logOrgError(req, 'Failed to build bootstrap response', error);
+    return sendStructuredError(
+      res,
+      500,
+      'BOOTSTRAP_RESPONSE_FAILED',
+      'Failed to load organization bootstrap data.',
+      correlationId
+    );
+  }
 });
 
 router.get('/active', async (req, res) => {
