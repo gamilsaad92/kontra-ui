@@ -1,7 +1,7 @@
 // ui/src/RootLayout.jsx
 import React, { useContext, useEffect, useMemo, useState } from 'react'
 import { AuthContext } from './lib/authContext'
-import { apiRequest, setOrgContext } from './lib/apiClient'
+import { apiRequest, getApiBaseUrl, setOrgContext } from './lib/apiClient'
 import { apiRoutes } from './lib/apiRoutes'
 import { OrgProvider, useOrg } from './lib/OrgProvider'
 
@@ -199,7 +199,7 @@ export default function RootLayout({ children }) {
   }, [accentColor])
 
   // Determine the API base for OrgProvider's bootstrap call
-  const apiBase = import.meta.env.VITE_API_BASE?.replace(/\/+$/, '') || ''
+ const apiBase = getApiBaseUrl()
 
   return (
     <OrgProvider
