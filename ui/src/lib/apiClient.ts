@@ -145,6 +145,15 @@ const isApiRequestPath = (requestUrl: string): boolean => {
   }
 };
 
+const getConfiguredApiOrigin = (): string | null => {
+  if (!API_BASE_URL) return null;
+  try {
+    return new URL(API_BASE_URL).origin;
+  } catch {
+    return null;
+  }
+};
+
 const isSameOriginRequest = (requestUrl: string): boolean => {
   if (typeof window === "undefined") return true;
   try {
@@ -155,7 +164,29 @@ const isSameOriginRequest = (requestUrl: string): boolean => {
   }
 };
 
-const isFirstPartyApiRequest = (requestUrl: string): boolean => isApiRequestPath(requestUrl) && isSameOriginRequest(requestUrl);
+const isConfiguredApiOriginRequest = (requestUrl: string): boolean => {
+  if (typeof window === "undefined") return false;
+  const configuredApiOrigin = getConfiguredApiOrigin();
+  if (!configuredApiOrigin) return false;
+  try {
+    const parsed = new URL(requestUrl, window.location.origin);
+    return parsed.origin === configuredApiOrigin;
+  } catch {
+    return false;
+  }
+};
+
+const isFirstPartyApiRequest = (requestUrl: string): boolean =>
+  isApiRequestPath(requestUrl) && (isSameOriginRequest(requestUrl) || isConfiguredApiOriginRequest(requestUrl));
+
+const isBootstrapPath = (requestUrl: string): boolean => {
+  try {
+    const parsed = new URL(requestUrl, typeof window === "undefined" ? "http://localhost" : window.location.origin);
+    return parsed.pathname === "/api/me/bootstrap";
+  } catch {
+    return requestUrl === "/api/me/bootstrap";
+  }
+};
 
 const emitBrowserEvent = (name: string, detail: unknown) => {
   if (typeof window === "undefined") return;
@@ -214,6 +245,12 @@ export async function apiFetch(
   }
 
   if (isFirstPartyApi && requiresOrgForPath(requestUrl) && !bootstrap.orgReady) {
+    const bootError = buildError("Organization bootstrap in progress", 425, requestUrl, null, null, "ORG_BOOTSTRAP_PENDING");
+    emitBrowserEvent("api:error", bootError);
+    throw bootError;
+  }
+
+    if (isFirstPartyApi && options.requireAuth && bootstrap.isAuthenticated && !bootstrap.orgReady && !isBootstrapPath(requestUrl)) {
     const bootError = buildError("Organization bootstrap in progress", 425, requestUrl, null, null, "ORG_BOOTSTRAP_PENDING");
     emitBrowserEvent("api:error", bootError);
     throw bootError;
