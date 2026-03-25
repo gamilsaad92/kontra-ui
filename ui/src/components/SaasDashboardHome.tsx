@@ -69,6 +69,7 @@ const defaultSummary: DashboardSummaryResponse = {
   aiBrief: [],
  quickActions: [],
 };
+const ORG_BOOTSTRAP_UI_TIMEOUT_MS = 12000;
 
 function normalizeApiBase(base?: string): string | undefined {
   if (!base) return undefined;
@@ -154,6 +155,7 @@ export default function SaasDashboardHome({ apiBase }: Props) {
   const [summary, setSummary] = useState<DashboardSummaryResponse>(defaultSummary);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+   const [orgBootstrapTimedOut, setOrgBootstrapTimedOut] = useState(false);
   const [role, setRole] = useState<DashboardRole>("lender");
   const [retryNonce, setRetryNonce] = useState(0);
 
@@ -161,6 +163,19 @@ export default function SaasDashboardHome({ apiBase }: Props) {
     document.title = "Kontra Command Center";
     setRole(detectRole());
   }, []);
+
+    useEffect(() => {
+    if (orgReady || sessionExpired) {
+      setOrgBootstrapTimedOut(false);
+      return;
+    }
+    const timeout = window.setTimeout(() => {
+      setOrgBootstrapTimedOut(true);
+    }, ORG_BOOTSTRAP_UI_TIMEOUT_MS);
+    return () => {
+      window.clearTimeout(timeout);
+    };
+  }, [orgReady, sessionExpired, retryNonce]);
 
   useEffect(() => {
     if (!orgReady || !activeOrganizationId) {
@@ -230,7 +245,7 @@ export default function SaasDashboardHome({ apiBase }: Props) {
    { label: "Compliance", value: summary.workQueueCounts.compliance, href: buildUrl("/governance/compliance", { filter: "open" }) },
   ];
 
- const showTenantInitialization = !sessionExpired && !orgReady;
+ const showTenantInitialization = !sessionExpired && !orgReady && !orgBootstrapTimedOut;
 
   return (
     <div className="space-y-6">
@@ -256,6 +271,25 @@ export default function SaasDashboardHome({ apiBase }: Props) {
       </header>
 
       {showTenantInitialization || loading ? <SummarySkeleton /> : null}
+
+            {orgBootstrapTimedOut && !orgReady && !sessionExpired && (
+        <div className="flex items-center justify-between rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          <span>
+            {orgError || "Workspace setup is taking longer than expected. Bootstrap may have failed."}
+          </span>
+          <button
+            type="button"
+            onClick={async () => {
+              setOrgBootstrapTimedOut(false);
+              await refreshOrgs();
+              setRetryNonce((value) => value + 1);
+            }}
+            className="rounded-md border border-amber-300 px-3 py-1 font-medium hover:bg-amber-100"
+          >
+            Retry bootstrap
+          </button>
+        </div>
+      )}
 
        {!showTenantInitialization && error && (
         <div className="flex items-center justify-between rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
