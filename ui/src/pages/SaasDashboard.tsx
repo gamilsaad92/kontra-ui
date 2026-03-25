@@ -77,7 +77,12 @@ export default function SaasDashboard() {
 
     return byUsage;
   }, [navItems, usage]);
-
+ const frequentPaths = useMemo(() => new Set(frequentItems.map((item) => item.path)), [frequentItems]);
+  const mainNavItems = useMemo(
+    () => navItems.filter((item) => !frequentPaths.has(item.path)),
+    [navItems, frequentPaths],
+  );
+  
  const activeItem = useMemo(
     () => navItems.find((item) => location.pathname === item.path || location.pathname.startsWith(`${item.path}/`)),
     [location.pathname, navItems],
@@ -240,7 +245,7 @@ export default function SaasDashboard() {
               <hr className="border-slate-800" />
             </div>
           )}
-            {navItems.map((item) => renderNavItem(item))}
+            {mainNavItems.map((item) => renderNavItem(item))}
           <div className="pt-4">
             <button
               type="button"
