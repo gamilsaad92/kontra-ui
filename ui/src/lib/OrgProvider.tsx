@@ -26,6 +26,7 @@ interface OrgContextValue {
   loading: boolean;
   authReady: boolean;
   orgReady: boolean;
+  sessionExpired: boolean;
   error: string | null;
   setActiveOrg: (org: Org) => void;
   refreshOrgs: () => Promise<void>;
@@ -38,12 +39,15 @@ const OrgContext = createContext<OrgContextValue>({
   loading: true,
   authReady: false,
   orgReady: false,
+  sessionExpired: false,
   error: null,
   setActiveOrg: () => undefined,
   refreshOrgs: async () => undefined,
 });
 
 const STORAGE_KEY = "kontra_active_org_id";
+const BOOTSTRAP_TIMEOUT_MS = 8000;
+const BOOTSTRAP_MAX_RETRIES = 2;
 
 function readStoredOrgId(): string | null {
   try {
@@ -100,7 +104,8 @@ export function OrgProvider({ children, accessToken, userId, apiBase = "" }: Org
   const [orgs, setOrgs] = useState<Org[]>([]);
   const [activeOrg, setActiveOrgState] = useState<Org | null>(null);
   const [loading, setLoading] = useState(true);
-const [authReady, setAuthReady] = useState(false);
+  const [authReady, setAuthReady] = useState(false);
+  const [sessionExpired, setSessionExpired] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const bootstrappedRef = useRef(false);
 
@@ -133,7 +138,8 @@ const [authReady, setAuthReady] = useState(false);
   const refreshOrgs = useCallback(async () => {
     if (!accessToken) {
       clearOrgState();
-      setError(null);
+      setError("Session expired. Please sign in again.");
+      setSessionExpired(true);
       setLoading(false);
       setAuthReady(true);
       return;
@@ -141,20 +147,58 @@ const [authReady, setAuthReady] = useState(false);
 
     setLoading(true);
     setAuthReady(false);
+    setSessionExpired(false);
     setError(null);
 
     try {
       const verifiedUserId = await resolveVerifiedSupabaseUserId(accessToken);
       const base = apiBase.replace(/\/+$/, "");
-        const res = await apiFetch(
-        `${base}/api/me/bootstrap`,
-        { headers: { Authorization: `Bearer ${accessToken}` } },
-        { requireAuth: true },
-      );
-      
+       const bootstrapUrl = `${base}/api/me/bootstrap`;
+      const bootstrapRequest = async () => {
+        const controller = new AbortController();
+        const timeoutId = window.setTimeout(() => controller.abort(), BOOTSTRAP_TIMEOUT_MS);
+        try {
+          return await apiFetch(
+            bootstrapUrl,
+            {
+              headers: { Authorization: `Bearer ${accessToken}` },
+              signal: controller.signal,
+            },
+            { requireAuth: true },
+          );
+        } finally {
+          window.clearTimeout(timeoutId);
+        }
+      };
+
+      let res: Response | null = null;
+      let lastError: unknown = null;
+      for (let attempt = 0; attempt <= BOOTSTRAP_MAX_RETRIES; attempt += 1) {
+        try {
+          res = await bootstrapRequest();
+          break;
+        } catch (requestError) {
+          lastError = requestError;
+          if (attempt === BOOTSTRAP_MAX_RETRIES) {
+            throw requestError;
+          }
+        }
+      }
+
+      if (!res) {
+        throw lastError instanceof Error ? lastError : new Error("Organization bootstrap failed.");
+      }
+
       const payload = await res.json().catch(() => ({}));
       if (!res.ok) {
-        const message = payload?.message || payload?.error || `Organization bootstrap failed (${res.status})`;
+        const message =
+          payload?.message ||
+          payload?.error?.message ||
+          payload?.error ||
+          `Organization bootstrap failed (${res.status})`;
+        if (res.status === 401) {
+          setSessionExpired(true);
+        }
         throw new Error(message);
       }
 
@@ -173,6 +217,7 @@ const [authReady, setAuthReady] = useState(false);
       const resolved = normalized.find((org) => org.id === String(resolvedId)) || normalized[0];
 
       applyActiveOrg(resolved, normalized);
+      setSessionExpired(false);
       
       if (verifiedUserId && userId && verifiedUserId !== userId) {
         console.warn("[OrgProvider] session user id differed from verified user id", { userId, verifiedUserId });
@@ -180,7 +225,19 @@ const [authReady, setAuthReady] = useState(false);
     } catch (err) {
       console.warn("[OrgProvider] org bootstrap failed", err);
       clearOrgState();
-      setError(err instanceof Error ? err.message : "Failed to initialize organization context.");
+      const typedError = err as { status?: number; code?: string; name?: string; message?: string } | null;
+      if (
+        typedError?.status === 401 ||
+        typedError?.code === "AUTH_REQUIRED" ||
+        typedError?.code === "AUTH_TOKEN_EXPIRED"
+      ) {
+        setSessionExpired(true);
+        setError("Session expired. Please sign in again.");
+      } else if (typedError?.name === "AbortError") {
+        setError("Session check timed out. Retrying failed, please refresh.");
+      } else {
+        setError(err instanceof Error ? err.message : "Failed to initialize organization context.");
+      }
     } finally {
       setLoading(false);
       setAuthReady(true);
@@ -200,7 +257,8 @@ const [authReady, setAuthReady] = useState(false);
   useEffect(() => {
     if (!accessToken) {
       clearOrgState();
-      setError(null);
+      setSessionExpired(true);
+      setError("Session expired. Please sign in again.");
       setLoading(false);
       setAuthReady(true);
     }
@@ -223,11 +281,12 @@ const [authReady, setAuthReady] = useState(false);
       loading,
       authReady,
       orgReady,
+      sessionExpired,
       error,
       setActiveOrg,
       refreshOrgs,
     }),
-    [orgs, activeOrg, loading, authReady, orgReady, error, setActiveOrg, refreshOrgs],
+   [orgs, activeOrg, loading, authReady, orgReady, sessionExpired, error, setActiveOrg, refreshOrgs],
   );
 
   return <OrgContext.Provider value={value}>{children}</OrgContext.Provider>;
