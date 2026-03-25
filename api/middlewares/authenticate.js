@@ -104,7 +104,14 @@ module.exports = async function requireAuth(req, res, next) {
   try {
     const token = getAccessToken(req);
     if (!token) {
-      return res.status(401).json({ error: 'Unauthorized: Missing access token' });
+      return res.status(401).json({
+        ok: false,
+        error: {
+          code: 'AUTH_TOKEN_MISSING',
+          message: 'Unauthorized: Missing access token',
+          status: 401,
+        },
+      });
     }
 
     if (devAccessToken && token === devAccessToken) {
@@ -126,7 +133,14 @@ module.exports = async function requireAuth(req, res, next) {
     }
 
     if (!supabase) {
-      return res.status(503).json({ error: 'Authentication unavailable' });
+     return res.status(503).json({
+        ok: false,
+        error: {
+          code: 'AUTH_UNAVAILABLE',
+          message: 'Authentication unavailable',
+          status: 503,
+        },
+      });
     }
 
     const tokenPayload = decodeJwtPayload(token);
@@ -142,7 +156,14 @@ module.exports = async function requireAuth(req, res, next) {
     } = await supabase.auth.getUser(token);
 
     if (error || !authUser) {
-      return res.status(401).json({ error: 'Unauthorized: Invalid or expired token' });
+     return res.status(401).json({
+        ok: false,
+        error: {
+          code: 'AUTH_TOKEN_INVALID',
+          message: 'Unauthorized: Invalid or expired token',
+          status: 401,
+        },
+      });
     }
 
     // Try local PostgreSQL first (may throw APP_DB_URL_MISSING if not configured)
@@ -182,12 +203,23 @@ module.exports = async function requireAuth(req, res, next) {
       // Entire local DB unavailable — still let auth proceed with Supabase only
       console.warn('[Auth] APP_DB_URL missing, authentication will be Supabase-only');
       return res.status(503).json({
-        error: 'Database unavailable for auth lookup',
-        code: error.code,
+         ok: false,
+        error: {
+          code: error.code,
+          message: 'Database unavailable for auth lookup',
+          status: 503,
+        },
       });
     }
 
     console.error('[Auth] requireAuth failed', error);
-    return res.status(500).json({ error: 'Internal authentication error' });
+    return res.status(500).json({
+      ok: false,
+      error: {
+        code: 'AUTH_INTERNAL_ERROR',
+        message: 'Internal authentication error',
+        status: 500,
+      },
+    });
   }
 };
