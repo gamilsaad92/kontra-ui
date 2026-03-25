@@ -32,8 +32,24 @@ describe('GET /bootstrap', () => {
       .set('Authorization', `Bearer a.${tokenPayload}.c`);
 
     expect(res.status).toBe(200);
+      expect(res.body.ok).toBe(true);
     expect(res.body.orgs).toEqual([]);
     expect(res.body.activeOrgId).toBeNull();
     expect(res.body.default_org_id).toBeNull();
+  });
+  
+  test('returns structured 401 when bearer token is missing', async () => {
+    const app = express();
+    app.use(express.json());
+    app.use('/api/me', router);
+
+    const res = await request(app).get('/api/me/bootstrap');
+
+    expect(res.status).toBe(401);
+    expect(res.body.ok).toBe(false);
+    expect(res.body.error).toMatchObject({
+      code: 'AUTH_TOKEN_MISSING',
+      status: 401,
+    });
   });
 });
