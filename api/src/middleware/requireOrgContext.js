@@ -75,8 +75,12 @@ async function requireOrgContext(req, res, next) {
     return authenticate(req, res, () => {
       if (!req.user) {
         return res.status(401).json({
-          error: 'Authentication required',
-          code: 'UNAUTHORIZED',
+            ok: false,
+          error: {
+            code: 'UNAUTHORIZED',
+            message: 'Authentication required before organization validation.',
+            status: 401,
+          },
         });
       }
       return requireOrgContext(req, res, next);
@@ -86,8 +90,12 @@ async function requireOrgContext(req, res, next) {
   const headerOrgId = getOrgHeader(req);
   if (!headerOrgId) {
     return res.status(400).json({
-            error: 'Missing X-Org-Id header',
-      code: 'ORG_CONTEXT_MISSING',
+      ok: false,
+      error: {
+        code: 'ORG_CONTEXT_MISSING',
+        message: 'Missing X-Org-Id header. Call /api/me/bootstrap first to resolve memberships and default organization.',
+        status: 400,
+      },
     });
   }
 
@@ -95,9 +103,13 @@ async function requireOrgContext(req, res, next) {
   const hasMembership = await userHasOrgMembership(req.user.supabaseUserId || req.user.id, organizationId);
   if (!hasMembership) {
     return res.status(403).json({
-      error: 'Organization access denied',
-      code: 'ORG_FORBIDDEN',
-      organizationId,
+       ok: false,
+      error: {
+        code: 'ORG_FORBIDDEN',
+        message: 'Organization access denied for the authenticated user.',
+        status: 403,
+        organizationId,
+      },
     });
   }
 
