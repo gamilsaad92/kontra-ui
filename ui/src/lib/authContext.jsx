@@ -20,6 +20,23 @@ export const AuthContext = createContext({
   signOut: async () => ({ error: null }),
 });
 
+async function waitForPersistedSession(maxAttempts = 4, delayMs = 150) {
+  if (!supabase?.auth) return null;
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    const { data, error } = await supabase.auth.getSession();
+    if (error) {
+      return null;
+    }
+    if (data?.session?.access_token) {
+      return data.session;
+    }
+    if (attempt < maxAttempts - 1) {
+      await new Promise((resolve) => window.setTimeout(resolve, delayMs));
+    }
+  }
+  return null;
+}
+
 export function AuthProvider({ children }) {
   const [session, setSession] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -122,8 +139,37 @@ export function AuthProvider({ children }) {
         if (!isSupabaseConfigured || !supabase?.auth) {
           return { data: null, error: new Error("Supabase not configured") };
         }
+        setLoading(true);
+        try {
+          const response = await supabase.auth.signInWithPassword({ email, password });
+          if (response.error) return response;
 
-        return supabase.auth.signInWithPassword({ email, password });
+          const immediateSession = response?.data?.session || null;
+          const persistedSession = immediateSession || (await waitForPersistedSession());
+          if (!persistedSession?.access_token) {
+            return {
+              ...response,
+              error: new Error("Signed in, but session persistence did not complete. Please try again."),
+            };
+          }
+
+          setSession(persistedSession);
+          updateBootstrapSnapshot({
+            sessionReady: true,
+            isAuthenticated: true,
+            orgReady: false,
+            activeOrganizationId: null,
+          });
+          return {
+            data: {
+              ...response.data,
+              session: persistedSession,
+            },
+            error: null,
+          };
+        } finally {
+          setLoading(false);
+        }
       },
       signOut: async () => {
         if (!isSupabaseConfigured || !supabase?.auth) {
