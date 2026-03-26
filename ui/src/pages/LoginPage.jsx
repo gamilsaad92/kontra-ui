@@ -1,13 +1,22 @@
-import React, { useContext, useState } from "react";
-import { Navigate } from "react-router-dom";
+import React, { useContext, useMemo, useState } from "react";
+import { Navigate, useLocation, useNavigate } from "react-router-dom";
 import LoginForm from "../components/LoginForm";
 import SignUpForm from "../components/SignUpForm";
 import { AuthContext } from "../lib/authContext";
 
 export default function LoginPage() {
   const { session, loading } = useContext(AuthContext);
+   const location = useLocation();
+  const navigate = useNavigate();
   const [mode, setMode] = useState("login");
-
+ const redirectTo = useMemo(() => {
+    const nextPath = location.state?.from?.pathname;
+    if (typeof nextPath !== "string" || !nextPath.startsWith("/") || nextPath === "/login") {
+      return "/dashboard";
+    }
+    return nextPath;
+  }, [location.state]);
+  
   if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center" style={{ background: "#1c1c1c" }}>
@@ -74,7 +83,12 @@ export default function LoginPage() {
 
           {/* Form */}
           {mode === "login"
-            ? <LoginForm onSwitch={() => setMode("signup")} />
+            ? (
+              <LoginForm
+                onSwitch={() => setMode("signup")}
+                onSuccess={() => navigate(redirectTo, { replace: true })}
+              />
+            )
             : <SignUpForm onSwitch={() => setMode("login")} />}
         </div>
       </div>
