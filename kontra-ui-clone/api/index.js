@@ -1,5 +1,7 @@
 // index.js
-require('dotenv').config();
+// override: true ensures .env values win over the shell-level placeholder
+// fallbacks set in the workflow command (safe: on Render there is no .env file)
+require('dotenv').config({ override: true });
 const express = require('express');
 const Sentry = require('@sentry/node');
 const cors = require('cors');
