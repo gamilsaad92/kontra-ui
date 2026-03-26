@@ -48,6 +48,29 @@ Every package extends `tsconfig.base.json` which sets `composite: true`. The roo
 - `pnpm run build` — runs `typecheck` first, then recursively runs `build` in all packages that define it
 - `pnpm run typecheck` — runs `tsc --build --emitDeclarationOnly` using project references
 
+## Kontra UI (Main Application)
+
+The primary application lives in `kontra-ui-clone/` — a full loan servicing workspace for multifamily/CRE loans.
+
+### Key directories
+- `kontra-ui-clone/ui/` — React + Vite frontend (served on PORT 23452 via `artifacts/kontra-ui: web` workflow)
+- `kontra-ui-clone/api/` — Express backend (PORT 3000, Supabase-backed, `Kontra API Backend` workflow)
+
+### Auth & Multi-tenancy
+- Supabase project: `jfhojgtnmcfqretrrxam` (region: us-east-1)
+- Main user: `gamilsaad@kontraplatform.com` → org_id=12 "Kontra Platform", role=admin
+- All 9 demo users share password: `KontraDemo2024!`
+- OrgProvider (`ui/src/lib/OrgProvider.tsx`) bootstraps org context via `/api/me/bootstrap` after auth
+- `AuthedOrgProvider` in `App.jsx` wraps routes so OrgProvider has session access
+
+### Artifact routing
+- `artifacts/kontra-ui` — dev script cd's into `kontra-ui-clone/ui/` and runs its Vite (PORT 23452)
+- Preview path `/` shows the Kontra UI login page
+
+### Pending setup (needed for full functionality)
+1. Run `kontra-ui-clone/api/supabase/migrations/20260320_rls_tenancy.sql` in Supabase SQL editor to add `org_id` columns and RLS policies
+2. Set `SUPABASE_SERVICE_ROLE_KEY` on Render and redeploy the production API
+
 ## Packages
 
 ### `artifacts/api-server` (`@workspace/api-server`)
