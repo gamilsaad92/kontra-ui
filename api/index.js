@@ -1,5 +1,7 @@
 // index.js
-require('dotenv').config();
+// override: true ensures .env values win over the shell-level placeholder
+// fallbacks set in the workflow command (safe: on Render there is no .env file)
+require('dotenv').config({ override: true });
 const express = require('express');
 const Sentry = require('@sentry/node');
 const cors = require('cors');
@@ -33,20 +35,6 @@ const parseOrigins = (value = '') =>
     .map((part) => normalizeOrigin(part.trim()))
     .filter(Boolean);
 
-const toHostname = (origin = '') => {
-  try {
-    return new URL(origin).hostname;
-  } catch {
-    return '';
-  }
-};
-
-const isTrustedVercelPreview = (origin = '') => {
-  const hostname = toHostname(origin);
-  if (!hostname.endsWith('.vercel.app')) return false;
-  return hostname.startsWith('kontra') || hostname.startsWith('kontra-ui') || hostname.startsWith('kontraui');
-};
-
 const envOrigins = [
   ...parseOrigins(process.env.CORS_ORIGINS || ''),
   normalizeOrigin(process.env.FRONTEND_URL || ''),
@@ -71,7 +59,7 @@ const allowedOrigins = Array.from(new Set([
 
 const allowedOriginMatchers = [
   ...allowedOrigins,
- isTrustedVercelPreview,
+  /\.vercel\.app$/,
 ];
 
 const corsOptions = {
@@ -82,8 +70,8 @@ const corsOptions = {
 
     const normalizedOrigin = normalizeOrigin(origin);
    const isAllowed = allowedOriginMatchers.some((matcher) => (
-       typeof matcher === 'function'
-        ? matcher(normalizedOrigin)
+      matcher instanceof RegExp
+        ? matcher.test(normalizedOrigin)
         : matcher === normalizedOrigin
     ));
     
@@ -97,9 +85,7 @@ const corsOptions = {
   credentials: true,
   allowedHeaders: [
     'Authorization',
-      'authorization',
     'Content-Type',
-     'content-type',
     'X-Org-Id',
     'x-org-id',
     'X-Organization-Id',
@@ -110,7 +96,6 @@ const corsOptions = {
     'Origin',
   ],
   methods: ['GET', 'HEAD', 'PUT', 'PATCH', 'POST', 'DELETE', 'OPTIONS'],
-   exposedHeaders: ['x-request-id'],
   optionsSuccessStatus: 204,
 };
 
@@ -118,12 +103,6 @@ const app = express();
 
 app.use(cors(corsOptions));
 app.options('*', cors(corsOptions));
-app.use((req, res, next) => {
-  if (req.method === 'OPTIONS') {
-    return res.sendStatus(204);
-  }
-  return next();
-});
 
 app.use((req, _res, next) => {
   const org = req.headers['x-organization-id'];
