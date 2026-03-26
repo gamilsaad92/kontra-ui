@@ -245,7 +245,7 @@ export default function SaasDashboardHome({ apiBase }: Props) {
    { label: "Compliance", value: summary.workQueueCounts.compliance, href: buildUrl("/governance/compliance", { filter: "open" }) },
   ];
 
- const showTenantInitialization = !sessionExpired && !orgReady && !orgBootstrapTimedOut;
+ const showTenantInitialization = !sessionExpired && !orgReady && !orgBootstrapTimedOut && !orgError;
 
   return (
     <div className="space-y-6">
