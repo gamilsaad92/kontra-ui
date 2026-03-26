@@ -60,6 +60,9 @@ const allowedOrigins = Array.from(new Set([
 const allowedOriginMatchers = [
   ...allowedOrigins,
   /\.vercel\.app$/,
+  /\.replit\.dev$/,
+  /\.repl\.co$/,
+  /localhost:\d+$/,
 ];
 
 const corsOptions = {

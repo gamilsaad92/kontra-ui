@@ -86,6 +86,47 @@ function withTimeout(promise, ms) {
   return Promise.race([promise, timeout]).finally(() => clearTimeout(t));
 }
 
+router.post('/signin', async (req, res) => {
+  const { email, password } = req.body || {};
+  if (!email || !password) {
+    return res.status(400).json({ error: 'Email and password are required' });
+  }
+  if (!supabaseAdmin) {
+    return res.status(503).json({ error: 'Auth not configured on server' });
+  }
+  try {
+    const { data, error } = await supabaseAdmin.auth.signInWithPassword({ email, password });
+    if (error) {
+      return res.status(401).json({ error: error.message });
+    }
+    return res.status(200).json({
+      access_token: data.session.access_token,
+      refresh_token: data.session.refresh_token,
+      expires_at: data.session.expires_at,
+      expires_in: data.session.expires_in,
+      token_type: data.session.token_type,
+      user: {
+        id: data.user.id,
+        email: data.user.email,
+        created_at: data.user.created_at,
+      },
+    });
+  } catch (err) {
+    console.error('[Auth] signin error:', err);
+    return res.status(500).json({ error: 'Sign in failed' });
+  }
+});
+
+router.post('/signout', async (req, res) => {
+  const token = getBearerToken(req);
+  if (supabaseAdmin && token) {
+    try {
+      await supabaseAdmin.auth.admin.signOut(token);
+    } catch (_) {}
+  }
+  return res.status(200).json({ success: true });
+});
+
 router.post('/bootstrap', async (req, res) => {
   try {
   const response = await withTimeout((async () => {
