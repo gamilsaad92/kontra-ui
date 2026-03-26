@@ -11,7 +11,7 @@ function normalizeEmailForAuth(rawEmail) {
   return trimmed
 }
 
-export default function LoginForm({ onSwitch }) {
+export default function LoginForm({ onSwitch, onSuccess }) {
   const { signIn, loading: authLoading } = useContext(AuthContext)
   const { t } = useLocale()
   const [email, setEmail] = useState('')
@@ -27,7 +27,16 @@ export default function LoginForm({ onSwitch }) {
     if (!password) { setError(t('login.passwordRequired')); return }
     setLoading(true)
     try {
-      const { error: signInError } = await signIn({ email: normalizeEmailForAuth(email), password })
+      const { data, error: signInError } = await signIn({ email: normalizeEmailForAuth(email), password })
+      if (signInError) {
+        setError(signInError.message)
+        return
+      }
+      if (!data?.session?.access_token) {
+        setError('Signed in, but the session was not established. Please try again.')
+        return
+      }
+      onSuccess?.()
       if (signInError) setError(signInError.message)
     } catch (err) {
       setError(err?.message || 'Unable to sign in right now. Please try again.')
