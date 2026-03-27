@@ -27,7 +27,7 @@ async function verifyAccessToken(bearerToken) {
   if (!bearerToken) {
     throw Object.assign(new Error('Missing access token'), { code: 'TOKEN_MISSING' });
   }
-  
+
   const { data, error } = await supabaseAdmin.auth.getUser(bearerToken);
   if (error || !data?.user) {
     const e = new Error(error?.message || 'Invalid token');
@@ -35,7 +35,7 @@ async function verifyAccessToken(bearerToken) {
     throw e;
   }
 
-return data.user;
+  return data.user;
 }
 
 async function upsertLocalUser(user) {
@@ -75,7 +75,7 @@ async function queryMemberships(localUserId) {
         ORDER BY o.created_at ASC`,
       [localUserId]
     );
-  } 
+  }
 }
 
 function withTimeout(promise, ms) {
@@ -86,6 +86,7 @@ function withTimeout(promise, ms) {
   return Promise.race([promise, timeout]).finally(() => clearTimeout(t));
 }
 
+// POST /api/auth/signin
 router.post('/signin', async (req, res) => {
   const { email, password } = req.body || {};
   if (!email || !password) {
@@ -117,6 +118,40 @@ router.post('/signin', async (req, res) => {
   }
 });
 
+// POST /api/auth/refresh  ← ADDED: was missing, authContext.jsx needs this
+router.post('/refresh', async (req, res) => {
+  const { refresh_token } = req.body || {};
+  if (!refresh_token) {
+    return res.status(400).json({ error: 'refresh_token is required' });
+  }
+  if (!supabaseAdmin) {
+    return res.status(503).json({ error: 'Auth not configured on server' });
+  }
+  try {
+    const { data, error } = await supabaseAdmin.auth.refreshSession({ refresh_token });
+    if (error || !data?.session) {
+      console.warn('[Auth] refresh failed:', error?.message);
+      return res.status(401).json({ error: error?.message || 'Refresh failed' });
+    }
+    return res.status(200).json({
+      access_token: data.session.access_token,
+      refresh_token: data.session.refresh_token,
+      expires_at: data.session.expires_at,
+      expires_in: data.session.expires_in,
+      token_type: data.session.token_type,
+      user: {
+        id: data.user.id,
+        email: data.user.email,
+        created_at: data.user.created_at,
+      },
+    });
+  } catch (err) {
+    console.error('[Auth] refresh error:', err);
+    return res.status(500).json({ error: 'Token refresh failed' });
+  }
+});
+
+// POST /api/auth/signout
 router.post('/signout', async (req, res) => {
   const token = getBearerToken(req);
   if (supabaseAdmin && token) {
@@ -127,16 +162,30 @@ router.post('/signout', async (req, res) => {
   return res.status(200).json({ success: true });
 });
 
+// POST /api/auth/bootstrap
+// Bootstraps the user's local DB record and org memberships.
+// Gracefully falls back to Supabase-only when local DB is unavailable (e.g. Render).
 router.post('/bootstrap', async (req, res) => {
   try {
-  const response = await withTimeout((async () => {
+    const response = await withTimeout((async () => {
       const token = getBearerToken(req);
       const user = await withTimeout(verifyAccessToken(token), 8000);
-      const localUser = await withTimeout(upsertLocalUser(user), 8000);
       const requestedOrgId = req.body?.org_id ? String(req.body.org_id) : null;
 
-      const orgs = await withTimeout(queryMemberships(localUser.id), 8000);
-     
+      // Try local DB — gracefully degrade if unavailable
+      let localUser = null;
+      let orgs = [];
+      try {
+        localUser = await withTimeout(upsertLocalUser(user), 8000);
+        orgs = localUser ? await withTimeout(queryMemberships(localUser.id), 8000) : [];
+      } catch (dbErr) {
+        // Local DB not available (APP_DB_URL_MISSING or connection error) — skip local lookups
+        if (dbErr?.code !== 'APP_DB_URL_MISSING') {
+          console.debug('[AuthBootstrap] local DB unavailable, skipping', dbErr?.message);
+        }
+        orgs = [];
+      }
+
       const normalizedOrgs = Array.isArray(orgs) ? orgs.map((org) => ({
         id: String(org.id),
         name: org.name,
@@ -164,7 +213,7 @@ router.post('/bootstrap', async (req, res) => {
 
     return res.status(200).json(response);
   } catch (error) {
-   if (error?.code === 'TIMEOUT') {
+    if (error?.code === 'TIMEOUT') {
       return res.status(504).json({ message: error.message, code: error.code });
     }
     if (error?.code === 'TOKEN_MISSING' || error?.code === 'TOKEN_INVALID' || error?.code === 'SUPABASE_ADMIN_MISSING') {
