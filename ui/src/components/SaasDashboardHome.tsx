@@ -1,6 +1,6 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useContext, useEffect, useMemo, useState } from "react";
 import { api } from "../lib/api";
-import { useOrg } from "../lib/OrgProvider";
+import { AuthContext } from "../lib/authContext";
 
 type DashboardRole = "lender" | "servicer" | "investor" | "admin";
 
@@ -67,9 +67,8 @@ const defaultSummary: DashboardSummaryResponse = {
   nextDeadlines: [],
   todaysActivity: [],
   aiBrief: [],
- quickActions: [],
+  quickActions: []
 };
-const ORG_BOOTSTRAP_UI_TIMEOUT_MS = 12000;
 
 function normalizeApiBase(base?: string): string | undefined {
   if (!base) return undefined;
@@ -106,7 +105,7 @@ function SectionCard({
   title,
   ctaLabel,
   ctaHref,
-   children,
+  children
 }: {
   title?: string;
   label?: string;
@@ -127,60 +126,24 @@ function SectionCard({
   );
 }
 
-function SummarySkeleton() {
-  return (
-    <div className="space-y-6 animate-pulse" aria-label="Dashboard summary loading">
-      <div className="rounded-lg border border-slate-200 bg-white px-4 py-3">
-        <div className="h-4 w-48 rounded bg-slate-200" />
-        <div className="mt-2 h-3 w-80 max-w-full rounded bg-slate-100" />
-      </div>
-      <div className="grid gap-4 lg:grid-cols-2">
-        {Array.from({ length: 4 }).map((_, index) => (
-          <div key={index} className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-            <div className="h-4 w-28 rounded bg-slate-200" />
-            <div className="mt-4 space-y-3">
-              <div className="h-10 rounded bg-slate-100" />
-              <div className="h-10 rounded bg-slate-100" />
-              <div className="h-10 rounded bg-slate-100" />
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
 export default function SaasDashboardHome({ apiBase }: Props) {
- const { activeOrganizationId, authReady, orgReady, sessionExpired, error: orgError, refreshOrgs } = useOrg();
+  const { session } = useContext(AuthContext);
+  const accessToken = session?.access_token ?? null;
+
   const [summary, setSummary] = useState<DashboardSummaryResponse>(defaultSummary);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-   const [orgBootstrapTimedOut, setOrgBootstrapTimedOut] = useState(false);
   const [role, setRole] = useState<DashboardRole>("lender");
-  const [retryNonce, setRetryNonce] = useState(0);
 
   useEffect(() => {
     document.title = "Kontra Command Center";
     setRole(detectRole());
   }, []);
 
-    useEffect(() => {
-    if (orgReady || sessionExpired) {
-      setOrgBootstrapTimedOut(false);
-      return;
-    }
-    const timeout = window.setTimeout(() => {
-      setOrgBootstrapTimedOut(true);
-    }, ORG_BOOTSTRAP_UI_TIMEOUT_MS);
-    return () => {
-      window.clearTimeout(timeout);
-    };
-  }, [orgReady, sessionExpired, retryNonce]);
-
   useEffect(() => {
-    if (!orgReady || !activeOrganizationId) {
+    // Don't fire until we have an access token — avoids auth errors on initial render
+    if (!accessToken) {
       setLoading(false);
-      setError(null);
       return;
     }
 
@@ -188,8 +151,8 @@ export default function SaasDashboardHome({ apiBase }: Props) {
     setLoading(true);
     setError(null);
     const baseURL = normalizeApiBase(apiBase);
-
-    api    
+    
+    api
       .get<DashboardSummaryResponse>("/api/dashboard/summary", {
         ...(baseURL ? { baseURL } : {}),
       })
@@ -201,10 +164,11 @@ export default function SaasDashboardHome({ apiBase }: Props) {
       })
       .catch((requestError: any) => {
         if (cancelled) return;
-        const message = requestError?.message === "Missing X-Org-Id header"
-          ? "We’re still initializing your workspace. Please wait a moment and try again."
-          : requestError?.message ?? "Unable to load command center summary.";
-        setError(message);
+        const message = requestError?.message ?? "Unable to load command center summary.";
+        // Don't show raw auth/org errors — show a generic message instead
+        const isAuthError = requestError?.status === 401 || requestError?.code === "AUTH_INVALID"
+          || requestError?.code === "ORG_CONTEXT_MISSING";
+        setError(isAuthError ? null : message);
         setSummary(defaultSummary);
       })
       .finally(() => {
@@ -216,7 +180,7 @@ export default function SaasDashboardHome({ apiBase }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [activeOrganizationId, apiBase, orgReady, retryNonce]);
+  }, [apiBase, accessToken]);
 
   const roleWidgets = useMemo(() => {
     const base = {
@@ -225,7 +189,7 @@ export default function SaasDashboardHome({ apiBase }: Props) {
       showDeadlines: true,
       showActivity: true,
       showAiBrief: true,
-      showQuickActions: true,
+      showQuickActions: true
     };
 
     if (role === "investor") {
@@ -242,10 +206,8 @@ export default function SaasDashboardHome({ apiBase }: Props) {
   const workQueueCounts = [
     { label: "Payments", value: summary.workQueueCounts.payments, href: buildUrl("/servicing/payments", { filter: "exceptions" }) },
     { label: "Inspections", value: summary.workQueueCounts.inspections, href: buildUrl("/servicing/inspections", { filter: "missing_evidence" }) },
-   { label: "Compliance", value: summary.workQueueCounts.compliance, href: buildUrl("/governance/compliance", { filter: "open" }) },
+    { label: "Compliance", value: summary.workQueueCounts.compliance, href: buildUrl("/governance/compliance", { filter: "open" }) }
   ];
-
- const showTenantInitialization = !sessionExpired && !orgReady && !orgBootstrapTimedOut && !orgError;
 
   return (
     <div className="space-y-6">
@@ -255,149 +217,99 @@ export default function SaasDashboardHome({ apiBase }: Props) {
           Prioritize work, triage exceptions, and jump directly to canonical portfolio, servicing, analytics, governance, and report views.
         </p>
         <p className="text-xs text-slate-400">Role view: {role}</p>
-        {showTenantInitialization && (
-          <p className="text-xs text-sky-700">
-            {authReady
-              ? orgError || "Initializing your organization workspace before loading tenant data…"
-              : "Checking your session and tenant access…"}
-          </p>
-        )}
-             {sessionExpired && (
-          <p className="text-xs text-rose-700">
-            Session expired. Please sign in again.
-          </p>
-        )}   
-        {!showTenantInitialization && error && <p className="text-xs text-amber-700">{error}</p>}
+        {error && <p className="text-xs text-amber-700">{error}</p>}
       </header>
 
-      {showTenantInitialization || loading ? <SummarySkeleton /> : null}
+      {loading && <div className="rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm text-slate-500">Loading dashboard summary…</div>}
 
-            {orgBootstrapTimedOut && !orgReady && !sessionExpired && (
-        <div className="flex items-center justify-between rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-          <span>
-            {orgError || "Workspace setup is taking longer than expected. Bootstrap may have failed."}
-          </span>
-          <button
-            type="button"
-            onClick={async () => {
-              setOrgBootstrapTimedOut(false);
-              await refreshOrgs();
-              setRetryNonce((value) => value + 1);
-            }}
-            className="rounded-md border border-amber-300 px-3 py-1 font-medium hover:bg-amber-100"
-          >
-            Retry bootstrap
-          </button>
-        </div>
-      )}
-
-       {!showTenantInitialization && error && (
-        <div className="flex items-center justify-between rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-          <span>{error}</span>
-          <button
-            type="button"
-            onClick={async () => {
-              await refreshOrgs();
-              setRetryNonce((value) => value + 1);
-            }}
-            className="rounded-md border border-amber-300 px-3 py-1 font-medium hover:bg-amber-100"
-            disabled={!orgReady}
-          >
-            Retry
-          </button>
-        </div>
-      )}
-
-      {!showTenantInitialization && !loading && (
-        <div className="grid gap-4 lg:grid-cols-2">
-          {roleWidgets.showWorkQueue && (
-            <SectionCard title="Work Queue" ctaLabel="Open AI Validation" ctaHref="/servicing/ai-validation">
-              <div className="grid grid-cols-3 gap-2">
-                {workQueueCounts.map((entry) => (
-                  <a key={entry.label} href={entry.href} className="rounded-lg border border-slate-200 bg-slate-50 p-2 text-center">
-                    <p className="text-xs uppercase tracking-wide text-slate-500">{entry.label}</p>
-                    <p className="text-lg font-semibold text-slate-900">{entry.value}</p>
-                  </a>
-                ))}
-              </div>
-              <ul className="mt-3 space-y-2">
+      <div className="grid gap-4 lg:grid-cols-2">
+        {roleWidgets.showWorkQueue && (
+          <SectionCard title="Work Queue" ctaLabel="Open AI Validation" ctaHref="/servicing/ai-validation">
+            <div className="grid grid-cols-3 gap-2">
+              {workQueueCounts.map((entry) => (
+                <a key={entry.label} href={entry.href} className="rounded-lg border border-slate-200 bg-slate-50 p-2 text-center">
+                  <p className="text-xs uppercase tracking-wide text-slate-500">{entry.label}</p>
+                  <p className="text-lg font-semibold text-slate-900">{entry.value}</p>
+                </a>
+              ))}
+            </div>
+            <ul className="mt-3 space-y-2">
                 {summary.quickActions.slice(0, 5).map((item) => (
-                          <li key={item.id} className="rounded-md border border-slate-100 p-2">
-                    <a href={item.href} className="text-sm font-medium text-slate-800 hover:text-sky-700">{item.title ?? item.label}</a>
-                    {item.subtitle && <p className="text-xs text-slate-500">{item.subtitle}</p>}
-                  </li>
-                ))}
-              </ul>
-            </SectionCard>
-          )}
+                <li key={item.id} className="rounded-md border border-slate-100 p-2">
+                   <a href={item.href} className="text-sm font-medium text-slate-800 hover:text-sky-700">{item.title ?? item.label}</a>
+                  {item.subtitle && <p className="text-xs text-slate-500">{item.subtitle}</p>}
+                </li>
+              ))}
+            </ul>
+          </SectionCard>
+        )}
 
-              {roleWidgets.showAlerts && (
-            <SectionCard title="Critical Alerts" ctaLabel="Open Governance" ctaHref={buildUrl("/governance/compliance", { filter: "open" })}>
-              <ul className="space-y-2">
-                {summary.criticalAlerts.slice(0, 5).map((item) => (
-                  <li key={item.id} className="rounded-md border border-slate-100 p-2">
-                    <a href={item.href} className="text-sm font-medium text-slate-800 hover:text-sky-700">{item.title ?? item.label}</a>
-                    {item.subtitle && <p className="text-xs text-slate-500">{item.subtitle}</p>}
-                  </li>
-                ))}
-              </ul>
-            </SectionCard>
-          )}
+        {roleWidgets.showAlerts && (
+          <SectionCard title="Critical Alerts" ctaLabel="Open Governance" ctaHref={buildUrl("/governance/compliance", { filter: "open" })}>
+            <ul className="space-y-2">
+              {summary.criticalAlerts.slice(0, 5).map((item) => (
+                <li key={item.id} className="rounded-md border border-slate-100 p-2">
+                   <a href={item.href} className="text-sm font-medium text-slate-800 hover:text-sky-700">{item.title ?? item.label}</a>
+                  {item.subtitle && <p className="text-xs text-slate-500">{item.subtitle}</p>}
+                </li>
+              ))}
+            </ul>
+          </SectionCard>
+        )}
 
-              {roleWidgets.showDeadlines && (
-            <SectionCard title="Next Deadlines" ctaLabel="Open Servicing" ctaHref="/servicing/overview">
-              <ul className="space-y-2">
-                {summary.nextDeadlines.slice(0, 5).map((item) => (
-                  <li key={item.id} className="rounded-md border border-slate-100 p-2">
-                    <a href={item.href} className="text-sm font-medium text-slate-800 hover:text-sky-700">{item.title ?? item.label}</a>
-                    {item.subtitle && <p className="text-xs text-slate-500">{item.subtitle}</p>}
-                  </li>
-                ))}
-              </ul>
-            </SectionCard>
-          )}
+        {roleWidgets.showDeadlines && (
+          <SectionCard title="Next Deadlines" ctaLabel="Open Servicing" ctaHref="/servicing/overview">
+            <ul className="space-y-2">
+             {summary.nextDeadlines.slice(0, 5).map((item) => (
+                <li key={item.id} className="rounded-md border border-slate-100 p-2">
+                  <a href={item.href} className="text-sm font-medium text-slate-800 hover:text-sky-700">{item.title ?? item.label}</a>
+                  {item.subtitle && <p className="text-xs text-slate-500">{item.subtitle}</p>}
+                </li>
+              ))}
+            </ul>
+          </SectionCard>
+        )}
 
-            {roleWidgets.showActivity && (
-            <SectionCard title="Today’s Activity" ctaLabel="Open Servicing" ctaHref="/servicing/overview">
-              <ul className="space-y-2">
+        {roleWidgets.showActivity && (
+          <SectionCard title="Today’s Activity" ctaLabel="Open Servicing" ctaHref="/servicing/overview">
+            <ul className="space-y-2">
                 {summary.todaysActivity.slice(0, 5).map((item) => (
-                     <li key={item.id} className="rounded-md border border-slate-100 p-2">
-                    <a href={item.href} className="text-sm font-medium text-slate-800 hover:text-sky-700">{item.title ?? item.label}</a>
-                    {item.subtitle && <p className="text-xs text-slate-500">{item.subtitle}</p>}
+                <li key={item.id} className="rounded-md border border-slate-100 p-2">
+                  <a href={item.href} className="text-sm font-medium text-slate-800 hover:text-sky-700">{item.title ?? item.label}</a>
+                  {item.subtitle && <p className="text-xs text-slate-500">{item.subtitle}</p>}
+                </li>
+              ))}
+            </ul>
+          </SectionCard>
+        )}
+
+        {roleWidgets.showAiBrief && (
+          <SectionCard title="AI Brief" ctaLabel="Open Analytics" ctaHref={buildUrl("/analytics", { filter: "severity_high" })}>
+            {summary.aiBrief.length === 0 ? (
+              <p className="text-sm text-slate-500">No AI reviews yet.</p>
+            ) : (
+              <ul className="list-disc space-y-2 pl-5 text-sm text-slate-700">
+                {summary.aiBrief.slice(0, 3).map((point) => (
+                  <li key={point.id}>
+                    <a href={point.href ?? '/servicing/ai-validation'} className="hover:text-sky-700">{point.title}</a>
                   </li>
                 ))}
               </ul>
-                    </SectionCard>
-          )}
-          
-              {roleWidgets.showAiBrief && (
-            <SectionCard title="AI Brief" ctaLabel="Open Analytics" ctaHref={buildUrl("/analytics", { filter: "severity_high" })}>
-              {summary.aiBrief.length === 0 ? (
-                <p className="text-sm text-slate-500">No AI reviews yet.</p>
-              ) : (
-                <ul className="list-disc space-y-2 pl-5 text-sm text-slate-700">
-                  {summary.aiBrief.slice(0, 3).map((point) => (
-                    <li key={point.id}>
-                      <a href={point.href ?? "/servicing/ai-validation"} className="hover:text-sky-700">{point.title}</a>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </SectionCard>
-          )}
+            )}
+          </SectionCard>
+        )}
 
-          {roleWidgets.showQuickActions && (
-            <SectionCard title="Quick Actions" ctaLabel="Open Reports" ctaHref="/reports">
-              <div className="grid gap-2 sm:grid-cols-2">
-                <a href={buildUrl("/servicing/payments", { runReview: true, filter: "exceptions" })} className="rounded-lg border border-slate-200 p-3 text-sm font-medium text-slate-800 hover:border-sky-300 hover:text-sky-700">Run Payment Review</a>
-                <a href={buildUrl("/servicing/inspections", { action: "order" })} className="rounded-lg border border-slate-200 p-3 text-sm font-medium text-slate-800 hover:border-sky-300 hover:text-sky-700">Order Inspection</a>
-                <a href={buildUrl("/servicing/management", { request: "rent_roll" })} className="rounded-lg border border-slate-200 p-3 text-sm font-medium text-slate-800 hover:border-sky-300 hover:text-sky-700">Request Rent Roll</a>
-                <a href={buildUrl("/governance/compliance", { action: "create_review" })} className="rounded-lg border border-slate-200 p-3 text-sm font-medium text-slate-800 hover:border-sky-300 hover:text-sky-700">Create Compliance Review</a>
-              </div>
-            </SectionCard>
-          )}
-        </div>
-      )}
+        {roleWidgets.showQuickActions && (
+          <SectionCard title="Quick Actions" ctaLabel="Open Reports" ctaHref="/reports">
+            <div className="grid gap-2 sm:grid-cols-2">
+              <a href={buildUrl("/servicing/payments", { runReview: true, filter: "exceptions" })} className="rounded-lg border border-slate-200 p-3 text-sm font-medium text-slate-800 hover:border-sky-300 hover:text-sky-700">Run Payment Review</a>
+              <a href={buildUrl("/servicing/inspections", { action: "order" })} className="rounded-lg border border-slate-200 p-3 text-sm font-medium text-slate-800 hover:border-sky-300 hover:text-sky-700">Order Inspection</a>
+              <a href={buildUrl("/servicing/management", { request: "rent_roll" })} className="rounded-lg border border-slate-200 p-3 text-sm font-medium text-slate-800 hover:border-sky-300 hover:text-sky-700">Request Rent Roll</a>
+              <a href={buildUrl("/governance/compliance", { action: "create_review" })} className="rounded-lg border border-slate-200 p-3 text-sm font-medium text-slate-800 hover:border-sky-300 hover:text-sky-700">Create Compliance Review</a>
+            </div>
+          </SectionCard>
+        )}
+      </div>
     </div>
   );
 }
