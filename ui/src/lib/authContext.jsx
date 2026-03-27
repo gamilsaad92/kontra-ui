@@ -64,9 +64,9 @@ function readStoredSession() {
     if (!raw) return null;
     const parsed = JSON.parse(raw);
     if (!parsed?.access_token) return null;
+    // Hard-expired: token is past its expiry
     if (parsed.expires_at && parsed.expires_at * 1000 < Date.now()) {
-      window.localStorage?.removeItem(SESSION_STORAGE_KEY);
-      return null;
+      return null; // don't remove — we'll try to refresh using refresh_token
     }
     return parsed;
   } catch {
@@ -104,6 +104,30 @@ async function apiSignIn(email, password) {
   };
 }
 
+async function tryRefreshSession(storedSession) {
+  if (!storedSession?.refresh_token) return null;
+  try {
+    const res = await fetch("/api/auth/refresh", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ refresh_token: storedSession.refresh_token }),
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    if (!data?.access_token) return null;
+    return {
+      access_token: data.access_token,
+      refresh_token: data.refresh_token || storedSession.refresh_token,
+      expires_at: data.expires_at,
+      expires_in: data.expires_in,
+      token_type: data.token_type || "bearer",
+      user: data.user || storedSession.user,
+    };
+  } catch {
+    return null;
+  }
+}
+
 export const AuthContext = createContext({
   session: null,
   loading: true,
@@ -129,7 +153,6 @@ export function AuthProvider({ children }) {
     let mounted = true;
 
     async function bootstrapOrgIfNeeded(token) {
-      // Only run if the org isn't already stored — avoids redundant requests
       const existingOrgId = (() => { try { return localStorage.getItem("kontra_active_org_id"); } catch(_) { return null; } })();
       if (existingOrgId) return;
       try {
@@ -148,14 +171,15 @@ export function AuthProvider({ children }) {
     }
 
     async function init() {
-      // 1. Try to restore a still-valid stored session (5-minute expiry buffer)
+      // 1. Try to restore a stored session
       const stored = readStoredSession();
+
       if (stored) {
-        // Accept if it won't expire within the next 5 minutes
         const expiresAt = stored.expires_at ? stored.expires_at * 1000 : Infinity;
         const fiveMinutes = 5 * 60 * 1000;
+
         if (expiresAt - Date.now() > fiveMinutes) {
-          // Ensure org context is in localStorage before rendering the dashboard
+          // Session is still good — use it
           await bootstrapOrgIfNeeded(stored.access_token);
           if (mounted) {
             updateBootstrapSnapshot({ sessionReady: true, isAuthenticated: true });
@@ -164,13 +188,25 @@ export function AuthProvider({ children }) {
           }
           return;
         }
-        // Session is about to expire — clear it and fall through to fresh sign-in
+
+        // Session is near expiry or expired — attempt a refresh before giving up
+        const refreshed = await tryRefreshSession(stored);
+        if (refreshed) {
+          storeSession(refreshed);
+          await bootstrapOrgIfNeeded(refreshed.access_token);
+          if (mounted) {
+            updateBootstrapSnapshot({ sessionReady: true, isAuthenticated: true });
+            setSessionState(refreshed);
+            setLoading(false);
+          }
+          return;
+        }
+
+        // Refresh failed — clear stale session
         storeSession(null);
       }
 
-      // 2. In development: auto-sign-in so you skip the login screen.
-      //    Use a module-level singleton so React StrictMode's double-invoke doesn't
-      //    fire two simultaneous Supabase sign-in requests and hit the rate limit.
+      // 2. In development: auto-sign-in
       if (IS_DEV) {
         if (!_devSignInPromise) {
           _devSignInPromise = (async () => {
@@ -180,7 +216,7 @@ export function AuthProvider({ children }) {
             return s;
           })().catch((err) => {
             console.warn("[Dev auto-login] failed:", err.message);
-            _devSignInPromise = null; // allow retry on next page load
+            _devSignInPromise = null;
             return null;
           });
         }
@@ -196,10 +232,8 @@ export function AuthProvider({ children }) {
         return;
       }
 
-      // 3. Production: try Supabase JS client
+      // 3. Production: try Supabase JS client if configured
       if (!isSupabaseConfigured || !supabase?.auth) {
-        // No Supabase config — mark session check complete so the login form
-        // is unblocked and the bootstrap guard in apiClient allows /api/auth/* calls.
         if (mounted) {
           updateBootstrapSnapshot({ sessionReady: true, isAuthenticated: false });
           setLoading(false);
@@ -245,8 +279,6 @@ export function AuthProvider({ children }) {
     async ({ email, password }) => {
       try {
         const newSession = await apiSignIn(email, password);
-        // Mark session ready BEFORE setSession so OrgProvider's apiFetch calls
-        // are unblocked immediately when the access token is propagated.
         updateBootstrapSnapshot({ sessionReady: true, isAuthenticated: true });
         setSession(newSession);
         return { data: { session: newSession, user: newSession.user }, error: null };
@@ -262,6 +294,8 @@ export function AuthProvider({ children }) {
     resetBootstrapSnapshot();
     setSession(null);
     clearKontraPersistedState();
+    // Clear org context
+    try { localStorage.removeItem("kontra_active_org_id"); } catch (_) {}
     if (token) {
       fetch("/api/auth/signout", {
         method: "POST",
