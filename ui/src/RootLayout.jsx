@@ -1,7 +1,7 @@
 // ui/src/RootLayout.jsx
 import React, { useContext, useEffect, useMemo, useState } from 'react'
 import { AuthContext } from './lib/authContext'
-import { apiRequest, getApiBaseUrl, setOrgContext } from './lib/apiClient'
+import { apiRequest, setOrgContext } from './lib/apiClient'
 import { apiRoutes } from './lib/apiRoutes'
 import { OrgProvider, useOrg } from './lib/OrgProvider'
 
@@ -161,8 +161,9 @@ export default function RootLayout({ children }) {
     }
   }, [])
 
-  // Load branding (only needs to run once per session; org context is managed by OrgProvider)
+  // Load branding — only run when we have an authenticated user (never without a token)
   useEffect(() => {
+    if (!session?.user?.id) return
     let isMounted = true
     const loadBranding = async () => {
       try {
@@ -199,7 +200,7 @@ export default function RootLayout({ children }) {
   }, [accentColor])
 
   // Determine the API base for OrgProvider's bootstrap call
- const apiBase = getApiBaseUrl()
+  const apiBase = import.meta.env.VITE_API_BASE?.replace(/\/+$/, '') || ''
 
   return (
     <OrgProvider
