@@ -1,5 +1,6 @@
 import { createContext, useEffect, useMemo, useState, useCallback } from "react";
 import { supabase, isSupabaseConfigured } from "./supabaseClient";
+import { updateBootstrapSnapshot, resetBootstrapSnapshot } from "./bootstrapState";
 
 const SESSION_STORAGE_KEY = "kontra_session";
 
@@ -156,7 +157,11 @@ export function AuthProvider({ children }) {
         if (expiresAt - Date.now() > fiveMinutes) {
           // Ensure org context is in localStorage before rendering the dashboard
           await bootstrapOrgIfNeeded(stored.access_token);
-          if (mounted) { setSessionState(stored); setLoading(false); }
+          if (mounted) {
+            updateBootstrapSnapshot({ sessionReady: true, isAuthenticated: true });
+            setSessionState(stored);
+            setLoading(false);
+          }
           return;
         }
         // Session is about to expire — clear it and fall through to fresh sign-in
@@ -181,18 +186,33 @@ export function AuthProvider({ children }) {
         }
         const newSession = await _devSignInPromise;
         if (!mounted) return;
-        if (newSession) setSessionState(newSession);
+        if (newSession) {
+          updateBootstrapSnapshot({ sessionReady: true, isAuthenticated: true });
+          setSessionState(newSession);
+        } else {
+          updateBootstrapSnapshot({ sessionReady: true, isAuthenticated: false });
+        }
         setLoading(false);
         return;
       }
 
       // 3. Production: try Supabase JS client
       if (!isSupabaseConfigured || !supabase?.auth) {
-        if (mounted) setLoading(false);
+        // No Supabase config — mark session check complete so the login form
+        // is unblocked and the bootstrap guard in apiClient allows /api/auth/* calls.
+        if (mounted) {
+          updateBootstrapSnapshot({ sessionReady: true, isAuthenticated: false });
+          setLoading(false);
+        }
         return;
       }
 
-      const timer = window.setTimeout(() => { if (mounted) setLoading(false); }, 5000);
+      const timer = window.setTimeout(() => {
+        if (mounted) {
+          updateBootstrapSnapshot({ sessionReady: true, isAuthenticated: false });
+          setLoading(false);
+        }
+      }, 5000);
       supabase.auth
         .getSession()
         .then(({ data, error }) => {
@@ -207,7 +227,10 @@ export function AuthProvider({ children }) {
               user: data.session.user,
             };
             storeSession(s);
+            updateBootstrapSnapshot({ sessionReady: true, isAuthenticated: true });
             setSessionState(s);
+          } else {
+            updateBootstrapSnapshot({ sessionReady: true, isAuthenticated: false });
           }
         })
         .catch((err) => { if (mounted) console.warn("Supabase getSession threw:", err.message); })
@@ -222,6 +245,9 @@ export function AuthProvider({ children }) {
     async ({ email, password }) => {
       try {
         const newSession = await apiSignIn(email, password);
+        // Mark session ready BEFORE setSession so OrgProvider's apiFetch calls
+        // are unblocked immediately when the access token is propagated.
+        updateBootstrapSnapshot({ sessionReady: true, isAuthenticated: true });
         setSession(newSession);
         return { data: { session: newSession, user: newSession.user }, error: null };
       } catch (err) {
@@ -233,6 +259,7 @@ export function AuthProvider({ children }) {
 
   const signOut = useCallback(async () => {
     const token = session?.access_token;
+    resetBootstrapSnapshot();
     setSession(null);
     clearKontraPersistedState();
     if (token) {
