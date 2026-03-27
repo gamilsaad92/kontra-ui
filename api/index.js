@@ -1,7 +1,8 @@
 // index.js
-// override: true ensures .env values win over the shell-level placeholder
-// fallbacks set in the workflow command (safe: on Render there is no .env file)
-require('dotenv').config({ override: true });
+// In development, override: true lets .env win over the shell-level placeholder
+// fallbacks set in the workflow command. In production (Render), we do NOT
+// override so that env vars set in the Render dashboard take precedence.
+require('dotenv').config(process.env.NODE_ENV !== 'production' ? { override: true } : {});
 const express = require('express');
 const Sentry = require('@sentry/node');
 const cors = require('cors');
@@ -60,6 +61,10 @@ const allowedOrigins = Array.from(new Set([
 const allowedOriginMatchers = [
   ...allowedOrigins,
   /\.vercel\.app$/,
+  /\.replit\.dev$/,
+  /\.repl\.co$/,
+  /localhost(:\d+)?$/,
+  /127\.0\.0\.1(:\d+)?$/,
 ];
 
 const corsOptions = {
