@@ -1,6 +1,5 @@
 import { getToken, redirectToSignIn } from "./authContext";
 import { getOrgId, setOrgId } from "./orgContext";
-import { getBootstrapSnapshot } from "./bootstrapState";
 
 type OrgContext = {
   orgId?: string;
@@ -120,7 +119,7 @@ export const subscribeApiLog = (listener: (entry: ApiRequestLogEntry) => void) =
 
 export const getRequestLog = () => [...requestLog];
 
-const ORGLESS_API_PREFIXES = ["/api/health", "/api/dev/", "/api/orgs", "/api/me", "/api/auth"];
+const ORGLESS_API_PREFIXES = ["/api/health", "/api/dev/", "/api/orgs", "/api/me", "/api/auth", "/api/dashboard"];
 
 const requiresOrgForPath = (requestUrl: string): boolean => {
   try {
@@ -132,59 +131,6 @@ const requiresOrgForPath = (requestUrl: string): boolean => {
   } catch {
     if (!requestUrl.startsWith("/api")) return false;
     return !ORGLESS_API_PREFIXES.some((prefix) => requestUrl === prefix || requestUrl.startsWith(`${prefix}/`));
-  }
-};
-
-
-const isApiRequestPath = (requestUrl: string): boolean => {
-  try {
-    const parsed = new URL(requestUrl, typeof window === "undefined" ? "http://localhost" : window.location.origin);
-    return parsed.pathname.startsWith("/api");
-  } catch {
-    return requestUrl.startsWith("/api");
-  }
-};
-
-const getConfiguredApiOrigin = (): string | null => {
-  if (!API_BASE_URL) return null;
-  try {
-    return new URL(API_BASE_URL).origin;
-  } catch {
-    return null;
-  }
-};
-
-const isSameOriginRequest = (requestUrl: string): boolean => {
-  if (typeof window === "undefined") return true;
-  try {
-    const parsed = new URL(requestUrl, window.location.origin);
-    return parsed.origin === window.location.origin;
-  } catch {
-    return true;
-  }
-};
-
-const isConfiguredApiOriginRequest = (requestUrl: string): boolean => {
-  if (typeof window === "undefined") return false;
-  const configuredApiOrigin = getConfiguredApiOrigin();
-  if (!configuredApiOrigin) return false;
-  try {
-    const parsed = new URL(requestUrl, window.location.origin);
-    return parsed.origin === configuredApiOrigin;
-  } catch {
-    return false;
-  }
-};
-
-const isFirstPartyApiRequest = (requestUrl: string): boolean =>
-  isApiRequestPath(requestUrl) && (isSameOriginRequest(requestUrl) || isConfiguredApiOriginRequest(requestUrl));
-
-const isBootstrapPath = (requestUrl: string): boolean => {
-  try {
-    const parsed = new URL(requestUrl, typeof window === "undefined" ? "http://localhost" : window.location.origin);
-    return parsed.pathname === "/api/me/bootstrap";
-  } catch {
-    return requestUrl === "/api/me/bootstrap";
   }
 };
 
@@ -235,42 +181,22 @@ export async function apiFetch(
     headers.set("Content-Type", "application/json");
   }
 
-  const isFirstPartyApi = isFirstPartyApiRequest(requestUrl);
-  const bootstrap = getBootstrapSnapshot();
-
-  if (isFirstPartyApi && !bootstrap.sessionReady) {
-    const bootError = buildError("Authentication bootstrap in progress", 425, requestUrl, null, null, "AUTH_BOOTSTRAP_PENDING");
-    emitBrowserEvent("api:error", bootError);
-    throw bootError;
-  }
-
-  if (isFirstPartyApi && requiresOrgForPath(requestUrl) && !bootstrap.orgReady) {
-    const bootError = buildError("Organization bootstrap in progress", 425, requestUrl, null, null, "ORG_BOOTSTRAP_PENDING");
-    emitBrowserEvent("api:error", bootError);
-    throw bootError;
-  }
-
-    if (isFirstPartyApi && options.requireAuth && bootstrap.isAuthenticated && !bootstrap.orgReady && !isBootstrapPath(requestUrl)) {
-    const bootError = buildError("Organization bootstrap in progress", 425, requestUrl, null, null, "ORG_BOOTSTRAP_PENDING");
-    emitBrowserEvent("api:error", bootError);
-    throw bootError;
-  }
-
-  if (isFirstPartyApi) {
-    const orgId = orgContext.orgId ?? getOrgId();
-    if (orgId) {
-      const normalizedOrgId = String(orgId);
-      headers.set("X-Org-Id", normalizedOrgId);
-      headers.set("x-organization-id", normalizedOrgId);
-    } else if (requiresOrgForPath(requestUrl)) {
-      const orgError = buildError(`Organization context missing for request: ${requestUrl}`, 400, requestUrl, null, null, "ORG_CONTEXT_MISSING");
-      emitBrowserEvent("api:error", orgError);
-      throw orgError;
+  const storedOrgId = (() => { try { return localStorage.getItem("kontra_active_org_id"); } catch { return null; } })();
+  const orgId = orgContext.orgId ?? getOrgId() ?? storedOrgId ?? null;
+  if (orgId) {
+    const normalizedOrgId = String(orgId);
+    headers.set("X-Org-Id", normalizedOrgId);
+    headers.set("x-organization-id", normalizedOrgId);
+  } else if (requiresOrgForPath(requestUrl)) {
+    // Log a debug warning but DO NOT throw — the backend will resolve org from the Bearer token.
+    // Throwing here causes premature failures when org bootstrap hasn't completed yet.
+    if (isDev) {
+      console.warn(`[API] No org context for ${requestUrl} — proceeding without X-Org-Id header`);
     }
-
-    if (orgContext.userId) {
-      headers.set("x-user-id", orgContext.userId);
-    }
+  }
+  
+  if (orgContext.userId) {
+    headers.set("x-user-id", orgContext.userId);
   }
 
  const resolveToken = async (forceRefresh = false) => getToken({ forceRefresh });
@@ -287,14 +213,12 @@ export async function apiFetch(
     const requestHeaders = normalizeHeaders(headers);
     const token = await resolveToken(forceRefreshToken);
 
-       if (isFirstPartyApi) {
-      if (token) {
-        requestHeaders.set("Authorization", `Bearer ${token}`);
-      } else {
-        requestHeaders.delete("Authorization");
-        if (options.requireAuth) {
-          throw buildError("Not authenticated", 401, requestUrl, null, null, "AUTH_REQUIRED");
-        }
+    if (token) {
+      requestHeaders.set("Authorization", `Bearer ${token}`);
+    } else {
+      requestHeaders.delete("Authorization");
+      if (options.requireAuth) {
+        throw buildError("Not authenticated", 401, requestUrl, null, null, "AUTH_REQUIRED");
       }
     }
 
