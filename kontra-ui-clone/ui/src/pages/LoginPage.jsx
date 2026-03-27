@@ -10,10 +10,10 @@ export default function LoginPage() {
 
   if (loading) {
     return (
-      <div className="flex min-h-screen items-center justify-center" style={{ background: "#1c1c1c" }}>
-        <div className="flex items-center gap-3">
-          <div className="h-5 w-5 animate-spin rounded-full border-2 border-red-600 border-t-transparent" />
-          <span className="text-sm" style={{ color: "#888" }}>Loading Kontra…</span>
+      <div className="flex min-h-screen items-center justify-center" style={{ background: "#111" }}>
+        <div className="flex flex-col items-center gap-3">
+          <div className="h-6 w-6 animate-spin rounded-full border-2 border-red-600 border-t-transparent" />
+          <span className="text-xs tracking-widest uppercase" style={{ color: "#555" }}>Loading</span>
         </div>
       </div>
     );
@@ -25,54 +25,65 @@ export default function LoginPage() {
 
   return (
     <div
-      className="relative flex min-h-screen items-center justify-center overflow-hidden px-6"
-      style={{ background: "#1c1c1c" }}
+      className="relative flex min-h-screen"
+      style={{ background: "#111" }}
     >
-      {/* Red radial halo — the signature glow behind the card */}
+      {/* Left accent panel — visible on wider screens */}
       <div
-        className="pointer-events-none fixed inset-0"
+        className="hidden lg:flex lg:w-[420px] xl:w-[480px] flex-col justify-between p-12 shrink-0"
         style={{
-          background:
-            "radial-gradient(ellipse 55% 45% at 50% 50%, rgba(200,30,30,0.28) 0%, rgba(160,20,20,0.12) 40%, transparent 70%)",
+          background: "linear-gradient(160deg, #1a0505 0%, #0d0d0d 60%, #111 100%)",
+          borderRight: "1px solid rgba(220,38,38,0.12)",
         }}
-      />
-
-      <div className="relative w-full max-w-[380px]">
-        {/* Card */}
-        <div
-          className="rounded-3xl px-8 py-10"
-          style={{
-            background: "rgba(52,52,52,0.85)",
-            boxShadow:
-              "0 0 0 1px rgba(255,255,255,0.06), 0 32px 80px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.08)",
-            backdropFilter: "blur(24px)",
-            WebkitBackdropFilter: "blur(24px)",
-          }}
-        >
-          {/* Logo */}
-          <div className="mb-6 flex items-center justify-center gap-2.5">
-            <div
-              className="flex h-9 w-9 items-center justify-center rounded-lg"
-              style={{ background: "#dc2626" }}
-            >
-              <span className="text-lg font-black text-white" style={{ letterSpacing: "-0.05em" }}>K</span>
-            </div>
-            <span className="text-xl font-bold text-white" style={{ letterSpacing: "-0.02em" }}>Kontra</span>
+      >
+        <div className="flex items-center gap-2.5">
+          <div className="flex h-8 w-8 items-center justify-center rounded-lg" style={{ background: "#dc2626" }}>
+            <span className="text-sm font-black text-white" style={{ letterSpacing: "-0.05em" }}>K</span>
           </div>
+          <span className="text-base font-bold text-white" style={{ letterSpacing: "-0.02em" }}>Kontra</span>
+        </div>
 
-          {/* Heading */}
-          <div className="mb-8 text-center">
-            <h1
-              className="text-2xl font-bold text-white"
-              style={{ letterSpacing: "-0.01em" }}
-            >
-              {mode === "login" ? "Sign in to Kontra" : "Create your account"}
+        <div>
+          <p className="mb-3 text-xs font-semibold uppercase tracking-widest" style={{ color: "#dc2626" }}>
+            AI-Native Loan Servicing
+          </p>
+          <h2 className="mb-4 text-3xl font-bold leading-tight text-white" style={{ letterSpacing: "-0.03em" }}>
+            Command your<br />entire portfolio.
+          </h2>
+          <p className="text-sm leading-relaxed" style={{ color: "#666" }}>
+            Multifamily and CRE loan servicing built for the way modern lenders actually work.
+          </p>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <div className="h-px flex-1" style={{ background: "rgba(220,38,38,0.2)" }} />
+          <span className="text-xs" style={{ color: "#444" }}>Secure · Encrypted · Compliant</span>
+          <div className="h-px flex-1" style={{ background: "rgba(220,38,38,0.2)" }} />
+        </div>
+      </div>
+
+      {/* Right form panel */}
+      <div className="flex flex-1 flex-col items-center justify-center px-6 py-12">
+        {/* Mobile logo */}
+        <div className="mb-10 flex items-center gap-2.5 lg:hidden">
+          <div className="flex h-8 w-8 items-center justify-center rounded-lg" style={{ background: "#dc2626" }}>
+            <span className="text-sm font-black text-white" style={{ letterSpacing: "-0.05em" }}>K</span>
+          </div>
+          <span className="text-base font-bold text-white" style={{ letterSpacing: "-0.02em" }}>Kontra</span>
+        </div>
+
+        <div className="w-full max-w-[340px]">
+          <div className="mb-8">
+            <h1 className="mb-1.5 text-2xl font-bold text-white" style={{ letterSpacing: "-0.02em" }}>
+              {mode === "login" ? "Welcome back" : "Create account"}
             </h1>
-            {/* Red underline accent */}
-            <div className="mx-auto mt-2 h-0.5 w-10 rounded-full" style={{ background: "#e53e3e" }} />
+            <p className="text-sm" style={{ color: "#666" }}>
+              {mode === "login"
+                ? "Sign in to your workspace"
+                : "Set up your Kontra account"}
+            </p>
           </div>
 
-          {/* Form */}
           {mode === "login"
             ? <LoginForm onSwitch={() => setMode("signup")} />
             : <SignUpForm onSwitch={() => setMode("login")} />}
