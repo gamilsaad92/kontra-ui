@@ -188,9 +188,11 @@ export async function apiFetch(
     headers.set("X-Org-Id", normalizedOrgId);
     headers.set("x-organization-id", normalizedOrgId);
   } else if (requiresOrgForPath(requestUrl)) {
-    const orgError = buildError(`Organization context missing for request: ${requestUrl}`, 400, requestUrl, null, null, "ORG_CONTEXT_MISSING");
-    emitBrowserEvent("api:error", orgError);
-    throw orgError;
+    // Log a debug warning but DO NOT throw — the backend will resolve org from the Bearer token.
+    // Throwing here causes premature failures when org bootstrap hasn't completed yet.
+    if (isDev) {
+      console.warn(`[API] No org context for ${requestUrl} — proceeding without X-Org-Id header`);
+    }
   }
   
   if (orgContext.userId) {

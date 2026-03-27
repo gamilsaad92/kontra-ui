@@ -1,0 +1,144 @@
+You are fixing an existing full-stack SaaS platform (Kontra). 
+Do NOT build new features. Your job is to stabilize and repair the current system so it works end-to-end.
+
+STACK:
+- Frontend: React (Vite)
+- Backend: Node/Express (Render)
+- Auth: Supabase
+
+GOAL:
+A user must be able to:
+1. Log in
+2. Land on dashboard
+3. Refresh without losing session
+4. Navigate all visible pages
+5. Load real data without errors
+6. Use servicing pages without crashes
+
+-----------------------------------
+PHASE 1: AUTH FIX (TOP PRIORITY)
+-----------------------------------
+- Remove ALL organization/workspace logic (org_id, bootstrap flows)
+- Use ONE Supabase client across the app
+- Implement clean session handling:
+  - supabase.auth.getSession() on app load
+  - persistSession = true
+  - autoRefreshToken = true
+- Remove duplicate auth listeners
+- Fix infinite loading states
+- Ensure login redirects to dashboard
+- Ensure logout clears all local state
+
+-----------------------------------
+PHASE 2: ROUTING + APP LOAD
+-----------------------------------
+- Fix broken routes and imports
+- Ensure all routes resolve correctly
+- Add proper loading fallbacks (no infinite spinners)
+- Remove or hide routes that are not implemented
+
+-----------------------------------
+PHASE 3: API + BACKEND FIX
+-----------------------------------
+- Audit ALL frontend API calls
+- Ensure backend routes exist for each:
+  /api/dashboard/summary
+  /api/servicing/insights
+  /api/servicing/payments
+
+- Fix:
+  - 404 errors (missing routes)
+  - 500 errors (failing queries)
+  - 401 errors (auth middleware issues)
+
+- Normalize API responses:
+  - Always return consistent JSON structure
+  - No undefined fields
+
+-----------------------------------
+PHASE 4: DATABASE STABILIZATION
+-----------------------------------
+- Ensure required tables exist:
+  loans
+  assets
+  inspections
+  borrower_financials
+  payments
+  compliance_items
+
+- Remove all org_id dependencies
+- Fix missing columns and invalid queries
+- Ensure queries match actual schema
+
+-----------------------------------
+PHASE 5: DASHBOARD FIX
+-----------------------------------
+- Make dashboard fully functional:
+  - Fetch real data
+  - Display metrics (loans, DSCR, occupancy)
+  - Handle empty states
+  - Handle API errors gracefully
+
+-----------------------------------
+PHASE 6: SERVICING MODULE FIX
+-----------------------------------
+- Fix these sections:
+  - financials
+  - inspections
+  - payments
+
+- Ensure:
+  - Data loads correctly
+  - No crashes
+  - Proper loading + error states
+  - Basic CRUD works if already implemented
+
+-----------------------------------
+PHASE 7: FRONTEND HARDENING
+-----------------------------------
+- Add:
+  - error boundaries
+  - loading states
+  - empty states
+  - retry logic
+  - safe null checks
+
+- Prevent:
+  - blank screens
+  - infinite loaders
+  - unhandled exceptions
+
+-----------------------------------
+PHASE 8: CORS + ENV FIX
+-----------------------------------
+- Fix backend CORS:
+  - Allow frontend domains (Vercel + localhost)
+- Ensure env vars are consistent:
+  - Supabase URL + keys
+  - API base URL
+  - DATABASE_URL
+
+-----------------------------------
+PHASE 9: LOGGING
+-----------------------------------
+Add logs for:
+- auth initialization
+- session restore
+- API requests
+- DB queries
+- errors
+
+-----------------------------------
+FINAL REQUIREMENT:
+-----------------------------------
+The app is "fixed" when:
+- Login works reliably
+- Refresh does not log user out
+- Dashboard loads every time
+- All visible pages work
+- No 404 / 500 errors
+- No infinite loading states
+- No blank screens
+
+DO NOT ADD NEW FEATURES.
+ONLY FIX AND STABILIZE EXISTING FUNCTIONALITY.
