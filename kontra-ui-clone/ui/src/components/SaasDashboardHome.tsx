@@ -1,5 +1,6 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useContext, useEffect, useMemo, useState } from "react";
 import { api } from "../lib/api";
+import { AuthContext } from "../lib/authContext";
 
 type DashboardRole = "lender" | "servicer" | "investor" | "admin";
 
@@ -126,6 +127,9 @@ function SectionCard({
 }
 
 export default function SaasDashboardHome({ apiBase }: Props) {
+  const { session } = useContext(AuthContext);
+  const accessToken = session?.access_token ?? null;
+
   const [summary, setSummary] = useState<DashboardSummaryResponse>(defaultSummary);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -137,12 +141,18 @@ export default function SaasDashboardHome({ apiBase }: Props) {
   }, []);
 
   useEffect(() => {
+    // Don't fire until we have an access token — avoids auth errors on initial render
+    if (!accessToken) {
+      setLoading(false);
+      return;
+    }
+
     let cancelled = false;
     setLoading(true);
     setError(null);
     const baseURL = normalizeApiBase(apiBase);
     
-     api
+    api
       .get<DashboardSummaryResponse>("/api/dashboard/summary", {
         ...(baseURL ? { baseURL } : {}),
       })
@@ -154,7 +164,11 @@ export default function SaasDashboardHome({ apiBase }: Props) {
       })
       .catch((requestError: any) => {
         if (cancelled) return;
-        setError(requestError?.message ?? "Unable to load command center summary.");
+        const message = requestError?.message ?? "Unable to load command center summary.";
+        // Don't show raw auth/org errors — show a generic message instead
+        const isAuthError = requestError?.status === 401 || requestError?.code === "AUTH_INVALID"
+          || requestError?.code === "ORG_CONTEXT_MISSING";
+        setError(isAuthError ? null : message);
         setSummary(defaultSummary);
       })
       .finally(() => {
@@ -166,7 +180,7 @@ export default function SaasDashboardHome({ apiBase }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [apiBase]);
+  }, [apiBase, accessToken]);
 
   const roleWidgets = useMemo(() => {
     const base = {

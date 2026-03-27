@@ -181,7 +181,8 @@ export async function apiFetch(
     headers.set("Content-Type", "application/json");
   }
 
-  const orgId = orgContext.orgId ?? getOrgId();
+  const storedOrgId = (() => { try { return localStorage.getItem("kontra_active_org_id"); } catch { return null; } })();
+  const orgId = orgContext.orgId ?? getOrgId() ?? storedOrgId ?? null;
   if (orgId) {
     const normalizedOrgId = String(orgId);
     headers.set("X-Org-Id", normalizedOrgId);

@@ -43,20 +43,25 @@ const FALLBACK_OVERVIEW = {
 };
 
 function resolveOrgId(req) {
+  // 1. Explicit header (highest priority)
   const header =
     req.headers['x-organization-id'] || req.headers['X-Organization-Id'] || req.headers['x-org-id'];
   if (header) {
     const raw = Array.isArray(header) ? header[0] : header;
     const parsed = parseInt(raw, 10);
-    if (!Number.isNaN(parsed)) {
-      return parsed;
-    }
+    if (!Number.isNaN(parsed)) return parsed;
   }
-  if (typeof req.organizationId === 'number') {
-    return req.organizationId;
+  // 2. Set by authenticate middleware (may be a string like "20")
+  const middlewareOrgId = req.orgId || req.organizationId || req.tenant_id;
+  if (middlewareOrgId != null && middlewareOrgId !== '') {
+    const parsed = parseInt(String(middlewareOrgId), 10);
+    if (!Number.isNaN(parsed)) return parsed;
   }
-  if (req.user && typeof req.user.organization_id === 'number') {
-    return req.user.organization_id;
+  // 3. JWT user metadata
+  const metaOrgId = req.user?.organization_id || req.user?.app_metadata?.organization_id;
+  if (metaOrgId != null) {
+    const parsed = parseInt(String(metaOrgId), 10);
+    if (!Number.isNaN(parsed)) return parsed;
   }
   return null;
 }

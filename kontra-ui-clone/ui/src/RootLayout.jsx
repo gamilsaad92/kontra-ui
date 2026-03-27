@@ -161,8 +161,9 @@ export default function RootLayout({ children }) {
     }
   }, [])
 
-  // Load branding (only needs to run once per session; org context is managed by OrgProvider)
+  // Load branding — only run when we have an authenticated user (never without a token)
   useEffect(() => {
+    if (!session?.user?.id) return
     let isMounted = true
     const loadBranding = async () => {
       try {

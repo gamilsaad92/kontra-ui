@@ -62,7 +62,8 @@ const allowedOriginMatchers = [
   /\.vercel\.app$/,
   /\.replit\.dev$/,
   /\.repl\.co$/,
-  /localhost:\d+$/,
+  /localhost(:\d+)?$/,
+  /127\.0\.0\.1(:\d+)?$/,
 ];
 
 const corsOptions = {

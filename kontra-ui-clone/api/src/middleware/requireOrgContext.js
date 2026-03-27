@@ -1,31 +1,41 @@
 function requireOrgContext(req, res, next) {
-  // Use originalUrl so the full path is available regardless of where this
-  // middleware is mounted (e.g. mounted at /api, req.path loses the prefix).
   const path = (req.originalUrl || '').split('?')[0];
 
-  if (path === '/api/health' || path.startsWith('/api/dev/')) {
+  // Always skip health and dev routes
+  if (path === '/api/health' || path.startsWith('/api/dev/') || path.startsWith('/api/auth/')) {
     return next();
   }
 
   const orgHeader = req.get('X-Org-Id') || req.get('x-org-id') || req.get('x-organization-id');
 
-  // Fall back to orgId already resolved by the authenticate middleware (DB lookup).
-  // This allows requests from authenticated users whose JWT doesn't carry an
-  // organization_id claim — the auth middleware already looked up their org from
-  // the org_memberships table and placed it on req.orgId.
-  const resolvedOrgId = orgHeader || req.orgId || null;
-
-  if (!resolvedOrgId) {
-    return res.status(400).json({
-      code: 'ORG_CONTEXT_MISSING',
-      message: 'Missing X-Org-Id header',
-    });
+  // If an explicit header is provided, apply it now and move on
+  if (orgHeader) {
+    req.orgId = String(orgHeader);
+    req.organizationId = req.orgId;
+    req.tenant_id = req.orgId;
+    return next();
   }
 
-  req.orgId = String(resolvedOrgId);
-  req.organizationId = req.orgId;
-  req.tenant_id = req.orgId;
-  return next();
+  // If req.orgId was already set (e.g. by authenticate running earlier), accept it
+  if (req.orgId) {
+    req.organizationId = req.orgId;
+    req.tenant_id = req.orgId;
+    return next();
+  }
+
+  // If there's a Bearer token, authenticate middleware will resolve the org.
+  // Pass through so authenticate can run and set req.orgId — the route handler
+  // is responsible for enforcing org presence after authentication.
+  const authHeader = req.get('Authorization') || '';
+  if (authHeader.startsWith('Bearer ')) {
+    return next();
+  }
+
+  // No auth, no org header — block unauthenticated org-required requests
+  return res.status(400).json({
+    code: 'ORG_CONTEXT_MISSING',
+    message: 'Missing X-Org-Id header',
+  });
 }
 
 module.exports = { requireOrgContext };

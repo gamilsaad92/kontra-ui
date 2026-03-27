@@ -151,8 +151,16 @@ export function OrgProvider({
   useEffect(() => {
     if (bootstrappedRef.current) return;
     bootstrappedRef.current = true;
+    // Optimistically apply any stored org ID immediately so API calls that
+    // fire before bootstrap completes still get the X-Org-Id header.
+    if (accessToken) {
+      const stored = readStoredOrgId();
+      if (stored) {
+        setOrgContext({ orgId: stored, userId: userId ?? undefined });
+      }
+    }
     refreshOrgs();
-  }, [refreshOrgs]);
+  }, [refreshOrgs, accessToken, userId]);
 
   // Clear everything on logout
   useEffect(() => {
