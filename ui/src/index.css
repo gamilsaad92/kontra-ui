@@ -2,7 +2,8 @@
 @tailwind components;
 @tailwind utilities;
 
-/* light mode page bg */
-:root { color-scheme: light; background: #0b1020; }
-:root:not(.dark) { background: #f7f8fb; color: #0f172a; }
+/* Page background — always start light so the initial HTML flash is white, not black.
+   The dark class is applied by RootLayout/useDayNightTheme after hydration. */
+:root { color-scheme: light; background: #f7f8fb; color: #0f172a; }
+html.dark { background: #0b1020; color: #e2e8f0; }
 
