@@ -12,13 +12,23 @@ function runSql(sql, params = [], timeoutMs = DEFAULT_TIMEOUT_MS) {
       return;
     }
 
-    const args = [databaseUrl, '-X', '-v', 'ON_ERROR_STOP=1', '-At', '-c', sql];
-    const env = { ...process.env };
+    // Build -v key=value args so psql exposes them as :varname / :'varname'
+    // (Setting as env vars is NOT sufficient — psql only reads psql vars via -v)
+    const varArgs = [];
     params.forEach((value, index) => {
-      env[`APP_DB_PARAM_${index + 1}`] = value == null ? '' : String(value);
+      varArgs.push('-v', `APP_DB_PARAM_${index + 1}=${value == null ? '' : String(value)}`);
     });
 
-    execFile('psql', args, { encoding: 'utf8', timeout: timeoutMs, env, maxBuffer: 10 * 1024 * 1024 }, (error, stdout, stderr) => {
+    const args = [
+      databaseUrl,
+      '-X',
+      '-v', 'ON_ERROR_STOP=1',
+      '-At',
+      ...varArgs,
+      '-c', sql,
+    ];
+
+    execFile('psql', args, { encoding: 'utf8', timeout: timeoutMs, maxBuffer: 10 * 1024 * 1024 }, (error, stdout, stderr) => {
       if (error) {
         reject(new Error(stderr || error.message));
         return;
