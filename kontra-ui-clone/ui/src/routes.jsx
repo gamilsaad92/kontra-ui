@@ -6,6 +6,8 @@ import {
   ChartPieIcon,
   WrenchScrewdriverIcon,
   ShieldCheckIcon,
+  PresentationChartLineIcon,
+  CubeTransparentIcon,
 } from "@heroicons/react/24/outline";
 
 export const lenderNavRoutes = [
@@ -31,6 +33,18 @@ export const lenderNavRoutes = [
     label: "Compliance & Legal",
     path: "/governance",
     icon: ShieldCheckIcon,
+    requiresAuth: true,
+  },
+  {
+    label: "Capital Markets",
+    path: "/markets",
+    icon: PresentationChartLineIcon,
+    requiresAuth: true,
+  },
+  {
+    label: "On-Chain",
+    path: "/onchain",
+    icon: CubeTransparentIcon,
     requiresAuth: true,
   },
   {
