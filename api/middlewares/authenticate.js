@@ -10,7 +10,8 @@ const supabase = hasSupabaseCredentials
     })
   : null;
 
-const devAccessToken = process.env.DEV_ACCESS_TOKEN?.trim() || null;
+const isProduction = process.env.NODE_ENV === 'production';
+const devAccessToken = isProduction ? null : (process.env.DEV_ACCESS_TOKEN?.trim() || null);
 const devUserId = process.env.DEV_USER_ID?.trim() || 'dev-user';
 const devOrgId = process.env.DEV_ORG_ID?.trim() || null;
 const devRole = process.env.DEV_USER_ROLE?.trim() || 'admin';
@@ -104,14 +105,7 @@ module.exports = async function requireAuth(req, res, next) {
   try {
     const token = getAccessToken(req);
     if (!token) {
-      return res.status(401).json({
-        ok: false,
-        error: {
-          code: 'AUTH_TOKEN_MISSING',
-          message: 'Unauthorized: Missing access token',
-          status: 401,
-        },
-      });
+      return res.status(401).json({ error: 'Unauthorized: Missing access token' });
     }
 
     if (devAccessToken && token === devAccessToken) {
@@ -133,14 +127,7 @@ module.exports = async function requireAuth(req, res, next) {
     }
 
     if (!supabase) {
-     return res.status(503).json({
-        ok: false,
-        error: {
-          code: 'AUTH_UNAVAILABLE',
-          message: 'Authentication unavailable',
-          status: 503,
-        },
-      });
+      return res.status(503).json({ error: 'Authentication unavailable' });
     }
 
     const tokenPayload = decodeJwtPayload(token);
@@ -156,14 +143,7 @@ module.exports = async function requireAuth(req, res, next) {
     } = await supabase.auth.getUser(token);
 
     if (error || !authUser) {
-     return res.status(401).json({
-        ok: false,
-        error: {
-          code: 'AUTH_TOKEN_INVALID',
-          message: 'Unauthorized: Invalid or expired token',
-          status: 401,
-        },
-      });
+      return res.status(401).json({ error: 'Unauthorized: Invalid or expired token' });
     }
 
     // Try local PostgreSQL first (may throw APP_DB_URL_MISSING if not configured)
@@ -203,23 +183,12 @@ module.exports = async function requireAuth(req, res, next) {
       // Entire local DB unavailable — still let auth proceed with Supabase only
       console.warn('[Auth] APP_DB_URL missing, authentication will be Supabase-only');
       return res.status(503).json({
-         ok: false,
-        error: {
-          code: error.code,
-          message: 'Database unavailable for auth lookup',
-          status: 503,
-        },
+        error: 'Database unavailable for auth lookup',
+        code: error.code,
       });
     }
 
     console.error('[Auth] requireAuth failed', error);
-    return res.status(500).json({
-      ok: false,
-      error: {
-        code: 'AUTH_INTERNAL_ERROR',
-        message: 'Internal authentication error',
-        status: 500,
-      },
-    });
+    return res.status(500).json({ error: 'Internal authentication error' });
   }
 };
