@@ -10,10 +10,10 @@ export default function LoginPage() {
 
   if (loading) {
     return (
-      <div className="flex min-h-screen items-center justify-center" style={{ background: "#111" }}>
+      <div className="flex min-h-screen items-center justify-center" style={{ background: "#f7f8fb" }}>
         <div className="flex flex-col items-center gap-3">
           <div className="h-6 w-6 animate-spin rounded-full border-2 border-red-600 border-t-transparent" />
-          <span className="text-xs tracking-widest uppercase" style={{ color: "#555" }}>Loading</span>
+          <span className="text-xs font-medium tracking-widest uppercase" style={{ color: "#888" }}>Loading</span>
         </div>
       </div>
     );
