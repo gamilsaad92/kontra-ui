@@ -1,19 +1,2 @@
-import React from "react";
-import ReactDOM from "react-dom/client";
-import { BrowserRouter } from "react-router-dom";
-import App from "./App";
-import ErrorBoundary from "./app/ErrorBoundary";
-import { AuthProvider } from "./lib/authContext";
-
-import "./index.css";
-ReactDOM.createRoot(document.getElementById("root")).render(
-  <React.StrictMode>
-    <BrowserRouter>
-      <ErrorBoundary>
-        <AuthProvider>
-          <App />
-                  </AuthProvider>
-      </ErrorBoundary>
-    </BrowserRouter>
-  </React.StrictMode>,
-);
+// Entry point is main.tsx — this file is kept as an empty stub to avoid
+// accidentally loading it. Do not add ReactDOM.createRoot calls here.
