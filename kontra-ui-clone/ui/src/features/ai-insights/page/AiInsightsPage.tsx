@@ -22,7 +22,7 @@ const severityOptions: Array<"All" | InsightSeverity> = [
 ];
 
 export default function AiInsightsPage() {
-  const { insights, riskDrivers, trendMovers, anomalies, recommendations } = useAiInsights();
+  const { insights, riskDrivers, trendMovers, anomalies, recommendations, isLoading, isError } = useAiInsights();
   const [timeWindow, setTimeWindow] = useState<number>(30);
   const [category, setCategory] = useState<"All" | InsightCategory>("All");
   const [severity, setSeverity] = useState<"All" | InsightSeverity>("All");
@@ -49,6 +49,22 @@ export default function AiInsightsPage() {
       }))
       .filter((entry) => entry.items.length > 0);
   }, [recommendations]);
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center py-24 text-slate-500 text-sm">
+        Loading AI insights…
+      </div>
+    );
+  }
+
+  if (isError) {
+    return (
+      <div className="flex items-center justify-center py-24 text-red-500 text-sm">
+        Failed to load AI insights. Check your connection and try again.
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-8">

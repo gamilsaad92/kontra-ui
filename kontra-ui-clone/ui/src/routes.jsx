@@ -6,8 +6,6 @@ import {
   ChartPieIcon,
   WrenchScrewdriverIcon,
   ShieldCheckIcon,
-  BuildingLibraryIcon,
-  CubeTransparentIcon,
 } from "@heroicons/react/24/outline";
 
 export const lenderNavRoutes = [
@@ -17,34 +15,16 @@ export const lenderNavRoutes = [
     icon: HomeIcon,
     requiresAuth: true,
   },
-    {
+  {
     label: "Portfolio",
     path: "/portfolio",
     icon: BanknotesIcon,
     requiresAuth: true,
   },
   {
-     label: "Servicing",
+    label: "Servicing",
     path: "/servicing",
     icon: WrenchScrewdriverIcon,
-    requiresAuth: true,
-  },
-  {
-   label: "Capital Markets",
-    path: "/markets",
-    icon: BuildingLibraryIcon,
-    requiresAuth: true,
-       children: [
-      { label: "Pools", path: "/markets/pools" },
-      { label: "Tokens", path: "/markets/tokens" },
-      { label: "Trades", path: "/markets/trades" },
-      { label: "Exchange", path: "/markets/exchange" },
-    ],
- },
-  {
-    label: "On-Chain",
-     path: "/onchain",
-    icon: CubeTransparentIcon,
     requiresAuth: true,
   },
   {
@@ -60,15 +40,15 @@ export const lenderNavRoutes = [
     requiresAuth: true,
   },
   {
-  label: "Reports",
+    label: "Reports",
     path: "/reports",
     icon: ChartBarIcon,
-    requiresAuth: true, 
+    requiresAuth: true,
   },
   {
-  label: "Settings",
+    label: "Settings",
     path: "/settings/sso",
-     icon: Cog6ToothIcon,
+    icon: Cog6ToothIcon,
     requiresAuth: true,
   },
 ];

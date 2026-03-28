@@ -10,7 +10,8 @@ const supabase = hasSupabaseCredentials
     })
   : null;
 
-const devAccessToken = process.env.DEV_ACCESS_TOKEN?.trim() || null;
+const isProduction = process.env.NODE_ENV === 'production';
+const devAccessToken = isProduction ? null : (process.env.DEV_ACCESS_TOKEN?.trim() || null);
 const devUserId = process.env.DEV_USER_ID?.trim() || 'dev-user';
 const devOrgId = process.env.DEV_ORG_ID?.trim() || null;
 const devRole = process.env.DEV_USER_ROLE?.trim() || 'admin';

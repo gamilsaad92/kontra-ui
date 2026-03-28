@@ -254,7 +254,7 @@ export default function SaasDashboard() {
           <header className="mb-6 space-y-1">
             <h1 className="text-xl font-semibold tracking-tight text-slate-900">{activeLabel}</h1>
             <p className="text-sm text-slate-500">
-              Connected lending, trading, and servicing workspaces for your active SaaS tenant.
+              Multifamily and CRE loan servicing for institutional lenders.
             </p>
           </header>
         )}

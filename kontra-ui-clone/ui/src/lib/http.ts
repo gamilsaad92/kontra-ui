@@ -68,47 +68,18 @@ function resolveDefaultOrgId(): string {
 
 const DEFAULT_ORG_ID = resolveDefaultOrgId();
 
-const DEFAULT_DEV_ACCESS_TOKEN = "dev-token-change-me";
-
 function resolveDevAccessToken(): string | null {
-  const env = (import.meta.env ?? {}) as EnvRecord & {
-    VITE_DEV_ACCESS_TOKEN?: string;
-    DEV_ACCESS_TOKEN?: string;
-    DEV?: boolean;
-  };
-
-  const fromEnv = env.VITE_DEV_ACCESS_TOKEN ?? env.DEV_ACCESS_TOKEN;
-  if (fromEnv && fromEnv.trim()) {
-    return fromEnv.trim();
-  }
-
-    if (!env.DEV) {
+  if (typeof import.meta === "undefined" || !import.meta.env?.DEV) {
     return null;
   }
 
-  if (
-    typeof process !== "undefined" &&
-    typeof process.env !== "undefined" &&
-    (process.env.VITE_DEV_ACCESS_TOKEN || process.env.DEV_ACCESS_TOKEN)
-  ) {
-    const raw = (process.env.VITE_DEV_ACCESS_TOKEN || process.env.DEV_ACCESS_TOKEN || "").trim();
-    if (raw) {
-      return raw;
-    }
-  }
+  const env = (import.meta.env ?? {}) as EnvRecord & {
+    VITE_DEV_ACCESS_TOKEN?: string;
+  };
 
-  if (
-    typeof globalThis !== "undefined" &&
-    typeof (globalThis as Record<string, unknown>).__DEV_ACCESS_TOKEN__ === "string"
-  ) {
-    const token = (globalThis as Record<string, unknown>).__DEV_ACCESS_TOKEN__ as string;
-    if (token.trim()) {
-      return token.trim();
-    }
-  }
-
-  if (DEFAULT_DEV_ACCESS_TOKEN.trim()) {
-    return DEFAULT_DEV_ACCESS_TOKEN.trim();
+  const fromEnv = env.VITE_DEV_ACCESS_TOKEN;
+  if (fromEnv && fromEnv.trim()) {
+    return fromEnv.trim();
   }
 
   return null;

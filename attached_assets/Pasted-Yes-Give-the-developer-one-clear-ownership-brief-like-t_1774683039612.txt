@@ -1,0 +1,313 @@
+Yes. Give the developer one clear ownership brief like this:
+
+---
+
+**Developer instruction for Kontra Platform**
+
+Your job is to take Kontra from its current partially working state to a production ready platform that can be shipped to real users. Do not redesign the product vision. First stabilize what already exists, then complete missing core functionality, then harden it for production. The goal is a clean, working, secure, fast, deployable version of Kontra with no broken pages, no placeholder flows, and no demo-only logic remaining.
+
+### 1. Product goal
+
+Kontra is a capital markets and loan servicing platform focused on multifamily and commercial real estate operations. It should function as an AI native operating system for lenders, servicers, and asset managers. The platform should support loan level portfolio oversight, servicing workflows, inspections, borrower financial review, compliance tracking, risk monitoring, and eventually tokenization and markets features. For this phase, only ship what is stable and truly usable.
+
+### 2. Immediate priority
+
+Do not build new flashy features first. Fix and complete the existing platform so it can be shipped.
+
+Priority order:
+
+1. Make authentication and dashboard loading fully stable
+2. Remove all broken routes, dead pages, and placeholder modules
+3. Connect every visible page to real backend data or hide it
+4. Finish the core servicing workflows
+5. Make the app production secure, fast, and reliable
+6. Prepare clean deployment for frontend and backend
+7. Deliver documentation for handoff and maintenance
+
+### 3. Current stack
+
+Frontend is React with Vite, Tailwind, React Router, TanStack Query, Chart.js, lucide-react, framer-motion, axios, and PWA support.
+
+Backend is Node.js with Express, deployed on Render, with database and auth tied into Supabase. Some backend areas still use fallback memory logic and incomplete schema support. Frontend is deployed on Vercel.
+
+### 4. Main mission
+
+Take full ownership of the following:
+
+#### A. Stabilize login and app boot
+
+Fix all auth and workspace loading issues. The app must:
+
+* let a user sign in cleanly
+* restore session correctly on refresh
+* never get stuck on loading workspace
+* never require fragile org bootstrap logic to enter dashboard
+* handle sign out properly
+* avoid token refresh loops
+* avoid invalid refresh token issues
+* avoid repeated bootstrap requests
+* gracefully handle expired sessions
+
+If organization logic is not fully needed for MVP, simplify it. The app should prioritize direct login to dashboard over complex workspace bootstrapping.
+
+#### B. Fix routing and navigation
+
+Audit every route and sidebar item. For each page:
+
+* if functional, keep and wire properly
+* if incomplete but important, finish it
+* if not needed for MVP, hide it
+* if dead or duplicated, remove it
+
+No menu item should lead to:
+
+* blank page
+* 404
+* infinite spinner
+* placeholder content pretending to work
+
+#### C. Make backend and frontend fully aligned
+
+Audit all API endpoints currently used by the frontend. Make sure:
+
+* request paths match real backend routes
+* payload shape matches frontend expectations
+* missing database tables or columns are fixed
+* errors are handled cleanly
+* no route returns mock data in production
+* no route silently fails
+* no page depends on missing schema
+
+Fix all known issues like:
+
+* missing org_id fields
+* missing tables for inspections, draws, tokens, borrower financials, compliance items, legal items, regulatory scans, or assets if these pages remain visible
+* CORS issues between Vercel frontend and Render API
+* request headers rejected by backend
+* missing environment variable failures
+* inconsistent API response formats
+
+#### D. Finish the MVP feature set
+
+Shipping version should focus only on usable institutional workflows.
+
+Minimum modules that should work end to end:
+
+* Authentication
+* Dashboard overview
+* Portfolio or loan list
+* Loan detail pages
+* Servicing insights
+* Payments tracking
+* Inspections tracking
+* Borrower financial review
+* Basic compliance or risk tracking
+* AI insights only if backed by real processing
+* Admin settings needed for internal operation
+
+Optional modules like markets, tokenization, exchange, onchain dashboard, governance scans, and advanced investor pages should only stay visible if fully functional. Otherwise hide behind feature flags or remove from release.
+
+#### E. Improve data architecture
+
+Refactor the data layer so the platform is maintainable:
+
+* centralize API client logic
+* standardize query hooks
+* remove duplicated fetch logic
+* enforce consistent typing if TypeScript is available or convert critical areas
+* normalize shared interfaces for loans, inspections, payments, borrower financials, compliance items, and users
+* clean up state management and loading logic
+* isolate feature modules by domain
+
+#### F. Production hardening
+
+Make Kontra production ready:
+
+* full error boundaries on frontend
+* structured API error handling
+* input validation on backend
+* secure auth checks on protected routes
+* remove unsafe debug access
+* remove dev bypasses and hardcoded tokens
+* add rate limiting where needed
+* sanitize user input
+* validate file upload types and sizes
+* add logging and error monitoring
+* ensure secrets are only from environment variables
+* confirm CORS allowlist is correct
+* confirm no sensitive keys are exposed to frontend
+
+#### G. Database and migrations
+
+Review the entire schema and create a clean migration path. Deliver:
+
+* all required tables
+* relationships and indexes
+* seed data only if necessary for demo or admin testing
+* migration scripts for local, staging, and production
+* no manual hidden setup steps
+
+Every feature that remains in the shipped app must have its schema fully present and documented.
+
+#### H. Deployment and environments
+
+Prepare frontend and backend so deployment is repeatable and clean.
+
+Need:
+
+* production env variable list
+* staging env variable list
+* working Vercel config
+* working Render config or alternative deployment recommendation
+* consistent frontend API base URL handling
+* no hardcoded preview URLs
+* health check endpoint
+* build should succeed cleanly with no critical warnings
+* app should run the same in local, staging, and production
+
+#### I. Performance
+
+Improve performance enough for a real product:
+
+* reduce unnecessary rerenders
+* eliminate boot loops
+* cache intelligently with React Query
+* lazy load heavy routes
+* reduce dashboard blocking calls
+* avoid loading all modules at once
+* optimize charts and large tables
+* keep first meaningful load fast
+
+#### J. UX cleanup
+
+Keep the current professional institutional design direction, but make it consistent:
+
+* unify headers, cards, spacing, and typography
+* remove broken buttons and unused controls
+* ensure all empty states are intentional
+* ensure all tables have loading, error, and no-data states
+* ensure forms have validation and success feedback
+* preserve the Kontra brand and logo
+* keep UI executive and credible, not startup gimmicky
+
+### 5. Shipping standard
+
+Kontra is ready to ship only when all of the below are true:
+
+* user can sign in and out without issues
+* refresh does not break session
+* dashboard always loads
+* all visible pages work
+* all visible actions complete successfully
+* no major console errors
+* no broken API requests
+* no dead navigation items
+* all environment variables documented
+* production deploy works end to end
+* database setup is reproducible
+* app has basic monitoring and logging
+* security review of auth and API access is complete
+
+### 6. Required deliverables
+
+Developer must deliver all of the following:
+
+1. **Working production build**
+
+   * frontend and backend both deployed and functional
+
+2. **Source code cleanup**
+
+   * clean repo structure
+   * remove dead code and old experiments where safe
+
+3. **Technical audit summary**
+
+   * what was broken
+   * what was fixed
+   * what was removed
+   * what was intentionally deferred
+
+4. **Deployment documentation**
+
+   * exact setup steps
+   * required environment variables
+   * migration steps
+   * rollback notes
+
+5. **MVP scope document**
+
+   * list of modules included in shipped version
+   * list of modules hidden or deferred
+
+6. **QA checklist completed**
+
+   * auth
+   * routing
+   * dashboard
+   * portfolio
+   * servicing
+   * inspections
+   * payments
+   * borrower financials
+   * compliance or risk
+   * settings
+
+7. **Post launch issue list**
+
+   * non blocking items for future versions
+
+### 7. Rules for the developer
+
+* Do not keep fake functionality in UI
+* Do not ship incomplete pages as if they work
+* Do not add complexity unless needed
+* Prefer simplification over clever architecture
+* Focus on a stable institutional MVP
+* Keep code modular and documented
+* Flag anything that blocks production readiness immediately
+* If a feature is not ready, hide it instead of partially exposing it
+
+### 8. Definition of MVP for first shipment
+
+For first release, Kontra does **not** need to be everything in the long term vision. It only needs to be a polished, reliable first product.
+
+First shipped version should be:
+
+* institutional login
+* portfolio dashboard
+* loan and asset visibility
+* servicing workflow support
+* inspections and financial review support
+* compliance or risk tracker
+* production stable admin controls
+* clean branding and deployment
+
+Tokenization, trading, exchange, and advanced onchain functionality can be deferred unless already working well.
+
+### 9. Suggested execution plan
+
+Ask the developer to execute in 5 phases:
+
+**Phase 1: Audit**
+Review codebase, routes, schema, API, env vars, deployment, and list blockers.
+
+**Phase 2: Stabilization**
+Fix auth, loading, routing, API mismatches, schema gaps, and deployment issues.
+
+**Phase 3: Core completion**
+Finish core servicing and portfolio workflows that remain in MVP.
+
+**Phase 4: Hardening**
+Security, validation, monitoring, performance, logging, documentation.
+
+**Phase 5: Ship**
+Deploy production, run QA, provide final handoff package.
+
+### 10. One paragraph version to send directly
+
+Take full ownership of Kontra and make it production ready for shipment. Start by auditing the entire frontend, backend, database schema, auth flow, routes, and deployment setup. Stabilize login, session restore, dashboard loading, and all navigation first. Remove or hide every broken, placeholder, or incomplete page unless it is essential and can be completed properly. Ensure every visible module is connected to a real backend endpoint and supported by the required database schema. Focus the shipped MVP on authentication, dashboard, portfolio, servicing, payments, inspections, borrower financial review, and basic compliance or risk tracking. Fix CORS, API mismatches, missing tables or columns, bad loading states, and deployment issues. Remove dev-only shortcuts, hardcoded values, and unsafe logic. Add proper validation, error handling, logging, monitoring, and deployment documentation. Deliver a clean production build, migration setup, environment variable documentation, QA checklist, and a summary of what was fixed, removed, deferred, and shipped.
+
+---
+
+I can also turn this into a cleaner **developer handoff spec** or **Codex-ready prompt** you can paste directly into your repo workflow.
