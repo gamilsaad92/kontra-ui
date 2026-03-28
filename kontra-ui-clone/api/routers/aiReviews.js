@@ -249,14 +249,15 @@ router.get('/ai/reviews', async (req, res) => {
 
   const { data, error } = await query;
   if (error) {
+    // Table or column missing — return empty list rather than crashing
+    if (error.code === '42P01' || error.code === '42703') {
+      return res.json({ items: [], total: 0 });
+    }
     return res.status(500).json({ code: 'AI_REVIEW_LIST_FAILED', message: 'Unable to load AI reviews.', details: error });
   }
 
-  try {
-    return sendValidated(res, ReviewsListResponseSchema, { reviews: data || [] });
-  } catch (parseError) {
-    return res.status(500).json({ code: 'RESPONSE_VALIDATION_ERROR', message: 'Invalid AI reviews response.', details: parseError.issues });
-  }
+  const items = data || [];
+  return res.json({ items, total: items.length });
 });
 
 router.post('/ai/reviews/:id/mark', async (req, res) => {

@@ -55,7 +55,13 @@ router.get('/reviews', async (req, res) => {
   if (filters.entity_id) query = query.eq('entity_id', filters.entity_id);
 
   const { data, count, error } = await query;
-  if (error) return res.status(500).json({ code: 'AI_REVIEWS_LIST_FAILED', details: error.message });
+  if (error) {
+    // Table not yet created — return empty list instead of crashing
+    if (error.code === '42P01' || error.code === '42703') {
+      return res.json({ items: [], total: 0 });
+    }
+    return res.status(500).json({ code: 'AI_REVIEWS_LIST_FAILED', details: error.message });
+  }
 
   return res.json(validateResponse(AiReviewsListResponseSchema, { items: data || [], total: count || 0 }));
 });

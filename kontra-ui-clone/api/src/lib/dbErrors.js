@@ -1,4 +1,7 @@
-const SCHEMA_MISSING_CODES = new Set(['42P01', '42703']);
+// PostgreSQL error codes (raw DB errors)
+// PostgREST wraps them: PGRST204 = column not in schema cache (≈ 42703),
+//                       PGRST106 = schema not found (≈ 42P01)
+const SCHEMA_MISSING_CODES = new Set(['42P01', '42703', 'PGRST204', 'PGRST106']);
 
 function isSchemaMissingError(error) {
   return Boolean(error && SCHEMA_MISSING_CODES.has(error.code));
