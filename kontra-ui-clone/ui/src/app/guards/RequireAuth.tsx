@@ -11,7 +11,16 @@ export default function RequireAuth({ children }: RequireAuthProps) {
     const { loading, session } = useContext(AuthContext);
 
   if (loading) {
- return <div className="p-6 text-sm text-slate-600">Checking session...</div>;
+    return (
+      <div className="flex min-h-screen items-center justify-center" style={{ background: "#f7f8fb" }}>
+        <div className="flex flex-col items-center gap-3">
+          <div className="h-7 w-7 animate-spin rounded-full border-2 border-red-600 border-t-transparent" />
+          <span className="text-xs font-medium uppercase tracking-widest" style={{ color: "#888" }}>
+            Loading
+          </span>
+        </div>
+      </div>
+    );
   }
 
   if (!session?.access_token) {

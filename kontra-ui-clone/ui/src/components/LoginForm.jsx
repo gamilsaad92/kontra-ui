@@ -12,7 +12,7 @@ function normalizeEmailForAuth(rawEmail) {
 }
 
 export default function LoginForm({ onSwitch }) {
-  const { signIn, loading: authLoading } = useContext(AuthContext)
+  const { signIn } = useContext(AuthContext)
   const { t } = useLocale()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -148,7 +148,7 @@ export default function LoginForm({ onSwitch }) {
       {/* Submit */}
       <button
         type="submit"
-        disabled={loading || authLoading}
+        disabled={loading}
         className="mt-1 w-full py-3 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40 transition-opacity"
         style={{
           borderRadius: '8px',
@@ -157,7 +157,7 @@ export default function LoginForm({ onSwitch }) {
           letterSpacing: '0.01em',
         }}
       >
-        {loading || authLoading ? (
+        {loading ? (
           <span className="flex items-center justify-center gap-2">
             <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/30 border-t-white" />
             Signing in…
