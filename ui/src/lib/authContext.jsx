@@ -7,6 +7,9 @@ const SESSION_STORAGE_KEY = "kontra_session";
 const DEV_EMAIL = import.meta.env.VITE_DEV_EMAIL || "replit@kontraplatform.com";
 const DEV_PASSWORD = import.meta.env.VITE_DEV_PASSWORD || "12345678";
 const IS_DEV = import.meta.env.DEV === true;
+// Auto-login ONLY when explicitly enabled via VITE_AUTO_LOGIN=true in .env
+// Never auto-login by default — always show the login form
+const AUTO_LOGIN = import.meta.env.VITE_AUTO_LOGIN === "true";
 
 // Module-level singleton — prevents React StrictMode from firing two simultaneous sign-in
 // requests (which would burn through Supabase's rate limit of 5 sign-ins/minute).
@@ -206,8 +209,8 @@ export function AuthProvider({ children }) {
         storeSession(null);
       }
 
-      // 2. In development: auto-sign-in
-      if (IS_DEV) {
+      // 2. In development: auto-sign-in only when VITE_AUTO_LOGIN=true is explicitly set
+      if (IS_DEV && AUTO_LOGIN) {
         if (!_devSignInPromise) {
           _devSignInPromise = (async () => {
             const s = await apiSignIn(DEV_EMAIL, DEV_PASSWORD);
