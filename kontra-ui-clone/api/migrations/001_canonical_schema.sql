@@ -23,6 +23,43 @@ END;
 $$;
 
 -- ─────────────────────────────────────────────────────────────────────────────
+-- FIX legacy NOT NULL columns — set safe defaults so generic entity router
+-- inserts don't fail when these columns aren't supplied.
+-- Safe to run repeatedly: SET DEFAULT on an already-defaulted column is a no-op.
+-- ─────────────────────────────────────────────────────────────────────────────
+DO $$
+BEGIN
+  -- loans: borrower_name, property_address and similar legacy required fields
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='loans' AND column_name='borrower_name') THEN
+    ALTER TABLE public.loans ALTER COLUMN borrower_name SET DEFAULT '';
+  END IF;
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='loans' AND column_name='property_address') THEN
+    ALTER TABLE public.loans ALTER COLUMN property_address SET DEFAULT '';
+  END IF;
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='loans' AND column_name='loan_amount') THEN
+    ALTER TABLE public.loans ALTER COLUMN loan_amount SET DEFAULT 0;
+  END IF;
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='loans' AND column_name='interest_rate') THEN
+    ALTER TABLE public.loans ALTER COLUMN interest_rate SET DEFAULT 0;
+  END IF;
+  -- assets: any legacy required fields
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='assets' AND column_name='name') THEN
+    ALTER TABLE public.assets ALTER COLUMN name SET DEFAULT '';
+  END IF;
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='assets' AND column_name='address') THEN
+    ALTER TABLE public.assets ALTER COLUMN address SET DEFAULT '';
+  END IF;
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='assets' AND column_name='asset_type') THEN
+    ALTER TABLE public.assets ALTER COLUMN asset_type SET DEFAULT '';
+  END IF;
+  -- payments: any legacy required fields
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='payments' AND column_name='amount') THEN
+    ALTER TABLE public.payments ALTER COLUMN amount SET DEFAULT 0;
+  END IF;
+END;
+$$;
+
+-- ─────────────────────────────────────────────────────────────────────────────
 -- FIX existing tables: add missing org_id / title / status / data columns
 -- ─────────────────────────────────────────────────────────────────────────────
 SELECT _kontra_add_column_if_missing('loans',            'org_id',  'uuid');

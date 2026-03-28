@@ -17,11 +17,19 @@ function errorHandler(error, _req, res, _next) {
     });
   }
 
-    if (error?.code === 'SCHEMA_MISSING' || isSchemaMissingError(error)) {
+  if (error?.code === 'SCHEMA_MISSING' || isSchemaMissingError(error)) {
     return res.status(501).json({
       code: 'SCHEMA_MISSING',
       message: 'Feature not enabled: schema missing',
       status: 501,
+    });
+  }
+
+  if (error?.code === 'CONSTRAINT_VIOLATION') {
+    return res.status(400).json({
+      code: 'CONSTRAINT_VIOLATION',
+      message: error.message || 'Data constraint violation',
+      status: 400,
     });
   }
 
