@@ -33,7 +33,7 @@ async function userHasOrgMembership(userId, organizationId) {
       return true;
     }
   } catch (error) {
-    if (error?.code !== 'APP_DB_URL_MISSING') {
+   if (error?.code !== 'APP_DB_URL_MISSING' && error?.code !== 'APP_DB_AUTH_FAILED') {
       console.debug('[OrgContext] local membership lookup failed', error?.message);
     }
   }
