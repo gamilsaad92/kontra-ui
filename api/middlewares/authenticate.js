@@ -160,7 +160,7 @@ module.exports = async function requireAuth(req, res, next) {
       );
     } catch (dbErr) {
       // Local DB not available — fall through to Supabase fallback
-     if (dbErr?.code !== 'APP_DB_URL_MISSING' && dbErr?.code !== 'APP_DB_AUTH_FAILED') {
+      if (dbErr?.code !== 'APP_DB_URL_MISSING') {
         console.debug('[Auth] local DB lookup failed, falling back to Supabase', dbErr?.message);
       }
     }
@@ -179,13 +179,14 @@ module.exports = async function requireAuth(req, res, next) {
 
     return next();
   } catch (error) {
+    // APP_DB_URL_MISSING / bad credentials bubble here only in unexpected paths;
+    // fall through rather than surfacing a 503 that blocks the user entirely.
     if (error?.code === 'APP_DB_URL_MISSING') {
-      // Entire local DB unavailable — still let auth proceed with Supabase only
-      console.warn('[Auth] APP_DB_URL missing, authentication will be Supabase-only');
-      return res.status(503).json({
-        error: 'Database unavailable for auth lookup',
-        code: error.code,
-      });
+      console.warn('[Auth] local DB unavailable in outer handler — continuing Supabase-only');
+      req.orgId = null;
+      req.organizationId = null;
+      req.tenant_id = null;
+      return next();
     }
 
     console.error('[Auth] requireAuth failed', error);
