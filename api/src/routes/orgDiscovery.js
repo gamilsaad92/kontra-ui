@@ -269,7 +269,9 @@ router.get('/bootstrap', async (req, res) => {
     user = await upsertLocalUser(identity);
     orgRows = await getOrgRowsBySupabaseUserId(identity.supabaseUserId);
   } catch (localErr) {
-    console.debug('[OrgDiscovery] local DB unavailable in bootstrap, falling back to Supabase', localErr?.message);
+    if (localErr?.code !== 'APP_DB_URL_MISSING' && localErr?.code !== 'APP_DB_AUTH_FAILED') {
+      console.debug('[OrgDiscovery] local DB unavailable in bootstrap, falling back to Supabase', localErr?.message);
+    }
   }
 
   // Step 2: If local DB returned nothing, query Supabase org_memberships directly
