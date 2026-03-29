@@ -2,11 +2,20 @@ const { execFile } = require('node:child_process');
 
 const DEFAULT_TIMEOUT_MS = Number(process.env.APP_DB_TIMEOUT_MS || 10000);
 
+let cachedFatalConnectionError = null;
+
 function runSql(sql, params = [], timeoutMs = DEFAULT_TIMEOUT_MS) {
   return new Promise((resolve, reject) => {
+        if (cachedFatalConnectionError) {
+      const fastFail = new Error(cachedFatalConnectionError.message);
+      fastFail.code = cachedFatalConnectionError.code;
+      reject(fastFail);
+      return;
+    }
+
     const databaseUrl = process.env.APP_DATABASE_URL || process.env.DATABASE_URL;
     if (!databaseUrl) {
-       const error = new Error('Missing APP_DATABASE_URL or DATABASE_URL environment variable');
+      const error = new Error('Missing APP_DATABASE_URL or DATABASE_URL environment variable');
       error.code = 'APP_DB_URL_MISSING';
       reject(error);
       return;
@@ -30,7 +39,19 @@ function runSql(sql, params = [], timeoutMs = DEFAULT_TIMEOUT_MS) {
 
     execFile('psql', args, { encoding: 'utf8', timeout: timeoutMs, maxBuffer: 10 * 1024 * 1024 }, (error, stdout, stderr) => {
       if (error) {
-        reject(new Error(stderr || error.message));
+        const message = (stderr || error.message || '').trim();
+        const normalized = message.toLowerCase();
+        const dbError = new Error(message || 'psql query failed');
+
+        if (normalized.includes('wrong password') || normalized.includes('password authentication failed')) {
+          dbError.code = 'APP_DB_AUTH_FAILED';
+          cachedFatalConnectionError = {
+            code: dbError.code,
+            message: 'Local database authentication failed. Falling back to Supabase-only mode until restart.',
+          };
+        }
+
+        reject(dbError);
         return;
       }
       resolve(stdout.trim());
