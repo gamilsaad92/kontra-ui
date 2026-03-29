@@ -160,7 +160,7 @@ module.exports = async function requireAuth(req, res, next) {
       );
     } catch (dbErr) {
       // Local DB not available — fall through to Supabase fallback
-      if (dbErr?.code !== 'APP_DB_URL_MISSING') {
+     if (dbErr?.code !== 'APP_DB_URL_MISSING' && dbErr?.code !== 'APP_DB_AUTH_FAILED') {
         console.debug('[Auth] local DB lookup failed, falling back to Supabase', dbErr?.message);
       }
     }
