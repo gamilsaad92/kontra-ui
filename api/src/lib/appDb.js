@@ -2,17 +2,25 @@ const { execFile } = require('node:child_process');
 
 const DEFAULT_TIMEOUT_MS = Number(process.env.APP_DB_TIMEOUT_MS || 10000);
 
-let cachedFatalConnectionError = null;
+// psql stderr fragments that indicate the URL is misconfigured / unreachable.
+// Treat these the same as APP_DB_URL_MISSING so callers fall back silently.
+const SILENT_PSQL_ERRORS = [
+  'Wrong password',
+  'SCRAM exchange',
+  'authentication failed',
+  'password authentication failed',
+  'Connection refused',
+  'could not connect',
+  'connection to server',
+];
+
+function isSilentPsqlError(message) {
+  if (!message) return false;
+  return SILENT_PSQL_ERRORS.some((fragment) => message.includes(fragment));
+}
 
 function runSql(sql, params = [], timeoutMs = DEFAULT_TIMEOUT_MS) {
   return new Promise((resolve, reject) => {
-        if (cachedFatalConnectionError) {
-      const fastFail = new Error(cachedFatalConnectionError.message);
-      fastFail.code = cachedFatalConnectionError.code;
-      reject(fastFail);
-      return;
-    }
-
     const databaseUrl = process.env.APP_DATABASE_URL || process.env.DATABASE_URL;
     if (!databaseUrl) {
       const error = new Error('Missing APP_DATABASE_URL or DATABASE_URL environment variable');
@@ -39,19 +47,16 @@ function runSql(sql, params = [], timeoutMs = DEFAULT_TIMEOUT_MS) {
 
     execFile('psql', args, { encoding: 'utf8', timeout: timeoutMs, maxBuffer: 10 * 1024 * 1024 }, (error, stdout, stderr) => {
       if (error) {
-        const message = (stderr || error.message || '').trim();
-        const normalized = message.toLowerCase();
-        const dbError = new Error(message || 'psql query failed');
-
-        if (normalized.includes('wrong password') || normalized.includes('password authentication failed')) {
-          dbError.code = 'APP_DB_AUTH_FAILED';
-          cachedFatalConnectionError = {
-            code: dbError.code,
-            message: 'Local database authentication failed. Falling back to Supabase-only mode until restart.',
-          };
+        const message = stderr || error.message || '';
+        // Bad credentials / unreachable host → treat same as URL missing so
+        // callers fall back silently to Supabase instead of logging noise.
+        if (isSilentPsqlError(message)) {
+          const silentErr = new Error('Local DB unavailable (credentials/host): ' + message.split('\n')[0]);
+          silentErr.code = 'APP_DB_URL_MISSING';
+          reject(silentErr);
+          return;
         }
-
-        reject(dbError);
+        reject(new Error(message));
         return;
       }
       resolve(stdout.trim());
