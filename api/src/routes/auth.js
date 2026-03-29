@@ -97,9 +97,12 @@ router.post('/signin', async (req, res) => {
   }
   try {
     const { data, error } = await supabaseAdmin.auth.signInWithPassword({ email, password });
-    if (error) {
+  if (error || !data?.session) {
       return res.status(401).json({ error: error.message });
     }
+ 
+    const authUser = data.user || data.session.user;
+   
     return res.status(200).json({
       access_token: data.session.access_token,
       refresh_token: data.session.refresh_token,
@@ -107,9 +110,9 @@ router.post('/signin', async (req, res) => {
       expires_in: data.session.expires_in,
       token_type: data.session.token_type,
       user: {
-        id: data.user.id,
-        email: data.user.email,
-        created_at: data.user.created_at,
+       id: authUser?.id || null,
+        email: authUser?.email || null,
+        created_at: authUser?.created_at || null,
       },
     });
   } catch (err) {
@@ -124,6 +127,9 @@ router.post('/refresh', async (req, res) => {
   if (!refresh_token) {
     return res.status(400).json({ error: 'refresh_token is required' });
   }
+  
+    const authUser = data.user || data.session.user;
+
   if (!supabaseAdmin) {
     return res.status(503).json({ error: 'Auth not configured on server' });
   }
@@ -140,9 +146,9 @@ router.post('/refresh', async (req, res) => {
       expires_in: data.session.expires_in,
       token_type: data.session.token_type,
       user: {
-        id: data.user.id,
-        email: data.user.email,
-        created_at: data.user.created_at,
+         id: authUser?.id || null,
+        email: authUser?.email || null,
+        created_at: authUser?.created_at || null,
       },
     });
   } catch (err) {
