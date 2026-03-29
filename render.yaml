@@ -33,3 +33,7 @@ services:
         sync: false
       - key: MAX_OFFER_PIECES
         sync: false
+      # APP_DATABASE_URL / DATABASE_URL: leave UNSET on Render.
+      # Auth and org-context use Supabase directly when no local psql URL is
+      # configured. Setting this with wrong credentials causes noisy errors.
+      # Only set it if you have a dedicated Postgres sidecar with correct creds.
