@@ -37,11 +37,19 @@ function createEntityRouter(path, table) {
   router.post(path, run(async (req, res) => {
     const payload = parse(createEntitySchema, req.body, res);
     if (!payload) return;
-    const created = await createEntity(table, req.orgId, {
-      status: payload.status || 'active',
-      title: payload.title,
-      data: payload.data,
-    });
+    let created;
+    try {
+      created = await createEntity(table, req.orgId, {
+        status: payload.status || 'active',
+        title: payload.title,
+        data: payload.data,
+      });
+    } catch (error) {
+      if (error && error.code === 'SCHEMA_MISSING') {
+        return res.status(501).json({ code: 'SCHEMA_MISSING', message: `Table "${table}" is not set up in the database. Run the Supabase migration to enable this feature.` });
+      }
+      throw error;
+    }
     const validated = parse(entitySchema, created, res);
     if (!validated) return;
     res.status(201).json(validated);
@@ -50,7 +58,15 @@ function createEntityRouter(path, table) {
   router.get(`${path}/:id`, run(async (req, res) => {
     const id = parse(z.string().uuid(), req.params.id, res);
     if (!id) return;
-    const item = await getEntity(table, req.orgId, id);
+    let item;
+    try {
+      item = await getEntity(table, req.orgId, id);
+    } catch (error) {
+      if (error && error.code === 'SCHEMA_MISSING') {
+        return res.status(404).json({ message: 'Not found' });
+      }
+      throw error;
+    }
     if (!item) return res.status(404).json({ message: 'Not found' });
     const validated = parse(entitySchema, item, res);
     if (!validated) return;
@@ -62,7 +78,15 @@ function createEntityRouter(path, table) {
     if (!id) return;
     const payload = parse(patchEntitySchema, req.body, res);
     if (!payload) return;
-    const updated = await updateEntity(table, req.orgId, id, payload);
+    let updated;
+    try {
+      updated = await updateEntity(table, req.orgId, id, payload);
+    } catch (error) {
+      if (error && error.code === 'SCHEMA_MISSING') {
+        return res.status(404).json({ message: 'Not found' });
+      }
+      throw error;
+    }
     if (!updated) return res.status(404).json({ message: 'Not found' });
     const validated = parse(entitySchema, updated, res);
     if (!validated) return;
