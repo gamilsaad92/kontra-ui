@@ -89,6 +89,25 @@ function storeSession(session) {
   }
 }
 
+// Sign in directly via Supabase client (preferred — no backend round-trip needed)
+async function supabaseSignIn(email, password) {
+  if (!isSupabaseConfigured || !supabase?.auth) {
+    throw new Error("Supabase not configured");
+  }
+  const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+  if (error) throw new Error(error.message);
+  const s = data.session;
+  return {
+    access_token: s.access_token,
+    refresh_token: s.refresh_token,
+    expires_at: s.expires_at,
+    expires_in: s.expires_in,
+    token_type: s.token_type || "bearer",
+    user: { id: data.user.id, email: data.user.email, created_at: data.user.created_at },
+  };
+}
+
+// Fallback: sign in via backend API (used only when Supabase client is not configured)
 async function apiSignIn(email, password) {
   const res = await fetch("/api/auth/signin", {
     method: "POST",
@@ -107,9 +126,32 @@ async function apiSignIn(email, password) {
   };
 }
 
+// Primary sign-in: use Supabase client directly; fall back to backend API
+async function signInWithCredentials(email, password) {
+  if (isSupabaseConfigured && supabase?.auth) {
+    return supabaseSignIn(email, password);
+  }
+  return apiSignIn(email, password);
+}
+
 async function tryRefreshSession(storedSession) {
   if (!storedSession?.refresh_token) return null;
   try {
+    // Prefer Supabase client refresh (no backend dependency)
+    if (isSupabaseConfigured && supabase?.auth) {
+      const { data, error } = await supabase.auth.refreshSession({ refresh_token: storedSession.refresh_token });
+      if (error || !data?.session) return null;
+      const s = data.session;
+      return {
+        access_token: s.access_token,
+        refresh_token: s.refresh_token || storedSession.refresh_token,
+        expires_at: s.expires_at,
+        expires_in: s.expires_in,
+        token_type: s.token_type || "bearer",
+        user: data.user ? { id: data.user.id, email: data.user.email, created_at: data.user.created_at } : storedSession.user,
+      };
+    }
+    // Fallback: backend refresh
     const res = await fetch("/api/auth/refresh", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -213,7 +255,7 @@ export function AuthProvider({ children }) {
       if (IS_DEV && AUTO_LOGIN) {
         if (!_devSignInPromise) {
           _devSignInPromise = (async () => {
-            const s = await apiSignIn(DEV_EMAIL, DEV_PASSWORD);
+            const s = await signInWithCredentials(DEV_EMAIL, DEV_PASSWORD);
             storeSession(s);
             await bootstrapOrgIfNeeded(s.access_token);
             return s;
@@ -281,7 +323,7 @@ export function AuthProvider({ children }) {
   const signIn = useCallback(
     async ({ email, password }) => {
       try {
-        const newSession = await apiSignIn(email, password);
+        const newSession = await signInWithCredentials(email, password);
         updateBootstrapSnapshot({ sessionReady: true, isAuthenticated: true });
         setSession(newSession);
         return { data: { session: newSession, user: newSession.user }, error: null };
