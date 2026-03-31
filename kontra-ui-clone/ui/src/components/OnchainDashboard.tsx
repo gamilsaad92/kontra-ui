@@ -175,8 +175,16 @@ function TokenizeTab({ pool, onSuccess }: { pool: Pool; onSuccess: (updated: Poo
           </dl>
         </div>
         <p className="text-xs text-slate-500">
-          Token supply is fixed. To update the contract address after deployment, re-tokenize. Allocations are available in the next tab.
+          Token supply is fixed. To update the contract address after deployment, re-tokenize with the same symbol.
         </p>
+        <div className="flex justify-end">
+          <button
+            onClick={() => onSuccess(pool)}
+            className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-5 py-2 text-sm font-semibold text-white hover:bg-indigo-700"
+          >
+            Next: whitelist wallets →
+          </button>
+        </div>
       </div>
     );
   }
@@ -411,7 +419,7 @@ function AllocationsTab({ pool }: { pool: Pool }) {
 
 // ─── Tab: Whitelist ───────────────────────────────────────────────────────────
 
-function WhitelistTab() {
+function WhitelistTab({ onDone }: { onDone?: () => void }) {
   const [items, setItems] = useState<WhitelistEntry[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -534,30 +542,116 @@ function WhitelistTab() {
           {adding ? "Adding…" : "Whitelist wallet"}
         </button>
       </form>
+
+      {onDone && items.length > 0 && (
+        <div className="flex justify-end pt-2 border-t border-slate-100">
+          <button
+            onClick={onDone}
+            className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-5 py-2 text-sm font-semibold text-white hover:bg-indigo-700"
+          >
+            Proceed to allocations →
+          </button>
+        </div>
+      )}
     </div>
   );
 }
 
-// ─── Pool list ────────────────────────────────────────────────────────────────
+// ─── Pool list with inline create ─────────────────────────────────────────────
 
 function PoolList({
   pools,
   selectedId,
   onSelect,
   loading,
+  onCreated,
 }: {
   pools: Pool[];
   selectedId: string | null;
   onSelect: (id: string) => void;
   loading: boolean;
+  onCreated: (pool: Pool) => void;
 }) {
+  const [creating, setCreating] = useState(false);
+  const [name, setName] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleCreate(e: React.FormEvent) {
+    e.preventDefault();
+    if (!name.trim()) { setError("Pool name is required"); return; }
+    setError(null);
+    setSaving(true);
+    try {
+      const result = await post<Pool>("/markets/pools", {
+        title: name.trim(),
+        status: "active",
+        data: {},
+      });
+      onCreated(result);
+      setName("");
+      setCreating(false);
+    } catch (err: unknown) {
+      setError((err as { message?: string })?.message ?? "Failed to create pool");
+    } finally {
+      setSaving(false);
+    }
+  }
+
   return (
-    <div className="w-full lg:w-64 shrink-0">
-      <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Loan pools</p>
-      {loading && <p className="text-sm text-slate-400">Loading…</p>}
-      {!loading && pools.length === 0 && (
-        <p className="text-sm text-slate-400">No pools yet. Create a pool first.</p>
+    <div className="w-full lg:w-64 shrink-0 space-y-2">
+      <div className="flex items-center justify-between">
+        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Loan pools</p>
+        {!creating && (
+          <button
+            onClick={() => setCreating(true)}
+            className="inline-flex items-center gap-1 rounded-md bg-indigo-600 px-2 py-1 text-xs font-semibold text-white hover:bg-indigo-700"
+          >
+            <PlusIcon className="h-3 w-3" /> New pool
+          </button>
+        )}
+      </div>
+
+      {creating && (
+        <form onSubmit={handleCreate} className="rounded-lg border border-indigo-200 bg-indigo-50 p-3 space-y-2">
+          <p className="text-xs font-semibold text-indigo-800">New pool</p>
+          <input
+            autoFocus
+            className="w-full rounded border border-slate-200 bg-white px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+            placeholder="e.g. Multifamily Fund I"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+          />
+          {error && <p className="text-xs text-rose-600">{error}</p>}
+          <div className="flex gap-2">
+            <button
+              type="submit"
+              disabled={saving}
+              className="flex-1 rounded bg-indigo-600 py-1.5 text-xs font-semibold text-white hover:bg-indigo-700 disabled:opacity-50"
+            >
+              {saving ? "Creating…" : "Create"}
+            </button>
+            <button
+              type="button"
+              onClick={() => { setCreating(false); setError(null); setName(""); }}
+              className="flex-1 rounded border border-slate-200 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-100"
+            >
+              Cancel
+            </button>
+          </div>
+        </form>
       )}
+
+      {loading && <p className="text-sm text-slate-400 py-2">Loading…</p>}
+
+      {!loading && pools.length === 0 && !creating && (
+        <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-4 text-center">
+          <CubeIcon className="mx-auto h-8 w-8 text-slate-300 mb-2" />
+          <p className="text-sm font-medium text-slate-500">No pools yet</p>
+          <p className="text-xs text-slate-400 mt-1">Click "New pool" to start</p>
+        </div>
+      )}
+
       <ul className="space-y-1.5">
         {pools.map((pool) => (
           <li key={pool.id}>
@@ -584,6 +678,42 @@ function PoolList({
   );
 }
 
+// ─── Step indicator ───────────────────────────────────────────────────────────
+
+function StepIndicator({ step }: { step: 1 | 2 | 3 | 4 }) {
+  const steps = [
+    { n: 1, label: "Create pool" },
+    { n: 2, label: "Tokenize" },
+    { n: 3, label: "Whitelist wallets" },
+    { n: 4, label: "Assign allocations" },
+  ];
+  return (
+    <div className="flex items-center gap-0 overflow-x-auto pb-1">
+      {steps.map((s, i) => (
+        <div key={s.n} className="flex items-center">
+          <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold ${
+            step === s.n
+              ? "bg-indigo-600 text-white"
+              : step > s.n
+              ? "bg-emerald-50 text-emerald-700"
+              : "bg-slate-100 text-slate-400"
+          }`}>
+            <span className={`flex h-4 w-4 items-center justify-center rounded-full text-[10px] font-bold ${
+              step > s.n ? "bg-emerald-500 text-white" : step === s.n ? "bg-white/30 text-white" : "bg-slate-300 text-slate-500"
+            }`}>
+              {step > s.n ? "✓" : s.n}
+            </span>
+            {s.label}
+          </div>
+          {i < steps.length - 1 && (
+            <div className={`h-px w-6 flex-shrink-0 ${step > s.n ? "bg-emerald-300" : "bg-slate-200"}`} />
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 // ─── Main component ───────────────────────────────────────────────────────────
 
 type Tab = "tokenize" | "allocations" | "whitelist";
@@ -591,7 +721,7 @@ type Tab = "tokenize" | "allocations" | "whitelist";
 export default function OnchainDashboard() {
   const [pools, setPools] = useState<Pool[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [poolsLoading, setPoolsLoading] = useState(false);
+  const [poolsLoading, setPoolsLoading] = useState(true);
   const [tab, setTab] = useState<Tab>("tokenize");
 
   const selectedPool = pools.find((p) => p.id === selectedId) ?? null;
@@ -615,10 +745,25 @@ export default function OnchainDashboard() {
     setPools((prev) => prev.map((p) => (p.id === updated.id ? updated : p)));
   }
 
-  const tabs: { id: Tab; label: string; icon: React.ReactNode }[] = [
-    { id: "tokenize", label: "Tokenize", icon: <CubeIcon className="h-4 w-4" /> },
-    { id: "allocations", label: "Allocations", icon: <UserGroupIcon className="h-4 w-4" /> },
-    { id: "whitelist", label: "Whitelist", icon: <ShieldCheckIcon className="h-4 w-4" /> },
+  function handlePoolCreated(pool: Pool) {
+    setPools((prev) => [pool, ...prev]);
+    setSelectedId(pool.id);
+    setTab("tokenize");
+  }
+
+  // Determine current step for the indicator
+  const step: 1 | 2 | 3 | 4 = !selectedPool
+    ? 1
+    : selectedPool.data?.token_status !== "tokenized"
+    ? 2
+    : tab === "whitelist"
+    ? 3
+    : 4;
+
+  const tabs: { id: Tab; label: string; icon: React.ReactNode; stepHint: string }[] = [
+    { id: "tokenize", label: "Tokenize", icon: <CubeIcon className="h-4 w-4" />, stepHint: "Step 2" },
+    { id: "whitelist", label: "Whitelist", icon: <ShieldCheckIcon className="h-4 w-4" />, stepHint: "Step 3" },
+    { id: "allocations", label: "Allocations", icon: <UserGroupIcon className="h-4 w-4" />, stepHint: "Step 4" },
   ];
 
   return (
@@ -632,18 +777,23 @@ export default function OnchainDashboard() {
         </p>
       </header>
 
+      <StepIndicator step={step} />
+
       <div className="flex flex-col gap-6 lg:flex-row">
         <PoolList
           pools={pools}
           selectedId={selectedId}
           onSelect={(id) => { setSelectedId(id); setTab("tokenize"); }}
           loading={poolsLoading}
+          onCreated={handlePoolCreated}
         />
 
         <div className="flex-1 min-w-0">
           {!selectedPool ? (
-            <div className="rounded-xl border border-dashed border-slate-200 p-10 text-center text-slate-400">
-              Select a pool to continue.
+            <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 p-10 text-center">
+              <CubeIcon className="mx-auto h-10 w-10 text-slate-300 mb-3" />
+              <p className="text-base font-semibold text-slate-500">Select or create a pool to get started</p>
+              <p className="text-sm text-slate-400 mt-1">Use the "New pool" button on the left, then follow the steps to tokenize and assign allocations.</p>
             </div>
           ) : (
             <div className="space-y-4">
@@ -655,7 +805,7 @@ export default function OnchainDashboard() {
                 <StatusBadge status={selectedPool.data?.token_status} />
               </div>
 
-              <div className="flex gap-1 border-b border-slate-200">
+              <div className="flex gap-0 border-b border-slate-200">
                 {tabs.map((t) => (
                   <button
                     key={t.id}
@@ -668,18 +818,21 @@ export default function OnchainDashboard() {
                   >
                     {t.icon}
                     {t.label}
+                    <span className="ml-1 hidden text-[10px] font-normal text-slate-400 sm:inline">
+                      {t.stepHint}
+                    </span>
                   </button>
                 ))}
               </div>
 
               <div>
                 {tab === "tokenize" && (
-                  <TokenizeTab pool={selectedPool} onSuccess={handlePoolUpdated} />
+                  <TokenizeTab pool={selectedPool} onSuccess={(updated) => { handlePoolUpdated(updated); setTab("whitelist"); }} />
                 )}
+                {tab === "whitelist" && <WhitelistTab onDone={() => setTab("allocations")} />}
                 {tab === "allocations" && (
                   <AllocationsTab pool={selectedPool} />
                 )}
-                {tab === "whitelist" && <WhitelistTab />}
               </div>
             </div>
           )}
