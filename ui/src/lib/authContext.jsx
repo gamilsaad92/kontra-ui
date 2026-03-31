@@ -1,6 +1,9 @@
-import { createContext, useEffect, useMemo, useState, useCallback } from "react";
+import { useEffect, useMemo, useState, useCallback } from "react";
+import { AuthContext } from "./authContextObj";
 import { supabase, isSupabaseConfigured } from "./supabaseClient";
 import { updateBootstrapSnapshot, resetBootstrapSnapshot } from "./bootstrapState";
+
+export { AuthContext };
 
 const SESSION_STORAGE_KEY = "kontra_session";
 
@@ -89,6 +92,25 @@ function storeSession(session) {
   }
 }
 
+// Sign in directly via Supabase client (preferred — no backend round-trip needed)
+async function supabaseSignIn(email, password) {
+  if (!isSupabaseConfigured || !supabase?.auth) {
+    throw new Error("Supabase not configured");
+  }
+  const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+  if (error) throw new Error(error.message);
+  const s = data.session;
+  return {
+    access_token: s.access_token,
+    refresh_token: s.refresh_token,
+    expires_at: s.expires_at,
+    expires_in: s.expires_in,
+    token_type: s.token_type || "bearer",
+    user: { id: data.user.id, email: data.user.email, created_at: data.user.created_at },
+  };
+}
+
+// Fallback: sign in via backend API (used only when Supabase client is not configured)
 async function apiSignIn(email, password) {
   const res = await fetch("/api/auth/signin", {
     method: "POST",
@@ -107,9 +129,40 @@ async function apiSignIn(email, password) {
   };
 }
 
+// Detect if the anon key is actually a service-role key (sb_secret_...).
+// Service-role keys cannot be used for client-side signInWithPassword — only
+// real anon/publishable keys work. Fall back to the backend API in that case.
+const _anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || "";
+const isServiceRoleKey = _anonKey.startsWith("sb_secret_") || _anonKey.includes("service_role");
+
+// Primary sign-in: use Supabase client directly when we have a real anon key;
+// fall back to backend API when using a service-role key or no key at all.
+async function signInWithCredentials(email, password) {
+  if (isSupabaseConfigured && supabase?.auth && !isServiceRoleKey) {
+    return supabaseSignIn(email, password);
+  }
+  return apiSignIn(email, password);
+}
+
 async function tryRefreshSession(storedSession) {
   if (!storedSession?.refresh_token) return null;
   try {
+    // Prefer Supabase client refresh (no backend dependency), but only when
+    // we have a real anon key — service-role keys can't refresh client sessions.
+    if (isSupabaseConfigured && supabase?.auth && !isServiceRoleKey) {
+      const { data, error } = await supabase.auth.refreshSession({ refresh_token: storedSession.refresh_token });
+      if (error || !data?.session) return null;
+      const s = data.session;
+      return {
+        access_token: s.access_token,
+        refresh_token: s.refresh_token || storedSession.refresh_token,
+        expires_at: s.expires_at,
+        expires_in: s.expires_in,
+        token_type: s.token_type || "bearer",
+        user: data.user ? { id: data.user.id, email: data.user.email, created_at: data.user.created_at } : storedSession.user,
+      };
+    }
+    // Fallback: backend refresh
     const res = await fetch("/api/auth/refresh", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -130,18 +183,6 @@ async function tryRefreshSession(storedSession) {
     return null;
   }
 }
-
-export const AuthContext = createContext({
-  session: null,
-  loading: true,
-  user: null,
-  supabase: null,
-  isLoading: true,
-  initializing: true,
-  isAuthed: false,
-  signIn: async () => ({ data: null, error: new Error("Not configured") }),
-  signOut: async () => ({ error: null }),
-});
 
 export function AuthProvider({ children }) {
   const [session, setSessionState] = useState(null);
@@ -213,7 +254,7 @@ export function AuthProvider({ children }) {
       if (IS_DEV && AUTO_LOGIN) {
         if (!_devSignInPromise) {
           _devSignInPromise = (async () => {
-            const s = await apiSignIn(DEV_EMAIL, DEV_PASSWORD);
+            const s = await signInWithCredentials(DEV_EMAIL, DEV_PASSWORD);
             storeSession(s);
             await bootstrapOrgIfNeeded(s.access_token);
             return s;
@@ -281,7 +322,7 @@ export function AuthProvider({ children }) {
   const signIn = useCallback(
     async ({ email, password }) => {
       try {
-        const newSession = await apiSignIn(email, password);
+        const newSession = await signInWithCredentials(email, password);
         updateBootstrapSnapshot({ sessionReady: true, isAuthenticated: true });
         setSession(newSession);
         return { data: { session: newSession, user: newSession.user }, error: null };
