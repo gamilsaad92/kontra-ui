@@ -1,6 +1,9 @@
-import { createContext, useEffect, useMemo, useState, useCallback } from "react";
+import { useEffect, useMemo, useState, useCallback } from "react";
+import { AuthContext } from "./authContextObj";
 import { supabase, isSupabaseConfigured } from "./supabaseClient";
 import { updateBootstrapSnapshot, resetBootstrapSnapshot } from "./bootstrapState";
+
+export { AuthContext };
 
 const SESSION_STORAGE_KEY = "kontra_session";
 
@@ -126,9 +129,16 @@ async function apiSignIn(email, password) {
   };
 }
 
-// Primary sign-in: use Supabase client directly; fall back to backend API
+// Detect if the anon key is actually a service-role key (sb_secret_...).
+// Service-role keys cannot be used for client-side signInWithPassword — only
+// real anon/publishable keys work. Fall back to the backend API in that case.
+const _anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || "";
+const isServiceRoleKey = _anonKey.startsWith("sb_secret_") || _anonKey.includes("service_role");
+
+// Primary sign-in: use Supabase client directly when we have a real anon key;
+// fall back to backend API when using a service-role key or no key at all.
 async function signInWithCredentials(email, password) {
-  if (isSupabaseConfigured && supabase?.auth) {
+  if (isSupabaseConfigured && supabase?.auth && !isServiceRoleKey) {
     return supabaseSignIn(email, password);
   }
   return apiSignIn(email, password);
@@ -137,8 +147,9 @@ async function signInWithCredentials(email, password) {
 async function tryRefreshSession(storedSession) {
   if (!storedSession?.refresh_token) return null;
   try {
-    // Prefer Supabase client refresh (no backend dependency)
-    if (isSupabaseConfigured && supabase?.auth) {
+    // Prefer Supabase client refresh (no backend dependency), but only when
+    // we have a real anon key — service-role keys can't refresh client sessions.
+    if (isSupabaseConfigured && supabase?.auth && !isServiceRoleKey) {
       const { data, error } = await supabase.auth.refreshSession({ refresh_token: storedSession.refresh_token });
       if (error || !data?.session) return null;
       const s = data.session;
@@ -172,18 +183,6 @@ async function tryRefreshSession(storedSession) {
     return null;
   }
 }
-
-export const AuthContext = createContext({
-  session: null,
-  loading: true,
-  user: null,
-  supabase: null,
-  isLoading: true,
-  initializing: true,
-  isAuthed: false,
-  signIn: async () => ({ data: null, error: new Error("Not configured") }),
-  signOut: async () => ({ error: null }),
-});
 
 export function AuthProvider({ children }) {
   const [session, setSessionState] = useState(null);
