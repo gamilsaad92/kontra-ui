@@ -1,0 +1,35 @@
+{
+  "installCommand": "npm install --prefix ui",
+  "buildCommand": "npm run build --prefix ui",
+  "outputDirectory": "ui/dist",
+  "rewrites": [
+    {
+      "source": "/api/(.*)",
+      "destination": "https://kontra-api.onrender.com/api/$1"
+    },
+    {
+      "source": "/((?!.*\\.).*)",
+      "destination": "/"
+    }
+  ],
+  "headers": [
+    {
+      "source": "/assets/(.*)",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=31536000, immutable"
+        }
+      ]
+    },
+    {
+      "source": "/((?!api|assets|.*\\.).*)",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-store, must-revalidate"
+        }
+      ]
+    }
+  ]
+}
