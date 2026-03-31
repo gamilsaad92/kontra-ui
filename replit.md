@@ -67,9 +67,27 @@ The primary application lives in `kontra-ui-clone/` — a full loan servicing wo
 - `artifacts/kontra-ui` — dev script cd's into `kontra-ui-clone/ui/` and runs its Vite (PORT 23452)
 - Preview path `/` shows the Kontra UI login page
 
+### Tokenization (simplified ERC-20 pool token flow)
+One ERC-20 token per pool on Base. All financial logic (NAV, DSCR, distributions) stays fully off-chain. Blockchain = mint/burn/transfer/track ownership only.
+
+**Flow**: Create pool → Add loans → Click "Tokenize" (set symbol + supply) → Assign allocations to whitelisted investor wallets.
+
+**Key files:**
+- `kontra-ui-clone/api/src/routes/markets.js` — 5 new endpoints: `/pools/:id/tokenize`, `/pools/:id/allocations` (GET/POST/DELETE), `/whitelist` (GET/POST/DELETE)
+- `kontra-ui-clone/ui/src/components/OnchainDashboard.tsx` — clean 3-tab UI (Tokenize / Allocations / Whitelist), no wallet library required
+- `kontra-ui-clone/api/migrations/001_canonical_schema.sql` — includes `pool_allocations` and `pool_whitelist` tables
+
+**DB tables added (run migration in Supabase SQL editor):**
+- `pool_allocations(id, org_id, pool_id, investor_name, wallet_address, token_amount, ...)`
+- `pool_whitelist(id, org_id, wallet_address, investor_name, kyc_status, ...)`
+- Token metadata stored in `pools.data` JSONB: `token_symbol`, `token_supply`, `token_contract_address`, `token_network`, `token_status`
+
+**No wallet connect required in UI.** Contract address is entered manually after deploying the minimal ERC-20 on Base.
+
 ### Pending setup (needed for full functionality)
-1. Run `kontra-ui-clone/api/supabase/migrations/20260320_rls_tenancy.sql` in Supabase SQL editor to add `org_id` columns and RLS policies
+1. Run `kontra-ui-clone/api/migrations/001_canonical_schema.sql` in Supabase SQL editor (includes the new tokenization tables)
 2. Set `SUPABASE_SERVICE_ROLE_KEY` on Render and redeploy the production API
+3. Remove `DATABASE_URL` env var from Render dashboard (wrong password causes psql fallback noise)
 
 ## Packages
 
