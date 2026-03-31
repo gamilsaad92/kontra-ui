@@ -575,6 +575,7 @@ function PoolList({
   const [creating, setCreating] = useState(false);
   const [name, setName] = useState("");
   const [saving, setSaving] = useState(false);
+  const [slowWarning, setSlowWarning] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   async function handleCreate(e: React.FormEvent) {
@@ -582,6 +583,15 @@ function PoolList({
     if (!name.trim()) { setError("Pool name is required"); return; }
     setError(null);
     setSaving(true);
+    setSlowWarning(false);
+
+    // Show a "warming up" hint if the server takes more than 6 seconds
+    const slowTimer = setTimeout(() => setSlowWarning(true), 6000);
+
+    // Hard timeout after 55 seconds with a clear error
+    const controller = new AbortController();
+    const hardTimeout = setTimeout(() => controller.abort(), 55000);
+
     try {
       const result = await post<Pool>("/markets/pools", {
         title: name.trim(),
@@ -592,9 +602,17 @@ function PoolList({
       setName("");
       setCreating(false);
     } catch (err: unknown) {
-      setError((err as { message?: string })?.message ?? "Failed to create pool");
+      const msg = (err as { message?: string })?.message ?? "";
+      if (msg.includes("aborted") || msg.includes("signal")) {
+        setError("Server took too long to respond. Please try again — it should be faster now.");
+      } else {
+        setError(msg || "Failed to create pool");
+      }
     } finally {
+      clearTimeout(slowTimer);
+      clearTimeout(hardTimeout);
       setSaving(false);
+      setSlowWarning(false);
     }
   }
 
@@ -623,6 +641,11 @@ function PoolList({
             onChange={(e) => setName(e.target.value)}
           />
           {error && <p className="text-xs text-rose-600">{error}</p>}
+          {slowWarning && (
+            <p className="text-xs text-amber-600">
+              Server is warming up — this may take up to 30 seconds on first load…
+            </p>
+          )}
           <div className="flex gap-2">
             <button
               type="submit"
@@ -739,7 +762,13 @@ export default function OnchainDashboard() {
     finally { setPoolsLoading(false); }
   };
 
-  useEffect(() => { loadPools(); }, []);
+  useEffect(() => {
+    // Pre-warm the backend (Render cold-starts take 30–60s on first request).
+    // Fire a silent health ping as soon as this page loads so the server is
+    // ready by the time the user clicks "Create pool".
+    fetch("/api/markets/pools", { method: "GET" }).catch(() => {});
+    loadPools();
+  }, []);
 
   function handlePoolUpdated(updated: Pool) {
     setPools((prev) => prev.map((p) => (p.id === updated.id ? updated : p)));
