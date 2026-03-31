@@ -32,6 +32,7 @@ function asApiError(error, fallbackMessage = 'Database request failed') {
     return apiError;
   }
 
+  console.error('[DB_ERROR] code=%s msg=%s details=%s hint=%s', error?.code, error?.message, error?.details, error?.hint);
   const apiError = new Error(fallbackMessage);
   apiError.status = 500;
   apiError.code = 'DB_ERROR';
