@@ -56,7 +56,9 @@ function createEntityRouter(path, table) {
   }));
 
   router.get(`${path}/:id`, run(async (req, res) => {
-    const id = parse(z.string().uuid(), req.params.id, res);
+    // Accept both UUID (canonical tables) and integer string (legacy tables)
+    const idSchema = z.union([z.string().uuid(), z.string().regex(/^\d+$/)]);
+    const id = parse(idSchema, req.params.id, res);
     if (!id) return;
     let item;
     try {
@@ -74,7 +76,8 @@ function createEntityRouter(path, table) {
   }));
 
   router.patch(`${path}/:id`, run(async (req, res) => {
-    const id = parse(z.string().uuid(), req.params.id, res);
+    const idSchema = z.union([z.string().uuid(), z.string().regex(/^\d+$/)]);
+    const id = parse(idSchema, req.params.id, res);
     if (!id) return;
     const payload = parse(patchEntitySchema, req.body, res);
     if (!payload) return;
