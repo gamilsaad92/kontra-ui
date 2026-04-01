@@ -135,3 +135,31 @@ Generated React Query hooks and fetch client from the OpenAPI spec (e.g. `useHea
 ### `scripts` (`@workspace/scripts`)
 
 Utility scripts package. Each script is a `.ts` file in `src/` with a corresponding npm script in `package.json`. Run scripts via `pnpm --filter @workspace/scripts run <script>`. Scripts can import any workspace package (e.g., `@workspace/db`) by adding it as a dependency in `scripts/package.json`.
+
+---
+
+## Kontra Platform (kontra-ui-clone/)
+
+Full-stack multifamily/CRE loan servicing platform. Lives in `kontra-ui-clone/`.
+
+### API (`kontra-ui-clone/api/`)
+- Express + Supabase (PostgreSQL with RLS)
+- Production: `https://kontra-api.onrender.com`
+- Key files: `src/lib/crud.js`, `src/middleware/requireOrgContext.js`, `src/routes/entityRouter.js`
+- Integer org IDs → UUID conversion: `00000000-0000-0000-0000-{12-digit-padded}`
+- All entity create endpoints return 201; `items/total` response shape
+
+### Frontend (`kontra-ui-clone/ui/`)
+- React + Vite + TailwindCSS
+- Production: `https://kontraplatform.com` (Vercel)
+- Modules: Dashboard, Portfolio, Servicing, Governance, Markets, On-Chain, AI, Reports
+
+### iOS App (`github.com/gamilsaad92/kontra-ios`)
+- Swift 5.9 + SwiftUI, iOS 17+, MVVM + async/await
+- 27 source files pushed to GitHub on 2026-04-01
+- Connects to same REST API as the web frontend
+- Auth: Supabase JWT stored in iOS Keychain
+- Tabs: Dashboard · Portfolio · Servicing · Governance · Markets
+- Modules: Loans, Assets, Payments, Inspections, Draws, Escrows, Compliance, Risk, Legal, Regulatory Scans, Document Reviews, Pools (with tokenization), Tokens, Exchange Listings, AI Reviews, Reports, Settings
+- Generic `EntityListPage` + `EntityListViewModel<T>` used for all modules
+- `APIClient.shared` — central URLSession wrapper with org ID header injection
