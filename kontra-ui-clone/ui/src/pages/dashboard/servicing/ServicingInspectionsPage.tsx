@@ -98,7 +98,8 @@ export default function ServicingInspectionsPage() {
         type: "inspection",
         status: statusFilter === "all" ? undefined : statusFilter,
       });
-      setReviews(data.length ? data : mockReviews);
+      const items = Array.isArray(data) ? data : (data?.items ?? []);
+      setReviews(items.length ? items : mockReviews);
     } catch (error) {
       setReviews(mockReviews);
       setMessage("Live inspection reviews unavailable. Showing mock queue.");

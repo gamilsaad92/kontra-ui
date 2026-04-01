@@ -63,10 +63,53 @@ async function listEntity(table, orgId, options = {}) {
   return { items: data || [], total: count || 0 };
 }
 
+// Table-specific defaults for columns that are NOT NULL and have no DB default.
+// These ensure a "quick create" from the UI never fails a constraint violation.
+const TODAY = () => new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+
+const TABLE_DEFAULTS = {
+  loans: () => ({
+    borrower_name: 'New Borrower',
+    amount: 0,
+    interest_rate: 0,
+    term_months: 0,
+    start_date: TODAY(),
+    updated_at: new Date().toISOString(),
+  }),
+  payments: () => ({
+    payment_date: TODAY(),
+    amount: 0,
+    applied_principal: 0,
+    applied_interest: 0,
+    remaining_balance: 0,
+    currency: 'USD',
+    updated_at: new Date().toISOString(),
+  }),
+  inspections: () => ({
+    inspector: 'TBD',
+    updated_at: new Date().toISOString(),
+  }),
+  // exchange_listings uses PostgreSQL enums: exchange_status, exchange_asset_type, exchange_visibility
+  // Valid exchange_asset_type values: term_loan, revolver, mortgage, sba, consumer, lease,
+  //   portfolio, securitization_note, repo, other
+  // Valid exchange_status values: draft, listed, closed, ... (use 'draft' for new records)
+  // Valid visibility values: private, public, restricted, invite_only, semi_public
+  exchange_listings: (resolvedOrgId) => ({
+    organization_id: resolvedOrgId,
+    created_by: resolvedOrgId,
+    asset_type: 'mortgage',
+    currency: 'USD',
+    par_amount: 0,
+    visibility: 'private',
+    marketplace_metrics: {},
+    status: 'draft',
+  }),
+};
+
 async function createEntity(table, orgId, payload) {
   const resolvedOrgId = toOrgUuid(table, orgId);
   const insertPayload = {
-    status: payload.status,
+    status: payload.status ?? 'active',
     data: payload.data ?? {},
   };
 
@@ -77,14 +120,24 @@ async function createEntity(table, orgId, payload) {
     insertPayload.org_id = resolvedOrgId;
   }
 
-   if (table === 'payments') {
-    insertPayload.currency = payload.currency || 'USD';
+  // Apply table-specific required-field defaults (can be overridden by payload)
+  if (TABLE_DEFAULTS[table]) {
+    const defaults = TABLE_DEFAULTS[table](resolvedOrgId);
+    Object.assign(insertPayload, defaults);
+    // Let explicit payload values override defaults where provided
+    for (const key of Object.keys(defaults)) {
+      if (payload[key] !== undefined) insertPayload[key] = payload[key];
+    }
+    // exchange_listings uses enum status, override the generic 'active' default
+    if (table === 'exchange_listings') {
+      insertPayload.status = payload.status === 'active' ? 'draft' : (payload.status ?? 'draft');
+    }
   }
 
   const { data, error } = await supabase
     .from(table)
     .insert(insertPayload)
-     .select(selectFor(table))
+    .select(selectFor(table))
     .single();
 
   if (error) throw asApiError(error, 'Failed to create record');

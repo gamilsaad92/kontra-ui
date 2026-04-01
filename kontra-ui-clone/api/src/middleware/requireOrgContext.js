@@ -1,3 +1,18 @@
+// Convert integer org IDs (e.g. "20") to UUID format used in Supabase tables.
+// This ensures all routes — including the AI routes that use req.orgId directly —
+// receive the correct UUID without needing to call toOrgUuid() in every handler.
+function toOrgUuidStr(orgId) {
+  if (!orgId) return orgId;
+  const id = String(orgId);
+  // Already a UUID (contains hyphens) — pass through
+  if (/[0-9a-f]{8}-/i.test(id)) return id;
+  // Pure integer → pad to UUID format
+  if (/^\d+$/.test(id)) {
+    return `00000000-0000-0000-0000-${id.padStart(12, '0')}`;
+  }
+  return orgId;
+}
+
 function requireOrgContext(req, res, next) {
   const path = (req.originalUrl || '').split('?')[0];
 
@@ -8,9 +23,9 @@ function requireOrgContext(req, res, next) {
 
   const orgHeader = req.get('X-Org-Id') || req.get('x-org-id') || req.get('x-organization-id');
 
-  // If an explicit header is provided, apply it now and move on
+  // If an explicit header is provided, convert it to UUID format and move on
   if (orgHeader) {
-    req.orgId = String(orgHeader);
+    req.orgId = toOrgUuidStr(String(orgHeader));
     req.organizationId = req.orgId;
     req.tenant_id = req.orgId;
     return next();
@@ -18,6 +33,7 @@ function requireOrgContext(req, res, next) {
 
   // If req.orgId was already set (e.g. by authenticate running earlier), accept it
   if (req.orgId) {
+    req.orgId = toOrgUuidStr(req.orgId);
     req.organizationId = req.orgId;
     req.tenant_id = req.orgId;
     return next();
