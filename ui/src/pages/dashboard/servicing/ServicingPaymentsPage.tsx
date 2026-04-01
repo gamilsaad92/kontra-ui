@@ -52,7 +52,7 @@ export default function ServicingPaymentsPage() {
         type: "payment",
         status: statusFilter === "all" ? undefined : statusFilter,
       });
-      setReviews(data);
+      setReviews(Array.isArray(data) ? data : (data?.items ?? []));
     } catch (error) {
          setReviews([]);
       setLoadError("Unable to load payment review queue.");
