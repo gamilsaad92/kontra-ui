@@ -1,122 +1,57 @@
-const { createClient } = require('@supabase/supabase-js');
-const { queryOne } = require('../lib/appDb');
-const authenticate = require('../../middlewares/authenticate');
-
-const hasSupabaseCredentials =
-  Boolean(process.env.SUPABASE_URL) && Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY);
-
-const supabase = hasSupabaseCredentials
-  ? createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, {
-      auth: { persistSession: false, autoRefreshToken: false },
-    })
-  : null;
-
-function getOrgHeader(req) {
-  return req.get('X-Org-Id') || req.get('x-org-id') || req.get('x-organization-id') || null;
+// Convert integer org IDs (e.g. "20") to UUID format used in Supabase tables.
+// This ensures all routes — including the AI routes that use req.orgId directly —
+// receive the correct UUID without needing to call toOrgUuid() in every handler.
+function toOrgUuidStr(orgId) {
+  if (!orgId) return orgId;
+  const id = String(orgId);
+  // Already a UUID (contains hyphens) — pass through
+  if (/[0-9a-f]{8}-/i.test(id)) return id;
+  // Pure integer → pad to UUID format
+  if (/^\d+$/.test(id)) {
+    return `00000000-0000-0000-0000-${id.padStart(12, '0')}`;
+  }
+  return orgId;
 }
 
-async function userHasOrgMembership(userId, organizationId) {
-  if (!userId || !organizationId) return false;
-
-  try {
-    const row = await queryOne(
-      `select org_id
-         from org_memberships
-        where user_id = $1
-          and org_id::text = $2
-          and coalesce(status, 'active') = 'active'
-          and deleted_at is null
-        limit 1`,
-      [userId, organizationId],
-    );
-    if (row?.org_id) {
-      return true;
-    }
-  } catch (error) {
-   if (error?.code !== 'APP_DB_URL_MISSING' && error?.code !== 'APP_DB_AUTH_FAILED') {
-      console.debug('[OrgContext] local membership lookup failed', error?.message);
-    }
-  }
-
-  if (!supabase) {
-    return false;
-  }
-
-  try {
-    const { data, error } = await supabase
-      .from('org_memberships')
-      .select('org_id')
-      .eq('user_id', userId)
-      .eq('org_id', organizationId)
-      .eq('status', 'active')
-      .is('deleted_at', null)
-      .maybeSingle();
-
-    if (error) {
-      console.debug('[OrgContext] Supabase membership lookup failed', error.message);
-      return false;
-    }
-
-    return Boolean(data?.org_id);
-  } catch (error) {
-    console.debug('[OrgContext] Supabase membership lookup threw', error?.message || error);
-    return false;
-  }
-}
-
-async function requireOrgContext(req, res, next) {
+function requireOrgContext(req, res, next) {
   const path = (req.originalUrl || '').split('?')[0];
 
- if (path === '/api/health' || path.startsWith('/api/dev/') || path === '/api/me/bootstrap') {
+  // Always skip health and dev routes
+  if (path === '/api/health' || path.startsWith('/api/dev/') || path.startsWith('/api/auth/')) {
     return next();
   }
 
-  if (!req.user) {
-    return authenticate(req, res, () => {
-      if (!req.user) {
-        return res.status(401).json({
-            ok: false,
-          error: {
-            code: 'UNAUTHORIZED',
-            message: 'Authentication required before organization validation.',
-            status: 401,
-          },
-        });
-      }
-      return requireOrgContext(req, res, next);
-    });
+  const orgHeader = req.get('X-Org-Id') || req.get('x-org-id') || req.get('x-organization-id');
+
+  // If an explicit header is provided, convert it to UUID format and move on
+  if (orgHeader) {
+    req.orgId = toOrgUuidStr(String(orgHeader));
+    req.organizationId = req.orgId;
+    req.tenant_id = req.orgId;
+    return next();
   }
 
-  const headerOrgId = getOrgHeader(req);
-  if (!headerOrgId) {
-    return res.status(400).json({
-      ok: false,
-      error: {
-        code: 'ORG_CONTEXT_MISSING',
-        message: 'Missing X-Org-Id header. Call /api/me/bootstrap first to resolve memberships and default organization.',
-        status: 400,
-      },
-    });
+  // If req.orgId was already set (e.g. by authenticate running earlier), accept it
+  if (req.orgId) {
+    req.orgId = toOrgUuidStr(req.orgId);
+    req.organizationId = req.orgId;
+    req.tenant_id = req.orgId;
+    return next();
   }
 
-   const organizationId = String(headerOrgId);
-  const hasMembership = await userHasOrgMembership(req.user.supabaseUserId || req.user.id, organizationId);
-  if (!hasMembership) {
-    return res.status(403).json({
-       ok: false,
-      error: {
-        code: 'ORG_FORBIDDEN',
-        message: 'Organization access denied for the authenticated user.',
-        status: 403,
-        organizationId,
-      },
-    });
+  // If there's a Bearer token, authenticate middleware will resolve the org.
+  // Pass through so authenticate can run and set req.orgId — the route handler
+  // is responsible for enforcing org presence after authentication.
+  const authHeader = req.get('Authorization') || '';
+  if (authHeader.startsWith('Bearer ')) {
+    return next();
   }
 
-  req.orgId = organizationId;
-  req.organizationId = organizationId;
-  req.tenant_id = organizationId;
-  return next();
+  // No auth, no org header — block unauthenticated org-required requests
+  return res.status(400).json({
+    code: 'ORG_CONTEXT_MISSING',
+    message: 'Missing X-Org-Id header',
+  });
 }
 
 module.exports = { requireOrgContext };
