@@ -1,17 +1,14 @@
 import { NavLink, Outlet } from 'react-router-dom';
 
 const tabs = [
-  { label: 'Loan Records', to: '/portfolio/loans' },
-  { label: 'Asset Register', to: '/portfolio/assets' },
+  { label: 'Loans', to: '/portfolio/loans' },
+  { label: 'Assets', to: '/portfolio/assets' },
 ];
 
 export default function PortfolioLayout() {
   return (
     <div className="space-y-4">
-      <div>
-        <h1 className="text-xl font-semibold">Asset Library</h1>
-        <p className="text-sm text-slate-500 mt-0.5">Structured loan data assets — every record a standardized, verifiable digital asset.</p>
-      </div>
+      <h1 className="text-xl font-semibold">Portfolio</h1>
       <nav className="flex flex-wrap gap-2 border-b pb-3">
         {tabs.map((tab) => (
           <NavLink

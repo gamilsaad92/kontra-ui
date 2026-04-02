@@ -4,17 +4,14 @@ const tabs = [
   { label: 'Compliance', to: '/governance/compliance' },
   { label: 'Legal', to: '/governance/legal' },
   { label: 'Regulatory', to: '/governance/regulatory-scans' },
-  { label: 'Risk Flags', to: '/governance/risk' },
-  { label: 'Document Review', to: '/governance/document-review' },
+  { label: 'Risk', to: '/governance/risk' },
+  { label: 'Document Reviews', to: '/governance/document-review' },
 ];
 
 export default function GovernanceLayout() {
   return (
     <div className="space-y-4">
-      <div>
-        <h1 className="text-xl font-semibold">Compliance</h1>
-        <p className="text-sm text-slate-500 mt-0.5">Regulatory checks, legal status, and risk flags — every item resolved before an asset advances.</p>
-      </div>
+      <h1 className="text-xl font-semibold">Compliance & Legal</h1>
       <nav className="flex flex-wrap gap-2 border-b pb-3">
         {tabs.map((tab) => (
           <NavLink
