@@ -1,62 +1,41 @@
 import {
-  HomeIcon,
-  BanknotesIcon,
   Cog6ToothIcon,
-  ChartBarIcon,
-  ChartPieIcon,
-  WrenchScrewdriverIcon,
   ShieldCheckIcon,
-  PresentationChartLineIcon,
   CubeTransparentIcon,
+  QueueListIcon,
+  ArchiveBoxIcon,
+  ScaleIcon,
 } from "@heroicons/react/24/outline";
 
 export const lenderNavRoutes = [
   {
-    label: "Dashboard",
+    label: "Pipeline",
     path: "/dashboard",
-    icon: HomeIcon,
+    icon: QueueListIcon,
     requiresAuth: true,
   },
   {
-    label: "Portfolio",
+    label: "Asset Library",
     path: "/portfolio",
-    icon: BanknotesIcon,
+    icon: ArchiveBoxIcon,
     requiresAuth: true,
   },
   {
-    label: "Servicing",
+    label: "Verification",
     path: "/servicing",
-    icon: WrenchScrewdriverIcon,
-    requiresAuth: true,
-  },
-  {
-    label: "Compliance & Legal",
-    path: "/governance",
     icon: ShieldCheckIcon,
     requiresAuth: true,
   },
   {
-    label: "Capital Markets",
+    label: "Compliance",
+    path: "/governance",
+    icon: ScaleIcon,
+    requiresAuth: true,
+  },
+  {
+    label: "Token Readiness",
     path: "/markets",
-    icon: PresentationChartLineIcon,
-    requiresAuth: true,
-  },
-  {
-    label: "On-Chain",
-    path: "/onchain",
     icon: CubeTransparentIcon,
-    requiresAuth: true,
-  },
-  {
-    label: "AI Insights",
-    path: "/analytics",
-    icon: ChartPieIcon,
-    requiresAuth: true,
-  },
-  {
-    label: "Reports",
-    path: "/reports",
-    icon: ChartBarIcon,
     requiresAuth: true,
   },
   {

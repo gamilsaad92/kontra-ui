@@ -1,10 +1,9 @@
 import { useCallback, useContext, useMemo, useState, type ComponentType } from "react";
 import { NavLink, Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
-import { resolveApiBase } from "../lib/api";
 import useFeatureUsage from "../lib/useFeatureUsage";
 import { lenderNavRoutes } from "../routes";
 import { AuthContext } from "../lib/authContext";
-import SaasDashboardHome from "../components/SaasDashboardHome";
+import PipelineDashboard from "../components/PipelineDashboard";
 import AiInsightsPage from "../features/ai-insights/page/AiInsightsPage";
 import OnchainDashboard from "../components/OnchainDashboard";
 import ServicingLayout from "./dashboard/servicing/ServicingLayout";
@@ -40,8 +39,8 @@ import {
 
 type NavItem = (typeof lenderNavRoutes)[number];
 
-function DashboardOverview({ apiBase }: { apiBase: string }) {
-  return <SaasDashboardHome apiBase={apiBase} />;
+function DashboardOverview() {
+  return <PipelineDashboard />;
 }
 
 function LegacyRedirect({ to }: { to: string }) {
@@ -56,7 +55,6 @@ function LegacyServicingRedirect() {
 }
 
 export default function SaasDashboard() {
-  const apiBase = resolveApiBase();
   const { usage, recordUsage } = useFeatureUsage();
   const { session, signOut } = useContext(AuthContext) as any;
   const location = useLocation();
@@ -85,6 +83,12 @@ export default function SaasDashboard() {
   const activeLabel = activeItem?.label ?? "Dashboard";
   const isDashboardRoute = location.pathname === "/dashboard";
   const isServicingRoute = location.pathname.startsWith("/servicing");
+  const hasOwnHeader =
+    isDashboardRoute ||
+    isServicingRoute ||
+    location.pathname.startsWith("/portfolio") ||
+    location.pathname.startsWith("/governance") ||
+    location.pathname.startsWith("/markets");
 
   const renderNavItem = useCallback(
     (item: NavItem) => {
@@ -146,7 +150,7 @@ export default function SaasDashboard() {
    const content = (
     <Routes>
       <Route path="/" element={<Navigate to="/dashboard" replace />} />
-      <Route path="/dashboard" element={<DashboardOverview apiBase={apiBase} />} />
+      <Route path="/dashboard" element={<DashboardOverview />} />
       <Route path="/portfolio" element={<PortfolioLayout />}>
         <Route index element={<Navigate to="/portfolio/assets" replace />} />
         <Route path="assets" element={<PortfolioAssetsPage />} />
@@ -250,15 +254,15 @@ export default function SaasDashboard() {
         </nav>
       </aside>
       <main className="flex-1 overflow-y-auto p-6">
-        {!isDashboardRoute && !isServicingRoute && (
+        {!hasOwnHeader && (
           <header className="mb-6 space-y-1">
             <h1 className="text-xl font-semibold tracking-tight text-slate-900">{activeLabel}</h1>
             <p className="text-sm text-slate-500">
-              Multifamily and CRE loan servicing for institutional lenders.
+              Transforming real estate loan data into structured, verified, tokenizable digital assets.
             </p>
           </header>
         )}
-        {isDashboardRoute || isServicingRoute ? content : <div className="space-y-6">{content}</div>}
+        {hasOwnHeader ? content : <div className="space-y-6">{content}</div>}
       </main>
     </div>
   );

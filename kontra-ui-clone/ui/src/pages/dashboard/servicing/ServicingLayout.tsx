@@ -9,14 +9,17 @@ const tabs = [
   { label: 'Escrows', to: '/servicing/escrow' },
   { label: 'Borrower Financials', to: '/servicing/borrower-financials' },
   { label: 'Management', to: '/servicing/management' },
-  { label: 'AI Operations', to: '/servicing/ai-ops' },
+  { label: 'AI Validation', to: '/servicing/ai-ops' },
 ];
 
 export default function ServicingLayout() {
   return (
     <ServicingProvider>
       <div className="space-y-4">
-        <h1 className="text-xl font-semibold">Servicing</h1>
+        <div>
+          <h1 className="text-xl font-semibold">Verification</h1>
+          <p className="text-sm text-slate-500 mt-0.5">AI-powered parsing, validation, and reconciliation — moving each asset toward verified status.</p>
+        </div>
         <nav className="flex flex-wrap gap-2 border-b pb-3">
           {tabs.map((tab) => (
             <NavLink
