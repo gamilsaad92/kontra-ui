@@ -51,8 +51,8 @@ outputType = "console"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "cd kontra-ui-clone/api && PORT=3000 NODE_ENV=development SUPABASE_URL=${SUPABASE_URL:-https://placeholder.supabase.co} SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY:-placeholder-key} node index.js"
-waitForPort = 3000
+args = "cd kontra-ui-clone/api && PORT=3001 NODE_ENV=development SUPABASE_URL=${SUPABASE_URL:-https://placeholder.supabase.co} SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY:-placeholder-key} OPENAI_API_KEY=${OPENAI_API_KEY} node index.js"
+waitForPort = 3001
 
 [agent]
 stack = "PNPM_WORKSPACE"
