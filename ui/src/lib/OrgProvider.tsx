@@ -1,15 +1,12 @@
 import React, {
   createContext,
   useCallback,
-  useContext,
   useEffect,
   useMemo,
   useRef,
   useState,
 } from "react";
-import { apiFetch, setOrgContext } from "./apiClient";
-import { supabase, isSupabaseConfigured } from "./supabaseClient";
-import { updateBootstrapSnapshot } from "./bootstrapState";
+import { setOrgContext } from "./apiClient";
 
 export interface Org {
   id: string;
@@ -21,33 +18,21 @@ export interface Org {
 
 interface OrgContextValue {
   orgs: Org[];
-  activeOrganizationId: string | null;
   activeOrg: Org | null;
   loading: boolean;
-  authReady: boolean;
-  orgReady: boolean;
-  sessionExpired: boolean;
-  error: string | null;
   setActiveOrg: (org: Org) => void;
   refreshOrgs: () => Promise<void>;
 }
 
-const OrgContext = createContext<OrgContextValue>({
+export const OrgContext = createContext<OrgContextValue>({
   orgs: [],
   activeOrg: null,
-  activeOrganizationId: null,
   loading: true,
-  authReady: false,
-  orgReady: false,
-  sessionExpired: false,
-  error: null,
   setActiveOrg: () => undefined,
   refreshOrgs: async () => undefined,
 });
 
 const STORAGE_KEY = "kontra_active_org_id";
-const BOOTSTRAP_TIMEOUT_MS = 8000;
-const BOOTSTRAP_MAX_RETRIES = 2;
 
 function readStoredOrgId(): string | null {
   try {
@@ -59,8 +44,11 @@ function readStoredOrgId(): string | null {
 
 function writeStoredOrgId(id: string | null): void {
   try {
-    if (id) localStorage.setItem(STORAGE_KEY, id);
-    else localStorage.removeItem(STORAGE_KEY);
+    if (id) {
+      localStorage.setItem(STORAGE_KEY, id);
+    } else {
+      localStorage.removeItem(STORAGE_KEY);
+    }
   } catch {
     // ignore storage errors
   }
@@ -69,13 +57,13 @@ function writeStoredOrgId(id: string | null): void {
 function normalizeOrgs(raw: unknown): Org[] {
   if (!Array.isArray(raw)) return [];
   return raw
-    .filter((o) => o && typeof o === "object" && (o as Record<string, unknown>).id)
+    .filter((o) => o && typeof o === "object" && o.id)
     .map((o) => ({
-      id: String((o as Record<string, unknown>).id),
-      name: String((o as Record<string, unknown>).name || "Organization"),
-      role: String((o as Record<string, unknown>).role || (o as Record<string, unknown>).membership_role || "member"),
-      status: String((o as Record<string, unknown>).status || "active"),
-      createdAt: ((o as Record<string, unknown>).created_at || (o as Record<string, unknown>).createdAt || undefined) as string | undefined,
+      id: String(o.id),
+      name: String(o.name || "Organization"),
+      role: String(o.role || o.membership_role || "member"),
+      status: String(o.status || "active"),
+      createdAt: o.created_at || o.createdAt || undefined,
     }));
 }
 
@@ -86,164 +74,75 @@ interface OrgProviderProps {
   apiBase?: string;
 }
 
-async function resolveVerifiedSupabaseUserId(accessToken?: string | null): Promise<string | null> {
-  if (!accessToken || !isSupabaseConfigured || !supabase?.auth) {
-    return null;
-  }
-
-  try {
-    const { data, error } = await supabase.auth.getUser(accessToken);
-    if (error) return null;
-    return data.user?.id ? String(data.user.id) : null;
-   } catch {
-    return null;
-  }
-}
-
-export function OrgProvider({ children, accessToken, userId, apiBase = "" }: OrgProviderProps) {
+export function OrgProvider({
+  children,
+  accessToken,
+  userId,
+  apiBase = "",
+}: OrgProviderProps) {
   const [orgs, setOrgs] = useState<Org[]>([]);
   const [activeOrg, setActiveOrgState] = useState<Org | null>(null);
   const [loading, setLoading] = useState(true);
-  const [authReady, setAuthReady] = useState(false);
-  const [sessionExpired, setSessionExpired] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const bootstrappedRef = useRef(false);
 
   const applyActiveOrg = useCallback(
     (org: Org, allOrgs: Org[]) => {
-      const validated = allOrgs.find((candidate) => candidate.id === org.id) || allOrgs[0] || null;
+      // Validate the org is actually in the user's membership list — never trust localStorage alone
+      const validated = allOrgs.find((o) => o.id === org.id) || allOrgs[0] || null;
       if (!validated) return;
       setActiveOrgState(validated);
       writeStoredOrgId(validated.id);
+      // Sync into the global API client so X-Org-Id header is sent
       setOrgContext({ orgId: validated.id, userId: userId ?? undefined });
-            updateBootstrapSnapshot({
-        orgReady: true,
-        activeOrganizationId: validated.id,
-      });
     },
-   [userId],
+    [userId]
   );
-
-  const clearOrgState = useCallback(() => {
-    setOrgs([]);
-    setActiveOrgState(null);
-    writeStoredOrgId(null);
-    setOrgContext({ userId: userId ?? undefined });
-      updateBootstrapSnapshot({
-      orgReady: false,
-      activeOrganizationId: null,
-    });
-  }, [userId]);
 
   const refreshOrgs = useCallback(async () => {
     if (!accessToken) {
-      clearOrgState();
-      setError("Session expired. Please sign in again.");
-      setSessionExpired(true);
+      setOrgs([]);
+      setActiveOrgState(null);
       setLoading(false);
-      setAuthReady(true);
       return;
     }
 
     setLoading(true);
-    setAuthReady(false);
-    setSessionExpired(false);
-    setError(null);
-
     try {
-      const verifiedUserId = await resolveVerifiedSupabaseUserId(accessToken);
       const base = apiBase.replace(/\/+$/, "");
-       const bootstrapUrl = `${base}/api/me/bootstrap`;
-      const bootstrapRequest = async () => {
-        const controller = new AbortController();
-        const timeoutId = window.setTimeout(() => controller.abort(), BOOTSTRAP_TIMEOUT_MS);
-        try {
-          return await apiFetch(
-            bootstrapUrl,
-            {
-              headers: { Authorization: `Bearer ${accessToken}` },
-              signal: controller.signal,
-            },
-            { requireAuth: true },
-          );
-        } finally {
-          window.clearTimeout(timeoutId);
-        }
-      };
-
-      let res: Response | null = null;
-      let lastError: unknown = null;
-      for (let attempt = 0; attempt <= BOOTSTRAP_MAX_RETRIES; attempt += 1) {
-        try {
-          res = await bootstrapRequest();
-          break;
-        } catch (requestError) {
-          lastError = requestError;
-          if (attempt === BOOTSTRAP_MAX_RETRIES) {
-            throw requestError;
-          }
-        }
-      }
-
-      if (!res) {
-        throw lastError instanceof Error ? lastError : new Error("Organization bootstrap failed.");
-      }
-
-      const payload = await res.json().catch(() => ({}));
+      const res = await fetch(`${base}/api/me/bootstrap`, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
       if (!res.ok) {
-        const message =
-          payload?.message ||
-          payload?.error?.message ||
-          payload?.error ||
-          `Organization bootstrap failed (${res.status})`;
-        if (res.status === 401) {
-          setSessionExpired(true);
-        }
-        throw new Error(message);
+        console.warn("[OrgProvider] bootstrap returned", res.status);
+        setLoading(false);
+        return;
       }
+      const data = await res.json();
 
-      const normalized = normalizeOrgs(payload?.orgs);
+      const normalized = normalizeOrgs(data?.orgs);
       setOrgs(normalized);
 
       if (normalized.length === 0) {
-        clearOrgState();
-        setError("No organization membership was found for this account.");
+        setLoading(false);
         return;
       }
 
+      // Resolve active org: prefer stored → server's activeOrgId → first in list
       const storedId = readStoredOrgId();
-     const profileActiveId = payload?.activeOrgId || payload?.active_org_id || payload?.default_org_id || null;
-      const resolvedId = storedId || profileActiveId || normalized[0].id;
-      const resolved = normalized.find((org) => org.id === String(resolvedId)) || normalized[0];
+      const serverActiveId = data?.activeOrgId || data?.active_org_id || null;
+      const resolvedId = storedId || serverActiveId || normalized[0].id;
 
+      const resolved =
+        normalized.find((o) => o.id === resolvedId) || normalized[0];
       applyActiveOrg(resolved, normalized);
-      setSessionExpired(false);
-      
-      if (verifiedUserId && userId && verifiedUserId !== userId) {
-        console.warn("[OrgProvider] session user id differed from verified user id", { userId, verifiedUserId });
-      }
     } catch (err) {
       console.warn("[OrgProvider] org bootstrap failed", err);
-      clearOrgState();
-      const typedError = err as { status?: number; code?: string; name?: string; message?: string } | null;
-      if (
-        typedError?.status === 401 ||
-        typedError?.code === "AUTH_REQUIRED" ||
-        typedError?.code === "AUTH_TOKEN_EXPIRED"
-      ) {
-        setSessionExpired(true);
-        setError("Session expired. Please sign in again.");
-      } else if (typedError?.name === "AbortError") {
-        setError("Session check timed out. Retrying failed, please refresh.");
-      } else {
-        setError(err instanceof Error ? err.message : "Failed to initialize organization context.");
-      }
     } finally {
       setLoading(false);
-      setAuthReady(true);
     }
-  }, [accessToken, apiBase, applyActiveOrg, clearOrgState, userId]);
+  }, [accessToken, apiBase, applyActiveOrg]);
 
+  // Bootstrap once when the access token changes (login/logout)
   useEffect(() => {
     bootstrappedRef.current = false;
   }, [accessToken]);
@@ -251,47 +150,39 @@ export function OrgProvider({ children, accessToken, userId, apiBase = "" }: Org
   useEffect(() => {
     if (bootstrappedRef.current) return;
     bootstrappedRef.current = true;
+    // Optimistically apply any stored org ID immediately so API calls that
+    // fire before bootstrap completes still get the X-Org-Id header.
+    if (accessToken) {
+      const stored = readStoredOrgId();
+      if (stored) {
+        setOrgContext({ orgId: stored, userId: userId ?? undefined });
+      }
+    }
     refreshOrgs();
-  }, [refreshOrgs]);
+  }, [refreshOrgs, accessToken, userId]);
 
+  // Clear everything on logout
   useEffect(() => {
     if (!accessToken) {
-      clearOrgState();
-      setSessionExpired(true);
-      setError("Session expired. Please sign in again.");
-      setLoading(false);
-      setAuthReady(true);
+      setOrgs([]);
+      setActiveOrgState(null);
+      setOrgContext({});
+      writeStoredOrgId(null);
     }
-  }, [accessToken, clearOrgState]);
+  }, [accessToken]);
 
   const setActiveOrg = useCallback(
     (org: Org) => {
       applyActiveOrg(org, orgs);
     },
-    [applyActiveOrg, orgs],
+    [applyActiveOrg, orgs]
   );
 
- const orgReady = authReady && !loading && Boolean(activeOrg?.id);
-
   const value = useMemo<OrgContextValue>(
-    () => ({
-      orgs,
-      activeOrg,
-      activeOrganizationId: activeOrg?.id ?? null,
-      loading,
-      authReady,
-      orgReady,
-      sessionExpired,
-      error,
-      setActiveOrg,
-      refreshOrgs,
-    }),
-   [orgs, activeOrg, loading, authReady, orgReady, sessionExpired, error, setActiveOrg, refreshOrgs],
+    () => ({ orgs, activeOrg, loading, setActiveOrg, refreshOrgs }),
+    [orgs, activeOrg, loading, setActiveOrg, refreshOrgs]
   );
 
   return <OrgContext.Provider value={value}>{children}</OrgContext.Provider>;
 }
 
-export function useOrg(): OrgContextValue {
-  return useContext(OrgContext);
-}
