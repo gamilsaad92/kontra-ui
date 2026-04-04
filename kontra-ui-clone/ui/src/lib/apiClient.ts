@@ -204,6 +204,9 @@ export async function apiFetch(
     const clearOrgSelectionAndReauth = (apiError: ApiError) => {
     setOrgId(null);
     orgContext = { userId: orgContext.userId };
+    // Clear the persisted session so the page reload doesn't loop back into a 401 cycle
+    try { localStorage.removeItem("kontra_session"); } catch (_) {}
+    try { localStorage.removeItem("kontra_active_org_id"); } catch (_) {}
     emitBrowserEvent("api:unauthorized", { path: requestUrl, status: 401, reauthRequired: true });
     emitBrowserEvent("api:error", apiError);
     redirectToSignIn();
