@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from "react";
-import { useOrg } from "../lib/OrgProvider";
 import {
   stablecoinPaymentsApi,
   type StablecoinEvent,
@@ -33,9 +32,7 @@ export default function StablecoinPaymentsPanel() {
   const [selected, setSelected] = useState<StablecoinPayment | null>(null);
   const [detail, setDetail] = useState<{ payment: StablecoinPayment; events: StablecoinEvent[] } | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
- const { authReady, activeOrganizationId, loading: orgLoading, error: orgError } = useOrg();
-  const orgReady = authReady && Boolean(activeOrganizationId);
-  
+
   const refresh = async () => {
     setLoading(true);
     setError(null);
@@ -62,9 +59,8 @@ export default function StablecoinPaymentsPanel() {
   };
 
   useEffect(() => {
-   if (!orgReady) return;
     refresh();
-  }, [orgReady]);
+  }, []);
 
   return (
     <section className="space-y-4 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
@@ -79,7 +75,7 @@ export default function StablecoinPaymentsPanel() {
           <button
             type="button"
             onClick={refresh}
-             disabled={loading || !orgReady}
+            disabled={loading}
             className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700"
           >
             Refresh
@@ -87,7 +83,6 @@ export default function StablecoinPaymentsPanel() {
           <button
             type="button"
             onClick={() => setCreateOpen(true)}
-             disabled={!orgReady}
             className="rounded-lg bg-slate-900 px-3 py-2 text-sm font-semibold text-white"
           >
             Create USDC payment request
@@ -99,9 +94,7 @@ export default function StablecoinPaymentsPanel() {
         <div className="border-b border-slate-200 bg-slate-50 px-4 py-2 text-sm font-semibold text-slate-700">
           Requests
         </div>
-           {!orgReady ? (
-          <div className="px-4 py-6 text-sm text-slate-500">{orgLoading ? "Loading organization context…" : orgError || "Organization context is required before loading stablecoin requests."}</div>
-        ) : loading ? (
+        {loading ? (
           <div className="px-4 py-6 text-sm text-slate-500">Loading…</div>
         ) : error ? (
           <div className="px-4 py-6 text-sm text-rose-600">{error}</div>
