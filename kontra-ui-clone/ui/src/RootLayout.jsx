@@ -184,11 +184,11 @@ export default function RootLayout({ children }) {
     return () => { isMounted = false }
   }, [session?.user?.id])
 
-  // Whoami check
+  // Whoami check — diagnostic only, never requireAuth so a 401 won't wipe the session
   useEffect(() => {
     if (!session?.user) return
     let active = true
-    apiRequest('GET', apiRoutes.whoami, undefined, {}, { requireAuth: true })
+    apiRequest('GET', apiRoutes.whoami, undefined, {}, { throwOnError: false })
       .then((data) => { if (active) console.info('[API] whoami', data) })
       .catch((err) => { if (active) console.warn('[API] whoami failed', err) })
     return () => { active = false }

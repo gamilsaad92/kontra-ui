@@ -267,7 +267,14 @@ export async function apiFetch(
             : "Session expired. Please sign in again.";
         const requestId = response.headers.get("x-request-id");
         const apiError = buildError(message, 401, requestUrl, requestId, data, "AUTH_INVALID");
-        clearOrgSelectionAndReauth(apiError);
+        // Only wipe the session and redirect to login when the caller explicitly
+        // declares the endpoint requires authentication (requireAuth: true).
+        // Diagnostic/optional calls (whoami, branding, bootstrap) must NOT
+        // auto-logout the user when the backend returns 401 — that causes
+        // spurious logouts on transient server errors.
+        if (options.requireAuth) {
+          clearOrgSelectionAndReauth(apiError);
+        }
         if (options.throwOnError !== false) {
           throw apiError;
         }
