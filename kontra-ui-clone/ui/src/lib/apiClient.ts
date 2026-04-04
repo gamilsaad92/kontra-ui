@@ -248,10 +248,14 @@ export async function apiFetch(
     console.info(`[API] → ${method} ${requestUrl}`);
   }
 
+  // Auth endpoints must never trigger the interceptor's retry/redirect logic —
+  // doing so causes infinite recursion (refresh → intercept → refresh → …).
+  const isAuthEndpoint = requestUrl.includes("/api/auth/");
+
   let response: Response;
   try {
    response = await performFetch(false);
-    if (response.status === 401) {
+    if (response.status === 401 && !isAuthEndpoint) {
       response = await performFetch(true);
       if (response.status === 401) {
         const data = await parseJsonSafe(response.clone());
