@@ -16,7 +16,7 @@ export interface Org {
   createdAt?: string;
 }
 
-interface OrgContextValue {
+export interface OrgContextValue {
   orgs: Org[];
   activeOrg: Org | null;
   loading: boolean;
