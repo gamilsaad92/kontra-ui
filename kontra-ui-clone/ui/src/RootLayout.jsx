@@ -123,7 +123,11 @@ export default function RootLayout({ children }) {
 
   // Global API event listeners
   useEffect(() => {
-    const onUnauthorized = async () => {
+    const onUnauthorized = async (event) => {
+      // Only sign out when the API client explicitly flags reauthRequired.
+      // Incidental 401s (e.g. bootstrap returning 401 on a fresh login)
+      // must not clear a valid session and cause a flicker/loop.
+      if (!event?.detail?.reauthRequired) return
       await signOut()
       if (window.location.pathname !== '/login') {
         window.location.assign('/login')
