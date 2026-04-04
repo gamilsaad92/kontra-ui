@@ -1,7 +1,6 @@
 import React, {
   createContext,
   useCallback,
-  useContext,
   useEffect,
   useMemo,
   useRef,
@@ -25,7 +24,7 @@ interface OrgContextValue {
   refreshOrgs: () => Promise<void>;
 }
 
-const OrgContext = createContext<OrgContextValue>({
+export const OrgContext = createContext<OrgContextValue>({
   orgs: [],
   activeOrg: null,
   loading: true,
@@ -187,6 +186,3 @@ export function OrgProvider({
   return <OrgContext.Provider value={value}>{children}</OrgContext.Provider>;
 }
 
-export function useOrg(): OrgContextValue {
-  return useContext(OrgContext);
-}
