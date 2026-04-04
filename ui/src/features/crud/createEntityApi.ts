@@ -1,6 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiFetch } from '../../lib/apiClient';
-import { useOrg } from '../../lib/OrgProvider';
 import type { CanonicalEntity, EntityListResponse } from './types';
 
 async function readJson<T>(response: Response): Promise<T> {
@@ -9,15 +8,10 @@ async function readJson<T>(response: Response): Promise<T> {
 
 export function createEntityApi(basePath: string, queryKey: string) {
   const listPath = `/api${basePath}`;
-  const requiresOrg = /^\/api\/markets\//.test(listPath);
-  
-    const useEntityList = () => {
-    const { authReady, activeOrganizationId } = useOrg();
-    const enabled = !requiresOrg || (authReady && Boolean(activeOrganizationId));
 
-    return useQuery<EntityListResponse>({
-      queryKey: [queryKey, 'list', activeOrganizationId],
-      enabled,
+  const useEntityList = () =>
+    useQuery<EntityListResponse>({
+      queryKey: [queryKey, 'list'],
       queryFn: async () => {
         try {
           const response = await apiFetch(listPath);
@@ -32,8 +26,7 @@ export function createEntityApi(basePath: string, queryKey: string) {
         }
       },
     });
- };
-  
+
   const useCreateEntity = () => {
     const queryClient = useQueryClient();
     return useMutation({
@@ -54,25 +47,21 @@ export function createEntityApi(basePath: string, queryKey: string) {
     });
   };
 
-   const useEntity = (id?: string) => {
-    const { authReady, activeOrganizationId } = useOrg();
-    const enabled = Boolean(id) && (!requiresOrg || (authReady && Boolean(activeOrganizationId)));
-
-    return useQuery<CanonicalEntity>({
-      queryKey: [queryKey, 'detail', id, activeOrganizationId],
-      enabled,
+  const useEntity = (id?: string) =>
+    useQuery<CanonicalEntity>({
+      queryKey: [queryKey, 'detail', id],
+      enabled: Boolean(id),
       queryFn: async () => {
         const response = await apiFetch(`${listPath}/${id}`);
         if (!response.ok) throw new Error('Failed to load entity');
         return readJson<CanonicalEntity>(response);
       },
     });
- };
-  
+
   const useUpdateEntity = (id?: string) => {
     const queryClient = useQueryClient();
     return useMutation({
-      mutationFn: async (payload: Partial<Pick<CanonicalEntity, 'title' | 'name' | 'status' | 'data'>>) => {
+    mutationFn: async (payload: Partial<Pick<CanonicalEntity, 'title' | 'name' | 'status' | 'data'>>) => {
         const response = await apiFetch(`${listPath}/${id}`, {
           method: 'PATCH',
           body: JSON.stringify(payload),
