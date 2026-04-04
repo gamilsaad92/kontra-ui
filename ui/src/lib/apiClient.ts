@@ -327,7 +327,9 @@ export async function apiFetch(
       emitBrowserEvent("api:error", apiError);
     }
 
-    if (response.status === 401) {
+    // Only emit api:unauthorized for non-auth endpoints — auth endpoint 401s
+    // (e.g. /api/auth/refresh) are expected failures and must not trigger a global sign-out.
+    if (response.status === 401 && !isAuthEndpoint) {
       emitBrowserEvent("api:unauthorized", { path: requestUrl, status: response.status });
     }
 
