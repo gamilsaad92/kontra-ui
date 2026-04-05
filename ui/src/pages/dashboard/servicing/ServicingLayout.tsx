@@ -16,8 +16,13 @@ export default function ServicingLayout() {
   return (
     <ServicingProvider>
       <div className="space-y-4">
-        <h1 className="text-xl font-semibold">Servicing</h1>
-        <nav className="flex flex-wrap gap-2 border-b pb-3">
+        <div>
+          <h1 className="text-xl font-semibold text-slate-900">Servicing</h1>
+          <p className="mt-1 text-sm text-slate-500">
+            Payment processing, inspection workflow, draws, escrow, borrower financials, and management compliance — all in one auditable system.
+          </p>
+        </div>
+        <nav className="flex flex-wrap gap-2 border-b border-slate-200 pb-3">
           {tabs.map((tab) => (
             <NavLink
               key={tab.label}
