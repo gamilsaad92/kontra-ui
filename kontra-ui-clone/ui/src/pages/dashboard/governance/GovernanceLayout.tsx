@@ -11,8 +11,13 @@ const tabs = [
 export default function GovernanceLayout() {
   return (
     <div className="space-y-4">
-      <h1 className="text-xl font-semibold">Compliance & Legal</h1>
-      <nav className="flex flex-wrap gap-2 border-b pb-3">
+      <div>
+        <h1 className="text-xl font-semibold text-slate-900">Compliance & Legal</h1>
+        <p className="mt-1 text-sm text-slate-500">
+          Compliance tracking, document review, regulatory monitoring, and risk controls across your loan portfolio.
+        </p>
+      </div>
+      <nav className="flex flex-wrap gap-2 border-b border-slate-200 pb-3">
         {tabs.map((tab) => (
           <NavLink
             key={tab.label}

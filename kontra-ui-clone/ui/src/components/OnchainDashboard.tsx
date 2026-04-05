@@ -798,11 +798,10 @@ export default function OnchainDashboard() {
   return (
     <div className="space-y-4">
       <header>
-        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Blockchain layer</p>
-        <h1 className="text-2xl font-semibold text-slate-900">Pool tokenization</h1>
+        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Tokenization</p>
+        <h1 className="text-2xl font-semibold text-slate-900">Tokenization</h1>
         <p className="text-sm text-slate-600">
-          One ERC-20 per pool on Base. Mint shares, assign allocations to whitelisted wallets.
-          All financial logic stays off-chain.
+          Structure loan pools, prepare token issuances, and assign investor allocations. Clean data in, investable digital assets out.
         </p>
       </header>
 

@@ -28,7 +28,7 @@ export default function AiInsightsPage() {
   const [severity, setSeverity] = useState<"All" | InsightSeverity>("All");
 
   useEffect(() => {
-    document.title = "AI Insights";
+    document.title = "Risk Intelligence | Kontra";
   }, []);
 
   const filteredInsights = useMemo(() => {
@@ -69,10 +69,10 @@ export default function AiInsightsPage() {
   return (
     <div className="space-y-8">
       <header className="space-y-2">
-        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Analytics</p>
-        <h1 className="text-2xl font-semibold text-slate-900">AI Insights</h1>
+        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Risk Intelligence</p>
+        <h1 className="text-2xl font-semibold text-slate-900">Risk Intelligence</h1>
         <p className="text-sm text-slate-600">
-          Prioritized intelligence, recommended actions, and drivers behind portfolio risk shifts.
+          AI-driven anomaly detection, prioritized exceptions, and recommended actions across your loan portfolio.
         </p>
       </header>
 

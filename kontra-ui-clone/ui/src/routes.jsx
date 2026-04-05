@@ -42,13 +42,13 @@ export const lenderNavRoutes = [
     requiresAuth: true,
   },
   {
-    label: "On-Chain",
+    label: "Tokenization",
     path: "/onchain",
     icon: CubeTransparentIcon,
     requiresAuth: true,
   },
   {
-    label: "AI Insights",
+    label: "Risk Intelligence",
     path: "/analytics",
     icon: ChartPieIcon,
     requiresAuth: true,
