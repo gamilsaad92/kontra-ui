@@ -29,7 +29,6 @@ import {
   GovernanceLegalCrudPage,
   GovernanceRegulatoryCrudPage,
   GovernanceRiskCrudPage,
-  MarketsExchangeCrudPage,
   MarketsPoolsCrudPage,
   MarketsTokensCrudPage,
   MarketsTradesCrudPage,
@@ -85,6 +84,13 @@ export default function SaasDashboard() {
   const activeLabel = activeItem?.label ?? "Dashboard";
   const isDashboardRoute = location.pathname === "/dashboard";
   const isServicingRoute = location.pathname.startsWith("/servicing");
+  // Sections that render their own header inside the layout — skip the generic one
+  const sectionHasOwnHeader =
+    location.pathname.startsWith("/portfolio") ||
+    location.pathname.startsWith("/markets") ||
+    location.pathname.startsWith("/governance") ||
+    location.pathname.startsWith("/analytics") ||
+    location.pathname.startsWith("/onchain");
 
   const renderNavItem = useCallback(
     (item: NavItem) => {
@@ -170,7 +176,7 @@ export default function SaasDashboard() {
         <Route path="pools" element={<MarketsPoolsCrudPage />} />
         <Route path="tokens" element={<MarketsTokensCrudPage />} />
         <Route path="trades" element={<MarketsTradesCrudPage />} />
-        <Route path="exchange" element={<MarketsExchangeCrudPage />} />
+        <Route path="exchange" element={<Navigate to="/markets/pools" replace />} />
       </Route>
       <Route path="/onchain" element={<OnchainDashboard />} />
       <Route path="/governance" element={<GovernanceLayout />}>
@@ -222,7 +228,7 @@ export default function SaasDashboard() {
       <aside className="flex w-64 flex-col bg-slate-950 text-slate-100">
         <div className="flex items-center gap-2 px-4 py-4 text-sm font-semibold tracking-tight">
           <img src="/logo-dark.png" alt="Kontra" className="h-6 w-auto" />
-          <span className="leading-tight text-slate-100">Control</span>
+          <span className="leading-tight text-slate-100">Kontra</span>
         </div>
         <nav className="flex-1 space-y-1 overflow-y-auto px-2 pb-4">
           {frequentItems.length > 0 && (
@@ -250,11 +256,11 @@ export default function SaasDashboard() {
         </nav>
       </aside>
       <main className="flex-1 overflow-y-auto p-6">
-        {!isDashboardRoute && !isServicingRoute && (
+        {!isDashboardRoute && !isServicingRoute && !sectionHasOwnHeader && (
           <header className="mb-6 space-y-1">
             <h1 className="text-xl font-semibold tracking-tight text-slate-900">{activeLabel}</h1>
             <p className="text-sm text-slate-500">
-              Multifamily and CRE loan servicing for institutional lenders.
+              Structured loan data infrastructure for servicing, compliance, and capital markets.
             </p>
           </header>
         )}
