@@ -216,7 +216,6 @@ export default function SaasDashboardHome({ apiBase }: Props) {
         <p className="text-sm text-slate-500">
           Prioritize work, triage exceptions, and jump directly to canonical portfolio, servicing, analytics, governance, and report views.
         </p>
-        <p className="text-xs text-slate-400">Role view: {role}</p>
         {error && <p className="text-xs text-amber-700">{error}</p>}
       </header>
 
