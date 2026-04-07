@@ -84,20 +84,20 @@ const statusBadge = (s: DrawStatus) => {
     'ai-review': 'bg-amber-100 text-amber-700',
     approved: 'bg-emerald-100 text-emerald-700',
     funded: 'bg-purple-100 text-purple-700',
-    rejected: 'bg-rose-100 text-rose-700',
+    rejected: 'bg-brand-100 text-brand-700',
   };
   return map[s] || 'bg-slate-100 text-slate-600';
 };
 
 const aiStatusBadge = (s: string | null) => {
   if (s === 'pass') return 'bg-emerald-50 text-emerald-700 border border-emerald-200';
-  if (s === 'fail') return 'bg-rose-50 text-rose-700 border border-rose-200';
+  if (s === 'fail') return 'bg-brand-50 text-brand-700 border border-brand-200';
   if (s === 'needs_review') return 'bg-amber-50 text-amber-700 border border-amber-200';
   return 'bg-slate-100 text-slate-500';
 };
 
 const severityColor = (s: string) => {
-  if (s === 'high') return 'text-rose-700 bg-rose-50';
+  if (s === 'high') return 'text-brand-700 bg-brand-50';
   if (s === 'medium') return 'text-amber-700 bg-amber-50';
   return 'text-slate-600 bg-slate-50';
 };
@@ -230,7 +230,7 @@ export default function ServicingDrawsPage() {
             {drawInDetail.ai_status === 'fail' && (
               <button
                 onClick={() => handleReturn(drawInDetail)}
-                className="rounded-lg bg-rose-600 px-3 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-rose-700"
+                className="rounded-lg bg-brand-600 px-3 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-700"
               >
                 Return to Borrower
               </button>
@@ -306,7 +306,7 @@ export default function ServicingDrawsPage() {
                     <td className="py-2 font-medium text-slate-900">{lw.vendor}</td>
                     <td className="py-2 text-right capitalize text-slate-700">{lw.type}</td>
                     <td className="py-2 text-right">
-                      <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${lw.received ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}`}>
+                      <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${lw.received ? 'bg-emerald-100 text-emerald-700' : 'bg-brand-100 text-brand-700'}`}>
                         {lw.received ? 'Yes' : 'Missing'}
                       </span>
                     </td>
@@ -340,7 +340,7 @@ export default function ServicingDrawsPage() {
                     <td className="py-2 text-right text-slate-700">{fmt(li.amount)}</td>
                     <td className="py-2 text-right text-slate-700">{li.sov_pct}%</td>
                     <td className="py-2 text-right text-slate-700">{li.inspector_pct}%</td>
-                    <td className={`py-2 text-right font-semibold ${variance > 2 ? 'text-rose-600' : 'text-emerald-600'}`}>
+                    <td className={`py-2 text-right font-semibold ${variance > 2 ? 'text-brand-600' : 'text-emerald-600'}`}>
                       {variance > 0 ? `${variance}%` : '—'}
                     </td>
                   </tr>
@@ -349,7 +349,7 @@ export default function ServicingDrawsPage() {
             </tbody>
           </table>
           <div className="mt-3 flex items-center gap-2 rounded-lg bg-slate-50 px-3 py-2">
-            <span className={`h-2.5 w-2.5 rounded-full ${drawInDetail.inspector_cert ? 'bg-emerald-500' : 'bg-rose-500'}`} />
+            <span className={`h-2.5 w-2.5 rounded-full ${drawInDetail.inspector_cert ? 'bg-emerald-500' : 'bg-brand-500'}`} />
             <span className="text-xs font-medium text-slate-700">
               Inspector certification: {drawInDetail.inspector_cert ? 'Received' : 'NOT received'}
             </span>
