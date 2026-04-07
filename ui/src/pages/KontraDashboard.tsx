@@ -139,9 +139,9 @@ export default function KontraDashboard() {
       <RouterTripwire name="KontraDashboard" />
 
       {/* Sidebar */}
-      <aside className="hidden md:flex w-64 flex-col bg-red-950 border-r border-red-900">
-        <div className="px-4 py-4 border-b border-red-900">
-          <div className="text-xl font-bold tracking-tight text-red-200">Kontra</div>
+      <aside className="hidden md:flex w-64 flex-col bg-brand-950 border-r border-brand-900">
+        <div className="px-4 py-4 border-b border-brand-900">
+          <div className="text-xl font-bold tracking-tight text-brand-200">Kontra</div>
         </div>
         <nav className="flex-1 p-2 space-y-1">
           {primary.map((item) => (
@@ -151,7 +151,7 @@ export default function KontraDashboard() {
               end={item.path === "/dashboard"}
               className={({ isActive }) =>
                 `block rounded px-3 py-2 text-sm transition ${
-                  isActive ? "bg-red-800 text-white" : "hover:bg-red-900/70 text-red-200"
+                  isActive ? "bg-brand-800 text-white" : "hover:bg-brand-900/70 text-brand-200"
                 }`
               }
             >
@@ -159,32 +159,32 @@ export default function KontraDashboard() {
             </NavLink>
           ))}
         </nav>
-        <div className="px-4 py-3 border-t border-red-900 text-xs text-red-300">Role: Lender</div>
+        <div className="px-4 py-3 border-t border-brand-900 text-xs text-brand-300">Role: Lender</div>
       </aside>
 
       {/* Main area */}
       <main className="flex-1">
         {/* Top header */}
-        <div className="sticky top-0 z-10 backdrop-blur bg-slate-950/70 border-b border-red-900">
+        <div className="sticky top-0 z-10 backdrop-blur bg-slate-950/70 border-b border-brand-900">
           <div className="mx-auto max-w-[1440px] px-6 py-4">
             <div className="flex items-center justify-between">
               {/* Breadcrumbs (simple) */}
-              <div className="text-xs text-red-300 flex items-center gap-2">
-                <NavLink to="/dashboard" end className="hover:text-red-100">
+              <div className="text-xs text-brand-300 flex items-center gap-2">
+                <NavLink to="/dashboard" end className="hover:text-brand-100">
                   Dashboard
                 </NavLink>
                 <span>/</span>
-               <span className="text-red-200">{currentLabel}</span>
+               <span className="text-brand-200">{currentLabel}</span>
               </div>
               {/* Actions */}
               <div className="flex items-center gap-2">
-                <button className="px-3 py-1.5 rounded-lg bg-red-800 hover:bg-red-700 text-sm text-white">New</button>
-                <button className="px-3 py-1.5 rounded-lg border border-red-700 hover:bg-red-900 text-sm text-red-200">Filter</button>
-                <button className="px-3 py-1.5 rounded-lg border border-red-700 hover:bg-red-900 text-sm text-red-200">Search</button>
+                <button className="px-3 py-1.5 rounded-lg bg-brand-800 hover:bg-brand-700 text-sm text-white">New</button>
+                <button className="px-3 py-1.5 rounded-lg border border-brand-700 hover:bg-brand-900 text-sm text-brand-200">Filter</button>
+                <button className="px-3 py-1.5 rounded-lg border border-brand-700 hover:bg-brand-900 text-sm text-brand-200">Search</button>
               </div>
             </div>
             {/* Page title */}
-           <h1 className="mt-2 text-2xl font-semibold tracking-tight text-red-100">{currentLabel}</h1>
+           <h1 className="mt-2 text-2xl font-semibold tracking-tight text-brand-100">{currentLabel}</h1>
             
             {/* Secondary tabs */}
             <div className="mt-3 flex items-center gap-1 text-sm">
@@ -193,8 +193,8 @@ export default function KontraDashboard() {
                   key={s}
                   className={`px-3 py-1.5 rounded-lg border ${
                     i === 0
-                      ? "border-red-600 bg-red-800 text-white"
-                      : "border-transparent text-red-300 hover:text-red-100 hover:bg-red-900"
+                      ? "border-brand-600 bg-brand-800 text-white"
+                      : "border-transparent text-brand-300 hover:text-brand-100 hover:bg-brand-900"
                   }`}
                 >
                   {s}
@@ -245,22 +245,22 @@ function Panel({
   children: React.ReactNode;
 }) {
   return (
-    <section className="rounded-xl border border-red-900 bg-slate-900/40">
-      <div className="px-4 py-3 border-b border-red-900 flex items-center justify-between">
-        <h2 className="text-sm font-semibold tracking-tight text-red-200">{title}</h2>
+    <section className="rounded-xl border border-brand-900 bg-slate-900/40">
+      <div className="px-4 py-3 border-b border-brand-900 flex items-center justify-between">
+        <h2 className="text-sm font-semibold tracking-tight text-brand-200">{title}</h2>
         {right || (
-          <button className="text-xs px-2 py-1 rounded border border-red-800 text-red-300 hover:bg-red-900">
+          <button className="text-xs px-2 py-1 rounded border border-brand-800 text-brand-300 hover:bg-brand-900">
             •••
           </button>
         )}
       </div>
-      <div className="p-4 text-sm text-red-200">{children}</div>
+      <div className="p-4 text-sm text-brand-200">{children}</div>
     </section>
   );
 }
 
 function Loader() {
-  return <div className="text-xs text-red-300">Loading…</div>;
+  return <div className="text-xs text-brand-300">Loading…</div>;
 }
 
 async function tryEndpoints<T = any>(
@@ -306,16 +306,16 @@ function FilteredDataPanel({ apiBase }: { apiBase: string }) {
   }, [apiBase]);
 
   return (
-    <Panel title="Filtered Data" right={<span className="text-xs text-red-300">10 rows</span>}>
+    <Panel title="Filtered Data" right={<span className="text-xs text-brand-300">10 rows</span>}>
       {!rows && !err && <Loader />}
-      {err && <div className="text-xs text-red-400">{err}</div>}
+      {err && <div className="text-xs text-brand-400">{err}</div>}
       {rows && rows.length > 0 ? (
         <TinyTable
           rows={rows}
           cols={guessColumns(rows, ["id", "borrower_name", "status", "amount", "created_at"])}
         />
       ) : (
-        !err && <div className="text-xs text-red-300">No rows.</div>
+        !err && <div className="text-xs text-brand-300">No rows.</div>
       )}
     </Panel>
   );
@@ -343,7 +343,7 @@ function TimelinePanel({ apiBase }: { apiBase: string }) {
           {items.map((x, i) => (
             <li key={i} className="flex items-center justify-between">
               <span className="truncate max-w-[70%]">{prettyLabel(x)}</span>
-              <span className="text-xs text-red-300">{prettyTime(x)}</span>
+              <span className="text-xs text-brand-300">{prettyTime(x)}</span>
             </li>
           ))}
         </ul>
@@ -368,7 +368,7 @@ function ChartPanel({ apiBase }: { apiBase: string }) {
       ) : (
         <div className="h-40 flex items-end gap-1">
           {series.map((v, i) => (
-            <div key={i} className="w-4 bg-red-900 rounded" style={{ height: `${Math.max(5, Math.min(100, v))}%` }} />
+            <div key={i} className="w-4 bg-brand-900 rounded" style={{ height: `${Math.max(5, Math.min(100, v))}%` }} />
           ))}
         </div>
       )}
@@ -403,12 +403,12 @@ function BoardPanel({ apiBase }: { apiBase: string }) {
       ) : (
         <div className="grid grid-cols-3 gap-4">
           {Object.entries(cols).map(([col, items]) => (
-            <div key={col} className="rounded-lg border border-red-900 bg-slate-900/40">
-              <div className="px-3 py-2 border-b border-red-900 text-sm font-medium text-red-200">{col}</div>
+            <div key={col} className="rounded-lg border border-brand-900 bg-slate-900/40">
+              <div className="px-3 py-2 border-b border-brand-900 text-sm font-medium text-brand-200">{col}</div>
               <div className="p-3 space-y-2">
-                {items.length === 0 && <div className="text-xs text-red-300">No items</div>}
+                {items.length === 0 && <div className="text-xs text-brand-300">No items</div>}
                 {items.slice(0, 6).map((x, i) => (
-                  <div key={i} className="rounded-md border border-red-900 bg-slate-900 p-2 text-xs text-red-200 truncate">
+                  <div key={i} className="rounded-md border border-brand-900 bg-slate-900 p-2 text-xs text-brand-200 truncate">
                     {prettyLabel(x)}
                   </div>
                 ))}
@@ -464,7 +464,7 @@ function MapPanel({ apiBase }: { apiBase: string }) {
               return (
                 <span
                   key={i}
-                  className="absolute w-2 h-2 bg-red-500 border-2 border-white rounded-full -translate-x-1/2 -translate-y-1/2"
+                  className="absolute w-2 h-2 bg-brand-500 border-2 border-white rounded-full -translate-x-1/2 -translate-y-1/2"
                   style={{ left: pos.left, top: pos.top }}
                   title={p.address || p.property_address || p.name || prettyLabel(p)}
                 />
@@ -477,7 +477,7 @@ function MapPanel({ apiBase }: { apiBase: string }) {
                 <span className="truncate max-w-[70%]">
                   {p.address || p.property_address || p.name || prettyLabel(p)}
                 </span>
-                <span className="text-xs text-red-300">{fmtCoord(p)}</span>
+                <span className="text-xs text-brand-300">{fmtCoord(p)}</span>
               </li>
             ))}
           </ul>
@@ -514,7 +514,7 @@ function OlbCouponPanel({ apiBase }: { apiBase: string }) {
       right={
         <NavLink
           to="/dashboard/olb-coupon"
-          className="text-xs text-red-300 hover:text-red-100"
+          className="text-xs text-brand-300 hover:text-brand-100"
         >
           View
         </NavLink>
@@ -525,7 +525,7 @@ function OlbCouponPanel({ apiBase }: { apiBase: string }) {
       ) : coupon !== null ? (
         <div className="text-2xl">{coupon.toFixed(2)}%</div>
       ) : (
-        <div className="text-xs text-red-400">{err || "No data"}</div>
+        <div className="text-xs text-brand-400">{err || "No data"}</div>
       )}
     </Panel>
   );
@@ -553,7 +553,7 @@ function RecentActivityPanel({ apiBase }: { apiBase: string }) {
           {items.map((x, i) => (
             <li key={i} className="flex items-center justify-between">
               <span className="truncate max-w-[70%]">{prettyLabel(x)}</span>
-              <span className="text-xs text-red-300">{prettyTime(x)}</span>
+              <span className="text-xs text-brand-300">{prettyTime(x)}</span>
             </li>
           ))}
         </ul>
@@ -614,7 +614,7 @@ function ServicingTab({ apiBase }: { apiBase: string }) {
       <Panel title="Escrow Overview">
         <div className="space-y-3">
           <input
-            className="w-full rounded border border-red-900 bg-slate-900/40 px-3 py-2 text-sm"
+            className="w-full rounded border border-brand-900 bg-slate-900/40 px-3 py-2 text-sm"
             placeholder="Loan ID"
             value={loanId}
             onChange={(e) => setLoanId(e.target.value)}
@@ -625,13 +625,13 @@ function ServicingTab({ apiBase }: { apiBase: string }) {
                 <li key={i} className="flex justify-between">
                   <span>{u.type}</span>
                   <span>${u.amount}</span>
-                  <span className="text-xs text-red-300">{u.due_date}</span>
+                  <span className="text-xs text-brand-300">{u.due_date}</span>
                 </li>
               ))}
             </ul>
           )}
           {projection && projection.length > 0 && (
-            <div className="text-xs text-red-300">
+            <div className="text-xs text-brand-300">
               Projection: {projection.length} months loaded
             </div>
           )}
@@ -639,7 +639,7 @@ function ServicingTab({ apiBase }: { apiBase: string }) {
             <select
               value={type}
               onChange={(e) => setType(e.target.value)}
-              className="rounded border border-red-900 bg-slate-900/40 px-2 py-1 text-sm"
+              className="rounded border border-brand-900 bg-slate-900/40 px-2 py-1 text-sm"
             >
               <option value="tax">Tax</option>
               <option value="insurance">Insurance</option>
@@ -648,17 +648,17 @@ function ServicingTab({ apiBase }: { apiBase: string }) {
               type="number"
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
-              className="flex-1 rounded border border-red-900 bg-slate-900/40 px-2 py-1 text-sm"
+              className="flex-1 rounded border border-brand-900 bg-slate-900/40 px-2 py-1 text-sm"
               placeholder="Amount"
             />
             <button
               type="submit"
-              className="px-3 py-1.5 rounded-lg bg-red-800 text-white text-sm"
+              className="px-3 py-1.5 rounded-lg bg-brand-800 text-white text-sm"
             >
               Pay
             </button>
           </form>
-          {message && <div className="text-xs text-red-300">{message}</div>}
+          {message && <div className="text-xs text-brand-300">{message}</div>}
         </div>
       </Panel>
             <Panel title="Amortization">
@@ -697,12 +697,12 @@ function ServicingTab({ apiBase }: { apiBase: string }) {
 // --------------------
 function TinyTable({ rows, cols }: { rows: any[]; cols: string[] }) {
   return (
-    <div className="overflow-auto rounded-lg border border-red-900">
+    <div className="overflow-auto rounded-lg border border-brand-900">
       <table className="w-full text-sm">
         <thead className="bg-slate-900/60">
           <tr>
             {cols.map((h) => (
-              <th key={h} className="px-3 py-2 text-left font-medium text-red-200 whitespace-nowrap">
+              <th key={h} className="px-3 py-2 text-left font-medium text-brand-200 whitespace-nowrap">
                 {h}
               </th>
             ))}
@@ -712,7 +712,7 @@ function TinyTable({ rows, cols }: { rows: any[]; cols: string[] }) {
           {rows.map((r, i) => (
             <tr key={i} className="odd:bg-slate-900/30">
               {cols.map((c) => (
-                <td key={c} className="px-3 py-2 text-red-100/90 whitespace-nowrap truncate max-w-[240px]">
+                <td key={c} className="px-3 py-2 text-brand-100/90 whitespace-nowrap truncate max-w-[240px]">
                   {toCell((r as any)[c])}
                 </td>
               ))}
