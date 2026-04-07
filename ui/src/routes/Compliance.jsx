@@ -135,20 +135,20 @@ export default function Compliance() {
         </header>
         <form onSubmit={handleScan} className="space-y-4">
           <textarea
-            className="h-32 w-full rounded border border-slate-300 p-3 text-sm focus:border-red-500 focus:outline-none"
+            className="h-32 w-full rounded border border-slate-300 p-3 text-sm focus:border-brand-500 focus:outline-none"
             placeholder="Paste marketing or disclosure text for review"
             value={scanText}
             onChange={(event) => setScanText(event.target.value)}
           />
           <button
             type="submit"
-            className="rounded bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700"
+            className="rounded bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700"
             disabled={scanLoading}
           >
             {scanLoading ? 'Scanning…' : 'Run Regulatory Scan'}
           </button>
         </form>
-        {scanError && <p className="mt-3 text-sm text-red-600">{scanError}</p>}
+        {scanError && <p className="mt-3 text-sm text-brand-600">{scanError}</p>}
         {issues.length > 0 && (
           <div className="mt-4">
             <h3 className="text-sm font-semibold text-slate-800">Flagged Issues</h3>
@@ -180,7 +180,7 @@ export default function Compliance() {
           <label className="flex-1 text-sm">
             <span className="mb-1 block font-medium text-slate-700">Loan ID</span>
             <input
-              className="w-full rounded border border-slate-300 p-2 focus:border-red-500 focus:outline-none"
+              className="w-full rounded border border-slate-300 p-2 focus:border-brand-500 focus:outline-none"
               placeholder="e.g. 18"
               value={loanId}
               onChange={(event) => setLoanId(event.target.value)}
@@ -194,7 +194,7 @@ export default function Compliance() {
             {evidenceLoading ? 'Loading…' : 'Assemble Dossier'}
           </button>
         </form>
-        {evidenceError && <p className="mt-3 text-sm text-red-600">{evidenceError}</p>}
+        {evidenceError && <p className="mt-3 text-sm text-brand-600">{evidenceError}</p>}
         {evidence && (
           <div className="mt-4 space-y-4">
             <div>
@@ -254,7 +254,7 @@ export default function Compliance() {
           <label className="text-sm">
             <span className="mb-1 block font-medium text-slate-700">Borrower</span>
             <input
-              className="w-full rounded border border-slate-300 p-2 focus:border-red-500 focus:outline-none"
+              className="w-full rounded border border-slate-300 p-2 focus:border-brand-500 focus:outline-none"
               value={closingForm.borrower}
               onChange={handleClosingChange('borrower')}
               placeholder="Borrower name"
@@ -263,7 +263,7 @@ export default function Compliance() {
           <label className="text-sm">
             <span className="mb-1 block font-medium text-slate-700">Property</span>
             <input
-              className="w-full rounded border border-slate-300 p-2 focus:border-red-500 focus:outline-none"
+              className="w-full rounded border border-slate-300 p-2 focus:border-brand-500 focus:outline-none"
               value={closingForm.property}
               onChange={handleClosingChange('property')}
               placeholder="123 Main St"
@@ -272,7 +272,7 @@ export default function Compliance() {
           <label className="text-sm">
             <span className="mb-1 block font-medium text-slate-700">Loan Amount</span>
             <input
-              className="w-full rounded border border-slate-300 p-2 focus:border-red-500 focus:outline-none"
+              className="w-full rounded border border-slate-300 p-2 focus:border-brand-500 focus:outline-none"
               value={closingForm.loan_amount}
               onChange={handleClosingChange('loan_amount')}
               placeholder="250000"
@@ -282,7 +282,7 @@ export default function Compliance() {
             <span className="mb-1 block font-medium text-slate-700">Closing Date</span>
             <input
               type="date"
-              className="w-full rounded border border-slate-300 p-2 focus:border-red-500 focus:outline-none"
+              className="w-full rounded border border-slate-300 p-2 focus:border-brand-500 focus:outline-none"
               value={closingForm.closing_date}
               onChange={handleClosingChange('closing_date')}
             />
@@ -290,7 +290,7 @@ export default function Compliance() {
           <div className="sm:col-span-2">
             <button
               type="submit"
-              className="rounded bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700"
+              className="rounded bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700"
               disabled={closingLoading}
             >
               {closingLoading ? 'Generating…' : 'Generate Closing Doc'}
@@ -300,12 +300,12 @@ export default function Compliance() {
         {closingStatus && (
           <p className="mt-3 rounded border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">{closingStatus}</p>
         )}
-        {closingError && <p className="mt-3 text-sm text-red-600">{closingError}</p>}
+        {closingError && <p className="mt-3 text-sm text-brand-600">{closingError}</p>}
         {closingUrl && (
           <a
             href={closingUrl}
             download="closing-statement.pdf"
-            className="mt-4 inline-flex items-center text-sm font-medium text-red-700 hover:text-red-900"
+            className="mt-4 inline-flex items-center text-sm font-medium text-brand-700 hover:text-brand-900"
           >
             Download closing statement ↗
           </a>
