@@ -75,7 +75,7 @@ export default function BorrowerPortal() {
 
       <Section title="Payoff Instructions">
         {payoff.loading && <p className="text-sm text-slate-500">Loading payoff steps…</p>}
-        {payoff.error && <p className="text-sm text-rose-600">{payoff.error}</p>}
+        {payoff.error && <p className="text-sm text-brand-600">{payoff.error}</p>}
         {payoff.data?.instructions && (
           <pre className="whitespace-pre-wrap rounded bg-slate-50 p-3 text-sm text-slate-800">{payoff.data.instructions}</pre>
         )}
@@ -99,7 +99,7 @@ export default function BorrowerPortal() {
           </button>
         </div>
         {escrow.loading && <p className="text-sm text-slate-500">Checking escrow…</p>}
-        {escrow.error && <p className="text-sm text-rose-600">{escrow.error}</p>}
+        {escrow.error && <p className="text-sm text-brand-600">{escrow.error}</p>}
         {escrow.data && (
           <div className="mt-2 rounded border border-slate-200 bg-slate-50 p-3 text-sm text-slate-800">
             <p><span className="font-semibold">Balance:</span> {escrow.data.escrow_balance ?? escrow.data.balance ?? 'N/A'}</p>
@@ -115,7 +115,7 @@ export default function BorrowerPortal() {
 
       <Section title="Revived Assets">
         {revived.loading && <p className="text-sm text-slate-500">Loading revived assets…</p>}
-        {revived.error && <p className="text-sm text-rose-600">{revived.error}</p>}
+        {revived.error && <p className="text-sm text-brand-600">{revived.error}</p>}
         {Array.isArray(revived.data?.data) && revived.data.data.length > 0 && (
           <ul className="divide-y divide-slate-200 text-sm">
             {revived.data.data.map(asset => (
