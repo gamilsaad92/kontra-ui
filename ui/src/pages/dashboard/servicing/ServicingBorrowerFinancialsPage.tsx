@@ -117,7 +117,7 @@ export default function ServicingBorrowerFinancialsPage() {
         <p className="mt-2 text-xs text-slate-400">
           {fileName ? `Selected: ${fileName}` : "No file selected yet."}
         </p>
-           {uploadError ? <p className="text-xs text-rose-500">{uploadError}</p> : null}
+           {uploadError ? <p className="text-xs text-brand-500">{uploadError}</p> : null}
       </section>
 
       <section className="grid gap-6 lg:grid-cols-[2fr,1fr]">
