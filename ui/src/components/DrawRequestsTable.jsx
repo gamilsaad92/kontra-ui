@@ -63,7 +63,7 @@ export default function DrawRequestsTable({ onSelect, canReview = false }) {
   };
   
   if (loading) return <p>Loading draw requests…</p>;
- if (error && draws.length === 0) return <p className="text-red-600">{error}</p>;
+ if (error && draws.length === 0) return <p className="text-brand-600">{error}</p>;
   if (draws.length === 0) return <p>No draw requests yet.</p>;
 
   return (
