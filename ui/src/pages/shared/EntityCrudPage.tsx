@@ -20,7 +20,7 @@ function statusColor(status: string) {
   const s = (status || '').toLowerCase();
   if (s === 'active' || s === 'approved' || s === 'complete' || s === 'settled') return 'bg-emerald-100 text-emerald-700';
   if (s === 'pending' || s === 'in-review' || s === 'review') return 'bg-amber-100 text-amber-700';
-  if (s === 'rejected' || s === 'failed' || s === 'overdue') return 'bg-rose-100 text-rose-700';
+  if (s === 'rejected' || s === 'failed' || s === 'overdue') return 'bg-brand-100 text-brand-700';
   if (s === 'draft' || s === 'inactive') return 'bg-slate-100 text-slate-600';
   return 'bg-slate-100 text-slate-600';
 }
@@ -95,11 +95,11 @@ export default function EntityCrudPage({ title, createLabel, hooks, renderRowAct
       </div>
 
       {isError && (
-        <div className="flex items-center justify-between rounded-lg border border-rose-200 bg-rose-50 px-4 py-3">
-          <p className="text-sm text-rose-700">Failed to load {title.toLowerCase()}. Check your connection.</p>
+        <div className="flex items-center justify-between rounded-lg border border-brand-200 bg-brand-50 px-4 py-3">
+          <p className="text-sm text-brand-700">Failed to load {title.toLowerCase()}. Check your connection.</p>
           <button
             onClick={() => refetch()}
-            className="rounded border border-rose-300 px-3 py-1 text-xs font-medium text-rose-700 hover:bg-rose-100"
+            className="rounded border border-brand-300 px-3 py-1 text-xs font-medium text-brand-700 hover:bg-brand-100"
           >
             Retry
           </button>
@@ -163,7 +163,7 @@ export default function EntityCrudPage({ title, createLabel, hooks, renderRowAct
               </div>
             ) : detail.isError ? (
               <div className="flex flex-col items-center gap-3 py-16">
-                <p className="text-sm text-rose-600">Failed to load record.</p>
+                <p className="text-sm text-brand-600">Failed to load record.</p>
                 <button
                   className="rounded border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
                   onClick={() => detail.refetch()}
