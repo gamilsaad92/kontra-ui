@@ -69,11 +69,11 @@ export default function ProjectForm({ onCreated }) {
       <button
         type="submit"
         disabled={loading}
-        className="bg-red-600 hover:bg-red-700 text-white py-2 px-4 rounded w-full"
+        className="bg-brand-600 hover:bg-brand-700 text-white py-2 px-4 rounded w-full"
       >
         {loading ? 'Creating…' : 'Create Project'}
       </button>
-      {error && <p className="text-red-500">{error}</p>}
+      {error && <p className="text-brand-500">{error}</p>}
     </form>
   )
 }
