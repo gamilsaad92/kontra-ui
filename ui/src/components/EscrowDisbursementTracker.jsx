@@ -70,7 +70,7 @@ export default function EscrowDisbursementTracker() {
           Record
         </button>
       </form>
-      {error && <p className="text-red-600">{error}</p>}
+      {error && <p className="text-brand-600">{error}</p>}
       {disbursements.length > 0 && (
         <table className="w-full text-left mt-4">
           <thead className="bg-gray-100">
