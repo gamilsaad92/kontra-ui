@@ -48,7 +48,7 @@ export default function AssetRiskTable() {
   }
 
   if (loading) return <p>Loading assets…</p>;
-  if (error && assets.length === 0) return <p className="text-red-600">{error}</p>;
+  if (error && assets.length === 0) return <p className="text-brand-600">{error}</p>;
   if (assets.length === 0) return <p>No troubled assets.</p>;
 
   return (
@@ -96,7 +96,7 @@ export default function AssetRiskTable() {
       </table>
       <AssetDetailDrawer asset={selected} onClose={() => setSelected(null)} />
       {error && assets.length > 0 && (
-        <p className="text-red-600 p-2">{error}</p>
+        <p className="text-brand-600 p-2">{error}</p>
       )}
       <div className="p-4 border-t mt-4">
         <VirtualAssistant placeholder="Ask about assets…" />
