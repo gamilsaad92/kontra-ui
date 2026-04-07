@@ -56,7 +56,7 @@ export default function MarketAnalysis() {
       <h1 className="text-2xl font-bold">Market Analysis</h1>
       <SiteAnalysisForm onAnalyze={handleAnalyze} />
       {loading && <p>Analyzing…</p>}
-      {error && <p className="text-red-600">Error: {error}</p>}
+      {error && <p className="text-brand-600">Error: {error}</p>}
       {result && (
         <Card title="Site Suitability Score">
           <div className="space-y-1">
