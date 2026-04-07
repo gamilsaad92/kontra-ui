@@ -39,7 +39,7 @@ export default function LoginForm({ onSwitch }) {
 
   const inputStyle = (field) => ({
     background: focusedField === field ? 'rgba(255,255,255,0.05)' : 'rgba(255,255,255,0.03)',
-    border: `1px solid ${focusedField === field ? 'rgba(220,38,38,0.5)' : 'rgba(255,255,255,0.1)'}`,
+    border: `1px solid ${focusedField === field ? 'rgba(128,0,32,0.5)' : 'rgba(255,255,255,0.1)'}`,
     borderRadius: '8px',
     transition: 'border-color 0.15s, background 0.15s',
   })
@@ -53,7 +53,7 @@ export default function LoginForm({ onSwitch }) {
           Email
         </label>
         <div className="flex items-center px-3.5 py-3" style={inputStyle('email')}>
-          <svg className="mr-2.5 h-3.5 w-3.5 shrink-0" style={{ color: focusedField === 'email' ? '#dc2626' : '#555' }} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <svg className="mr-2.5 h-3.5 w-3.5 shrink-0" style={{ color: focusedField === 'email' ? '#800020' : '#555' }} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <rect x="2" y="4" width="20" height="16" rx="2" strokeLinecap="round" strokeLinejoin="round" />
             <path d="m2 7 10 7 10-7" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
@@ -67,7 +67,7 @@ export default function LoginForm({ onSwitch }) {
             required
             autoComplete="email"
             className="flex-1 bg-transparent text-sm text-white outline-none placeholder:text-[#444]"
-            style={{ caretColor: '#dc2626' }}
+            style={{ caretColor: '#800020' }}
           />
         </div>
       </div>
@@ -81,15 +81,15 @@ export default function LoginForm({ onSwitch }) {
           <button
             type="button"
             className="text-xs font-medium transition-colors"
-            style={{ color: '#dc2626' }}
-            onMouseEnter={e => e.target.style.color = '#ef4444'}
-            onMouseLeave={e => e.target.style.color = '#dc2626'}
+            style={{ color: '#800020' }}
+            onMouseEnter={e => e.target.style.color = '#b83550'}
+            onMouseLeave={e => e.target.style.color = '#800020'}
           >
             Forgot?
           </button>
         </div>
         <div className="flex items-center px-3.5 py-3" style={inputStyle('password')}>
-          <svg className="mr-2.5 h-3.5 w-3.5 shrink-0" style={{ color: focusedField === 'password' ? '#dc2626' : '#555' }} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <svg className="mr-2.5 h-3.5 w-3.5 shrink-0" style={{ color: focusedField === 'password' ? '#800020' : '#555' }} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <rect x="3" y="11" width="18" height="11" rx="2" strokeLinecap="round" strokeLinejoin="round" />
             <path d="M7 11V7a5 5 0 0 1 10 0v4" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
@@ -103,7 +103,7 @@ export default function LoginForm({ onSwitch }) {
             required
             autoComplete="current-password"
             className="flex-1 bg-transparent text-sm text-white outline-none placeholder:text-[#444]"
-            style={{ caretColor: '#dc2626' }}
+            style={{ caretColor: '#800020' }}
           />
           <button
             type="button"
@@ -134,14 +134,14 @@ export default function LoginForm({ onSwitch }) {
       {error && (
         <div
           className="flex items-start gap-2.5 rounded-lg border px-3.5 py-3"
-          style={{ borderColor: 'rgba(220,38,38,0.25)', background: 'rgba(220,38,38,0.08)' }}
+          style={{ borderColor: 'rgba(128,0,32,0.25)', background: 'rgba(128,0,32,0.08)' }}
         >
-          <svg className="mt-0.5 h-3.5 w-3.5 shrink-0" style={{ color: '#f87171' }} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <svg className="mt-0.5 h-3.5 w-3.5 shrink-0" style={{ color: '#d45f73' }} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <circle cx="12" cy="12" r="10" />
             <line x1="12" y1="8" x2="12" y2="12" strokeLinecap="round" />
             <line x1="12" y1="16" x2="12.01" y2="16" strokeLinecap="round" />
           </svg>
-          <p className="text-xs leading-relaxed" style={{ color: '#f87171' }}>{error}</p>
+          <p className="text-xs leading-relaxed" style={{ color: '#d45f73' }}>{error}</p>
         </div>
       )}
 
@@ -152,8 +152,8 @@ export default function LoginForm({ onSwitch }) {
         className="mt-1 w-full py-3 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40 transition-opacity"
         style={{
           borderRadius: '8px',
-          background: 'linear-gradient(135deg, #dc2626 0%, #b91c1c 100%)',
-          boxShadow: '0 4px 20px rgba(220,38,38,0.3), inset 0 1px 0 rgba(255,255,255,0.1)',
+          background: 'linear-gradient(135deg, #800020 0%, #660018 100%)',
+          boxShadow: '0 4px 20px rgba(128,0,32,0.3), inset 0 1px 0 rgba(255,255,255,0.1)',
           letterSpacing: '0.01em',
         }}
       >
@@ -175,9 +175,9 @@ export default function LoginForm({ onSwitch }) {
             type="button"
             onClick={onSwitch}
             className="font-semibold transition-colors"
-            style={{ color: '#dc2626' }}
-            onMouseEnter={e => e.target.style.color = '#ef4444'}
-            onMouseLeave={e => e.target.style.color = '#dc2626'}
+            style={{ color: '#800020' }}
+            onMouseEnter={e => e.target.style.color = '#b83550'}
+            onMouseLeave={e => e.target.style.color = '#800020'}
           >
             Create one
           </button>
