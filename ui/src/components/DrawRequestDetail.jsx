@@ -73,7 +73,7 @@ export default function DrawRequestDetail({ drawId, onClose, canReview = false }
                     const c = prompt('Rejection reason?');
                     if (c) handleAction('rejected', c);
                   }}
-                  className="px-2 py-1 bg-red-600 text-white rounded"
+                  className="px-2 py-1 bg-brand-600 text-white rounded"
                     disabled={actionLoading}
                 >
                   Reject
