@@ -70,7 +70,7 @@ export default function PaymentPortalEmbed() {
         </form>
       )}
       {loading && <p>Loading…</p>}
-      {message && <p className="mt-3 text-red-600">{message}</p>}
+      {message && <p className="mt-3 text-brand-600">{message}</p>}
     </div>
   );
 }
