@@ -14,7 +14,7 @@ export default function RiskScoreCard({ value = 72, to, scorecard }) {
   const baseScore = scorecard?.baseScore ?? value;
   const adjustment = scorecard?.adjustment ?? 0;
   const adjustmentLabel = adjustment >= 0 ? `+${adjustment}` : `${adjustment}`;
-  const adjustmentTone = adjustment >= 0 ? 'text-emerald-600' : 'text-rose-600';
+  const adjustmentTone = adjustment >= 0 ? 'text-emerald-600' : 'text-brand-600';
   const fundingReadiness = scorecard?.fundingReadiness;
   const forecast = scorecard?.forecast;
   const narrative = scorecard?.narrative ?? 'AI-generated adjustments pending review.';
