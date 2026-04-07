@@ -24,7 +24,7 @@ export default function RevivedAssetsTable() {
   }, []);
 
   if (loading) return <p>Loading revived assets…</p>;
-  if (error) return <p className="text-red-600">{error}</p>;
+  if (error) return <p className="text-brand-600">{error}</p>;
   if (assets.length === 0) return <p>No revived assets.</p>;
 
   const togglePublish = (id, publish) => {
