@@ -227,7 +227,7 @@ export default function SaasDashboard() {
      <div className="flex min-h-screen bg-slate-100 text-slate-900">
       <aside className="flex w-64 flex-col bg-slate-950 text-slate-100">
         <div className="flex items-center gap-2.5 px-4 py-4">
-          <div className="flex h-7 w-7 items-center justify-center rounded-lg" style={{ background: '#dc2626' }}>
+          <div className="flex h-7 w-7 items-center justify-center rounded-lg" style={{ background: '#800020' }}>
             <span className="text-sm font-black text-white" style={{ letterSpacing: '-0.05em' }}>K</span>
           </div>
           <span className="text-base font-bold text-white" style={{ letterSpacing: '-0.02em' }}>Kontra</span>
@@ -250,7 +250,7 @@ export default function SaasDashboard() {
               {isSigningOut ? "Logging out..." : "Log Out"}
             </button>
             {signOutError && (
-              <p className="mt-2 text-xs text-rose-200" role="alert">
+              <p className="mt-2 text-xs text-brand-200" role="alert">
                 {signOutError}
               </p>
             )}
