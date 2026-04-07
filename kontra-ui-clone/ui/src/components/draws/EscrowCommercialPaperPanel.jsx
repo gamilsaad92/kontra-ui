@@ -98,7 +98,7 @@ export default function EscrowCommercialPaperPanel() {
         <p className="text-sm text-gray-500">Loading escrow balances…</p>
       ) : (
         <>
-          {error && <p className="text-sm text-red-600">{error}</p>}
+          {error && <p className="text-sm text-brand-600">{error}</p>}
           <div className="grid gap-4 md:grid-cols-2">
             <div className="rounded-lg border border-gray-200 p-3">
               <p className="text-xs uppercase tracking-wide text-gray-500">Escrow Balance</p>

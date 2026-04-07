@@ -250,7 +250,7 @@ export default function PortfolioOverview() {
       </header>
 
       {error && (
-        <div className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+        <div className="rounded-md border border-brand-200 bg-brand-50 px-3 py-2 text-sm text-brand-700">
           {error}
         </div>
       )}

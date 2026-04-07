@@ -101,7 +101,7 @@ export default function ServicingPhotoValidationPanel({ context }: { context: st
                 <button
                   type="button"
                   onClick={() => updateStatus(item.id, "fail")}
-                  className="rounded-full border border-rose-200 px-3 py-1 text-xs font-semibold text-rose-600"
+                  className="rounded-full border border-brand-200 px-3 py-1 text-xs font-semibold text-brand-600"
                 >
                   Fail
                 </button>

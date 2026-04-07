@@ -60,7 +60,7 @@ const AssetTokenizationForm: React.FC = () => {
         <p className="text-sm text-green-600 mt-2">Token created with ID {tokenId}</p>
       )}
       {status === 'error' && (
-         <p className="text-sm text-red-600 mt-2">{error}</p>
+         <p className="text-sm text-brand-600 mt-2">{error}</p>
       )}
     </div>
   );

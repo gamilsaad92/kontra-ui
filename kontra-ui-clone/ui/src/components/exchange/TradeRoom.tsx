@@ -12,7 +12,7 @@ const TradeRoom: React.FC = () => {
       <ComplianceBanner />
       <h2 className="text-xl font-bold">Trade Room {id}</h2>
          {error ? (
-        <div className="text-red-500">{error.message}</div>
+        <div className="text-brand-500">{error.message}</div>
       ) : (
         <pre className="bg-gray-100 p-2 rounded text-xs overflow-auto">
           {JSON.stringify(trade, null, 2)}

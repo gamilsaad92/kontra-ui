@@ -57,7 +57,7 @@ export default function InvestorReportForm({ onCreated }) {
           Save
         </button>
       </form>
-      {error && <p className="mt-3 text-red-600">{error}</p>}
+      {error && <p className="mt-3 text-brand-600">{error}</p>}
       {message && <p className="mt-3 text-green-600">{message}</p>}
     </div>
   );

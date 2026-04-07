@@ -19,7 +19,7 @@ const statusTone = (status: string) => {
       return "bg-emerald-100 text-emerald-700";
     case "flagged":
     case "failed":
-      return "bg-rose-100 text-rose-700";
+      return "bg-brand-100 text-brand-700";
     default:
       return "bg-slate-100 text-slate-600";
   }
@@ -97,7 +97,7 @@ export default function StablecoinPaymentsPanel() {
         {loading ? (
           <div className="px-4 py-6 text-sm text-slate-500">Loading…</div>
         ) : error ? (
-          <div className="px-4 py-6 text-sm text-rose-600">{error}</div>
+          <div className="px-4 py-6 text-sm text-brand-600">{error}</div>
         ) : payments.length === 0 ? (
           <div className="px-4 py-6 text-sm text-slate-500">No stablecoin requests yet.</div>
         ) : (

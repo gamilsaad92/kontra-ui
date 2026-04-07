@@ -188,7 +188,7 @@ export default function ExecutiveDashboard() {
                     <XAxis dataKey="name" hide />
                     <YAxis domain={[0, 2]} />
                     <Tooltip />
-                    <Line type="monotone" dataKey="rate" stroke="#ef4444" strokeWidth={2} />
+                    <Line type="monotone" dataKey="rate" stroke="#b83550" strokeWidth={2} />
                   </LineChart>
                 </ResponsiveContainer>
               </div>

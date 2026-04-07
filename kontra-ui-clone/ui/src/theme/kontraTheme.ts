@@ -5,11 +5,11 @@ export const kontraTheme = {
   border: "border-slate-200/70 dark:border-slate-800",
   textPrimary: "text-slate-900 dark:text-slate-100",
   textMuted: "text-slate-600 dark:text-slate-400",
-  kontraRed: "text-red-500",
-  kontraRedBg: "bg-red-600 text-white",
-  kontraRedHover: "hover:bg-red-500",
+  kontraRed: "text-brand-500",
+  kontraRedBg: "bg-brand-600 text-white",
+  kontraRedHover: "hover:bg-brand-500",
   focusRing:
-    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500/40 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-50 dark:focus-visible:ring-offset-slate-950",
+    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-50 dark:focus-visible:ring-offset-slate-950",
   input:
     "bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 placeholder:text-slate-500 dark:placeholder:text-slate-400 border-slate-200 dark:border-slate-700",
   mutedSurface: "bg-slate-100/70 dark:bg-slate-800/60",

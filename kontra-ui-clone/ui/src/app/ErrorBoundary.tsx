@@ -25,9 +25,9 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
 
     return (
       <div className="flex min-h-screen items-center justify-center bg-slate-950 p-6 text-slate-100">
-        <div className="max-w-xl space-y-3 rounded-xl border border-rose-400/40 bg-rose-950/40 p-4">
+        <div className="max-w-xl space-y-3 rounded-xl border border-brand-400/40 bg-brand-950/40 p-4">
               <p className="text-sm font-semibold">Kontra hit an unexpected error</p>
-          <p className="text-xs text-rose-200">{this.state.message || "Unknown runtime error"}</p>
+          <p className="text-xs text-brand-200">{this.state.message || "Unknown runtime error"}</p>
           <button
             className="rounded-md bg-slate-100 px-3 py-2 text-sm font-semibold text-slate-900"
            onClick={() => window.location.reload()}

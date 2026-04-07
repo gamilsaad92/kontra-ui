@@ -175,7 +175,7 @@ export default function InsightsCard({ loanId, title = "AI Insights", orgId }: I
       </div>
 
       {loading && <p className="mt-3 text-sm text-slate-500">Loading insights…</p>}
-      {error && <p className="mt-3 text-sm text-rose-600">{error}</p>}
+      {error && <p className="mt-3 text-sm text-brand-600">{error}</p>}
 
       {insights && (
         <div className="mt-4 space-y-4">

@@ -60,7 +60,7 @@ export default function AiInsightsPage() {
 
   if (isError) {
     return (
-      <div className="flex items-center justify-center py-24 text-red-500 text-sm">
+      <div className="flex items-center justify-center py-24 text-brand-500 text-sm">
         Failed to load AI insights. Check your connection and try again.
       </div>
     );

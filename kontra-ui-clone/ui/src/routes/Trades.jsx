@@ -591,7 +591,7 @@ export default function Trades() {
             <span
               className={`px-3 py-1 rounded text-sm font-medium ${
                 compliancePolicy?.paused
-                  ? 'bg-red-100 text-red-700'
+                  ? 'bg-brand-100 text-brand-700'
                   : 'bg-green-100 text-green-700'
               }`}
             >

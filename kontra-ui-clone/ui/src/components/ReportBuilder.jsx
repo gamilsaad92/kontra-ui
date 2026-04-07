@@ -17,7 +17,7 @@ function Stepper({ currentStep }) {
           className={cx(
             "rounded-full px-3 py-1 text-xs font-semibold",
             index === currentStep
-              ? "bg-red-600 text-white"
+              ? "bg-brand-600 text-white"
               : "bg-slate-200 text-slate-600 dark:bg-slate-800 dark:text-slate-300"
           )}
         >
@@ -376,7 +376,7 @@ export default function ReportBuilder() {
                 Example: “Open repairs aging by property manager last 30 days”.
               </p>
               {!isPromptValid && aiAgent.state.description.length > 0 && (
-                <p className="text-xs text-red-500">Prompt must be at least 8 characters.</p>
+                <p className="text-xs text-brand-500">Prompt must be at least 8 characters.</p>
               )}
             </div>
 
@@ -419,7 +419,7 @@ export default function ReportBuilder() {
               <input
                id="ai-summary"
                 type="checkbox"
-                 className="h-4 w-4 rounded border-slate-300 text-red-600 focus:ring-red-500"
+                 className="h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500"
                 checked={aiAgent.state.includeSummary}
                 onChange={(e) => aiAgent.setField("includeSummary", e.target.checked)}
                 disabled={aiDisabled}
@@ -438,7 +438,7 @@ export default function ReportBuilder() {
       
           <div className={cx("rounded-xl border p-4 space-y-4", kontraTheme.border, kontraTheme.mutedSurface)}>
             {aiAgent.state.status === "error" && (
-              <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-200">
+              <div className="rounded-lg border border-brand-200 bg-brand-50 p-3 text-sm text-brand-700 dark:border-brand-500/30 dark:bg-brand-500/10 dark:text-brand-200">
                 <div className="flex items-center justify-between gap-2">
                   <span>{aiAgent.state.error}</span>
                   <Button variant="ghost" size="sm" onClick={aiAgent.requestProposal}>
@@ -523,7 +523,7 @@ export default function ReportBuilder() {
                         <label key={hook.action_type} className="flex items-center gap-2">
                           <input
                             type="checkbox"
-                            className="h-4 w-4 rounded border-slate-300 text-red-600 focus:ring-red-500"
+                            className="h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500"
                             checked={Boolean(aiAgent.state.hooks[hook.action_type])}
                             onChange={(e) => aiAgent.toggleHook(hook.action_type, e.target.checked)}
                           />
@@ -538,7 +538,7 @@ export default function ReportBuilder() {
                   <input
                     id="ai-approval"
                     type="checkbox"
-                    className="h-4 w-4 rounded border-slate-300 text-red-600 focus:ring-red-500"
+                    className="h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500"
                     checked={aiAgent.state.approval}
                     onChange={(e) => aiAgent.setApproval(e.target.checked)}
                   />
@@ -590,7 +590,7 @@ export default function ReportBuilder() {
                 value={name}
                 onChange={(e) => setName(e.target.value)}
               />
-              {validationErrors.name && <p className="text-xs text-red-500">{validationErrors.name}</p>}
+              {validationErrors.name && <p className="text-xs text-brand-500">{validationErrors.name}</p>}
             </div>
             <div className="space-y-2">
               <label className="text-sm font-medium" htmlFor="table-name">
@@ -602,7 +602,7 @@ export default function ReportBuilder() {
                 value={table}
                 onChange={(e) => setTable(e.target.value)}
               />
-              {validationErrors.table && <p className="text-xs text-red-500">{validationErrors.table}</p>}
+              {validationErrors.table && <p className="text-xs text-brand-500">{validationErrors.table}</p>}
             </div>
           </div>
 
@@ -619,12 +619,12 @@ export default function ReportBuilder() {
                <Textarea
                 id="report-spec"
                 rows={4}
-                className={jsonError ? "border-red-500" : ""}
+                className={jsonError ? "border-brand-500" : ""}
                   placeholder='{"filters": {"status": "open"}, "order": ["-created_at"]}'
                 value={jsonSpecText}
                 onChange={(e) => setJsonSpecText(e.target.value)}
               />
-              {jsonError && <p className="text-xs text-red-500">{jsonError}</p>}
+              {jsonError && <p className="text-xs text-brand-500">{jsonError}</p>}
             </div>
             <div className="space-y-2">
               <label className="text-sm font-medium" htmlFor="group-by">
@@ -681,7 +681,7 @@ export default function ReportBuilder() {
                  {selectedFields.map((field) => (
                   <div
                     key={field}
-                    className="flex items-center justify-between rounded-lg bg-red-50 px-2 py-1 text-sm text-red-700 dark:bg-red-500/10 dark:text-red-200"
+                    className="flex items-center justify-between rounded-lg bg-brand-50 px-2 py-1 text-sm text-brand-700 dark:bg-brand-500/10 dark:text-brand-200"
                   >
                     <span>{field}</span>
                     <Button
@@ -695,7 +695,7 @@ export default function ReportBuilder() {
                   </div>
                 ))}
               </div>
-                 {validationErrors.fields && <p className="text-xs text-red-500">{validationErrors.fields}</p>}
+                 {validationErrors.fields && <p className="text-xs text-brand-500">{validationErrors.fields}</p>}
             </div>
           </div>
  
@@ -712,7 +712,7 @@ export default function ReportBuilder() {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                 />
-                {validationErrors.email && <p className="text-xs text-red-500">{validationErrors.email}</p>}
+                {validationErrors.email && <p className="text-xs text-brand-500">{validationErrors.email}</p>}
               </div>
                <div>
                 <label className="text-sm font-medium" htmlFor="schedule-frequency">
@@ -823,7 +823,7 @@ export default function ReportBuilder() {
                   <XAxis dataKey={groupBy} />
                   <YAxis />
                   <Tooltip />
-                <Bar dataKey={selectedFields[0]} fill="#dc2626" />
+                <Bar dataKey={selectedFields[0]} fill="#800020" />
                 </BarChart>
               </ResponsiveContainer>
             </div>
@@ -847,7 +847,7 @@ export default function ReportBuilder() {
       )}
 
               {error && (
-        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 shadow-sm dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-200">
+        <div className="rounded-lg border border-brand-200 bg-brand-50 px-4 py-3 text-sm text-brand-700 shadow-sm dark:border-brand-500/30 dark:bg-brand-500/10 dark:text-brand-200">
           {error}
         </div>
       )}

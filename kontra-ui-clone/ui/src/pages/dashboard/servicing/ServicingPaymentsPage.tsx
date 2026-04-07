@@ -121,7 +121,7 @@ export default function ServicingPaymentsPage() {
 
   const statusBadgeClass = (status: AiReviewStatus) => {
     if (status === "pass") return "bg-emerald-100 text-emerald-700";
-    if (status === "fail") return "bg-rose-100 text-rose-700";
+    if (status === "fail") return "bg-brand-100 text-brand-700";
     return "bg-amber-100 text-amber-700";
   };
 
@@ -363,7 +363,7 @@ export default function ServicingPaymentsPage() {
                   <button
                     type="button"
                     onClick={() => handleMark("fail")}
-                    className="rounded-full border border-rose-200 px-3 py-1 text-xs font-semibold text-rose-700"
+                    className="rounded-full border border-brand-200 px-3 py-1 text-xs font-semibold text-brand-700"
                   >
                     Mark fail
                   </button>

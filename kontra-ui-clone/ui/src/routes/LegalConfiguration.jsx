@@ -215,7 +215,7 @@ export default function LegalConfiguration() {
       </header>
 
       {error && (
-        <div className="flex items-start gap-2 rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800">
+        <div className="flex items-start gap-2 rounded-lg border border-brand-200 bg-brand-50 p-3 text-sm text-brand-800">
           <ExclamationTriangleIcon className="mt-0.5 h-5 w-5" />
           <div>
             <p className="font-semibold">{error}</p>

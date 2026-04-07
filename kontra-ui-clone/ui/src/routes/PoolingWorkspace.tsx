@@ -469,7 +469,7 @@ export default function PoolingWorkspace() {
                       onChange={(e) => setPoolParams((prev) => ({ ...prev, adminWallet: e.target.value }))}
                     />
                       {validationErrors.adminWallet && (
-                      <p className="text-xs text-rose-600">{validationErrors.adminWallet}</p>
+                      <p className="text-xs text-brand-600">{validationErrors.adminWallet}</p>
                     )}
                   </div>
                   <div className="space-y-3">
@@ -484,7 +484,7 @@ export default function PoolingWorkspace() {
                       }}
                     />
                                 {validationErrors.targetSize && (
-                      <p className="text-xs text-rose-600">{validationErrors.targetSize}</p>
+                      <p className="text-xs text-brand-600">{validationErrors.targetSize}</p>
                     )}
                     <label className="block text-xs font-semibold uppercase tracking-wide text-slate-500">Advance rate</label>
                     <input
@@ -498,7 +498,7 @@ export default function PoolingWorkspace() {
                       }}
                     />
                                         {validationErrors.advanceRate && (
-                      <p className="text-xs text-rose-600">{validationErrors.advanceRate}</p>
+                      <p className="text-xs text-brand-600">{validationErrors.advanceRate}</p>
                     )}
                     <label className="block text-xs font-semibold uppercase tracking-wide text-slate-500">Minimum DSCR</label>
                     <input
@@ -512,13 +512,13 @@ export default function PoolingWorkspace() {
                       }}
                     />
                                        {validationErrors.minDscr && (
-                      <p className="text-xs text-rose-600">{validationErrors.minDscr}</p>
+                      <p className="text-xs text-brand-600">{validationErrors.minDscr}</p>
                     )}
                   </div>
                 </div>
 
                 {error && (
-                  <div className="mt-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</div>
+                  <div className="mt-3 rounded-lg border border-brand-200 bg-brand-50 px-3 py-2 text-sm text-brand-700">{error}</div>
                 )}
 
                 <div className="mt-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">

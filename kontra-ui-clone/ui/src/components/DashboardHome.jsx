@@ -16,7 +16,7 @@ const Pill = ({ tone = "gray", children }) => {
     green: "bg-emerald-50 text-emerald-700 border-emerald-200",
     sky: "bg-sky-50 text-sky-700 border-sky-200",
     amber: "bg-amber-50 text-amber-800 border-amber-200",
-    red: "bg-rose-50 text-rose-700 border-rose-200",
+    red: "bg-brand-50 text-brand-700 border-brand-200",
   }[tone];
   return (
     <span className={`inline-flex items-center rounded px-2 py-0.5 text-xs font-medium border ${t}`}>

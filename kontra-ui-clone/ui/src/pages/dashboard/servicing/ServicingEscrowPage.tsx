@@ -58,7 +58,7 @@ export default function ServicingEscrowPage() {
           </div>
           <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
             <p className="text-xs uppercase text-slate-500">Projected shortage</p>
-            <p className="mt-2 text-xl font-semibold text-rose-600">$42,000</p>
+            <p className="mt-2 text-xl font-semibold text-brand-600">$42,000</p>
             <p className="text-xs text-slate-500">Projected for Sep 2024</p>
           </div>
           <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
@@ -106,7 +106,7 @@ export default function ServicingEscrowPage() {
                   <td className="px-4 py-3 text-slate-700">{tx.type}</td>
                   <td
                     className={`px-4 py-3 text-right ${
-                      tx.amount < 0 ? "text-rose-600" : "text-emerald-600"
+                      tx.amount < 0 ? "text-brand-600" : "text-emerald-600"
                     }`}
                   >
                     {tx.amount < 0 ? "-" : "+"}${Math.abs(tx.amount).toLocaleString()}
@@ -121,7 +121,7 @@ export default function ServicingEscrowPage() {
         </div>
       </section>
 
-      <section className="rounded-xl border border-rose-200 bg-rose-50 p-5 text-sm text-rose-700">
+      <section className="rounded-xl border border-brand-200 bg-brand-50 p-5 text-sm text-brand-700">
         Escrow shortage alert: projected deficit exceeds policy thresholds. Human approval is required
         before sending borrower cure notices or scheduling disbursements.
       </section>

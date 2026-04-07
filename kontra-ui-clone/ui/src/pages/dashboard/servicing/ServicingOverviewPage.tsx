@@ -1,13 +1,13 @@
 import { useServicingContext } from './ServicingContext';
 
 const severityDot = (s: string) => {
-  if (s === 'high') return 'bg-rose-500';
+  if (s === 'high') return 'bg-brand-500';
   if (s === 'medium') return 'bg-amber-400';
   return 'bg-slate-400';
 };
 
 const statusBadge = (s: string) => {
-  if (s === 'open') return 'bg-rose-100 text-rose-700';
+  if (s === 'open') return 'bg-brand-100 text-brand-700';
   if (s === 'in-review') return 'bg-amber-100 text-amber-700';
   if (s === 'approved') return 'bg-emerald-100 text-emerald-700';
   return 'bg-slate-100 text-slate-600';
@@ -25,7 +25,7 @@ export default function ServicingOverviewPage() {
       label: 'Active Alerts',
       value: alerts.length,
       sub: `${highAlerts.length} high priority`,
-      accent: highAlerts.length > 0 ? 'text-rose-600' : 'text-slate-900',
+      accent: highAlerts.length > 0 ? 'text-brand-600' : 'text-slate-900',
     },
     {
       label: 'Open Tasks',
@@ -43,7 +43,7 @@ export default function ServicingOverviewPage() {
       label: 'Pending Approvals',
       value: approvalTasks.length,
       sub: 'Require human sign-off',
-      accent: approvalTasks.length > 0 ? 'text-rose-600' : 'text-slate-900',
+      accent: approvalTasks.length > 0 ? 'text-brand-600' : 'text-slate-900',
     },
   ];
 

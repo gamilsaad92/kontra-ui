@@ -7,7 +7,7 @@ const statusColors = {
   submitted: 'bg-blue-100 text-blue-800',
   under_review: 'bg-yellow-100 text-yellow-800',
   approved: 'bg-green-100 text-green-800',
-  rejected: 'bg-red-100 text-red-800'
+  rejected: 'bg-brand-100 text-brand-800'
 };
 
 const Badge = ({ status }) => (
@@ -29,7 +29,7 @@ const DrawCard = ({ draw, isAdmin, onAction }) => {
     <div className="border rounded-xl p-4 shadow-md bg-white max-w-xl mx-auto mt-6 space-y-4">
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-3">
-          <span className="text-lg font-bold text-red-700">Kontra</span>
+          <span className="text-lg font-bold text-brand-700">Kontra</span>
           <h2 className="text-lg font-bold">Draw Request #{draw.id}</h2>
         </div>
         <Badge status={draw.status} />
@@ -43,7 +43,7 @@ const DrawCard = ({ draw, isAdmin, onAction }) => {
       </div>
 
       {draw.reviewComment && (
-        <div className="mt-2 text-sm text-red-600 italic">
+        <div className="mt-2 text-sm text-brand-600 italic">
           Reviewer Comment: "{draw.reviewComment}"
         </div>
       )}
@@ -53,7 +53,7 @@ const DrawCard = ({ draw, isAdmin, onAction }) => {
           <button onClick={handleApprove} className="px-3 py-1 bg-green-500 text-white rounded hover:bg-green-600">
             ✅ Approve
           </button>
-          <button onClick={handleReject} className="px-3 py-1 bg-red-500 text-white rounded hover:bg-red-600">
+          <button onClick={handleReject} className="px-3 py-1 bg-brand-500 text-white rounded hover:bg-brand-600">
             ❌ Reject
           </button>
         </div>

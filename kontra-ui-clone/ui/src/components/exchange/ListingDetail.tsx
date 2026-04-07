@@ -15,7 +15,7 @@ const ListingDetail: React.FC = () => {
       <section>
         <h3 className="font-semibold">Offers</h3>
           {error ? (
-          <div className="text-red-500">{error.message}</div>
+          <div className="text-brand-500">{error.message}</div>
         ) : (
           <ul className="list-disc pl-6">
             {offers?.map((o: any) => (

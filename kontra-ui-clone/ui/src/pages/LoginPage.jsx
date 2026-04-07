@@ -12,7 +12,7 @@ export default function LoginPage() {
     return (
       <div className="flex min-h-screen items-center justify-center" style={{ background: "#f7f8fb" }}>
         <div className="flex flex-col items-center gap-3">
-          <div className="h-6 w-6 animate-spin rounded-full border-2 border-red-600 border-t-transparent" />
+          <div className="h-6 w-6 animate-spin rounded-full border-2 border-brand-600 border-t-transparent" />
           <span className="text-xs font-medium tracking-widest uppercase" style={{ color: "#888" }}>Loading</span>
         </div>
       </div>
@@ -33,18 +33,18 @@ export default function LoginPage() {
         className="hidden lg:flex lg:w-[420px] xl:w-[480px] flex-col justify-between p-12 shrink-0"
         style={{
           background: "linear-gradient(160deg, #1a0505 0%, #0d0d0d 60%, #111 100%)",
-          borderRight: "1px solid rgba(220,38,38,0.12)",
+          borderRight: "1px solid rgba(128,0,32,0.12)",
         }}
       >
         <div className="flex items-center gap-2.5">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg" style={{ background: "#dc2626" }}>
+          <div className="flex h-8 w-8 items-center justify-center rounded-lg" style={{ background: "#800020" }}>
             <span className="text-sm font-black text-white" style={{ letterSpacing: "-0.05em" }}>K</span>
           </div>
           <span className="text-base font-bold text-white" style={{ letterSpacing: "-0.02em" }}>Kontra</span>
         </div>
 
         <div>
-          <p className="mb-3 text-xs font-semibold uppercase tracking-widest" style={{ color: "#dc2626" }}>
+          <p className="mb-3 text-xs font-semibold uppercase tracking-widest" style={{ color: "#800020" }}>
             AI-Native Loan Servicing
           </p>
           <h2 className="mb-4 text-3xl font-bold leading-tight text-white" style={{ letterSpacing: "-0.03em" }}>
@@ -56,9 +56,9 @@ export default function LoginPage() {
         </div>
 
         <div className="flex items-center gap-2">
-          <div className="h-px flex-1" style={{ background: "rgba(220,38,38,0.2)" }} />
+          <div className="h-px flex-1" style={{ background: "rgba(128,0,32,0.2)" }} />
           <span className="text-xs" style={{ color: "#444" }}>Secure · Encrypted · Compliant</span>
-          <div className="h-px flex-1" style={{ background: "rgba(220,38,38,0.2)" }} />
+          <div className="h-px flex-1" style={{ background: "rgba(128,0,32,0.2)" }} />
         </div>
       </div>
 
@@ -66,7 +66,7 @@ export default function LoginPage() {
       <div className="flex flex-1 flex-col items-center justify-center px-6 py-12">
         {/* Mobile logo */}
         <div className="mb-10 flex items-center gap-2.5 lg:hidden">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg" style={{ background: "#dc2626" }}>
+          <div className="flex h-8 w-8 items-center justify-center rounded-lg" style={{ background: "#800020" }}>
             <span className="text-sm font-black text-white" style={{ letterSpacing: "-0.05em" }}>K</span>
           </div>
           <span className="text-base font-bold text-white" style={{ letterSpacing: "-0.02em" }}>Kontra</span>

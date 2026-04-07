@@ -213,7 +213,7 @@ export default function MiniCmbsPools({ pools = [], onRefresh, onNotify }) {
                         )}
                       </div>
                       <div>
-                        <p className="font-medium text-rose-600">Asks</p>
+                        <p className="font-medium text-brand-600">Asks</p>
                         {pool.order_book?.asks?.length ? (
                           <ul className="space-y-1">
                             {pool.order_book.asks.map(order => (

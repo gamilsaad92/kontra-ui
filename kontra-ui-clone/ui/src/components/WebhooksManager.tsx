@@ -118,7 +118,7 @@ export default function WebhooksManager() {
               <td className="p-2 border-b text-right">
                 <button
                   onClick={() => remove(w.event, w.url)}
-                  className="text-red-600 hover:underline"
+                  className="text-brand-600 hover:underline"
                 >
                   Remove
                 </button>

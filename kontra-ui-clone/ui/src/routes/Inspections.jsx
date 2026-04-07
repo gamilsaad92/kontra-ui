@@ -165,7 +165,7 @@ export default function Inspections() {
                   </button>
                   <button
                     onClick={() => handleDecision(ins.id, 'rejected')}
-                    className="bg-red-600 text-white px-2 py-1 rounded"
+                    className="bg-brand-600 text-white px-2 py-1 rounded"
                   >
                     Reject
                   </button>

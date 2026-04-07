@@ -49,7 +49,7 @@ export default function SsoSettingsPage() {
   };
 
   if (loading) return <div className="rounded border bg-white p-4">Loading SSO configuration…</div>;
-  if (error) return <div className="rounded border border-red-200 bg-red-50 p-4 text-red-700">{error}</div>;
+  if (error) return <div className="rounded border border-brand-200 bg-brand-50 p-4 text-brand-700">{error}</div>;
 
   return (
     <div className="space-y-4 rounded border bg-white p-4">

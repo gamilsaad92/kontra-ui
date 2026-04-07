@@ -137,7 +137,7 @@ export default function DrawRequestForm({ onSubmitted }) {
         />
         <button
           type="submit"
-          className="w-full bg-red-600 hover:bg-red-700 text-white font-semibold py-2 rounded"
+          className="w-full bg-brand-600 hover:bg-brand-700 text-white font-semibold py-2 rounded"
         >
           Submit
         </button>

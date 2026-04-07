@@ -53,20 +53,20 @@ export default function DocumentReview() {
         />
         <button
           type="submit"
-          className="w-full bg-red-600 hover:bg-red-700 text-white font-semibold py-2 rounded"
+          className="w-full bg-brand-600 hover:bg-brand-700 text-white font-semibold py-2 rounded"
         >
           Upload
         </button>
       </form>
-      {error && <p className="mt-3 text-red-600 text-sm">{error}</p>}
+      {error && <p className="mt-3 text-brand-600 text-sm">{error}</p>}
       {result && (
         <div className="mt-4 text-sm space-y-2">
           <div>Version: {result.version}</div>
           {result.missingSignature && (
-            <div className="text-red-600">Missing signature detected</div>
+            <div className="text-brand-600">Missing signature detected</div>
           )}
           {result.complianceIssues && (
-            <div className="text-red-600">Compliance issues detected</div>
+            <div className="text-brand-600">Compliance issues detected</div>
           )}
           {result.summary && (
             <div>
