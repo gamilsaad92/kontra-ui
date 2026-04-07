@@ -25,7 +25,7 @@ export default function InvestorReportsList({ refresh }) {
   }, [refresh]);
 
   if (loading) return <p>Loading reports…</p>;
-  if (error) return <p className="text-red-600">{error}</p>;
+  if (error) return <p className="text-brand-600">{error}</p>;
   if (reports.length === 0) return <p>No reports found.</p>;
 
   return (
