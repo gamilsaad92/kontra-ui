@@ -164,7 +164,7 @@ const statusConfig: Record<WorkflowStatus, { label: string; class: string }> = {
   running: { label: 'Running', class: 'bg-blue-100 text-blue-700' },
   needs_review: { label: 'Needs Review', class: 'bg-amber-100 text-amber-700' },
   completed: { label: 'Completed', class: 'bg-emerald-100 text-emerald-700' },
-  failed: { label: 'Failed', class: 'bg-rose-100 text-rose-700' },
+  failed: { label: 'Failed', class: 'bg-brand-100 text-brand-700' },
   cancelled: { label: 'Cancelled', class: 'bg-slate-100 text-slate-400' },
 };
 
@@ -178,14 +178,14 @@ const workflowLabel: Record<WorkflowType, string> = {
 };
 
 const severityColor = (s: string) => {
-  if (s === 'high') return 'text-rose-700 bg-rose-50 border-rose-100';
+  if (s === 'high') return 'text-brand-700 bg-brand-50 border-brand-100';
   if (s === 'medium') return 'text-amber-700 bg-amber-50 border-amber-100';
   return 'text-slate-600 bg-slate-50 border-slate-100';
 };
 
 const aiResultBadge = (s: string) => {
   if (s === 'pass') return 'bg-emerald-50 text-emerald-700 border border-emerald-200';
-  if (s === 'fail') return 'bg-rose-50 text-rose-700 border border-rose-200';
+  if (s === 'fail') return 'bg-brand-50 text-brand-700 border border-brand-200';
   return 'bg-amber-50 text-amber-700 border border-amber-200';
 };
 
@@ -408,7 +408,7 @@ export default function ServicingAIOpsPage() {
                   </button>
                   <button
                     onClick={() => handleReject(selected)}
-                    className="rounded-lg border border-rose-200 bg-white px-4 py-2 text-sm font-semibold text-rose-700 shadow-sm transition hover:bg-rose-50"
+                    className="rounded-lg border border-brand-200 bg-white px-4 py-2 text-sm font-semibold text-brand-700 shadow-sm transition hover:bg-brand-50"
                   >
                     Reject
                   </button>
@@ -419,12 +419,12 @@ export default function ServicingAIOpsPage() {
             {reviewSubmitted[selected.id] && (
               <section className={`rounded-xl border p-4 ${
                 reviewSubmitted[selected.id] === 'approved' ? 'border-emerald-200 bg-emerald-50'
-                : reviewSubmitted[selected.id] === 'rejected' ? 'border-rose-200 bg-rose-50'
+                : reviewSubmitted[selected.id] === 'rejected' ? 'border-brand-200 bg-brand-50'
                 : 'border-amber-200 bg-amber-50'
               }`}>
                 <p className={`text-sm font-semibold ${
                   reviewSubmitted[selected.id] === 'approved' ? 'text-emerald-800'
-                  : reviewSubmitted[selected.id] === 'rejected' ? 'text-rose-800'
+                  : reviewSubmitted[selected.id] === 'rejected' ? 'text-brand-800'
                   : 'text-amber-800'
                 }`}>
                   Review submitted: {reviewSubmitted[selected.id].replace('_', ' ')}
@@ -458,7 +458,7 @@ export default function ServicingAIOpsPage() {
                 {selected.steps.map((step, i) => (
                   <div key={i} className="text-xs text-slate-500 border-b border-slate-100 pb-2 last:border-0 last:pb-0">
                     <span className="font-semibold text-slate-700">{step.agent} agent</span> ran step "{step.step.replace(/_/g, ' ')}" ·{' '}
-                    result: <span className={step.result.status === 'pass' ? 'text-emerald-600' : step.result.status === 'fail' ? 'text-rose-600' : 'text-amber-600'}>{step.result.status}</span>{' '}
+                    result: <span className={step.result.status === 'pass' ? 'text-emerald-600' : step.result.status === 'fail' ? 'text-brand-600' : 'text-amber-600'}>{step.result.status}</span>{' '}
                     · confidence: {Math.round(step.result.confidence * 100)}%
                   </div>
                 ))}
