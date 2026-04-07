@@ -127,7 +127,7 @@ export default function ServicingAIValidationPage() {
               <div className="flex gap-2">
                 <button className="rounded border border-emerald-300 px-2 py-1 text-xs" onClick={() => onMark('pass')}>Mark pass</button>
                 <button className="rounded border border-amber-300 px-2 py-1 text-xs" onClick={() => onMark('needs_review')}>Needs review</button>
-                <button className="rounded border border-rose-300 px-2 py-1 text-xs" onClick={() => onMark('fail')}>Mark fail</button>
+                <button className="rounded border border-brand-300 px-2 py-1 text-xs" onClick={() => onMark('fail')}>Mark fail</button>
               </div>
             </div>
           )}
