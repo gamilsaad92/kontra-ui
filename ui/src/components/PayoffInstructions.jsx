@@ -38,7 +38,7 @@ export default function PayoffInstructions() {
         </button>
       </form>
       {instructions && <pre className="whitespace-pre-wrap">{instructions}</pre>}
-      {error && <p className="text-red-600">{error}</p>}
+      {error && <p className="text-brand-600">{error}</p>}
     </div>
   );
 }
