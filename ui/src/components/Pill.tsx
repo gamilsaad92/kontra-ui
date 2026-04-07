@@ -12,7 +12,7 @@ export default function Pill({ children, tone = "slate" }: PillProps) {
       : tone === "sky"
       ? "bg-sky-50 text-sky-700 ring-1 ring-inset ring-sky-200"
       : tone === "rose"
-      ? "bg-rose-50 text-rose-700 ring-1 ring-inset ring-rose-200"
+      ? "bg-brand-50 text-brand-700 ring-1 ring-inset ring-brand-200"
       : "bg-slate-50 text-slate-700 ring-1 ring-inset ring-slate-200";
 
   return (
