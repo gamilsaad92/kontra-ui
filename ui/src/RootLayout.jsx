@@ -64,7 +64,7 @@ function LayoutInner({ children, branding, orgName, role, apiError, apiToast, on
   return (
     <div className="min-h-screen flex flex-col" style={{ '--brand-accent': branding?.primaryColor || branding?.primary_color || '#22d3ee' }}>
       {import.meta.env.DEV && apiError && (
-        <div className="bg-rose-600/90 text-white text-xs px-4 py-2 flex items-center justify-between">
+        <div className="bg-brand-600/90 text-white text-xs px-4 py-2 flex items-center justify-between">
           <span>
             API Error: {apiError.message || 'Request failed'} {apiError.status ? `(${apiError.status})` : ''}
           </span>
