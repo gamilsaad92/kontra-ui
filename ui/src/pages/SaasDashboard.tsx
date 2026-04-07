@@ -226,9 +226,11 @@ export default function SaasDashboard() {
   return (
      <div className="flex min-h-screen bg-slate-100 text-slate-900">
       <aside className="flex w-64 flex-col bg-slate-950 text-slate-100">
-        <div className="flex items-center gap-2 px-4 py-4 text-sm font-semibold tracking-tight">
-          <img src="/logo-dark.png" alt="Kontra" className="h-6 w-auto" />
-          <span className="leading-tight text-slate-100">Kontra</span>
+        <div className="flex items-center gap-2.5 px-4 py-4">
+          <div className="flex h-7 w-7 items-center justify-center rounded-lg" style={{ background: '#dc2626' }}>
+            <span className="text-sm font-black text-white" style={{ letterSpacing: '-0.05em' }}>K</span>
+          </div>
+          <span className="text-base font-bold text-white" style={{ letterSpacing: '-0.02em' }}>Kontra</span>
         </div>
         <nav className="flex-1 space-y-1 overflow-y-auto px-2 pb-4">
           {frequentItems.length > 0 && (
