@@ -3,8 +3,8 @@ import type { InsightItem, InsightSeverity } from "../types";
 const severityStyles: Record<InsightSeverity, string> = {
   low: "border-emerald-200 bg-emerald-50 text-emerald-700",
   medium: "border-amber-200 bg-amber-50 text-amber-800",
-  high: "border-rose-200 bg-rose-50 text-rose-700",
-  critical: "border-red-300 bg-red-50 text-red-700",
+  high: "border-brand-200 bg-brand-50 text-brand-700",
+  critical: "border-brand-300 bg-brand-50 text-brand-700",
 };
 
 export default function InsightFeedItem({ item }: { item: InsightItem }) {
