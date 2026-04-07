@@ -301,7 +301,7 @@ export default function AssetDigitizationPanel({ apiBase }: { apiBase?: string }
             {loading ? "Minting metadata…" : "Tokenize loan"}
           </button>
 
-          {error && <p className="text-sm text-rose-600">{error}</p>}
+          {error && <p className="text-sm text-brand-600">{error}</p>}
         </form>
 
         <div className="space-y-4 rounded-lg border border-slate-200 bg-slate-50 p-4">
