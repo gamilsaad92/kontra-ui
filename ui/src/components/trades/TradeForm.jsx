@@ -47,7 +47,7 @@ export default function TradeForm({ definition, fields, values, errors, onChange
         )}
       </div>
       {errors?.form && (
-        <div className="bg-red-50 border border-red-200 text-red-700 px-3 py-2 rounded">
+        <div className="bg-brand-50 border border-brand-200 text-brand-700 px-3 py-2 rounded">
           {errors.form}
         </div>
       )}
@@ -59,7 +59,7 @@ export default function TradeForm({ definition, fields, values, errors, onChange
           {renderField(field, values?.[field.name], onChange)}
           {field.helpText && <p className="text-xs text-gray-500">{field.helpText}</p>}
           {errors?.[field.name] && (
-            <p className="text-xs text-red-600">{errors[field.name]}</p>
+            <p className="text-xs text-brand-600">{errors[field.name]}</p>
           )}
         </div>
       ))}
