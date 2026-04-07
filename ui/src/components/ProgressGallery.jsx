@@ -49,7 +49,7 @@ export default function ProgressGallery({ projectId }) {
             <p className="text-sm mb-1">Status: {p.status}</p>
             <div className="flex gap-2">
               <button onClick={() => update(p.id, 'approved')} className="px-2 py-1 bg-green-500 text-white rounded text-xs">Approve</button>
-              <button onClick={() => update(p.id, 'rejected')} className="px-2 py-1 bg-red-500 text-white rounded text-xs">Reject</button>
+              <button onClick={() => update(p.id, 'rejected')} className="px-2 py-1 bg-brand-500 text-white rounded text-xs">Reject</button>
             </div>
           </div>
         ))}
