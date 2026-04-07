@@ -88,15 +88,15 @@ export default function SelfServeDrawRequestForm() {
       <h3 className="text-xl font-semibold mb-4">Request a Draw</h3>
       <form onSubmit={handleSubmit} className="space-y-4">
         <input name="project" placeholder="Project Name" value={formData.project} onChange={handleChange} className="w-full border p-2 rounded" />
-        {errors.project && <p className="text-red-600 text-sm">{errors.project}</p>}
+        {errors.project && <p className="text-brand-600 text-sm">{errors.project}</p>}
         <input name="project_number" placeholder="Project #" value={formData.project_number} onChange={handleChange} className="w-full border p-2 rounded" />
-        {errors.project_number && <p className="text-red-600 text-sm">{errors.project_number}</p>}
+        {errors.project_number && <p className="text-brand-600 text-sm">{errors.project_number}</p>}
         <input name="property_location" placeholder="Property Location" value={formData.property_location} onChange={handleChange} className="w-full border p-2 rounded" />
-        {errors.property_location && <p className="text-red-600 text-sm">{errors.property_location}</p>}
+        {errors.property_location && <p className="text-brand-600 text-sm">{errors.property_location}</p>}
         <input name="amount" type="number" placeholder="Amount" value={formData.amount} onChange={handleChange} className="w-full border p-2 rounded" />
-        {errors.amount && <p className="text-red-600 text-sm">{errors.amount}</p>}
+        {errors.amount && <p className="text-brand-600 text-sm">{errors.amount}</p>}
         <textarea name="description" placeholder="Description" value={formData.description} onChange={handleChange} className="w-full border p-2 rounded h-24" />
-        {errors.description && <p className="text-red-600 text-sm">{errors.description}</p>}
+        {errors.description && <p className="text-brand-600 text-sm">{errors.description}</p>}
         <button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 rounded">Submit</button>
       </form>
       {message && <p className="mt-3 text-green-600">{message}</p>}
