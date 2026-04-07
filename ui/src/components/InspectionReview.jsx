@@ -68,7 +68,7 @@ export default function InspectionReview() {
           {result.textSummary && (
             <p className="mt-2"><strong>Text Summary:</strong> {result.textSummary}</p>
           )}
-          {result.error && <p className="text-red-600">{result.error}</p>}
+          {result.error && <p className="text-brand-600">{result.error}</p>}
         </div>
       )}
     </div>
