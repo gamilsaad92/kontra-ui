@@ -130,7 +130,7 @@ export default function Integrations() {
       </header>
 
       {queuedMessage && <div className="rounded-lg bg-emerald-900/40 px-4 py-3 text-emerald-200">{queuedMessage}</div>}
-      {error && <div className="rounded-lg bg-red-900/50 px-4 py-3 text-red-100">{error}</div>}
+      {error && <div className="rounded-lg bg-brand-900/50 px-4 py-3 text-brand-100">{error}</div>}
 
       <section className="space-y-3">
         <div className="flex items-center justify-between text-sm text-slate-400">
