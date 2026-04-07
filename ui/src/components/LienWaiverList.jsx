@@ -67,7 +67,7 @@ export default function LienWaiverList({ filter = {} }) {
             <span className="text-blue-600 underline">{w.waiver_type} by {w.contractor_name}</span>
             <span
               className={`px-2 py-1 rounded text-sm ${
-                w.verification_passed ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                w.verification_passed ? 'bg-green-100 text-green-800' : 'bg-brand-100 text-brand-800'
               }`}
             >
               {w.verification_passed ? 'Verified' : 'Failed'}
