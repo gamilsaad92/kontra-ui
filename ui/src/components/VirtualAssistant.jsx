@@ -175,7 +175,7 @@ export default function VirtualAssistant({
               {voiceLoading ? 'Sending…' : 'Send Voice Prompt'}
             </button>
           </div>
-          {voiceError && <p className="text-xs text-red-600">{voiceError}</p>}
+          {voiceError && <p className="text-xs text-brand-600">{voiceError}</p>}
           {voiceResponse && (
             <pre className="bg-white border text-xs text-gray-700 p-2 rounded max-h-40 overflow-auto">
               {voiceResponse}
