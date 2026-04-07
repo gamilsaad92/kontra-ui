@@ -155,7 +155,7 @@ export default function SyndicationWorkflow() {
         <p className="text-sm text-gray-500">Loading syndication pipeline…</p>
       ) : (
         <>
-          {error && <p className="text-sm text-red-600">{error}</p>}
+          {error && <p className="text-sm text-brand-600">{error}</p>}
           <form onSubmit={handleCreateCampaign} className="grid gap-3 md:grid-cols-4 md:items-end">
             <label className="text-sm font-medium text-gray-700 md:col-span-2">
               Upcoming Draw
