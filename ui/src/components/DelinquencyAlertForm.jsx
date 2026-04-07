@@ -57,7 +57,7 @@ export default function DelinquencyAlertForm() {
           value={message}
           onChange={e => setMessage(e.target.value)}
         />
-        <button className="bg-red-600 text-white px-4 py-2 rounded" type="submit" disabled={!loanId || (!email && !phone)}>
+        <button className="bg-brand-600 text-white px-4 py-2 rounded" type="submit" disabled={!loanId || (!email && !phone)}>
           Send Alert
         </button>
       </form>
