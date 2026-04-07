@@ -164,7 +164,7 @@ useEffect(() => {
       </Button>
 
       {!isLoading && !supabase && (
-        <p className="text-sm text-red-600">{authUnavailableMessage}</p>
+        <p className="text-sm text-brand-600">{authUnavailableMessage}</p>
       )}
 
     {success && <p className="text-sm text-emerald-600">{success}</p>}
