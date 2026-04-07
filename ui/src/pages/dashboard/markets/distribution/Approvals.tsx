@@ -92,7 +92,7 @@ export default function Approvals() {
                   <button
                     type="button"
                     onClick={() => handleDecision(approval.id, "rejected")}
-                    className="rounded-lg border border-rose-200 px-3 py-1.5 text-xs font-semibold text-rose-600"
+                    className="rounded-lg border border-brand-200 px-3 py-1.5 text-xs font-semibold text-brand-600"
                   >
                     Reject
                   </button>
