@@ -157,7 +157,7 @@ export default function TokenizedDrawNotes() {
           just a few clicks.
         </p>
       </div>
-      {error && <p className="text-sm text-red-600">{error}</p>}
+      {error && <p className="text-sm text-brand-600">{error}</p>}
       {draws.length === 0 ? (
         <p className="text-sm text-gray-600">No approved draws are ready for tokenization yet.</p>
       ) : (
