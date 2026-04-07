@@ -61,7 +61,7 @@ export default function StandardReports() {
         <button className="bg-gray-600 text-white px-3 py-1 rounded" onClick={() => download('excel')}>Excel</button>
       </div>
       {loading && <p>Loading report…</p>}
-      {error && <p className="text-red-600">{error}</p>}
+      {error && <p className="text-brand-600">{error}</p>}
       {rows.length > 0 && (
         <div className="overflow-auto">
           <table className="min-w-full bg-white">
