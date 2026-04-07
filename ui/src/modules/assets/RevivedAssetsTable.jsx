@@ -27,7 +27,7 @@ export default function RevivedAssetsTable() {
   }, []);
 
   if (loading) return <p>Loading revived assets…</p>;
-  if (error && assets.length === 0) return <p className="text-red-600">{error}</p>;
+  if (error && assets.length === 0) return <p className="text-brand-600">{error}</p>;
   if (assets.length === 0) return <p>No revived assets.</p>;
   const togglePublish = async (id, publish) => {
     try {
@@ -44,7 +44,7 @@ export default function RevivedAssetsTable() {
 
   return (
     <div className="bg-white rounded-lg shadow-md">
-      {error && assets.length > 0 && <p className="text-red-600 p-2">{error}</p>}
+      {error && assets.length > 0 && <p className="text-brand-600 p-2">{error}</p>}
       <table className="w-full text-left">
         <thead className="bg-gray-100">
           <tr>
