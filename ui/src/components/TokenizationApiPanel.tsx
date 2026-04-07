@@ -246,7 +246,7 @@ export default function TokenizationApiPanel({ apiBase }: Props) {
               {poolLoading ? "Deploying…" : "Deploy pool"}
             </button>
           </form>
-          {poolError && <p className="text-sm text-rose-600">{poolError}</p>}
+          {poolError && <p className="text-sm text-brand-600">{poolError}</p>}
           {poolResult && (
             <div className="rounded-md border border-slate-100 bg-slate-50 p-3 text-xs text-slate-700">
               <p className="font-semibold text-slate-900">{poolResult.name}</p>
@@ -305,7 +305,7 @@ export default function TokenizationApiPanel({ apiBase }: Props) {
               {whitelistLoading ? "Whitelisting…" : "Approve investor"}
             </button>
           </form>
-          {whitelistError && <p className="text-sm text-rose-600">{whitelistError}</p>}
+          {whitelistError && <p className="text-sm text-brand-600">{whitelistError}</p>}
           {whitelistResult?.whitelist && (
             <div className="rounded-md border border-emerald-100 bg-emerald-50 p-3 text-xs text-emerald-800">
               <p className="font-semibold">KYC + AML cleared</p>
@@ -355,7 +355,7 @@ export default function TokenizationApiPanel({ apiBase }: Props) {
               {investmentLoading ? "Minting…" : "Mint to investor"}
             </button>
           </form>
-          {investmentError && <p className="text-sm text-rose-600">{investmentError}</p>}
+          {investmentError && <p className="text-sm text-brand-600">{investmentError}</p>}
           {investmentResult?.investment && (
             <div className="rounded-md border border-amber-100 bg-amber-50 p-3 text-xs text-amber-900">
               <p className="font-semibold">Minted {formatNumber(investmentResult.investment.amount)}</p>
@@ -391,7 +391,7 @@ export default function TokenizationApiPanel({ apiBase }: Props) {
             </button>
           </form>
         </div>
-        {lookupError && <p className="mt-3 text-sm text-rose-600">{lookupError}</p>}
+        {lookupError && <p className="mt-3 text-sm text-brand-600">{lookupError}</p>}
         {poolDetails ? (
           <div className="mt-4 grid gap-3 md:grid-cols-3">
             <div className="rounded border border-slate-100 bg-slate-50 p-3 text-sm">
