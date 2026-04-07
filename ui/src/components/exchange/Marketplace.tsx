@@ -18,7 +18,7 @@ export default function Marketplace() {
       </p>
       <Filters />
        {error ? (
-        <div className="text-red-500">{error.message}</div>
+        <div className="text-brand-500">{error.message}</div>
       ) : isLoading ? (
         <Spinner />
       ) : (
