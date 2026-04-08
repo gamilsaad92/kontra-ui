@@ -22,6 +22,7 @@ import MarketsLayout from "./dashboard/markets/MarketsLayout";
 import GovernanceLayout from "./dashboard/governance/GovernanceLayout";
 import ApiDiagnostics from "./settings/ApiDiagnostics";
 import SsoSettingsPage from "./settings/SsoSettingsPage";
+import BillingPage from "./settings/BillingPage";
 import WiringCheck from "./dev/WiringCheck";
 import {
   GovernanceComplianceCrudPage,
@@ -189,7 +190,8 @@ export default function SaasDashboard() {
       </Route>
       <Route path="/analytics" element={<AiInsightsPage />} />
       <Route path="/reports" element={<ReportsCrudPage />} />
-      <Route path="/settings" element={<Navigate to="/settings/sso" replace />} />
+      <Route path="/settings" element={<Navigate to="/settings/billing" replace />} />
+      <Route path="/settings/billing" element={<BillingPage />} />
       <Route path="/settings/sso" element={<SsoSettingsPage />} />
       <Route path="/settings/api-diagnostics" element={<ApiDiagnostics />} />
       <Route path="/dev/wiring-check" element={<WiringCheck />} />

@@ -8,6 +8,7 @@ import {
   ShieldCheckIcon,
   PresentationChartLineIcon,
   CubeTransparentIcon,
+  CreditCardIcon,
 } from "@heroicons/react/24/outline";
 
 export const lenderNavRoutes = [
@@ -57,6 +58,12 @@ export const lenderNavRoutes = [
     label: "Reports",
     path: "/reports",
     icon: ChartBarIcon,
+    requiresAuth: true,
+  },
+  {
+    label: "Billing",
+    path: "/settings/billing",
+    icon: CreditCardIcon,
     requiresAuth: true,
   },
   {
