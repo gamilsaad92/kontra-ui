@@ -67,7 +67,7 @@ export default function BillingPage() {
   const [transactions, setTxns]       = useState<Transaction[]>([]);
   const [records, setRecords]         = useState<BillingRecord[]>([]);
   const [loading, setLoading]         = useState(true);
-  const [error, setError]             = useState<string | null>(null);
+  const [apiUnavailable, setApiUnavailable] = useState(false);
 
   // Pricing edit state
   const [editPricing, setEditPricing]   = useState(false);
@@ -85,30 +85,50 @@ export default function BillingPage() {
   const [runningCycle, setRunningCycle] = useState(false);
   const [cycleMsg, setCycleMsg]         = useState<string | null>(null);
 
+  const isAuthOrMissingError = (e: unknown) => {
+    if (!(e instanceof Error)) return false;
+    const msg = e.message.toLowerCase();
+    return msg.includes("session") || msg.includes("sign in") || msg.includes("auth") ||
+      ("status" in e && (e as { status?: number }).status === 401) ||
+      ("status" in e && (e as { status?: number }).status === 404);
+  };
+
   const load = useCallback(async () => {
     setLoading(true);
-    setError(null);
-    try {
-      const [sumRes, txRes, recRes] = await Promise.all([
-        api.get<Summary>("/billing/summary"),
-        api.get<{ transactions: Transaction[] }>("/billing/transactions", { params: { limit: "25" } }),
-        api.get<{ records: BillingRecord[] }>("/billing/records"),
-      ]);
-      setSummary(sumRes.data);
-      setTxns(txRes.data?.transactions ?? []);
-      setRecords(recRes.data?.records ?? []);
-      if (sumRes.data?.pricing) {
+    setApiUnavailable(false);
+
+    const [sumResult, txResult, recResult] = await Promise.allSettled([
+      api.get<Summary>("/billing/summary"),
+      api.get<{ transactions: Transaction[] }>("/billing/transactions?limit=25"),
+      api.get<{ records: BillingRecord[] }>("/billing/records"),
+    ]);
+
+    const sumOk  = sumResult.status  === "fulfilled";
+    const txOk   = txResult.status   === "fulfilled";
+    const recOk  = recResult.status  === "fulfilled";
+
+    if (sumOk) {
+      setSummary(sumResult.value.data);
+      if (sumResult.value.data?.pricing) {
         setPricingForm({
-          per_loan_price:      String(sumRes.data.pricing.per_loan_price ?? 50),
-          transaction_fee_pct: String(((sumRes.data.pricing.transaction_fee_pct ?? 0.0025) * 100).toFixed(4)),
-          billing_email:       sumRes.data.pricing.billing_email ?? "",
+          per_loan_price:      String(sumResult.value.data.pricing.per_loan_price ?? 50),
+          transaction_fee_pct: String(((sumResult.value.data.pricing.transaction_fee_pct ?? 0.0025) * 100).toFixed(4)),
+          billing_email:       sumResult.value.data.pricing.billing_email ?? "",
         });
       }
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load billing data");
-    } finally {
-      setLoading(false);
     }
+
+    setTxns(txOk  ? (txResult.value.data?.transactions ?? [])  : []);
+    setRecords(recOk ? (recResult.value.data?.records ?? []) : []);
+
+    if (!sumOk && !txOk && !recOk) {
+      const err = sumResult.status === "rejected" ? sumResult.reason : null;
+      if (!err || isAuthOrMissingError(err)) {
+        setApiUnavailable(true);
+      }
+    }
+
+    setLoading(false);
   }, []);
 
   useEffect(() => { load(); }, [load]);
@@ -180,15 +200,6 @@ export default function BillingPage() {
     );
   }
 
-  if (error) {
-    return (
-      <div className="rounded-xl border border-brand-200 bg-brand-50 p-6 text-sm text-brand-700">
-        {error}
-        <button onClick={load} className="ml-3 underline underline-offset-4 font-semibold">Retry</button>
-      </div>
-    );
-  }
-
   const p = summary?.pricing ?? { per_loan_price: 50, transaction_fee_pct: 0.0025 };
 
   return (
@@ -219,6 +230,18 @@ export default function BillingPage() {
           </button>
         </div>
       </header>
+
+      {apiUnavailable && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 flex items-center justify-between">
+          <span>
+            Billing API is deploying — live data will appear once the backend update is live.
+            Displaying default pricing for now.
+          </span>
+          <button onClick={load} className="ml-4 rounded-md border border-amber-300 bg-white px-3 py-1 text-xs font-semibold text-amber-800 hover:bg-amber-50 transition-colors">
+            Retry
+          </button>
+        </div>
+      )}
 
       {cycleMsg && (
         <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700 flex items-center justify-between">
