@@ -1,21 +1,27 @@
 /**
- * usePortalRouter — Role-based redirect after login.
+ * usePortalRouter — Authentication vs Authorization separation.
  *
- * Reads the effective app_role from the Supabase JWT (injected by the
- * custom_access_token_hook) and redirects the user to their portal.
- * Only fires when the user is at "/" or a genuinely wrong portal root.
+ * Authentication = Supabase session (who you are).
+ * Authorization  = app_role in JWT claims (what portal you enter).
  *
- * Role → Portal mapping:
- *   platform_admin | lender_admin | servicer | asset_manager → /dashboard
- *   investor  → /investor
- *   borrower  → /borrower
+ * Routing rules after login (bare "/" only):
+ *   investor        → /investor          (direct, no selection screen)
+ *   borrower        → /borrower          (direct, no selection screen)
+ *   servicer        → /dashboard         (direct, single-purpose role)
+ *   asset_manager   → /dashboard         (direct, single-purpose role)
+ *   lender_admin    → /select-portal     (may want to review other portals)
+ *   platform_admin  → /select-portal     (full access, must choose explicitly)
+ *   member/unknown  → /select-portal     (show all options)
+ *
+ * Portal switching from inside any portal's sidebar is intentionally removed.
+ * The only place to switch portals is /select-portal.
  */
 
 import { useContext, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { AuthContext } from "./authContext";
 
-// ── Types ─────────────────────────────────────────────────────
+// ── Types ──────────────────────────────────────────────────────
 type AppRole =
   | "platform_admin"
   | "lender_admin"
@@ -25,32 +31,18 @@ type AppRole =
   | "borrower"
   | "member";
 
-type PortalPath = "/dashboard" | "/investor" | "/borrower";
-
-// ── Constants ─────────────────────────────────────────────────
-const ROLE_TO_PORTAL: Record<AppRole, PortalPath> = {
-  platform_admin: "/dashboard",
-  lender_admin:   "/dashboard",
-  servicer:       "/dashboard",
-  asset_manager:  "/dashboard",
-  investor:       "/investor",
-  borrower:       "/borrower",
-  member:         "/dashboard",
-};
-
-// Paths that belong to each portal — used to detect mismatches
-const LENDER_PATH_PREFIXES = [
-  "/dashboard", "/portfolio", "/servicing", "/governance",
-  "/markets", "/onchain", "/analytics", "/reports",
-  "/workflow", "/settings",
+// ── Public path prefixes (never redirect here) ─────────────────
+const PUBLIC_PATHS = [
+  "/login",
+  "/signup",
+  "/forgot-password",
+  "/reset-password",
+  "/select-portal",
 ];
-const INVESTOR_PATH_PREFIXES = ["/investor"];
-const BORROWER_PATH_PREFIXES = ["/borrower"];
-const PUBLIC_PATH_PREFIXES   = ["/login", "/signup", "/forgot-password", "/reset-password"];
 
-// ── Helpers ───────────────────────────────────────────────────
+// ── Helpers ────────────────────────────────────────────────────
 
-/** Decode the JWT payload without verifying signature (Supabase already verified it) */
+/** Decode JWT payload without verifying signature (Supabase already verified it) */
 function decodeJwtPayload(token: string): Record<string, unknown> | null {
   try {
     const base64 = token.split(".")[1];
@@ -62,59 +54,47 @@ function decodeJwtPayload(token: string): Record<string, unknown> | null {
   }
 }
 
-/** Extract the Kontra app_role from JWT custom claims */
+/** Extract the Kontra app_role from JWT custom claims injected by custom_access_token_hook */
 export function getAppRoleFromToken(accessToken: string | null | undefined): AppRole {
   if (!accessToken) return "member";
   const payload = decodeJwtPayload(accessToken);
   if (!payload) return "member";
-
   const role =
     (payload?.app_metadata as Record<string, string>)?.app_role ??
     (payload?.user_metadata as Record<string, string>)?.app_role ??
     null;
-
   return (role as AppRole) ?? "member";
 }
 
-/** Extract portal from JWT claims (pre-computed by hook) */
-export function getPortalFromToken(accessToken: string | null | undefined): string | null {
-  if (!accessToken) return null;
-  const payload = decodeJwtPayload(accessToken);
-  if (!payload) return null;
-  return (payload?.app_metadata as Record<string, string>)?.portal ?? null;
+/** Returns the correct home path for a role */
+export function getPortalPath(role: AppRole): string {
+  switch (role) {
+    case "investor":      return "/investor";
+    case "borrower":      return "/borrower";
+    case "servicer":      return "/dashboard";
+    case "asset_manager": return "/dashboard";
+    case "lender_admin":  return "/select-portal";
+    case "platform_admin":return "/select-portal";
+    default:              return "/select-portal";
+  }
 }
 
-/** Derive the correct dashboard path for a given role */
-export function getPortalPath(role: AppRole): PortalPath {
-  return ROLE_TO_PORTAL[role] ?? "/dashboard";
-}
-
-function isPublicPath(pathname: string): boolean {
-  return PUBLIC_PATH_PREFIXES.some((p) => pathname.startsWith(p));
-}
-
-function isOnCorrectPortal(role: AppRole, pathname: string): boolean {
-  const target = getPortalPath(role);
-  if (target === "/dashboard") {
-    return LENDER_PATH_PREFIXES.some((p) => pathname.startsWith(p));
-  }
-  if (target === "/investor") {
-    return INVESTOR_PATH_PREFIXES.some((p) => pathname.startsWith(p));
-  }
-  if (target === "/borrower") {
-    return BORROWER_PATH_PREFIXES.some((p) => pathname.startsWith(p));
-  }
-  return false;
+/**
+ * Returns the "home" link destination for the currently signed-in user.
+ * Use this for logo/home nav links inside each portal.
+ */
+export function usePortalHome(): string {
+  const { session } = useContext(AuthContext) as { session: { access_token?: string } | null };
+  const role = getAppRoleFromToken(session?.access_token);
+  return getPortalPath(role);
 }
 
 // ── Hook ──────────────────────────────────────────────────────
 
 /**
- * Mount this once at the app root (inside Router + AuthContext).
- * It fires only when:
- *  1. The user is authenticated
- *  2. The current path is "/" (bare root, just after login)
- * For lender admins who deliberately open /investor or /borrower, we do NOT redirect.
+ * Mount once inside AuthedApp (inside Router context).
+ * Fires only when the user lands on bare "/" — redirects them to the
+ * correct portal before any dashboard chrome loads.
  */
 export function usePortalRouter(): void {
   const { session } = useContext(AuthContext) as { session: { access_token?: string } | null };
@@ -127,26 +107,15 @@ export function usePortalRouter(): void {
 
     const pathname = location.pathname;
 
-    // Never redirect on public routes
-    if (isPublicPath(pathname)) return;
-
-    // Only auto-redirect from the bare root "/"
-    // Specific portal URLs (like /investor directly) are intentional.
+    // Only fire on the bare root — all other paths are intentional
     if (pathname !== "/" && pathname !== "") return;
+
+    // Never redirect from public routes
+    if (PUBLIC_PATHS.some((p) => pathname.startsWith(p))) return;
 
     const role = getAppRoleFromToken(token);
     const target = getPortalPath(role);
 
     navigate(target, { replace: true });
   }, [session?.access_token, location.pathname, navigate]);
-}
-
-/**
- * Returns the correct home path for the currently authenticated user.
- * Use this for "go home" links across all portals.
- */
-export function usePortalHome(): PortalPath {
-  const { session } = useContext(AuthContext) as { session: { access_token?: string } | null };
-  const role = getAppRoleFromToken(session?.access_token);
-  return getPortalPath(role);
 }
