@@ -20,6 +20,8 @@ import ServicingAIOpsPage from "./dashboard/servicing/ServicingAIOpsPage";
 import PortfolioLayout from "./dashboard/portfolio/PortfolioLayout";
 import MarketsLayout from "./dashboard/markets/MarketsLayout";
 import GovernanceLayout from "./dashboard/governance/GovernanceLayout";
+import LoanControlPage from "./dashboard/governance/LoanControlPage";
+import InvestorGovernancePage from "./dashboard/governance/InvestorGovernancePage";
 import ApiDiagnostics from "./settings/ApiDiagnostics";
 import SsoSettingsPage from "./settings/SsoSettingsPage";
 import BillingPage from "./settings/BillingPage";
@@ -181,7 +183,9 @@ export default function SaasDashboard() {
       </Route>
       <Route path="/onchain" element={<OnchainDashboard />} />
       <Route path="/governance" element={<GovernanceLayout />}>
-        <Route index element={<Navigate to="/governance/compliance" replace />} />
+        <Route index element={<Navigate to="/governance/loan-control" replace />} />
+        <Route path="loan-control" element={<LoanControlPage />} />
+        <Route path="proposals" element={<InvestorGovernancePage />} />
         <Route path="compliance" element={<GovernanceComplianceCrudPage />} />
         <Route path="legal" element={<GovernanceLegalCrudPage />} />
         <Route path="regulatory-scans" element={<GovernanceRegulatoryCrudPage />} />
