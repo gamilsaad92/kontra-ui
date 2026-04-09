@@ -1,17 +1,22 @@
 /**
  * PortalSelectPage — neutral post-login portal selection screen.
  *
- * Shown when the authenticated user has access to more than one portal
- * (e.g. a platform_admin or lender_admin who can review all three portals).
+ * Fetches the user's real role from the API (reads org_memberships +
+ * organization_members in priority order) so it works even before the
+ * Supabase custom_access_token_hook is registered.
  *
  * Single-role users (investor, borrower, servicer, asset_manager) are
- * never routed here — they get a direct redirect from usePortalRouter.
+ * automatically redirected to their portal. Admins choose from the card grid.
  */
 
-import React, { useContext } from "react";
+import React, { useContext, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { AuthContext } from "../lib/authContext";
-import { getAppRoleFromToken } from "../lib/usePortalRouter";
+import { getPortalPath } from "../lib/usePortalRouter";
+
+type AppRole =
+  | "platform_admin" | "lender_admin" | "servicer" | "asset_manager"
+  | "investor" | "borrower" | "member";
 
 type PortalCard = {
   id: string;
@@ -22,8 +27,10 @@ type PortalCard = {
   ring: string;
   iconBg: string;
   icon: React.ReactNode;
-  available: boolean;
 };
+
+// Roles that see a selection screen (multi-portal access)
+const MULTI_PORTAL_ROLES: AppRole[] = ["platform_admin", "lender_admin"];
 
 function BuildingIcon() {
   return (
@@ -49,6 +56,39 @@ function HomeModernIcon() {
   );
 }
 
+const ALL_PORTALS: PortalCard[] = [
+  {
+    id: "lender",
+    label: "Lender / Servicer Workspace",
+    description: "Loan origination, asset management, servicing, capital markets, and full platform control.",
+    path: "/dashboard",
+    accent: "text-brand-300",
+    ring: "ring-brand-700 hover:ring-brand-500",
+    iconBg: "bg-brand-900/50 text-brand-400",
+    icon: <BuildingIcon />,
+  },
+  {
+    id: "investor",
+    label: "Investor Portal",
+    description: "Portfolio holdings, distribution history, governance voting, and performance analytics.",
+    path: "/investor",
+    accent: "text-violet-300",
+    ring: "ring-violet-800 hover:ring-violet-500",
+    iconBg: "bg-violet-900/50 text-violet-400",
+    icon: <ChartBarIcon />,
+  },
+  {
+    id: "borrower",
+    label: "Borrower Portal",
+    description: "Loan status, payment history, draw requests, document submissions, and servicer messages.",
+    path: "/borrower",
+    accent: "text-emerald-300",
+    ring: "ring-emerald-800 hover:ring-emerald-500",
+    iconBg: "bg-emerald-900/50 text-emerald-400",
+    icon: <HomeModernIcon />,
+  },
+];
+
 export default function PortalSelectPage() {
   const { session, signOut } = useContext(AuthContext) as {
     session: { access_token?: string; user?: { email?: string; user_metadata?: Record<string, string> } } | null;
@@ -56,7 +96,9 @@ export default function PortalSelectPage() {
   };
   const navigate = useNavigate();
 
-  const role = getAppRoleFromToken(session?.access_token);
+  const [role, setRole] = useState<AppRole | null>(null);
+  const [loading, setLoading] = useState(true);
+
   const userEmail = session?.user?.email ?? "";
   const userName =
     session?.user?.user_metadata?.full_name ??
@@ -64,46 +106,54 @@ export default function PortalSelectPage() {
     userEmail.split("@")[0] ??
     "there";
 
-  const isPlatformAdmin = role === "platform_admin";
-  const isLenderAdmin   = role === "lender_admin";
+  // Fetch real role from API (checks org_memberships + organization_members)
+  useEffect(() => {
+    const token = session?.access_token;
+    if (!token) { setLoading(false); return; }
 
-  const portals: PortalCard[] = [
-    {
-      id: "lender",
-      label: "Lender / Servicer Workspace",
-      description: "Loan origination, asset management, servicing, capital markets, and full platform control.",
-      path: "/dashboard",
-      accent: "text-brand-300",
-      ring: "ring-brand-700 hover:ring-brand-500",
-      iconBg: "bg-brand-900/50 text-brand-400",
-      icon: <BuildingIcon />,
-      available: true,
-    },
-    {
-      id: "investor",
-      label: "Investor Portal",
-      description: "Portfolio holdings, distribution history, governance voting, and performance analytics.",
-      path: "/investor",
-      accent: "text-violet-300",
-      ring: "ring-violet-800 hover:ring-violet-500",
-      iconBg: "bg-violet-900/50 text-violet-400",
-      icon: <ChartBarIcon />,
-      available: isPlatformAdmin || isLenderAdmin,
-    },
-    {
-      id: "borrower",
-      label: "Borrower Portal",
-      description: "Loan status, payment history, draw requests, document submissions, and servicer messages.",
-      path: "/borrower",
-      accent: "text-emerald-300",
-      ring: "ring-emerald-800 hover:ring-emerald-500",
-      iconBg: "bg-emerald-900/50 text-emerald-400",
-      icon: <HomeModernIcon />,
-      available: isPlatformAdmin || isLenderAdmin,
-    },
-  ];
+    fetch("/api/onboarding/me", {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        const fetchedRole = (data?.app_role ?? "member") as AppRole;
 
-  const available = portals.filter((p) => p.available);
+        // Single-role users shouldn't be on this page — redirect them directly
+        if (!MULTI_PORTAL_ROLES.includes(fetchedRole) && fetchedRole !== "member") {
+          navigate(getPortalPath(fetchedRole), { replace: true });
+          return;
+        }
+
+        setRole(fetchedRole);
+        setLoading(false);
+      })
+      .catch(() => {
+        setRole("member");
+        setLoading(false);
+      });
+  }, [session?.access_token, navigate]);
+
+  // While fetching role
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center">
+        <div className="flex flex-col items-center gap-3">
+          <div className="h-6 w-6 animate-spin rounded-full border-2 border-red-700 border-t-transparent" />
+          <span className="text-xs font-medium tracking-widest uppercase text-slate-500">
+            Loading your workspace…
+          </span>
+        </div>
+      </div>
+    );
+  }
+
+  // Which portals to show:
+  // - platform_admin / member → all three
+  // - lender_admin → all three (they may need to check investor/borrower experience)
+  const portalsToShow =
+    role === "platform_admin" || role === "lender_admin" || role === "member"
+      ? ALL_PORTALS
+      : ALL_PORTALS.filter((p) => p.path === getPortalPath(role as AppRole));
 
   async function handleSignOut() {
     await signOut();
@@ -127,32 +177,35 @@ export default function PortalSelectPage() {
           Welcome back{userName ? `, ${userName}` : ""}
         </h1>
         <p className="text-slate-400 text-base">
-          {available.length === 1
+          {portalsToShow.length === 1
             ? "Entering your workspace…"
             : "Select the workspace you want to enter."}
         </p>
       </div>
 
       {/* Portal cards */}
-      <div className={`w-full max-w-4xl grid gap-4 ${available.length === 1 ? "max-w-sm" : available.length === 2 ? "grid-cols-1 sm:grid-cols-2" : "grid-cols-1 sm:grid-cols-3"}`}>
-        {available.map((portal) => (
+      <div
+        className={`w-full grid gap-4 ${
+          portalsToShow.length === 1
+            ? "max-w-sm"
+            : portalsToShow.length === 2
+            ? "max-w-2xl grid-cols-1 sm:grid-cols-2"
+            : "max-w-4xl grid-cols-1 sm:grid-cols-3"
+        }`}
+      >
+        {portalsToShow.map((portal) => (
           <button
             key={portal.id}
             onClick={() => navigate(portal.path, { replace: true })}
             className={`group relative flex flex-col gap-4 rounded-2xl border border-slate-800 bg-slate-900 p-6 text-left ring-1 transition-all duration-200 ${portal.ring} hover:bg-slate-800/80 focus:outline-none focus:ring-2`}
           >
-            {/* Icon */}
             <div className={`inline-flex h-11 w-11 items-center justify-center rounded-xl ${portal.iconBg}`}>
               {portal.icon}
             </div>
-
-            {/* Label + description */}
             <div className="flex-1">
               <p className={`text-base font-semibold mb-1 ${portal.accent}`}>{portal.label}</p>
               <p className="text-sm text-slate-400 leading-relaxed">{portal.description}</p>
             </div>
-
-            {/* Enter arrow */}
             <div className="flex items-center justify-end">
               <span className={`text-xs font-semibold tracking-wide uppercase ${portal.accent} group-hover:translate-x-0.5 transition-transform`}>
                 Enter →
@@ -166,10 +219,7 @@ export default function PortalSelectPage() {
       <div className="mt-12 flex items-center gap-6 text-xs text-slate-600">
         <span>{userEmail}</span>
         <span>·</span>
-        <button
-          onClick={handleSignOut}
-          className="hover:text-slate-400 transition-colors"
-        >
+        <button onClick={handleSignOut} className="hover:text-slate-400 transition-colors">
           Sign out
         </button>
       </div>

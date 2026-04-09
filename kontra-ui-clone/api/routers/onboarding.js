@@ -35,40 +35,66 @@ function requireLenderRole(req, res, next) {
   next();
 }
 
+// Maps legacy role names (org_memberships.role) → new app_role values
+const LEGACY_ROLE_MAP = {
+  admin:         'lender_admin',
+  lender_admin:  'lender_admin',
+  platform_admin:'platform_admin',
+  servicer:      'servicer',
+  asset_manager: 'asset_manager',
+  investor:      'investor',
+  borrower:      'borrower',
+  member:        'member',
+};
+
 // ── GET /api/onboarding/me ──────────────────────────────────────
 router.get('/me', async (req, res) => {
   try {
     const userId = req.user?.id;
     if (!userId) return res.status(401).json({ error: 'Unauthorized' });
 
-    const [profileRes, memberRes] = await Promise.allSettled([
-      adminSupabase.from('profiles').select('*').eq('id', userId).single(),
+    const [profileRes, memberRes, legacyRes] = await Promise.allSettled([
+      adminSupabase.from('profiles').select('*').eq('id', userId).maybeSingle(),
+      // New table: organization_members (has app_role column)
       adminSupabase
         .from('organization_members')
-        .select('app_role, status, organization_id, organizations(id, name, slug, type)')
+        .select('app_role, status, organization_id')
         .eq('user_id', userId)
         .eq('status', 'active')
         .order('created_at', { ascending: true })
         .limit(1)
-        .single(),
+        .maybeSingle(),
+      // Legacy table: org_memberships (has role column = "admin", "investor", etc.)
+      adminSupabase
+        .from('org_memberships')
+        .select('role, org_id')
+        .eq('user_id', userId)
+        .order('created_at', { ascending: true })
+        .limit(1)
+        .maybeSingle(),
     ]);
 
     const profile = profileRes.status === 'fulfilled' ? profileRes.value.data : null;
     const membership = memberRes.status === 'fulfilled' ? memberRes.value.data : null;
+    const legacy = legacyRes.status === 'fulfilled' ? legacyRes.value.data : null;
 
-    return res.json({
-      profile,
-      app_role:  membership?.app_role  ?? req.role ?? 'member',
-      org_id:    membership?.organization_id ?? req.orgId,
-      org:       membership?.organizations ?? null,
-      portal: (() => {
-        const role = membership?.app_role ?? req.role;
-        if (['platform_admin','lender_admin','servicer','asset_manager'].includes(role)) return 'lender';
-        if (role === 'investor') return 'investor';
-        if (role === 'borrower') return 'borrower';
-        return 'lender';
-      })(),
-    });
+    // Priority: organization_members.app_role > JWT claim > org_memberships.role
+    const appRole =
+      membership?.app_role ??
+      req.role ??
+      (legacy?.role ? LEGACY_ROLE_MAP[legacy.role] ?? 'lender_admin' : null) ??
+      'member';
+
+    const orgId = membership?.organization_id ?? req.orgId ?? legacy?.org_id ?? null;
+
+    const portal = (() => {
+      if (['platform_admin','lender_admin','servicer','asset_manager'].includes(appRole)) return 'lender';
+      if (appRole === 'investor') return 'investor';
+      if (appRole === 'borrower') return 'borrower';
+      return 'lender';
+    })();
+
+    return res.json({ profile, app_role: appRole, org_id: orgId, portal });
   } catch (err) {
     console.error('[onboarding] /me error', err);
     return res.status(500).json({ error: 'Internal server error' });
