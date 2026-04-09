@@ -160,6 +160,7 @@ const projectsRouter = require('./routers/projects');
 const organizationsRouter = require('./routers/organizations');
 const billingRouter = require('./routers/billing');
 const loanGovernanceRouter = require('./routers/loanGovernance');
+const onboardingRouter = require('./routers/onboarding');
 const invitesRouter = require('./routers/invites');
 const documentReviewRouter = require('./routers/documentReview');
 // Optional routers for unfinished modules
@@ -605,6 +606,7 @@ app.use('/api', insightsRouter);
 app.use('/api/organizations', organizationsRouter);
 app.use('/api/billing', billingRouter);
 app.use('/api/loan-governance', loanGovernanceRouter);
+app.use('/api/onboarding', authenticate, onboardingRouter);
 app.use('/api/invites', invitesRouter);
 app.use('/api/analyze-financials', analyzeFinancialsRouter);
 app.use('/api/inspect-review', inspectReviewRouter);

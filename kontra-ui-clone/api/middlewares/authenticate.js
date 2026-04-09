@@ -172,10 +172,30 @@ module.exports = async function requireAuth(req, res, next) {
       supabaseUserId: authUser.id,
       email: authUser.email || null,
     };
-    req.role = localMembership?.role || 'member';
-    req.orgId = orgId;
-    req.organizationId = orgId;
-    req.tenant_id = orgId;
+
+    // ── Role resolution: JWT custom claims (from auth hook) take priority ──
+    // The Supabase custom_access_token_hook injects app_role, org_id, and portal
+    // into app_metadata. Use these first so RLS policies and the API both agree.
+    const jwtClaims     = tokenPayload?.app_metadata ?? tokenPayload?.user_metadata ?? {};
+    const jwtAppRole    = jwtClaims.app_role   ?? null;
+    const jwtOrgId      = jwtClaims.org_id     ?? null;
+    const jwtPortal     = jwtClaims.portal      ?? null;
+
+    const resolvedRole  = jwtAppRole || localMembership?.role || 'member';
+    const resolvedOrgId = orgId ?? jwtOrgId ?? null;
+    const resolvedPortal = jwtPortal ?? (() => {
+      if (['platform_admin','lender_admin','servicer','asset_manager'].includes(resolvedRole)) return 'lender';
+      if (resolvedRole === 'investor') return 'investor';
+      if (resolvedRole === 'borrower') return 'borrower';
+      return 'lender';
+    })();
+
+    req.role           = resolvedRole;
+    req.appRole        = resolvedRole;
+    req.portal         = resolvedPortal;
+    req.orgId          = resolvedOrgId;
+    req.organizationId = resolvedOrgId;
+    req.tenant_id      = resolvedOrgId;
 
     return next();
   } catch (error) {
