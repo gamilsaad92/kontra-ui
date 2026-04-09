@@ -117,6 +117,8 @@ router.post('/invite', requireLenderRole, async (req, res) => {
 
     const targetOrgId = org_id ?? req.orgId;
     if (!targetOrgId) return res.status(400).json({ error: 'org_id required' });
+    // organizations.id is BIGINT — ensure it's a number for the RPC call
+    const numericOrgId = Number(targetOrgId);
 
     // 1. Create (or invite) auth user via service role
     const { data: inviteData, error: inviteError } = await adminSupabase.auth.admin.inviteUserByEmail(email, {
@@ -134,7 +136,7 @@ router.post('/invite', requireLenderRole, async (req, res) => {
     if (authUserId) {
       await adminSupabase.rpc('onboard_user', {
         p_user_id:    authUserId,
-        p_org_id:     targetOrgId,
+        p_org_id:     numericOrgId,
         p_app_role:   app_role,
         p_full_name:  full_name ?? null,
         p_email:      email,
