@@ -50,9 +50,9 @@ function HomeModernIcon() {
 }
 
 export default function PortalSelectPage() {
-  const { session, supabase } = useContext(AuthContext) as {
+  const { session, signOut } = useContext(AuthContext) as {
     session: { access_token?: string; user?: { email?: string; user_metadata?: Record<string, string> } } | null;
-    supabase: { auth: { signOut: () => Promise<unknown> } } | null;
+    signOut: () => Promise<void>;
   };
   const navigate = useNavigate();
 
@@ -106,7 +106,7 @@ export default function PortalSelectPage() {
   const available = portals.filter((p) => p.available);
 
   async function handleSignOut() {
-    await supabase?.auth.signOut();
+    await signOut();
     navigate("/login", { replace: true });
   }
 
