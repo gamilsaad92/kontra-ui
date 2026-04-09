@@ -1,26 +1,57 @@
-import React, { useContext, useState } from "react";
-import { Navigate } from "react-router-dom";
+import React, { useContext, useEffect, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import LoginForm from "../components/LoginForm";
 import SignUpForm from "../components/SignUpForm";
 import { AuthContext } from "../lib/authContext";
+import { getAppRoleFromToken, getPortalPath } from "../lib/usePortalRouter";
 
 export default function LoginPage() {
   const { session, loading } = useContext(AuthContext);
   const [mode, setMode] = useState("login");
+  const [redirecting, setRedirecting] = useState(false);
+  const navigate = useNavigate();
+  const didRedirect = useRef(false);
 
-  if (loading) {
+  useEffect(() => {
+    const token = session?.access_token;
+    if (!token || didRedirect.current) return;
+
+    didRedirect.current = true;
+    setRedirecting(true);
+
+    const roleFromJwt = getAppRoleFromToken(token);
+
+    if (roleFromJwt !== "member") {
+      // JWT already carries the role (hook registered, or invited via new flow)
+      navigate(getPortalPath(roleFromJwt), { replace: true });
+      return;
+    }
+
+    // Fallback: JWT has no app_role yet — ask the API (reads from organization_members DB)
+    fetch("/api/onboarding/me", {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        const dbRole = data?.app_role ?? "member";
+        navigate(getPortalPath(dbRole), { replace: true });
+      })
+      .catch(() => {
+        navigate("/select-portal", { replace: true });
+      });
+  }, [session?.access_token, navigate]);
+
+  if (loading || redirecting) {
     return (
-      <div className="flex min-h-screen items-center justify-center" style={{ background: "#f7f8fb" }}>
+      <div className="flex min-h-screen items-center justify-center" style={{ background: "#111" }}>
         <div className="flex flex-col items-center gap-3">
-          <div className="h-6 w-6 animate-spin rounded-full border-2 border-brand-600 border-t-transparent" />
-          <span className="text-xs font-medium tracking-widest uppercase" style={{ color: "#888" }}>Loading</span>
+          <div className="h-6 w-6 animate-spin rounded-full border-2 border-red-700 border-t-transparent" />
+          <span className="text-xs font-medium tracking-widest uppercase" style={{ color: "#888" }}>
+            {redirecting ? "Opening your workspace…" : "Loading"}
+          </span>
         </div>
       </div>
     );
-  }
-
-  if (session?.access_token) {
-    return <Navigate to="/dashboard" replace />;
   }
 
   return (
