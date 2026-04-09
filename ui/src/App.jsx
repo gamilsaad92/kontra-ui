@@ -1,6 +1,7 @@
 import React, { useContext } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 import LoginPage from "./pages/LoginPage";
+import PortalSelectPage from "./pages/PortalSelectPage";
 import RequireAuth from "./app/guards/RequireAuth";
 import SaasDashboard from "./pages/SaasDashboard";
 import InvestorPortal from "./portals/investor/InvestorPortal";
@@ -24,21 +25,34 @@ function AuthedOrgProvider({ children }) {
 }
 
 /**
- * Mounts the portal router hook inside the React Router context.
- * When an authenticated user hits "/", they are redirected to the
- * portal matching their JWT app_role:
- *   lender_admin | servicer | asset_manager → /dashboard
- *   investor → /investor
- *   borrower → /borrower
+ * Root router that enforces the authentication / authorization split:
+ *   authentication = Supabase session
+ *   authorization  = JWT app_role → portal redirect
+ *
+ * After login, bare "/" is caught by usePortalRouter and redirected:
+ *   investor / borrower  → directly to their portal (no selection screen)
+ *   lender_admin / platform_admin → /select-portal (choose workspace)
+ *   servicer / asset_manager → /dashboard (single-purpose role)
  */
 function AuthedApp() {
   usePortalRouter();
 
   return (
     <Routes>
+      {/* ── Public ─────────────────────────────────────────── */}
       <Route path="/login" element={<LoginPage />} />
 
-      {/* Investor portal — separate product, read-only servicing, governance + distributions */}
+      {/* ── Post-login portal selection (neutral, no portal chrome) */}
+      <Route
+        path="/select-portal"
+        element={
+          <RequireAuth>
+            <PortalSelectPage />
+          </RequireAuth>
+        }
+      />
+
+      {/* ── Investor portal ────────────────────────────────── */}
       <Route
         path="/investor/*"
         element={
@@ -48,7 +62,7 @@ function AuthedApp() {
         }
       />
 
-      {/* Borrower portal — separate product, operational + communication-driven */}
+      {/* ── Borrower portal ────────────────────────────────── */}
       <Route
         path="/borrower/*"
         element={
@@ -58,7 +72,7 @@ function AuthedApp() {
         }
       />
 
-      {/* Lender / Servicer portal — main execution layer, full servicing control */}
+      {/* ── Lender / Servicer workspace ────────────────────── */}
       <Route
         path="/*"
         element={
