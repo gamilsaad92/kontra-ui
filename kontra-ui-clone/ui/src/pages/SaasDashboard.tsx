@@ -26,6 +26,7 @@ import ApiDiagnostics from "./settings/ApiDiagnostics";
 import SsoSettingsPage from "./settings/SsoSettingsPage";
 import BillingPage from "./settings/BillingPage";
 import WiringCheck from "./dev/WiringCheck";
+import WorkflowEnginePage from "./dashboard/WorkflowEnginePage";
 import {
   GovernanceComplianceCrudPage,
   GovernanceDocumentCrudPage,
@@ -93,7 +94,8 @@ export default function SaasDashboard() {
     location.pathname.startsWith("/markets") ||
     location.pathname.startsWith("/governance") ||
     location.pathname.startsWith("/analytics") ||
-    location.pathname.startsWith("/onchain");
+    location.pathname.startsWith("/onchain") ||
+    location.pathname.startsWith("/workflow");
 
   const renderNavItem = useCallback(
     (item: NavItem) => {
@@ -194,6 +196,7 @@ export default function SaasDashboard() {
       </Route>
       <Route path="/analytics" element={<AiInsightsPage />} />
       <Route path="/reports" element={<ReportsCrudPage />} />
+      <Route path="/workflow" element={<WorkflowEnginePage />} />
       <Route path="/settings" element={<Navigate to="/settings/billing" replace />} />
       <Route path="/settings/billing" element={<BillingPage />} />
       <Route path="/settings/sso" element={<SsoSettingsPage />} />
@@ -246,6 +249,40 @@ export default function SaasDashboard() {
             </div>
           )}
             {navItems.map((item) => renderNavItem(item))}
+
+          {/* Portal Access — all 3 dashboards */}
+          <div className="pt-4 mt-2 border-t border-slate-800">
+            <p className="px-3 mb-2 text-xs font-bold uppercase tracking-widest text-slate-500">Portal Access</p>
+            <a
+              href="/dashboard"
+              className="flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-semibold text-brand-300 bg-brand-900/30 hover:bg-brand-900/50 transition-colors mb-1"
+            >
+              <span className="h-1.5 w-1.5 rounded-full bg-brand-400" />
+              Lender / Servicer
+              <span className="ml-auto text-xs text-brand-500">Active</span>
+            </a>
+            <a
+              href="/investor"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-violet-300 hover:bg-slate-800 transition-colors mb-1"
+            >
+              <span className="h-1.5 w-1.5 rounded-full bg-violet-400" />
+              Investor Portal
+              <span className="ml-auto text-xs text-slate-500">↗</span>
+            </a>
+            <a
+              href="/borrower"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-slate-300 hover:bg-slate-800 transition-colors"
+            >
+              <span className="h-1.5 w-1.5 rounded-full bg-slate-400" />
+              Borrower Portal
+              <span className="ml-auto text-xs text-slate-500">↗</span>
+            </a>
+          </div>
+
           <div className="pt-4">
             <button
               type="button"
