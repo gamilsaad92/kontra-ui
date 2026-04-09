@@ -25,6 +25,7 @@ import InvestorGovernancePage from "./dashboard/governance/InvestorGovernancePag
 import ApiDiagnostics from "./settings/ApiDiagnostics";
 import SsoSettingsPage from "./settings/SsoSettingsPage";
 import BillingPage from "./settings/BillingPage";
+import TeamPage from "./settings/TeamPage";
 import WiringCheck from "./dev/WiringCheck";
 import WorkflowEnginePage from "./dashboard/WorkflowEnginePage";
 import {
@@ -200,6 +201,7 @@ export default function SaasDashboard() {
       <Route path="/settings" element={<Navigate to="/settings/billing" replace />} />
       <Route path="/settings/billing" element={<BillingPage />} />
       <Route path="/settings/sso" element={<SsoSettingsPage />} />
+      <Route path="/settings/team" element={<TeamPage />} />
       <Route path="/settings/api-diagnostics" element={<ApiDiagnostics />} />
       <Route path="/dev/wiring-check" element={<WiringCheck />} />
       <Route path="/projects" element={<LegacyRedirect to="/portfolio/assets" />} />

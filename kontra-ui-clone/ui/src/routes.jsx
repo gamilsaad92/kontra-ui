@@ -10,6 +10,7 @@ import {
   CubeTransparentIcon,
   CreditCardIcon,
   BoltIcon,
+  UsersIcon,
 } from "@heroicons/react/24/outline";
 
 export const lenderNavRoutes = [
@@ -65,6 +66,12 @@ export const lenderNavRoutes = [
     label: "Workflow Engine",
     path: "/workflow",
     icon: BoltIcon,
+    requiresAuth: true,
+  },
+  {
+    label: "Team & Roles",
+    path: "/settings/team",
+    icon: UsersIcon,
     requiresAuth: true,
   },
   {
