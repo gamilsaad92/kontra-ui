@@ -98,7 +98,7 @@ async function evaluateRules(ctx, options = {}) {
   const { category, jurisdiction, loan_type, token_type, workflow_stage, org_id } = options;
 
   let query = adminDb
-    .from('policy_rules')
+    .from('kontra_rules')
     .select('*')
     .eq('status', 'published')
     .lte('effective_date', new Date().toISOString())
@@ -135,7 +135,7 @@ async function evaluateRules(ctx, options = {}) {
 // ── Audit helper ────────────────────────────────────────────────
 async function audit(event_type, opts = {}) {
   try {
-    await adminDb.from('policy_audit_log').insert({
+    await adminDb.from('kontra_rule_audit_log').insert({
       event_type,
       rule_id: opts.rule_id ?? null,
       rule_version: opts.rule_version ?? null,
@@ -151,7 +151,7 @@ async function audit(event_type, opts = {}) {
 
 // ── Snapshot helper ─────────────────────────────────────────────
 async function snapshotVersion(rule, actorId, changeNote) {
-  await adminDb.from('policy_rule_versions').insert({
+  await adminDb.from('kontra_rule_versions').insert({
     rule_id: rule.id,
     version: rule.version,
     snapshot: rule,
@@ -169,7 +169,7 @@ router.get('/', requireAdmin, async (req, res) => {
     const offset = (Number(page) - 1) * Number(limit);
 
     let query = adminDb
-      .from('policy_rules')
+      .from('kontra_rules')
       .select('*', { count: 'exact' })
       .order('updated_at', { ascending: false })
       .range(offset, offset + Number(limit) - 1);
@@ -222,7 +222,7 @@ router.post('/simulate', requireAdmin, async (req, res) => {
 
     // If simulating a specific rule (even draft)
     if (rule_id) {
-      const { data: rule, error } = await adminDb.from('policy_rules').select('*').eq('id', rule_id).single();
+      const { data: rule, error } = await adminDb.from('kontra_rules').select('*').eq('id', rule_id).single();
       if (error || !rule) return res.status(404).json({ error: 'Rule not found' });
 
       const matches = ruleMatches(rule, context);
@@ -251,7 +251,7 @@ router.get('/audit', requireAdmin, async (req, res) => {
     const offset = (Number(page) - 1) * Number(limit);
 
     let query = adminDb
-      .from('policy_audit_log')
+      .from('kontra_rule_audit_log')
       .select('*', { count: 'exact' })
       .order('created_at', { ascending: false })
       .range(offset, offset + Number(limit) - 1);
@@ -274,7 +274,7 @@ router.get('/audit', requireAdmin, async (req, res) => {
 router.get('/pending', requireAdmin, async (req, res) => {
   try {
     const { data, error } = await adminDb
-      .from('policy_approvals')
+      .from('kontra_rule_approvals')
       .select('*, policy_rules(*)')
       .eq('status', 'pending')
       .order('submitted_at', { ascending: false });
@@ -298,7 +298,7 @@ router.post('/', requireAdmin, async (req, res) => {
     }
 
     const { data: rule, error } = await adminDb
-      .from('policy_rules')
+      .from('kontra_rules')
       .insert({
         name, description, category, rule_key,
         jurisdictions: jurisdictions ?? [],
@@ -337,11 +337,11 @@ router.post('/', requireAdmin, async (req, res) => {
 // ══════════════════════════════════════════════════════════════════
 router.get('/:id', requireAdmin, async (req, res) => {
   try {
-    const { data: rule, error } = await adminDb.from('policy_rules').select('*').eq('id', req.params.id).single();
+    const { data: rule, error } = await adminDb.from('kontra_rules').select('*').eq('id', req.params.id).single();
     if (error || !rule) return res.status(404).json({ error: 'Rule not found' });
 
-    const { data: versions } = await adminDb.from('policy_rule_versions').select('version, change_note, created_at, changed_by').eq('rule_id', rule.id).order('version', { ascending: false });
-    const { data: approvals } = await adminDb.from('policy_approvals').select('*').eq('rule_id', rule.id).order('submitted_at', { ascending: false }).limit(5);
+    const { data: versions } = await adminDb.from('kontra_rule_versions').select('version, change_note, created_at, changed_by').eq('rule_id', rule.id).order('version', { ascending: false });
+    const { data: approvals } = await adminDb.from('kontra_rule_approvals').select('*').eq('rule_id', rule.id).order('submitted_at', { ascending: false }).limit(5);
 
     return res.json({ ...rule, _versions: versions ?? [], _approvals: approvals ?? [] });
   } catch (err) {
@@ -354,7 +354,7 @@ router.get('/:id', requireAdmin, async (req, res) => {
 // ══════════════════════════════════════════════════════════════════
 router.put('/:id', requireAdmin, async (req, res) => {
   try {
-    const { data: existing } = await adminDb.from('policy_rules').select('*').eq('id', req.params.id).single();
+    const { data: existing } = await adminDb.from('kontra_rules').select('*').eq('id', req.params.id).single();
     if (!existing) return res.status(404).json({ error: 'Rule not found' });
 
     if (['published', 'emergency'].includes(existing.status)) {
@@ -365,7 +365,7 @@ router.put('/:id', requireAdmin, async (req, res) => {
     const { name, description, category, jurisdictions, loan_types, token_types, workflow_stages, conditions, condition_logic, actions, severity, source_reference, effective_date, end_date, change_note } = req.body;
 
     const { data: updated, error } = await adminDb
-      .from('policy_rules')
+      .from('kontra_rules')
       .update({
         name: name ?? existing.name,
         description: description ?? existing.description,
@@ -405,12 +405,12 @@ router.put('/:id', requireAdmin, async (req, res) => {
 // ══════════════════════════════════════════════════════════════════
 router.post('/:id/submit', requireAdmin, async (req, res) => {
   try {
-    const { data: rule } = await adminDb.from('policy_rules').select('*').eq('id', req.params.id).single();
+    const { data: rule } = await adminDb.from('kontra_rules').select('*').eq('id', req.params.id).single();
     if (!rule) return res.status(404).json({ error: 'Rule not found' });
     if (rule.status !== 'draft') return res.status(409).json({ error: 'Only draft rules can be submitted' });
 
-    await adminDb.from('policy_rules').update({ status: 'pending_review', updated_by: req.user?.id }).eq('id', req.params.id);
-    await adminDb.from('policy_approvals').insert({ rule_id: req.params.id, rule_version: rule.version, submitted_by: req.user?.id, status: 'pending' });
+    await adminDb.from('kontra_rules').update({ status: 'pending_review', updated_by: req.user?.id }).eq('id', req.params.id);
+    await adminDb.from('kontra_rule_approvals').insert({ rule_id: req.params.id, rule_version: rule.version, submitted_by: req.user?.id, status: 'pending' });
     await audit('rule_submitted', { rule_id: rule.id, rule_version: rule.version, actor_id: req.user?.id });
 
     return res.json({ message: 'Rule submitted for review' });
@@ -425,18 +425,18 @@ router.post('/:id/submit', requireAdmin, async (req, res) => {
 router.post('/:id/approve', requireAdmin, async (req, res) => {
   try {
     const { note } = req.body;
-    const { data: rule } = await adminDb.from('policy_rules').select('*').eq('id', req.params.id).single();
+    const { data: rule } = await adminDb.from('kontra_rules').select('*').eq('id', req.params.id).single();
     if (!rule) return res.status(404).json({ error: 'Rule not found' });
     if (rule.status !== 'pending_review') return res.status(409).json({ error: 'Rule is not pending review' });
 
     // Maker-checker: approver must differ from submitter
-    const { data: pending } = await adminDb.from('policy_approvals').select('*').eq('rule_id', req.params.id).eq('status', 'pending').single();
+    const { data: pending } = await adminDb.from('kontra_rule_approvals').select('*').eq('rule_id', req.params.id).eq('status', 'pending').single();
     if (pending?.submitted_by === req.user?.id) {
       return res.status(403).json({ error: 'Maker-checker violation: approver cannot be the same user who submitted' });
     }
 
-    await adminDb.from('policy_approvals').update({ status: 'approved', reviewed_by: req.user?.id, reviewed_at: new Date().toISOString(), review_note: note ?? null }).eq('id', pending.id);
-    await adminDb.from('policy_rules').update({ status: 'approved', updated_by: req.user?.id }).eq('id', req.params.id);
+    await adminDb.from('kontra_rule_approvals').update({ status: 'approved', reviewed_by: req.user?.id, reviewed_at: new Date().toISOString(), review_note: note ?? null }).eq('id', pending.id);
+    await adminDb.from('kontra_rules').update({ status: 'approved', updated_by: req.user?.id }).eq('id', req.params.id);
     await audit('rule_approved', { rule_id: rule.id, rule_version: rule.version, actor_id: req.user?.id, result: { note } });
 
     return res.json({ message: 'Rule approved. Ready to publish.' });
@@ -453,15 +453,15 @@ router.post('/:id/reject', requireAdmin, async (req, res) => {
     const { note } = req.body;
     if (!note) return res.status(400).json({ error: 'Rejection note is required' });
 
-    const { data: rule } = await adminDb.from('policy_rules').select('*').eq('id', req.params.id).single();
+    const { data: rule } = await adminDb.from('kontra_rules').select('*').eq('id', req.params.id).single();
     if (!rule) return res.status(404).json({ error: 'Rule not found' });
 
-    const { data: pending } = await adminDb.from('policy_approvals').select('*').eq('rule_id', req.params.id).eq('status', 'pending').maybeSingle();
+    const { data: pending } = await adminDb.from('kontra_rule_approvals').select('*').eq('rule_id', req.params.id).eq('status', 'pending').maybeSingle();
     if (pending) {
-      await adminDb.from('policy_approvals').update({ status: 'rejected', reviewed_by: req.user?.id, reviewed_at: new Date().toISOString(), review_note: note }).eq('id', pending.id);
+      await adminDb.from('kontra_rule_approvals').update({ status: 'rejected', reviewed_by: req.user?.id, reviewed_at: new Date().toISOString(), review_note: note }).eq('id', pending.id);
     }
 
-    await adminDb.from('policy_rules').update({ status: 'draft', updated_by: req.user?.id }).eq('id', req.params.id);
+    await adminDb.from('kontra_rules').update({ status: 'draft', updated_by: req.user?.id }).eq('id', req.params.id);
     await audit('rule_rejected', { rule_id: rule.id, rule_version: rule.version, actor_id: req.user?.id, result: { note } });
 
     return res.json({ message: 'Rule rejected and returned to draft' });
@@ -475,11 +475,11 @@ router.post('/:id/reject', requireAdmin, async (req, res) => {
 // ══════════════════════════════════════════════════════════════════
 router.post('/:id/publish', requireAdmin, async (req, res) => {
   try {
-    const { data: rule } = await adminDb.from('policy_rules').select('*').eq('id', req.params.id).single();
+    const { data: rule } = await adminDb.from('kontra_rules').select('*').eq('id', req.params.id).single();
     if (!rule) return res.status(404).json({ error: 'Rule not found' });
     if (rule.status !== 'approved') return res.status(409).json({ error: 'Only approved rules can be published' });
 
-    await adminDb.from('policy_rules').update({ status: 'published', updated_by: req.user?.id }).eq('id', req.params.id);
+    await adminDb.from('kontra_rules').update({ status: 'published', updated_by: req.user?.id }).eq('id', req.params.id);
     await audit('rule_published', { rule_id: rule.id, rule_version: rule.version, actor_id: req.user?.id });
 
     return res.json({ message: 'Rule is now live' });
@@ -497,11 +497,11 @@ router.post('/:id/emergency', async (req, res) => {
     const { reason } = req.body;
     if (!reason) return res.status(400).json({ error: 'Emergency reason is required' });
 
-    const { data: rule } = await adminDb.from('policy_rules').select('*').eq('id', req.params.id).single();
+    const { data: rule } = await adminDb.from('kontra_rules').select('*').eq('id', req.params.id).single();
     if (!rule) return res.status(404).json({ error: 'Rule not found' });
 
-    await adminDb.from('policy_rules').update({ status: 'emergency', updated_by: req.user?.id }).eq('id', req.params.id);
-    await adminDb.from('policy_approvals').insert({ rule_id: req.params.id, rule_version: rule.version, submitted_by: req.user?.id, reviewed_by: req.user?.id, reviewed_at: new Date().toISOString(), status: 'approved', is_emergency: true, review_note: `EMERGENCY: ${reason}` });
+    await adminDb.from('kontra_rules').update({ status: 'emergency', updated_by: req.user?.id }).eq('id', req.params.id);
+    await adminDb.from('kontra_rule_approvals').insert({ rule_id: req.params.id, rule_version: rule.version, submitted_by: req.user?.id, reviewed_by: req.user?.id, reviewed_at: new Date().toISOString(), status: 'approved', is_emergency: true, review_note: `EMERGENCY: ${reason}` });
     await audit('rule_emergency_override', { rule_id: rule.id, rule_version: rule.version, actor_id: req.user?.id, result: { reason } });
 
     return res.json({ message: 'Emergency rule activated' });
@@ -515,7 +515,7 @@ router.post('/:id/emergency', async (req, res) => {
 // ══════════════════════════════════════════════════════════════════
 router.post('/:id/archive', requireAdmin, async (req, res) => {
   try {
-    await adminDb.from('policy_rules').update({ status: 'archived', updated_by: req.user?.id }).eq('id', req.params.id);
+    await adminDb.from('kontra_rules').update({ status: 'archived', updated_by: req.user?.id }).eq('id', req.params.id);
     await audit('rule_archived', { rule_id: req.params.id, actor_id: req.user?.id });
     return res.json({ message: 'Rule archived' });
   } catch (err) {
@@ -529,7 +529,7 @@ router.post('/:id/archive', requireAdmin, async (req, res) => {
 router.get('/:id/history', requireAdmin, async (req, res) => {
   try {
     const { data, error } = await adminDb
-      .from('policy_rule_versions')
+      .from('kontra_rule_versions')
       .select('*')
       .eq('rule_id', req.params.id)
       .order('version', { ascending: false });
@@ -549,15 +549,15 @@ router.post('/:id/rollback', requireAdmin, async (req, res) => {
     const { version, reason } = req.body;
     if (!version) return res.status(400).json({ error: 'version is required' });
 
-    const { data: snapshot, error } = await adminDb.from('policy_rule_versions').select('*').eq('rule_id', req.params.id).eq('version', version).single();
+    const { data: snapshot, error } = await adminDb.from('kontra_rule_versions').select('*').eq('rule_id', req.params.id).eq('version', version).single();
     if (error || !snapshot) return res.status(404).json({ error: `Version ${version} not found` });
 
-    const { data: current } = await adminDb.from('policy_rules').select('version').eq('id', req.params.id).single();
+    const { data: current } = await adminDb.from('kontra_rules').select('version').eq('id', req.params.id).single();
     const newVersion = (current?.version ?? version) + 1;
 
     const snap = snapshot.snapshot;
     const { data: rolled, error: updateErr } = await adminDb
-      .from('policy_rules')
+      .from('kontra_rules')
       .update({
         ...snap,
         id: req.params.id,
