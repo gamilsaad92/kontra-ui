@@ -3,6 +3,7 @@ import { NavLink, Outlet } from 'react-router-dom';
 const tabs = [
   { label: 'Loan Control', to: '/governance/loan-control', highlight: true },
   { label: 'Governance', to: '/governance/proposals', highlight: true },
+  { label: 'Policy Rules', to: '/governance/rules', highlight: true },
   { label: 'Compliance', to: '/governance/compliance' },
   { label: 'Legal', to: '/governance/legal' },
   { label: 'Regulatory', to: '/governance/regulatory-scans' },

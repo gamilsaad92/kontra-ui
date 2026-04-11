@@ -22,6 +22,7 @@ import MarketsLayout from "./dashboard/markets/MarketsLayout";
 import GovernanceLayout from "./dashboard/governance/GovernanceLayout";
 import LoanControlPage from "./dashboard/governance/LoanControlPage";
 import InvestorGovernancePage from "./dashboard/governance/InvestorGovernancePage";
+import RulesConsolePage from "./dashboard/governance/RulesConsolePage";
 import ApiDiagnostics from "./settings/ApiDiagnostics";
 import SsoSettingsPage from "./settings/SsoSettingsPage";
 import BillingPage from "./settings/BillingPage";
@@ -189,6 +190,7 @@ export default function SaasDashboard() {
         <Route index element={<Navigate to="/governance/loan-control" replace />} />
         <Route path="loan-control" element={<LoanControlPage />} />
         <Route path="proposals" element={<InvestorGovernancePage />} />
+        <Route path="rules" element={<RulesConsolePage />} />
         <Route path="compliance" element={<GovernanceComplianceCrudPage />} />
         <Route path="legal" element={<GovernanceLegalCrudPage />} />
         <Route path="regulatory-scans" element={<GovernanceRegulatoryCrudPage />} />
