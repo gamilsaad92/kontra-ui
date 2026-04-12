@@ -30,8 +30,8 @@ const { createClient } = require('@supabase/supabase-js');
 const router = express.Router();
 
 const adminDb = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY,
+  process.env.SUPABASE_URL             || 'https://placeholder.supabase.co',
+  process.env.SUPABASE_SERVICE_ROLE_KEY || 'placeholder-service-role-key',
   { auth: { persistSession: false, autoRefreshToken: false } }
 );
 
