@@ -1,0 +1,50 @@
+2026-04-12T21:09:59.551914557Z 
+2026-04-12T21:09:59.551919397Z To address issues that do not require attention, run:
+2026-04-12T21:09:59.551924398Z   npm audit fix
+2026-04-12T21:09:59.551928108Z 
+2026-04-12T21:09:59.551931138Z To address all issues (including breaking changes), run:
+2026-04-12T21:09:59.551934798Z   npm audit fix --force
+2026-04-12T21:09:59.551937728Z 
+2026-04-12T21:09:59.551941308Z Run `npm audit` for details.
+2026-04-12T21:10:12.923073587Z ==> Uploading build...
+2026-04-12T21:10:19.716571883Z ==> Uploaded in 3.5s. Compression took 3.3s
+2026-04-12T21:10:19.743268198Z ==> Build successful 🎉
+2026-04-12T21:10:22.618325371Z ==> Deploying...
+2026-04-12T21:10:41.188429622Z ==> Running 'node index.js'
+2026-04-12T21:10:46.088941875Z Redis package not installed, falling back to memory cache
+2026-04-12T21:10:52.589317117Z Error: Cannot find module './routers/loanGovernance'
+2026-04-12T21:10:52.589336537Z Require stack:
+2026-04-12T21:10:52.589341167Z - /opt/render/project/src/api/index.js
+2026-04-12T21:10:52.589345378Z     at Function._resolveFilename (node:internal/modules/cjs/loader:1225:15)
+2026-04-12T21:10:52.589348718Z     at Function._load (node:internal/modules/cjs/loader:1055:27)
+2026-04-12T21:10:52.589352158Z     at TracingChannel.traceSync (node:diagnostics_channel:322:14)
+2026-04-12T21:10:52.589355398Z     at wrapModuleLoad (node:internal/modules/cjs/loader:220:24)
+2026-04-12T21:10:52.589358828Z     at Module.<anonymous> (node:internal/modules/cjs/loader:1311:12)
+2026-04-12T21:10:52.589362588Z     at Module.patchedRequire (/opt/render/project/src/api/node_modules/require-in-the-middle/index.js:233:34)
+2026-04-12T21:10:52.589367908Z     at Hook._require.Module.require (/opt/render/project/src/api/node_modules/require-in-the-middle/index.js:181:27)
+2026-04-12T21:10:52.589370948Z     at require (node:internal/modules/helpers:136:16)
+2026-04-12T21:10:52.589374208Z     at Object.<anonymous> (/opt/render/project/src/api/index.js:162:30)
+2026-04-12T21:10:52.589377388Z     at Module._compile (node:internal/modules/cjs/loader:1554:14) {
+2026-04-12T21:10:52.589381288Z   code: 'MODULE_NOT_FOUND',
+2026-04-12T21:10:52.589384389Z   requireStack: [ '/opt/render/project/src/api/index.js' ]
+2026-04-12T21:10:52.589387479Z }
+2026-04-12T21:10:57.815380013Z ==> Exited with status 1
+2026-04-12T21:10:57.81815154Z ==> Common ways to troubleshoot your deploy: https://render.com/docs/troubleshooting-deploys
+2026-04-12T21:11:03.214659993Z ==> Running 'node index.js'
+2026-04-12T21:11:08.214344968Z Redis package not installed, falling back to memory cache
+2026-04-12T21:11:14.522576965Z Error: Cannot find module './routers/loanGovernance'
+2026-04-12T21:11:14.522623326Z Require stack:
+2026-04-12T21:11:14.522631997Z - /opt/render/project/src/api/index.js
+2026-04-12T21:11:14.522637837Z     at Function._resolveFilename (node:internal/modules/cjs/loader:1225:15)
+2026-04-12T21:11:14.522642447Z     at Function._load (node:internal/modules/cjs/loader:1055:27)
+2026-04-12T21:11:14.522646687Z     at TracingChannel.traceSync (node:diagnostics_channel:322:14)
+2026-04-12T21:11:14.522650807Z     at wrapModuleLoad (node:internal/modules/cjs/loader:220:24)
+2026-04-12T21:11:14.522654757Z     at Module.<anonymous> (node:internal/modules/cjs/loader:1311:12)
+2026-04-12T21:11:14.522659577Z     at Module.patchedRequire (/opt/render/project/src/api/node_modules/require-in-the-middle/index.js:233:34)
+2026-04-12T21:11:14.522665768Z     at Hook._require.Module.require (/opt/render/project/src/api/node_modules/require-in-the-middle/index.js:181:27)
+2026-04-12T21:11:14.522670048Z     at require (node:internal/modules/helpers:136:16)
+2026-04-12T21:11:14.522678868Z     at Object.<anonymous> (/opt/render/project/src/api/index.js:162:30)
+2026-04-12T21:11:14.522683588Z     at Module._compile (node:internal/modules/cjs/loader:1554:14) {
+2026-04-12T21:11:14.522688688Z   code: 'MODULE_NOT_FOUND',
+2026-04-12T21:11:14.522693029Z   requireStack: [ '/opt/render/project/src/api/index.js' ]
+2026-04-12T21:11:14.522697378Z }
