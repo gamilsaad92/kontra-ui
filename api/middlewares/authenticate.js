@@ -16,6 +16,17 @@ const devUserId = process.env.DEV_USER_ID?.trim() || 'dev-user';
 const devOrgId = process.env.DEV_ORG_ID?.trim() || null;
 const devRole = process.env.DEV_USER_ROLE?.trim() || 'admin';
 
+
+const authDebugEnabled = ['1', 'true', 'yes', 'on'].includes(
+  String(process.env.AUTH_DEBUG || '').trim().toLowerCase()
+);
+
+function authDebug(...args) {
+  if (authDebugEnabled) {
+    console.debug(...args);
+  }
+}
+
 function decodeJwtPayload(token) {
   const parts = token.split('.');
   if (parts.length < 2) return null;
@@ -74,11 +85,11 @@ async function resolveOrgId(req, authUser, localMembership) {
         .limit(1)
         .single();
       if (supabaseMember?.org_id) {
-        console.debug('[Auth] org resolved from Supabase org_memberships', supabaseMember.org_id);
+       authDebug('[Auth] org resolved from Supabase org_memberships', supabaseMember.org_id);
         return String(supabaseMember.org_id);
       }
     } catch (err) {
-      console.debug('[Auth] Supabase org_memberships lookup failed', err?.message);
+       authDebug('[Auth] org resolved from Supabase org_memberships', supabaseMember.org_id);
     }
   }
 
@@ -88,7 +99,7 @@ async function resolveOrgId(req, authUser, localMembership) {
     authUser.user_metadata?.organization_id ||
     null;
   if (metaOrgId) {
-    console.debug('[Auth] org resolved from JWT app_metadata', metaOrgId);
+     authDebug('[Auth] org resolved from JWT app_metadata', metaOrgId);
     return String(metaOrgId);
   }
 
@@ -134,7 +145,7 @@ module.exports = async function requireAuth(req, res, next) {
     if (tokenPayload) {
       const issuer = typeof tokenPayload.iss === 'string' ? tokenPayload.iss : null;
       const audience = tokenPayload.aud ?? null;
-      console.debug('[Auth] token payload decoded', { issuer, audience });
+     authDebug('[Auth] token payload decoded', { issuer, audience });
     }
 
     const {
@@ -161,7 +172,7 @@ module.exports = async function requireAuth(req, res, next) {
     } catch (dbErr) {
       // Local DB not available — fall through to Supabase fallback
       if (dbErr?.code !== 'APP_DB_URL_MISSING') {
-        console.debug('[Auth] local DB lookup failed, falling back to Supabase', dbErr?.message);
+      authDebug('[Auth] local DB lookup failed, falling back to Supabase', dbErr?.message);
       }
     }
 
