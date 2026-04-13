@@ -1,14 +1,30 @@
 # Kontra Mobile (iOS)
 
-This directory contains the SwiftUI implementation of the Kontra operator app for iPhone and iPad. The mobile client focuses on the workflows that operators use most on the go—loan intake, underwriting tasks, delinquency alerts, and guided next steps powered by the existing Kontra API.
+Native SwiftUI iPhone and iPad app for the Kontra platform. Three completely separate role-based experiences — Lender/Servicer dashboard, Borrower portal, and Investor portal — all running on the same Kontra API backend.
+
+## Design theme
+
+Brand color: **Burgundy `#800020`** — applied as the global `.tint` on the `TabView` so every tab bar icon, navigation link, and control automatically uses the brand color.
+
+## Role-based portals
+
+| Tab | Portal | Who uses it |
+|---|---|---|
+| Dashboard | Lender / Servicer | Underwriters, asset managers, servicer ops |
+| Applications | Lender | Review and decision loan applications |
+| Tasks | Lender | Underwriting task queue |
+| Borrower | Borrower | Loan status, payments, documents, draw requests, notices |
+| Investor | Investor | Portfolio holdings, distributions, performance, risk alerts |
+| Settings | All | API host switching, environment config |
 
 ## Key capabilities
 
-- **Dashboard overview** – consolidated summary of loan pipeline metrics, pending tasks, credit trends, and recent alerts pulled from the API.
-- **Loan applications** – browse, filter, and inspect the most recent applications with decisioning context.
-- **Task management** – update underwriting tasks, mark items complete, and see ownership at a glance.
-- **Personalized guidance** – the same event stream used by the web app surfaces "next best action" guidance on mobile.
-- **Offline-friendly data layer** – deterministic decoding, local caching hooks, and graceful fallbacks when network calls fail.
+- **Dashboard overview** — consolidated KPIs, pending tasks, credit trends, and risk alerts from `/api/mobile/overview`
+- **Borrower portal** — loan details, payment history, document center (upload required docs), draw request tracking, and servicer notices from `/api/borrower/*`
+- **Investor portal** — portfolio holdings, distribution history, per-loan performance metrics (DSCR, LTV, delinquency), and risk alerts from `/api/investors/*`
+- **Graceful fallback** — every screen falls back to deterministic mock data in DEBUG builds when the network is unavailable
+- **Pull-to-refresh** — all screens support `refreshable` for on-demand data refresh
+- **API host switching** — the Settings tab lets any user switch between dev, staging, and production endpoints at runtime
 
 ## Requirements
 
@@ -21,57 +37,58 @@ This directory contains the SwiftUI implementation of the Kontra operator app fo
 
 ```
 ios/
-  project.yml            # XcodeGen definition for the KontraMobile workspace
+  project.yml              # XcodeGen definition
   KontraMobile/
-    App/                 # SwiftUI entry point and dependency graph
-    Configuration/       # Runtime configuration helpers (API base URL, feature flags)
-    Models/              # Codable structs shared across features
-    Networking/          # API client, endpoints, and mock data providers
-    ViewModels/          # ObservableObjects that orchestrate each screen
-    Views/               # SwiftUI feature modules
-    Resources/           # Info.plist and asset placeholders
-  KontraMobileTests/     # Unit tests for view models and formatting helpers
+    App/                   # SwiftUI entry point and tab registration
+    Configuration/         # AppConfiguration, KontraTheme (brand colors)
+    Models/                # Codable structs (MobileOverview, BorrowerModels, InvestorModels)
+    Networking/            # APIClient protocol, Endpoint enum, MockData
+    ViewModels/            # ObservableObjects: Dashboard, Applications, Tasks, Borrower, Investor
+    Views/
+      Dashboard/           # DashboardView + MetricCard
+      Applications/        # ApplicationsView + ApplicationRow
+      Tasks/               # TasksView
+      Borrower/            # BorrowerView (My Loan, Payments, Documents, Draws, Notices)
+      Investor/            # InvestorView (Portfolio, Distributions, Performance, Alerts)
+      Settings/            # SettingsView
+      Components/          # Shared LoadingStateView
+    Resources/             # Info.plist, Config.plist
+  KontraMobileTests/       # Unit tests for view models
 ```
 
 ## File-to-feature mapping
 
 | Area | Primary files | Purpose |
-| --- | --- | --- |
-| App entry point | `KontraMobile/App/KontraMobileApp.swift` | Configures the tab shell and injects view models into root views. |
-| Runtime configuration | `KontraMobile/Configuration/AppConfiguration.swift`<br>`KontraMobile/Resources/Config.plist` | Loads the API base URL and environment toggles used throughout the app. |
-| Dashboard overview | `KontraMobile/Views/Dashboard/DashboardView.swift`<br>`KontraMobile/ViewModels/DashboardViewModel.swift`<br>`KontraMobile/Views/Dashboard/MetricCard.swift`<br>`KontraMobile/Models/MobileOverview.swift` | Presents top-level KPIs, trends, and alerts returned by `/api/mobile/overview`. |
-| Applications list | `KontraMobile/Views/Applications/ApplicationsView.swift`<br>`KontraMobile/Views/Applications/ApplicationRow.swift`<br>`KontraMobile/ViewModels/ApplicationsViewModel.swift` | Lists and filters recent loan applications and exposes navigation targets for detail views. |
-| Tasks | `KontraMobile/Views/Tasks/TasksView.swift`<br>`KontraMobile/ViewModels/TasksViewModel.swift` | Surfaces underwriting tasks, assignment, and completion affordances. |
-| Settings & environment overrides | `KontraMobile/Views/Settings/SettingsView.swift` | Allows toggling the active API host and other runtime switches. |
-| Shared UI components | `KontraMobile/Views/Components/LoadingStateView.swift` | Reusable loading and empty states shared across tabs. |
-| Networking layer | `KontraMobile/Networking/APIClient.swift`<br>`KontraMobile/Networking/Endpoint.swift`<br>`KontraMobile/Networking/MockData.swift` | Wraps `URLSession`, describes API routes, and provides deterministic sample data for previews/tests. |
-| Load-state helpers | `KontraMobile/ViewModels/LoadState.swift` | Models loading/error/ready states that view models publish to the UI. |
-| Tests | `KontraMobileTests/DashboardViewModelTests.swift` | Validates decoding and presentation logic for dashboard metrics. |
+|---|---|---|
+| App entry | `App/KontraMobileApp.swift` | Tab shell, ViewModel injection, brand tint |
+| Brand theme | `Configuration/KontraTheme.swift` | `Color.kontraBrand` = `#800020` and variants |
+| Configuration | `Configuration/AppConfiguration.swift` | API base URL, organization ID, runtime switching |
+| Dashboard | `Views/Dashboard/DashboardView.swift` + `ViewModels/DashboardViewModel.swift` | Lender/servicer KPIs from `/api/mobile/overview` |
+| Applications | `Views/Applications/` + `ViewModels/ApplicationsViewModel.swift` | Loan application list and detail |
+| Tasks | `Views/Tasks/TasksView.swift` + `ViewModels/TasksViewModel.swift` | Underwriting task queue |
+| Borrower portal | `Views/Borrower/BorrowerView.swift` + `ViewModels/BorrowerViewModel.swift` + `Models/BorrowerModels.swift` | Full borrower experience — loan, payments, docs, draws, notices |
+| Investor portal | `Views/Investor/InvestorView.swift` + `ViewModels/InvestorViewModel.swift` + `Models/InvestorModels.swift` | Holdings, distributions, performance, risk alerts |
+| Networking | `Networking/APIClient.swift` + `Networking/Endpoint.swift` | Protocol + URLSession wrapper for all 13 endpoints |
+| Mock data | `Networking/MockData.swift` | Deterministic sample data for previews and DEBUG fallback |
+| Load state | `ViewModels/LoadState.swift` | `.idle / .loading / .loaded / .failed` enum |
+| Tests | `KontraMobileTests/` | View model decoding and formatting unit tests |
 
-## Linking files in Xcode
+## API endpoints consumed
 
-1. From the repository root, regenerate the project so Xcode reflects any new on-disk files:
-
-   ```bash
-   cd ios
-   xcodegen generate
-   ```
-
-   XcodeGen reads `ios/project.yml` and mirrors the folder structure under `KontraMobile/` and `KontraMobileTests/` into build targets.
-
-2. Open the generated workspace (`KontraMobile.xcodeproj`). Every folder listed in the table above appears as a group in the **Project Navigator**, automatically linking the Swift sources, resources, and tests into their respective targets.
-
-3. When you add additional Swift files or asset catalogs:
-
-   - Create the file inside the appropriate folder on disk (for example, add a new dashboard component under `KontraMobile/Views/Dashboard/`).
-   - Re-run `xcodegen generate` so the `.xcodeproj` picks up the new file.
-   - In Xcode, the file will now be part of the relevant target; no manual target membership toggles are required because XcodeGen handles it.
-
-4. To reference shared utilities across features, import the module at the top of your Swift file (e.g., `import KontraMobile`) and initialize the corresponding view model or helper. The generated scheme already links the app and its test target with the shared sources.
-
-5. If you introduce a brand-new module folder (such as `KontraMobile/Views/Alerts/`), update `ios/project.yml` to include it under the appropriate `sources` entry, run XcodeGen again, and the new module appears in Xcode ready for use.
-
-6. For configuration files like `Config.plist`, ensure they reside in `KontraMobile/Resources/`. XcodeGen marks everything in that directory as a bundled resource so the app can load it at runtime via `Bundle.main`.
+| Endpoint | Used by |
+|---|---|
+| `GET /api/mobile/overview` | Dashboard |
+| `GET /api/applications?limit=N` | Applications |
+| `GET /api/tasks?limit=N` | Tasks |
+| `GET /api/borrower/loan` | Borrower — My Loan |
+| `GET /api/borrower/payments` | Borrower — Payments |
+| `GET /api/borrower/documents` | Borrower — Document Center |
+| `GET /api/borrower/draws` | Borrower — Draw Requests |
+| `GET /api/borrower/notices` | Borrower — Notices |
+| `GET /api/investors/holdings` | Investor — Portfolio |
+| `GET /api/investors/distributions` | Investor — Distributions |
+| `GET /api/investors/performance` | Investor — Loan Performance |
+| `GET /api/investors/alerts` | Investor — Risk Alerts |
 
 ## Getting started
 
@@ -83,43 +100,32 @@ ios/
    open KontraMobile.xcodeproj
    ```
 
-2. Configure the API base URL so the mobile client can talk to your backend:
+2. Configure the API base URL:
 
-   - Copy `KontraMobile/Resources/Config.example.plist` to `KontraMobile/Resources/Config.plist`.
-   - Update the `APIBaseURL` value to the environment where the Kontra API is running.
-
-   The value defaults to `http://localhost:5050` for simulator testing.
+   - Copy `KontraMobile/Resources/Config.example.plist` to `KontraMobile/Resources/Config.plist`
+   - Set `APIBaseURL` to your Kontra API endpoint (e.g. `https://kontra-api.onrender.com`)
 
 3. Build & run:
 
-   - Select the **KontraMobile** scheme.
-   - Choose an iPhone simulator (or a connected device with the appropriate provisioning profile).
-   - Press **⌘R** to launch.
+   - Select the **KontraMobile** scheme
+   - Choose an iPhone 15 simulator or a connected device
+   - Press **⌘R**
 
 ## Environment switching at runtime
 
-The **Settings** tab inside the app lets operators switch between staging and production API hosts without a rebuild. The new value is persisted to `UserDefaults`, and every `APIClient` instance reacts to the change automatically.
+The **Settings** tab lets any user switch between staging and production API hosts without a rebuild. The value is persisted to `UserDefaults`.
 
 ## Tests
 
-`KontraMobileTests` currently validates:
-
-- Successful decoding of the `/api/mobile/overview` payload.
-- Dashboard metric formatting.
-- The optimistic UI path when network calls fail.
-
-Run tests from Xcode (**⌘U**) or via the command line:
+Run from Xcode (**⌘U**) or the command line:
 
 ```bash
 xcodebuild test -scheme KontraMobile -destination 'platform=iOS Simulator,name=iPhone 15'
 ```
 
-## Extending the mobile client
+## Extending the app
 
-- The modular folder layout mirrors the web app feature boundaries, making it straightforward to share product requirements between teams.
-- Add new feature modules under `Views/` and `ViewModels/`, then register them in `KontraMobileApp.swift`.
-- Shared validation logic or formatting lives under `Shared/` (create the folder as new utilities are needed).
-
-## Backend support
-
-The mobile app relies on a new `/api/mobile/overview` endpoint that bundles together the metrics needed for the dashboard. Additional endpoints from the existing API (e.g., `/api/applications`, `/api/tasks`) are consumed directly by the app's view models.
+- Add new feature modules under `Views/` and `ViewModels/`, then register them as tabs in `KontraMobileApp.swift`
+- New API endpoints go in `Networking/Endpoint.swift` (add a case) and `Networking/APIClient.swift` (add a protocol method + implementation)
+- Add the corresponding mock response in `Networking/MockData.swift` for offline previews
+- Re-run `xcodegen generate` after adding new files so Xcode picks them up

@@ -4,6 +4,17 @@ protocol MobileAPIClient {
     func fetchOverview() async throws -> MobileOverview
     func fetchApplications(limit: Int) async throws -> [LoanApplication]
     func fetchTasks(limit: Int) async throws -> [TaskItem]
+    // Borrower
+    func fetchBorrowerLoan() async throws -> BorrowerLoan?
+    func fetchBorrowerPayments() async throws -> [BorrowerPayment]
+    func fetchBorrowerDocuments() async throws -> [BorrowerDocument]
+    func fetchBorrowerDraws() async throws -> [BorrowerDraw]
+    func fetchBorrowerNotices() async throws -> [BorrowerNotice]
+    // Investor
+    func fetchInvestorHoldings() async throws -> [InvestorHolding]
+    func fetchInvestorDistributions() async throws -> [InvestorDistribution]
+    func fetchInvestorPerformance() async throws -> [InvestorPerformance]
+    func fetchInvestorAlerts() async throws -> [InvestorAlert]
 }
 
 enum APIError: Error, LocalizedError {
@@ -14,14 +25,10 @@ enum APIError: Error, LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .invalidURL:
-            return "The Kontra API URL is invalid."
-        case let .decoding(error):
-            return "Failed to decode the server response: \(error.localizedDescription)"
-        case let .transport(error):
-            return error.localizedDescription
-        case let .server(statusCode):
-            return "The server responded with status code \(statusCode)."
+        case .invalidURL:               return "The Kontra API URL is invalid."
+        case let .decoding(error):      return "Failed to decode the server response: \(error.localizedDescription)"
+        case let .transport(error):     return error.localizedDescription
+        case let .server(statusCode):   return "The server responded with status code \(statusCode)."
         }
     }
 }
@@ -39,6 +46,7 @@ struct APIClient: MobileAPIClient {
         self.decoder = decoder
     }
 
+    // ── Existing ────────────────────────────────────────────────────────────
     func fetchOverview() async throws -> MobileOverview {
         try await send(.overview, as: MobileOverview.self)
     }
@@ -51,6 +59,45 @@ struct APIClient: MobileAPIClient {
         try await send(.tasks(limit: limit), as: TaskResponse.self).tasks
     }
 
+    // ── Borrower ────────────────────────────────────────────────────────────
+    func fetchBorrowerLoan() async throws -> BorrowerLoan? {
+        try await send(.borrowerLoan, as: BorrowerLoanResponse.self).loan
+    }
+
+    func fetchBorrowerPayments() async throws -> [BorrowerPayment] {
+        try await send(.borrowerPayments, as: BorrowerPaymentsResponse.self).payments
+    }
+
+    func fetchBorrowerDocuments() async throws -> [BorrowerDocument] {
+        try await send(.borrowerDocuments, as: BorrowerDocumentsResponse.self).documents
+    }
+
+    func fetchBorrowerDraws() async throws -> [BorrowerDraw] {
+        try await send(.borrowerDraws, as: BorrowerDrawsResponse.self).draws
+    }
+
+    func fetchBorrowerNotices() async throws -> [BorrowerNotice] {
+        try await send(.borrowerNotices, as: BorrowerNoticesResponse.self).notices
+    }
+
+    // ── Investor ────────────────────────────────────────────────────────────
+    func fetchInvestorHoldings() async throws -> [InvestorHolding] {
+        try await send(.investorHoldings, as: InvestorHoldingsResponse.self).holdings
+    }
+
+    func fetchInvestorDistributions() async throws -> [InvestorDistribution] {
+        try await send(.investorDistributions, as: InvestorDistributionsResponse.self).distributions
+    }
+
+    func fetchInvestorPerformance() async throws -> [InvestorPerformance] {
+        try await send(.investorPerformance, as: InvestorPerformanceResponse.self).performance
+    }
+
+    func fetchInvestorAlerts() async throws -> [InvestorAlert] {
+        try await send(.investorAlerts, as: InvestorAlertsResponse.self).alerts
+    }
+
+    // ── Core ─────────────────────────────────────────────────────────────────
     private func send<Response: Decodable>(_ endpoint: Endpoint, as type: Response.Type) async throws -> Response {
         let request = endpoint.request(configuration: configuration)
         do {
@@ -67,28 +114,16 @@ struct APIClient: MobileAPIClient {
                 throw APIError.decoding(error)
             }
         } catch {
-            if let apiError = error as? APIError { return try handleRetry(for: apiError, endpoint: endpoint, type: type) }
+            if let apiError = error as? APIError {
+                throw apiError
+            }
             throw APIError.transport(error)
         }
     }
-
-    private func handleRetry<Response: Decodable>(for error: APIError, endpoint: Endpoint, type: Response.Type) throws -> Response {
-        switch error {
-        case .server(statusCode: 401):
-            throw error
-        default:
-            throw error
-        }
-    }
 }
 
-private struct ApplicationResponse: Decodable {
-    let applications: [LoanApplication]
-}
-
-private struct TaskResponse: Decodable {
-    let tasks: [TaskItem]
-}
+private struct ApplicationResponse: Decodable { let applications: [LoanApplication] }
+private struct TaskResponse: Decodable { let tasks: [TaskItem] }
 
 private extension JSONDecoder.DateDecodingStrategy {
     static var iso8601WithMilliseconds: JSONDecoder.DateDecodingStrategy {
@@ -105,14 +140,13 @@ private extension JSONDecoder.DateDecodingStrategy {
 
 private extension ISO8601DateFormatter {
     static let standard: ISO8601DateFormatter = {
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withDashSeparatorInDate, .withColonSeparatorInTime]
-        return formatter
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime, .withDashSeparatorInDate, .withColonSeparatorInTime]
+        return f
     }()
-
     static let milliseconds: ISO8601DateFormatter = {
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withDashSeparatorInDate, .withColonSeparatorInTime, .withFractionalSeconds]
-        return formatter
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime, .withDashSeparatorInDate, .withColonSeparatorInTime, .withFractionalSeconds]
+        return f
     }()
 }

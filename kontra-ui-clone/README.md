@@ -1,10 +1,32 @@
-# Kontra UI Monorepo
+# Kontra — Real Estate Loan Servicing Platform
 
-This repository contains the **frontend** and **backend** for the Kontra demo application.
+Kontra is a **data infrastructure layer** for real estate loan servicing, running on a shared Supabase backend with three completely separate role-based products.
 
-- `ui/` – React + Vite web interface
-- `api/` – Express API with Supabase integration
-- ios/` – SwiftUI mobile app that consumes the same API
+| Directory | What it is |
+|---|---|
+| `ui/` | React + Vite web app (three portals: Lender/Servicer, Borrower, Investor) |
+| `api/` | Express + Supabase backend serving all portals and the iOS app |
+| `ios/` | Native SwiftUI iOS app (Borrower portal, Investor portal, Lender dashboard) |
+
+## Role-based portals
+
+All three portals share one backend (`api/`) and one Supabase database, but are completely isolated at the UX and routing level:
+
+| Portal | Web route | iOS tab | Who uses it |
+|---|---|---|---|
+| **Lender / Servicer** | `/dashboard` | Dashboard, Applications, Tasks | Underwriters, asset managers, servicer ops |
+| **Borrower** | `/borrower` | Borrower tab | Borrowers — loan status, payments, documents, draws, notices |
+| **Investor** | `/investor` | Investor tab | Investors — holdings, distributions, performance, risk alerts |
+
+### Borrower portal endpoints
+`GET /api/borrower/loan` · `GET /api/borrower/payments` · `GET /api/borrower/documents` · `GET /api/borrower/draws` · `GET /api/borrower/notices` · `POST /api/borrower/messages`
+
+### Investor portal endpoints
+`GET /api/investors/holdings` · `GET /api/investors/distributions` · `GET /api/investors/performance` · `GET /api/investors/alerts`
+
+## Design theme
+Brand color: **Burgundy `#800020`** — applied as `brand-600` in Tailwind (web) and `Color.kontraBrand` in SwiftUI (iOS).
+
 ## Getting Started
 
 1. Install dependencies for each package:
