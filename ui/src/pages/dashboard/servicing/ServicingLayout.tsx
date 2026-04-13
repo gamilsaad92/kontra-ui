@@ -2,14 +2,14 @@ import { NavLink, Outlet } from 'react-router-dom';
 import { ServicingProvider } from './ServicingContext';
 
 const tabs = [
-  { label: 'Overview', to: '/servicing/overview' },
-  { label: 'Payments', to: '/servicing/payments' },
-  { label: 'Inspections', to: '/servicing/inspections' },
-  { label: 'Draws', to: '/servicing/draws' },
-  { label: 'Escrows', to: '/servicing/escrow' },
-  { label: 'Borrower Financials', to: '/servicing/borrower-financials' },
-  { label: 'Management', to: '/servicing/management' },
-  { label: 'AI Operations', to: '/servicing/ai-ops' },
+  { label: 'Overview',           to: '/servicer/overview' },
+  { label: 'Payments',           to: '/servicer/payments' },
+  { label: 'Inspections',        to: '/servicer/inspections' },
+  { label: 'Draws',              to: '/servicer/draws' },
+  { label: 'Escrows',            to: '/servicer/escrow' },
+  { label: 'Borrower Financials',to: '/servicer/borrower-financials' },
+  { label: 'Management',         to: '/servicer/management' },
+  { label: 'AI Operations',      to: '/servicer/ai-ops' },
 ];
 
 export default function ServicingLayout() {
