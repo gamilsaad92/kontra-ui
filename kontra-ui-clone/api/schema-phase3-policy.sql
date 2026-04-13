@@ -125,8 +125,21 @@ ON CONFLICT (agent_id, rule_key) DO NOTHING;
 
 ALTER TABLE kontra_rule_overrides ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY IF NOT EXISTS rule_overrides_org_policy ON kontra_rule_overrides
-  USING (org_id = (current_setting('app.org_id', true))::uuid);
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE schemaname = 'public'
+      AND tablename  = 'kontra_rule_overrides'
+      AND policyname = 'rule_overrides_org_policy'
+  ) THEN
+    EXECUTE $policy$
+      CREATE POLICY rule_overrides_org_policy ON kontra_rule_overrides
+        USING (org_id = (current_setting('app.org_id', true))::uuid)
+    $policy$;
+  END IF;
+END;
+$$;
 
 -- ── 6. Indexes ────────────────────────────────────────────────────────────────
 
