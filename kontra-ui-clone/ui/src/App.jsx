@@ -6,6 +6,7 @@ import RequireAuth from "./app/guards/RequireAuth";
 import SaasDashboard from "./pages/SaasDashboard";
 import InvestorPortal from "./portals/investor/InvestorPortal";
 import BorrowerPortal from "./portals/borrower/BorrowerPortal";
+import ServicerPortal from "./portals/servicer/ServicerPortal";
 import { OrgProvider } from "./lib/OrgProvider";
 import { AuthContext } from "./lib/authContext";
 import { usePortalRouter } from "./lib/usePortalRouter";
@@ -72,7 +73,17 @@ function AuthedApp() {
         }
       />
 
-      {/* ── Lender / Servicer workspace ────────────────────── */}
+      {/* ── Servicer portal ────────────────────────────────── */}
+      <Route
+        path="/servicer/*"
+        element={
+          <RequireAuth>
+            <ServicerPortal />
+          </RequireAuth>
+        }
+      />
+
+      {/* ── Lender workspace ───────────────────────────────── */}
       <Route
         path="/*"
         element={

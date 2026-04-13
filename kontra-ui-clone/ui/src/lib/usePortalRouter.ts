@@ -71,7 +71,7 @@ export function getPortalPath(role: AppRole): string {
   switch (role) {
     case "investor":      return "/investor";
     case "borrower":      return "/borrower";
-    case "servicer":      return "/dashboard";
+    case "servicer":      return "/servicer/overview";
     case "asset_manager": return "/dashboard";
     case "lender_admin":  return "/select-portal";
     case "platform_admin":return "/select-portal";
