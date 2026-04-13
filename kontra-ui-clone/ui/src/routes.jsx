@@ -68,6 +68,12 @@ export const lenderNavRoutes = [
     requiresAuth: true,
   },
   {
+    label: "Agent Console",
+    path: "/agents",
+    icon: SparklesIcon,
+    requiresAuth: true,
+  },
+  {
     label: "Team & Roles",
     path: "/settings/team",
     icon: UsersIcon,
