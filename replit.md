@@ -141,6 +141,46 @@ Utility scripts package. Each script is a `.ts` file in `src/` with a correspond
 ## Kontra Platform (kontra-ui-clone/)
 
 Full-stack multifamily/CRE loan servicing platform. Lives in `kontra-ui-clone/`.
+Vision: AI-native headless servicing and tokenization OS for enterprise real estate finance.
+Target: $40M SaaS ARR + $37.5M transaction fees = ~$77.5M combined annual revenue.
+
+### Portals
+- `/dashboard` — Lender Portal (burgundy #800020)
+- `/servicer` — Servicer Portal (amber accent)
+- `/investor` — Investor Portal (violet)
+- `/borrower` — Borrower Portal (emerald)
+- `/select-portal` — Multi-portal selection (4-card grid)
+
+### Phase 1: Enterprise Core (COMPLETED)
+Phase 1 transforms Kontra from a dashboard app into a structured workflow engine with a canonical data architecture and headless API.
+
+**Canonical Data Architecture** — `kontra-ui-clone/api/schema-phase1-canonical.sql`
+11 new entity tables: `borrowers`, `properties`, `deficiencies`, `hazard_loss_events`, `reserves`, `covenants`, `maturities`, `watchlist_items`, `approvals`, `webhook_configs`, `webhook_deliveries`
+
+**Workflow Template Library** — `kontra-ui-clone/api/lib/workflowTemplates.js`
+6 machine-readable workflow templates with triggers, steps, SLAs, and typed step nodes:
+- `inspection_review` (7 steps, 72h SLA) — triggers: inspection-uploaded, draw-submitted
+- `hazard_loss_disbursement` (7 steps, 120h SLA) — triggers: hazard-loss-filed
+- `watchlist_review` (6 steps, 48h SLA) — triggers: watchlist-added, delinquency-threshold
+- `borrower_financial_analysis` (7 steps, 96h SLA) — triggers: financial-uploaded, annual-review-due
+- `maturity_tracking` (8 steps, 168h SLA) — triggers: maturity-t90, extension-requested
+- `covenant_monitoring` (9 steps, 24h SLA) — triggers: covenant-test-due, covenant-breach
+
+**Headless API Endpoints** — `kontra-ui-clone/api/src/routes/workflows.js`
+- `GET /api/workflow-templates` — list all templates
+- `GET /api/workflow-templates/:id` — get single template with full step graph
+- `POST /api/workflows/from-template` — launch from template with SLA deadline
+- `GET /api/approval-queue` — pending human reviews for this org
+- 5 new trigger endpoints: hazard-loss-filed, watchlist-added, maturity-t90, covenant-test-due, delinquency-threshold
+- Priority routing: covenant-breach=P1, watchlist/hazard=P2, maturity=P3
+
+**Workflow Engine UI** — `kontra-ui-clone/ui/src/pages/dashboard/WorkflowEnginePage.tsx`
+Full operational OS with 5 tabs:
+- Instances — live kanban board (queued/running/needs_review/completed) with SLA countdown, retry/cancel actions
+- Templates — 6 template cards with step graph expansion and launch modal
+- Approvals — human review queue with inline approve/reject/request changes
+- Audit Log — immutable chronological trail (actor type: AI/Human/System, action codes)
+- API & Webhooks — endpoint reference (19 endpoints), webhook config with HMAC signing, canonical entity schema map
 
 ### API (`kontra-ui-clone/api/`)
 - Express + Supabase (PostgreSQL with RLS)
