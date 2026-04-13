@@ -2,8 +2,12 @@
  * Borrower Portal — Operational, communication-driven interface.
  * Borrowers interact with their loan(s), submit required items, and communicate with the lender.
  * No servicing decisions are made here — all approvals go through the lender execution layer.
+ *
+ * Data strategy: tries live API first, falls back to demo data so the UI
+ * is always functional even when the database tables don't exist yet.
  */
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
+import { api } from "../../lib/apiClient";
 import {
   HomeIcon,
   CreditCardIcon,
@@ -19,8 +23,8 @@ import {
   DocumentTextIcon,
 } from "@heroicons/react/24/outline";
 
-// ── Demo loan data ─────────────────────────────────────────────
-const LOAN = {
+// ── Demo fallback data ─────────────────────────────────────────────────────
+const DEMO_LOAN = {
   loan_ref: "LN-2847",
   property_name: "The Meridian Apartments",
   property_address: "412 Meridian Blvd, Austin, TX 78701",
@@ -38,7 +42,7 @@ const LOAN = {
   servicer_contact: "servicing@kontraplatform.com",
 };
 
-const PAYMENTS = [
+const DEMO_PAYMENTS = [
   { id:"p1", date:"2026-04-01", amount:29968.75, principal:0, interest:29968.75, late_fee:0, status:"paid" },
   { id:"p2", date:"2026-03-01", amount:29968.75, principal:0, interest:29968.75, late_fee:0, status:"paid" },
   { id:"p3", date:"2026-02-01", amount:29968.75, principal:0, interest:29968.75, late_fee:0, status:"paid" },
@@ -46,7 +50,7 @@ const PAYMENTS = [
   { id:"p5", date:"2025-12-01", amount:29968.75, principal:0, interest:29968.75, late_fee:0, status:"paid" },
 ];
 
-const DOCUMENTS = [
+const DEMO_DOCUMENTS = [
   { id:"d1", name:"Monthly Operating Statement", due:"2026-04-30", status:"submitted", submitted_at:"2026-04-08", notes:"Under lender review" },
   { id:"d2", name:"Q1 2026 Rent Roll", due:"2026-04-15", status:"approved", submitted_at:"2026-04-10", notes:"" },
   { id:"d3", name:"Property Insurance Renewal", due:"2026-05-15", status:"pending", submitted_at:"", notes:"Policy expires May 31" },
@@ -55,13 +59,13 @@ const DOCUMENTS = [
   { id:"d6", name:"Annual Financial Statements 2025", due:"2026-03-31", status:"approved", submitted_at:"2026-03-28", notes:"" },
 ];
 
-const DRAWS = [
+const DEMO_DRAWS = [
   { id:"dr1", number:"Draw #4", amount:340000, purpose:"Phase 2 construction — unit renovation (units 13–18)", status:"funded", submitted_at:"2026-03-20", funded_at:"2026-04-01", inspector_approved:true },
   { id:"dr2", number:"Draw #3", amount:280000, purpose:"Phase 1 completion — units 7–12", status:"funded", submitted_at:"2026-02-10", funded_at:"2026-02-25", inspector_approved:true },
   { id:"dr3", number:"Draw #5 (Pending)", amount:310000, purpose:"Phase 3 — units 19–24 + common area upgrades", status:"pending_inspection", submitted_at:"2026-04-05", funded_at:"", inspector_approved:false },
 ];
 
-const COVENANTS = [
+const DEMO_COVENANTS = [
   { id:"c1", name:"Minimum DSCR", requirement:"≥ 1.25x", current_value:"1.42x", status:"passing" },
   { id:"c2", name:"Maximum LTV", requirement:"≤ 75%", current_value:"68.2%", status:"passing" },
   { id:"c3", name:"Debt Service Reserve", requirement:"3 months", current_value:"3 months", status:"passing" },
@@ -69,20 +73,28 @@ const COVENANTS = [
   { id:"c5", name:"Minimum Occupancy", requirement:"≥ 85%", current_value:"91.7%", status:"passing" },
 ];
 
-const NOTICES = [
+const DEMO_NOTICES = [
   { id:"n1", type:"informational", subject:"Draw #5 Inspection Scheduled", body:"An inspection for Draw #5 has been scheduled for April 22, 2026. Please ensure site access is available. Inspector: TRC Engineering.", date:"2026-04-08", from:"Kontra Servicing" },
   { id:"n2", type:"action_required", subject:"Monthly Operating Statement Due", body:"Your Monthly Operating Statement for March 2026 is due by April 30. Please upload via the Document Center.", date:"2026-04-01", from:"Kontra Servicing" },
   { id:"n3", type:"informational", subject:"Draw #4 Funded — $340,000", body:"Draw #4 in the amount of $340,000 has been funded to your construction account. Please acknowledge receipt.", date:"2026-04-01", from:"Kontra Servicing" },
   { id:"n4", type:"informational", subject:"Q1 2026 Rent Roll Approved", body:"Your Q1 2026 Rent Roll has been reviewed and approved. Occupancy of 91.7% confirmed, exceeding covenant floor of 85%.", date:"2026-04-10", from:"Kontra Servicing" },
 ];
 
-const MESSAGES = [
+const DEMO_MESSAGES = [
   { id:"m1", from:"lender", author:"Maria Chen (Master Servicer)", text:"Hi — I wanted to confirm that Draw #5 inspection is scheduled for April 22. Please have the contractor available on site from 9am–12pm.", ts:"2026-04-08T14:30:00Z" },
   { id:"m2", from:"borrower", author:"You", text:"Confirmed — I'll have our GC, David Park, available. His number is (512) 555-0182.", ts:"2026-04-08T15:45:00Z" },
   { id:"m3", from:"lender", author:"Maria Chen (Master Servicer)", text:"Perfect, thanks. Also, please don't forget the Operating Statement is due April 30.", ts:"2026-04-08T16:00:00Z" },
 ];
 
-// ── Helpers ───────────────────────────────────────────────────
+// ── Types ──────────────────────────────────────────────────────────────────
+type LoanData = typeof DEMO_LOAN;
+type Payment  = typeof DEMO_PAYMENTS[0];
+type Doc      = typeof DEMO_DOCUMENTS[0];
+type Draw     = typeof DEMO_DRAWS[0];
+type Notice   = typeof DEMO_NOTICES[0];
+type Message  = typeof DEMO_MESSAGES[0];
+
+// ── Helpers ───────────────────────────────────────────────────────────────
 const fmt = (n: number) => new Intl.NumberFormat("en-US", { style:"currency", currency:"USD", minimumFractionDigits:2 }).format(n ?? 0);
 const fmtDate = (s: string) => s ? new Date(s).toLocaleDateString("en-US", { month:"short", day:"numeric", year:"numeric" }) : "—";
 
@@ -107,29 +119,99 @@ const COVENANT_STATUS: Record<string, string> = {
 
 type Section = "myloans" | "payments" | "documents" | "draws" | "notices" | "messages";
 
-const NAV: { key: Section; label: string; icon: typeof HomeIcon; badge?: number }[] = [
+const NAV_KEYS: { key: Section; label: string; icon: typeof HomeIcon }[] = [
   { key:"myloans",   label:"My Loan",         icon: HomeIcon },
   { key:"payments",  label:"Payments",         icon: CreditCardIcon },
-  { key:"documents", label:"Document Center",  icon: FolderArrowDownIcon, badge: DOCUMENTS.filter((d) => d.status === "pending").length },
+  { key:"documents", label:"Document Center",  icon: FolderArrowDownIcon },
   { key:"draws",     label:"Draw Requests",    icon: WrenchScrewdriverIcon },
-  { key:"notices",   label:"Notices",          icon: BellIcon, badge: NOTICES.filter((n) => n.type === "action_required").length },
+  { key:"notices",   label:"Notices",          icon: BellIcon },
   { key:"messages",  label:"Messages",         icon: ChatBubbleLeftRightIcon },
 ];
 
+// ── Component ─────────────────────────────────────────────────────────────
 export default function BorrowerPortal() {
-  const [section, setSection] = useState<Section>("myloans");
-  const [message, setMessage] = useState("");
-  const [localMessages, setLocalMessages] = useState(MESSAGES);
+  const [section, setSection]       = useState<Section>("myloans");
+  const [loan, setLoan]             = useState<LoanData>(DEMO_LOAN);
+  const [payments, setPayments]     = useState<Payment[]>(DEMO_PAYMENTS);
+  const [documents, setDocuments]   = useState<Doc[]>(DEMO_DOCUMENTS);
+  const [draws, setDraws]           = useState<Draw[]>(DEMO_DRAWS);
+  const [notices, setNotices]       = useState<Notice[]>(DEMO_NOTICES);
+  const [localMessages, setLocalMessages] = useState<Message[]>(DEMO_MESSAGES);
+  const [message, setMessage]       = useState("");
   const [uploadingDoc, setUploadingDoc] = useState<string | null>(null);
-  const [newDrawOpen, setNewDrawOpen] = useState(false);
-  const [drawForm, setDrawForm] = useState({ amount:"", purpose:"", milestone:"" });
+  const [newDrawOpen, setNewDrawOpen]   = useState(false);
+  const [drawForm, setDrawForm]     = useState({ amount:"", purpose:"", milestone:"" });
+  const [submittingDraw, setSubmittingDraw] = useState(false);
+  const [sendingMsg, setSendingMsg] = useState(false);
 
-  const pendingDocs = DOCUMENTS.filter((d) => d.status === "pending").length;
+  // ── Load real data from API ─────────────────────────────────────────────
+  const load = useCallback(async () => {
+    const [lRes, pRes, dRes, drRes, nRes, mRes] = await Promise.allSettled([
+      api.get<{ loan: LoanData }>("/borrower/loan"),
+      api.get<{ payments: Payment[] }>("/borrower/payments"),
+      api.get<{ documents: Doc[] }>("/borrower/documents"),
+      api.get<{ draws: Draw[] }>("/borrower/draws"),
+      api.get<{ notices: Notice[] }>("/borrower/notices"),
+      api.get<{ messages: Message[] }>("/borrower/messages"),
+    ]);
+    if (lRes.status  === "fulfilled" && lRes.value.data?.loan)               setLoan(lRes.value.data.loan);
+    if (pRes.status  === "fulfilled" && pRes.value.data?.payments?.length)   setPayments(pRes.value.data.payments);
+    if (dRes.status  === "fulfilled" && dRes.value.data?.documents?.length)  setDocuments(dRes.value.data.documents);
+    if (drRes.status === "fulfilled" && drRes.value.data?.draws?.length)     setDraws(drRes.value.data.draws);
+    if (nRes.status  === "fulfilled" && nRes.value.data?.notices?.length)    setNotices(nRes.value.data.notices);
+    if (mRes.status  === "fulfilled" && mRes.value.data?.messages?.length)   setLocalMessages(mRes.value.data.messages);
+  }, []);
 
-  const sendMessage = () => {
-    if (!message.trim()) return;
-    setLocalMessages((m) => [...m, { id:`m${m.length+1}`, from:"borrower", author:"You", text:message.trim(), ts:new Date().toISOString() }]);
+  useEffect(() => { load(); }, [load]);
+
+  // ── Derived ─────────────────────────────────────────────────────────────
+  const pendingDocs    = documents.filter((d) => d.status === "pending").length;
+  const actionNotices  = notices.filter((n) => n.type === "action_required").length;
+
+  const NAV = NAV_KEYS.map((item) => ({
+    ...item,
+    badge: item.key === "documents" ? (pendingDocs || undefined)
+         : item.key === "notices"   ? (actionNotices || undefined)
+         : undefined,
+  }));
+
+  // ── Actions ─────────────────────────────────────────────────────────────
+  const sendMessage = async () => {
+    if (!message.trim() || sendingMsg) return;
+    const text = message.trim();
     setMessage("");
+    setSendingMsg(true);
+
+    const optimistic: Message = { id:`m${Date.now()}`, from:"borrower", author:"You", text, ts:new Date().toISOString() };
+    setLocalMessages((m) => [...m, optimistic]);
+
+    try {
+      await api.post("/borrower/messages", { text });
+    } catch {
+      // optimistic already in place, no rollback needed
+    } finally {
+      setSendingMsg(false);
+    }
+  };
+
+  const submitDraw = async () => {
+    if (!drawForm.amount || !drawForm.purpose || submittingDraw) return;
+    setSubmittingDraw(true);
+    try {
+      await api.post("/draws", {
+        amount:    Number(drawForm.amount),
+        purpose:   drawForm.purpose,
+        milestone: drawForm.milestone,
+        loan_ref:  loan.loan_ref,
+      });
+      setDrawForm({ amount:"", purpose:"", milestone:"" });
+      setNewDrawOpen(false);
+      await load(); // refresh draw list
+    } catch {
+      // keep form open so user can retry
+    } finally {
+      setSubmittingDraw(false);
+    }
   };
 
   return (
@@ -149,19 +231,19 @@ export default function BorrowerPortal() {
         {/* Loan card */}
         <div className="mx-4 mt-4 rounded-lg border border-slate-200 bg-white p-3 shadow-sm">
           <p className="text-xs font-bold uppercase tracking-widest text-slate-400">Active Loan</p>
-          <p className="mt-1 text-sm font-black text-slate-900">{LOAN.loan_ref}</p>
-          <p className="text-xs text-slate-500 truncate">{LOAN.property_name}</p>
+          <p className="mt-1 text-sm font-black text-slate-900">{loan.loan_ref}</p>
+          <p className="text-xs text-slate-500 truncate">{loan.property_name}</p>
           <div className="mt-2 flex items-center gap-1.5">
             <div className="h-2 w-2 rounded-full bg-emerald-500" />
-            <p className="text-xs font-semibold text-emerald-700">{LOAN.status}</p>
+            <p className="text-xs font-semibold text-emerald-700">{loan.status}</p>
           </div>
         </div>
 
         {/* Next payment callout */}
         <div className="mx-4 mt-2 rounded-lg border border-amber-200 bg-amber-50 p-3">
           <p className="text-xs font-bold text-amber-700 uppercase tracking-widest">Next Payment</p>
-          <p className="mt-0.5 text-base font-black text-amber-900">{fmt(LOAN.next_payment_amount)}</p>
-          <p className="text-xs text-amber-600">Due {fmtDate(LOAN.next_payment_date)}</p>
+          <p className="mt-0.5 text-base font-black text-amber-900">{fmt(loan.next_payment_amount)}</p>
+          <p className="text-xs text-amber-600">Due {fmtDate(loan.next_payment_date)}</p>
         </div>
 
         {/* Nav */}
@@ -194,7 +276,7 @@ export default function BorrowerPortal() {
         {/* Footer */}
         <div className="border-t border-slate-200 p-4">
           <p className="text-xs text-slate-400">Questions? Contact your servicer:</p>
-          <p className="text-xs font-medium text-slate-700 mt-0.5">{LOAN.servicer_contact}</p>
+          <p className="text-xs font-medium text-slate-700 mt-0.5">{loan.servicer_contact}</p>
         </div>
       </aside>
 
@@ -207,19 +289,19 @@ export default function BorrowerPortal() {
             <div className="space-y-6">
               <div>
                 <p className="text-xs font-bold uppercase tracking-widest text-slate-400">My Loan</p>
-                <h1 className="text-2xl font-black text-slate-900 mt-1">{LOAN.property_name}</h1>
-                <p className="text-sm text-slate-500">{LOAN.property_address}</p>
+                <h1 className="text-2xl font-black text-slate-900 mt-1">{loan.property_name}</h1>
+                <p className="text-sm text-slate-500">{loan.property_address}</p>
               </div>
 
               {/* Loan details */}
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
                 {[
-                  { label:"Loan Reference",    value: LOAN.loan_ref },
-                  { label:"Current Balance",   value: fmt(LOAN.current_balance) },
-                  { label:"Interest Rate",     value: LOAN.interest_rate },
-                  { label:"Payment Type",      value: LOAN.payment_type },
-                  { label:"Maturity Date",     value: fmtDate(LOAN.maturity_date) },
-                  { label:"Servicer",          value: LOAN.servicer_name },
+                  { label:"Loan Reference",    value: loan.loan_ref },
+                  { label:"Current Balance",   value: fmt(loan.current_balance) },
+                  { label:"Interest Rate",     value: loan.interest_rate },
+                  { label:"Payment Type",      value: loan.payment_type },
+                  { label:"Maturity Date",     value: fmtDate(loan.maturity_date) },
+                  { label:"Servicer",          value: loan.servicer_name },
                 ].map((item) => (
                   <div key={item.label} className="rounded-xl border border-slate-200 bg-slate-50 p-4">
                     <p className="text-xs font-bold uppercase tracking-widest text-slate-400">{item.label}</p>
@@ -235,7 +317,7 @@ export default function BorrowerPortal() {
                   <p className="text-xs text-slate-500 mt-0.5">Your current covenant compliance status</p>
                 </div>
                 <div className="divide-y divide-slate-50">
-                  {COVENANTS.map((c) => (
+                  {DEMO_COVENANTS.map((c) => (
                     <div key={c.id} className="flex items-center justify-between px-6 py-4 hover:bg-slate-50 transition-colors">
                       <div>
                         <p className="text-sm font-semibold text-slate-900">{c.name}</p>
@@ -280,12 +362,12 @@ export default function BorrowerPortal() {
                 <div className="bg-slate-900 px-6 py-5 flex items-center justify-between">
                   <div>
                     <p className="text-xs font-bold uppercase tracking-widest text-slate-400">Next Payment Due</p>
-                    <p className="text-2xl font-black text-white mt-1">{fmt(LOAN.next_payment_amount)}</p>
-                    <p className="text-sm text-slate-400 mt-0.5">{fmtDate(LOAN.next_payment_date)} · Interest Only</p>
+                    <p className="text-2xl font-black text-white mt-1">{fmt(loan.next_payment_amount)}</p>
+                    <p className="text-sm text-slate-400 mt-0.5">{fmtDate(loan.next_payment_date)} · Interest Only</p>
                   </div>
                   <div className="text-right">
                     <p className="text-xs text-slate-500">Wire instructions sent to file on record</p>
-                    <p className="text-xs text-slate-500 mt-1">Ref: {LOAN.loan_ref}-{LOAN.next_payment_date.slice(0,7)}</p>
+                    <p className="text-xs text-slate-500 mt-1">Ref: {loan.loan_ref}-{loan.next_payment_date?.slice(0,7)}</p>
                     <button className="mt-3 rounded-lg border border-slate-600 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 transition-colors">
                       Download Wire Instructions
                     </button>
@@ -293,7 +375,7 @@ export default function BorrowerPortal() {
                 </div>
                 <div className="px-6 py-3 bg-emerald-50 border-t border-emerald-100 flex items-center gap-2">
                   <CheckCircleIcon className="h-4 w-4 text-emerald-600" />
-                  <p className="text-xs font-semibold text-emerald-700">Last 5 payments received on time — no late fees assessed</p>
+                  <p className="text-xs font-semibold text-emerald-700">Last {payments.filter(p => p.status === "paid").length} payments received on time — no late fees assessed</p>
                 </div>
               </div>
 
@@ -311,7 +393,7 @@ export default function BorrowerPortal() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-50">
-                    {PAYMENTS.map((p) => (
+                    {payments.map((p) => (
                       <tr key={p.id} className="hover:bg-slate-50 transition-colors">
                         <td className="px-5 py-3 text-slate-900 font-semibold">{fmtDate(p.date)}</td>
                         <td className="px-5 py-3 text-slate-900 font-bold tabular-nums">{fmt(p.amount)}</td>
@@ -340,11 +422,11 @@ export default function BorrowerPortal() {
               <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
                 <div className="border-b border-slate-100 px-6 py-4 flex items-center justify-between">
                   <h2 className="text-base font-bold text-slate-900">Required Documents</h2>
-                  <span className="text-xs text-slate-400">{DOCUMENTS.filter((d) => d.status === "approved").length}/{DOCUMENTS.length} complete</span>
+                  <span className="text-xs text-slate-400">{documents.filter((d) => d.status === "approved").length}/{documents.length} complete</span>
                 </div>
                 <div className="divide-y divide-slate-50">
-                  {DOCUMENTS.map((doc) => {
-                    const s = DOC_STATUS[doc.status];
+                  {documents.map((doc) => {
+                    const s = DOC_STATUS[doc.status] ?? DOC_STATUS.pending;
                     const Icon = s.icon;
                     return (
                       <div key={doc.id} className="flex items-center gap-4 px-6 py-4 hover:bg-slate-50 transition-colors">
@@ -377,7 +459,6 @@ export default function BorrowerPortal() {
                 </div>
               </div>
 
-              {/* Upload area (shown when a doc is selected) */}
               {uploadingDoc && (
                 <div className="rounded-xl border-2 border-dashed border-slate-300 bg-slate-50 p-8 text-center">
                   <ArrowUpTrayIcon className="h-8 w-8 text-slate-400 mx-auto mb-3" />
@@ -412,10 +493,9 @@ export default function BorrowerPortal() {
                 </button>
               </div>
 
-              {/* New draw form */}
               {newDrawOpen && (
                 <div className="rounded-xl border border-slate-200 bg-slate-50 p-6 space-y-4">
-                  <p className="text-sm font-bold text-slate-900">New Draw Request — {LOAN.loan_ref}</p>
+                  <p className="text-sm font-bold text-slate-900">New Draw Request — {loan.loan_ref}</p>
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <label className="block text-xs font-bold uppercase tracking-widest text-slate-500 mb-1.5">Draw Amount ($)</label>
@@ -447,8 +527,12 @@ export default function BorrowerPortal() {
                     </div>
                   </div>
                   <div className="flex items-center gap-3">
-                    <button className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-bold text-white hover:bg-slate-700 transition-colors">
-                      Submit Draw Request
+                    <button
+                      onClick={submitDraw}
+                      disabled={submittingDraw || !drawForm.amount || !drawForm.purpose}
+                      className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-bold text-white hover:bg-slate-700 disabled:opacity-50 transition-colors"
+                    >
+                      {submittingDraw ? "Submitting…" : "Submit Draw Request"}
                     </button>
                     <button onClick={() => setNewDrawOpen(false)} className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-colors">
                       Cancel
@@ -458,9 +542,8 @@ export default function BorrowerPortal() {
                 </div>
               )}
 
-              {/* Draw history */}
               <div className="space-y-4">
-                {DRAWS.map((d) => {
+                {draws.map((d) => {
                   const s = DRAW_STATUS[d.status] ?? DRAW_STATUS.under_review;
                   return (
                     <div key={d.id} className="rounded-xl border border-slate-200 bg-white shadow-sm p-6">
@@ -496,7 +579,7 @@ export default function BorrowerPortal() {
             <div className="space-y-6">
               <h1 className="text-2xl font-black text-slate-900">Notices</h1>
               <div className="space-y-4">
-                {NOTICES.map((n) => (
+                {notices.map((n) => (
                   <div key={n.id} className={`rounded-xl border p-5 ${n.type === "action_required" ? "border-amber-200 bg-amber-50" : "border-slate-200 bg-white shadow-sm"}`}>
                     <div className="flex items-start gap-3">
                       <div className={`mt-0.5 flex h-8 w-8 items-center justify-center rounded-full shrink-0 ${n.type === "action_required" ? "bg-amber-200" : "bg-slate-100"}`}>
@@ -530,7 +613,6 @@ export default function BorrowerPortal() {
                 <p className="text-sm text-slate-500 mt-1">Direct communication with your servicing team</p>
               </div>
 
-              {/* Thread */}
               <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
                 <div className="border-b border-slate-100 px-6 py-4 bg-slate-50 flex items-center gap-3">
                   <div className="h-8 w-8 rounded-full bg-slate-700 flex items-center justify-center text-white text-xs font-bold">KS</div>
@@ -568,13 +650,13 @@ export default function BorrowerPortal() {
                   />
                   <button
                     onClick={sendMessage}
-                    disabled={!message.trim()}
+                    disabled={!message.trim() || sendingMsg}
                     className="rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-bold text-white hover:bg-slate-700 disabled:opacity-40 transition-colors"
                   >
-                    Send
+                    {sendingMsg ? "Sending…" : "Send"}
                   </button>
                 </div>
-                <p className="px-6 pb-3 text-xs text-slate-400">Messages are logged to the servicing audit trail. For urgent matters, call {LOAN.servicer_contact}.</p>
+                <p className="px-6 pb-3 text-xs text-slate-400">Messages are logged to the servicing audit trail. For urgent matters, call {loan.servicer_contact}.</p>
               </div>
             </div>
           )}
