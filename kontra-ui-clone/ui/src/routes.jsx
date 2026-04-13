@@ -68,6 +68,12 @@ export const lenderNavRoutes = [
     requiresAuth: true,
   },
   {
+    label: "Policy Engine",
+    path: "/policy",
+    icon: ShieldCheckIcon,
+    requiresAuth: true,
+  },
+  {
     label: "Agent Console",
     path: "/agents",
     icon: SparklesIcon,

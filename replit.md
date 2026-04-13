@@ -203,3 +203,23 @@ Full operational OS with 5 tabs:
 - Modules: Loans, Assets, Payments, Inspections, Draws, Escrows, Compliance, Risk, Legal, Regulatory Scans, Document Reviews, Pools (with tokenization), Tokens, Exchange Listings, AI Reviews, Reports, Settings
 - Generic `EntityListPage` + `EntityListViewModel<T>` used for all modules
 - `APIClient.shared` — central URLSession wrapper with org ID header injection
+
+## Phase 3: Dynamic Policy Engine (COMPLETED 2026-04-13)
+
+### New Files
+- `kontra-ui-clone/api/lib/policyEngine.js` — 3-tier rule evaluation: (1) Org override → (2) Published DB rule → (3) Hardcoded fallback. 28 canonical rules in fallback registry. Logs every evaluation to `kontra_rule_audit_log`. Exposes `evaluateRule()`, `evaluateCategory()`, `getRuleById()`, `getPolicyStats()`.
+- `kontra-ui-clone/api/schema-phase3-policy.sql` — DB schema extensions: `source_agency`, `override_allowed`, extended category CHECK constraint (9 new categories), `kontra_rule_overrides` table, `kontra_agent_rule_dependencies` table, audit log enrichment columns.
+- `kontra-ui-clone/api/seed-phase3-regulatory-rules.sql` — 38 canonical regulatory rules seeded across: freddie_mac (10), fannie_mae (3), hazard_loss (4), watchlist (4), reserve (3), maturity (4), token_transfer (5), lender_specific (3), compliance (2).
+- `kontra-ui-clone/ui/src/pages/dashboard/PolicyEnginePage.tsx` — Regulatory Intelligence Hub: 6 stats cards, 8 category cards, live rule evaluator panel, agent→rule dependency map (6 agents × 22 rules), recent evaluations audit feed, rule lifecycle + override explainer.
+
+### Updated Files
+- `kontra-ui-clone/api/lib/agentToolRegistry.js` — `validateFreddieRule()` now async, routes through `policyEngine.evaluateRule()` (DB-first), falls back to emergency synchronous registry if both fail.
+- `kontra-ui-clone/ui/src/pages/SaasDashboard.tsx` — added `PolicyEnginePage` import + `/policy` route.
+- `kontra-ui-clone/ui/src/routes.jsx` — added "Policy Engine" nav item with `ShieldCheckIcon` between Workflow Engine and Agent Console.
+
+### Rule Categories (Phase 3)
+freddie_mac | fannie_mae | hazard_loss | watchlist | reserve | maturity | token_transfer | lender_specific | compliance | draw_eligibility | cfpb | hud | investor_eligibility | jurisdiction
+
+### DB Tables Added
+- `kontra_rule_overrides` — org-level rule overrides with type, value, effective dates, status, and role requirements
+- `kontra_agent_rule_dependencies` — agent ↔ rule usage map (evaluates / triggers_on / blocks_on)

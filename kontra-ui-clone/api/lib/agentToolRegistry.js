@@ -12,8 +12,11 @@
  */
 
 const { supabase } = require('../db');
+const { evaluateRule: policyEvaluateRule } = require('./policyEngine');
 
-// ── Freddie Mac / GSE Servicing Rule Definitions ──────────────────────────────
+// ── Legacy hardcoded rule registry (used for type lookups only) ───────────────
+// Real evaluation now goes through policyEngine.evaluateRule() which queries
+// the kontra_rules DB first, then falls back to this map.
 
 const FREDDIE_RULES = {
   'GSE-INSP-01':     { description:'Critical structural deficiency: 30-day cure notice required; active draws held', threshold:null, operator:'flag' },
@@ -136,44 +139,56 @@ const validateFreddieRuleDef = {
   },
 };
 
-function validateFreddieRule({ rule_id, value, context: ruleCtx = {} }) {
-  const rule = FREDDIE_RULES[rule_id];
-  if (!rule) return { rule_id, result: 'unknown', reason: `Rule ${rule_id} not found in registry` };
+async function validateFreddieRule({ rule_id, value, context: ruleCtx = {} }, agentContext = {}) {
+  // Phase 3: Route through the Policy Engine — queries DB first, then hardcoded fallback
+  try {
+    const evaluation = await policyEvaluateRule(rule_id, value, {
+      org_id: agentContext.org_id,
+      loan_id: agentContext.loan_id,
+      agent_name: agentContext.agent_name,
+      workflow_run_id: agentContext.workflow_run_id,
+    });
+    return {
+      rule_id,
+      description: evaluation.description,
+      result: evaluation.result,
+      reason: evaluation.reason,
+      threshold: null,
+      operator: evaluation.rule_operator || null,
+      tested_value: value,
+      category: evaluation.category,
+      severity: evaluation.severity,
+      source_reference: evaluation.source_reference,
+      rule_version: evaluation.version,
+      policy_source: evaluation.source, // 'db_rule' | 'hardcoded_fallback' | 'org_override'
+      evaluated_at: evaluation.evaluated_at,
+    };
+  } catch (err) {
+    // Final fallback: use legacy hardcoded registry synchronously
+    const rule = FREDDIE_RULES[rule_id];
+    if (!rule) return { rule_id, result: 'unknown', reason: `Rule ${rule_id} not found`, policy_source: 'not_found' };
 
-  let result = 'unknown';
-  let reason = '';
+    let result = 'unknown';
+    let reason = '';
 
-  if (rule.operator === 'flag') {
-    result = 'triggered';
-    reason = rule.description;
-  } else if (rule.operator === '>=' && value !== undefined) {
-    result = Number(value) >= rule.threshold ? 'clear' : 'triggered';
-    reason = result === 'triggered'
-      ? `${value} is below minimum threshold of ${rule.threshold}. ${rule.description}`
-      : `${value} meets or exceeds minimum threshold of ${rule.threshold}.`;
-  } else if (rule.operator === '<=' && value !== undefined) {
-    result = Number(value) <= rule.threshold ? 'clear' : 'triggered';
-    reason = result === 'triggered'
-      ? `${value} exceeds maximum threshold of ${rule.threshold}. ${rule.description}`
-      : `${value} is at or below maximum threshold of ${rule.threshold}.`;
-  } else if (rule.operator === '<' && value !== undefined) {
-    result = Number(value) < rule.threshold ? 'triggered' : 'clear';
-    reason = result === 'triggered'
-      ? `${value} is below critical threshold of ${rule.threshold}. ${rule.description}`
-      : `${value} is at or above threshold of ${rule.threshold}.`;
-  } else if (rule.operator === '>' && value !== undefined) {
-    result = Number(value) > rule.threshold ? 'triggered' : 'clear';
-    reason = result === 'triggered'
-      ? `${value} exceeds threshold of ${rule.threshold}. ${rule.description}`
-      : `${value} does not exceed threshold of ${rule.threshold}.`;
-  } else if (rule.operator === 'days_since' && value !== undefined) {
-    result = Number(value) <= rule.threshold ? 'clear' : 'triggered';
-    reason = result === 'triggered'
-      ? `${value} days since event exceeds ${rule.threshold}-day limit. ${rule.description}`
-      : `${value} days is within ${rule.threshold}-day window.`;
+    if (rule.operator === 'flag') {
+      result = 'triggered'; reason = rule.description;
+    } else if (rule.operator === '>=' && value !== undefined) {
+      result = Number(value) >= rule.threshold ? 'clear' : 'triggered';
+      reason = result === 'triggered' ? `${value} is below minimum ${rule.threshold}. ${rule.description}` : `${value} meets minimum ${rule.threshold}.`;
+    } else if (rule.operator === '<=' && value !== undefined) {
+      result = Number(value) <= rule.threshold ? 'clear' : 'triggered';
+      reason = result === 'triggered' ? `${value} exceeds maximum ${rule.threshold}. ${rule.description}` : `${value} within limit ${rule.threshold}.`;
+    } else if (rule.operator === '<' && value !== undefined) {
+      result = Number(value) < rule.threshold ? 'triggered' : 'clear';
+      reason = result === 'triggered' ? `${value} below threshold ${rule.threshold}. ${rule.description}` : `${value} at or above ${rule.threshold}.`;
+    } else if (rule.operator === '>' && value !== undefined) {
+      result = Number(value) > rule.threshold ? 'triggered' : 'clear';
+      reason = result === 'triggered' ? `${value} exceeds ${rule.threshold}. ${rule.description}` : `${value} within limit.`;
+    }
+
+    return { rule_id, description: rule.description, result, reason, tested_value: value, policy_source: 'emergency_fallback' };
   }
-
-  return { rule_id, description: rule.description, result, reason, threshold: rule.threshold, operator: rule.operator, tested_value: value };
 }
 
 // ── Tool 4: generateWatchlistComment ─────────────────────────────────────────
