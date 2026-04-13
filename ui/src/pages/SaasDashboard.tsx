@@ -7,16 +7,6 @@ import { AuthContext } from "../lib/authContext";
 import SaasDashboardHome from "../components/SaasDashboardHome";
 import AiInsightsPage from "../features/ai-insights/page/AiInsightsPage";
 import OnchainDashboard from "../components/OnchainDashboard";
-import ServicingLayout from "./dashboard/servicing/ServicingLayout";
-import ServicingAIValidationPage from "./dashboard/servicing/ServicingAIValidationPage";
-import ServicingOverviewPage from "./dashboard/servicing/ServicingOverviewPage";
-import ServicingPaymentsPage from "./dashboard/servicing/ServicingPaymentsPage";
-import ServicingInspectionsPage from "./dashboard/servicing/ServicingInspectionsPage";
-import ServicingDrawsPage from "./dashboard/servicing/ServicingDrawsPage";
-import ServicingEscrowPage from "./dashboard/servicing/ServicingEscrowPage";
-import ServicingBorrowerFinancialsPage from "./dashboard/servicing/ServicingBorrowerFinancialsPage";
-import ServicingManagementPage from "./dashboard/servicing/ServicingManagementPage";
-import ServicingAIOpsPage from "./dashboard/servicing/ServicingAIOpsPage";
 import PortfolioLayout from "./dashboard/portfolio/PortfolioLayout";
 import MarketsLayout from "./dashboard/markets/MarketsLayout";
 import GovernanceLayout from "./dashboard/governance/GovernanceLayout";
@@ -56,8 +46,8 @@ function LegacyRedirect({ to }: { to: string }) {
 
 function LegacyServicingRedirect() {
   const location = useLocation();
-  const suffix = location.pathname.replace(/^\/dashboard\/servicing/, "");
-  return <Navigate to={{ pathname: `/servicing${suffix}`, search: location.search }} replace />;
+  const suffix = location.pathname.replace(/^\/dashboard\/servicing/, "").replace(/^\/servicing/, "");
+  return <Navigate to={{ pathname: `/servicer${suffix || "/overview"}`, search: location.search }} replace />;
 }
 
 export default function SaasDashboard() {
@@ -165,19 +155,9 @@ export default function SaasDashboard() {
         <Route path="assets" element={<PortfolioAssetsPage />} />
         <Route path="loans" element={<PortfolioLoansPage />} />
       </Route>
-      <Route path="/servicing" element={<ServicingLayout />}>
-        <Route index element={<Navigate to="/servicing/overview" replace />} />
-        <Route path="overview" element={<ServicingOverviewPage />} />
-        <Route path="payments" element={<ServicingPaymentsPage />} />
-        <Route path="inspections" element={<ServicingInspectionsPage />} />
-        <Route path="draws" element={<ServicingDrawsPage />} />
-        <Route path="escrow" element={<ServicingEscrowPage />} />
-        <Route path="borrower-financials" element={<ServicingBorrowerFinancialsPage />} />
-        <Route path="management" element={<ServicingManagementPage />} />
-        <Route path="ai-ops" element={<ServicingAIOpsPage />} />
-        <Route path="ai-validation/:reviewId" element={<ServicingAIValidationPage />} />
-        <Route path="ai-validation" element={<ServicingAIValidationPage />} />
-      </Route>
+      {/* Servicing moved to /servicer — legacy redirects */}
+      <Route path="/servicing" element={<Navigate to="/servicer/overview" replace />} />
+      <Route path="/servicing/*" element={<LegacyServicingRedirect />} />
       <Route path="/markets" element={<MarketsLayout />}>
         <Route index element={<Navigate to="/markets/pools" replace />} />
         <Route path="pools" element={<MarketsPoolsCrudPage />} />
@@ -254,7 +234,20 @@ export default function SaasDashboard() {
           )}
             {navItems.map((item) => renderNavItem(item))}
 
-          <div className="pt-4">
+          <div className="pt-4 space-y-2">
+            <NavLink
+              to="/servicer/overview"
+              className={({ isActive }) =>
+                `flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition ${
+                  isActive
+                    ? "bg-amber-500/15 text-amber-300 font-semibold"
+                    : "text-slate-400 hover:bg-slate-800 hover:text-white"
+                }`
+              }
+            >
+              <span className="text-xs">⚙</span>
+              <span>Servicer Portal</span>
+            </NavLink>
             <button
               type="button"
               onClick={handleSignOut}
