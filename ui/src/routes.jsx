@@ -11,6 +11,11 @@ import {
   CreditCardIcon,
   BoltIcon,
   UsersIcon,
+  CurrencyDollarIcon,
+  MagnifyingGlassIcon,
+  DocumentMagnifyingGlassIcon,
+  BuildingOfficeIcon,
+  SparklesIcon,
 } from "@heroicons/react/24/outline";
 
 export const lenderNavRoutes = [
@@ -24,12 +29,6 @@ export const lenderNavRoutes = [
     label: "Portfolio",
     path: "/portfolio",
     icon: BanknotesIcon,
-    requiresAuth: true,
-  },
-  {
-    label: "Servicing",
-    path: "/servicing",
-    icon: WrenchScrewdriverIcon,
     requiresAuth: true,
   },
   {
@@ -88,4 +87,56 @@ export const lenderNavRoutes = [
   },
 ];
 
+export const servicerNavRoutes = [
+  {
+    label: "Overview",
+    path: "/servicer/overview",
+    icon: HomeIcon,
+    requiresAuth: true,
+  },
+  {
+    label: "Payments",
+    path: "/servicer/payments",
+    icon: CurrencyDollarIcon,
+    requiresAuth: true,
+  },
+  {
+    label: "Inspections",
+    path: "/servicer/inspections",
+    icon: MagnifyingGlassIcon,
+    requiresAuth: true,
+  },
+  {
+    label: "Draws",
+    path: "/servicer/draws",
+    icon: BanknotesIcon,
+    requiresAuth: true,
+  },
+  {
+    label: "Escrows",
+    path: "/servicer/escrow",
+    icon: BuildingOfficeIcon,
+    requiresAuth: true,
+  },
+  {
+    label: "Borrower Financials",
+    path: "/servicer/borrower-financials",
+    icon: DocumentMagnifyingGlassIcon,
+    requiresAuth: true,
+  },
+  {
+    label: "Management",
+    path: "/servicer/management",
+    icon: WrenchScrewdriverIcon,
+    requiresAuth: true,
+  },
+  {
+    label: "AI Operations",
+    path: "/servicer/ai-ops",
+    icon: SparklesIcon,
+    requiresAuth: true,
+  },
+];
+
 export const lenderDefaultPath = "/dashboard";
+export const servicerDefaultPath = "/servicer/overview";
