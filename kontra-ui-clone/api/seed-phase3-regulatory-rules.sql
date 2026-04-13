@@ -76,7 +76,7 @@ INSERT INTO kontra_rules (
 
 ('FREDDIE-ANNUAL',
  'Annual Financial Review Deadline — 120 Days',
- 'A complete annual financial review package must be received and reviewed within 120 days of the borrower's fiscal year-end. Missing packages trigger escalation and borrower requests.',
+ 'A complete annual financial review package must be received and reviewed within 120 days of the borrower''s fiscal year-end. Missing packages trigger escalation and borrower requests.',
  'freddie_mac', 'freddie_mac', 'Freddie Mac Multifamily Seller/Servicer Guide §30.2',
  '<=', 120, 'days',
  'medium', 'published', 1, CURRENT_DATE,
