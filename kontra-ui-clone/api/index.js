@@ -231,6 +231,7 @@ const integrationHubRouter = require('./src/routes/integrationHub');
 const headlessApiRouter    = require('./src/routes/headlessApi');
 const phase6TokenizationRouter = require('./src/routes/tokenizationApi');
 const phase7CostGovernanceRouter = require('./src/routes/costGovernanceApi');
+const phase8CommandCentersRouter = require('./src/routes/commandCentersApi');
 const devSliceRouter = require('./src/routes/dev');
 
 const JOB_SCHEDULES = [
@@ -600,6 +601,7 @@ app.use('/api/integration',   integrationHubRouter);
 app.use('/api/v1',            headlessApiRouter);
 app.use('/api/tokenization',  phase6TokenizationRouter);
 app.use('/api/cost',          phase7CostGovernanceRouter);
+app.use('/api/cc',            phase8CommandCentersRouter);
 if (process.env.NODE_ENV !== 'production') {
   app.use('/api/dev', devSliceRouter);
 }

@@ -299,3 +299,25 @@ USDC (6 decimals) | USDT (6 decimals) | DAI (18 decimals) | PYUSD (6 decimals) |
 
 ### Governance Proposal Types
 maturity_extension | rate_modification | property_disposition | servicer_replacement | covenant_waiver | special_distribution
+
+---
+
+## Phase 8 — Enterprise Command Centers (COMPLETE)
+
+### Architecture
+Redesigned the Kontra interface around 6 operational command centers. All centers share a single `CommandCenterShell.tsx` component that fetches from `/api/cc/:center/dashboard` and renders a consistent layout: KPI bar, live workflow queue with SLA progress, agent outputs, pending approvals, SLA breaches, and exception queue.
+
+### New Files
+- `kontra-ui-clone/api/src/routes/commandCentersApi.js` — Phase 8 backend. 6 center data factories (servicingData, inspectionData, hazardData, complianceData, exchangeData, adminData) each seeding 6 KPIs, 6-7 live workflows, 4 agent outputs, 3 approvals, 2 SLA breaches, 3 exceptions. Routes: GET /api/cc/centers, GET /api/cc/:center/dashboard, POST /api/cc/:center/actions/:actionId, GET /api/cc/action-log.
+- `kontra-ui-clone/ui/src/pages/dashboard/CommandCenterShell.tsx` — Reusable command center shell. Polls every 30s, shows live/paused toggle, status pills, action buttons (Approve/Escalate), toast notifications, SLA progress bars color-coded by utilization (green/amber/red), priority badges.
+- `kontra-ui-clone/ui/src/pages/dashboard/ServicingOperationsCenter.tsx` — /servicing-ops, burgundy #800020
+- `kontra-ui-clone/ui/src/pages/dashboard/InspectionIntelligenceCenter.tsx` — /inspection, blue #2563eb
+- `kontra-ui-clone/ui/src/pages/dashboard/HazardLossRecoveryCenter.tsx` — /hazard-recovery, amber #d97706
+- `kontra-ui-clone/ui/src/pages/dashboard/ComplianceCovenantCenter.tsx` — /compliance-center, violet #7c3aed
+- `kontra-ui-clone/ui/src/pages/dashboard/TokenizationExchangeCenter.tsx` — /exchange, emerald #059669
+- `kontra-ui-clone/ui/src/pages/dashboard/AdminPolicyCommandCenter.tsx` — /policy-command, red #dc2626
+
+### Updated Files
+- `kontra-ui-clone/api/index.js` — phase8CommandCentersRouter mounted at /api/cc
+- `kontra-ui-clone/ui/src/pages/SaasDashboard.tsx` — 6 new routes + 6 imports
+- `kontra-ui-clone/ui/src/routes.jsx` — 6 nav entries (BuildingOfficeIcon, MagnifyingGlassIcon, BoltIcon, DocumentMagnifyingGlassIcon, ChartPieIcon, WrenchScrewdriverIcon)
