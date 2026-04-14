@@ -7,6 +7,7 @@ import {
   WrenchScrewdriverIcon,
   ShieldCheckIcon,
   LinkIcon,
+  GlobeAltIcon,
   PresentationChartLineIcon,
   CubeTransparentIcon,
   CreditCardIcon,
@@ -72,6 +73,12 @@ export const lenderNavRoutes = [
     label: "Integration Hub",
     path: "/integration",
     icon: LinkIcon,
+    requiresAuth: true,
+  },
+  {
+    label: "Enterprise API",
+    path: "/enterprise-api",
+    icon: GlobeAltIcon,
     requiresAuth: true,
   },
   {
