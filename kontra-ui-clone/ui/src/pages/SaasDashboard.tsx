@@ -23,6 +23,7 @@ import PolicyEnginePage from "./dashboard/PolicyEnginePage";
 import IntegrationHubPage from "./dashboard/IntegrationHubPage";
 import EnterpriseApiPage from "./dashboard/EnterpriseApiPage";
 import TokenizationPage from "./dashboard/TokenizationPage";
+import CostGovernancePage from "./dashboard/CostGovernancePage";
 import AgentConsolePage from "./dashboard/AgentConsolePage";
 import {
   GovernanceComplianceCrudPage,
@@ -189,6 +190,7 @@ export default function SaasDashboard() {
       <Route path="/integration" element={<IntegrationHubPage />} />
       <Route path="/enterprise-api" element={<EnterpriseApiPage />} />
       <Route path="/tokenization" element={<TokenizationPage />} />
+      <Route path="/cost-governance" element={<CostGovernancePage />} />
       <Route path="/agents" element={<AgentConsolePage />} />
       <Route path="/settings" element={<Navigate to="/settings/billing" replace />} />
       <Route path="/settings/billing" element={<BillingPage />} />
