@@ -94,6 +94,42 @@ export const lenderNavRoutes = [
     requiresAuth: true,
   },
   {
+    label: "Servicing Operations",
+    path: "/servicing-ops",
+    icon: BuildingOfficeIcon,
+    requiresAuth: true,
+  },
+  {
+    label: "Inspection Intelligence",
+    path: "/inspection",
+    icon: MagnifyingGlassIcon,
+    requiresAuth: true,
+  },
+  {
+    label: "Hazard Loss Recovery",
+    path: "/hazard-recovery",
+    icon: BoltIcon,
+    requiresAuth: true,
+  },
+  {
+    label: "Compliance & Covenant",
+    path: "/compliance-center",
+    icon: DocumentMagnifyingGlassIcon,
+    requiresAuth: true,
+  },
+  {
+    label: "Tokenization Exchange",
+    path: "/exchange",
+    icon: ChartPieIcon,
+    requiresAuth: true,
+  },
+  {
+    label: "Policy Command",
+    path: "/policy-command",
+    icon: WrenchScrewdriverIcon,
+    requiresAuth: true,
+  },
+  {
     label: "Policy Engine",
     path: "/policy",
     icon: ShieldCheckIcon,
