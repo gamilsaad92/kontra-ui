@@ -250,3 +250,24 @@ freddie_mac | fannie_mae | hazard_loss | watchlist | reserve | maturity | token_
 
 ### Extraction Schemas (11 types)
 loan_document (23 fields) | appraisal_report (18 fields) | insurance_acord (17 fields) | inspection_report (deficiency array) | rent_roll (unit_mix array) | operating_statement (expense breakdown) | reserve_report (pending_draws array) | draw_request (line items array) | email_request (9 fields + classification) | spreadsheet (column auto-detection) | title_report / environmental_report (classified)
+
+## Phase 5: Headless Enterprise Interoperability Layer (COMPLETED 2026-04-14)
+
+### New Files
+- `kontra-ui-clone/api/lib/modelRouter.js` — External LLM routing engine. Supports 5 providers: openai, azure_openai, anthropic, bedrock, ollama. Per-task priority chains (TASK_ROUTING map). Per-org config override (setOrgConfig). In-memory audit ring buffer (500 entries) with latency, cost-per-token estimates, and provider fallback on error. Functions: route(), getStats(), getAuditLog().
+- `kontra-ui-clone/api/lib/eventBus.js` — In-process EventEmitter + outbound webhook dispatcher. 20+ canonical event types (loan.*, draw.*, agent.*, policy.*, document.*, token.*). HMAC-SHA256 webhook signatures with `X-Kontra-Signature` header. 3-attempt exponential retry (1s→2s→4s). SSE stream subscriber set. Functions: emit(), on(), registerWebhook(), listWebhooks(), getEvents(), getDeliveries().
+- `kontra-ui-clone/api/lib/pluginConnector.js` — Plugin connector registry. 10 built-in connectors with standard execute() interface: Slack, Salesforce, Jira, ServiceNow, Microsoft Teams, HubSpot, DocuSign, SendGrid, PagerDuty, Fivetran. Each connector: authType, actions array, execute(action, payload, credentials). Demo mode when credentials = 'demo'. Functions: install(), uninstall(), execute(), listInstalled().
+- `kontra-ui-clone/api/src/routes/headlessApi.js` — /api/v1 versioned enterprise REST API. Endpoints: /complete (model router), /models, /models/config, /models/stats, /models/audit, /webhooks (CRUD + ping), /events (log + emit), /events/stream (SSE), /plugins (catalog + install + execute), /api-keys (create + revoke), /stats (combined), /health, /openapi (full OpenAPI 3.1 JSON spec).
+- `kontra-ui-clone/api/schema-phase5-enterprise.sql` — 6 new tables: kontra_webhooks, kontra_webhook_events, kontra_event_log (partition hint: month), kontra_model_routes, kontra_api_keys (hash+prefix pattern), kontra_plugin_installs. Pre-seeded 3 demo webhooks + 7 event log entries.
+- `kontra-ui-clone/ui/src/pages/dashboard/EnterpriseApiPage.tsx` — 6-tab Enterprise API Console at /enterprise-api: Model Router (provider selector, inference playground, audit table), Webhooks & Events (quick-emit panel, register form, hook list, delivery status), Plugin Marketplace (install/execute 10 connectors), API Key Manager (create/revoke, masked display), OpenAPI Explorer (grouped by tag, expandable), SSE Live Stream (dark terminal, pause/resume, 100-event ring).
+
+### Updated Files
+- `kontra-ui-clone/api/index.js` — mounted headlessApiRouter at /api/v1
+- `kontra-ui-clone/ui/src/pages/SaasDashboard.tsx` — added EnterpriseApiPage import + /enterprise-api Route
+- `kontra-ui-clone/ui/src/routes.jsx` — added "Enterprise API" nav item with GlobeAltIcon + GlobeAltIcon import
+
+### API Surface (/api/v1)
+POST /complete | GET /models | PUT /models/config | GET /models/stats | GET /models/audit | GET /webhooks | POST /webhooks | PATCH /webhooks/:id | DELETE /webhooks/:id | POST /webhooks/:id/ping | GET /webhooks/:id/deliveries | GET /events | POST /events/emit | GET /events/stream (SSE) | GET /plugins | GET /plugins/installed | POST /plugins/install | DELETE /plugins/install/:id | POST /plugins/install/:id/execute | GET /api-keys | POST /api-keys | DELETE /api-keys/:id | GET /stats | GET /health | GET /openapi
+
+### Providers (modelRouter)
+openai (gpt-4o-mini, $0.15/$0.60 per 1M) | azure_openai (env: AZURE_OPENAI_ENDPOINT + AZURE_OPENAI_DEPLOYMENT) | anthropic (claude-3-haiku, $0.25/$1.25 per 1M) | bedrock (claude-3-haiku, AWS SDK) | ollama (llama3.2:3b, $0 local)

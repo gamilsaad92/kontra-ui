@@ -228,6 +228,7 @@ const aiSliceRouter = require('./src/routes/ai');
 const workflowsSliceRouter = require('./src/routes/workflows');
 const agentConsoleRouter   = require('./src/routes/agentConsole');
 const integrationHubRouter = require('./src/routes/integrationHub');
+const headlessApiRouter    = require('./src/routes/headlessApi');
 const devSliceRouter = require('./src/routes/dev');
 
 const JOB_SCHEDULES = [
@@ -594,6 +595,7 @@ app.use('/api/ai', aiSliceRouter);
 app.use('/api', workflowsSliceRouter);
 app.use('/api/agent-console',  agentConsoleRouter);
 app.use('/api/integration',   integrationHubRouter);
+app.use('/api/v1',            headlessApiRouter);
 if (process.env.NODE_ENV !== 'production') {
   app.use('/api/dev', devSliceRouter);
 }
