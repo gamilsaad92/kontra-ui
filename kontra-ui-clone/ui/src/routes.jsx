@@ -88,6 +88,12 @@ export const lenderNavRoutes = [
     requiresAuth: true,
   },
   {
+    label: "AI Cost Governance",
+    path: "/cost-governance",
+    icon: CurrencyDollarIcon,
+    requiresAuth: true,
+  },
+  {
     label: "Policy Engine",
     path: "/policy",
     icon: ShieldCheckIcon,
