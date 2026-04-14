@@ -36,12 +36,18 @@
 
 'use strict';
 
-const express     = require('express');
-const engine      = require('../../lib/tokenizationEngine');
-const registry    = require('../../lib/tokenRegistry');
-const eventBus    = require('../../lib/eventBus');
+const express         = require('express');
+const engine          = require('../../lib/tokenizationEngine');
+const registry        = require('../../lib/tokenRegistry');
+const eventBus        = require('../../lib/eventBus');
+const contract        = require('../../lib/erc1400Contract');
+const paymentWebhook  = require('../../lib/paymentWebhook');
+const { supabase }    = require('../../db');
 
 const router = express.Router();
+
+// ── Mount payment webhook sub-router ─────────────────────────────────────────
+router.use('/webhooks', paymentWebhook);
 
 // ── Org context ───────────────────────────────────────────────────────────────
 
@@ -74,12 +80,37 @@ router.get('/assess/demo', (req, res) => {
 });
 
 // Custom assessment
-router.post('/assess', (req, res) => {
+router.post('/assess', async (req, res) => {
   const { loan, servicingHistory, compliance, covenants, documents } = req.body;
   if (!loan) return res.status(400).json({ error: 'loan object required' });
   try {
     const result = engine.assessReadiness(loan, { servicingHistory, compliance, covenants, documents });
     eventBus.emit('agent.action', { action: 'tokenization_assessment', loanId: loan.loan_number, score: result.score, status: result.status }, { orgId: req.orgId });
+
+    // ── Point 2: Persist to Supabase kontra_readiness_assessments ────────────
+    try {
+      await supabase.from('kontra_readiness_assessments').insert({
+        org_id:          req.orgId || null,
+        loan_number:     loan.loan_number || null,
+        score:           result.score,
+        status:          result.status,
+        dimension_scores: result.dimensions || null,
+        blocking_issues:  result.blockingIssues || null,
+        recommendations:  result.recommendations || null,
+        raw_input: {
+          loan: { loan_number: loan.loan_number, ltv: loan.ltv, dscr: loan.dscr, balance: loan.balance },
+          hasServiceHistory: !!servicingHistory,
+          hasCompliance:     !!compliance,
+          hasCovenants:      !!covenants,
+          hasDocuments:      !!documents,
+        },
+        assessed_at: new Date().toISOString(),
+      });
+    } catch (dbErr) {
+      // Non-fatal: log and continue — assessment result still returned to caller
+      console.error('[tokenization/assess] Supabase persist failed:', dbErr.message);
+    }
+
     res.json(result);
   } catch (err) { res.status(400).json({ error: err.message }); }
 });
@@ -270,6 +301,145 @@ router.get('/stats', (req, res) => {
 
 router.get('/erc1400-spec', (req, res) => {
   res.json({ requirements: engine.ERC1400_REQUIREMENTS, requiredLoanFields: engine.REQUIRED_LOAN_FIELDS.map(f => f.key), requiredDocuments: engine.REQUIRED_DOCUMENTS.map(d => ({ id: d.id, label: d.label, critical: d.critical })), partitionTypes: registry.PARTITION_TYPES, investorTypes: registry.INVESTOR_TYPES, proposalTypes: registry.PROPOSAL_TYPES });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POINT 3 — ERC-1400 CONTRACT DEPLOYMENT SCAFFOLD
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * GET /api/tokenization/contract/abi
+ * Returns the full ERC-1400 ABI for KontraSecurityToken.
+ * Frontend or external systems use this to interact with deployed contracts.
+ */
+router.get('/contract/abi', (req, res) => {
+  res.json({
+    contractName: 'KontraSecurityToken',
+    standard:     'ERC-1400 / ERC-3643',
+    solidity:     '^0.8.20',
+    source:       'kontra-contracts/src/KontraSecurityToken.sol',
+    abi:          contract.ERC1400_ABI,
+    partitionConstants: contract.PARTITION_BYTES32,
+    networks:     Object.fromEntries(
+      Object.entries(contract.NETWORKS).map(([k, v]) => [k, {
+        chainId: v.chainId, name: v.name, explorerUrl: v.explorerUrl,
+        usdc: v.usdc, usdt: v.usdt, dai: v.dai,
+      }])
+    ),
+  });
+});
+
+/**
+ * POST /api/tokenization/contract/deployment-config
+ * Generate a deployment configuration for a specific token package.
+ * Body: { tokenId, network }
+ */
+router.post('/contract/deployment-config', (req, res) => {
+  const { tokenId, network = 'mainnet' } = req.body;
+
+  let tokenConfig = {};
+  if (tokenId) {
+    const pkg = registry.getToken(tokenId);
+    if (!pkg) return res.status(404).json({ error: 'Token package not found' });
+
+    tokenConfig = {
+      name:          pkg.name,
+      symbol:        pkg.symbol || pkg.tokenSymbol,
+      totalSupply:   pkg.totalTokens,
+      controller:    process.env.KONTRA_CONTROLLER_ADDRESS || '0x0000000000000000000000000000000000000000',
+      loanId:        `0x${Buffer.from(pkg.loanId || 'unknown').toString('hex').padEnd(64, '0').slice(0, 64)}`,
+      originatorId:  `0x${Buffer.from(req.orgId || 'kontra').toString('hex').padEnd(64, '0').slice(0, 64)}`,
+      ltv:           pkg.ltv || 0.65,
+      dscr:          pkg.dscr || 1.25,
+      maturityTimestamp: pkg.maturityDate ? Math.floor(new Date(pkg.maturityDate).getTime() / 1000) : 0,
+      offeringDocumentHash: pkg.offeringDocumentHash || '0x' + '0'.repeat(64),
+      offeringDocumentUri:  pkg.ipfsDocumentUri || '',
+    };
+  }
+
+  try {
+    const config = contract.getDeploymentConfig(network, tokenConfig);
+    res.json(config);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+/**
+ * POST /api/tokenization/contract/preflight
+ * Run a pre-deployment checklist against a token package.
+ * Body: { tokenId, network }
+ */
+router.post('/contract/preflight', (req, res) => {
+  const { tokenId, network = 'sepolia' } = req.body;
+  if (!tokenId) return res.status(400).json({ error: 'tokenId required' });
+
+  const pkg = registry.getToken(tokenId);
+  if (!pkg) return res.status(404).json({ error: 'Token package not found' });
+
+  const wallets = registry.listWallets({ tokenId });
+
+  const checklist = contract.generatePreflightChecklist({
+    readinessScore: pkg.readinessScore || 0,
+    ipfsDocumentHash: pkg.ipfsDocumentHash || null,
+    investorCount: wallets.filter(w => w.kycStatus === 'approved').length,
+    ltv:  pkg.ltv  || 0,
+    dscr: pkg.dscr || 0,
+  }, network);
+
+  res.json({ tokenId, tokenName: pkg.name, network, ...checklist });
+});
+
+/**
+ * GET /api/tokenization/contract/gas-estimate
+ * Estimate gas cost for deploying on each network.
+ */
+router.get('/contract/gas-estimate', (req, res) => {
+  const estimates = Object.entries(contract.NETWORKS).map(([networkKey, net]) => ({
+    network: networkKey,
+    ...contract.estimateDeploymentGas(net),
+  }));
+  res.json({ estimates });
+});
+
+/**
+ * POST /api/tokenization/contract/encode-kyc-data
+ * Encode KYC payload for transferWithData calls.
+ * Body: { investorAddress, jurisdiction, kycExpiry }
+ */
+router.post('/contract/encode-kyc-data', (req, res) => {
+  const { investorAddress, jurisdiction = 'US', kycExpiry } = req.body;
+  if (!investorAddress) return res.status(400).json({ error: 'investorAddress required' });
+  try {
+    const encoded = contract.encodeKycData(investorAddress, jurisdiction, kycExpiry);
+    res.json({ investorAddress, jurisdiction, kycExpiry, encoded, usage: 'Pass as the _data parameter in transferWithData()' });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+/**
+ * GET /api/tokenization/contract/history
+ * Fetch all stored readiness assessments from Supabase (audit trail).
+ */
+router.get('/contract/assessment-history', async (req, res) => {
+  const { loanNumber, limit = 50 } = req.query;
+  try {
+    let query = supabase
+      .from('kontra_readiness_assessments')
+      .select('*')
+      .order('assessed_at', { ascending: false })
+      .limit(parseInt(limit));
+
+    if (req.orgId) query = query.eq('org_id', req.orgId);
+    if (loanNumber) query = query.eq('loan_number', loanNumber);
+
+    const { data, error } = await query;
+    if (error) throw error;
+    res.json({ count: data?.length || 0, assessments: data || [] });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 module.exports = router;
