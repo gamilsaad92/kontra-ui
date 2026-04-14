@@ -229,6 +229,7 @@ const workflowsSliceRouter = require('./src/routes/workflows');
 const agentConsoleRouter   = require('./src/routes/agentConsole');
 const integrationHubRouter = require('./src/routes/integrationHub');
 const headlessApiRouter    = require('./src/routes/headlessApi');
+const phase6TokenizationRouter = require('./src/routes/tokenizationApi');
 const devSliceRouter = require('./src/routes/dev');
 
 const JOB_SCHEDULES = [
@@ -596,6 +597,7 @@ app.use('/api', workflowsSliceRouter);
 app.use('/api/agent-console',  agentConsoleRouter);
 app.use('/api/integration',   integrationHubRouter);
 app.use('/api/v1',            headlessApiRouter);
+app.use('/api/tokenization',  phase6TokenizationRouter);
 if (process.env.NODE_ENV !== 'production') {
   app.use('/api/dev', devSliceRouter);
 }

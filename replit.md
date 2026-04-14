@@ -271,3 +271,31 @@ POST /complete | GET /models | PUT /models/config | GET /models/stats | GET /mod
 
 ### Providers (modelRouter)
 openai (gpt-4o-mini, $0.15/$0.60 per 1M) | azure_openai (env: AZURE_OPENAI_ENDPOINT + AZURE_OPENAI_DEPLOYMENT) | anthropic (claude-3-haiku, $0.25/$1.25 per 1M) | bedrock (claude-3-haiku, AWS SDK) | ollama (llama3.2:3b, $0 local)
+
+## Phase 6: Tokenization Execution Layer (COMPLETED 2026-04-14)
+
+### New Files
+- `kontra-ui-clone/api/lib/tokenizationEngine.js` — Tokenization Readiness Agent. 5-dimension assessment: Data Completeness (20%), Servicing History Integrity (25%), Compliance Readiness (25%), Covenant Status (15%), Legal Document Sufficiency (15%). Score ≥85=token_ready, 65-84=conditional, <65=not_ready. Each dimension returns issues tagged as blocking/conditional/warning. Blocking issues prevent tokenization regardless of score. 19 required loan fields, 13 required documents, ERC-1400 compliance checklist (8 requirements). assessReadiness(loan, {servicingHistory, compliance, covenants, documents}) returns full assessment with assessmentId, score, status, dimensions, blockingIssues, conditionalIssues, recommendations.
+- `kontra-ui-clone/api/lib/tokenRegistry.js` — ERC-1400 Token Registry. createTokenPackage() generates mock Ethereum contract address + IPFS document hash. Partitions: whole_loan, senior, mezzanine, equity. Investor wallet whitelist with KYC (pending/approved/rejected/expired), AML (pending/cleared/flagged), OFAC, accreditation, jurisdiction, and max position enforcement. checkTransferEligibility() returns ERC-1400 EIP-1066 status codes (0x51=allowed, 0x50=not authorized, 0x52=other). Hold period enforcement against purchase history. Stablecoin payment reconciliation (USDC/USDT/DAI/PYUSD/EURC, with raw on-chain integer via BigInt). Secondary market order book (bids/asks/trades). Governance proposals (6 types) with weighted voting and quorum tracking. seedDemoData() creates LN-0094 token package with 5 whitelisted wallets, 6 months of USDC payments, 4 orders, 1 governance proposal (maturity_extension with 3 votes cast).
+- `kontra-ui-clone/api/src/routes/tokenizationApi.js` — /api/tokenization REST router (20+ endpoints). Mounted as phase6TokenizationRouter to avoid name clash with existing tokenizationRouter. Emits token.issued, token.transferred, agent.action events to eventBus on key operations.
+- `kontra-ui-clone/api/schema-phase6-tokenization.sql` — 8 tables: kontra_token_packages (ERC-1400 metadata, offering params, chain data), kontra_investor_wallets (KYC/AML/OFAC status, jurisdiction, accreditation, approved_token_ids[]), kontra_token_transfers (transfer history with ERC-1400 types), kontra_stablecoin_payments (amount as human-readable + amount_raw as BigInt string), kontra_token_orders (order book), kontra_governance_proposals (options as JSONB array), kontra_governance_votes (UNIQUE constraint on proposal+voter), kontra_readiness_assessments (assessment history). All tables have appropriate indexes.
+- `kontra-ui-clone/ui/src/pages/dashboard/TokenizationPage.tsx` — 7-tab Tokenization Platform at /tokenization. Tabs: Readiness Agent (gauge SVG, dimension breakdown, blocking/conditional issue lists, ERC-1400 checklist), Token Registry (token cards with issuance progress bar, token detail panel with all metadata + IPFS hash + jurisdiction pills), Investor Whitelist (stats, add-wallet form, KYC approval/rejection from table), Transfer Eligibility (token+wallet selector form, eligibility result with ERC-1400 status code, transfer history feed), Payment Reconciliation (filter tabs, reconcile button, stablecoin/type badges), Secondary Market (bid/ask tables with mid-price/spread, recent trades feed), Investor Governance (proposal cards with vote bars, cast-vote buttons, role switcher).
+
+### Updated Files
+- `kontra-ui-clone/api/index.js` — added `require('./src/routes/tokenizationApi')` as `phase6TokenizationRouter`, mounted at `/api/tokenization`
+- `kontra-ui-clone/ui/src/pages/SaasDashboard.tsx` — added `import TokenizationPage` + `<Route path="/tokenization" element={<TokenizationPage />} />`
+- `kontra-ui-clone/ui/src/routes.jsx` — added `{ label: "Tokenization", path: "/tokenization", icon: CubeTransparentIcon }` nav item (CubeTransparentIcon was already imported)
+
+### API Surface (/api/tokenization)
+GET /assess/demo | POST /assess | GET /packages | POST /packages | GET /packages/:id | PATCH /packages/:id/status | GET /whitelist | POST /whitelist | PATCH /whitelist/:address/kyc | DELETE /whitelist/:address | POST /transfer-check | POST /transfer | GET /transfers | GET /payments | POST /payments | PATCH /payments/:id/reconcile | GET /secondary-market/:tokenId | POST /secondary-market/order | GET /governance/proposals | POST /governance/proposals | POST /governance/vote | GET /stats | GET /erc1400-spec
+
+### Readiness Scoring Logic
+- Score 95/100 for demo LN-0094 (status: conditional; 4 conditional issues around DSCR being near covenant, occupancy, and others — no blocking issues)
+- Transfer eligibility correctly blocks max-position-exceeded investor (holding $2.6M vs $2.0M cap) with ERC-1400 status code 0x52
+- Pending KYC wallet blocked with 2 reasons (kyc_status not approved, aml_status not cleared)
+
+### Stablecoins Supported
+USDC (6 decimals) | USDT (6 decimals) | DAI (18 decimals) | PYUSD (6 decimals) | EURC (6 decimals)
+
+### Governance Proposal Types
+maturity_extension | rate_modification | property_disposition | servicer_replacement | covenant_waiver | special_distribution
