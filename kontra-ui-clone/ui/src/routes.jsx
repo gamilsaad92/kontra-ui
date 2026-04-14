@@ -6,6 +6,7 @@ import {
   ChartPieIcon,
   WrenchScrewdriverIcon,
   ShieldCheckIcon,
+  LinkIcon,
   PresentationChartLineIcon,
   CubeTransparentIcon,
   CreditCardIcon,
@@ -65,6 +66,12 @@ export const lenderNavRoutes = [
     label: "Workflow Engine",
     path: "/workflow",
     icon: BoltIcon,
+    requiresAuth: true,
+  },
+  {
+    label: "Integration Hub",
+    path: "/integration",
+    icon: LinkIcon,
     requiresAuth: true,
   },
   {

@@ -223,3 +223,30 @@ freddie_mac | fannie_mae | hazard_loss | watchlist | reserve | maturity | token_
 ### DB Tables Added
 - `kontra_rule_overrides` — org-level rule overrides with type, value, effective dates, status, and role requirements
 - `kontra_agent_rule_dependencies` — agent ↔ rule usage map (evaluates / triggers_on / blocks_on)
+
+## Phase 4: Integration & Legacy Modernization Layer (COMPLETED 2026-04-14)
+
+### New Files
+- `kontra-ui-clone/api/lib/documentIntelligence.js` — OCR + structured extraction engine. 11 typed extraction schemas (loan_document, appraisal_report, insurance_acord, inspection_report, rent_roll, operating_statement, reserve_report, draw_request, email_request, spreadsheet). Uses gpt-4o-mini function-calling with confidence scoring. Full demo mode when OPENAI_API_KEY unavailable.
+- `kontra-ui-clone/api/lib/legacyAdapters.js` — 10 source system adapters: FICS, Situs/AMC, Yardi, MRI, Trepp/RiskMetrics, generic spreadsheet/CSV, email/fax, inspection vendor, insurance ACORD, reserve XML. Each adapter is a stateless `normalize(rawData) → KontraSchema` function with utility parsers (parseNum, parsePct, parseDate, mapLoanType, mapPropertyType).
+- `kontra-ui-clone/api/src/routes/integrationHub.js` — 7 API endpoints: classify, extract (multipart), ingest (adapter-normalized), email-parse, csv-preview, jobs (queue), stats. In-memory job queue with DB persistence. Pre-seeded with 7 demo jobs.
+- `kontra-ui-clone/api/schema-phase4-integration.sql` — 4 new tables: `kontra_integration_jobs`, `kontra_integration_sources` (pre-seeded with 10 adapters), `kontra_document_extractions`, `kontra_email_requests`. Full indexing for status, doc_type, org_id.
+- `kontra-ui-clone/ui/src/pages/dashboard/IntegrationHubPage.tsx` — Integration Hub UI with 4 tabs: Doc Intelligence (upload zone + extraction results), Adapters (10 cards + capabilities table), Email Parser (textarea → structured request), Job Queue (filtered table + failure alerts). 6-stage pipeline visualizer.
+
+### Updated Files
+- `kontra-ui-clone/api/index.js` — mounted `integrationHubRouter` at `/api/integration`
+- `kontra-ui-clone/ui/src/pages/SaasDashboard.tsx` — added `IntegrationHubPage` import + `/integration` route
+- `kontra-ui-clone/ui/src/routes.jsx` — added "Integration Hub" nav item with `LinkIcon` (before Policy Engine)
+
+### API Endpoints (Phase 4)
+- `POST /api/integration/extract` — multipart file upload → classify → OCR extract → structured JSON
+- `POST /api/integration/classify` — auto-classify document type
+- `POST /api/integration/ingest` — run adapter, normalize, return unified schema object
+- `POST /api/integration/email-parse` — email text → structured servicing request
+- `POST /api/integration/csv-preview` — parse CSV, detect columns, recommend adapter
+- `GET  /api/integration/adapters` — list all 10 adapters
+- `GET  /api/integration/jobs` — integration job queue with status filters
+- `GET  /api/integration/stats` — dashboard stats
+
+### Extraction Schemas (11 types)
+loan_document (23 fields) | appraisal_report (18 fields) | insurance_acord (17 fields) | inspection_report (deficiency array) | rent_roll (unit_mix array) | operating_statement (expense breakdown) | reserve_report (pending_draws array) | draw_request (line items array) | email_request (9 fields + classification) | spreadsheet (column auto-detection) | title_report / environmental_report (classified)

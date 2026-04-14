@@ -20,6 +20,7 @@ import TeamPage from "./settings/TeamPage";
 import WiringCheck from "./dev/WiringCheck";
 import WorkflowEnginePage from "./dashboard/WorkflowEnginePage";
 import PolicyEnginePage from "./dashboard/PolicyEnginePage";
+import IntegrationHubPage from "./dashboard/IntegrationHubPage";
 import AgentConsolePage from "./dashboard/AgentConsolePage";
 import {
   GovernanceComplianceCrudPage,
@@ -183,6 +184,7 @@ export default function SaasDashboard() {
       <Route path="/reports" element={<ReportsCrudPage />} />
       <Route path="/workflow" element={<WorkflowEnginePage />} />
       <Route path="/policy" element={<PolicyEnginePage />} />
+      <Route path="/integration" element={<IntegrationHubPage />} />
       <Route path="/agents" element={<AgentConsolePage />} />
       <Route path="/settings" element={<Navigate to="/settings/billing" replace />} />
       <Route path="/settings/billing" element={<BillingPage />} />
