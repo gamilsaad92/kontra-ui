@@ -1,17 +1,26 @@
 /**
  * Workflow Orchestration Routes
  *
+ * GET    /api/workflow-templates           - List all machine-readable workflow templates
+ * GET    /api/workflow-templates/:id      - Get a single template with full step graph
+ * POST   /api/workflows/from-template     - Launch a workflow from a template
+ *
  * POST   /api/workflows                    - Create and queue a workflow run
  * GET    /api/workflows                    - List workflow runs (with filters)
  * GET    /api/workflows/:id               - Get a single workflow run
  * POST   /api/workflows/:id/retry         - Retry a failed workflow
  * POST   /api/workflows/:id/cancel        - Cancel a queued/running workflow
+ * GET    /api/workflows/:id/steps         - Get granular step detail for a run
  *
- * POST   /api/triggers/financial-uploaded - Trigger: financial package uploaded
+ * POST   /api/triggers/financial-uploaded  - Trigger: financial package uploaded
  * POST   /api/triggers/inspection-uploaded - Trigger: inspection report uploaded
- * POST   /api/triggers/draw-submitted     - Trigger: draw request submitted
- * POST   /api/triggers/covenant-breach    - Trigger: covenant breach detected
- * POST   /api/triggers/occupancy-alert    - Trigger: occupancy below threshold
+ * POST   /api/triggers/draw-submitted      - Trigger: draw request submitted
+ * POST   /api/triggers/covenant-breach     - Trigger: covenant breach detected
+ * POST   /api/triggers/occupancy-alert     - Trigger: occupancy below threshold
+ * POST   /api/triggers/hazard-loss-filed   - Trigger: hazard/insurance loss event filed
+ * POST   /api/triggers/watchlist-added     - Trigger: loan added to watchlist
+ * POST   /api/triggers/maturity-t90        - Trigger: loan within 90 days of maturity
+ * POST   /api/triggers/covenant-test-due   - Trigger: scheduled covenant test
  *
  * POST   /api/agents/callback             - Agent posts back result
  * POST   /api/agents/heartbeat            - Agent heartbeat (for long-running)
@@ -19,6 +28,7 @@
  * POST   /api/reviews/:workflowId/approve         - Human approves output
  * POST   /api/reviews/:workflowId/reject          - Human rejects output
  * POST   /api/reviews/:workflowId/request_changes - Human requests changes
+ * GET    /api/approval-queue              - All pending approvals for this org
  *
  * GET    /api/loans/:loanId/agent-artifacts - Get artifacts for a loan
  * GET    /api/workflows/:id/evidence        - Get evidence for a workflow
@@ -27,6 +37,7 @@
 const express = require('express');
 const { supabase } = require('../../db');
 const { routeTrigger, executeWorkflow } = require('../../../ai/lib/workflowOrchestrator');
+const { getTemplates, getTemplate, resolveTemplate } = require('../../lib/workflowTemplates');
 
 const router = express.Router();
 
@@ -34,6 +45,9 @@ const VALID_WORKFLOW_TYPES = [
   'financial_review', 'inspection_review', 'draw_review',
   'borrower_communication', 'risk_scoring', 'covenant_breach',
   'occupancy_alert', 'missing_annuals',
+  // Phase 1 template-based types
+  'hazard_loss_disbursement', 'watchlist_review',
+  'borrower_financial_analysis', 'maturity_tracking', 'covenant_monitoring',
 ];
 
 // ── Helper ─────────────────────────────────────────────────────────────────
@@ -58,6 +72,101 @@ async function createWorkflowRun({ org_id, loan_id, workflow_type, source_entity
   if (error) throw error;
   return data;
 }
+
+// ── Workflow Templates ────────────────────────────────────────────────────────
+
+router.get('/workflow-templates', (req, res) => {
+  return res.json({ items: getTemplates(), total: getTemplates().length });
+});
+
+router.get('/workflow-templates/:id', (req, res) => {
+  const template = getTemplate(req.params.id);
+  if (!template) return res.status(404).json({ code: 'TEMPLATE_NOT_FOUND' });
+  return res.json({ template });
+});
+
+// Launch a workflow run from a template (preferred way for UI-initiated workflows)
+router.post('/workflows/from-template', async (req, res) => {
+  const { template_id, loan_id, input_payload, priority } = req.body;
+  if (!template_id) return res.status(400).json({ code: 'MISSING_TEMPLATE_ID' });
+
+  const template = getTemplate(template_id);
+  if (!template) return res.status(400).json({ code: 'INVALID_TEMPLATE_ID', valid: getTemplates().map((t) => t.id) });
+
+  try {
+    const slaDeadline = new Date(Date.now() + template.sla_hours * 3600 * 1000).toISOString();
+    const firstStep = template.steps[0]?.id || null;
+
+    const run = await createWorkflowRun({
+      org_id: req.orgId,
+      loan_id: loan_id || null,
+      workflow_type: template.id,
+      source_entity_type: 'template',
+      source_entity_id: null,
+      input_payload: {
+        ...(input_payload || {}),
+        template_id,
+        template_name: template.name,
+        sla_hours: template.sla_hours,
+      },
+      requested_by: req.headers['x-user-id'] || null,
+      priority: priority || 5,
+    });
+
+    // Patch in template_id and sla_deadline if columns exist
+    await supabase.from('workflow_runs')
+      .update({ template_id, current_step: firstStep, sla_deadline: slaDeadline, updated_at: new Date().toISOString() })
+      .eq('id', run.id)
+      .then(() => {});
+
+    setImmediate(() => {
+      executeWorkflow(run.id, req.orgId).catch((err) => {
+        console.error('[workflow/from-template] execution error', run.id, err.message);
+      });
+    });
+
+    return res.status(201).json({
+      ok: true,
+      workflow_run: { ...run, template_id, current_step: firstStep, sla_deadline: slaDeadline },
+      template: { id: template.id, name: template.name, sla_hours: template.sla_hours, step_count: template.steps.length },
+    });
+  } catch (err) {
+    return res.status(500).json({ code: 'WORKFLOW_FROM_TEMPLATE_FAILED', details: err.message });
+  }
+});
+
+// ── Approval Queue ────────────────────────────────────────────────────────────
+
+router.get('/approval-queue', async (req, res) => {
+  try {
+    const { data: reviews, error } = await supabase
+      .from('human_reviews')
+      .select('*')
+      .eq('org_id', req.orgId)
+      .in('review_status', ['pending', 'changes_requested'])
+      .order('created_at', { ascending: true });
+
+    if (error) return res.status(500).json({ code: 'APPROVAL_QUEUE_FAILED', details: error.message });
+
+    // Enrich with workflow run context
+    const runIds = (reviews || []).map((r) => r.workflow_run_id).filter(Boolean);
+    let runs = [];
+    if (runIds.length) {
+      const { data } = await supabase.from('workflow_runs').select('id,workflow_type,loan_id,priority').in('id', runIds);
+      runs = data || [];
+    }
+    const runMap = Object.fromEntries(runs.map((r) => [r.id, r]));
+
+    const enriched = (reviews || []).map((review) => ({
+      ...review,
+      workflow_context: runMap[review.workflow_run_id] || null,
+    }));
+
+    return res.json({ items: enriched, total: enriched.length });
+  } catch (err) {
+    return res.status(500).json({ code: 'APPROVAL_QUEUE_FAILED', details: err.message });
+  }
+});
 
 // ── Workflow CRUD ─────────────────────────────────────────────────────────────
 
@@ -173,10 +282,21 @@ router.post('/workflows/:id/cancel', async (req, res) => {
 
 // ── Triggers ──────────────────────────────────────────────────────────────────
 
+const TRIGGER_PRIORITY = {
+  'covenant-breach': 1, 'covenant-test-due': 2, 'watchlist-added': 2,
+  'maturity-t90': 3, 'hazard-loss-filed': 2, 'delinquency-threshold': 2,
+};
+
 async function handleTrigger(req, res, trigger_type) {
   const { loan_id, entity_id, entity_type, payload } = req.body;
   try {
-    const workflow_type = routeTrigger(trigger_type);
+    // Try legacy route first, fall back to template resolution
+    let workflow_type;
+    try { workflow_type = routeTrigger(trigger_type); } catch (_) {}
+    if (!workflow_type) workflow_type = resolveTemplate(trigger_type) || trigger_type.replace(/-/g, '_');
+
+    const priority = TRIGGER_PRIORITY[trigger_type] || 5;
+
     const run = await createWorkflowRun({
       org_id: req.orgId,
       loan_id,
@@ -185,8 +305,19 @@ async function handleTrigger(req, res, trigger_type) {
       source_entity_id: entity_id || null,
       input_payload: payload || {},
       requested_by: req.headers['x-user-id'] || null,
-      priority: trigger_type === 'covenant-breach' ? 1 : 5,
+      priority,
     });
+
+    // If the trigger maps to a known template, attach SLA deadline
+    const template = resolveTemplate(trigger_type) ? require('../../lib/workflowTemplates').getTemplate(resolveTemplate(trigger_type)) : null;
+    if (template) {
+      const slaDeadline = new Date(Date.now() + template.sla_hours * 3600 * 1000).toISOString();
+      const firstStep = template.steps[0]?.id || null;
+      await supabase.from('workflow_runs')
+        .update({ template_id: template.id, current_step: firstStep, sla_deadline: slaDeadline, updated_at: new Date().toISOString() })
+        .eq('id', run.id)
+        .then(() => {});
+    }
 
     setImmediate(() => {
       executeWorkflow(run.id, req.orgId).catch((err) => {
@@ -200,11 +331,19 @@ async function handleTrigger(req, res, trigger_type) {
   }
 }
 
+// Original triggers
 router.post('/triggers/financial-uploaded', (req, res) => handleTrigger(req, res, 'financial-uploaded'));
 router.post('/triggers/inspection-uploaded', (req, res) => handleTrigger(req, res, 'inspection-uploaded'));
 router.post('/triggers/draw-submitted', (req, res) => handleTrigger(req, res, 'draw-submitted'));
 router.post('/triggers/covenant-breach', (req, res) => handleTrigger(req, res, 'covenant-breach'));
 router.post('/triggers/occupancy-alert', (req, res) => handleTrigger(req, res, 'occupancy-alert'));
+
+// Phase 1 new triggers
+router.post('/triggers/hazard-loss-filed', (req, res) => handleTrigger(req, res, 'hazard-loss-filed'));
+router.post('/triggers/watchlist-added', (req, res) => handleTrigger(req, res, 'watchlist-added'));
+router.post('/triggers/maturity-t90', (req, res) => handleTrigger(req, res, 'maturity-t90'));
+router.post('/triggers/covenant-test-due', (req, res) => handleTrigger(req, res, 'covenant-test-due'));
+router.post('/triggers/delinquency-threshold', (req, res) => handleTrigger(req, res, 'delinquency-threshold'));
 
 // ── Agent callbacks ───────────────────────────────────────────────────────────
 
