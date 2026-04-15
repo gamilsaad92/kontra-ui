@@ -226,6 +226,12 @@ const orgDiscoveryRouter = require('./src/routes/orgDiscovery');
 const authBootstrapRouter = require('./src/routes/auth');
 const aiSliceRouter = require('./src/routes/ai');
 const workflowsSliceRouter = require('./src/routes/workflows');
+const agentConsoleRouter   = require('./src/routes/agentConsole');
+const integrationHubRouter = require('./src/routes/integrationHub');
+const headlessApiRouter    = require('./src/routes/headlessApi');
+const phase6TokenizationRouter = require('./src/routes/tokenizationApi');
+const phase7CostGovernanceRouter = require('./src/routes/costGovernanceApi');
+const phase8CommandCentersRouter = require('./src/routes/commandCentersApi');
 const devSliceRouter = require('./src/routes/dev');
 
 const JOB_SCHEDULES = [
@@ -590,6 +596,12 @@ app.use('/api/reports', reportsSliceRouter);
 app.use('/api/orgs', orgsSliceRouter);
 app.use('/api/ai', aiSliceRouter);
 app.use('/api', workflowsSliceRouter);
+app.use('/api/agent-console',  agentConsoleRouter);
+app.use('/api/integration',   integrationHubRouter);
+app.use('/api/v1',            headlessApiRouter);
+app.use('/api/tokenization',  phase6TokenizationRouter);
+app.use('/api/cost',          phase7CostGovernanceRouter);
+app.use('/api/cc',            phase8CommandCentersRouter);
 if (process.env.NODE_ENV !== 'production') {
   app.use('/api/dev', devSliceRouter);
 }
