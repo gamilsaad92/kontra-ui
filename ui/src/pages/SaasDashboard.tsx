@@ -19,6 +19,18 @@ import BillingPage from "./settings/BillingPage";
 import TeamPage from "./settings/TeamPage";
 import WiringCheck from "./dev/WiringCheck";
 import WorkflowEnginePage from "./dashboard/WorkflowEnginePage";
+import PolicyEnginePage from "./dashboard/PolicyEnginePage";
+import IntegrationHubPage from "./dashboard/IntegrationHubPage";
+import EnterpriseApiPage from "./dashboard/EnterpriseApiPage";
+import TokenizationPage from "./dashboard/TokenizationPage";
+import CostGovernancePage from "./dashboard/CostGovernancePage";
+import ServicingOperationsCenter from "./dashboard/ServicingOperationsCenter";
+import InspectionIntelligenceCenter from "./dashboard/InspectionIntelligenceCenter";
+import HazardLossRecoveryCenter from "./dashboard/HazardLossRecoveryCenter";
+import ComplianceCovenantCenter from "./dashboard/ComplianceCovenantCenter";
+import TokenizationExchangeCenter from "./dashboard/TokenizationExchangeCenter";
+import AdminPolicyCommandCenter from "./dashboard/AdminPolicyCommandCenter";
+import AgentConsolePage from "./dashboard/AgentConsolePage";
 import {
   GovernanceComplianceCrudPage,
   GovernanceDocumentCrudPage,
@@ -180,6 +192,18 @@ export default function SaasDashboard() {
       <Route path="/analytics" element={<AiInsightsPage />} />
       <Route path="/reports" element={<ReportsCrudPage />} />
       <Route path="/workflow" element={<WorkflowEnginePage />} />
+      <Route path="/policy" element={<PolicyEnginePage />} />
+      <Route path="/integration" element={<IntegrationHubPage />} />
+      <Route path="/enterprise-api" element={<EnterpriseApiPage />} />
+      <Route path="/tokenization" element={<TokenizationPage />} />
+      <Route path="/cost-governance" element={<CostGovernancePage />} />
+      <Route path="/servicing-ops" element={<ServicingOperationsCenter />} />
+      <Route path="/inspection" element={<InspectionIntelligenceCenter />} />
+      <Route path="/hazard-recovery" element={<HazardLossRecoveryCenter />} />
+      <Route path="/compliance-center" element={<ComplianceCovenantCenter />} />
+      <Route path="/exchange" element={<TokenizationExchangeCenter />} />
+      <Route path="/policy-command" element={<AdminPolicyCommandCenter />} />
+      <Route path="/agents" element={<AgentConsolePage />} />
       <Route path="/settings" element={<Navigate to="/settings/billing" replace />} />
       <Route path="/settings/billing" element={<BillingPage />} />
       <Route path="/settings/sso" element={<SsoSettingsPage />} />
