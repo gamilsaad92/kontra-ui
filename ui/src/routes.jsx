@@ -3,23 +3,27 @@ import {
   BanknotesIcon,
   Cog6ToothIcon,
   ChartBarIcon,
-  ChartPieIcon,
-  WrenchScrewdriverIcon,
   ShieldCheckIcon,
   LinkIcon,
-  GlobeAltIcon,
-  PresentationChartLineIcon,
   CubeTransparentIcon,
-  CreditCardIcon,
-  BoltIcon,
+  SparklesIcon,
   UsersIcon,
   CurrencyDollarIcon,
-  MagnifyingGlassIcon,
-  DocumentMagnifyingGlassIcon,
+  CommandLineIcon,
   BuildingOfficeIcon,
-  SparklesIcon,
+  ShoppingBagIcon,
+  DocumentChartBarIcon,
+  MagnifyingGlassIcon,
+  WrenchScrewdriverIcon,
+  DocumentMagnifyingGlassIcon,
 } from "@heroicons/react/24/outline";
 
+/**
+ * Lender portal navigation — clean IA matching the Kontra pitch narrative.
+ * Dashboard → Loans → Servicing → AI Copilot → Command Center →
+ * Compliance & Rules → Integrations → Tokenization → Marketplace → Reports
+ * Admin items grouped at bottom.
+ */
 export const lenderNavRoutes = [
   {
     label: "Dashboard",
@@ -28,57 +32,39 @@ export const lenderNavRoutes = [
     requiresAuth: true,
   },
   {
-    label: "Portfolio",
+    label: "Loans",
     path: "/portfolio",
     icon: BanknotesIcon,
     requiresAuth: true,
   },
   {
-    label: "Compliance & Legal",
-    path: "/governance",
+    label: "Servicing",
+    path: "/servicer/overview",
+    icon: BuildingOfficeIcon,
+    requiresAuth: true,
+  },
+  {
+    label: "AI Copilot",
+    path: "/ai-copilot",
+    icon: SparklesIcon,
+    requiresAuth: true,
+  },
+  {
+    label: "Command Center",
+    path: "/command-center",
+    icon: CommandLineIcon,
+    requiresAuth: true,
+  },
+  {
+    label: "Compliance & Rules",
+    path: "/policy",
     icon: ShieldCheckIcon,
     requiresAuth: true,
   },
   {
-    label: "Capital Markets",
-    path: "/markets",
-    icon: PresentationChartLineIcon,
-    requiresAuth: true,
-  },
-  {
-    label: "Tokenization",
-    path: "/onchain",
-    icon: CubeTransparentIcon,
-    requiresAuth: true,
-  },
-  {
-    label: "Risk Intelligence",
-    path: "/analytics",
-    icon: ChartPieIcon,
-    requiresAuth: true,
-  },
-  {
-    label: "Reports",
-    path: "/reports",
-    icon: ChartBarIcon,
-    requiresAuth: true,
-  },
-  {
-    label: "Workflow Engine",
-    path: "/workflow",
-    icon: BoltIcon,
-    requiresAuth: true,
-  },
-  {
-    label: "Integration Hub",
+    label: "Integrations",
     path: "/integration",
     icon: LinkIcon,
-    requiresAuth: true,
-  },
-  {
-    label: "Enterprise API",
-    path: "/enterprise-api",
-    icon: GlobeAltIcon,
     requiresAuth: true,
   },
   {
@@ -88,79 +74,46 @@ export const lenderNavRoutes = [
     requiresAuth: true,
   },
   {
-    label: "AI Cost Governance",
-    path: "/cost-governance",
-    icon: CurrencyDollarIcon,
+    label: "Marketplace",
+    path: "/markets",
+    icon: ShoppingBagIcon,
     requiresAuth: true,
   },
   {
-    label: "Servicing Operations",
-    path: "/servicing-ops",
-    icon: BuildingOfficeIcon,
+    label: "Reports",
+    path: "/reports",
+    icon: DocumentChartBarIcon,
     requiresAuth: true,
   },
-  {
-    label: "Inspection Intelligence",
-    path: "/inspection",
-    icon: MagnifyingGlassIcon,
-    requiresAuth: true,
-  },
-  {
-    label: "Hazard Loss Recovery",
-    path: "/hazard-recovery",
-    icon: BoltIcon,
-    requiresAuth: true,
-  },
-  {
-    label: "Compliance & Covenant",
-    path: "/compliance-center",
-    icon: DocumentMagnifyingGlassIcon,
-    requiresAuth: true,
-  },
-  {
-    label: "Tokenization Exchange",
-    path: "/exchange",
-    icon: ChartPieIcon,
-    requiresAuth: true,
-  },
-  {
-    label: "Policy Command",
-    path: "/policy-command",
-    icon: WrenchScrewdriverIcon,
-    requiresAuth: true,
-  },
-  {
-    label: "Policy Engine",
-    path: "/policy",
-    icon: ShieldCheckIcon,
-    requiresAuth: true,
-  },
-  {
-    label: "Agent Console",
-    path: "/agents",
-    icon: SparklesIcon,
-    requiresAuth: true,
-  },
+  // ── Admin (grouped at bottom) ──────────────────────────────────────────
   {
     label: "Team & Roles",
     path: "/settings/team",
     icon: UsersIcon,
     requiresAuth: true,
+    group: "admin",
   },
   {
-    label: "Billing",
-    path: "/settings/billing",
-    icon: CreditCardIcon,
+    label: "Cost Intelligence",
+    path: "/cost-governance",
+    icon: CurrencyDollarIcon,
     requiresAuth: true,
+    group: "admin",
   },
   {
     label: "Settings",
-    path: "/settings/sso",
+    path: "/settings/billing",
     icon: Cog6ToothIcon,
     requiresAuth: true,
+    group: "admin",
   },
 ];
 
+export const lenderDefaultPath = "/dashboard";
+
+/**
+ * Servicer portal navigation
+ */
 export const servicerNavRoutes = [
   {
     label: "Overview",
@@ -212,5 +165,4 @@ export const servicerNavRoutes = [
   },
 ];
 
-export const lenderDefaultPath = "/dashboard";
 export const servicerDefaultPath = "/servicer/overview";
