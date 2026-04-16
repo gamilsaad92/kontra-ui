@@ -1,0 +1,27 @@
+kind = "mobile"
+previewPath = "/kontra-mobile/"
+title = "Kontra Mobile"
+version = "1.0.0"
+id = "artifacts/kontra-mobile"
+router = "expo-domain"
+
+[[integratedSkills]]
+name = "expo"
+version = "1.0.0"
+
+[[services]]
+ensurePreviewReachable = "/status"
+name = "expo"
+paths = [ "/kontra-mobile/" ]
+localPort = 18963
+
+[services.development]
+run = "pnpm --filter @workspace/kontra-mobile run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/kontra-mobile", "run", "build" ]
+run = [ "pnpm", "--filter", "@workspace/kontra-mobile", "run", "serve" ]
+
+[services.env]
+PORT = "18963"
+BASE_PATH = "/kontra-mobile/"

@@ -1,0 +1,8 @@
+uploads = []
+outputs = []
+
+[[generated]]
+id = "BTi577iIFQQnMYGK0J8_a"
+uri = "file://artifacts/kontra-mobile/assets/images/icon.png"
+type = "image"
+title = "kontra-app-icon"
