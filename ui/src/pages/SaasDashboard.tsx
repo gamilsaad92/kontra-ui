@@ -31,6 +31,8 @@ import ComplianceCovenantCenter from "./dashboard/ComplianceCovenantCenter";
 import TokenizationExchangeCenter from "./dashboard/TokenizationExchangeCenter";
 import AdminPolicyCommandCenter from "./dashboard/AdminPolicyCommandCenter";
 import AgentConsolePage from "./dashboard/AgentConsolePage";
+import AICopilotPage from "./dashboard/AICopilotPage";
+import UnifiedCommandCenter from "./dashboard/UnifiedCommandCenter";
 import {
   GovernanceComplianceCrudPage,
   GovernanceDocumentCrudPage,
@@ -197,13 +199,17 @@ export default function SaasDashboard() {
       <Route path="/enterprise-api" element={<EnterpriseApiPage />} />
       <Route path="/tokenization" element={<TokenizationPage />} />
       <Route path="/cost-governance" element={<CostGovernancePage />} />
-      <Route path="/servicing-ops" element={<ServicingOperationsCenter />} />
-      <Route path="/inspection" element={<InspectionIntelligenceCenter />} />
-      <Route path="/hazard-recovery" element={<HazardLossRecoveryCenter />} />
-      <Route path="/compliance-center" element={<ComplianceCovenantCenter />} />
-      <Route path="/exchange" element={<TokenizationExchangeCenter />} />
-      <Route path="/policy-command" element={<AdminPolicyCommandCenter />} />
-      <Route path="/agents" element={<AgentConsolePage />} />
+      {/* Unified Command Center — replaces 6 separate pages */}
+      <Route path="/command-center" element={<UnifiedCommandCenter />} />
+      {/* Redirects from old individual command center paths */}
+      <Route path="/servicing-ops" element={<Navigate to="/command-center" replace />} />
+      <Route path="/inspection" element={<Navigate to="/command-center" replace />} />
+      <Route path="/hazard-recovery" element={<Navigate to="/command-center" replace />} />
+      <Route path="/compliance-center" element={<Navigate to="/command-center" replace />} />
+      <Route path="/policy-command" element={<Navigate to="/command-center" replace />} />
+      {/* AI Copilot — replaces Agent Console */}
+      <Route path="/ai-copilot" element={<AICopilotPage />} />
+      <Route path="/agents" element={<Navigate to="/ai-copilot" replace />} />
       <Route path="/settings" element={<Navigate to="/settings/billing" replace />} />
       <Route path="/settings/billing" element={<BillingPage />} />
       <Route path="/settings/sso" element={<SsoSettingsPage />} />
