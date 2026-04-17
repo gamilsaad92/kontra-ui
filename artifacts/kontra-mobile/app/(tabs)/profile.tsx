@@ -27,7 +27,7 @@ interface MenuItem {
 export default function ProfileScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { user, logout, switchRole } = useAuth();
+  const { user, logout } = useAuth();
   const isWeb = Platform.OS === "web";
 
   if (!user) return null;
@@ -35,12 +35,6 @@ export default function ProfileScreen() {
   const isInvestor = user.role === "investor";
   const accentColor = isInvestor ? colors.investor : colors.borrower;
   const accentLight = isInvestor ? colors.investorLight : colors.borrowerLight;
-
-  const handleSwitchRole = () => {
-    Haptics.selectionAsync();
-    const newRole = isInvestor ? "borrower" : "investor";
-    switchRole(newRole);
-  };
 
   const handleLogout = () => {
     Alert.alert("Sign Out", "Are you sure you want to sign out?", [
@@ -144,17 +138,6 @@ export default function ProfileScreen() {
         )}
       </KontraCard>
 
-      <TouchableOpacity
-        style={[styles.switchBtn, { backgroundColor: accentLight, borderColor: accentColor }]}
-        onPress={handleSwitchRole}
-        activeOpacity={0.8}
-      >
-        <Feather name="repeat" size={16} color={accentColor} />
-        <Text style={[styles.switchText, { color: accentColor }]}>
-          Switch to {isInvestor ? "Borrower" : "Investor"} View
-        </Text>
-      </TouchableOpacity>
-
       {menuGroups.map((group) => (
         <View key={group.title} style={styles.menuGroup}>
           <Text style={[styles.groupTitle, { color: colors.mutedForeground }]}>{group.title}</Text>
@@ -211,8 +194,6 @@ const styles = StyleSheet.create({
   statVal: { fontSize: 16, fontFamily: "Inter_700Bold" },
   statLbl: { fontSize: 11, fontFamily: "Inter_400Regular" },
   divider: { width: 1, height: 32 },
-  switchBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, padding: 12, borderRadius: 10, borderWidth: 1.5, marginBottom: 20 },
-  switchText: { fontSize: 14, fontFamily: "Inter_600SemiBold" },
   menuGroup: { marginBottom: 16 },
   groupTitle: { fontSize: 12, fontFamily: "Inter_500Medium", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 8, paddingLeft: 2 },
   menuItem: { flexDirection: "row", alignItems: "center", padding: 14, gap: 12 },

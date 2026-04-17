@@ -42,11 +42,12 @@ export default function LoginScreen() {
     setLoading(true);
     setError("");
     try {
-      await login(email, password, selectedRole);
+      await login(email, password);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       router.replace("/(tabs)");
-    } catch {
-      setError("Login failed. Please try again.");
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Login failed. Please try again.";
+      setError(msg);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
     } finally {
       setLoading(false);
@@ -77,7 +78,7 @@ export default function LoginScreen() {
         </View>
 
         <View style={styles.roleSection}>
-          <Text style={[styles.roleLabel, { color: colors.mutedForeground }]}>Sign in as</Text>
+          <Text style={[styles.roleLabel, { color: colors.mutedForeground }]}>Your role</Text>
           <View style={styles.roleRow}>
             {ROLES.map((role) => (
               <TouchableOpacity
@@ -139,7 +140,7 @@ export default function LoginScreen() {
           <TouchableOpacity
             style={[
               styles.loginBtn,
-              { backgroundColor: colors.primary },
+              { backgroundColor: selectedRole === "investor" ? "#6d28d9" : "#059669" },
               loading && { opacity: 0.7 },
             ]}
             onPress={handleLogin}
@@ -154,8 +155,8 @@ export default function LoginScreen() {
           </TouchableOpacity>
         </View>
 
-        <Text style={[styles.demo, { color: colors.mutedForeground }]}>
-          Demo: any email + any password
+        <Text style={[styles.hint, { color: colors.mutedForeground }]}>
+          Sign in with your Kontra account credentials.{"\n"}Your role is assigned by your organization.
         </Text>
       </ScrollView>
     </KeyboardAvoidingView>
@@ -210,5 +211,5 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   loginBtnText: { color: "#fff", fontSize: 16, fontFamily: "Inter_600SemiBold" },
-  demo: { textAlign: "center", fontSize: 12, fontFamily: "Inter_400Regular" },
+  hint: { textAlign: "center", fontSize: 12, fontFamily: "Inter_400Regular", lineHeight: 18 },
 });

@@ -63,6 +63,32 @@ The primary application lives in `kontra-ui-clone/` — a full loan servicing wo
 - OrgProvider (`ui/src/lib/OrgProvider.tsx`) bootstraps org context via `/api/me/bootstrap` after auth
 - `AuthedOrgProvider` in `App.jsx` wraps routes so OrgProvider has session access
 
+### Role-Based Access Control (RBAC)
+Two-layer guard system for portals:
+1. **`RequireAuth`** (`ui/src/app/guards/RequireAuth.tsx`) — checks authentication only (valid session)
+2. **`RequireRole`** (`ui/src/app/guards/RequireRole.tsx`) — checks authorization (role matches portal)
+
+Portal access matrix:
+- `/dashboard/*` (lender) → `platform_admin`, `lender_admin`, `asset_manager`
+- `/servicer/*` → `platform_admin`, `lender_admin`, `servicer`, `asset_manager`
+- `/investor/*` → `platform_admin`, `investor`
+- `/borrower/*` → `platform_admin`, `borrower`
+
+Cross-portal access is blocked silently: unauthorized users are redirected to their own portal.
+
+Role routing (`usePortalRouter.ts`):
+- `investor` → `/investor`
+- `borrower` → `/borrower`
+- `servicer` → `/servicer/overview`
+- `asset_manager`, `lender_admin`, `platform_admin` → `/select-portal` or `/dashboard`
+
+### Mobile Auth
+- `artifacts/kontra-mobile/context/AuthContext.tsx` — real Supabase auth via API proxy
+- Login calls `POST /api/auth/signin` → JWT returned → role decoded from `app_metadata.app_role`
+- Session persisted in AsyncStorage under `kontra_mobile_session`
+- API URL configured via `EXPO_PUBLIC_API_URL` in `artifacts/kontra-mobile/.env`
+- Defaults to `https://kontra-api.onrender.com` if env not set
+
 ### Artifact routing
 - `artifacts/kontra-ui` — dev script cd's into `kontra-ui-clone/ui/` and runs its Vite (PORT 23452)
 - Preview path `/` shows the Kontra UI login page
