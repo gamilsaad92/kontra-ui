@@ -1,6 +1,9 @@
-import { createContext, useEffect, useMemo, useState, useCallback } from "react";
+import { useEffect, useMemo, useState, useCallback } from "react";
+import { AuthContext } from "./authContextObj";
 import { supabase, isSupabaseConfigured } from "./supabaseClient";
 import { updateBootstrapSnapshot, resetBootstrapSnapshot } from "./bootstrapState";
+
+export { AuthContext };
 
 const SESSION_STORAGE_KEY = "kontra_session";
 
@@ -126,9 +129,16 @@ async function apiSignIn(email, password) {
   };
 }
 
-// Primary sign-in: use Supabase client directly; fall back to backend API
+// Detect if the anon key is actually a service-role key (sb_secret_...).
+// Service-role keys cannot be used for client-side signInWithPassword — only
+// real anon/publishable keys work. Fall back to the backend API in that case.
+const _anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || "";
+const isServiceRoleKey = _anonKey.startsWith("sb_secret_") || _anonKey.includes("service_role");
+
+// Primary sign-in: use Supabase client directly when we have a real anon key;
+// fall back to backend API when using a service-role key or no key at all.
 async function signInWithCredentials(email, password) {
-  if (isSupabaseConfigured && supabase?.auth) {
+  if (isSupabaseConfigured && supabase?.auth && !isServiceRoleKey) {
     return supabaseSignIn(email, password);
   }
   return apiSignIn(email, password);
@@ -137,21 +147,10 @@ async function signInWithCredentials(email, password) {
 async function tryRefreshSession(storedSession) {
   if (!storedSession?.refresh_token) return null;
   try {
-    // Prefer Supabase client refresh (no backend dependency)
-    if (isSupabaseConfigured && supabase?.auth) {
-      const { data, error } = await supabase.auth.refreshSession({ refresh_token: storedSession.refresh_token });
-      if (error || !data?.session) return null;
-      const s = data.session;
-      return {
-        access_token: s.access_token,
-        refresh_token: s.refresh_token || storedSession.refresh_token,
-        expires_at: s.expires_at,
-        expires_in: s.expires_in,
-        token_type: s.token_type || "bearer",
-        user: data.user ? { id: data.user.id, email: data.user.email, created_at: data.user.created_at } : storedSession.user,
-      };
-    }
-    // Fallback: backend refresh
+    // Always use the backend refresh endpoint — the Supabase JS client's
+    // refreshSession() acquires a NavigatorLock which can fail or hang in
+    // certain browser environments (e.g. multiple tabs, Safari, some Chromium
+    // builds). Backend refresh has no such dependency.
     const res = await fetch("/api/auth/refresh", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -172,18 +171,6 @@ async function tryRefreshSession(storedSession) {
     return null;
   }
 }
-
-export const AuthContext = createContext({
-  session: null,
-  loading: true,
-  user: null,
-  supabase: null,
-  isLoading: true,
-  initializing: true,
-  isAuthed: false,
-  signIn: async () => ({ data: null, error: new Error("Not configured") }),
-  signOut: async () => ({ error: null }),
-});
 
 export function AuthProvider({ children }) {
   const [session, setSessionState] = useState(null);
@@ -277,43 +264,16 @@ export function AuthProvider({ children }) {
         return;
       }
 
-      // 3. Production: try Supabase JS client if configured
-      if (!isSupabaseConfigured || !supabase?.auth) {
-        if (mounted) {
-          updateBootstrapSnapshot({ sessionReady: true, isAuthenticated: false });
-          setLoading(false);
-        }
-        return;
+      // 3. No valid stored session and no dev auto-login — show the login form immediately.
+      // We intentionally do NOT call supabase.auth.getSession() here because it acquires a
+      // NavigatorLock that can hang or fail in certain browser environments (multiple tabs,
+      // Safari, some Chromium builds), keeping the app stuck on the loading screen.
+      // Our session lifecycle is fully managed via kontra_session in localStorage so
+      // the Supabase client's internal session state is not needed.
+      if (mounted) {
+        updateBootstrapSnapshot({ sessionReady: true, isAuthenticated: false });
+        setLoading(false);
       }
-
-      const timer = window.setTimeout(() => {
-        if (mounted) {
-          updateBootstrapSnapshot({ sessionReady: true, isAuthenticated: false });
-          setLoading(false);
-        }
-      }, 5000);
-      supabase.auth
-        .getSession()
-        .then(({ data, error }) => {
-          if (!mounted) return;
-          if (error) console.warn("Supabase getSession failed:", error.message);
-          if (data?.session) {
-            const s = {
-              access_token: data.session.access_token,
-              refresh_token: data.session.refresh_token,
-              expires_at: data.session.expires_at,
-              token_type: data.session.token_type,
-              user: data.session.user,
-            };
-            storeSession(s);
-            updateBootstrapSnapshot({ sessionReady: true, isAuthenticated: true });
-            setSessionState(s);
-          } else {
-            updateBootstrapSnapshot({ sessionReady: true, isAuthenticated: false });
-          }
-        })
-        .catch((err) => { if (mounted) console.warn("Supabase getSession threw:", err.message); })
-        .finally(() => { if (mounted) { clearTimeout(timer); setLoading(false); } });
     }
 
     init();
@@ -339,8 +299,9 @@ export function AuthProvider({ children }) {
     resetBootstrapSnapshot();
     setSession(null);
     clearKontraPersistedState();
-    // Clear org context
+    // Clear org context and cached role
     try { localStorage.removeItem("kontra_active_org_id"); } catch (_) {}
+    try { localStorage.removeItem("kontra_resolved_role"); } catch (_) {}
     if (token) {
       fetch("/api/auth/signout", {
         method: "POST",
