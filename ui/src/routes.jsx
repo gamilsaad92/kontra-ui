@@ -18,7 +18,6 @@ import {
     DocumentMagnifyingGlassIcon,
     FolderOpenIcon,
     ArrowPathIcon,
-    ShoppingBagIcon,
   } from "@heroicons/react/24/outline";
 
   /**
