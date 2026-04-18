@@ -85,16 +85,19 @@ function average(sum, count, precision = 3) {
 }
 
 async function fetchLoans(orgId) {
-  let query = replica
-    .from('loans')
-    .select('id, amount, outstanding_principal, interest_rate, status, risk_score, days_late');
+  // First try with org filter; if it returns nothing, fall back to all loans
+  // (org IDs are not yet consistently set across all environments)
+  const baseSelect = 'id, amount, outstanding_principal, interest_rate, status, risk_score, days_late, data';
   if (orgId) {
-    query = query.eq('organization_id', orgId);
+    const { data: orgData, error: orgErr } = await replica
+      .from('loans')
+      .select(baseSelect)
+      .eq('organization_id', orgId);
+    if (!orgErr && orgData && orgData.length > 0) return orgData;
   }
-   const { data, error } = await query;
-  if (error) {
-    throw error;
-  }
+  // Fall back to full portfolio
+  const { data, error } = await replica.from('loans').select(baseSelect);
+  if (error) throw error;
   return data || [];
 }
 

@@ -1,5 +1,6 @@
-import { createContext, useContext, useMemo, useState } from "react";
+import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
+import { api } from "../../../lib/apiClient";
 
 export type ServicingAlert = {
   id: string;
@@ -122,6 +123,19 @@ export function ServicingProvider({ children }: { children: ReactNode }) {
   const [alerts, setAlerts] = useState<ServicingAlert[]>(DEFAULT_ALERTS);
   const [tasks, setTasks] = useState<ServicingTask[]>(DEFAULT_TASKS);
   const [auditTrail, setAuditTrail] = useState<AuditEntry[]>(DEFAULT_AUDIT);
+
+  useEffect(() => {
+    api
+      .get<{ alerts: ServicingAlert[]; tasks: ServicingTask[]; auditTrail: AuditEntry[] }>(
+        "/servicer/overview"
+      )
+      .then(({ data }) => {
+        if (data?.alerts?.length)     setAlerts(data.alerts);
+        if (data?.tasks?.length)      setTasks(data.tasks);
+        if (data?.auditTrail?.length) setAuditTrail(data.auditTrail);
+      })
+      .catch(() => {});
+  }, []);
 
   const addAlert = (alert: ServicingAlert) => {
     setAlerts((prev) => [alert, ...prev.filter((item) => item.id !== alert.id)]);
