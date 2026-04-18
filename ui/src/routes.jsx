@@ -18,6 +18,7 @@ import {
     DocumentMagnifyingGlassIcon,
     FolderOpenIcon,
     ArrowPathIcon,
+    ShoppingBagIcon,
   } from "@heroicons/react/24/outline";
 
   /**
@@ -55,6 +56,12 @@ import {
       label: "Loan Lifecycle",
       path: "/loan-lifecycle",
       icon: ArrowPathIcon,
+      requiresAuth: true,
+    },
+    {
+      label: "Marketplace",
+      path: "/marketplace",
+      icon: ShoppingBagIcon,
       requiresAuth: true,
     },
     {

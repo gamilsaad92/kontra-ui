@@ -215,6 +215,7 @@ const otpRouter = require('./routers/otp');
 const mobileRouter = require('./routers/mobile');
 const docsRouter = require('./routers/docs');
 const lifecycleRouter = require('./routers/lifecycle');
+const marketRouter = require('./routers/market');
 const policyRouter = require('./routers/policy');
 const { requireOrgContext } = require('./src/middleware/requireOrgContext');
 const { errorHandler } = require('./src/middleware/errorHandler');
@@ -707,6 +708,7 @@ app.use('/api', integrationsRouter);
 app.use('/api/otp', otpRouter);
 app.use('/api/docs', docsRouter);
 app.use('/api/lifecycle', lifecycleRouter);
+app.use('/api/market', marketRouter);
 if (isFeatureEnabled('compliance')) {
   app.use('/api', authenticate, requireRole('admin'), complianceRouter);
   app.use('/api/policy', authenticate, policyRouter);

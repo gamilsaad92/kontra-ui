@@ -22,6 +22,9 @@ import {
   ArrowTrendingDownIcon,
   InformationCircleIcon,
   SparklesIcon,
+  ShoppingBagIcon,
+  XMarkIcon,
+  MapPinIcon,
 } from "@heroicons/react/24/outline";
 
 // ── Types ─────────────────────────────────────────────────────
@@ -197,7 +200,7 @@ const SEVERITY_COLOR: Record<string, string> = {
   low: "border-slate-200 bg-slate-50",
 };
 
-type Section = "portfolio" | "distributions" | "performance" | "governance" | "documents" | "alerts" | "marketplace" | "pricing" | "ai";
+type Section = "portfolio" | "distributions" | "performance" | "governance" | "documents" | "alerts" | "deal_flow" | "marketplace" | "pricing" | "ai";
 
 const NAV: { key: Section; label: string; icon: typeof ChartPieIcon; badge?: number; dividerBefore?: boolean }[] = [
   { key:"portfolio",     label:"Portfolio",           icon: ChartPieIcon },
@@ -206,7 +209,8 @@ const NAV: { key: Section; label: string; icon: typeof ChartPieIcon; badge?: num
   { key:"governance",    label:"Governance & Voting",  icon: ScaleIcon, badge: 2 },
   { key:"documents",     label:"Reports & Docs",      icon: DocumentTextIcon },
   { key:"alerts",        label:"Risk Alerts",         icon: ExclamationTriangleIcon, badge: 2 },
-  { key:"marketplace",   label:"Debt Exchange",       icon: ArrowsRightLeftIcon, dividerBefore: true },
+  { key:"deal_flow",     label:"Deal Flow",           icon: ShoppingBagIcon, badge: 4, dividerBefore: true },
+  { key:"marketplace",   label:"Debt Exchange",       icon: ArrowsRightLeftIcon },
   { key:"pricing",       label:"Token NAV Pricing",   icon: CurrencyDollarIcon },
   { key:"ai",            label:"AI Portfolio Brief",  icon: SparklesIcon, dividerBefore: true },
 ];
@@ -227,6 +231,45 @@ export default function InvestorPortal() {
     const [aiBrief, setAiBrief] = useState<AiBrief | null>(null);
     const [aiBriefLoading, setAiBriefLoading] = useState(false);
     const [aiBriefError, setAiBriefError] = useState<string | null>(null);
+    // Deal Flow state
+    const [dfListings, setDfListings] = useState<any[]>([]);
+    const [dfLoading, setDfLoading] = useState(false);
+    const [dfSubscribeId, setDfSubscribeId] = useState<string | null>(null);
+    const [dfAmount, setDfAmount] = useState("");
+    const [dfEmail, setDfEmail] = useState("");
+    const [dfSubmitting, setDfSubmitting] = useState(false);
+    const [dfSuccess, setDfSuccess] = useState("");
+    const [dfError, setDfError] = useState("");
+
+    // Fetch deal flow listings when section becomes deal_flow
+    useEffect(() => {
+      if (section !== "deal_flow") return;
+      setDfLoading(true);
+      fetch((import.meta.env.VITE_API_BASE || "").replace(/\/+$/, "") + "/market/listings")
+        .then(r => r.json()).then(d => setDfListings(Array.isArray(d) ? d : [])).catch(() => setDfListings([]))
+        .finally(() => setDfLoading(false));
+    }, [section]);
+
+    const handleDfSubscribe = async (listingId: string) => {
+      const amt = Number(dfAmount);
+      if (!amt || amt <= 0) return setDfError("Enter a valid amount");
+      setDfSubmitting(true); setDfError("");
+      try {
+        const apiBase = (import.meta.env.VITE_API_BASE || "").replace(/\/+$/, "");
+        const res = await fetch(apiBase + "/market/listings/" + listingId + "/subscribe", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ amount: amt, investor_email: dfEmail || undefined }),
+        });
+        const json = await res.json();
+        if (!res.ok) throw new Error(json.error || "Subscription failed");
+        setDfSuccess("Subscription submitted for " + json.listing_title + "!");
+        setDfSubscribeId(null); setDfAmount(""); setDfEmail("");
+        setTimeout(() => setDfSuccess(""), 4000);
+      } catch (err: any) {
+        setDfError(err.message);
+      } finally { setDfSubmitting(false); }
+    };
 
     const generateBrief = async () => {
       setAiBriefLoading(true); setAiBriefError(null);
@@ -1198,7 +1241,125 @@ export default function InvestorPortal() {
             </div>
           )}
 
-            {section === "ai" && (
+
+              {section === "deal_flow" && (
+                <div className="space-y-6">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h2 className="text-2xl font-black text-white">Deal Flow</h2>
+                      <p className="text-sm text-slate-400 mt-1">Active loan participation opportunities open for investment.</p>
+                    </div>
+                  </div>
+
+                  {dfSuccess && (
+                    <div className="rounded-xl border border-emerald-700/40 bg-emerald-950/30 px-5 py-3">
+                      <p className="text-sm font-medium text-emerald-300">{dfSuccess}</p>
+                    </div>
+                  )}
+
+                  {dfLoading ? (
+                    <div className="flex items-center justify-center py-20 text-slate-400 text-sm">
+                      <svg className="h-5 w-5 mr-2 animate-spin" fill="none" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" className="opacity-25"/><path fill="currentColor" d="M4 12a8 8 0 018-8v8z" className="opacity-75"/></svg>
+                      Loading deals…
+                    </div>
+                  ) : dfListings.length === 0 ? (
+                    <div className="rounded-xl border border-slate-700 bg-slate-800/40 p-12 text-center">
+                      <p className="text-slate-400">No active deals available right now.</p>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 gap-5">
+                      {dfListings.map((deal: any) => {
+                        const fillPct = Math.min(100, deal.fill_pct ?? 0);
+                        const fillColor = fillPct >= 80 ? "bg-emerald-500" : fillPct >= 40 ? "bg-violet-500" : "bg-slate-500";
+                        const isOpen = dfSubscribeId === deal.id;
+                        const typeBadge: Record<string,string> = {
+                          Multifamily:"bg-emerald-900/50 text-emerald-300",
+                          Industrial:"bg-violet-900/50 text-violet-300",
+                          Office:"bg-blue-900/50 text-blue-300",
+                          Retail:"bg-amber-900/50 text-amber-300",
+                          "Mixed-Use":"bg-rose-900/50 text-rose-300",
+                        };
+                        return (
+                          <div key={deal.id} className="rounded-xl border border-slate-700 bg-slate-800/60 p-5 space-y-4">
+                            <div className="flex items-start justify-between gap-3">
+                              <div>
+                                <p className="font-black text-white">{deal.title}</p>
+                                <p className="text-xs text-slate-400 mt-0.5">{deal.location} · {deal.offering_type}</p>
+                              </div>
+                              <span className={`flex-shrink-0 rounded-full px-2.5 py-0.5 text-xs font-bold ${typeBadge[deal.property_type] ?? "bg-slate-700 text-slate-300"}`}>{deal.property_type}</span>
+                            </div>
+
+                            {deal.description && <p className="text-sm text-slate-400 line-clamp-2">{deal.description}</p>}
+
+                            <div className="grid grid-cols-4 gap-3 text-center">
+                              {[
+                                { l:"Target Raise", v: deal.target_raise >= 1e6 ? "$"+(deal.target_raise/1e6).toFixed(1)+"M" : "$"+deal.target_raise?.toLocaleString() },
+                                { l:"Target Yield", v: deal.target_yield ? deal.target_yield+"%" : "–" },
+                                { l:"LTV", v: deal.ltv ? deal.ltv+"%" : "–" },
+                                { l:"Min Invest", v: deal.min_investment >= 1e6 ? "$"+(deal.min_investment/1e6).toFixed(1)+"M" : "$"+(deal.min_investment||0).toLocaleString() },
+                              ].map(s => (
+                                <div key={s.l} className="rounded-lg bg-slate-900/60 px-2 py-2.5">
+                                  <p className="text-xs font-bold uppercase tracking-wide text-slate-500">{s.l}</p>
+                                  <p className="text-sm font-black text-white mt-1">{s.v}</p>
+                                </div>
+                              ))}
+                            </div>
+
+                            <div>
+                              <div className="flex justify-between text-xs text-slate-500 mb-1.5">
+                                <span>{deal.raised_amount >= 1e6 ? "$"+(deal.raised_amount/1e6).toFixed(1)+"M" : "$"+(deal.raised_amount||0).toLocaleString()} committed</span>
+                                <span className="text-emerald-400 font-bold">{fillPct}% funded</span>
+                              </div>
+                              <div className="h-2.5 rounded-full bg-slate-700 overflow-hidden">
+                                <div className={`h-full rounded-full ${fillColor}`} style={{ width: fillPct+"%" }} />
+                              </div>
+                            </div>
+
+                            {/* Subscribe toggle */}
+                            {!isOpen ? (
+                              <button
+                                onClick={() => { setDfSubscribeId(deal.id); setDfAmount(String(deal.min_investment || "")); setDfError(""); }}
+                                className="w-full rounded-xl bg-violet-600 hover:bg-violet-500 px-4 py-2.5 text-sm font-bold text-white transition-colors"
+                              >
+                                Subscribe / Invest
+                              </button>
+                            ) : (
+                              <div className="rounded-xl border border-violet-700/40 bg-violet-950/30 p-4 space-y-3">
+                                <p className="text-sm font-bold text-violet-300">Commit Capital</p>
+                                <div className="grid grid-cols-2 gap-3">
+                                  <div>
+                                    <label className="mb-1 block text-xs font-semibold text-slate-400 uppercase tracking-wide">Amount ($)</label>
+                                    <input type="number" value={dfAmount} onChange={e => setDfAmount(e.target.value)}
+                                      className="w-full rounded-lg border border-slate-600 bg-slate-800 px-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-violet-500"
+                                      placeholder={String(deal.min_investment || 100000)} />
+                                  </div>
+                                  <div>
+                                    <label className="mb-1 block text-xs font-semibold text-slate-400 uppercase tracking-wide">Your Email</label>
+                                    <input type="email" value={dfEmail} onChange={e => setDfEmail(e.target.value)}
+                                      className="w-full rounded-lg border border-slate-600 bg-slate-800 px-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-violet-500"
+                                      placeholder="investor@fund.com" />
+                                  </div>
+                                </div>
+                                {dfError && <p className="text-xs text-red-400">{dfError}</p>}
+                                <div className="flex gap-3">
+                                  <button onClick={() => { setDfSubscribeId(null); setDfError(""); }}
+                                    className="flex-1 rounded-lg border border-slate-600 px-3 py-2 text-sm font-semibold text-slate-300 hover:bg-slate-700 transition">Cancel</button>
+                                  <button onClick={() => handleDfSubscribe(deal.id)} disabled={dfSubmitting}
+                                    className="flex-1 rounded-lg bg-violet-600 hover:bg-violet-500 px-3 py-2 text-sm font-bold text-white disabled:opacity-50 transition">
+                                    {dfSubmitting ? "Submitting…" : "Confirm Subscription"}
+                                  </button>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {section === "ai" && (
               <div className="space-y-6">
                 <div className="flex items-center gap-3 mb-2">
                   <SparklesIcon className="h-6 w-6 text-violet-400" />
