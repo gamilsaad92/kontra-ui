@@ -489,4 +489,143 @@ router.post('/narrative', async (req, res) => {
   return res.json({ narrative, type: body.type, entity_id: body.entity_id });
 });
 
-module.exports = router;
+
+  // ── Task-3: AI Document Intelligence endpoints ────────────────────────────────
+  // POST /analyze, POST /portfolio-brief, GET /loan-brief/:id
+  // Powers: Servicer Borrower Financials, Investor Portfolio Brief, Borrower Doc Upload
+
+  const _multerAi = (() => { try { return require('multer'); } catch(e) { return null; } })();
+  const _uploadAi = _multerAi ? _multerAi({ storage: _multerAi.memoryStorage(), limits: { fileSize: 25 * 1024 * 1024 } }) : null;
+  const _OpenAI   = (() => { try { return require('openai'); } catch(e) { return null; } })();
+  const _openaiAi = (process.env.OPENAI_API_KEY && _OpenAI) ? new _OpenAI({ apiKey: process.env.OPENAI_API_KEY }) : null;
+
+  async function _callGPT4o(systemPrompt, userContent) {
+    if (!_openaiAi) throw new Error('OpenAI API key not configured');
+    const resp = await _openaiAi.chat.completions.create({
+      model: 'gpt-4o', temperature: 0.1, max_tokens: 1200,
+      response_format: { type: 'json_object' },
+      messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userContent }],
+    });
+    return JSON.parse(resp.choices[0]?.message?.content || '{}');
+  }
+
+  // POST /api/ai/analyze — classify + extract metrics from any CRE document
+  const _analyzeMiddleware = _uploadAi ? _uploadAi.single('file') : (req, res, next) => next();
+  router.post('/analyze', _analyzeMiddleware, async (req, res) => {
+    try {
+      let rawText = '';
+      if (req.file) {
+        const sample = req.file.buffer.slice(0, 12000).toString('utf8');
+        const nonPrint = sample.replace(/[\t\n\r\x20-\x7E]/g, '').length;
+        if (nonPrint / sample.length < 0.3) {
+          rawText = sample;
+        } else {
+          return res.json({
+            doc_type: 'Binary / Unreadable',
+            summary: 'File received but binary content (PDF, .xlsx) cannot be read as text. Please paste the text or export as CSV/text.',
+            metrics: {}, covenants: [], risk_flags: [], recommendations: [],
+            notice: 'For full AI extraction, paste your document text or use a text-based format.',
+            raw_filename: req.file.originalname,
+          });
+        }
+      } else if (req.body?.text) {
+        rawText = String(req.body.text).slice(0, 12000);
+      } else {
+        return res.status(400).json({ error: 'Provide a file upload or text body.' });
+      }
+      if (!rawText.trim()) return res.status(400).json({ error: 'Document appears to be empty.' });
+
+      const systemPrompt = `You are a senior CRE loan analyst and underwriter.
+  Analyze the provided document and return a JSON object:
+  {
+    "doc_type": string ("Income Statement"|"Rent Roll"|"Operating Statement"|"Covenant Certificate"|"Lease Abstract"|"Draw Request"|"Inspection Report"|"Other"),
+    "summary": string (2-3 sentence plain English summary),
+    "metrics": { "dscr": number|null, "noi": number|null, "occupancy": number|null, "gross_revenue": number|null, "total_expenses": number|null, "net_income": number|null },
+    "covenants": [{ "name": string, "threshold": string, "actual": string, "status": "compliant"|"breach"|"watch" }],
+    "risk_flags": string[],
+    "recommendations": string[]
+  }
+  Return only valid JSON. No extra text.`;
+
+      const result = await _callGPT4o(systemPrompt, `Document content:\n\n${rawText}`);
+      return res.json({ ...result, raw_filename: req.file?.originalname || 'pasted-text' });
+    } catch (err) {
+      console.error('[ai/analyze]', err?.message);
+      return res.json({
+        doc_type: 'Unknown', summary: 'AI analysis temporarily unavailable. Document received.',
+        metrics: {}, covenants: [], risk_flags: [], recommendations: ['Re-submit when AI service is available.'],
+        notice: err?.message || 'AI unavailable',
+      });
+    }
+  });
+
+  // POST /api/ai/portfolio-brief — investor portfolio-level AI summary
+  router.post('/portfolio-brief', async (req, res) => {
+    try {
+      const { data: loans } = await supabase
+        .from('loans').select('id, title, status, borrower_name, interest_rate, amount, data').limit(20);
+
+      if (!loans || loans.length === 0) {
+        return res.json({ brief: 'No loan data available for portfolio analysis.', signals: [], recommendations: [], watchlist: [], portfolio_score: null });
+      }
+
+      const snapshot = loans.map(l => {
+        const d = l.data || {};
+        return { ref: d.loan_ref || `LN-${l.id}`, property: d.property_name || l.title || 'Unknown',
+                 type: d.property_type || 'Commercial', balance: d.current_balance || Number(l.amount) || 0,
+                 rate: Number(l.interest_rate) || 0, status: l.status,
+                 dscr: d.dscr || null, ltv: d.ltv || null, delinq_days: d.delinquency_days || 0 };
+      });
+
+      const systemPrompt = `You are a senior CRE portfolio manager. Return a JSON object:
+  {
+    "brief": string (3-4 sentence executive summary),
+    "portfolio_score": number (1-100 health score),
+    "signals": [{ "type": "positive"|"negative"|"watch", "message": string }],
+    "recommendations": string[],
+    "watchlist": [{ "loan_ref": string, "reason": string }]
+  }
+  Be specific, reference actual loan refs. Return only valid JSON.`;
+
+      const result = await _callGPT4o(systemPrompt, `Portfolio (${loans.length} loans):\n${JSON.stringify(snapshot, null, 2)}`);
+      return res.json(result);
+    } catch (err) {
+      console.error('[ai/portfolio-brief]', err?.message);
+      return res.json({ brief: 'Portfolio analysis temporarily unavailable.', portfolio_score: null, signals: [], recommendations: [], watchlist: [] });
+    }
+  });
+
+  // GET /api/ai/loan-brief/:id — per-loan AI brief
+  router.get('/loan-brief/:id', async (req, res) => {
+    try {
+      const { data: loan } = await supabase.from('loans').select('*').eq('id', parseInt(req.params.id, 10)).single();
+      if (!loan) return res.status(404).json({ error: 'Loan not found' });
+
+      const d = loan.data || {};
+      const prompt = `Loan: ${d.loan_ref || `LN-${loan.id}`}
+  Property: ${d.property_name || loan.title || 'Unknown'}
+  Type: ${d.property_type || 'Commercial'}
+  Balance: ${Number(d.current_balance || loan.amount || 0).toLocaleString()}
+  Rate: ${loan.interest_rate}%  Status: ${loan.status}
+  DSCR: ${d.dscr || 'N/A'}  LTV: ${d.ltv || 'N/A'}%  Delinquency days: ${d.delinquency_days || 0}
+  Maturity: ${d.maturity_date || 'Unknown'}`;
+
+      const systemPrompt = `You are a CRE loan analyst. Return a JSON object:
+  {
+    "risk_label": "Low"|"Medium"|"High"|"Critical",
+    "summary": string (2-3 sentence brief),
+    "key_metrics": [{ "label": string, "value": string, "flag": boolean }],
+    "watch_items": string[],
+    "recommended_actions": string[]
+  }
+  Return only valid JSON.`;
+
+      const result = await _callGPT4o(systemPrompt, prompt);
+      return res.json(result);
+    } catch (err) {
+      console.error('[ai/loan-brief]', err?.message);
+      return res.json({ risk_label: 'Unknown', summary: 'AI brief temporarily unavailable.', key_metrics: [], watch_items: [], recommended_actions: [] });
+    }
+  });
+
+  module.exports = router;
