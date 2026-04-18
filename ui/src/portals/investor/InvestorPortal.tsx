@@ -21,6 +21,7 @@ import {
   ArrowTrendingUpIcon,
   ArrowTrendingDownIcon,
   InformationCircleIcon,
+  SparklesIcon,
 } from "@heroicons/react/24/outline";
 
 // ── Types ─────────────────────────────────────────────────────
@@ -43,7 +44,9 @@ type RiskAlert = {
   message: string; created_at: string;
 };
 
-// ── Demo data ─────────────────────────────────────────────────
+type AiBrief = { brief: string; portfolio_score: number | null; signals: { type: string; message: string }[]; recommendations: string[]; watchlist: { loan_ref: string; reason: string }[] };
+
+  // ── Demo data ─────────────────────────────────────────────────
 const DEMO_HOLDINGS: Holding[] = [
   { loan_id:"ln1", loan_ref:"LN-2847", property_name:"The Meridian Apartments", property_type:"Multifamily", location:"Austin, TX", upb:4200000, my_share_pct:24.5, my_share_usd:1029000, token_balance:10290, token_symbol:"KTRA-2847", status:"Current", yield_pct:8.75, maturity:"2026-09-01" },
   { loan_id:"ln2", loan_ref:"LN-3011", property_name:"Harbor Blvd Retail", property_type:"Retail", location:"San Diego, CA", upb:2800000, my_share_pct:24.5, my_share_usd:686000, token_balance:6860, token_symbol:"KTRA-3011", status:"Special Servicing", yield_pct:11.5, maturity:"2025-12-01" },
@@ -194,7 +197,7 @@ const SEVERITY_COLOR: Record<string, string> = {
   low: "border-slate-200 bg-slate-50",
 };
 
-type Section = "portfolio" | "distributions" | "performance" | "governance" | "documents" | "alerts" | "marketplace" | "pricing";
+type Section = "portfolio" | "distributions" | "performance" | "governance" | "documents" | "alerts" | "marketplace" | "pricing" | "ai";
 
 const NAV: { key: Section; label: string; icon: typeof ChartPieIcon; badge?: number; dividerBefore?: boolean }[] = [
   { key:"portfolio",     label:"Portfolio",           icon: ChartPieIcon },
@@ -205,6 +208,7 @@ const NAV: { key: Section; label: string; icon: typeof ChartPieIcon; badge?: num
   { key:"alerts",        label:"Risk Alerts",         icon: ExclamationTriangleIcon, badge: 2 },
   { key:"marketplace",   label:"Debt Exchange",       icon: ArrowsRightLeftIcon, dividerBefore: true },
   { key:"pricing",       label:"Token NAV Pricing",   icon: CurrencyDollarIcon },
+  { key:"ai",            label:"AI Portfolio Brief",  icon: SparklesIcon, dividerBefore: true },
 ];
 
 export default function InvestorPortal() {
@@ -220,6 +224,19 @@ export default function InvestorPortal() {
   const [mxPrice, setMxPrice]       = useState("102.50");
   const [mxOrders, setMxOrders]     = useState<MyOrder[]>(DEMO_MY_ORDERS);
   const [mxSubmitted, setMxSubmitted] = useState(false);
+    const [aiBrief, setAiBrief] = useState<AiBrief | null>(null);
+    const [aiBriefLoading, setAiBriefLoading] = useState(false);
+    const [aiBriefError, setAiBriefError] = useState<string | null>(null);
+
+    const generateBrief = async () => {
+      setAiBriefLoading(true); setAiBriefError(null);
+      try {
+        const { data } = await api.post<AiBrief>("/ai/portfolio-brief", {});
+        if (data) setAiBrief(data);
+        else setAiBriefError("No response from AI service.");
+      } catch { setAiBriefError("AI service unavailable. Please try again."); }
+      finally { setAiBriefLoading(false); }
+    };
 
   const load = useCallback(async () => {
     const [hRes, dRes, pRes, aRes] = await Promise.allSettled([
@@ -1181,6 +1198,84 @@ export default function InvestorPortal() {
             </div>
           )}
 
+            {section === "ai" && (
+              <div className="space-y-6">
+                <div className="flex items-center gap-3 mb-2">
+                  <SparklesIcon className="h-6 w-6 text-violet-400" />
+                  <h2 className="text-xl font-black text-white">AI Portfolio Brief</h2>
+                </div>
+                <p className="text-sm text-slate-400">Generate an AI-powered analysis of your entire portfolio — health score, risk signals, watchlist loans, and strategic recommendations.</p>
+                <button
+                  onClick={generateBrief}
+                  disabled={aiBriefLoading}
+                  className="flex items-center gap-2 rounded-lg bg-violet-600 hover:bg-violet-500 disabled:opacity-60 px-5 py-2.5 text-sm font-bold text-white transition-colors"
+                >
+                  <SparklesIcon className="h-4 w-4" />
+                  {aiBriefLoading ? "Generating…" : aiBrief ? "Regenerate" : "Generate Brief"}
+                </button>
+                {aiBriefError && <p className="text-sm text-red-400">{aiBriefError}</p>}
+                {!aiBrief && !aiBriefLoading && (
+                  <div className="rounded-xl border border-slate-700 bg-slate-800/40 p-8 text-center">
+                    <SparklesIcon className="h-10 w-10 text-slate-500 mx-auto mb-4" />
+                    <p className="text-slate-400 text-sm">Click "Generate Brief" to run an AI analysis of your full portfolio.</p>
+                  </div>
+                )}
+                {aiBriefLoading && (
+                  <div className="rounded-xl border border-violet-800/40 bg-violet-950/20 p-8 text-center">
+                    <SparklesIcon className="h-8 w-8 text-violet-400 mx-auto mb-3 animate-pulse" />
+                    <p className="text-violet-300 text-sm font-medium">Analyzing portfolio…</p>
+                  </div>
+                )}
+                {aiBrief && (
+                  <div className="space-y-5">
+                    {aiBrief.portfolio_score != null && (
+                      <div className="rounded-xl border border-slate-700 bg-slate-800/40 p-5 flex items-center gap-5">
+                        <div className="text-5xl font-black text-violet-400">{aiBrief.portfolio_score}</div>
+                        <div>
+                          <p className="text-xs font-bold uppercase tracking-widest text-slate-400">Portfolio Health Score</p>
+                          <p className="text-sm text-slate-300 mt-1">{aiBrief.brief}</p>
+                        </div>
+                      </div>
+                    )}
+                    {!aiBrief.portfolio_score && <div className="rounded-xl border border-slate-700 bg-slate-800/40 p-5"><p className="text-sm text-slate-300">{aiBrief.brief}</p></div>}
+                    {aiBrief.signals?.length > 0 && (
+                      <div className="rounded-xl border border-slate-700 bg-slate-800/40 p-5">
+                        <h3 className="text-xs font-bold uppercase tracking-widest text-slate-400 mb-3">Portfolio Signals</h3>
+                        <div className="space-y-2">
+                          {aiBrief.signals.map((s, i) => (
+                            <div key={i} className={`flex items-start gap-2 text-sm rounded-lg px-3 py-2 ${s.type === 'positive' ? 'bg-emerald-950/30 text-emerald-300' : s.type === 'negative' ? 'bg-red-950/30 text-red-300' : 'bg-amber-950/30 text-amber-300'}`}>
+                              <span className="font-bold uppercase text-xs mt-0.5">{s.type}</span>
+                              <span>{s.message}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {aiBrief.watchlist?.length > 0 && (
+                      <div className="rounded-xl border border-red-800/30 bg-red-950/20 p-5">
+                        <h3 className="text-xs font-bold uppercase tracking-widest text-red-400 mb-3">Watchlist</h3>
+                        {aiBrief.watchlist.map((w, i) => (
+                          <div key={i} className="flex items-start gap-3 text-sm text-slate-300 mb-2">
+                            <span className="font-bold text-white">{w.loan_ref}</span>
+                            <span className="text-slate-400">{w.reason}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {aiBrief.recommendations?.length > 0 && (
+                      <div className="rounded-xl border border-slate-700 bg-slate-800/40 p-5">
+                        <h3 className="text-xs font-bold uppercase tracking-widest text-slate-400 mb-3">Recommendations</h3>
+                        <ul className="space-y-1">
+                          {aiBrief.recommendations.map((r, i) => <li key={i} className="text-sm text-slate-300 flex gap-2"><span className="text-violet-400">→</span>{r}</li>)}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
+  
         </div>
       </main>
     </div>
