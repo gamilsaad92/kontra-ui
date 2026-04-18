@@ -207,6 +207,7 @@ const siteAnalysisRouter = require('./routers/siteAnalysis');
 const savedSearchesRouter = require('./routers/savedSearches');
 const creditGraphRouter = require('./routers/creditGraph');
 const investorsRouter = require('./routers/investors');
+const investorRouter = require('./routers/investor');
 const borrowerRouter = require('./routers/borrower');
 // Compliance automation is still experimental
 const complianceRouter = require('./routers/compliance');
@@ -652,6 +653,7 @@ app.use('/api/trades', tradesRouter);
 app.use('/api/exchange', exchangeRouter);
 app.use('/api/exchange-programs', exchangeProgramsRouter);
 app.use('/api/investors', investorsRouter);
+app.use('/api/investor', investorRouter);
 app.use('/api/borrower', borrowerRouter);
 app.use('/api/marketplace', marketplaceRouter);
 app.use('/api/capital-markets/tokens', capitalMarketsTokensRouter);
