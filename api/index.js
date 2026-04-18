@@ -213,6 +213,7 @@ const complianceRouter = require('./routers/compliance');
 const legalRouter = require('./routers/legal');
 const otpRouter = require('./routers/otp');
 const mobileRouter = require('./routers/mobile');
+const docsRouter = require('./routers/docs');
 const policyRouter = require('./routers/policy');
 const { requireOrgContext } = require('./src/middleware/requireOrgContext');
 const { errorHandler } = require('./src/middleware/errorHandler');
@@ -703,6 +704,7 @@ app.get('/api-docs', (req, res) => {
 app.use('/api', webhooksRouter);
 app.use('/api', integrationsRouter);
 app.use('/api/otp', otpRouter);
+app.use('/api/docs', docsRouter);
 if (isFeatureEnabled('compliance')) {
   app.use('/api', authenticate, requireRole('admin'), complianceRouter);
   app.use('/api/policy', authenticate, policyRouter);
