@@ -6,7 +6,7 @@
  * Data strategy: tries live API first, falls back to demo data so the UI
  * is always functional even when the database tables don't exist yet.
  */
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { api } from "../../lib/apiClient";
 import {
   HomeIcon,
@@ -21,6 +21,7 @@ import {
   PaperClipIcon,
   ArrowUpTrayIcon,
   DocumentTextIcon,
+  SparklesIcon,
 } from "@heroicons/react/24/outline";
 
 // ── Demo fallback data ─────────────────────────────────────────────────────
@@ -143,6 +144,45 @@ export default function BorrowerPortal() {
   const [drawForm, setDrawForm]     = useState({ amount:"", purpose:"", milestone:"" });
   const [submittingDraw, setSubmittingDraw] = useState(false);
   const [sendingMsg, setSendingMsg] = useState(false);
+
+  // ── AI Document Analysis state ─────────────────────────────────────────────
+  type AiDocResult = {
+    doc_type: string; summary: string;
+    metrics: { dscr?: number|null; noi?: number|null; occupancy?: number|null; gross_revenue?: number|null; total_expenses?: number|null };
+    covenants: { name: string; threshold: string; actual: string; status: string }[];
+    risk_flags: string[]; recommendations: string[]; notice?: string;
+  };
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [aiDocResult, setAiDocResult]   = useState<AiDocResult | null>(null);
+  const [aiDocLoading, setAiDocLoading] = useState(false);
+  const [aiDocName, setAiDocName]       = useState<string>("");
+
+  const handleDocFileSelect = (file: File) => {
+    setAiDocName(file.name);
+    setAiDocResult(null);
+  };
+
+  const handleAiAnalyze = async (file: File) => {
+    setAiDocLoading(true);
+    setAiDocResult(null);
+    try {
+      const form = new FormData();
+      form.append("file", file);
+      const { data } = await api.post<AiDocResult>("/ai/analyze", form);
+      if (data) {
+        setAiDocResult(data);
+        // Mark document as submitted in the list
+        if (uploadingDoc) {
+          setDocuments(prev => prev.map(d => d.id === uploadingDoc ? { ...d, status: "submitted", submitted_at: new Date().toISOString().slice(0, 10) } : d));
+          setUploadingDoc(null);
+        }
+      }
+    } catch {
+      setAiDocResult({ doc_type:"Error", summary:"AI analysis unavailable. Document received.", metrics:{}, covenants:[], risk_flags:[], recommendations:[] });
+    } finally {
+      setAiDocLoading(false);
+    }
+  };
 
   // ── Load real data from API ─────────────────────────────────────────────
   const load = useCallback(async () => {
@@ -460,21 +500,134 @@ export default function BorrowerPortal() {
               </div>
 
               {uploadingDoc && (
-                <div className="rounded-xl border-2 border-dashed border-slate-300 bg-slate-50 p-8 text-center">
-                  <ArrowUpTrayIcon className="h-8 w-8 text-slate-400 mx-auto mb-3" />
-                  <p className="text-sm font-semibold text-slate-700">Drag & drop your file here, or click to browse</p>
-                  <p className="text-xs text-slate-500 mt-1">PDF, Excel, or image files · Max 25 MB</p>
+                <div className="rounded-xl border-2 border-dashed border-emerald-300 bg-emerald-50 p-8 text-center">
+                  <ArrowUpTrayIcon className="h-8 w-8 text-emerald-500 mx-auto mb-3" />
+                  <p className="text-sm font-semibold text-slate-700">
+                    {aiDocName ? `Selected: ${aiDocName}` : "Drag & drop or click to choose a file"}
+                  </p>
+                  <p className="text-xs text-slate-500 mt-1">PDF, Excel, CSV, or text · Max 25 MB · AI will extract key metrics automatically</p>
+
+                  {/* Hidden file input */}
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    className="hidden"
+                    accept=".pdf,.xlsx,.xls,.csv,.txt,.doc,.docx"
+                    onChange={(e) => {
+                      const f = e.target.files?.[0];
+                      if (f) handleDocFileSelect(f);
+                    }}
+                  />
+
                   <div className="mt-4 flex items-center justify-center gap-3">
-                    <button className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-bold text-white hover:bg-slate-700 transition-colors">
+                    <button
+                      onClick={() => fileInputRef.current?.click()}
+                      className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-colors"
+                    >
                       Choose File
                     </button>
-                    <button onClick={() => setUploadingDoc(null)} className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100 transition-colors">
+                    {aiDocName && !aiDocLoading && (
+                      <button
+                        onClick={() => {
+                          const f = fileInputRef.current?.files?.[0];
+                          if (f) handleAiAnalyze(f);
+                        }}
+                        className="rounded-lg bg-emerald-700 px-4 py-2 text-sm font-bold text-white hover:bg-emerald-800 transition-colors flex items-center gap-2"
+                      >
+                        <SparklesIcon className="h-4 w-4" />
+                        Submit & Analyze
+                      </button>
+                    )}
+                    {aiDocLoading && (
+                      <span className="flex items-center gap-2 text-sm text-emerald-700 font-semibold">
+                        <SparklesIcon className="h-4 w-4 animate-pulse" /> AI analyzing…
+                      </span>
+                    )}
+                    <button onClick={() => { setUploadingDoc(null); setAiDocName(""); setAiDocResult(null); }} className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100 transition-colors">
                       Cancel
                     </button>
                   </div>
                   <p className="mt-4 text-xs text-slate-400">
-                    Once submitted, your document will route to your servicer for review. You'll receive a notice when it's approved.
+                    Your document will be analyzed by AI and routed to your servicer for review.
                   </p>
+                </div>
+              )}
+
+              {/* ── AI Analysis Result ── */}
+              {aiDocResult && (
+                <div className="rounded-xl border border-emerald-200 bg-white shadow-sm overflow-hidden">
+                  <div className="border-b border-emerald-100 px-6 py-4 flex items-center gap-3 bg-emerald-50">
+                    <SparklesIcon className="h-5 w-5 text-emerald-600" />
+                    <div>
+                      <h3 className="text-sm font-bold text-slate-900">AI Document Analysis</h3>
+                      <p className="text-xs text-slate-500">{aiDocResult.doc_type} · {aiDocName}</p>
+                    </div>
+                  </div>
+                  <div className="px-6 py-5 space-y-4">
+                    <p className="text-sm text-slate-700">{aiDocResult.summary}</p>
+
+                    {/* Metrics */}
+                    {Object.values(aiDocResult.metrics || {}).some(v => v != null) && (
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                        {aiDocResult.metrics.dscr != null && (
+                          <div className={`rounded-lg p-3 ${Number(aiDocResult.metrics.dscr) >= 1.25 ? "bg-emerald-50" : "bg-red-50"}`}>
+                            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">DSCR</p>
+                            <p className={`text-xl font-black ${Number(aiDocResult.metrics.dscr) >= 1.25 ? "text-emerald-700" : "text-red-600"}`}>{aiDocResult.metrics.dscr}x</p>
+                          </div>
+                        )}
+                        {aiDocResult.metrics.noi != null && (
+                          <div className="rounded-lg bg-slate-50 p-3">
+                            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Annual NOI</p>
+                            <p className="text-xl font-black text-slate-900">${Number(aiDocResult.metrics.noi).toLocaleString()}</p>
+                          </div>
+                        )}
+                        {aiDocResult.metrics.occupancy != null && (
+                          <div className={`rounded-lg p-3 ${Number(aiDocResult.metrics.occupancy) >= 90 ? "bg-emerald-50" : "bg-amber-50"}`}>
+                            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Occupancy</p>
+                            <p className={`text-xl font-black ${Number(aiDocResult.metrics.occupancy) >= 90 ? "text-emerald-700" : "text-amber-600"}`}>{aiDocResult.metrics.occupancy}%</p>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Covenant status */}
+                    {aiDocResult.covenants?.length > 0 && (
+                      <div>
+                        <p className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Covenant Status</p>
+                        <div className="space-y-2">
+                          {aiDocResult.covenants.map((c, i) => (
+                            <div key={i} className={`flex items-center justify-between rounded-lg px-4 py-2 text-sm ${c.status === "breach" ? "bg-red-50" : c.status === "watch" ? "bg-amber-50" : "bg-emerald-50"}`}>
+                              <span className="font-semibold text-slate-700">{c.name}</span>
+                              <div className="flex items-center gap-3">
+                                <span className="text-slate-500 text-xs">threshold: {c.threshold}</span>
+                                <span className="font-bold text-slate-900">{c.actual}</span>
+                                <span className={`rounded-full px-2 py-0.5 text-xs font-black uppercase ${c.status === "breach" ? "bg-red-100 text-red-700" : c.status === "watch" ? "bg-amber-100 text-amber-700" : "bg-emerald-100 text-emerald-700"}`}>{c.status}</span>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Risk flags */}
+                    {aiDocResult.risk_flags?.length > 0 && (
+                      <div>
+                        <p className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Risk Flags</p>
+                        <ul className="space-y-1">
+                          {aiDocResult.risk_flags.map((f, i) => (
+                            <li key={i} className="flex items-start gap-2 text-sm text-slate-700">
+                              <ExclamationTriangleIcon className="h-4 w-4 text-amber-500 shrink-0 mt-0.5" />
+                              {f}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+
+                    {aiDocResult.notice && (
+                      <p className="text-xs text-slate-400 italic">{aiDocResult.notice}</p>
+                    )}
+                  </div>
                 </div>
               )}
             </div>

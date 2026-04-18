@@ -21,6 +21,8 @@ import {
   ArrowTrendingUpIcon,
   ArrowTrendingDownIcon,
   InformationCircleIcon,
+  SparklesIcon,
+  ShieldExclamationIcon,
 } from "@heroicons/react/24/outline";
 
 // ── Types ─────────────────────────────────────────────────────
@@ -194,7 +196,7 @@ const SEVERITY_COLOR: Record<string, string> = {
   low: "border-slate-200 bg-slate-50",
 };
 
-type Section = "portfolio" | "distributions" | "performance" | "governance" | "documents" | "alerts" | "marketplace" | "pricing";
+type Section = "portfolio" | "distributions" | "performance" | "governance" | "documents" | "alerts" | "ai" | "marketplace" | "pricing";
 
 const NAV: { key: Section; label: string; icon: typeof ChartPieIcon; badge?: number; dividerBefore?: boolean }[] = [
   { key:"portfolio",     label:"Portfolio",           icon: ChartPieIcon },
@@ -203,7 +205,8 @@ const NAV: { key: Section; label: string; icon: typeof ChartPieIcon; badge?: num
   { key:"governance",    label:"Governance & Voting",  icon: ScaleIcon, badge: 2 },
   { key:"documents",     label:"Reports & Docs",      icon: DocumentTextIcon },
   { key:"alerts",        label:"Risk Alerts",         icon: ExclamationTriangleIcon, badge: 2 },
-  { key:"marketplace",   label:"Debt Exchange",       icon: ArrowsRightLeftIcon, dividerBefore: true },
+  { key:"ai",            label:"AI Portfolio Brief",  icon: SparklesIcon, dividerBefore: true },
+  { key:"marketplace",   label:"Debt Exchange",       icon: ArrowsRightLeftIcon },
   { key:"pricing",       label:"Token NAV Pricing",   icon: CurrencyDollarIcon },
 ];
 
@@ -220,6 +223,31 @@ export default function InvestorPortal() {
   const [mxPrice, setMxPrice]       = useState("102.50");
   const [mxOrders, setMxOrders]     = useState<MyOrder[]>(DEMO_MY_ORDERS);
   const [mxSubmitted, setMxSubmitted] = useState(false);
+
+  // ── AI Portfolio Brief state ──────────────────────────────────────────────
+  type AiBrief = {
+    brief: string; portfolio_score: number | null;
+    signals: { type: "positive"|"negative"|"watch"; message: string }[];
+    recommendations: string[];
+    watchlist: { loan_ref: string; reason: string }[];
+  };
+  const [aiBrief, setAiBrief]         = useState<AiBrief | null>(null);
+  const [aiBriefLoading, setAiBriefLoading] = useState(false);
+  const [aiBriefError, setAiBriefError]   = useState<string | null>(null);
+
+  const generateAiBrief = async () => {
+    setAiBriefLoading(true);
+    setAiBriefError(null);
+    try {
+      const { data } = await api.post<AiBrief>("/ai/portfolio-brief", {});
+      if (data) setAiBrief(data);
+      else setAiBriefError("No response from AI service.");
+    } catch {
+      setAiBriefError("AI service unavailable. Please try again.");
+    } finally {
+      setAiBriefLoading(false);
+    }
+  };
 
   const load = useCallback(async () => {
     const [hRes, dRes, pRes, aRes] = await Promise.allSettled([
@@ -708,6 +736,120 @@ export default function InvestorPortal() {
                   by the lender/servicer. You may submit a governance proposal if a major economic decision is required.
                 </p>
               </div>
+            </div>
+          )}
+
+          {/* ── AI PORTFOLIO BRIEF ── */}
+          {section === "ai" && (
+            <div className="space-y-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h1 className="text-2xl font-black text-white flex items-center gap-2">
+                    <SparklesIcon className="h-6 w-6 text-violet-400" />
+                    AI Portfolio Brief
+                  </h1>
+                  <p className="text-sm text-slate-400 mt-1">GPT-4o analysis of your loan portfolio — risk signals, watchlist, and recommendations.</p>
+                </div>
+                <button
+                  onClick={generateAiBrief}
+                  disabled={aiBriefLoading}
+                  className="flex items-center gap-2 rounded-xl bg-violet-700 px-5 py-2.5 text-sm font-bold text-white hover:bg-violet-800 transition-colors disabled:opacity-60"
+                >
+                  <SparklesIcon className="h-4 w-4" />
+                  {aiBriefLoading ? "Generating…" : aiBrief ? "Regenerate" : "Generate Brief"}
+                </button>
+              </div>
+
+              {aiBriefError && (
+                <div className="rounded-xl border border-red-200 bg-red-50 px-5 py-4">
+                  <p className="text-sm text-red-700">{aiBriefError}</p>
+                </div>
+              )}
+
+              {!aiBrief && !aiBriefLoading && !aiBriefError && (
+                <div className="rounded-xl border border-slate-700 bg-slate-800/50 p-10 text-center">
+                  <SparklesIcon className="h-10 w-10 text-slate-500 mx-auto mb-4" />
+                  <p className="text-slate-400 text-sm">Click "Generate Brief" to run an AI analysis of your full portfolio.</p>
+                  <p className="text-slate-500 text-xs mt-1">Powered by GPT-4o · Takes ~10 seconds</p>
+                </div>
+              )}
+
+              {aiBriefLoading && (
+                <div className="rounded-xl border border-violet-200/20 bg-violet-900/10 p-10 text-center">
+                  <SparklesIcon className="h-8 w-8 text-violet-400 mx-auto mb-3 animate-pulse" />
+                  <p className="text-violet-300 text-sm font-semibold">Analyzing your portfolio…</p>
+                  <p className="text-slate-500 text-xs mt-1">GPT-4o is reviewing all loan positions, DSCR, LTV, and covenant data</p>
+                </div>
+              )}
+
+              {aiBrief && !aiBriefLoading && (
+                <div className="space-y-5">
+                  {/* Executive Summary */}
+                  <div className="rounded-xl border border-slate-700 bg-slate-800 p-6">
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="flex-1">
+                        <p className="text-xs font-bold text-slate-400 uppercase tracking-wide mb-2">Executive Summary</p>
+                        <p className="text-slate-200 text-sm leading-relaxed">{aiBrief.brief}</p>
+                      </div>
+                      {aiBrief.portfolio_score != null && (
+                        <div className="shrink-0 text-center">
+                          <div className={`flex h-16 w-16 items-center justify-center rounded-full border-4 ${aiBrief.portfolio_score >= 70 ? "border-emerald-500 bg-emerald-900/30" : aiBrief.portfolio_score >= 50 ? "border-amber-500 bg-amber-900/30" : "border-red-500 bg-red-900/30"}`}>
+                            <span className={`text-xl font-black ${aiBrief.portfolio_score >= 70 ? "text-emerald-400" : aiBrief.portfolio_score >= 50 ? "text-amber-400" : "text-red-400"}`}>{aiBrief.portfolio_score}</span>
+                          </div>
+                          <p className="text-xs text-slate-500 mt-1">Health Score</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Signals */}
+                  {aiBrief.signals?.length > 0 && (
+                    <div className="rounded-xl border border-slate-700 bg-slate-800 p-5">
+                      <p className="text-xs font-bold text-slate-400 uppercase tracking-wide mb-3">Portfolio Signals</p>
+                      <div className="space-y-2">
+                        {aiBrief.signals.map((s, i) => (
+                          <div key={i} className={`flex items-start gap-3 rounded-lg px-4 py-3 ${s.type === "positive" ? "bg-emerald-900/20 border border-emerald-700/30" : s.type === "negative" ? "bg-red-900/20 border border-red-700/30" : "bg-amber-900/20 border border-amber-700/30"}`}>
+                            <span className={`mt-0.5 h-2 w-2 shrink-0 rounded-full ${s.type === "positive" ? "bg-emerald-400" : s.type === "negative" ? "bg-red-400" : "bg-amber-400"}`} />
+                            <p className="text-sm text-slate-200">{s.message}</p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Watchlist */}
+                  {aiBrief.watchlist?.length > 0 && (
+                    <div className="rounded-xl border border-slate-700 bg-slate-800 p-5">
+                      <p className="text-xs font-bold text-slate-400 uppercase tracking-wide mb-3 flex items-center gap-2">
+                        <ShieldExclamationIcon className="h-4 w-4 text-amber-400" /> Watchlist
+                      </p>
+                      <div className="space-y-2">
+                        {aiBrief.watchlist.map((w, i) => (
+                          <div key={i} className="flex items-start gap-3 rounded-lg border border-amber-700/30 bg-amber-900/10 px-4 py-3">
+                            <span className="text-xs font-black text-amber-400 shrink-0">{w.loan_ref}</span>
+                            <p className="text-sm text-slate-300">{w.reason}</p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Recommendations */}
+                  {aiBrief.recommendations?.length > 0 && (
+                    <div className="rounded-xl border border-slate-700 bg-slate-800 p-5">
+                      <p className="text-xs font-bold text-slate-400 uppercase tracking-wide mb-3">Recommendations</p>
+                      <ol className="space-y-2">
+                        {aiBrief.recommendations.map((r, i) => (
+                          <li key={i} className="flex items-start gap-3 text-sm text-slate-300">
+                            <span className="shrink-0 flex h-5 w-5 items-center justify-center rounded-full bg-violet-800 text-xs font-black text-violet-200">{i + 1}</span>
+                            {r}
+                          </li>
+                        ))}
+                      </ol>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           )}
 
