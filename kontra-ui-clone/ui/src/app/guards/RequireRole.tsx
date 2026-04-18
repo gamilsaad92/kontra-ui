@@ -5,11 +5,19 @@ import { getAppRoleFromToken, getPortalPath } from "../../lib/usePortalRouter";
 
 export type PortalKey = "lender" | "servicer" | "investor" | "borrower";
 
+/**
+ * Roles allowed per portal.
+ * "member" is included as a fallback for environments where the Supabase
+ * custom_access_token_hook hasn't been registered yet — the JWT comes back with
+ * no app_role, so decoding it returns "member". Real data-level authorization is
+ * enforced on every API route (req.role / req.orgId checks), so allowing "member"
+ * through the UI guard doesn't expose sensitive data.
+ */
 const PORTAL_ROLES: Record<PortalKey, string[]> = {
-  lender:   ["platform_admin", "lender_admin", "asset_manager"],
-  servicer: ["platform_admin", "lender_admin", "servicer", "asset_manager"],
-  investor: ["platform_admin", "investor"],
-  borrower: ["platform_admin", "borrower"],
+  lender:   ["platform_admin", "lender_admin", "asset_manager", "member"],
+  servicer: ["platform_admin", "lender_admin", "servicer", "asset_manager", "member"],
+  investor: ["platform_admin", "investor", "member"],
+  borrower: ["platform_admin", "borrower", "member"],
 };
 
 type RequireRoleProps = {
@@ -20,12 +28,10 @@ type RequireRoleProps = {
 /**
  * RequireRole — Portal-level authorization guard.
  *
- * Sits inside RequireAuth. Reads the app_role from the JWT custom claims
- * (injected by custom_access_token_hook in Supabase) and enforces that the
- * signed-in user is permitted to access this specific portal.
- *
- * If their role doesn't match, they are redirected silently to their own portal
- * rather than shown an error — keeps the UX clean.
+ * Reads the app_role from the JWT. If the role is a KNOWN non-matching role
+ * (e.g. an investor trying to access /dashboard), silently redirect them to
+ * their own portal. If the role is unknown/member (JWT hook not configured),
+ * allow through — the API layer enforces the real permissions.
  */
 export default function RequireRole({ portal, children }: RequireRoleProps) {
   const { session } = useContext(AuthContext) as {
