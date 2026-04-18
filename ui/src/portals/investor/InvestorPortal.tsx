@@ -395,7 +395,7 @@ export default function InvestorPortal() {
 
       {/* ── Main Content ── */}
       <main className="flex-1 overflow-y-auto bg-slate-950">
-        <div className="max-w-6xl mx-auto px-4 py-6 md:px-8 md:py-8 space-y-8">
+        <div className="max-w-6xl mx-auto px-4 md:px-8 py-8 space-y-8">
 
           {/* ── PORTFOLIO ── */}
           {section === "portfolio" && (
@@ -428,7 +428,7 @@ export default function InvestorPortal() {
                   <span className="text-xs text-slate-500">{holdings.length} positions</span>
                 </div>
                 <div className="overflow-x-auto">
-                  <div className="overflow-x-auto"><table className="w-full text-sm">
+                  <table className="w-full text-sm">
                     <thead>
                       <tr className="border-b border-slate-800 bg-slate-900/80">
                         {["Loan","Property","Type","Location","UPB","My Share","My Invest.","Tokens","Yield","Status","Maturity"].map((h) => (
@@ -520,7 +520,7 @@ export default function InvestorPortal() {
                 </h2>
                 <div className="space-y-2">
                   {scheduled.map((d) => (
-                    <div key={d.id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-violet-800/30 bg-violet-900/20 px-4 py-3">
+                    <div key={d.id} className="flex items-center justify-between rounded-lg border border-violet-800/30 bg-violet-900/20 px-4 py-3">
                       <div>
                         <p className="text-sm font-semibold text-white">{d.period} — {d.loan_ref}</p>
                         <p className="text-xs text-slate-400">{d.type} · {fmtDate(d.paid_at)}</p>
@@ -539,7 +539,7 @@ export default function InvestorPortal() {
                 <div className="px-6 py-4 border-b border-slate-800">
                   <h2 className="text-base font-bold text-white">Distribution History</h2>
                 </div>
-                <div className="overflow-x-auto"><table className="w-full text-sm">
+                <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-slate-800 bg-slate-900/80">
                       {["Period","Loan","Type","Gross","Net (after fees)","Date","Status"].map((h) => (
@@ -575,7 +575,7 @@ export default function InvestorPortal() {
                 <p className="text-sm text-slate-400 mt-1">Read-only performance metrics. Servicing actions are managed by the lender.</p>
               </div>
               <div className="rounded-xl border border-slate-800 bg-slate-900 overflow-hidden">
-                <div className="overflow-x-auto"><table className="w-full text-sm">
+                <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-slate-800 bg-slate-900/80">
                       {["Loan","Property","DSCR","LTV","Delinquency","Payment Status","Risk"].map((h) => (
@@ -724,7 +724,7 @@ export default function InvestorPortal() {
                   { name:"Governance Proposal GV-047 — Outcome", type:"Governance", date:"2026-03-28", size:"190 KB" },
                   { name:"Annual Investor Report 2025", type:"Annual Report", date:"2026-01-15", size:"5.2 MB" },
                 ].map((doc) => (
-                  <div key={doc.name} className="flex flex-wrap items-center justify-between gap-3 px-6 py-4 hover:bg-slate-800/40 transition-colors">
+                  <div key={doc.name} className="flex items-center justify-between px-6 py-4 hover:bg-slate-800/40 transition-colors">
                     <div className="flex items-center gap-3">
                       <DocumentTextIcon className="h-5 w-5 text-violet-400 shrink-0" />
                       <div>
@@ -1004,7 +1004,7 @@ export default function InvestorPortal() {
                       <h2 className="text-sm font-bold text-white">My Open Orders</h2>
                       <span className="text-xs text-slate-500">{mxOrders.filter((o) => o.status === "open").length} open</span>
                     </div>
-                    <div className="overflow-x-auto"><table className="w-full text-sm">
+                    <table className="w-full text-sm">
                       <thead>
                         <tr className="border-b border-slate-800">
                           {["Token","Side","Qty","Limit Price","Notional","Fee","Status",""].map((h) => (
@@ -1048,7 +1048,7 @@ export default function InvestorPortal() {
                   <div className="px-6 py-4 border-b border-slate-800">
                     <h2 className="text-sm font-bold text-white">Recent Platform Trades</h2>
                   </div>
-                  <div className="overflow-x-auto"><table className="w-full text-sm">
+                  <table className="w-full text-sm">
                     <thead>
                       <tr className="border-b border-slate-800">
                         {["Token","Side","Price","Qty","Fee (15 bps)","Volume","Time"].map((h) => (
@@ -1154,12 +1154,12 @@ export default function InvestorPortal() {
                           { label:"LTV Adjustment",   value:`${n.ltv_adj >= 0 ? "+" : ""}${n.ltv_adj.toFixed(2)}%`,  color: n.ltv_adj >= 0 ? "text-emerald-400" : "text-brand-400" },
                           { label:"Delinquency",      value:`${n.delinquency_adj.toFixed(2)}%`, color: n.delinquency_adj === 0 ? "text-slate-500" : "text-brand-400" },
                         ].map((row) => (
-                          <div key={row.label} className="flex flex-wrap items-center justify-between gap-3 text-sm">
+                          <div key={row.label} className="flex items-center justify-between text-sm">
                             <span className="text-slate-400">{row.label}</span>
                             <span className={`font-bold tabular-nums ${row.color}`}>{row.value}</span>
                           </div>
                         ))}
-                        <div className="flex flex-wrap items-center justify-between gap-3 text-sm border-t border-slate-700 pt-1.5">
+                        <div className="flex items-center justify-between text-sm border-t border-slate-700 pt-1.5">
                           <span className="font-bold text-white">Indicated NAV</span>
                           <span className="font-black text-white tabular-nums">${n.nav.toFixed(2)}</span>
                         </div>
@@ -1191,7 +1191,7 @@ export default function InvestorPortal() {
                       </div>
 
                       {/* YTM */}
-                      <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-700 bg-slate-800/40 px-4 py-3">
+                      <div className="flex items-center justify-between rounded-lg border border-slate-700 bg-slate-800/40 px-4 py-3">
                         <div>
                           <p className="text-xs text-slate-400 font-bold uppercase tracking-widest">Yield to Maturity</p>
                           {perf && (
@@ -1248,7 +1248,7 @@ export default function InvestorPortal() {
 
               {section === "deal_flow" && (
                 <div className="space-y-6">
-                  <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="flex items-center justify-between">
                     <div>
                       <h2 className="text-2xl font-black text-white">Deal Flow</h2>
                       <p className="text-sm text-slate-400 mt-1">Active loan participation opportunities open for investment.</p>
@@ -1395,7 +1395,7 @@ export default function InvestorPortal() {
                   <div className="space-y-5">
                     {aiBrief.portfolio_score != null && (
                       <div className="rounded-xl border border-slate-700 bg-slate-800/40 p-5 flex items-center gap-5">
-                        <div className="text-4xl md:text-5xl font-black text-violet-400">{aiBrief.portfolio_score}</div>
+                        <div className="text-5xl font-black text-violet-400">{aiBrief.portfolio_score}</div>
                         <div>
                           <p className="text-xs font-bold uppercase tracking-widest text-slate-400">Portfolio Health Score</p>
                           <p className="text-sm text-slate-300 mt-1">{aiBrief.brief}</p>
