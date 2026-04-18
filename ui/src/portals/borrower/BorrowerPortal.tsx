@@ -21,9 +21,12 @@ import {
   PaperClipIcon,
   ArrowUpTrayIcon,
   DocumentTextIcon,
+  SparklesIcon,
 } from "@heroicons/react/24/outline";
 
-// ── Demo fallback data ─────────────────────────────────────────────────────
+type AiDocResult = { doc_type: string; summary: string; metrics: Record<string, number | null>; covenants: { name: string; threshold: string; actual: string; status: string }[]; risk_flags: string[]; recommendations: string[]; notice?: string };
+
+  // ── Demo fallback data ─────────────────────────────────────────────────────
 const DEMO_LOAN = {
   loan_ref: "LN-2847",
   property_name: "The Meridian Apartments",
@@ -139,6 +142,19 @@ export default function BorrowerPortal() {
   const [localMessages, setLocalMessages] = useState<Message[]>(DEMO_MESSAGES);
   const [message, setMessage]       = useState("");
   const [uploadingDoc, setUploadingDoc] = useState<string | null>(null);
+    const [aiDocFile, setAiDocFile] = useState<File | null>(null);
+    const [aiDocResult, setAiDocResult] = useState<AiDocResult | null>(null);
+    const [aiDocLoading, setAiDocLoading] = useState(false);
+
+    const handleAiAnalyze = async (file: File) => {
+      setAiDocLoading(true); setAiDocResult(null);
+      try {
+        const form = new FormData(); form.append("file", file);
+        const { data } = await api.post<AiDocResult>("/ai/analyze", form);
+        if (data) setAiDocResult(data);
+      } catch { setAiDocResult({ doc_type:"Error", summary:"AI analysis unavailable. Document received.", metrics:{}, covenants:[], risk_flags:[], recommendations:[] }); }
+      finally { setAiDocLoading(false); }
+    };
   const [newDrawOpen, setNewDrawOpen]   = useState(false);
   const [drawForm, setDrawForm]     = useState({ amount:"", purpose:"", milestone:"" });
   const [submittingDraw, setSubmittingDraw] = useState(false);
@@ -460,24 +476,56 @@ export default function BorrowerPortal() {
               </div>
 
               {uploadingDoc && (
-                <div className="rounded-xl border-2 border-dashed border-slate-300 bg-slate-50 p-8 text-center">
-                  <ArrowUpTrayIcon className="h-8 w-8 text-slate-400 mx-auto mb-3" />
-                  <p className="text-sm font-semibold text-slate-700">Drag & drop your file here, or click to browse</p>
-                  <p className="text-xs text-slate-500 mt-1">PDF, Excel, or image files · Max 25 MB</p>
-                  <div className="mt-4 flex items-center justify-center gap-3">
-                    <button className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-bold text-white hover:bg-slate-700 transition-colors">
-                      Choose File
-                    </button>
-                    <button onClick={() => setUploadingDoc(null)} className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100 transition-colors">
-                      Cancel
-                    </button>
+                  <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 p-5 space-y-4">
+                    <div className="border-2 border-dashed border-emerald-300 rounded-lg p-6 text-center">
+                      <ArrowUpTrayIcon className="h-8 w-8 text-emerald-600 mx-auto mb-2" />
+                      <p className="text-sm font-medium text-slate-700">Drop your financial document here</p>
+                      <p className="text-xs text-slate-500 mt-1">PDF, Excel, CSV, or text · Max 25 MB · AI will extract key metrics automatically</p>
+                      <input type="file" className="hidden" id="ai-doc-input" onChange={(e) => { const f = e.target.files?.[0] || null; setAiDocFile(f); if (f) handleAiAnalyze(f); }} />
+                      <label htmlFor="ai-doc-input" className="mt-3 inline-block cursor-pointer rounded-lg border border-emerald-600 px-4 py-1.5 text-sm font-semibold text-emerald-700 hover:bg-emerald-100 transition-colors">Choose File</label>
+                      {aiDocFile && <p className="text-xs text-emerald-700 mt-2 font-medium">{aiDocFile.name}</p>}
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => { if (aiDocFile) handleAiAnalyze(aiDocFile); }}
+                        disabled={!aiDocFile || aiDocLoading}
+                        className="flex items-center gap-2 rounded-lg bg-emerald-700 px-4 py-2 text-sm font-bold text-white disabled:opacity-60 hover:bg-emerald-800 transition-colors"
+                      >
+                        <SparklesIcon className="h-4 w-4" />
+                        {aiDocLoading ? "Analyzing…" : "Submit & Analyze"}
+                      </button>
+                      <button onClick={() => { setUploadingDoc(null); setAiDocFile(null); setAiDocResult(null); }} className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100 transition-colors">Cancel</button>
+                    </div>
+                    {aiDocResult && (
+                      <div className="rounded-xl border border-emerald-200 bg-white p-5 space-y-4">
+                        <div className="flex items-center gap-2">
+                          <SparklesIcon className="h-5 w-5 text-emerald-600" />
+                          <div>
+                            <h3 className="text-sm font-bold text-slate-900">AI Document Analysis — {aiDocResult.doc_type}</h3>
+                            <p className="text-xs text-slate-500 mt-0.5">{aiDocResult.summary}</p>
+                          </div>
+                        </div>
+                        {Object.keys(aiDocResult.metrics || {}).length > 0 && (
+                          <div className="grid grid-cols-2 gap-3">
+                            {Object.entries(aiDocResult.metrics).filter(([,v]) => v != null).map(([k,v]) => (
+                              <div key={k} className="rounded-lg bg-emerald-50 border border-emerald-200 p-3">
+                                <p className="text-xs font-bold uppercase tracking-widest text-slate-500">{k.replace(/_/g,' ')}</p>
+                                <p className="text-lg font-black text-slate-900 mt-1">{typeof v === 'number' && v > 1000 ? `${v.toLocaleString()}` : v}</p>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        {aiDocResult.risk_flags?.length > 0 && (
+                          <div>
+                            <p className="text-xs font-bold uppercase tracking-widest text-red-600 mb-2">Risk Flags</p>
+                            {aiDocResult.risk_flags.map((f,i) => <p key={i} className="text-sm text-red-700">• {f}</p>)}
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
-                  <p className="mt-4 text-xs text-slate-400">
-                    Once submitted, your document will route to your servicer for review. You'll receive a notice when it's approved.
-                  </p>
-                </div>
-              )}
-            </div>
+                )}
+              </div>
           )}
 
           {/* ── DRAWS ── */}
