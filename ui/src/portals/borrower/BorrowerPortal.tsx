@@ -313,7 +313,7 @@ export default function BorrowerPortal() {
             </button>
           </div>
           <div className="flex-1 overflow-y-auto bg-white">
-        <div className="max-w-4xl mx-auto px-4 py-6 md:px-8 md:py-8 space-y-8">
+        <div className="max-w-4xl mx-auto px-4 md:px-8 py-8 space-y-8">
 
           {/* ── MY LOAN ── */}
           {section === "myloans" && (
@@ -349,7 +349,7 @@ export default function BorrowerPortal() {
                 </div>
                 <div className="divide-y divide-slate-50">
                   {DEMO_COVENANTS.map((c) => (
-                    <div key={c.id} className="flex flex-wrap items-center justify-between gap-3 px-6 py-4 hover:bg-slate-50 transition-colors">
+                    <div key={c.id} className="flex items-center justify-between px-6 py-4 hover:bg-slate-50 transition-colors">
                       <div>
                         <p className="text-sm font-semibold text-slate-900">{c.name}</p>
                         <p className="text-xs text-slate-500">Required: {c.requirement}</p>
@@ -415,7 +415,7 @@ export default function BorrowerPortal() {
                 <div className="border-b border-slate-100 px-6 py-4">
                   <h2 className="text-base font-bold text-slate-900">Payment History</h2>
                 </div>
-                <div className="overflow-x-auto"><table className="w-full text-sm">
+                <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-slate-100 bg-slate-50">
                       {["Date","Amount","Interest","Principal","Late Fee","Status"].map((h) => (
@@ -725,7 +725,7 @@ export default function BorrowerPortal() {
           )}
 
         </div>
-              </div>
+        </div>
       </main>
     </div>
   );
