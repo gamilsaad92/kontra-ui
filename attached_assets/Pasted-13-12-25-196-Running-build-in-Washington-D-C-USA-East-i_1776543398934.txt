@@ -1,0 +1,65 @@
+13:12:25.196 Running build in Washington, D.C., USA (East) – iad1
+13:12:25.197 Build machine configuration: 2 cores, 8 GB
+13:12:25.395 Cloning github.com/gamilsaad92/kontra-ui (Branch: main, Commit: c62919c)
+13:12:26.483 Warning: Failed to fetch one or more git submodules
+13:12:26.485 Cloning completed: 1.089s
+13:12:26.747 Restored build cache from previous deployment (7oqsBKuQTDX3Bmaiq8ssbRYD6hfW)
+13:12:26.981 Running "vercel build"
+13:12:27.691 Vercel CLI 51.6.1
+13:12:28.476 Installing dependencies...
+13:14:00.463 
+13:14:00.464 changed 5 packages in 2m
+13:14:00.464 
+13:14:00.464 213 packages are looking for funding
+13:14:00.465   run `npm fund` for details
+13:14:00.624 
+13:14:00.624 > kontra-ui@1.0.0 build
+13:14:00.625 > vite build
+13:14:00.625 
+13:14:00.894 [33mThe CJS build of Vite's Node API is deprecated. See https://vite.dev/guide/troubleshooting.html#vite-cjs-node-api-deprecated for more details.[39m
+13:14:00.972 [36mvite v5.4.21 [32mbuilding for production...[36m[39m
+13:14:01.032 transforming...
+13:14:03.022 [32m✓[39m 30 modules transformed.
+13:14:03.023 [31mx[39m Build failed in 2.03s
+13:14:03.024 [31merror during build:
+13:14:03.025 [31m[vite:esbuild] Transform failed with 3 errors:
+13:14:03.025 /vercel/path0/ui/src/portals/investor/InvestorPortal.tsx:1445:10: ERROR: Unexpected closing "div" tag does not match opening "main" tag
+13:14:03.026 /vercel/path0/ui/src/portals/investor/InvestorPortal.tsx:1446:8: ERROR: Unexpected closing "main" tag does not match opening "div" tag
+13:14:03.026 /vercel/path0/ui/src/portals/investor/InvestorPortal.tsx:1447:10: ERROR: Unterminated regular expression[31m
+13:14:03.026 file: [36m/vercel/path0/ui/src/portals/investor/InvestorPortal.tsx:1445:10[31m
+13:14:03.027 [33m
+13:14:03.027 [33mUnexpected closing "div" tag does not match opening "main" tag[33m
+13:14:03.027 1443|    
+13:14:03.027 1444|          </div>
+13:14:03.028 1445|          </div>
+13:14:03.028    |            ^
+13:14:03.028 1446|        </main>
+13:14:03.028 1447|      </div>
+13:14:03.029 
+13:14:03.029 [33mUnexpected closing "main" tag does not match opening "div" tag[33m
+13:14:03.029 1444|          </div>
+13:14:03.029 1445|          </div>
+13:14:03.029 1446|        </main>
+13:14:03.030    |          ^
+13:14:03.030 1447|      </div>
+13:14:03.030 1448|    );
+13:14:03.030 
+13:14:03.031 [33mUnterminated regular expression[33m
+13:14:03.031 1445|          </div>
+13:14:03.031 1446|        </main>
+13:14:03.031 1447|      </div>
+13:14:03.032    |            ^
+13:14:03.032 1448|    );
+13:14:03.032 1449|  }
+13:14:03.032 [31m
+13:14:03.032     at failureErrorWithLog (/vercel/path0/ui/node_modules/esbuild/lib/main.js:1472:15)
+13:14:03.033     at /vercel/path0/ui/node_modules/esbuild/lib/main.js:755:50
+13:14:03.033     at responseCallbacks.<computed> (/vercel/path0/ui/node_modules/esbuild/lib/main.js:622:9)
+13:14:03.033     at handleIncomingPacket (/vercel/path0/ui/node_modules/esbuild/lib/main.js:677:12)
+13:14:03.033     at Socket.readFromStdout (/vercel/path0/ui/node_modules/esbuild/lib/main.js:600:7)
+13:14:03.034     at Socket.emit (node:events:519:28)
+13:14:03.034     at addChunk (node:internal/streams/readable:561:12)
+13:14:03.034     at readableAddChunkPushByteMode (node:internal/streams/readable:512:3)
+13:14:03.034     at Readable.push (node:internal/streams/readable:392:5)
+13:14:03.035     at Pipe.onStreamRead (node:internal/stream_base_commons:189:23)[39m
+13:14:03.050 Error: Command "npm run build" exited with 1
