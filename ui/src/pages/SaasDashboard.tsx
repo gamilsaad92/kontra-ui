@@ -33,6 +33,7 @@ import AdminPolicyCommandCenter from "./dashboard/AdminPolicyCommandCenter";
 import AgentConsolePage from "./dashboard/AgentConsolePage";
 import AICopilotPage from "./dashboard/AICopilotPage";
 import DocumentVaultPage from "./dashboard/DocumentVaultPage";
+import LoanLifecyclePage from "./dashboard/LoanLifecyclePage";
 import UnifiedCommandCenter from "./dashboard/UnifiedCommandCenter";
 import {
   GovernanceComplianceCrudPage,
@@ -211,6 +212,7 @@ export default function SaasDashboard() {
       {/* AI Copilot — replaces Agent Console */}
       <Route path="/ai-copilot" element={<AICopilotPage />} />
       <Route path="/document-vault" element={<DocumentVaultPage />} />
+      <Route path="/loan-lifecycle" element={<LoanLifecyclePage />} />
       <Route path="/agents" element={<Navigate to="/ai-copilot" replace />} />
       <Route path="/settings" element={<Navigate to="/settings/billing" replace />} />
       <Route path="/settings/billing" element={<BillingPage />} />

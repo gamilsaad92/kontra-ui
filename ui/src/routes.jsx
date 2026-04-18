@@ -17,6 +17,7 @@ import {
     WrenchScrewdriverIcon,
     DocumentMagnifyingGlassIcon,
     FolderOpenIcon,
+    ArrowPathIcon,
   } from "@heroicons/react/24/outline";
 
   /**
@@ -48,6 +49,12 @@ import {
       label: "Document Vault",
       path: "/document-vault",
       icon: FolderOpenIcon,
+      requiresAuth: true,
+    },
+    {
+      label: "Loan Lifecycle",
+      path: "/loan-lifecycle",
+      icon: ArrowPathIcon,
       requiresAuth: true,
     },
     {
