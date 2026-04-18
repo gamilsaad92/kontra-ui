@@ -14,6 +14,8 @@ import ServicingManagementPage from "../../pages/dashboard/servicing/ServicingMa
 import ServicingAIOpsPage from "../../pages/dashboard/servicing/ServicingAIOpsPage";
 import ServicingAIValidationPage from "../../pages/dashboard/servicing/ServicingAIValidationPage";
 import {
+  Bars3Icon,
+  XMarkIcon,
   ArrowTopRightOnSquareIcon,
   BuildingLibraryIcon,
 } from "@heroicons/react/24/outline";
@@ -26,6 +28,8 @@ export default function ServicerPortal() {
   const location = useLocation();
   const navigate = useNavigate();
   const [isSigningOut, setIsSigningOut] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  useEffect(() => { setMobileMenuOpen(false); }, [location.pathname]);
   const [signOutError, setSignOutError] = useState<string | null>(null);
 
   const navItems = useMemo(
@@ -62,7 +66,7 @@ export default function ServicerPortal() {
         <NavLink
           key={item.path}
           to={item.path}
-          onClick={() => recordUsage(item.path)}
+          onClick={() => { recordUsage(item.path); setMobileMenuOpen(false); }}
           className={({ isActive }) =>
             `flex items-center gap-2.5 rounded-lg px-3 py-2.5 text-sm transition ${
               isActive || location.pathname.startsWith(`${item.path}/`)
@@ -92,9 +96,10 @@ export default function ServicerPortal() {
   };
 
   return (
-    <div className="flex min-h-screen bg-slate-100 text-slate-900">
+    <div className="flex min-h-screen bg-slate-100 text-slate-900 relative">
       {/* ── Sidebar ── */}
-      <aside className="flex w-64 flex-col bg-slate-950 text-slate-100 shrink-0">
+      {mobileMenuOpen && <div className="fixed inset-0 z-40 bg-black/60 md:hidden" onClick={() => setMobileMenuOpen(false)} />}
+        <aside className={`fixed inset-y-0 left-0 z-50 flex w-64 flex-col bg-slate-950 text-slate-100 shrink-0 transform transition-transform duration-200 ease-in-out md:relative md:translate-x-0 ${mobileMenuOpen ? "translate-x-0" : "-translate-x-full"}`}>
         {/* Logo + portal badge */}
         <div className="px-4 pt-5 pb-4 border-b border-slate-800">
           <div className="flex items-center gap-2.5 mb-3">
@@ -115,6 +120,7 @@ export default function ServicerPortal() {
             >
               Kontra
             </span>
+            <button className="ml-auto md:hidden p-1 text-slate-400 hover:text-white" onClick={() => setMobileMenuOpen(false)}><XMarkIcon className="h-5 w-5" /></button>
           </div>
           <div className="flex items-center gap-2 rounded-lg bg-amber-500/10 border border-amber-700/30 px-3 py-2">
             <BuildingLibraryIcon className="h-4 w-4 text-amber-400 shrink-0" />

@@ -1,8 +1,9 @@
-import { useCallback, useContext, useMemo, useState, type ComponentType } from "react";
+import { useCallback, useContext, useMemo, useState, useEffect, type ComponentType } from "react";
 import { NavLink, Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { resolveApiBase } from "../lib/api";
 import useFeatureUsage from "../lib/useFeatureUsage";
 import { lenderNavRoutes } from "../routes";
+import { Bars3Icon, XMarkIcon } from "@heroicons/react/24/outline";
 import { AuthContext } from "../lib/authContext";
 import SaasDashboardHome from "../components/SaasDashboardHome";
 import AiInsightsPage from "../features/ai-insights/page/AiInsightsPage";
@@ -75,6 +76,9 @@ export default function SaasDashboard() {
   const navigate = useNavigate();
   const [isSigningOut, setIsSigningOut] = useState(false);
   const [signOutError, setSignOutError] = useState<string | null>(null);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  // Close mobile menu on route change
+  useEffect(() => { setMobileMenuOpen(false); }, [location.pathname]);
 
   const navItems = useMemo(() => lenderNavRoutes.filter((item) => !item.requiresAuth || session?.access_token), [session]);
     
@@ -115,7 +119,7 @@ export default function SaasDashboard() {
         <div key={item.path} className="space-y-1">
           <NavLink
             to={item.path}
-             onClick={() => recordUsage(item.path)}
+             onClick={() => { recordUsage(item.path); setMobileMenuOpen(false); }}
             className={({ isActive }) =>
               `flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition ${
                 isActive || location.pathname.startsWith(`${item.path}/`)
@@ -253,13 +257,16 @@ export default function SaasDashboard() {
   );
 
   return (
-     <div className="flex min-h-screen bg-slate-100 text-slate-900">
-      <aside className="flex w-64 flex-col bg-slate-950 text-slate-100">
+     <div className="flex min-h-screen bg-slate-100 text-slate-900 relative">
+      {/* Mobile backdrop */}
+        {mobileMenuOpen && <div className="fixed inset-0 z-40 bg-black/60 md:hidden" onClick={() => setMobileMenuOpen(false)} />}
+        <aside className={`fixed inset-y-0 left-0 z-50 flex w-64 flex-col bg-slate-950 text-slate-100 transform transition-transform duration-200 ease-in-out md:relative md:translate-x-0 ${mobileMenuOpen ? "translate-x-0" : "-translate-x-full"}`}>
         <div className="flex items-center gap-2.5 px-4 py-4">
           <div className="flex h-7 w-7 items-center justify-center rounded-lg" style={{ background: '#800020' }}>
             <span className="text-sm font-black text-white" style={{ letterSpacing: '-0.05em' }}>K</span>
           </div>
           <span className="text-base font-bold text-white" style={{ letterSpacing: '-0.02em' }}>Kontra</span>
+          <button className="ml-auto md:hidden p-1 text-slate-400 hover:text-white" onClick={() => setMobileMenuOpen(false)}><XMarkIcon className="h-5 w-5" /></button>
         </div>
         <nav className="flex-1 space-y-1 overflow-y-auto px-2 pb-4">
           {frequentItems.length > 0 && (
@@ -300,7 +307,20 @@ export default function SaasDashboard() {
           </div>
         </nav>
       </aside>
-      <main className="flex-1 overflow-y-auto p-6">
+      <main className="flex-1 overflow-y-auto">
+          {/* Mobile top bar */}
+          <div className="md:hidden flex items-center justify-between px-4 py-3 bg-slate-950 text-white sticky top-0 z-30 border-b border-slate-800">
+            <div className="flex items-center gap-2">
+              <div className="flex h-7 w-7 items-center justify-center rounded-lg" style={{ background: '#800020' }}>
+                <span className="text-sm font-black text-white" style={{ letterSpacing: '-0.05em' }}>K</span>
+              </div>
+              <span className="font-bold text-white text-sm">Kontra</span>
+            </div>
+            <button onClick={() => setMobileMenuOpen(true)} className="p-2 rounded-lg hover:bg-slate-800">
+              <Bars3Icon className="h-5 w-5 text-white" />
+            </button>
+          </div>
+          <div className="p-4 md:p-6">
         {!isDashboardRoute && !isServicingRoute && !sectionHasOwnHeader && (
           <header className="mb-6 space-y-1">
             <h1 className="text-xl font-semibold tracking-tight text-slate-900">{activeLabel}</h1>
@@ -310,6 +330,7 @@ export default function SaasDashboard() {
           </header>
         )}
         {isDashboardRoute || isServicingRoute ? content : <div className="space-y-6">{content}</div>}
+        </div>
       </main>
     </div>
   );

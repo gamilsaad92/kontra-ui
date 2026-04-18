@@ -24,6 +24,7 @@ import {
   SparklesIcon,
   ShoppingBagIcon,
   XMarkIcon,
+  Bars3Icon,
   MapPinIcon,
 } from "@heroicons/react/24/outline";
 
@@ -231,6 +232,7 @@ export default function InvestorPortal() {
     const [aiBrief, setAiBrief] = useState<AiBrief | null>(null);
     const [aiBriefLoading, setAiBriefLoading] = useState(false);
     const [aiBriefError, setAiBriefError] = useState<string | null>(null);
+    const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
     // Deal Flow state
     const [dfListings, setDfListings] = useState<any[]>([]);
     const [dfLoading, setDfLoading] = useState(false);
@@ -305,10 +307,11 @@ export default function InvestorPortal() {
   const highAlerts    = alerts.filter((a) => a.severity === "high").length;
 
   return (
-    <div className="flex h-screen bg-slate-950 text-slate-100 overflow-hidden">
+    <div className="flex h-screen bg-slate-950 text-slate-100 overflow-hidden relative">
 
       {/* ── Sidebar ── */}
-      <aside className="flex w-60 flex-col border-r border-slate-800 bg-slate-900">
+      {mobileMenuOpen && <div className="fixed inset-0 z-40 bg-black/70 md:hidden" onClick={() => setMobileMenuOpen(false)} />}
+        <aside className={`fixed inset-y-0 left-0 z-50 flex w-60 flex-col border-r border-slate-800 bg-slate-900 transform transition-transform duration-200 ease-in-out md:relative md:translate-x-0 ${mobileMenuOpen ? "translate-x-0" : "-translate-x-full"}`}>
         {/* Logo area */}
         <div className="flex items-center gap-3 px-5 py-5 border-b border-slate-800">
           <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-violet-600 font-black text-white text-sm">K</div>
@@ -316,6 +319,7 @@ export default function InvestorPortal() {
             <p className="text-sm font-bold text-white">Kontra</p>
             <p className="text-xs text-violet-400 font-medium">Investor Portal</p>
           </div>
+          <button className="ml-auto md:hidden p-1 text-slate-500 hover:text-white" onClick={() => setMobileMenuOpen(false)}><XMarkIcon className="h-5 w-5" /></button>
         </div>
 
         {/* Summary quick stats */}
@@ -349,7 +353,7 @@ export default function InvestorPortal() {
                   </div>
                 )}
                 <button
-                  onClick={() => setSection(item.key)}
+                  onClick={() => { setSection(item.key); setMobileMenuOpen(false); }}
                   className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors text-left ${
                     active
                       ? item.key === "marketplace" || item.key === "pricing"
@@ -1437,6 +1441,7 @@ export default function InvestorPortal() {
             )}
 
   
+        </div>
         </div>
       </main>
     </div>

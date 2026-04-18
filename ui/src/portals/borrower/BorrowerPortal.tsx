@@ -22,6 +22,8 @@ import {
   ArrowUpTrayIcon,
   DocumentTextIcon,
   SparklesIcon,
+  Bars3Icon,
+  XMarkIcon,
 } from "@heroicons/react/24/outline";
 
 type AiDocResult = { doc_type: string; summary: string; metrics: Record<string, number | null>; covenants: { name: string; threshold: string; actual: string; status: string }[]; risk_flags: string[]; recommendations: string[]; notice?: string };
@@ -134,6 +136,7 @@ const NAV_KEYS: { key: Section; label: string; icon: typeof HomeIcon }[] = [
 // ── Component ─────────────────────────────────────────────────────────────
 export default function BorrowerPortal() {
   const [section, setSection]       = useState<Section>("myloans");
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [loan, setLoan]             = useState<LoanData>(DEMO_LOAN);
   const [payments, setPayments]     = useState<Payment[]>(DEMO_PAYMENTS);
   const [documents, setDocuments]   = useState<Doc[]>(DEMO_DOCUMENTS);
@@ -231,10 +234,11 @@ export default function BorrowerPortal() {
   };
 
   return (
-    <div className="flex h-screen bg-white overflow-hidden">
+    <div className="flex h-screen bg-white overflow-hidden relative">
 
       {/* ── Sidebar ── */}
-      <aside className="flex w-60 flex-col border-r border-slate-200 bg-slate-50">
+      {mobileMenuOpen && <div className="fixed inset-0 z-40 bg-black/50 md:hidden" onClick={() => setMobileMenuOpen(false)} />}
+        <aside className={`fixed inset-y-0 left-0 z-50 flex w-60 flex-col border-r border-slate-200 bg-slate-50 transform transition-transform duration-200 ease-in-out md:relative md:translate-x-0 ${mobileMenuOpen ? "translate-x-0" : "-translate-x-full"}`}>
         {/* Logo */}
         <div className="flex items-center gap-3 px-5 py-5 border-b border-slate-200">
           <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-900 font-black text-white text-sm">K</div>
@@ -242,6 +246,7 @@ export default function BorrowerPortal() {
             <p className="text-sm font-bold text-slate-900">Kontra</p>
             <p className="text-xs text-slate-500 font-medium">Borrower Portal</p>
           </div>
+          <button className="ml-auto md:hidden p-1 text-slate-400 hover:text-slate-700" onClick={() => setMobileMenuOpen(false)}><XMarkIcon className="h-5 w-5" /></button>
         </div>
 
         {/* Loan card */}
@@ -270,7 +275,7 @@ export default function BorrowerPortal() {
             return (
               <button
                 key={item.key}
-                onClick={() => setSection(item.key)}
+                onClick={() => { setSection(item.key); setMobileMenuOpen(false); }}
                 className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors text-left ${
                   active
                     ? "bg-slate-900 text-white font-semibold"
@@ -297,7 +302,17 @@ export default function BorrowerPortal() {
       </aside>
 
       {/* ── Main Content ── */}
-      <main className="flex-1 overflow-y-auto bg-white">
+      <main className="flex-1 flex flex-col overflow-hidden">
+          <div className="md:hidden flex items-center justify-between px-4 py-3 bg-slate-900 text-white sticky top-0 z-30 border-b border-slate-800">
+            <div className="flex items-center gap-2">
+              <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-slate-900 font-black text-white text-sm border border-slate-700">K</div>
+              <span className="font-bold text-sm">Borrower Portal</span>
+            </div>
+            <button onClick={() => setMobileMenuOpen(true)} className="p-2 rounded-lg hover:bg-slate-700">
+              <Bars3Icon className="h-5 w-5 text-white" />
+            </button>
+          </div>
+          <div className="flex-1 overflow-y-auto bg-white">
         <div className="max-w-4xl mx-auto px-8 py-8 space-y-8">
 
           {/* ── MY LOAN ── */}
@@ -358,7 +373,7 @@ export default function BorrowerPortal() {
                     <div>
                       <p className="text-sm font-bold text-amber-900">Action Required: {pendingDocs} document{pendingDocs > 1 ? "s" : ""} overdue or upcoming</p>
                       <p className="text-xs text-amber-700 mt-1">Please upload required documents to avoid covenant cure periods. Go to Document Center.</p>
-                      <button onClick={() => setSection("documents")} className="mt-2 rounded-lg bg-amber-700 px-3 py-1.5 text-xs font-bold text-white hover:bg-amber-800 transition-colors">
+                      <button onClick={() => { setSection("documents"); setMobileMenuOpen(false); }} className="mt-2 rounded-lg bg-amber-700 px-3 py-1.5 text-xs font-bold text-white hover:bg-amber-800 transition-colors">
                         Go to Document Center
                       </button>
                     </div>
@@ -710,6 +725,7 @@ export default function BorrowerPortal() {
           )}
 
         </div>
+              </div>
       </main>
     </div>
   );
