@@ -1,0 +1,47 @@
+22:04:07.260 Running build in Washington, D.C., USA (East) – iad1
+22:04:07.260 Build machine configuration: 2 cores, 8 GB
+22:04:07.408 Cloning github.com/gamilsaad92/kontra-ui (Branch: main, Commit: 739bb52)
+22:04:07.952 Warning: Failed to fetch one or more git submodules
+22:04:07.953 Cloning completed: 544.000ms
+22:04:08.664 Restored build cache from previous deployment (A99E3RrqE27ynVx6C3K9o9Zy8Cob)
+22:04:10.024 Running "vercel build"
+22:04:10.686 Vercel CLI 51.6.1
+22:04:11.275 Installing dependencies...
+22:05:30.491 
+22:05:30.492 up to date in 1m
+22:05:30.492 
+22:05:30.492 213 packages are looking for funding
+22:05:30.492   run `npm fund` for details
+22:05:30.649 
+22:05:30.649 > kontra-ui@1.0.0 build
+22:05:30.650 > vite build
+22:05:30.650 
+22:05:30.920 [33mThe CJS build of Vite's Node API is deprecated. See https://vite.dev/guide/troubleshooting.html#vite-cjs-node-api-deprecated for more details.[39m
+22:05:30.999 [36mvite v5.4.21 [32mbuilding for production...[36m[39m
+22:05:31.064 transforming...
+22:05:34.202 [32m✓[39m 942 modules transformed.
+22:05:34.208 [31mx[39m Build failed in 3.18s
+22:05:34.209 [31merror during build:
+22:05:34.209 [31m[vite:esbuild] Transform failed with 1 error:
+22:05:34.210 /vercel/path0/ui/src/routes.jsx:21:4: ERROR: The symbol "ShoppingBagIcon" has already been declared[31m
+22:05:34.210 file: [36m/vercel/path0/ui/src/routes.jsx:21:4[31m
+22:05:34.210 [33m
+22:05:34.210 [33mThe symbol "ShoppingBagIcon" has already been declared[33m
+22:05:34.210 19 |      FolderOpenIcon,
+22:05:34.210 20 |      ArrowPathIcon,
+22:05:34.210 21 |      ShoppingBagIcon,
+22:05:34.211    |      ^
+22:05:34.211 22 |    } from "@heroicons/react/24/outline";
+22:05:34.211 23 |  
+22:05:34.211 [31m
+22:05:34.211     at failureErrorWithLog (/vercel/path0/ui/node_modules/esbuild/lib/main.js:1472:15)
+22:05:34.211     at /vercel/path0/ui/node_modules/esbuild/lib/main.js:755:50
+22:05:34.211     at responseCallbacks.<computed> (/vercel/path0/ui/node_modules/esbuild/lib/main.js:622:9)
+22:05:34.211     at handleIncomingPacket (/vercel/path0/ui/node_modules/esbuild/lib/main.js:677:12)
+22:05:34.212     at Socket.readFromStdout (/vercel/path0/ui/node_modules/esbuild/lib/main.js:600:7)
+22:05:34.212     at Socket.emit (node:events:519:28)
+22:05:34.212     at addChunk (node:internal/streams/readable:561:12)
+22:05:34.212     at readableAddChunkPushByteMode (node:internal/streams/readable:512:3)
+22:05:34.212     at Readable.push (node:internal/streams/readable:392:5)
+22:05:34.213     at Pipe.onStreamRead (node:internal/stream_base_commons:189:23)[39m
+22:05:34.249 Error: Command "npm run build" exited with 1
