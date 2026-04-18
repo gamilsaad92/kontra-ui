@@ -111,7 +111,7 @@ import { useState, useRef, useCallback, useEffect } from "react";
     return (
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
         <div className="w-full max-w-md rounded-2xl bg-white shadow-xl">
-          <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-6 py-4">
             <h2 className="text-base font-semibold text-slate-900">Upload Document</h2>
             <button onClick={onClose} className="text-slate-400 hover:text-slate-600"><XMarkIcon className="h-5 w-5" /></button>
           </div>
@@ -122,7 +122,7 @@ import { useState, useRef, useCallback, useEffect } from "react";
               onDragLeave={() => setDragging(false)}
               onDrop={handleDrop}
               onClick={() => inputRef.current?.click()}
-              className={`cursor-pointer rounded-xl border-2 border-dashed p-8 text-center transition ${
+              className={`cursor-pointer rounded-xl border-2 border-dashed p-4 md:p-8 text-center transition ${
                 dragging ? "border-blue-500 bg-blue-50" : "border-slate-200 hover:border-slate-400"
               }`}
             >
@@ -259,7 +259,7 @@ import { useState, useRef, useCallback, useEffect } from "react";
     return (
       <div className="space-y-6">
         {/* Header */}
-        <div className="flex items-center justify-between">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h1 className="text-2xl font-bold tracking-tight text-slate-900">Document Vault</h1>
             <p className="mt-1 text-sm text-slate-500">Secure storage for all loan-related documents across your portfolio.</p>
@@ -274,7 +274,7 @@ import { useState, useRef, useCallback, useEffect } from "react";
         </div>
 
         {/* Stats */}
-        <div className="grid grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
           {statCards.map(s => (
             <div key={s.label} className="rounded-xl border border-slate-200 bg-white px-5 py-4 shadow-sm">
               <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">{s.label}</p>
@@ -284,7 +284,7 @@ import { useState, useRef, useCallback, useEffect } from "react";
         </div>
 
         {/* Tabs + Search */}
-        <div className="flex items-center justify-between gap-4">
+        <div className="flex flex-wrap items-center justify-between gap-3 gap-4">
           <div className="flex items-center gap-1 rounded-xl border border-slate-200 bg-white p-1">
             {tabs.map(t => (
               <button

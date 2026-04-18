@@ -115,7 +115,7 @@ function SectionCard({
 }) {
   return (
     <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-      <div className="flex items-center justify-between gap-2">
+      <div className="flex flex-wrap items-center justify-between gap-3 gap-2">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-600">{title}</h2>
         <a href={ctaHref} className="text-xs font-semibold text-sky-700 hover:text-sky-900">
           {ctaLabel}
@@ -221,10 +221,10 @@ export default function SaasDashboardHome({ apiBase }: Props) {
 
       {loading && <div className="rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm text-slate-500">Loading dashboard summary…</div>}
 
-      <div className="grid gap-4 lg:grid-cols-2">
+      <div className="grid gap-4 lg:grid-cols-1 sm:grid-cols-2">
         {roleWidgets.showWorkQueue && (
           <SectionCard title="Work Queue" ctaLabel="Open AI Validation" ctaHref="/servicing/ai-validation">
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
               {workQueueCounts.map((entry) => (
                 <a key={entry.label} href={entry.href} className="rounded-lg border border-slate-200 bg-slate-50 p-2 text-center">
                   <p className="text-xs uppercase tracking-wide text-slate-500">{entry.label}</p>
@@ -300,7 +300,7 @@ export default function SaasDashboardHome({ apiBase }: Props) {
 
         {roleWidgets.showQuickActions && (
           <SectionCard title="Quick Actions" ctaLabel="Open Reports" ctaHref="/reports">
-            <div className="grid gap-2 sm:grid-cols-2">
+            <div className="grid gap-2 sm:grid-cols-1 sm:grid-cols-2">
               <a href={buildUrl("/servicing/payments", { runReview: true, filter: "exceptions" })} className="rounded-lg border border-slate-200 p-3 text-sm font-medium text-slate-800 hover:border-sky-300 hover:text-sky-700">Run Payment Review</a>
               <a href={buildUrl("/servicing/inspections", { action: "order" })} className="rounded-lg border border-slate-200 p-3 text-sm font-medium text-slate-800 hover:border-sky-300 hover:text-sky-700">Order Inspection</a>
               <a href={buildUrl("/servicing/management", { request: "rent_roll" })} className="rounded-lg border border-slate-200 p-3 text-sm font-medium text-slate-800 hover:border-sky-300 hover:text-sky-700">Request Rent Roll</a>

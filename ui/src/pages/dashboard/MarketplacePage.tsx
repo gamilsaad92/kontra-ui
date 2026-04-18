@@ -118,11 +118,11 @@ import { useState, useEffect, useCallback } from "react";
     return (
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4 overflow-y-auto">
         <div className="my-6 w-full max-w-lg rounded-2xl bg-white shadow-xl">
-          <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-6 py-4">
             <h2 className="text-base font-semibold text-slate-900">List a Deal for Investment</h2>
             <button onClick={onClose}><XMarkIcon className="h-5 w-5 text-slate-400 hover:text-slate-600" /></button>
           </div>
-          <div className="p-6 grid grid-cols-2 gap-4">
+          <div className="p-6 grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="col-span-2"><Field label="Deal Title" name="title" placeholder="e.g. Skyline Multifamily — Denver CO" required /></div>
 
             <div>
@@ -192,7 +192,7 @@ import { useState, useEffect, useCallback } from "react";
           <p className="text-xs text-slate-500 line-clamp-2">{listing.description}</p>
         )}
 
-        <div className="grid grid-cols-3 gap-3 text-center">
+        <div className="grid grid-cols-1 sm:grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 text-center">
           {[
             { label: "Target Raise", value: fmt$(listing.target_raise) },
             { label: "Target Yield", value: listing.target_yield ? listing.target_yield + "%" : "–" },
@@ -216,7 +216,7 @@ import { useState, useEffect, useCallback } from "react";
           </div>
         </div>
 
-        <div className="flex items-center justify-between">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-3 text-xs text-slate-500">
             <span className="flex items-center gap-1"><UsersIcon className="h-3.5 w-3.5" />{listing.sub_count} investor{listing.sub_count !== 1 ? "s" : ""}</span>
             <span className="flex items-center gap-1"><ClockIcon className="h-3.5 w-3.5" />{listing.closes_at ? daysLeft(listing.closes_at) : "–"} left</span>
@@ -262,7 +262,7 @@ import { useState, useEffect, useCallback } from "react";
     return (
       <div className="space-y-6">
         {/* Header */}
-        <div className="flex items-center justify-between">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h1 className="text-2xl font-bold tracking-tight text-slate-900">Investor Marketplace</h1>
             <p className="mt-1 text-sm text-slate-500">List loan participations and track investor subscriptions across all active deals.</p>
@@ -279,7 +279,7 @@ import { useState, useEffect, useCallback } from "react";
         </div>
 
         {/* Stats */}
-        <div className="grid grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
           {[
             { label: "Active Deals", value: listings.length, color: "text-slate-900", icon: BuildingOfficeIcon },
             { label: "Total Capital Target", value: fmt$(totalRaise), color: "text-blue-600", icon: CurrencyDollarIcon },
@@ -318,7 +318,7 @@ import { useState, useEffect, useCallback } from "react";
             <button onClick={() => setShowCreate(true)} className="text-sm text-blue-600 hover:underline">List your first deal →</button>
           </div>
         ) : (
-          <div className="grid grid-cols-2 gap-5">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
             {filtered.map(l => (
               <ListingCard key={l.id} listing={l} onViewSubs={() => window.open(`/api/market/listings/${l.id}/subscriptions`, "_blank")} />
             ))}

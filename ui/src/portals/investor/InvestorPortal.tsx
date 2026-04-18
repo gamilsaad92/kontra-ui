@@ -395,7 +395,7 @@ export default function InvestorPortal() {
 
       {/* ── Main Content ── */}
       <main className="flex-1 overflow-y-auto bg-slate-950">
-        <div className="max-w-6xl mx-auto px-8 py-8 space-y-8">
+        <div className="max-w-6xl mx-auto px-4 py-6 md:px-8 md:py-8 space-y-8">
 
           {/* ── PORTFOLIO ── */}
           {section === "portfolio" && (
@@ -406,7 +406,7 @@ export default function InvestorPortal() {
               </div>
 
               {/* KPI row */}
-              <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
                 {[
                   { label:"Capital Deployed", value: fmt(totalInvested), sub:"Across 4 loans" },
                   { label:"Total Received", value: fmt(totalReceived), sub:"Net distributions YTD" },
@@ -428,7 +428,7 @@ export default function InvestorPortal() {
                   <span className="text-xs text-slate-500">{holdings.length} positions</span>
                 </div>
                 <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
+                  <div className="overflow-x-auto"><table className="w-full text-sm">
                     <thead>
                       <tr className="border-b border-slate-800 bg-slate-900/80">
                         {["Loan","Property","Type","Location","UPB","My Share","My Invest.","Tokens","Yield","Status","Maturity"].map((h) => (
@@ -469,7 +469,7 @@ export default function InvestorPortal() {
               {/* Token positions */}
               <div className="rounded-xl border border-slate-800 bg-slate-900 p-6">
                 <h2 className="text-base font-bold text-white mb-4">Token Positions (On-Chain)</h2>
-                <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
                   {holdings.map((h) => (
                     <div key={h.loan_id} className="rounded-lg border border-violet-800/40 bg-violet-950/30 p-4">
                       <p className="text-xs font-mono font-bold text-violet-400">{h.token_symbol}</p>
@@ -498,7 +498,7 @@ export default function InvestorPortal() {
               </div>
 
               {/* Summary */}
-              <div className="grid grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
                 {[
                   { label:"Total Received (YTD)", value: fmtFull(totalReceived), color:"text-emerald-400" },
                   { label:"Gross Before Fees", value: fmtFull(paidDists.reduce((s,d) => s + d.gross_amount, 0)), color:"text-white" },
@@ -520,7 +520,7 @@ export default function InvestorPortal() {
                 </h2>
                 <div className="space-y-2">
                   {scheduled.map((d) => (
-                    <div key={d.id} className="flex items-center justify-between rounded-lg border border-violet-800/30 bg-violet-900/20 px-4 py-3">
+                    <div key={d.id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-violet-800/30 bg-violet-900/20 px-4 py-3">
                       <div>
                         <p className="text-sm font-semibold text-white">{d.period} — {d.loan_ref}</p>
                         <p className="text-xs text-slate-400">{d.type} · {fmtDate(d.paid_at)}</p>
@@ -539,7 +539,7 @@ export default function InvestorPortal() {
                 <div className="px-6 py-4 border-b border-slate-800">
                   <h2 className="text-base font-bold text-white">Distribution History</h2>
                 </div>
-                <table className="w-full text-sm">
+                <div className="overflow-x-auto"><table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-slate-800 bg-slate-900/80">
                       {["Period","Loan","Type","Gross","Net (after fees)","Date","Status"].map((h) => (
@@ -575,7 +575,7 @@ export default function InvestorPortal() {
                 <p className="text-sm text-slate-400 mt-1">Read-only performance metrics. Servicing actions are managed by the lender.</p>
               </div>
               <div className="rounded-xl border border-slate-800 bg-slate-900 overflow-hidden">
-                <table className="w-full text-sm">
+                <div className="overflow-x-auto"><table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-slate-800 bg-slate-900/80">
                       {["Loan","Property","DSCR","LTV","Delinquency","Payment Status","Risk"].map((h) => (
@@ -724,7 +724,7 @@ export default function InvestorPortal() {
                   { name:"Governance Proposal GV-047 — Outcome", type:"Governance", date:"2026-03-28", size:"190 KB" },
                   { name:"Annual Investor Report 2025", type:"Annual Report", date:"2026-01-15", size:"5.2 MB" },
                 ].map((doc) => (
-                  <div key={doc.name} className="flex items-center justify-between px-6 py-4 hover:bg-slate-800/40 transition-colors">
+                  <div key={doc.name} className="flex flex-wrap items-center justify-between gap-3 px-6 py-4 hover:bg-slate-800/40 transition-colors">
                     <div className="flex items-center gap-3">
                       <DocumentTextIcon className="h-5 w-5 text-violet-400 shrink-0" />
                       <div>
@@ -860,23 +860,23 @@ export default function InvestorPortal() {
                 )}
 
                 {/* Order book + place order */}
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <div className="grid grid-cols-1 lg:grid-cols-1 sm:grid-cols-2 gap-6">
 
                   {/* Order book */}
                   <div className="rounded-xl border border-slate-800 bg-slate-900 overflow-hidden">
                     <div className="px-5 py-3 border-b border-slate-800">
                       <h2 className="text-sm font-bold text-white">Order Book — {mxToken}</h2>
                     </div>
-                    <div className="grid grid-cols-2 divide-x divide-slate-800">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 divide-x divide-slate-800">
                       {/* Bids */}
                       <div>
-                        <div className="grid grid-cols-3 px-4 py-2 border-b border-slate-800">
+                        <div className="grid grid-cols-1 sm:grid-cols-1 sm:grid-cols-2 md:grid-cols-3 px-4 py-2 border-b border-slate-800">
                           {["Price","Qty","Total"].map((h) => (
                             <span key={h} className="text-xs font-bold uppercase text-emerald-500">{h}</span>
                           ))}
                         </div>
                         {book.bids.map((b, i) => (
-                          <div key={i} className="relative grid grid-cols-3 px-4 py-1.5 hover:bg-emerald-950/20 transition-colors group">
+                          <div key={i} className="relative grid grid-cols-1 sm:grid-cols-1 sm:grid-cols-2 md:grid-cols-3 px-4 py-1.5 hover:bg-emerald-950/20 transition-colors group">
                             <div
                               className="absolute inset-y-0 right-0 bg-emerald-900/20"
                               style={{ width: `${(b.qty / 8000) * 100}%` }}
@@ -889,13 +889,13 @@ export default function InvestorPortal() {
                       </div>
                       {/* Asks */}
                       <div>
-                        <div className="grid grid-cols-3 px-4 py-2 border-b border-slate-800">
+                        <div className="grid grid-cols-1 sm:grid-cols-1 sm:grid-cols-2 md:grid-cols-3 px-4 py-2 border-b border-slate-800">
                           {["Price","Qty","Total"].map((h) => (
                             <span key={h} className="text-xs font-bold uppercase text-brand-500">{h}</span>
                           ))}
                         </div>
                         {book.asks.map((a, i) => (
-                          <div key={i} className="relative grid grid-cols-3 px-4 py-1.5 hover:bg-brand-950/20 transition-colors">
+                          <div key={i} className="relative grid grid-cols-1 sm:grid-cols-1 sm:grid-cols-2 md:grid-cols-3 px-4 py-1.5 hover:bg-brand-950/20 transition-colors">
                             <div
                               className="absolute inset-y-0 left-0 bg-brand-900/20"
                               style={{ width: `${(a.qty / 4000) * 100}%` }}
@@ -942,7 +942,7 @@ export default function InvestorPortal() {
                           {symbols.map((s) => <option key={s} value={s}>{s}</option>)}
                         </select>
                       </div>
-                      <div className="grid grid-cols-2 gap-3">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         <div>
                           <label className="text-xs font-bold uppercase tracking-widest text-slate-400 mb-1.5 block">Quantity (tokens)</label>
                           <input
@@ -1004,7 +1004,7 @@ export default function InvestorPortal() {
                       <h2 className="text-sm font-bold text-white">My Open Orders</h2>
                       <span className="text-xs text-slate-500">{mxOrders.filter((o) => o.status === "open").length} open</span>
                     </div>
-                    <table className="w-full text-sm">
+                    <div className="overflow-x-auto"><table className="w-full text-sm">
                       <thead>
                         <tr className="border-b border-slate-800">
                           {["Token","Side","Qty","Limit Price","Notional","Fee","Status",""].map((h) => (
@@ -1048,7 +1048,7 @@ export default function InvestorPortal() {
                   <div className="px-6 py-4 border-b border-slate-800">
                     <h2 className="text-sm font-bold text-white">Recent Platform Trades</h2>
                   </div>
-                  <table className="w-full text-sm">
+                  <div className="overflow-x-auto"><table className="w-full text-sm">
                     <thead>
                       <tr className="border-b border-slate-800">
                         {["Token","Side","Price","Qty","Fee (15 bps)","Volume","Time"].map((h) => (
@@ -1112,7 +1112,7 @@ export default function InvestorPortal() {
               </div>
 
               {/* NAV cards */}
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+              <div className="grid grid-cols-1 lg:grid-cols-1 sm:grid-cols-2 gap-5">
                 {DEMO_NAV.map((n) => {
                   const isDistressed = n.premium_bps < -500;
                   const isPremium = n.premium_bps > 0;
@@ -1154,12 +1154,12 @@ export default function InvestorPortal() {
                           { label:"LTV Adjustment",   value:`${n.ltv_adj >= 0 ? "+" : ""}${n.ltv_adj.toFixed(2)}%`,  color: n.ltv_adj >= 0 ? "text-emerald-400" : "text-brand-400" },
                           { label:"Delinquency",      value:`${n.delinquency_adj.toFixed(2)}%`, color: n.delinquency_adj === 0 ? "text-slate-500" : "text-brand-400" },
                         ].map((row) => (
-                          <div key={row.label} className="flex items-center justify-between text-sm">
+                          <div key={row.label} className="flex flex-wrap items-center justify-between gap-3 text-sm">
                             <span className="text-slate-400">{row.label}</span>
                             <span className={`font-bold tabular-nums ${row.color}`}>{row.value}</span>
                           </div>
                         ))}
-                        <div className="flex items-center justify-between text-sm border-t border-slate-700 pt-1.5">
+                        <div className="flex flex-wrap items-center justify-between gap-3 text-sm border-t border-slate-700 pt-1.5">
                           <span className="font-bold text-white">Indicated NAV</span>
                           <span className="font-black text-white tabular-nums">${n.nav.toFixed(2)}</span>
                         </div>
@@ -1191,7 +1191,7 @@ export default function InvestorPortal() {
                       </div>
 
                       {/* YTM */}
-                      <div className="flex items-center justify-between rounded-lg border border-slate-700 bg-slate-800/40 px-4 py-3">
+                      <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-700 bg-slate-800/40 px-4 py-3">
                         <div>
                           <p className="text-xs text-slate-400 font-bold uppercase tracking-widest">Yield to Maturity</p>
                           {perf && (
@@ -1222,7 +1222,7 @@ export default function InvestorPortal() {
               {/* Platform revenue model */}
               <div className="rounded-xl border border-slate-800 bg-slate-900 p-6">
                 <h2 className="text-base font-bold text-white mb-4">Revenue Model — Scenario B</h2>
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 lg:grid-cols-1 sm:grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
                   {[
                     { label:"SaaS ARR Target", value:"$40M", sub:"Lender + servicer subscriptions", color:"text-violet-400" },
                     { label:"Target Volume", value:"$25B+", sub:"Annual tokenized loan transactions", color:"text-emerald-400" },
@@ -1248,7 +1248,7 @@ export default function InvestorPortal() {
 
               {section === "deal_flow" && (
                 <div className="space-y-6">
-                  <div className="flex items-center justify-between">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
                     <div>
                       <h2 className="text-2xl font-black text-white">Deal Flow</h2>
                       <p className="text-sm text-slate-400 mt-1">Active loan participation opportunities open for investment.</p>
@@ -1295,7 +1295,7 @@ export default function InvestorPortal() {
 
                             {deal.description && <p className="text-sm text-slate-400 line-clamp-2">{deal.description}</p>}
 
-                            <div className="grid grid-cols-4 gap-3 text-center">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 text-center">
                               {[
                                 { l:"Target Raise", v: deal.target_raise >= 1e6 ? "$"+(deal.target_raise/1e6).toFixed(1)+"M" : "$"+deal.target_raise?.toLocaleString() },
                                 { l:"Target Yield", v: deal.target_yield ? deal.target_yield+"%" : "–" },
@@ -1330,7 +1330,7 @@ export default function InvestorPortal() {
                             ) : (
                               <div className="rounded-xl border border-violet-700/40 bg-violet-950/30 p-4 space-y-3">
                                 <p className="text-sm font-bold text-violet-300">Commit Capital</p>
-                                <div className="grid grid-cols-2 gap-3">
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                   <div>
                                     <label className="mb-1 block text-xs font-semibold text-slate-400 uppercase tracking-wide">Amount ($)</label>
                                     <input type="number" value={dfAmount} onChange={e => setDfAmount(e.target.value)}
@@ -1380,13 +1380,13 @@ export default function InvestorPortal() {
                 </button>
                 {aiBriefError && <p className="text-sm text-red-400">{aiBriefError}</p>}
                 {!aiBrief && !aiBriefLoading && (
-                  <div className="rounded-xl border border-slate-700 bg-slate-800/40 p-8 text-center">
+                  <div className="rounded-xl border border-slate-700 bg-slate-800/40 p-4 md:p-8 text-center">
                     <SparklesIcon className="h-10 w-10 text-slate-500 mx-auto mb-4" />
                     <p className="text-slate-400 text-sm">Click "Generate Brief" to run an AI analysis of your full portfolio.</p>
                   </div>
                 )}
                 {aiBriefLoading && (
-                  <div className="rounded-xl border border-violet-800/40 bg-violet-950/20 p-8 text-center">
+                  <div className="rounded-xl border border-violet-800/40 bg-violet-950/20 p-4 md:p-8 text-center">
                     <SparklesIcon className="h-8 w-8 text-violet-400 mx-auto mb-3 animate-pulse" />
                     <p className="text-violet-300 text-sm font-medium">Analyzing portfolio…</p>
                   </div>
@@ -1395,7 +1395,7 @@ export default function InvestorPortal() {
                   <div className="space-y-5">
                     {aiBrief.portfolio_score != null && (
                       <div className="rounded-xl border border-slate-700 bg-slate-800/40 p-5 flex items-center gap-5">
-                        <div className="text-5xl font-black text-violet-400">{aiBrief.portfolio_score}</div>
+                        <div className="text-4xl md:text-5xl font-black text-violet-400">{aiBrief.portfolio_score}</div>
                         <div>
                           <p className="text-xs font-bold uppercase tracking-widest text-slate-400">Portfolio Health Score</p>
                           <p className="text-sm text-slate-300 mt-1">{aiBrief.brief}</p>

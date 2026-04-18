@@ -100,7 +100,7 @@ import { useState, useEffect, useCallback } from "react";
     return (
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
         <div className="w-full max-w-md rounded-2xl bg-white shadow-xl">
-          <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-6 py-4">
             <h2 className="text-base font-semibold text-slate-900">Move Loan Stage</h2>
             <button onClick={onClose}><XMarkIcon className="h-5 w-5 text-slate-400 hover:text-slate-600" /></button>
           </div>
@@ -120,7 +120,7 @@ import { useState, useEffect, useCallback } from "react";
             {valid.length === 0 ? (
               <p className="text-sm text-slate-500 italic">No valid transitions from this stage.</p>
             ) : (
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 {valid.map(s => (
                   <button
                     key={s}
@@ -191,7 +191,7 @@ import { useState, useEffect, useCallback } from "react";
     return (
       <div className="flex w-52 flex-shrink-0 flex-col">
         <div className={`mb-3 rounded-xl border ${stage.border} ${stage.bg} px-3 py-2`}>
-          <div className="flex items-center justify-between">
+          <div className="flex flex-wrap items-center justify-between gap-3">
             <span className="text-xs font-bold uppercase tracking-wide" style={{ color: stage.color }}>{stage.label}</span>
             <span className={`rounded-full px-2 py-0.5 text-xs font-bold ${stage.badge}`}>{loans.length}</span>
           </div>
@@ -227,7 +227,7 @@ import { useState, useEffect, useCallback } from "react";
     ];
 
     return (
-      <div className="grid grid-cols-4 gap-4 mb-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 mb-6">
         {cards.map(c => (
           <div key={c.label} className="rounded-xl border border-slate-200 bg-white px-5 py-4 shadow-sm">
             <div className="flex items-center gap-2">
@@ -282,7 +282,7 @@ import { useState, useEffect, useCallback } from "react";
     return (
       <div>
         {/* Header */}
-        <div className="flex items-center justify-between mb-6">
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
           <div>
             <h1 className="text-2xl font-bold tracking-tight text-slate-900">Loan Lifecycle</h1>
             <p className="mt-1 text-sm text-slate-500">
