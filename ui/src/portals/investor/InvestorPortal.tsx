@@ -1442,7 +1442,6 @@ export default function InvestorPortal() {
 
   
         </div>
-        </div>
       </main>
     </div>
   );
