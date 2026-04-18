@@ -1,0 +1,482 @@
+const express = require('express');
+const router = express.Router();
+const { supabase, replica } = require('../db');
+const cache = require('../cache');
+const { isFeatureEnabled } = require('../featureFlags');
+const asyncHandler = require('../lib/asyncHandler');
+const { handleMissingSchemaError } = require('../lib/schemaErrors');
+
+const EMPTY_MARKETPLACE_SUMMARY = {
+  totals: null,
+  highlights: [],
+  borrowerKpiLeaders: [],
+  updatedAt: null,
+};
+
+const EMPTY_OVERVIEW = {
+  totals: null,
+  riskScore: null,
+  collections: {
+    monthToDateCollected: 0,
+    outstanding: 0,
+    delinquentCount: 0,
+    promisesToPay: 0,
+    lastPaymentAt: null,
+  },
+};
+
+const FALLBACK_OVERVIEW = {
+  totals: {
+    totalLoans: 1280,
+    delinquencyRate: 0.038,
+    avgInterestRate: 0.052,
+    outstandingPrincipal: 52_500_000,
+  },
+  riskScore: 72,
+  collections: {
+    monthToDateCollected: 1_845_000,
+    outstanding: 675_000,
+    delinquentCount: 18,
+    promisesToPay: 6,
+    lastPaymentAt: null,
+  },
+};
+
+function resolveOrgId(req) {
+  // 1. Explicit header (highest priority)
+  const header =
+    req.headers['x-organization-id'] || req.headers['X-Organization-Id'] || req.headers['x-org-id'];
+  if (header) {
+    const raw = Array.isArray(header) ? header[0] : header;
+    const parsed = parseInt(raw, 10);
+    if (!Number.isNaN(parsed)) return parsed;
+  }
+  // 2. Set by authenticate middleware (may be a string like "20")
+  const middlewareOrgId = req.orgId || req.organizationId || req.tenant_id;
+  if (middlewareOrgId != null && middlewareOrgId !== '') {
+    const parsed = parseInt(String(middlewareOrgId), 10);
+    if (!Number.isNaN(parsed)) return parsed;
+  }
+  // 3. JWT user metadata
+  const metaOrgId = req.user?.organization_id || req.user?.app_metadata?.organization_id;
+  if (metaOrgId != null) {
+    const parsed = parseInt(String(metaOrgId), 10);
+    if (!Number.isNaN(parsed)) return parsed;
+  }
+  return null;
+}
+
+function toNumber(value) {
+  const parsed = typeof value === 'string' ? parseFloat(value) : Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function toNullableNumber(value) {
+  if (value === null || value === undefined) {
+    return null;
+  }
+  const parsed = typeof value === 'string' ? parseFloat(value) : Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function average(sum, count, precision = 3) {
+  if (!count) return null;
+  return Number((sum / count).toFixed(precision));
+}
+
+async function fetchLoans(orgId) {
+  // First try with org filter; if it returns nothing, fall back to all loans
+  // (org IDs are not yet consistently set across all environments)
+  const baseSelect = 'id, amount, outstanding_principal, interest_rate, status, risk_score, days_late, data';
+  if (orgId) {
+    const { data: orgData, error: orgErr } = await replica
+      .from('loans')
+      .select(baseSelect)
+      .eq('organization_id', orgId);
+    if (!orgErr && orgData && orgData.length > 0) return orgData;
+  }
+  // Fall back to full portfolio
+  const { data, error } = await replica.from('loans').select(baseSelect);
+  if (error) throw error;
+  return data || [];
+}
+
+async function fetchCollections(orgId) {
+  let query = replica
+    .from('collections')
+    .select('amount, status, due_date, updated_at, paid_at, promise_date');
+  if (orgId) {
+    query = query.eq('organization_id', orgId);
+  }
+  const { data, error } = await query;
+  if (error) throw error;
+  return data || [];
+}
+
+// GET /api/dashboard-layout?key=home
+router.get('/', asyncHandler(async (req, res) => {
+  const userId = req.user.id;                        // make sure you have an auth middleware that sets req.user
+  const key    = req.query.key || 'home';
+
+  const { data, error } = await supabase
+    .from('user_dashboard_layout')
+    .select('layout_json')
+    .eq('user_id', userId)
+    .eq('layout_key', key)
+    .single();
+
+  if (error && error.code !== 'PGRST116') {
+    console.error('Dashboard GET error:', error);
+    return res.status(500).json({ error: error.message });
+  }
+
+  res.json({ layout: data?.layout_json || [] });
+}));
+
+// POST /api/dashboard-layout
+router.post('/', asyncHandler(async (req, res) => {
+  const userId = req.user.id;
+  const { key, layout } = req.body;
+
+  const { data, error } = await supabase
+    .from('user_dashboard_layout')
+    .upsert({
+      user_id:     userId,
+      layout_key:  key,
+      layout_json: layout
+    })
+    .select()
+    .single();
+
+  if (error) {
+    console.error('Dashboard POST error:', error);
+    return res.status(500).json({ error: error.message });
+ }
+
+  res.json(data);
+}));
+
+router.get('/summary', asyncHandler(async (req, res) => {
+  const orgId = req.orgId;
+
+  const [paymentsCount, inspectionsCount, complianceCount, workQueueTop5Result, aiBriefResult] = await Promise.all([
+    replica.from('ai_reviews').select('id', { count: 'exact', head: true }).eq('org_id', orgId).eq('type', 'payment').eq('status', 'needs_review'),
+    replica.from('ai_reviews').select('id', { count: 'exact', head: true }).eq('org_id', orgId).eq('type', 'inspection').eq('status', 'needs_review'),
+    replica.from('ai_reviews').select('id', { count: 'exact', head: true }).eq('org_id', orgId).eq('type', 'compliance').eq('status', 'needs_review'),
+    replica.from('ai_reviews').select('id,type,status,title,summary,confidence,updated_at').eq('org_id', orgId).eq('status', 'needs_review').order('updated_at', { ascending: false }).limit(5),
+    replica.from('ai_reviews').select('id,type,status,title,summary,confidence,updated_at').eq('org_id', orgId).order('updated_at', { ascending: false }).limit(3),
+  ]);
+
+  const [loansResult, inspectionsDueResult, finResult, paymentsActivity, inspectionsActivity, drawsActivity] = await Promise.all([
+    replica.from('loans').select('id,title,data,updated_at').eq('org_id', orgId).order('updated_at', { ascending: false }).limit(25),
+    replica.from('inspections').select('id,title,data,updated_at').eq('org_id', orgId).order('updated_at', { ascending: false }).limit(25),
+    replica.from('borrower_financials').select('id,title,data,updated_at').eq('org_id', orgId).order('updated_at', { ascending: false }).limit(25),
+    replica.from('payments').select('id,title,status,updated_at').eq('org_id', orgId).order('updated_at', { ascending: false }).limit(5),
+    replica.from('inspections').select('id,title,status,updated_at').eq('org_id', orgId).order('updated_at', { ascending: false }).limit(5),
+    replica.from('draws').select('id,title,status,updated_at').eq('org_id', orgId).order('updated_at', { ascending: false }).limit(5),
+  ]);
+
+  const nextDeadlines = [];
+  for (const loan of loansResult.data || []) {
+    const maturity = loan?.data?.maturity_date;
+    if (maturity) nextDeadlines.push({ type: 'loan_maturity', id: loan.id, title: loan.title || 'Loan', due_at: maturity });
+  }
+  for (const item of inspectionsDueResult.data || []) {
+    const due = item?.data?.due_date;
+    if (due) nextDeadlines.push({ type: 'inspection_due', id: item.id, title: item.title || 'Inspection', due_at: due });
+  }
+  for (const item of finResult.data || []) {
+    const due = item?.data?.due_date;
+    if (due) nextDeadlines.push({ type: 'borrower_financial_due', id: item.id, title: item.title || 'Borrower financial', due_at: due });
+  }
+
+  nextDeadlines.sort((a, b) => new Date(a.due_at).getTime() - new Date(b.due_at).getTime());
+
+  const todaysActivity = [...(paymentsActivity.data || []).map((x) => ({ ...x, type: 'payment' })), ...(inspectionsActivity.data || []).map((x) => ({ ...x, type: 'inspection' })), ...(drawsActivity.data || []).map((x) => ({ ...x, type: 'draw' }))]
+    .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())
+    .slice(0, 5);
+
+  res.json({
+    roleView: 'lender',
+     workQueueCounts: {
+      payments: paymentsCount.count || 0,
+      inspections: inspectionsCount.count || 0,
+      compliance: complianceCount.count || 0,
+    },
+    criticalAlerts: [],
+   nextDeadlines: nextDeadlines.slice(0, 5),
+    todaysActivity,
+     workQueueTop5: workQueueTop5Result.data || [],
+    aiBrief: aiBriefResult.data || [],
+    quickActions: [
+      { id: 'run_payment_review', label: 'Run Payment Review', href: '/servicing/payments' },
+      { id: 'order_inspection', label: 'Order Inspection', href: '/servicing/inspections' },
+      { id: 'request_rent_roll', label: 'Request Rent Roll', href: '/servicing/borrower-financials' },
+      { id: 'create_compliance_review', label: 'Create Compliance Review', href: '/governance/compliance' }
+    ]
+  });
+}));
+
+router.get('/overview', asyncHandler(async (req, res) => {
+  const orgId = resolveOrgId(req);
+  const cacheKey = `dashboard:overview:${orgId || 'all'}`;
+  const cached = await cache.get(cacheKey);
+  if (cached) return res.json(cached);
+  const overview = JSON.parse(JSON.stringify(FALLBACK_OVERVIEW));
+
+  try {
+    const loans = await fetchLoans(orgId);
+    if (loans.length > 0) {
+      const outstandingPrincipal = loans.reduce(
+        (sum, loan) => sum + toNumber(loan.outstanding_principal ?? loan.amount),
+        0
+      );
+      const delinquentLoans = loans.filter((loan) => {
+        const status = String(loan.status || '').toLowerCase();
+        const daysLate = toNumber(loan.days_late);
+        return daysLate >= 30 || status.includes('delin');
+      }).length;
+      const avgInterestRate = loans.reduce((sum, loan) => sum + toNumber(loan.interest_rate), 0) /
+        (loans.length || 1);
+      const riskScores = loans
+        .map((loan) => toNumber(loan.risk_score))
+        .filter((score) => Number.isFinite(score) && score > 0);
+
+      overview.totals = {
+        totalLoans: loans.length,
+        delinquencyRate: loans.length ? delinquentLoans / loans.length : overview.totals.delinquencyRate,
+        avgInterestRate: loans.length ? avgInterestRate / 100 : overview.totals.avgInterestRate,
+        outstandingPrincipal,
+      };
+      overview.riskScore = riskScores.length
+        ? Math.round(riskScores.reduce((sum, score) => sum + score, 0) / riskScores.length)
+        : overview.riskScore;
+    }
+  } catch (error) {
+       if (handleMissingSchemaError(res, error, 'Dashboard overview', { overview: EMPTY_OVERVIEW })) {
+      return;
+    }
+    console.error('Dashboard overview loan query failed', error);
+  }
+
+  try {
+    const rows = await fetchCollections(orgId);
+    if (rows.length > 0) {
+      const now = new Date();
+      const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+      let monthToDateCollected = 0;
+      let outstanding = 0;
+      let delinquentCount = 0;
+      let promisesToPay = 0;
+      let lastPaymentAt = null;
+
+      for (const row of rows) {
+        const amount = toNumber(row.amount);
+        const status = String(row.status || '').toLowerCase();
+        const dueDate = row.due_date ? new Date(row.due_date) : null;
+        const paidAt = row.paid_at || row.updated_at || null;
+
+        if (status === 'paid') {
+          if (dueDate && dueDate >= startOfMonth && dueDate <= now) {
+            monthToDateCollected += amount;
+          }
+          if (paidAt) {
+            const paidDate = new Date(paidAt);
+            if (!Number.isNaN(paidDate.getTime())) {
+              if (!lastPaymentAt || paidDate > lastPaymentAt) {
+                lastPaymentAt = paidDate;
+              }
+            }
+          }
+        } else {
+          outstanding += amount;
+          if (status.includes('promise')) {
+            promisesToPay += 1;
+          }
+          if (dueDate && dueDate < now) {
+            delinquentCount += 1;
+          }
+        }
+      }
+
+      overview.collections = {
+        monthToDateCollected,
+        outstanding,
+        delinquentCount,
+        promisesToPay,
+        lastPaymentAt: lastPaymentAt ? lastPaymentAt.toISOString() : overview.collections.lastPaymentAt,
+      };
+    }
+  } catch (error) {
+        if (handleMissingSchemaError(res, error, 'Dashboard overview', { overview: EMPTY_OVERVIEW })) {
+      return;
+    }
+    console.error('Dashboard overview collections query failed', error);
+  }
+
+  const payload = { overview };
+  await cache.set(cacheKey, payload, 120);
+  res.json(payload);
+}));
+
+router.get('/marketplace', asyncHandler(async (req, res) => {
+  if (!isFeatureEnabled('trading')) {
+    return res.status(404).json({ error: 'Trading module is disabled' });
+  }
+
+  const supabaseUrl = process.env.SUPABASE_URL;
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!supabaseUrl || !serviceRoleKey) {
+    console.warn('Marketplace unavailable: missing Supabase configuration');
+    return res
+      .status(503)
+      .json({ error: 'Trading module is disabled', summary: EMPTY_MARKETPLACE_SUMMARY });
+  }
+
+  const orgId = resolveOrgId(req);
+  try {
+    const baseFields = [
+      'id',
+      'title',
+      'par_amount',
+      'occupancy_rate',
+      'dscr',
+      'marketplace_metrics',
+      'borrower_kpis',
+      'sector',
+      'geography',
+      'updated_at',
+    ];
+    let query = supabase
+      .from('exchange_listings')
+      .select(baseFields.join(','))
+      .eq('compliance_hold', false)
+      .order('updated_at', { ascending: false });
+
+    if (orgId) {
+      query = query.eq('organization_id', orgId);
+    }
+
+    const { data, error } = await query.limit(100);
+    if (error) {
+      throw error;
+    }
+
+    const listings = Array.isArray(data) ? data : [];
+    let occupancySum = 0;
+    let occupancyCount = 0;
+    let dscrSum = 0;
+    let dscrCount = 0;
+    let dscrBufferSum = 0;
+    let dscrBufferCount = 0;
+    let noiMarginSum = 0;
+    let noiMarginCount = 0;
+    let parAmountSum = 0;
+
+    const highlights = [];
+    const kpiCounter = new Map();
+    let latestTimestamp = 0;
+
+    for (const listing of listings) {
+      const occupancyRate = toNullableNumber(listing.occupancy_rate);
+      if (occupancyRate !== null) {
+        occupancySum += occupancyRate;
+        occupancyCount += 1;
+      }
+
+      const dscr = toNullableNumber(listing.dscr);
+      if (dscr !== null) {
+        dscrSum += dscr;
+        dscrCount += 1;
+      }
+
+      const metrics = listing.marketplace_metrics || {};
+      const dscrBuffer = toNullableNumber(metrics.dscrBuffer ?? metrics.dscr_buffer);
+      if (dscrBuffer !== null) {
+        dscrBufferSum += dscrBuffer;
+        dscrBufferCount += 1;
+      }
+
+      const noiMargin = toNullableNumber(metrics.noiMargin ?? metrics.noi_margin);
+      if (noiMargin !== null) {
+        noiMarginSum += noiMargin;
+        noiMarginCount += 1;
+      }
+
+      const parAmount = toNullableNumber(listing.par_amount);
+      if (parAmount !== null) {
+        parAmountSum += parAmount;
+      }
+
+      const highlight = {
+        id: listing.id,
+        title: listing.title,
+        sector: listing.sector ?? null,
+        geography: listing.geography ?? null,
+        parAmount: parAmount,
+        occupancyRate,
+        dscr,
+        dscrBuffer,
+        noiMargin,
+      };
+      highlights.push(highlight);
+
+      if (Array.isArray(listing.borrower_kpis)) {
+        for (const kpi of listing.borrower_kpis) {
+          if (!kpi || typeof kpi !== 'object') continue;
+          const label = typeof kpi.name === 'string' && kpi.name.trim() ? kpi.name.trim() : 'KPI';
+          kpiCounter.set(label, (kpiCounter.get(label) || 0) + 1);
+        }
+      }
+
+      if (listing.updated_at) {
+        const ts = new Date(listing.updated_at).getTime();
+        if (!Number.isNaN(ts)) {
+          latestTimestamp = Math.max(latestTimestamp, ts);
+        }
+      }
+    }
+
+    highlights.sort((a, b) => {
+      const scoreA = (a.dscrBuffer ?? 0) * 2 + (a.noiMargin ?? 0) + ((a.occupancyRate ?? 0) / 100);
+      const scoreB = (b.dscrBuffer ?? 0) * 2 + (b.noiMargin ?? 0) + ((b.occupancyRate ?? 0) / 100);
+      return scoreB - scoreA;
+    });
+
+    const borrowerKpiLeaders = Array.from(kpiCounter.entries())
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5)
+      .map(([name, count]) => ({ name, count }));
+
+    res.json({
+      totals: {
+        activeListings: listings.length,
+        avgOccupancyRate: average(occupancySum, occupancyCount, 2),
+        avgDscr: average(dscrSum, dscrCount, 3),
+        avgDscrBuffer: average(dscrBufferSum, dscrBufferCount, 3),
+        avgNoiMargin: average(noiMarginSum, noiMarginCount, 3),
+        totalParAmount: parAmountSum ? Number(parAmountSum.toFixed(2)) : null,
+      },
+      highlights: highlights.slice(0, 5),
+      borrowerKpiLeaders,
+      updatedAt: latestTimestamp ? new Date(latestTimestamp).toISOString() : null,
+    });
+  } catch (error) {
+    if (handleMissingSchemaError(res, error, 'Marketplace metrics', EMPTY_MARKETPLACE_SUMMARY)) {
+      return;
+    }
+
+    const authError = error?.status === 401 || error?.status === 403;
+    if (authError) {
+      console.warn('Marketplace unavailable: Supabase credentials rejected');
+      return res
+        .status(400)
+        .json({ error: 'Trading module is disabled', summary: EMPTY_MARKETPLACE_SUMMARY });
+    }
+
+    console.error('Dashboard marketplace metrics error', error);
+    res.status(500).json({ error: 'Failed to load marketplace metrics' });
+  }
+}));
+
+module.exports = router;
