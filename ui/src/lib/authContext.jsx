@@ -299,7 +299,8 @@ export function AuthProvider({ children }) {
     resetBootstrapSnapshot();
     setSession(null);
     clearKontraPersistedState();
-    // Clear org context
+    // Clear org context and cached role
+        try { localStorage.removeItem("kontra_resolved_role"); } catch (_) {}
     try { localStorage.removeItem("kontra_active_org_id"); } catch (_) {}
     if (token) {
       fetch("/api/auth/signout", {

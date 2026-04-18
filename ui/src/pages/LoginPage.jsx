@@ -34,6 +34,8 @@ export default function LoginPage() {
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
         const dbRole = data?.app_role ?? "member";
+          // Cache so RequireRole can use it even without a custom JWT hook
+          try { localStorage.setItem("kontra_resolved_role", dbRole); } catch (_) {}
         navigate(getPortalPath(dbRole), { replace: true });
       })
       .catch(() => {
