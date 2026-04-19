@@ -3,8 +3,10 @@
  * Investors CANNOT execute servicing actions. All servicing stays in the lender execution layer.
  * Treat this as a separate product on top of the same Kontra backend.
  */
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useContext } from "react";
 import { api } from "../../lib/apiClient";
+import { useNavigate } from "react-router-dom";
+import { AuthContext } from "../../lib/authContext";
 import {
   ChartPieIcon,
   BanknotesIcon,
@@ -217,7 +219,11 @@ const NAV: { key: Section; label: string; icon: typeof ChartPieIcon; badge?: num
 ];
 
 export default function InvestorPortal() {
-  const [section, setSection] = useState<Section>("portfolio");
+  const { signOut } = useContext(AuthContext) as any;
+    const navigate = useNavigate();
+    const [isSigningOut, setIsSigningOut] = useState(false);
+    const [signOutError, setSignOutError] = useState<string | null>(null);
+    const [section, setSection] = useState<Section>("portfolio");
   const [holdings, setHoldings]     = useState<Holding[]>(DEMO_HOLDINGS);
   const [distributions, setDists]   = useState<Distribution[]>(DEMO_DISTRIBUTIONS);
   const [performance, setPerf]      = useState<LoanPerformance[]>(DEMO_PERFORMANCE);
@@ -306,6 +312,18 @@ export default function InvestorPortal() {
   const nextDist      = scheduled.reduce((s, d) => s + d.net_amount, 0);
   const highAlerts    = alerts.filter((a) => a.severity === "high").length;
 
+
+    const handleSignOut = async () => {
+      setIsSigningOut(true);
+      setSignOutError(null);
+      const { error } = await signOut();
+      if (error) {
+        setIsSigningOut(false);
+        setSignOutError("Unable to log out. Please try again.");
+        return;
+      }
+      navigate("/login", { replace: true });
+    };
   return (
     <div className="flex h-screen bg-slate-950 text-slate-100 overflow-hidden relative">
 
@@ -384,12 +402,17 @@ export default function InvestorPortal() {
             </div>
           )}
           <button
-            onClick={() => setSection("governance")}
-            className="w-full flex items-center gap-2 text-xs text-slate-400 hover:text-white transition-colors"
+            type="button"
+            onClick={handleSignOut}
+            disabled={isSigningOut}
+            className="w-full flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold text-slate-200 border border-slate-700 hover:bg-slate-800 transition disabled:opacity-60 disabled:cursor-not-allowed"
           >
-            <ArrowRightStartOnRectangleIcon className="h-4 w-4" />
-            Return to lender dashboard
+            <ArrowRightStartOnRectangleIcon className="h-4 w-4 text-violet-400" />
+            {isSigningOut ? "Logging out..." : "Log Out"}
           </button>
+          {signOutError && (
+            <p className="mt-1 text-xs text-red-400" role="alert">{signOutError}</p>
+          )}
         </div>
       </aside>
 

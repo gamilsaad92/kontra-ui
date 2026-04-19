@@ -6,8 +6,11 @@
  * Data strategy: tries live API first, falls back to demo data so the UI
  * is always functional even when the database tables don't exist yet.
  */
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useContext } from "react";
 import { api } from "../../lib/apiClient";
+import { useNavigate } from "react-router-dom";
+import { AuthContext } from "../../lib/authContext";
+import { ArrowRightStartOnRectangleIcon } from "@heroicons/react/24/outline";
 import {
   HomeIcon,
   CreditCardIcon,
@@ -135,7 +138,11 @@ const NAV_KEYS: { key: Section; label: string; icon: typeof HomeIcon }[] = [
 
 // ── Component ─────────────────────────────────────────────────────────────
 export default function BorrowerPortal() {
-  const [section, setSection]       = useState<Section>("myloans");
+  const { signOut } = useContext(AuthContext) as any;
+    const navigate = useNavigate();
+    const [isSigningOut, setIsSigningOut] = useState(false);
+    const [signOutError, setSignOutError] = useState<string | null>(null);
+    const [section, setSection]       = useState<Section>("myloans");
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [loan, setLoan]             = useState<LoanData>(DEMO_LOAN);
   const [payments, setPayments]     = useState<Payment[]>(DEMO_PAYMENTS);
@@ -233,6 +240,18 @@ export default function BorrowerPortal() {
     }
   };
 
+
+    const handleSignOut = async () => {
+      setIsSigningOut(true);
+      setSignOutError(null);
+      const { error } = await signOut();
+      if (error) {
+        setIsSigningOut(false);
+        setSignOutError("Unable to log out. Please try again.");
+        return;
+      }
+      navigate("/login", { replace: true });
+    };
   return (
     <div className="flex h-screen bg-white overflow-hidden relative">
 
@@ -295,9 +314,23 @@ export default function BorrowerPortal() {
         </nav>
 
         {/* Footer */}
-        <div className="border-t border-slate-200 p-4">
-          <p className="text-xs text-slate-400">Questions? Contact your servicer:</p>
-          <p className="text-xs font-medium text-slate-700 mt-0.5">{loan.servicer_contact}</p>
+        <div className="border-t border-slate-200 p-4 space-y-3">
+          <div>
+            <p className="text-xs text-slate-400">Questions? Contact your servicer:</p>
+            <p className="text-xs font-medium text-slate-700 mt-0.5">{loan.servicer_contact}</p>
+          </div>
+          <button
+            type="button"
+            onClick={handleSignOut}
+            disabled={isSigningOut}
+            className="w-full flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold text-slate-600 border border-slate-200 hover:bg-slate-50 transition disabled:opacity-60 disabled:cursor-not-allowed"
+          >
+            <ArrowRightStartOnRectangleIcon className="h-4 w-4 text-emerald-600" />
+            {isSigningOut ? "Logging out..." : "Log Out"}
+          </button>
+          {signOutError && (
+            <p className="text-xs text-red-500" role="alert">{signOutError}</p>
+          )}
         </div>
       </aside>
 
