@@ -1,9 +1,8 @@
 import { useState, useMemo } from 'react';
   import { useMutation, useQueryClient } from '@tanstack/react-query';
   import { apiFetch } from '../../../lib/apiClient';
-  import { useLoanList, useUpdateLoan } from '../../../features/portfolio/loans/api';
-  import DataState from '../../../components/DataState';
-  import type { CanonicalEntity } from '../../../features/crud/types';
+  import { useLoanList } from '../../../features/portfolio/loans/api';
+    import type { CanonicalEntity } from '../../../features/crud/types';
   import { StatusBadge } from './PortfolioOverviewPage';
 
   // ── Field helpers ─────────────────────────────────────────────────────────────
@@ -231,8 +230,17 @@ import { useState, useMemo } from 'react';
       });
     }, [loans, search, statusFilter, sortBy]);
 
-    if (isLoading) return <DataState loading />;
-    if (isError) return <DataState error="Failed to load loans." onRetry={refetch} />;
+    if (isLoading) return (
+      <div className="flex items-center justify-center py-16">
+        <div className="h-6 w-6 animate-spin rounded-full border-2 border-slate-300 border-t-brand-700" />
+      </div>
+    );
+    if (isError) return (
+      <div className="rounded-xl border border-red-100 bg-red-50 px-4 py-6 text-center">
+        <p className="text-sm text-red-600">Failed to load loans.</p>
+        <button onClick={refetch} className="mt-2 text-xs text-red-500 underline">Retry</button>
+      </div>
+    );
 
     return (
       <div className="space-y-4">

@@ -2,8 +2,7 @@ import { useMemo } from 'react';
   import { PieChart, Pie, Cell, Tooltip, BarChart, Bar, XAxis, YAxis, ResponsiveContainer, CartesianGrid } from 'recharts';
   import { useLoanList } from '../../../features/portfolio/loans/api';
   import { useAssetList } from '../../../features/portfolio/assets/api';
-  import DataState from '../../../components/DataState';
-  import type { CanonicalEntity } from '../../../features/crud/types';
+    import type { CanonicalEntity } from '../../../features/crud/types';
 
   // ── Flexible field accessors ──────────────────────────────────────────────────
   function pick(data: Record<string, unknown>, ...keys: string[]): unknown {
@@ -136,10 +135,19 @@ import { useMemo } from 'react';
     const maturityLadder = useMemo(() => buildMaturityLadder(loans), [loans]);
 
     if (loansQuery.isLoading || assetsQuery.isLoading) {
-      return <DataState loading={true} />;
+      return (
+        <div className="flex items-center justify-center py-16">
+          <div className="h-6 w-6 animate-spin rounded-full border-2 border-slate-300 border-t-brand-700" />
+        </div>
+      );
     }
     if (loansQuery.isError) {
-      return <DataState error="Failed to load portfolio data." onRetry={() => loansQuery.refetch()} />;
+      return (
+        <div className="rounded-xl border border-red-100 bg-red-50 px-4 py-6 text-center">
+          <p className="text-sm text-red-600">Failed to load portfolio data.</p>
+          <button onClick={() => loansQuery.refetch()} className="mt-2 text-xs text-red-500 underline">Retry</button>
+        </div>
+      );
     }
 
     const hasData = loans.length > 0;
