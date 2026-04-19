@@ -1049,6 +1049,7 @@ export default function TokenizationPage() {
           );
         })()}
 
+      </div>
       <div className="max-w-7xl mx-auto">
         {/* Tabs */}
         <div className="flex gap-1 mb-6 bg-white rounded-xl border border-gray-200 p-1 overflow-x-auto scrollbar-none">
