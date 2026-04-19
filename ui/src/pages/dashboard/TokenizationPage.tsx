@@ -31,6 +31,24 @@ import {
 
 const API_BASE = import.meta.env.VITE_API_BASE || "";
 
+  const DEMO_STATS = {
+    totalTokenPackages:  34,
+    activePackages:       5,
+    totalTvlUsd:  142_000_000,
+    totalInvestors:      28,
+    approvedInvestors:   22,
+    unreconciledPayments: 0,
+  };
+
+  const PIPELINE_STAGES = [
+    { label: "Draft",           count: 3,  color: "bg-slate-200",   text: "text-slate-600",   dot: "bg-slate-400"   },
+    { label: "Readiness Check", count: 12, color: "bg-blue-100",    text: "text-blue-700",    dot: "bg-blue-400"    },
+    { label: "Token Ready",     count: 8,  color: "bg-emerald-100", text: "text-emerald-700", dot: "bg-emerald-500" },
+    { label: "In Offering",     count: 4,  color: "bg-violet-100",  text: "text-violet-700",  dot: "bg-violet-500"  },
+    { label: "Active",          count: 5,  color: "bg-[#800020]/10",text: "text-[#800020]",   dot: "bg-[#800020]"   },
+    { label: "Matured",         count: 2,  color: "bg-gray-100",    text: "text-gray-600",    dot: "bg-gray-400"    },
+  ];
+
 const ORG_H = { "X-Org-Id": "demo-org", "Content-Type": "application/json" };
 
 async function apiFetch(path: string, opts: RequestInit = {}) {
@@ -995,29 +1013,45 @@ export default function TokenizationPage() {
           </div>
         </div>
 
-        {/* Stats row */}
-        {stats && (
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-            {[
-              { label: "Token Packages",   value: stats.totalTokenPackages  },
-              { label: "Active Packages",  value: stats.activePackages      },
-              { label: "Total TVL",        value: formatUsd(stats.totalTvlUsd, true) },
-              { label: "Total Investors",  value: stats.totalInvestors      },
-              { label: "KYC Approved",     value: stats.approvedInvestors   },
-              { label: "Unreconciled Pmts",value: stats.unreconciledPayments, warn: stats.unreconciledPayments > 0 },
-            ].map((s) => (
-              <div key={s.label} className={`bg-white rounded-xl border ${(s as any).warn ? "border-amber-200" : "border-gray-200"} p-4 shadow-sm`}>
-                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">{s.label}</p>
-                <p className={`text-xl font-bold ${(s as any).warn ? "text-amber-600" : "text-gray-900"}`}>{s.value}</p>
+        {/* Pipeline funnel */}
+        <div className="mb-5">
+          <p className="text-xs font-semibold uppercase tracking-widest text-gray-400 mb-2">Loan Pipeline</p>
+          <div className="flex items-stretch overflow-x-auto pb-1 rounded-xl border border-gray-200 bg-white divide-x divide-gray-100">
+            {PIPELINE_STAGES.map((stage, i) => (
+              <div key={stage.label} className={`flex-1 min-w-[100px] flex flex-col items-center justify-center gap-1.5 px-4 py-4 ${stage.color} ${i === 0 ? "rounded-l-xl" : ""} ${i === PIPELINE_STAGES.length - 1 ? "rounded-r-xl" : ""}`}>
+                <div className={`h-2 w-2 rounded-full ${stage.dot}`} />
+                <p className={`text-2xl font-bold ${stage.text}`}>{stage.count}</p>
+                <p className={`text-xs font-medium ${stage.text} text-center leading-tight`}>{stage.label}</p>
               </div>
             ))}
           </div>
-        )}
-      </div>
+        </div>
+
+        {/* Stats row */}
+        {(() => {
+          const s = stats || DEMO_STATS;
+          return (
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+              {[
+                { label: "Token Packages",    value: s.totalTokenPackages },
+                { label: "Active Packages",   value: s.activePackages },
+                { label: "Total TVL",         value: formatUsd(s.totalTvlUsd, true) },
+                { label: "Total Investors",   value: s.totalInvestors },
+                { label: "KYC Approved",      value: s.approvedInvestors },
+                { label: "Unreconciled Pmts", value: s.unreconciledPayments, warn: s.unreconciledPayments > 0 },
+              ].map((item) => (
+                <div key={item.label} className={`bg-white rounded-xl border ${(item as any).warn ? "border-amber-200" : "border-gray-200"} p-4 shadow-sm`}>
+                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">{item.label}</p>
+                  <p className={`text-xl font-bold ${(item as any).warn ? "text-amber-600" : "text-gray-900"}`}>{item.value}</p>
+                </div>
+              ))}
+            </div>
+          );
+        })()}
 
       <div className="max-w-7xl mx-auto">
         {/* Tabs */}
-        <div className="flex gap-1 mb-6 bg-white rounded-xl border border-gray-200 p-1 w-fit flex-wrap">
+        <div className="flex gap-1 mb-6 bg-white rounded-xl border border-gray-200 p-1 overflow-x-auto scrollbar-none">
           {TABS.map(({ id, label, icon: Icon }) => (
             <button key={id} onClick={() => setActiveTab(id)}
               className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold transition-all ${activeTab === id ? "bg-[#800020] text-white shadow-sm" : "text-gray-500 hover:text-gray-700"}`}>
