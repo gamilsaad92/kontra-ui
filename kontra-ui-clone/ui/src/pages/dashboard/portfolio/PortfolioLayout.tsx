@@ -1,6 +1,7 @@
 import { NavLink, Outlet } from 'react-router-dom';
 
 const tabs = [
+  { label: 'Overview', to: '/portfolio/overview' },
   { label: 'Loans', to: '/portfolio/loans' },
   { label: 'Assets', to: '/portfolio/assets' },
 ];
