@@ -1,4 +1,4 @@
-import { useCallback, useContext, useMemo, useState, type ComponentType } from "react";
+import { useCallback, useContext, useEffect, useMemo, useState, type ComponentType } from "react";
 import { NavLink, Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { servicerNavRoutes } from "../../routes";
 import { AuthContext } from "../../lib/authContext";
