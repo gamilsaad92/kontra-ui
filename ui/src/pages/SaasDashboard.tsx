@@ -9,6 +9,8 @@ import SaasDashboardHome from "../components/SaasDashboardHome";
 import AiInsightsPage from "../features/ai-insights/page/AiInsightsPage";
 import OnchainDashboard from "../components/OnchainDashboard";
 import PortfolioLayout from "./dashboard/portfolio/PortfolioLayout";
+import PortfolioLoansPage from "./dashboard/portfolio/PortfolioLoansPage";
+import PortfolioOverviewPage from "./dashboard/portfolio/PortfolioOverviewPage";
 import MarketsLayout from "./dashboard/markets/MarketsLayout";
 import GovernanceLayout from "./dashboard/governance/GovernanceLayout";
 import LoanControlPage from "./dashboard/governance/LoanControlPage";
@@ -47,7 +49,6 @@ import {
   MarketsTokensCrudPage,
   MarketsTradesCrudPage,
   PortfolioAssetsPage,
-  PortfolioLoansPage,
   ReportsCrudPage,
 } from "./dashboard/canonical/pages";
 
@@ -172,7 +173,8 @@ export default function SaasDashboard() {
       <Route path="/" element={<Navigate to="/dashboard" replace />} />
       <Route path="/dashboard" element={<DashboardOverview apiBase={apiBase} />} />
       <Route path="/portfolio" element={<PortfolioLayout />}>
-        <Route index element={<Navigate to="/portfolio/assets" replace />} />
+        <Route index element={<Navigate to="/portfolio/overview" replace />} />
+        <Route path="overview" element={<PortfolioOverviewPage />} />
         <Route path="assets" element={<PortfolioAssetsPage />} />
         <Route path="loans" element={<PortfolioLoansPage />} />
       </Route>
