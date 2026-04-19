@@ -987,28 +987,10 @@ export default function TokenizationPage() {
       <div className="max-w-7xl mx-auto mb-8">
         <div className="flex items-start justify-between flex-wrap gap-4 mb-5">
           <div>
-            <div className="flex items-center gap-2 mb-1">
-              <CubeTransparentIcon className="w-5 h-5 text-[#800020]" />
-              <span className="text-xs font-semibold text-[#800020] uppercase tracking-wider">Phase 6 · Tokenization Execution Layer</span>
-            </div>
             <h1 className="text-2xl font-bold text-gray-900">Tokenization Platform</h1>
             <p className="text-sm text-gray-500 mt-1">
               Kontra evolves from servicing platform to financial infrastructure.
               Every CRE loan validated, packaged as ERC-1400 security tokens, and governed on-chain by investors.
-            </p>
-          </div>
-        </div>
-
-        {/* Architecture banner */}
-        <div className="p-4 bg-[#800020]/5 border border-[#800020]/15 rounded-xl flex items-start gap-3 mb-5">
-          <InformationCircleIcon className="w-5 h-5 text-[#800020] mt-0.5 shrink-0" />
-          <div>
-            <p className="text-sm font-semibold text-[#800020]">The Nasdaq + Stripe + Black Knight stack — now with ERC-1400</p>
-            <p className="text-xs text-gray-600 mt-0.5">
-              The Tokenization Readiness Agent scores every loan across 5 dimensions before any asset becomes token-eligible.
-              Approved loans are packaged as ERC-1400 security tokens — with transfer restrictions, investor whitelisting,
-              HMAC-signed webhook delivery for every on-chain event, and investor-weighted governance voting.
-              Stablecoin payments (USDC/USDT/DAI/PYUSD) are auto-reconciled to the servicing ledger.
             </p>
           </div>
         </div>
