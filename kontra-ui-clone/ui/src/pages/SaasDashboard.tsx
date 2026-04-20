@@ -15,6 +15,8 @@ import LoanOriginationWizard from "./dashboard/portfolio/LoanOriginationWizard";
 import LoanSyndicationPage from "./dashboard/portfolio/LoanSyndicationPage";
 import AIUnderwritingPage from "./dashboard/portfolio/AIUnderwritingPage";
 import MarketsLayout from "./dashboard/markets/MarketsLayout";
+import SecondaryMarketPage from "./dashboard/markets/SecondaryMarketPage";
+import ReportingEnginePage from "./dashboard/reports/ReportingEnginePage";
 import GovernanceLayout from "./dashboard/governance/GovernanceLayout";
 import LoanControlPage from "./dashboard/governance/LoanControlPage";
 import InvestorGovernancePage from "./dashboard/governance/InvestorGovernancePage";
@@ -190,6 +192,7 @@ export default function SaasDashboard() {
         <Route index element={<Navigate to="/markets/pools" replace />} />
         <Route path="pools" element={<MarketsPoolsCrudPage />} />
         <Route path="tokens" element={<MarketsTokensCrudPage />} />
+        <Route path="secondary" element={<SecondaryMarketPage />} />
         <Route path="trades" element={<MarketsTradesCrudPage />} />
         <Route path="exchange" element={<Navigate to="/markets/pools" replace />} />
       </Route>
@@ -207,6 +210,7 @@ export default function SaasDashboard() {
       </Route>
       <Route path="/analytics" element={<AiInsightsPage />} />
       <Route path="/reports" element={<ReportsCrudPage />} />
+      <Route path="/reports/engine" element={<ReportingEnginePage />} />
       <Route path="/workflow" element={<WorkflowEnginePage />} />
       <Route path="/policy" element={<PolicyEnginePage />} />
       <Route path="/integration" element={<IntegrationHubPage />} />
