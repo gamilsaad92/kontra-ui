@@ -1,11 +1,13 @@
 import { NavLink, Outlet } from 'react-router-dom';
 
 const tabs = [
-  { label: 'Overview',   to: '/portfolio/overview' },
-  { label: 'Loans',      to: '/portfolio/loans' },
-  { label: 'Assets',     to: '/portfolio/assets' },
-  { label: 'Covenants',  to: '/portfolio/covenants' },
-  { label: 'Originate',  to: '/portfolio/originate', highlight: true },
+  { label: 'Overview',      to: '/portfolio/overview' },
+  { label: 'Loans',         to: '/portfolio/loans' },
+  { label: 'Assets',        to: '/portfolio/assets' },
+  { label: 'Covenants',     to: '/portfolio/covenants' },
+  { label: 'Syndication',   to: '/portfolio/syndication' },
+  { label: 'AI Underwriter',to: '/portfolio/underwriting' },
+  { label: 'Originate',     to: '/portfolio/originate', highlight: true },
 ];
 
 export default function PortfolioLayout() {
@@ -17,7 +19,7 @@ export default function PortfolioLayout() {
           Structured loan and asset records — the source of truth for servicing, compliance, and tokenization.
         </p>
       </div>
-      <nav className="flex flex-wrap gap-2 border-b border-slate-200 pb-3">
+      <nav className="flex gap-2 overflow-x-auto border-b border-slate-200 pb-3" style={{ scrollbarWidth:"none" }}>
         {tabs.map((tab) => (
           <NavLink
             key={tab.label}
