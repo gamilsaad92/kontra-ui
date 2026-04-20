@@ -3,10 +3,8 @@
  * Investors CANNOT execute servicing actions. All servicing stays in the lender execution layer.
  * Treat this as a separate product on top of the same Kontra backend.
  */
-import { useState, useEffect, useCallback, useContext } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { api } from "../../lib/apiClient";
-import { useNavigate } from "react-router-dom";
-import { AuthContext } from "../../lib/authContext";
 import {
   ChartPieIcon,
   BanknotesIcon,
@@ -24,10 +22,9 @@ import {
   ArrowTrendingDownIcon,
   InformationCircleIcon,
   SparklesIcon,
-  ShoppingBagIcon,
-  XMarkIcon,
+  ShieldExclamationIcon,
   Bars3Icon,
-  MapPinIcon,
+  XMarkIcon,
 } from "@heroicons/react/24/outline";
 
 // ── Types ─────────────────────────────────────────────────────
@@ -50,9 +47,7 @@ type RiskAlert = {
   message: string; created_at: string;
 };
 
-type AiBrief = { brief: string; portfolio_score: number | null; signals: { type: string; message: string }[]; recommendations: string[]; watchlist: { loan_ref: string; reason: string }[] };
-
-  // ── Demo data ─────────────────────────────────────────────────
+// ── Demo data ─────────────────────────────────────────────────
 const DEMO_HOLDINGS: Holding[] = [
   { loan_id:"ln1", loan_ref:"LN-2847", property_name:"The Meridian Apartments", property_type:"Multifamily", location:"Austin, TX", upb:4200000, my_share_pct:24.5, my_share_usd:1029000, token_balance:10290, token_symbol:"KTRA-2847", status:"Current", yield_pct:8.75, maturity:"2026-09-01" },
   { loan_id:"ln2", loan_ref:"LN-3011", property_name:"Harbor Blvd Retail", property_type:"Retail", location:"San Diego, CA", upb:2800000, my_share_pct:24.5, my_share_usd:686000, token_balance:6860, token_symbol:"KTRA-3011", status:"Special Servicing", yield_pct:11.5, maturity:"2025-12-01" },
@@ -203,7 +198,7 @@ const SEVERITY_COLOR: Record<string, string> = {
   low: "border-slate-200 bg-slate-50",
 };
 
-type Section = "portfolio" | "distributions" | "performance" | "governance" | "documents" | "alerts" | "deal_flow" | "marketplace" | "pricing" | "ai";
+type Section = "portfolio" | "distributions" | "performance" | "governance" | "documents" | "alerts" | "ai" | "marketplace" | "pricing";
 
 const NAV: { key: Section; label: string; icon: typeof ChartPieIcon; badge?: number; dividerBefore?: boolean }[] = [
   { key:"portfolio",     label:"Portfolio",           icon: ChartPieIcon },
@@ -212,18 +207,14 @@ const NAV: { key: Section; label: string; icon: typeof ChartPieIcon; badge?: num
   { key:"governance",    label:"Governance & Voting",  icon: ScaleIcon, badge: 2 },
   { key:"documents",     label:"Reports & Docs",      icon: DocumentTextIcon },
   { key:"alerts",        label:"Risk Alerts",         icon: ExclamationTriangleIcon, badge: 2 },
-  { key:"deal_flow",     label:"Deal Flow",           icon: ShoppingBagIcon, badge: 4, dividerBefore: true },
+  { key:"ai",            label:"AI Portfolio Brief",  icon: SparklesIcon, dividerBefore: true },
   { key:"marketplace",   label:"Debt Exchange",       icon: ArrowsRightLeftIcon },
   { key:"pricing",       label:"Token NAV Pricing",   icon: CurrencyDollarIcon },
-  { key:"ai",            label:"AI Portfolio Brief",  icon: SparklesIcon, dividerBefore: true },
 ];
 
 export default function InvestorPortal() {
-  const { signOut } = useContext(AuthContext) as any;
-    const navigate = useNavigate();
-    const [isSigningOut, setIsSigningOut] = useState(false);
-    const [signOutError, setSignOutError] = useState<string | null>(null);
-    const [section, setSection] = useState<Section>("portfolio");
+  const [section, setSection] = useState<Section>("portfolio");
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [holdings, setHoldings]     = useState<Holding[]>(DEMO_HOLDINGS);
   const [distributions, setDists]   = useState<Distribution[]>(DEMO_DISTRIBUTIONS);
   const [performance, setPerf]      = useState<LoanPerformance[]>(DEMO_PERFORMANCE);
@@ -235,59 +226,31 @@ export default function InvestorPortal() {
   const [mxPrice, setMxPrice]       = useState("102.50");
   const [mxOrders, setMxOrders]     = useState<MyOrder[]>(DEMO_MY_ORDERS);
   const [mxSubmitted, setMxSubmitted] = useState(false);
-    const [aiBrief, setAiBrief] = useState<AiBrief | null>(null);
-    const [aiBriefLoading, setAiBriefLoading] = useState(false);
-    const [aiBriefError, setAiBriefError] = useState<string | null>(null);
-    const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-    // Deal Flow state
-    const [dfListings, setDfListings] = useState<any[]>([]);
-    const [dfLoading, setDfLoading] = useState(false);
-    const [dfSubscribeId, setDfSubscribeId] = useState<string | null>(null);
-    const [dfAmount, setDfAmount] = useState("");
-    const [dfEmail, setDfEmail] = useState("");
-    const [dfSubmitting, setDfSubmitting] = useState(false);
-    const [dfSuccess, setDfSuccess] = useState("");
-    const [dfError, setDfError] = useState("");
 
-    // Fetch deal flow listings when section becomes deal_flow
-    useEffect(() => {
-      if (section !== "deal_flow") return;
-      setDfLoading(true);
-      fetch((import.meta.env.VITE_API_BASE || "").replace(/\/+$/, "") + "/market/listings")
-        .then(r => r.json()).then(d => setDfListings(Array.isArray(d) ? d : [])).catch(() => setDfListings([]))
-        .finally(() => setDfLoading(false));
-    }, [section]);
+  // ── AI Portfolio Brief state ──────────────────────────────────────────────
+  type AiBrief = {
+    brief: string; portfolio_score: number | null;
+    signals: { type: "positive"|"negative"|"watch"; message: string }[];
+    recommendations: string[];
+    watchlist: { loan_ref: string; reason: string }[];
+  };
+  const [aiBrief, setAiBrief]         = useState<AiBrief | null>(null);
+  const [aiBriefLoading, setAiBriefLoading] = useState(false);
+  const [aiBriefError, setAiBriefError]   = useState<string | null>(null);
 
-    const handleDfSubscribe = async (listingId: string) => {
-      const amt = Number(dfAmount);
-      if (!amt || amt <= 0) return setDfError("Enter a valid amount");
-      setDfSubmitting(true); setDfError("");
-      try {
-        const apiBase = (import.meta.env.VITE_API_BASE || "").replace(/\/+$/, "");
-        const res = await fetch(apiBase + "/market/listings/" + listingId + "/subscribe", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ amount: amt, investor_email: dfEmail || undefined }),
-        });
-        const json = await res.json();
-        if (!res.ok) throw new Error(json.error || "Subscription failed");
-        setDfSuccess("Subscription submitted for " + json.listing_title + "!");
-        setDfSubscribeId(null); setDfAmount(""); setDfEmail("");
-        setTimeout(() => setDfSuccess(""), 4000);
-      } catch (err: any) {
-        setDfError(err.message);
-      } finally { setDfSubmitting(false); }
-    };
-
-    const generateBrief = async () => {
-      setAiBriefLoading(true); setAiBriefError(null);
-      try {
-        const { data } = await api.post<AiBrief>("/ai/portfolio-brief", {});
-        if (data) setAiBrief(data);
-        else setAiBriefError("No response from AI service.");
-      } catch { setAiBriefError("AI service unavailable. Please try again."); }
-      finally { setAiBriefLoading(false); }
-    };
+  const generateAiBrief = async () => {
+    setAiBriefLoading(true);
+    setAiBriefError(null);
+    try {
+      const { data } = await api.post<AiBrief>("/ai/portfolio-brief", {});
+      if (data) setAiBrief(data);
+      else setAiBriefError("No response from AI service.");
+    } catch {
+      setAiBriefError("AI service unavailable. Please try again.");
+    } finally {
+      setAiBriefLoading(false);
+    }
+  };
 
   const load = useCallback(async () => {
     const [hRes, dRes, pRes, aRes] = await Promise.allSettled([
@@ -312,32 +275,27 @@ export default function InvestorPortal() {
   const nextDist      = scheduled.reduce((s, d) => s + d.net_amount, 0);
   const highAlerts    = alerts.filter((a) => a.severity === "high").length;
 
-
-    const handleSignOut = async () => {
-      setIsSigningOut(true);
-      setSignOutError(null);
-      const { error } = await signOut();
-      if (error) {
-        setIsSigningOut(false);
-        setSignOutError("Unable to log out. Please try again.");
-        return;
-      }
-      navigate("/login", { replace: true });
-    };
   return (
-    <div className="flex h-screen bg-slate-950 text-slate-100 overflow-hidden relative">
+    <div className="relative flex h-screen bg-slate-950 text-slate-100 overflow-hidden">
+      {/* ── Mobile overlay ── */}
+      {sidebarOpen && (
+        <div className="fixed inset-0 z-40 bg-black/60 md:hidden" onClick={() => setSidebarOpen(false)} />
+      )}
 
       {/* ── Sidebar ── */}
-      {mobileMenuOpen && <div className="fixed inset-0 z-40 bg-black/70 md:hidden" onClick={() => setMobileMenuOpen(false)} />}
-        <aside className={`fixed inset-y-0 left-0 z-50 flex w-60 flex-col border-r border-slate-800 bg-slate-900 transform transition-transform duration-200 ease-in-out md:relative md:translate-x-0 ${mobileMenuOpen ? "translate-x-0" : "-translate-x-full"}`}>
+      <aside className={`fixed inset-y-0 left-0 z-50 flex w-60 shrink-0 flex-col border-r border-slate-800 bg-slate-900 transform transition-transform duration-200 ease-in-out md:relative md:translate-x-0 ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}`}>
         {/* Logo area */}
-        <div className="flex items-center gap-3 px-5 py-5 border-b border-slate-800">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-violet-600 font-black text-white text-sm">K</div>
-          <div>
-            <p className="text-sm font-bold text-white">Kontra</p>
-            <p className="text-xs text-violet-400 font-medium">Investor Portal</p>
+        <div className="flex items-center justify-between px-5 py-5 border-b border-slate-800">
+          <div className="flex items-center gap-3">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-violet-600 font-black text-white text-sm">K</div>
+            <div>
+              <p className="text-sm font-bold text-white">Kontra</p>
+              <p className="text-xs text-violet-400 font-medium">Investor Portal</p>
+            </div>
           </div>
-          <button className="ml-auto md:hidden p-1 text-slate-500 hover:text-white" onClick={() => setMobileMenuOpen(false)}><XMarkIcon className="h-5 w-5" /></button>
+          <button onClick={() => setSidebarOpen(false)} className="md:hidden rounded-lg p-1 text-slate-400 hover:text-white hover:bg-slate-800 transition">
+            <XMarkIcon className="h-5 w-5" />
+          </button>
         </div>
 
         {/* Summary quick stats */}
@@ -371,7 +329,7 @@ export default function InvestorPortal() {
                   </div>
                 )}
                 <button
-                  onClick={() => { setSection(item.key); setMobileMenuOpen(false); }}
+                  onClick={() => { setSection(item.key); setSidebarOpen(false); }}
                   className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors text-left ${
                     active
                       ? item.key === "marketplace" || item.key === "pricing"
@@ -402,23 +360,28 @@ export default function InvestorPortal() {
             </div>
           )}
           <button
-            type="button"
-            onClick={handleSignOut}
-            disabled={isSigningOut}
-            className="w-full flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold text-slate-200 border border-slate-700 hover:bg-slate-800 transition disabled:opacity-60 disabled:cursor-not-allowed"
+            onClick={() => setSection("governance")}
+            className="w-full flex items-center gap-2 text-xs text-slate-400 hover:text-white transition-colors"
           >
-            <ArrowRightStartOnRectangleIcon className="h-4 w-4 text-violet-400" />
-            {isSigningOut ? "Logging out..." : "Log Out"}
+            <ArrowRightStartOnRectangleIcon className="h-4 w-4" />
+            Return to lender dashboard
           </button>
-          {signOutError && (
-            <p className="mt-1 text-xs text-red-400" role="alert">{signOutError}</p>
-          )}
         </div>
       </aside>
 
       {/* ── Main Content ── */}
-      <main className="flex-1 overflow-y-auto bg-slate-950">
-        <div className="max-w-6xl mx-auto px-4 md:px-8 py-8 space-y-8">
+      <main className="flex min-w-0 flex-1 flex-col overflow-y-auto bg-slate-950">
+        {/* Mobile top bar */}
+        <div className="flex items-center gap-3 border-b border-slate-800 bg-slate-900 px-4 py-3 md:hidden">
+          <button onClick={() => setSidebarOpen(true)} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-800 hover:text-white transition">
+            <Bars3Icon className="h-5 w-5" />
+          </button>
+          <div className="flex items-center gap-2">
+            <div className="flex h-6 w-6 items-center justify-center rounded-md bg-violet-600 text-xs font-black text-white">K</div>
+            <span className="text-sm font-bold text-white">Kontra <span className="text-violet-400">Investor</span></span>
+          </div>
+        </div>
+        <div className="max-w-6xl mx-auto w-full px-4 py-6 md:px-8 md:py-8 space-y-6 md:space-y-8">
 
           {/* ── PORTFOLIO ── */}
           {section === "portfolio" && (
@@ -429,7 +392,7 @@ export default function InvestorPortal() {
               </div>
 
               {/* KPI row */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
                 {[
                   { label:"Capital Deployed", value: fmt(totalInvested), sub:"Across 4 loans" },
                   { label:"Total Received", value: fmt(totalReceived), sub:"Net distributions YTD" },
@@ -492,7 +455,7 @@ export default function InvestorPortal() {
               {/* Token positions */}
               <div className="rounded-xl border border-slate-800 bg-slate-900 p-6">
                 <h2 className="text-base font-bold text-white mb-4">Token Positions (On-Chain)</h2>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
                   {holdings.map((h) => (
                     <div key={h.loan_id} className="rounded-lg border border-violet-800/40 bg-violet-950/30 p-4">
                       <p className="text-xs font-mono font-bold text-violet-400">{h.token_symbol}</p>
@@ -521,7 +484,7 @@ export default function InvestorPortal() {
               </div>
 
               {/* Summary */}
-              <div className="grid grid-cols-1 sm:grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+              <div className="grid grid-cols-3 gap-4">
                 {[
                   { label:"Total Received (YTD)", value: fmtFull(totalReceived), color:"text-emerald-400" },
                   { label:"Gross Before Fees", value: fmtFull(paidDists.reduce((s,d) => s + d.gross_amount, 0)), color:"text-white" },
@@ -798,6 +761,120 @@ export default function InvestorPortal() {
             </div>
           )}
 
+          {/* ── AI PORTFOLIO BRIEF ── */}
+          {section === "ai" && (
+            <div className="space-y-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h1 className="text-2xl font-black text-white flex items-center gap-2">
+                    <SparklesIcon className="h-6 w-6 text-violet-400" />
+                    AI Portfolio Brief
+                  </h1>
+                  <p className="text-sm text-slate-400 mt-1">GPT-4o analysis of your loan portfolio — risk signals, watchlist, and recommendations.</p>
+                </div>
+                <button
+                  onClick={generateAiBrief}
+                  disabled={aiBriefLoading}
+                  className="flex items-center gap-2 rounded-xl bg-violet-700 px-5 py-2.5 text-sm font-bold text-white hover:bg-violet-800 transition-colors disabled:opacity-60"
+                >
+                  <SparklesIcon className="h-4 w-4" />
+                  {aiBriefLoading ? "Generating…" : aiBrief ? "Regenerate" : "Generate Brief"}
+                </button>
+              </div>
+
+              {aiBriefError && (
+                <div className="rounded-xl border border-red-200 bg-red-50 px-5 py-4">
+                  <p className="text-sm text-red-700">{aiBriefError}</p>
+                </div>
+              )}
+
+              {!aiBrief && !aiBriefLoading && !aiBriefError && (
+                <div className="rounded-xl border border-slate-700 bg-slate-800/50 p-10 text-center">
+                  <SparklesIcon className="h-10 w-10 text-slate-500 mx-auto mb-4" />
+                  <p className="text-slate-400 text-sm">Click "Generate Brief" to run an AI analysis of your full portfolio.</p>
+                  <p className="text-slate-500 text-xs mt-1">Powered by GPT-4o · Takes ~10 seconds</p>
+                </div>
+              )}
+
+              {aiBriefLoading && (
+                <div className="rounded-xl border border-violet-200/20 bg-violet-900/10 p-10 text-center">
+                  <SparklesIcon className="h-8 w-8 text-violet-400 mx-auto mb-3 animate-pulse" />
+                  <p className="text-violet-300 text-sm font-semibold">Analyzing your portfolio…</p>
+                  <p className="text-slate-500 text-xs mt-1">GPT-4o is reviewing all loan positions, DSCR, LTV, and covenant data</p>
+                </div>
+              )}
+
+              {aiBrief && !aiBriefLoading && (
+                <div className="space-y-5">
+                  {/* Executive Summary */}
+                  <div className="rounded-xl border border-slate-700 bg-slate-800 p-6">
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="flex-1">
+                        <p className="text-xs font-bold text-slate-400 uppercase tracking-wide mb-2">Executive Summary</p>
+                        <p className="text-slate-200 text-sm leading-relaxed">{aiBrief.brief}</p>
+                      </div>
+                      {aiBrief.portfolio_score != null && (
+                        <div className="shrink-0 text-center">
+                          <div className={`flex h-16 w-16 items-center justify-center rounded-full border-4 ${aiBrief.portfolio_score >= 70 ? "border-emerald-500 bg-emerald-900/30" : aiBrief.portfolio_score >= 50 ? "border-amber-500 bg-amber-900/30" : "border-red-500 bg-red-900/30"}`}>
+                            <span className={`text-xl font-black ${aiBrief.portfolio_score >= 70 ? "text-emerald-400" : aiBrief.portfolio_score >= 50 ? "text-amber-400" : "text-red-400"}`}>{aiBrief.portfolio_score}</span>
+                          </div>
+                          <p className="text-xs text-slate-500 mt-1">Health Score</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Signals */}
+                  {aiBrief.signals?.length > 0 && (
+                    <div className="rounded-xl border border-slate-700 bg-slate-800 p-5">
+                      <p className="text-xs font-bold text-slate-400 uppercase tracking-wide mb-3">Portfolio Signals</p>
+                      <div className="space-y-2">
+                        {aiBrief.signals.map((s, i) => (
+                          <div key={i} className={`flex items-start gap-3 rounded-lg px-4 py-3 ${s.type === "positive" ? "bg-emerald-900/20 border border-emerald-700/30" : s.type === "negative" ? "bg-red-900/20 border border-red-700/30" : "bg-amber-900/20 border border-amber-700/30"}`}>
+                            <span className={`mt-0.5 h-2 w-2 shrink-0 rounded-full ${s.type === "positive" ? "bg-emerald-400" : s.type === "negative" ? "bg-red-400" : "bg-amber-400"}`} />
+                            <p className="text-sm text-slate-200">{s.message}</p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Watchlist */}
+                  {aiBrief.watchlist?.length > 0 && (
+                    <div className="rounded-xl border border-slate-700 bg-slate-800 p-5">
+                      <p className="text-xs font-bold text-slate-400 uppercase tracking-wide mb-3 flex items-center gap-2">
+                        <ShieldExclamationIcon className="h-4 w-4 text-amber-400" /> Watchlist
+                      </p>
+                      <div className="space-y-2">
+                        {aiBrief.watchlist.map((w, i) => (
+                          <div key={i} className="flex items-start gap-3 rounded-lg border border-amber-700/30 bg-amber-900/10 px-4 py-3">
+                            <span className="text-xs font-black text-amber-400 shrink-0">{w.loan_ref}</span>
+                            <p className="text-sm text-slate-300">{w.reason}</p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Recommendations */}
+                  {aiBrief.recommendations?.length > 0 && (
+                    <div className="rounded-xl border border-slate-700 bg-slate-800 p-5">
+                      <p className="text-xs font-bold text-slate-400 uppercase tracking-wide mb-3">Recommendations</p>
+                      <ol className="space-y-2">
+                        {aiBrief.recommendations.map((r, i) => (
+                          <li key={i} className="flex items-start gap-3 text-sm text-slate-300">
+                            <span className="shrink-0 flex h-5 w-5 items-center justify-center rounded-full bg-violet-800 text-xs font-black text-violet-200">{i + 1}</span>
+                            {r}
+                          </li>
+                        ))}
+                      </ol>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
           {/* ── MARKETPLACE ── */}
           {section === "marketplace" && (() => {
             const book = DEMO_ORDERBOOK[mxToken] ?? { bids: [], asks: [] };
@@ -883,23 +960,23 @@ export default function InvestorPortal() {
                 )}
 
                 {/* Order book + place order */}
-                <div className="grid grid-cols-1 lg:grid-cols-1 sm:grid-cols-2 gap-6">
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
 
                   {/* Order book */}
                   <div className="rounded-xl border border-slate-800 bg-slate-900 overflow-hidden">
                     <div className="px-5 py-3 border-b border-slate-800">
                       <h2 className="text-sm font-bold text-white">Order Book — {mxToken}</h2>
                     </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 divide-x divide-slate-800">
+                    <div className="grid grid-cols-2 divide-x divide-slate-800">
                       {/* Bids */}
                       <div>
-                        <div className="grid grid-cols-1 sm:grid-cols-1 sm:grid-cols-2 md:grid-cols-3 px-4 py-2 border-b border-slate-800">
+                        <div className="grid grid-cols-3 px-4 py-2 border-b border-slate-800">
                           {["Price","Qty","Total"].map((h) => (
                             <span key={h} className="text-xs font-bold uppercase text-emerald-500">{h}</span>
                           ))}
                         </div>
                         {book.bids.map((b, i) => (
-                          <div key={i} className="relative grid grid-cols-1 sm:grid-cols-1 sm:grid-cols-2 md:grid-cols-3 px-4 py-1.5 hover:bg-emerald-950/20 transition-colors group">
+                          <div key={i} className="relative grid grid-cols-3 px-4 py-1.5 hover:bg-emerald-950/20 transition-colors group">
                             <div
                               className="absolute inset-y-0 right-0 bg-emerald-900/20"
                               style={{ width: `${(b.qty / 8000) * 100}%` }}
@@ -912,13 +989,13 @@ export default function InvestorPortal() {
                       </div>
                       {/* Asks */}
                       <div>
-                        <div className="grid grid-cols-1 sm:grid-cols-1 sm:grid-cols-2 md:grid-cols-3 px-4 py-2 border-b border-slate-800">
+                        <div className="grid grid-cols-3 px-4 py-2 border-b border-slate-800">
                           {["Price","Qty","Total"].map((h) => (
                             <span key={h} className="text-xs font-bold uppercase text-brand-500">{h}</span>
                           ))}
                         </div>
                         {book.asks.map((a, i) => (
-                          <div key={i} className="relative grid grid-cols-1 sm:grid-cols-1 sm:grid-cols-2 md:grid-cols-3 px-4 py-1.5 hover:bg-brand-950/20 transition-colors">
+                          <div key={i} className="relative grid grid-cols-3 px-4 py-1.5 hover:bg-brand-950/20 transition-colors">
                             <div
                               className="absolute inset-y-0 left-0 bg-brand-900/20"
                               style={{ width: `${(a.qty / 4000) * 100}%` }}
@@ -965,7 +1042,7 @@ export default function InvestorPortal() {
                           {symbols.map((s) => <option key={s} value={s}>{s}</option>)}
                         </select>
                       </div>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div className="grid grid-cols-2 gap-3">
                         <div>
                           <label className="text-xs font-bold uppercase tracking-widest text-slate-400 mb-1.5 block">Quantity (tokens)</label>
                           <input
@@ -1135,7 +1212,7 @@ export default function InvestorPortal() {
               </div>
 
               {/* NAV cards */}
-              <div className="grid grid-cols-1 lg:grid-cols-1 sm:grid-cols-2 gap-5">
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
                 {DEMO_NAV.map((n) => {
                   const isDistressed = n.premium_bps < -500;
                   const isPremium = n.premium_bps > 0;
@@ -1245,7 +1322,7 @@ export default function InvestorPortal() {
               {/* Platform revenue model */}
               <div className="rounded-xl border border-slate-800 bg-slate-900 p-6">
                 <h2 className="text-base font-bold text-white mb-4">Revenue Model — Scenario B</h2>
-                <div className="grid grid-cols-1 lg:grid-cols-1 sm:grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
                   {[
                     { label:"SaaS ARR Target", value:"$40M", sub:"Lender + servicer subscriptions", color:"text-violet-400" },
                     { label:"Target Volume", value:"$25B+", sub:"Annual tokenized loan transactions", color:"text-emerald-400" },
@@ -1268,202 +1345,6 @@ export default function InvestorPortal() {
             </div>
           )}
 
-
-              {section === "deal_flow" && (
-                <div className="space-y-6">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <h2 className="text-2xl font-black text-white">Deal Flow</h2>
-                      <p className="text-sm text-slate-400 mt-1">Active loan participation opportunities open for investment.</p>
-                    </div>
-                  </div>
-
-                  {dfSuccess && (
-                    <div className="rounded-xl border border-emerald-700/40 bg-emerald-950/30 px-5 py-3">
-                      <p className="text-sm font-medium text-emerald-300">{dfSuccess}</p>
-                    </div>
-                  )}
-
-                  {dfLoading ? (
-                    <div className="flex items-center justify-center py-20 text-slate-400 text-sm">
-                      <svg className="h-5 w-5 mr-2 animate-spin" fill="none" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" className="opacity-25"/><path fill="currentColor" d="M4 12a8 8 0 018-8v8z" className="opacity-75"/></svg>
-                      Loading deals…
-                    </div>
-                  ) : dfListings.length === 0 ? (
-                    <div className="rounded-xl border border-slate-700 bg-slate-800/40 p-12 text-center">
-                      <p className="text-slate-400">No active deals available right now.</p>
-                    </div>
-                  ) : (
-                    <div className="grid grid-cols-1 gap-5">
-                      {dfListings.map((deal: any) => {
-                        const fillPct = Math.min(100, deal.fill_pct ?? 0);
-                        const fillColor = fillPct >= 80 ? "bg-emerald-500" : fillPct >= 40 ? "bg-violet-500" : "bg-slate-500";
-                        const isOpen = dfSubscribeId === deal.id;
-                        const typeBadge: Record<string,string> = {
-                          Multifamily:"bg-emerald-900/50 text-emerald-300",
-                          Industrial:"bg-violet-900/50 text-violet-300",
-                          Office:"bg-blue-900/50 text-blue-300",
-                          Retail:"bg-amber-900/50 text-amber-300",
-                          "Mixed-Use":"bg-rose-900/50 text-rose-300",
-                        };
-                        return (
-                          <div key={deal.id} className="rounded-xl border border-slate-700 bg-slate-800/60 p-5 space-y-4">
-                            <div className="flex items-start justify-between gap-3">
-                              <div>
-                                <p className="font-black text-white">{deal.title}</p>
-                                <p className="text-xs text-slate-400 mt-0.5">{deal.location} · {deal.offering_type}</p>
-                              </div>
-                              <span className={`flex-shrink-0 rounded-full px-2.5 py-0.5 text-xs font-bold ${typeBadge[deal.property_type] ?? "bg-slate-700 text-slate-300"}`}>{deal.property_type}</span>
-                            </div>
-
-                            {deal.description && <p className="text-sm text-slate-400 line-clamp-2">{deal.description}</p>}
-
-                            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 text-center">
-                              {[
-                                { l:"Target Raise", v: deal.target_raise >= 1e6 ? "$"+(deal.target_raise/1e6).toFixed(1)+"M" : "$"+deal.target_raise?.toLocaleString() },
-                                { l:"Target Yield", v: deal.target_yield ? deal.target_yield+"%" : "–" },
-                                { l:"LTV", v: deal.ltv ? deal.ltv+"%" : "–" },
-                                { l:"Min Invest", v: deal.min_investment >= 1e6 ? "$"+(deal.min_investment/1e6).toFixed(1)+"M" : "$"+(deal.min_investment||0).toLocaleString() },
-                              ].map(s => (
-                                <div key={s.l} className="rounded-lg bg-slate-900/60 px-2 py-2.5">
-                                  <p className="text-xs font-bold uppercase tracking-wide text-slate-500">{s.l}</p>
-                                  <p className="text-sm font-black text-white mt-1">{s.v}</p>
-                                </div>
-                              ))}
-                            </div>
-
-                            <div>
-                              <div className="flex justify-between text-xs text-slate-500 mb-1.5">
-                                <span>{deal.raised_amount >= 1e6 ? "$"+(deal.raised_amount/1e6).toFixed(1)+"M" : "$"+(deal.raised_amount||0).toLocaleString()} committed</span>
-                                <span className="text-emerald-400 font-bold">{fillPct}% funded</span>
-                              </div>
-                              <div className="h-2.5 rounded-full bg-slate-700 overflow-hidden">
-                                <div className={`h-full rounded-full ${fillColor}`} style={{ width: fillPct+"%" }} />
-                              </div>
-                            </div>
-
-                            {/* Subscribe toggle */}
-                            {!isOpen ? (
-                              <button
-                                onClick={() => { setDfSubscribeId(deal.id); setDfAmount(String(deal.min_investment || "")); setDfError(""); }}
-                                className="w-full rounded-xl bg-violet-600 hover:bg-violet-500 px-4 py-2.5 text-sm font-bold text-white transition-colors"
-                              >
-                                Subscribe / Invest
-                              </button>
-                            ) : (
-                              <div className="rounded-xl border border-violet-700/40 bg-violet-950/30 p-4 space-y-3">
-                                <p className="text-sm font-bold text-violet-300">Commit Capital</p>
-                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                  <div>
-                                    <label className="mb-1 block text-xs font-semibold text-slate-400 uppercase tracking-wide">Amount ($)</label>
-                                    <input type="number" value={dfAmount} onChange={e => setDfAmount(e.target.value)}
-                                      className="w-full rounded-lg border border-slate-600 bg-slate-800 px-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-violet-500"
-                                      placeholder={String(deal.min_investment || 100000)} />
-                                  </div>
-                                  <div>
-                                    <label className="mb-1 block text-xs font-semibold text-slate-400 uppercase tracking-wide">Your Email</label>
-                                    <input type="email" value={dfEmail} onChange={e => setDfEmail(e.target.value)}
-                                      className="w-full rounded-lg border border-slate-600 bg-slate-800 px-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-violet-500"
-                                      placeholder="investor@fund.com" />
-                                  </div>
-                                </div>
-                                {dfError && <p className="text-xs text-red-400">{dfError}</p>}
-                                <div className="flex gap-3">
-                                  <button onClick={() => { setDfSubscribeId(null); setDfError(""); }}
-                                    className="flex-1 rounded-lg border border-slate-600 px-3 py-2 text-sm font-semibold text-slate-300 hover:bg-slate-700 transition">Cancel</button>
-                                  <button onClick={() => handleDfSubscribe(deal.id)} disabled={dfSubmitting}
-                                    className="flex-1 rounded-lg bg-violet-600 hover:bg-violet-500 px-3 py-2 text-sm font-bold text-white disabled:opacity-50 transition">
-                                    {dfSubmitting ? "Submitting…" : "Confirm Subscription"}
-                                  </button>
-                                </div>
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {section === "ai" && (
-              <div className="space-y-6">
-                <div className="flex items-center gap-3 mb-2">
-                  <SparklesIcon className="h-6 w-6 text-violet-400" />
-                  <h2 className="text-xl font-black text-white">AI Portfolio Brief</h2>
-                </div>
-                <p className="text-sm text-slate-400">Generate an AI-powered analysis of your entire portfolio — health score, risk signals, watchlist loans, and strategic recommendations.</p>
-                <button
-                  onClick={generateBrief}
-                  disabled={aiBriefLoading}
-                  className="flex items-center gap-2 rounded-lg bg-violet-600 hover:bg-violet-500 disabled:opacity-60 px-5 py-2.5 text-sm font-bold text-white transition-colors"
-                >
-                  <SparklesIcon className="h-4 w-4" />
-                  {aiBriefLoading ? "Generating…" : aiBrief ? "Regenerate" : "Generate Brief"}
-                </button>
-                {aiBriefError && <p className="text-sm text-red-400">{aiBriefError}</p>}
-                {!aiBrief && !aiBriefLoading && (
-                  <div className="rounded-xl border border-slate-700 bg-slate-800/40 p-4 md:p-8 text-center">
-                    <SparklesIcon className="h-10 w-10 text-slate-500 mx-auto mb-4" />
-                    <p className="text-slate-400 text-sm">Click "Generate Brief" to run an AI analysis of your full portfolio.</p>
-                  </div>
-                )}
-                {aiBriefLoading && (
-                  <div className="rounded-xl border border-violet-800/40 bg-violet-950/20 p-4 md:p-8 text-center">
-                    <SparklesIcon className="h-8 w-8 text-violet-400 mx-auto mb-3 animate-pulse" />
-                    <p className="text-violet-300 text-sm font-medium">Analyzing portfolio…</p>
-                  </div>
-                )}
-                {aiBrief && (
-                  <div className="space-y-5">
-                    {aiBrief.portfolio_score != null && (
-                      <div className="rounded-xl border border-slate-700 bg-slate-800/40 p-5 flex items-center gap-5">
-                        <div className="text-5xl font-black text-violet-400">{aiBrief.portfolio_score}</div>
-                        <div>
-                          <p className="text-xs font-bold uppercase tracking-widest text-slate-400">Portfolio Health Score</p>
-                          <p className="text-sm text-slate-300 mt-1">{aiBrief.brief}</p>
-                        </div>
-                      </div>
-                    )}
-                    {!aiBrief.portfolio_score && <div className="rounded-xl border border-slate-700 bg-slate-800/40 p-5"><p className="text-sm text-slate-300">{aiBrief.brief}</p></div>}
-                    {aiBrief.signals?.length > 0 && (
-                      <div className="rounded-xl border border-slate-700 bg-slate-800/40 p-5">
-                        <h3 className="text-xs font-bold uppercase tracking-widest text-slate-400 mb-3">Portfolio Signals</h3>
-                        <div className="space-y-2">
-                          {aiBrief.signals.map((s, i) => (
-                            <div key={i} className={`flex items-start gap-2 text-sm rounded-lg px-3 py-2 ${s.type === 'positive' ? 'bg-emerald-950/30 text-emerald-300' : s.type === 'negative' ? 'bg-red-950/30 text-red-300' : 'bg-amber-950/30 text-amber-300'}`}>
-                              <span className="font-bold uppercase text-xs mt-0.5">{s.type}</span>
-                              <span>{s.message}</span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                    {aiBrief.watchlist?.length > 0 && (
-                      <div className="rounded-xl border border-red-800/30 bg-red-950/20 p-5">
-                        <h3 className="text-xs font-bold uppercase tracking-widest text-red-400 mb-3">Watchlist</h3>
-                        {aiBrief.watchlist.map((w, i) => (
-                          <div key={i} className="flex items-start gap-3 text-sm text-slate-300 mb-2">
-                            <span className="font-bold text-white">{w.loan_ref}</span>
-                            <span className="text-slate-400">{w.reason}</span>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                    {aiBrief.recommendations?.length > 0 && (
-                      <div className="rounded-xl border border-slate-700 bg-slate-800/40 p-5">
-                        <h3 className="text-xs font-bold uppercase tracking-widest text-slate-400 mb-3">Recommendations</h3>
-                        <ul className="space-y-1">
-                          {aiBrief.recommendations.map((r, i) => <li key={i} className="text-sm text-slate-300 flex gap-2"><span className="text-violet-400">→</span>{r}</li>)}
-                        </ul>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            )}
-
-  
         </div>
       </main>
     </div>
