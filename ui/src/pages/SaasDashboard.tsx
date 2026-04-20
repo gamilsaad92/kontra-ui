@@ -10,6 +10,7 @@ import OnchainDashboard from "../components/OnchainDashboard";
 import PortfolioLayout from "./dashboard/portfolio/PortfolioLayout";
 import PortfolioLoansPage from "./dashboard/portfolio/PortfolioLoansPage";
 import PortfolioOverviewPage from "./dashboard/portfolio/PortfolioOverviewPage";
+import LoanOriginationWizard from "./dashboard/portfolio/LoanOriginationWizard";
 import MarketsLayout from "./dashboard/markets/MarketsLayout";
 import GovernanceLayout from "./dashboard/governance/GovernanceLayout";
 import LoanControlPage from "./dashboard/governance/LoanControlPage";
@@ -173,6 +174,7 @@ export default function SaasDashboard() {
         <Route path="overview" element={<PortfolioOverviewPage />} />
         <Route path="assets" element={<PortfolioAssetsPage />} />
         <Route path="loans" element={<PortfolioLoansPage />} />
+        <Route path="originate" element={<LoanOriginationWizard />} />
       </Route>
       {/* Servicing moved to /servicer — legacy redirects */}
       <Route path="/servicing" element={<Navigate to="/servicer/overview" replace />} />
