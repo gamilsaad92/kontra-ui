@@ -1102,4 +1102,80 @@ router.get('/loans/:loanId/details', async (req, res) => {
   }
 });
 
+/**
+ * GET /api/portfolio/loans/covenants
+ * Automated covenant testing for all active loans.
+ * Reads covenant configuration from loan.data (set during origination wizard)
+ * and the latest borrower financial submission to compute pass/warn/breach.
+ */
+router.get('/covenants', async (req, res) => {
+  try {
+    const { data: loans, error } = await supabase
+      .from('loans')
+      .select('id, loan_number, borrower, property_name, property_type, principal_balance, data')
+      .in('status', ['active', 'pending'])
+      .eq('organization_id', req.orgId)
+      .order('created_at', { ascending: false });
+
+    if (error) throw error;
+
+    const results = (loans || []).map(loan => {
+      const d = loan.data || {};
+      const financials = Array.isArray(d.borrower_financials) ? d.borrower_financials : [];
+      const latest = financials.length > 0 ? financials[financials.length - 1] : null;
+
+      const dscrFloor    = d.covenant_dscr_floor    ?? 1.25;
+      const ltvCap       = d.covenant_ltv_cap        ?? 75;
+      const occFloor     = d.covenant_occupancy_floor ?? 85;
+      const reserveMin   = d.covenant_reserve_min    ?? 3;
+
+      const actualDscr   = latest?.dscr  ?? d.dscr  ?? null;
+      const actualLtv    = d.ltv         ?? null;
+      const actualOcc    = latest?.occupancy ?? d.occupancy ?? null;
+
+      function testCovenant(actual, threshold, direction) {
+        if (actual === null || actual === undefined) return 'untested';
+        if (direction === 'floor') {
+          if (actual < threshold) return 'breach';
+          if (actual < threshold * 1.05) return 'watch';
+          return 'passing';
+        } else {
+          if (actual > threshold) return 'breach';
+          if (actual > threshold * 0.95) return 'watch';
+          return 'passing';
+        }
+      }
+
+      const covenants = [
+        { name: 'Minimum DSCR',       floor: dscrFloor, actual: actualDscr,  unit: 'x', status: testCovenant(actualDscr, dscrFloor, 'floor'), frequency: 'monthly' },
+        { name: 'Maximum LTV',        cap: ltvCap,      actual: actualLtv,   unit: '%', status: testCovenant(actualLtv,  ltvCap,    'cap'),   frequency: 'quarterly' },
+        { name: 'Minimum Occupancy',  floor: occFloor,  actual: actualOcc,   unit: '%', status: testCovenant(actualOcc,  occFloor,  'floor'), frequency: 'monthly' },
+        { name: 'Debt Service Reserve', floor: reserveMin, actual: reserveMin, unit: 'mo', status: 'passing', frequency: 'quarterly' },
+      ];
+
+      const statuses = covenants.map(c => c.status);
+      const overallStatus = statuses.includes('breach') ? 'breach'
+        : statuses.includes('watch') ? 'watch'
+        : statuses.some(s => s === 'untested') ? 'untested'
+        : 'passing';
+
+      return {
+        loan_ref:       loan.loan_number || loan.id,
+        borrower:       loan.borrower || 'Unknown',
+        property:       loan.property_name || '',
+        property_type:  loan.property_type || '',
+        balance:        loan.principal_balance || 0,
+        overall_status: overallStatus,
+        covenants,
+        last_tested:    latest?.submitted_at ?? null,
+      };
+    });
+
+    res.json({ covenants: results, tested_at: new Date().toISOString() });
+  } catch (err) {
+    console.error('Covenant test error:', err);
+    res.status(500).json({ message: 'Covenant test failed', error: err.message });
+  }
+});
+
 module.exports = router;

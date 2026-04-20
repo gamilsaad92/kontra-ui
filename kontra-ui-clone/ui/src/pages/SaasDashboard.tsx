@@ -174,6 +174,7 @@ export default function SaasDashboard() {
         <Route path="overview" element={<PortfolioOverviewPage />} />
         <Route path="assets" element={<PortfolioAssetsPage />} />
         <Route path="loans" element={<PortfolioLoansPage />} />
+        <Route path="covenants" element={<ComplianceCovenantCenter />} />
         <Route path="originate" element={<LoanOriginationWizard />} />
       </Route>
       {/* Servicing moved to /servicer — legacy redirects */}
