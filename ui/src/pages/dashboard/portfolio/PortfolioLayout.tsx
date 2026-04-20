@@ -1,10 +1,11 @@
 import { NavLink, Outlet } from 'react-router-dom';
 
 const tabs = [
-  { label: 'Overview', to: '/portfolio/overview' },
-  { label: 'Loans', to: '/portfolio/loans' },
-  { label: 'Assets', to: '/portfolio/assets' },
-  { label: 'Originate', to: '/portfolio/originate', highlight: true },
+  { label: 'Overview',   to: '/portfolio/overview' },
+  { label: 'Loans',      to: '/portfolio/loans' },
+  { label: 'Assets',     to: '/portfolio/assets' },
+  { label: 'Covenants',  to: '/portfolio/covenants' },
+  { label: 'Originate',  to: '/portfolio/originate', highlight: true },
 ];
 
 export default function PortfolioLayout() {
