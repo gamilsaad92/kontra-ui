@@ -18,6 +18,8 @@ import ServicingDelinquencyPage from "../../pages/dashboard/servicing/ServicingD
 import {
   ArrowTopRightOnSquareIcon,
   BuildingLibraryIcon,
+  Bars3Icon,
+  XMarkIcon,
 } from "@heroicons/react/24/outline";
 
 type NavItem = (typeof servicerNavRoutes)[number];
@@ -29,6 +31,7 @@ export default function ServicerPortal() {
   const navigate = useNavigate();
   const [isSigningOut, setIsSigningOut] = useState(false);
   const [signOutError, setSignOutError] = useState<string | null>(null);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const navItems = useMemo(
     () => servicerNavRoutes.filter((item) => !item.requiresAuth || session?.access_token),
@@ -94,29 +97,45 @@ export default function ServicerPortal() {
   };
 
   return (
-    <div className="flex min-h-screen bg-slate-100 text-slate-900">
+    <div className="relative flex min-h-screen bg-slate-100 text-slate-900">
+      {/* ── Mobile overlay ── */}
+      {sidebarOpen && (
+        <div
+          className="fixed inset-0 z-40 bg-black/50 md:hidden"
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
+
       {/* ── Sidebar ── */}
-      <aside className="flex w-64 flex-col bg-slate-950 text-slate-100 shrink-0">
+      <aside className={`fixed inset-y-0 left-0 z-50 flex w-64 shrink-0 flex-col bg-slate-950 text-slate-100 transform transition-transform duration-200 ease-in-out md:relative md:translate-x-0 ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}`}>
         {/* Logo + portal badge */}
         <div className="px-4 pt-5 pb-4 border-b border-slate-800">
-          <div className="flex items-center gap-2.5 mb-3">
-            <div
-              className="flex h-7 w-7 items-center justify-center rounded-lg"
-              style={{ background: "#800020" }}
-            >
-              <span
-                className="text-sm font-black text-white"
-                style={{ letterSpacing: "-0.05em" }}
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2.5">
+              <div
+                className="flex h-7 w-7 items-center justify-center rounded-lg"
+                style={{ background: "#800020" }}
               >
-                K
+                <span
+                  className="text-sm font-black text-white"
+                  style={{ letterSpacing: "-0.05em" }}
+                >
+                  K
+                </span>
+              </div>
+              <span
+                className="text-base font-bold text-white"
+                style={{ letterSpacing: "-0.02em" }}
+              >
+                Kontra
               </span>
             </div>
-            <span
-              className="text-base font-bold text-white"
-              style={{ letterSpacing: "-0.02em" }}
+            <button
+              onClick={() => setSidebarOpen(false)}
+              className="md:hidden rounded-lg p-1 text-slate-400 hover:text-white hover:bg-slate-800 transition"
             >
-              Kontra
-            </span>
+              <XMarkIcon className="h-5 w-5" />
+            </button>
           </div>
           <div className="flex items-center gap-2 rounded-lg bg-amber-500/10 border border-amber-700/30 px-3 py-2">
             <BuildingLibraryIcon className="h-4 w-4 text-amber-400 shrink-0" />
@@ -173,9 +192,22 @@ export default function ServicerPortal() {
       </aside>
 
       {/* ── Main content ── */}
-      <main className="flex-1 overflow-y-auto">
-        {/* Page header strip */}
-        <div className="border-b border-slate-200 bg-white px-8 py-4 flex items-center justify-between">
+      <main className="flex min-w-0 flex-1 flex-col overflow-y-auto">
+        {/* Mobile top bar */}
+        <div className="flex items-center gap-3 border-b border-slate-200 bg-white px-4 py-3 md:hidden">
+          <button
+            onClick={() => setSidebarOpen(true)}
+            className="rounded-lg p-1.5 text-slate-600 hover:bg-slate-100 transition"
+          >
+            <Bars3Icon className="h-5 w-5" />
+          </button>
+          <div className="flex items-center gap-2">
+            <div className="flex h-6 w-6 items-center justify-center rounded-md text-xs font-black text-white" style={{ background: "#800020" }}>K</div>
+            <span className="text-sm font-bold text-slate-900">Kontra <span className="text-amber-600">Servicer</span></span>
+          </div>
+        </div>
+        {/* Page header strip — desktop only */}
+        <div className="hidden border-b border-slate-200 bg-white px-8 py-4 md:flex items-center justify-between">
           <div>
             <p className="text-xs font-bold uppercase tracking-widest text-amber-600 mb-0.5">
               Servicer Operations
@@ -188,7 +220,7 @@ export default function ServicerPortal() {
           </div>
         </div>
 
-        <div className="p-6">
+        <div className="p-3 md:p-6">
           <Routes>
             <Route index element={<Navigate to="/servicer/overview" replace />} />
             <Route element={<ServicingLayout />}>
