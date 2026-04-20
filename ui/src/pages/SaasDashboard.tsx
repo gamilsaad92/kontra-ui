@@ -20,6 +20,8 @@ import ReportingEnginePage from "./dashboard/reports/ReportingEnginePage";
 import GovernanceLayout from "./dashboard/governance/GovernanceLayout";
 import CureWorkflowPage from "./dashboard/governance/CureWorkflowPage";
 import AlertCenterPage from "./dashboard/AlertCenterPage";
+import CommandCenterPage from "./dashboard/CommandCenterPage";
+import PortfolioForecastPage from "./dashboard/PortfolioForecastPage";
 import LoanControlPage from "./dashboard/governance/LoanControlPage";
 import InvestorGovernancePage from "./dashboard/governance/InvestorGovernancePage";
 import RulesConsolePage from "./dashboard/governance/RulesConsolePage";
@@ -113,6 +115,9 @@ export default function SaasDashboard() {
     location.pathname.startsWith("/markets") ||
     location.pathname.startsWith("/governance") ||
     location.pathname.startsWith("/analytics") ||
+    location.pathname.startsWith("/command") ||
+    location.pathname.startsWith("/forecast") ||
+    location.pathname.startsWith("/alerts") ||
     location.pathname.startsWith("/onchain") ||
     location.pathname.startsWith("/workflow");
 
@@ -212,6 +217,8 @@ export default function SaasDashboard() {
         <Route path="cure-workflows" element={<CureWorkflowPage />} />
       </Route>
       <Route path="/alerts" element={<AlertCenterPage />} />
+      <Route path="/command" element={<CommandCenterPage />} />
+      <Route path="/forecast" element={<PortfolioForecastPage />} />
       <Route path="/analytics" element={<AiInsightsPage />} />
       <Route path="/reports" element={<ReportsCrudPage />} />
       <Route path="/reports/engine" element={<ReportingEnginePage />} />
