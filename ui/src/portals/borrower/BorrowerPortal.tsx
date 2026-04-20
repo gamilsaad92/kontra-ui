@@ -22,6 +22,8 @@ import {
   ArrowUpTrayIcon,
   DocumentTextIcon,
   SparklesIcon,
+  Bars3Icon,
+  XMarkIcon,
 } from "@heroicons/react/24/outline";
 
 // ── Demo fallback data ─────────────────────────────────────────────────────
@@ -133,6 +135,7 @@ const NAV_KEYS: { key: Section; label: string; icon: typeof HomeIcon }[] = [
 // ── Component ─────────────────────────────────────────────────────────────
 export default function BorrowerPortal() {
   const [section, setSection]       = useState<Section>("myloans");
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [loan, setLoan]             = useState<LoanData>(DEMO_LOAN);
   const [payments, setPayments]     = useState<Payment[]>(DEMO_PAYMENTS);
   const [documents, setDocuments]   = useState<Doc[]>(DEMO_DOCUMENTS);
@@ -303,17 +306,26 @@ export default function BorrowerPortal() {
   };
 
   return (
-    <div className="flex h-screen bg-white overflow-hidden">
+    <div className="relative flex h-screen bg-white overflow-hidden">
+      {/* ── Mobile overlay ── */}
+      {sidebarOpen && (
+        <div className="fixed inset-0 z-40 bg-black/50 md:hidden" onClick={() => setSidebarOpen(false)} />
+      )}
 
       {/* ── Sidebar ── */}
-      <aside className="flex w-60 flex-col border-r border-slate-200 bg-slate-50">
+      <aside className={`fixed inset-y-0 left-0 z-50 flex w-60 shrink-0 flex-col border-r border-slate-200 bg-slate-50 transform transition-transform duration-200 ease-in-out md:relative md:translate-x-0 ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}`}>
         {/* Logo */}
-        <div className="flex items-center gap-3 px-5 py-5 border-b border-slate-200">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-900 font-black text-white text-sm">K</div>
-          <div>
-            <p className="text-sm font-bold text-slate-900">Kontra</p>
-            <p className="text-xs text-slate-500 font-medium">Borrower Portal</p>
+        <div className="flex items-center justify-between px-5 py-5 border-b border-slate-200">
+          <div className="flex items-center gap-3">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-900 font-black text-white text-sm">K</div>
+            <div>
+              <p className="text-sm font-bold text-slate-900">Kontra</p>
+              <p className="text-xs text-slate-500 font-medium">Borrower Portal</p>
+            </div>
           </div>
+          <button onClick={() => setSidebarOpen(false)} className="md:hidden rounded-lg p-1 text-slate-400 hover:text-slate-700 hover:bg-slate-200 transition">
+            <XMarkIcon className="h-5 w-5" />
+          </button>
         </div>
 
         {/* Loan card */}
@@ -342,7 +354,7 @@ export default function BorrowerPortal() {
             return (
               <button
                 key={item.key}
-                onClick={() => setSection(item.key)}
+                onClick={() => { setSection(item.key); setSidebarOpen(false); }}
                 className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors text-left ${
                   active
                     ? "bg-slate-900 text-white font-semibold"
@@ -369,8 +381,18 @@ export default function BorrowerPortal() {
       </aside>
 
       {/* ── Main Content ── */}
-      <main className="flex-1 overflow-y-auto bg-white">
-        <div className="max-w-4xl mx-auto px-8 py-8 space-y-8">
+      <main className="flex min-w-0 flex-1 flex-col overflow-y-auto bg-white">
+        {/* Mobile top bar */}
+        <div className="flex items-center gap-3 border-b border-slate-200 bg-white px-4 py-3 md:hidden">
+          <button onClick={() => setSidebarOpen(true)} className="rounded-lg p-1.5 text-slate-600 hover:bg-slate-100 transition">
+            <Bars3Icon className="h-5 w-5" />
+          </button>
+          <div className="flex items-center gap-2">
+            <div className="flex h-6 w-6 items-center justify-center rounded-md bg-slate-900 text-xs font-black text-white">K</div>
+            <span className="text-sm font-bold text-slate-900">Kontra <span className="text-emerald-600">Borrower</span></span>
+          </div>
+        </div>
+        <div className="max-w-4xl mx-auto w-full px-4 py-6 md:px-8 md:py-8 space-y-6 md:space-y-8">
 
           {/* ── MY LOAN ── */}
           {section === "myloans" && (
