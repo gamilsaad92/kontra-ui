@@ -13,6 +13,8 @@ import ServicingBorrowerFinancialsPage from "../../pages/dashboard/servicing/Ser
 import ServicingManagementPage from "../../pages/dashboard/servicing/ServicingManagementPage";
 import ServicingAIOpsPage from "../../pages/dashboard/servicing/ServicingAIOpsPage";
 import ServicingAIValidationPage from "../../pages/dashboard/servicing/ServicingAIValidationPage";
+import ServicingWaterfallPage from "../../pages/dashboard/servicing/ServicingWaterfallPage";
+import ServicingDelinquencyPage from "../../pages/dashboard/servicing/ServicingDelinquencyPage";
 import {
   ArrowTopRightOnSquareIcon,
   BuildingLibraryIcon,
@@ -200,6 +202,8 @@ export default function ServicerPortal() {
               <Route path="ai-ops" element={<ServicingAIOpsPage />} />
               <Route path="ai-validation/:reviewId" element={<ServicingAIValidationPage />} />
               <Route path="ai-validation" element={<ServicingAIValidationPage />} />
+              <Route path="waterfall" element={<ServicingWaterfallPage />} />
+              <Route path="delinquency" element={<ServicingDelinquencyPage />} />
             </Route>
             <Route
               path="*"
