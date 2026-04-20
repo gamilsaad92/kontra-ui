@@ -1,4 +1,5 @@
 import { useCallback, useContext, useMemo, useState, type ComponentType } from "react";
+import { Bars3Icon, XMarkIcon } from "@heroicons/react/24/outline";
 import { NavLink, Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { resolveApiBase } from "../lib/api";
 import useFeatureUsage from "../lib/useFeatureUsage";
@@ -77,6 +78,7 @@ export default function SaasDashboard() {
   const navigate = useNavigate();
   const [isSigningOut, setIsSigningOut] = useState(false);
   const [signOutError, setSignOutError] = useState<string | null>(null);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const navItems = useMemo(() => lenderNavRoutes.filter((item) => !item.requiresAuth || session?.access_token), [session]);
     
@@ -258,13 +260,22 @@ export default function SaasDashboard() {
   );
 
   return (
-     <div className="flex min-h-screen bg-slate-100 text-slate-900">
-      <aside className="flex w-64 flex-col bg-slate-950 text-slate-100">
-        <div className="flex items-center gap-2.5 px-4 py-4">
-          <div className="flex h-7 w-7 items-center justify-center rounded-lg" style={{ background: '#800020' }}>
-            <span className="text-sm font-black text-white" style={{ letterSpacing: '-0.05em' }}>K</span>
+    <div className="relative flex min-h-screen bg-slate-100 text-slate-900">
+      {/* ── Mobile overlay ── */}
+      {sidebarOpen && (
+        <div className="fixed inset-0 z-40 bg-black/50 md:hidden" onClick={() => setSidebarOpen(false)} />
+      )}
+      <aside className={`fixed inset-y-0 left-0 z-50 flex w-64 shrink-0 flex-col bg-slate-950 text-slate-100 transform transition-transform duration-200 ease-in-out md:relative md:translate-x-0 ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}`}>
+        <div className="flex items-center justify-between px-4 py-4">
+          <div className="flex items-center gap-2.5">
+            <div className="flex h-7 w-7 items-center justify-center rounded-lg" style={{ background: '#800020' }}>
+              <span className="text-sm font-black text-white" style={{ letterSpacing: '-0.05em' }}>K</span>
+            </div>
+            <span className="text-base font-bold text-white" style={{ letterSpacing: '-0.02em' }}>Kontra</span>
           </div>
-          <span className="text-base font-bold text-white" style={{ letterSpacing: '-0.02em' }}>Kontra</span>
+          <button onClick={() => setSidebarOpen(false)} className="md:hidden rounded-lg p-1 text-slate-400 hover:text-white hover:bg-slate-800 transition">
+            <XMarkIcon className="h-5 w-5" />
+          </button>
         </div>
         <nav className="flex-1 space-y-1 overflow-y-auto px-2 pb-4">
           {frequentItems.length > 0 && (
@@ -305,7 +316,18 @@ export default function SaasDashboard() {
           </div>
         </nav>
       </aside>
-      <main className="flex-1 overflow-y-auto p-6">
+      <main className="flex min-w-0 flex-1 flex-col overflow-y-auto">
+        {/* Mobile top bar */}
+        <div className="flex items-center gap-3 border-b border-slate-200 bg-white px-4 py-3 md:hidden">
+          <button onClick={() => setSidebarOpen(true)} className="rounded-lg p-1.5 text-slate-600 hover:bg-slate-100 transition">
+            <Bars3Icon className="h-5 w-5" />
+          </button>
+          <div className="flex items-center gap-2">
+            <div className="flex h-6 w-6 items-center justify-center rounded-md text-xs font-black text-white" style={{ background: '#800020' }}>K</div>
+            <span className="text-sm font-bold text-slate-900">Kontra <span className="text-brand-600">Lender</span></span>
+          </div>
+        </div>
+        <div className="flex-1 p-3 md:p-6">
         {!isDashboardRoute && !isServicingRoute && !sectionHasOwnHeader && (
           <header className="mb-6 space-y-1">
             <h1 className="text-xl font-semibold tracking-tight text-slate-900">{activeLabel}</h1>
@@ -315,6 +337,7 @@ export default function SaasDashboard() {
           </header>
         )}
         {isDashboardRoute || isServicingRoute ? content : <div className="space-y-6">{content}</div>}
+        </div>
       </main>
     </div>
   );

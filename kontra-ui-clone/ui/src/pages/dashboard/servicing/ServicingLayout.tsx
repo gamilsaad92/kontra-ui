@@ -24,7 +24,7 @@ export default function ServicingLayout() {
             Payment processing, inspection workflow, draws, escrow, borrower financials, and management compliance — all in one auditable system.
           </p>
         </div>
-        <nav className="flex flex-wrap gap-2 border-b border-slate-200 pb-3">
+        <nav className="flex gap-2 overflow-x-auto border-b border-slate-200 pb-3 scrollbar-hide" style={{ scrollbarWidth: 'none' }}>
           {tabs.map((tab) => (
             <NavLink
               key={tab.label}
