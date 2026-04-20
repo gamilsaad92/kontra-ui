@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiFetch } from '../../../lib/apiClient';
 import { useLoanList } from '../../../features/portfolio/loans/api';
@@ -92,6 +93,11 @@ interface LoanFormData {
   origination_date: string;
   maturity_date: string;
   loan_purpose: string;
+  covenant_dscr_floor: string;
+  covenant_ltv_cap: string;
+  covenant_occupancy_floor: string;
+  covenant_reserve_min: string;
+  covenant_frequency: string;
 }
 
 const EMPTY_FORM: LoanFormData = {
@@ -106,6 +112,11 @@ const EMPTY_FORM: LoanFormData = {
   origination_date: '',
   maturity_date: '',
   loan_purpose: 'acquisition',
+  covenant_dscr_floor: '',
+  covenant_ltv_cap: '',
+  covenant_occupancy_floor: '',
+  covenant_reserve_min: '',
+  covenant_frequency: 'quarterly',
 };
 
 function loanToForm(entity: CanonicalEntity): LoanFormData {
@@ -122,6 +133,11 @@ function loanToForm(entity: CanonicalEntity): LoanFormData {
     origination_date: (getStr(d, 'origination_date', 'origination') ?? ''),
     maturity_date: getMaturityDate(d) ?? '',
     loan_purpose: (getStr(d, 'loan_purpose', 'purpose') ?? 'acquisition'),
+    covenant_dscr_floor: String(getNum(d, 'covenant_dscr_floor') ?? ''),
+    covenant_ltv_cap: String(getNum(d, 'covenant_ltv_cap') ?? ''),
+    covenant_occupancy_floor: String(getNum(d, 'covenant_occupancy_floor') ?? ''),
+    covenant_reserve_min: String(getNum(d, 'covenant_reserve_min') ?? ''),
+    covenant_frequency: (getStr(d, 'covenant_frequency') ?? 'quarterly'),
   };
 }
 
@@ -139,6 +155,11 @@ function formToPayload(f: LoanFormData) {
       origination_date: f.origination_date || undefined,
       maturity_date: f.maturity_date || undefined,
       loan_purpose: f.loan_purpose || undefined,
+      covenant_dscr_floor: f.covenant_dscr_floor ? parseFloat(f.covenant_dscr_floor) : undefined,
+      covenant_ltv_cap: f.covenant_ltv_cap ? parseFloat(f.covenant_ltv_cap) : undefined,
+      covenant_occupancy_floor: f.covenant_occupancy_floor ? parseFloat(f.covenant_occupancy_floor) : undefined,
+      covenant_reserve_min: f.covenant_reserve_min ? parseFloat(f.covenant_reserve_min) : undefined,
+      covenant_frequency: f.covenant_frequency || undefined,
     },
   };
 }
@@ -187,6 +208,7 @@ function useDeleteLoan(id: string) {
 
 // ── Main page ─────────────────────────────────────────────────────────────────
 export default function PortfolioLoansPage() {
+  const navigate = useNavigate();
   const { data, isLoading, isError, refetch } = useLoanList();
   const loans = (data?.items ?? []) as CanonicalEntity[];
 
@@ -267,12 +289,20 @@ export default function PortfolioLoansPage() {
             <option value="maturity">Sort: Maturity Date</option>
           </select>
         </div>
-        <button
-          onClick={() => setModal({ mode: 'create' })}
-          className="rounded-lg bg-brand-700 px-4 py-2 text-sm font-medium text-white transition hover:bg-brand-800"
-        >
-          + New Loan
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => navigate('/portfolio/originate')}
+            className="rounded-lg bg-brand-700 px-4 py-2 text-sm font-medium text-white transition hover:bg-brand-800"
+          >
+            + Originate Loan
+          </button>
+          <button
+            onClick={() => setModal({ mode: 'create' })}
+            className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm text-slate-600 transition hover:bg-slate-50"
+          >
+            Quick Add
+          </button>
+        </div>
       </div>
 
       {/* Status Filter Pills */}
@@ -576,6 +606,68 @@ function LoanModal({
                 className={inputCls}
               />
             </Field>
+          </div>
+
+          {/* Covenant Thresholds */}
+          <div className="border-t border-slate-100 pt-4">
+            <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-500">Covenant Thresholds</p>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <Field label="DSCR Floor">
+                <input
+                  type="number"
+                  min="0"
+                  max="5"
+                  step="0.01"
+                  value={form.covenant_dscr_floor}
+                  onChange={set('covenant_dscr_floor')}
+                  placeholder="e.g. 1.25"
+                  className={inputCls}
+                />
+              </Field>
+              <Field label="LTV Cap (%)">
+                <input
+                  type="number"
+                  min="0"
+                  max="100"
+                  step="0.1"
+                  value={form.covenant_ltv_cap}
+                  onChange={set('covenant_ltv_cap')}
+                  placeholder="e.g. 70"
+                  className={inputCls}
+                />
+              </Field>
+              <Field label="Occupancy Floor (%)">
+                <input
+                  type="number"
+                  min="0"
+                  max="100"
+                  step="0.1"
+                  value={form.covenant_occupancy_floor}
+                  onChange={set('covenant_occupancy_floor')}
+                  placeholder="e.g. 80"
+                  className={inputCls}
+                />
+              </Field>
+              <Field label="Reserve Minimum ($)">
+                <input
+                  type="number"
+                  min="0"
+                  step="1000"
+                  value={form.covenant_reserve_min}
+                  onChange={set('covenant_reserve_min')}
+                  placeholder="e.g. 150000"
+                  className={inputCls}
+                />
+              </Field>
+              <Field label="Reporting Frequency" className="sm:col-span-2">
+                <select value={form.covenant_frequency} onChange={set('covenant_frequency')} className={inputCls}>
+                  <option value="monthly">Monthly</option>
+                  <option value="quarterly">Quarterly</option>
+                  <option value="semi_annual">Semi-Annual</option>
+                  <option value="annual">Annual</option>
+                </select>
+              </Field>
+            </div>
           </div>
 
           {error && <p className="text-xs text-red-600">{error}</p>}
