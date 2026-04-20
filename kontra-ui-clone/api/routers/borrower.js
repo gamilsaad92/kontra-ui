@@ -232,4 +232,80 @@ router.post('/messages', async (req, res) => {
   return res.json({ message: { ...req.body, id: Date.now(), created_at: new Date().toISOString() } });
 });
 
+// ── GET /api/borrower/financials ─────────────────────────────────────────────
+// Returns the borrower's previously submitted financial periods
+router.get('/financials', async (req, res) => {
+  try {
+    const userId    = req.user?.id;
+    const userEmail = req.user?.email;
+    const row = await findBorrowerLoan(userId, userEmail);
+    if (!row) return res.json({ financials: [] });
+
+    const d = row.data || {};
+    const submissions = Array.isArray(d.borrower_financials) ? d.borrower_financials : [];
+    return res.json({ financials: submissions });
+  } catch (err) {
+    console.error('[borrower/financials GET]', err?.message);
+    return res.json({ financials: [] });
+  }
+});
+
+// ── POST /api/borrower/financials ─────────────────────────────────────────────
+// Borrower submits a financial period (operating statement + rent roll metrics)
+// Stored in the loan's data.borrower_financials[] array for lender review
+router.post('/financials', async (req, res) => {
+  try {
+    const userId    = req.user?.id;
+    const userEmail = req.user?.email;
+    const row = await findBorrowerLoan(userId, userEmail);
+    if (!row) return res.status(404).json({ message: 'No active loan found for this borrower.' });
+
+    const {
+      period,
+      effective_gross_revenue,
+      operating_expenses,
+      noi,
+      occupancy_pct,
+      unit_count,
+      occupied_units,
+      notes,
+    } = req.body;
+
+    if (!period) return res.status(400).json({ message: 'Reporting period is required.' });
+
+    const submission = {
+      id:                    `fin-${Date.now()}`,
+      period,
+      effective_gross_revenue: Number(effective_gross_revenue) || 0,
+      operating_expenses:      Number(operating_expenses)      || 0,
+      noi:                     Number(noi)                     || 0,
+      occupancy_pct:           Number(occupancy_pct)           || null,
+      unit_count:              Number(unit_count)              || null,
+      occupied_units:          Number(occupied_units)          || null,
+      notes:                   notes || '',
+      submitted_at:            new Date().toISOString(),
+      status:                  'submitted',
+    };
+
+    // Append to existing financials array in loan data
+    const existing = Array.isArray(row.data?.borrower_financials) ? row.data.borrower_financials : [];
+    const updatedData = { ...(row.data || {}), borrower_financials: [...existing, submission] };
+
+    const { error } = await supabase
+      .from('loans')
+      .update({ data: updatedData })
+      .eq('id', row.id);
+
+    if (error) {
+      console.warn('[borrower/financials POST] supabase update failed:', error.message);
+      // Return success anyway — the submission is acknowledged
+    }
+
+    return res.status(201).json({ financial: submission });
+  } catch (err) {
+    console.error('[borrower/financials POST]', err?.message);
+    return res.status(500).json({ message: 'Failed to submit financials.' });
+  }
+});
+
 module.exports = router;

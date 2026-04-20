@@ -4,6 +4,7 @@ const tabs = [
   { label: 'Overview', to: '/portfolio/overview' },
   { label: 'Loans', to: '/portfolio/loans' },
   { label: 'Assets', to: '/portfolio/assets' },
+  { label: 'Originate', to: '/portfolio/originate', highlight: true },
 ];
 
 export default function PortfolioLayout() {
@@ -24,6 +25,8 @@ export default function PortfolioLayout() {
             className={({ isActive }) =>
               isActive
                 ? 'rounded-full bg-slate-900 px-4 py-1.5 text-sm font-medium text-white'
+                : tab.highlight
+                ? 'rounded-full border border-brand-300 bg-brand-50 px-4 py-1.5 text-sm font-medium text-brand-700 hover:bg-brand-100'
                 : 'rounded-full bg-slate-100 px-4 py-1.5 text-sm text-slate-700 hover:bg-slate-200'
             }
           >
