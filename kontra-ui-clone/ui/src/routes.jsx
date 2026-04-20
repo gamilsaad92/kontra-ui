@@ -16,6 +16,8 @@ import {
   MagnifyingGlassIcon,
   WrenchScrewdriverIcon,
   DocumentMagnifyingGlassIcon,
+  BellAlertIcon,
+  PresentationChartLineIcon,
 } from "@heroicons/react/24/outline";
 
 /**
@@ -51,8 +53,20 @@ export const lenderNavRoutes = [
   },
   {
     label: "Command Center",
-    path: "/command-center",
+    path: "/command",
     icon: CommandLineIcon,
+    requiresAuth: true,
+  },
+  {
+    label: "Portfolio Forecast",
+    path: "/forecast",
+    icon: PresentationChartLineIcon,
+    requiresAuth: true,
+  },
+  {
+    label: "Alert Center",
+    path: "/alerts",
+    icon: BellAlertIcon,
     requiresAuth: true,
   },
   {
