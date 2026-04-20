@@ -18,6 +18,8 @@ import MarketsLayout from "./dashboard/markets/MarketsLayout";
 import SecondaryMarketPage from "./dashboard/markets/SecondaryMarketPage";
 import ReportingEnginePage from "./dashboard/reports/ReportingEnginePage";
 import GovernanceLayout from "./dashboard/governance/GovernanceLayout";
+import CureWorkflowPage from "./dashboard/governance/CureWorkflowPage";
+import AlertCenterPage from "./dashboard/AlertCenterPage";
 import LoanControlPage from "./dashboard/governance/LoanControlPage";
 import InvestorGovernancePage from "./dashboard/governance/InvestorGovernancePage";
 import RulesConsolePage from "./dashboard/governance/RulesConsolePage";
@@ -207,7 +209,9 @@ export default function SaasDashboard() {
         <Route path="regulatory-scans" element={<GovernanceRegulatoryCrudPage />} />
         <Route path="document-review" element={<GovernanceDocumentCrudPage />} />
         <Route path="risk" element={<GovernanceRiskCrudPage />} />
+        <Route path="cure-workflows" element={<CureWorkflowPage />} />
       </Route>
+      <Route path="/alerts" element={<AlertCenterPage />} />
       <Route path="/analytics" element={<AiInsightsPage />} />
       <Route path="/reports" element={<ReportsCrudPage />} />
       <Route path="/reports/engine" element={<ReportingEnginePage />} />
