@@ -6,11 +6,8 @@
  * Data strategy: tries live API first, falls back to demo data so the UI
  * is always functional even when the database tables don't exist yet.
  */
-import { useState, useEffect, useCallback, useContext } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { api } from "../../lib/apiClient";
-import { useNavigate } from "react-router-dom";
-import { AuthContext } from "../../lib/authContext";
-import { ArrowRightStartOnRectangleIcon } from "@heroicons/react/24/outline";
 import {
   HomeIcon,
   CreditCardIcon,
@@ -25,13 +22,9 @@ import {
   ArrowUpTrayIcon,
   DocumentTextIcon,
   SparklesIcon,
-  Bars3Icon,
-  XMarkIcon,
 } from "@heroicons/react/24/outline";
 
-type AiDocResult = { doc_type: string; summary: string; metrics: Record<string, number | null>; covenants: { name: string; threshold: string; actual: string; status: string }[]; risk_flags: string[]; recommendations: string[]; notice?: string };
-
-  // ── Demo fallback data ─────────────────────────────────────────────────────
+// ── Demo fallback data ─────────────────────────────────────────────────────
 const DEMO_LOAN = {
   loan_ref: "LN-2847",
   property_name: "The Meridian Apartments",
@@ -125,25 +118,21 @@ const COVENANT_STATUS: Record<string, string> = {
   breach:    "text-brand-600 bg-brand-50 border border-brand-200",
 };
 
-type Section = "myloans" | "payments" | "documents" | "draws" | "notices" | "messages";
+type Section = "myloans" | "payments" | "documents" | "financials" | "draws" | "notices" | "messages";
 
 const NAV_KEYS: { key: Section; label: string; icon: typeof HomeIcon }[] = [
-  { key:"myloans",   label:"My Loan",         icon: HomeIcon },
-  { key:"payments",  label:"Payments",         icon: CreditCardIcon },
-  { key:"documents", label:"Document Center",  icon: FolderArrowDownIcon },
-  { key:"draws",     label:"Draw Requests",    icon: WrenchScrewdriverIcon },
-  { key:"notices",   label:"Notices",          icon: BellIcon },
-  { key:"messages",  label:"Messages",         icon: ChatBubbleLeftRightIcon },
+  { key:"myloans",    label:"My Loan",           icon: HomeIcon },
+  { key:"payments",   label:"Payments",           icon: CreditCardIcon },
+  { key:"documents",  label:"Document Center",    icon: FolderArrowDownIcon },
+  { key:"financials", label:"Submit Financials",  icon: ArrowUpTrayIcon },
+  { key:"draws",      label:"Draw Requests",      icon: WrenchScrewdriverIcon },
+  { key:"notices",    label:"Notices",            icon: BellIcon },
+  { key:"messages",   label:"Messages",           icon: ChatBubbleLeftRightIcon },
 ];
 
 // ── Component ─────────────────────────────────────────────────────────────
 export default function BorrowerPortal() {
-  const { signOut } = useContext(AuthContext) as any;
-    const navigate = useNavigate();
-    const [isSigningOut, setIsSigningOut] = useState(false);
-    const [signOutError, setSignOutError] = useState<string | null>(null);
-    const [section, setSection]       = useState<Section>("myloans");
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [section, setSection]       = useState<Section>("myloans");
   const [loan, setLoan]             = useState<LoanData>(DEMO_LOAN);
   const [payments, setPayments]     = useState<Payment[]>(DEMO_PAYMENTS);
   const [documents, setDocuments]   = useState<Doc[]>(DEMO_DOCUMENTS);
@@ -152,23 +141,96 @@ export default function BorrowerPortal() {
   const [localMessages, setLocalMessages] = useState<Message[]>(DEMO_MESSAGES);
   const [message, setMessage]       = useState("");
   const [uploadingDoc, setUploadingDoc] = useState<string | null>(null);
-    const [aiDocFile, setAiDocFile] = useState<File | null>(null);
-    const [aiDocResult, setAiDocResult] = useState<AiDocResult | null>(null);
-    const [aiDocLoading, setAiDocLoading] = useState(false);
-
-    const handleAiAnalyze = async (file: File) => {
-      setAiDocLoading(true); setAiDocResult(null);
-      try {
-        const form = new FormData(); form.append("file", file);
-        const { data } = await api.post<AiDocResult>("/ai/analyze", form);
-        if (data) setAiDocResult(data);
-      } catch { setAiDocResult({ doc_type:"Error", summary:"AI analysis unavailable. Document received.", metrics:{}, covenants:[], risk_flags:[], recommendations:[] }); }
-      finally { setAiDocLoading(false); }
-    };
   const [newDrawOpen, setNewDrawOpen]   = useState(false);
   const [drawForm, setDrawForm]     = useState({ amount:"", purpose:"", milestone:"" });
   const [submittingDraw, setSubmittingDraw] = useState(false);
   const [sendingMsg, setSendingMsg] = useState(false);
+
+  // ── Financials state ───────────────────────────────────────────────────────
+  type FinancialSubmission = {
+    id: string; period: string; effective_gross_revenue: number;
+    operating_expenses: number; noi: number; occupancy_pct: number | null;
+    unit_count: number | null; occupied_units: number | null;
+    notes: string; submitted_at: string; status: string;
+  };
+  const [financials, setFinancials]   = useState<FinancialSubmission[]>([]);
+  const [finForm, setFinForm]         = useState({ period:"", effective_gross_revenue:"", operating_expenses:"", occupancy_pct:"", unit_count:"", occupied_units:"", notes:"" });
+  const [submittingFin, setSubmittingFin] = useState(false);
+  const [finSuccess, setFinSuccess]   = useState(false);
+  const [finError, setFinError]       = useState<string | null>(null);
+
+  const autoNoi = (() => {
+    const rev = parseFloat(finForm.effective_gross_revenue);
+    const exp = parseFloat(finForm.operating_expenses);
+    if (!isNaN(rev) && !isNaN(exp)) return (rev - exp).toLocaleString("en-US", { style:"currency", currency:"USD", minimumFractionDigits:0 });
+    return null;
+  })();
+
+  const submitFinancials = async () => {
+    if (!finForm.period || submittingFin) return;
+    setSubmittingFin(true);
+    setFinError(null);
+    try {
+      const payload = {
+        period: finForm.period,
+        effective_gross_revenue: parseFloat(finForm.effective_gross_revenue) || 0,
+        operating_expenses: parseFloat(finForm.operating_expenses) || 0,
+        noi: (parseFloat(finForm.effective_gross_revenue) || 0) - (parseFloat(finForm.operating_expenses) || 0),
+        occupancy_pct: finForm.occupancy_pct ? parseFloat(finForm.occupancy_pct) : null,
+        unit_count: finForm.unit_count ? parseInt(finForm.unit_count) : null,
+        occupied_units: finForm.occupied_units ? parseInt(finForm.occupied_units) : null,
+        notes: finForm.notes,
+      };
+      const { data } = await api.post<{ financial: FinancialSubmission }>("/borrower/financials", payload);
+      if (data?.financial) setFinancials(prev => [data.financial, ...prev]);
+      setFinForm({ period:"", effective_gross_revenue:"", operating_expenses:"", occupancy_pct:"", unit_count:"", occupied_units:"", notes:"" });
+      setFinSuccess(true);
+      setTimeout(() => setFinSuccess(false), 5000);
+    } catch {
+      setFinError("Submission failed. Please try again.");
+    } finally {
+      setSubmittingFin(false);
+    }
+  };
+
+  // ── AI Document Analysis state ─────────────────────────────────────────────
+  type AiDocResult = {
+    doc_type: string; summary: string;
+    metrics: { dscr?: number|null; noi?: number|null; occupancy?: number|null; gross_revenue?: number|null; total_expenses?: number|null };
+    covenants: { name: string; threshold: string; actual: string; status: string }[];
+    risk_flags: string[]; recommendations: string[]; notice?: string;
+  };
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [aiDocResult, setAiDocResult]   = useState<AiDocResult | null>(null);
+  const [aiDocLoading, setAiDocLoading] = useState(false);
+  const [aiDocName, setAiDocName]       = useState<string>("");
+
+  const handleDocFileSelect = (file: File) => {
+    setAiDocName(file.name);
+    setAiDocResult(null);
+  };
+
+  const handleAiAnalyze = async (file: File) => {
+    setAiDocLoading(true);
+    setAiDocResult(null);
+    try {
+      const form = new FormData();
+      form.append("file", file);
+      const { data } = await api.post<AiDocResult>("/ai/analyze", form);
+      if (data) {
+        setAiDocResult(data);
+        // Mark document as submitted in the list
+        if (uploadingDoc) {
+          setDocuments(prev => prev.map(d => d.id === uploadingDoc ? { ...d, status: "submitted", submitted_at: new Date().toISOString().slice(0, 10) } : d));
+          setUploadingDoc(null);
+        }
+      }
+    } catch {
+      setAiDocResult({ doc_type:"Error", summary:"AI analysis unavailable. Document received.", metrics:{}, covenants:[], risk_flags:[], recommendations:[] });
+    } finally {
+      setAiDocLoading(false);
+    }
+  };
 
   // ── Load real data from API ─────────────────────────────────────────────
   const load = useCallback(async () => {
@@ -240,24 +302,11 @@ export default function BorrowerPortal() {
     }
   };
 
-
-    const handleSignOut = async () => {
-      setIsSigningOut(true);
-      setSignOutError(null);
-      const { error } = await signOut();
-      if (error) {
-        setIsSigningOut(false);
-        setSignOutError("Unable to log out. Please try again.");
-        return;
-      }
-      navigate("/login", { replace: true });
-    };
   return (
-    <div className="flex h-screen bg-white overflow-hidden relative">
+    <div className="flex h-screen bg-white overflow-hidden">
 
       {/* ── Sidebar ── */}
-      {mobileMenuOpen && <div className="fixed inset-0 z-40 bg-black/50 md:hidden" onClick={() => setMobileMenuOpen(false)} />}
-        <aside className={`fixed inset-y-0 left-0 z-50 flex w-60 flex-col border-r border-slate-200 bg-slate-50 transform transition-transform duration-200 ease-in-out md:relative md:translate-x-0 ${mobileMenuOpen ? "translate-x-0" : "-translate-x-full"}`}>
+      <aside className="flex w-60 flex-col border-r border-slate-200 bg-slate-50">
         {/* Logo */}
         <div className="flex items-center gap-3 px-5 py-5 border-b border-slate-200">
           <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-900 font-black text-white text-sm">K</div>
@@ -265,7 +314,6 @@ export default function BorrowerPortal() {
             <p className="text-sm font-bold text-slate-900">Kontra</p>
             <p className="text-xs text-slate-500 font-medium">Borrower Portal</p>
           </div>
-          <button className="ml-auto md:hidden p-1 text-slate-400 hover:text-slate-700" onClick={() => setMobileMenuOpen(false)}><XMarkIcon className="h-5 w-5" /></button>
         </div>
 
         {/* Loan card */}
@@ -294,7 +342,7 @@ export default function BorrowerPortal() {
             return (
               <button
                 key={item.key}
-                onClick={() => { setSection(item.key); setMobileMenuOpen(false); }}
+                onClick={() => setSection(item.key)}
                 className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors text-left ${
                   active
                     ? "bg-slate-900 text-white font-semibold"
@@ -314,39 +362,15 @@ export default function BorrowerPortal() {
         </nav>
 
         {/* Footer */}
-        <div className="border-t border-slate-200 p-4 space-y-3">
-          <div>
-            <p className="text-xs text-slate-400">Questions? Contact your servicer:</p>
-            <p className="text-xs font-medium text-slate-700 mt-0.5">{loan.servicer_contact}</p>
-          </div>
-          <button
-            type="button"
-            onClick={handleSignOut}
-            disabled={isSigningOut}
-            className="w-full flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold text-slate-600 border border-slate-200 hover:bg-slate-50 transition disabled:opacity-60 disabled:cursor-not-allowed"
-          >
-            <ArrowRightStartOnRectangleIcon className="h-4 w-4 text-emerald-600" />
-            {isSigningOut ? "Logging out..." : "Log Out"}
-          </button>
-          {signOutError && (
-            <p className="text-xs text-red-500" role="alert">{signOutError}</p>
-          )}
+        <div className="border-t border-slate-200 p-4">
+          <p className="text-xs text-slate-400">Questions? Contact your servicer:</p>
+          <p className="text-xs font-medium text-slate-700 mt-0.5">{loan.servicer_contact}</p>
         </div>
       </aside>
 
       {/* ── Main Content ── */}
-      <main className="flex-1 flex flex-col overflow-hidden">
-          <div className="md:hidden flex items-center justify-between px-4 py-3 bg-slate-900 text-white sticky top-0 z-30 border-b border-slate-800">
-            <div className="flex items-center gap-2">
-              <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-slate-900 font-black text-white text-sm border border-slate-700">K</div>
-              <span className="font-bold text-sm">Borrower Portal</span>
-            </div>
-            <button onClick={() => setMobileMenuOpen(true)} className="p-2 rounded-lg hover:bg-slate-700">
-              <Bars3Icon className="h-5 w-5 text-white" />
-            </button>
-          </div>
-          <div className="flex-1 overflow-y-auto bg-white">
-        <div className="max-w-4xl mx-auto px-4 md:px-8 py-8 space-y-8">
+      <main className="flex-1 overflow-y-auto bg-white">
+        <div className="max-w-4xl mx-auto px-8 py-8 space-y-8">
 
           {/* ── MY LOAN ── */}
           {section === "myloans" && (
@@ -358,7 +382,7 @@ export default function BorrowerPortal() {
               </div>
 
               {/* Loan details */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 sm:grid-cols-1 sm:grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
                 {[
                   { label:"Loan Reference",    value: loan.loan_ref },
                   { label:"Current Balance",   value: fmt(loan.current_balance) },
@@ -406,7 +430,7 @@ export default function BorrowerPortal() {
                     <div>
                       <p className="text-sm font-bold text-amber-900">Action Required: {pendingDocs} document{pendingDocs > 1 ? "s" : ""} overdue or upcoming</p>
                       <p className="text-xs text-amber-700 mt-1">Please upload required documents to avoid covenant cure periods. Go to Document Center.</p>
-                      <button onClick={() => { setSection("documents"); setMobileMenuOpen(false); }} className="mt-2 rounded-lg bg-amber-700 px-3 py-1.5 text-xs font-bold text-white hover:bg-amber-800 transition-colors">
+                      <button onClick={() => setSection("documents")} className="mt-2 rounded-lg bg-amber-700 px-3 py-1.5 text-xs font-bold text-white hover:bg-amber-800 transition-colors">
                         Go to Document Center
                       </button>
                     </div>
@@ -524,56 +548,285 @@ export default function BorrowerPortal() {
               </div>
 
               {uploadingDoc && (
-                  <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 p-5 space-y-4">
-                    <div className="border-2 border-dashed border-emerald-300 rounded-lg p-6 text-center">
-                      <ArrowUpTrayIcon className="h-8 w-8 text-emerald-600 mx-auto mb-2" />
-                      <p className="text-sm font-medium text-slate-700">Drop your financial document here</p>
-                      <p className="text-xs text-slate-500 mt-1">PDF, Excel, CSV, or text · Max 25 MB · AI will extract key metrics automatically</p>
-                      <input type="file" className="hidden" id="ai-doc-input" onChange={(e) => { const f = e.target.files?.[0] || null; setAiDocFile(f); if (f) handleAiAnalyze(f); }} />
-                      <label htmlFor="ai-doc-input" className="mt-3 inline-block cursor-pointer rounded-lg border border-emerald-600 px-4 py-1.5 text-sm font-semibold text-emerald-700 hover:bg-emerald-100 transition-colors">Choose File</label>
-                      {aiDocFile && <p className="text-xs text-emerald-700 mt-2 font-medium">{aiDocFile.name}</p>}
-                    </div>
-                    <div className="flex gap-2">
+                <div className="rounded-xl border-2 border-dashed border-emerald-300 bg-emerald-50 p-8 text-center">
+                  <ArrowUpTrayIcon className="h-8 w-8 text-emerald-500 mx-auto mb-3" />
+                  <p className="text-sm font-semibold text-slate-700">
+                    {aiDocName ? `Selected: ${aiDocName}` : "Drag & drop or click to choose a file"}
+                  </p>
+                  <p className="text-xs text-slate-500 mt-1">PDF, Excel, CSV, or text · Max 25 MB · AI will extract key metrics automatically</p>
+
+                  {/* Hidden file input */}
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    className="hidden"
+                    accept=".pdf,.xlsx,.xls,.csv,.txt,.doc,.docx"
+                    onChange={(e) => {
+                      const f = e.target.files?.[0];
+                      if (f) handleDocFileSelect(f);
+                    }}
+                  />
+
+                  <div className="mt-4 flex items-center justify-center gap-3">
+                    <button
+                      onClick={() => fileInputRef.current?.click()}
+                      className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-colors"
+                    >
+                      Choose File
+                    </button>
+                    {aiDocName && !aiDocLoading && (
                       <button
-                        onClick={() => { if (aiDocFile) handleAiAnalyze(aiDocFile); }}
-                        disabled={!aiDocFile || aiDocLoading}
-                        className="flex items-center gap-2 rounded-lg bg-emerald-700 px-4 py-2 text-sm font-bold text-white disabled:opacity-60 hover:bg-emerald-800 transition-colors"
+                        onClick={() => {
+                          const f = fileInputRef.current?.files?.[0];
+                          if (f) handleAiAnalyze(f);
+                        }}
+                        className="rounded-lg bg-emerald-700 px-4 py-2 text-sm font-bold text-white hover:bg-emerald-800 transition-colors flex items-center gap-2"
                       >
                         <SparklesIcon className="h-4 w-4" />
-                        {aiDocLoading ? "Analyzing…" : "Submit & Analyze"}
+                        Submit & Analyze
                       </button>
-                      <button onClick={() => { setUploadingDoc(null); setAiDocFile(null); setAiDocResult(null); }} className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100 transition-colors">Cancel</button>
+                    )}
+                    {aiDocLoading && (
+                      <span className="flex items-center gap-2 text-sm text-emerald-700 font-semibold">
+                        <SparklesIcon className="h-4 w-4 animate-pulse" /> AI analyzing…
+                      </span>
+                    )}
+                    <button onClick={() => { setUploadingDoc(null); setAiDocName(""); setAiDocResult(null); }} className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100 transition-colors">
+                      Cancel
+                    </button>
+                  </div>
+                  <p className="mt-4 text-xs text-slate-400">
+                    Your document will be analyzed by AI and routed to your servicer for review.
+                  </p>
+                </div>
+              )}
+
+              {/* ── AI Analysis Result ── */}
+              {aiDocResult && (
+                <div className="rounded-xl border border-emerald-200 bg-white shadow-sm overflow-hidden">
+                  <div className="border-b border-emerald-100 px-6 py-4 flex items-center gap-3 bg-emerald-50">
+                    <SparklesIcon className="h-5 w-5 text-emerald-600" />
+                    <div>
+                      <h3 className="text-sm font-bold text-slate-900">AI Document Analysis</h3>
+                      <p className="text-xs text-slate-500">{aiDocResult.doc_type} · {aiDocName}</p>
                     </div>
-                    {aiDocResult && (
-                      <div className="rounded-xl border border-emerald-200 bg-white p-5 space-y-4">
-                        <div className="flex items-center gap-2">
-                          <SparklesIcon className="h-5 w-5 text-emerald-600" />
-                          <div>
-                            <h3 className="text-sm font-bold text-slate-900">AI Document Analysis — {aiDocResult.doc_type}</h3>
-                            <p className="text-xs text-slate-500 mt-0.5">{aiDocResult.summary}</p>
-                          </div>
-                        </div>
-                        {Object.keys(aiDocResult.metrics || {}).length > 0 && (
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                            {Object.entries(aiDocResult.metrics).filter(([,v]) => v != null).map(([k,v]) => (
-                              <div key={k} className="rounded-lg bg-emerald-50 border border-emerald-200 p-3">
-                                <p className="text-xs font-bold uppercase tracking-widest text-slate-500">{k.replace(/_/g,' ')}</p>
-                                <p className="text-lg font-black text-slate-900 mt-1">{typeof v === 'number' && v > 1000 ? `${v.toLocaleString()}` : v}</p>
-                              </div>
-                            ))}
+                  </div>
+                  <div className="px-6 py-5 space-y-4">
+                    <p className="text-sm text-slate-700">{aiDocResult.summary}</p>
+
+                    {/* Metrics */}
+                    {Object.values(aiDocResult.metrics || {}).some(v => v != null) && (
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                        {aiDocResult.metrics.dscr != null && (
+                          <div className={`rounded-lg p-3 ${Number(aiDocResult.metrics.dscr) >= 1.25 ? "bg-emerald-50" : "bg-red-50"}`}>
+                            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">DSCR</p>
+                            <p className={`text-xl font-black ${Number(aiDocResult.metrics.dscr) >= 1.25 ? "text-emerald-700" : "text-red-600"}`}>{aiDocResult.metrics.dscr}x</p>
                           </div>
                         )}
-                        {aiDocResult.risk_flags?.length > 0 && (
-                          <div>
-                            <p className="text-xs font-bold uppercase tracking-widest text-red-600 mb-2">Risk Flags</p>
-                            {aiDocResult.risk_flags.map((f,i) => <p key={i} className="text-sm text-red-700">• {f}</p>)}
+                        {aiDocResult.metrics.noi != null && (
+                          <div className="rounded-lg bg-slate-50 p-3">
+                            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Annual NOI</p>
+                            <p className="text-xl font-black text-slate-900">${Number(aiDocResult.metrics.noi).toLocaleString()}</p>
+                          </div>
+                        )}
+                        {aiDocResult.metrics.occupancy != null && (
+                          <div className={`rounded-lg p-3 ${Number(aiDocResult.metrics.occupancy) >= 90 ? "bg-emerald-50" : "bg-amber-50"}`}>
+                            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Occupancy</p>
+                            <p className={`text-xl font-black ${Number(aiDocResult.metrics.occupancy) >= 90 ? "text-emerald-700" : "text-amber-600"}`}>{aiDocResult.metrics.occupancy}%</p>
                           </div>
                         )}
                       </div>
                     )}
+
+                    {/* Covenant status */}
+                    {aiDocResult.covenants?.length > 0 && (
+                      <div>
+                        <p className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Covenant Status</p>
+                        <div className="space-y-2">
+                          {aiDocResult.covenants.map((c, i) => (
+                            <div key={i} className={`flex items-center justify-between rounded-lg px-4 py-2 text-sm ${c.status === "breach" ? "bg-red-50" : c.status === "watch" ? "bg-amber-50" : "bg-emerald-50"}`}>
+                              <span className="font-semibold text-slate-700">{c.name}</span>
+                              <div className="flex items-center gap-3">
+                                <span className="text-slate-500 text-xs">threshold: {c.threshold}</span>
+                                <span className="font-bold text-slate-900">{c.actual}</span>
+                                <span className={`rounded-full px-2 py-0.5 text-xs font-black uppercase ${c.status === "breach" ? "bg-red-100 text-red-700" : c.status === "watch" ? "bg-amber-100 text-amber-700" : "bg-emerald-100 text-emerald-700"}`}>{c.status}</span>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Risk flags */}
+                    {aiDocResult.risk_flags?.length > 0 && (
+                      <div>
+                        <p className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Risk Flags</p>
+                        <ul className="space-y-1">
+                          {aiDocResult.risk_flags.map((f, i) => (
+                            <li key={i} className="flex items-start gap-2 text-sm text-slate-700">
+                              <ExclamationTriangleIcon className="h-4 w-4 text-amber-500 shrink-0 mt-0.5" />
+                              {f}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+
+                    {aiDocResult.notice && (
+                      <p className="text-xs text-slate-400 italic">{aiDocResult.notice}</p>
+                    )}
                   </div>
-                )}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ── FINANCIALS ── */}
+          {section === "financials" && (
+            <div className="space-y-6">
+              <div>
+                <h1 className="text-2xl font-black text-slate-900">Submit Financials</h1>
+                <p className="text-sm text-slate-500 mt-1">
+                  Submit your periodic operating statement and rent roll data. This information is used to monitor covenant compliance and is reviewed by your lender.
+                </p>
               </div>
+
+              {finSuccess && (
+                <div className="flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+                  <CheckCircleIcon className="h-5 w-5 shrink-0" />
+                  Financials submitted successfully. Your lender will review them shortly.
+                </div>
+              )}
+
+              {/* Submission Form */}
+              <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm space-y-5">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">New Financial Submission</p>
+
+                <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
+                  <div className="sm:col-span-2">
+                    <label className="mb-1 block text-xs font-medium text-slate-600">Reporting Period *</label>
+                    <input
+                      type="text"
+                      value={finForm.period}
+                      onChange={(e) => setFinForm(f => ({ ...f, period: e.target.value }))}
+                      placeholder="e.g. Q1 2026 or April 2026"
+                      className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 shadow-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 placeholder:text-slate-400"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-slate-600">Effective Gross Revenue ($)</label>
+                    <input
+                      type="number" min="0" step="100"
+                      value={finForm.effective_gross_revenue}
+                      onChange={(e) => setFinForm(f => ({ ...f, effective_gross_revenue: e.target.value }))}
+                      placeholder="Total rental income"
+                      className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 shadow-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 placeholder:text-slate-400"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-slate-600">Operating Expenses ($)</label>
+                    <input
+                      type="number" min="0" step="100"
+                      value={finForm.operating_expenses}
+                      onChange={(e) => setFinForm(f => ({ ...f, operating_expenses: e.target.value }))}
+                      placeholder="Total operating costs"
+                      className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 shadow-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 placeholder:text-slate-400"
+                    />
+                  </div>
+
+                  {autoNoi !== null && (
+                    <div className="sm:col-span-2 rounded-xl border border-slate-100 bg-slate-50 px-4 py-3">
+                      <p className="text-xs text-slate-500">Net Operating Income (auto-calculated)</p>
+                      <p className={`text-lg font-bold ${parseFloat(finForm.effective_gross_revenue) - parseFloat(finForm.operating_expenses) >= 0 ? 'text-slate-900' : 'text-red-600'}`}>
+                        {autoNoi}
+                      </p>
+                    </div>
+                  )}
+
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-slate-600">Current Occupancy (%)</label>
+                    <input
+                      type="number" min="0" max="100" step="0.1"
+                      value={finForm.occupancy_pct}
+                      onChange={(e) => setFinForm(f => ({ ...f, occupancy_pct: e.target.value }))}
+                      placeholder="e.g. 91.7"
+                      className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 shadow-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 placeholder:text-slate-400"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-slate-600">Total Units</label>
+                    <input
+                      type="number" min="0"
+                      value={finForm.unit_count}
+                      onChange={(e) => setFinForm(f => ({ ...f, unit_count: e.target.value }))}
+                      placeholder="e.g. 24"
+                      className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 shadow-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 placeholder:text-slate-400"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-slate-600">Occupied Units</label>
+                    <input
+                      type="number" min="0"
+                      value={finForm.occupied_units}
+                      onChange={(e) => setFinForm(f => ({ ...f, occupied_units: e.target.value }))}
+                      placeholder="e.g. 22"
+                      className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 shadow-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 placeholder:text-slate-400"
+                    />
+                  </div>
+
+                  <div className="sm:col-span-2">
+                    <label className="mb-1 block text-xs font-medium text-slate-600">Notes / Comments</label>
+                    <textarea
+                      rows={3}
+                      value={finForm.notes}
+                      onChange={(e) => setFinForm(f => ({ ...f, notes: e.target.value }))}
+                      placeholder="Any context on this period's performance, unusual expenses, upcoming events…"
+                      className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 shadow-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 placeholder:text-slate-400"
+                    />
+                  </div>
+                </div>
+
+                {finError && <p className="text-sm text-red-600">{finError}</p>}
+
+                <div className="flex justify-end pt-2">
+                  <button
+                    onClick={submitFinancials}
+                    disabled={!finForm.period || submittingFin}
+                    className="rounded-lg bg-emerald-600 px-5 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-50 transition-colors"
+                  >
+                    {submittingFin ? "Submitting…" : "Submit Financials"}
+                  </button>
+                </div>
+              </div>
+
+              {/* Past Submissions */}
+              {financials.length > 0 && (
+                <div className="space-y-3">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Prior Submissions</p>
+                  {financials.map(f => (
+                    <div key={f.id} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                      <div className="flex items-center justify-between mb-2">
+                        <p className="font-semibold text-slate-800">{f.period}</p>
+                        <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700 border border-emerald-200">
+                          {f.status}
+                        </span>
+                      </div>
+                      <div className="flex flex-wrap gap-4 text-xs text-slate-500">
+                        <span>Revenue: {fmt(f.effective_gross_revenue)}</span>
+                        <span>Expenses: {fmt(f.operating_expenses)}</span>
+                        <span>NOI: {fmt(f.noi)}</span>
+                        {f.occupancy_pct !== null && <span>Occupancy: {f.occupancy_pct}%</span>}
+                      </div>
+                      <p className="mt-1 text-xs text-slate-400">Submitted {fmtDate(f.submitted_at)}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           )}
 
           {/* ── DRAWS ── */}
@@ -592,7 +845,7 @@ export default function BorrowerPortal() {
               {newDrawOpen && (
                 <div className="rounded-xl border border-slate-200 bg-slate-50 p-6 space-y-4">
                   <p className="text-sm font-bold text-slate-900">New Draw Request — {loan.loan_ref}</p>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="grid grid-cols-2 gap-4">
                     <div>
                       <label className="block text-xs font-bold uppercase tracking-widest text-slate-500 mb-1.5">Draw Amount ($)</label>
                       <input
@@ -757,7 +1010,6 @@ export default function BorrowerPortal() {
             </div>
           )}
 
-        </div>
         </div>
       </main>
     </div>
