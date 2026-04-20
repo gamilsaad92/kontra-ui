@@ -1,4 +1,4 @@
-import { useCallback, useContext, useEffect, useMemo, useState, type ComponentType } from "react";
+import { useCallback, useContext, useMemo, useState, type ComponentType } from "react";
 import { NavLink, Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { servicerNavRoutes } from "../../routes";
 import { AuthContext } from "../../lib/authContext";
@@ -13,9 +13,9 @@ import ServicingBorrowerFinancialsPage from "../../pages/dashboard/servicing/Ser
 import ServicingManagementPage from "../../pages/dashboard/servicing/ServicingManagementPage";
 import ServicingAIOpsPage from "../../pages/dashboard/servicing/ServicingAIOpsPage";
 import ServicingAIValidationPage from "../../pages/dashboard/servicing/ServicingAIValidationPage";
+import ServicingWaterfallPage from "../../pages/dashboard/servicing/ServicingWaterfallPage";
+import ServicingDelinquencyPage from "../../pages/dashboard/servicing/ServicingDelinquencyPage";
 import {
-  Bars3Icon,
-  XMarkIcon,
   ArrowTopRightOnSquareIcon,
   BuildingLibraryIcon,
 } from "@heroicons/react/24/outline";
@@ -28,8 +28,6 @@ export default function ServicerPortal() {
   const location = useLocation();
   const navigate = useNavigate();
   const [isSigningOut, setIsSigningOut] = useState(false);
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  useEffect(() => { setMobileMenuOpen(false); }, [location.pathname]);
   const [signOutError, setSignOutError] = useState<string | null>(null);
 
   const navItems = useMemo(
@@ -66,7 +64,7 @@ export default function ServicerPortal() {
         <NavLink
           key={item.path}
           to={item.path}
-          onClick={() => { recordUsage(item.path); setMobileMenuOpen(false); }}
+          onClick={() => recordUsage(item.path)}
           className={({ isActive }) =>
             `flex items-center gap-2.5 rounded-lg px-3 py-2.5 text-sm transition ${
               isActive || location.pathname.startsWith(`${item.path}/`)
@@ -96,10 +94,9 @@ export default function ServicerPortal() {
   };
 
   return (
-    <div className="flex min-h-screen bg-slate-100 text-slate-900 relative">
+    <div className="flex min-h-screen bg-slate-100 text-slate-900">
       {/* ── Sidebar ── */}
-      {mobileMenuOpen && <div className="fixed inset-0 z-40 bg-black/60 md:hidden" onClick={() => setMobileMenuOpen(false)} />}
-        <aside className={`fixed inset-y-0 left-0 z-50 flex w-64 flex-col bg-slate-950 text-slate-100 shrink-0 transform transition-transform duration-200 ease-in-out md:relative md:translate-x-0 ${mobileMenuOpen ? "translate-x-0" : "-translate-x-full"}`}>
+      <aside className="flex w-64 flex-col bg-slate-950 text-slate-100 shrink-0">
         {/* Logo + portal badge */}
         <div className="px-4 pt-5 pb-4 border-b border-slate-800">
           <div className="flex items-center gap-2.5 mb-3">
@@ -120,7 +117,6 @@ export default function ServicerPortal() {
             >
               Kontra
             </span>
-            <button className="ml-auto md:hidden p-1 text-slate-400 hover:text-white" onClick={() => setMobileMenuOpen(false)}><XMarkIcon className="h-5 w-5" /></button>
           </div>
           <div className="flex items-center gap-2 rounded-lg bg-amber-500/10 border border-amber-700/30 px-3 py-2">
             <BuildingLibraryIcon className="h-4 w-4 text-amber-400 shrink-0" />
@@ -206,6 +202,8 @@ export default function ServicerPortal() {
               <Route path="ai-ops" element={<ServicingAIOpsPage />} />
               <Route path="ai-validation/:reviewId" element={<ServicingAIValidationPage />} />
               <Route path="ai-validation" element={<ServicingAIValidationPage />} />
+              <Route path="waterfall" element={<ServicingWaterfallPage />} />
+              <Route path="delinquency" element={<ServicingDelinquencyPage />} />
             </Route>
             <Route
               path="*"
