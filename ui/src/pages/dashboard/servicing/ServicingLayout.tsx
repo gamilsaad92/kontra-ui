@@ -3,9 +3,11 @@ import { ServicingProvider } from './ServicingContext';
 
 const tabs = [
   { label: 'Overview',           to: '/servicer/overview' },
+  { label: 'Cash Flow',          to: '/servicer/waterfall' },
   { label: 'Payments',           to: '/servicer/payments' },
-  { label: 'Inspections',        to: '/servicer/inspections' },
+  { label: 'Delinquency',        to: '/servicer/delinquency' },
   { label: 'Draws',              to: '/servicer/draws' },
+  { label: 'Inspections',        to: '/servicer/inspections' },
   { label: 'Escrows',            to: '/servicer/escrow' },
   { label: 'Borrower Financials',to: '/servicer/borrower-financials' },
   { label: 'Management',         to: '/servicer/management' },
