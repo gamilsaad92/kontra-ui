@@ -1,5 +1,4 @@
 const express = require('express');
-const { createClient } = require('@supabase/supabase-js');
 const { triggerWebhooks } = require('../webhooks');
 const authenticate = require('../middlewares/authenticate');
 const asyncHandler = require('../lib/asyncHandler');
@@ -23,10 +22,7 @@ function wrapRouter(routerInstance) {
 }
 
 wrapRouter(router);
-const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY
-);
+const { supabase } = require('../db');
 
 const FALLBACK_DSCR_LOANS = [
   {
@@ -769,7 +765,7 @@ router.post('/loans/:loanId/generate-schedule', async (req, res) => {
       balance = 0;
     }
     inserts.push({
-      loan_id: parseInt(loanId, 10),
+      loan_id: loanId,
       due_date: date.toISOString().slice(0, 10),
       principal_due: parseFloat(principalDue.toFixed(2)),
       interest_due: parseFloat(interestDue.toFixed(2)),
@@ -816,7 +812,7 @@ router.post('/loans/:loanId/payments', async (req, res) => {
     .select('remaining_balance')
     .eq('loan_id', loanId)
      .eq('organization_id', req.orgId)
-    .order('date', { ascending: false })
+    .order('due_date', { ascending: false })
     .limit(1)
     .maybeSingle();
   const prevBalance = lastPayment ? parseFloat(lastPayment.remaining_balance) : null;
@@ -829,7 +825,7 @@ router.post('/loans/:loanId/payments', async (req, res) => {
     .from('payments')
     .insert([
       {
-        loan_id: parseInt(loanId, 10),
+        loan_id: loanId,
         date,
         amount,
         applied_principal: principal,
@@ -855,7 +851,7 @@ router.get('/loans/:loanId/payments', async (req, res) => {
     .select('*')
     .eq('loan_id', loanId)
     .eq('organization_id', req.orgId)
-    .order('date', { ascending: false });
+    .order('due_date', { ascending: false });
   if (error) return res.status(500).json({ message: 'Failed to fetch payments' });
  res.json({ payments: Array.isArray(data) ? data : [] });
 });
@@ -870,7 +866,7 @@ router.get('/loans/:loanId/balance', async (req, res) => {
     .select('remaining_balance')
     .eq('loan_id', loanId)
      .eq('organization_id', req.orgId)
-    .order('date', { ascending: false })
+    .order('due_date', { ascending: false })
     .limit(1)
     .maybeSingle();
   if (error) return res.status(500).json({ message: 'Failed to fetch balance' });
@@ -890,7 +886,7 @@ router.post('/loans/:loanId/payoff', async (req, res) => {
     .select('remaining_balance')
     .eq('loan_id', loanId)
    .eq('organization_id', req.orgId)
-    .order('date', { ascending: false })
+    .order('due_date', { ascending: false })
     .limit(1)
     .maybeSingle();
   if (balRes.error) return res.status(500).json({ message: 'Failed to fetch balance' });
@@ -927,7 +923,7 @@ router.post('/loans/:loanId/defer', async (req, res) => {
   }
   try {
     await supabase.from('loan_modifications').insert({
-      loan_id: parseInt(loanId, 10),
+      loan_id: loanId,
       type: 'deferral',
       delta_months: extra,
       created_at: new Date().toISOString(),
@@ -955,7 +951,7 @@ router.get('/escrows', async (req, res) => {
   if (!ensureOrganization(req, res)) return;
   const { data, error } = await supabase
     .from('escrows')
-    .select('loan_id, tax_amount, insurance_amount, escrow_balance')
+    .select('loan_id, balance, disbursed, escrow_type')
     .eq('organization_id', req.orgId);
   if (error) return res.status(500).json({ message: 'Failed to fetch escrows' });
    res.json({ escrows: Array.isArray(data) ? data : [] });
@@ -987,7 +983,8 @@ router.get('/escrows/upcoming', async (req, res) => {
 router.get('/loans/:loanId/escrow', async (req, res) => {
   if (!ensureOrganization(req, res)) return;
   const { loanId } = req.params;
-  if (isNaN(parseInt(loanId, 10))) return res.status(400).json({ message: 'Invalid loan id' });
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (!UUID_RE.test(loanId)) return res.status(400).json({ message: 'Invalid loan id' });
    const loan = await getLoanForOrg(loanId, req.orgId, 'id', res);
   if (!loan) return;
   const { data, error } = await supabase
@@ -1005,7 +1002,8 @@ router.post('/loans/:loanId/escrow/pay', async (req, res) => {
   if (!ensureOrganization(req, res)) return;
   const { loanId } = req.params;
   const { type, amount } = req.body || {};
-  if (isNaN(parseInt(loanId, 10))) return res.status(400).json({ message: 'Invalid loan id' });
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (!UUID_RE.test(loanId)) return res.status(400).json({ message: 'Invalid loan id' });
   if (!type || amount === undefined) return res.status(400).json({ message: 'Missing type or amount' });
   if (!['tax', 'insurance'].includes(type)) return res.status(400).json({ message: 'Invalid type' });
 
@@ -1047,7 +1045,8 @@ router.post('/loans/:loanId/escrow/pay', async (req, res) => {
 router.get('/loans/:loanId/escrow/projection', async (req, res) => {
   if (!ensureOrganization(req, res)) return;
   const { loanId } = req.params;
-  if (isNaN(parseInt(loanId, 10))) return res.status(400).json({ message: 'Invalid loan id' });
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (!UUID_RE.test(loanId)) return res.status(400).json({ message: 'Invalid loan id' });
  const loan = await getLoanForOrg(loanId, req.orgId, 'id', res);
   if (!loan) return;
   const { data, error } = await supabase
@@ -1087,7 +1086,7 @@ router.get('/loans/:loanId/details', async (req, res) => {
       .select('*')
       .eq('loan_id', loanId)
     .eq('organization_id', req.orgId)
-      .order('date', { ascending: false });
+      .order('due_date', { ascending: false });
     if (paymentsErr) throw paymentsErr;
     const { data: collateral, error: collateralErr } = await supabase
       .from('asset_collateral')

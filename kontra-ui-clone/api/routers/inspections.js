@@ -1,14 +1,10 @@
 const express = require('express');
 const multer = require('multer');
-const { createClient } = require('@supabase/supabase-js');
 
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage() });
 
-const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY
-);
+const { supabase } = require('../db');
 
 router.post('/schedule', async (req, res) => {
   const { project_id, inspection_date, contact, notes } = req.body;

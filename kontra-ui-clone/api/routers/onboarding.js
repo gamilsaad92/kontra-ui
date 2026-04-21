@@ -13,16 +13,11 @@
  */
 
 const express = require('express');
-const { createClient } = require('@supabase/supabase-js');
 
 const router = express.Router();
 
 // Service-role client — NEVER expose to frontend
-const adminSupabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY,
-  { auth: { persistSession: false, autoRefreshToken: false } }
-);
+const { supabase: adminSupabase } = require('../db');
 
 // ── Role permission sets ───────────────────────────────────────
 const LENDER_ROLES = ['platform_admin', 'lender_admin', 'servicer', 'asset_manager'];

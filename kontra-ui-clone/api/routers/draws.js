@@ -2,7 +2,6 @@ const express = require('express');
 const multer = require('multer');
 const { randomBytes } = require('crypto');
 const { v4: uuidv4 } = require('uuid');
-const { createClient } = require('@supabase/supabase-js');
 const PDFDocument = require('pdfkit');
 const { sendEmail } = require('../communications');
 const { recordFeedback, retrainModel } = require('../feedback');
@@ -11,10 +10,7 @@ const { poolFactory, whitelistRegistry, describeDeployment } = require('../servi
 
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage() });
-const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY
-);
+const { supabase } = require('../db');
 
 const tokenizedNotes = new Map();
 const syndicationCampaigns = new Map();

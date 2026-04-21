@@ -128,6 +128,34 @@ class QueryBuilder {
     return this;
   }
 
+  ilike(col, val) {
+    this._conditions.push(`"${col}" ILIKE $${this._conditions.length + 1}`);
+    this._conditionValues.push(val);
+    return this;
+  }
+
+  contains(col, val) {
+    // JSON contains
+    this._conditions.push(`"${col}" @> $${this._conditions.length + 1}`);
+    this._conditionValues.push(JSON.stringify(val));
+    return this;
+  }
+
+  textSearch(col, query) {
+    // Best-effort plain text search via ILIKE
+    this._conditions.push(`"${col}" ILIKE $${this._conditions.length + 1}`);
+    this._conditionValues.push(`%${query}%`);
+    return this;
+  }
+
+  filter(col, op, val) {
+    const opMap = { eq: '=', neq: '!=', gt: '>', gte: '>=', lt: '<', lte: '<=' };
+    const sqlOp = opMap[op] || '=';
+    this._conditions.push(`"${col}" ${sqlOp} $${this._conditions.length + 1}`);
+    this._conditionValues.push(val);
+    return this;
+  }
+
   is(col, val) {
     if (val === null) {
       this._conditions.push(`"${col}" IS NULL`);
@@ -174,6 +202,17 @@ class QueryBuilder {
     return this;
   }
 
+  maybeSingle() {
+    this._single = true;
+    return this;
+  }
+
+  range(from, to) {
+    this._limitN = (to - from) + 1;
+    this._rangeOffset = from;
+    return this;
+  }
+
   select_returning(cols) {
     this._returning = cols;
     return this;
@@ -194,7 +233,8 @@ class QueryBuilder {
           : this._selectCols.split(',').map(c => `"${c.trim()}"`).join(', ');
         const order = this._orderCol ? `ORDER BY "${this._orderCol}" ${this._orderAsc ? 'ASC' : 'DESC'}` : '';
         const limit = this._limitN != null ? `LIMIT ${Number(this._limitN)}` : '';
-        const sql = `SELECT ${cols} FROM ${table} ${where} ${order} ${limit}`.trim();
+        const offset = this._rangeOffset != null ? `OFFSET ${Number(this._rangeOffset)}` : '';
+        const sql = `SELECT ${cols} FROM ${table} ${where} ${order} ${limit} ${offset}`.trim();
         const { rows } = await pool.query(sql, vals);
         if (this._single) {
           return { data: rows[0] ?? null, error: null };

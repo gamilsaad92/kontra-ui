@@ -1,5 +1,4 @@
 const express = require('express');
-const { createClient } = require('@supabase/supabase-js');
 const PDFDocument = require('pdfkit');
 const crypto = require('crypto');
 const fs = require('fs');
@@ -15,10 +14,7 @@ const {
 } = require('../ai/agents/reportAgent');
 
 const router = express.Router();
-const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY
-);
+const { supabase } = require('../db');
 
 const FALLBACK_COLLECTIONS_SUMMARY = {
   monthToDateCollected: 1_845_000,

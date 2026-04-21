@@ -1,13 +1,9 @@
 const express = require('express');
-const { createClient } = require('@supabase/supabase-js');
 const QRCode = require('qrcode');
 const { v4: uuidv4 } = require('uuid');
 
 const router = express.Router();
-const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY
-);
+const { supabase } = require('../db');
 
 // Minimal Menu CRUD ---------------------------------------------------------
 router.post('/menu/items', async (req, res) => {

@@ -16,7 +16,6 @@
 
 const express = require('express');
 const multer  = require('multer');
-const { createClient } = require('@supabase/supabase-js');
 
 const { extractFromDocument, classifyDocument } = require('../../lib/documentIntelligence');
 const { ADAPTERS, runAdapter, parseCSV }         = require('../../lib/legacyAdapters');
@@ -24,11 +23,7 @@ const { ADAPTERS, runAdapter, parseCSV }         = require('../../lib/legacyAdap
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } }); // 20 MB max
 
-const adminDb = createClient(
-  process.env.SUPABASE_URL              || 'https://placeholder.supabase.co',
-  process.env.SUPABASE_SERVICE_ROLE_KEY || 'placeholder-key',
-  { auth: { persistSession: false, autoRefreshToken: false } }
-);
+const { supabase: adminDb } = require('../../db');
 
 // ── In-memory job queue (backed by DB when available) ─────────────────────────
 

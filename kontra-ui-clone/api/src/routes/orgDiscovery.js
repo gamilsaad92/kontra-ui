@@ -1,21 +1,13 @@
-const crypto = require('crypto');
 const express = require('express');
+const crypto = require('crypto');
 const { z } = require('zod');
-const { createClient } = require('@supabase/supabase-js');
-const authenticate = require('../../middlewares/authenticate');
 const { queryOne, queryRows } = require('../lib/appDb');
-
-// Supabase service-role client (always available on Render, unlike local Postgres)
-const hasSupabaseCredentials =
-  Boolean(process.env.SUPABASE_URL) && Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY);
-const supabase = hasSupabaseCredentials
-  ? createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, {
-      auth: { persistSession: false, autoRefreshToken: false },
-    })
-  : null;
+const authenticate = require('../../middlewares/authenticate');
+const { supabase: supabaseAdmin } = require('../../db');
+const supabase = supabaseAdmin;
 
 /**
- * Query org memberships directly from the Supabase database.
+ * Query org memberships directly from the database.
  * Used as a fallback when the local PostgreSQL isn't available or has no records.
  */
 async function getOrgsFromSupabase(supabaseUserId) {
