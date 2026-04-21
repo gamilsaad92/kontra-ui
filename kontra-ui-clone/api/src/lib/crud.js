@@ -53,6 +53,7 @@ async function listEntity(table, orgId, options = {}) {
     .from(table)
     .select(selectFor(table), { count: 'exact' })
     .eq(scopeColumn, resolvedOrgId)
+    .neq('status', 'archived')
     .order('created_at', { ascending: false })
     .range(offset, offset + limit - 1);
 
