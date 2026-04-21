@@ -8,7 +8,7 @@ const { z } = require('zod');
 // The schema below accepts both so the API never returns a 400 due to mismatched types.
 
 const flexId = z.union([z.string(), z.number()]).transform((v) => String(v));
-const flexTimestamp = z.string().nullable().optional();
+const flexTimestamp = z.union([z.string(), z.date()]).transform(v => v instanceof Date ? v.toISOString() : v).nullable().optional();
 
 const entitySchema = z.object({
   id: flexId,
