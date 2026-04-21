@@ -3,7 +3,9 @@
  * Investors CANNOT execute servicing actions. All servicing stays in the lender execution layer.
  * Treat this as a separate product on top of the same Kontra backend.
  */
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useContext } from "react";
+import { useNavigate } from "react-router-dom";
+import { AuthContext } from "../../lib/authContext";
 import { api } from "../../lib/apiClient";
 import {
   ChartPieIcon,
@@ -211,6 +213,8 @@ const NAV: { key: Section; label: string; icon: typeof ChartPieIcon; badge?: num
 ];
 
 export default function InvestorPortal() {
+  const { signOut } = useContext(AuthContext);
+  const navigate = useNavigate();
   const [section, setSection] = useState<Section>("portfolio");
   const [holdings, setHoldings]     = useState<Holding[]>(DEMO_HOLDINGS);
   const [distributions, setDists]   = useState<Distribution[]>(DEMO_DISTRIBUTIONS);
@@ -340,19 +344,19 @@ export default function InvestorPortal() {
         </nav>
 
         {/* Footer */}
-        <div className="border-t border-slate-800 p-4">
+        <div className="border-t border-slate-800 p-4 space-y-2">
           {highAlerts > 0 && (
-            <div className="mb-3 flex items-center gap-2 rounded-lg bg-brand-900/60 border border-brand-700/40 px-3 py-2">
+            <div className="mb-1 flex items-center gap-2 rounded-lg bg-brand-900/60 border border-brand-700/40 px-3 py-2">
               <ExclamationTriangleIcon className="h-3.5 w-3.5 text-brand-400" />
               <p className="text-xs text-brand-300 font-semibold">{highAlerts} high-risk alert{highAlerts > 1 ? "s" : ""}</p>
             </div>
           )}
           <button
-            onClick={() => setSection("governance")}
-            className="w-full flex items-center gap-2 text-xs text-slate-400 hover:text-white transition-colors"
+            onClick={async () => { await signOut(); navigate("/login", { replace: true }); }}
+            className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold text-slate-400 hover:bg-slate-800 hover:text-white transition-colors"
           >
             <ArrowRightStartOnRectangleIcon className="h-4 w-4" />
-            Return to lender dashboard
+            Log Out
           </button>
         </div>
       </aside>
