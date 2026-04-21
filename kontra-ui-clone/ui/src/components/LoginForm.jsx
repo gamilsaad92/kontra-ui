@@ -183,6 +183,35 @@ export default function LoginForm({ onSwitch }) {
           </button>
         </p>
       )}
+
+      {/* ToS notice */}
+      <p className="text-center text-xs leading-relaxed" style={{ color: '#3a3a3a' }}>
+        By signing in you agree to our{' '}
+        <a
+          href="/terms"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="font-medium transition-colors underline underline-offset-2"
+          style={{ color: '#5a2020' }}
+          onMouseEnter={e => e.target.style.color = '#800020'}
+          onMouseLeave={e => e.target.style.color = '#5a2020'}
+        >
+          Terms of Service
+        </a>
+        {' '}and{' '}
+        <a
+          href="/terms#privacy"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="font-medium transition-colors underline underline-offset-2"
+          style={{ color: '#5a2020' }}
+          onMouseEnter={e => e.target.style.color = '#800020'}
+          onMouseLeave={e => e.target.style.color = '#800020'}
+        >
+          Privacy Policy
+        </a>
+        . Unauthorized use is prohibited.
+      </p>
     </form>
   )
 }

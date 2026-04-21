@@ -1,3 +1,7 @@
+/**
+ * Copyright (c) 2024-2026 Kontra Technologies, Inc. All Rights Reserved.
+ * PROPRIETARY AND CONFIDENTIAL — Unauthorized use or distribution is prohibited.
+ */
 const { supabase } = require('../../db');
 const { selectFor } = require('./selectColumns');
 const { asApiError } = require('./dbErrors');

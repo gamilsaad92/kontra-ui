@@ -88,10 +88,25 @@ export default function LoginPage() {
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
-          <div className="h-px flex-1" style={{ background: "rgba(128,0,32,0.2)" }} />
-          <span className="text-xs" style={{ color: "#444" }}>Secure · Encrypted · Compliant</span>
-          <div className="h-px flex-1" style={{ background: "rgba(128,0,32,0.2)" }} />
+        <div className="space-y-3">
+          <div className="flex items-center gap-2">
+            <div className="h-px flex-1" style={{ background: "rgba(128,0,32,0.2)" }} />
+            <span className="text-xs" style={{ color: "#444" }}>Secure · Encrypted · Compliant</span>
+            <div className="h-px flex-1" style={{ background: "rgba(128,0,32,0.2)" }} />
+          </div>
+          <p className="text-center text-xs" style={{ color: "#2e2e2e" }}>
+            © {new Date().getFullYear()} Kontra Technologies, Inc.{" "}
+            <a
+              href="/terms"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="underline underline-offset-2 transition-colors"
+              style={{ color: "#4a1a1a" }}
+            >
+              All rights reserved.
+            </a>
+            {" "}Proprietary &amp; Confidential.
+          </p>
         </div>
       </div>
 
