@@ -22,8 +22,6 @@ import {
   ArrowUpTrayIcon,
   DocumentTextIcon,
   SparklesIcon,
-  Bars3Icon,
-  XMarkIcon,
 } from "@heroicons/react/24/outline";
 
 // ── Demo fallback data ─────────────────────────────────────────────────────
@@ -120,22 +118,20 @@ const COVENANT_STATUS: Record<string, string> = {
   breach:    "text-brand-600 bg-brand-50 border border-brand-200",
 };
 
-type Section = "myloans" | "payments" | "documents" | "financials" | "draws" | "notices" | "messages";
+type Section = "myloans" | "payments" | "documents" | "draws" | "notices" | "messages";
 
 const NAV_KEYS: { key: Section; label: string; icon: typeof HomeIcon }[] = [
-  { key:"myloans",    label:"My Loan",           icon: HomeIcon },
-  { key:"payments",   label:"Payments",           icon: CreditCardIcon },
-  { key:"documents",  label:"Document Center",    icon: FolderArrowDownIcon },
-  { key:"financials", label:"Submit Financials",  icon: ArrowUpTrayIcon },
-  { key:"draws",      label:"Draw Requests",      icon: WrenchScrewdriverIcon },
-  { key:"notices",    label:"Notices",            icon: BellIcon },
-  { key:"messages",   label:"Messages",           icon: ChatBubbleLeftRightIcon },
+  { key:"myloans",   label:"My Loan",         icon: HomeIcon },
+  { key:"payments",  label:"Payments",         icon: CreditCardIcon },
+  { key:"documents", label:"Document Center",  icon: FolderArrowDownIcon },
+  { key:"draws",     label:"Draw Requests",    icon: WrenchScrewdriverIcon },
+  { key:"notices",   label:"Notices",          icon: BellIcon },
+  { key:"messages",  label:"Messages",         icon: ChatBubbleLeftRightIcon },
 ];
 
 // ── Component ─────────────────────────────────────────────────────────────
 export default function BorrowerPortal() {
   const [section, setSection]       = useState<Section>("myloans");
-  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [loan, setLoan]             = useState<LoanData>(DEMO_LOAN);
   const [payments, setPayments]     = useState<Payment[]>(DEMO_PAYMENTS);
   const [documents, setDocuments]   = useState<Doc[]>(DEMO_DOCUMENTS);
@@ -148,53 +144,6 @@ export default function BorrowerPortal() {
   const [drawForm, setDrawForm]     = useState({ amount:"", purpose:"", milestone:"" });
   const [submittingDraw, setSubmittingDraw] = useState(false);
   const [sendingMsg, setSendingMsg] = useState(false);
-
-  // ── Financials state ───────────────────────────────────────────────────────
-  type FinancialSubmission = {
-    id: string; period: string; effective_gross_revenue: number;
-    operating_expenses: number; noi: number; occupancy_pct: number | null;
-    unit_count: number | null; occupied_units: number | null;
-    notes: string; submitted_at: string; status: string;
-  };
-  const [financials, setFinancials]   = useState<FinancialSubmission[]>([]);
-  const [finForm, setFinForm]         = useState({ period:"", effective_gross_revenue:"", operating_expenses:"", occupancy_pct:"", unit_count:"", occupied_units:"", notes:"" });
-  const [submittingFin, setSubmittingFin] = useState(false);
-  const [finSuccess, setFinSuccess]   = useState(false);
-  const [finError, setFinError]       = useState<string | null>(null);
-
-  const autoNoi = (() => {
-    const rev = parseFloat(finForm.effective_gross_revenue);
-    const exp = parseFloat(finForm.operating_expenses);
-    if (!isNaN(rev) && !isNaN(exp)) return (rev - exp).toLocaleString("en-US", { style:"currency", currency:"USD", minimumFractionDigits:0 });
-    return null;
-  })();
-
-  const submitFinancials = async () => {
-    if (!finForm.period || submittingFin) return;
-    setSubmittingFin(true);
-    setFinError(null);
-    try {
-      const payload = {
-        period: finForm.period,
-        effective_gross_revenue: parseFloat(finForm.effective_gross_revenue) || 0,
-        operating_expenses: parseFloat(finForm.operating_expenses) || 0,
-        noi: (parseFloat(finForm.effective_gross_revenue) || 0) - (parseFloat(finForm.operating_expenses) || 0),
-        occupancy_pct: finForm.occupancy_pct ? parseFloat(finForm.occupancy_pct) : null,
-        unit_count: finForm.unit_count ? parseInt(finForm.unit_count) : null,
-        occupied_units: finForm.occupied_units ? parseInt(finForm.occupied_units) : null,
-        notes: finForm.notes,
-      };
-      const { data } = await api.post<{ financial: FinancialSubmission }>("/borrower/financials", payload);
-      if (data?.financial) setFinancials(prev => [data.financial, ...prev]);
-      setFinForm({ period:"", effective_gross_revenue:"", operating_expenses:"", occupancy_pct:"", unit_count:"", occupied_units:"", notes:"" });
-      setFinSuccess(true);
-      setTimeout(() => setFinSuccess(false), 5000);
-    } catch {
-      setFinError("Submission failed. Please try again.");
-    } finally {
-      setSubmittingFin(false);
-    }
-  };
 
   // ── AI Document Analysis state ─────────────────────────────────────────────
   type AiDocResult = {
@@ -306,26 +255,17 @@ export default function BorrowerPortal() {
   };
 
   return (
-    <div className="relative flex h-screen bg-white overflow-hidden">
-      {/* ── Mobile overlay ── */}
-      {sidebarOpen && (
-        <div className="fixed inset-0 z-40 bg-black/50 md:hidden" onClick={() => setSidebarOpen(false)} />
-      )}
+    <div className="flex h-screen bg-white overflow-hidden">
 
       {/* ── Sidebar ── */}
-      <aside className={`fixed inset-y-0 left-0 z-50 flex w-60 shrink-0 flex-col border-r border-slate-200 bg-slate-50 transform transition-transform duration-200 ease-in-out md:relative md:translate-x-0 ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}`}>
+      <aside className="flex w-60 flex-col border-r border-slate-200 bg-slate-50">
         {/* Logo */}
-        <div className="flex items-center justify-between px-5 py-5 border-b border-slate-200">
-          <div className="flex items-center gap-3">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-900 font-black text-white text-sm">K</div>
-            <div>
-              <p className="text-sm font-bold text-slate-900">Kontra</p>
-              <p className="text-xs text-slate-500 font-medium">Borrower Portal</p>
-            </div>
+        <div className="flex items-center gap-3 px-5 py-5 border-b border-slate-200">
+          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-900 font-black text-white text-sm">K</div>
+          <div>
+            <p className="text-sm font-bold text-slate-900">Kontra</p>
+            <p className="text-xs text-slate-500 font-medium">Borrower Portal</p>
           </div>
-          <button onClick={() => setSidebarOpen(false)} className="md:hidden rounded-lg p-1 text-slate-400 hover:text-slate-700 hover:bg-slate-200 transition">
-            <XMarkIcon className="h-5 w-5" />
-          </button>
         </div>
 
         {/* Loan card */}
@@ -354,7 +294,7 @@ export default function BorrowerPortal() {
             return (
               <button
                 key={item.key}
-                onClick={() => { setSection(item.key); setSidebarOpen(false); }}
+                onClick={() => setSection(item.key)}
                 className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors text-left ${
                   active
                     ? "bg-slate-900 text-white font-semibold"
@@ -381,18 +321,8 @@ export default function BorrowerPortal() {
       </aside>
 
       {/* ── Main Content ── */}
-      <main className="flex min-w-0 flex-1 flex-col overflow-y-auto bg-white">
-        {/* Mobile top bar */}
-        <div className="flex items-center gap-3 border-b border-slate-200 bg-white px-4 py-3 md:hidden">
-          <button onClick={() => setSidebarOpen(true)} className="rounded-lg p-1.5 text-slate-600 hover:bg-slate-100 transition">
-            <Bars3Icon className="h-5 w-5" />
-          </button>
-          <div className="flex items-center gap-2">
-            <div className="flex h-6 w-6 items-center justify-center rounded-md bg-slate-900 text-xs font-black text-white">K</div>
-            <span className="text-sm font-bold text-slate-900">Kontra <span className="text-emerald-600">Borrower</span></span>
-          </div>
-        </div>
-        <div className="max-w-4xl mx-auto w-full px-4 py-6 md:px-8 md:py-8 space-y-6 md:space-y-8">
+      <main className="flex-1 overflow-y-auto bg-white">
+        <div className="max-w-4xl mx-auto px-8 py-8 space-y-8">
 
           {/* ── MY LOAN ── */}
           {section === "myloans" && (
@@ -698,154 +628,6 @@ export default function BorrowerPortal() {
                       <p className="text-xs text-slate-400 italic">{aiDocResult.notice}</p>
                     )}
                   </div>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* ── FINANCIALS ── */}
-          {section === "financials" && (
-            <div className="space-y-6">
-              <div>
-                <h1 className="text-2xl font-black text-slate-900">Submit Financials</h1>
-                <p className="text-sm text-slate-500 mt-1">
-                  Submit your periodic operating statement and rent roll data. This information is used to monitor covenant compliance and is reviewed by your lender.
-                </p>
-              </div>
-
-              {finSuccess && (
-                <div className="flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
-                  <CheckCircleIcon className="h-5 w-5 shrink-0" />
-                  Financials submitted successfully. Your lender will review them shortly.
-                </div>
-              )}
-
-              {/* Submission Form */}
-              <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm space-y-5">
-                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">New Financial Submission</p>
-
-                <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
-                  <div className="sm:col-span-2">
-                    <label className="mb-1 block text-xs font-medium text-slate-600">Reporting Period *</label>
-                    <input
-                      type="text"
-                      value={finForm.period}
-                      onChange={(e) => setFinForm(f => ({ ...f, period: e.target.value }))}
-                      placeholder="e.g. Q1 2026 or April 2026"
-                      className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 shadow-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 placeholder:text-slate-400"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="mb-1 block text-xs font-medium text-slate-600">Effective Gross Revenue ($)</label>
-                    <input
-                      type="number" min="0" step="100"
-                      value={finForm.effective_gross_revenue}
-                      onChange={(e) => setFinForm(f => ({ ...f, effective_gross_revenue: e.target.value }))}
-                      placeholder="Total rental income"
-                      className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 shadow-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 placeholder:text-slate-400"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="mb-1 block text-xs font-medium text-slate-600">Operating Expenses ($)</label>
-                    <input
-                      type="number" min="0" step="100"
-                      value={finForm.operating_expenses}
-                      onChange={(e) => setFinForm(f => ({ ...f, operating_expenses: e.target.value }))}
-                      placeholder="Total operating costs"
-                      className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 shadow-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 placeholder:text-slate-400"
-                    />
-                  </div>
-
-                  {autoNoi !== null && (
-                    <div className="sm:col-span-2 rounded-xl border border-slate-100 bg-slate-50 px-4 py-3">
-                      <p className="text-xs text-slate-500">Net Operating Income (auto-calculated)</p>
-                      <p className={`text-lg font-bold ${parseFloat(finForm.effective_gross_revenue) - parseFloat(finForm.operating_expenses) >= 0 ? 'text-slate-900' : 'text-red-600'}`}>
-                        {autoNoi}
-                      </p>
-                    </div>
-                  )}
-
-                  <div>
-                    <label className="mb-1 block text-xs font-medium text-slate-600">Current Occupancy (%)</label>
-                    <input
-                      type="number" min="0" max="100" step="0.1"
-                      value={finForm.occupancy_pct}
-                      onChange={(e) => setFinForm(f => ({ ...f, occupancy_pct: e.target.value }))}
-                      placeholder="e.g. 91.7"
-                      className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 shadow-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 placeholder:text-slate-400"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="mb-1 block text-xs font-medium text-slate-600">Total Units</label>
-                    <input
-                      type="number" min="0"
-                      value={finForm.unit_count}
-                      onChange={(e) => setFinForm(f => ({ ...f, unit_count: e.target.value }))}
-                      placeholder="e.g. 24"
-                      className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 shadow-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 placeholder:text-slate-400"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="mb-1 block text-xs font-medium text-slate-600">Occupied Units</label>
-                    <input
-                      type="number" min="0"
-                      value={finForm.occupied_units}
-                      onChange={(e) => setFinForm(f => ({ ...f, occupied_units: e.target.value }))}
-                      placeholder="e.g. 22"
-                      className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 shadow-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 placeholder:text-slate-400"
-                    />
-                  </div>
-
-                  <div className="sm:col-span-2">
-                    <label className="mb-1 block text-xs font-medium text-slate-600">Notes / Comments</label>
-                    <textarea
-                      rows={3}
-                      value={finForm.notes}
-                      onChange={(e) => setFinForm(f => ({ ...f, notes: e.target.value }))}
-                      placeholder="Any context on this period's performance, unusual expenses, upcoming events…"
-                      className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 shadow-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 placeholder:text-slate-400"
-                    />
-                  </div>
-                </div>
-
-                {finError && <p className="text-sm text-red-600">{finError}</p>}
-
-                <div className="flex justify-end pt-2">
-                  <button
-                    onClick={submitFinancials}
-                    disabled={!finForm.period || submittingFin}
-                    className="rounded-lg bg-emerald-600 px-5 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-50 transition-colors"
-                  >
-                    {submittingFin ? "Submitting…" : "Submit Financials"}
-                  </button>
-                </div>
-              </div>
-
-              {/* Past Submissions */}
-              {financials.length > 0 && (
-                <div className="space-y-3">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Prior Submissions</p>
-                  {financials.map(f => (
-                    <div key={f.id} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-                      <div className="flex items-center justify-between mb-2">
-                        <p className="font-semibold text-slate-800">{f.period}</p>
-                        <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700 border border-emerald-200">
-                          {f.status}
-                        </span>
-                      </div>
-                      <div className="flex flex-wrap gap-4 text-xs text-slate-500">
-                        <span>Revenue: {fmt(f.effective_gross_revenue)}</span>
-                        <span>Expenses: {fmt(f.operating_expenses)}</span>
-                        <span>NOI: {fmt(f.noi)}</span>
-                        {f.occupancy_pct !== null && <span>Occupancy: {f.occupancy_pct}%</span>}
-                      </div>
-                      <p className="mt-1 text-xs text-slate-400">Submitted {fmtDate(f.submitted_at)}</p>
-                    </div>
-                  ))}
                 </div>
               )}
             </div>

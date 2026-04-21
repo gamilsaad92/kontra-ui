@@ -1,0 +1,9 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Page background — always start light so the initial HTML flash is white, not black.
+   The dark class is applied by RootLayout/useDayNightTheme after hydration. */
+:root { color-scheme: light; background: #f7f8fb; color: #0f172a; }
+html.dark { background: #0b1020; color: #e2e8f0; }
+

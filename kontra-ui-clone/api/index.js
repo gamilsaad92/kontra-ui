@@ -1,15 +1,3 @@
-/**
- * Copyright (c) 2024-2026 Kontra Technologies, Inc.
- * All Rights Reserved.
- *
- * PROPRIETARY AND CONFIDENTIAL
- * This software and all related documentation are the exclusive property of
- * Kontra Technologies, Inc. Unauthorized copying, distribution, modification,
- * reverse engineering, or use of this software, in whole or in part, without
- * the express written permission of Kontra Technologies, Inc. is strictly
- * prohibited and may result in civil and criminal penalties.
- */
-
 // index.js
 // In development, override: true lets .env win over the shell-level placeholder
 // fallbacks set in the workflow command. In production (Render), we do NOT

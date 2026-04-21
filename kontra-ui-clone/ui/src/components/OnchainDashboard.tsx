@@ -105,9 +105,9 @@ function StatusBadge({ status }: { status?: TokenStatus }) {
 
 function ErrorBanner({ msg, onDismiss }: { msg: string; onDismiss: () => void }) {
   return (
-    <div className="flex items-center justify-between rounded-lg border border-brand-100 bg-brand-50 px-3 py-2 text-sm text-brand-700">
+    <div className="flex items-center justify-between rounded-lg border border-rose-100 bg-rose-50 px-3 py-2 text-sm text-rose-700">
       <span>{msg}</span>
-      <button onClick={onDismiss} className="ml-2 text-brand-400 hover:text-brand-600">
+      <button onClick={onDismiss} className="ml-2 text-rose-400 hover:text-rose-600">
         <XCircleIcon className="h-4 w-4" />
       </button>
     </div>
@@ -359,7 +359,7 @@ function AllocationsTab({ pool }: { pool: Pool }) {
                     </span>
                   </td>
                   <td className="px-4 py-2.5 text-right">
-                    <button onClick={() => handleRemove(a.id)} className="text-slate-400 hover:text-brand-600">
+                    <button onClick={() => handleRemove(a.id)} className="text-slate-400 hover:text-rose-600">
                       <TrashIcon className="h-4 w-4" />
                     </button>
                   </td>
@@ -492,14 +492,14 @@ function WhitelistTab({ onDone }: { onDone?: () => void }) {
                   <td className="px-4 py-2.5">
                     <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${
                       w.kyc_status === "approved" ? "bg-emerald-50 text-emerald-700" :
-                      w.kyc_status === "rejected" ? "bg-brand-50 text-brand-700" :
+                      w.kyc_status === "rejected" ? "bg-rose-50 text-rose-700" :
                       "bg-amber-50 text-amber-700"
                     }`}>
                       {w.kyc_status}
                     </span>
                   </td>
                   <td className="px-4 py-2.5 text-right">
-                    <button onClick={() => handleRemove(w.wallet_address)} className="text-slate-400 hover:text-brand-600">
+                    <button onClick={() => handleRemove(w.wallet_address)} className="text-slate-400 hover:text-rose-600">
                       <TrashIcon className="h-4 w-4" />
                     </button>
                   </td>
@@ -575,7 +575,6 @@ function PoolList({
   const [creating, setCreating] = useState(false);
   const [name, setName] = useState("");
   const [saving, setSaving] = useState(false);
-  const [slowWarning, setSlowWarning] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   async function handleCreate(e: React.FormEvent) {
@@ -583,15 +582,6 @@ function PoolList({
     if (!name.trim()) { setError("Pool name is required"); return; }
     setError(null);
     setSaving(true);
-    setSlowWarning(false);
-
-    // Show a "warming up" hint if the server takes more than 6 seconds
-    const slowTimer = setTimeout(() => setSlowWarning(true), 6000);
-
-    // Hard timeout after 55 seconds with a clear error
-    const controller = new AbortController();
-    const hardTimeout = setTimeout(() => controller.abort(), 55000);
-
     try {
       const result = await post<Pool>("/markets/pools", {
         title: name.trim(),
@@ -602,17 +592,9 @@ function PoolList({
       setName("");
       setCreating(false);
     } catch (err: unknown) {
-      const msg = (err as { message?: string })?.message ?? "";
-      if (msg.includes("aborted") || msg.includes("signal")) {
-        setError("Server took too long to respond. Please try again — it should be faster now.");
-      } else {
-        setError(msg || "Failed to create pool");
-      }
+      setError((err as { message?: string })?.message ?? "Failed to create pool");
     } finally {
-      clearTimeout(slowTimer);
-      clearTimeout(hardTimeout);
       setSaving(false);
-      setSlowWarning(false);
     }
   }
 
@@ -640,12 +622,7 @@ function PoolList({
             value={name}
             onChange={(e) => setName(e.target.value)}
           />
-          {error && <p className="text-xs text-brand-600">{error}</p>}
-          {slowWarning && (
-            <p className="text-xs text-amber-600">
-              Server is warming up — this may take up to 30 seconds on first load…
-            </p>
-          )}
+          {error && <p className="text-xs text-rose-600">{error}</p>}
           <div className="flex gap-2">
             <button
               type="submit"
@@ -762,13 +739,7 @@ export default function OnchainDashboard() {
     finally { setPoolsLoading(false); }
   };
 
-  useEffect(() => {
-    // Pre-warm the backend (Render cold-starts take 30–60s on first request).
-    // Fire a silent health ping as soon as this page loads so the server is
-    // ready by the time the user clicks "Create pool".
-    fetch("/api/markets/pools", { method: "GET" }).catch(() => {});
-    loadPools();
-  }, []);
+  useEffect(() => { loadPools(); }, []);
 
   function handlePoolUpdated(updated: Pool) {
     setPools((prev) => prev.map((p) => (p.id === updated.id ? updated : p)));
@@ -798,10 +769,11 @@ export default function OnchainDashboard() {
   return (
     <div className="space-y-4">
       <header>
-        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Tokenization</p>
-        <h1 className="text-2xl font-semibold text-slate-900">Tokenization</h1>
+        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Blockchain layer</p>
+        <h1 className="text-2xl font-semibold text-slate-900">Pool tokenization</h1>
         <p className="text-sm text-slate-600">
-          Structure loan pools, prepare token issuances, and assign investor allocations. Clean data in, investable digital assets out.
+          One ERC-20 per pool on Base. Mint shares, assign allocations to whitelisted wallets.
+          All financial logic stays off-chain.
         </p>
       </header>
 

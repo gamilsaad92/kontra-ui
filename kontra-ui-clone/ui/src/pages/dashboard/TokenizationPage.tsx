@@ -29,7 +29,7 @@ import {
   CpuChipIcon,
 } from "@heroicons/react/24/outline";
 
-const API_BASE = import.meta.env.VITE_API_BASE || "";
+const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:3001";
 
 const ORG_H = { "X-Org-Id": "demo-org", "Content-Type": "application/json" };
 

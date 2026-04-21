@@ -1,0 +1,39 @@
+services:
+  - type: web
+    name: kontra-api
+    env: node
+    rootDir: api
+    buildCommand: "npm install"
+    startCommand: "node index.js"
+    healthCheckPath: /health
+    envVars:
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: SENTRY_DSN
+        sync: false
+      - key: VITE_SUPABASE_URL
+        sync: false
+      - key: VITE_SUPABASE_ANON_KEY
+        sync: false
+      - key: VITE_API_URL
+        sync: false
+      - key: VITE_SENTRY_DSN
+        sync: false
+      - key: EXCHANGE_ENABLED
+        sync: false
+      - key: DOCSIGN_API_KEY
+        sync: false
+      - key: STORAGE_BUCKET
+        sync: false
+      - key: LISTING_MAX_DOCS
+        sync: false
+      - key: MAX_OFFER_PIECES
+        sync: false
+      # APP_DATABASE_URL / DATABASE_URL: leave UNSET on Render.
+      # Auth and org-context use Supabase directly when no local psql URL is
+      # configured. Setting this with wrong credentials causes noisy errors.
+      # Only set it if you have a dedicated Postgres sidecar with correct creds.

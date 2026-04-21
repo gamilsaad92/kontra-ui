@@ -2,7 +2,6 @@ import React, { useContext } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 import LoginPage from "./pages/LoginPage";
 import PortalSelectPage from "./pages/PortalSelectPage";
-import TermsOfServicePage from "./pages/TermsOfServicePage";
 import RequireAuth from "./app/guards/RequireAuth";
 import RequireRole from "./app/guards/RequireRole";
 import SaasDashboard from "./pages/SaasDashboard";
@@ -47,7 +46,6 @@ function AuthedApp() {
     <Routes>
       {/* ── Public ─────────────────────────────────────────── */}
       <Route path="/login" element={<LoginPage />} />
-      <Route path="/terms" element={<TermsOfServicePage />} />
 
       {/* ── Post-login portal selection (neutral, no portal chrome) */}
       <Route
