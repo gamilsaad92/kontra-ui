@@ -10,7 +10,7 @@
     "score-loans": "node jobs/scoreLoans.js",
     "score-troubled": "node jobs/scoreTroubled.js",
     "setup-db": "node setupDb.js",
-   "test:schema": "node scripts/schemaSmokeTest.js",
+    "test:schema": "node scripts/schemaSmokeTest.js",
     "migrate:app-db": "psql \"$APP_DATABASE_URL\" -f sql/app_identity_schema.sql"
   },
   "dependencies": {
@@ -29,6 +29,7 @@
     "nodemailer": "^6.9.11",
     "openai": "^4.103.0",
     "pdfkit": "^0.13.0",
+    "pg": "^8.20.0",
     "qrcode": "^1.5.1",
     "stripe": "^12.17.0",
     "twilio": "^4.21.0",
