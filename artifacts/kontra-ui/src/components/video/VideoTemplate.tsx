@@ -151,38 +151,18 @@ export default function VideoTemplate() {
       if (e.data.size > 0) chunksRef.current.push(e.data);
     };
 
-    recorder.onstop = async () => {
+    recorder.onstop = () => {
       stream.getTracks().forEach((t) => t.stop());
-      setRecordState('processing');
-      setProgress(0);
-
-      const webmBlob = new Blob(chunksRef.current, { type: mimeType });
-      const formData = new FormData();
-      formData.append('video', webmBlob, 'recording.webm');
-
-      try {
-        const resp = await fetch('/api/convert-video', {
-          method: 'POST',
-          body: formData,
-        });
-
-        if (!resp.ok) {
-          const err = await resp.json().catch(() => ({ error: 'Conversion failed' }));
-          throw new Error(err.error ?? 'Conversion failed');
-        }
-
-        const mp4Blob = await resp.blob();
-        const url = URL.createObjectURL(mp4Blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = 'kontra-pitch.mp4';
-        a.click();
-        URL.revokeObjectURL(url);
-        setRecordState('done');
-      } catch (err: any) {
-        setErrorMsg(err.message ?? 'Conversion failed');
-        setRecordState('error');
-      }
+      const blob = new Blob(chunksRef.current, { type: mimeType });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'kontra-pitch.webm';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 5000);
+      setRecordState('done');
     };
 
     // Hook into window so useVideoPlayer can call them
@@ -234,11 +214,11 @@ export default function VideoTemplate() {
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
               </svg>
-              Download MP4
+              Download Video
             </button>
           ) : (
             <div className="px-4 py-2 rounded-full text-xs font-mono border border-white/10 bg-black/60 text-white/40 backdrop-blur-sm">
-              Open in a new browser tab to download MP4
+              Open in a new browser tab to download video
             </div>
           )}
         </motion.div>
@@ -312,7 +292,7 @@ export default function VideoTemplate() {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                 </svg>
               </div>
-              <p className="text-white font-mono tracking-wide">kontra-pitch.mp4 downloaded</p>
+              <p className="text-white font-mono tracking-wide">kontra-pitch.webm downloaded</p>
               <button
                 onClick={() => { setRecordState('idle'); setProgress(0); }}
                 className="px-4 py-2 text-xs font-mono border border-white/20 rounded-full text-white/60 hover:text-white hover:border-white/40 transition-all"
