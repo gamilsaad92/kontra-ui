@@ -1,0 +1,31 @@
+kind = "web"
+previewPath = "/kontra-demo/"
+title = "Kontra Live Demo"
+version = "1.0.0"
+id = "artifacts/kontra-demo"
+router = "path"
+
+[[integratedSkills]]
+name = "react-vite"
+version = "1.0.0"
+
+[[services]]
+name = "web"
+paths = [ "/kontra-demo/" ]
+localPort = 25219
+
+[services.development]
+run = "pnpm --filter @workspace/kontra-demo run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/kontra-demo", "run", "build" ]
+publicDir = "artifacts/kontra-demo/dist/public"
+serve = "static"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "25219"
+BASE_PATH = "/kontra-demo/"
