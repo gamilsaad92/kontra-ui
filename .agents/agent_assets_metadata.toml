@@ -6,3 +6,15 @@ id = "BTi577iIFQQnMYGK0J8_a"
 uri = "file://artifacts/kontra-mobile/assets/images/icon.png"
 type = "image"
 title = "kontra-app-icon"
+
+[[generated]]
+id = "ynfJ_sAmywgNSqXpt-v8i"
+uri = "file://artifacts/kontra-ui/public/images/grid-texture.png"
+type = "image"
+title = "financial grid texture"
+
+[[generated]]
+id = "i6bTqs_XFSgR2WZiZdUGr"
+uri = "file://artifacts/kontra-ui/public/images/cre-building.png"
+type = "image"
+title = "commercial real estate building"
