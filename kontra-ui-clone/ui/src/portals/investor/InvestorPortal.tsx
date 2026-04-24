@@ -353,7 +353,7 @@ export default function InvestorPortal() {
           )}
           <button
             onClick={async () => { await signOut(); navigate("/login", { replace: true }); }}
-            className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold text-slate-400 hover:bg-slate-800 hover:text-white transition-colors"
+            className="w-full flex items-center gap-2 px-3 py-2.5 rounded-lg text-sm font-semibold text-slate-300 border border-slate-700 hover:bg-red-900/40 hover:text-red-300 hover:border-red-700 transition-all"
           >
             <ArrowRightStartOnRectangleIcon className="h-4 w-4" />
             Log Out
