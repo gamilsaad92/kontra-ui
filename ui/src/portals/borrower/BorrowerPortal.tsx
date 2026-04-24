@@ -6,7 +6,9 @@
  * Data strategy: tries live API first, falls back to demo data so the UI
  * is always functional even when the database tables don't exist yet.
  */
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useContext } from "react";
+import { useNavigate } from "react-router-dom";
+import { AuthContext } from "../../lib/authContext";
 import { api } from "../../lib/apiClient";
 import {
   HomeIcon,
@@ -24,6 +26,7 @@ import {
   SparklesIcon,
   Bars3Icon,
   XMarkIcon,
+  ArrowRightStartOnRectangleIcon,
 } from "@heroicons/react/24/outline";
 
 // ── Demo fallback data ─────────────────────────────────────────────────────
@@ -134,6 +137,8 @@ const NAV_KEYS: { key: Section; label: string; icon: typeof HomeIcon }[] = [
 
 // ── Component ─────────────────────────────────────────────────────────────
 export default function BorrowerPortal() {
+  const { signOut } = useContext(AuthContext) as any;
+  const navigate = useNavigate();
   const [section, setSection]       = useState<Section>("myloans");
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [loan, setLoan]             = useState<LoanData>(DEMO_LOAN);
@@ -374,9 +379,18 @@ export default function BorrowerPortal() {
         </nav>
 
         {/* Footer */}
-        <div className="border-t border-slate-200 p-4">
-          <p className="text-xs text-slate-400">Questions? Contact your servicer:</p>
-          <p className="text-xs font-medium text-slate-700 mt-0.5">{loan.servicer_contact}</p>
+        <div className="border-t border-slate-200 p-4 space-y-3">
+          <div>
+            <p className="text-xs text-slate-400">Questions? Contact your servicer:</p>
+            <p className="text-xs font-medium text-slate-700 mt-0.5">{loan.servicer_contact}</p>
+          </div>
+          <button
+            onClick={async () => { await signOut(); navigate("/login", { replace: true }); }}
+            className="w-full flex items-center gap-2 px-3 py-2.5 rounded-lg text-sm font-semibold text-slate-600 border border-slate-200 hover:bg-red-50 hover:text-red-600 hover:border-red-200 transition-all"
+          >
+            <ArrowRightStartOnRectangleIcon className="h-4 w-4" />
+            Log Out
+          </button>
         </div>
       </aside>
 
