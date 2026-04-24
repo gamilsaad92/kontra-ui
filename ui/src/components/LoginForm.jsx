@@ -2,6 +2,14 @@ import React, { useState, useContext } from 'react'
 import { AuthContext } from '../lib/authContext'
 import { useLocale } from '../lib/i18n'
 
+const DEMO_ROLES = [
+  { role: 'lender',   label: 'Lender',   color: '#800020', light: 'rgba(128,0,32,0.12)',   email: 'replit@kontraplatform.com' },
+  { role: 'servicer', label: 'Servicer', color: '#b45309', light: 'rgba(180,83,9,0.12)',    email: 'replit@kontraplatform.com' },
+  { role: 'investor', label: 'Investor', color: '#6d28d9', light: 'rgba(109,40,217,0.12)',  email: 'replit@kontraplatform.com' },
+  { role: 'borrower', label: 'Borrower', color: '#065f46', light: 'rgba(6,95,70,0.12)',     email: 'replit@kontraplatform.com' },
+]
+const DEMO_PASSWORD = '12345678'
+
 function normalizeEmailForAuth(rawEmail) {
   const trimmed = (rawEmail || '').trim().toLowerCase()
   if (!trimmed.includes('@')) return trimmed
@@ -20,6 +28,15 @@ export default function LoginForm({ onSwitch }) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [focusedField, setFocusedField] = useState(null)
+  const [demoRole, setDemoRole] = useState(null)
+
+  const fillDemo = (rd) => {
+    setDemoRole(rd.role)
+    setEmail(rd.email)
+    setPassword(DEMO_PASSWORD)
+    setError('')
+    try { localStorage.setItem('kontra_demo_role', rd.role) } catch (_) {}
+  }
 
   const handleLogin = async (e) => {
     e.preventDefault()
@@ -47,6 +64,48 @@ export default function LoginForm({ onSwitch }) {
   return (
     <form onSubmit={handleLogin} className="flex flex-col gap-5">
 
+      {/* Demo role pills */}
+      <div>
+        <p className="mb-2 text-xs font-semibold uppercase tracking-wider" style={{ color: '#555' }}>
+          Try a demo account
+        </p>
+        <div className="grid grid-cols-4 gap-2">
+          {DEMO_ROLES.map((rd) => (
+            <button
+              key={rd.role}
+              type="button"
+              onClick={() => fillDemo(rd)}
+              style={{
+                background: demoRole === rd.role ? rd.color : rd.light,
+                border: `1px solid ${demoRole === rd.role ? rd.color : 'transparent'}`,
+                borderRadius: '8px',
+                color: demoRole === rd.role ? '#fff' : rd.color,
+                padding: '8px 4px',
+                fontSize: '11px',
+                fontWeight: 600,
+                transition: 'all 0.15s',
+                cursor: 'pointer',
+                letterSpacing: '0.01em',
+              }}
+            >
+              {rd.label}
+            </button>
+          ))}
+        </div>
+        {demoRole && (
+          <p className="mt-2 text-xs" style={{ color: '#666' }}>
+            Demo credentials filled — click <span style={{ color: '#800020' }}>Sign In</span> to continue as {demoRole.charAt(0).toUpperCase() + demoRole.slice(1)}.
+          </p>
+        )}
+      </div>
+
+      {/* Divider */}
+      <div className="flex items-center gap-3">
+        <div className="h-px flex-1" style={{ background: 'rgba(255,255,255,0.07)' }} />
+        <span className="text-xs" style={{ color: '#444' }}>or enter your credentials</span>
+        <div className="h-px flex-1" style={{ background: 'rgba(255,255,255,0.07)' }} />
+      </div>
+
       {/* Email */}
       <div className="flex flex-col gap-1.5">
         <label className="text-xs font-medium uppercase tracking-wider" style={{ color: '#888' }}>
@@ -61,7 +120,7 @@ export default function LoginForm({ onSwitch }) {
             type="email"
             placeholder="you@example.com"
             value={email}
-            onChange={(e) => setEmail(e.target.value)}
+            onChange={(e) => { setEmail(e.target.value); setDemoRole(null) }}
             onFocus={() => setFocusedField('email')}
             onBlur={() => setFocusedField(null)}
             required

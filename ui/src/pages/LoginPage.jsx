@@ -5,6 +5,13 @@ import SignUpForm from "../components/SignUpForm";
 import { AuthContext } from "../lib/authContext";
 import { getAppRoleFromToken, getPortalPath } from "../lib/usePortalRouter";
 
+const PORTAL_STATS = [
+  { role: "Lender", color: "#800020", desc: "Originate, underwrite & manage your CRE loan portfolio" },
+  { role: "Servicer", color: "#b45309", desc: "Payments, draws, escrow, delinquency & AI validation" },
+  { role: "Investor", color: "#6d28d9", desc: "Holdings, distributions, governance & debt exchange" },
+  { role: "Borrower", color: "#065f46", desc: "Payments, draw requests, documents & communications" },
+];
+
 export default function LoginPage() {
   const { session, loading } = useContext(AuthContext);
   const [mode, setMode] = useState("login");
@@ -21,21 +28,27 @@ export default function LoginPage() {
 
     const roleFromJwt = getAppRoleFromToken(token);
 
+    // Check if a demo role was requested
+    let demoRole = null;
+    try { demoRole = localStorage.getItem("kontra_demo_role"); } catch (_) {}
+    if (demoRole) {
+      try { localStorage.removeItem("kontra_demo_role"); } catch (_) {}
+      navigate(getPortalPath(demoRole), { replace: true });
+      return;
+    }
+
     if (roleFromJwt !== "member") {
-      // JWT already carries the role (hook registered, or invited via new flow)
       navigate(getPortalPath(roleFromJwt), { replace: true });
       return;
     }
 
-    // Fallback: JWT has no app_role yet — ask the API (reads from organization_members DB)
     fetch("/api/onboarding/me", {
       headers: { Authorization: `Bearer ${token}` },
     })
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
         const dbRole = data?.app_role ?? "member";
-          // Cache so RequireRole can use it even without a custom JWT hook
-          try { localStorage.setItem("kontra_resolved_role", dbRole); } catch (_) {}
+        try { localStorage.setItem("kontra_resolved_role", dbRole); } catch (_) {}
         navigate(getPortalPath(dbRole), { replace: true });
       })
       .catch(() => {
@@ -61,9 +74,9 @@ export default function LoginPage() {
       className="relative flex min-h-screen"
       style={{ background: "#111" }}
     >
-      {/* Left accent panel — visible on wider screens */}
+      {/* Left accent panel */}
       <div
-        className="hidden lg:flex lg:w-[420px] xl:w-[480px] flex-col justify-between p-12 shrink-0"
+        className="hidden lg:flex lg:w-[440px] xl:w-[500px] flex-col justify-between p-12 shrink-0"
         style={{
           background: "linear-gradient(160deg, #1a0505 0%, #0d0d0d 60%, #111 100%)",
           borderRight: "1px solid rgba(128,0,32,0.12)",
@@ -78,14 +91,54 @@ export default function LoginPage() {
 
         <div>
           <p className="mb-3 text-xs font-semibold uppercase tracking-widest" style={{ color: "#800020" }}>
-            AI-Native Loan Servicing
+            Data Infrastructure for CRE Lending
           </p>
           <h2 className="mb-4 text-3xl font-bold leading-tight text-white" style={{ letterSpacing: "-0.03em" }}>
-            Command your<br />entire portfolio.
+            One platform.<br />Every stakeholder.
           </h2>
-          <p className="text-sm leading-relaxed" style={{ color: "#666" }}>
-            Multifamily and CRE loan servicing built for the way modern lenders actually work.
+          <p className="mb-8 text-sm leading-relaxed" style={{ color: "#666" }}>
+            The operating system for commercial real estate loan servicing — built for lenders, servicers, investors, and borrowers.
           </p>
+
+          {/* Portfolio snapshot */}
+          <div
+            className="rounded-xl p-5 mb-8"
+            style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}
+          >
+            <p className="mb-4 text-xs font-bold uppercase tracking-widest" style={{ color: "#555" }}>
+              Platform Demo · Live Portfolio
+            </p>
+            <div className="grid grid-cols-3 gap-4">
+              {[
+                { label: "AUM", value: "$2.4B" },
+                { label: "Active Loans", value: "847" },
+                { label: "Servicers", value: "34" },
+              ].map(s => (
+                <div key={s.label}>
+                  <p className="text-xl font-bold text-white" style={{ letterSpacing: "-0.02em" }}>{s.value}</p>
+                  <p className="text-xs" style={{ color: "#555" }}>{s.label}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Portal list */}
+          <div className="space-y-3">
+            {PORTAL_STATS.map(p => (
+              <div key={p.role} className="flex items-start gap-3">
+                <div
+                  className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded"
+                  style={{ background: p.color }}
+                >
+                  <span className="text-[9px] font-black text-white">{p.role[0]}</span>
+                </div>
+                <div>
+                  <p className="text-xs font-semibold text-white">{p.role} Portal</p>
+                  <p className="text-xs" style={{ color: "#555" }}>{p.desc}</p>
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
 
         <div className="flex items-center gap-2">
@@ -105,7 +158,7 @@ export default function LoginPage() {
           <span className="text-base font-bold text-white" style={{ letterSpacing: "-0.02em" }}>Kontra</span>
         </div>
 
-        <div className="w-full max-w-[340px]">
+        <div className="w-full max-w-[360px]">
           <div className="mb-8">
             <h1 className="mb-1.5 text-2xl font-bold text-white" style={{ letterSpacing: "-0.02em" }}>
               {mode === "login" ? "Welcome back" : "Create account"}
