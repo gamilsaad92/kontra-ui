@@ -1,6 +1,7 @@
 const express = require('express');
 const authenticate = require('../middlewares/authenticate');
 const { supabase } = require('../db');
+const { getPool } = require('../lib/pgAdapter');
 const { isFeatureEnabled } = require('../featureFlags');
 const { whitelistInvestor } = require('../services/poolInvestmentService');
 
@@ -222,33 +223,40 @@ router.get('/risk', async (req, res) => {
 router.get('/holdings', async (req, res) => {
   try {
     const userId = req.user?.id;
-    const { data, error } = await supabase
-      .from('pool_investments')
-      .select(`id, loan_id, share_pct, invested_amount, token_balance, token_symbol,
-               loans(id, loan_ref, property_name, property_type, location,
-                     current_balance, status, interest_rate, maturity_date)`)
-      .eq('investor_user_id', userId);
+    const pool = getPool();
+    const { rows } = await pool.query(
+      `SELECT ih.id, ih.loan_id, ih.share_pct, ih.token_balance, ih.token_symbol,
+              ih.status, ih.data as holding_data,
+              l.title, l.amount, l.interest_rate, l.status as loan_status, l.data as loan_data
+       FROM investor_holdings ih
+       LEFT JOIN loans l ON l.id = ih.loan_id
+       WHERE ih.investor_user_id = $1`,
+      [userId]
+    );
 
-    if (error) throw error;
-
-    const holdings = (data || []).map(row => ({
-      loan_id:       row.loan_id,
-      loan_ref:      row.loans?.loan_ref      || row.loan_id,
-      property_name: row.loans?.property_name || 'Unknown Property',
-      property_type: row.loans?.property_type || '',
-      location:      row.loans?.location      || '',
-      upb:           Number(row.loans?.current_balance) || 0,
-      my_share_pct:  Number(row.share_pct)   || 0,
-      my_share_usd:  Number(row.invested_amount) || 0,
-      token_balance: Number(row.token_balance) || 0,
-      token_symbol:  row.token_symbol         || `KTRA-${row.loan_id}`,
-      status:        row.loans?.status        || 'Current',
-      yield_pct:     parseFloat(row.loans?.interest_rate) || 0,
-      maturity:      row.loans?.maturity_date || '',
-    }));
+    const holdings = rows.map(row => {
+      const ld = row.loan_data || {};
+      const hd = row.holding_data || {};
+      return {
+        loan_id:       row.loan_id,
+        loan_ref:      ld.loan_ref      || row.title || row.loan_id,
+        property_name: ld.property_name || row.title || 'Unknown Property',
+        property_type: ld.property_type || '',
+        location:      ld.location      || '',
+        upb:           Number(ld.current_balance || row.amount) || 0,
+        my_share_pct:  Number(row.share_pct)  || 0,
+        my_share_usd:  Math.round((Number(row.share_pct) / 100) * Number(ld.current_balance || row.amount || 0)),
+        token_balance: Number(row.token_balance) || 0,
+        token_symbol:  row.token_symbol || `KTRA-${row.loan_id}`,
+        status:        row.loan_status  || row.status || 'Current',
+        yield_pct:     parseFloat(hd.yield_pct || row.interest_rate) || 0,
+        maturity:      ld.maturity_date || '',
+      };
+    });
 
     return res.json({ holdings });
   } catch (err) {
+    console.error('[investors] holdings error:', err.message);
     return res.json({ holdings: [] });
   }
 });
@@ -257,27 +265,36 @@ router.get('/holdings', async (req, res) => {
 router.get('/distributions', async (req, res) => {
   try {
     const userId = req.user?.id;
-    const { data, error } = await supabase
-      .from('investor_distributions')
-      .select('id, period, loan_ref, gross_amount, net_amount, distribution_type, paid_at, status')
-      .eq('investor_user_id', userId)
-      .order('paid_at', { ascending: false });
+    const pool = getPool();
+    const { rows } = await pool.query(
+      `SELECT d.id, d.period, d.gross_amount, d.net_amount, d.type, d.status,
+              d.data, d.loan_id, d.created_at,
+              l.title as loan_title, l.data as loan_data
+       FROM distributions d
+       LEFT JOIN loans l ON l.id = d.loan_id
+       WHERE d.investor_user_id = $1
+       ORDER BY d.created_at DESC`,
+      [userId]
+    );
 
-    if (error) throw error;
-
-    const distributions = (data || []).map(row => ({
-      id:           row.id,
-      period:       row.period,
-      loan_ref:     row.loan_ref,
-      gross_amount: Number(row.gross_amount) || 0,
-      net_amount:   Number(row.net_amount)   || 0,
-      type:         row.distribution_type    || 'Interest',
-      paid_at:      row.paid_at,
-      status:       row.status               || 'paid',
-    }));
+    const distributions = rows.map(row => {
+      const d = row.data || {};
+      const ld = row.loan_data || {};
+      return {
+        id:           row.id,
+        period:       row.period,
+        loan_ref:     ld.loan_ref || row.loan_title || row.loan_id,
+        gross_amount: Number(row.gross_amount) || 0,
+        net_amount:   Number(row.net_amount)   || 0,
+        type:         row.type                 || 'Interest',
+        paid_at:      d.paid_at               || row.created_at,
+        status:       row.status               || 'paid',
+      };
+    });
 
     return res.json({ distributions });
   } catch (err) {
+    console.error('[investors] distributions error:', err.message);
     return res.json({ distributions: [] });
   }
 });
@@ -286,31 +303,33 @@ router.get('/distributions', async (req, res) => {
 router.get('/performance', async (req, res) => {
   try {
     const userId = req.user?.id;
-    // Get loans that this investor participates in
-    const { data: investments, error: invErr } = await supabase
-      .from('pool_investments')
-      .select('loan_id, loans(id, loan_ref, property_name, dscr, ltv, delinquency_days, payment_status, risk_score)')
-      .eq('investor_user_id', userId);
+    const pool = getPool();
+    const { rows } = await pool.query(
+      `SELECT ih.loan_id, l.title, l.risk_score, l.status, l.data as loan_data
+       FROM investor_holdings ih
+       LEFT JOIN loans l ON l.id = ih.loan_id
+       WHERE ih.investor_user_id = $1`,
+      [userId]
+    );
 
-    if (invErr) throw invErr;
-
-    const performance = (investments || []).map(row => {
-      const loan = row.loans || {};
-      const riskScore = Number(loan.risk_score) || 0;
+    const performance = rows.map(row => {
+      const ld = row.loan_data || {};
+      const riskScore = Number(row.risk_score) || 0;
       const riskLabel = riskScore > 0.7 ? 'High' : riskScore > 0.4 ? 'Medium' : 'Low';
       return {
-        loan_ref:         loan.loan_ref     || row.loan_id,
-        property:         loan.property_name || 'Unknown Property',
-        dscr:             Number(loan.dscr) || 0,
-        ltv:              Number(loan.ltv)  || 0,
-        delinquency_days: Number(loan.delinquency_days) || 0,
-        payment_status:   loan.payment_status || 'Current',
+        loan_ref:         ld.loan_ref  || row.title || row.loan_id,
+        property:         ld.property_name || row.title || 'Unknown Property',
+        dscr:             Number(ld.dscr) || 0,
+        ltv:              Number(ld.ltv)  || 0,
+        delinquency_days: Number(ld.delinquency_days) || 0,
+        payment_status:   row.status || 'Current',
         risk_label:       riskLabel,
       };
     });
 
     return res.json({ performance });
   } catch (err) {
+    console.error('[investors] performance error:', err.message);
     return res.json({ performance: [] });
   }
 });
