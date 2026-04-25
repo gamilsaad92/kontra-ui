@@ -463,7 +463,7 @@ router.get('/loans', async (req, res) => {
   try {
     let q = supabase
       .from('loans')
-      .select('id, borrower_name, amount, interest_rate, term_months, start_date, status, risk_score, created_at')
+      .select('id, title, org_id, borrower_name, property_type, amount, interest_rate, term_months, start_date, status, risk_score, data, created_at')
       .order('created_at', { ascending: false });
    q = q.eq('organization_id', req.orgId);
     if (status) q = q.eq('status', status);
