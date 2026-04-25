@@ -49,7 +49,7 @@ const express = require('express');
         );
         CREATE INDEX IF NOT EXISTS idx_lifecycle_loan ON loan_lifecycle_events(loan_id);
       `
-    }).catch(() => null);
+    }).then(() => null).catch(() => null);
   }
   bootstrap();
 
