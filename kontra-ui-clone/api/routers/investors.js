@@ -219,10 +219,11 @@ router.get('/risk', async (req, res) => {
   }
 });
 
-// ── GET /api/investors/holdings ─────────────────────────────────────────────
-router.get('/holdings', async (req, res) => {
-  try {
-    const userId = req.user?.id;
+// ── helper: query investor data via raw SQL (local) or Supabase client (prod) ─
+const hasDatabaseUrl = !!process.env.DATABASE_URL;
+
+async function getHoldingsRows(userId) {
+  if (hasDatabaseUrl) {
     const pool = getPool();
     const { rows } = await pool.query(
       `SELECT ih.id, ih.loan_id, ih.share_pct, ih.token_balance, ih.token_symbol,
@@ -233,6 +234,70 @@ router.get('/holdings', async (req, res) => {
        WHERE ih.investor_user_id = $1`,
       [userId]
     );
+    return rows;
+  }
+  // Supabase JS path — two separate queries joined in JS
+  const { data: ihs } = await supabase.from('investor_holdings').select('*').eq('investor_user_id', userId);
+  if (!ihs || !ihs.length) return [];
+  const loanIds = [...new Set(ihs.map(h => h.loan_id).filter(Boolean))];
+  const { data: loans } = await supabase.from('loans').select('id,title,amount,interest_rate,status,data').in('id', loanIds);
+  const loanMap = Object.fromEntries((loans || []).map(l => [l.id, l]));
+  return ihs.map(ih => {
+    const l = loanMap[ih.loan_id] || {};
+    return { ...ih, holding_data: ih.data, loan_data: l.data, title: l.title, amount: l.amount, interest_rate: l.interest_rate, loan_status: l.status };
+  });
+}
+
+async function getDistributionRows(userId) {
+  if (hasDatabaseUrl) {
+    const pool = getPool();
+    const { rows } = await pool.query(
+      `SELECT d.id, d.period, d.gross_amount, d.net_amount, d.type, d.status,
+              d.data, d.loan_id, d.created_at,
+              l.title as loan_title, l.data as loan_data
+       FROM distributions d
+       LEFT JOIN loans l ON l.id = d.loan_id
+       WHERE d.investor_user_id = $1
+       ORDER BY d.created_at DESC`,
+      [userId]
+    );
+    return rows;
+  }
+  const { data: dists } = await supabase.from('distributions').select('*').eq('investor_user_id', userId).order('created_at', { ascending: false });
+  if (!dists || !dists.length) return [];
+  const loanIds = [...new Set(dists.map(d => d.loan_id).filter(Boolean))];
+  const { data: loans } = await supabase.from('loans').select('id,title,data').in('id', loanIds);
+  const loanMap = Object.fromEntries((loans || []).map(l => [l.id, l]));
+  return dists.map(d => {
+    const l = loanMap[d.loan_id] || {};
+    return { ...d, loan_title: l.title, loan_data: l.data };
+  });
+}
+
+async function getPerformanceRows(userId) {
+  if (hasDatabaseUrl) {
+    const pool = getPool();
+    const { rows } = await pool.query(
+      `SELECT ih.loan_id, l.title, l.risk_score, l.status, l.data as loan_data
+       FROM investor_holdings ih
+       LEFT JOIN loans l ON l.id = ih.loan_id
+       WHERE ih.investor_user_id = $1`,
+      [userId]
+    );
+    return rows;
+  }
+  const { data: ihs } = await supabase.from('investor_holdings').select('loan_id').eq('investor_user_id', userId);
+  if (!ihs || !ihs.length) return [];
+  const loanIds = [...new Set(ihs.map(h => h.loan_id).filter(Boolean))];
+  const { data: loans } = await supabase.from('loans').select('id,title,risk_score,status,data').in('id', loanIds);
+  return (loans || []).map(l => ({ loan_id: l.id, title: l.title, risk_score: l.risk_score, status: l.status, loan_data: l.data }));
+}
+
+// ── GET /api/investors/holdings ─────────────────────────────────────────────
+router.get('/holdings', async (req, res) => {
+  try {
+    const userId = req.user?.id;
+    const rows = await getHoldingsRows(userId);
 
     const holdings = rows.map(row => {
       const ld = row.loan_data || {};
@@ -265,17 +330,7 @@ router.get('/holdings', async (req, res) => {
 router.get('/distributions', async (req, res) => {
   try {
     const userId = req.user?.id;
-    const pool = getPool();
-    const { rows } = await pool.query(
-      `SELECT d.id, d.period, d.gross_amount, d.net_amount, d.type, d.status,
-              d.data, d.loan_id, d.created_at,
-              l.title as loan_title, l.data as loan_data
-       FROM distributions d
-       LEFT JOIN loans l ON l.id = d.loan_id
-       WHERE d.investor_user_id = $1
-       ORDER BY d.created_at DESC`,
-      [userId]
-    );
+    const rows = await getDistributionRows(userId);
 
     const distributions = rows.map(row => {
       const d = row.data || {};
@@ -303,14 +358,7 @@ router.get('/distributions', async (req, res) => {
 router.get('/performance', async (req, res) => {
   try {
     const userId = req.user?.id;
-    const pool = getPool();
-    const { rows } = await pool.query(
-      `SELECT ih.loan_id, l.title, l.risk_score, l.status, l.data as loan_data
-       FROM investor_holdings ih
-       LEFT JOIN loans l ON l.id = ih.loan_id
-       WHERE ih.investor_user_id = $1`,
-      [userId]
-    );
+    const rows = await getPerformanceRows(userId);
 
     const performance = rows.map(row => {
       const ld = row.loan_data || {};
