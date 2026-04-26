@@ -501,7 +501,7 @@ router.get('/loans', async (req, res) => {
     throw error;
   } catch (err) {
     console.error('Loan list error:', err);
-    res.status(500).json({ message: 'Failed to fetch loans', loans: [] });
+    res.status(500).json({ message: 'Failed to fetch loans', loans: [], _debug: { msg: String(err?.message), code: err?.code, details: String(err?.details||'') } });
   }
 });
 
