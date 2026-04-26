@@ -9,12 +9,16 @@
  *   3. Fallback → noop stub (returns empty data gracefully)
  */
 
+// Supabase keys may be new-style (sb_publishable / sb_secret, ~40 chars)
+// or old-style JWTs (200+ chars). Only exclude obvious placeholders.
+const sbKey = (process.env.SUPABASE_SERVICE_ROLE_KEY || '').trim();
 const isRealSupabase =
   process.env.SUPABASE_URL &&
   !process.env.SUPABASE_URL.includes('placeholder') &&
   process.env.SUPABASE_URL.startsWith('https://') &&
-  process.env.SUPABASE_SERVICE_ROLE_KEY &&
-  process.env.SUPABASE_SERVICE_ROLE_KEY.length > 100; // real JWT key is 200+ chars
+  sbKey.length > 10 &&
+  !sbKey.toLowerCase().includes('placeholder') &&
+  !sbKey.toLowerCase().includes('your-key');
 
 const hasLocalDb = !!process.env.DATABASE_URL && !isRealSupabase;
 
@@ -23,13 +27,13 @@ let supabase, replica;
 if (isRealSupabase) {
   // ── Path 1: Real Supabase project (production data lives here) ─────────────
   const { createClient } = require('@supabase/supabase-js');
-  supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, {
+  supabase = createClient(process.env.SUPABASE_URL, sbKey, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
   replica = process.env.SUPABASE_REPLICA_URL
-    ? createClient(process.env.SUPABASE_REPLICA_URL, process.env.SUPABASE_SERVICE_ROLE_KEY)
+    ? createClient(process.env.SUPABASE_REPLICA_URL, sbKey)
     : supabase;
-  console.log('[db] Connected to Supabase:', process.env.SUPABASE_URL);
+  console.log('[db] Connected to Supabase:', process.env.SUPABASE_URL, '| key_len:', sbKey.length);
 
 } else if (hasLocalDb) {
   // ── Path 2: Local PostgreSQL (Replit dev environment) ─────────────────────
