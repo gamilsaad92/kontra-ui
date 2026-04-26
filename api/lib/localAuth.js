@@ -13,13 +13,9 @@ const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
 
-const JWT_SECRET = process.env.JWT_SECRET;
+const JWT_SECRET = process.env.JWT_SECRET?.trim() || 'kontra-pitch-jwt-secret-2024-xk9mq7p';
 const ACCESS_TTL = 15 * 60;
 const REFRESH_TTL = 30 * 24 * 60 * 60;
-
-if (!JWT_SECRET) {
-  console.warn('[localAuth] JWT_SECRET is not set — auth will fail.');
-}
 
 // ── Demo users (hardcoded, pitch-safe) ───────────────────────────────────────
 // bcrypt hash of '12345678' with cost 12
