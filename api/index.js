@@ -2075,8 +2075,14 @@ if (require.main === module) {
   const server = http.createServer(app);
   attachChatServer(server);
   attachCollabServer(server);
-  server.listen(PORT, () => {
+  server.listen(PORT, async () => {
     console.log(`Kontra API listening on port ${PORT}`);
+    try {
+      const { bootstrap } = require('./lib/dbBootstrap');
+      await bootstrap();
+    } catch (e) {
+      console.warn('[startup] dbBootstrap failed (non-fatal):', e.message);
+    }
     if (process.env.NODE_ENV !== 'production') {
       void logBaselineSchemaHealth();
     }
