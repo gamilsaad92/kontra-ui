@@ -19,9 +19,10 @@ let _pool = null;
 
 function getPool() {
   if (!_pool) {
+    const connStr = process.env.DATABASE_URL || process.env.APP_DATABASE_URL;
     _pool = new Pool({
-      connectionString: process.env.DATABASE_URL,
-      ssl: process.env.DATABASE_URL && process.env.DATABASE_URL.includes('sslmode') ? undefined : { rejectUnauthorized: false },
+      connectionString: connStr,
+      ssl: connStr && connStr.includes('sslmode') ? undefined : { rejectUnauthorized: false },
     });
     _pool.on('error', (err) => {
       console.error('[pgAdapter] Pool error:', err.message);
