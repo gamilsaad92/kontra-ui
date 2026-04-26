@@ -2,16 +2,16 @@ import { NavLink, Outlet } from 'react-router-dom';
 import { ServicingProvider } from './ServicingContext';
 
 const tabs = [
-  { label: 'Overview',           to: '/servicer/overview' },
-  { label: 'Cash Flow',          to: '/servicer/waterfall' },
-  { label: 'Payments',           to: '/servicer/payments' },
-  { label: 'Delinquency',        to: '/servicer/delinquency' },
-  { label: 'Draws',              to: '/servicer/draws' },
-  { label: 'Inspections',        to: '/servicer/inspections' },
-  { label: 'Escrows',            to: '/servicer/escrow' },
-  { label: 'Borrower Financials',to: '/servicer/borrower-financials' },
-  { label: 'Management',         to: '/servicer/management' },
-  { label: 'AI Operations',      to: '/servicer/ai-ops' },
+  { label: 'Overview',            to: '/servicer/overview' },
+  { label: 'Cash Flow',           to: '/servicer/waterfall' },
+  { label: 'Payments',            to: '/servicer/payments' },
+  { label: 'Delinquency',         to: '/servicer/delinquency' },
+  { label: 'Draws',               to: '/servicer/draws' },
+  { label: 'Inspections',         to: '/servicer/inspections' },
+  { label: 'Escrow',              to: '/servicer/escrow' },
+  { label: 'Borrower Financials', to: '/servicer/borrower-financials' },
+  { label: 'Management (PMC)',    to: '/servicer/management' },
+  { label: 'Review Queue',        to: '/servicer/ai-ops' },
 ];
 
 export default function ServicingLayout() {
