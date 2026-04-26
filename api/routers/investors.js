@@ -220,109 +220,112 @@ router.get('/risk', async (req, res) => {
 
 // ── GET /api/investors/holdings ─────────────────────────────────────────────
 router.get('/holdings', async (req, res) => {
-    try {
-      const userId = req.user?.id;
-      // Fetch holdings and loans separately (avoids Supabase join syntax issues)
-      const { data: ihs, error: ihErr } = await supabase.from('investor_holdings').select('*').eq('investor_user_id', userId);
-      if (ihErr) throw ihErr;
-      if (!ihs || !ihs.length) return res.json({ holdings: [] });
+  try {
+    const userId = req.user?.id;
+    const { data, error } = await supabase
+      .from('investor_holdings')
+      .select(`id, loan_id, share_pct, token_balance, token_symbol, status, data,
+               loans(id, title, amount, interest_rate, status, data)`)
+      .eq('investor_user_id', userId);
 
-      const loanIds = [...new Set(ihs.map(h => h.loan_id).filter(Boolean))];
-      const { data: loans } = await supabase.from('loans').select('id,title,amount,interest_rate,status,data').in('id', loanIds);
-      const loanMap = Object.fromEntries((loans || []).map(l => [l.id, l]));
+    if (error) throw error;
 
-      const holdings = ihs.map(ih => {
-        const l = loanMap[ih.loan_id] || {};
-        const ld = l.data || {};
-        const hd = ih.data || {};
-        return {
-          loan_id:       ih.loan_id,
-          loan_ref:      ld.loan_ref      || l.title || ih.loan_id,
-          property_name: ld.property_name || l.title || 'Unknown Property',
-          property_type: ld.property_type || '',
-          location:      ld.location      || '',
-          upb:           Number(ld.current_balance || l.amount) || 0,
-          my_share_pct:  Number(ih.share_pct)  || 0,
-          my_share_usd:  Math.round((Number(ih.share_pct) / 100) * Number(ld.current_balance || l.amount || 0)),
-          token_balance: Number(ih.token_balance) || 0,
-          token_symbol:  ih.token_symbol || `KTRA-${ih.loan_id}`,
-          status:        l.status || ih.status || 'Current',
-          yield_pct:     parseFloat(hd.yield_pct || l.interest_rate) || 0,
-          maturity:      ld.maturity_date || '',
-        };
-      });
-      return res.json({ holdings });
-    } catch (err) {
-      console.error('[investors] holdings error:', err.message);
-      return res.json({ holdings: [] });
-    }
-  });
+    const holdings = (data || []).map(row => {
+      const ld = row.loans?.data || {};
+      const hd = row.data || {};
+      return {
+        loan_id:       row.loan_id,
+        loan_ref:      ld.loan_ref       || row.loan_id,
+        property_name: ld.property_name  || row.loans?.title || 'Unknown Property',
+        property_type: ld.property_type  || '',
+        location:      ld.location       || '',
+        upb:           Number(ld.current_balance) || Number(row.loans?.amount) || 0,
+        my_share_pct:  Number(row.share_pct) || 0,
+        my_share_usd:  Number(row.share_pct) / 100 * (Number(ld.current_balance) || Number(row.loans?.amount) || 0),
+        token_balance: Number(row.token_balance) || 0,
+        token_symbol:  row.token_symbol || `KTRA`,
+        status:        row.status || row.loans?.status || 'active',
+        yield_pct:     Number(hd.yield_pct) || Number(row.loans?.interest_rate) || 0,
+        maturity:      ld.maturity_date  || '',
+        ltv:           Number(ld.ltv)    || 0,
+        dscr:          Number(ld.dscr)   || 0,
+      };
+    });
 
-  router.get('/distributions', async (req, res) => {
-    try {
-      const userId = req.user?.id;
-      const { data: dists, error } = await supabase.from('distributions').select('*').eq('investor_user_id', userId).order('created_at', { ascending: false });
-      if (error) throw error;
-      if (!dists || !dists.length) return res.json({ distributions: [] });
+    return res.json({ holdings });
+  } catch (err) {
+    console.error('[investors] holdings error:', err.message);
+    return res.json({ holdings: [] });
+  }
+});
 
-      const loanIds = [...new Set(dists.map(d => d.loan_id).filter(Boolean))];
-      const { data: loans } = await supabase.from('loans').select('id,title,data').in('id', loanIds);
-      const loanMap = Object.fromEntries((loans || []).map(l => [l.id, l]));
+// ── GET /api/investors/distributions ────────────────────────────────────────
+router.get('/distributions', async (req, res) => {
+  try {
+    const userId = req.user?.id;
+    const { data, error } = await supabase
+      .from('distributions')
+      .select(`id, loan_id, period, gross_amount, net_amount, type, status, data,
+               loans(title, data)`)
+      .eq('investor_user_id', userId)
+      .order('created_at', { ascending: false });
 
-      const distributions = dists.map(d => {
-        const l = loanMap[d.loan_id] || {};
-        const ld = l.data || {};
-        const dd = d.data || {};
-        return {
-          id:           d.id,
-          period:       d.period,
-          loan_ref:     ld.loan_ref || l.title || d.loan_id,
-          gross_amount: Number(d.gross_amount) || 0,
-          net_amount:   Number(d.net_amount)   || 0,
-          type:         d.type    || 'Interest',
-          paid_at:      dd.paid_at || d.created_at,
-          status:       d.status  || 'paid',
-        };
-      });
-      return res.json({ distributions });
-    } catch (err) {
-      console.error('[investors] distributions error:', err.message);
-      return res.json({ distributions: [] });
-    }
-  });
+    if (error) throw error;
 
-  router.get('/performance', async (req, res) => {
-    try {
-      const userId = req.user?.id;
-      const { data: ihs, error: ihErr } = await supabase.from('investor_holdings').select('loan_id').eq('investor_user_id', userId);
-      if (ihErr) throw ihErr;
-      if (!ihs || !ihs.length) return res.json({ performance: [] });
+    const distributions = (data || []).map(row => ({
+      id:           row.id,
+      period:       row.period,
+      loan_ref:     row.loans?.data?.loan_ref || row.loan_id,
+      property_name: row.loans?.data?.property_name || row.loans?.title || '',
+      gross_amount: Number(row.gross_amount) || 0,
+      net_amount:   Number(row.net_amount)   || 0,
+      type:         row.type                 || 'Interest',
+      paid_at:      row.data?.paid_at        || row.created_at,
+      status:       row.status               || 'paid',
+    }));
 
-      const loanIds = [...new Set(ihs.map(h => h.loan_id).filter(Boolean))];
-      const { data: loans } = await supabase.from('loans').select('id,title,risk_score,status,data').in('id', loanIds);
+    return res.json({ distributions });
+  } catch (err) {
+    console.error('[investors] distributions error:', err.message);
+    return res.json({ distributions: [] });
+  }
+});
 
-      const performance = (loans || []).map(l => {
-        const ld = l.data || {};
-        const riskScore = Number(l.risk_score) || 0;
-        const riskLabel = riskScore > 0.7 ? 'High' : riskScore > 0.4 ? 'Medium' : 'Low';
-        return {
-          loan_ref:         ld.loan_ref || l.title || l.id,
-          property:         ld.property_name || l.title || 'Unknown Property',
-          dscr:             Number(ld.dscr) || 0,
-          ltv:              Number(ld.ltv)  || 0,
-          delinquency_days: Number(ld.delinquency_days) || 0,
-          payment_status:   l.status || 'Current',
-          risk_label:       riskLabel,
-        };
-      });
-      return res.json({ performance });
-    } catch (err) {
-      console.error('[investors] performance error:', err.message);
-      return res.json({ performance: [] });
-    }
-  });
+// ── GET /api/investors/performance ──────────────────────────────────────────
+router.get('/performance', async (req, res) => {
+  try {
+    const userId = req.user?.id;
+    // Get loans that this investor participates in
+    const { data: investments, error: invErr } = await supabase
+      .from('pool_investments')
+      .select('loan_id, loans(id, loan_ref, property_name, dscr, ltv, delinquency_days, payment_status, risk_score)')
+      .eq('investor_user_id', userId);
 
-  router.get('/alerts', async (req, res) => {
+    if (invErr) throw invErr;
+
+    const performance = (investments || []).map(row => {
+      const loan = row.loans || {};
+      const riskScore = Number(loan.risk_score) || 0;
+      const riskLabel = riskScore > 0.7 ? 'High' : riskScore > 0.4 ? 'Medium' : 'Low';
+      return {
+        loan_ref:         loan.loan_ref     || row.loan_id,
+        property:         loan.property_name || 'Unknown Property',
+        dscr:             Number(loan.dscr) || 0,
+        ltv:              Number(loan.ltv)  || 0,
+        delinquency_days: Number(loan.delinquency_days) || 0,
+        payment_status:   loan.payment_status || 'Current',
+        risk_label:       riskLabel,
+      };
+    });
+
+    return res.json({ performance });
+  } catch (err) {
+    return res.json({ performance: [] });
+  }
+});
+
+// ── GET /api/investors/alerts ────────────────────────────────────────────────
+router.get('/alerts', async (req, res) => {
   try {
     const userId = req.user?.id;
     const { data, error } = await supabase
