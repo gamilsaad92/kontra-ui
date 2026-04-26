@@ -1,14 +1,13 @@
 /**
- * Kontra Servicing → Asset Management & Compliance
+ * Kontra Servicing → Property Management Change (PMC) Workflow
  *
- * Freddie Mac PRS / Fannie Mae Servicing Guide–aligned lifecycle engine.
+ * Freddie Mac Multifamily Servicing Guide–compliant PMC lifecycle engine.
  *
- * Lifecycle stages:  Performing → Monitoring → Exception → Default → Resolution
- * Compliance items:  PRS-style queue with SLA, severity, approval gates
- * Reporting engine:  Rent roll, financials, inspections, insurance, reserves
- * PM compliance:     Eligibility validation per agency requirements
- * Borrower module:   Consent requests, cure notices, default notices
- * Audit trail:       Immutable per-loan event log
+ * Stages:  Draft → Submitted → Under Review → Freddie Mac Review → Approved / Rejected
+ * Docs:    5 required per submission package
+ * Rules:   Termination ≤30 days no-cause/no-penalty, fee caps, affiliation check
+ * Audit:   Immutable per-loan PMC timeline with actor, role, and state transitions
+ * Blocks:  Unresolved PMC → watchlist flag + downstream action lockout
  */
 
 import { useState } from "react";
@@ -18,888 +17,676 @@ import {
   ExclamationTriangleIcon,
   XCircleIcon,
   ClockIcon,
-  DocumentTextIcon,
-  BuildingOffice2Icon,
+  DocumentArrowUpIcon,
   ArrowRightIcon,
-  BellAlertIcon,
-  ShieldCheckIcon,
+  ShieldExclamationIcon,
+  LockClosedIcon,
+  BuildingOffice2Icon,
   UserGroupIcon,
-  ChartBarIcon,
-  ClipboardDocumentListIcon,
+  DocumentTextIcon,
+  BellAlertIcon,
 } from "@heroicons/react/24/outline";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
-type LifecycleStage = "performing" | "monitoring" | "exception" | "default" | "resolution";
+type PMCStage =
+  | "no_change"
+  | "unauthorized"
+  | "draft"
+  | "submitted"
+  | "under_review"
+  | "freddie_review"
+  | "approved"
+  | "rejected";
 
-type ComplianceSeverity = "critical" | "high" | "medium" | "low";
-type ComplianceStatus   = "open" | "in_progress" | "resolved" | "overdue";
-type ComplianceCategory =
-  | "Reporting"
-  | "PM Compliance"
-  | "Inspection"
-  | "Escrow"
-  | "Insurance"
-  | "Covenant"
-  | "Reserve"
-  | "Borrower";
+type ComplianceFlag = "clean" | "review_required" | "pending_change" | "non_compliant";
 
-type ComplianceItem = {
+type ValidationSeverity = "blocking" | "warning";
+
+type ValidationIssue = {
   id: string;
-  category: ComplianceCategory;
-  title: string;
+  rule: string;
   detail: string;
-  severity: ComplianceSeverity;
-  status: ComplianceStatus;
-  sla_due: string;
-  sla_days_remaining: number;
-  required_docs: string[];
-  docs_received: string[];
-  requires_approval: boolean;
-  agency_ref: string;
+  severity: ValidationSeverity;
+  resolved: boolean;
+  fm_ref: string;
 };
 
-type ReportingLine = {
+type DocStatus = "missing" | "uploaded" | "accepted" | "rejected";
+
+type DocRequirement = {
+  id: string;
   name: string;
-  frequency: string;
-  due_date: string;
-  submitted_date: string | null;
-  status: "current" | "due_soon" | "overdue" | "missing";
-  validated: boolean;
-  agency_required: boolean;
+  description: string;
+  required: boolean;
+  status: DocStatus;
+  uploaded_by?: string;
+  uploaded_at?: string;
 };
 
-type PmEligibilityCheck = {
-  criterion: string;
-  required: string;
-  actual: string;
-  pass: boolean;
-  agency_ref: string;
-};
-
-type InspectionRecord = {
-  date: string;
-  inspector: string;
-  condition: "LS1" | "LS2" | "LS3" | "DM" | "Critical";
-  score: number;
-  open_items: number;
-  resolved_items: number;
-  next_required: string;
-};
-
-type BorrowerInteraction = {
-  date: string;
-  type: "Consent Request" | "Cure Notice" | "Default Notice" | "Waiver Request" | "Modification";
-  status: "sent" | "pending_approval" | "responded" | "overdue";
-  summary: string;
+type PMCComment = {
+  id: string;
+  author: string;
+  role: "Servicer" | "Lender" | "Borrower" | "System";
+  text: string;
+  ts: string;
+  stage: PMCStage;
 };
 
 type AuditEvent = {
   ts: string;
   actor: string;
+  role: "Servicer" | "Lender" | "Borrower" | "System";
   action: string;
-  prior_state: string;
-  new_state: string;
-  category: ComplianceCategory;
+  from_stage: PMCStage;
+  to_stage: PMCStage;
+  note?: string;
 };
 
-type LoanCompliance = {
+type PMInfo = {
+  company: string;
+  contact: string;
+  fee_pct: number;
+  experience_years: number;
+  proximity_miles: number;
+  agreement_expires: string;
+  affiliated_with_borrower: boolean;
+  termination_clause: string;
+};
+
+type PMCRecord = {
   loan_ref: string;
   borrower: string;
   property: string;
-  type: string;
-  stage: LifecycleStage;
-  stage_since: string;
-  dscr: number;
-  dscr_covenant: number;
-  occupancy_pct: number;
-  occupancy_threshold: number;
+  property_type: string;
   upb: number;
-  agency: "Freddie Mac" | "Fannie Mae" | "Portfolio";
-  pm_company: string;
-  pm_contact: string;
-  pm_fee_pct: number;
-  pm_agreement_expires: string;
-  compliance_items: ComplianceItem[];
-  reporting: ReportingLine[];
-  pm_eligibility: PmEligibilityCheck[];
-  inspections: InspectionRecord[];
-  borrower_interactions: BorrowerInteraction[];
-  audit_log: AuditEvent[];
+  agency: string;
+  stage: PMCStage;
+  compliance_flag: ComplianceFlag;
+  stage_since: string;
+  sla_due: string | null;
+  sla_days_remaining: number | null;
+  trigger_reason: string;
+  current_pm: PMInfo;
+  proposed_pm: PMInfo | null;
+  validation_issues: ValidationIssue[];
+  required_docs: DocRequirement[];
+  comments: PMCComment[];
+  audit_timeline: AuditEvent[];
+  blocked_actions: string[];
 };
 
-// ── Portfolio data ─────────────────────────────────────────────────────────────
+// ── Fee cap thresholds by property type ───────────────────────────────────────
 
-const LOANS: LoanCompliance[] = [
-  {
-    loan_ref: "LN-2847",
-    borrower: "Cedar Grove Partners",
-    property: "The Meridian Apartments",
-    type: "Multifamily",
-    stage: "monitoring",
-    stage_since: "2026-02-15",
-    dscr: 1.138,
-    dscr_covenant: 1.25,
-    occupancy_pct: 91.7,
-    occupancy_threshold: 80,
-    upb: 4_112_500,
-    agency: "Freddie Mac",
-    pm_company: "First Choice Residential",
-    pm_contact: "Rebecca Walton · (404) 555-0182",
-    pm_fee_pct: 5.5,
-    pm_agreement_expires: "2027-06-30",
-    compliance_items: [
-      {
-        id: "ci-2847-1",
-        category: "Covenant",
-        title: "DSCR below covenant floor",
-        detail: "Q1 2026 DSCR of 1.138x is below the 1.25x covenant. Requires borrower financial review and lender notification within 30 days.",
-        severity: "high",
-        status: "in_progress",
-        sla_due: "2026-05-15",
-        sla_days_remaining: 19,
-        required_docs: ["Q1 2026 P&L", "Rent Roll", "Debt Service Schedule"],
-        docs_received: ["Q1 2026 P&L"],
-        requires_approval: true,
-        agency_ref: "Freddie Mac PRS §4.3 — DSCR Monitoring",
-      },
-      {
-        id: "ci-2847-2",
-        category: "Reporting",
-        title: "Q1 2026 rent roll validation pending",
-        detail: "Rent roll submitted Apr 5, 2026. AI extraction complete. Manual validation required before filing.",
-        severity: "medium",
-        status: "in_progress",
-        sla_due: "2026-05-01",
-        sla_days_remaining: 5,
-        required_docs: ["Signed Rent Roll", "Lease Abstracts"],
-        docs_received: ["Signed Rent Roll"],
-        requires_approval: false,
-        agency_ref: "Freddie Mac Asset Mgmt Guide §6.2",
-      },
-      {
-        id: "ci-2847-3",
-        category: "Inspection",
-        title: "Annual physical inspection due",
-        detail: "Last inspection was Apr 2025. Annual inspection required by May 31, 2026 per agency requirements.",
-        severity: "medium",
-        status: "open",
-        sla_due: "2026-05-31",
-        sla_days_remaining: 35,
-        required_docs: ["Inspection Report", "Condition Exhibit", "Photo Documentation"],
-        docs_received: [],
-        requires_approval: false,
-        agency_ref: "Freddie Mac PRS §8.1 — Annual Inspection",
-      },
-      {
-        id: "ci-2847-4",
-        category: "Escrow",
-        title: "Escrow shortage — ground rent",
-        detail: "$42,100 shortage projected by Sep 15, 2026. Ground rent line underfunded. Cure notice pending lender approval.",
-        severity: "high",
-        status: "open",
-        sla_due: "2026-05-20",
-        sla_days_remaining: 24,
-        required_docs: ["Cure Notice Draft", "Escrow Analysis"],
-        docs_received: ["Escrow Analysis"],
-        requires_approval: true,
-        agency_ref: "Freddie Mac Servicing §7.4 — Escrow Shortage",
-      },
-    ],
-    reporting: [
-      { name: "Annual Financial Statement", frequency: "Annual", due_date: "2026-04-30", submitted_date: "2026-04-05", status: "due_soon", validated: false, agency_required: true },
-      { name: "Q1 Rent Roll", frequency: "Quarterly", due_date: "2026-04-15", submitted_date: "2026-04-05", status: "current", validated: true, agency_required: true },
-      { name: "Property Insurance Certificate", frequency: "Annual", due_date: "2026-07-01", submitted_date: "2025-07-08", status: "current", validated: true, agency_required: true },
-      { name: "Annual Physical Inspection", frequency: "Annual", due_date: "2026-05-31", submitted_date: null, status: "due_soon", validated: false, agency_required: true },
-      { name: "Replacement Reserve Analysis", frequency: "Annual", due_date: "2026-06-30", submitted_date: null, status: "due_soon", validated: false, agency_required: true },
-      { name: "Operating Budget", frequency: "Annual", due_date: "2026-01-15", submitted_date: "2026-01-10", status: "current", validated: true, agency_required: false },
-    ],
-    pm_eligibility: [
-      { criterion: "Management experience", required: "≥5 years multifamily", actual: "12 years", pass: true, agency_ref: "Fannie Mae MF Guide §3786.02" },
-      { criterion: "Proximity to property", required: "≤50 miles", actual: "8 miles", pass: true, agency_ref: "Fannie Mae MF Guide §3786.02" },
-      { criterion: "Management fee", required: "≤7% EGI", actual: "5.5%", pass: true, agency_ref: "Freddie Mac PM Guide §4.1" },
-      { criterion: "Agreement term", required: "Current, not expired", actual: "Expires Jun 30, 2027", pass: true, agency_ref: "Freddie Mac PM Guide §4.2" },
-      { criterion: "Termination clause", required: "30-day notice, lender consent", actual: "60-day notice + lender consent ✓", pass: true, agency_ref: "Freddie Mac PM Guide §4.3" },
-      { criterion: "Insurance certificates", required: "Current E&O + GL", actual: "Current (exp Oct 2026)", pass: true, agency_ref: "Freddie Mac PM Guide §5.1" },
-    ],
-    inspections: [
-      { date: "2025-04-12", inspector: "NCI Group", condition: "LS2", score: 78, open_items: 3, resolved_items: 11, next_required: "2026-05-31" },
-      { date: "2024-03-28", inspector: "NCI Group", condition: "LS2", score: 74, open_items: 8, resolved_items: 6, next_required: "2025-04-30" },
-    ],
-    borrower_interactions: [
-      { date: "2026-04-10", type: "Cure Notice", status: "pending_approval", summary: "DSCR covenant breach notification — requires lender signature before delivery to borrower." },
-      { date: "2026-03-01", type: "Consent Request", status: "responded", summary: "Borrower requested approval to replace HVAC units — approved Apr 2, 2026." },
-    ],
-    audit_log: [
-      { ts: "2026-04-10T09:14:00Z", actor: "Servicer", action: "DSCR covenant breach detected — Q1 2026", prior_state: "Performing", new_state: "Monitoring", category: "Covenant" },
-      { ts: "2026-04-05T14:30:00Z", actor: "Borrower", action: "Q1 rent roll submitted", prior_state: "Overdue", new_state: "In Review", category: "Reporting" },
-      { ts: "2026-03-15T10:00:00Z", actor: "System", action: "Escrow shortage projection run — $42,100 identified", prior_state: "Clean", new_state: "Shortage", category: "Escrow" },
-      { ts: "2026-02-15T08:00:00Z", actor: "System", action: "Loan moved to Monitoring stage", prior_state: "Performing", new_state: "Monitoring", category: "Covenant" },
-    ],
-  },
-  {
-    loan_ref: "LN-3201",
-    borrower: "Metro Development LLC",
-    property: "Westgate Industrial Park",
-    type: "Industrial",
-    stage: "exception",
-    stage_since: "2026-04-01",
-    dscr: 1.189,
-    dscr_covenant: 1.25,
-    occupancy_pct: 95.0,
-    occupancy_threshold: 80,
-    upb: 5_520_000,
-    agency: "Fannie Mae",
-    pm_company: "Metro Asset Services",
-    pm_contact: "Tony Reeves · (512) 555-0244",
-    pm_fee_pct: 3.5,
-    pm_agreement_expires: "2026-12-31",
-    compliance_items: [
-      {
-        id: "ci-3201-1",
-        category: "Insurance",
-        title: "Insurance certificate expired",
-        detail: "Property insurance certificate expired Apr 1, 2026. Agency requires current certificate on file at all times. Borrower non-responsive to two requests.",
-        severity: "critical",
-        status: "overdue",
-        sla_due: "2026-04-15",
-        sla_days_remaining: -11,
-        required_docs: ["Updated GL Certificate", "Property All-Risk Policy Declaration"],
-        docs_received: [],
-        requires_approval: false,
-        agency_ref: "Fannie Mae Servicing Guide B-1-01 — Insurance Requirements",
-      },
-      {
-        id: "ci-3201-2",
-        category: "PM Compliance",
-        title: "PM agreement renewal not initiated",
-        detail: "Agreement expires Dec 31, 2026. Agency requires renewal or replacement notice 90 days before expiry. Deadline: Oct 3, 2026. No renewal submitted.",
-        severity: "high",
-        status: "open",
-        sla_due: "2026-10-03",
-        sla_days_remaining: 160,
-        required_docs: ["Renewal Agreement Draft", "PM Eligibility Certification"],
-        docs_received: [],
-        requires_approval: true,
-        agency_ref: "Fannie Mae MF Guide §3786.04 — PM Agreement Renewal",
-      },
-      {
-        id: "ci-3201-3",
-        category: "Covenant",
-        title: "DSCR below 1.25x covenant floor",
-        detail: "Q1 2026 DSCR of 1.189x breaches 1.25x floor. Monitoring plan required. Financial recovery timeline from borrower within 45 days.",
-        severity: "high",
-        status: "in_progress",
-        sla_due: "2026-05-15",
-        sla_days_remaining: 19,
-        required_docs: ["Recovery Plan", "Q1 P&L Statement", "Rent Roll"],
-        docs_received: ["Q1 P&L Statement"],
-        requires_approval: true,
-        agency_ref: "Fannie Mae Servicing Guide §E-4-02 — DSCR Breach Protocol",
-      },
-      {
-        id: "ci-3201-4",
-        category: "Reporting",
-        title: "Q1 2026 financials not validated",
-        detail: "Q1 financials submitted but AI validation found 3 discrepancies requiring manual review. Short pay on Apr 1 payment also flagged.",
-        severity: "medium",
-        status: "in_progress",
-        sla_due: "2026-04-30",
-        sla_days_remaining: 4,
-        required_docs: ["Reconciled P&L", "Bank Statements"],
-        docs_received: ["Q1 P&L Statement"],
-        requires_approval: false,
-        agency_ref: "Fannie Mae MF Guide §3701 — Annual Reporting",
-      },
-    ],
-    reporting: [
-      { name: "Annual Financial Statement", frequency: "Annual", due_date: "2026-04-30", submitted_date: "2026-04-12", status: "due_soon", validated: false, agency_required: true },
-      { name: "Q1 Rent Roll", frequency: "Quarterly", due_date: "2026-04-15", submitted_date: "2026-04-15", status: "current", validated: true, agency_required: true },
-      { name: "Property Insurance Certificate", frequency: "Annual", due_date: "2026-04-01", submitted_date: "2025-03-30", status: "overdue", validated: false, agency_required: true },
-      { name: "Annual Physical Inspection", frequency: "Annual", due_date: "2026-06-30", submitted_date: null, status: "due_soon", validated: false, agency_required: true },
-      { name: "Replacement Reserve Analysis", frequency: "Annual", due_date: "2026-06-30", submitted_date: "2026-01-08", status: "current", validated: true, agency_required: true },
-    ],
-    pm_eligibility: [
-      { criterion: "Management experience", required: "≥5 years industrial", actual: "9 years", pass: true, agency_ref: "Fannie Mae MF Guide §3786.02" },
-      { criterion: "Proximity to property", required: "≤50 miles", actual: "12 miles", pass: true, agency_ref: "Fannie Mae MF Guide §3786.02" },
-      { criterion: "Management fee", required: "≤6% EGI", actual: "3.5%", pass: true, agency_ref: "Fannie Mae MF Guide §3786.03" },
-      { criterion: "Agreement term", required: "Current, not expired", actual: "Expires Dec 31, 2026 — no renewal", pass: false, agency_ref: "Fannie Mae MF Guide §3786.04" },
-      { criterion: "Termination clause", required: "30-day notice, lender consent", actual: "30-day notice, no lender consent clause", pass: false, agency_ref: "Fannie Mae MF Guide §3786.05" },
-      { criterion: "Insurance certificates", required: "Current E&O + GL", actual: "EXPIRED — Apr 1, 2026", pass: false, agency_ref: "Fannie Mae Servicing B-1-01" },
-    ],
-    inspections: [
-      { date: "2025-06-18", inspector: "Partner Engineering", condition: "LS1", score: 88, open_items: 1, resolved_items: 7, next_required: "2026-06-30" },
-      { date: "2024-06-10", inspector: "Partner Engineering", condition: "LS2", score: 81, open_items: 5, resolved_items: 3, next_required: "2025-06-30" },
-    ],
-    borrower_interactions: [
-      { date: "2026-04-20", type: "Cure Notice", status: "sent", summary: "Insurance certificate expiry — 10-day cure notice delivered." },
-      { date: "2026-04-08", type: "Cure Notice", status: "sent", summary: "Insurance expiry warning — first notice delivered Apr 8." },
-    ],
-    audit_log: [
-      { ts: "2026-04-01T00:00:00Z", actor: "System", action: "Insurance certificate expired — critical flag raised", prior_state: "Monitoring", new_state: "Exception", category: "Insurance" },
-      { ts: "2026-04-01T09:00:00Z", actor: "System", action: "DSCR covenant breach confirmed — 1.189x", prior_state: "Monitoring", new_state: "Exception", category: "Covenant" },
-      { ts: "2026-04-08T11:20:00Z", actor: "Servicer", action: "First cure notice sent to borrower (insurance)", prior_state: "Open", new_state: "Sent", category: "Insurance" },
-      { ts: "2026-04-20T14:00:00Z", actor: "Servicer", action: "Second cure notice sent — 10-day deadline", prior_state: "Sent", new_state: "Overdue", category: "Insurance" },
-    ],
-  },
-  {
-    loan_ref: "LN-5593",
-    borrower: "Westridge Capital",
-    property: "Summit Office Complex",
-    type: "Office",
-    stage: "monitoring",
-    stage_since: "2026-03-01",
-    dscr: 1.22,
-    dscr_covenant: 1.25,
-    occupancy_pct: 84.0,
-    occupancy_threshold: 80,
-    upb: 6_800_000,
-    agency: "Freddie Mac",
-    pm_company: "Summit Property Partners",
-    pm_contact: "Diana Park · (212) 555-0371",
-    pm_fee_pct: 4.0,
-    pm_agreement_expires: "2028-03-31",
-    compliance_items: [
-      {
-        id: "ci-5593-1",
-        category: "Covenant",
-        title: "DSCR within 5% of covenant floor",
-        detail: "DSCR of 1.22x is within 2.4% of the 1.25x covenant floor. Enhanced monitoring required. Quarterly reporting frequency increased.",
-        severity: "high",
-        status: "in_progress",
-        sla_due: "2026-05-15",
-        sla_days_remaining: 19,
-        required_docs: ["Q1 NOI Bridge Analysis", "Rent Roll", "Tenant Pipeline Report"],
-        docs_received: ["Rent Roll"],
-        requires_approval: false,
-        agency_ref: "Freddie Mac PRS §4.3(b) — Enhanced Monitoring",
-      },
-      {
-        id: "ci-5593-2",
-        category: "Escrow",
-        title: "TI reserve projected shortage",
-        detail: "$27,200 shortfall projected by Jul 1, 2026. Two lease renewals pending — if renewals close, TI reserves will be drawn. Contribution increase required.",
-        severity: "medium",
-        status: "open",
-        sla_due: "2026-05-30",
-        sla_days_remaining: 34,
-        required_docs: ["Escrow Analysis Report", "TI Budget"],
-        docs_received: ["Escrow Analysis Report"],
-        requires_approval: true,
-        agency_ref: "Freddie Mac Servicing §7.4",
-      },
-      {
-        id: "ci-5593-3",
-        category: "Reporting",
-        title: "Annual financials validation in progress",
-        detail: "2025 annual financials submitted Mar 28. AI review flagged tenant recovery billing discrepancy. Manual reconciliation needed.",
-        severity: "medium",
-        status: "in_progress",
-        sla_due: "2026-04-30",
-        sla_days_remaining: 4,
-        required_docs: ["Reconciled P&L", "Tenant CAM Reconciliations"],
-        docs_received: ["2025 Annual P&L"],
-        requires_approval: false,
-        agency_ref: "Freddie Mac Asset Mgmt §6.2",
-      },
-    ],
-    reporting: [
-      { name: "Annual Financial Statement", frequency: "Annual", due_date: "2026-04-30", submitted_date: "2026-03-28", status: "current", validated: false, agency_required: true },
-      { name: "Q1 Rent Roll", frequency: "Quarterly", due_date: "2026-04-15", submitted_date: "2026-04-14", status: "current", validated: true, agency_required: true },
-      { name: "Property Insurance Certificate", frequency: "Annual", due_date: "2026-11-01", submitted_date: "2025-11-05", status: "current", validated: true, agency_required: true },
-      { name: "Annual Physical Inspection", frequency: "Annual", due_date: "2026-08-31", submitted_date: null, status: "due_soon", validated: false, agency_required: true },
-      { name: "TI Reserve Analysis", frequency: "Semi-Annual", due_date: "2026-06-30", submitted_date: null, status: "due_soon", validated: false, agency_required: true },
-    ],
-    pm_eligibility: [
-      { criterion: "Management experience", required: "≥5 years office", actual: "18 years", pass: true, agency_ref: "Freddie Mac PM Guide §4.1" },
-      { criterion: "Proximity to property", required: "≤50 miles", actual: "2 miles (NYC)", pass: true, agency_ref: "Freddie Mac PM Guide §4.1" },
-      { criterion: "Management fee", required: "≤6% EGI", actual: "4.0%", pass: true, agency_ref: "Freddie Mac PM Guide §4.1" },
-      { criterion: "Agreement term", required: "Current, not expired", actual: "Expires Mar 31, 2028", pass: true, agency_ref: "Freddie Mac PM Guide §4.2" },
-      { criterion: "Termination clause", required: "30-day notice, lender consent", actual: "30-day notice + lender consent ✓", pass: true, agency_ref: "Freddie Mac PM Guide §4.3" },
-      { criterion: "Insurance certificates", required: "Current E&O + GL", actual: "Current (exp Dec 2026)", pass: true, agency_ref: "Freddie Mac PM Guide §5.1" },
-    ],
-    inspections: [
-      { date: "2025-08-20", inspector: "Terracon Consultants", condition: "LS2", score: 82, open_items: 4, resolved_items: 9, next_required: "2026-08-31" },
-    ],
-    borrower_interactions: [
-      { date: "2026-04-15", type: "Consent Request", status: "pending_approval", summary: "Borrower requesting approval to modify lease terms for anchor tenant (FloorSpace Inc.) — 10,000 SF expansion." },
-    ],
-    audit_log: [
-      { ts: "2026-03-01T09:00:00Z", actor: "System", action: "DSCR watch flag — 1.22x within 5% of 1.25x floor", prior_state: "Performing", new_state: "Monitoring", category: "Covenant" },
-      { ts: "2026-03-15T14:00:00Z", actor: "System", action: "TI reserve shortage projected — $27,200", prior_state: "Clean", new_state: "Watch", category: "Escrow" },
-      { ts: "2026-03-28T10:30:00Z", actor: "Borrower", action: "Annual financials submitted", prior_state: "Missing", new_state: "Submitted", category: "Reporting" },
-    ],
-  },
-  {
-    loan_ref: "LN-0728",
-    borrower: "Crestwood Logistics",
-    property: "Crestwood Distribution Center",
-    type: "Industrial",
-    stage: "performing",
-    stage_since: "2024-10-01",
-    dscr: 1.48,
-    dscr_covenant: 1.25,
-    occupancy_pct: 100.0,
-    occupancy_threshold: 80,
-    upb: 7_100_000,
-    agency: "Freddie Mac",
-    pm_company: "Texas Industrial Management",
-    pm_contact: "James Ortega · (214) 555-0509",
-    pm_fee_pct: 3.0,
-    pm_agreement_expires: "2027-09-30",
-    compliance_items: [
-      {
-        id: "ci-0728-1",
-        category: "Reporting",
-        title: "Q2 rent roll due Jun 15",
-        detail: "Routine quarterly rent roll due Jun 15, 2026. No current deficiencies.",
-        severity: "low",
-        status: "open",
-        sla_due: "2026-06-15",
-        sla_days_remaining: 50,
-        required_docs: ["Signed Rent Roll"],
-        docs_received: [],
-        requires_approval: false,
-        agency_ref: "Freddie Mac Asset Mgmt §6.2",
-      },
-    ],
-    reporting: [
-      { name: "Annual Financial Statement", frequency: "Annual", due_date: "2026-04-30", submitted_date: "2026-04-02", status: "current", validated: true, agency_required: true },
-      { name: "Q1 Rent Roll", frequency: "Quarterly", due_date: "2026-04-15", submitted_date: "2026-04-10", status: "current", validated: true, agency_required: true },
-      { name: "Property Insurance Certificate", frequency: "Annual", due_date: "2026-08-01", submitted_date: "2025-08-05", status: "current", validated: true, agency_required: true },
-      { name: "Annual Physical Inspection", frequency: "Annual", due_date: "2026-09-30", submitted_date: null, status: "due_soon", validated: false, agency_required: true },
-      { name: "Replacement Reserve Analysis", frequency: "Annual", due_date: "2026-09-30", submitted_date: "2025-09-28", status: "current", validated: true, agency_required: true },
-    ],
-    pm_eligibility: [
-      { criterion: "Management experience", required: "≥5 years industrial", actual: "15 years", pass: true, agency_ref: "Freddie Mac PM Guide §4.1" },
-      { criterion: "Proximity to property", required: "≤50 miles", actual: "6 miles (Dallas)", pass: true, agency_ref: "Freddie Mac PM Guide §4.1" },
-      { criterion: "Management fee", required: "≤6% EGI", actual: "3.0%", pass: true, agency_ref: "Freddie Mac PM Guide §4.1" },
-      { criterion: "Agreement term", required: "Current, not expired", actual: "Expires Sep 30, 2027", pass: true, agency_ref: "Freddie Mac PM Guide §4.2" },
-      { criterion: "Termination clause", required: "30-day notice, lender consent", actual: "30-day notice + lender consent ✓", pass: true, agency_ref: "Freddie Mac PM Guide §4.3" },
-      { criterion: "Insurance certificates", required: "Current E&O + GL", actual: "Current (exp Sep 2026)", pass: true, agency_ref: "Freddie Mac PM Guide §5.1" },
-    ],
-    inspections: [
-      { date: "2025-09-15", inspector: "EBI Consulting", condition: "LS1", score: 93, open_items: 0, resolved_items: 4, next_required: "2026-09-30" },
-    ],
-    borrower_interactions: [],
-    audit_log: [
-      { ts: "2026-04-02T10:00:00Z", actor: "Borrower", action: "Annual financials submitted — clean", prior_state: "Pending", new_state: "Validated", category: "Reporting" },
-      { ts: "2026-04-10T09:30:00Z", actor: "System", action: "April payment posted — on time, clean", prior_state: "Due", new_state: "Posted", category: "Reporting" },
-    ],
-  },
-  {
-    loan_ref: "LN-4108",
-    borrower: "Oakfield Group",
-    property: "Oakfield Retail Plaza",
-    type: "Retail",
-    stage: "exception",
-    stage_since: "2026-01-15",
-    dscr: 1.31,
-    dscr_covenant: 1.20,
-    occupancy_pct: 78.5,
-    occupancy_threshold: 80,
-    upb: 2_800_000,
-    agency: "Fannie Mae",
-    pm_company: "Greenleaf Retail Advisors",
-    pm_contact: "Mike Faber · (312) 555-0128",
-    pm_fee_pct: 4.5,
-    pm_agreement_expires: "2025-12-31",
-    compliance_items: [
-      {
-        id: "ci-4108-1",
-        category: "PM Compliance",
-        title: "PM agreement expired — operating on holdover",
-        detail: "Agreement expired Dec 31, 2025. Operating on unauthorized holdover. New PM proposed (Oak Management Co.) — transition package pending lender approval.",
-        severity: "critical",
-        status: "in_progress",
-        sla_due: "2026-05-14",
-        sla_days_remaining: 18,
-        required_docs: ["New PM Agreement", "PM Eligibility Cert", "Updated Insurance Certs", "Transition Plan", "Lender Consent Letter"],
-        docs_received: ["New PM Agreement Draft"],
-        requires_approval: true,
-        agency_ref: "Fannie Mae MF Guide §3786.04 — PM Transition",
-      },
-      {
-        id: "ci-4108-2",
-        category: "Covenant",
-        title: "Occupancy below 80% threshold",
-        detail: "Current occupancy of 78.5% is below the 80% minimum covenant. Two vacant anchor units (12,800 SF). Borrower must submit lease pipeline within 30 days.",
-        severity: "high",
-        status: "open",
-        sla_due: "2026-05-26",
-        sla_days_remaining: 30,
-        required_docs: ["Lease Pipeline Report", "Vacancy Marketing Plan"],
-        docs_received: [],
-        requires_approval: true,
-        agency_ref: "Fannie Mae Servicing Guide E-4-02 — Occupancy Covenant",
-      },
-      {
-        id: "ci-4108-3",
-        category: "Reserve",
-        title: "Replacement reserve underfunded",
-        detail: "Reserve balance $54,600 vs required $62,000. Shortfall of $7,400. Monthly contribution insufficient to fund before June 1 disbursement.",
-        severity: "medium",
-        status: "open",
-        sla_due: "2026-05-20",
-        sla_days_remaining: 24,
-        required_docs: ["Reserve Analysis", "Cure Plan"],
-        docs_received: [],
-        requires_approval: false,
-        agency_ref: "Fannie Mae MF Guide §3702 — Reserve Requirements",
-      },
-      {
-        id: "ci-4108-4",
-        category: "Reporting",
-        title: "Annual inspection overdue",
-        detail: "Last inspection Jun 2024. Annual inspection was due Jun 2025 — 10 months overdue. Escalated to critical per agency standards.",
-        severity: "critical",
-        status: "overdue",
-        sla_due: "2026-02-28",
-        sla_days_remaining: -57,
-        required_docs: ["Inspection Report", "Condition Exhibit", "Repair Schedule"],
-        docs_received: [],
-        requires_approval: false,
-        agency_ref: "Fannie Mae MF Guide §3710 — Physical Inspection",
-      },
-    ],
-    reporting: [
-      { name: "Annual Financial Statement", frequency: "Annual", due_date: "2026-04-30", submitted_date: "2026-04-20", status: "current", validated: false, agency_required: true },
-      { name: "Q1 Rent Roll", frequency: "Quarterly", due_date: "2026-04-15", submitted_date: "2026-04-15", status: "current", validated: true, agency_required: true },
-      { name: "Property Insurance Certificate", frequency: "Annual", due_date: "2026-10-01", submitted_date: "2025-10-08", status: "current", validated: true, agency_required: true },
-      { name: "Annual Physical Inspection", frequency: "Annual", due_date: "2025-06-30", submitted_date: null, status: "overdue", validated: false, agency_required: true },
-      { name: "PM Agreement (Current)", frequency: "As needed", due_date: "2025-12-31", submitted_date: null, status: "overdue", validated: false, agency_required: true },
-    ],
-    pm_eligibility: [
-      { criterion: "Management experience", required: "≥5 years retail", actual: "7 years", pass: true, agency_ref: "Fannie Mae MF Guide §3786.02" },
-      { criterion: "Proximity to property", required: "≤50 miles", actual: "15 miles (Chicago)", pass: true, agency_ref: "Fannie Mae MF Guide §3786.02" },
-      { criterion: "Management fee", required: "≤7% EGI", actual: "4.5%", pass: true, agency_ref: "Fannie Mae MF Guide §3786.03" },
-      { criterion: "Agreement term", required: "Current, not expired", actual: "EXPIRED Dec 31, 2025 — holdover", pass: false, agency_ref: "Fannie Mae MF Guide §3786.04" },
-      { criterion: "Termination clause", required: "30-day notice, lender consent", actual: "60-day notice, no lender consent — NON-COMPLIANT", pass: false, agency_ref: "Fannie Mae MF Guide §3786.05" },
-      { criterion: "Insurance certificates", required: "Current E&O + GL", actual: "Current (exp Nov 2026)", pass: true, agency_ref: "Fannie Mae Servicing B-1-01" },
-    ],
-    inspections: [
-      { date: "2024-06-14", inspector: "Rimkus Consulting", condition: "LS2", score: 72, open_items: 7, resolved_items: 3, next_required: "2025-06-30" },
-    ],
-    borrower_interactions: [
-      { date: "2026-04-14", type: "Consent Request", status: "pending_approval", summary: "Borrower submitted new PM transition package — Oak Management Co. Awaiting lender approval." },
-      { date: "2026-01-20", type: "Cure Notice", status: "responded", summary: "Occupancy cure notice — borrower responded Feb 5 with lease pipeline for 8,000 SF." },
-    ],
-    audit_log: [
-      { ts: "2026-01-15T09:00:00Z", actor: "System", action: "PM agreement expired — exception raised", prior_state: "Monitoring", new_state: "Exception", category: "PM Compliance" },
-      { ts: "2026-01-20T10:00:00Z", actor: "Servicer", action: "Occupancy covenant breach confirmed — 78.5%", prior_state: "Monitoring", new_state: "Exception", category: "Covenant" },
-      { ts: "2026-01-20T11:00:00Z", actor: "Servicer", action: "Cure notice sent — occupancy", prior_state: "Open", new_state: "Sent", category: "Borrower" },
-      { ts: "2026-02-05T14:00:00Z", actor: "Borrower", action: "Cure response received — lease pipeline submitted", prior_state: "Sent", new_state: "Responded", category: "Borrower" },
-      { ts: "2026-04-14T15:00:00Z", actor: "Borrower", action: "PM transition package submitted (Oak Management Co.)", prior_state: "Open", new_state: "In Review", category: "PM Compliance" },
-    ],
-  },
-  {
-    loan_ref: "LN-1120",
-    borrower: "Sunrise Holdings",
-    property: "Sunrise Business Park",
-    type: "Mixed-Use",
-    stage: "performing",
-    stage_since: "2024-04-01",
-    dscr: 1.55,
-    dscr_covenant: 1.25,
-    occupancy_pct: 97.2,
-    occupancy_threshold: 80,
-    upb: 3_200_000,
-    agency: "Portfolio",
-    pm_company: "Sunrise Asset Management",
-    pm_contact: "Nina Alvarez · (305) 555-0296",
-    pm_fee_pct: 4.0,
-    pm_agreement_expires: "2027-03-31",
-    compliance_items: [
-      {
-        id: "ci-1120-1",
-        category: "Reporting",
-        title: "Q2 rent roll due Jun 15",
-        detail: "Routine quarterly rent roll. All prior submissions validated.",
-        severity: "low",
-        status: "open",
-        sla_due: "2026-06-15",
-        sla_days_remaining: 50,
-        required_docs: ["Signed Rent Roll"],
-        docs_received: [],
-        requires_approval: false,
-        agency_ref: "Portfolio Servicing Agreement §4.2",
-      },
-    ],
-    reporting: [
-      { name: "Annual Financial Statement", frequency: "Annual", due_date: "2026-04-30", submitted_date: "2026-04-05", status: "current", validated: true, agency_required: true },
-      { name: "Q1 Rent Roll", frequency: "Quarterly", due_date: "2026-04-15", submitted_date: "2026-04-10", status: "current", validated: true, agency_required: true },
-      { name: "Property Insurance Certificate", frequency: "Annual", due_date: "2026-07-01", submitted_date: "2025-07-05", status: "current", validated: true, agency_required: true },
-      { name: "Annual Physical Inspection", frequency: "Annual", due_date: "2026-07-31", submitted_date: null, status: "due_soon", validated: false, agency_required: false },
-      { name: "Replacement Reserve Analysis", frequency: "Annual", due_date: "2026-07-31", submitted_date: "2025-07-20", status: "current", validated: true, agency_required: false },
-    ],
-    pm_eligibility: [
-      { criterion: "Management experience", required: "≥3 years mixed-use", actual: "11 years", pass: true, agency_ref: "Portfolio Servicing Agreement §6.1" },
-      { criterion: "Proximity to property", required: "≤75 miles", actual: "4 miles (Miami)", pass: true, agency_ref: "Portfolio Servicing Agreement §6.1" },
-      { criterion: "Management fee", required: "≤7% EGI", actual: "4.0%", pass: true, agency_ref: "Portfolio Servicing Agreement §6.2" },
-      { criterion: "Agreement term", required: "Current, not expired", actual: "Expires Mar 31, 2027", pass: true, agency_ref: "Portfolio Servicing Agreement §6.3" },
-      { criterion: "Termination clause", required: "30-day notice", actual: "30-day notice ✓", pass: true, agency_ref: "Portfolio Servicing Agreement §6.4" },
-      { criterion: "Insurance certificates", required: "Current GL", actual: "Current (exp Jul 2026)", pass: true, agency_ref: "Portfolio Servicing Agreement §6.5" },
-    ],
-    inspections: [
-      { date: "2025-07-10", inspector: "Engel Burman Group", condition: "LS1", score: 91, open_items: 1, resolved_items: 5, next_required: "2026-07-31" },
-    ],
-    borrower_interactions: [],
-    audit_log: [
-      { ts: "2026-04-05T10:00:00Z", actor: "Borrower", action: "Annual financials submitted — validated clean", prior_state: "Pending", new_state: "Validated", category: "Reporting" },
-      { ts: "2026-04-10T09:00:00Z", actor: "System", action: "April payment posted — on time", prior_state: "Due", new_state: "Posted", category: "Reporting" },
-    ],
-  },
-];
+const FEE_CAPS: Record<string, number> = {
+  Multifamily: 5.0,
+  Industrial:  4.0,
+  Office:      5.0,
+  Retail:      5.5,
+  "Mixed-Use": 5.0,
+};
 
 // ── Stage config ───────────────────────────────────────────────────────────────
 
-const STAGES: { key: LifecycleStage; label: string; color: string; bg: string; dot: string }[] = [
-  { key: "performing",  label: "Performing",  color: "text-emerald-700", bg: "bg-emerald-50 border-emerald-200",  dot: "bg-emerald-500" },
-  { key: "monitoring",  label: "Monitoring",  color: "text-amber-700",   bg: "bg-amber-50 border-amber-200",      dot: "bg-amber-500"   },
-  { key: "exception",   label: "Exception",   color: "text-orange-700",  bg: "bg-orange-50 border-orange-200",    dot: "bg-orange-500"  },
-  { key: "default",     label: "Default",     color: "text-red-700",     bg: "bg-red-50 border-red-200",          dot: "bg-red-500"     },
-  { key: "resolution",  label: "Resolution",  color: "text-violet-700",  bg: "bg-violet-50 border-violet-200",    dot: "bg-violet-500"  },
+const STAGES: { key: PMCStage; label: string; short: string }[] = [
+  { key: "draft",          label: "Draft",              short: "Draft" },
+  { key: "submitted",      label: "Submitted",          short: "Submitted" },
+  { key: "under_review",   label: "Under Review",       short: "Review" },
+  { key: "freddie_review", label: "Freddie Mac Review", short: "FM Review" },
+  { key: "approved",       label: "Approved",           short: "Approved" },
 ];
 
-const stageFor = (s: LifecycleStage) => STAGES.find(x => x.key === s) ?? STAGES[0];
+const STAGE_ORDER: PMCStage[] = ["draft", "submitted", "under_review", "freddie_review", "approved"];
 
-const severityConfig: Record<ComplianceSeverity, { label: string; bg: string; dot: string }> = {
-  critical: { label: "Critical", bg: "bg-red-100 text-red-800",    dot: "bg-red-500" },
-  high:     { label: "High",     bg: "bg-orange-100 text-orange-800", dot: "bg-orange-500" },
-  medium:   { label: "Medium",   bg: "bg-amber-100 text-amber-800", dot: "bg-amber-500" },
-  low:      { label: "Low",      bg: "bg-slate-100 text-slate-600", dot: "bg-slate-400" },
+const stageIndex = (s: PMCStage) => STAGE_ORDER.indexOf(s);
+
+const flagConfig: Record<ComplianceFlag, { label: string; bg: string; color: string; dot: string }> = {
+  clean:           { label: "Clean",           bg: "bg-emerald-50 border border-emerald-200",  color: "text-emerald-700", dot: "bg-emerald-500" },
+  review_required: { label: "Review Required", bg: "bg-amber-50 border border-amber-200",      color: "text-amber-700",   dot: "bg-amber-500"   },
+  pending_change:  { label: "Pending Change",  bg: "bg-blue-50 border border-blue-200",        color: "text-blue-700",    dot: "bg-blue-500"    },
+  non_compliant:   { label: "Non-Compliant",   bg: "bg-red-50 border border-red-200",          color: "text-red-700",     dot: "bg-red-500"     },
 };
 
-const ciStatusConfig: Record<ComplianceStatus, { label: string; bg: string }> = {
-  open:        { label: "Open",        bg: "bg-slate-100 text-slate-600" },
-  in_progress: { label: "In Progress", bg: "bg-blue-100 text-blue-700" },
-  resolved:    { label: "Resolved",    bg: "bg-emerald-100 text-emerald-700" },
-  overdue:     { label: "Overdue",     bg: "bg-red-100 text-red-700" },
-};
+const REQUIRED_DOCS_TEMPLATE: Omit<DocRequirement, "status" | "uploaded_by" | "uploaded_at">[] = [
+  {
+    id: "doc-pma",
+    name: "New Property Management Agreement",
+    description: "Fully executed or draft agreement with proposed PM company. Must include management fee, scope of services, and term.",
+    required: true,
+  },
+  {
+    id: "doc-termination",
+    name: "Termination Clause Addendum",
+    description: "Addendum must explicitly state ≤30 days written notice, no-cause termination, and zero penalty to borrower/lender. FM Servicing Guide §34.01.",
+    required: true,
+  },
+  {
+    id: "doc-resume",
+    name: "PM Company Resume / Experience Profile",
+    description: "Minimum 5 years experience managing comparable property type within 50-mile radius. Include portfolio reference list.",
+    required: true,
+  },
+  {
+    id: "doc-rent-roll",
+    name: "Current Rent Roll (Signed)",
+    description: "Certified rent roll signed by current property manager, dated within 30 days of submission.",
+    required: true,
+  },
+  {
+    id: "doc-explanation",
+    name: "Borrower Explanation Letter",
+    description: "Borrower letter explaining reason for management change, transition timeline, and confirmation of no operational disruption.",
+    required: true,
+  },
+];
 
-const reportingStatusConfig = {
-  current:   { label: "Current",   dot: "bg-emerald-500", color: "text-emerald-700" },
-  due_soon:  { label: "Due Soon",  dot: "bg-amber-500",   color: "text-amber-700" },
-  overdue:   { label: "Overdue",   dot: "bg-red-500",     color: "text-red-700" },
-  missing:   { label: "Missing",   dot: "bg-red-600",     color: "text-red-800" },
-};
+// ── Initial PMC data ───────────────────────────────────────────────────────────
 
-const conditionConfig = {
-  LS1:      { label: "LS1 — Good",     color: "text-emerald-700" },
-  LS2:      { label: "LS2 — Fair",     color: "text-amber-700" },
-  LS3:      { label: "LS3 — Marginal", color: "text-orange-700" },
-  DM:       { label: "DM — Deficient", color: "text-red-700" },
-  Critical: { label: "Critical",       color: "text-red-900" },
-};
+const INITIAL_RECORDS: PMCRecord[] = [
+  {
+    loan_ref:         "LN-2847",
+    borrower:         "Cedar Grove Partners",
+    property:         "The Meridian Apartments",
+    property_type:    "Multifamily",
+    upb:              4_112_500,
+    agency:           "Freddie Mac",
+    stage:            "no_change",
+    compliance_flag:  "clean",
+    stage_since:      "2024-07-01",
+    sla_due:          null,
+    sla_days_remaining: null,
+    trigger_reason:   "No PMC active",
+    current_pm: {
+      company:                 "First Choice Residential",
+      contact:                 "Rebecca Walton · (404) 555-0182",
+      fee_pct:                 5.5,
+      experience_years:        12,
+      proximity_miles:         8,
+      agreement_expires:       "2027-06-30",
+      affiliated_with_borrower: false,
+      termination_clause:      "60-day notice + lender consent",
+    },
+    proposed_pm:        null,
+    validation_issues:  [],
+    required_docs:      [],
+    comments:           [],
+    audit_timeline: [
+      { ts: "2024-07-01T09:00:00Z", actor: "System", role: "System", action: "PM agreement confirmed current — no PMC required", from_stage: "no_change", to_stage: "no_change" },
+    ],
+    blocked_actions: [],
+  },
+  {
+    loan_ref:         "LN-3201",
+    borrower:         "Metro Development LLC",
+    property:         "Westgate Industrial Park",
+    property_type:    "Industrial",
+    upb:              5_520_000,
+    agency:           "Fannie Mae",
+    stage:            "unauthorized",
+    compliance_flag:  "non_compliant",
+    stage_since:      "2026-04-18",
+    sla_due:          "2026-04-28",
+    sla_days_remaining: 2,
+    trigger_reason:   "System detected unauthorized PM substitution — new company listed on rent roll does not match lender records",
+    current_pm: {
+      company:                 "Metro Asset Services",
+      contact:                 "Tony Reeves · (512) 555-0244",
+      fee_pct:                 3.5,
+      experience_years:        9,
+      proximity_miles:         12,
+      agreement_expires:       "2026-12-31",
+      affiliated_with_borrower: false,
+      termination_clause:      "30-day notice, no lender consent clause",
+    },
+    proposed_pm: {
+      company:                 "Pinnacle Regional Mgmt (unauthorized)",
+      contact:                 "Unknown — not on file",
+      fee_pct:                 6.5,
+      experience_years:        3,
+      proximity_miles:         64,
+      agreement_expires:       "2027-04-30",
+      affiliated_with_borrower: true,
+      termination_clause:      "90-day notice with 6-month early termination fee",
+    },
+    validation_issues: [
+      { id: "vi-3201-1", rule: "Unauthorized PM Change", detail: "PM company on April rent roll ('Pinnacle Regional Mgmt') does not match lender-approved PM ('Metro Asset Services'). No consent obtained.", severity: "blocking", resolved: false, fm_ref: "FM Servicing Guide §34.02 — Unauthorized PM Change" },
+      { id: "vi-3201-2", rule: "Termination Clause Non-Compliant", detail: "Proposed agreement contains 90-day notice + 6-month penalty. Freddie Mac requires ≤30 days, no-cause, no penalty.", severity: "blocking", resolved: false, fm_ref: "FM Servicing Guide §34.01(b)" },
+      { id: "vi-3201-3", rule: "Management Fee Exceeds Cap", detail: "Proposed fee of 6.5% exceeds Freddie Mac cap of 4.0% for Industrial properties.", severity: "blocking", resolved: false, fm_ref: "FM Asset Mgmt Guide §4.1(c)" },
+      { id: "vi-3201-4", rule: "Borrower Affiliation Conflict", detail: "Proposed PM company has ownership overlap with borrower entity — requires disclosure and lender waiver.", severity: "blocking", resolved: false, fm_ref: "FM Servicing Guide §34.03 — Affiliation Disclosure" },
+      { id: "vi-3201-5", rule: "Insufficient PM Experience", detail: "Proposed PM has 3 years experience; minimum required is 5 years for Freddie Mac industrial assets.", severity: "blocking", resolved: false, fm_ref: "FM Asset Mgmt Guide §4.2(a)" },
+      { id: "vi-3201-6", rule: "Proximity Exceeds Limit", detail: "Proposed PM office is 64 miles from property; Freddie Mac limit is 50 miles for non-metropolitan markets.", severity: "blocking", resolved: false, fm_ref: "FM Asset Mgmt Guide §4.2(b)" },
+    ],
+    required_docs: REQUIRED_DOCS_TEMPLATE.map(d => ({ ...d, status: "missing" as DocStatus })),
+    comments: [
+      { id: "c-3201-1", author: "System", role: "System", text: "PMC task auto-created. Unauthorized PM detected on April 2026 rent roll. Borrower must submit compliant PMC package within 10 days or loan placed on watchlist.", ts: "2026-04-18T09:00:00Z", stage: "unauthorized" },
+    ],
+    audit_timeline: [
+      { ts: "2026-04-18T09:00:00Z", actor: "System", role: "System", action: "UNAUTHORIZED PM DETECTED — April rent roll lists 'Pinnacle Regional Mgmt.' No lender consent on file.", from_stage: "no_change", to_stage: "unauthorized", note: "Auto-trigger: rent roll AI extraction" },
+    ],
+    blocked_actions: ["Draw Requests", "Escrow Disbursements", "Loan Modification Approvals"],
+  },
+  {
+    loan_ref:         "LN-5593",
+    borrower:         "Westridge Capital",
+    property:         "Summit Office Complex",
+    property_type:    "Office",
+    upb:              6_800_000,
+    agency:           "Freddie Mac",
+    stage:            "no_change",
+    compliance_flag:  "clean",
+    stage_since:      "2025-04-01",
+    sla_due:          null,
+    sla_days_remaining: null,
+    trigger_reason:   "No PMC active",
+    current_pm: {
+      company:                 "Summit Property Partners",
+      contact:                 "Diana Park · (212) 555-0371",
+      fee_pct:                 4.0,
+      experience_years:        18,
+      proximity_miles:         2,
+      agreement_expires:       "2028-03-31",
+      affiliated_with_borrower: false,
+      termination_clause:      "30-day notice + lender consent ✓",
+    },
+    proposed_pm:        null,
+    validation_issues:  [],
+    required_docs:      [],
+    comments:           [],
+    audit_timeline: [
+      { ts: "2025-04-01T09:00:00Z", actor: "System", role: "System", action: "PM agreement confirmed — no PMC required", from_stage: "no_change", to_stage: "no_change" },
+    ],
+    blocked_actions: [],
+  },
+  {
+    loan_ref:         "LN-0728",
+    borrower:         "Crestwood Logistics",
+    property:         "Crestwood Distribution Center",
+    property_type:    "Industrial",
+    upb:              7_100_000,
+    agency:           "Freddie Mac",
+    stage:            "no_change",
+    compliance_flag:  "clean",
+    stage_since:      "2024-10-01",
+    sla_due:          null,
+    sla_days_remaining: null,
+    trigger_reason:   "No PMC active",
+    current_pm: {
+      company:                 "Texas Industrial Management",
+      contact:                 "James Ortega · (214) 555-0509",
+      fee_pct:                 3.0,
+      experience_years:        15,
+      proximity_miles:         6,
+      agreement_expires:       "2027-09-30",
+      affiliated_with_borrower: false,
+      termination_clause:      "30-day notice + lender consent ✓",
+    },
+    proposed_pm:        null,
+    validation_issues:  [],
+    required_docs:      [],
+    comments:           [],
+    audit_timeline: [
+      { ts: "2024-10-01T09:00:00Z", actor: "System", role: "System", action: "PM agreement confirmed — no PMC required", from_stage: "no_change", to_stage: "no_change" },
+    ],
+    blocked_actions: [],
+  },
+  {
+    loan_ref:         "LN-4108",
+    borrower:         "Oakfield Group",
+    property:         "Oakfield Retail Plaza",
+    property_type:    "Retail",
+    upb:              2_800_000,
+    agency:           "Fannie Mae",
+    stage:            "under_review",
+    compliance_flag:  "pending_change",
+    stage_since:      "2026-04-14",
+    sla_due:          "2026-05-14",
+    sla_days_remaining: 18,
+    trigger_reason:   "PM agreement expired Dec 31, 2025. Borrower submitted PMC package Apr 14, 2026 for transition to Oak Management Co.",
+    current_pm: {
+      company:                 "Greenleaf Retail Advisors (EXPIRED)",
+      contact:                 "Mike Faber · (312) 555-0128",
+      fee_pct:                 4.5,
+      experience_years:        7,
+      proximity_miles:         15,
+      agreement_expires:       "2025-12-31",
+      affiliated_with_borrower: false,
+      termination_clause:      "60-day notice — no lender consent clause",
+    },
+    proposed_pm: {
+      company:                 "Oak Management Co.",
+      contact:                 "Sandra Torres · (312) 555-0801",
+      fee_pct:                 4.0,
+      experience_years:        9,
+      proximity_miles:         11,
+      agreement_expires:       "2029-04-30",
+      affiliated_with_borrower: false,
+      termination_clause:      "30-day no-cause, no penalty ✓",
+    },
+    validation_issues: [
+      { id: "vi-4108-1", rule: "Termination Clause — Existing PM", detail: "Current (expired) agreement had 60-day notice and no lender consent clause. Termination of holdover requires 60-day wind-down letter.", severity: "warning", resolved: false, fm_ref: "FM Servicing Guide §34.01(b)" },
+      { id: "vi-4108-2", rule: "Agreement Gap Period", detail: "PM operated on unauthorized holdover Jan 1 – Apr 13, 2026 (103 days). Borrower explanation letter must address gap period explicitly.", severity: "warning", resolved: false, fm_ref: "FM Servicing Guide §34.02(a)" },
+    ],
+    required_docs: REQUIRED_DOCS_TEMPLATE.map((d, i) => ({
+      ...d,
+      status: (["doc-pma", "doc-termination", "doc-rent-roll"].includes(d.id) ? "uploaded" : "missing") as DocStatus,
+      uploaded_by: ["doc-pma", "doc-termination", "doc-rent-roll"].includes(d.id) ? "Borrower" : undefined,
+      uploaded_at: ["doc-pma", "doc-termination", "doc-rent-roll"].includes(d.id) ? "2026-04-14" : undefined,
+    })),
+    comments: [
+      { id: "c-4108-1", author: "Borrower", role: "Borrower", text: "Submitting PMC package for transition from Greenleaf Retail Advisors to Oak Management Co. Oak has managed our Chicago portfolio for 9 years with no performance issues.", ts: "2026-04-14T10:30:00Z", stage: "submitted" },
+      { id: "c-4108-2", author: "Servicer", role: "Servicer", text: "Package received. PM agreement and termination addendum look compliant. Missing: PM resume/experience profile and borrower explanation letter. Returning for completion.", ts: "2026-04-16T14:00:00Z", stage: "under_review" },
+    ],
+    audit_timeline: [
+      { ts: "2026-01-15T09:00:00Z", actor: "System", role: "System", action: "PM agreement expired Dec 31, 2025 — PMC required flag raised", from_stage: "no_change", to_stage: "draft", note: "Auto-trigger: agreement expiry" },
+      { ts: "2026-04-14T10:30:00Z", actor: "Oakfield Group", role: "Borrower", action: "PMC package submitted — transition to Oak Management Co.", from_stage: "draft", to_stage: "submitted" },
+      { ts: "2026-04-14T11:00:00Z", actor: "System", role: "System", action: "Automated validation run — 2 warnings, 0 blocking issues, 2/5 docs missing", from_stage: "submitted", to_stage: "submitted" },
+      { ts: "2026-04-15T09:00:00Z", actor: "System", role: "System", action: "SLA clock started — 30-day review deadline: May 14, 2026", from_stage: "submitted", to_stage: "submitted" },
+      { ts: "2026-04-16T14:00:00Z", actor: "Servicer", role: "Servicer", action: "Package advanced to Under Review — 2 outstanding docs requested from borrower", from_stage: "submitted", to_stage: "under_review" },
+    ],
+    blocked_actions: ["Draw Requests"],
+  },
+  {
+    loan_ref:         "LN-1120",
+    borrower:         "Sunrise Holdings",
+    property:         "Sunrise Business Park",
+    property_type:    "Mixed-Use",
+    upb:              3_200_000,
+    agency:           "Portfolio",
+    stage:            "no_change",
+    compliance_flag:  "clean",
+    stage_since:      "2024-04-01",
+    sla_due:          null,
+    sla_days_remaining: null,
+    trigger_reason:   "No PMC active",
+    current_pm: {
+      company:                 "Sunrise Asset Management",
+      contact:                 "Nina Alvarez · (305) 555-0296",
+      fee_pct:                 4.0,
+      experience_years:        11,
+      proximity_miles:         4,
+      agreement_expires:       "2027-03-31",
+      affiliated_with_borrower: false,
+      termination_clause:      "30-day notice ✓",
+    },
+    proposed_pm:        null,
+    validation_issues:  [],
+    required_docs:      [],
+    comments:           [],
+    audit_timeline: [
+      { ts: "2024-04-01T09:00:00Z", actor: "System", role: "System", action: "PM agreement confirmed — no PMC required", from_stage: "no_change", to_stage: "no_change" },
+    ],
+    blocked_actions: [],
+  },
+];
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
 const fmt = (n: number) =>
   n.toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 });
 
-type DetailTab = "compliance" | "reporting" | "pm" | "inspections" | "borrower" | "audit";
+const now = () => new Date().toISOString();
 
-const TABS: { key: DetailTab; label: string; icon: typeof ClockIcon }[] = [
-  { key: "compliance",  label: "Compliance Queue", icon: BellAlertIcon },
-  { key: "reporting",   label: "Reporting",        icon: ChartBarIcon },
-  { key: "pm",          label: "PM Eligibility",   icon: UserGroupIcon },
-  { key: "inspections", label: "Inspections",      icon: ShieldCheckIcon },
-  { key: "borrower",    label: "Borrower",         icon: DocumentTextIcon },
-  { key: "audit",       label: "Audit Log",        icon: ClipboardDocumentListIcon },
-];
+function StagePipeline({ stage }: { stage: PMCStage }) {
+  const activeIdx = stageIndex(stage);
+  const isRejected = stage === "rejected";
+  const isUnauth   = stage === "unauthorized";
+  const isNoChange = stage === "no_change";
 
-// ── Sub-components ─────────────────────────────────────────────────────────────
+  if (isNoChange) {
+    return (
+      <div className="flex items-center gap-2">
+        <CheckCircleIcon className="h-4 w-4 text-emerald-500" />
+        <span className="text-sm font-semibold text-emerald-700">No PMC Active — PM agreement current and compliant</span>
+      </div>
+    );
+  }
 
-function LifecyclePipeline({ stage }: { stage: LifecycleStage }) {
-  const stageIdx = STAGES.findIndex(s => s.key === stage);
+  if (isUnauth) {
+    return (
+      <div className="flex items-center gap-2 rounded-lg border border-red-300 bg-red-50 px-3 py-2">
+        <ShieldExclamationIcon className="h-4 w-4 text-red-600 shrink-0" />
+        <span className="text-sm font-bold text-red-700">UNAUTHORIZED CHANGE DETECTED — PMC Required Immediately</span>
+      </div>
+    );
+  }
+
   return (
-    <div className="flex items-center gap-0">
+    <div className="flex items-center gap-0 flex-wrap">
       {STAGES.map((s, i) => {
-        const active  = s.key === stage;
-        const passed  = i < stageIdx;
+        const active = s.key === stage;
+        const passed = i < activeIdx;
+        const isLast = i === STAGES.length - 1;
         return (
           <div key={s.key} className="flex items-center">
-            <div className={`flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold transition ${
-              active  ? `${s.bg} border ${s.color}` :
-              passed  ? "bg-slate-200 text-slate-500" :
-              "bg-slate-50 text-slate-300 border border-slate-100"
+            <div className={`flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold border transition ${
+              active  ? "bg-amber-50 border-amber-300 text-amber-800" :
+              passed  ? "bg-emerald-50 border-emerald-200 text-emerald-700" :
+              isRejected && i === activeIdx + 1 ? "bg-red-50 border-red-200 text-red-700" :
+              "bg-slate-50 border-slate-200 text-slate-300"
             }`}>
-              <span className={`h-1.5 w-1.5 rounded-full ${active ? s.dot : passed ? "bg-slate-400" : "bg-slate-200"}`} />
-              {s.label}
+              {passed && <CheckCircleIcon className="h-3 w-3 text-emerald-500 shrink-0" />}
+              {active && <span className="h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse" />}
+              {!passed && !active && <span className="h-1.5 w-1.5 rounded-full bg-slate-300" />}
+              {s.short}
             </div>
-            {i < STAGES.length - 1 && (
-              <ArrowRightIcon className={`h-3 w-3 mx-1 ${i < stageIdx ? "text-slate-400" : "text-slate-200"}`} />
+            {!isLast && (
+              <ArrowRightIcon className={`h-3 w-3 mx-0.5 ${i < activeIdx ? "text-emerald-400" : "text-slate-200"}`} />
             )}
           </div>
         );
       })}
-    </div>
-  );
-}
-
-function ComplianceQueueItem({
-  item, onAct,
-}: {
-  item: ComplianceItem;
-  onAct: (id: string, action: "progress" | "resolve") => void;
-}) {
-  const sv = severityConfig[item.severity];
-  const st = ciStatusConfig[item.status];
-  const overdue = item.sla_days_remaining < 0;
-  const docsOk = item.docs_received.length >= item.required_docs.length;
-
-  return (
-    <div className={`rounded-xl border p-4 shadow-sm ${item.status === "overdue" ? "border-red-200 bg-red-50" : "border-slate-200 bg-white"}`}>
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="flex items-start gap-2 min-w-0">
-          <span className={`mt-0.5 rounded px-1.5 py-0.5 text-[10px] font-black uppercase shrink-0 ${sv.bg}`}>
-            {sv.label}
-          </span>
-          <div>
-            <p className="text-sm font-bold text-slate-900">{item.title}</p>
-            <p className="text-xs text-slate-500 mt-0.5">{item.category} · {item.agency_ref}</p>
-          </div>
-        </div>
-        <div className="flex items-center gap-2 shrink-0">
-          <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${st.bg}`}>{st.label}</span>
-          <span className={`text-xs font-semibold ${overdue ? "text-red-700" : item.sla_days_remaining <= 10 ? "text-amber-700" : "text-slate-500"}`}>
-            {overdue ? `${Math.abs(item.sla_days_remaining)}d overdue` : `${item.sla_days_remaining}d remaining`}
-          </span>
-        </div>
-      </div>
-
-      <p className="mt-2 text-xs text-slate-600 leading-relaxed">{item.detail}</p>
-
-      <div className="mt-3 flex flex-wrap gap-2 text-xs">
-        <div className="flex-1 min-w-0">
-          <p className="font-semibold text-slate-500 mb-1">Required Documents</p>
-          <div className="space-y-1">
-            {item.required_docs.map(doc => {
-              const rx = item.docs_received.includes(doc);
-              return (
-                <div key={doc} className="flex items-center gap-1.5">
-                  {rx
-                    ? <CheckCircleIcon className="h-3 w-3 text-emerald-500 shrink-0" />
-                    : <XCircleIcon className="h-3 w-3 text-red-400 shrink-0" />}
-                  <span className={rx ? "text-emerald-700" : "text-red-700"}>{doc}</span>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-
-        {item.requires_approval && (
-          <div className="rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-2 text-xs text-amber-800 self-start">
-            <ShieldCheckIcon className="inline h-3 w-3 mr-1" />
-            Requires lender approval
-          </div>
-        )}
-      </div>
-
-      {item.status !== "resolved" && (
-        <div className="mt-3 flex gap-2">
-          <button
-            onClick={() => onAct(item.id, "progress")}
-            disabled={item.status === "in_progress"}
-            className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50 transition"
-          >
-            Mark In Progress
-          </button>
-          <button
-            onClick={() => onAct(item.id, "resolve")}
-            disabled={!docsOk}
-            className="rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-bold text-white hover:bg-slate-800 disabled:opacity-40 transition"
-          >
-            {docsOk ? "Resolve Item" : `${item.docs_received.length}/${item.required_docs.length} docs — blocked`}
-          </button>
+      {isRejected && (
+        <div className="flex items-center gap-1 ml-2">
+          <ArrowRightIcon className="h-3 w-3 text-red-300" />
+          <span className="rounded-full border border-red-300 bg-red-50 px-3 py-1 text-xs font-bold text-red-700">Rejected</span>
         </div>
       )}
     </div>
   );
 }
 
-// ── Main component ─────────────────────────────────────────────────────────────
+function PMCard({ pm, label, type }: { pm: PMInfo; label: string; type: "current" | "proposed" }) {
+  const feeCap = FEE_CAPS[type] ?? 5.0;
+  const feeOk  = pm.fee_pct <= (feeCap + 99); // evaluate against property type when rendering
+  return (
+    <div className={`rounded-xl border p-4 space-y-3 ${type === "proposed" ? "border-blue-200 bg-blue-50/40" : "border-slate-200 bg-white"}`}>
+      <p className={`text-xs font-black uppercase tracking-wide ${type === "proposed" ? "text-blue-700" : "text-slate-500"}`}>{label}</p>
+      <div>
+        <p className="font-bold text-slate-900">{pm.company}</p>
+        <p className="text-xs text-slate-500">{pm.contact}</p>
+      </div>
+      <div className="grid grid-cols-2 gap-2 text-xs">
+        {[
+          { k: "Fee", v: `${pm.fee_pct}%`, warn: false },
+          { k: "Experience", v: `${pm.experience_years} yrs`, warn: pm.experience_years < 5 },
+          { k: "Proximity", v: `${pm.proximity_miles} mi`, warn: pm.proximity_miles > 50 },
+          { k: "Expires", v: pm.agreement_expires, warn: false },
+        ].map(row => (
+          <div key={row.k} className={`rounded-lg px-2.5 py-2 ${row.warn ? "bg-red-50 border border-red-200" : "bg-slate-50"}`}>
+            <p className="text-slate-400">{row.k}</p>
+            <p className={`font-bold ${row.warn ? "text-red-700" : "text-slate-900"}`}>{row.v}</p>
+          </div>
+        ))}
+      </div>
+      <div className={`rounded-lg border px-3 py-2 text-xs ${pm.affiliated_with_borrower ? "border-red-300 bg-red-50 text-red-800" : "border-slate-200 bg-slate-50 text-slate-600"}`}>
+        <span className="font-semibold">Affiliation: </span>
+        {pm.affiliated_with_borrower ? "⚠ Related party — disclosure required" : "None disclosed"}
+      </div>
+      <div className={`rounded-lg border px-3 py-2 text-xs ${pm.termination_clause.includes("✓") ? "border-emerald-200 bg-emerald-50 text-emerald-800" : "border-amber-200 bg-amber-50 text-amber-800"}`}>
+        <span className="font-semibold">Termination: </span>{pm.termination_clause}
+      </div>
+    </div>
+  );
+}
+
+// ── Main ───────────────────────────────────────────────────────────────────────
 
 export default function ServicingManagementPage() {
   const { addAlert, addTask, logAudit, requestApproval } = useServicingContext();
-  const [selectedRef, setSelectedRef] = useState<string>(LOANS[0].loan_ref);
-  const [activeTab, setActiveTab] = useState<DetailTab>("compliance");
-  const [items, setItems] = useState<Record<string, ComplianceItem[]>>(
-    Object.fromEntries(LOANS.map(l => [l.loan_ref, l.compliance_items]))
+  const [records, setRecords] = useState<PMCRecord[]>(INITIAL_RECORDS);
+  const [selectedRef, setSelectedRef] = useState<string>(
+    INITIAL_RECORDS.find(r => r.stage !== "no_change")?.loan_ref ?? INITIAL_RECORDS[0].loan_ref
   );
+  const [newComment, setNewComment] = useState<Record<string, string>>({});
 
-  const loan = LOANS.find(l => l.loan_ref === selectedRef) ?? LOANS[0];
-  const stage = stageFor(loan.stage);
-  const loanItems = items[loan.loan_ref] ?? [];
+  const record = records.find(r => r.loan_ref === selectedRef) ?? records[0];
 
-  const openItems     = loanItems.filter(i => i.status !== "resolved");
-  const criticalCount = loanItems.filter(i => i.severity === "critical" && i.status !== "resolved").length;
-  const overdueCount  = loanItems.filter(i => i.status === "overdue").length;
-
-  const handleAct = (id: string, action: "progress" | "resolve") => {
-    setItems(prev => ({
-      ...prev,
-      [loan.loan_ref]: (prev[loan.loan_ref] ?? []).map(ci => {
-        if (ci.id !== id) return ci;
-        const next = action === "resolve" ? "resolved" : "in_progress";
-        if (action === "resolve") {
-          logAudit({
-            id: `audit-ci-${id}-${Date.now()}`,
-            action: `Compliance item resolved — ${ci.title}`,
-            detail: ci.detail,
-            timestamp: new Date().toISOString(),
-            status: "approved",
-          });
-          if (ci.requires_approval) {
-            requestApproval(`Lender approval — ${ci.title}`, ci.detail);
-          }
-        } else {
-          addTask({
-            id: `task-ci-${id}`,
-            title: ci.title,
-            detail: ci.detail,
-            status: "in-review",
-            category: ci.category,
-            requiresApproval: ci.requires_approval,
-          });
-        }
-        return { ...ci, status: next as ComplianceStatus };
-      }),
-    }));
+  const mutate = (ref: string, fn: (r: PMCRecord) => PMCRecord) => {
+    setRecords(prev => prev.map(r => r.loan_ref === ref ? fn(r) : r));
   };
 
-  const handleSendNotice = (interaction: BorrowerInteraction) => {
-    requestApproval(
-      `Send ${interaction.type} — ${loan.loan_ref}`,
-      `${loan.borrower} · ${loan.property}: ${interaction.summary}`
-    );
-    addAlert({
-      id: `alert-borrower-${loan.loan_ref}-${Date.now()}`,
-      title: `${interaction.type} queued — ${loan.loan_ref}`,
-      detail: interaction.summary,
-      severity: "medium",
-      category: "Borrower",
+  // Upload a document
+  const handleUpload = (docId: string) => {
+    mutate(record.loan_ref, r => ({
+      ...r,
+      required_docs: r.required_docs.map(d =>
+        d.id === docId
+          ? { ...d, status: "uploaded" as DocStatus, uploaded_by: "Servicer", uploaded_at: new Date().toLocaleDateString("en-US") }
+          : d
+      ),
+    }));
+    logAudit({
+      id: `audit-pmc-doc-${docId}-${Date.now()}`,
+      action: `Document uploaded — ${record.required_docs.find(d => d.id === docId)?.name}`,
+      detail: `PMC package — ${record.loan_ref}`,
+      timestamp: now(),
+      status: "logged",
     });
   };
 
+  // Accept a document
+  const handleAcceptDoc = (docId: string) => {
+    mutate(record.loan_ref, r => ({
+      ...r,
+      required_docs: r.required_docs.map(d =>
+        d.id === docId ? { ...d, status: "accepted" as DocStatus } : d
+      ),
+    }));
+  };
+
+  // Resolve a validation issue
+  const handleResolveIssue = (issueId: string) => {
+    mutate(record.loan_ref, r => ({
+      ...r,
+      validation_issues: r.validation_issues.map(vi =>
+        vi.id === issueId ? { ...vi, resolved: true } : vi
+      ),
+    }));
+    logAudit({
+      id: `audit-pmc-vi-${issueId}-${Date.now()}`,
+      action: `Validation issue resolved — ${record.validation_issues.find(v => v.id === issueId)?.rule}`,
+      detail: record.loan_ref,
+      timestamp: now(),
+      status: "logged",
+    });
+  };
+
+  // Advance stage
+  const handleAdvance = () => {
+    const curIdx = stageIndex(record.stage);
+    if (curIdx < 0 || curIdx >= STAGE_ORDER.length - 1) return;
+    const nextStage = STAGE_ORDER[curIdx + 1];
+    const blockingOpen = record.validation_issues.filter(v => v.severity === "blocking" && !v.resolved);
+    const docsOk = record.required_docs.every(d => d.status === "uploaded" || d.status === "accepted");
+    if (blockingOpen.length > 0 || !docsOk) return;
+
+    mutate(record.loan_ref, r => ({
+      ...r,
+      stage: nextStage,
+      stage_since: new Date().toLocaleDateString("en-US"),
+      compliance_flag: nextStage === "approved" ? "clean" : "pending_change",
+      blocked_actions: nextStage === "approved" ? [] : r.blocked_actions,
+      audit_timeline: [
+        ...r.audit_timeline,
+        { ts: now(), actor: "Servicer", role: "Servicer" as const, action: `PMC stage advanced: ${r.stage} → ${nextStage}`, from_stage: r.stage, to_stage: nextStage },
+      ],
+    }));
+
+    if (nextStage === "approved") {
+      requestApproval(`PMC Approved — ${record.loan_ref}`, `${record.property}: transition to ${record.proposed_pm?.company} approved after full compliance review.`);
+      addAlert({ id: `alert-pmc-approved-${record.loan_ref}`, title: `PMC Approved — ${record.loan_ref}`, detail: `Transition to ${record.proposed_pm?.company} complete.`, severity: "low", category: "Management" });
+    } else {
+      addTask({ id: `task-pmc-${record.loan_ref}-${nextStage}`, title: `PMC ${nextStage.replace("_", " ")} — ${record.loan_ref}`, detail: `${record.property}: PMC package at stage ${nextStage}.`, status: "in-review", category: "Management", requiresApproval: nextStage === "freddie_review" });
+    }
+  };
+
+  // Reject PMC
+  const handleReject = () => {
+    mutate(record.loan_ref, r => ({
+      ...r,
+      stage: "rejected",
+      compliance_flag: "non_compliant",
+      audit_timeline: [
+        ...r.audit_timeline,
+        { ts: now(), actor: "Servicer", role: "Servicer" as const, action: `PMC Rejected — returned to borrower for revision`, from_stage: r.stage, to_stage: "rejected" },
+      ],
+    }));
+    addAlert({ id: `alert-pmc-rejected-${record.loan_ref}`, title: `PMC Rejected — ${record.loan_ref}`, detail: "Package returned to borrower. Blocking issues must be resolved before re-submission.", severity: "high", category: "Management" });
+  };
+
+  // Initiate PMC on a clean loan
+  const handleInitiatePMC = (ref: string) => {
+    mutate(ref, r => ({
+      ...r,
+      stage: "draft",
+      compliance_flag: "pending_change",
+      sla_due: new Date(Date.now() + 30 * 86400000).toLocaleDateString("en-US"),
+      sla_days_remaining: 30,
+      required_docs: REQUIRED_DOCS_TEMPLATE.map(d => ({ ...d, status: "missing" as DocStatus })),
+      audit_timeline: [
+        ...r.audit_timeline,
+        { ts: now(), actor: "Servicer", role: "Servicer" as const, action: "PMC initiated by servicer — package assembly started", from_stage: "no_change" as PMCStage, to_stage: "draft" as PMCStage },
+      ],
+    }));
+    setSelectedRef(ref);
+  };
+
+  // Add comment
+  const handleComment = () => {
+    const text = (newComment[record.loan_ref] ?? "").trim();
+    if (!text) return;
+    mutate(record.loan_ref, r => ({
+      ...r,
+      comments: [...r.comments, {
+        id: `c-${Date.now()}`,
+        author: "Servicer",
+        role: "Servicer" as const,
+        text,
+        ts: now(),
+        stage: r.stage,
+      }],
+      audit_timeline: [
+        ...r.audit_timeline,
+        { ts: now(), actor: "Servicer", role: "Servicer" as const, action: `Comment added at ${r.stage} stage`, from_stage: r.stage, to_stage: r.stage, note: text.slice(0, 60) },
+      ],
+    }));
+    setNewComment(prev => ({ ...prev, [record.loan_ref]: "" }));
+  };
+
+  const blockingOpen = record.validation_issues.filter(v => v.severity === "blocking" && !v.resolved);
+  const warningOpen  = record.validation_issues.filter(v => v.severity === "warning" && !v.resolved);
+  const docsOk = record.required_docs.length > 0 && record.required_docs.every(d => d.status === "uploaded" || d.status === "accepted");
+  const canAdvance = record.stage !== "no_change" && record.stage !== "approved" && record.stage !== "rejected" && record.stage !== "unauthorized" && blockingOpen.length === 0 && docsOk;
+  const curStageIdx = stageIndex(record.stage);
+
   const portfolioStats = {
-    performing: LOANS.filter(l => l.stage === "performing").length,
-    monitoring:  LOANS.filter(l => l.stage === "monitoring").length,
-    exception:   LOANS.filter(l => l.stage === "exception").length,
-    critical:    LOANS.flatMap(l => l.compliance_items).filter(i => i.severity === "critical" && i.status !== "resolved").length,
-    overdue:     LOANS.flatMap(l => l.compliance_items).filter(i => i.status === "overdue").length,
+    active: records.filter(r => !["no_change", "approved"].includes(r.stage)).length,
+    unauthorized: records.filter(r => r.stage === "unauthorized").length,
+    pending: records.filter(r => ["draft", "submitted", "under_review", "freddie_review"].includes(r.stage)).length,
+    approved: records.filter(r => r.stage === "approved").length,
+    blocked: records.filter(r => r.blocked_actions.length > 0).length,
   };
 
   return (
     <div className="space-y-5">
-      {/* Portfolio header */}
+      {/* KPIs */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
         {[
-          { label: "Performing",  value: portfolioStats.performing, color: "text-emerald-700" },
-          { label: "Monitoring",  value: portfolioStats.monitoring,  color: "text-amber-700" },
-          { label: "Exception",   value: portfolioStats.exception,   color: "text-orange-700" },
-          { label: "Critical Items", value: portfolioStats.critical, color: portfolioStats.critical > 0 ? "text-red-700" : "text-emerald-700" },
-          { label: "Overdue",     value: portfolioStats.overdue,    color: portfolioStats.overdue > 0 ? "text-red-700" : "text-emerald-700" },
+          { label: "Active PMCs",    value: portfolioStats.active,       color: portfolioStats.active > 0 ? "text-amber-700" : "text-slate-500" },
+          { label: "Unauthorized",   value: portfolioStats.unauthorized, color: portfolioStats.unauthorized > 0 ? "text-red-700" : "text-emerald-700" },
+          { label: "In Pipeline",    value: portfolioStats.pending,      color: portfolioStats.pending > 0 ? "text-blue-700" : "text-slate-500" },
+          { label: "Approved YTD",   value: portfolioStats.approved,     color: "text-emerald-700" },
+          { label: "Actions Blocked",value: portfolioStats.blocked,      color: portfolioStats.blocked > 0 ? "text-red-700" : "text-emerald-700" },
         ].map(kpi => (
           <div key={kpi.label} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
             <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{kpi.label}</p>
@@ -908,72 +695,101 @@ export default function ServicingManagementPage() {
         ))}
       </div>
 
-      {/* Loan roster */}
+      {/* PMC Roster */}
       <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-        <div className="border-b border-slate-100 bg-slate-50 px-4 py-3">
-          <p className="text-xs font-bold uppercase tracking-wide text-slate-500">
-            Asset Compliance Roster — {new Date().toLocaleDateString("en-US", { month: "long", year: "numeric" })}
-          </p>
+        <div className="border-b border-slate-100 bg-slate-50 px-4 py-3 flex items-center justify-between">
+          <p className="text-xs font-bold uppercase tracking-wide text-slate-500">PMC Workflow Roster</p>
+          <p className="text-xs text-slate-400">Freddie Mac Servicing Guide §34 · Fannie Mae MF Guide §3786</p>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-slate-100 text-xs font-semibold uppercase tracking-wide text-slate-400">
                 <th className="px-4 py-3 text-left">Loan / Property</th>
-                <th className="px-4 py-3 text-left">Stage</th>
-                <th className="px-4 py-3 text-right">DSCR</th>
-                <th className="px-4 py-3 text-right">Occupancy</th>
-                <th className="px-4 py-3 text-center">Open Items</th>
-                <th className="px-4 py-3 text-center">Critical</th>
-                <th className="px-4 py-3 text-left">Agency</th>
+                <th className="px-4 py-3 text-left">Current PM</th>
+                <th className="px-4 py-3 text-left">PMC Stage</th>
+                <th className="px-4 py-3 text-center">Compliance</th>
+                <th className="px-4 py-3 text-center">SLA</th>
+                <th className="px-4 py-3 text-center">Blocked</th>
+                <th className="px-4 py-3" />
               </tr>
             </thead>
             <tbody>
-              {LOANS.map(l => {
-                const sg = stageFor(l.stage);
-                const lItems = items[l.loan_ref] ?? [];
-                const lCrit = lItems.filter(i => i.severity === "critical" && i.status !== "resolved").length;
-                const lOpen = lItems.filter(i => i.status !== "resolved").length;
-                const dscrOk = l.dscr >= l.dscr_covenant;
-                const occOk  = l.occupancy_pct >= l.occupancy_threshold;
+              {records.map(r => {
+                const flag = flagConfig[r.compliance_flag];
+                const isSelected = r.loan_ref === selectedRef;
+                const critical = r.stage === "unauthorized";
                 return (
                   <tr
-                    key={l.loan_ref}
-                    onClick={() => { setSelectedRef(l.loan_ref); setActiveTab("compliance"); }}
-                    className={`border-t border-slate-100 cursor-pointer transition hover:bg-slate-50 ${selectedRef === l.loan_ref ? "bg-amber-50/40" : ""}`}
+                    key={r.loan_ref}
+                    onClick={() => setSelectedRef(r.loan_ref)}
+                    className={`border-t border-slate-100 cursor-pointer transition hover:bg-slate-50 ${
+                      isSelected ? "bg-amber-50/40" : critical ? "bg-red-50/60" : ""
+                    }`}
                   >
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-2">
                         <BuildingOffice2Icon className="h-4 w-4 text-slate-400 shrink-0" />
                         <div>
-                          <p className="font-semibold text-slate-900">{l.loan_ref}</p>
-                          <p className="text-xs text-slate-500 truncate max-w-[160px]">{l.property}</p>
+                          <p className="font-semibold text-slate-900">{r.loan_ref}</p>
+                          <p className="text-xs text-slate-500 truncate max-w-[160px]">{r.property}</p>
                         </div>
                       </div>
                     </td>
                     <td className="px-4 py-3">
-                      <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-bold ${sg.bg} ${sg.color}`}>
-                        <span className={`h-1.5 w-1.5 rounded-full ${sg.dot}`} />
-                        {sg.label}
+                      <p className="text-slate-800 text-xs font-medium truncate max-w-[160px]">{r.current_pm.company}</p>
+                      <p className="text-xs text-slate-400">Exp {r.current_pm.agreement_expires}</p>
+                    </td>
+                    <td className="px-4 py-3">
+                      {r.stage === "no_change" ? (
+                        <span className="text-xs text-slate-400">No PMC Active</span>
+                      ) : r.stage === "unauthorized" ? (
+                        <span className="text-xs font-black text-red-700 uppercase">Unauthorized</span>
+                      ) : r.stage === "approved" ? (
+                        <span className="text-xs font-bold text-emerald-700">Approved</span>
+                      ) : r.stage === "rejected" ? (
+                        <span className="text-xs font-bold text-red-600">Rejected</span>
+                      ) : (
+                        <span className="text-xs font-semibold text-blue-700">
+                          {STAGES.find(s => s.key === r.stage)?.label ?? r.stage}
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 text-center">
+                      <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-bold ${flag.bg} ${flag.color}`}>
+                        <span className={`h-1.5 w-1.5 rounded-full ${flag.dot}`} />
+                        {flag.label}
                       </span>
                     </td>
-                    <td className={`px-4 py-3 text-right font-bold tabular-nums ${dscrOk ? "text-emerald-700" : "text-red-700"}`}>
-                      {l.dscr.toFixed(3)}x
-                    </td>
-                    <td className={`px-4 py-3 text-right tabular-nums ${occOk ? "text-slate-700" : "text-red-700 font-bold"}`}>
-                      {l.occupancy_pct.toFixed(1)}%
+                    <td className="px-4 py-3 text-center">
+                      {r.sla_days_remaining !== null ? (
+                        <span className={`text-xs font-bold ${r.sla_days_remaining <= 5 ? "text-red-700" : r.sla_days_remaining <= 14 ? "text-amber-700" : "text-slate-600"}`}>
+                          {r.sla_days_remaining}d
+                        </span>
+                      ) : (
+                        <span className="text-xs text-slate-300">—</span>
+                      )}
                     </td>
                     <td className="px-4 py-3 text-center">
-                      {lOpen > 0
-                        ? <span className="inline-flex items-center justify-center rounded-full bg-amber-100 px-2 py-0.5 text-xs font-bold text-amber-800">{lOpen}</span>
-                        : <CheckCircleIcon className="h-4 w-4 text-emerald-500 mx-auto" />}
+                      {r.blocked_actions.length > 0 ? (
+                        <div className="flex items-center justify-center gap-1">
+                          <LockClosedIcon className="h-3.5 w-3.5 text-red-600" />
+                          <span className="text-xs font-bold text-red-700">{r.blocked_actions.length}</span>
+                        </div>
+                      ) : (
+                        <span className="text-xs text-slate-300">—</span>
+                      )}
                     </td>
-                    <td className="px-4 py-3 text-center">
-                      {lCrit > 0
-                        ? <span className="inline-flex items-center justify-center rounded-full bg-red-100 px-2 py-0.5 text-xs font-black text-red-800">{lCrit}</span>
-                        : <span className="text-xs text-slate-300">—</span>}
+                    <td className="px-4 py-3 text-right">
+                      {r.stage === "no_change" && (
+                        <button
+                          onClick={e => { e.stopPropagation(); handleInitiatePMC(r.loan_ref); }}
+                          className="text-xs font-semibold text-blue-600 hover:underline"
+                        >
+                          Initiate PMC
+                        </button>
+                      )}
                     </td>
-                    <td className="px-4 py-3 text-xs text-slate-500">{l.agency}</td>
                   </tr>
                 );
               })}
@@ -982,317 +798,255 @@ export default function ServicingManagementPage() {
         </div>
       </div>
 
-      {/* Loan detail engine */}
+      {/* PMC Detail */}
       <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-        {/* Loan header */}
-        <div className={`border-b px-5 py-4 ${stage.bg}`}>
-          <div className="flex flex-wrap items-start justify-between gap-4">
+        {/* Header */}
+        <div className={`border-b px-5 py-4 ${record.stage === "unauthorized" ? "bg-red-50" : record.stage === "no_change" ? "bg-emerald-50/40" : "bg-amber-50/40"}`}>
+          <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
               <div className="flex items-center gap-2 flex-wrap">
-                <h2 className={`text-base font-black ${stage.color}`}>{loan.loan_ref}</h2>
+                <h2 className="text-base font-black text-slate-900">{record.loan_ref}</h2>
                 <span className="text-slate-400">·</span>
-                <span className="text-sm font-semibold text-slate-700">{loan.borrower}</span>
+                <span className="text-sm font-semibold text-slate-600">{record.borrower}</span>
                 <span className="text-slate-400">·</span>
-                <span className="text-xs text-slate-500">{loan.property}</span>
+                <span className="text-xs text-slate-500">{record.property} ({record.property_type})</span>
               </div>
               <div className="mt-2">
-                <LifecyclePipeline stage={loan.stage} />
+                <StagePipeline stage={record.stage} />
               </div>
-              <p className="mt-1.5 text-xs text-slate-500">
-                In {loan.stage} stage since {loan.stage_since} · {loan.agency} · {fmt(loan.upb)} UPB
+              {record.trigger_reason && (
+                <p className="mt-2 text-xs text-slate-500 max-w-2xl">{record.trigger_reason}</p>
+              )}
+            </div>
+            {record.sla_days_remaining !== null && (
+              <div className={`rounded-xl border px-4 py-2 text-center ${record.sla_days_remaining <= 5 ? "border-red-300 bg-red-50" : "border-amber-200 bg-amber-50"}`}>
+                <p className="text-xs text-slate-400">SLA Deadline</p>
+                <p className={`text-2xl font-black ${record.sla_days_remaining <= 5 ? "text-red-700" : "text-amber-700"}`}>{record.sla_days_remaining}d</p>
+                <p className="text-[10px] text-slate-400">{record.sla_due}</p>
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="p-5 space-y-6">
+          {/* Blocked Actions Banner */}
+          {record.blocked_actions.length > 0 && (
+            <div className="rounded-xl border border-red-300 bg-red-50 px-4 py-3">
+              <div className="flex items-center gap-2 mb-1">
+                <LockClosedIcon className="h-4 w-4 text-red-600 shrink-0" />
+                <p className="text-sm font-black text-red-800">Downstream Actions Blocked — Unresolved PMC</p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {record.blocked_actions.map(a => (
+                  <span key={a} className="rounded-full border border-red-300 bg-red-100 px-2.5 py-1 text-xs font-bold text-red-800">{a}</span>
+                ))}
+              </div>
+              <p className="mt-1.5 text-xs text-red-700">All listed actions are locked until PMC reaches Approved status or blocking issues are resolved.</p>
+            </div>
+          )}
+
+          {/* PM Cards */}
+          {(record.stage !== "no_change") && (
+            <div className={`grid gap-4 ${record.proposed_pm ? "lg:grid-cols-2" : ""}`}>
+              <PMCard pm={record.current_pm} label="Current Property Manager" type="current" />
+              {record.proposed_pm && (
+                <PMCard pm={record.proposed_pm} label="Proposed Property Manager" type="proposed" />
+              )}
+            </div>
+          )}
+
+          {/* Validation Issues */}
+          {record.validation_issues.length > 0 && (
+            <div>
+              <p className="text-xs font-bold uppercase tracking-wide text-slate-500 mb-3">
+                Compliance Validation — {blockingOpen.length} blocking · {warningOpen.length} warnings
               </p>
-            </div>
-            <div className="flex flex-wrap gap-3 text-sm">
-              <div className="rounded-lg border border-white/80 bg-white/60 px-3 py-2 shadow-sm text-center">
-                <p className="text-xs text-slate-400">DSCR</p>
-                <p className={`font-black text-lg ${loan.dscr >= loan.dscr_covenant ? "text-emerald-700" : "text-red-700"}`}>
-                  {loan.dscr.toFixed(3)}x
-                </p>
-                <p className="text-[10px] text-slate-400">Floor: {loan.dscr_covenant}x</p>
-              </div>
-              <div className="rounded-lg border border-white/80 bg-white/60 px-3 py-2 shadow-sm text-center">
-                <p className="text-xs text-slate-400">Occupancy</p>
-                <p className={`font-black text-lg ${loan.occupancy_pct >= loan.occupancy_threshold ? "text-emerald-700" : "text-red-700"}`}>
-                  {loan.occupancy_pct.toFixed(1)}%
-                </p>
-                <p className="text-[10px] text-slate-400">Min: {loan.occupancy_threshold}%</p>
-              </div>
-              <div className="rounded-lg border border-white/80 bg-white/60 px-3 py-2 shadow-sm text-center">
-                <p className="text-xs text-slate-400">Open Items</p>
-                <p className={`font-black text-lg ${openItems.length > 0 ? "text-amber-700" : "text-emerald-700"}`}>
-                  {openItems.length}
-                </p>
-                <p className="text-[10px] text-slate-400">{criticalCount} critical · {overdueCount} overdue</p>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Tabs */}
-        <div className="border-b border-slate-100 bg-slate-50 px-4">
-          <div className="flex gap-0 overflow-x-auto">
-            {TABS.map(tab => {
-              const Icon = tab.icon;
-              return (
-                <button
-                  key={tab.key}
-                  onClick={() => setActiveTab(tab.key)}
-                  className={`flex items-center gap-1.5 border-b-2 px-4 py-3 text-xs font-semibold whitespace-nowrap transition ${
-                    activeTab === tab.key
-                      ? "border-slate-900 text-slate-900"
-                      : "border-transparent text-slate-500 hover:text-slate-700"
-                  }`}
-                >
-                  <Icon className="h-3.5 w-3.5" />
-                  {tab.label}
-                  {tab.key === "compliance" && openItems.length > 0 && (
-                    <span className="ml-1 rounded-full bg-red-500 px-1.5 py-0.5 text-[10px] font-black text-white">
-                      {openItems.length}
-                    </span>
-                  )}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* Tab content */}
-        <div className="p-5">
-          {/* ── Compliance Queue ── */}
-          {activeTab === "compliance" && (
-            <div className="space-y-3">
-              {loanItems.length === 0 ? (
-                <div className="flex items-center gap-2 rounded-lg bg-emerald-50 px-4 py-3">
-                  <CheckCircleIcon className="h-5 w-5 text-emerald-600" />
-                  <p className="text-sm font-semibold text-emerald-700">No open compliance items — loan in good standing.</p>
-                </div>
-              ) : (
-                loanItems
-                  .sort((a, b) => {
-                    const order = { overdue: 0, critical: 1, high: 2, medium: 3, low: 4 };
-                    if (a.status === "overdue" && b.status !== "overdue") return -1;
-                    if (b.status === "overdue" && a.status !== "overdue") return 1;
-                    return (order[a.severity as keyof typeof order] ?? 5) - (order[b.severity as keyof typeof order] ?? 5);
-                  })
-                  .map(item => (
-                    <ComplianceQueueItem key={item.id} item={item} onAct={handleAct} />
-                  ))
-              )}
-            </div>
-          )}
-
-          {/* ── Reporting ── */}
-          {activeTab === "reporting" && (
-            <div className="overflow-hidden rounded-xl border border-slate-200">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-slate-100 bg-slate-50 text-xs font-semibold uppercase tracking-wide text-slate-400">
-                    <th className="px-4 py-3 text-left">Report</th>
-                    <th className="px-4 py-3 text-center">Frequency</th>
-                    <th className="px-4 py-3 text-right">Due</th>
-                    <th className="px-4 py-3 text-right">Submitted</th>
-                    <th className="px-4 py-3 text-center">Validated</th>
-                    <th className="px-4 py-3 text-center">Status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {loan.reporting.map((r, i) => {
-                    const rs = reportingStatusConfig[r.status];
-                    return (
-                      <tr key={i} className={`border-t border-slate-100 ${r.status === "overdue" ? "bg-red-50" : r.status === "due_soon" ? "bg-amber-50/40" : ""}`}>
-                        <td className="px-4 py-3">
-                          <p className="font-medium text-slate-900">{r.name}</p>
-                          {r.agency_required && <p className="text-xs text-slate-400">Agency required</p>}
-                        </td>
-                        <td className="px-4 py-3 text-center text-slate-500">{r.frequency}</td>
-                        <td className="px-4 py-3 text-right text-slate-600">{r.due_date}</td>
-                        <td className="px-4 py-3 text-right text-slate-600">
-                          {r.submitted_date ?? <span className="text-red-500 font-semibold">Not submitted</span>}
-                        </td>
-                        <td className="px-4 py-3 text-center">
-                          {r.validated
-                            ? <CheckCircleIcon className="h-4 w-4 text-emerald-500 mx-auto" />
-                            : r.submitted_date
-                              ? <ClockIcon className="h-4 w-4 text-amber-500 mx-auto" />
-                              : <span className="text-xs text-slate-300">—</span>}
-                        </td>
-                        <td className="px-4 py-3 text-center">
-                          <div className="flex items-center justify-center gap-1.5">
-                            <span className={`h-2 w-2 rounded-full ${rs.dot}`} />
-                            <span className={`text-xs font-semibold ${rs.color}`}>{rs.label}</span>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
-
-          {/* ── PM Eligibility ── */}
-          {activeTab === "pm" && (
-            <div className="space-y-4">
-              <div className="flex items-center gap-3">
-                <div>
-                  <p className="text-sm font-bold text-slate-900">{loan.pm_company}</p>
-                  <p className="text-xs text-slate-500">{loan.pm_contact} · {loan.pm_fee_pct}% fee · Expires {loan.pm_agreement_expires}</p>
-                </div>
-                <span className={`ml-auto rounded-full px-3 py-1 text-xs font-bold ${
-                  loan.pm_eligibility.every(c => c.pass)
-                    ? "bg-emerald-100 text-emerald-700"
-                    : loan.pm_eligibility.some(c => !c.pass && ["Agreement term", "Termination clause"].includes(c.criterion))
-                      ? "bg-red-100 text-red-700"
-                      : "bg-amber-100 text-amber-700"
-                }`}>
-                  {loan.pm_eligibility.every(c => c.pass)
-                    ? "Fully Compliant"
-                    : `${loan.pm_eligibility.filter(c => !c.pass).length} Criteria Failing`}
-                </span>
-              </div>
-              <div className="overflow-hidden rounded-xl border border-slate-200">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-slate-100 bg-slate-50 text-xs font-semibold uppercase tracking-wide text-slate-400">
-                      <th className="px-4 py-3 text-left">Criterion</th>
-                      <th className="px-4 py-3 text-left">Required</th>
-                      <th className="px-4 py-3 text-left">Actual</th>
-                      <th className="px-4 py-3 text-left">Agency Reference</th>
-                      <th className="px-4 py-3 text-center">Result</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {loan.pm_eligibility.map((c, i) => (
-                      <tr key={i} className={`border-t border-slate-100 ${!c.pass ? "bg-red-50" : ""}`}>
-                        <td className="px-4 py-3 font-medium text-slate-900">{c.criterion}</td>
-                        <td className="px-4 py-3 text-slate-600">{c.required}</td>
-                        <td className={`px-4 py-3 font-semibold ${c.pass ? "text-emerald-700" : "text-red-700"}`}>{c.actual}</td>
-                        <td className="px-4 py-3 text-xs text-slate-400">{c.agency_ref}</td>
-                        <td className="px-4 py-3 text-center">
-                          {c.pass
-                            ? <CheckCircleIcon className="h-5 w-5 text-emerald-500 mx-auto" />
-                            : <XCircleIcon className="h-5 w-5 text-red-500 mx-auto" />}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
-
-          {/* ── Inspections ── */}
-          {activeTab === "inspections" && (
-            <div className="space-y-3">
-              {loan.inspections.map((insp, i) => {
-                const cc = conditionConfig[insp.condition];
-                return (
-                  <div key={i} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-                    <div className="flex flex-wrap items-start justify-between gap-3">
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <p className="font-bold text-slate-900">{insp.date}</p>
-                          <span className={`text-xs font-bold ${cc.color}`}>{cc.label}</span>
-                        </div>
-                        <p className="text-xs text-slate-500">{insp.inspector}</p>
-                      </div>
-                      <div className="flex gap-4 text-sm">
-                        <div className="text-center">
-                          <p className="text-2xl font-black text-slate-900">{insp.score}</p>
-                          <p className="text-xs text-slate-400">Score / 100</p>
-                        </div>
-                        <div className="text-center">
-                          <p className={`text-2xl font-black ${insp.open_items > 0 ? "text-amber-700" : "text-emerald-700"}`}>{insp.open_items}</p>
-                          <p className="text-xs text-slate-400">Open</p>
-                        </div>
-                        <div className="text-center">
-                          <p className="text-2xl font-black text-slate-500">{insp.resolved_items}</p>
-                          <p className="text-xs text-slate-400">Resolved</p>
-                        </div>
-                      </div>
-                    </div>
-                    <p className="mt-2 text-xs text-slate-500">Next inspection required by: <strong>{insp.next_required}</strong></p>
-                  </div>
-                );
-              })}
-              {loan.inspections.length === 0 && (
-                <p className="text-sm text-slate-400 italic">No inspection records on file.</p>
-              )}
-            </div>
-          )}
-
-          {/* ── Borrower Interactions ── */}
-          {activeTab === "borrower" && (
-            <div className="space-y-3">
-              {loan.borrower_interactions.length === 0 ? (
-                <p className="text-sm text-slate-400 italic">No borrower interactions recorded.</p>
-              ) : (
-                loan.borrower_interactions.map((bi, i) => {
-                  const isPending = bi.status === "pending_approval";
-                  return (
-                    <div key={i} className={`rounded-xl border p-4 shadow-sm ${isPending ? "border-amber-200 bg-amber-50" : "border-slate-200 bg-white"}`}>
-                      <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="space-y-2">
+                {record.validation_issues.map(vi => (
+                  <div key={vi.id} className={`rounded-xl border p-3.5 ${vi.resolved ? "border-emerald-200 bg-emerald-50 opacity-70" : vi.severity === "blocking" ? "border-red-200 bg-red-50" : "border-amber-200 bg-amber-50"}`}>
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex items-start gap-2 min-w-0">
+                        {vi.resolved
+                          ? <CheckCircleIcon className="h-4 w-4 text-emerald-600 shrink-0 mt-0.5" />
+                          : vi.severity === "blocking"
+                            ? <XCircleIcon className="h-4 w-4 text-red-600 shrink-0 mt-0.5" />
+                            : <ExclamationTriangleIcon className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />}
                         <div>
-                          <div className="flex items-center gap-2">
-                            <span className={`rounded-full px-2.5 py-0.5 text-xs font-bold ${
-                              bi.status === "pending_approval" ? "bg-amber-100 text-amber-800" :
-                              bi.status === "sent"            ? "bg-blue-100 text-blue-800" :
-                              bi.status === "responded"       ? "bg-emerald-100 text-emerald-800" :
-                              "bg-red-100 text-red-800"
-                            }`}>{bi.type}</span>
-                            <span className="text-xs text-slate-400">{bi.date}</span>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className={`text-xs font-black uppercase px-1.5 py-0.5 rounded ${vi.severity === "blocking" ? "bg-red-200 text-red-900" : "bg-amber-200 text-amber-900"}`}>
+                              {vi.severity === "blocking" ? "Blocking" : "Warning"}
+                            </span>
+                            <p className="text-sm font-bold text-slate-900">{vi.rule}</p>
                           </div>
-                          <p className="mt-1 text-sm text-slate-700">{bi.summary}</p>
+                          <p className="text-xs text-slate-600 mt-0.5">{vi.detail}</p>
+                          <p className="text-[10px] text-slate-400 mt-1">{vi.fm_ref}</p>
                         </div>
-                        {isPending && (
-                          <button
-                            onClick={() => handleSendNotice(bi)}
-                            className="rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-amber-700 transition shrink-0"
-                          >
-                            Submit for Approval
-                          </button>
-                        )}
                       </div>
-                    </div>
-                  );
-                })
-              )}
-            </div>
-          )}
-
-          {/* ── Audit Log ── */}
-          {activeTab === "audit" && (
-            <div className="overflow-hidden rounded-xl border border-slate-200">
-              <div className="border-b border-slate-100 bg-slate-50 px-4 py-2">
-                <p className="text-xs font-bold uppercase tracking-wide text-slate-400">
-                  Immutable Audit Trail — {loan.loan_ref}
-                </p>
-              </div>
-              <div className="divide-y divide-slate-100">
-                {loan.audit_log.map((ev, i) => (
-                  <div key={i} className="flex items-start gap-4 px-4 py-3">
-                    <div className="w-36 shrink-0 text-xs text-slate-400 tabular-nums">
-                      {new Date(ev.ts).toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
-                    </div>
-                    <div className="min-w-0">
-                      <p className="text-sm font-semibold text-slate-900">{ev.action}</p>
-                      <div className="mt-0.5 flex flex-wrap gap-2 text-xs text-slate-500">
-                        <span>{ev.actor}</span>
-                        <span>·</span>
-                        <span>{ev.category}</span>
-                        {ev.prior_state !== ev.new_state && (
-                          <>
-                            <span>·</span>
-                            <span>{ev.prior_state} → <strong>{ev.new_state}</strong></span>
-                          </>
-                        )}
-                      </div>
+                      {!vi.resolved && (
+                        <button
+                          onClick={() => handleResolveIssue(vi.id)}
+                          className="shrink-0 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition"
+                        >
+                          Mark Resolved
+                        </button>
+                      )}
                     </div>
                   </div>
                 ))}
               </div>
             </div>
           )}
+
+          {/* Document Bundle */}
+          {record.required_docs.length > 0 && (
+            <div>
+              <div className="flex items-center justify-between mb-3">
+                <p className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                  Submission Package — {record.required_docs.filter(d => d.status === "uploaded" || d.status === "accepted").length}/{record.required_docs.length} docs received
+                </p>
+                {!docsOk && <span className="text-xs font-bold text-red-600">Package incomplete — cannot advance</span>}
+                {docsOk && <span className="text-xs font-bold text-emerald-600">✓ Package complete</span>}
+              </div>
+              <div className="space-y-2">
+                {record.required_docs.map(doc => {
+                  const received = doc.status === "uploaded" || doc.status === "accepted";
+                  return (
+                    <div key={doc.id} className={`rounded-xl border p-3.5 ${received ? "border-emerald-200 bg-emerald-50" : "border-slate-200 bg-white"}`}>
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex items-start gap-2 min-w-0">
+                          {received
+                            ? <CheckCircleIcon className="h-4 w-4 text-emerald-600 shrink-0 mt-0.5" />
+                            : <DocumentArrowUpIcon className="h-4 w-4 text-slate-400 shrink-0 mt-0.5" />}
+                          <div>
+                            <p className="text-sm font-semibold text-slate-900">{doc.name}</p>
+                            <p className="text-xs text-slate-500">{doc.description}</p>
+                            {received && <p className="text-xs text-emerald-700 mt-0.5">Uploaded by {doc.uploaded_by} · {doc.uploaded_at}</p>}
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          {doc.status === "uploaded" && (
+                            <button onClick={() => handleAcceptDoc(doc.id)} className="rounded-lg border border-emerald-300 bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700 hover:bg-emerald-100 transition">
+                              Accept
+                            </button>
+                          )}
+                          {!received && (
+                            <button onClick={() => handleUpload(doc.id)} className="rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-bold text-white hover:bg-slate-800 transition">
+                              Upload
+                            </button>
+                          )}
+                          {doc.status === "accepted" && (
+                            <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-bold text-emerald-700">Accepted</span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Stage Actions */}
+          {!["no_change", "approved", "rejected"].includes(record.stage) && (
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+              <p className="text-xs font-bold uppercase tracking-wide text-slate-500 mb-3">Stage Actions</p>
+              {!docsOk && <p className="text-xs text-amber-700 mb-2">⚠ All 5 documents must be uploaded before advancing.</p>}
+              {blockingOpen.length > 0 && <p className="text-xs text-red-700 mb-2">⛔ {blockingOpen.length} blocking validation issue{blockingOpen.length > 1 ? "s" : ""} must be resolved before advancing.</p>}
+              {record.stage === "unauthorized" && (
+                <p className="text-xs text-red-700 mb-2">Unauthorized PM change detected. Borrower must submit a compliant PMC package to clear this flag.</p>
+              )}
+              <div className="flex gap-2">
+                <button
+                  onClick={handleAdvance}
+                  disabled={!canAdvance}
+                  className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-bold text-white hover:bg-slate-800 disabled:opacity-40 transition"
+                >
+                  {curStageIdx >= 0 && curStageIdx < STAGE_ORDER.length - 1
+                    ? `Advance → ${STAGES.find(s => s.key === STAGE_ORDER[curStageIdx + 1])?.label ?? "Next"}`
+                    : "Advance"}
+                </button>
+                {record.stage !== "draft" && record.stage !== "unauthorized" && (
+                  <button
+                    onClick={handleReject}
+                    className="rounded-lg border border-red-300 bg-red-50 px-4 py-2 text-sm font-bold text-red-700 hover:bg-red-100 transition"
+                  >
+                    Reject PMC
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Comments */}
+          {record.stage !== "no_change" && (
+            <div>
+              <p className="text-xs font-bold uppercase tracking-wide text-slate-500 mb-3">
+                <DocumentTextIcon className="inline h-3.5 w-3.5 mr-1" />
+                PMC Comments
+              </p>
+              <div className="space-y-2 mb-3">
+                {record.comments.map(c => (
+                  <div key={c.id} className="rounded-xl border border-slate-200 bg-white p-3">
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className={`rounded-full px-2 py-0.5 text-[10px] font-black uppercase ${c.role === "System" ? "bg-slate-100 text-slate-500" : c.role === "Borrower" ? "bg-violet-100 text-violet-700" : "bg-amber-100 text-amber-800"}`}>
+                        {c.role}
+                      </span>
+                      <span className="text-xs font-semibold text-slate-700">{c.author}</span>
+                      <span className="text-xs text-slate-400">{new Date(c.ts).toLocaleDateString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}</span>
+                    </div>
+                    <p className="text-sm text-slate-700">{c.text}</p>
+                  </div>
+                ))}
+                {record.comments.length === 0 && <p className="text-xs text-slate-400 italic">No comments yet.</p>}
+              </div>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={newComment[record.loan_ref] ?? ""}
+                  onChange={e => setNewComment(prev => ({ ...prev, [record.loan_ref]: e.target.value }))}
+                  onKeyDown={e => e.key === "Enter" && handleComment()}
+                  placeholder="Add a comment…"
+                  className="flex-1 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-300"
+                />
+                <button onClick={handleComment} className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-bold text-white hover:bg-slate-800 transition">
+                  Add
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* PMC Audit Timeline */}
+          <div>
+            <p className="text-xs font-bold uppercase tracking-wide text-slate-500 mb-3">
+              <ClockIcon className="inline h-3.5 w-3.5 mr-1" />
+              PMC Audit Timeline — Immutable
+            </p>
+            <div className="overflow-hidden rounded-xl border border-slate-200">
+              <div className="divide-y divide-slate-100">
+                {[...record.audit_timeline].reverse().map((ev, i) => (
+                  <div key={i} className="flex items-start gap-4 px-4 py-3">
+                    <div className="w-32 shrink-0 text-xs text-slate-400 tabular-nums">
+                      {new Date(ev.ts).toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
+                    </div>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <span className={`rounded px-1.5 py-0.5 text-[10px] font-black uppercase ${ev.role === "System" ? "bg-slate-100 text-slate-500" : ev.role === "Borrower" ? "bg-violet-100 text-violet-700" : ev.role === "Lender" ? "bg-burgundy-100 text-red-900" : "bg-amber-100 text-amber-800"}`}>
+                        {ev.role}
+                      </span>
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold text-slate-900">{ev.action}</p>
+                      {ev.from_stage !== ev.to_stage && (
+                        <p className="text-xs text-slate-400 mt-0.5">
+                          {ev.from_stage} → {ev.to_stage}
+                        </p>
+                      )}
+                      {ev.note && <p className="text-xs text-slate-500 mt-0.5 italic">"{ev.note}"</p>}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
