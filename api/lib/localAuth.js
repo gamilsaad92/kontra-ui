@@ -26,9 +26,11 @@ if (!JWT_SECRET) {
 const DEMO_HASH = '$2b$12$YWreYFhsaLO1Kfa6sAe7T.RFz2Tfx97mWPgRBsqfMy5KWPRgLZaq6';
 const ORG_ID = 'a0000000-0000-0000-0000-000000000001';
 
+// User IDs aligned with Supabase `users` table — foreign keys in investor_holdings,
+// distributions, and loans.data.borrower_user_id all reference these exact UUIDs.
 const DEMO_USERS = {
   'replit@kontraplatform.com': {
-    id: 'e7bd29bd-6266-4cb9-8de0-2a0657710359',
+    id: '3c8e1ffe-03d7-4b4e-80b3-3ed2555357e2',
     email: 'replit@kontraplatform.com',
     password_hash: DEMO_HASH,
     first_name: 'Alex',
@@ -38,7 +40,7 @@ const DEMO_USERS = {
     org_id: ORG_ID,
   },
   'servicer@kontraplatform.com': {
-    id: 'f8ce30ce-7377-5dc0-9ef1-3b1768821460',
+    id: '45a3a49f-c24a-421c-b22a-dc5ca6bc8673',
     email: 'servicer@kontraplatform.com',
     password_hash: DEMO_HASH,
     first_name: 'Sam',
@@ -48,7 +50,7 @@ const DEMO_USERS = {
     org_id: ORG_ID,
   },
   'investor@kontraplatform.com': {
-    id: 'a9df41df-8488-6ed1-af02-4c2879932571',
+    id: '9bde42ed-0b2d-4475-ba37-777933e4629b',
     email: 'investor@kontraplatform.com',
     password_hash: DEMO_HASH,
     first_name: 'Ivy',
@@ -58,7 +60,7 @@ const DEMO_USERS = {
     org_id: ORG_ID,
   },
   'borrower@kontraplatform.com': {
-    id: 'b0ea52e0-9599-7fe2-b013-5d3980a43682',
+    id: 'e7bd29bd-6266-4cb9-8de0-2a0657710359',
     email: 'borrower@kontraplatform.com',
     password_hash: DEMO_HASH,
     first_name: 'Ben',
