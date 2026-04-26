@@ -7,6 +7,13 @@ import { AuthContext } from "../lib/authContext";
 import SaasDashboardHome from "../components/SaasDashboardHome";
 import AiInsightsPage from "../features/ai-insights/page/AiInsightsPage";
 import OnchainDashboard from "../components/OnchainDashboard";
+import OnchainLayout from "./dashboard/onchain/OnchainLayout";
+import OnchainInvestorRegistryPage from "./dashboard/onchain/OnchainInvestorRegistryPage";
+import OnchainCapTablePage from "./dashboard/onchain/OnchainCapTablePage";
+import OnchainCompliancePage from "./dashboard/onchain/OnchainCompliancePage";
+import OnchainDistributionsPage from "./dashboard/onchain/OnchainDistributionsPage";
+import OnchainGovernancePage from "./dashboard/onchain/OnchainGovernancePage";
+import OnchainAuditPage from "./dashboard/onchain/OnchainAuditPage";
 import PortfolioLayout from "./dashboard/portfolio/PortfolioLayout";
 import MarketsLayout from "./dashboard/markets/MarketsLayout";
 import SecondaryMarketPage from "./dashboard/markets/SecondaryMarketPage";
@@ -179,7 +186,16 @@ export default function SaasDashboard() {
         <Route path="tokens" element={<Navigate to="/onchain" replace />} />
         <Route path="exchange" element={<Navigate to="/onchain" replace />} />
       </Route>
-      <Route path="/onchain" element={<OnchainDashboard />} />
+      <Route path="/onchain" element={<OnchainLayout />}>
+        <Route index element={<Navigate to="/onchain/tokens" replace />} />
+        <Route path="tokens" element={<OnchainDashboard />} />
+        <Route path="investors" element={<OnchainInvestorRegistryPage />} />
+        <Route path="cap-table" element={<OnchainCapTablePage />} />
+        <Route path="compliance" element={<OnchainCompliancePage />} />
+        <Route path="distributions" element={<OnchainDistributionsPage />} />
+        <Route path="governance" element={<OnchainGovernancePage />} />
+        <Route path="audit" element={<OnchainAuditPage />} />
+      </Route>
       <Route path="/governance" element={<GovernanceLayout />}>
         <Route index element={<Navigate to="/governance/loan-control" replace />} />
         <Route path="loan-control" element={<LoanControlPage />} />
