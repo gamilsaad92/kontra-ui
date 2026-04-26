@@ -39,35 +39,57 @@ router.post('/signin', async (req, res) => {
     return res.status(400).json({ error: 'Email and password are required' });
   }
 
+  // Primary: local PostgreSQL auth
+  let localSession = null;
+  let localErr = null;
   try {
-    // Primary: local PostgreSQL auth
-    const session = await localAuth.signIn(email, password);
-    return res.status(200).json(session);
-  } catch (localErr) {
-    // If local auth fails due to missing credentials, try Supabase fallback
-    if (localErr.code === 'INVALID_CREDENTIALS') {
-      // Try Supabase if configured (users may exist there only)
-      if (supabaseAdmin) {
-        try {
-          const { data, error } = await supabaseAdmin.auth.signInWithPassword({ email, password });
-          if (!error && data?.session) {
-            return res.status(200).json({
-              access_token: data.session.access_token,
-              refresh_token: data.session.refresh_token,
-              expires_at: data.session.expires_at,
-              expires_in: data.session.expires_in,
-              token_type: data.session.token_type || 'bearer',
-              user: { id: data.user.id, email: data.user.email },
-            });
-          }
-        } catch (_) {}
-      }
-      return res.status(401).json({ error: 'Invalid email or password' });
-    }
-
-    console.error('[auth] signin error:', localErr.message);
-    return res.status(500).json({ error: 'Sign in failed' });
+    localSession = await localAuth.signIn(email, password);
+  } catch (err) {
+    localErr = err;
   }
+
+  if (localSession) {
+    return res.status(200).json(localSession);
+  }
+
+  // Supabase fallback — used when local DB is unavailable or user doesn't exist locally
+  if (supabaseAdmin && localErr?.code !== 'INVALID_CREDENTIALS') {
+    // DB-level error (connection issue, missing table, etc.) — try Supabase
+    try {
+      const { data, error } = await supabaseAdmin.auth.signInWithPassword({ email, password });
+      if (!error && data?.session) {
+        return res.status(200).json({
+          access_token: data.session.access_token,
+          refresh_token: data.session.refresh_token,
+          expires_at: data.session.expires_at,
+          expires_in: data.session.expires_in,
+          token_type: data.session.token_type || 'bearer',
+          user: { id: data.user.id, email: data.user.email },
+        });
+      }
+    } catch (_) {}
+  } else if (supabaseAdmin && localErr?.code === 'INVALID_CREDENTIALS') {
+    // User not found locally — try Supabase as well
+    try {
+      const { data, error } = await supabaseAdmin.auth.signInWithPassword({ email, password });
+      if (!error && data?.session) {
+        return res.status(200).json({
+          access_token: data.session.access_token,
+          refresh_token: data.session.refresh_token,
+          expires_at: data.session.expires_at,
+          expires_in: data.session.expires_in,
+          token_type: data.session.token_type || 'bearer',
+          user: { id: data.user.id, email: data.user.email },
+        });
+      }
+    } catch (_) {}
+    return res.status(401).json({ error: 'Invalid email or password' });
+  }
+
+  if (localErr) {
+    console.error('[auth] signin error:', localErr.message);
+  }
+  return res.status(401).json({ error: 'Invalid email or password' });
 });
 
 // ── POST /api/auth/refresh ────────────────────────────────────────────────────

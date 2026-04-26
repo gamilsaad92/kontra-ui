@@ -223,32 +223,38 @@ router.get('/holdings', async (req, res) => {
   try {
     const userId = req.user?.id;
     const { data, error } = await supabase
-      .from('pool_investments')
-      .select(`id, loan_id, share_pct, invested_amount, token_balance, token_symbol,
-               loans(id, loan_ref, property_name, property_type, location,
-                     current_balance, status, interest_rate, maturity_date)`)
+      .from('investor_holdings')
+      .select(`id, loan_id, share_pct, token_balance, token_symbol, status, data,
+               loans(id, title, amount, interest_rate, status, data)`)
       .eq('investor_user_id', userId);
 
     if (error) throw error;
 
-    const holdings = (data || []).map(row => ({
-      loan_id:       row.loan_id,
-      loan_ref:      row.loans?.loan_ref      || row.loan_id,
-      property_name: row.loans?.property_name || 'Unknown Property',
-      property_type: row.loans?.property_type || '',
-      location:      row.loans?.location      || '',
-      upb:           Number(row.loans?.current_balance) || 0,
-      my_share_pct:  Number(row.share_pct)   || 0,
-      my_share_usd:  Number(row.invested_amount) || 0,
-      token_balance: Number(row.token_balance) || 0,
-      token_symbol:  row.token_symbol         || `KTRA-${row.loan_id}`,
-      status:        row.loans?.status        || 'Current',
-      yield_pct:     parseFloat(row.loans?.interest_rate) || 0,
-      maturity:      row.loans?.maturity_date || '',
-    }));
+    const holdings = (data || []).map(row => {
+      const ld = row.loans?.data || {};
+      const hd = row.data || {};
+      return {
+        loan_id:       row.loan_id,
+        loan_ref:      ld.loan_ref       || row.loan_id,
+        property_name: ld.property_name  || row.loans?.title || 'Unknown Property',
+        property_type: ld.property_type  || '',
+        location:      ld.location       || '',
+        upb:           Number(ld.current_balance) || Number(row.loans?.amount) || 0,
+        my_share_pct:  Number(row.share_pct) || 0,
+        my_share_usd:  Number(row.share_pct) / 100 * (Number(ld.current_balance) || Number(row.loans?.amount) || 0),
+        token_balance: Number(row.token_balance) || 0,
+        token_symbol:  row.token_symbol || `KTRA`,
+        status:        row.status || row.loans?.status || 'active',
+        yield_pct:     Number(hd.yield_pct) || Number(row.loans?.interest_rate) || 0,
+        maturity:      ld.maturity_date  || '',
+        ltv:           Number(ld.ltv)    || 0,
+        dscr:          Number(ld.dscr)   || 0,
+      };
+    });
 
     return res.json({ holdings });
   } catch (err) {
+    console.error('[investors] holdings error:', err.message);
     return res.json({ holdings: [] });
   }
 });
@@ -258,26 +264,29 @@ router.get('/distributions', async (req, res) => {
   try {
     const userId = req.user?.id;
     const { data, error } = await supabase
-      .from('investor_distributions')
-      .select('id, period, loan_ref, gross_amount, net_amount, distribution_type, paid_at, status')
+      .from('distributions')
+      .select(`id, loan_id, period, gross_amount, net_amount, type, status, data,
+               loans(title, data)`)
       .eq('investor_user_id', userId)
-      .order('paid_at', { ascending: false });
+      .order('created_at', { ascending: false });
 
     if (error) throw error;
 
     const distributions = (data || []).map(row => ({
       id:           row.id,
       period:       row.period,
-      loan_ref:     row.loan_ref,
+      loan_ref:     row.loans?.data?.loan_ref || row.loan_id,
+      property_name: row.loans?.data?.property_name || row.loans?.title || '',
       gross_amount: Number(row.gross_amount) || 0,
       net_amount:   Number(row.net_amount)   || 0,
-      type:         row.distribution_type    || 'Interest',
-      paid_at:      row.paid_at,
+      type:         row.type                 || 'Interest',
+      paid_at:      row.data?.paid_at        || row.created_at,
       status:       row.status               || 'paid',
     }));
 
     return res.json({ distributions });
   } catch (err) {
+    console.error('[investors] distributions error:', err.message);
     return res.json({ distributions: [] });
   }
 });

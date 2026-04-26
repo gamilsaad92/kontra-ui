@@ -589,6 +589,79 @@ app.get('/api/health', (_req, res) => {
 app.use('/api/auth', authBootstrapRouter);
 app.use('/api/orgs', orgDiscoveryRouter);
 app.use('/api/me', orgDiscoveryRouter);
+
+// One-time DB seed + diagnostics endpoint — must be BEFORE requireOrgContext
+app.post('/api/admin/seed', async (req, res) => {
+  const secret = req.headers['x-seed-secret'] || req.body?.secret;
+  const expected = process.env.SEED_SECRET || 'kontra-seed-2026';
+  if (secret !== expected) return res.status(403).json({ error: 'forbidden' });
+  try {
+    const { getPool } = require('./lib/pgAdapter');
+    const pool = getPool();
+    const connStr = process.env.DATABASE_URL || process.env.APP_DATABASE_URL || '';
+    const connHint = connStr ? connStr.replace(/:[^:@]+@/, ':***@') : 'NONE';
+
+    // Create tables
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS organizations (
+        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        name text NOT NULL,
+        created_at timestamptz DEFAULT now()
+      );
+      CREATE TABLE IF NOT EXISTS users (
+        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        email text UNIQUE NOT NULL,
+        password_hash text NOT NULL,
+        first_name text, last_name text,
+        role text NOT NULL DEFAULT 'borrower',
+        portal text,
+        org_id uuid,
+        created_at timestamptz DEFAULT now()
+      );
+      CREATE TABLE IF NOT EXISTS refresh_tokens (
+        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id uuid NOT NULL,
+        token_hash text UNIQUE NOT NULL,
+        expires_at timestamptz NOT NULL,
+        created_at timestamptz DEFAULT now()
+      );
+    `);
+
+    // Seed org
+    const ORG_ID = 'a0000000-0000-0000-0000-000000000001';
+    await pool.query(
+      `INSERT INTO organizations (id, name) VALUES ($1, $2) ON CONFLICT (id) DO NOTHING`,
+      [ORG_ID, 'Kontra Demo Org']
+    );
+
+    // Seed users
+    const bcrypt = require('bcryptjs');
+    const USERS = [
+      { id: 'e7bd29bd-6266-4cb9-8de0-2a0657710359', email: 'replit@kontraplatform.com',   fn:'Alex',role:'lender_admin',portal:'lender'   },
+      { id: 'f8ce30ce-7377-5dc0-9ef1-3b1768821460', email: 'servicer@kontraplatform.com', fn:'Sam', role:'servicer',    portal:'servicer'  },
+      { id: 'a9df41df-8488-6ed1-af02-4c2879932571', email: 'investor@kontraplatform.com', fn:'Ivy', role:'investor',    portal:'investor'  },
+      { id: 'b0ea52e0-9599-7fe2-b013-5d3980a43682', email: 'borrower@kontraplatform.com', fn:'Ben', role:'borrower',    portal:'borrower'  },
+    ];
+    const seeded = [];
+    for (const u of USERS) {
+      const hash = await bcrypt.hash('12345678', 10);
+      const r = await pool.query(
+        `INSERT INTO users (id, email, password_hash, first_name, role, portal, org_id)
+         VALUES ($1,$2,$3,$4,$5,$6,$7)
+         ON CONFLICT (email) DO UPDATE SET password_hash=EXCLUDED.password_hash, role=EXCLUDED.role
+         RETURNING email`,
+        [u.id, u.email, hash, u.fn, u.role, u.portal, ORG_ID]
+      );
+      seeded.push(r.rows[0]?.email || u.email);
+    }
+
+    const count = await pool.query('SELECT COUNT(*) FROM users');
+    res.json({ ok: true, conn: connHint, users_in_db: parseInt(count.rows[0].count), seeded });
+  } catch (err) {
+    res.status(500).json({ error: err.message, stack: err.stack?.split('\n').slice(0,5) });
+  }
+});
+
 app.use('/api', requireOrgContext);
 app.use('/api/dashboard-layout', authenticate, dashboard);
 app.use('/api/portfolio', portfolioSliceRouter);
@@ -670,7 +743,23 @@ app.use('/api', restaurantsRouter);
 // ── Health Checks ──────────────────────────────────────────────────────────
 app.get('/', (req, res) => res.send('Sentry test running!'));
 app.get('/api/test', (req, res) => res.send('✅ API is alive'));
-app.get('/health', (req, res) => res.json({ ok: true }));
+app.get('/health', (req, res) => {
+  const sbUrl = process.env.SUPABASE_URL || '';
+  const sbKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+  const dbUrl = process.env.DATABASE_URL || '';
+  const isRealSupabase = sbUrl.startsWith('https://') && !sbUrl.includes('placeholder') && sbKey.length > 100;
+  const hasLocalDb = !!dbUrl && !isRealSupabase;
+  res.json({
+    ok: true, v: '2.2.0',
+    db_mode: isRealSupabase ? 'supabase' : (hasLocalDb ? 'pg' : 'stub'),
+    supabase_url: sbUrl.slice(0, 40) || 'not-set',
+    sb_key_len: sbKey.length,
+    sb_key_prefix: sbKey.slice(0, 6),
+    has_db_url: !!dbUrl,
+    db_url_len: dbUrl.length,
+  });
+});
+
 app.get('/api/whoami', authenticate, (req, res) => {
   res.json({
     ok: true,
@@ -2075,8 +2164,14 @@ if (require.main === module) {
   const server = http.createServer(app);
   attachChatServer(server);
   attachCollabServer(server);
-  server.listen(PORT, () => {
+  server.listen(PORT, async () => {
     console.log(`Kontra API listening on port ${PORT}`);
+    try {
+      const { bootstrap } = require('./lib/dbBootstrap');
+      await bootstrap();
+    } catch (e) {
+      console.warn('[startup] dbBootstrap failed (non-fatal):', e.message);
+    }
     if (process.env.NODE_ENV !== 'production') {
       void logBaselineSchemaHealth();
     }

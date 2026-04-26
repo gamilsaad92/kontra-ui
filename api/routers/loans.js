@@ -1,8 +1,8 @@
 const express = require('express');
-const { createClient } = require('@supabase/supabase-js');
 const { triggerWebhooks } = require('../webhooks');
 const authenticate = require('../middlewares/authenticate');
 const asyncHandler = require('../lib/asyncHandler');
+const { supabase } = require('../db');
 
 const router = express.Router();
 
@@ -23,10 +23,6 @@ function wrapRouter(routerInstance) {
 }
 
 wrapRouter(router);
-const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY
-);
 
 const FALLBACK_DSCR_LOANS = [
   {
@@ -467,9 +463,9 @@ router.get('/loans', async (req, res) => {
   try {
     let q = supabase
       .from('loans')
-      .select('id, borrower_name, amount, interest_rate, term_months, start_date, status, risk_score, created_at')
+      .select('id, org_id, title, borrower_name, property_type, amount, interest_rate, risk_score, status, data, created_at')
       .order('created_at', { ascending: false });
-   q = q.eq('organization_id', req.orgId);
+   q = q.eq('org_id', req.orgId);
     if (status) q = q.eq('status', status);
     if (borrower) q = q.ilike('borrower_name', `%${borrower}%`);
     if (from) q = q.gte('start_date', from);
@@ -484,9 +480,9 @@ router.get('/loans', async (req, res) => {
     if (error.code === '42703' && String(error.message).includes('risk_score')) {
       let fallbackQuery = supabase
         .from('loans')
-        .select('id, borrower_name, amount, interest_rate, term_months, start_date, status, created_at')
+        .select('id, org_id, title, borrower_name, property_type, amount, interest_rate, status, data, created_at')
         .order('created_at', { ascending: false });
-      fallbackQuery = fallbackQuery.eq('organization_id', req.orgId);
+      fallbackQuery = fallbackQuery.eq('org_id', req.orgId);
       if (status) fallbackQuery = fallbackQuery.eq('status', status);
       if (borrower) fallbackQuery = fallbackQuery.ilike('borrower_name', `%${borrower}%`);
       if (from) fallbackQuery = fallbackQuery.gte('start_date', from);
