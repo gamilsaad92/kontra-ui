@@ -670,7 +670,21 @@ app.use('/api', restaurantsRouter);
 // ── Health Checks ──────────────────────────────────────────────────────────
 app.get('/', (req, res) => res.send('Sentry test running!'));
 app.get('/api/test', (req, res) => res.send('✅ API is alive'));
-app.get('/health', (req, res) => res.json({ ok: true }));
+app.get('/health', (req, res) => res.json({ ok: true, v: '2.1.0', db: !!(process.env.DATABASE_URL || process.env.APP_DATABASE_URL) }));
+
+// One-time seed endpoint — secured with SEED_SECRET env var
+app.post('/api/admin/seed', async (req, res) => {
+  const secret = req.headers['x-seed-secret'] || req.body?.secret;
+  const expected = process.env.SEED_SECRET || 'kontra-seed-2026';
+  if (secret !== expected) return res.status(403).json({ error: 'forbidden' });
+  try {
+    const { bootstrap } = require('./lib/dbBootstrap');
+    await bootstrap();
+    res.json({ ok: true, message: 'Bootstrap complete' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 app.get('/api/whoami', authenticate, (req, res) => {
   res.json({
     ok: true,
