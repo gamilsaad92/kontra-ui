@@ -18,10 +18,15 @@ import {
   BellIcon,
   CheckCircleIcon,
   ClockIcon,
+  ArrowsRightLeftIcon,
+  CurrencyDollarIcon,
   ArrowTrendingUpIcon,
   ArrowTrendingDownIcon,
   InformationCircleIcon,
+  SparklesIcon,
   ShieldExclamationIcon,
+  Bars3Icon,
+  XMarkIcon,
 } from "@heroicons/react/24/outline";
 
 // ── Types ─────────────────────────────────────────────────────
@@ -82,6 +87,98 @@ const DEMO_GOV_PROPOSALS = [
   { id:"p4", number:"GV-047", title:"Extend LN-2741 Maturity by 12 Months", type:"Loan Extension", votes_for_pct:82.1, votes_against_pct:10.2, threshold_pct:66.7, quorum_met:true, deadline_days:-10, status:"approved" },
 ];
 
+// ── Marketplace types & demo data ─────────────────────────────
+type OrderBookEntry = { price: number; qty: number; total: number };
+type MarketTrade = { id: string; symbol: string; side: "buy"|"sell"; price: number; qty: number; fee: number; total: number; time: string };
+type TokenNAV = { symbol: string; loan_ref: string; par: number; nav: number; premium_bps: number; ytm: number; dscr_adj: number; ltv_adj: number; delinquency_adj: number; last_price: number; last_time: string };
+type MyOrder = { id: string; symbol: string; side: "buy"|"sell"; qty: number; price: number; status: "open"|"filled"|"cancelled" };
+
+const DEMO_ORDERBOOK: Record<string, { bids: OrderBookEntry[]; asks: OrderBookEntry[] }> = {
+  "KTRA-2847": {
+    bids: [
+      { price:102.50, qty:850,  total:87125  },
+      { price:102.25, qty:1200, total:122700 },
+      { price:102.00, qty:2000, total:204000 },
+      { price:101.75, qty:500,  total:50875  },
+      { price:101.50, qty:3000, total:304500 },
+    ],
+    asks: [
+      { price:103.00, qty:650,  total:66950  },
+      { price:103.25, qty:900,  total:92925  },
+      { price:103.50, qty:1500, total:155250 },
+      { price:103.75, qty:2000, total:207500 },
+      { price:104.00, qty:1000, total:104000 },
+    ],
+  },
+  "KTRA-3011": {
+    bids: [
+      { price:78.00, qty:2000, total:156000 },
+      { price:77.50, qty:3500, total:271250 },
+      { price:77.00, qty:5000, total:385000 },
+      { price:76.50, qty:1200, total:91800  },
+      { price:76.00, qty:8000, total:608000 },
+    ],
+    asks: [
+      { price:80.00, qty:1800, total:144000 },
+      { price:80.50, qty:2500, total:201250 },
+      { price:81.00, qty:3000, total:243000 },
+      { price:81.50, qty:1000, total:81500  },
+      { price:82.00, qty:4000, total:328000 },
+    ],
+  },
+  "KTRA-2741": {
+    bids: [
+      { price:101.00, qty:1500, total:151500 },
+      { price:100.75, qty:2000, total:201500 },
+      { price:100.50, qty:1000, total:100500 },
+      { price:100.25, qty:3000, total:300750 },
+      { price:100.00, qty:2500, total:250000 },
+    ],
+    asks: [
+      { price:101.50, qty:800,  total:81200  },
+      { price:101.75, qty:1200, total:122100 },
+      { price:102.00, qty:2000, total:204000 },
+      { price:102.25, qty:1500, total:153375 },
+      { price:102.50, qty:1000, total:102500 },
+    ],
+  },
+  "KTRA-3204": {
+    bids: [
+      { price:99.50, qty:1000, total:99500  },
+      { price:99.25, qty:1500, total:148875 },
+      { price:99.00, qty:2000, total:198000 },
+      { price:98.75, qty:800,  total:79000  },
+      { price:98.50, qty:3000, total:295500 },
+    ],
+    asks: [
+      { price:100.00, qty:700,  total:70000  },
+      { price:100.25, qty:1000, total:100250 },
+      { price:100.50, qty:2000, total:201000 },
+      { price:100.75, qty:1500, total:151125 },
+      { price:101.00, qty:1000, total:101000 },
+    ],
+  },
+};
+
+const DEMO_MARKET_TRADES: MarketTrade[] = [
+  { id:"t1", symbol:"KTRA-2847", side:"buy",  price:102.50, qty:500,  fee:76.88,  total:51250, time:"2026-04-12T15:23:00Z" },
+  { id:"t2", symbol:"KTRA-3011", side:"sell", price:79.00,  qty:1000, fee:118.50, total:79000, time:"2026-04-12T14:45:00Z" },
+  { id:"t3", symbol:"KTRA-2741", side:"buy",  price:101.25, qty:800,  fee:121.50, total:81000, time:"2026-04-12T14:10:00Z" },
+  { id:"t4", symbol:"KTRA-2847", side:"buy",  price:102.25, qty:200,  fee:30.68,  total:20450, time:"2026-04-12T13:50:00Z" },
+  { id:"t5", symbol:"KTRA-3204", side:"sell", price:99.75,  qty:400,  fee:59.85,  total:39900, time:"2026-04-12T13:30:00Z" },
+];
+
+const DEMO_NAV: TokenNAV[] = [
+  { symbol:"KTRA-2847", loan_ref:"LN-2847", par:100, nav:102.73, premium_bps:273,   ytm:8.51,  dscr_adj:1.2,  ltv_adj:0.8,   delinquency_adj:0,    last_price:102.50, last_time:"2026-04-12T15:23:00Z" },
+  { symbol:"KTRA-3011", loan_ref:"LN-3011", par:100, nav:79.25,  premium_bps:-2075, ytm:14.52, dscr_adj:-12.5, ltv_adj:-5.2,  delinquency_adj:-4.5, last_price:79.00,  last_time:"2026-04-12T14:45:00Z" },
+  { symbol:"KTRA-2741", loan_ref:"LN-2741", par:100, nav:101.35, premium_bps:135,   ytm:7.79,  dscr_adj:2.1,  ltv_adj:1.5,   delinquency_adj:0,    last_price:101.25, last_time:"2026-04-12T15:10:00Z" },
+  { symbol:"KTRA-3204", loan_ref:"LN-3204", par:100, nav:99.82,  premium_bps:-18,   ytm:9.12,  dscr_adj:0.2,  ltv_adj:0.1,   delinquency_adj:0,    last_price:99.75,  last_time:"2026-04-12T13:30:00Z" },
+];
+
+const DEMO_MY_ORDERS: MyOrder[] = [
+  { id:"o1", symbol:"KTRA-2847", side:"buy",  qty:500,  price:102.00, status:"open" },
+  { id:"o2", symbol:"KTRA-3204", side:"sell", qty:1000, price:100.50, status:"open" },
+];
 
 // ── Helpers ───────────────────────────────────────────────────
 const fmt = (n: number) => new Intl.NumberFormat("en-US", { style:"currency", currency:"USD", maximumFractionDigits:0 }).format(n ?? 0);
@@ -103,26 +200,61 @@ const SEVERITY_COLOR: Record<string, string> = {
   low: "border-slate-200 bg-slate-50",
 };
 
-type Section = "portfolio" | "distributions" | "performance" | "governance" | "documents" | "alerts";
+type Section = "portfolio" | "distributions" | "performance" | "governance" | "documents" | "alerts" | "ai" | "marketplace" | "pricing";
 
 const NAV: { key: Section; label: string; icon: typeof ChartPieIcon; badge?: number; dividerBefore?: boolean }[] = [
   { key:"portfolio",     label:"Portfolio",           icon: ChartPieIcon },
   { key:"distributions", label:"Distributions",       icon: BanknotesIcon },
   { key:"performance",   label:"Loan Performance",    icon: ChartBarIcon },
-  { key:"governance",    label:"Governance & Consents", icon: ScaleIcon, badge: 2 },
+  { key:"governance",    label:"Governance & Consents",  icon: ScaleIcon, badge: 2 },
   { key:"documents",     label:"Reports & Docs",      icon: DocumentTextIcon },
   { key:"alerts",        label:"Risk Alerts",         icon: ExclamationTriangleIcon, badge: 2 },
+  { key:"ai",            label:"AI Portfolio Brief",  icon: SparklesIcon, dividerBefore: true },
+  { key:"marketplace",   label:"Debt Exchange",       icon: ArrowsRightLeftIcon },
+  { key:"pricing",       label:"Token NAV Pricing",   icon: CurrencyDollarIcon },
 ];
 
 export default function InvestorPortal() {
-  const { signOut } = useContext(AuthContext);
+  const { signOut } = useContext(AuthContext) as any;
   const navigate = useNavigate();
   const [section, setSection] = useState<Section>("portfolio");
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [holdings, setHoldings]     = useState<Holding[]>(DEMO_HOLDINGS);
   const [distributions, setDists]   = useState<Distribution[]>(DEMO_DISTRIBUTIONS);
   const [performance, setPerf]      = useState<LoanPerformance[]>(DEMO_PERFORMANCE);
   const [alerts, setAlerts]         = useState<RiskAlert[]>(DEMO_ALERTS);
   const [myVotes, setMyVotes]       = useState<Record<string, string>>({});
+  const [mxToken, setMxToken]       = useState("KTRA-2847");
+  const [mxSide, setMxSide]         = useState<"buy"|"sell">("buy");
+  const [mxQty, setMxQty]           = useState("500");
+  const [mxPrice, setMxPrice]       = useState("102.50");
+  const [mxOrders, setMxOrders]     = useState<MyOrder[]>(DEMO_MY_ORDERS);
+  const [mxSubmitted, setMxSubmitted] = useState(false);
+
+  // ── AI Portfolio Brief state ──────────────────────────────────────────────
+  type AiBrief = {
+    brief: string; portfolio_score: number | null;
+    signals: { type: "positive"|"negative"|"watch"; message: string }[];
+    recommendations: string[];
+    watchlist: { loan_ref: string; reason: string }[];
+  };
+  const [aiBrief, setAiBrief]         = useState<AiBrief | null>(null);
+  const [aiBriefLoading, setAiBriefLoading] = useState(false);
+  const [aiBriefError, setAiBriefError]   = useState<string | null>(null);
+
+  const generateAiBrief = async () => {
+    setAiBriefLoading(true);
+    setAiBriefError(null);
+    try {
+      const { data } = await api.post<AiBrief>("/ai/portfolio-brief", {});
+      if (data) setAiBrief(data);
+      else setAiBriefError("No response from AI service.");
+    } catch {
+      setAiBriefError("AI service unavailable. Please try again.");
+    } finally {
+      setAiBriefLoading(false);
+    }
+  };
 
   const load = useCallback(async () => {
     const [hRes, dRes, pRes, aRes] = await Promise.allSettled([
@@ -148,17 +280,26 @@ export default function InvestorPortal() {
   const highAlerts    = alerts.filter((a) => a.severity === "high").length;
 
   return (
-    <div className="flex h-screen bg-slate-950 text-slate-100 overflow-hidden">
+    <div className="relative flex h-screen bg-slate-950 text-slate-100 overflow-hidden">
+      {/* ── Mobile overlay ── */}
+      {sidebarOpen && (
+        <div className="fixed inset-0 z-40 bg-black/60 md:hidden" onClick={() => setSidebarOpen(false)} />
+      )}
 
       {/* ── Sidebar ── */}
-      <aside className="flex w-60 flex-col border-r border-slate-800 bg-slate-900">
+      <aside className={`fixed inset-y-0 left-0 z-50 flex w-60 shrink-0 flex-col border-r border-slate-800 bg-slate-900 transform transition-transform duration-200 ease-in-out md:relative md:translate-x-0 ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}`}>
         {/* Logo area */}
-        <div className="flex items-center gap-3 px-5 py-5 border-b border-slate-800">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-violet-600 font-black text-white text-sm">K</div>
-          <div>
-            <p className="text-sm font-bold text-white">Kontra</p>
-            <p className="text-xs text-violet-400 font-medium">Investor Portal</p>
+        <div className="flex items-center justify-between px-5 py-5 border-b border-slate-800">
+          <div className="flex items-center gap-3">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-violet-600 font-black text-white text-sm">K</div>
+            <div>
+              <p className="text-sm font-bold text-white">Kontra</p>
+              <p className="text-xs text-violet-400 font-medium">Investor Portal</p>
+            </div>
           </div>
+          <button onClick={() => setSidebarOpen(false)} className="md:hidden rounded-lg p-1 text-slate-400 hover:text-white hover:bg-slate-800 transition">
+            <XMarkIcon className="h-5 w-5" />
+          </button>
         </div>
 
         {/* Summary quick stats */}
@@ -192,10 +333,12 @@ export default function InvestorPortal() {
                   </div>
                 )}
                 <button
-                  onClick={() => setSection(item.key)}
+                  onClick={() => { setSection(item.key); setSidebarOpen(false); }}
                   className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors text-left ${
                     active
-                      ? "bg-violet-600 text-white font-semibold"
+                      ? item.key === "marketplace" || item.key === "pricing"
+                        ? "bg-emerald-700 text-white font-semibold"
+                        : "bg-violet-600 text-white font-semibold"
                       : "text-slate-400 hover:bg-slate-800 hover:text-white"
                   }`}
                 >
@@ -215,7 +358,7 @@ export default function InvestorPortal() {
         {/* Footer */}
         <div className="border-t border-slate-800 p-4 space-y-2">
           {highAlerts > 0 && (
-            <div className="mb-1 flex items-center gap-2 rounded-lg bg-brand-900/60 border border-brand-700/40 px-3 py-2">
+            <div className="flex items-center gap-2 rounded-lg bg-brand-900/60 border border-brand-700/40 px-3 py-2">
               <ExclamationTriangleIcon className="h-3.5 w-3.5 text-brand-400" />
               <p className="text-xs text-brand-300 font-semibold">{highAlerts} high-risk alert{highAlerts > 1 ? "s" : ""}</p>
             </div>
@@ -231,8 +374,18 @@ export default function InvestorPortal() {
       </aside>
 
       {/* ── Main Content ── */}
-      <main className="flex-1 overflow-y-auto bg-slate-950">
-        <div className="max-w-6xl mx-auto px-8 py-8 space-y-8">
+      <main className="flex min-w-0 flex-1 flex-col overflow-y-auto bg-slate-950">
+        {/* Mobile top bar */}
+        <div className="flex items-center gap-3 border-b border-slate-800 bg-slate-900 px-4 py-3 md:hidden">
+          <button onClick={() => setSidebarOpen(true)} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-800 hover:text-white transition">
+            <Bars3Icon className="h-5 w-5" />
+          </button>
+          <div className="flex items-center gap-2">
+            <div className="flex h-6 w-6 items-center justify-center rounded-md bg-violet-600 text-xs font-black text-white">K</div>
+            <span className="text-sm font-bold text-white">Kontra <span className="text-violet-400">Investor</span></span>
+          </div>
+        </div>
+        <div className="max-w-6xl mx-auto w-full px-4 py-6 md:px-8 md:py-8 space-y-6 md:space-y-8">
 
           {/* ── PORTFOLIO ── */}
           {section === "portfolio" && (
@@ -464,7 +617,7 @@ export default function InvestorPortal() {
             <div className="space-y-6">
               <div>
                 <h1 className="text-2xl font-black text-white">Governance & Consents</h1>
-                <p className="text-sm text-slate-400 mt-1">LP consent requests, modification approvals, and major decision votes — all recorded in the immutable audit log.</p>
+                <p className="text-sm text-slate-400 mt-1">LP consent requests, modification approvals, and major decision votes — all recorded in the immutable servicing audit log.</p>
               </div>
 
               <div className="space-y-4">
@@ -612,6 +765,589 @@ export default function InvestorPortal() {
             </div>
           )}
 
+          {/* ── AI PORTFOLIO BRIEF ── */}
+          {section === "ai" && (
+            <div className="space-y-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h1 className="text-2xl font-black text-white flex items-center gap-2">
+                    <SparklesIcon className="h-6 w-6 text-violet-400" />
+                    AI Portfolio Brief
+                  </h1>
+                  <p className="text-sm text-slate-400 mt-1">GPT-4o analysis of your loan portfolio — risk signals, watchlist, and recommendations.</p>
+                </div>
+                <button
+                  onClick={generateAiBrief}
+                  disabled={aiBriefLoading}
+                  className="flex items-center gap-2 rounded-xl bg-violet-700 px-5 py-2.5 text-sm font-bold text-white hover:bg-violet-800 transition-colors disabled:opacity-60"
+                >
+                  <SparklesIcon className="h-4 w-4" />
+                  {aiBriefLoading ? "Generating…" : aiBrief ? "Regenerate" : "Generate Brief"}
+                </button>
+              </div>
+
+              {aiBriefError && (
+                <div className="rounded-xl border border-red-200 bg-red-50 px-5 py-4">
+                  <p className="text-sm text-red-700">{aiBriefError}</p>
+                </div>
+              )}
+
+              {!aiBrief && !aiBriefLoading && !aiBriefError && (
+                <div className="rounded-xl border border-slate-700 bg-slate-800/50 p-10 text-center">
+                  <SparklesIcon className="h-10 w-10 text-slate-500 mx-auto mb-4" />
+                  <p className="text-slate-400 text-sm">Click "Generate Brief" to run an AI analysis of your full portfolio.</p>
+                  <p className="text-slate-500 text-xs mt-1">Powered by GPT-4o · Takes ~10 seconds</p>
+                </div>
+              )}
+
+              {aiBriefLoading && (
+                <div className="rounded-xl border border-violet-200/20 bg-violet-900/10 p-10 text-center">
+                  <SparklesIcon className="h-8 w-8 text-violet-400 mx-auto mb-3 animate-pulse" />
+                  <p className="text-violet-300 text-sm font-semibold">Analyzing your portfolio…</p>
+                  <p className="text-slate-500 text-xs mt-1">GPT-4o is reviewing all loan positions, DSCR, LTV, and covenant data</p>
+                </div>
+              )}
+
+              {aiBrief && !aiBriefLoading && (
+                <div className="space-y-5">
+                  {/* Executive Summary */}
+                  <div className="rounded-xl border border-slate-700 bg-slate-800 p-6">
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="flex-1">
+                        <p className="text-xs font-bold text-slate-400 uppercase tracking-wide mb-2">Executive Summary</p>
+                        <p className="text-slate-200 text-sm leading-relaxed">{aiBrief.brief}</p>
+                      </div>
+                      {aiBrief.portfolio_score != null && (
+                        <div className="shrink-0 text-center">
+                          <div className={`flex h-16 w-16 items-center justify-center rounded-full border-4 ${aiBrief.portfolio_score >= 70 ? "border-emerald-500 bg-emerald-900/30" : aiBrief.portfolio_score >= 50 ? "border-amber-500 bg-amber-900/30" : "border-red-500 bg-red-900/30"}`}>
+                            <span className={`text-xl font-black ${aiBrief.portfolio_score >= 70 ? "text-emerald-400" : aiBrief.portfolio_score >= 50 ? "text-amber-400" : "text-red-400"}`}>{aiBrief.portfolio_score}</span>
+                          </div>
+                          <p className="text-xs text-slate-500 mt-1">Health Score</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Signals */}
+                  {aiBrief.signals?.length > 0 && (
+                    <div className="rounded-xl border border-slate-700 bg-slate-800 p-5">
+                      <p className="text-xs font-bold text-slate-400 uppercase tracking-wide mb-3">Portfolio Signals</p>
+                      <div className="space-y-2">
+                        {aiBrief.signals.map((s, i) => (
+                          <div key={i} className={`flex items-start gap-3 rounded-lg px-4 py-3 ${s.type === "positive" ? "bg-emerald-900/20 border border-emerald-700/30" : s.type === "negative" ? "bg-red-900/20 border border-red-700/30" : "bg-amber-900/20 border border-amber-700/30"}`}>
+                            <span className={`mt-0.5 h-2 w-2 shrink-0 rounded-full ${s.type === "positive" ? "bg-emerald-400" : s.type === "negative" ? "bg-red-400" : "bg-amber-400"}`} />
+                            <p className="text-sm text-slate-200">{s.message}</p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Watchlist */}
+                  {aiBrief.watchlist?.length > 0 && (
+                    <div className="rounded-xl border border-slate-700 bg-slate-800 p-5">
+                      <p className="text-xs font-bold text-slate-400 uppercase tracking-wide mb-3 flex items-center gap-2">
+                        <ShieldExclamationIcon className="h-4 w-4 text-amber-400" /> Watchlist
+                      </p>
+                      <div className="space-y-2">
+                        {aiBrief.watchlist.map((w, i) => (
+                          <div key={i} className="flex items-start gap-3 rounded-lg border border-amber-700/30 bg-amber-900/10 px-4 py-3">
+                            <span className="text-xs font-black text-amber-400 shrink-0">{w.loan_ref}</span>
+                            <p className="text-sm text-slate-300">{w.reason}</p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Recommendations */}
+                  {aiBrief.recommendations?.length > 0 && (
+                    <div className="rounded-xl border border-slate-700 bg-slate-800 p-5">
+                      <p className="text-xs font-bold text-slate-400 uppercase tracking-wide mb-3">Recommendations</p>
+                      <ol className="space-y-2">
+                        {aiBrief.recommendations.map((r, i) => (
+                          <li key={i} className="flex items-start gap-3 text-sm text-slate-300">
+                            <span className="shrink-0 flex h-5 w-5 items-center justify-center rounded-full bg-violet-800 text-xs font-black text-violet-200">{i + 1}</span>
+                            {r}
+                          </li>
+                        ))}
+                      </ol>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ── MARKETPLACE ── */}
+          {section === "marketplace" && (() => {
+            const book = DEMO_ORDERBOOK[mxToken] ?? { bids: [], asks: [] };
+            const bestBid = book.bids[0]?.price ?? 0;
+            const bestAsk = book.asks[0]?.price ?? 0;
+            const spread  = bestAsk - bestBid;
+            const qty     = parseFloat(mxQty) || 0;
+            const price   = parseFloat(mxPrice) || 0;
+            const notional = qty * price;
+            const feeBps  = 15;
+            const fee     = notional * feeBps / 10000;
+            const symbols = Object.keys(DEMO_ORDERBOOK);
+            const navEntry = DEMO_NAV.find((n) => n.symbol === mxToken);
+
+            function placeOrder() {
+              const newOrder: MyOrder = {
+                id: `o${Date.now()}`, symbol: mxToken, side: mxSide,
+                qty, price, status: "open",
+              };
+              setMxOrders((prev) => [newOrder, ...prev]);
+              setMxSubmitted(true);
+              setTimeout(() => setMxSubmitted(false), 3000);
+            }
+
+            return (
+              <div className="space-y-6">
+                {/* Header */}
+                <div className="flex items-start justify-between">
+                  <div>
+                    <h1 className="text-2xl font-black text-white">Secondary Debt Exchange</h1>
+                    <p className="text-sm text-slate-400 mt-1">Trade fractional loan participations peer-to-peer. Settlement in USDC on Base.</p>
+                  </div>
+                  <div className="rounded-lg border border-emerald-800/50 bg-emerald-950/40 px-4 py-2 text-right">
+                    <p className="text-xs font-bold text-emerald-400 uppercase tracking-widest">Platform fee</p>
+                    <p className="text-lg font-black text-white">15 <span className="text-sm text-slate-400">bps</span></p>
+                    <p className="text-xs text-slate-500">per trade notional</p>
+                  </div>
+                </div>
+
+                {/* Token selector */}
+                <div className="flex gap-2 flex-wrap">
+                  {symbols.map((sym) => {
+                    const n = DEMO_NAV.find((x) => x.symbol === sym);
+                    const isDistressed = n && n.premium_bps < -500;
+                    return (
+                      <button
+                        key={sym}
+                        onClick={() => { setMxToken(sym); setMxPrice(String(n?.last_price ?? 100)); }}
+                        className={`rounded-lg border px-4 py-2.5 text-left transition-colors ${
+                          mxToken === sym
+                            ? isDistressed ? "border-brand-500 bg-brand-900/40 text-brand-300" : "border-emerald-500 bg-emerald-900/30 text-emerald-300"
+                            : "border-slate-700 bg-slate-900 text-slate-400 hover:border-slate-600 hover:text-white"
+                        }`}
+                      >
+                        <p className="text-xs font-mono font-black">{sym}</p>
+                        {n && (
+                          <p className={`text-xs mt-0.5 font-bold ${n.premium_bps >= 0 ? "text-emerald-400" : "text-brand-400"}`}>
+                            {n.premium_bps >= 0 ? "+" : ""}{(n.premium_bps / 100).toFixed(2)}%
+                          </p>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* Market summary strip */}
+                {navEntry && (
+                  <div className="rounded-xl border border-slate-800 bg-slate-900 flex divide-x divide-slate-800 overflow-hidden text-center">
+                    {[
+                      { label:"Best Bid",    value:`$${bestBid.toFixed(2)}`, color:"text-emerald-400" },
+                      { label:"Best Ask",    value:`$${bestAsk.toFixed(2)}`, color:"text-brand-400" },
+                      { label:"Spread",      value:`$${spread.toFixed(2)}`,  color:"text-amber-400" },
+                      { label:"Last Trade",  value:`$${navEntry.last_price.toFixed(2)}`, color:"text-white" },
+                      { label:"NAV",         value:`$${navEntry.nav.toFixed(2)}`, color:"text-violet-400" },
+                      { label:"YTM",         value:`${navEntry.ytm.toFixed(2)}%`,  color:"text-emerald-400" },
+                    ].map((s) => (
+                      <div key={s.label} className="flex-1 px-4 py-3">
+                        <p className="text-xs font-bold uppercase tracking-widest text-slate-500">{s.label}</p>
+                        <p className={`text-base font-black tabular-nums mt-0.5 ${s.color}`}>{s.value}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Order book + place order */}
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+                  {/* Order book */}
+                  <div className="rounded-xl border border-slate-800 bg-slate-900 overflow-hidden">
+                    <div className="px-5 py-3 border-b border-slate-800">
+                      <h2 className="text-sm font-bold text-white">Order Book — {mxToken}</h2>
+                    </div>
+                    <div className="grid grid-cols-2 divide-x divide-slate-800">
+                      {/* Bids */}
+                      <div>
+                        <div className="grid grid-cols-3 px-4 py-2 border-b border-slate-800">
+                          {["Price","Qty","Total"].map((h) => (
+                            <span key={h} className="text-xs font-bold uppercase text-emerald-500">{h}</span>
+                          ))}
+                        </div>
+                        {book.bids.map((b, i) => (
+                          <div key={i} className="relative grid grid-cols-3 px-4 py-1.5 hover:bg-emerald-950/20 transition-colors group">
+                            <div
+                              className="absolute inset-y-0 right-0 bg-emerald-900/20"
+                              style={{ width: `${(b.qty / 8000) * 100}%` }}
+                            />
+                            <span className="text-emerald-400 font-bold tabular-nums text-sm relative">{b.price.toFixed(2)}</span>
+                            <span className="text-slate-300 tabular-nums text-sm relative">{b.qty.toLocaleString()}</span>
+                            <span className="text-slate-500 tabular-nums text-xs relative">${(b.total/1000).toFixed(0)}K</span>
+                          </div>
+                        ))}
+                      </div>
+                      {/* Asks */}
+                      <div>
+                        <div className="grid grid-cols-3 px-4 py-2 border-b border-slate-800">
+                          {["Price","Qty","Total"].map((h) => (
+                            <span key={h} className="text-xs font-bold uppercase text-brand-500">{h}</span>
+                          ))}
+                        </div>
+                        {book.asks.map((a, i) => (
+                          <div key={i} className="relative grid grid-cols-3 px-4 py-1.5 hover:bg-brand-950/20 transition-colors">
+                            <div
+                              className="absolute inset-y-0 left-0 bg-brand-900/20"
+                              style={{ width: `${(a.qty / 4000) * 100}%` }}
+                            />
+                            <span className="text-brand-400 font-bold tabular-nums text-sm relative">{a.price.toFixed(2)}</span>
+                            <span className="text-slate-300 tabular-nums text-sm relative">{a.qty.toLocaleString()}</span>
+                            <span className="text-slate-500 tabular-nums text-xs relative">${(a.total/1000).toFixed(0)}K</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Place order */}
+                  <div className="rounded-xl border border-slate-800 bg-slate-900 p-5 flex flex-col gap-4">
+                    <h2 className="text-sm font-bold text-white">Place Order</h2>
+
+                    {/* Buy / Sell toggle */}
+                    <div className="flex rounded-lg overflow-hidden border border-slate-700">
+                      {(["buy","sell"] as const).map((s) => (
+                        <button
+                          key={s}
+                          onClick={() => setMxSide(s)}
+                          className={`flex-1 py-2.5 text-sm font-bold transition-colors ${
+                            mxSide === s
+                              ? s === "buy" ? "bg-emerald-700 text-white" : "bg-brand-700 text-white"
+                              : "bg-slate-800 text-slate-400 hover:text-white"
+                          }`}
+                        >
+                          {s === "buy" ? "▲ Buy" : "▼ Sell"}
+                        </button>
+                      ))}
+                    </div>
+
+                    {/* Inputs */}
+                    <div className="space-y-3">
+                      <div>
+                        <label className="text-xs font-bold uppercase tracking-widest text-slate-400 mb-1.5 block">Token</label>
+                        <select
+                          value={mxToken}
+                          onChange={(e) => { setMxToken(e.target.value); const n = DEMO_NAV.find((x) => x.symbol === e.target.value); setMxPrice(String(n?.last_price ?? 100)); }}
+                          className="w-full rounded-lg border border-slate-700 bg-slate-800 text-white px-3 py-2 text-sm"
+                        >
+                          {symbols.map((s) => <option key={s} value={s}>{s}</option>)}
+                        </select>
+                      </div>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="text-xs font-bold uppercase tracking-widest text-slate-400 mb-1.5 block">Quantity (tokens)</label>
+                          <input
+                            type="number" value={mxQty} onChange={(e) => setMxQty(e.target.value)}
+                            className="w-full rounded-lg border border-slate-700 bg-slate-800 text-white px-3 py-2 text-sm tabular-nums"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-xs font-bold uppercase tracking-widest text-slate-400 mb-1.5 block">Limit Price ($)</label>
+                          <input
+                            type="number" step="0.01" value={mxPrice} onChange={(e) => setMxPrice(e.target.value)}
+                            className="w-full rounded-lg border border-slate-700 bg-slate-800 text-white px-3 py-2 text-sm tabular-nums"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Order summary */}
+                    <div className="rounded-lg border border-slate-700 bg-slate-800/60 p-4 space-y-2 text-sm">
+                      {[
+                        { label:"Notional",    value: `$${notional.toLocaleString("en-US", { minimumFractionDigits:2, maximumFractionDigits:2 })}` },
+                        { label:`Fee (${feeBps} bps)`, value: `$${fee.toFixed(2)}`, sub: true },
+                        { label: mxSide === "buy" ? "Total Cost" : "Net Proceeds",
+                          value: `$${(mxSide === "buy" ? notional + fee : notional - fee).toLocaleString("en-US", { minimumFractionDigits:2, maximumFractionDigits:2 })}`,
+                          bold: true },
+                      ].map((row) => (
+                        <div key={row.label} className={`flex justify-between ${row.bold ? "border-t border-slate-700 pt-2" : ""}`}>
+                          <span className={row.sub ? "text-slate-500 text-xs" : "text-slate-400"}>{row.label}</span>
+                          <span className={row.bold ? "font-black text-white" : row.sub ? "text-slate-500 text-xs" : "text-slate-300 font-semibold tabular-nums"}>{row.value}</span>
+                        </div>
+                      ))}
+                    </div>
+
+                    {mxSubmitted ? (
+                      <div className="rounded-lg bg-emerald-900/50 border border-emerald-700/40 px-4 py-3 flex items-center gap-2">
+                        <CheckCircleIcon className="h-4 w-4 text-emerald-400" />
+                        <span className="text-sm font-semibold text-emerald-300">Order submitted to the exchange</span>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={placeOrder}
+                        disabled={qty <= 0 || price <= 0}
+                        className={`w-full py-3 rounded-lg font-bold text-sm transition-colors ${
+                          mxSide === "buy"
+                            ? "bg-emerald-700 hover:bg-emerald-600 text-white disabled:opacity-40"
+                            : "bg-brand-700 hover:bg-brand-600 text-white disabled:opacity-40"
+                        }`}
+                      >
+                        {mxSide === "buy" ? "▲" : "▼"} Submit {mxSide.toUpperCase()} Order
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* My open orders */}
+                {mxOrders.length > 0 && (
+                  <div className="rounded-xl border border-slate-800 bg-slate-900 overflow-hidden">
+                    <div className="px-6 py-4 border-b border-slate-800 flex items-center justify-between">
+                      <h2 className="text-sm font-bold text-white">My Open Orders</h2>
+                      <span className="text-xs text-slate-500">{mxOrders.filter((o) => o.status === "open").length} open</span>
+                    </div>
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b border-slate-800">
+                          {["Token","Side","Qty","Limit Price","Notional","Fee","Status",""].map((h) => (
+                            <th key={h} className="px-5 py-3 text-left text-xs font-bold uppercase tracking-widest text-slate-500 whitespace-nowrap">{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-800/60">
+                        {mxOrders.map((o) => {
+                          const n = o.qty * o.price;
+                          const f = n * feeBps / 10000;
+                          return (
+                            <tr key={o.id} className="hover:bg-slate-800/40 transition-colors">
+                              <td className="px-5 py-3 font-mono font-bold text-violet-400 text-xs">{o.symbol}</td>
+                              <td className={`px-5 py-3 font-bold ${o.side === "buy" ? "text-emerald-400" : "text-brand-400"}`}>{o.side.toUpperCase()}</td>
+                              <td className="px-5 py-3 text-slate-300 tabular-nums">{o.qty.toLocaleString()}</td>
+                              <td className="px-5 py-3 text-slate-300 tabular-nums">${o.price.toFixed(2)}</td>
+                              <td className="px-5 py-3 text-slate-300 tabular-nums">${n.toLocaleString("en-US",{maximumFractionDigits:0})}</td>
+                              <td className="px-5 py-3 text-slate-500 tabular-nums text-xs">${f.toFixed(2)}</td>
+                              <td className="px-5 py-3">
+                                <span className="rounded-full bg-amber-900/40 border border-amber-700/30 px-2.5 py-0.5 text-xs font-bold text-amber-400">Open</span>
+                              </td>
+                              <td className="px-5 py-3">
+                                <button
+                                  onClick={() => setMxOrders((prev) => prev.map((x) => x.id === o.id ? { ...x, status:"cancelled" } : x).filter((x) => x.status !== "cancelled"))}
+                                  className="text-xs text-slate-500 hover:text-brand-400 transition-colors"
+                                >
+                                  Cancel
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+
+                {/* Recent market trades */}
+                <div className="rounded-xl border border-slate-800 bg-slate-900 overflow-hidden">
+                  <div className="px-6 py-4 border-b border-slate-800">
+                    <h2 className="text-sm font-bold text-white">Recent Platform Trades</h2>
+                  </div>
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-slate-800">
+                        {["Token","Side","Price","Qty","Fee (15 bps)","Volume","Time"].map((h) => (
+                          <th key={h} className="px-5 py-3 text-left text-xs font-bold uppercase tracking-widest text-slate-500 whitespace-nowrap">{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-800/60">
+                      {DEMO_MARKET_TRADES.map((t) => (
+                        <tr key={t.id} className="hover:bg-slate-800/40 transition-colors">
+                          <td className="px-5 py-3 font-mono font-bold text-violet-400 text-xs">{t.symbol}</td>
+                          <td className={`px-5 py-3 font-bold text-xs ${t.side === "buy" ? "text-emerald-400" : "text-brand-400"}`}>
+                            {t.side === "buy" ? "▲ BUY" : "▼ SELL"}
+                          </td>
+                          <td className="px-5 py-3 text-slate-300 tabular-nums font-semibold">${t.price.toFixed(2)}</td>
+                          <td className="px-5 py-3 text-slate-300 tabular-nums">{t.qty.toLocaleString()}</td>
+                          <td className="px-5 py-3 text-emerald-400 tabular-nums font-semibold text-xs">${t.fee.toFixed(2)}</td>
+                          <td className="px-5 py-3 text-slate-300 tabular-nums">${t.total.toLocaleString()}</td>
+                          <td className="px-5 py-3 text-slate-500 text-xs">{new Date(t.time).toLocaleTimeString("en-US",{hour:"2-digit",minute:"2-digit"})}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  <div className="px-6 py-3 border-t border-slate-800 bg-slate-900/60">
+                    <p className="text-xs text-slate-500">
+                      Platform earns <strong className="text-emerald-400">15 bps</strong> on every trade.
+                      Example: $25B annual volume × 0.15% = <strong className="text-emerald-400">$37.5M transaction revenue</strong>
+                    </p>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
+
+          {/* ── TOKEN NAV PRICING ── */}
+          {section === "pricing" && (
+            <div className="space-y-6">
+              <div className="flex items-start justify-between">
+                <div>
+                  <h1 className="text-2xl font-black text-white">Token NAV Pricing Engine</h1>
+                  <p className="text-sm text-slate-400 mt-1">Real-time net asset value per token — adjusted for DSCR, LTV, and delinquency risk.</p>
+                </div>
+                <div className="flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-900 px-3 py-2">
+                  <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+                  <span className="text-xs font-bold text-emerald-400">Live Pricing</span>
+                </div>
+              </div>
+
+              {/* NAV formula explanation */}
+              <div className="rounded-xl border border-violet-800/40 bg-violet-950/20 p-5 flex items-start gap-4">
+                <InformationCircleIcon className="h-5 w-5 text-violet-400 shrink-0 mt-0.5" />
+                <div className="text-sm text-slate-300 space-y-1">
+                  <p className="font-bold text-white">NAV Pricing Model</p>
+                  <p className="text-slate-400 text-xs">
+                    <strong className="text-violet-300">NAV = Par × (1 + DSCR premium) × (1 + LTV premium) × (1 − delinquency discount)</strong>
+                  </p>
+                  <p className="text-xs text-slate-500">
+                    DSCR &gt; 1.25x adds premium · LTV &lt; 65% adds premium · Delinquency &gt; 0 days applies discount · Special servicing / default applies high-risk haircut
+                  </p>
+                </div>
+              </div>
+
+              {/* NAV cards */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+                {DEMO_NAV.map((n) => {
+                  const isDistressed = n.premium_bps < -500;
+                  const isPremium = n.premium_bps > 0;
+                  const perf = performance.find((p) => p.loan_ref === n.loan_ref);
+                  return (
+                    <div
+                      key={n.symbol}
+                      className={`rounded-xl border p-5 space-y-4 ${
+                        isDistressed ? "border-brand-800/50 bg-brand-950/20"
+                        : isPremium  ? "border-emerald-800/40 bg-emerald-950/15"
+                        : "border-slate-800 bg-slate-900"
+                      }`}
+                    >
+                      {/* Header */}
+                      <div className="flex items-start justify-between">
+                        <div>
+                          <p className="text-xs font-mono font-black text-violet-400">{n.symbol}</p>
+                          <p className="text-lg font-black text-white mt-0.5">{n.loan_ref}</p>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-2xl font-black text-white tabular-nums">${n.nav.toFixed(2)}</p>
+                          <p className="text-xs text-slate-400">NAV per token</p>
+                          <span className={`inline-flex items-center gap-1 text-xs font-bold mt-1 ${isPremium ? "text-emerald-400" : "text-brand-400"}`}>
+                            {isPremium
+                              ? <ArrowTrendingUpIcon className="h-3.5 w-3.5" />
+                              : <ArrowTrendingDownIcon className="h-3.5 w-3.5" />
+                            }
+                            {isPremium ? "+" : ""}{(n.premium_bps / 100).toFixed(2)}% vs par
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Adjustment waterfall */}
+                      <div className="space-y-1.5">
+                        <p className="text-xs font-bold uppercase tracking-widest text-slate-500">NAV Adjustment Waterfall</p>
+                        {[
+                          { label:"Par Value",        value:"$100.00",               color:"text-slate-300" },
+                          { label:"DSCR Adjustment",  value:`${n.dscr_adj >= 0 ? "+" : ""}${n.dscr_adj.toFixed(2)}%`, color: n.dscr_adj >= 0 ? "text-emerald-400" : "text-brand-400" },
+                          { label:"LTV Adjustment",   value:`${n.ltv_adj >= 0 ? "+" : ""}${n.ltv_adj.toFixed(2)}%`,  color: n.ltv_adj >= 0 ? "text-emerald-400" : "text-brand-400" },
+                          { label:"Delinquency",      value:`${n.delinquency_adj.toFixed(2)}%`, color: n.delinquency_adj === 0 ? "text-slate-500" : "text-brand-400" },
+                        ].map((row) => (
+                          <div key={row.label} className="flex items-center justify-between text-sm">
+                            <span className="text-slate-400">{row.label}</span>
+                            <span className={`font-bold tabular-nums ${row.color}`}>{row.value}</span>
+                          </div>
+                        ))}
+                        <div className="flex items-center justify-between text-sm border-t border-slate-700 pt-1.5">
+                          <span className="font-bold text-white">Indicated NAV</span>
+                          <span className="font-black text-white tabular-nums">${n.nav.toFixed(2)}</span>
+                        </div>
+                      </div>
+
+                      {/* Market vs NAV */}
+                      <div className="rounded-lg bg-slate-800/60 p-3 space-y-2">
+                        <p className="text-xs font-bold uppercase tracking-widest text-slate-500">Market vs NAV</p>
+                        <div className="flex items-center gap-3">
+                          <div className="flex-1">
+                            <div className="flex justify-between text-xs text-slate-400 mb-1">
+                              <span>Last Trade ${n.last_price.toFixed(2)}</span>
+                              <span>NAV ${n.nav.toFixed(2)}</span>
+                            </div>
+                            <div className="h-2 rounded-full bg-slate-700 overflow-hidden">
+                              <div
+                                className={`h-full rounded-full ${isDistressed ? "bg-brand-500" : "bg-emerald-500"}`}
+                                style={{ width: `${Math.min(100, (n.last_price / n.nav) * 100)}%` }}
+                              />
+                            </div>
+                          </div>
+                        </div>
+                        <div className="flex justify-between text-xs">
+                          <span className="text-slate-500">Market / NAV ratio</span>
+                          <span className={`font-bold tabular-nums ${n.last_price >= n.nav ? "text-emerald-400" : "text-brand-400"}`}>
+                            {(n.last_price / n.nav).toFixed(3)}x
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* YTM */}
+                      <div className="flex items-center justify-between rounded-lg border border-slate-700 bg-slate-800/40 px-4 py-3">
+                        <div>
+                          <p className="text-xs text-slate-400 font-bold uppercase tracking-widest">Yield to Maturity</p>
+                          {perf && (
+                            <p className="text-xs text-slate-500 mt-0.5">DSCR {perf.dscr.toFixed(2)}x · LTV {perf.ltv.toFixed(1)}% · {perf.delinquency_days === 0 ? "Current" : `${perf.delinquency_days}d late`}</p>
+                          )}
+                        </div>
+                        <p className={`text-xl font-black tabular-nums ${isDistressed ? "text-brand-400" : "text-emerald-400"}`}>
+                          {n.ytm.toFixed(2)}%
+                        </p>
+                      </div>
+
+                      {/* CTA */}
+                      <button
+                        onClick={() => { setSection("marketplace"); setMxToken(n.symbol); setMxPrice(String(n.last_price)); }}
+                        className={`w-full py-2.5 rounded-lg text-sm font-bold transition-colors ${
+                          isDistressed
+                            ? "border border-brand-700 text-brand-400 hover:bg-brand-900/30"
+                            : "border border-emerald-700 text-emerald-400 hover:bg-emerald-900/20"
+                        }`}
+                      >
+                        Trade {n.symbol} →
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Platform revenue model */}
+              <div className="rounded-xl border border-slate-800 bg-slate-900 p-6">
+                <h2 className="text-base font-bold text-white mb-4">Revenue Model — Scenario B</h2>
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                  {[
+                    { label:"SaaS ARR Target", value:"$40M", sub:"Lender + servicer subscriptions", color:"text-violet-400" },
+                    { label:"Target Volume", value:"$25B+", sub:"Annual tokenized loan transactions", color:"text-emerald-400" },
+                    { label:"Transaction Revenue", value:"$37.5M", sub:"$25B × 15 bps platform fee", color:"text-amber-400" },
+                  ].map((s) => (
+                    <div key={s.label} className="rounded-lg border border-slate-700 bg-slate-800/40 p-4">
+                      <p className="text-xs font-bold uppercase tracking-widest text-slate-400">{s.label}</p>
+                      <p className={`text-2xl font-black mt-2 ${s.color}`}>{s.value}</p>
+                      <p className="text-xs text-slate-500 mt-1">{s.sub}</p>
+                    </div>
+                  ))}
+                </div>
+                <div className="mt-4 rounded-lg bg-emerald-950/30 border border-emerald-800/40 px-5 py-4">
+                  <p className="text-sm text-emerald-300">
+                    <strong className="text-white">Combined ARR:</strong> $40M SaaS + $37.5M transaction fees = <strong className="text-emerald-400 text-base">~$77.5M total annual revenue</strong> — supporting unicorn valuation.
+                  </p>
+                  <p className="text-xs text-slate-500 mt-1">Kontra = Stripe (infrastructure rails) + Nasdaq (marketplace liquidity) + Black Knight (servicing backbone)</p>
+                </div>
+              </div>
+            </div>
+          )}
 
         </div>
       </main>

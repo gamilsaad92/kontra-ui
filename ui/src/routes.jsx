@@ -15,6 +15,7 @@ import {
   BuildingOfficeIcon,
   SparklesIcon,
   ExclamationTriangleIcon,
+  CubeTransparentIcon,
 } from "@heroicons/react/24/outline";
 
 /**
@@ -45,6 +46,12 @@ export const lenderNavRoutes = [
     label: "Capital Markets",
     path: "/markets",
     icon: PresentationChartLineIcon,
+    requiresAuth: true,
+  },
+  {
+    label: "Tokenization",
+    path: "/onchain",
+    icon: CubeTransparentIcon,
     requiresAuth: true,
   },
   {
