@@ -743,7 +743,22 @@ app.use('/api', restaurantsRouter);
 // ── Health Checks ──────────────────────────────────────────────────────────
 app.get('/', (req, res) => res.send('Sentry test running!'));
 app.get('/api/test', (req, res) => res.send('✅ API is alive'));
-app.get('/health', (req, res) => res.json({ ok: true, v: '2.1.0', db: !!(process.env.DATABASE_URL || process.env.APP_DATABASE_URL) }));
+app.get('/health', (req, res) => {
+  const sbUrl = process.env.SUPABASE_URL || '';
+  const sbKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+  const dbUrl = process.env.DATABASE_URL || '';
+  const isRealSupabase = sbUrl.startsWith('https://') && !sbUrl.includes('placeholder') && sbKey.length > 100;
+  const hasLocalDb = !!dbUrl && !isRealSupabase;
+  res.json({
+    ok: true, v: '2.2.0',
+    db_mode: isRealSupabase ? 'supabase' : (hasLocalDb ? 'pg' : 'stub'),
+    supabase_url: sbUrl.slice(0, 40) || 'not-set',
+    sb_key_len: sbKey.length,
+    sb_key_prefix: sbKey.slice(0, 6),
+    has_db_url: !!dbUrl,
+    db_url_len: dbUrl.length,
+  });
+});
 
 app.get('/api/whoami', authenticate, (req, res) => {
   res.json({
