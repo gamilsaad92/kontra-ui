@@ -2,44 +2,52 @@
  * db.js — Database client for Kontra API
  *
  * Priority:
- *   1. If DATABASE_URL is set → use Replit PostgreSQL via pgAdapter (fastest, always available)
- *   2. If SUPABASE_URL is a real URL → use Supabase JS client
- *   3. Fallback → Supabase client with placeholder (queries will fail gracefully)
+ *   1. If SUPABASE_URL is a real configured URL → use Supabase JS client
+ *      (Supabase holds all seeded production data: loans, investors, etc.)
+ *   2. If DATABASE_URL is set → use local PostgreSQL via pgAdapter
+ *      (used in Replit local dev environment)
+ *   3. Fallback → noop stub (returns empty data gracefully)
  */
 
-const isRealSupabase = process.env.SUPABASE_URL &&
+const isRealSupabase =
+  process.env.SUPABASE_URL &&
   !process.env.SUPABASE_URL.includes('placeholder') &&
-  process.env.SUPABASE_URL.startsWith('https://');
+  process.env.SUPABASE_URL.startsWith('https://') &&
+  process.env.SUPABASE_SERVICE_ROLE_KEY &&
+  process.env.SUPABASE_SERVICE_ROLE_KEY.length > 100; // real JWT key is 200+ chars
 
-const hasLocalDb = !!process.env.DATABASE_URL;
+const hasLocalDb = !!process.env.DATABASE_URL && !isRealSupabase;
 
 let supabase, replica;
 
-if (hasLocalDb) {
-  // ── Path 1: Replit PostgreSQL (preferred) ──────────────────────────────────
-  const { createPgClient } = require('./lib/pgAdapter');
-  supabase = createPgClient();
-  replica = supabase;
-  console.log('[db] Connected to Replit PostgreSQL via pgAdapter');
-
-} else if (isRealSupabase) {
-  // ── Path 2: Real Supabase project ──────────────────────────────────────────
+if (isRealSupabase) {
+  // ── Path 1: Real Supabase project (production data lives here) ─────────────
   const { createClient } = require('@supabase/supabase-js');
-  supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
+  supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
   replica = process.env.SUPABASE_REPLICA_URL
     ? createClient(process.env.SUPABASE_REPLICA_URL, process.env.SUPABASE_SERVICE_ROLE_KEY)
     : supabase;
   console.log('[db] Connected to Supabase:', process.env.SUPABASE_URL);
 
+} else if (hasLocalDb) {
+  // ── Path 2: Local PostgreSQL (Replit dev environment) ─────────────────────
+  const { createPgClient } = require('./lib/pgAdapter');
+  supabase = createPgClient();
+  replica = supabase;
+  console.log('[db] Connected to local PostgreSQL via pgAdapter');
+
 } else {
-  // ── Path 3: No credentials at all — stub that returns empty data ───────────
-  console.warn('[db] No DATABASE_URL or SUPABASE_URL configured — using in-memory stub. Set DATABASE_URL for persistent storage.');
+  // ── Path 3: No credentials — noop stub ─────────────────────────────────────
+  console.warn('[db] No Supabase or DATABASE_URL configured — using in-memory stub.');
   const noopBuilder = () => {
     const b = {
       select: () => b, insert: () => b, update: () => b, delete: () => b,
       upsert: () => b, eq: () => b, neq: () => b, in: () => b, gte: () => b,
       lte: () => b, gt: () => b, lt: () => b, is: () => b, or: () => b,
-      like: () => b, limit: () => b, order: () => b, single: () => b,
+      ilike: () => b, like: () => b, limit: () => b, order: () => b,
+      single: () => b, contains: () => b, textSearch: () => b,
       then: (resolve) => resolve({ data: [], error: null }),
     };
     return b;
