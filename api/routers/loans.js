@@ -1,8 +1,8 @@
 const express = require('express');
-const { createClient } = require('@supabase/supabase-js');
 const { triggerWebhooks } = require('../webhooks');
 const authenticate = require('../middlewares/authenticate');
 const asyncHandler = require('../lib/asyncHandler');
+const { supabase } = require('../db');
 
 const router = express.Router();
 
@@ -23,10 +23,6 @@ function wrapRouter(routerInstance) {
 }
 
 wrapRouter(router);
-const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY
-);
 
 const FALLBACK_DSCR_LOANS = [
   {
@@ -501,7 +497,7 @@ router.get('/loans', async (req, res) => {
     throw error;
   } catch (err) {
     console.error('Loan list error:', err);
-    res.status(500).json({ message: 'Failed to fetch loans', loans: [], _debug: { msg: String(err?.message), code: err?.code, details: String(err?.details||'') } });
+    res.status(500).json({ message: 'Failed to fetch loans', loans: [] });
   }
 });
 
