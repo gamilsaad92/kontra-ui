@@ -9,6 +9,7 @@ import AiInsightsPage from "../features/ai-insights/page/AiInsightsPage";
 import OnchainDashboard from "../components/OnchainDashboard";
 import PortfolioLayout from "./dashboard/portfolio/PortfolioLayout";
 import MarketsLayout from "./dashboard/markets/MarketsLayout";
+import SecondaryMarketPage from "./dashboard/markets/SecondaryMarketPage";
 import GovernanceLayout from "./dashboard/governance/GovernanceLayout";
 import LoanControlPage from "./dashboard/governance/LoanControlPage";
 import InvestorGovernancePage from "./dashboard/governance/InvestorGovernancePage";
@@ -173,9 +174,10 @@ export default function SaasDashboard() {
       <Route path="/markets" element={<MarketsLayout />}>
         <Route index element={<Navigate to="/markets/pools" replace />} />
         <Route path="pools" element={<MarketsPoolsCrudPage />} />
-        <Route path="tokens" element={<MarketsTokensCrudPage />} />
+        <Route path="secondary" element={<SecondaryMarketPage />} />
         <Route path="trades" element={<MarketsTradesCrudPage />} />
-        <Route path="exchange" element={<Navigate to="/markets/pools" replace />} />
+        <Route path="tokens" element={<Navigate to="/onchain" replace />} />
+        <Route path="exchange" element={<Navigate to="/onchain" replace />} />
       </Route>
       <Route path="/onchain" element={<OnchainDashboard />} />
       <Route path="/governance" element={<GovernanceLayout />}>

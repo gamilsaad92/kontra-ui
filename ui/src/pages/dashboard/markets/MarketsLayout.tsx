@@ -2,7 +2,6 @@ import { NavLink, Outlet } from 'react-router-dom';
 
 const tabs = [
   { label: 'Loan Pools',        to: '/markets/pools' },
-  { label: 'Token Issuances',   to: '/markets/tokens' },
   { label: 'Secondary Market',  to: '/markets/secondary', highlight: true },
   { label: 'Settlement History',to: '/markets/trades' },
 ];
@@ -13,7 +12,7 @@ export default function MarketsLayout() {
       <div>
         <h1 className="text-xl font-semibold text-slate-900">Capital Markets</h1>
         <p className="mt-1 text-sm text-slate-500">
-          Loan pool structuring, token issuance readiness, and settlement activity for your portfolio.
+          Loan pool structuring, secondary market activity, and settlement history for your portfolio. Token issuance is managed under the Tokenization module.
         </p>
       </div>
       <nav className="flex gap-2 overflow-x-auto border-b border-slate-200 pb-3" style={{ scrollbarWidth: 'none' }}>
