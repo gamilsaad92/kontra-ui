@@ -15,6 +15,10 @@ import OnchainDistributionsPage from "./dashboard/onchain/OnchainDistributionsPa
 import OnchainGovernancePage from "./dashboard/onchain/OnchainGovernancePage";
 import OnchainAuditPage from "./dashboard/onchain/OnchainAuditPage";
 import PortfolioLayout from "./dashboard/portfolio/PortfolioLayout";
+import PortfolioLoansCustomPage from "./dashboard/portfolio/PortfolioLoansPage";
+import PortfolioOverviewPage from "./dashboard/portfolio/PortfolioOverviewPage";
+import PortfolioCovenantWatchPage from "./dashboard/portfolio/PortfolioCovenantWatchPage";
+import LoanOriginationWizard from "./dashboard/portfolio/LoanOriginationWizard";
 import MarketsLayout from "./dashboard/markets/MarketsLayout";
 import SecondaryMarketPage from "./dashboard/markets/SecondaryMarketPage";
 import GovernanceLayout from "./dashboard/governance/GovernanceLayout";
@@ -171,9 +175,12 @@ export default function SaasDashboard() {
       <Route path="/" element={<Navigate to="/dashboard" replace />} />
       <Route path="/dashboard" element={<DashboardOverview apiBase={apiBase} />} />
       <Route path="/portfolio" element={<PortfolioLayout />}>
-        <Route index element={<Navigate to="/portfolio/assets" replace />} />
+        <Route index element={<Navigate to="/portfolio/overview" replace />} />
+        <Route path="overview" element={<PortfolioOverviewPage />} />
+        <Route path="loans" element={<PortfolioLoansCustomPage />} />
         <Route path="assets" element={<PortfolioAssetsPage />} />
-        <Route path="loans" element={<PortfolioLoansPage />} />
+        <Route path="covenants" element={<PortfolioCovenantWatchPage />} />
+        <Route path="originate" element={<LoanOriginationWizard />} />
       </Route>
       {/* Servicing moved to /servicer — legacy redirects */}
       <Route path="/servicing" element={<Navigate to="/servicer/overview" replace />} />
