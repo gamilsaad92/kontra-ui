@@ -10,8 +10,8 @@
  * Architecture: Servicing → Compliance Gate → Tokenization
  */
 
-import { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
 import {
   CheckCircleIcon,
   ExclamationTriangleIcon,
@@ -220,7 +220,18 @@ function computeVerdict(criteria: Criterion[]): { eligible: boolean; blocked: bo
 
 // ── Main page ─────────────────────────────────────────────────────────────────
 export default function OnchainTokenGatePage() {
-  const [selectedLoanId, setSelectedLoanId] = useState('LN-0728');
+  const [searchParams] = useSearchParams();
+  const paramLoan = searchParams.get('loan');
+  const defaultLoan = paramLoan && LOANS.find((l) => l.loanId === paramLoan) ? paramLoan : 'LN-0728';
+  const [selectedLoanId, setSelectedLoanId] = useState(defaultLoan);
+
+  // Sync if URL param changes (e.g. deep-link navigation)
+  useEffect(() => {
+    if (paramLoan && LOANS.find((l) => l.loanId === paramLoan)) {
+      setSelectedLoanId(paramLoan);
+    }
+  }, [paramLoan]);
+
   const loan = LOANS.find((l) => l.loanId === selectedLoanId) ?? LOANS[0];
   const verdict = computeVerdict(loan.criteria);
   const tokenCfg = TOKEN_STATUS_CFG[loan.tokenStatus];
