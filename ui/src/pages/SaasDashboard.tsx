@@ -14,6 +14,7 @@ import OnchainCompliancePage from "./dashboard/onchain/OnchainCompliancePage";
 import OnchainDistributionsPage from "./dashboard/onchain/OnchainDistributionsPage";
 import OnchainGovernancePage from "./dashboard/onchain/OnchainGovernancePage";
 import OnchainAuditPage from "./dashboard/onchain/OnchainAuditPage";
+import OnchainTokenGatePage from "./dashboard/onchain/OnchainTokenGatePage";
 import PortfolioLayout from "./dashboard/portfolio/PortfolioLayout";
 import PortfolioLoansCustomPage from "./dashboard/portfolio/PortfolioLoansPage";
 import PortfolioOverviewPage from "./dashboard/portfolio/PortfolioOverviewPage";
@@ -194,7 +195,8 @@ export default function SaasDashboard() {
         <Route path="exchange" element={<Navigate to="/onchain" replace />} />
       </Route>
       <Route path="/onchain" element={<OnchainLayout />}>
-        <Route index element={<Navigate to="/onchain/tokens" replace />} />
+        <Route index element={<Navigate to="/onchain/gate" replace />} />
+        <Route path="gate" element={<OnchainTokenGatePage />} />
         <Route path="tokens" element={<OnchainDashboard />} />
         <Route path="investors" element={<OnchainInvestorRegistryPage />} />
         <Route path="cap-table" element={<OnchainCapTablePage />} />

@@ -711,9 +711,9 @@ function LoanCard({
               </>
             )}
             {!loan.tokenized && (
-              <Link to="/onchain/tokens" className="flex items-center gap-1.5 rounded-xl border border-slate-200 px-3 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50 transition-colors">
+              <Link to="/onchain/gate" className="flex items-center gap-1.5 rounded-xl border border-violet-200 bg-violet-50 px-3 py-2 text-xs font-bold text-violet-700 hover:bg-violet-100 transition-colors">
                 <CubeIcon className="h-3.5 w-3.5" />
-                Issue Token
+                Check Eligibility
               </Link>
             )}
             {worstCovenant !== 'pass' && (
