@@ -16,6 +16,7 @@ import {
   SparklesIcon,
   ExclamationTriangleIcon,
   CubeTransparentIcon,
+  ClipboardDocumentListIcon,
 } from "@heroicons/react/24/outline";
 
 /**
@@ -87,6 +88,12 @@ export const lenderNavRoutes = [
  */
 export const servicerNavRoutes = [
   {
+    label: "Cases",
+    path: "/servicer/cases",
+    icon: ClipboardDocumentListIcon,
+    requiresAuth: true,
+  },
+  {
     label: "Overview",
     path: "/servicer/overview",
     icon: HomeIcon,
@@ -149,4 +156,4 @@ export const servicerNavRoutes = [
 ];
 
 export const lenderDefaultPath = "/dashboard";
-export const servicerDefaultPath = "/servicer/overview";
+export const servicerDefaultPath = "/servicer/cases";
