@@ -7,21 +7,8 @@ import { AuthContext } from "../lib/authContext";
 import SaasDashboardHome from "../components/SaasDashboardHome";
 import AiInsightsPage from "../features/ai-insights/page/AiInsightsPage";
 import OnchainDashboard from "../components/OnchainDashboard";
-import OnchainLayout from "./dashboard/onchain/OnchainLayout";
-import OnchainInvestorRegistryPage from "./dashboard/onchain/OnchainInvestorRegistryPage";
-import OnchainCapTablePage from "./dashboard/onchain/OnchainCapTablePage";
-import OnchainCompliancePage from "./dashboard/onchain/OnchainCompliancePage";
-import OnchainDistributionsPage from "./dashboard/onchain/OnchainDistributionsPage";
-import OnchainGovernancePage from "./dashboard/onchain/OnchainGovernancePage";
-import OnchainAuditPage from "./dashboard/onchain/OnchainAuditPage";
-import OnchainTokenGatePage from "./dashboard/onchain/OnchainTokenGatePage";
 import PortfolioLayout from "./dashboard/portfolio/PortfolioLayout";
-import PortfolioLoansCustomPage from "./dashboard/portfolio/PortfolioLoansPage";
-import PortfolioOverviewPage from "./dashboard/portfolio/PortfolioOverviewPage";
-import PortfolioCovenantWatchPage from "./dashboard/portfolio/PortfolioCovenantWatchPage";
-import LoanOriginationWizard from "./dashboard/portfolio/LoanOriginationWizard";
 import MarketsLayout from "./dashboard/markets/MarketsLayout";
-import SecondaryMarketPage from "./dashboard/markets/SecondaryMarketPage";
 import GovernanceLayout from "./dashboard/governance/GovernanceLayout";
 import LoanControlPage from "./dashboard/governance/LoanControlPage";
 import InvestorGovernancePage from "./dashboard/governance/InvestorGovernancePage";
@@ -176,12 +163,9 @@ export default function SaasDashboard() {
       <Route path="/" element={<Navigate to="/dashboard" replace />} />
       <Route path="/dashboard" element={<DashboardOverview apiBase={apiBase} />} />
       <Route path="/portfolio" element={<PortfolioLayout />}>
-        <Route index element={<Navigate to="/portfolio/overview" replace />} />
-        <Route path="overview" element={<PortfolioOverviewPage />} />
-        <Route path="loans" element={<PortfolioLoansCustomPage />} />
+        <Route index element={<Navigate to="/portfolio/assets" replace />} />
         <Route path="assets" element={<PortfolioAssetsPage />} />
-        <Route path="covenants" element={<PortfolioCovenantWatchPage />} />
-        <Route path="originate" element={<LoanOriginationWizard />} />
+        <Route path="loans" element={<PortfolioLoansPage />} />
       </Route>
       {/* Servicing moved to /servicer — legacy redirects */}
       <Route path="/servicing" element={<Navigate to="/servicer/overview" replace />} />
@@ -189,22 +173,11 @@ export default function SaasDashboard() {
       <Route path="/markets" element={<MarketsLayout />}>
         <Route index element={<Navigate to="/markets/pools" replace />} />
         <Route path="pools" element={<MarketsPoolsCrudPage />} />
-        <Route path="secondary" element={<SecondaryMarketPage />} />
+        <Route path="tokens" element={<MarketsTokensCrudPage />} />
         <Route path="trades" element={<MarketsTradesCrudPage />} />
-        <Route path="tokens" element={<Navigate to="/onchain" replace />} />
-        <Route path="exchange" element={<Navigate to="/onchain" replace />} />
+        <Route path="exchange" element={<Navigate to="/markets/pools" replace />} />
       </Route>
-      <Route path="/onchain" element={<OnchainLayout />}>
-        <Route index element={<Navigate to="/onchain/gate" replace />} />
-        <Route path="gate" element={<OnchainTokenGatePage />} />
-        <Route path="tokens" element={<OnchainDashboard />} />
-        <Route path="investors" element={<OnchainInvestorRegistryPage />} />
-        <Route path="cap-table" element={<OnchainCapTablePage />} />
-        <Route path="compliance" element={<OnchainCompliancePage />} />
-        <Route path="distributions" element={<OnchainDistributionsPage />} />
-        <Route path="governance" element={<OnchainGovernancePage />} />
-        <Route path="audit" element={<OnchainAuditPage />} />
-      </Route>
+      <Route path="/onchain" element={<OnchainDashboard />} />
       <Route path="/governance" element={<GovernanceLayout />}>
         <Route index element={<Navigate to="/governance/loan-control" replace />} />
         <Route path="loan-control" element={<LoanControlPage />} />

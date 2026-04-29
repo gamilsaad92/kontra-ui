@@ -25,8 +25,6 @@ import {
   ArrowUpTrayIcon,
   DocumentTextIcon,
   SparklesIcon,
-  ShieldCheckIcon,
-  PlusCircleIcon,
 } from "@heroicons/react/24/outline";
 
 // ── Demo fallback data ─────────────────────────────────────────────────────
@@ -123,15 +121,13 @@ const COVENANT_STATUS: Record<string, string> = {
   breach:    "text-brand-600 bg-brand-50 border border-brand-200",
 };
 
-type Section = "myloans" | "payments" | "documents" | "draws" | "covenants" | "requests" | "notices" | "messages";
+type Section = "myloans" | "payments" | "documents" | "draws" | "notices" | "messages";
 
 const NAV_KEYS: { key: Section; label: string; icon: typeof HomeIcon }[] = [
   { key:"myloans",   label:"My Loan",         icon: HomeIcon },
   { key:"payments",  label:"Payments",         icon: CreditCardIcon },
   { key:"documents", label:"Document Center",  icon: FolderArrowDownIcon },
   { key:"draws",     label:"Draw Requests",    icon: WrenchScrewdriverIcon },
-  { key:"covenants", label:"Covenants",        icon: ShieldCheckIcon },
-  { key:"requests",  label:"Requests",         icon: PlusCircleIcon },
   { key:"notices",   label:"Notices",          icon: BellIcon },
   { key:"messages",  label:"Messages",         icon: ChatBubbleLeftRightIcon },
 ];
@@ -744,136 +740,6 @@ export default function BorrowerPortal() {
               </div>
             </div>
           )}
-
-          {/* ── COVENANTS ── */}
-          {section === "covenants" && (
-            <div className="space-y-6">
-              <div>
-                <h1 className="text-2xl font-black text-slate-900">Loan Covenants</h1>
-                <p className="text-sm text-slate-500 mt-1">
-                  Active financial and operational covenants for {loan.loan_ref}. Tracked quarterly by your servicer. Breaches trigger a cure notice.
-                </p>
-              </div>
-              <div className="overflow-x-auto rounded-xl border border-slate-200">
-                <table className="min-w-full divide-y divide-slate-200">
-                  <thead className="bg-slate-50">
-                    <tr>
-                      {["Covenant","Requirement","Current Value","Status"].map((h) => (
-                        <th key={h} className="px-4 py-3 text-left text-xs font-bold uppercase tracking-widest text-slate-500">{h}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100 bg-white">
-                    {DEMO_COVENANTS.map((c) => (
-                      <tr key={c.id}>
-                        <td className="px-4 py-3 text-sm font-semibold text-slate-800">{c.name}</td>
-                        <td className="px-4 py-3 text-sm text-slate-600 font-mono">{c.requirement}</td>
-                        <td className="px-4 py-3 text-sm text-slate-800 font-mono font-bold">{c.current_value}</td>
-                        <td className="px-4 py-3">
-                          <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold ${
-                            c.status === "passing"
-                              ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
-                              : c.status === "attention"
-                              ? "bg-amber-50 text-amber-700 border border-amber-200"
-                              : "bg-red-50 text-red-700 border border-red-200"
-                          }`}>
-                            {c.status === "passing" ? "✓ Passing" : c.status === "attention" ? "⚠ Attention" : "✗ Breach"}
-                          </span>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-              <div className="rounded-xl border border-slate-200 bg-slate-50 px-5 py-4">
-                <p className="text-xs text-slate-500">
-                  Covenant compliance is measured as of the most recent quarterly reporting period. If a covenant is marked <strong>Attention</strong>, please contact your servicer to discuss remediation steps before the next reporting cycle.
-                </p>
-              </div>
-            </div>
-          )}
-
-          {/* ── REQUESTS ── */}
-          {section === "requests" && (() => {
-            const DEMO_REQUESTS = [
-              { id:"r1", type:"PMC Change Request", subject:"Property Manager Change — Greystar to Lincoln Property Co.", status:"Under Review", submitted:"2026-04-10", notes:"Servicer approval pending. Expected response by April 25." },
-              { id:"r2", type:"Lease Consent",      subject:"New Lease — Unit 14B, 24-month term @ $3,200/mo", status:"Approved",      submitted:"2026-03-28", notes:"Approved April 2. Lease executed and on file." },
-              { id:"r3", type:"Waiver Request",     subject:"Insurance Renewal Extension — 30-day grace period",  status:"Approved",      submitted:"2026-03-15", notes:"One-time waiver granted. Policy renewal due April 30." },
-            ];
-            const statusStyle: Record<string, string> = {
-              "Approved":      "bg-emerald-50 text-emerald-700 border border-emerald-200",
-              "Under Review":  "bg-amber-50 text-amber-700 border border-amber-200",
-              "Denied":        "bg-red-50 text-red-700 border border-red-200",
-              "Submitted":     "bg-blue-50 text-blue-700 border border-blue-200",
-            };
-            return (
-              <div className="space-y-6">
-                <div className="flex items-start justify-between gap-4">
-                  <div>
-                    <h1 className="text-2xl font-black text-slate-900">Requests</h1>
-                    <p className="text-sm text-slate-500 mt-1">
-                      Submit and track PMC consent requests, lease modifications, and waiver requests. All requests are logged to the servicing audit trail.
-                    </p>
-                  </div>
-                </div>
-
-                <div className="space-y-3">
-                  <h2 className="text-sm font-bold uppercase tracking-widest text-slate-400">Submitted Requests</h2>
-                  {DEMO_REQUESTS.map((r) => (
-                    <div key={r.id} className="rounded-xl border border-slate-200 bg-white p-5">
-                      <div className="flex items-start justify-between gap-3 flex-wrap">
-                        <div className="space-y-1">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <span className="text-xs font-black uppercase tracking-widest text-slate-400">{r.type}</span>
-                            <span className={`rounded-full px-2.5 py-0.5 text-xs font-bold ${statusStyle[r.status] ?? "bg-slate-100 text-slate-600"}`}>
-                              {r.status}
-                            </span>
-                          </div>
-                          <p className="text-sm font-semibold text-slate-800">{r.subject}</p>
-                          <p className="text-xs text-slate-500">{r.notes}</p>
-                        </div>
-                        <span className="text-xs text-slate-400 whitespace-nowrap">Submitted {new Date(r.submitted).toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"})}</span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-
-                <div className="rounded-xl border border-slate-200 bg-white p-6 space-y-4">
-                  <h2 className="text-sm font-bold uppercase tracking-widest text-slate-400">Submit New Request</h2>
-                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                    <div>
-                      <label className="block text-xs font-bold text-slate-600 mb-1">Request Type</label>
-                      <select className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500">
-                        <option>PMC Change Request</option>
-                        <option>Lease Consent</option>
-                        <option>Lease Modification</option>
-                        <option>Waiver Request</option>
-                        <option>Draw Modification</option>
-                        <option>Other</option>
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-xs font-bold text-slate-600 mb-1">Subject</label>
-                      <input type="text" placeholder="Brief description of request" className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500" />
-                    </div>
-                  </div>
-                  <div>
-                    <label className="block text-xs font-bold text-slate-600 mb-1">Details</label>
-                    <textarea rows={4} placeholder="Provide all relevant details. Supporting documents can be uploaded from the Document Center." className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500 resize-none" />
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <button
-                      onClick={() => alert("Request submitted. Your servicer will respond within 5 business days. A confirmation notice has been sent to your email.")}
-                      className="rounded-xl bg-emerald-700 px-5 py-2.5 text-sm font-bold text-white hover:bg-emerald-800 transition-colors"
-                    >
-                      Submit Request
-                    </button>
-                    <p className="text-xs text-slate-400">Responses within 5 business days. Urgent matters: call {loan.servicer_contact}.</p>
-                  </div>
-                </div>
-              </div>
-            );
-          })()}
 
           {/* ── NOTICES ── */}
           {section === "notices" && (

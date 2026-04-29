@@ -206,7 +206,7 @@ const NAV: { key: Section; label: string; icon: typeof ChartPieIcon; badge?: num
   { key:"portfolio",     label:"Portfolio",           icon: ChartPieIcon },
   { key:"distributions", label:"Distributions",       icon: BanknotesIcon },
   { key:"performance",   label:"Loan Performance",    icon: ChartBarIcon },
-  { key:"governance",    label:"Governance & Consents",  icon: ScaleIcon, badge: 2 },
+  { key:"governance",    label:"Governance & Voting",  icon: ScaleIcon, badge: 2 },
   { key:"documents",     label:"Reports & Docs",      icon: DocumentTextIcon },
   { key:"alerts",        label:"Risk Alerts",         icon: ExclamationTriangleIcon, badge: 2 },
   { key:"ai",            label:"AI Portfolio Brief",  icon: SparklesIcon, dividerBefore: true },
@@ -616,8 +616,8 @@ export default function InvestorPortal() {
           {section === "governance" && (
             <div className="space-y-6">
               <div>
-                <h1 className="text-2xl font-black text-white">Governance & Consents</h1>
-                <p className="text-sm text-slate-400 mt-1">LP consent requests, modification approvals, and major decision votes — all recorded in the immutable servicing audit log.</p>
+                <h1 className="text-2xl font-black text-white">Governance & Voting</h1>
+                <p className="text-sm text-slate-400 mt-1">Active proposals requiring your vote. Results are recorded on-chain.</p>
               </div>
 
               <div className="space-y-4">

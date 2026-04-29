@@ -1,11 +1,13 @@
 import { NavLink, Outlet } from 'react-router-dom';
 
 const tabs = [
-  { label: 'Overview',   to: '/portfolio/overview' },
-  { label: 'Loans',      to: '/portfolio/loans' },
-  { label: 'Assets',     to: '/portfolio/assets' },
-  { label: 'Covenants',  to: '/portfolio/covenants' },
-  { label: 'Originate',  to: '/portfolio/originate', highlight: true },
+  { label: 'Overview',      to: '/portfolio/overview' },
+  { label: 'Loans',         to: '/portfolio/loans' },
+  { label: 'Assets',        to: '/portfolio/assets' },
+  { label: 'Covenants',     to: '/portfolio/covenants' },
+  { label: 'Syndication',   to: '/portfolio/syndication' },
+  { label: 'AI Underwriter',to: '/portfolio/underwriting' },
+  { label: 'Originate',     to: '/portfolio/originate', highlight: true },
 ];
 
 export default function PortfolioLayout() {
@@ -17,7 +19,7 @@ export default function PortfolioLayout() {
           Structured loan and asset records — the source of truth for servicing, compliance, and tokenization.
         </p>
       </div>
-      <nav className="flex gap-2 overflow-x-auto border-b border-slate-200 pb-3" style={{ scrollbarWidth: 'none' }}>
+      <nav className="flex gap-2 overflow-x-auto border-b border-slate-200 pb-3" style={{ scrollbarWidth:"none" }}>
         {tabs.map((tab) => (
           <NavLink
             key={tab.label}
@@ -25,10 +27,10 @@ export default function PortfolioLayout() {
             end
             className={({ isActive }) =>
               isActive
-                ? 'shrink-0 rounded-full bg-slate-900 px-4 py-1.5 text-sm font-medium text-white'
+                ? 'rounded-full bg-slate-900 px-4 py-1.5 text-sm font-medium text-white'
                 : tab.highlight
-                ? 'shrink-0 rounded-full border border-slate-900 px-4 py-1.5 text-sm font-medium text-slate-900 hover:bg-slate-100'
-                : 'shrink-0 rounded-full bg-slate-100 px-4 py-1.5 text-sm text-slate-700 hover:bg-slate-200'
+                ? 'rounded-full border border-brand-300 bg-brand-50 px-4 py-1.5 text-sm font-medium text-brand-700 hover:bg-brand-100'
+                : 'rounded-full bg-slate-100 px-4 py-1.5 text-sm text-slate-700 hover:bg-slate-200'
             }
           >
             {tab.label}

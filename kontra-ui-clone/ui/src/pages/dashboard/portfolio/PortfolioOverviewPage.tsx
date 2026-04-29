@@ -1,11 +1,3 @@
-/**
- * Portfolio — Overview
- *
- * KPI strip + property-type pie + maturity ladder + status breakdown.
- * Tries the live API first; falls back to rich demo data when the API
- * is unavailable (e.g. production deployments without a backend).
- */
-
 import { useMemo } from 'react';
 import {
   PieChart,
@@ -23,30 +15,7 @@ import { useLoanList } from '../../../features/portfolio/loans/api';
 import { useAssetList } from '../../../features/portfolio/assets/api';
 import type { CanonicalEntity } from '../../../features/crud/types';
 
-// ── Demo fallback ─────────────────────────────────────────────────────────────
-const DEMO_LOAN_ROWS = [
-  { loan_amount: 5_112_500,  ltv: 65.2, property_type: 'multifamily', maturity_date: '2026-06-15', status: 'active'  },
-  { loan_amount: 8_450_000,  ltv: 57.9, property_type: 'office',      maturity_date: '2027-12-01', status: 'active'  },
-  { loan_amount: 4_187_500,  ltv: 71.8, property_type: 'retail',      maturity_date: '2027-03-15', status: 'pending' },
-  { loan_amount: 6_487_500,  ltv: 55.0, property_type: 'industrial',  maturity_date: '2028-08-22', status: 'active'  },
-  { loan_amount: 3_762_500,  ltv: 74.2, property_type: 'office',      maturity_date: '2028-01-10', status: 'pending' },
-  { loan_amount: 7_156_250,  ltv: 61.8, property_type: 'mixed_use',   maturity_date: '2029-09-01', status: 'active'  },
-];
-
-// Convert demo rows to CanonicalEntity shape the page already knows how to read
-function demoLoans(): CanonicalEntity[] {
-  return DEMO_LOAN_ROWS.map((r, i) => ({
-    id: `demo-${i}`,
-    name: '',
-    title: '',
-    status: r.status,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-    data: r as unknown as Record<string, unknown>,
-  } as CanonicalEntity));
-}
-
-// ── Field helpers ─────────────────────────────────────────────────────────────
+// ── Flexible field accessors ──────────────────────────────────────────────────
 function pick(data: Record<string, unknown>, ...keys: string[]): unknown {
   for (const k of keys) {
     if (data?.[k] !== undefined && data[k] !== null && data[k] !== '') return data[k];
@@ -79,32 +48,32 @@ function formatUSD(n: number): string {
 
 const PROP_COLORS: Record<string, string> = {
   multifamily: '#800020',
-  office:      '#b45309',
-  retail:      '#0f766e',
-  industrial:  '#1d4ed8',
-  hotel:       '#7c3aed',
-  mixed_use:   '#db2777',
-  land:        '#92400e',
-  other:       '#64748b',
+  office: '#b45309',
+  retail: '#0f766e',
+  industrial: '#1d4ed8',
+  hotel: '#7c3aed',
+  mixed_use: '#db2777',
+  land: '#92400e',
+  other: '#64748b',
 };
 
 const PROP_LABELS: Record<string, string> = {
   multifamily: 'Multifamily',
-  office:      'Office',
-  retail:      'Retail',
-  industrial:  'Industrial',
-  hotel:       'Hotel',
-  mixed_use:   'Mixed Use',
-  land:        'Land',
-  other:       'Other',
+  office: 'Office',
+  retail: 'Retail',
+  industrial: 'Industrial',
+  hotel: 'Hotel',
+  mixed_use: 'Mixed Use',
+  land: 'Land',
+  other: 'Other',
 };
 
 const STATUS_DISPLAY: Record<string, string> = {
-  active:   'Performing',
-  pending:  'Watch',
+  active: 'Performing',
+  pending: 'Watch',
   rejected: 'Delinquent',
   inactive: 'Matured',
-  draft:    'Draft',
+  draft: 'Draft',
 };
 
 function toQuarterKey(d: Date): string {
@@ -136,11 +105,11 @@ function buildMaturityLadder(loans: CanonicalEntity[]) {
 
 export function StatusBadge({ status }: { status: string }) {
   const cfg: Record<string, string> = {
-    active:   'bg-emerald-100 text-emerald-700',
-    pending:  'bg-amber-100 text-amber-700',
+    active: 'bg-emerald-100 text-emerald-700',
+    pending: 'bg-amber-100 text-amber-700',
     rejected: 'bg-red-100 text-red-700',
     inactive: 'bg-slate-100 text-slate-600',
-    draft:    'bg-blue-100 text-blue-700',
+    draft: 'bg-blue-100 text-blue-700',
   };
   const label = STATUS_DISPLAY[status] ?? status;
   const cls = cfg[status] ?? 'bg-slate-100 text-slate-600';
@@ -154,15 +123,7 @@ export function StatusBadge({ status }: { status: string }) {
 export default function PortfolioOverviewPage() {
   const loansQuery = useLoanList();
   const assetsQuery = useAssetList();
-
-  // Use live API data when available; fall back to demo data silently
-  const isUsingDemo = !loansQuery.isLoading && (loansQuery.isError || (loansQuery.data?.items ?? []).length === 0);
-  const loans: CanonicalEntity[] = useMemo(() => {
-    if (loansQuery.isLoading) return [];
-    const api = (loansQuery.data?.items ?? []) as CanonicalEntity[];
-    return api.length > 0 ? api : demoLoans();
-  }, [loansQuery.isLoading, loansQuery.data, loansQuery.isError]);
-
+  const loans = (loansQuery.data?.items ?? []) as CanonicalEntity[];
   const assets = (assetsQuery.data?.items ?? []) as CanonicalEntity[];
 
   const kpis = useMemo(() => {
@@ -182,9 +143,17 @@ export default function PortfolioOverviewPage() {
       const d = new Date(ds);
       return !isNaN(d.getTime()) && d >= now && d <= in90;
     }).length;
-    const watchCount  = loans.filter((l) => l.status === 'pending').length;
+    const watchCount = loans.filter((l) => l.status === 'pending').length;
     const delinqCount = loans.filter((l) => l.status === 'rejected').length;
-    return { aum, avgLtv, maturingSoon, watchCount, delinqCount, total: loans.length, assetTotal: assets.length };
+    return {
+      aum,
+      avgLtv,
+      maturingSoon,
+      watchCount,
+      delinqCount,
+      total: loans.length,
+      assetTotal: assets.length,
+    };
   }, [loans, assets]);
 
   const propTypeData = useMemo(() => {
@@ -206,23 +175,29 @@ export default function PortfolioOverviewPage() {
   if (loansQuery.isLoading || assetsQuery.isLoading) {
     return (
       <div className="flex items-center justify-center py-16">
-        <div className="h-6 w-6 animate-spin rounded-full border-2 border-slate-300 border-t-slate-900" />
+        <div className="h-6 w-6 animate-spin rounded-full border-2 border-slate-300 border-t-brand-700" />
       </div>
     );
   }
 
+  if (loansQuery.isError) {
+    return (
+      <div className="rounded-xl border border-red-100 bg-red-50 px-4 py-6 text-center">
+        <p className="text-sm text-red-600">Failed to load portfolio data.</p>
+        <button
+          onClick={() => loansQuery.refetch()}
+          className="mt-2 text-xs text-red-500 underline"
+        >
+          Retry
+        </button>
+      </div>
+    );
+  }
+
+  const hasData = loans.length > 0;
+
   return (
     <div className="space-y-6">
-      {/* Demo data notice — shown only when API is down */}
-      {isUsingDemo && (
-        <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-2.5 flex items-center gap-2">
-          <span className="inline-block h-2 w-2 rounded-full bg-blue-400" />
-          <p className="text-xs font-medium text-blue-700">
-            Showing demo portfolio data — connect the API backend to see live figures.
-          </p>
-        </div>
-      )}
-
       {/* KPI Strip */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <KpiCard
@@ -249,82 +224,165 @@ export default function PortfolioOverviewPage() {
         />
       </div>
 
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        {/* Property Type Breakdown */}
-        <div className="rounded-xl border border-slate-200 bg-white p-5">
-          <h3 className="mb-4 text-sm font-semibold text-slate-700">Portfolio by Property Type</h3>
-          {propTypeData.length === 0 ? (
-            <p className="text-sm text-slate-400">No property type data recorded on loans yet.</p>
-          ) : (
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
-              <ResponsiveContainer width="100%" height={180}>
-                <PieChart>
-                  <Pie data={propTypeData} dataKey="count" nameKey="label" cx="50%" cy="50%" outerRadius={70} strokeWidth={2}>
-                    {propTypeData.map((entry) => (
-                      <Cell key={entry.type} fill={entry.color} />
-                    ))}
-                  </Pie>
-                  <Tooltip formatter={(v: number) => [`${v} loan${v !== 1 ? 's' : ''}`, '']} />
-                </PieChart>
-              </ResponsiveContainer>
-              <ul className="flex flex-wrap gap-2 sm:flex-col">
-                {propTypeData.map((entry) => (
-                  <li key={entry.type} className="flex items-center gap-2 text-xs text-slate-600">
-                    <span className="h-2.5 w-2.5 rounded-full" style={{ background: entry.color }} />
-                    {entry.label} ({entry.count})
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-        </div>
+      {!hasData ? (
+        <EmptyPortfolio />
+      ) : (
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+          {/* Property Type Breakdown */}
+          <div className="rounded-xl border border-slate-200 bg-white p-5">
+            <h3 className="mb-4 text-sm font-semibold text-slate-700">Portfolio by Property Type</h3>
+            {propTypeData.length === 0 ? (
+              <p className="text-sm text-slate-400">
+                No property type data recorded on loans yet.
+              </p>
+            ) : (
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
+                <ResponsiveContainer width="100%" height={180}>
+                  <PieChart>
+                    <Pie
+                      data={propTypeData}
+                      dataKey="count"
+                      nameKey="label"
+                      cx="50%"
+                      cy="50%"
+                      outerRadius={70}
+                      strokeWidth={2}
+                    >
+                      {propTypeData.map((entry) => (
+                        <Cell key={entry.type} fill={entry.color} />
+                      ))}
+                    </Pie>
+                    <Tooltip
+                      formatter={(v: number) => [`${v} loan${v !== 1 ? 's' : ''}`, '']}
+                    />
+                  </PieChart>
+                </ResponsiveContainer>
+                <ul className="flex flex-wrap gap-2 sm:flex-col">
+                  {propTypeData.map((entry) => (
+                    <li key={entry.type} className="flex items-center gap-2 text-xs text-slate-600">
+                      <span
+                        className="h-2.5 w-2.5 rounded-full"
+                        style={{ background: entry.color }}
+                      />
+                      {entry.label} ({entry.count})
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
 
-        {/* Maturity Ladder */}
-        <div className="rounded-xl border border-slate-200 bg-white p-5">
-          <h3 className="mb-4 text-sm font-semibold text-slate-700">Maturity Ladder</h3>
-          {maturityLadder.length === 0 ? (
-            <p className="text-sm text-slate-400">No maturity dates recorded on loans yet.</p>
-          ) : (
-            <ResponsiveContainer width="100%" height={180}>
-              <BarChart data={maturityLadder} margin={{ top: 0, right: 0, bottom: 0, left: -20 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                <XAxis dataKey="q" tick={{ fontSize: 11 }} />
-                <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
-                <Tooltip formatter={(v: number) => [`${v} loan${v !== 1 ? 's' : ''}`, 'Maturing']} />
-                <Bar dataKey="count" fill="#800020" radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          )}
+          {/* Maturity Ladder */}
+          <div className="rounded-xl border border-slate-200 bg-white p-5">
+            <h3 className="mb-4 text-sm font-semibold text-slate-700">Maturity Ladder</h3>
+            {maturityLadder.length === 0 ? (
+              <p className="text-sm text-slate-400">
+                No maturity dates recorded on loans yet.
+              </p>
+            ) : (
+              <ResponsiveContainer width="100%" height={180}>
+                <BarChart
+                  data={maturityLadder}
+                  margin={{ top: 0, right: 0, bottom: 0, left: -20 }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                  <XAxis dataKey="q" tick={{ fontSize: 11 }} />
+                  <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
+                  <Tooltip
+                    formatter={(v: number) => [
+                      `${v} loan${v !== 1 ? 's' : ''}`,
+                      'Maturing',
+                    ]}
+                  />
+                  <Bar dataKey="count" fill="#800020" radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            )}
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Status breakdown */}
-      <div className="rounded-xl border border-slate-200 bg-white p-5">
-        <h3 className="mb-4 text-sm font-semibold text-slate-700">Loan Status Summary</h3>
-        <div className="flex flex-wrap gap-3">
-          {Object.entries(STATUS_DISPLAY).map(([status, label]) => {
-            const count = loans.filter((l) => l.status === status).length;
-            if (count === 0) return null;
-            return (
-              <div key={status} className="flex items-center gap-2 rounded-lg bg-slate-50 px-4 py-2 text-sm">
-                <StatusBadge status={status} />
-                <span className="font-semibold text-slate-800">{count}</span>
-                <span className="text-slate-500">{label}</span>
+      {hasData && (
+        <div className="rounded-xl border border-slate-200 bg-white p-5">
+          <h3 className="mb-4 text-sm font-semibold text-slate-700">Loan Status Summary</h3>
+          <div className="flex flex-wrap gap-3">
+            {Object.entries(STATUS_DISPLAY).map(([status, label]) => {
+              const count = loans.filter((l) => l.status === status).length;
+              if (count === 0) return null;
+              return (
+                <div
+                  key={status}
+                  className="flex items-center gap-2 rounded-lg bg-slate-50 px-4 py-2 text-sm"
+                >
+                  <StatusBadge status={status} />
+                  <span className="font-semibold text-slate-800">{count}</span>
+                  <span className="text-slate-500">{label}</span>
+                </div>
+              );
+            })}
+            {loans.filter((l) => !STATUS_DISPLAY[l.status]).length > 0 && (
+              <div className="flex items-center gap-2 rounded-lg bg-slate-50 px-4 py-2 text-sm">
+                <span className="inline-block h-2 w-2 rounded-full bg-slate-300" />
+                <span className="font-semibold text-slate-800">
+                  {loans.filter((l) => !STATUS_DISPLAY[l.status]).length}
+                </span>
+                <span className="text-slate-500">Uncategorized</span>
               </div>
-            );
-          })}
+            )}
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }
 
-function KpiCard({ label, value, sub, accent }: { label: string; value: string; sub?: string; accent?: boolean }) {
+function KpiCard({
+  label,
+  value,
+  sub,
+  accent,
+}: {
+  label: string;
+  value: string;
+  sub?: string;
+  accent?: boolean;
+}) {
   return (
-    <div className={`rounded-xl border bg-white p-4 ${accent ? 'border-amber-200 bg-amber-50' : 'border-slate-200'}`}>
+    <div
+      className={`rounded-xl border bg-white p-4 ${accent ? 'border-amber-200' : 'border-slate-200'}`}
+    >
       <p className="text-xs font-medium uppercase tracking-wide text-slate-500">{label}</p>
-      <p className={`mt-1 text-2xl font-bold ${accent ? 'text-amber-600' : 'text-slate-900'}`}>{value}</p>
+      <p className={`mt-1 text-2xl font-bold ${accent ? 'text-amber-600' : 'text-slate-900'}`}>
+        {value}
+      </p>
       {sub && <p className="mt-0.5 text-xs text-slate-400">{sub}</p>}
+    </div>
+  );
+}
+
+function EmptyPortfolio() {
+  return (
+    <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-slate-200 bg-white py-16 text-center">
+      <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-slate-100">
+        <svg
+          className="h-6 w-6 text-slate-400"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={1.5}
+            d="M3.75 12h16.5m-16.5 3.75h16.5M3.75 19.5h16.5M5.625 4.5h12.75a1.875 1.875 0 0 1 0 3.75H5.625a1.875 1.875 0 0 1 0-3.75Z"
+          />
+        </svg>
+      </div>
+      <p className="text-sm font-medium text-slate-600">No loans in portfolio yet</p>
+      <p className="mt-1 text-xs text-slate-400">
+        Add loans in the Loans tab to see portfolio analytics here.
+      </p>
     </div>
   );
 }

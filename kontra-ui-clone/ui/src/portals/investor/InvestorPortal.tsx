@@ -25,8 +25,6 @@ import {
   InformationCircleIcon,
   SparklesIcon,
   ShieldExclamationIcon,
-  Bars3Icon,
-  XMarkIcon,
 } from "@heroicons/react/24/outline";
 
 // ── Types ─────────────────────────────────────────────────────
@@ -206,7 +204,7 @@ const NAV: { key: Section; label: string; icon: typeof ChartPieIcon; badge?: num
   { key:"portfolio",     label:"Portfolio",           icon: ChartPieIcon },
   { key:"distributions", label:"Distributions",       icon: BanknotesIcon },
   { key:"performance",   label:"Loan Performance",    icon: ChartBarIcon },
-  { key:"governance",    label:"Governance & Consents",  icon: ScaleIcon, badge: 2 },
+  { key:"governance",    label:"Governance & Voting",  icon: ScaleIcon, badge: 2 },
   { key:"documents",     label:"Reports & Docs",      icon: DocumentTextIcon },
   { key:"alerts",        label:"Risk Alerts",         icon: ExclamationTriangleIcon, badge: 2 },
   { key:"ai",            label:"AI Portfolio Brief",  icon: SparklesIcon, dividerBefore: true },
@@ -215,10 +213,9 @@ const NAV: { key: Section; label: string; icon: typeof ChartPieIcon; badge?: num
 ];
 
 export default function InvestorPortal() {
-  const { signOut } = useContext(AuthContext) as any;
+  const { signOut } = useContext(AuthContext);
   const navigate = useNavigate();
   const [section, setSection] = useState<Section>("portfolio");
-  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [holdings, setHoldings]     = useState<Holding[]>(DEMO_HOLDINGS);
   const [distributions, setDists]   = useState<Distribution[]>(DEMO_DISTRIBUTIONS);
   const [performance, setPerf]      = useState<LoanPerformance[]>(DEMO_PERFORMANCE);
@@ -280,26 +277,17 @@ export default function InvestorPortal() {
   const highAlerts    = alerts.filter((a) => a.severity === "high").length;
 
   return (
-    <div className="relative flex h-screen bg-slate-950 text-slate-100 overflow-hidden">
-      {/* ── Mobile overlay ── */}
-      {sidebarOpen && (
-        <div className="fixed inset-0 z-40 bg-black/60 md:hidden" onClick={() => setSidebarOpen(false)} />
-      )}
+    <div className="flex h-screen bg-slate-950 text-slate-100 overflow-hidden">
 
       {/* ── Sidebar ── */}
-      <aside className={`fixed inset-y-0 left-0 z-50 flex w-60 shrink-0 flex-col border-r border-slate-800 bg-slate-900 transform transition-transform duration-200 ease-in-out md:relative md:translate-x-0 ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}`}>
+      <aside className="flex w-60 flex-col border-r border-slate-800 bg-slate-900">
         {/* Logo area */}
-        <div className="flex items-center justify-between px-5 py-5 border-b border-slate-800">
-          <div className="flex items-center gap-3">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-violet-600 font-black text-white text-sm">K</div>
-            <div>
-              <p className="text-sm font-bold text-white">Kontra</p>
-              <p className="text-xs text-violet-400 font-medium">Investor Portal</p>
-            </div>
+        <div className="flex items-center gap-3 px-5 py-5 border-b border-slate-800">
+          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-violet-600 font-black text-white text-sm">K</div>
+          <div>
+            <p className="text-sm font-bold text-white">Kontra</p>
+            <p className="text-xs text-violet-400 font-medium">Investor Portal</p>
           </div>
-          <button onClick={() => setSidebarOpen(false)} className="md:hidden rounded-lg p-1 text-slate-400 hover:text-white hover:bg-slate-800 transition">
-            <XMarkIcon className="h-5 w-5" />
-          </button>
         </div>
 
         {/* Summary quick stats */}
@@ -333,7 +321,7 @@ export default function InvestorPortal() {
                   </div>
                 )}
                 <button
-                  onClick={() => { setSection(item.key); setSidebarOpen(false); }}
+                  onClick={() => setSection(item.key)}
                   className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors text-left ${
                     active
                       ? item.key === "marketplace" || item.key === "pricing"
@@ -358,7 +346,7 @@ export default function InvestorPortal() {
         {/* Footer */}
         <div className="border-t border-slate-800 p-4 space-y-2">
           {highAlerts > 0 && (
-            <div className="flex items-center gap-2 rounded-lg bg-brand-900/60 border border-brand-700/40 px-3 py-2">
+            <div className="mb-1 flex items-center gap-2 rounded-lg bg-brand-900/60 border border-brand-700/40 px-3 py-2">
               <ExclamationTriangleIcon className="h-3.5 w-3.5 text-brand-400" />
               <p className="text-xs text-brand-300 font-semibold">{highAlerts} high-risk alert{highAlerts > 1 ? "s" : ""}</p>
             </div>
@@ -374,18 +362,8 @@ export default function InvestorPortal() {
       </aside>
 
       {/* ── Main Content ── */}
-      <main className="flex min-w-0 flex-1 flex-col overflow-y-auto bg-slate-950">
-        {/* Mobile top bar */}
-        <div className="flex items-center gap-3 border-b border-slate-800 bg-slate-900 px-4 py-3 md:hidden">
-          <button onClick={() => setSidebarOpen(true)} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-800 hover:text-white transition">
-            <Bars3Icon className="h-5 w-5" />
-          </button>
-          <div className="flex items-center gap-2">
-            <div className="flex h-6 w-6 items-center justify-center rounded-md bg-violet-600 text-xs font-black text-white">K</div>
-            <span className="text-sm font-bold text-white">Kontra <span className="text-violet-400">Investor</span></span>
-          </div>
-        </div>
-        <div className="max-w-6xl mx-auto w-full px-4 py-6 md:px-8 md:py-8 space-y-6 md:space-y-8">
+      <main className="flex-1 overflow-y-auto bg-slate-950">
+        <div className="max-w-6xl mx-auto px-8 py-8 space-y-8">
 
           {/* ── PORTFOLIO ── */}
           {section === "portfolio" && (
@@ -616,8 +594,8 @@ export default function InvestorPortal() {
           {section === "governance" && (
             <div className="space-y-6">
               <div>
-                <h1 className="text-2xl font-black text-white">Governance & Consents</h1>
-                <p className="text-sm text-slate-400 mt-1">LP consent requests, modification approvals, and major decision votes — all recorded in the immutable servicing audit log.</p>
+                <h1 className="text-2xl font-black text-white">Governance & Voting</h1>
+                <p className="text-sm text-slate-400 mt-1">Active proposals requiring your vote. Results are recorded on-chain.</p>
               </div>
 
               <div className="space-y-4">

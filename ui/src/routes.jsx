@@ -3,26 +3,28 @@ import {
   BanknotesIcon,
   Cog6ToothIcon,
   ChartBarIcon,
-  ChartPieIcon,
-  WrenchScrewdriverIcon,
   ShieldCheckIcon,
-  PresentationChartLineIcon,
-  CreditCardIcon,
+  LinkIcon,
+  CubeTransparentIcon,
+  SparklesIcon,
   UsersIcon,
   CurrencyDollarIcon,
-  MagnifyingGlassIcon,
-  DocumentMagnifyingGlassIcon,
+  CommandLineIcon,
   BuildingOfficeIcon,
-  SparklesIcon,
-  ExclamationTriangleIcon,
-  CubeTransparentIcon,
-  ClipboardDocumentListIcon,
+  ShoppingBagIcon,
+  DocumentChartBarIcon,
+  MagnifyingGlassIcon,
+  WrenchScrewdriverIcon,
+  DocumentMagnifyingGlassIcon,
+  BellAlertIcon,
+  PresentationChartLineIcon,
 } from "@heroicons/react/24/outline";
 
 /**
- * LENDER PORTAL NAV
- * 7 items reflecting true lender functions in CRE loan servicing.
- * Aligned with FDIC, Freddie Mac, and Fannie Mae operational roles.
+ * Lender portal navigation — clean IA matching the Kontra pitch narrative.
+ * Dashboard → Loans → Servicing → AI Copilot → Command Center →
+ * Compliance & Rules → Integrations → Tokenization → Marketplace → Reports
+ * Admin items grouped at bottom.
  */
 export const lenderNavRoutes = [
   {
@@ -32,77 +34,105 @@ export const lenderNavRoutes = [
     requiresAuth: true,
   },
   {
-    label: "Portfolio",
+    label: "Loans",
     path: "/portfolio",
     icon: BanknotesIcon,
     requiresAuth: true,
   },
   {
-    label: "Compliance & Governance",
-    path: "/governance",
-    icon: ShieldCheckIcon,
+    label: "Servicing",
+    path: "/servicer/overview",
+    icon: BuildingOfficeIcon,
     requiresAuth: true,
   },
   {
-    label: "Capital Markets",
-    path: "/markets",
+    label: "AI Copilot",
+    path: "/ai-copilot",
+    icon: SparklesIcon,
+    requiresAuth: true,
+  },
+  {
+    label: "Command Center",
+    path: "/command",
+    icon: CommandLineIcon,
+    requiresAuth: true,
+  },
+  {
+    label: "Portfolio Forecast",
+    path: "/forecast",
     icon: PresentationChartLineIcon,
     requiresAuth: true,
   },
   {
+    label: "Alert Center",
+    path: "/alerts",
+    icon: BellAlertIcon,
+    requiresAuth: true,
+  },
+  {
+    label: "Compliance & Rules",
+    path: "/policy",
+    icon: ShieldCheckIcon,
+    requiresAuth: true,
+  },
+  {
+    label: "Integrations",
+    path: "/integration",
+    icon: LinkIcon,
+    requiresAuth: true,
+  },
+  {
     label: "Tokenization",
-    path: "/onchain",
+    path: "/tokenization",
     icon: CubeTransparentIcon,
     requiresAuth: true,
   },
   {
-    label: "Risk Intelligence",
-    path: "/analytics",
-    icon: ChartPieIcon,
+    label: "Marketplace",
+    path: "/markets",
+    icon: ShoppingBagIcon,
     requiresAuth: true,
   },
   {
     label: "Reports",
     path: "/reports",
-    icon: ChartBarIcon,
+    icon: DocumentChartBarIcon,
     requiresAuth: true,
   },
+  // ── Admin (grouped at bottom) ──────────────────────────────────────────
   {
     label: "Team & Roles",
     path: "/settings/team",
     icon: UsersIcon,
     requiresAuth: true,
+    group: "admin",
+  },
+  {
+    label: "Cost Intelligence",
+    path: "/cost-governance",
+    icon: CurrencyDollarIcon,
+    requiresAuth: true,
+    group: "admin",
   },
   {
     label: "Settings",
-    path: "/settings/sso",
+    path: "/settings/billing",
     icon: Cog6ToothIcon,
     requiresAuth: true,
+    group: "admin",
   },
 ];
 
+export const lenderDefaultPath = "/dashboard";
+
 /**
- * SERVICER PORTAL NAV
- * 10 items covering every Freddie Mac / Fannie Mae servicer function.
- * Outer sidebar in sync with ServicingLayout inner tabs.
+ * Servicer portal navigation
  */
 export const servicerNavRoutes = [
-  {
-    label: "Cases",
-    path: "/servicer/cases",
-    icon: ClipboardDocumentListIcon,
-    requiresAuth: true,
-  },
   {
     label: "Overview",
     path: "/servicer/overview",
     icon: HomeIcon,
-    requiresAuth: true,
-  },
-  {
-    label: "Cash Flow",
-    path: "/servicer/waterfall",
-    icon: ChartBarIcon,
     requiresAuth: true,
   },
   {
@@ -112,9 +142,9 @@ export const servicerNavRoutes = [
     requiresAuth: true,
   },
   {
-    label: "Delinquency",
-    path: "/servicer/delinquency",
-    icon: ExclamationTriangleIcon,
+    label: "Inspections",
+    path: "/servicer/inspections",
+    icon: MagnifyingGlassIcon,
     requiresAuth: true,
   },
   {
@@ -124,13 +154,7 @@ export const servicerNavRoutes = [
     requiresAuth: true,
   },
   {
-    label: "Inspections",
-    path: "/servicer/inspections",
-    icon: MagnifyingGlassIcon,
-    requiresAuth: true,
-  },
-  {
-    label: "Escrow",
+    label: "Escrows",
     path: "/servicer/escrow",
     icon: BuildingOfficeIcon,
     requiresAuth: true,
@@ -142,18 +166,17 @@ export const servicerNavRoutes = [
     requiresAuth: true,
   },
   {
-    label: "Management (PMC)",
+    label: "Management",
     path: "/servicer/management",
     icon: WrenchScrewdriverIcon,
     requiresAuth: true,
   },
   {
-    label: "Review Queue",
+    label: "AI Operations",
     path: "/servicer/ai-ops",
     icon: SparklesIcon,
     requiresAuth: true,
   },
 ];
 
-export const lenderDefaultPath = "/dashboard";
-export const servicerDefaultPath = "/servicer/cases";
+export const servicerDefaultPath = "/servicer/overview";

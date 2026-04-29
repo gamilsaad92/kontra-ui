@@ -15,7 +15,6 @@ import ServicingAIOpsPage from "../../pages/dashboard/servicing/ServicingAIOpsPa
 import ServicingAIValidationPage from "../../pages/dashboard/servicing/ServicingAIValidationPage";
 import ServicingWaterfallPage from "../../pages/dashboard/servicing/ServicingWaterfallPage";
 import ServicingDelinquencyPage from "../../pages/dashboard/servicing/ServicingDelinquencyPage";
-import ServicingCasesPage from "../../pages/dashboard/servicing/ServicingCasesPage";
 import {
   ArrowTopRightOnSquareIcon,
   BuildingLibraryIcon,
@@ -223,9 +222,8 @@ export default function ServicerPortal() {
 
         <div className="p-3 md:p-6">
           <Routes>
-            <Route index element={<Navigate to="/servicer/cases" replace />} />
+            <Route index element={<Navigate to="/servicer/overview" replace />} />
             <Route element={<ServicingLayout />}>
-              <Route path="cases" element={<ServicingCasesPage />} />
               <Route path="overview" element={<ServicingOverviewPage />} />
               <Route path="payments" element={<ServicingPaymentsPage />} />
               <Route path="inspections" element={<ServicingInspectionsPage />} />
