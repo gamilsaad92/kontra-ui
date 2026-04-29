@@ -1,11 +1,5 @@
 import { useCallback, useContext, useMemo, useState, type ComponentType } from "react";
 import { NavLink, Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
-import {
-  Bars3Icon,
-  XMarkIcon,
-  ArrowTopRightOnSquareIcon,
-  BuildingLibraryIcon,
-} from "@heroicons/react/24/outline";
 import { resolveApiBase } from "../lib/api";
 import useFeatureUsage from "../lib/useFeatureUsage";
 import { lenderNavRoutes } from "../routes";
@@ -89,7 +83,6 @@ export default function SaasDashboard() {
   const navigate = useNavigate();
   const [isSigningOut, setIsSigningOut] = useState(false);
   const [signOutError, setSignOutError] = useState<string | null>(null);
-  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const navItems = useMemo(() => lenderNavRoutes.filter((item) => !item.requiresAuth || session?.access_token), [session]);
     
@@ -130,16 +123,16 @@ export default function SaasDashboard() {
         <div key={item.path} className="space-y-1">
           <NavLink
             to={item.path}
-            onClick={() => { recordUsage(item.path); setSidebarOpen(false); }}
+            onClick={() => recordUsage(item.path)}
             className={({ isActive }) =>
-              `flex items-center gap-2.5 rounded-lg px-3 py-2.5 text-sm transition ${
+              `flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition ${
                 isActive || location.pathname.startsWith(`${item.path}/`)
-                  ? "bg-[#800020]/20 text-rose-300 font-semibold"
-                  : "text-slate-300 hover:bg-slate-800 hover:text-white"
+                  ? "bg-white text-slate-900"
+                  : "text-slate-200 hover:bg-slate-900"
               }`
             }
           >
-            <Icon className="h-4 w-4 shrink-0" />
+            <Icon className="h-4 w-4" />
             <span>{item.label}</span>
           </NavLink>
           {children.length > 0 && location.pathname.startsWith(item.path) && (
@@ -275,106 +268,63 @@ export default function SaasDashboard() {
   );
 
   return (
-    <div className="relative flex min-h-screen bg-slate-100 text-slate-900">
-      {/* ── Mobile overlay ── */}
-      {sidebarOpen && (
-        <div className="fixed inset-0 z-40 bg-black/50 md:hidden" onClick={() => setSidebarOpen(false)} />
-      )}
-
-      {/* ── Sidebar ── */}
-      <aside className={`fixed inset-y-0 left-0 z-50 flex w-64 shrink-0 flex-col bg-slate-950 text-slate-100 transform transition-transform duration-200 ease-in-out md:relative md:translate-x-0 ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}`}>
-        {/* Logo + portal badge */}
-        <div className="px-4 pt-5 pb-4 border-b border-slate-800">
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-2.5">
-              <div className="flex h-7 w-7 items-center justify-center rounded-lg" style={{ background: "#800020" }}>
-                <span className="text-sm font-black text-white" style={{ letterSpacing: "-0.05em" }}>K</span>
-              </div>
-              <span className="text-base font-bold text-white" style={{ letterSpacing: "-0.02em" }}>Kontra</span>
-            </div>
-            <button onClick={() => setSidebarOpen(false)} className="md:hidden rounded-lg p-1 text-slate-400 hover:text-white hover:bg-slate-800 transition">
-              <XMarkIcon className="h-5 w-5" />
-            </button>
+    <div className="flex min-h-screen bg-slate-100 text-slate-900">
+      <aside className="flex w-64 flex-col bg-slate-950 text-slate-100">
+        <div className="flex items-center gap-2.5 px-4 py-4">
+          <div className="flex h-7 w-7 items-center justify-center rounded-lg" style={{ background: '#800020' }}>
+            <span className="text-sm font-black text-white" style={{ letterSpacing: '-0.05em' }}>K</span>
           </div>
-          {/* Lender portal badge */}
-          <div className="flex items-center gap-2 rounded-lg border px-3 py-2" style={{ background: "rgba(128,0,32,0.12)", borderColor: "rgba(128,0,32,0.35)" }}>
-            <BuildingLibraryIcon className="h-4 w-4 shrink-0" style={{ color: "#e07080" }} />
-            <div>
-              <p className="text-xs font-black uppercase tracking-widest leading-none" style={{ color: "#e07080" }}>Lender</p>
-              <p className="text-xs text-slate-500 mt-0.5">Capital Markets Portal</p>
-            </div>
-          </div>
+          <span className="text-base font-bold text-white" style={{ letterSpacing: '-0.02em' }}>Kontra</span>
         </div>
-
-        {/* Nav */}
-        <nav className="flex-1 space-y-1 overflow-y-auto px-2 py-4">
+        <nav className="flex-1 space-y-1 overflow-y-auto px-2 pb-4">
           {frequentItems.length > 0 && (
             <div className="mb-2 space-y-1">
-              <p className="px-3 text-xs font-bold uppercase tracking-widest text-slate-600 mb-1">Recent</p>
               {frequentItems.map((item) => renderNavItem(item))}
-              <hr className="border-slate-800 my-2" />
+              <hr className="border-slate-800" />
             </div>
           )}
           {navItems.map((item) => renderNavItem(item))}
-        </nav>
 
-        {/* Switch to Servicer portal */}
-        <div className="border-t border-slate-800 px-3 py-3">
-          <NavLink
-            to="/servicer/cases"
-            className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-slate-400 hover:bg-slate-800 hover:text-white transition"
-          >
-            <ArrowTopRightOnSquareIcon className="h-4 w-4 shrink-0" />
-            <span>Servicer Portal</span>
-          </NavLink>
-        </div>
-
-        {/* Sign out */}
-        <div className="border-t border-slate-800 px-3 py-3">
-          <button
-            type="button"
-            onClick={handleSignOut}
-            disabled={isSigningOut}
-            className="w-full rounded-lg border border-slate-800 px-3 py-2 text-sm font-semibold text-slate-200 transition hover:bg-slate-900 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {isSigningOut ? "Logging out…" : "Log Out"}
-          </button>
-          {signOutError && <p className="mt-2 text-xs text-red-400" role="alert">{signOutError}</p>}
-        </div>
-      </aside>
-
-      {/* ── Main content ── */}
-      <main className="flex min-w-0 flex-1 flex-col overflow-y-auto">
-        {/* Mobile top bar */}
-        <div className="flex items-center gap-3 border-b border-slate-200 bg-white px-4 py-3 md:hidden">
-          <button onClick={() => setSidebarOpen(true)} className="rounded-lg p-1.5 text-slate-600 hover:bg-slate-100 transition">
-            <Bars3Icon className="h-5 w-5" />
-          </button>
-          <div className="flex items-center gap-2">
-            <div className="flex h-6 w-6 items-center justify-center rounded-md text-xs font-black text-white" style={{ background: "#800020" }}>K</div>
-            <span className="text-sm font-bold text-slate-900">Kontra <span style={{ color: "#800020" }}>Lender</span></span>
-          </div>
-        </div>
-
-        {/* Page header strip — desktop */}
-        {!isDashboardRoute && !sectionHasOwnHeader && (
-          <div className="hidden border-b border-slate-200 bg-white px-8 py-4 md:flex items-center justify-between">
-            <div>
-              <p className="text-xs font-bold uppercase tracking-widest mb-0.5" style={{ color: "#800020" }}>
-                Lender Portal
+          <div className="pt-4 space-y-2">
+            <NavLink
+              to="/servicer/cases"
+              className={({ isActive }) =>
+                `flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition ${
+                  isActive
+                    ? "bg-white text-slate-900"
+                    : "text-slate-400 hover:bg-slate-800 hover:text-white"
+                }`
+              }
+            >
+              <span className="text-xs">⚙</span>
+              <span>Servicer Portal</span>
+            </NavLink>
+            <button
+              type="button"
+              onClick={handleSignOut}
+              className="w-full rounded-lg border border-slate-800 px-3 py-2 text-sm font-semibold text-slate-200 transition hover:bg-slate-900 disabled:cursor-not-allowed disabled:opacity-60"
+              disabled={isSigningOut}
+            >
+              {isSigningOut ? "Logging out..." : "Log Out"}
+            </button>
+            {signOutError && (
+              <p className="mt-2 text-xs text-brand-200" role="alert">
+                {signOutError}
               </p>
-              <h1 className="text-lg font-bold text-slate-900">{activeLabel}</h1>
-            </div>
-            <div className="flex items-center gap-2 rounded-lg border px-3 py-1.5" style={{ background: "rgba(128,0,32,0.06)", borderColor: "rgba(128,0,32,0.25)" }}>
-              <span className="h-2 w-2 rounded-full" style={{ background: "#800020" }} />
-              <span className="text-xs font-semibold" style={{ color: "#800020" }}>Live Portfolio</span>
-            </div>
+            )}
           </div>
+        </nav>
+      </aside>
+      <main className="flex-1 overflow-y-auto p-6">
+        {!isDashboardRoute && !isServicingRoute && !sectionHasOwnHeader && (
+          <header className="mb-6 space-y-1">
+            <h1 className="text-xl font-semibold tracking-tight text-slate-900">{activeLabel}</h1>
+            <p className="text-sm text-slate-500">
+              Structured loan data infrastructure for servicing, compliance, and capital markets.
+            </p>
+          </header>
         )}
-
-        <div className="p-3 md:p-6">
-          {isDashboardRoute || isServicingRoute ? content : <div className="space-y-6">{content}</div>}
-        </div>
+        {isDashboardRoute || isServicingRoute ? content : <div className="space-y-6">{content}</div>}
       </main>
     </div>
   );

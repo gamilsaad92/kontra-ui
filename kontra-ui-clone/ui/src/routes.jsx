@@ -21,8 +21,7 @@ import {
 
 /**
  * LENDER PORTAL NAV
- * 7 items reflecting true lender functions in CRE loan servicing.
- * Aligned with FDIC, Freddie Mac, and Fannie Mae operational roles.
+ * Matches the kontraplatform.com Lender dashboard nav structure.
  */
 export const lenderNavRoutes = [
   {
@@ -32,21 +31,45 @@ export const lenderNavRoutes = [
     requiresAuth: true,
   },
   {
-    label: "Portfolio",
-    path: "/portfolio",
+    label: "Loans",
+    path: "/portfolio/loans",
     icon: BanknotesIcon,
     requiresAuth: true,
   },
   {
-    label: "Compliance & Governance",
+    label: "Servicing",
+    path: "/servicer/overview",
+    icon: WrenchScrewdriverIcon,
+    requiresAuth: true,
+  },
+  {
+    label: "AI Copilot",
+    path: "/analytics",
+    icon: SparklesIcon,
+    requiresAuth: true,
+  },
+  {
+    label: "Portfolio Forecast",
+    path: "/portfolio/overview",
+    icon: PresentationChartLineIcon,
+    requiresAuth: true,
+  },
+  {
+    label: "Alert Center",
+    path: "/compliance-center",
+    icon: ExclamationTriangleIcon,
+    requiresAuth: true,
+  },
+  {
+    label: "Compliance & Rules",
     path: "/governance",
     icon: ShieldCheckIcon,
     requiresAuth: true,
   },
   {
-    label: "Capital Markets",
-    path: "/markets",
-    icon: PresentationChartLineIcon,
+    label: "Integrations",
+    path: "/integration",
+    icon: CubeTransparentIcon,
     requiresAuth: true,
   },
   {
@@ -56,9 +79,9 @@ export const lenderNavRoutes = [
     requiresAuth: true,
   },
   {
-    label: "Risk Intelligence",
-    path: "/analytics",
-    icon: ChartPieIcon,
+    label: "Marketplace",
+    path: "/markets",
+    icon: BuildingOfficeIcon,
     requiresAuth: true,
   },
   {
@@ -71,6 +94,12 @@ export const lenderNavRoutes = [
     label: "Team & Roles",
     path: "/settings/team",
     icon: UsersIcon,
+    requiresAuth: true,
+  },
+  {
+    label: "Cost Intelligence",
+    path: "/cost-governance",
+    icon: CurrencyDollarIcon,
     requiresAuth: true,
   },
   {
