@@ -1,0 +1,31 @@
+kind = "video"
+previewPath = "/kontra-video/"
+title = "Kontra Pitch Video"
+version = "1.0.0"
+id = "artifacts/kontra-video"
+router = "path"
+
+[[integratedSkills]]
+name = "video-js"
+version = "1.0.0"
+
+[[services]]
+name = "web"
+paths = [ "/kontra-video/" ]
+localPort = 19742
+
+[services.development]
+run = "pnpm --filter @workspace/kontra-video run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/kontra-video", "run", "build" ]
+publicDir = "artifacts/kontra-video/dist/public"
+serve = "static"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "19742"
+BASE_PATH = "/kontra-video/"
