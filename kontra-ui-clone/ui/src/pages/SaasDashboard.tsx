@@ -123,7 +123,7 @@ export default function SaasDashboard() {
         <div key={item.path} className="space-y-1">
           <NavLink
             to={item.path}
-            onClick={() => recordUsage(item.path)}
+             onClick={() => recordUsage(item.path)}
             className={({ isActive }) =>
               `flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition ${
                 isActive || location.pathname.startsWith(`${item.path}/`)
@@ -132,10 +132,10 @@ export default function SaasDashboard() {
               }`
             }
           >
-            <Icon className="h-4 w-4" />
+                 <Icon className="h-4 w-4" />
             <span>{item.label}</span>
           </NavLink>
-          {children.length > 0 && location.pathname.startsWith(item.path) && (
+         {children.length > 0 && location.pathname.startsWith(item.path) && (
             <div className="ml-7 space-y-1">
               {children.map((child) => (
                 <NavLink
@@ -268,7 +268,7 @@ export default function SaasDashboard() {
   );
 
   return (
-    <div className="flex min-h-screen bg-slate-100 text-slate-900">
+     <div className="flex min-h-screen bg-slate-100 text-slate-900">
       <aside className="flex w-64 flex-col bg-slate-950 text-slate-100">
         <div className="flex items-center gap-2.5 px-4 py-4">
           <div className="flex h-7 w-7 items-center justify-center rounded-lg" style={{ background: '#800020' }}>
@@ -283,15 +283,15 @@ export default function SaasDashboard() {
               <hr className="border-slate-800" />
             </div>
           )}
-          {navItems.map((item) => renderNavItem(item))}
+            {navItems.map((item) => renderNavItem(item))}
 
           <div className="pt-4 space-y-2">
             <NavLink
-              to="/servicer/cases"
+              to="/servicer/overview"
               className={({ isActive }) =>
                 `flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition ${
                   isActive
-                    ? "bg-white text-slate-900"
+                    ? "bg-amber-500/15 text-amber-300 font-semibold"
                     : "text-slate-400 hover:bg-slate-800 hover:text-white"
                 }`
               }
