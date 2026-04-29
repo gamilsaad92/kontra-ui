@@ -18,3 +18,21 @@ id = "i6bTqs_XFSgR2WZiZdUGr"
 uri = "file://artifacts/kontra-ui/public/images/cre-building.png"
 type = "image"
 title = "commercial real estate building"
+
+[[generated]]
+id = "RrOR1AMAuFc7gjMfLsQn2"
+uri = "file://artifacts/kontra-video/public/images/bg-grid.png"
+type = "image"
+title = "Dark abstract grid data structure"
+
+[[generated]]
+id = "UicQGk00A7RhVRsEHiSwM"
+uri = "file://artifacts/kontra-video/public/images/bg-servers.png"
+type = "image"
+title = "Abstract server hardware lights"
+
+[[generated]]
+id = "y2ZySnKgxz77bSmN5piwO"
+uri = "file://artifacts/kontra-video/public/images/bg-glass.png"
+type = "image"
+title = "Dark glass abstract architecture"
