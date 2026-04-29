@@ -5,6 +5,7 @@ import { apiRequest, setOrgContext } from './lib/apiClient'
 import { apiRoutes } from './lib/apiRoutes'
 import { OrgProvider } from './lib/OrgProvider'
 import { useOrg } from './lib/useOrg'
+import DemoRecorder from './components/DemoRecorder'
 
 // ── Org switcher dropdown ─────────────────────────────────────
 function OrgSwitcher() {
@@ -98,6 +99,8 @@ function LayoutInner({ children, branding, orgName, role, apiError, apiToast, on
           {apiToast.message || 'Request failed'} {apiToast.status ? `(${apiToast.status})` : ''}
         </div>
       )}
+
+      <DemoRecorder />
     </div>
   )
 }
