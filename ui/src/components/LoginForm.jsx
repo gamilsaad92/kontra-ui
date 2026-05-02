@@ -10,7 +10,6 @@ const DEMO_ROLES = [
     color: '#800020',
     light: 'rgba(128,0,32,0.12)',
     ring: 'rgba(128,0,32,0.4)',
-    email: 'replit@kontraplatform.com',
     icon: '🏦',
   },
   {
@@ -20,7 +19,6 @@ const DEMO_ROLES = [
     color: '#b45309',
     light: 'rgba(180,83,9,0.12)',
     ring: 'rgba(180,83,9,0.4)',
-    email: 'servicer@kontraplatform.com',
     icon: '⚙️',
   },
   {
@@ -30,7 +28,6 @@ const DEMO_ROLES = [
     color: '#6d28d9',
     light: 'rgba(109,40,217,0.12)',
     ring: 'rgba(109,40,217,0.4)',
-    email: 'investor@kontraplatform.com',
     icon: '📊',
   },
   {
@@ -40,23 +37,21 @@ const DEMO_ROLES = [
     color: '#065f46',
     light: 'rgba(6,95,70,0.12)',
     ring: 'rgba(6,95,70,0.4)',
-    email: 'borrower@kontraplatform.com',
     icon: '🏢',
   },
 ]
-const DEMO_PASSWORD = '12345678'
 
-function normalizeEmailForAuth(rawEmail) {
-  const trimmed = (rawEmail || '').trim().toLowerCase()
+function normalizeEmail(raw) {
+  const trimmed = (raw || '').trim().toLowerCase()
   if (!trimmed.includes('@')) return trimmed
-  const [localPart, domainPart] = trimmed.split('@')
-  if (!localPart || !domainPart) return trimmed
-  if (!domainPart.includes('.')) return `${localPart}@${domainPart}.com`
+  const [local, domain] = trimmed.split('@')
+  if (!local || !domain) return trimmed
+  if (!domain.includes('.')) return `${local}@${domain}.com`
   return trimmed
 }
 
 export default function LoginForm({ onSwitch }) {
-  const { signIn } = useContext(AuthContext)
+  const { loginAsDemo, signIn } = useContext(AuthContext)
   const { t } = useLocale()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -66,23 +61,19 @@ export default function LoginForm({ onSwitch }) {
   const [error, setError] = useState('')
   const [focusedField, setFocusedField] = useState(null)
 
-  // One-click demo login — no "Sign In" button needed
+  // One-click demo login — goes directly to the chosen portal, no password needed
   const handleDemoLogin = async (rd) => {
     setError('')
     setLoadingRole(rd.role)
-    try { localStorage.setItem('kontra_demo_role', rd.role) } catch (_) {}
     try {
-      const { error: signInError } = await signIn({
-        email: normalizeEmailForAuth(rd.email),
-        password: DEMO_PASSWORD,
-      })
-      if (signInError) {
-        setError(`Demo login failed: ${signInError.message}`)
+      const { error: err } = await loginAsDemo(rd.role)
+      if (err) {
+        setError(err.message || 'Demo login failed')
         setLoadingRole(null)
       }
-      // On success, AuthContext will update session and LoginPage will redirect
-    } catch (err) {
-      setError(err?.message || 'Unable to sign in. Please try again.')
+      // On success AuthContext updates session → LoginPage detects it → navigates
+    } catch (e) {
+      setError(e?.message || 'Unable to sign in. Please try again.')
       setLoadingRole(null)
     }
   }
@@ -94,10 +85,10 @@ export default function LoginForm({ onSwitch }) {
     if (!password) { setError(t('login.passwordRequired')); return }
     setLoading(true)
     try {
-      const { error: signInError } = await signIn({ email: normalizeEmailForAuth(email), password })
-      if (signInError) setError(signInError.message)
-    } catch (err) {
-      setError(err?.message || 'Unable to sign in right now. Please try again.')
+      const { error: err } = await signIn({ email: normalizeEmail(email), password })
+      if (err) setError(err.message)
+    } catch (e) {
+      setError(e?.message || 'Unable to sign in right now. Please try again.')
     } finally {
       setLoading(false)
     }
@@ -115,12 +106,12 @@ export default function LoginForm({ onSwitch }) {
   return (
     <div className="flex flex-col gap-5">
 
-      {/* Demo role cards — one-click entry */}
+      {/* Demo role cards */}
       <div>
         <div className="flex items-center gap-2 mb-3">
           <div className="h-px flex-1" style={{ background: 'rgba(255,255,255,0.07)' }} />
           <span className="text-[11px] font-semibold uppercase tracking-widest" style={{ color: '#555' }}>
-            Enter demo as
+            Try a demo portal
           </span>
           <div className="h-px flex-1" style={{ background: 'rgba(255,255,255,0.07)' }} />
         </div>
@@ -172,7 +163,7 @@ export default function LoginForm({ onSwitch }) {
                   {rd.label}
                 </p>
                 <p className="text-xs mt-0.5" style={{ color: isLoading ? 'rgba(255,255,255,0.7)' : '#666' }}>
-                  {isLoading ? 'Signing in…' : rd.tagline}
+                  {isLoading ? 'Opening portal…' : rd.tagline}
                 </p>
               </button>
             )
@@ -189,7 +180,6 @@ export default function LoginForm({ onSwitch }) {
 
       {/* Credential form */}
       <form onSubmit={handleLogin} className="flex flex-col gap-4">
-        {/* Email */}
         <div className="flex flex-col gap-1.5">
           <label className="text-xs font-medium uppercase tracking-wider" style={{ color: '#888' }}>
             Email
@@ -213,7 +203,6 @@ export default function LoginForm({ onSwitch }) {
           </div>
         </div>
 
-        {/* Password */}
         <div className="flex flex-col gap-1.5">
           <div className="flex items-center justify-between">
             <label className="text-xs font-medium uppercase tracking-wider" style={{ color: '#888' }}>
@@ -261,7 +250,6 @@ export default function LoginForm({ onSwitch }) {
           </div>
         </div>
 
-        {/* Error */}
         {error && (
           <div
             className="flex items-start gap-2.5 rounded-lg border px-3.5 py-3"

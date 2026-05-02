@@ -4,17 +4,12 @@
  * Authentication = Supabase session (who you are).
  * Authorization  = app_role in JWT claims (what portal you enter).
  *
- * Routing rules after login (bare "/" only):
- *   investor        → /investor          (direct, no selection screen)
- *   borrower        → /borrower          (direct, no selection screen)
- *   servicer        → /dashboard         (direct, single-purpose role)
- *   asset_manager   → /dashboard         (direct, single-purpose role)
- *   lender_admin    → /select-portal     (may want to review other portals)
- *   platform_admin  → /select-portal     (full access, must choose explicitly)
- *   member/unknown  → /select-portal     (show all options)
- *
- * Portal switching from inside any portal's sidebar is intentionally removed.
- * The only place to switch portals is /select-portal.
+ * Routing rules after login:
+ *   investor        → /investor
+ *   borrower        → /borrower
+ *   servicer        → /servicer/overview
+ *   lender / lender_admin / asset_manager / platform_admin → /dashboard
+ *   member/unknown  → /select-portal  (fallback — should not happen in demo)
  */
 
 import { useContext, useEffect } from "react";
@@ -25,13 +20,14 @@ import { AuthContext } from "./authContext";
 type AppRole =
   | "platform_admin"
   | "lender_admin"
+  | "lender"
   | "servicer"
   | "asset_manager"
   | "investor"
   | "borrower"
   | "member";
 
-// ── Public path prefixes (never redirect here) ─────────────────
+// ── Public path prefixes (never redirect away from these) ───────
 const PUBLIC_PATHS = [
   "/login",
   "/signup",
@@ -42,7 +38,7 @@ const PUBLIC_PATHS = [
 
 // ── Helpers ────────────────────────────────────────────────────
 
-/** Decode JWT payload without verifying signature (Supabase already verified it) */
+/** Decode JWT payload without verifying signature (Supabase already verified it). */
 function decodeJwtPayload(token: string): Record<string, unknown> | null {
   try {
     const base64 = token.split(".")[1];
@@ -54,7 +50,7 @@ function decodeJwtPayload(token: string): Record<string, unknown> | null {
   }
 }
 
-/** Extract the Kontra app_role from JWT custom claims injected by custom_access_token_hook */
+/** Extract app_role from JWT custom claims. */
 export function getAppRoleFromToken(accessToken: string | null | undefined): AppRole {
   if (!accessToken) return "member";
   const payload = decodeJwtPayload(accessToken);
@@ -66,16 +62,23 @@ export function getAppRoleFromToken(accessToken: string | null | undefined): App
   return (role as AppRole) ?? "member";
 }
 
-/** Returns the correct home path for a role */
-export function getPortalPath(role: AppRole): string {
+/** Returns the correct home path for a given role. */
+export function getPortalPath(role: AppRole | string): string {
   switch (role) {
-    case "investor":      return "/investor";
-    case "borrower":      return "/borrower";
-    case "servicer":      return "/servicer/overview";
-    case "asset_manager": return "/dashboard";
-    case "lender_admin":  return "/dashboard";
-    case "platform_admin":return "/dashboard";
-    default:              return "/select-portal";
+    case "investor":
+      return "/investor";
+    case "borrower":
+      return "/borrower";
+    case "servicer":
+      return "/servicer/overview";
+    // All lender variants and admin roles go to the lender dashboard
+    case "lender":
+    case "lender_admin":
+    case "asset_manager":
+    case "platform_admin":
+      return "/dashboard";
+    default:
+      return "/select-portal";
   }
 }
 
@@ -107,7 +110,7 @@ export function usePortalRouter(): void {
 
     const pathname = location.pathname;
 
-    // Only fire on the bare root — all other paths are intentional
+    // Only fire on the bare root
     if (pathname !== "/" && pathname !== "") return;
 
     // Never redirect from public routes
