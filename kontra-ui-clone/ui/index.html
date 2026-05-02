@@ -132,11 +132,22 @@
   </head>
   <body style="margin:0;background:#0a0a0f;">
     <!-- Splash is rendered instantly, removed once React first paints -->
+    <!-- Skip splash on direct navigation to non-root paths (e.g. /login) -->
     <div id="kontra-splash">
       <div class="ks-logo"><span class="ks-k">K</span></div>
       <div class="ks-track"><div class="ks-fill"></div></div>
       <span class="ks-label">Kontra</span>
     </div>
+    <script>
+      (function() {
+        var path = window.location.pathname;
+        // Skip splash for login and other direct-nav pages
+        if (path !== '/' && path !== '') {
+          var s = document.getElementById('kontra-splash');
+          if (s) { s.style.display = 'none'; }
+        }
+      })();
+    </script>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
     <script>
