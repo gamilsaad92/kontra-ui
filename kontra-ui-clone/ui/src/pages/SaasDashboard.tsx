@@ -31,6 +31,8 @@ import ComplianceCovenantCenter from "./dashboard/ComplianceCovenantCenter";
 import TokenizationExchangeCenter from "./dashboard/TokenizationExchangeCenter";
 import AdminPolicyCommandCenter from "./dashboard/AdminPolicyCommandCenter";
 import AgentConsolePage from "./dashboard/AgentConsolePage";
+import AICopilotPage from "./dashboard/AICopilotPage";
+import CommandCenterPage from "./dashboard/CommandCenterPage";
 import {
   GovernanceComplianceCrudPage,
   GovernanceDocumentCrudPage,
@@ -204,6 +206,8 @@ export default function SaasDashboard() {
       <Route path="/exchange" element={<TokenizationExchangeCenter />} />
       <Route path="/policy-command" element={<AdminPolicyCommandCenter />} />
       <Route path="/agents" element={<AgentConsolePage />} />
+      <Route path="/ai-copilot" element={<AICopilotPage />} />
+      <Route path="/command" element={<CommandCenterPage />} />
       <Route path="/settings" element={<Navigate to="/settings/billing" replace />} />
       <Route path="/settings/billing" element={<BillingPage />} />
       <Route path="/settings/sso" element={<SsoSettingsPage />} />

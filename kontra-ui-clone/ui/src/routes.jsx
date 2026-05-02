@@ -28,6 +28,18 @@ export const lenderNavRoutes = [
     requiresAuth: true,
   },
   {
+    label: "AI Copilot",
+    path: "/ai-copilot",
+    icon: SparklesIcon,
+    requiresAuth: true,
+  },
+  {
+    label: "Command Center",
+    path: "/command",
+    icon: BoltIcon,
+    requiresAuth: true,
+  },
+  {
     label: "Portfolio",
     path: "/portfolio",
     icon: BanknotesIcon,
@@ -82,12 +94,6 @@ export const lenderNavRoutes = [
     requiresAuth: true,
   },
   {
-    label: "Tokenization",
-    path: "/tokenization",
-    icon: CubeTransparentIcon,
-    requiresAuth: true,
-  },
-  {
     label: "AI Cost Governance",
     path: "/cost-governance",
     icon: CurrencyDollarIcon,
@@ -108,7 +114,7 @@ export const lenderNavRoutes = [
   {
     label: "Hazard Loss Recovery",
     path: "/hazard-recovery",
-    icon: BoltIcon,
+    icon: WrenchScrewdriverIcon,
     requiresAuth: true,
   },
   {
