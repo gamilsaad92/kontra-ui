@@ -10,13 +10,47 @@ const SESSION_STORAGE_KEY = "kontra_session";
 const DEV_EMAIL = import.meta.env.VITE_DEV_EMAIL || "replit@kontraplatform.com";
 const DEV_PASSWORD = import.meta.env.VITE_DEV_PASSWORD || "12345678";
 const IS_DEV = import.meta.env.DEV === true;
-// Auto-login ONLY when explicitly enabled via VITE_AUTO_LOGIN=true in .env
-// Never auto-login by default — always show the login form
 const AUTO_LOGIN = import.meta.env.VITE_AUTO_LOGIN === "true";
 
-// Module-level singleton — prevents React StrictMode from firing two simultaneous sign-in
-// requests (which would burn through Supabase's rate limit of 5 sign-ins/minute).
 let _devSignInPromise = null;
+
+// Detect service-role keys — they can't be used for client-side signInWithPassword
+const _anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || "";
+const isServiceRoleKey = _anonKey.startsWith("sb_secret_") || _anonKey.includes("service_role");
+
+// ── Demo role config ─────────────────────────────────────────────────────────
+const DEMO_CONFIG = {
+  lender:   { jwtRole: "lender_admin", email: "replit@kontraplatform.com",   name: "Alex Rivera",    id: "demo-lender-001" },
+  servicer: { jwtRole: "servicer",     email: "servicer@kontraplatform.com", name: "Jordan Chen",    id: "demo-servicer-001" },
+  investor: { jwtRole: "investor",     email: "investor@kontraplatform.com", name: "Morgan Blake",   id: "demo-investor-001" },
+  borrower: { jwtRole: "borrower",     email: "borrower@kontraplatform.com", name: "Taylor Reeves",  id: "demo-borrower-001" },
+};
+
+/** Build a locally-decodable demo JWT (not cryptographically verified — demo only). */
+function buildDemoJwt(cfg) {
+  const toB64 = (obj) => {
+    try {
+      return btoa(unescape(encodeURIComponent(JSON.stringify(obj))))
+        .replace(/\+/g, "-").replace(/\//g, "_").replace(/=/g, "");
+    } catch {
+      return btoa(JSON.stringify(obj))
+        .replace(/\+/g, "-").replace(/\//g, "_").replace(/=/g, "");
+    }
+  };
+  const now = Math.floor(Date.now() / 1000);
+  const header  = toB64({ alg: "none", typ: "JWT" });
+  const payload = toB64({
+    sub:           cfg.id,
+    email:         cfg.email,
+    aud:           "authenticated",
+    role:          "authenticated",
+    app_metadata:  { app_role: cfg.jwtRole },
+    user_metadata: { full_name: cfg.name, app_role: cfg.jwtRole },
+    exp: now + 86400 * 30,
+    iat: now,
+  });
+  return `${header}.${payload}.demo-sig`;
+}
 
 /** Called by apiClient to get the current Bearer token. */
 export async function getToken({ forceRefresh = false } = {}) {
@@ -25,7 +59,6 @@ export async function getToken({ forceRefresh = false } = {}) {
     if (!raw) return null;
     const parsed = JSON.parse(raw);
     if (!parsed?.access_token) return null;
-    // If expired and forceRefresh requested, try refreshing via the backend
     if (forceRefresh && parsed.refresh_token) {
       try {
         const res = await fetch("/api/auth/refresh", {
@@ -41,7 +74,7 @@ export async function getToken({ forceRefresh = false } = {}) {
             return data.access_token;
           }
         }
-      } catch (_) { /* fall through to existing token */ }
+      } catch (_) {}
     }
     return parsed.access_token;
   } catch {
@@ -49,7 +82,6 @@ export async function getToken({ forceRefresh = false } = {}) {
   }
 }
 
-/** Called by apiClient when the user needs to re-authenticate. */
 export function redirectToSignIn() {
   if (typeof window !== "undefined" && window.location.pathname !== "/login") {
     window.location.href = "/login";
@@ -70,9 +102,8 @@ function readStoredSession() {
     if (!raw) return null;
     const parsed = JSON.parse(raw);
     if (!parsed?.access_token) return null;
-    // Hard-expired: token is past its expiry
     if (parsed.expires_at && parsed.expires_at * 1000 < Date.now()) {
-      return null; // don't remove — we'll try to refresh using refresh_token
+      return null;
     }
     return parsed;
   } catch {
@@ -87,12 +118,9 @@ function storeSession(session) {
     } else {
       window.localStorage?.removeItem(SESSION_STORAGE_KEY);
     }
-  } catch {
-    /* ignore */
-  }
+  } catch {}
 }
 
-// Sign in directly via Supabase client (preferred — no backend round-trip needed)
 async function supabaseSignIn(email, password) {
   if (!isSupabaseConfigured || !supabase?.auth) {
     throw new Error("Supabase not configured");
@@ -101,16 +129,15 @@ async function supabaseSignIn(email, password) {
   if (error) throw new Error(error.message);
   const s = data.session;
   return {
-    access_token: s.access_token,
+    access_token:  s.access_token,
     refresh_token: s.refresh_token,
-    expires_at: s.expires_at,
-    expires_in: s.expires_in,
-    token_type: s.token_type || "bearer",
+    expires_at:    s.expires_at,
+    expires_in:    s.expires_in,
+    token_type:    s.token_type || "bearer",
     user: { id: data.user.id, email: data.user.email, created_at: data.user.created_at },
   };
 }
 
-// Fallback: sign in via backend API (used only when Supabase client is not configured)
 async function apiSignIn(email, password) {
   const res = await fetch("/api/auth/signin", {
     method: "POST",
@@ -120,23 +147,15 @@ async function apiSignIn(email, password) {
   const json = await res.json();
   if (!res.ok) throw new Error(json.error || "Sign in failed");
   return {
-    access_token: json.access_token,
+    access_token:  json.access_token,
     refresh_token: json.refresh_token,
-    expires_at: json.expires_at,
-    expires_in: json.expires_in,
-    token_type: json.token_type || "bearer",
-    user: json.user,
+    expires_at:    json.expires_at,
+    expires_in:    json.expires_in,
+    token_type:    json.token_type || "bearer",
+    user:          json.user,
   };
 }
 
-// Detect if the anon key is actually a service-role key (sb_secret_...).
-// Service-role keys cannot be used for client-side signInWithPassword — only
-// real anon/publishable keys work. Fall back to the backend API in that case.
-const _anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || "";
-const isServiceRoleKey = _anonKey.startsWith("sb_secret_") || _anonKey.includes("service_role");
-
-// Primary sign-in: use Supabase client directly when we have a real anon key;
-// fall back to backend API when using a service-role key or no key at all.
 async function signInWithCredentials(email, password) {
   if (isSupabaseConfigured && supabase?.auth && !isServiceRoleKey) {
     return supabaseSignIn(email, password);
@@ -147,10 +166,6 @@ async function signInWithCredentials(email, password) {
 async function tryRefreshSession(storedSession) {
   if (!storedSession?.refresh_token) return null;
   try {
-    // Always use the backend refresh endpoint — the Supabase JS client's
-    // refreshSession() acquires a NavigatorLock which can fail or hang in
-    // certain browser environments (e.g. multiple tabs, Safari, some Chromium
-    // builds). Backend refresh has no such dependency.
     const res = await fetch("/api/auth/refresh", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -160,13 +175,26 @@ async function tryRefreshSession(storedSession) {
     const data = await res.json();
     if (!data?.access_token) return null;
     return {
-      access_token: data.access_token,
+      access_token:  data.access_token,
       refresh_token: data.refresh_token || storedSession.refresh_token,
-      expires_at: data.expires_at,
-      expires_in: data.expires_in,
-      token_type: data.token_type || "bearer",
-      user: data.user || storedSession.user,
+      expires_at:    data.expires_at,
+      expires_in:    data.expires_in,
+      token_type:    data.token_type || "bearer",
+      user:          data.user || storedSession.user,
     };
+  } catch {
+    return null;
+  }
+}
+
+function readStoredSessionSync() {
+  try {
+    const raw = window.localStorage?.getItem(SESSION_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed?.access_token) return null;
+    if (parsed.expires_at && parsed.expires_at * 1000 < Date.now()) return null;
+    return parsed;
   } catch {
     return null;
   }
@@ -174,7 +202,14 @@ async function tryRefreshSession(storedSession) {
 
 export function AuthProvider({ children }) {
   const [session, setSessionState] = useState(null);
-  const [loading, setLoading] = useState(true);
+  // Start loading=false if no stored session — avoids black flash on login page
+  const [loading, setLoading] = useState(() => {
+    try {
+      return Boolean(readStoredSessionSync());
+    } catch {
+      return false;
+    }
+  });
 
   const setSession = useCallback((newSession) => {
     storeSession(newSession);
@@ -203,7 +238,6 @@ export function AuthProvider({ children }) {
     }
 
     async function init() {
-      // 1. Try to restore a stored session
       const stored = readStoredSession();
 
       if (stored) {
@@ -211,7 +245,6 @@ export function AuthProvider({ children }) {
         const fiveMinutes = 5 * 60 * 1000;
 
         if (expiresAt - Date.now() > fiveMinutes) {
-          // Session is still good — use it
           await bootstrapOrgIfNeeded(stored.access_token);
           if (mounted) {
             updateBootstrapSnapshot({ sessionReady: true, isAuthenticated: true });
@@ -221,24 +254,24 @@ export function AuthProvider({ children }) {
           return;
         }
 
-        // Session is near expiry or expired — attempt a refresh before giving up
-        const refreshed = await tryRefreshSession(stored);
-        if (refreshed) {
-          storeSession(refreshed);
-          await bootstrapOrgIfNeeded(refreshed.access_token);
-          if (mounted) {
-            updateBootstrapSnapshot({ sessionReady: true, isAuthenticated: true });
-            setSessionState(refreshed);
-            setLoading(false);
+        // Skip refresh for demo sessions (no real refresh token)
+        if (!stored.is_demo) {
+          const refreshed = await tryRefreshSession(stored);
+          if (refreshed) {
+            storeSession(refreshed);
+            await bootstrapOrgIfNeeded(refreshed.access_token);
+            if (mounted) {
+              updateBootstrapSnapshot({ sessionReady: true, isAuthenticated: true });
+              setSessionState(refreshed);
+              setLoading(false);
+            }
+            return;
           }
-          return;
         }
 
-        // Refresh failed — clear stale session
         storeSession(null);
       }
 
-      // 2. In development: auto-sign-in only when VITE_AUTO_LOGIN=true is explicitly set
       if (IS_DEV && AUTO_LOGIN) {
         if (!_devSignInPromise) {
           _devSignInPromise = (async () => {
@@ -264,12 +297,6 @@ export function AuthProvider({ children }) {
         return;
       }
 
-      // 3. No valid stored session and no dev auto-login — show the login form immediately.
-      // We intentionally do NOT call supabase.auth.getSession() here because it acquires a
-      // NavigatorLock that can hang or fail in certain browser environments (multiple tabs,
-      // Safari, some Chromium builds), keeping the app stuck on the loading screen.
-      // Our session lifecycle is fully managed via kontra_session in localStorage so
-      // the Supabase client's internal session state is not needed.
       if (mounted) {
         updateBootstrapSnapshot({ sessionReady: true, isAuthenticated: false });
         setLoading(false);
@@ -280,6 +307,7 @@ export function AuthProvider({ children }) {
     return () => { mounted = false; };
   }, []);
 
+  // ── signIn (email + password) ────────────────────────────────────────────
   const signIn = useCallback(
     async ({ email, password }) => {
       try {
@@ -294,21 +322,68 @@ export function AuthProvider({ children }) {
     [setSession],
   );
 
+  // ── loginAsDemo ──────────────────────────────────────────────────────────
+  // One-click demo login. Tries real Supabase first; falls back to a locally-
+  // valid session so the demo always works regardless of Supabase setup.
+  const loginAsDemo = useCallback(
+    async (role) => {
+      const cfg = DEMO_CONFIG[role];
+      if (!cfg) return { error: { message: `Unknown demo role: ${role}` } };
+
+      // Try real Supabase sign-in first
+      if (isSupabaseConfigured && supabase?.auth && !isServiceRoleKey) {
+        try {
+          const result = await supabaseSignIn(cfg.email, "12345678");
+          updateBootstrapSnapshot({ sessionReady: true, isAuthenticated: true });
+          setSession(result);
+          return { data: { session: result }, error: null };
+        } catch (_) {
+          // Fall through to local demo session
+        }
+      }
+
+      // Build a locally-valid demo session with a decodable JWT
+      const now = Math.floor(Date.now() / 1000);
+      const demoToken = buildDemoJwt(cfg);
+      const demoSession = {
+        access_token:  demoToken,
+        refresh_token: null,
+        expires_at:    now + 86400 * 30,
+        expires_in:    86400 * 30,
+        token_type:    "bearer",
+        is_demo:       true,
+        user: {
+          id:            cfg.id,
+          email:         cfg.email,
+          app_metadata:  { app_role: cfg.jwtRole },
+          user_metadata: { full_name: cfg.name, app_role: cfg.jwtRole },
+        },
+      };
+
+      updateBootstrapSnapshot({ sessionReady: true, isAuthenticated: true });
+      setSession(demoSession);
+      return { data: { session: demoSession }, error: null };
+    },
+    [setSession],
+  );
+
+  // ── signOut ──────────────────────────────────────────────────────────────
   const signOut = useCallback(async () => {
     const token = session?.access_token;
+    const isDemo = session?.is_demo;
     resetBootstrapSnapshot();
     setSession(null);
     clearKontraPersistedState();
-    // Clear org context and cached role
     try { localStorage.removeItem("kontra_active_org_id"); } catch (_) {}
     try { localStorage.removeItem("kontra_resolved_role"); } catch (_) {}
-    if (token) {
+    try { localStorage.removeItem("kontra_demo_role"); } catch (_) {}
+    if (!isDemo && token) {
       fetch("/api/auth/signout", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
       }).catch(() => {});
     }
-    if (isSupabaseConfigured && supabase?.auth) {
+    if (!isDemo && isSupabaseConfigured && supabase?.auth) {
       supabase.auth.signOut().catch(() => {});
     }
     return { error: null };
@@ -318,15 +393,17 @@ export function AuthProvider({ children }) {
     () => ({
       session,
       loading,
-      user: session?.user ?? null,
-      supabase: isSupabaseConfigured ? supabase : null,
-      isLoading: loading,
+      user:         session?.user ?? null,
+      supabase:     isSupabaseConfigured ? supabase : null,
+      isLoading:    loading,
       initializing: loading,
-      isAuthed: Boolean(session?.access_token),
+      isAuthed:     Boolean(session?.access_token),
+      isDemo:       Boolean(session?.is_demo),
       signIn,
+      loginAsDemo,
       signOut,
     }),
-    [loading, session, signIn, signOut],
+    [loading, session, signIn, loginAsDemo, signOut],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
