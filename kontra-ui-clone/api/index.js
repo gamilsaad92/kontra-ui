@@ -675,6 +675,134 @@ app.post('/api/copilot/chat', async (req, res) => {
   }
 });
 
+// ── Tokenization Eligibility Gate ─────────────────────────────────────────────
+// Public copilot route — must stay BEFORE the requireOrgContext middleware block
+const DEMO_LOANS = {
+  'LN-3011': {
+    ref: 'LN-3011', name: 'Harbor Point Mixed-Use', type: 'Mixed-Use',
+    upb: 24700000, rate: 5.85, maturity: '2026-09-01',
+    dscr: 0.94, dscrFloor: 1.25,
+    occupancy: 88, occupancyFloor: 85,
+    delinquencyDays: 45,
+    watchlist: true,
+    escrowTaxes: 'current', escrowInsurance: 'current',
+    covenantBreaches: ['DSCR below 1.25× floor (actual 0.94×)', 'Loan 45 days delinquent'],
+    inspectionOverdue: false,
+    complianceHolds: ['Freddie Mac §28.3 watchlist reporting active'],
+  },
+  'LN-3204': {
+    ref: 'LN-3204', name: 'Riverview Office Tower', type: 'Office',
+    upb: 18200000, rate: 6.10, maturity: '2027-03-01',
+    dscr: 1.18, dscrFloor: 1.25,
+    occupancy: 81, occupancyFloor: 85,
+    delinquencyDays: 0,
+    watchlist: true,
+    escrowTaxes: 'current', escrowInsurance: 'current',
+    covenantBreaches: ['DSCR below 1.25× floor (actual 1.18×)', 'Occupancy below 85% floor (actual 81%)'],
+    inspectionOverdue: false,
+    complianceHolds: ['Investor surveillance reporting overdue'],
+  },
+  'LN-2847': {
+    ref: 'LN-2847', name: 'Meridian Apartments', type: 'Multifamily',
+    upb: 31400000, rate: 4.95, maturity: '2029-12-01',
+    dscr: 1.42, dscrFloor: 1.25,
+    occupancy: 96, occupancyFloor: 85,
+    delinquencyDays: 0,
+    watchlist: false,
+    escrowTaxes: 'current', escrowInsurance: 'current',
+    covenantBreaches: [],
+    inspectionOverdue: false,
+    complianceHolds: [],
+    warnings: ['Insurance renewal due in 14 days — confirm certificate before mint'],
+  },
+};
+
+app.get('/api/copilot/tokenization-eligibility', (req, res) => {
+  const ref = String(req.query.loan_ref || '').toUpperCase().trim();
+  if (!ref) return res.status(400).json({ message: 'loan_ref is required' });
+
+  const loan = DEMO_LOANS[ref];
+  if (!loan) {
+    // Unknown loan — return a generic eligible stub
+    return res.json({
+      loan_ref: ref,
+      name: 'Unknown Loan',
+      found: false,
+      eligible: true,
+      status: 'eligible',
+      checks: [
+        { key: 'dscr',        label: 'DSCR vs floor',          pass: true,  detail: 'No data — assumed compliant' },
+        { key: 'occupancy',   label: 'Occupancy vs floor',      pass: true,  detail: 'No data — assumed compliant' },
+        { key: 'delinquency', label: 'Payment current',         pass: true,  detail: 'No delinquency on record' },
+        { key: 'watchlist',   label: 'Not on watchlist',        pass: true,  detail: 'Not on watchlist' },
+        { key: 'escrow',      label: 'Escrow current',          pass: true,  detail: 'Taxes & insurance current' },
+        { key: 'compliance',  label: 'No compliance holds',     pass: true,  detail: 'No holds on record' },
+      ],
+      blocks: [],
+      warnings: [],
+    });
+  }
+
+  const checks = [
+    {
+      key: 'dscr',
+      label: 'DSCR vs covenant floor',
+      pass: loan.dscr >= loan.dscrFloor,
+      detail: `Actual ${loan.dscr}× — floor ${loan.dscrFloor}×`,
+    },
+    {
+      key: 'occupancy',
+      label: 'Occupancy vs floor',
+      pass: loan.occupancy >= loan.occupancyFloor,
+      detail: `Actual ${loan.occupancy}% — floor ${loan.occupancyFloor}%`,
+    },
+    {
+      key: 'delinquency',
+      label: 'Payment current',
+      pass: loan.delinquencyDays === 0,
+      detail: loan.delinquencyDays === 0 ? 'All payments current' : `${loan.delinquencyDays} days delinquent`,
+    },
+    {
+      key: 'watchlist',
+      label: 'Not on watchlist',
+      pass: !loan.watchlist,
+      detail: loan.watchlist ? 'Active watchlist loan — servicing remediation required' : 'Not on watchlist',
+    },
+    {
+      key: 'escrow',
+      label: 'Escrow current',
+      pass: loan.escrowInsurance === 'current' && loan.escrowTaxes === 'current',
+      detail: `Taxes: ${loan.escrowTaxes} · Insurance: ${loan.escrowInsurance}`,
+    },
+    {
+      key: 'compliance',
+      label: 'No compliance holds',
+      pass: loan.complianceHolds.length === 0,
+      detail: loan.complianceHolds.length === 0 ? 'No holds' : loan.complianceHolds.join('; '),
+    },
+  ];
+
+  const blocks = loan.covenantBreaches || [];
+  const warnings = loan.warnings || [];
+  const eligible = checks.every(c => c.pass) && blocks.length === 0;
+  const status = eligible ? (warnings.length > 0 ? 'eligible_with_warnings' : 'eligible') : 'blocked';
+
+  return res.json({
+    loan_ref: ref,
+    name: loan.name,
+    type: loan.type,
+    upb: loan.upb,
+    dscr: loan.dscr,
+    occupancy: loan.occupancy,
+    found: true,
+    eligible,
+    status,
+    checks,
+    blocks,
+    warnings,
+  });
+});
+
 app.use('/api', requireOrgContext);
 app.use('/api/dashboard-layout', authenticate, dashboard);
 app.use('/api/portfolio', portfolioSliceRouter);
