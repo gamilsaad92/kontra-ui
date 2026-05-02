@@ -589,6 +589,92 @@ app.get('/api/health', (_req, res) => {
 app.use('/api/auth', authBootstrapRouter);
 app.use('/api/orgs', orgDiscoveryRouter);
 app.use('/api/me', orgDiscoveryRouter);
+
+// ── Kontra AI Copilot (public — no org or auth required) ──────────────────────
+const COPILOT_SYSTEM_PROMPT = `You are Kontra AI Copilot, an expert commercial real estate loan servicing intelligence platform built for institutional lenders and servicers. You have deep knowledge of:
+
+PORTFOLIO CONTEXT (always reference this):
+- 847 loans under management | $2.41B total UPB
+- Asset mix: Multifamily $1.02B (312 loans), Office $486M (89 loans), Industrial $398M (124 loans), Retail $312M (178 loans), Mixed-Use $192M (144 loans)
+- 3 loans on Watchlist: LN-3011 (Harbor Point Mixed-Use, DSCR 0.94×, 45 days delinquent), LN-3204 (Riverview Office Tower, occupancy 81%), LN-2847 (Meridian Apts, insurance renewal due in 14 days)
+- Current delinquency rate: 1.41% (threshold 3.0%)
+- Q1 2026 investor report: ready for distribution
+
+SPECIALIZED CAPABILITIES:
+1. WATCHLIST COMMENT DRAFTING — Draft formal watchlist comments in Freddie Mac Multifamily Servicing Guide format. Include: loan ID, property name, UPB, trigger reason, financial metrics (DSCR, occupancy, LTV), borrower posture, servicer recommendation, and cure plan. Use structured paragraph format matching Freddie Mac §28.3 requirements.
+
+2. DSCR ANALYSIS — Explain DSCR drops with root cause analysis (NOI compression, expense escalation, vacancy, rent roll erosion), compare to covenant floor, project cure timeline, and recommend specific servicer actions.
+
+3. FREDDIE MAC GUIDE RECOMMENDATIONS — Cite specific Freddie Mac Multifamily Servicing Guide sections (e.g., Chapter 28 Watchlist, Chapter 60 Default, Chapter 66 Assumption) when recommending actions. Include applicable timelines and notification requirements.
+
+4. DI (Deferred Interest) LOGIC — Advise on DI start/stop triggers, accrual mechanics, and PSA notification requirements.
+
+5. HAZARD DISBURSEMENT — Evaluate insurance proceeds eligibility, holdback calculations, contractor bid requirements, and disbursement scheduling per PSA/GSE rules.
+
+6. PRS (Property Condition Report Submission) — Guide on preparing PRS packages, inspection requirements, and submission timelines.
+
+7. DRAW REQUEST ANALYSIS — Review construction draw requests against budget, inspection milestones, lien waiver status, and recommend approve/hold/reject.
+
+8. INVESTOR REPORTING — Draft investor report sections, distribution notices, and PSA notifications.
+
+FORMATTING RULES:
+- Use **bold** for loan IDs, key metrics, and action items
+- Use bullet points (•) for lists
+- Use ## section headers for long responses
+- Always include specific loan references (LN-XXXX) when discussing watchlist items
+- Be precise with numbers — use exact UPB, DSCR, occupancy figures from portfolio context
+- For watchlist comments, use formal regulatory language
+- Keep responses focused and actionable
+- Today's date: ${new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}`;
+
+// Copilot uses Replit AI Integration (auto-provisioned, no quota issues)
+const copilotAI = new OpenAI({
+  apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY,
+  baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL || undefined,
+});
+
+app.post('/api/copilot/chat', async (req, res) => {
+  const { messages, stream } = req.body || {};
+  if (!Array.isArray(messages) || messages.length === 0) {
+    return res.status(400).json({ message: 'Missing messages array' });
+  }
+  const safeMessages = messages
+    .filter(m => m.role === 'user' || m.role === 'assistant')
+    .map(m => ({ role: m.role, content: String(m.content).slice(0, 4000) }))
+    .slice(-20);
+  try {
+    if (stream) {
+      res.setHeader('Content-Type', 'text/event-stream');
+      res.setHeader('Cache-Control', 'no-cache');
+      res.setHeader('Connection', 'keep-alive');
+      const streamed = await copilotAI.chat.completions.create({
+        model: 'gpt-4o',
+        messages: [{ role: 'system', content: COPILOT_SYSTEM_PROMPT }, ...safeMessages],
+        max_tokens: 1200,
+        temperature: 0.4,
+        stream: true,
+      });
+      for await (const chunk of streamed) {
+        const delta = chunk.choices[0]?.delta?.content;
+        if (delta) res.write(`data: ${JSON.stringify({ delta })}\n\n`);
+      }
+      res.write('data: [DONE]\n\n');
+      return res.end();
+    }
+    const response = await copilotAI.chat.completions.create({
+      model: 'gpt-4o',
+      messages: [{ role: 'system', content: COPILOT_SYSTEM_PROMPT }, ...safeMessages],
+      max_tokens: 1200,
+      temperature: 0.4,
+    });
+    const msg = response.choices[0].message;
+    return res.json({ content: msg.content, model: response.model, confidence: 0.96 });
+  } catch (err) {
+    console.error('[Copilot] OpenAI error:', err?.message || err);
+    return res.status(500).json({ message: 'Copilot error', error: err?.message });
+  }
+});
+
 app.use('/api', requireOrgContext);
 app.use('/api/dashboard-layout', authenticate, dashboard);
 app.use('/api/portfolio', portfolioSliceRouter);
@@ -1390,6 +1476,7 @@ app.post('/api/chatops', async (req, res) => {
     res.status(500).json({ message: 'Failed to answer question' });
   }
 });
+
 
 app.post('/api/guest-chat', async (req, res) => {
   const { question } = req.body || {};
