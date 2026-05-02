@@ -1,5 +1,4 @@
 import { useCallback, useContext, useMemo, useState, type ComponentType } from "react";
-import { Bars3Icon, XMarkIcon } from "@heroicons/react/24/outline";
 import { NavLink, Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { resolveApiBase } from "../lib/api";
 import useFeatureUsage from "../lib/useFeatureUsage";
@@ -9,19 +8,8 @@ import SaasDashboardHome from "../components/SaasDashboardHome";
 import AiInsightsPage from "../features/ai-insights/page/AiInsightsPage";
 import OnchainDashboard from "../components/OnchainDashboard";
 import PortfolioLayout from "./dashboard/portfolio/PortfolioLayout";
-import PortfolioLoansPage from "./dashboard/portfolio/PortfolioLoansPage";
-import PortfolioOverviewPage from "./dashboard/portfolio/PortfolioOverviewPage";
-import LoanOriginationWizard from "./dashboard/portfolio/LoanOriginationWizard";
-import LoanSyndicationPage from "./dashboard/portfolio/LoanSyndicationPage";
-import AIUnderwritingPage from "./dashboard/portfolio/AIUnderwritingPage";
 import MarketsLayout from "./dashboard/markets/MarketsLayout";
-import SecondaryMarketPage from "./dashboard/markets/SecondaryMarketPage";
-import ReportingEnginePage from "./dashboard/reports/ReportingEnginePage";
 import GovernanceLayout from "./dashboard/governance/GovernanceLayout";
-import CureWorkflowPage from "./dashboard/governance/CureWorkflowPage";
-import AlertCenterPage from "./dashboard/AlertCenterPage";
-import CommandCenterPage from "./dashboard/CommandCenterPage";
-import PortfolioForecastPage from "./dashboard/PortfolioForecastPage";
 import LoanControlPage from "./dashboard/governance/LoanControlPage";
 import InvestorGovernancePage from "./dashboard/governance/InvestorGovernancePage";
 import RulesConsolePage from "./dashboard/governance/RulesConsolePage";
@@ -44,10 +32,7 @@ import TokenizationExchangeCenter from "./dashboard/TokenizationExchangeCenter";
 import AdminPolicyCommandCenter from "./dashboard/AdminPolicyCommandCenter";
 import AgentConsolePage from "./dashboard/AgentConsolePage";
 import AICopilotPage from "./dashboard/AICopilotPage";
-import DocumentVaultPage from "./dashboard/DocumentVaultPage";
-import LoanLifecyclePage from "./dashboard/LoanLifecyclePage";
-import MarketplacePage from "./dashboard/MarketplacePage";
-import UnifiedCommandCenter from "./dashboard/UnifiedCommandCenter";
+import CommandCenterPage from "./dashboard/CommandCenterPage";
 import {
   GovernanceComplianceCrudPage,
   GovernanceDocumentCrudPage,
@@ -58,8 +43,19 @@ import {
   MarketsTokensCrudPage,
   MarketsTradesCrudPage,
   PortfolioAssetsPage,
+  PortfolioLoansPage,
   ReportsCrudPage,
 } from "./dashboard/canonical/pages";
+import CashFlowWaterfallPage from "./dashboard/markets/CashFlowWaterfallPage";
+import ServicingTokenBridgePage from "./dashboard/markets/ServicingTokenBridgePage";
+import SecondaryMarketPage from "./dashboard/markets/SecondaryMarketPage";
+import TokensPage from "./dashboard/markets/TokensPage";
+import DistributionLayout from "./dashboard/markets/distribution/DistributionLayout";
+import TokenizeLoan from "./dashboard/markets/distribution/TokenizeLoan";
+import CreateOffering from "./dashboard/markets/distribution/CreateOffering";
+import DistributionMarketplace from "./dashboard/markets/distribution/DistributionMarketplace";
+import RfqsTrades from "./dashboard/markets/distribution/RfqsTrades";
+import Approvals from "./dashboard/markets/distribution/Approvals";
 
 type NavItem = (typeof lenderNavRoutes)[number];
 
@@ -86,64 +82,62 @@ export default function SaasDashboard() {
   const navigate = useNavigate();
   const [isSigningOut, setIsSigningOut] = useState(false);
   const [signOutError, setSignOutError] = useState<string | null>(null);
-  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const navItems = useMemo(() => lenderNavRoutes.filter((item) => !item.requiresAuth || session?.access_token), [session]);
-    
-  const frequentItems = useMemo(() => {
-     const byUsage = [...navItems]
-      .map((item) => ({ item, count: usage[item.path] ?? 0 }))
-      .sort((a, b) => b.count - a.count)
-      .filter((entry) => entry.count > 0)
-      .slice(0, 3)
-      .map((entry) => entry.item);
 
-    return byUsage;
-  }, [navItems, usage]);
-
- const activeItem = useMemo(
+  const activeItem = useMemo(
     () => navItems.find((item) => location.pathname === item.path || location.pathname.startsWith(`${item.path}/`)),
     [location.pathname, navItems],
-);
-  
+  );
+
   const activeLabel = activeItem?.label ?? "Dashboard";
   const isDashboardRoute = location.pathname === "/dashboard";
   const isServicingRoute = location.pathname.startsWith("/servicing");
-  // Sections that render their own header inside the layout — skip the generic one
   const sectionHasOwnHeader =
     location.pathname.startsWith("/portfolio") ||
     location.pathname.startsWith("/markets") ||
     location.pathname.startsWith("/governance") ||
     location.pathname.startsWith("/analytics") ||
-    location.pathname.startsWith("/command") ||
-    location.pathname.startsWith("/forecast") ||
-    location.pathname.startsWith("/alerts") ||
     location.pathname.startsWith("/onchain") ||
     location.pathname.startsWith("/workflow");
+
+  // Grouped sidebar sections — core features first, platform/ops after
+  const NAV_SECTIONS: { label: string | null; paths: string[] }[] = [
+    { label: null, paths: ["/dashboard", "/ai-copilot", "/command"] },
+    { label: "Portfolio", paths: ["/portfolio", "/analytics", "/reports"] },
+    { label: "Compliance", paths: ["/governance", "/compliance-center", "/policy"] },
+    { label: "Capital Markets", paths: ["/markets", "/onchain", "/exchange"] },
+    { label: "Platform", paths: ["/workflow", "/integration", "/enterprise-api", "/agents"] },
+    { label: "Operations", paths: ["/servicing-ops", "/inspection", "/hazard-recovery", "/cost-governance", "/policy-command", "/tokenization"] },
+  ];
+
+  const SETTINGS_PATHS = ["/settings/team", "/settings/billing", "/settings/sso"];
 
   const renderNavItem = useCallback(
     (item: NavItem) => {
       const Icon = item.icon as ComponentType<{ className?: string }>;
       const children = Array.isArray(item.children) ? item.children : [];
+      const isActive = location.pathname === item.path || location.pathname.startsWith(`${item.path}/`);
 
-       return (
-        <div key={item.path} className="space-y-1">
+      return (
+        <div key={item.path} className="space-y-0.5">
           <NavLink
             to={item.path}
-             onClick={() => recordUsage(item.path)}
-            className={({ isActive }) =>
-              `flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition ${
-                isActive || location.pathname.startsWith(`${item.path}/`)
-                  ? "bg-white text-slate-900"
-                  : "text-slate-200 hover:bg-slate-900"
+            onClick={() => recordUsage(item.path)}
+            className={() =>
+              `flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-all ${
+                isActive
+                  ? "bg-white/10 text-white font-medium"
+                  : "text-slate-400 hover:bg-white/5 hover:text-slate-200"
               }`
             }
           >
-                 <Icon className="h-4 w-4" />
-            <span>{item.label}</span>
+            <Icon className={`h-4 w-4 shrink-0 ${isActive ? "text-white" : "text-slate-500"}`} />
+            <span className="truncate">{item.label}</span>
+            {isActive && <span className="ml-auto h-1.5 w-1.5 rounded-full bg-rose-800 shrink-0" />}
           </NavLink>
-         {children.length > 0 && location.pathname.startsWith(item.path) && (
-            <div className="ml-7 space-y-1">
+          {children.length > 0 && location.pathname.startsWith(item.path) && (
+            <div className="ml-7 space-y-0.5">
               {children.map((child) => (
                 <NavLink
                   key={child.path}
@@ -151,7 +145,7 @@ export default function SaasDashboard() {
                   onClick={() => recordUsage(child.path)}
                   className={({ isActive }) =>
                     `block rounded px-2 py-1 text-xs ${
-                      isActive ? "bg-slate-800 text-white" : "text-slate-300 hover:bg-slate-900"
+                      isActive ? "bg-slate-800 text-white" : "text-slate-400 hover:bg-slate-900 hover:text-slate-200"
                     }`
                   }
                 >
@@ -183,14 +177,9 @@ export default function SaasDashboard() {
       <Route path="/" element={<Navigate to="/dashboard" replace />} />
       <Route path="/dashboard" element={<DashboardOverview apiBase={apiBase} />} />
       <Route path="/portfolio" element={<PortfolioLayout />}>
-        <Route index element={<Navigate to="/portfolio/overview" replace />} />
-        <Route path="overview" element={<PortfolioOverviewPage />} />
+        <Route index element={<Navigate to="/portfolio/assets" replace />} />
         <Route path="assets" element={<PortfolioAssetsPage />} />
         <Route path="loans" element={<PortfolioLoansPage />} />
-        <Route path="covenants" element={<ComplianceCovenantCenter />} />
-        <Route path="syndication" element={<LoanSyndicationPage />} />
-        <Route path="underwriting" element={<AIUnderwritingPage />} />
-        <Route path="originate" element={<LoanOriginationWizard />} />
       </Route>
       {/* Servicing moved to /servicer — legacy redirects */}
       <Route path="/servicing" element={<Navigate to="/servicer/overview" replace />} />
@@ -198,10 +187,20 @@ export default function SaasDashboard() {
       <Route path="/markets" element={<MarketsLayout />}>
         <Route index element={<Navigate to="/markets/pools" replace />} />
         <Route path="pools" element={<MarketsPoolsCrudPage />} />
-        <Route path="tokens" element={<MarketsTokensCrudPage />} />
+        <Route path="tokens" element={<TokensPage />} />
+        <Route path="waterfall" element={<CashFlowWaterfallPage />} />
+        <Route path="bridge" element={<ServicingTokenBridgePage />} />
         <Route path="secondary" element={<SecondaryMarketPage />} />
         <Route path="trades" element={<MarketsTradesCrudPage />} />
         <Route path="exchange" element={<Navigate to="/markets/pools" replace />} />
+        <Route path="distribution" element={<DistributionLayout />}>
+          <Route index element={<Navigate to="/markets/distribution/tokenize" replace />} />
+          <Route path="tokenize" element={<TokenizeLoan />} />
+          <Route path="offering" element={<CreateOffering />} />
+          <Route path="marketplace" element={<DistributionMarketplace />} />
+          <Route path="rfqs" element={<RfqsTrades />} />
+          <Route path="approvals" element={<Approvals />} />
+        </Route>
       </Route>
       <Route path="/onchain" element={<OnchainDashboard />} />
       <Route path="/governance" element={<GovernanceLayout />}>
@@ -214,34 +213,24 @@ export default function SaasDashboard() {
         <Route path="regulatory-scans" element={<GovernanceRegulatoryCrudPage />} />
         <Route path="document-review" element={<GovernanceDocumentCrudPage />} />
         <Route path="risk" element={<GovernanceRiskCrudPage />} />
-        <Route path="cure-workflows" element={<CureWorkflowPage />} />
       </Route>
-      <Route path="/alerts" element={<AlertCenterPage />} />
-      <Route path="/command" element={<CommandCenterPage />} />
-      <Route path="/forecast" element={<PortfolioForecastPage />} />
       <Route path="/analytics" element={<AiInsightsPage />} />
       <Route path="/reports" element={<ReportsCrudPage />} />
-      <Route path="/reports/engine" element={<ReportingEnginePage />} />
       <Route path="/workflow" element={<WorkflowEnginePage />} />
       <Route path="/policy" element={<PolicyEnginePage />} />
       <Route path="/integration" element={<IntegrationHubPage />} />
       <Route path="/enterprise-api" element={<EnterpriseApiPage />} />
       <Route path="/tokenization" element={<TokenizationPage />} />
       <Route path="/cost-governance" element={<CostGovernancePage />} />
-      {/* Unified Command Center — replaces 6 separate pages */}
-      <Route path="/command-center" element={<UnifiedCommandCenter />} />
-      {/* Redirects from old individual command center paths */}
-      <Route path="/servicing-ops" element={<Navigate to="/command-center" replace />} />
-      <Route path="/inspection" element={<Navigate to="/command-center" replace />} />
-      <Route path="/hazard-recovery" element={<Navigate to="/command-center" replace />} />
-      <Route path="/compliance-center" element={<Navigate to="/command-center" replace />} />
-      <Route path="/policy-command" element={<Navigate to="/command-center" replace />} />
-      {/* AI Copilot — replaces Agent Console */}
+      <Route path="/servicing-ops" element={<ServicingOperationsCenter />} />
+      <Route path="/inspection" element={<InspectionIntelligenceCenter />} />
+      <Route path="/hazard-recovery" element={<HazardLossRecoveryCenter />} />
+      <Route path="/compliance-center" element={<ComplianceCovenantCenter />} />
+      <Route path="/exchange" element={<TokenizationExchangeCenter />} />
+      <Route path="/policy-command" element={<AdminPolicyCommandCenter />} />
+      <Route path="/agents" element={<AgentConsolePage />} />
       <Route path="/ai-copilot" element={<AICopilotPage />} />
-      <Route path="/document-vault" element={<DocumentVaultPage />} />
-      <Route path="/loan-lifecycle" element={<LoanLifecyclePage />} />
-      <Route path="/marketplace" element={<MarketplacePage />} />
-      <Route path="/agents" element={<Navigate to="/ai-copilot" replace />} />
+      <Route path="/command" element={<CommandCenterPage />} />
       <Route path="/settings" element={<Navigate to="/settings/billing" replace />} />
       <Route path="/settings/billing" element={<BillingPage />} />
       <Route path="/settings/sso" element={<SsoSettingsPage />} />
@@ -279,83 +268,91 @@ export default function SaasDashboard() {
   );
 
   return (
-    <div className="relative flex min-h-screen bg-slate-100 text-slate-900">
-      {/* ── Mobile overlay ── */}
-      {sidebarOpen && (
-        <div className="fixed inset-0 z-40 bg-black/50 md:hidden" onClick={() => setSidebarOpen(false)} />
-      )}
-      <aside className={`fixed inset-y-0 left-0 z-50 flex w-64 shrink-0 flex-col bg-slate-950 text-slate-100 transform transition-transform duration-200 ease-in-out md:relative md:translate-x-0 ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}`}>
-        <div className="flex items-center justify-between px-4 py-4">
-          <div className="flex items-center gap-2.5">
-            <div className="flex h-7 w-7 items-center justify-center rounded-lg" style={{ background: '#800020' }}>
-              <span className="text-sm font-black text-white" style={{ letterSpacing: '-0.05em' }}>K</span>
-            </div>
-            <span className="text-base font-bold text-white" style={{ letterSpacing: '-0.02em' }}>Kontra</span>
+    <div className="flex min-h-screen bg-slate-950 text-slate-900">
+      {/* ── Sidebar ─────────────────────────────────────────── */}
+      <aside className="flex w-60 shrink-0 flex-col bg-[#0d0d14] border-r border-white/5 text-slate-100">
+        {/* Logo */}
+        <div className="flex items-center gap-2.5 px-4 py-4 border-b border-white/5">
+          <div
+            className="flex h-7 w-7 items-center justify-center rounded-lg shrink-0"
+            style={{ background: "#800020", boxShadow: "0 0 16px rgba(128,0,32,0.4)" }}
+          >
+            <span className="text-sm font-black text-white" style={{ letterSpacing: "-0.05em" }}>K</span>
           </div>
-          <button onClick={() => setSidebarOpen(false)} className="md:hidden rounded-lg p-1 text-slate-400 hover:text-white hover:bg-slate-800 transition">
-            <XMarkIcon className="h-5 w-5" />
-          </button>
+          <span className="text-sm font-bold text-white" style={{ letterSpacing: "-0.02em" }}>Kontra</span>
+          <span
+            className="ml-auto text-[10px] font-semibold px-1.5 py-0.5 rounded"
+            style={{ background: "rgba(128,0,32,0.25)", color: "#d4687a", letterSpacing: "0.04em" }}
+          >
+            LENDER
+          </span>
         </div>
-        <nav className="flex-1 space-y-1 overflow-y-auto px-2 pb-4">
-          {frequentItems.length > 0 && (
-            <div className="mb-2 space-y-1">
-              {frequentItems.map((item) => renderNavItem(item))}
-              <hr className="border-slate-800" />
-            </div>
-          )}
-            {navItems.map((item) => renderNavItem(item))}
 
-          <div className="pt-4 space-y-2">
-            <NavLink
-              to="/servicer/overview"
-              className={({ isActive }) =>
-                `flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition ${
-                  isActive
-                    ? "bg-amber-500/15 text-amber-300 font-semibold"
-                    : "text-slate-400 hover:bg-slate-800 hover:text-white"
-                }`
-              }
-            >
-              <span className="text-xs">⚙</span>
-              <span>Servicer Portal</span>
-            </NavLink>
-            <button
-              type="button"
-              onClick={handleSignOut}
-              className="w-full rounded-lg border border-slate-800 px-3 py-2 text-sm font-semibold text-slate-200 transition hover:bg-slate-900 disabled:cursor-not-allowed disabled:opacity-60"
-              disabled={isSigningOut}
-            >
-              {isSigningOut ? "Logging out..." : "Log Out"}
-            </button>
-            {signOutError && (
-              <p className="mt-2 text-xs text-brand-200" role="alert">
-                {signOutError}
-              </p>
-            )}
+        {/* Nav sections */}
+        <nav className="flex-1 overflow-y-auto px-2 py-3 space-y-4">
+          {NAV_SECTIONS.map((section, si) => {
+            const sectionItems = navItems.filter((item) => section.paths.includes(item.path));
+            if (sectionItems.length === 0) return null;
+            return (
+              <div key={si} className="space-y-0.5">
+                {section.label && (
+                  <p className="px-3 mb-1 text-[10px] font-semibold uppercase tracking-widest text-slate-600">
+                    {section.label}
+                  </p>
+                )}
+                {sectionItems.map((item) => renderNavItem(item))}
+              </div>
+            );
+          })}
+
+          {/* Settings section */}
+          <div className="space-y-0.5">
+            <p className="px-3 mb-1 text-[10px] font-semibold uppercase tracking-widest text-slate-600">
+              Settings
+            </p>
+            {navItems
+              .filter((item) => SETTINGS_PATHS.includes(item.path))
+              .map((item) => renderNavItem(item))}
           </div>
         </nav>
-      </aside>
-      <main className="flex min-w-0 flex-1 flex-col overflow-y-auto">
-        {/* Mobile top bar */}
-        <div className="flex items-center gap-3 border-b border-slate-200 bg-white px-4 py-3 md:hidden">
-          <button onClick={() => setSidebarOpen(true)} className="rounded-lg p-1.5 text-slate-600 hover:bg-slate-100 transition">
-            <Bars3Icon className="h-5 w-5" />
+
+        {/* Footer */}
+        <div className="px-2 pb-3 pt-2 border-t border-white/5 space-y-1">
+          <NavLink
+            to="/servicer/overview"
+            className={({ isActive }) =>
+              `flex items-center gap-2 rounded-lg px-3 py-2 text-xs transition ${
+                isActive ? "bg-amber-500/15 text-amber-300" : "text-slate-500 hover:bg-white/5 hover:text-slate-300"
+              }`
+            }
+          >
+            <span>⚙</span>
+            <span>Servicer Portal</span>
+          </NavLink>
+          <button
+            type="button"
+            onClick={handleSignOut}
+            disabled={isSigningOut}
+            className="w-full rounded-lg px-3 py-2 text-xs font-semibold text-slate-500 transition hover:bg-white/5 hover:text-slate-300 disabled:opacity-50 text-left"
+          >
+            {isSigningOut ? "Logging out…" : "Sign Out"}
           </button>
-          <div className="flex items-center gap-2">
-            <div className="flex h-6 w-6 items-center justify-center rounded-md text-xs font-black text-white" style={{ background: '#800020' }}>K</div>
-            <span className="text-sm font-bold text-slate-900">Kontra <span className="text-brand-600">Lender</span></span>
-          </div>
+          {signOutError && <p className="text-xs text-red-400 px-3">{signOutError}</p>}
         </div>
-        <div className="flex-1 p-3 md:p-6">
+      </aside>
+
+      {/* ── Main content ────────────────────────────────────── */}
+      <main className="flex-1 overflow-y-auto bg-slate-50">
         {!isDashboardRoute && !isServicingRoute && !sectionHasOwnHeader && (
-          <header className="mb-6 space-y-1">
-            <h1 className="text-xl font-semibold tracking-tight text-slate-900">{activeLabel}</h1>
-            <p className="text-sm text-slate-500">
+          <header className="px-6 py-5 border-b border-slate-200 bg-white">
+            <h1 className="text-lg font-semibold tracking-tight text-slate-900">{activeLabel}</h1>
+            <p className="text-sm text-slate-500 mt-0.5">
               Structured loan data infrastructure for servicing, compliance, and capital markets.
             </p>
           </header>
         )}
-        {isDashboardRoute || isServicingRoute ? content : <div className="space-y-6">{content}</div>}
+        <div className={isDashboardRoute || isServicingRoute ? "" : "p-6"}>
+          {content}
         </div>
       </main>
     </div>
