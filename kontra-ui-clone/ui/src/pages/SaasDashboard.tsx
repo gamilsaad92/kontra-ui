@@ -46,6 +46,16 @@ import {
   PortfolioLoansPage,
   ReportsCrudPage,
 } from "./dashboard/canonical/pages";
+import CashFlowWaterfallPage from "./dashboard/markets/CashFlowWaterfallPage";
+import ServicingTokenBridgePage from "./dashboard/markets/ServicingTokenBridgePage";
+import SecondaryMarketPage from "./dashboard/markets/SecondaryMarketPage";
+import TokensPage from "./dashboard/markets/TokensPage";
+import DistributionLayout from "./dashboard/markets/distribution/DistributionLayout";
+import TokenizeLoan from "./dashboard/markets/distribution/TokenizeLoan";
+import CreateOffering from "./dashboard/markets/distribution/CreateOffering";
+import DistributionMarketplace from "./dashboard/markets/distribution/DistributionMarketplace";
+import RfqsTrades from "./dashboard/markets/distribution/RfqsTrades";
+import Approvals from "./dashboard/markets/distribution/Approvals";
 
 type NavItem = (typeof lenderNavRoutes)[number];
 
@@ -177,9 +187,20 @@ export default function SaasDashboard() {
       <Route path="/markets" element={<MarketsLayout />}>
         <Route index element={<Navigate to="/markets/pools" replace />} />
         <Route path="pools" element={<MarketsPoolsCrudPage />} />
-        <Route path="tokens" element={<MarketsTokensCrudPage />} />
+        <Route path="tokens" element={<TokensPage />} />
+        <Route path="waterfall" element={<CashFlowWaterfallPage />} />
+        <Route path="bridge" element={<ServicingTokenBridgePage />} />
+        <Route path="secondary" element={<SecondaryMarketPage />} />
         <Route path="trades" element={<MarketsTradesCrudPage />} />
         <Route path="exchange" element={<Navigate to="/markets/pools" replace />} />
+        <Route path="distribution" element={<DistributionLayout />}>
+          <Route index element={<Navigate to="/markets/distribution/tokenize" replace />} />
+          <Route path="tokenize" element={<TokenizeLoan />} />
+          <Route path="offering" element={<CreateOffering />} />
+          <Route path="marketplace" element={<DistributionMarketplace />} />
+          <Route path="rfqs" element={<RfqsTrades />} />
+          <Route path="approvals" element={<Approvals />} />
+        </Route>
       </Route>
       <Route path="/onchain" element={<OnchainDashboard />} />
       <Route path="/governance" element={<GovernanceLayout />}>

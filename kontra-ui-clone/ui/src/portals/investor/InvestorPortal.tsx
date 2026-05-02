@@ -198,11 +198,12 @@ const SEVERITY_COLOR: Record<string, string> = {
   low: "border-slate-200 bg-slate-50",
 };
 
-type Section = "portfolio" | "distributions" | "performance" | "governance" | "documents" | "alerts" | "ai" | "marketplace" | "pricing";
+type Section = "portfolio" | "distributions" | "cashflow" | "performance" | "governance" | "documents" | "alerts" | "ai" | "marketplace" | "pricing";
 
 const NAV: { key: Section; label: string; icon: typeof ChartPieIcon; badge?: number; dividerBefore?: boolean }[] = [
   { key:"portfolio",     label:"Portfolio",           icon: ChartPieIcon },
   { key:"distributions", label:"Distributions",       icon: BanknotesIcon },
+  { key:"cashflow",      label:"Cash Flow Waterfall", icon: ArrowTrendingUpIcon },
   { key:"performance",   label:"Loan Performance",    icon: ChartBarIcon },
   { key:"governance",    label:"Governance & Voting",  icon: ScaleIcon, badge: 2 },
   { key:"documents",     label:"Reports & Docs",      icon: DocumentTextIcon },
@@ -452,6 +453,120 @@ export default function InvestorPortal() {
                 </div>
                 <p className="mt-4 text-xs text-slate-500">
                   Token contracts record ownership only — servicing decisions remain exclusively in the Kontra execution layer.
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* ── CASH FLOW WATERFALL ── */}
+          {section === "cashflow" && (
+            <div className="space-y-6">
+              <div>
+                <h1 className="text-2xl font-black text-white">Cash Flow Waterfall</h1>
+                <p className="text-sm text-slate-400 mt-1">
+                  How rent becomes your yield — from tenant payment to token holder distribution.
+                </p>
+              </div>
+
+              {/* Aggregate yield metrics */}
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                {[
+                  { label: "Blended Current Yield", value: "7.84%", sub: "Weighted by UPB", color: "text-emerald-400" },
+                  { label: "Monthly Distribution", value: "$22,118", sub: "Net to your wallet", color: "text-violet-300" },
+                  { label: "YTD Distributions", value: "$88,470", sub: "Jan–Apr 2026", color: "text-white" },
+                  { label: "Loans Distributing", value: "2 / 3", sub: "1 on hold — LN-3011", color: "text-amber-400" },
+                ].map(s => (
+                  <div key={s.label} className="rounded-xl border border-slate-800 bg-slate-900 p-5">
+                    <p className="text-xs font-bold uppercase tracking-widest text-slate-400">{s.label}</p>
+                    <p className={`mt-2 text-2xl font-black tabular-nums ${s.color}`}>{s.value}</p>
+                    <p className="text-xs text-slate-500 mt-1">{s.sub}</p>
+                  </div>
+                ))}
+              </div>
+
+              {/* Waterfall per holding */}
+              <div className="space-y-4">
+                {[
+                  {
+                    ref: "LN-2847", name: "Meridian Apartments", tokens: 500, nav: 102.73,
+                    grossRent: 287500, fee: 8625, reserve: 14375, dist: 264500,
+                    myDist: 421.18, yield: 7.62, status: "distributing",
+                  },
+                  {
+                    ref: "LN-2741", name: "Westgate Industrial Park", tokens: 250, nav: 101.35,
+                    grossRent: 198400, fee: 5952, reserve: 9920, dist: 182528,
+                    myDist: 200.24, yield: 8.10, status: "distributing",
+                  },
+                  {
+                    ref: "LN-3011", name: "Harbor Point Mixed-Use", tokens: 300, nav: 79.25,
+                    grossRent: 0, fee: 0, reserve: 0, dist: 0,
+                    myDist: 0, yield: 0, status: "hold",
+                  },
+                ].map(h => {
+                  const isHeld = h.status === "hold";
+                  const total = h.grossRent || 1;
+                  const pct = (v: number) => Math.round((v / total) * 100);
+                  return (
+                    <div key={h.ref} className={`rounded-xl border p-5 ${isHeld ? "border-red-800/50 bg-red-950/30" : "border-slate-800 bg-slate-900"}`}>
+                      <div className="flex items-start justify-between gap-4 mb-4">
+                        <div>
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className="text-xs font-black font-mono text-slate-400">{h.ref}</span>
+                            <span className={`text-xs rounded-full px-2 py-0.5 font-bold ${isHeld ? "bg-red-900/60 text-red-400" : "bg-emerald-900/60 text-emerald-400"}`}>
+                              {isHeld ? "On Hold" : "Distributing"}
+                            </span>
+                          </div>
+                          <p className="text-sm font-bold text-white">{h.name}</p>
+                          <p className="text-xs text-slate-500 mt-0.5">You hold {h.tokens.toLocaleString()} tokens · NAV ${h.nav.toFixed(2)}</p>
+                        </div>
+                        <div className="text-right shrink-0">
+                          <p className="text-xs text-slate-400">Your monthly yield</p>
+                          <p className={`text-2xl font-black tabular-nums ${isHeld ? "text-slate-600" : "text-emerald-400"}`}>
+                            {isHeld ? "$0.00" : `$${h.myDist.toFixed(2)}`}
+                          </p>
+                          <p className="text-xs text-slate-500 mt-0.5">{isHeld ? "suspended" : `${h.yield.toFixed(2)}% annualized`}</p>
+                        </div>
+                      </div>
+
+                      {isHeld ? (
+                        <div className="rounded-lg bg-red-900/30 border border-red-800/40 px-4 py-3 text-sm text-red-400">
+                          ⛔ Cash trap active — 45d delinquent. No waterfall flows until the borrower cures. Governance vote GV-050 pending.
+                        </div>
+                      ) : (
+                        <div className="space-y-2">
+                          {[
+                            { label: "Gross Rent", amount: h.grossRent, bar: 100, color: "bg-slate-600" },
+                            { label: "Servicer Fee (3%)", amount: h.fee, bar: pct(h.fee), color: "bg-amber-500" },
+                            { label: "Reserve Fund (5%)", amount: h.reserve, bar: pct(h.reserve), color: "bg-blue-500" },
+                            { label: "→ Distribution Pool", amount: h.dist, bar: pct(h.dist), color: "bg-emerald-500" },
+                          ].map((step, i) => (
+                            <div key={step.label} className="flex items-center gap-3">
+                              <div className="w-36 text-right text-xs text-slate-500 shrink-0">
+                                {i > 0 && <span className="text-slate-600 mr-1">−</span>}{step.label}
+                              </div>
+                              <div className="flex-1 bg-slate-800 rounded-full h-4 overflow-hidden">
+                                <div className={`h-full rounded-full ${step.color}`} style={{ width: `${step.bar}%` }} />
+                              </div>
+                              <div className="w-24 text-right text-xs font-semibold tabular-nums text-slate-300">
+                                ${step.amount.toLocaleString()}
+                              </div>
+                            </div>
+                          ))}
+                          <div className="pt-2 border-t border-slate-800 flex items-center justify-between text-xs text-slate-400">
+                            <span>Your share of pool ({h.tokens} / total supply)</span>
+                            <span className="font-bold text-emerald-400">+${h.myDist.toFixed(2)} / month</span>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-5">
+                <p className="text-xs font-semibold text-slate-500 mb-1">Waterfall priority</p>
+                <p className="text-xs text-slate-400 leading-relaxed">
+                  Distributions flow through the Kontra waterfall in priority order: (1) Servicer fee → (2) Liquidity reserve → (3) Net interest to token holders. Loans with DSCR below 1.20× or 30+ days delinquent are automatically cash-trapped per PSA §7.4(b). Your tokens remain transferable during hold periods (subject to Reg D lockup), but no yield flows until the borrower cures.
                 </p>
               </div>
             </div>
