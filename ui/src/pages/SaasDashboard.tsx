@@ -74,27 +74,15 @@ export default function SaasDashboard() {
   const [signOutError, setSignOutError] = useState<string | null>(null);
 
   const navItems = useMemo(() => lenderNavRoutes.filter((item) => !item.requiresAuth || session?.access_token), [session]);
-    
-  const frequentItems = useMemo(() => {
-     const byUsage = [...navItems]
-      .map((item) => ({ item, count: usage[item.path] ?? 0 }))
-      .sort((a, b) => b.count - a.count)
-      .filter((entry) => entry.count > 0)
-      .slice(0, 3)
-      .map((entry) => entry.item);
 
-    return byUsage;
-  }, [navItems, usage]);
-
- const activeItem = useMemo(
+  const activeItem = useMemo(
     () => navItems.find((item) => location.pathname === item.path || location.pathname.startsWith(`${item.path}/`)),
     [location.pathname, navItems],
-);
-  
+  );
+
   const activeLabel = activeItem?.label ?? "Dashboard";
   const isDashboardRoute = location.pathname === "/dashboard";
   const isServicingRoute = location.pathname.startsWith("/servicing");
-  // Sections that render their own header inside the layout — skip the generic one
   const sectionHasOwnHeader =
     location.pathname.startsWith("/portfolio") ||
     location.pathname.startsWith("/markets") ||
@@ -103,29 +91,43 @@ export default function SaasDashboard() {
     location.pathname.startsWith("/onchain") ||
     location.pathname.startsWith("/workflow");
 
+  // Grouped sidebar sections — core features first, platform/ops after
+  const NAV_SECTIONS: { label: string | null; paths: string[] }[] = [
+    { label: null, paths: ["/dashboard", "/ai-copilot", "/command"] },
+    { label: "Portfolio", paths: ["/portfolio", "/analytics", "/reports"] },
+    { label: "Compliance", paths: ["/governance", "/compliance-center", "/policy"] },
+    { label: "Capital Markets", paths: ["/markets", "/onchain", "/exchange"] },
+    { label: "Platform", paths: ["/workflow", "/integration", "/enterprise-api", "/agents"] },
+    { label: "Operations", paths: ["/servicing-ops", "/inspection", "/hazard-recovery", "/cost-governance", "/policy-command", "/tokenization"] },
+  ];
+
+  const SETTINGS_PATHS = ["/settings/team", "/settings/billing", "/settings/sso"];
+
   const renderNavItem = useCallback(
     (item: NavItem) => {
       const Icon = item.icon as ComponentType<{ className?: string }>;
       const children = Array.isArray(item.children) ? item.children : [];
+      const isActive = location.pathname === item.path || location.pathname.startsWith(`${item.path}/`);
 
-       return (
-        <div key={item.path} className="space-y-1">
+      return (
+        <div key={item.path} className="space-y-0.5">
           <NavLink
             to={item.path}
-             onClick={() => recordUsage(item.path)}
-            className={({ isActive }) =>
-              `flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition ${
-                isActive || location.pathname.startsWith(`${item.path}/`)
-                  ? "bg-white text-slate-900"
-                  : "text-slate-200 hover:bg-slate-900"
+            onClick={() => recordUsage(item.path)}
+            className={() =>
+              `flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-all ${
+                isActive
+                  ? "bg-white/10 text-white font-medium"
+                  : "text-slate-400 hover:bg-white/5 hover:text-slate-200"
               }`
             }
           >
-                 <Icon className="h-4 w-4" />
-            <span>{item.label}</span>
+            <Icon className={`h-4 w-4 shrink-0 ${isActive ? "text-white" : "text-slate-500"}`} />
+            <span className="truncate">{item.label}</span>
+            {isActive && <span className="ml-auto h-1.5 w-1.5 rounded-full bg-rose-800 shrink-0" />}
           </NavLink>
-         {children.length > 0 && location.pathname.startsWith(item.path) && (
-            <div className="ml-7 space-y-1">
+          {children.length > 0 && location.pathname.startsWith(item.path) && (
+            <div className="ml-7 space-y-0.5">
               {children.map((child) => (
                 <NavLink
                   key={child.path}
@@ -133,7 +135,7 @@ export default function SaasDashboard() {
                   onClick={() => recordUsage(child.path)}
                   className={({ isActive }) =>
                     `block rounded px-2 py-1 text-xs ${
-                      isActive ? "bg-slate-800 text-white" : "text-slate-300 hover:bg-slate-900"
+                      isActive ? "bg-slate-800 text-white" : "text-slate-400 hover:bg-slate-900 hover:text-slate-200"
                     }`
                   }
                 >
@@ -245,63 +247,92 @@ export default function SaasDashboard() {
   );
 
   return (
-     <div className="flex min-h-screen bg-slate-100 text-slate-900">
-      <aside className="flex w-64 flex-col bg-slate-950 text-slate-100">
-        <div className="flex items-center gap-2.5 px-4 py-4">
-          <div className="flex h-7 w-7 items-center justify-center rounded-lg" style={{ background: '#800020' }}>
-            <span className="text-sm font-black text-white" style={{ letterSpacing: '-0.05em' }}>K</span>
+    <div className="flex min-h-screen bg-slate-950 text-slate-900">
+      {/* ── Sidebar ─────────────────────────────────────────── */}
+      <aside className="flex w-60 shrink-0 flex-col bg-[#0d0d14] border-r border-white/5 text-slate-100">
+        {/* Logo */}
+        <div className="flex items-center gap-2.5 px-4 py-4 border-b border-white/5">
+          <div
+            className="flex h-7 w-7 items-center justify-center rounded-lg shrink-0"
+            style={{ background: "#800020", boxShadow: "0 0 16px rgba(128,0,32,0.4)" }}
+          >
+            <span className="text-sm font-black text-white" style={{ letterSpacing: "-0.05em" }}>K</span>
           </div>
-          <span className="text-base font-bold text-white" style={{ letterSpacing: '-0.02em' }}>Kontra</span>
+          <span className="text-sm font-bold text-white" style={{ letterSpacing: "-0.02em" }}>Kontra</span>
+          <span
+            className="ml-auto text-[10px] font-semibold px-1.5 py-0.5 rounded"
+            style={{ background: "rgba(128,0,32,0.25)", color: "#d4687a", letterSpacing: "0.04em" }}
+          >
+            LENDER
+          </span>
         </div>
-        <nav className="flex-1 space-y-1 overflow-y-auto px-2 pb-4">
-          {frequentItems.length > 0 && (
-            <div className="mb-2 space-y-1">
-              {frequentItems.map((item) => renderNavItem(item))}
-              <hr className="border-slate-800" />
-            </div>
-          )}
-            {navItems.map((item) => renderNavItem(item))}
 
-          <div className="pt-4 space-y-2">
-            <NavLink
-              to="/servicer/overview"
-              className={({ isActive }) =>
-                `flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition ${
-                  isActive
-                    ? "bg-amber-500/15 text-amber-300 font-semibold"
-                    : "text-slate-400 hover:bg-slate-800 hover:text-white"
-                }`
-              }
-            >
-              <span className="text-xs">⚙</span>
-              <span>Servicer Portal</span>
-            </NavLink>
-            <button
-              type="button"
-              onClick={handleSignOut}
-              className="w-full rounded-lg border border-slate-800 px-3 py-2 text-sm font-semibold text-slate-200 transition hover:bg-slate-900 disabled:cursor-not-allowed disabled:opacity-60"
-              disabled={isSigningOut}
-            >
-              {isSigningOut ? "Logging out..." : "Log Out"}
-            </button>
-            {signOutError && (
-              <p className="mt-2 text-xs text-brand-200" role="alert">
-                {signOutError}
-              </p>
-            )}
+        {/* Nav sections */}
+        <nav className="flex-1 overflow-y-auto px-2 py-3 space-y-4">
+          {NAV_SECTIONS.map((section, si) => {
+            const sectionItems = navItems.filter((item) => section.paths.includes(item.path));
+            if (sectionItems.length === 0) return null;
+            return (
+              <div key={si} className="space-y-0.5">
+                {section.label && (
+                  <p className="px-3 mb-1 text-[10px] font-semibold uppercase tracking-widest text-slate-600">
+                    {section.label}
+                  </p>
+                )}
+                {sectionItems.map((item) => renderNavItem(item))}
+              </div>
+            );
+          })}
+
+          {/* Settings section */}
+          <div className="space-y-0.5">
+            <p className="px-3 mb-1 text-[10px] font-semibold uppercase tracking-widest text-slate-600">
+              Settings
+            </p>
+            {navItems
+              .filter((item) => SETTINGS_PATHS.includes(item.path))
+              .map((item) => renderNavItem(item))}
           </div>
         </nav>
+
+        {/* Footer */}
+        <div className="px-2 pb-3 pt-2 border-t border-white/5 space-y-1">
+          <NavLink
+            to="/servicer/overview"
+            className={({ isActive }) =>
+              `flex items-center gap-2 rounded-lg px-3 py-2 text-xs transition ${
+                isActive ? "bg-amber-500/15 text-amber-300" : "text-slate-500 hover:bg-white/5 hover:text-slate-300"
+              }`
+            }
+          >
+            <span>⚙</span>
+            <span>Servicer Portal</span>
+          </NavLink>
+          <button
+            type="button"
+            onClick={handleSignOut}
+            disabled={isSigningOut}
+            className="w-full rounded-lg px-3 py-2 text-xs font-semibold text-slate-500 transition hover:bg-white/5 hover:text-slate-300 disabled:opacity-50 text-left"
+          >
+            {isSigningOut ? "Logging out…" : "Sign Out"}
+          </button>
+          {signOutError && <p className="text-xs text-red-400 px-3">{signOutError}</p>}
+        </div>
       </aside>
-      <main className="flex-1 overflow-y-auto p-6">
+
+      {/* ── Main content ────────────────────────────────────── */}
+      <main className="flex-1 overflow-y-auto bg-slate-50">
         {!isDashboardRoute && !isServicingRoute && !sectionHasOwnHeader && (
-          <header className="mb-6 space-y-1">
-            <h1 className="text-xl font-semibold tracking-tight text-slate-900">{activeLabel}</h1>
-            <p className="text-sm text-slate-500">
+          <header className="px-6 py-5 border-b border-slate-200 bg-white">
+            <h1 className="text-lg font-semibold tracking-tight text-slate-900">{activeLabel}</h1>
+            <p className="text-sm text-slate-500 mt-0.5">
               Structured loan data infrastructure for servicing, compliance, and capital markets.
             </p>
           </header>
         )}
-        {isDashboardRoute || isServicingRoute ? content : <div className="space-y-6">{content}</div>}
+        <div className={isDashboardRoute || isServicingRoute ? "" : "p-6"}>
+          {content}
+        </div>
       </main>
     </div>
   );

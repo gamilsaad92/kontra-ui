@@ -8,6 +8,20 @@ import { QueryClientProvider } from "./lib/queryClient";
 import { Web3Provider } from "./providers/Web3Provider";
 import "./index.css";
 
+// Dismiss the inline splash screen from index.html once React has mounted
+function dismissSplash() {
+  const splash = document.getElementById("kontra-splash");
+  if (!splash) return;
+  splash.classList.add("ks-out");
+  setTimeout(() => splash.remove(), 400);
+}
+
+// Hook component that fires dismissSplash after first paint
+function SplashDismisser() {
+  React.useEffect(() => { dismissSplash(); }, []);
+  return null;
+}
+
 function FatalStartup({ error }: { error: unknown }) {
   return (
     <div style={{ padding: 24, fontFamily: "Arial, sans-serif" }}>
@@ -27,9 +41,10 @@ function FatalStartup({ error }: { error: unknown }) {
     <React.StrictMode>
       <BrowserRouter>
         <ErrorBoundary>
-                  <QueryClientProvider>
+          <QueryClientProvider>
             <Web3Provider>
               <AuthProvider>
+                <SplashDismisser />
                 <App />
               </AuthProvider>
             </Web3Provider>

@@ -2,12 +2,25 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
 import App from "./App";
-import ErrorBoundary from "./app/ErrorBoundary";
+import { ErrorBoundary } from "./app/ErrorBoundary";
 import { AuthProvider } from "./lib/authContext";
 import { QueryClientProvider } from "./lib/queryClient";
-import { installApiFetchInterceptor } from "./lib/apiClient";
 import { Web3Provider } from "./providers/Web3Provider";
 import "./index.css";
+
+// Dismiss the inline splash screen from index.html once React has mounted
+function dismissSplash() {
+  const splash = document.getElementById("kontra-splash");
+  if (!splash) return;
+  splash.classList.add("ks-out");
+  setTimeout(() => splash.remove(), 400);
+}
+
+// Hook component that fires dismissSplash after first paint
+function SplashDismisser() {
+  React.useEffect(() => { dismissSplash(); }, []);
+  return null;
+}
 
 function FatalStartup({ error }: { error: unknown }) {
   return (
@@ -20,9 +33,7 @@ function FatalStartup({ error }: { error: unknown }) {
   );
 }
 
-installApiFetchInterceptor();
-
-try {
+  try {
   const rootEl = document.getElementById("root");
   if (!rootEl) throw new Error("Missing #root element in index.html");
 
@@ -33,6 +44,7 @@ try {
           <QueryClientProvider>
             <Web3Provider>
               <AuthProvider>
+                <SplashDismisser />
                 <App />
               </AuthProvider>
             </Web3Provider>
