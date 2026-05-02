@@ -139,5 +139,19 @@
     </div>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
+    <script>
+      // Hard fallback: always remove splash within 4s even if React never mounts
+      (function() {
+        function dismissSplashFallback() {
+          var el = document.getElementById('kontra-splash');
+          if (!el || el.style.display === 'none') return;
+          el.classList.add('ks-out');
+          setTimeout(function() {
+            if (el.parentNode) el.parentNode.removeChild(el);
+          }, 400);
+        }
+        setTimeout(dismissSplashFallback, 1500);
+      })();
+    </script>
   </body>
 </html>
