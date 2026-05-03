@@ -6,56 +6,10 @@ import { AuthContext } from "../lib/authContext";
 import { getAppRoleFromToken, getPortalPath } from "../lib/usePortalRouter";
 
 const PORTALS = [
-  {
-    role: "lender",
-    label: "Lender",
-    color: "#800020",
-    bg: "rgba(128,0,32,0.15)",
-    border: "rgba(128,0,32,0.35)",
-    desc: "Originate · Underwrite · Portfolio Management",
-    badge: "$604.7M AUM",
-  },
-  {
-    role: "servicer",
-    label: "Servicer",
-    color: "#b45309",
-    bg: "rgba(180,83,9,0.15)",
-    border: "rgba(180,83,9,0.35)",
-    desc: "Payments · Draws · Escrow · AI Validation",
-    badge: "6 Active Loans",
-  },
-  {
-    role: "investor",
-    label: "Investor",
-    color: "#6d28d9",
-    bg: "rgba(109,40,217,0.15)",
-    border: "rgba(109,40,217,0.35)",
-    desc: "Holdings · Distributions · Debt Exchange",
-    badge: "10,290 Investors",
-  },
-  {
-    role: "borrower",
-    label: "Borrower",
-    color: "#065f46",
-    bg: "rgba(6,95,70,0.15)",
-    border: "rgba(6,95,70,0.35)",
-    desc: "Payments · Draw Requests · Covenant Scorecard",
-    badge: "LN-2847",
-  },
-];
-
-const STATS = [
-  { label: "Portfolio AUM",     value: "$604.7M" },
-  { label: "Tokenized",         value: "$225.4M" },
-  { label: "Active Investors",  value: "10,290"  },
-  { label: "Compliance",        value: "Reg D/S ✓" },
-];
-
-const FEATURES = [
-  { icon: "🏦", text: "Full CRE loan servicing lifecycle" },
-  { icon: "🔗", text: "ERC-1400 tokenization bridge" },
-  { icon: "🌊", text: "On-chain cash flow waterfall" },
-  { icon: "⚖️",  text: "Reg D / Reg S compliance layer" },
+  { role: "lender",   label: "Lender",   color: "#800020", bg: "rgba(128,0,32,0.15)",   border: "rgba(128,0,32,0.35)" },
+  { role: "servicer", label: "Servicer", color: "#b45309", bg: "rgba(180,83,9,0.15)",   border: "rgba(180,83,9,0.35)" },
+  { role: "investor", label: "Investor", color: "#6d28d9", bg: "rgba(109,40,217,0.15)", border: "rgba(109,40,217,0.35)" },
+  { role: "borrower", label: "Borrower", color: "#065f46", bg: "rgba(6,95,70,0.15)",    border: "rgba(6,95,70,0.35)" },
 ];
 
 export default function LoginPage() {
@@ -118,7 +72,7 @@ export default function LoginPage() {
 
       {/* ── Left panel ─────────────────────────────────────────── */}
       <div
-        className="hidden lg:flex lg:w-[460px] xl:w-[520px] flex-col justify-between p-10 shrink-0"
+        className="hidden lg:flex lg:w-[420px] xl:w-[460px] flex-col justify-between p-10 shrink-0"
         style={{
           background: "linear-gradient(160deg, #1a0a0a 0%, #111827 55%, #0f1623 100%)",
           borderRight: "1px solid rgba(255,255,255,0.07)",
@@ -136,7 +90,7 @@ export default function LoginPage() {
         </div>
 
         {/* Hero copy */}
-        <div className="space-y-6">
+        <div className="space-y-8">
           <div>
             <p className="mb-2 text-xs font-bold uppercase tracking-widest" style={{ color: "#800020" }}>
               Data Infrastructure · CRE Loan Servicing
@@ -149,53 +103,21 @@ export default function LoginPage() {
             </p>
           </div>
 
-          {/* Platform stats */}
-          <div
-            className="rounded-xl p-5"
-            style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.09)" }}
-          >
-            <p className="mb-4 text-[10px] font-bold uppercase tracking-widest" style={{ color: "#64748b" }}>
-              Platform Demo · Live Data
-            </p>
-            <div className="grid grid-cols-2 gap-4">
-              {STATS.map((s) => (
-                <div key={s.label}>
-                  <p className="text-lg font-black text-white" style={{ letterSpacing: "-0.02em" }}>{s.value}</p>
-                  <p className="text-xs mt-0.5" style={{ color: "#64748b" }}>{s.label}</p>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Feature list */}
-          <div className="grid grid-cols-2 gap-2">
-            {FEATURES.map((f) => (
-              <div key={f.text} className="flex items-start gap-2">
-                <span className="text-sm shrink-0">{f.icon}</span>
-                <p className="text-xs leading-snug" style={{ color: "#94a3b8" }}>{f.text}</p>
-              </div>
-            ))}
-          </div>
-
-          {/* Portal quick-enter */}
+          {/* Demo portal access */}
           <div>
-            <p className="mb-2.5 text-[10px] font-bold uppercase tracking-widest" style={{ color: "#64748b" }}>
-              Try a Portal — No login required
+            <p className="mb-3 text-[10px] font-bold uppercase tracking-widest" style={{ color: "#64748b" }}>
+              Try a portal — no login required
             </p>
             <div className="grid grid-cols-2 gap-2">
               {PORTALS.map((p) => (
                 <button
                   key={p.role}
                   onClick={() => enterDemo(p.role)}
-                  className="rounded-lg p-3 text-left transition-all hover:scale-[1.02] group"
+                  className="rounded-lg px-4 py-3 text-left transition-all hover:scale-[1.02]"
                   style={{ background: p.bg, border: `1px solid ${p.border}` }}
                 >
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="text-xs font-black" style={{ color: p.color }}>{p.label}</span>
-                    <span className="text-[10px] font-semibold" style={{ color: p.color, opacity: 0.7 }}>→</span>
-                  </div>
-                  <p className="text-[10px] leading-snug" style={{ color: "#94a3b8" }}>{p.desc}</p>
-                  <p className="mt-1.5 text-[10px] font-bold" style={{ color: p.color }}>{p.badge}</p>
+                  <span className="text-sm font-black" style={{ color: p.color }}>{p.label}</span>
+                  <p className="text-[10px] mt-0.5" style={{ color: "#94a3b8" }}>Enter demo →</p>
                 </button>
               ))}
             </div>
@@ -213,14 +135,13 @@ export default function LoginPage() {
       {/* ── Right form panel ───────────────────────────────────── */}
       <div className="flex flex-1 flex-col items-center justify-center px-6 py-12">
 
-        {/* Mobile logo */}
-        <div className="mb-8 flex flex-col items-center gap-3 lg:hidden">
+        {/* Mobile logo + demo shortcuts */}
+        <div className="mb-8 flex flex-col items-center gap-4 lg:hidden">
           <div className="flex h-10 w-10 items-center justify-center rounded-xl" style={{ background: "#800020" }}>
             <span className="text-base font-black text-white">K</span>
           </div>
           <span className="text-base font-bold text-white">Kontra</span>
-          {/* Mobile demo shortcuts */}
-          <div className="flex flex-wrap justify-center gap-2 mt-1">
+          <div className="flex flex-wrap justify-center gap-2">
             {PORTALS.map((p) => (
               <button
                 key={p.role}
@@ -228,7 +149,7 @@ export default function LoginPage() {
                 className="rounded-full px-3 py-1.5 text-xs font-bold transition"
                 style={{ background: p.bg, color: p.color, border: `1px solid ${p.border}` }}
               >
-                {p.label} Demo
+                {p.label}
               </button>
             ))}
           </div>
@@ -250,28 +171,6 @@ export default function LoginPage() {
           {mode === "login"
             ? <LoginForm onSwitch={() => setMode("signup")} />
             : <SignUpForm onSwitch={() => setMode("login")} />}
-
-          {/* Demo divider */}
-          <div className="mt-8">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="h-px flex-1" style={{ background: "rgba(255,255,255,0.08)" }} />
-              <span className="text-xs" style={{ color: "#475569" }}>or try a live demo</span>
-              <div className="h-px flex-1" style={{ background: "rgba(255,255,255,0.08)" }} />
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-              {PORTALS.map((p) => (
-                <button
-                  key={p.role}
-                  onClick={() => enterDemo(p.role)}
-                  className="rounded-lg px-3 py-2.5 text-xs font-bold text-left transition-all hover:scale-[1.02]"
-                  style={{ background: p.bg, color: p.color, border: `1px solid ${p.border}` }}
-                >
-                  <div className="font-black mb-0.5">{p.label} Portal</div>
-                  <div className="font-medium opacity-70" style={{ fontSize: "10px" }}>{p.badge}</div>
-                </button>
-              ))}
-            </div>
-          </div>
         </div>
       </div>
     </div>
