@@ -284,7 +284,7 @@ export default function InvestorPortal() {
       <aside className="flex w-60 flex-col border-r border-gray-200 bg-white">
         {/* Logo area */}
         <div className="flex items-center gap-3 px-5 py-5 border-b border-gray-200">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-violet-600 font-black text-white text-sm">K</div>
+          <div className="flex h-8 w-8 items-center justify-center rounded-lg font-black text-white text-sm" style={{ background: "#800020" }}>K</div>
           <div>
             <p className="text-sm font-bold text-gray-900">Kontra</p>
             <p className="text-xs text-violet-600 font-medium">Investor Portal</p>

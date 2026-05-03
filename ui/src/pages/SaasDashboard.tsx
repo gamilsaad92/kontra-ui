@@ -290,7 +290,7 @@ export default function SaasDashboard() {
         <div className="flex items-center gap-2.5 px-4 py-4" style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
           <div
             className="flex h-7 w-7 items-center justify-center rounded-lg shrink-0"
-            style={{ background: "#E5484D" }}
+            style={{ background: "#800020" }}
           >
             <span className="text-sm font-black text-white" style={{ letterSpacing: "-0.05em" }}>K</span>
           </div>
