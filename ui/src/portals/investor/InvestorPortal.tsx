@@ -278,12 +278,12 @@ export default function InvestorPortal() {
   const highAlerts    = alerts.filter((a) => a.severity === "high").length;
 
   return (
-    <div className="flex h-screen bg-slate-950 text-slate-100 overflow-hidden">
+    <div className="flex h-screen bg-[#111827] text-slate-100 overflow-hidden">
 
       {/* ── Sidebar ── */}
-      <aside className="flex w-60 flex-col border-r border-slate-800 bg-slate-900">
+      <aside className="flex w-60 flex-col border-r border-slate-600/70/50 bg-[#1e2a3a]">
         {/* Logo area */}
-        <div className="flex items-center gap-3 px-5 py-5 border-b border-slate-800">
+        <div className="flex items-center gap-3 px-5 py-5 border-b border-slate-600/70/50">
           <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-violet-600 font-black text-white text-sm">K</div>
           <div>
             <p className="text-sm font-bold text-white">Kontra</p>
@@ -316,9 +316,9 @@ export default function InvestorPortal() {
               <div key={item.key}>
                 {item.dividerBefore && (
                   <div className="flex items-center gap-2 px-2 pt-3 pb-1">
-                    <div className="flex-1 h-px bg-slate-800" />
+                    <div className="flex-1 h-px bg-slate-700/60" />
                     <span className="text-xs font-bold uppercase tracking-widest text-slate-600">Exchange</span>
-                    <div className="flex-1 h-px bg-slate-800" />
+                    <div className="flex-1 h-px bg-slate-700/60" />
                   </div>
                 )}
                 <button
@@ -328,7 +328,7 @@ export default function InvestorPortal() {
                       ? item.key === "marketplace" || item.key === "pricing"
                         ? "bg-emerald-700 text-white font-semibold"
                         : "bg-violet-600 text-white font-semibold"
-                      : "text-slate-400 hover:bg-slate-800 hover:text-white"
+                      : "text-slate-400 hover:bg-slate-700/50 hover:text-white"
                   }`}
                 >
                   <Icon className="h-4 w-4 shrink-0" />
@@ -345,7 +345,7 @@ export default function InvestorPortal() {
         </nav>
 
         {/* Footer */}
-        <div className="border-t border-slate-800 p-4 space-y-2">
+        <div className="border-t border-slate-600/70/50 p-4 space-y-2">
           {highAlerts > 0 && (
             <div className="mb-1 flex items-center gap-2 rounded-lg bg-brand-900/60 border border-brand-700/40 px-3 py-2">
               <ExclamationTriangleIcon className="h-3.5 w-3.5 text-brand-400" />
@@ -354,7 +354,7 @@ export default function InvestorPortal() {
           )}
           <button
             onClick={async () => { await signOut(); navigate("/login", { replace: true }); }}
-            className="w-full flex items-center gap-2 px-3 py-2.5 rounded-lg text-sm font-semibold text-slate-300 border border-slate-700 hover:bg-red-900/40 hover:text-red-300 hover:border-red-700 transition-all"
+            className="w-full flex items-center gap-2 px-3 py-2.5 rounded-lg text-sm font-semibold text-slate-300 border border-slate-600/70 hover:bg-red-900/40 hover:text-red-300 hover:border-red-700 transition-all"
           >
             <ArrowRightStartOnRectangleIcon className="h-4 w-4" />
             Log Out
@@ -363,7 +363,7 @@ export default function InvestorPortal() {
       </aside>
 
       {/* ── Main Content ── */}
-      <main className="flex-1 overflow-y-auto bg-slate-950">
+      <main className="flex-1 overflow-y-auto bg-[#111827]">
         <div className="max-w-6xl mx-auto px-8 py-8 space-y-8">
 
           {/* ── PORTFOLIO ── */}
@@ -382,7 +382,7 @@ export default function InvestorPortal() {
                   { label:"Next Distribution", value: fmt(nextDist), sub:"Scheduled next month", accent: true },
                   { label:"Token Holdings", value: totalTokens.toLocaleString(), sub:"Across 4 pools" },
                 ].map((s) => (
-                  <div key={s.label} className={`rounded-xl border p-5 ${s.accent ? "border-violet-700 bg-violet-950/60" : "border-slate-800 bg-slate-900"}`}>
+                  <div key={s.label} className={`rounded-xl border p-5 ${s.accent ? "border-violet-700 bg-violet-950/60" : "border-slate-600/70/50 bg-[#1e2a3a]"}`}>
                     <p className="text-xs font-bold uppercase tracking-widest text-slate-400">{s.label}</p>
                     <p className={`mt-2 text-2xl font-black tabular-nums ${s.accent ? "text-violet-300" : "text-white"}`}>{s.value}</p>
                     <p className="text-xs text-slate-500 mt-1">{s.sub}</p>
@@ -391,23 +391,23 @@ export default function InvestorPortal() {
               </div>
 
               {/* Holdings table */}
-              <div className="rounded-xl border border-slate-800 bg-slate-900 overflow-hidden">
-                <div className="px-6 py-4 border-b border-slate-800 flex items-center justify-between">
+              <div className="rounded-xl border border-slate-600/70/50 bg-[#1e2a3a] overflow-hidden">
+                <div className="px-6 py-4 border-b border-slate-600/70/50 flex items-center justify-between">
                   <h2 className="text-base font-bold text-white">Loan Participations</h2>
                   <span className="text-xs text-slate-500">{holdings.length} positions</span>
                 </div>
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
                     <thead>
-                      <tr className="border-b border-slate-800 bg-slate-900/80">
+                      <tr className="border-b border-slate-600/70/50 bg-[#1e2a3a]/80">
                         {["Loan","Property","Type","Location","UPB","My Share","My Invest.","Tokens","Yield","Status","Maturity"].map((h) => (
                           <th key={h} className="px-4 py-3 text-left text-xs font-bold uppercase tracking-widest text-slate-500 whitespace-nowrap">{h}</th>
                         ))}
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-slate-800/60">
+                    <tbody className="divide-y divide-slate-700/40">
                       {holdings.map((h) => (
-                        <tr key={h.loan_id} className="hover:bg-slate-800/40 transition-colors">
+                        <tr key={h.loan_id} className="hover:bg-slate-700/30 transition-colors">
                           <td className="px-4 py-3 font-black text-violet-400 whitespace-nowrap">{h.loan_ref}</td>
                           <td className="px-4 py-3 font-semibold text-white whitespace-nowrap">{h.property_name}</td>
                           <td className="px-4 py-3 text-slate-400 text-xs">{h.property_type}</td>
@@ -429,14 +429,14 @@ export default function InvestorPortal() {
                     </tbody>
                   </table>
                 </div>
-                <div className="border-t border-slate-800 bg-slate-900/60 px-6 py-3 flex items-center justify-between">
+                <div className="border-t border-slate-600/70/50 bg-[#1e2a3a]/60 px-6 py-3 flex items-center justify-between">
                   <p className="text-xs text-slate-500">Total invested capital: <strong className="text-white">{fmt(totalInvested)}</strong></p>
                   <p className="text-xs text-slate-500">Blended yield: <strong className="text-emerald-400">{(holdings.reduce((s, h) => s + h.yield_pct * h.my_share_usd, 0) / totalInvested).toFixed(2)}%</strong></p>
                 </div>
               </div>
 
               {/* Token positions */}
-              <div className="rounded-xl border border-slate-800 bg-slate-900 p-6">
+              <div className="rounded-xl border border-slate-600/70/50 bg-[#1e2a3a] p-6">
                 <h2 className="text-base font-bold text-white mb-4">Token Positions (On-Chain)</h2>
                 <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
                   {holdings.map((h) => (
@@ -476,7 +476,7 @@ export default function InvestorPortal() {
                   { label: "YTD Distributions", value: "$88,470", sub: "Jan–Apr 2026", color: "text-white" },
                   { label: "Loans Distributing", value: "2 / 3", sub: "1 on hold — LN-3011", color: "text-amber-400" },
                 ].map(s => (
-                  <div key={s.label} className="rounded-xl border border-slate-800 bg-slate-900 p-5">
+                  <div key={s.label} className="rounded-xl border border-slate-600/70/50 bg-[#1e2a3a] p-5">
                     <p className="text-xs font-bold uppercase tracking-widest text-slate-400">{s.label}</p>
                     <p className={`mt-2 text-2xl font-black tabular-nums ${s.color}`}>{s.value}</p>
                     <p className="text-xs text-slate-500 mt-1">{s.sub}</p>
@@ -507,7 +507,7 @@ export default function InvestorPortal() {
                   const total = h.grossRent || 1;
                   const pct = (v: number) => Math.round((v / total) * 100);
                   return (
-                    <div key={h.ref} className={`rounded-xl border p-5 ${isHeld ? "border-red-800/50 bg-red-950/30" : "border-slate-800 bg-slate-900"}`}>
+                    <div key={h.ref} className={`rounded-xl border p-5 ${isHeld ? "border-red-800/50 bg-red-950/30" : "border-slate-600/70/50 bg-[#1e2a3a]"}`}>
                       <div className="flex items-start justify-between gap-4 mb-4">
                         <div>
                           <div className="flex items-center gap-2 mb-1">
@@ -544,7 +544,7 @@ export default function InvestorPortal() {
                               <div className="w-36 text-right text-xs text-slate-500 shrink-0">
                                 {i > 0 && <span className="text-slate-600 mr-1">−</span>}{step.label}
                               </div>
-                              <div className="flex-1 bg-slate-800 rounded-full h-4 overflow-hidden">
+                              <div className="flex-1 bg-slate-700/60 rounded-full h-4 overflow-hidden">
                                 <div className={`h-full rounded-full ${step.color}`} style={{ width: `${step.bar}%` }} />
                               </div>
                               <div className="w-24 text-right text-xs font-semibold tabular-nums text-slate-300">
@@ -552,7 +552,7 @@ export default function InvestorPortal() {
                               </div>
                             </div>
                           ))}
-                          <div className="pt-2 border-t border-slate-800 flex items-center justify-between text-xs text-slate-400">
+                          <div className="pt-2 border-t border-slate-600/70/50 flex items-center justify-between text-xs text-slate-400">
                             <span>Your share of pool ({h.tokens} / total supply)</span>
                             <span className="font-bold text-emerald-400">+${h.myDist.toFixed(2)} / month</span>
                           </div>
@@ -563,7 +563,7 @@ export default function InvestorPortal() {
                 })}
               </div>
 
-              <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-5">
+              <div className="rounded-xl border border-slate-600/70/50 bg-[#1e2a3a]/60 p-5">
                 <p className="text-xs font-semibold text-slate-500 mb-1">Waterfall priority</p>
                 <p className="text-xs text-slate-400 leading-relaxed">
                   Distributions flow through the Kontra waterfall in priority order: (1) Servicer fee → (2) Liquidity reserve → (3) Net interest to token holders. Loans with DSCR below 1.20× or 30+ days delinquent are automatically cash-trapped per PSA §7.4(b). Your tokens remain transferable during hold periods (subject to Reg D lockup), but no yield flows until the borrower cures.
@@ -587,7 +587,7 @@ export default function InvestorPortal() {
                   { label:"Gross Before Fees", value: fmtFull(paidDists.reduce((s,d) => s + d.gross_amount, 0)), color:"text-white" },
                   { label:"Next Payment", value: fmtFull(nextDist), sub: "Scheduled May 1, 2026", color:"text-violet-300" },
                 ].map((s) => (
-                  <div key={s.label} className="rounded-xl border border-slate-800 bg-slate-900 p-5">
+                  <div key={s.label} className="rounded-xl border border-slate-600/70/50 bg-[#1e2a3a] p-5">
                     <p className="text-xs font-bold uppercase tracking-widest text-slate-400">{s.label}</p>
                     <p className={`mt-2 text-2xl font-black tabular-nums ${s.color}`}>{s.value}</p>
                     {s.sub && <p className="text-xs text-slate-500 mt-1">{s.sub}</p>}
@@ -618,21 +618,21 @@ export default function InvestorPortal() {
               </div>
 
               {/* History */}
-              <div className="rounded-xl border border-slate-800 bg-slate-900 overflow-hidden">
-                <div className="px-6 py-4 border-b border-slate-800">
+              <div className="rounded-xl border border-slate-600/70/50 bg-[#1e2a3a] overflow-hidden">
+                <div className="px-6 py-4 border-b border-slate-600/70/50">
                   <h2 className="text-base font-bold text-white">Distribution History</h2>
                 </div>
                 <table className="w-full text-sm">
                   <thead>
-                    <tr className="border-b border-slate-800 bg-slate-900/80">
+                    <tr className="border-b border-slate-600/70/50 bg-[#1e2a3a]/80">
                       {["Period","Loan","Type","Gross","Net (after fees)","Date","Status"].map((h) => (
                         <th key={h} className="px-5 py-3 text-left text-xs font-bold uppercase tracking-widest text-slate-500 whitespace-nowrap">{h}</th>
                       ))}
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-800/60">
+                  <tbody className="divide-y divide-slate-700/40">
                     {paidDists.map((d) => (
-                      <tr key={d.id} className="hover:bg-slate-800/40 transition-colors">
+                      <tr key={d.id} className="hover:bg-slate-700/30 transition-colors">
                         <td className="px-5 py-3 text-slate-300">{d.period}</td>
                         <td className="px-5 py-3 font-bold text-violet-400">{d.loan_ref}</td>
                         <td className="px-5 py-3 text-slate-400">{d.type}</td>
@@ -657,18 +657,18 @@ export default function InvestorPortal() {
                 <h1 className="text-2xl font-black text-white">Loan Performance</h1>
                 <p className="text-sm text-slate-400 mt-1">Read-only performance metrics. Servicing actions are managed by the lender.</p>
               </div>
-              <div className="rounded-xl border border-slate-800 bg-slate-900 overflow-hidden">
+              <div className="rounded-xl border border-slate-600/70/50 bg-[#1e2a3a] overflow-hidden">
                 <table className="w-full text-sm">
                   <thead>
-                    <tr className="border-b border-slate-800 bg-slate-900/80">
+                    <tr className="border-b border-slate-600/70/50 bg-[#1e2a3a]/80">
                       {["Loan","Property","DSCR","LTV","Delinquency","Payment Status","Risk"].map((h) => (
                         <th key={h} className="px-5 py-4 text-left text-xs font-bold uppercase tracking-widest text-slate-500 whitespace-nowrap">{h}</th>
                       ))}
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-800/60">
+                  <tbody className="divide-y divide-slate-700/40">
                     {performance.map((p) => (
-                      <tr key={p.loan_ref} className="hover:bg-slate-800/40 transition-colors">
+                      <tr key={p.loan_ref} className="hover:bg-slate-700/30 transition-colors">
                         <td className="px-5 py-4 font-black text-violet-400">{p.loan_ref}</td>
                         <td className="px-5 py-4 text-white font-semibold whitespace-nowrap">{p.property}</td>
                         <td className={`px-5 py-4 font-bold tabular-nums ${p.dscr >= 1.25 ? "text-emerald-400" : p.dscr >= 1.0 ? "text-amber-400" : "text-brand-400"}`}>
@@ -694,7 +694,7 @@ export default function InvestorPortal() {
                   </tbody>
                 </table>
               </div>
-              <div className="rounded-lg border border-slate-800 bg-slate-900/50 px-5 py-4">
+              <div className="rounded-lg border border-slate-600/70/50 bg-[#1e2a3a]/50 px-5 py-4">
                 <p className="text-xs text-slate-500">
                   <strong className="text-slate-300">Important:</strong> Performance data is read-only for investors.
                   Forbearance, modifications, enforcement, and all servicing decisions are made exclusively
@@ -716,8 +716,8 @@ export default function InvestorPortal() {
               <div className="space-y-4">
                 <h2 className="text-sm font-bold uppercase tracking-widest text-slate-400">Active Proposals</h2>
                 {DEMO_GOV_PROPOSALS.filter((p) => p.status === "active").map((p) => (
-                  <div key={p.id} className="rounded-xl border border-slate-700 bg-slate-900 overflow-hidden">
-                    <div className="px-6 py-4 border-b border-slate-800 flex flex-wrap items-start justify-between gap-3">
+                  <div key={p.id} className="rounded-xl border border-slate-600/70 bg-[#1e2a3a] overflow-hidden">
+                    <div className="px-6 py-4 border-b border-slate-600/70/50 flex flex-wrap items-start justify-between gap-3">
                       <div>
                         <div className="flex items-center gap-2 mb-1">
                           <span className="text-xs font-black text-slate-500 uppercase tracking-widest">{p.number}</span>
@@ -760,7 +760,7 @@ export default function InvestorPortal() {
                       ].map((bar) => (
                         <div key={bar.label} className="flex items-center gap-3">
                           <span className={`w-16 text-right text-xs font-bold ${bar.text}`}>{bar.label}</span>
-                          <div className="flex-1 rounded-full bg-slate-800 h-2 overflow-hidden">
+                          <div className="flex-1 rounded-full bg-slate-700/60 h-2 overflow-hidden">
                             <div className={`h-full rounded-full ${bar.color}`} style={{ width:`${bar.pct}%` }} />
                           </div>
                           <span className={`w-12 text-xs font-bold ${bar.text} tabular-nums`}>{bar.pct.toFixed(1)}%</span>
@@ -780,7 +780,7 @@ export default function InvestorPortal() {
 
                 <h2 className="text-sm font-bold uppercase tracking-widest text-slate-400 pt-4">Past Results</h2>
                 {DEMO_GOV_PROPOSALS.filter((p) => p.status !== "active").map((p) => (
-                  <div key={p.id} className="rounded-xl border border-slate-800 bg-slate-900/60 px-6 py-4 flex items-center justify-between">
+                  <div key={p.id} className="rounded-xl border border-slate-600/70/50 bg-[#1e2a3a]/60 px-6 py-4 flex items-center justify-between">
                     <div>
                       <span className="text-xs text-slate-500">{p.number}</span>
                       <p className="text-sm font-semibold text-slate-300">{p.title}</p>
@@ -798,7 +798,7 @@ export default function InvestorPortal() {
           {section === "documents" && (
             <div className="space-y-6">
               <h1 className="text-2xl font-black text-white">Reports & Documents</h1>
-              <div className="rounded-xl border border-slate-800 bg-slate-900 divide-y divide-slate-800">
+              <div className="rounded-xl border border-slate-600/70/50 bg-[#1e2a3a] divide-y divide-slate-800">
                 {[
                   { name:"Q1 2026 Investor Report", type:"Quarterly Report", date:"2026-04-01", size:"2.4 MB" },
                   { name:"LN-2847 Loan Summary", type:"Loan Document", date:"2026-03-15", size:"840 KB" },
@@ -807,7 +807,7 @@ export default function InvestorPortal() {
                   { name:"Governance Proposal GV-047 — Outcome", type:"Governance", date:"2026-03-28", size:"190 KB" },
                   { name:"Annual Investor Report 2025", type:"Annual Report", date:"2026-01-15", size:"5.2 MB" },
                 ].map((doc) => (
-                  <div key={doc.name} className="flex items-center justify-between px-6 py-4 hover:bg-slate-800/40 transition-colors">
+                  <div key={doc.name} className="flex items-center justify-between px-6 py-4 hover:bg-slate-700/30 transition-colors">
                     <div className="flex items-center gap-3">
                       <DocumentTextIcon className="h-5 w-5 text-violet-400 shrink-0" />
                       <div>
@@ -815,7 +815,7 @@ export default function InvestorPortal() {
                         <p className="text-xs text-slate-500">{doc.type} · {fmtDate(doc.date)} · {doc.size}</p>
                       </div>
                     </div>
-                    <button className="rounded-lg border border-slate-700 bg-slate-800 px-3 py-1.5 text-xs font-semibold text-slate-300 hover:bg-slate-700 transition-colors">
+                    <button className="rounded-lg border border-slate-600/70 bg-slate-700/60 px-3 py-1.5 text-xs font-semibold text-slate-300 hover:bg-slate-700 transition-colors">
                       Download
                     </button>
                   </div>
@@ -849,7 +849,7 @@ export default function InvestorPortal() {
                   </div>
                 ))}
               </div>
-              <div className="rounded-lg border border-slate-800 bg-slate-900/50 px-5 py-4">
+              <div className="rounded-lg border border-slate-600/70/50 bg-[#1e2a3a]/50 px-5 py-4">
                 <p className="text-xs text-slate-500">
                   Risk alerts are informational only. All enforcement and servicing responses are handled
                   by the lender/servicer. You may submit a governance proposal if a major economic decision is required.
@@ -886,7 +886,7 @@ export default function InvestorPortal() {
               )}
 
               {!aiBrief && !aiBriefLoading && !aiBriefError && (
-                <div className="rounded-xl border border-slate-700 bg-slate-800/50 p-10 text-center">
+                <div className="rounded-xl border border-slate-600/70 bg-slate-700/60/50 p-10 text-center">
                   <SparklesIcon className="h-10 w-10 text-slate-500 mx-auto mb-4" />
                   <p className="text-slate-400 text-sm">Click "Generate Brief" to run an AI analysis of your full portfolio.</p>
                   <p className="text-slate-500 text-xs mt-1">Powered by GPT-4o · Takes ~10 seconds</p>
@@ -904,7 +904,7 @@ export default function InvestorPortal() {
               {aiBrief && !aiBriefLoading && (
                 <div className="space-y-5">
                   {/* Executive Summary */}
-                  <div className="rounded-xl border border-slate-700 bg-slate-800 p-6">
+                  <div className="rounded-xl border border-slate-600/70 bg-slate-700/60 p-6">
                     <div className="flex items-start justify-between gap-4">
                       <div className="flex-1">
                         <p className="text-xs font-bold text-slate-400 uppercase tracking-wide mb-2">Executive Summary</p>
@@ -923,7 +923,7 @@ export default function InvestorPortal() {
 
                   {/* Signals */}
                   {aiBrief.signals?.length > 0 && (
-                    <div className="rounded-xl border border-slate-700 bg-slate-800 p-5">
+                    <div className="rounded-xl border border-slate-600/70 bg-slate-700/60 p-5">
                       <p className="text-xs font-bold text-slate-400 uppercase tracking-wide mb-3">Portfolio Signals</p>
                       <div className="space-y-2">
                         {aiBrief.signals.map((s, i) => (
@@ -938,7 +938,7 @@ export default function InvestorPortal() {
 
                   {/* Watchlist */}
                   {aiBrief.watchlist?.length > 0 && (
-                    <div className="rounded-xl border border-slate-700 bg-slate-800 p-5">
+                    <div className="rounded-xl border border-slate-600/70 bg-slate-700/60 p-5">
                       <p className="text-xs font-bold text-slate-400 uppercase tracking-wide mb-3 flex items-center gap-2">
                         <ShieldExclamationIcon className="h-4 w-4 text-amber-400" /> Watchlist
                       </p>
@@ -955,7 +955,7 @@ export default function InvestorPortal() {
 
                   {/* Recommendations */}
                   {aiBrief.recommendations?.length > 0 && (
-                    <div className="rounded-xl border border-slate-700 bg-slate-800 p-5">
+                    <div className="rounded-xl border border-slate-600/70 bg-slate-700/60 p-5">
                       <p className="text-xs font-bold text-slate-400 uppercase tracking-wide mb-3">Recommendations</p>
                       <ol className="space-y-2">
                         {aiBrief.recommendations.map((r, i) => (
@@ -1023,7 +1023,7 @@ export default function InvestorPortal() {
                         className={`rounded-lg border px-4 py-2.5 text-left transition-colors ${
                           mxToken === sym
                             ? isDistressed ? "border-brand-500 bg-brand-900/40 text-brand-300" : "border-emerald-500 bg-emerald-900/30 text-emerald-300"
-                            : "border-slate-700 bg-slate-900 text-slate-400 hover:border-slate-600 hover:text-white"
+                            : "border-slate-600/70 bg-[#1e2a3a] text-slate-400 hover:border-slate-600 hover:text-white"
                         }`}
                       >
                         <p className="text-xs font-mono font-black">{sym}</p>
@@ -1039,7 +1039,7 @@ export default function InvestorPortal() {
 
                 {/* Market summary strip */}
                 {navEntry && (
-                  <div className="rounded-xl border border-slate-800 bg-slate-900 flex divide-x divide-slate-800 overflow-hidden text-center">
+                  <div className="rounded-xl border border-slate-600/70/50 bg-[#1e2a3a] flex divide-x divide-slate-800 overflow-hidden text-center">
                     {[
                       { label:"Best Bid",    value:`$${bestBid.toFixed(2)}`, color:"text-emerald-400" },
                       { label:"Best Ask",    value:`$${bestAsk.toFixed(2)}`, color:"text-brand-400" },
@@ -1060,14 +1060,14 @@ export default function InvestorPortal() {
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
 
                   {/* Order book */}
-                  <div className="rounded-xl border border-slate-800 bg-slate-900 overflow-hidden">
-                    <div className="px-5 py-3 border-b border-slate-800">
+                  <div className="rounded-xl border border-slate-600/70/50 bg-[#1e2a3a] overflow-hidden">
+                    <div className="px-5 py-3 border-b border-slate-600/70/50">
                       <h2 className="text-sm font-bold text-white">Order Book — {mxToken}</h2>
                     </div>
                     <div className="grid grid-cols-2 divide-x divide-slate-800">
                       {/* Bids */}
                       <div>
-                        <div className="grid grid-cols-3 px-4 py-2 border-b border-slate-800">
+                        <div className="grid grid-cols-3 px-4 py-2 border-b border-slate-600/70/50">
                           {["Price","Qty","Total"].map((h) => (
                             <span key={h} className="text-xs font-bold uppercase text-emerald-500">{h}</span>
                           ))}
@@ -1086,7 +1086,7 @@ export default function InvestorPortal() {
                       </div>
                       {/* Asks */}
                       <div>
-                        <div className="grid grid-cols-3 px-4 py-2 border-b border-slate-800">
+                        <div className="grid grid-cols-3 px-4 py-2 border-b border-slate-600/70/50">
                           {["Price","Qty","Total"].map((h) => (
                             <span key={h} className="text-xs font-bold uppercase text-brand-500">{h}</span>
                           ))}
@@ -1107,11 +1107,11 @@ export default function InvestorPortal() {
                   </div>
 
                   {/* Place order */}
-                  <div className="rounded-xl border border-slate-800 bg-slate-900 p-5 flex flex-col gap-4">
+                  <div className="rounded-xl border border-slate-600/70/50 bg-[#1e2a3a] p-5 flex flex-col gap-4">
                     <h2 className="text-sm font-bold text-white">Place Order</h2>
 
                     {/* Buy / Sell toggle */}
-                    <div className="flex rounded-lg overflow-hidden border border-slate-700">
+                    <div className="flex rounded-lg overflow-hidden border border-slate-600/70">
                       {(["buy","sell"] as const).map((s) => (
                         <button
                           key={s}
@@ -1134,7 +1134,7 @@ export default function InvestorPortal() {
                         <select
                           value={mxToken}
                           onChange={(e) => { setMxToken(e.target.value); const n = DEMO_NAV.find((x) => x.symbol === e.target.value); setMxPrice(String(n?.last_price ?? 100)); }}
-                          className="w-full rounded-lg border border-slate-700 bg-slate-800 text-white px-3 py-2 text-sm"
+                          className="w-full rounded-lg border border-slate-600/70 bg-slate-700/60 text-white px-3 py-2 text-sm"
                         >
                           {symbols.map((s) => <option key={s} value={s}>{s}</option>)}
                         </select>
@@ -1144,21 +1144,21 @@ export default function InvestorPortal() {
                           <label className="text-xs font-bold uppercase tracking-widest text-slate-400 mb-1.5 block">Quantity (tokens)</label>
                           <input
                             type="number" value={mxQty} onChange={(e) => setMxQty(e.target.value)}
-                            className="w-full rounded-lg border border-slate-700 bg-slate-800 text-white px-3 py-2 text-sm tabular-nums"
+                            className="w-full rounded-lg border border-slate-600/70 bg-slate-700/60 text-white px-3 py-2 text-sm tabular-nums"
                           />
                         </div>
                         <div>
                           <label className="text-xs font-bold uppercase tracking-widest text-slate-400 mb-1.5 block">Limit Price ($)</label>
                           <input
                             type="number" step="0.01" value={mxPrice} onChange={(e) => setMxPrice(e.target.value)}
-                            className="w-full rounded-lg border border-slate-700 bg-slate-800 text-white px-3 py-2 text-sm tabular-nums"
+                            className="w-full rounded-lg border border-slate-600/70 bg-slate-700/60 text-white px-3 py-2 text-sm tabular-nums"
                           />
                         </div>
                       </div>
                     </div>
 
                     {/* Order summary */}
-                    <div className="rounded-lg border border-slate-700 bg-slate-800/60 p-4 space-y-2 text-sm">
+                    <div className="rounded-lg border border-slate-600/70 bg-slate-700/50 p-4 space-y-2 text-sm">
                       {[
                         { label:"Notional",    value: `$${notional.toLocaleString("en-US", { minimumFractionDigits:2, maximumFractionDigits:2 })}` },
                         { label:`Fee (${feeBps} bps)`, value: `$${fee.toFixed(2)}`, sub: true },
@@ -1166,7 +1166,7 @@ export default function InvestorPortal() {
                           value: `$${(mxSide === "buy" ? notional + fee : notional - fee).toLocaleString("en-US", { minimumFractionDigits:2, maximumFractionDigits:2 })}`,
                           bold: true },
                       ].map((row) => (
-                        <div key={row.label} className={`flex justify-between ${row.bold ? "border-t border-slate-700 pt-2" : ""}`}>
+                        <div key={row.label} className={`flex justify-between ${row.bold ? "border-t border-slate-600/70 pt-2" : ""}`}>
                           <span className={row.sub ? "text-slate-500 text-xs" : "text-slate-400"}>{row.label}</span>
                           <span className={row.bold ? "font-black text-white" : row.sub ? "text-slate-500 text-xs" : "text-slate-300 font-semibold tabular-nums"}>{row.value}</span>
                         </div>
@@ -1196,25 +1196,25 @@ export default function InvestorPortal() {
 
                 {/* My open orders */}
                 {mxOrders.length > 0 && (
-                  <div className="rounded-xl border border-slate-800 bg-slate-900 overflow-hidden">
-                    <div className="px-6 py-4 border-b border-slate-800 flex items-center justify-between">
+                  <div className="rounded-xl border border-slate-600/70/50 bg-[#1e2a3a] overflow-hidden">
+                    <div className="px-6 py-4 border-b border-slate-600/70/50 flex items-center justify-between">
                       <h2 className="text-sm font-bold text-white">My Open Orders</h2>
                       <span className="text-xs text-slate-500">{mxOrders.filter((o) => o.status === "open").length} open</span>
                     </div>
                     <table className="w-full text-sm">
                       <thead>
-                        <tr className="border-b border-slate-800">
+                        <tr className="border-b border-slate-600/70/50">
                           {["Token","Side","Qty","Limit Price","Notional","Fee","Status",""].map((h) => (
                             <th key={h} className="px-5 py-3 text-left text-xs font-bold uppercase tracking-widest text-slate-500 whitespace-nowrap">{h}</th>
                           ))}
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-slate-800/60">
+                      <tbody className="divide-y divide-slate-700/40">
                         {mxOrders.map((o) => {
                           const n = o.qty * o.price;
                           const f = n * feeBps / 10000;
                           return (
-                            <tr key={o.id} className="hover:bg-slate-800/40 transition-colors">
+                            <tr key={o.id} className="hover:bg-slate-700/30 transition-colors">
                               <td className="px-5 py-3 font-mono font-bold text-violet-400 text-xs">{o.symbol}</td>
                               <td className={`px-5 py-3 font-bold ${o.side === "buy" ? "text-emerald-400" : "text-brand-400"}`}>{o.side.toUpperCase()}</td>
                               <td className="px-5 py-3 text-slate-300 tabular-nums">{o.qty.toLocaleString()}</td>
@@ -1241,21 +1241,21 @@ export default function InvestorPortal() {
                 )}
 
                 {/* Recent market trades */}
-                <div className="rounded-xl border border-slate-800 bg-slate-900 overflow-hidden">
-                  <div className="px-6 py-4 border-b border-slate-800">
+                <div className="rounded-xl border border-slate-600/70/50 bg-[#1e2a3a] overflow-hidden">
+                  <div className="px-6 py-4 border-b border-slate-600/70/50">
                     <h2 className="text-sm font-bold text-white">Recent Platform Trades</h2>
                   </div>
                   <table className="w-full text-sm">
                     <thead>
-                      <tr className="border-b border-slate-800">
+                      <tr className="border-b border-slate-600/70/50">
                         {["Token","Side","Price","Qty","Fee (15 bps)","Volume","Time"].map((h) => (
                           <th key={h} className="px-5 py-3 text-left text-xs font-bold uppercase tracking-widest text-slate-500 whitespace-nowrap">{h}</th>
                         ))}
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-slate-800/60">
+                    <tbody className="divide-y divide-slate-700/40">
                       {DEMO_MARKET_TRADES.map((t) => (
-                        <tr key={t.id} className="hover:bg-slate-800/40 transition-colors">
+                        <tr key={t.id} className="hover:bg-slate-700/30 transition-colors">
                           <td className="px-5 py-3 font-mono font-bold text-violet-400 text-xs">{t.symbol}</td>
                           <td className={`px-5 py-3 font-bold text-xs ${t.side === "buy" ? "text-emerald-400" : "text-brand-400"}`}>
                             {t.side === "buy" ? "▲ BUY" : "▼ SELL"}
@@ -1269,7 +1269,7 @@ export default function InvestorPortal() {
                       ))}
                     </tbody>
                   </table>
-                  <div className="px-6 py-3 border-t border-slate-800 bg-slate-900/60">
+                  <div className="px-6 py-3 border-t border-slate-600/70/50 bg-[#1e2a3a]/60">
                     <p className="text-xs text-slate-500">
                       Platform earns <strong className="text-emerald-400">15 bps</strong> on every trade.
                       Example: $25B annual volume × 0.15% = <strong className="text-emerald-400">$37.5M transaction revenue</strong>
@@ -1288,7 +1288,7 @@ export default function InvestorPortal() {
                   <h1 className="text-2xl font-black text-white">Token NAV Pricing Engine</h1>
                   <p className="text-sm text-slate-400 mt-1">Real-time net asset value per token — adjusted for DSCR, LTV, and delinquency risk.</p>
                 </div>
-                <div className="flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-900 px-3 py-2">
+                <div className="flex items-center gap-2 rounded-lg border border-slate-600/70 bg-[#1e2a3a] px-3 py-2">
                   <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
                   <span className="text-xs font-bold text-emerald-400">Live Pricing</span>
                 </div>
@@ -1320,7 +1320,7 @@ export default function InvestorPortal() {
                       className={`rounded-xl border p-5 space-y-4 ${
                         isDistressed ? "border-brand-800/50 bg-brand-950/20"
                         : isPremium  ? "border-emerald-800/40 bg-emerald-950/15"
-                        : "border-slate-800 bg-slate-900"
+                        : "border-slate-600/70/50 bg-[#1e2a3a]"
                       }`}
                     >
                       {/* Header */}
@@ -1356,14 +1356,14 @@ export default function InvestorPortal() {
                             <span className={`font-bold tabular-nums ${row.color}`}>{row.value}</span>
                           </div>
                         ))}
-                        <div className="flex items-center justify-between text-sm border-t border-slate-700 pt-1.5">
+                        <div className="flex items-center justify-between text-sm border-t border-slate-600/70 pt-1.5">
                           <span className="font-bold text-white">Indicated NAV</span>
                           <span className="font-black text-white tabular-nums">${n.nav.toFixed(2)}</span>
                         </div>
                       </div>
 
                       {/* Market vs NAV */}
-                      <div className="rounded-lg bg-slate-800/60 p-3 space-y-2">
+                      <div className="rounded-lg bg-slate-700/50 p-3 space-y-2">
                         <p className="text-xs font-bold uppercase tracking-widest text-slate-500">Market vs NAV</p>
                         <div className="flex items-center gap-3">
                           <div className="flex-1">
@@ -1388,7 +1388,7 @@ export default function InvestorPortal() {
                       </div>
 
                       {/* YTM */}
-                      <div className="flex items-center justify-between rounded-lg border border-slate-700 bg-slate-800/40 px-4 py-3">
+                      <div className="flex items-center justify-between rounded-lg border border-slate-600/70 bg-slate-700/30 px-4 py-3">
                         <div>
                           <p className="text-xs text-slate-400 font-bold uppercase tracking-widest">Yield to Maturity</p>
                           {perf && (
@@ -1417,7 +1417,7 @@ export default function InvestorPortal() {
               </div>
 
               {/* Platform revenue model */}
-              <div className="rounded-xl border border-slate-800 bg-slate-900 p-6">
+              <div className="rounded-xl border border-slate-600/70/50 bg-[#1e2a3a] p-6">
                 <h2 className="text-base font-bold text-white mb-4">Revenue Model — Scenario B</h2>
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
                   {[
@@ -1425,7 +1425,7 @@ export default function InvestorPortal() {
                     { label:"Target Volume", value:"$25B+", sub:"Annual tokenized loan transactions", color:"text-emerald-400" },
                     { label:"Transaction Revenue", value:"$37.5M", sub:"$25B × 15 bps platform fee", color:"text-amber-400" },
                   ].map((s) => (
-                    <div key={s.label} className="rounded-lg border border-slate-700 bg-slate-800/40 p-4">
+                    <div key={s.label} className="rounded-lg border border-slate-600/70 bg-slate-700/30 p-4">
                       <p className="text-xs font-bold uppercase tracking-widest text-slate-400">{s.label}</p>
                       <p className={`text-2xl font-black mt-2 ${s.color}`}>{s.value}</p>
                       <p className="text-xs text-slate-500 mt-1">{s.sub}</p>
