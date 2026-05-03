@@ -1,6 +1,7 @@
-import { useContext } from "react";
+import { useContext, useState } from "react";
 import { Link } from "react-router-dom";
 import { AuthContext } from "../lib/authContext";
+import QuickStartTour from "./QuickStartTour";
 import {
   ResponsiveContainer, PieChart, Pie, Cell, Tooltip as ReTooltip,
   BarChart, Bar, XAxis, YAxis, CartesianGrid,
@@ -115,6 +116,7 @@ export default function SaasDashboardHome({ apiBase: _ }: Props) {
   const firstName = user?.first_name || "Alex";
   const hour = new Date().getHours();
   const greeting = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
+  const [showTour, setShowTour] = useState(false);
 
   return (
     <div className="min-h-screen" style={{ background: "#F8FAFC" }}>
@@ -133,6 +135,15 @@ export default function SaasDashboardHome({ apiBase: _ }: Props) {
             </p>
           </div>
           <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowTour(true)}
+              className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium text-gray-500 border border-gray-200 bg-white hover:bg-gray-50 transition"
+            >
+              <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M9 12h6M12 9v6M21 12a9 9 0 11-18 0 9 9 0 0118 0z" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+              Platform Tour
+            </button>
             <Link
               to="/ai-copilot"
               className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-semibold transition"
@@ -426,6 +437,8 @@ export default function SaasDashboardHome({ apiBase: _ }: Props) {
         </Card>
 
       </div>
+
+      {showTour && <QuickStartTour onClose={() => setShowTour(false)} />}
     </div>
   );
 }
