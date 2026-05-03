@@ -233,7 +233,7 @@ const MOCK_FINDINGS: Finding[] = [
 ];
 
 const classificationConfig: Record<Classification, { label: string; bg: string; text: string; border: string; dot: string }> = {
-  ILS: { label: "Imminent Life Safety", bg: "bg-brand-100", text: "text-brand-800", border: "border-brand-300", dot: "bg-brand-500" },
+  ILS: { label: "Imminent Life Safety", bg: "bg-red-100", text: "text-red-800", border: "border-red-300", dot: "bg-red-500" },
   LS:  { label: "Life Safety",          bg: "bg-orange-100", text: "text-orange-800", border: "border-orange-300", dot: "bg-orange-500" },
   PLS: { label: "Potential Life Safety", bg: "bg-amber-100", text: "text-amber-800", border: "border-amber-300", dot: "bg-amber-500" },
   DM:  { label: "Deferred Maintenance", bg: "bg-slate-100", text: "text-slate-700", border: "border-slate-300", dot: "bg-slate-400" },
@@ -245,7 +245,7 @@ const statusConfig: Record<FindingStatus, { label: string; bg: string; text: str
   pending:        { label: "Pending",         bg: "bg-amber-100",  text: "text-amber-800" },
   accepted:       { label: "Accepted",        bg: "bg-emerald-100", text: "text-emerald-800" },
   overridden:     { label: "Overridden",      bg: "bg-violet-100", text: "text-violet-800" },
-  escalated:      { label: "Escalated",       bg: "bg-brand-100",    text: "text-brand-800" },
+  escalated:      { label: "Escalated",       bg: "bg-red-100",    text: "text-red-800" },
   needs_evidence: { label: "Needs Evidence",  bg: "bg-blue-100",   text: "text-blue-800" },
   resolved:       { label: "Resolved",        bg: "bg-slate-100",  text: "text-slate-600" },
 };
@@ -284,7 +284,7 @@ function SummaryHeader({ findings }: { findings: Finding[] }) {
   const hasILS = findings.some((f) => f.aiClassification === "ILS");
   const hasLS = findings.some((f) => f.aiClassification === "LS");
   const riskLabel = hasILS ? "Critical" : hasLS ? "High" : "Moderate";
-  const riskColor = hasILS ? "text-brand-700 bg-brand-50 border-brand-200" : hasLS ? "text-orange-700 bg-orange-50 border-orange-200" : "text-amber-700 bg-amber-50 border-amber-200";
+  const riskColor = hasILS ? "text-red-700 bg-red-50 border-red-200" : hasLS ? "text-orange-700 bg-orange-50 border-orange-200" : "text-amber-700 bg-amber-50 border-amber-200";
 
   return (
     <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
@@ -305,7 +305,7 @@ function SummaryHeader({ findings }: { findings: Finding[] }) {
         {[
           { label: "Total Findings", value: total, color: "text-slate-900" },
           { label: "Unresolved", value: unresolved, color: "text-amber-700" },
-          { label: "AI Flagged (ILS/LS)", value: aiFlag, color: "text-brand-700" },
+          { label: "AI Flagged (ILS/LS)", value: aiFlag, color: "text-red-700" },
           { label: "Pending Review", value: pending, color: "text-violet-700" },
         ].map((stat) => (
           <div key={stat.label} className="px-5 py-4 text-center">
@@ -345,9 +345,9 @@ function AiNarrativeSummary({ findings }: { findings: Finding[] }) {
             <strong>{findings.filter((f) => f.aiClassification === "PLS").length} Potential Life Safety</strong> categories.
           </p>
           {ils.length > 0 && (
-            <div className="rounded-lg border border-brand-200 bg-white px-4 py-3">
-              <p className="font-semibold text-brand-800">Imminent Life Safety — Immediate Action Required</p>
-              <ul className="mt-1 list-inside list-disc space-y-0.5 text-xs text-brand-700">
+            <div className="rounded-lg border border-red-200 bg-white px-4 py-3">
+              <p className="font-semibold text-red-800">Imminent Life Safety — Immediate Action Required</p>
+              <ul className="mt-1 list-inside list-disc space-y-0.5 text-xs text-red-700">
                 {ils.map((f) => (
                   <li key={f.id}>{f.location}: {f.description.slice(0, 80)}…</li>
                 ))}
@@ -525,7 +525,7 @@ function FindingDetail({
             <h3 className="mt-2 text-base font-semibold text-slate-900">{finding.location}</h3>
           </div>
           <span className={`rounded-full px-2.5 py-1 text-xs font-semibold capitalize ${
-            finding.severity === "critical" ? "bg-brand-100 text-brand-700" :
+            finding.severity === "critical" ? "bg-red-100 text-red-700" :
             finding.severity === "high" ? "bg-orange-100 text-orange-700" :
             finding.severity === "medium" ? "bg-amber-100 text-amber-700" :
             "bg-slate-100 text-slate-600"
@@ -661,7 +661,7 @@ function FindingDetail({
             <button
               type="button"
               onClick={() => performAction("escalated")}
-              className="rounded-lg border border-brand-300 bg-brand-50 px-3 py-2 text-xs font-semibold text-brand-800 hover:bg-brand-100 transition"
+              className="rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-xs font-semibold text-red-800 hover:bg-red-100 transition"
             >
               Escalate
             </button>
