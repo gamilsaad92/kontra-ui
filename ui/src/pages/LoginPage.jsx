@@ -36,7 +36,7 @@ export default function LoginPage() {
     return (
       <div className="flex min-h-screen items-center justify-center" style={{ background: "#0f1623" }}>
         <div className="flex flex-col items-center gap-3">
-          <div className="h-6 w-6 animate-spin rounded-full border-2 border-red-700 border-t-transparent" />
+          <div className="h-6 w-6 animate-spin rounded-full border-2 border-t-transparent" style={{ borderColor: "#800020", borderTopColor: "transparent" }} />
           <span className="text-xs font-medium tracking-widest uppercase" style={{ color: "#64748b" }}>
             {redirecting ? "Opening your workspace…" : "Loading"}
           </span>
@@ -58,18 +58,18 @@ export default function LoginPage() {
       >
         {/* Logo */}
         <div className="flex items-center gap-2.5">
-          <div className="flex h-9 w-9 items-center justify-center rounded-xl" style={{ background: "#E5484D" }}>
+          <div className="flex h-9 w-9 items-center justify-center rounded-xl" style={{ background: "#800020" }}>
             <span className="text-sm font-black text-white" style={{ letterSpacing: "-0.05em" }}>K</span>
           </div>
           <div>
             <span className="text-base font-bold text-white" style={{ letterSpacing: "-0.02em" }}>Kontra</span>
-            <span className="ml-2 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide" style={{ background: "rgba(229,72,77,0.15)", color: "#E5484D" }}>Beta</span>
+            <span className="ml-2 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide" style={{ background: "rgba(128,0,32,0.15)", color: "#800020" }}>Beta</span>
           </div>
         </div>
 
         {/* Hero copy */}
         <div>
-          <p className="mb-2 text-xs font-bold uppercase tracking-widest" style={{ color: "#E5484D" }}>
+          <p className="mb-2 text-xs font-bold uppercase tracking-widest" style={{ color: "#800020" }}>
             Data Infrastructure · CRE Loan Servicing
           </p>
           <h2 className="mb-4 text-3xl font-black leading-tight text-white" style={{ letterSpacing: "-0.03em" }}>
@@ -93,7 +93,7 @@ export default function LoginPage() {
 
         {/* Mobile logo */}
         <div className="mb-8 flex flex-col items-center gap-3 lg:hidden">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl" style={{ background: "#E5484D" }}>
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl" style={{ background: "#800020" }}>
             <span className="text-base font-black text-white">K</span>
           </div>
           <span className="text-base font-bold text-white">Kontra</span>
