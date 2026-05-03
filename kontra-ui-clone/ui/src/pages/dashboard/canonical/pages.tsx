@@ -23,7 +23,7 @@ import { useReportList, useCreateReport, useReport, useUpdateReport } from '../.
 import { useOrganizationList, useCreateOrganization, useOrganization, useUpdateOrganization } from '../../../features/organizations/organizations/api';
 
 export const PortfolioLoansPage = () => <EntityCrudPage title="Loans" createLabel="Create Loan" hooks={{ useList: useLoanList, useCreate: useCreateLoan, useItem: useLoan, useUpdate: useUpdateLoan }} />;
-export const PortfolioAssetsPage = () => <EntityCrudPage title="Assets" createLabel="Create Asset" hooks={{ useList: useAssetList, useCreate: useCreateAsset, useItem: useAsset, useUpdate: useUpdateAsset }} />;
+export { default as PortfolioAssetsPage } from '../portfolio/PortfolioAssetsPage';
 export const ServicingPaymentsCrudPage = () => {
   const runReview = useRunPaymentReview();
   const navigate = useNavigate();
