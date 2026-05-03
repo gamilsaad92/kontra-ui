@@ -160,7 +160,7 @@ const STEPS = [
       </svg>
     ),
     headline: 'Tokenize CRE loans and enable secondary trading.',
-    body: 'Kontra's Capital Markets module turns illiquid CRE loans into ERC-1400 compliant digital securities. Lenders can tokenize senior tranches, create Reg D/S offerings, and enable accredited investors to trade on a compliant secondary market.',
+    body: "Kontra's Capital Markets module turns illiquid CRE loans into ERC-1400 compliant digital securities. Lenders can tokenize senior tranches, create Reg D/S offerings, and enable accredited investors to trade on a compliant secondary market.",
     features: [
       '$225.4M tokenized across 2 active ERC-1400 tokens',
       'Waterfall modeling — cash flow distribution and tranche structuring',
