@@ -370,10 +370,10 @@ function pct(elapsed: number, slaHours: number): number {
 
 function KPICard({ kpi, hex }: { kpi: KPI; hex: string }) {
   return (
-    <div className="bg-gray-900 border border-gray-700 rounded-xl p-4 flex flex-col gap-1">
-      <p className="text-gray-400 text-xs font-medium uppercase tracking-wide truncate">{kpi.label}</p>
+    <div className="bg-white border border-gray-200 rounded-xl p-4 flex flex-col gap-1 shadow-sm">
+      <p className="text-gray-500 text-xs font-medium uppercase tracking-wide truncate">{kpi.label}</p>
       <div className="flex items-end gap-2">
-        <span className="text-white text-2xl font-bold">{fmtVal(kpi)}</span>
+        <span className="text-gray-900 text-2xl font-bold">{fmtVal(kpi)}</span>
         <span
           className="text-xs font-semibold pb-0.5"
           style={{
@@ -395,10 +395,10 @@ function WorkflowRow({ wf }: { wf: Workflow }) {
   const elapsed = wf.elapsedMins >= 60 ? `${Math.floor(wf.elapsedMins / 60)}h ${wf.elapsedMins % 60}m` : `${wf.elapsedMins}m`;
   const context = (wf.loan || wf.wallet || wf.token || wf.property || wf.scope || "") as string;
   return (
-    <div className="border-b border-gray-800 last:border-0 py-3 px-4 hover:bg-gray-800/40 transition-colors">
+    <div className="border-b border-gray-100 last:border-0 py-3 px-4 hover:bg-gray-50 transition-colors">
       <div className="flex items-start justify-between gap-2 mb-1.5">
         <div className="flex-1 min-w-0">
-          <p className="text-white text-sm font-medium truncate">{wf.name}</p>
+          <p className="text-gray-900 text-sm font-medium truncate">{wf.name}</p>
           <p className="text-gray-400 text-xs mt-0.5">
             {context && <span className="font-mono text-blue-300">{context}</span>}
             {context && " · "}
@@ -427,7 +427,7 @@ function WorkflowRow({ wf }: { wf: Workflow }) {
 
 function AgentOutputCard({ out }: { out: AgentOutput }) {
   return (
-    <div className="border border-gray-700 rounded-lg p-3 bg-gray-900 hover:border-gray-600 transition-colors">
+    <div className="border border-gray-200 rounded-lg p-3 bg-white hover:border-gray-300 hover:shadow-sm transition-all">
       <div className="flex items-center justify-between mb-1.5">
         <div className="flex items-center gap-2">
           <span className="text-xs font-bold text-blue-400">{out.agent}</span>
@@ -441,16 +441,16 @@ function AgentOutputCard({ out }: { out: AgentOutput }) {
           <span className="text-xs font-semibold text-emerald-400">{(out.confidence * 100).toFixed(0)}%</span>
         </div>
       </div>
-      <p className="text-gray-300 text-xs leading-relaxed">{out.action}</p>
+      <p className="text-gray-700 text-xs leading-relaxed">{out.action}</p>
     </div>
   );
 }
 
 function ApprovalRow({ item, onAction, hex }: { item: Approval; onAction: (id: string, action: string) => void; hex: string }) {
   return (
-    <div className="border-b border-gray-800 last:border-0 py-3 px-4 flex items-center justify-between gap-3">
+    <div className="border-b border-gray-100 last:border-0 py-3 px-4 flex items-center justify-between gap-3">
       <div className="flex-1 min-w-0">
-        <p className="text-white text-sm font-medium truncate">{item.type}</p>
+        <p className="text-gray-900 text-sm font-medium truncate">{item.type}</p>
         <p className="text-gray-400 text-xs mt-0.5">
           {item.requestedBy && <span>{item.requestedBy} · </span>}
           {item.amount != null && item.amount > 0 && <span className="text-green-400 font-semibold">${(item.amount as number).toLocaleString()} · </span>}
@@ -475,10 +475,10 @@ function ApprovalRow({ item, onAction, hex }: { item: Approval; onAction: (id: s
 function SLABreachCard({ breach }: { breach: SLABreach }) {
   const context = (breach.loan || breach.property || breach.token || breach.scope || "") as string;
   return (
-    <div className="flex items-center gap-3 py-2 border-b border-gray-800 last:border-0 px-4">
+    <div className="flex items-center gap-3 py-2 border-b border-gray-100 last:border-0 px-4">
       <div className="w-2 h-2 rounded-full flex-shrink-0 animate-pulse" style={{ background: breach.severity === "critical" ? "#dc2626" : "#f59e0b" }} />
       <div className="flex-1 min-w-0">
-        <p className="text-white text-xs font-medium truncate">{breach.workflow}</p>
+        <p className="text-gray-900 text-xs font-medium truncate">{breach.workflow}</p>
         <p className="text-gray-400 text-xs">{context && <span className="text-blue-300">{context} · </span>}Breached by <span className="text-red-400 font-semibold">{breach.breachedBy}</span></p>
       </div>
       <span className="text-xs text-gray-400 flex-shrink-0">@{breach.assignee}</span>
@@ -489,7 +489,7 @@ function SLABreachCard({ breach }: { breach: SLABreach }) {
 function ExceptionCard({ ex }: { ex: Exception }) {
   const color = ex.severity === "critical" ? "#dc2626" : ex.severity === "high" ? "#f59e0b" : "#3b82f6";
   return (
-    <div className="flex items-start gap-3 py-2.5 border-b border-gray-800 last:border-0 px-4">
+    <div className="flex items-start gap-3 py-2.5 border-b border-gray-100 last:border-0 px-4">
       <span className="text-xs font-bold mt-0.5 px-1.5 py-0.5 rounded flex-shrink-0" style={{ background: `${color}22`, color }}>
         {ex.severity.toUpperCase()}
       </span>
@@ -552,10 +552,10 @@ export default function CommandCenterShell({
 
   if (loading || !data) {
     return (
-      <div className="min-h-screen bg-gray-950 flex items-center justify-center">
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
-          <div className="w-12 h-12 border-4 border-gray-700 rounded-full animate-spin mx-auto mb-4" style={{ borderTopColor: accentHex }} />
-          <p className="text-gray-400">Loading {title}…</p>
+          <div className="w-12 h-12 border-4 border-gray-200 rounded-full animate-spin mx-auto mb-4" style={{ borderTopColor: accentHex }} />
+          <p className="text-gray-500">Loading {title}…</p>
         </div>
       </div>
     );
@@ -566,22 +566,22 @@ export default function CommandCenterShell({
   const criticalCount = data.workflows.filter(w => w.priority === "critical").length;
 
   return (
-    <div className="min-h-screen bg-gray-950 text-white">
+    <div className="min-h-screen bg-gray-50 text-gray-900">
       {toast && (
         <div className="fixed top-4 right-4 z-50 px-4 py-3 rounded-lg text-white text-sm font-semibold shadow-xl" style={{ background: accentHex }}>
           {toast}
         </div>
       )}
 
-      <div className="border-b border-gray-800 bg-gray-950/95 sticky top-0 z-10 backdrop-blur">
+      <div className="border-b border-gray-200 bg-white/95 sticky top-0 z-10 backdrop-blur shadow-sm">
         <div className="max-w-screen-2xl mx-auto px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-4">
             <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: `${accentHex}22`, border: `1px solid ${accentHex}44` }}>
               <span style={{ color: accentHex }}>{icon}</span>
             </div>
             <div>
-              <h1 className="text-xl font-bold text-white">{title}</h1>
-              <p className="text-gray-400 text-xs">{subtitle}</p>
+              <h1 className="text-xl font-bold text-gray-900">{title}</h1>
+              <p className="text-gray-500 text-xs">{subtitle}</p>
             </div>
           </div>
           <div className="flex items-center gap-3">
@@ -623,10 +623,10 @@ export default function CommandCenterShell({
         </div>
 
         <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-          <div className="xl:col-span-2 bg-gray-900 border border-gray-700 rounded-xl overflow-hidden">
-            <div className="flex items-center justify-between px-4 py-3 border-b border-gray-700" style={{ borderLeftWidth: 3, borderLeftColor: accentHex }}>
+          <div className="xl:col-span-2 bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100" style={{ borderLeftWidth: 3, borderLeftColor: accentHex }}>
               <div>
-                <h2 className="text-white font-semibold text-sm">Live Workflow Queue</h2>
+                <h2 className="text-gray-900 font-semibold text-sm">Live Workflow Queue</h2>
                 <p className="text-gray-400 text-xs">{data.workflows.length} workflows · SLA progress tracked</p>
               </div>
               <span className="text-xs text-gray-500">{data.workflows.filter(w => w.status === "complete").length} complete</span>
@@ -636,10 +636,10 @@ export default function CommandCenterShell({
             </div>
           </div>
 
-          <div className="bg-gray-900 border border-gray-700 rounded-xl overflow-hidden">
-            <div className="flex items-center justify-between px-4 py-3 border-b border-gray-700" style={{ borderLeftWidth: 3, borderLeftColor: "#f59e0b" }}>
+          <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100" style={{ borderLeftWidth: 3, borderLeftColor: "#f59e0b" }}>
               <div>
-                <h2 className="text-white font-semibold text-sm">Pending Approvals</h2>
+                <h2 className="text-gray-900 font-semibold text-sm">Pending Approvals</h2>
                 <p className="text-gray-400 text-xs">{data.approvals.length} require action</p>
               </div>
               {data.approvals.length > 0 && (
@@ -656,9 +656,9 @@ export default function CommandCenterShell({
           </div>
         </div>
 
-        <div className="bg-gray-900 border border-gray-700 rounded-xl overflow-hidden">
-          <div className="px-4 py-3 border-b border-gray-700" style={{ borderLeftWidth: 3, borderLeftColor: "#3b82f6" }}>
-            <h2 className="text-white font-semibold text-sm">Agent Outputs</h2>
+        <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
+          <div className="px-4 py-3 border-b border-gray-100" style={{ borderLeftWidth: 3, borderLeftColor: "#3b82f6" }}>
+            <h2 className="text-gray-900 font-semibold text-sm">Agent Outputs</h2>
             <p className="text-gray-400 text-xs">Real-time AI decisions, analyses, and recommendations</p>
           </div>
           <div className="p-4 grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -667,10 +667,10 @@ export default function CommandCenterShell({
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <div className="bg-gray-900 border border-gray-700 rounded-xl overflow-hidden">
-            <div className="flex items-center justify-between px-4 py-3 border-b border-gray-700" style={{ borderLeftWidth: 3, borderLeftColor: "#dc2626" }}>
+          <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100" style={{ borderLeftWidth: 3, borderLeftColor: "#dc2626" }}>
               <div>
-                <h2 className="text-white font-semibold text-sm">SLA Breaches</h2>
+                <h2 className="text-gray-900 font-semibold text-sm">SLA Breaches</h2>
                 <p className="text-gray-400 text-xs">Active breach alerts requiring escalation</p>
               </div>
               {data.slaBreaches.length > 0 && (
@@ -686,10 +686,10 @@ export default function CommandCenterShell({
             )}
           </div>
 
-          <div className="bg-gray-900 border border-gray-700 rounded-xl overflow-hidden">
-            <div className="flex items-center justify-between px-4 py-3 border-b border-gray-700" style={{ borderLeftWidth: 3, borderLeftColor: "#8b5cf6" }}>
+          <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100" style={{ borderLeftWidth: 3, borderLeftColor: "#8b5cf6" }}>
               <div>
-                <h2 className="text-white font-semibold text-sm">Exception Queue</h2>
+                <h2 className="text-gray-900 font-semibold text-sm">Exception Queue</h2>
                 <p className="text-gray-400 text-xs">Flagged issues requiring manual resolution</p>
               </div>
               {data.exceptions.length > 0 && (
