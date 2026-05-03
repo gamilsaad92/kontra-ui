@@ -93,7 +93,10 @@ export default function LoginPage() {
   }, [session?.access_token, navigate]);
 
   function enterDemo(role) {
-    try { localStorage.setItem("kontra_demo_role", role); } catch (_) {}
+    try {
+      localStorage.setItem("kontra_demo_role", role);
+      localStorage.setItem("kontra_demo_mode", "true");
+    } catch (_) {}
     navigate(getPortalPath(role), { replace: true });
   }
 
