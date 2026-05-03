@@ -8,6 +8,7 @@ import SaasDashboard from "./pages/SaasDashboard";
 import InvestorPortal from "./portals/investor/InvestorPortal";
 import BorrowerPortal from "./portals/borrower/BorrowerPortal";
 import ServicerPortal from "./portals/servicer/ServicerPortal";
+import DemoModeGuide from "./components/DemoModeGuide";
 import { OrgProvider } from "./lib/OrgProvider";
 import { AuthContext } from "./lib/authContext";
 import { usePortalRouter } from "./lib/usePortalRouter";
@@ -43,7 +44,9 @@ function AuthedApp() {
   usePortalRouter();
 
   return (
-    <Routes>
+    <>
+      <DemoModeGuide />
+      <Routes>
       {/* ── Public ─────────────────────────────────────────── */}
       <Route path="/login" element={<LoginPage />} />
 
@@ -107,6 +110,7 @@ function AuthedApp() {
 
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
+    </>
   );
 }
 
