@@ -111,7 +111,7 @@ function Card({ children, className = "" }: { children: React.ReactNode; classNa
   return (
     <div
       className={`rounded-xl ${className}`}
-      style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}
+      style={{ background: "rgba(255,255,255,0.07)", border: "1px solid rgba(255,255,255,0.12)" }}
     >
       {children}
     </div>
@@ -120,7 +120,7 @@ function Card({ children, className = "" }: { children: React.ReactNode; classNa
 
 function CardHeader({ title, action, actionHref }: { title: string; action?: string; actionHref?: string }) {
   return (
-    <div className="flex items-center justify-between px-4 py-3 border-b border-white/5">
+    <div className="flex items-center justify-between px-4 py-3 border-b border-white/10">
       <h2 className="text-sm font-semibold text-slate-300">{title}</h2>
       {action && actionHref && (
         <Link to={actionHref} className="text-xs text-slate-500 hover:text-slate-300 transition">
@@ -140,16 +140,16 @@ export default function SaasDashboardHome({ apiBase: _ }: Props) {
   const greeting = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100">
+    <div className="min-h-screen bg-[#111827] text-slate-100">
 
       {/* ── Top bar ─────────────────────────────────────────── */}
-      <div className="px-6 pt-6 pb-4 border-b border-white/5">
+      <div className="px-6 pt-6 pb-4 border-b border-white/10">
         <div className="flex items-start justify-between">
           <div>
             <h1 className="text-xl font-semibold text-white" style={{ letterSpacing: "-0.02em" }}>
               {greeting}, {firstName}.
             </h1>
-            <p className="text-sm text-slate-500 mt-0.5">
+            <p className="text-sm text-slate-400 mt-0.5">
               {new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}
               &nbsp;·&nbsp;Lender Dashboard&nbsp;·&nbsp;
               <span style={{ color: "#d4687a" }}>2 high-priority alerts</span>
@@ -169,7 +169,7 @@ export default function SaasDashboardHome({ apiBase: _ }: Props) {
             <Link
               to="/command"
               className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-semibold transition"
-              style={{ background: "rgba(255,255,255,0.05)", color: "#94a3b8", border: "1px solid rgba(255,255,255,0.08)" }}
+              style={{ background: "rgba(255,255,255,0.09)", color: "#cbd5e1", border: "1px solid rgba(255,255,255,0.14)" }}
             >
               <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <rect x="3" y="3" width="18" height="18" rx="2" />
@@ -189,15 +189,15 @@ export default function SaasDashboardHome({ apiBase: _ }: Props) {
             <div
               key={k.label}
               className="rounded-xl p-4"
-              style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.06)" }}
+              style={{ background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.13)" }}
             >
-              <p className="text-xs text-slate-500 mb-1">{k.label}</p>
+              <p className="text-xs text-slate-400 mb-1">{k.label}</p>
               <p className="text-2xl font-bold text-white" style={{ letterSpacing: "-0.03em" }}>{k.value}</p>
               <div className="flex items-center gap-1.5 mt-1">
                 <span className="text-xs font-semibold" style={{ color: k.up ? "#4ade80" : "#f87171" }}>
                   {k.up ? "↑" : "↓"} {k.delta}
                 </span>
-                <span className="text-xs text-slate-600">· {k.sub}</span>
+                <span className="text-xs text-slate-500">· {k.sub}</span>
               </div>
             </div>
           ))}
@@ -233,7 +233,7 @@ export default function SaasDashboardHome({ apiBase: _ }: Props) {
                     <span className="text-sm font-bold text-white">{d.value}</span>
                   </div>
                 ))}
-                <div className="pt-1 border-t border-white/5">
+                <div className="pt-1 border-t border-white/10">
                   <p className="text-[10px] text-slate-500">Avg DSCR · <span className="text-amber-400 font-semibold">1.35×</span></p>
                 </div>
               </div>
@@ -246,7 +246,7 @@ export default function SaasDashboardHome({ apiBase: _ }: Props) {
             <div className="px-2 pb-3 pt-2" style={{ height: 148 }}>
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={TYPE_DATA} barSize={18} margin={{ top: 4, right: 8, left: -24, bottom: 0 }}>
-                  <CartesianGrid vertical={false} stroke="rgba(255,255,255,0.04)" />
+                  <CartesianGrid vertical={false} stroke="rgba(255,255,255,0.08)" />
                   <XAxis dataKey="type" tick={{ fontSize: 9, fill: "#64748b" }} axisLine={false} tickLine={false}
                     tickFormatter={(v) => v.length > 7 ? v.slice(0, 6) + "…" : v}
                   />
@@ -284,7 +284,7 @@ export default function SaasDashboardHome({ apiBase: _ }: Props) {
                 </Link>
               ))}
               <div className="pt-1">
-                <p className="text-[10px] text-slate-600 text-center">Last updated: {new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</p>
+                <p className="text-[10px] text-slate-500 text-center">Last updated: {new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</p>
               </div>
             </div>
           </Card>
@@ -305,7 +305,7 @@ export default function SaasDashboardHome({ apiBase: _ }: Props) {
                       <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
                     </linearGradient>
                   </defs>
-                  <CartesianGrid stroke="rgba(255,255,255,0.04)" />
+                  <CartesianGrid stroke="rgba(255,255,255,0.08)" />
                   <XAxis dataKey="mo" tick={{ fontSize: 10, fill: "#64748b" }} axisLine={false} tickLine={false} />
                   <YAxis domain={[1.0, 1.6]} tick={{ fontSize: 10, fill: "#64748b" }} axisLine={false} tickLine={false} />
                   <ReTooltip
@@ -327,7 +327,7 @@ export default function SaasDashboardHome({ apiBase: _ }: Props) {
           {/* Token market strip */}
           <Card className="lg:col-span-3">
             <CardHeader title="Token Market" action="Registry" actionHref="/markets/tokens" />
-            <div className="divide-y divide-white/5">
+            <div className="divide-y divide-white/8">
               {TOKENS.map((t) => (
                 <Link
                   key={t.id}
@@ -336,11 +336,11 @@ export default function SaasDashboardHome({ apiBase: _ }: Props) {
                 >
                   <div className="flex-none">
                     <p className="text-xs font-bold font-mono text-white group-hover:text-violet-300 transition">{t.id}</p>
-                    <p className="text-[10px] text-slate-500 truncate mt-0.5 max-w-[120px]">{t.name}</p>
+                    <p className="text-[10px] text-slate-400 truncate mt-0.5 max-w-[120px]">{t.name}</p>
                   </div>
                   <div className="flex-1 flex items-center justify-between gap-3">
                     <div className="text-right">
-                      <p className="text-xs text-slate-500">NAV</p>
+                      <p className="text-xs text-slate-400">NAV</p>
                       <p className="text-sm font-bold text-white">${t.nav.toFixed(2)}</p>
                       <p className="text-[10px]" style={{ color: t.navUp ? "#4ade80" : "#f87171" }}>
                         {t.navUp ? "↑" : "↓"} {t.navDelta}
@@ -378,7 +378,7 @@ export default function SaasDashboardHome({ apiBase: _ }: Props) {
           {/* Critical alerts */}
           <Card>
             <CardHeader title="Critical Alerts" action="Governance" actionHref="/governance/risk" />
-            <div className="divide-y divide-white/5">
+            <div className="divide-y divide-white/8">
               {ALERTS.map((a, i) => (
                 <Link
                   key={i}
@@ -401,15 +401,15 @@ export default function SaasDashboardHome({ apiBase: _ }: Props) {
           {/* Activity feed */}
           <Card>
             <CardHeader title="Recent Activity" action="Reports" actionHref="/reports" />
-            <div className="divide-y divide-white/5">
+            <div className="divide-y divide-white/8">
               {ACTIVITY.map((a, i) => (
                 <div key={i} className="flex items-start gap-3 px-4 py-3">
                   <span className="text-base flex-none mt-0.5">{a.icon}</span>
                   <div className="min-w-0 flex-1">
                     <p className="text-xs font-semibold text-slate-300">{a.type}</p>
-                    <p className="text-xs text-slate-500 truncate">{a.desc}</p>
+                    <p className="text-xs text-slate-400 truncate">{a.desc}</p>
                   </div>
-                  <span className="text-[11px] text-slate-600 shrink-0 mt-0.5 whitespace-nowrap">{a.time}</span>
+                  <span className="text-[11px] text-slate-500 shrink-0 mt-0.5 whitespace-nowrap">{a.time}</span>
                 </div>
               ))}
             </div>
@@ -425,11 +425,11 @@ export default function SaasDashboardHome({ apiBase: _ }: Props) {
                 key={a.label}
                 to={a.href}
                 className="rounded-lg p-3 text-left transition hover:bg-white/5 group"
-                style={{ border: "1px solid rgba(255,255,255,0.07)" }}
+                style={{ border: "1px solid rgba(255,255,255,0.12)" }}
               >
                 <div className="text-lg mb-1">{a.icon}</div>
                 <p className="text-xs font-semibold text-slate-300 group-hover:text-white transition">{a.label}</p>
-                <p className="text-xs text-slate-500">{a.desc}</p>
+                <p className="text-xs text-slate-400">{a.desc}</p>
               </Link>
             ))}
           </div>
