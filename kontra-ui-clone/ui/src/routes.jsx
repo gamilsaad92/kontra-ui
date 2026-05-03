@@ -148,12 +148,6 @@ export const lenderNavRoutes = [
     requiresAuth: true,
   },
   {
-    label: "Team & Roles",
-    path: "/settings/team",
-    icon: UsersIcon,
-    requiresAuth: true,
-  },
-  {
     label: "Billing",
     path: "/settings/billing",
     icon: CreditCardIcon,
