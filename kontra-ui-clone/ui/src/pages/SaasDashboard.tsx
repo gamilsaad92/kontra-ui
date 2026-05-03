@@ -8,6 +8,10 @@ import SaasDashboardHome from "../components/SaasDashboardHome";
 import AiInsightsPage from "../features/ai-insights/page/AiInsightsPage";
 import OnchainDashboard from "../components/OnchainDashboard";
 import PortfolioLayout from "./dashboard/portfolio/PortfolioLayout";
+import PortfolioOverviewPage from "./dashboard/portfolio/PortfolioOverviewPage";
+import LoanSyndicationPage from "./dashboard/portfolio/LoanSyndicationPage";
+import AIUnderwritingPage from "./dashboard/portfolio/AIUnderwritingPage";
+import LoanOriginationWizard from "./dashboard/portfolio/LoanOriginationWizard";
 import MarketsLayout from "./dashboard/markets/MarketsLayout";
 import GovernanceLayout from "./dashboard/governance/GovernanceLayout";
 import LoanControlPage from "./dashboard/governance/LoanControlPage";
@@ -177,9 +181,14 @@ export default function SaasDashboard() {
       <Route path="/" element={<Navigate to="/dashboard" replace />} />
       <Route path="/dashboard" element={<DashboardOverview apiBase={apiBase} />} />
       <Route path="/portfolio" element={<PortfolioLayout />}>
-        <Route index element={<Navigate to="/portfolio/assets" replace />} />
-        <Route path="assets" element={<PortfolioAssetsPage />} />
+        <Route index element={<Navigate to="/portfolio/overview" replace />} />
+        <Route path="overview" element={<PortfolioOverviewPage />} />
         <Route path="loans" element={<PortfolioLoansPage />} />
+        <Route path="assets" element={<PortfolioAssetsPage />} />
+        <Route path="covenants" element={<Navigate to="/compliance-center" replace />} />
+        <Route path="syndication" element={<LoanSyndicationPage />} />
+        <Route path="underwriting" element={<AIUnderwritingPage />} />
+        <Route path="originate" element={<LoanOriginationWizard />} />
       </Route>
       {/* Servicing moved to /servicer — legacy redirects */}
       <Route path="/servicing" element={<Navigate to="/servicer/overview" replace />} />
