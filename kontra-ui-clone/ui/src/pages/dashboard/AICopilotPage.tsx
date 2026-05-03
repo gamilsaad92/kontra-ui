@@ -414,7 +414,8 @@ export default function AICopilotPage() {
               onKeyDown={e => e.key === "Enter" && !e.shiftKey && sendMessage(input)}
               placeholder="Ask anything about your portfolio…"
               disabled={typing}
-              className="flex-1 bg-transparent text-sm text-white outline-none placeholder-gray-600"
+              className="flex-1 bg-transparent outline-none placeholder-gray-500"
+              style={{ color: "#f1f5f9", fontSize: "15px" }}
             />
             <button
               onClick={() => sendMessage(input)}

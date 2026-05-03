@@ -185,7 +185,7 @@ export default function SaasDashboard() {
         <Route path="overview" element={<PortfolioOverviewPage />} />
         <Route path="loans" element={<PortfolioLoansPage />} />
         <Route path="assets" element={<PortfolioAssetsPage />} />
-        <Route path="covenants" element={<Navigate to="/compliance-center" replace />} />
+        <Route path="covenants" element={<ComplianceCovenantCenter />} />
         <Route path="syndication" element={<LoanSyndicationPage />} />
         <Route path="underwriting" element={<AIUnderwritingPage />} />
         <Route path="originate" element={<LoanOriginationWizard />} />
