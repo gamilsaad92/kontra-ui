@@ -2,54 +2,145 @@
 @tailwind components;
 @tailwind utilities;
 
-/* ─────────────────────────────────────────────────────────────────────────────
-   KONTRA — GLOBAL WHITE THEME
-   All four portals use a clean white surface; only the logo/accent color
-   distinguishes each role. Override every hard-coded dark Tailwind class here
-   so the 50+ sub-pages flip without touching each file individually.
-   ───────────────────────────────────────────────────────────────────────────── */
+/* ═══════════════════════════════════════════════════════════════════════════
+   KONTRA — ENTERPRISE DESIGN SYSTEM
+   Inspired by BlackRock · Stripe · Palantir
+   80–90 % neutral  ·  5–10 % brand-red  ·  3–5 % ai-purple  ·  status-only color
+   ═══════════════════════════════════════════════════════════════════════════ */
 
-/* Page base */
-:root { color-scheme: light; background: #ffffff; color: #0f172a; }
-html.dark { background: #ffffff; color: #0f172a; }
+/* ── Design tokens ───────────────────────────────────────────────────────── */
+:root {
+  color-scheme: light;
 
-/* ── Dark background → white / off-white ───────────────────────────────────── */
-.bg-gray-950,  .bg-slate-950  { background-color: #ffffff !important; }
-.bg-gray-900,  .bg-slate-900  { background-color: #f9fafb !important; }
-.bg-gray-800,  .bg-slate-800  { background-color: #f3f4f6 !important; }
-.bg-gray-700,  .bg-slate-700  { background-color: #e5e7eb !important; }
+  --bg-app:     #F8FAFC;
+  --bg-surface: #FFFFFF;
+  --bg-sidebar: #0B0F19;
+  --bg-sidebar-active: #161B27;
 
-/* opacity-modifier variants (.bg-gray-950\/70 etc.) */
-.bg-gray-950\/70,  .bg-slate-950\/70  { background-color: rgba(255,255,255,0.85) !important; }
-.bg-gray-950\/60,  .bg-slate-950\/60  { background-color: rgba(255,255,255,0.85) !important; }
-.bg-gray-900\/40,  .bg-slate-900\/40  { background-color: rgba(249,250,251,0.6)  !important; }
-.bg-gray-900\/60,  .bg-slate-900\/60  { background-color: rgba(249,250,251,0.8)  !important; }
-.bg-gray-800\/40,  .bg-slate-800\/40  { background-color: rgba(243,244,246,0.6)  !important; }
-.bg-gray-800\/60,  .bg-slate-800\/60  { background-color: rgba(243,244,246,0.8)  !important; }
+  --text-primary:   #0F172A;
+  --text-secondary: #64748B;
+  --text-muted:     #94A3B8;
+
+  --border-default: #E5E7EB;
+  --border-subtle:  #F1F5F9;
+
+  --brand-red:      #E5484D;
+  --brand-red-dark: #C93A3F;
+  --brand-red-soft: #FDECEC;
+
+  --ai-purple:      #7C5CFF;
+  --ai-purple-soft: #F3F0FF;
+
+  --status-success:  #16A34A;
+  --status-warning:  #F59E0B;
+  --status-critical: #E5484D;
+  --status-info:     #2563EB;
+}
+
+/* ── Base ────────────────────────────────────────────────────────────────── */
+html, body, #root {
+  background: var(--bg-app);
+  color: var(--text-primary);
+}
+
+/* ── Dark bg classes → enterprise white/near-white (content areas) ────────
+   The sidebar uses explicit bg-[#0B0F19] (arbitrary value) so these
+   overrides don't touch it. They only affect content-area dark classes.   */
+.bg-gray-950,  .bg-slate-950  { background-color: var(--bg-surface) !important; }
+.bg-gray-900,  .bg-slate-900  { background-color: var(--bg-app)     !important; }
+.bg-gray-800,  .bg-slate-800  { background-color: #F1F5F9            !important; }
+.bg-gray-700,  .bg-slate-700  { background-color: var(--border-default) !important; }
+
+/* Opacity-modifier variants */
+.bg-gray-950\/70,  .bg-slate-950\/70  { background-color: rgba(255,255,255,0.92) !important; }
+.bg-gray-950\/60,  .bg-slate-950\/60  { background-color: rgba(255,255,255,0.88) !important; }
+.bg-gray-900\/40,  .bg-slate-900\/40  { background-color: rgba(248,250,252,0.7)  !important; }
+.bg-gray-900\/60,  .bg-slate-900\/60  { background-color: rgba(248,250,252,0.85) !important; }
+.bg-gray-800\/40,  .bg-slate-800\/40  { background-color: rgba(241,245,249,0.6)  !important; }
+.bg-gray-800\/60,  .bg-slate-800\/60  { background-color: rgba(241,245,249,0.8)  !important; }
 
 /* Hover states */
-.hover\:bg-gray-800:hover, .hover\:bg-slate-800:hover { background-color: #f1f5f9 !important; }
-.hover\:bg-gray-700:hover, .hover\:bg-slate-700:hover { background-color: #e2e8f0 !important; }
-.hover\:bg-gray-600:hover, .hover\:bg-slate-600:hover { background-color: #cbd5e1 !important; }
+.hover\:bg-gray-800:hover, .hover\:bg-slate-800:hover { background-color: #F1F5F9 !important; }
+.hover\:bg-gray-700:hover, .hover\:bg-slate-700:hover { background-color: #E2E8F0 !important; }
+.hover\:bg-gray-600:hover, .hover\:bg-slate-600:hover { background-color: #CBD5E1 !important; }
 .hover\:bg-gray-800\/40:hover { background-color: rgba(241,245,249,0.7) !important; }
 
-/* ── Dark text → proper dark-on-white text ─────────────────────────────────── */
-.text-gray-100, .text-slate-100 { color: #111827 !important; }
-.text-gray-200, .text-slate-200 { color: #1f2937 !important; }
-.text-gray-300, .text-slate-300 { color: #4b5563 !important; }
-.text-gray-400, .text-slate-400 { color: #6b7280 !important; }
+/* ── Dark text → enterprise text on white ────────────────────────────────── */
+.text-gray-100, .text-slate-100 { color: var(--text-primary)   !important; }
+.text-gray-200, .text-slate-200 { color: #1E293B               !important; }
+.text-gray-300, .text-slate-300 { color: var(--text-secondary)  !important; }
+.text-gray-400, .text-slate-400 { color: var(--text-muted)      !important; }
 
-/* ── Dark borders → light borders ──────────────────────────────────────────── */
-.border-gray-700, .border-slate-700 { border-color: #d1d5db !important; }
-.border-gray-800, .border-slate-800 { border-color: #e5e7eb !important; }
-.border-gray-900, .border-slate-900 { border-color: #f3f4f6 !important; }
-.border-gray-700\/50, .border-slate-700\/50 { border-color: rgba(209,213,219,0.7) !important; }
+/* ── Dark borders → enterprise borders ───────────────────────────────────── */
+.border-gray-700, .border-slate-700 { border-color: var(--border-default) !important; }
+.border-gray-800, .border-slate-800 { border-color: #F1F5F9               !important; }
+.border-gray-900, .border-slate-900 { border-color: var(--border-subtle)  !important; }
+.border-gray-700\/50, .border-slate-700\/50 { border-color: rgba(229,231,235,0.7) !important; }
 
-/* ── Brand colors (lender burgundy sidebar) ────────────────────────────────── */
-.bg-brand-950 { background-color: #ffffff !important; }
-.bg-brand-900 { background-color: #f9fafb !important; }
-.text-brand-100, .text-brand-200 { color: #1f2937 !important; }
-.text-brand-300                  { color: #4b5563 !important; }
-.border-brand-900                { border-color: #e5e7eb !important; }
-.hover\:bg-brand-900:hover       { background-color: #fdf2f4 !important; }
-.hover\:bg-brand-900\/70:hover   { background-color: rgba(253,242,244,0.9) !important; }
+/* Divide utilities */
+.divide-white\/8  > * + * { border-color: var(--border-default) !important; }
+.divide-white\/10 > * + * { border-color: var(--border-default) !important; }
+.divide-white\/5  > * + * { border-color: var(--border-subtle)  !important; }
+
+/* ── Brand / lender legacy classes → new brand-red ───────────────────────── */
+.bg-brand-950 { background-color: var(--bg-surface) !important; }
+.bg-brand-900 { background-color: var(--bg-app)     !important; }
+.text-brand-100, .text-brand-200 { color: var(--text-primary)  !important; }
+.text-brand-300                  { color: var(--text-secondary) !important; }
+.border-brand-900                { border-color: var(--border-default) !important; }
+.hover\:bg-brand-900:hover       { background-color: var(--brand-red-soft) !important; }
+.hover\:bg-brand-900\/70:hover   { background-color: rgba(253,236,236,0.9) !important; }
+
+/* ── Transparent glass cards → clean white cards ─────────────────────────── */
+[style*="rgba(255,255,255,0.07)"],
+[style*="rgba(255,255,255,0.08)"],
+[style*="rgba(255,255,255,0.09)"],
+[style*="rgba(255,255,255,0.05)"] {
+  background: var(--bg-surface) !important;
+  border-color: var(--border-default) !important;
+}
+
+/* White-on-dark text in cards → dark text on white */
+[style*="rgba(255,255,255,0.08)"] p,
+[style*="rgba(255,255,255,0.07)"] p,
+[style*="rgba(255,255,255,0.09)"] p {
+  color: var(--text-primary);
+}
+
+/* ── Recharts tooltip → enterprise light theme ───────────────────────────── */
+.recharts-tooltip-wrapper .recharts-default-tooltip {
+  background: var(--bg-surface) !important;
+  border: 1px solid var(--border-default) !important;
+  border-radius: 8px !important;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.08) !important;
+}
+.recharts-tooltip-item-name,
+.recharts-tooltip-item-value,
+.recharts-tooltip-label { color: var(--text-primary) !important; }
+
+.recharts-cartesian-grid-horizontal line,
+.recharts-cartesian-grid-vertical line {
+  stroke: var(--border-subtle) !important;
+}
+.recharts-text { fill: var(--text-muted) !important; }
+
+/* ── Tab nav enterprise style ─────────────────────────────────────────────
+   Layout tabs (Portfolio, Governance) use pill-style nav.
+   Active = dark slate. Default = light neutral. Highlight = ai-purple soft. */
+.kontra-tab-active   { background: #0F172A; color: #FFFFFF; }
+.kontra-tab-default  { background: #F1F5F9; color: var(--text-secondary); }
+.kontra-tab-default:hover { background: #E2E8F0; }
+.kontra-tab-highlight { background: var(--ai-purple-soft); color: var(--ai-purple); border: 1px solid rgba(124,92,255,0.2); }
+
+/* ── Status pills ─────────────────────────────────────────────────────────── */
+.pill-success  { background: #DCFCE7; color: var(--status-success);  border: 1px solid #BBF7D0; }
+.pill-warning  { background: #FEF3C7; color: #92400E;                border: 1px solid #FDE68A; }
+.pill-critical { background: var(--brand-red-soft); color: var(--brand-red); border: 1px solid #FECACA; }
+.pill-info     { background: #DBEAFE; color: var(--status-info);     border: 1px solid #BFDBFE; }
+.pill-neutral  { background: #F1F5F9; color: var(--text-secondary);  border: 1px solid var(--border-default); }
+
+/* ── Scrollbar ───────────────────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #CBD5E1; border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: #94A3B8; }
