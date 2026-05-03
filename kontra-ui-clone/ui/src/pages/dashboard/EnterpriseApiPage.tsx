@@ -467,7 +467,7 @@ function PluginMarketplace() {
     try {
       const result = await apiFetch(`/plugins/install/${installId}/execute`, {
         method: "POST",
-        body: JSON.stringify({ actionId, payload: { channel: "#kontra-alerts", text: "Kontra test execution — draw approved for LN-0094 ($82,000)", summary: "Kontra test", severity: "info", to: "test@example.com", subject: "Kontra Integration Test", text: "Test message from Kontra" } }),
+        body: JSON.stringify({ actionId, payload: { channel: "#kontra-alerts", text: "Kontra test execution — draw approved for LN-0094 ($82,000)", summary: "Kontra test", severity: "info", to: "test@example.com", subject: "Kontra Integration Test", message: "Test message from Kontra" } }),
       });
       setExecResult(r => ({ ...r, [installId]: result }));
     } catch (err: any) { setExecResult(r => ({ ...r, [installId]: { error: err.message } })); }
