@@ -9,16 +9,20 @@ import { Scene5 } from "./video_scenes/Scene5";
 import { Scene6 } from "./video_scenes/Scene6";
 import { Scene7 } from "./video_scenes/Scene7";
 import { Scene8 } from "./video_scenes/Scene8";
+import { Scene9 } from "./video_scenes/Scene9";
+import { Scene10 } from "./video_scenes/Scene10";
 
 export const SCENE_DURATIONS: Record<string, number> = {
-  scene1: 5000,
+  scene1: 6000,
   scene2: 7000,
-  scene3: 7000,
-  scene4: 8000,
-  scene5: 7000,
-  scene6: 7000,
-  scene8: 8000,
+  scene3: 9000,
+  scene4: 9000,
+  scene5: 9000,
+  scene6: 9000,
   scene7: 9000,
+  scene8: 9000,
+  scene9: 8000,
+  scene10: 7000,
 };
 
 const SCENE_COMPONENTS: Record<string, React.ComponentType> = {
@@ -28,13 +32,15 @@ const SCENE_COMPONENTS: Record<string, React.ComponentType> = {
   scene4: Scene4,
   scene5: Scene5,
   scene6: Scene6,
-  scene8: Scene8,
   scene7: Scene7,
+  scene8: Scene8,
+  scene9: Scene9,
+  scene10: Scene10,
 };
 
 function GridBackground() {
   return (
-    <div
+    <motion.div
       className="absolute inset-0 pointer-events-none"
       style={{
         backgroundImage: `
@@ -42,6 +48,14 @@ function GridBackground() {
           linear-gradient(90deg, rgba(201,168,76,0.04) 1px, transparent 1px)
         `,
         backgroundSize: "60px 60px",
+      }}
+      animate={{
+        backgroundPosition: ["0px 0px", "60px 60px"],
+      }}
+      transition={{
+        duration: 10,
+        repeat: Infinity,
+        ease: "linear",
       }}
     />
   );

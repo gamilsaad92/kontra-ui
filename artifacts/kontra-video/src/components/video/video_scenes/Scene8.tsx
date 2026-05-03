@@ -1,200 +1,177 @@
-import { motion } from "framer-motion";
+import { motion, useMotionValue, useTransform, animate } from "framer-motion";
+import { useEffect, useState } from "react";
 
-const TOKENS = [
-  {
-    id: "KTRA-2847",
-    name: "300 Mission Street",
-    type: "MULTIFAMILY",
-    tvl: "$141.2M",
-    holders: "4,218",
-    yield: "7.4%",
-    color: "#C4B5FD",
-    border: "rgba(76,29,149,0.6)",
-    bg: "rgba(76,29,149,0.1)",
-    delay: 0.6,
-  },
-  {
-    id: "KTRA-5544",
-    name: "Pacific Industrial Park",
-    type: "INDUSTRIAL",
-    tvl: "$84.2M",
-    holders: "2,891",
-    yield: "6.1%",
-    color: "#6EE7B7",
-    border: "rgba(6,78,59,0.6)",
-    bg: "rgba(6,78,59,0.1)",
-    delay: 1.0,
-  },
-];
+function Counter({ from, to, delay }: { from: number, to: number, delay: number }) {
+  const val = useMotionValue(from);
+  
+  useEffect(() => {
+    const controls = animate(val, to, {
+      duration: 2,
+      delay: delay,
+      ease: "easeOut"
+    });
+    return controls.stop;
+  }, [val, to, delay]);
 
-const WATERFALL = [
-  { label: "Gross Rent", pct: 100, color: "#C9A84C" },
-  { label: "Servicer Fee (3%)", pct: 97, color: "#FCD34D" },
-  { label: "Reserve (5%)", pct: 92, color: "#FB923C" },
-  { label: "Token Distribution", pct: 87, color: "#C4B5FD" },
-];
-
-function TokenCard({ id, name, type, tvl, holders, yield: yld, color, border, bg, delay }: (typeof TOKENS)[0]) {
-  return (
-    <motion.div
-      className="rounded-xl overflow-hidden flex-1"
-      style={{ background: bg, border: `1px solid ${border}` }}
-      initial={{ opacity: 0, y: 24 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ delay, duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
-    >
-      <div className="px-4 pt-4 pb-3">
-        <div className="flex items-center justify-between mb-2">
-          <span
-            className="text-xs font-mono font-bold tracking-widest"
-            style={{ color, fontFamily: "'JetBrains Mono', monospace" }}
-          >
-            {id}
-          </span>
-          <span
-            className="text-[9px] font-mono px-2 py-0.5 rounded-full"
-            style={{ color, border: `1px solid ${border}`, fontFamily: "'JetBrains Mono', monospace" }}
-          >
-            {type}
-          </span>
-        </div>
-        <div className="text-sm font-semibold mb-3" style={{ color: "var(--cream)" }}>
-          {name}
-        </div>
-        <div className="grid grid-cols-3 gap-2">
-          {[
-            { label: "TVL", val: tvl },
-            { label: "HOLDERS", val: holders },
-            { label: "YIELD", val: yld },
-          ].map((item) => (
-            <div key={item.label}>
-              <div className="text-base font-bold" style={{ color }}>{item.val}</div>
-              <div
-                className="text-[8px] font-mono tracking-widest"
-                style={{ color: "var(--muted)", fontFamily: "'JetBrains Mono', monospace" }}
-              >
-                {item.label}
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-      <motion.div
-        className="h-[2px]"
-        style={{ background: color }}
-        initial={{ scaleX: 0 }}
-        animate={{ scaleX: 1 }}
-        transition={{ delay: delay + 0.4, duration: 0.6, ease: "easeOut", transformOrigin: "left" }}
-      />
-    </motion.div>
-  );
-}
-
-function WaterfallBar({ label, pct, color, delay }: (typeof WATERFALL)[0] & { delay: number }) {
-  return (
-    <div className="flex items-center gap-3">
-      <div
-        className="text-[9px] font-mono tracking-wide text-right shrink-0"
-        style={{ color: "var(--muted)", width: 130, fontFamily: "'JetBrains Mono', monospace" }}
-      >
-        {label}
-      </div>
-      <div className="flex-1 h-[6px] rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,0.06)" }}>
-        <motion.div
-          className="h-full rounded-full"
-          style={{ background: color }}
-          initial={{ width: 0 }}
-          animate={{ width: `${pct}%` }}
-          transition={{ delay, duration: 0.8, ease: "easeOut" }}
-        />
-      </div>
-      <div
-        className="text-[9px] font-mono shrink-0"
-        style={{ color, width: 32, fontFamily: "'JetBrains Mono', monospace" }}
-      >
-        {pct}%
-      </div>
-    </div>
-  );
+  const display = useTransform(val, v => `$${v.toFixed(1)}M`);
+  
+  return <motion.span>{display}</motion.span>;
 }
 
 export function Scene8() {
+  const [phase, setPhase] = useState(0);
+
+  useEffect(() => {
+    const timers = [
+      setTimeout(() => setPhase(1), 500),
+      setTimeout(() => setPhase(2), 1500),
+      setTimeout(() => setPhase(3), 2500),
+      setTimeout(() => setPhase(4), 8500), // Exiting
+    ];
+    return () => timers.forEach((t) => clearTimeout(t));
+  }, []);
+
+  const tokens = [
+    { id: "KTRA-2847", nav: "$1.02", yield: "7.4%" },
+    { id: "KTRA-2741", nav: "$0.98", yield: "8.1%" },
+  ];
+
+  const bids = [
+    { size: "25k", price: "1.018" },
+    { size: "10k", price: "1.015" },
+    { size: "100k", price: "1.012" },
+  ];
+  
+  const asks = [
+    { size: "50k", price: "1.021" },
+    { size: "15k", price: "1.022" },
+    { size: "200k", price: "1.025" },
+  ];
+
   return (
     <motion.div
-      className="absolute inset-0 flex flex-col items-center justify-center px-12 gap-8"
+      className="absolute inset-0 flex items-center justify-center overflow-hidden"
       initial={{ opacity: 0 }}
       animate={{ opacity: 1, transition: { duration: 0.4 } }}
-      exit={{ opacity: 0, transition: { duration: 0.12 } }}
+      exit={{ opacity: 0, transition: { duration: 0.15 } }}
     >
-      <div className="text-center">
-        <motion.p
-          className="text-xs font-mono tracking-[0.3em] uppercase mb-2"
-          style={{ color: "var(--gold)", fontFamily: "'JetBrains Mono', monospace" }}
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.1, duration: 0.5 }}
-        >
-          ERC-1400 Token Registry · Reg D / Reg S
-        </motion.p>
-        <motion.h2
-          className="text-3xl font-bold"
-          style={{ color: "var(--cream)" }}
-          initial={{ opacity: 0, y: -12 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.2, duration: 0.5 }}
-        >
-          $225.4M tokenized.{" "}
-          <span style={{ color: "var(--gold)" }}>On-chain. Compliant.</span>
-        </motion.h2>
-      </div>
-
-      <div className="flex gap-4 w-full max-w-3xl">
-        {TOKENS.map((t) => (
-          <TokenCard key={t.id} {...t} />
-        ))}
-      </div>
-
       <motion.div
-        className="w-full max-w-3xl rounded-xl p-4"
-        style={{ background: "rgba(201,168,76,0.05)", border: "1px solid rgba(201,168,76,0.15)" }}
-        initial={{ opacity: 0, y: 16 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 1.4, duration: 0.5 }}
-      >
-        <div
-          className="text-[10px] font-mono font-bold tracking-[0.25em] uppercase mb-3"
-          style={{ color: "var(--gold)", fontFamily: "'JetBrains Mono', monospace" }}
-        >
-          Cash Flow Waterfall
-        </div>
-        <div className="flex flex-col gap-2">
-          {WATERFALL.map((w, i) => (
-            <WaterfallBar key={w.label} {...w} delay={1.7 + i * 0.15} />
-          ))}
-        </div>
-      </motion.div>
+        className="absolute inset-0"
+        style={{
+          backgroundImage: `
+            linear-gradient(rgba(255,255,255,0.02) 1px, transparent 1px),
+            linear-gradient(90deg, rgba(255,255,255,0.02) 1px, transparent 1px)
+          `,
+          backgroundSize: "30px 30px",
+          perspective: "1000px"
+        }}
+        animate={{ opacity: [0.3, 0.6, 0.3] }}
+        transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
+      />
 
-      <motion.div
-        className="flex gap-6"
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ delay: 3.2, duration: 0.6 }}
-      >
-        {[
-          { label: "ERC-1400 compliant", color: "#C4B5FD" },
-          { label: "Reg D + Reg S layer", color: "#C9A84C" },
-          { label: "10,290 whitelisted investors", color: "#6EE7B7" },
-        ].map((item) => (
-          <div key={item.label} className="flex items-center gap-1.5">
-            <span style={{ color: item.color, fontSize: 10 }}>◆</span>
-            <span
-              className="text-[10px] font-mono"
-              style={{ color: "var(--muted)", fontFamily: "'JetBrains Mono', monospace" }}
-            >
-              {item.label}
-            </span>
+      <div className="w-full max-w-5xl flex gap-12 items-center relative z-10 px-8">
+        
+        {/* Left Side: Total & Tokens */}
+        <div className="flex-1 flex flex-col gap-8">
+          <motion.div
+            initial={{ opacity: 0, x: -30 }}
+            animate={phase >= 4 ? { opacity: 0 } : phase >= 1 ? { opacity: 1, x: 0 } : {}}
+            transition={{ duration: 0.6 }}
+          >
+            <div className="text-white/50 text-sm font-mono uppercase tracking-widest mb-2">Total Tokenized</div>
+            <div className="text-6xl font-light text-white font-mono tracking-tight">
+              {phase >= 1 ? <Counter from={0} to={225.4} delay={0.5} /> : "$0.0M"}
+            </div>
+          </motion.div>
+
+          <div className="flex gap-4">
+            {tokens.map((t, i) => (
+              <motion.div 
+                key={t.id}
+                className="bg-white/5 border border-white/10 rounded-lg p-5 flex-1 backdrop-blur-md relative overflow-hidden"
+                initial={{ opacity: 0, y: 30 }}
+                animate={phase >= 4 ? { opacity: 0 } : phase >= 2 ? { opacity: 1, y: 0 } : {}}
+                transition={{ delay: i * 0.1, duration: 0.5 }}
+              >
+                <div className="absolute top-0 left-0 w-full h-1 bg-[var(--gold)]/50" />
+                <div className="text-white font-bold mb-4">{t.id}</div>
+                <div className="flex justify-between items-end">
+                  <div>
+                    <div className="text-white/40 text-xs mb-1">NAV</div>
+                    <div className="text-xl text-white font-mono">{t.nav}</div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-white/40 text-xs mb-1">Yield</div>
+                    <div className="text-green-400 font-mono">{t.yield}</div>
+                  </div>
+                </div>
+              </motion.div>
+            ))}
           </div>
-        ))}
+        </div>
+
+        {/* Right Side: Order Book */}
+        <motion.div 
+          className="flex-1 bg-black/40 border border-white/10 rounded-xl p-6 backdrop-blur-xl"
+          initial={{ opacity: 0, scale: 0.9, rotateY: -10 }}
+          animate={phase >= 4 ? { opacity: 0 } : phase >= 3 ? { opacity: 1, scale: 1, rotateY: 0 } : {}}
+          transition={{ duration: 0.6, type: "spring" }}
+          style={{ transformStyle: "preserve-3d" }}
+        >
+          <div className="text-white font-medium mb-6 flex justify-between items-center">
+            <span>Secondary Market</span>
+            <span className="text-xs text-white/40 font-mono">KTRA-2847</span>
+          </div>
+
+          <div className="flex text-xs text-white/40 font-mono uppercase border-b border-white/10 pb-2 mb-2">
+            <div className="flex-1">Size</div>
+            <div className="flex-1 text-center">Price</div>
+            <div className="flex-1 text-right text-white/20">Ask/Bid</div>
+          </div>
+
+          {/* Asks (Red) */}
+          <div className="flex flex-col gap-1 mb-4">
+            {asks.map((a, i) => (
+              <div key={i} className="flex text-sm font-mono relative py-1">
+                <div className="absolute right-0 top-0 h-full bg-red-500/10 rounded-sm" style={{ width: `${Math.random() * 40 + 20}%` }} />
+                <div className="flex-1 text-white/60 relative z-10">{a.size}</div>
+                <div className="flex-1 text-center text-red-400 relative z-10">{a.price}</div>
+                <div className="flex-1 relative z-10"></div>
+              </div>
+            ))}
+          </div>
+
+          {/* Current Price */}
+          <div className="text-center py-2 text-xl font-mono text-white border-y border-white/5 my-2">
+            1.019
+          </div>
+
+          {/* Bids (Green) */}
+          <div className="flex flex-col gap-1 mt-4">
+            {bids.map((b, i) => (
+              <div key={i} className="flex text-sm font-mono relative py-1">
+                <div className="absolute right-0 top-0 h-full bg-green-500/10 rounded-sm" style={{ width: `${Math.random() * 50 + 30}%` }} />
+                <div className="flex-1 text-white/60 relative z-10">{b.size}</div>
+                <div className="flex-1 text-center text-green-400 relative z-10">{b.price}</div>
+                <div className="flex-1 relative z-10"></div>
+              </div>
+            ))}
+          </div>
+
+          <div className="mt-8 text-center text-white/50 text-xs font-mono">
+            $124.2M trades settled YTD
+          </div>
+        </motion.div>
+
+      </div>
+
+      <motion.div 
+        className="absolute bottom-12 px-8 py-3 bg-[var(--gold)]/10 backdrop-blur border border-[var(--gold)]/30 rounded-full text-[var(--gold)] tracking-widest font-mono text-sm shadow-[0_0_30px_rgba(201,168,76,0.15)] z-20"
+        initial={{ opacity: 0, y: 20 }}
+        animate={phase >= 4 ? { opacity: 0, y: 20 } : phase >= 1 ? { opacity: 1, y: 0 } : {}}
+        transition={{ delay: phase >= 4 ? 0 : 0.6, duration: 0.6 }}
+      >
+        ERC-1400 · REG D/S · SECONDARY TRADING
       </motion.div>
     </motion.div>
   );
