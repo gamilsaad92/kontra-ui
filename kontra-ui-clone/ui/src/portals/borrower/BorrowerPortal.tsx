@@ -299,7 +299,7 @@ export default function BorrowerPortal() {
         <div className="flex items-center gap-3 px-5 py-5 border-b border-gray-200">
           <div
             className="flex h-8 w-8 items-center justify-center rounded-lg shrink-0 font-black text-white text-sm"
-            style={{ background:"#059669", boxShadow:"0 0 16px rgba(5,150,105,0.4)" }}
+            style={{ background:"#800020" }}
           >K</div>
           <div>
             <p className="text-sm font-bold text-gray-900" style={{ letterSpacing:"-0.02em" }}>Kontra</p>
