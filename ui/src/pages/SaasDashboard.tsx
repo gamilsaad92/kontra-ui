@@ -116,7 +116,7 @@ export default function SaasDashboard() {
     { label: "Operations", paths: ["/servicing-ops", "/inspection", "/hazard-recovery", "/cost-governance", "/policy-command", "/tokenization"] },
   ];
 
-  const SETTINGS_PATHS = ["/settings/team", "/settings/billing", "/settings/sso"];
+  const SETTINGS_PATHS = ["/settings/billing", "/settings/sso"];
 
   const renderNavItem = useCallback(
     (item: NavItem) => {
@@ -247,7 +247,6 @@ export default function SaasDashboard() {
       <Route path="/settings" element={<Navigate to="/settings/billing" replace />} />
       <Route path="/settings/billing" element={<BillingPage />} />
       <Route path="/settings/sso" element={<SsoSettingsPage />} />
-      <Route path="/settings/team" element={<TeamPage />} />
       <Route path="/settings/api-diagnostics" element={<ApiDiagnostics />} />
       <Route path="/dev/wiring-check" element={<WiringCheck />} />
       <Route path="/projects" element={<LegacyRedirect to="/portfolio/assets" />} />
