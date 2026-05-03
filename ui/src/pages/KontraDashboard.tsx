@@ -135,13 +135,13 @@ export default function KontraDashboard() {
   const currentLabel = isServicing ? "Servicing" : isCoupon ? "OLB Coupon" : "Overview";
   
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-200 flex">
+    <div className="min-h-screen bg-gray-50 text-gray-900 flex">
       <RouterTripwire name="KontraDashboard" />
 
       {/* Sidebar */}
-      <aside className="hidden md:flex w-64 flex-col bg-brand-950 border-r border-brand-900">
-        <div className="px-4 py-4 border-b border-brand-900">
-          <div className="text-xl font-bold tracking-tight text-brand-200">Kontra</div>
+      <aside className="hidden md:flex w-64 flex-col bg-white border-r border-gray-200 shadow-sm">
+        <div className="px-4 py-4 border-b border-gray-200">
+          <div className="text-xl font-bold tracking-tight text-brand-600">Kontra</div>
         </div>
         <nav className="flex-1 p-2 space-y-1">
           {primary.map((item) => (
@@ -151,7 +151,7 @@ export default function KontraDashboard() {
               end={item.path === "/dashboard"}
               className={({ isActive }) =>
                 `block rounded px-3 py-2 text-sm transition ${
-                  isActive ? "bg-brand-800 text-white" : "hover:bg-brand-900/70 text-brand-200"
+                  isActive ? "bg-brand-50 text-brand-700 font-semibold" : "text-gray-600 hover:bg-brand-50 hover:text-brand-700"
                 }`
               }
             >
@@ -159,32 +159,32 @@ export default function KontraDashboard() {
             </NavLink>
           ))}
         </nav>
-        <div className="px-4 py-3 border-t border-brand-900 text-xs text-brand-300">Role: Lender</div>
+        <div className="px-4 py-3 border-t border-gray-200 text-xs text-gray-500">Role: Lender</div>
       </aside>
 
       {/* Main area */}
       <main className="flex-1">
         {/* Top header */}
-        <div className="sticky top-0 z-10 backdrop-blur bg-slate-950/70 border-b border-brand-900">
+        <div className="sticky top-0 z-10 backdrop-blur bg-white/95 border-b border-gray-200 shadow-sm">
           <div className="mx-auto max-w-[1440px] px-6 py-4">
             <div className="flex items-center justify-between">
               {/* Breadcrumbs (simple) */}
-              <div className="text-xs text-brand-300 flex items-center gap-2">
-                <NavLink to="/dashboard" end className="hover:text-brand-100">
+              <div className="text-xs text-gray-500 flex items-center gap-2">
+                <NavLink to="/dashboard" end className="hover:text-brand-600">
                   Dashboard
                 </NavLink>
                 <span>/</span>
-               <span className="text-brand-200">{currentLabel}</span>
+               <span className="text-gray-700">{currentLabel}</span>
               </div>
               {/* Actions */}
               <div className="flex items-center gap-2">
-                <button className="px-3 py-1.5 rounded-lg bg-brand-800 hover:bg-brand-700 text-sm text-white">New</button>
-                <button className="px-3 py-1.5 rounded-lg border border-brand-700 hover:bg-brand-900 text-sm text-brand-200">Filter</button>
-                <button className="px-3 py-1.5 rounded-lg border border-brand-700 hover:bg-brand-900 text-sm text-brand-200">Search</button>
+                <button className="px-3 py-1.5 rounded-lg bg-brand-600 hover:bg-brand-700 text-sm text-white">New</button>
+                <button className="px-3 py-1.5 rounded-lg border border-gray-200 hover:bg-gray-50 text-sm text-gray-600">Filter</button>
+                <button className="px-3 py-1.5 rounded-lg border border-gray-200 hover:bg-gray-50 text-sm text-gray-600">Search</button>
               </div>
             </div>
             {/* Page title */}
-           <h1 className="mt-2 text-2xl font-semibold tracking-tight text-brand-100">{currentLabel}</h1>
+           <h1 className="mt-2 text-2xl font-semibold tracking-tight text-gray-900">{currentLabel}</h1>
             
             {/* Secondary tabs */}
             <div className="mt-3 flex items-center gap-1 text-sm">
@@ -193,8 +193,8 @@ export default function KontraDashboard() {
                   key={s}
                   className={`px-3 py-1.5 rounded-lg border ${
                     i === 0
-                      ? "border-brand-600 bg-brand-800 text-white"
-                      : "border-transparent text-brand-300 hover:text-brand-100 hover:bg-brand-900"
+                      ? "border-brand-600 bg-brand-50 text-brand-700"
+                      : "border-transparent text-gray-600 hover:text-brand-700 hover:bg-brand-50"
                   }`}
                 >
                   {s}
