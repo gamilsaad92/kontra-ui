@@ -19,7 +19,7 @@ function OrgSwitcher() {
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="flex items-center gap-1.5 rounded-full border border-slate-700 bg-slate-800 px-3 py-1 text-xs font-semibold text-white hover:bg-slate-700 transition-colors"
+        className="flex items-center gap-1.5 rounded-full border border-gray-200 bg-gray-50 px-3 py-1 text-xs font-semibold text-gray-700 hover:bg-gray-100 transition-colors"
         aria-haspopup="listbox"
         aria-expanded={open}
       >
@@ -32,7 +32,7 @@ function OrgSwitcher() {
       </button>
 
       {open && orgs.length > 1 && (
-        <div className="absolute right-0 z-50 mt-1 w-56 origin-top-right rounded-lg border border-slate-700 bg-slate-900 shadow-xl">
+        <div className="absolute right-0 z-50 mt-1 w-56 origin-top-right rounded-lg border border-gray-200 bg-white shadow-xl">
           <ul role="listbox" className="py-1">
             {orgs.map((org) => (
               <li key={org.id} role="option" aria-selected={activeOrg?.id === org.id}>
@@ -40,8 +40,8 @@ function OrgSwitcher() {
                   type="button"
                   className={`w-full px-3 py-2 text-left text-sm transition-colors ${
                     activeOrg?.id === org.id
-                      ? 'bg-slate-700 text-white font-semibold'
-                      : 'text-slate-300 hover:bg-slate-800'
+                      ? 'bg-gray-100 text-gray-900 font-semibold'
+                      : 'text-gray-700 hover:bg-gray-50'
                   }`}
                   onClick={() => {
                     setActiveOrg(org)
@@ -49,7 +49,7 @@ function OrgSwitcher() {
                   }}
                 >
                   <span className="block truncate">{org.name}</span>
-                  <span className="block text-xs text-slate-500 capitalize">{org.role}</span>
+                  <span className="block text-xs text-gray-500 capitalize">{org.role}</span>
                 </button>
               </li>
             ))}
@@ -74,19 +74,19 @@ function LayoutInner({ children, branding, orgName, role, apiError, apiToast, on
           </button>
         </div>
       )}
-      <header className="flex justify-between items-center p-4 gap-4 h-16 border-b border-slate-800 bg-slate-900/60 backdrop-blur">
+      <header className="flex justify-between items-center p-4 gap-4 h-16 border-b border-gray-200 bg-white">
         <div className="flex items-center gap-3">
           {branding?.logo_url && (
-            <img src={branding.logo_url} alt="Organization logo" className="h-8 w-8 rounded-full bg-slate-800 object-cover" />
+            <img src={branding.logo_url} alt="Organization logo" className="h-8 w-8 rounded-full bg-gray-100 object-cover" />
           )}
           <div className="leading-tight">
-            <p className="text-xs uppercase tracking-wide text-slate-400">Workspace</p>
-            <p className="text-sm font-semibold text-white">{orgName}</p>
+            <p className="text-xs uppercase tracking-wide text-gray-500">Workspace</p>
+            <p className="text-sm font-semibold text-gray-900">{orgName}</p>
           </div>
         </div>
         <div className="flex items-center gap-3">
           <OrgSwitcher />
-          <span className="rounded-full border border-slate-700 bg-slate-800 px-3 py-1 text-xs font-semibold capitalize text-white">
+          <span className="rounded-full border border-gray-200 bg-gray-50 px-3 py-1 text-xs font-semibold capitalize text-gray-700">
             {role}
           </span>
         </div>
@@ -95,7 +95,7 @@ function LayoutInner({ children, branding, orgName, role, apiError, apiToast, on
       <main className="flex-1">{children}</main>
 
       {apiToast && (
-        <div className="fixed bottom-4 right-4 z-50 rounded-lg bg-slate-900 px-4 py-3 text-sm text-white shadow-lg border border-slate-700">
+        <div className="fixed bottom-4 right-4 z-50 rounded-lg bg-white px-4 py-3 text-sm text-gray-900 shadow-lg border border-gray-200">
           {apiToast.message || 'Request failed'} {apiToast.status ? `(${apiToast.status})` : ''}
         </div>
       )}
@@ -114,14 +114,13 @@ export default function RootLayout({ children }) {
   const [apiError, setApiError] = useState(null)
   const [apiToast, setApiToast] = useState(null)
 
-  // Global html/body classes
+  // Global html/body classes — white theme
   useEffect(() => {
     document.documentElement.lang = 'en'
-    document.documentElement.classList.add('dark')
-    document.body.classList.add('bg-slate-950', 'text-slate-100', 'min-h-screen')
+    document.documentElement.classList.remove('dark')
+    document.body.classList.add('bg-white', 'text-gray-900', 'min-h-screen')
     return () => {
-      document.documentElement.classList.remove('dark')
-      document.body.classList.remove('bg-slate-950', 'text-slate-100', 'min-h-screen')
+      document.body.classList.remove('bg-white', 'text-gray-900', 'min-h-screen')
     }
   }, [])
 
