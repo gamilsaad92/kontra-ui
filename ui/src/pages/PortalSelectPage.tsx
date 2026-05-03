@@ -160,7 +160,7 @@ export default function PortalSelectPage() {
       {/* Logo */}
       <div className="mb-10 flex flex-col items-center gap-2">
         <div className="flex items-center gap-2.5">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg" style={{ background: "#E5484D" }}>
+          <div className="flex h-8 w-8 items-center justify-center rounded-lg" style={{ background: "#800020" }}>
             <span className="text-sm font-black text-white" style={{ letterSpacing: "-0.05em" }}>K</span>
           </div>
           <span className="text-xl font-bold text-gray-900" style={{ letterSpacing: "-0.02em" }}>Kontra</span>
