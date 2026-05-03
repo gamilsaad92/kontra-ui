@@ -405,7 +405,7 @@ export default function AICopilotPage() {
           </div>
 
           {/* Input bar */}
-          <div className="px-4 py-3 border-t border-white/5 flex items-center gap-3">
+          <div className="px-4 py-3 flex items-center gap-3" style={{ borderTop: "1px solid #E5E7EB" }}>
             <input
               ref={inputRef}
               type="text"
@@ -414,16 +414,16 @@ export default function AICopilotPage() {
               onKeyDown={e => e.key === "Enter" && !e.shiftKey && sendMessage(input)}
               placeholder="Ask anything about your portfolio…"
               disabled={typing}
-              className="flex-1 bg-transparent outline-none placeholder-gray-500"
-              style={{ color: "#f1f5f9", fontSize: "15px" }}
+              className="flex-1 bg-transparent outline-none placeholder-gray-400"
+              style={{ color: "#0F172A", fontSize: "15px" }}
             />
             <button
               onClick={() => sendMessage(input)}
               disabled={!input.trim() || typing}
               className="w-8 h-8 rounded-lg flex items-center justify-center transition-all disabled:opacity-30"
-              style={{ background: "rgba(139,92,246,0.2)", border: "1px solid rgba(139,92,246,0.4)" }}
+              style={{ background: "rgba(124,92,255,0.12)", border: "1px solid rgba(124,92,255,0.3)" }}
             >
-              <PaperAirplaneIcon className="w-4 h-4 text-violet-400" />
+              <PaperAirplaneIcon className="w-4 h-4" style={{ color: "#7C5CFF" }} />
             </button>
           </div>
         </div>
