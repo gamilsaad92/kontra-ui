@@ -8,8 +8,8 @@ const PORTALS = [
     border: "rgba(124,29,53,0.6)",
     text: "#FCA5A5",
     desc: "Origination & Risk",
-    metric: "$284M AUM",
-    metricLabel: "portfolio value",
+    metric: "$604.7M",
+    metricLabel: "portfolio AUM",
     delay: 0.2,
   },
   {
@@ -29,9 +29,9 @@ const PORTALS = [
     bg: "rgba(76,29,149,0.12)",
     border: "rgba(76,29,149,0.6)",
     text: "#C4B5FD",
-    desc: "Portfolio Intelligence",
-    metric: "6 loans",
-    metricLabel: "real-time DSCR",
+    desc: "Token Yield & Trading",
+    metric: "10,290",
+    metricLabel: "accredited investors",
     delay: 0.7,
   },
   {

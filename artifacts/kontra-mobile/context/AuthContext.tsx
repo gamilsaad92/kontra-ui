@@ -19,6 +19,7 @@ interface AuthContextType {
   user: User | null;
   isLoading: boolean;
   login: (email: string, password: string) => Promise<void>;
+  loginAsDemo: (role: "investor" | "borrower") => Promise<void>;
   logout: () => Promise<void>;
 }
 
@@ -84,6 +85,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     });
   }, []);
 
+  const loginAsDemo = async (role: "investor" | "borrower") => {
+    const demoUsers = {
+      investor: { id: "demo-investor", name: "Alex Morgan", email: "demo@kontraplatform.com", role: "investor" as UserRole, portfolioValue: 450100000 },
+      borrower: { id: "demo-borrower", name: "Jordan Lee", email: "borrower@kontraplatform.com", role: "borrower" as UserRole, portfolioValue: 315200000 },
+    };
+    const u = demoUsers[role];
+    setUser(u);
+    await AsyncStorage.setItem(SESSION_KEY, JSON.stringify(u));
+  };
+
   const login = async (email: string, password: string) => {
     const apiBase = getApiBase();
     const res = await fetch(`${apiBase}/api/auth/signin`, {
@@ -141,7 +152,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, isLoading, login, logout }}>
+    <AuthContext.Provider value={{ user, isLoading, login, loginAsDemo, logout }}>
       {children}
     </AuthContext.Provider>
   );

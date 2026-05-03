@@ -2,9 +2,9 @@ import { motion, useMotionValue, useTransform, animate } from "framer-motion";
 import { useEffect } from "react";
 
 const KPIS = [
-  { value: 284, suffix: "M", prefix: "$", label: "Portfolio AUM", color: "#C9A84C", delay: 0.4 },
+  { value: 604.7, suffix: "M", prefix: "$", label: "Portfolio AUM", color: "#C9A84C", delay: 0.4 },
   { value: 1.38, suffix: "×", prefix: "", label: "Avg DSCR", color: "#6EE7B7", delay: 0.65 },
-  { value: 100, suffix: "%", prefix: "", label: "Compliance rate", color: "#C4B5FD", delay: 0.9 },
+  { value: 10290, suffix: "", prefix: "", label: "Accredited investors", color: "#C4B5FD", delay: 0.9 },
 ];
 
 function TickerNumber({

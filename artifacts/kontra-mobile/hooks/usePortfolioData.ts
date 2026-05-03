@@ -40,44 +40,44 @@ export interface PortfolioSummary {
 }
 
 const INVESTOR_LOANS: Loan[] = [
-  { id: "L001", property: "550 Madison Ave", city: "New York, NY", type: "Office", balance: 4200000, rate: "6.25%", rateNum: 6.25, status: "active", maturity: "Dec 2026", ytd: 7.1, distributions: 84000, ltv: 65, dscr: 1.04 },
-  { id: "L002", property: "1 Harbor View", city: "Miami, FL", type: "Multi-Family", balance: 2800000, rate: "5.90%", rateNum: 5.9, status: "active", maturity: "Mar 2027", ytd: 6.8, distributions: 56000, ltv: 72, dscr: 1.42 },
-  { id: "L003", property: "Westfield Mall East", city: "Chicago, IL", type: "Retail", balance: 5450000, rate: "6.75%", rateNum: 6.75, status: "pending", maturity: "Jun 2028", ytd: 0, distributions: 0, ltv: 58 },
-  { id: "L004", property: "Gateway Office Park", city: "Austin, TX", type: "Office", balance: 3100000, rate: "6.00%", rateNum: 6.0, status: "active", maturity: "Sep 2027", ytd: 6.2, distributions: 62000, ltv: 61 },
+  { id: "LN-2847", property: "300 Mission Street", city: "San Francisco, CA", type: "Multi-Family", balance: 141200000, rate: "6.25%", rateNum: 6.25, status: "active", maturity: "Dec 2027", ytd: 7.4, distributions: 2840000, ltv: 62, dscr: 1.38 },
+  { id: "LN-5544", property: "Pacific Industrial Park", city: "Los Angeles, CA", type: "Industrial", balance: 84200000, rate: "5.90%", rateNum: 5.9, status: "active", maturity: "Mar 2028", ytd: 6.1, distributions: 1420000, ltv: 55, dscr: 1.52 },
+  { id: "LN-3201", property: "Riverside Commons", city: "Austin, TX", type: "Multi-Family", balance: 96400000, rate: "6.50%", rateNum: 6.5, status: "active", maturity: "Jun 2029", ytd: 5.9, distributions: 1180000, ltv: 68, dscr: 1.22 },
+  { id: "LN-4012", property: "Harbor View Office Tower", city: "Miami, FL", type: "Office", balance: 128700000, rate: "6.00%", rateNum: 6.0, status: "watch", maturity: "Sep 2027", ytd: 4.8, distributions: 820000, ltv: 74, dscr: 1.08 },
 ];
 
 const BORROWER_LOANS: Loan[] = [
-  { id: "L004", property: "200 Commerce Dr", city: "Austin, TX", type: "Industrial", balance: 3100000, rate: "6.10%", rateNum: 6.1, status: "current", maturity: "Aug 2027", nextPayment: "$18,450" },
-  { id: "L005", property: "City Center Mixed-Use", city: "Denver, CO", type: "Mixed-Use", balance: 1900000, rate: "5.75%", rateNum: 5.75, status: "current", maturity: "Jan 2026", nextPayment: "$11,200" },
-  { id: "L006", property: "Greenbrook Apts", city: "Atlanta, GA", type: "Multi-Family", balance: 4800000, rate: "6.50%", rateNum: 6.5, status: "review", maturity: "Oct 2029", nextPayment: "$28,750" },
+  { id: "LN-4012", property: "Harbor View Office Tower", city: "Miami, FL", type: "Office", balance: 128700000, rate: "6.10%", rateNum: 6.1, status: "current", maturity: "Sep 2027", nextPayment: "$643,500" },
+  { id: "LN-1899", property: "City Center Mixed-Use", city: "Denver, CO", type: "Mixed-Use", balance: 74200000, rate: "5.75%", rateNum: 5.75, status: "current", maturity: "Jan 2027", nextPayment: "$356,150" },
+  { id: "LN-6671", property: "Greenbrook Apartments", city: "Atlanta, GA", type: "Multi-Family", balance: 112300000, rate: "6.50%", rateNum: 6.5, status: "review", maturity: "Oct 2029", nextPayment: "$609,625" },
 ];
 
 const INVESTOR_ACTIVITY: ActivityItem[] = [
-  { id: "1", type: "distribution", title: "Q1 Distribution Received", subtitle: "550 Madison Ave · L001", amount: "+$24,500", date: "Apr 15, 2026", read: true },
-  { id: "2", type: "valuation", title: "Property Valuation Updated", subtitle: "1 Harbor View · L002", amount: "$2.8M", date: "Apr 10, 2026", read: true },
-  { id: "3", type: "document", title: "Q1 Investor Report Ready", subtitle: "All holdings · PDF", date: "Apr 5, 2026", read: false },
-  { id: "4", type: "distribution", title: "Q1 Distribution Received", subtitle: "Gateway Office Park · L004", amount: "+$18,200", date: "Apr 1, 2026", read: true },
-  { id: "5", type: "alert", title: "Maturity Notice", subtitle: "550 Madison Ave matures Dec 2026", date: "Mar 28, 2026", read: true },
-  { id: "6", type: "distribution", title: "Q4 Distribution Received", subtitle: "All holdings", amount: "+$89,400", date: "Jan 15, 2026", read: true },
+  { id: "1", type: "distribution", title: "Q1 Distribution Received", subtitle: "300 Mission St · LN-2847 · KTRA-2847", amount: "+$284,000", date: "Apr 15, 2026", read: true },
+  { id: "2", type: "valuation", title: "Property Valuation Updated", subtitle: "Pacific Industrial Park · LN-5544", amount: "$84.2M", date: "Apr 10, 2026", read: true },
+  { id: "3", type: "document", title: "Q1 Investor Report Ready", subtitle: "All holdings · ERC-1400 verified PDF", date: "Apr 5, 2026", read: false },
+  { id: "4", type: "distribution", title: "Q1 Distribution Received", subtitle: "Riverside Commons · LN-3201 · KTRA-3201", amount: "+$118,000", date: "Apr 1, 2026", read: true },
+  { id: "5", type: "alert", title: "DSCR Alert — Watchlist", subtitle: "Harbor View Office Tower dropped to 1.08x", date: "Mar 28, 2026", read: true },
+  { id: "6", type: "distribution", title: "Q4 2025 Distribution", subtitle: "All holdings · $604.7M pool", amount: "+$892,400", date: "Jan 15, 2026", read: true },
 ];
 
 const BORROWER_ACTIVITY: ActivityItem[] = [
-  { id: "1", type: "payment", title: "Monthly Payment Processed", subtitle: "200 Commerce Dr · L004", amount: "-$18,450", date: "Apr 1, 2026", read: true },
-  { id: "2", type: "document", title: "Insurance Certificate Approved", subtitle: "Greenbrook Apts · L006", date: "Mar 28, 2026", read: false },
-  { id: "3", type: "message", title: "Servicer Response", subtitle: "Re: Payoff Request", date: "Mar 25, 2026", read: false },
-  { id: "4", type: "payment", title: "Monthly Payment Processed", subtitle: "City Center Mixed · L005", amount: "-$11,200", date: "Mar 1, 2026", read: true },
-  { id: "5", type: "alert", title: "Document Required", subtitle: "Rent Roll due Apr 30", date: "Feb 15, 2026", read: true },
+  { id: "1", type: "payment", title: "Monthly Payment Processed", subtitle: "Harbor View Office Tower · LN-4012", amount: "-$643,500", date: "Apr 1, 2026", read: true },
+  { id: "2", type: "document", title: "Insurance Certificate Approved", subtitle: "Greenbrook Apartments · LN-6671", date: "Mar 28, 2026", read: false },
+  { id: "3", type: "message", title: "Servicer Response", subtitle: "Re: Covenant Certification Request", date: "Mar 25, 2026", read: false },
+  { id: "4", type: "payment", title: "Monthly Payment Processed", subtitle: "City Center Mixed-Use · LN-1899", amount: "-$356,150", date: "Mar 1, 2026", read: true },
+  { id: "5", type: "alert", title: "Document Required", subtitle: "T-12 Rent Roll due Apr 30 · LN-6671", date: "Feb 15, 2026", read: true },
 ];
 
 const INVESTOR_SUMMARY: PortfolioSummary = {
-  totalValue: 15550000,
-  activeLoans: 3,
+  totalValue: 450100000,
+  activeLoans: 4,
   ytdReturn: 7.2,
-  ytdDistributions: 202000,
+  ytdDistributions: 5260000,
 };
 
 const BORROWER_SUMMARY: PortfolioSummary = {
-  totalDebt: 9800000,
+  totalDebt: 315200000,
   activeLoans: 3,
   nextPaymentDate: "May 1",
 };

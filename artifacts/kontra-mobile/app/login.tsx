@@ -17,7 +17,8 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "@/context/AuthContext";
 import { useColors } from "@/hooks/useColors";
 
-type Role = "investor" | "borrower";
+type DemoRole = "investor" | "borrower";
+type Role = DemoRole;
 
 const ROLES: { id: Role; label: string; desc: string; color: string; icon: keyof typeof Feather.glyphMap }[] = [
   { id: "investor", label: "Investor", desc: "View portfolio & distributions", color: "#6d28d9", icon: "trending-up" },
@@ -27,12 +28,23 @@ const ROLES: { id: Role; label: string; desc: string; color: string; icon: keyof
 export default function LoginScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { login } = useAuth();
+  const { login, loginAsDemo } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [selectedRole, setSelectedRole] = useState<Role>("investor");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+
+  const handleDemoLogin = async (role: DemoRole) => {
+    setLoading(true);
+    try {
+      await loginAsDemo(role);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      router.replace("/(tabs)");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleLogin = async () => {
     if (!email || !password) {
@@ -74,6 +86,37 @@ export default function LoginScreen() {
           <Text style={[styles.title, { color: colors.foreground }]}>Kontra</Text>
           <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>
             CRE Loan Servicing Platform
+          </Text>
+        </View>
+
+        {/* Demo access strip */}
+        <View style={[styles.demoSection, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          <Text style={[styles.demoLabel, { color: colors.mutedForeground }]}>No account? Try demo</Text>
+          <View style={styles.demoRow}>
+            <TouchableOpacity
+              style={[styles.demoBtn, { backgroundColor: "#6d28d920", borderColor: "#6d28d9" }]}
+              onPress={() => handleDemoLogin("investor")}
+              activeOpacity={0.8}
+              disabled={loading}
+            >
+              <Feather name="trending-up" size={14} color="#6d28d9" />
+              <Text style={[styles.demoBtnText, { color: "#6d28d9" }]}>Investor Demo</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.demoBtn, { backgroundColor: "#05966920", borderColor: "#059669" }]}
+              onPress={() => handleDemoLogin("borrower")}
+              activeOpacity={0.8}
+              disabled={loading}
+            >
+              <Feather name="home" size={14} color="#059669" />
+              <Text style={[styles.demoBtnText, { color: "#059669" }]}>Borrower Demo</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        <View style={[styles.divider, { backgroundColor: colors.border }]}>
+          <Text style={[styles.dividerText, { color: colors.mutedForeground, backgroundColor: colors.background }]}>
+            or sign in
           </Text>
         </View>
 
@@ -212,4 +255,11 @@ const styles = StyleSheet.create({
   },
   loginBtnText: { color: "#fff", fontSize: 16, fontFamily: "Inter_600SemiBold" },
   hint: { textAlign: "center", fontSize: 12, fontFamily: "Inter_400Regular", lineHeight: 18 },
+  demoSection: { borderWidth: 1, borderRadius: 14, padding: 16, marginBottom: 8 },
+  demoLabel: { fontSize: 11, fontFamily: "Inter_500Medium", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 12, textAlign: "center" },
+  demoRow: { flexDirection: "row", gap: 10 },
+  demoBtn: { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, paddingVertical: 12, borderRadius: 10, borderWidth: 1.5 },
+  demoBtnText: { fontSize: 13, fontFamily: "Inter_600SemiBold" },
+  divider: { height: 1, marginVertical: 20, position: "relative", alignItems: "center", justifyContent: "center" },
+  dividerText: { fontSize: 12, fontFamily: "Inter_400Regular", paddingHorizontal: 12, position: "absolute" },
 });
