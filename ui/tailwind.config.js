@@ -5,16 +5,28 @@ module.exports = {
     extend: {
       colors: {
         brand: {
-          50:  '#fdf2f4',
-          100: '#f9dde2',
-          200: '#f2bac4',
-          300: '#e58d9d',
-          400: '#d45f73',
-          500: '#b83550',
-          600: '#800020',
-          700: '#660018',
-          800: '#4d0012',
-          900: '#33000c',
+          50:  '#FDECEC',
+          100: '#FAD2D3',
+          200: '#F5A9AB',
+          300: '#EF7C7F',
+          400: '#E9585B',
+          500: '#E5484D',
+          600: '#C93A3F',
+          700: '#A52E32',
+          800: '#7A2225',
+          900: '#4F1518',
+        },
+        ai: {
+          purple:      '#7C5CFF',
+          'purple-soft':'#F3F0FF',
+        },
+        sidebar: {
+          DEFAULT: '#0B0F19',
+          active:  '#161B27',
+        },
+        surface: {
+          app:  '#F8FAFC',
+          card: '#FFFFFF',
         },
       },
     },
