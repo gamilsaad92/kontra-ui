@@ -5,13 +5,6 @@ import SignUpForm from "../components/SignUpForm";
 import { AuthContext } from "../lib/authContext";
 import { getAppRoleFromToken, getPortalPath } from "../lib/usePortalRouter";
 
-const PORTALS = [
-  { role: "lender",   label: "Lender",   color: "#800020", bg: "rgba(128,0,32,0.15)",   border: "rgba(128,0,32,0.35)" },
-  { role: "servicer", label: "Servicer", color: "#b45309", bg: "rgba(180,83,9,0.15)",   border: "rgba(180,83,9,0.35)" },
-  { role: "investor", label: "Investor", color: "#6d28d9", bg: "rgba(109,40,217,0.15)", border: "rgba(109,40,217,0.35)" },
-  { role: "borrower", label: "Borrower", color: "#065f46", bg: "rgba(6,95,70,0.15)",    border: "rgba(6,95,70,0.35)" },
-];
-
 export default function LoginPage() {
   const { session, loading } = useContext(AuthContext);
   const [mode, setMode] = useState("login");
@@ -25,13 +18,6 @@ export default function LoginPage() {
     didRedirect.current = true;
     setRedirecting(true);
     const roleFromJwt = getAppRoleFromToken(token);
-    let demoRole = null;
-    try { demoRole = localStorage.getItem("kontra_demo_role"); } catch (_) {}
-    if (demoRole) {
-      try { localStorage.removeItem("kontra_demo_role"); } catch (_) {}
-      navigate(getPortalPath(demoRole), { replace: true });
-      return;
-    }
     if (roleFromJwt !== "member") {
       navigate(getPortalPath(roleFromJwt), { replace: true });
       return;
@@ -45,14 +31,6 @@ export default function LoginPage() {
       })
       .catch(() => navigate("/select-portal", { replace: true }));
   }, [session?.access_token, navigate]);
-
-  function enterDemo(role) {
-    try {
-      localStorage.setItem("kontra_demo_role", role);
-      localStorage.setItem("kontra_demo_mode", "true");
-    } catch (_) {}
-    navigate(getPortalPath(role), { replace: true });
-  }
 
   if (loading || redirecting) {
     return (
@@ -70,7 +48,7 @@ export default function LoginPage() {
   return (
     <div className="relative flex min-h-screen" style={{ background: "#0f1623" }}>
 
-      {/* ── Left panel ─────────────────────────────────────────── */}
+      {/* ── Left brand panel ───────────────────────────────────── */}
       <div
         className="hidden lg:flex lg:w-[420px] xl:w-[460px] flex-col justify-between p-10 shrink-0"
         style={{
@@ -80,48 +58,26 @@ export default function LoginPage() {
       >
         {/* Logo */}
         <div className="flex items-center gap-2.5">
-          <div className="flex h-9 w-9 items-center justify-center rounded-xl" style={{ background: "#800020" }}>
+          <div className="flex h-9 w-9 items-center justify-center rounded-xl" style={{ background: "#E5484D" }}>
             <span className="text-sm font-black text-white" style={{ letterSpacing: "-0.05em" }}>K</span>
           </div>
           <div>
             <span className="text-base font-bold text-white" style={{ letterSpacing: "-0.02em" }}>Kontra</span>
-            <span className="ml-2 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide" style={{ background: "rgba(128,0,32,0.2)", color: "#d4687a" }}>Beta</span>
+            <span className="ml-2 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide" style={{ background: "rgba(229,72,77,0.15)", color: "#E5484D" }}>Beta</span>
           </div>
         </div>
 
         {/* Hero copy */}
-        <div className="space-y-8">
-          <div>
-            <p className="mb-2 text-xs font-bold uppercase tracking-widest" style={{ color: "#800020" }}>
-              Data Infrastructure · CRE Loan Servicing
-            </p>
-            <h2 className="mb-3 text-3xl font-black leading-tight text-white" style={{ letterSpacing: "-0.03em" }}>
-              The operating system<br />for CRE debt markets.
-            </h2>
-            <p className="text-sm leading-relaxed" style={{ color: "#94a3b8" }}>
-              Kontra connects lenders, servicers, investors, and borrowers on a single platform — from loan origination to on-chain tokenization and secondary trading.
-            </p>
-          </div>
-
-          {/* Demo portal access */}
-          <div>
-            <p className="mb-3 text-[10px] font-bold uppercase tracking-widest" style={{ color: "#64748b" }}>
-              Try a portal — no login required
-            </p>
-            <div className="grid grid-cols-2 gap-2">
-              {PORTALS.map((p) => (
-                <button
-                  key={p.role}
-                  onClick={() => enterDemo(p.role)}
-                  className="rounded-lg px-4 py-3 text-left transition-all hover:scale-[1.02]"
-                  style={{ background: p.bg, border: `1px solid ${p.border}` }}
-                >
-                  <span className="text-sm font-black" style={{ color: p.color }}>{p.label}</span>
-                  <p className="text-[10px] mt-0.5" style={{ color: "#94a3b8" }}>Enter demo →</p>
-                </button>
-              ))}
-            </div>
-          </div>
+        <div>
+          <p className="mb-2 text-xs font-bold uppercase tracking-widest" style={{ color: "#E5484D" }}>
+            Data Infrastructure · CRE Loan Servicing
+          </p>
+          <h2 className="mb-4 text-3xl font-black leading-tight text-white" style={{ letterSpacing: "-0.03em" }}>
+            The operating system<br />for CRE debt markets.
+          </h2>
+          <p className="text-sm leading-relaxed" style={{ color: "#94a3b8" }}>
+            Kontra connects lenders, servicers, investors, and borrowers on a single platform — from loan origination to on-chain tokenization and secondary trading.
+          </p>
         </div>
 
         {/* Footer */}
@@ -135,24 +91,12 @@ export default function LoginPage() {
       {/* ── Right form panel ───────────────────────────────────── */}
       <div className="flex flex-1 flex-col items-center justify-center px-6 py-12">
 
-        {/* Mobile logo + demo shortcuts */}
-        <div className="mb-8 flex flex-col items-center gap-4 lg:hidden">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl" style={{ background: "#800020" }}>
+        {/* Mobile logo */}
+        <div className="mb-8 flex flex-col items-center gap-3 lg:hidden">
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl" style={{ background: "#E5484D" }}>
             <span className="text-base font-black text-white">K</span>
           </div>
           <span className="text-base font-bold text-white">Kontra</span>
-          <div className="flex flex-wrap justify-center gap-2">
-            {PORTALS.map((p) => (
-              <button
-                key={p.role}
-                onClick={() => enterDemo(p.role)}
-                className="rounded-full px-3 py-1.5 text-xs font-bold transition"
-                style={{ background: p.bg, color: p.color, border: `1px solid ${p.border}` }}
-              >
-                {p.label}
-              </button>
-            ))}
-          </div>
         </div>
 
         <div className="w-full max-w-[360px]">
