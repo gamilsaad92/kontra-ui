@@ -11,6 +11,56 @@
     <!-- Optional: replace or remove if causing 404 -->
     <!-- <link rel="icon" type="image/svg+xml" href="/vite.svg" /> -->
     <link rel="icon" href="/favicon.ico" />
+
+    <!-- Instant branded splash — shown before React boots, fades out on mount -->
+    <style>
+      #kontra-splash {
+        position: fixed; inset: 0;
+        background: #0a0a0f;
+        display: flex; flex-direction: column;
+        align-items: center; justify-content: center;
+        gap: 20px; z-index: 9999;
+        transition: opacity 0.35s ease;
+      }
+      #kontra-splash.ks-out { opacity: 0; pointer-events: none; }
+      .ks-logo {
+        width: 52px; height: 52px; background: #800020;
+        border-radius: 14px; display: flex;
+        align-items: center; justify-content: center;
+        box-shadow: 0 0 40px rgba(128,0,32,0.55);
+        animation: ksPulse 2s ease-in-out infinite;
+      }
+      .ks-k {
+        color: #fff; font-size: 24px; font-weight: 900;
+        font-family: -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+        letter-spacing: -0.05em; line-height: 1;
+      }
+      .ks-track {
+        width: 180px; height: 2px;
+        background: rgba(255,255,255,0.06);
+        border-radius: 99px; overflow: hidden; position: relative;
+      }
+      .ks-fill {
+        position: absolute; top: 0; left: -60%; width: 60%; height: 100%;
+        background: linear-gradient(90deg,transparent,#800020,transparent);
+        animation: ksScan 1.35s ease-in-out infinite;
+        border-radius: 99px;
+      }
+      .ks-label {
+        color: #444; font-size: 10px; font-weight: 600;
+        letter-spacing: 0.18em; text-transform: uppercase;
+        font-family: -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+      }
+      @keyframes ksPulse {
+        0%,100% { box-shadow: 0 0 30px rgba(128,0,32,0.4); }
+        50%      { box-shadow: 0 0 64px rgba(128,0,32,0.75); }
+      }
+      @keyframes ksScan {
+        0%   { left: -60%; }
+        100% { left: 100%; }
+      }
+    </style>
+
     <script>
       (() => {
         const errorPatterns = [
@@ -80,8 +130,39 @@
       })();
     </script>
   </head>
-  <body>
+  <body style="margin:0;background:#ffffff;">
+    <!-- Splash is rendered instantly, removed once React first paints -->
+    <!-- Skip splash on direct navigation to non-root paths (e.g. /login) -->
+    <div id="kontra-splash">
+      <div class="ks-logo"><span class="ks-k">K</span></div>
+      <div class="ks-track"><div class="ks-fill"></div></div>
+      <span class="ks-label">Kontra</span>
+    </div>
+    <script>
+      (function() {
+        var path = window.location.pathname;
+        // Skip splash for login and other direct-nav pages
+        if (path !== '/' && path !== '') {
+          var s = document.getElementById('kontra-splash');
+          if (s) { s.style.display = 'none'; }
+        }
+      })();
+    </script>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
+    <script>
+      // Hard fallback: always remove splash within 4s even if React never mounts
+      (function() {
+        function dismissSplashFallback() {
+          var el = document.getElementById('kontra-splash');
+          if (!el || el.style.display === 'none') return;
+          el.classList.add('ks-out');
+          setTimeout(function() {
+            if (el.parentNode) el.parentNode.removeChild(el);
+          }, 400);
+        }
+        setTimeout(dismissSplashFallback, 1500);
+      })();
+    </script>
   </body>
 </html>
