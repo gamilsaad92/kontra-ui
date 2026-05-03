@@ -112,16 +112,16 @@ const fmtDate = (s: string) => s ? new Date(s).toLocaleDateString("en-US", { mon
 
 // ── Status configs ─────────────────────────────────────────────────────────────
 const DOC_STATUS: Record<string, { label: string; color: string; icon: typeof CheckCircleIcon }> = {
-  pending:   { label:"Required",  color:"text-amber-400 bg-amber-900/40 border border-amber-700/40",    icon: ClockIcon },
-  submitted: { label:"Submitted", color:"text-blue-400 bg-blue-900/40 border border-blue-700/40",       icon: ClockIcon },
-  approved:  { label:"Approved",  color:"text-emerald-400 bg-emerald-900/40 border border-emerald-700/40", icon: CheckCircleIcon },
+  pending:   { label:"Required",  color:"text-amber-700 bg-amber-50 border border-amber-200",    icon: ClockIcon },
+  submitted: { label:"Submitted", color:"text-blue-700 bg-blue-50 border border-blue-200",       icon: ClockIcon },
+  approved:  { label:"Approved",  color:"text-emerald-700 bg-emerald-50 border border-emerald-200", icon: CheckCircleIcon },
 };
 
 const DRAW_STATUS: Record<string, { label: string; color: string }> = {
-  funded:             { label:"Funded",              color:"bg-emerald-900/50 text-emerald-400 border border-emerald-700/40" },
-  pending_inspection: { label:"Awaiting Inspection", color:"bg-amber-900/50 text-amber-400 border border-amber-700/40" },
-  under_review:       { label:"Under Review",        color:"bg-blue-900/50 text-blue-400 border border-blue-700/40" },
-  denied:             { label:"Denied",              color:"bg-red-900/50 text-red-400 border border-red-700/40" },
+  funded:             { label:"Funded",              color:"bg-emerald-50 text-emerald-700 border border-emerald-200" },
+  pending_inspection: { label:"Awaiting Inspection", color:"bg-amber-50 text-amber-700 border border-amber-200" },
+  under_review:       { label:"Under Review",        color:"bg-blue-50 text-blue-700 border border-blue-200" },
+  denied:             { label:"Denied",              color:"bg-red-50 text-red-700 border border-red-200" },
 };
 
 type Section = "myloans" | "payments" | "covenants" | "documents" | "draws" | "tokenization" | "notices" | "messages";
@@ -144,16 +144,16 @@ function CovenantGauge({ cov }: { cov: typeof DEMO_COVENANTS[0] }) {
 
   if (cov.id === "c3" || cov.id === "c4") {
     return (
-      <div className={`rounded-xl border p-5 ${isBreach ? "border-red-700/50 bg-red-950/30" : isAttention ? "border-amber-700/50 bg-amber-950/30" : "border-emerald-800/40 bg-emerald-950/20"}`}>
+      <div className={`rounded-xl border p-5 ${isBreach ? "border-red-200 bg-red-50" : isAttention ? "border-amber-200 bg-amber-50" : "border-emerald-200 bg-emerald-50"}`}>
         <div className="flex items-start justify-between mb-3">
           <p className="text-sm font-bold text-gray-900">{cov.name}</p>
-          <span className={`rounded-full px-2.5 py-0.5 text-xs font-bold ${isBreach ? "bg-red-900/60 text-red-400" : isAttention ? "bg-amber-900/60 text-amber-400" : "bg-emerald-900/60 text-emerald-400"}`}>
+          <span className={`rounded-full px-2.5 py-0.5 text-xs font-bold ${isBreach ? "bg-red-100 text-red-700 border border-red-200" : isAttention ? "bg-amber-100 text-amber-700 border border-amber-200" : "bg-emerald-100 text-emerald-700 border border-emerald-200"}`}>
             {isBreach ? "Breach" : isAttention ? "Attention" : "OK"}
           </span>
         </div>
-        <p className={`text-2xl font-black tabular-nums ${isBreach ? "text-red-400" : isAttention ? "text-amber-400" : "text-emerald-400"}`}>{cov.current_value}</p>
-        <p className="text-xs text-slate-500 mt-1">Required: {cov.requirement}</p>
-        <p className="text-xs text-slate-400 mt-2 leading-relaxed">{cov.detail}</p>
+        <p className={`text-2xl font-black tabular-nums ${isBreach ? "text-red-600" : isAttention ? "text-amber-600" : "text-emerald-600"}`}>{cov.current_value}</p>
+        <p className="text-xs text-gray-500 mt-1">Required: {cov.requirement}</p>
+        <p className="text-xs text-gray-500 mt-2 leading-relaxed">{cov.detail}</p>
       </div>
     );
   }
@@ -165,26 +165,26 @@ function CovenantGauge({ cov }: { cov: typeof DEMO_COVENANTS[0] }) {
   const barColor = isBreach ? "bg-red-500" : isAttention ? "bg-amber-500" : "bg-emerald-500";
 
   return (
-    <div className={`rounded-xl border p-5 ${isBreach ? "border-red-700/50 bg-red-950/30" : isAttention ? "border-amber-700/50 bg-amber-950/30" : "border-emerald-800/40 bg-emerald-950/20"}`}>
+    <div className={`rounded-xl border p-5 ${isBreach ? "border-red-200 bg-red-50" : isAttention ? "border-amber-200 bg-amber-50" : "border-emerald-200 bg-emerald-50"}`}>
       <div className="flex items-start justify-between mb-1">
         <p className="text-sm font-bold text-gray-900">{cov.name}</p>
-        <span className={`rounded-full px-2.5 py-0.5 text-xs font-bold ${isBreach ? "bg-red-900/60 text-red-400" : isAttention ? "bg-amber-900/60 text-amber-400" : "bg-emerald-900/60 text-emerald-400"}`}>
+        <span className={`rounded-full px-2.5 py-0.5 text-xs font-bold ${isBreach ? "bg-red-100 text-red-700 border border-red-200" : isAttention ? "bg-amber-100 text-amber-700 border border-amber-200" : "bg-emerald-100 text-emerald-700 border border-emerald-200"}`}>
           {isBreach ? "Breach" : isAttention ? "Attention" : "OK"}
         </span>
       </div>
-      <p className={`text-2xl font-black tabular-nums mt-1 ${isBreach ? "text-red-400" : isAttention ? "text-amber-400" : "text-emerald-400"}`}>{cov.current_value}</p>
-      <p className="text-xs text-slate-500 mt-0.5">Required: {cov.requirement}</p>
+      <p className={`text-2xl font-black tabular-nums mt-1 ${isBreach ? "text-red-600" : isAttention ? "text-amber-600" : "text-emerald-600"}`}>{cov.current_value}</p>
+      <p className="text-xs text-gray-500 mt-0.5">Required: {cov.requirement}</p>
       <div className="mt-3">
-        <div className="h-2 bg-slate-800 rounded-full overflow-hidden">
+        <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
           <div className={`h-full rounded-full transition-all ${barColor}`} style={{ width: `${pctFill}%` }} />
         </div>
         {cov.id === "c2" && (
-          <div className="flex justify-between text-xs text-slate-500 mt-1">
-            <span>0%</span><span className="text-amber-500">75% limit</span>
+          <div className="flex justify-between text-xs text-gray-500 mt-1">
+            <span>0%</span><span className="text-amber-600">75% limit</span>
           </div>
         )}
       </div>
-      <p className="text-xs text-slate-400 mt-2 leading-relaxed">{cov.detail}</p>
+      <p className="text-xs text-gray-500 mt-2 leading-relaxed">{cov.detail}</p>
     </div>
   );
 }
@@ -291,37 +291,37 @@ export default function BorrowerPortal() {
 
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
-    <div className="flex h-screen overflow-hidden" style={{ background:"#060e09" }}>
+    <div className="flex h-screen overflow-hidden bg-gray-50">
 
       {/* ── SIDEBAR ── */}
       <aside className="flex w-64 shrink-0 flex-col border-r border-gray-200" style={{ background:"#ffffff" }}>
         {/* Logo */}
-        <div className="flex items-center gap-3 px-5 py-5 border-b border-white/5">
+        <div className="flex items-center gap-3 px-5 py-5 border-b border-gray-200">
           <div
             className="flex h-8 w-8 items-center justify-center rounded-lg shrink-0 font-black text-white text-sm"
             style={{ background:"#059669", boxShadow:"0 0 16px rgba(5,150,105,0.4)" }}
           >K</div>
           <div>
             <p className="text-sm font-bold text-gray-900" style={{ letterSpacing:"-0.02em" }}>Kontra</p>
-            <p className="text-xs font-semibold" style={{ color:"#6ee7b7" }}>Borrower Portal</p>
+            <p className="text-xs font-semibold text-emerald-600">Borrower Portal</p>
           </div>
         </div>
 
         {/* Loan card */}
-        <div className="mx-4 mt-4 rounded-xl border border-white/8 p-4" style={{ background:"rgba(5,150,105,0.08)" }}>
-          <p className="text-xs font-bold uppercase tracking-widest text-slate-500">Active Loan</p>
+        <div className="mx-4 mt-4 rounded-xl border border-emerald-200 bg-emerald-50 p-4">
+          <p className="text-xs font-bold uppercase tracking-widest text-gray-500">Active Loan</p>
           <p className="mt-1 text-sm font-black text-gray-900">{loan.loan_ref}</p>
-          <p className="text-xs text-slate-400 truncate">{loan.property_name}</p>
+          <p className="text-xs text-gray-500 truncate">{loan.property_name}</p>
           <div className="mt-2 flex items-center gap-1.5">
-            <div className="h-2 w-2 rounded-full bg-emerald-400" />
-            <p className="text-xs font-semibold text-emerald-400">{loan.status}</p>
+            <div className="h-2 w-2 rounded-full bg-emerald-500" />
+            <p className="text-xs font-semibold text-emerald-700">{loan.status}</p>
           </div>
         </div>
 
         {/* Next payment */}
-        <div className="mx-4 mt-2 rounded-xl border border-amber-800/40 p-3" style={{ background:"rgba(217,119,6,0.08)" }}>
-          <p className="text-xs font-bold text-amber-500 uppercase tracking-widest">Next Payment</p>
-          <p className="mt-0.5 text-base font-black text-amber-300">{fmt(loan.next_payment_amount)}</p>
+        <div className="mx-4 mt-2 rounded-xl border border-amber-200 bg-amber-50 p-3">
+          <p className="text-xs font-bold text-amber-700 uppercase tracking-widest">Next Payment</p>
+          <p className="mt-0.5 text-base font-black text-amber-700">{fmt(loan.next_payment_amount)}</p>
           <p className="text-xs text-amber-600">Due {fmtDate(loan.next_payment_date)}</p>
         </div>
 
@@ -338,14 +338,14 @@ export default function BorrowerPortal() {
                   active ? "bg-emerald-50 text-emerald-700 font-medium" : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"
                 }`}
               >
-                <Icon className={`h-4 w-4 shrink-0 ${active ? "text-emerald-400" : "text-slate-500"}`} />
+                <Icon className={`h-4 w-4 shrink-0 ${active ? "text-emerald-600" : "text-gray-500"}`} />
                 <span className="flex-1">{item.label}</span>
-                {active && <span className="ml-auto h-1.5 w-1.5 rounded-full bg-emerald-400 shrink-0" />}
+                {active && <span className="ml-auto h-1.5 w-1.5 rounded-full bg-emerald-500 shrink-0" />}
                 {!active && item.badge ? (
-                  <span className="rounded-full bg-amber-800/60 text-amber-300 border border-amber-700/40 px-1.5 py-0.5 text-xs font-bold">{item.badge}</span>
+                  <span className="rounded-full bg-amber-50 text-amber-700 border border-amber-200 px-1.5 py-0.5 text-xs font-bold">{item.badge}</span>
                 ) : null}
                 {!active && item.highlight && (
-                  <span className="rounded-full bg-emerald-900/60 text-emerald-400 border border-emerald-700/40 px-1.5 py-0.5 text-xs font-bold">NEW</span>
+                  <span className="rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 px-1.5 py-0.5 text-xs font-bold">NEW</span>
                 )}
               </button>
             );
@@ -353,14 +353,14 @@ export default function BorrowerPortal() {
         </nav>
 
         {/* Footer */}
-        <div className="border-t border-white/5 p-4 space-y-3">
+        <div className="border-t border-gray-200 p-4 space-y-3">
           <div>
-            <p className="text-xs text-slate-500">Servicer contact:</p>
-            <p className="text-xs font-medium text-slate-300 mt-0.5 truncate">{loan.servicer_contact}</p>
+            <p className="text-xs text-gray-500">Servicer contact:</p>
+            <p className="text-xs font-medium text-gray-700 mt-0.5 truncate">{loan.servicer_contact}</p>
           </div>
           <button
             onClick={async () => { await signOut(); navigate("/login", { replace:true }); }}
-            className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold text-slate-500 hover:bg-gray-50 hover:text-gray-700 transition-all text-left"
+            className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold text-gray-500 hover:bg-gray-50 hover:text-gray-700 transition-all text-left"
           >
             <ArrowRightStartOnRectangleIcon className="h-4 w-4" />
             Log Out
@@ -369,7 +369,7 @@ export default function BorrowerPortal() {
       </aside>
 
       {/* ── MAIN ── */}
-      <main className="flex-1 overflow-y-auto" style={{ background:"#060e09" }}>
+      <main className="flex-1 overflow-y-auto bg-gray-50">
         <div className="max-w-4xl mx-auto px-8 py-8 space-y-8">
 
           {/* ── MY LOAN ── */}
@@ -378,7 +378,7 @@ export default function BorrowerPortal() {
               <div>
                 <p className="text-xs font-semibold uppercase tracking-wide text-emerald-500">My Loan</p>
                 <h1 className="text-2xl font-black text-gray-900 mt-1">{loan.property_name}</h1>
-                <p className="text-sm text-slate-400">{loan.property_address} · {loan.property_type}</p>
+                <p className="text-sm text-gray-500">{loan.property_address} · {loan.property_type}</p>
               </div>
 
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
@@ -390,31 +390,31 @@ export default function BorrowerPortal() {
                   { label:"Maturity Date",   value: fmtDate(loan.maturity_date) },
                   { label:"Servicer",        value: loan.servicer_name },
                 ].map(item => (
-                  <div key={item.label} className="rounded-xl border border-white/6 p-4" style={{ background:"rgba(255,255,255,0.04)" }}>
-                    <p className="text-xs font-bold uppercase tracking-widest text-slate-500">{item.label}</p>
+                  <div key={item.label} className="rounded-xl border border-gray-200 bg-white p-4">
+                    <p className="text-xs font-bold uppercase tracking-widest text-gray-500">{item.label}</p>
                     <p className="mt-1.5 text-sm font-bold text-gray-900">{item.value}</p>
                   </div>
                 ))}
               </div>
 
               {/* Covenant quick summary */}
-              <div className="rounded-xl border border-white/6 overflow-hidden" style={{ background:"rgba(255,255,255,0.03)" }}>
-                <div className="border-b border-white/6 px-6 py-4 flex items-center justify-between">
+              <div className="rounded-xl border border-gray-200 bg-white overflow-hidden">
+                <div className="border-b border-gray-200 px-6 py-4 flex items-center justify-between">
                   <div>
                     <h2 className="text-base font-bold text-gray-900">Covenant Health</h2>
-                    <p className="text-xs text-slate-500 mt-0.5">Real-time compliance vs your loan agreement</p>
+                    <p className="text-xs text-gray-500 mt-0.5">Real-time compliance vs your loan agreement</p>
                   </div>
-                  <button onClick={() => setSection("covenants")} className="text-xs font-semibold text-emerald-400 hover:text-emerald-300">
+                  <button onClick={() => setSection("covenants")} className="text-xs font-semibold text-emerald-600 hover:text-emerald-700">
                     Full Scorecard →
                   </button>
                 </div>
-                <div className="divide-y divide-white/4">
+                <div className="divide-y divide-gray-200">
                   {DEMO_COVENANTS.map(c => (
-                    <div key={c.id} className="flex items-center justify-between px-6 py-3.5 hover:bg-white/3 transition-colors">
-                      <p className="text-sm text-slate-300">{c.name}</p>
+                    <div key={c.id} className="flex items-center justify-between px-6 py-3.5 hover:bg-gray-50 transition-colors">
+                      <p className="text-sm text-gray-700">{c.name}</p>
                       <div className="flex items-center gap-3">
                         <span className="text-sm font-bold text-gray-900 tabular-nums">{c.current_value}</span>
-                        <span className={`rounded-full px-2.5 py-0.5 text-xs font-bold ${c.status === "passing" ? "bg-emerald-900/60 text-emerald-400 border border-emerald-800/50" : c.status === "attention" ? "bg-amber-900/60 text-amber-400 border border-amber-800/50" : "bg-red-900/60 text-red-400 border border-red-800/50"}`}>
+                        <span className={`rounded-full px-2.5 py-0.5 text-xs font-bold ${c.status === "passing" ? "bg-emerald-50 text-emerald-700 border border-emerald-200" : c.status === "attention" ? "bg-amber-50 text-amber-700 border border-amber-200" : "bg-red-50 text-red-700 border border-red-200"}`}>
                           {c.status === "passing" ? "OK" : c.status === "attention" ? "Attention" : "Breach"}
                         </span>
                       </div>
@@ -424,12 +424,12 @@ export default function BorrowerPortal() {
               </div>
 
               {pendingDocs > 0 && (
-                <div className="rounded-xl border border-amber-800/50 p-5" style={{ background:"rgba(217,119,6,0.08)" }}>
+                <div className="rounded-xl border border-amber-200 bg-amber-50 p-5">
                   <div className="flex items-start gap-3">
-                    <ExclamationTriangleIcon className="h-5 w-5 text-amber-400 mt-0.5 shrink-0" />
+                    <ExclamationTriangleIcon className="h-5 w-5 text-amber-600 mt-0.5 shrink-0" />
                     <div>
-                      <p className="text-sm font-bold text-amber-300">Action Required: {pendingDocs} document{pendingDocs > 1 ? "s" : ""} pending</p>
-                      <p className="text-xs text-amber-600 mt-1">Missing documents can trigger covenant cure periods.</p>
+                      <p className="text-sm font-bold text-amber-800">Action Required: {pendingDocs} document{pendingDocs > 1 ? "s" : ""} pending</p>
+                      <p className="text-xs text-amber-700 mt-1">Missing documents can trigger covenant cure periods.</p>
                       <button onClick={() => setSection("documents")} className="mt-2 rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-amber-500 transition-colors">
                         Go to Document Center →
                       </button>
@@ -448,49 +448,49 @@ export default function BorrowerPortal() {
                 <h1 className="text-2xl font-black text-gray-900 mt-1">Payment History</h1>
               </div>
 
-              <div className="rounded-xl border border-white/6 overflow-hidden" style={{ background:"rgba(255,255,255,0.04)" }}>
-                <div className="px-6 py-5 flex items-center justify-between" style={{ background:"rgba(5,150,105,0.12)" }}>
+              <div className="rounded-xl border border-gray-200 bg-white overflow-hidden">
+                <div className="px-6 py-5 flex items-center justify-between bg-emerald-50">
                   <div>
-                    <p className="text-xs font-bold uppercase tracking-widest text-emerald-600">Next Payment Due</p>
+                    <p className="text-xs font-bold uppercase tracking-widest text-emerald-700">Next Payment Due</p>
                     <p className="text-2xl font-black text-gray-900 mt-1">{fmt(loan.next_payment_amount)}</p>
-                    <p className="text-sm text-slate-400 mt-0.5">{fmtDate(loan.next_payment_date)} · Interest Only</p>
+                    <p className="text-sm text-gray-500 mt-0.5">{fmtDate(loan.next_payment_date)} · Interest Only</p>
                   </div>
                   <div className="text-right">
-                    <p className="text-xs text-slate-500">Wire to account on file</p>
-                    <p className="text-xs text-slate-500 mt-1">Ref: {loan.loan_ref}-{loan.next_payment_date?.slice(0,7)}</p>
-                    <button className="mt-3 rounded-lg border border-emerald-700/50 px-4 py-2 text-sm font-semibold text-emerald-400 hover:bg-emerald-900/30 transition-colors">
+                    <p className="text-xs text-gray-500">Wire to account on file</p>
+                    <p className="text-xs text-gray-500 mt-1">Ref: {loan.loan_ref}-{loan.next_payment_date?.slice(0,7)}</p>
+                    <button className="mt-3 rounded-lg border border-emerald-600 px-4 py-2 text-sm font-semibold text-emerald-700 hover:bg-emerald-100 transition-colors">
                       Wire Instructions
                     </button>
                   </div>
                 </div>
-                <div className="px-6 py-3 border-t border-white/4 flex items-center gap-2">
-                  <CheckCircleIcon className="h-4 w-4 text-emerald-500" />
-                  <p className="text-xs font-semibold text-emerald-500">{payments.filter(p => p.status === "paid").length} consecutive on-time payments — no late fees assessed</p>
+                <div className="px-6 py-3 border-t border-gray-200 flex items-center gap-2">
+                  <CheckCircleIcon className="h-4 w-4 text-emerald-600" />
+                  <p className="text-xs font-semibold text-emerald-700">{payments.filter(p => p.status === "paid").length} consecutive on-time payments — no late fees assessed</p>
                 </div>
               </div>
 
-              <div className="rounded-xl border border-white/6 overflow-hidden">
-                <div className="border-b border-white/6 px-6 py-4" style={{ background:"rgba(255,255,255,0.03)" }}>
+              <div className="rounded-xl border border-gray-200 bg-white overflow-hidden">
+                <div className="border-b border-gray-200 px-6 py-4 bg-white">
                   <h2 className="text-base font-bold text-gray-900">Payment History</h2>
                 </div>
                 <table className="w-full text-sm">
                   <thead>
-                    <tr className="border-b border-white/4" style={{ background:"rgba(255,255,255,0.03)" }}>
+                    <tr className="border-b border-gray-200 bg-gray-50">
                       {["Date","Amount","Interest","Principal","Late Fee","Status"].map(h => (
-                        <th key={h} className="px-5 py-3 text-left text-xs font-bold uppercase tracking-widest text-slate-500 whitespace-nowrap">{h}</th>
+                        <th key={h} className="px-5 py-3 text-left text-xs font-bold uppercase tracking-widest text-gray-500 whitespace-nowrap">{h}</th>
                       ))}
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-white/4">
+                  <tbody className="divide-y divide-gray-200">
                     {payments.map(p => (
-                      <tr key={p.id} className="hover:bg-white/3 transition-colors">
+                      <tr key={p.id} className="hover:bg-gray-50 transition-colors">
                         <td className="px-5 py-3 text-gray-900 font-semibold">{fmtDate(p.date)}</td>
                         <td className="px-5 py-3 text-gray-900 font-bold tabular-nums">{fmt(p.amount)}</td>
-                        <td className="px-5 py-3 text-slate-300 tabular-nums">{fmt(p.interest)}</td>
-                        <td className="px-5 py-3 text-slate-500 tabular-nums">{p.principal === 0 ? "—" : fmt(p.principal)}</td>
-                        <td className="px-5 py-3 text-slate-500 tabular-nums">{p.late_fee === 0 ? "—" : fmt(p.late_fee)}</td>
+                        <td className="px-5 py-3 text-gray-600 tabular-nums">{fmt(p.interest)}</td>
+                        <td className="px-5 py-3 text-gray-500 tabular-nums">{p.principal === 0 ? "—" : fmt(p.principal)}</td>
+                        <td className="px-5 py-3 text-gray-500 tabular-nums">{p.late_fee === 0 ? "—" : fmt(p.late_fee)}</td>
                         <td className="px-5 py-3">
-                          <span className="rounded-full bg-emerald-900/60 border border-emerald-700/40 px-2.5 py-0.5 text-xs font-bold text-emerald-400">Paid</span>
+                          <span className="rounded-full bg-emerald-50 border border-emerald-200 px-2.5 py-0.5 text-xs font-bold text-emerald-700">Paid</span>
                         </td>
                       </tr>
                     ))}
@@ -506,19 +506,19 @@ export default function BorrowerPortal() {
               <div>
                 <p className="text-xs font-semibold uppercase tracking-wide text-emerald-500">Compliance</p>
                 <h1 className="text-2xl font-black text-gray-900 mt-1">Covenant Scorecard</h1>
-                <p className="text-sm text-slate-400 mt-1">
+                <p className="text-sm text-gray-500 mt-1">
                   Live covenant readings calculated from your uploaded financials and servicer records. 
                   Any breach triggers a 60-day cure period per §8.2 of your loan agreement.
                 </p>
               </div>
 
               {attentionCovs > 0 && (
-                <div className="rounded-xl border border-amber-800/50 p-5" style={{ background:"rgba(217,119,6,0.08)" }}>
+                <div className="rounded-xl border border-amber-200 bg-amber-50 p-5">
                   <div className="flex items-start gap-3">
-                    <ExclamationTriangleIcon className="h-5 w-5 text-amber-400 mt-0.5 shrink-0" />
+                    <ExclamationTriangleIcon className="h-5 w-5 text-amber-600 mt-0.5 shrink-0" />
                     <div>
-                      <p className="text-sm font-bold text-amber-300">{attentionCovs} covenant{attentionCovs > 1 ? "s" : ""} need{attentionCovs === 1 ? "s" : ""} attention</p>
-                      <p className="text-xs text-amber-600 mt-1">Please review and take action before the covenant cure deadline to avoid default provisions.</p>
+                      <p className="text-sm font-bold text-amber-800">{attentionCovs} covenant{attentionCovs > 1 ? "s" : ""} need{attentionCovs === 1 ? "s" : ""} attention</p>
+                      <p className="text-xs text-amber-700 mt-1">Please review and take action before the covenant cure deadline to avoid default provisions.</p>
                     </div>
                   </div>
                 </div>
@@ -528,9 +528,9 @@ export default function BorrowerPortal() {
                 {DEMO_COVENANTS.map(c => <CovenantGauge key={c.id} cov={c} />)}
               </div>
 
-              <div className="rounded-xl border border-white/5 p-5" style={{ background:"rgba(255,255,255,0.02)" }}>
-                <p className="text-xs font-semibold text-slate-500 mb-1">What happens if a covenant is breached?</p>
-                <p className="text-xs text-slate-400 leading-relaxed">
+              <div className="rounded-xl border border-gray-200 bg-white p-5">
+                <p className="text-xs font-semibold text-gray-600 mb-1">What happens if a covenant is breached?</p>
+                <p className="text-xs text-gray-500 leading-relaxed">
                   Per §8.2 of your loan agreement: you have 60 days to cure after written notice. During the cure period, all draw requests are suspended. 
                   If the breach is not cured, the lender may declare a default event and activate cash trap provisions per §7.4(b). 
                   Your servicer (Kontra Servicing) will work with you proactively before any default action is taken.
@@ -545,29 +545,29 @@ export default function BorrowerPortal() {
               <div>
                 <p className="text-xs font-semibold uppercase tracking-wide text-emerald-500">Document Center</p>
                 <h1 className="text-2xl font-black text-gray-900 mt-1">Required Documents</h1>
-                <p className="text-sm text-slate-400 mt-1">Upload required documents for your servicer's review. AI extracts key metrics automatically on submission.</p>
+                <p className="text-sm text-gray-500 mt-1">Upload required documents for your servicer's review. AI extracts key metrics automatically on submission.</p>
               </div>
 
-              <div className="rounded-xl border border-white/6 overflow-hidden">
-                <div className="border-b border-white/6 px-6 py-4 flex items-center justify-between" style={{ background:"rgba(255,255,255,0.03)" }}>
+              <div className="rounded-xl border border-gray-200 bg-white overflow-hidden">
+                <div className="border-b border-gray-200 px-6 py-4 flex items-center justify-between bg-white">
                   <h2 className="text-base font-bold text-gray-900">Document Checklist</h2>
-                  <span className="text-xs text-slate-400">{documents.filter(d => d.status === "approved").length}/{documents.length} approved</span>
+                  <span className="text-xs text-gray-500">{documents.filter(d => d.status === "approved").length}/{documents.length} approved</span>
                 </div>
-                <div className="divide-y divide-white/4">
+                <div className="divide-y divide-gray-200">
                   {documents.map(doc => {
                     const s = DOC_STATUS[doc.status] ?? DOC_STATUS.pending;
                     const Icon = s.icon;
                     return (
-                      <div key={doc.id} className="flex items-center gap-4 px-6 py-4 hover:bg-white/2 transition-colors">
-                        <div className={`flex h-8 w-8 items-center justify-center rounded-full shrink-0 ${doc.status === "approved" ? "bg-emerald-900/60" : doc.status === "submitted" ? "bg-blue-900/60" : "bg-amber-900/60"}`}>
-                          <Icon className={`h-4 w-4 ${doc.status === "approved" ? "text-emerald-400" : doc.status === "submitted" ? "text-blue-400" : "text-amber-400"}`} />
+                      <div key={doc.id} className="flex items-center gap-4 px-6 py-4 hover:bg-gray-50 transition-colors">
+                        <div className={`flex h-8 w-8 items-center justify-center rounded-full shrink-0 ${doc.status === "approved" ? "bg-emerald-100" : doc.status === "submitted" ? "bg-blue-100" : "bg-amber-100"}`}>
+                          <Icon className={`h-4 w-4 ${doc.status === "approved" ? "text-emerald-700" : doc.status === "submitted" ? "text-blue-700" : "text-amber-700"}`} />
                         </div>
                         <div className="flex-1 min-w-0">
                           <p className="text-sm font-semibold text-gray-900">{doc.name}</p>
                           <div className="flex items-center gap-3 mt-0.5">
-                            <p className="text-xs text-slate-500">Due: {fmtDate(doc.due)}</p>
-                            {doc.notes && <p className="text-xs text-slate-600">· {doc.notes}</p>}
-                            {doc.submitted_at && <p className="text-xs text-slate-600">· Submitted {fmtDate(doc.submitted_at)}</p>}
+                            <p className="text-xs text-gray-500">Due: {fmtDate(doc.due)}</p>
+                            {doc.notes && <p className="text-xs text-gray-600">· {doc.notes}</p>}
+                            {doc.submitted_at && <p className="text-xs text-gray-600">· Submitted {fmtDate(doc.submitted_at)}</p>}
                           </div>
                         </div>
                         <div className="flex items-center gap-3">
@@ -575,7 +575,7 @@ export default function BorrowerPortal() {
                           {doc.status === "pending" && (
                             <button
                               onClick={() => setUploadingDoc(doc.id === uploadingDoc ? null : doc.id)}
-                              className="rounded-lg border border-white/10 px-3 py-1.5 text-xs font-semibold text-slate-300 hover:bg-white/5 transition-colors flex items-center gap-1.5"
+                              className="rounded-lg border border-gray-300 px-3 py-1.5 text-xs font-semibold text-gray-600 hover:bg-gray-50 transition-colors flex items-center gap-1.5"
                             >
                               <ArrowUpTrayIcon className="h-3.5 w-3.5" />
                               Upload
@@ -589,67 +589,67 @@ export default function BorrowerPortal() {
               </div>
 
               {uploadingDoc && (
-                <div className="rounded-xl border-2 border-dashed border-emerald-700/50 p-8 text-center" style={{ background:"rgba(5,150,105,0.05)" }}>
-                  <ArrowUpTrayIcon className="h-8 w-8 text-emerald-500 mx-auto mb-3" />
+                <div className="rounded-xl border-2 border-dashed border-emerald-400 bg-emerald-50 p-8 text-center">
+                  <ArrowUpTrayIcon className="h-8 w-8 text-emerald-600 mx-auto mb-3" />
                   <p className="text-sm font-semibold text-gray-900">{aiDocName ? `Selected: ${aiDocName}` : "Drag & drop or click to choose a file"}</p>
-                  <p className="text-xs text-slate-500 mt-1">PDF, Excel, CSV · Max 25 MB · AI will extract key metrics</p>
+                  <p className="text-xs text-gray-500 mt-1">PDF, Excel, CSV · Max 25 MB · AI will extract key metrics</p>
                   <input ref={fileInputRef} type="file" className="hidden" accept=".pdf,.xlsx,.xls,.csv,.txt,.doc,.docx"
                     onChange={e => { const f = e.target.files?.[0]; if (f) setAiDocName(f.name); }} />
                   <div className="mt-4 flex items-center justify-center gap-3">
-                    <button onClick={() => fileInputRef.current?.click()} className="rounded-lg border border-white/10 px-4 py-2 text-sm font-semibold text-slate-300 hover:bg-white/5 transition-colors">Choose File</button>
+                    <button onClick={() => fileInputRef.current?.click()} className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-600 hover:bg-white transition-colors">Choose File</button>
                     {aiDocName && !aiDocLoading && (
                       <button onClick={() => { const f = fileInputRef.current?.files?.[0]; if (f) handleAiAnalyze(f); }}
                         className="rounded-lg bg-emerald-700 px-4 py-2 text-sm font-bold text-white hover:bg-emerald-600 transition-colors flex items-center gap-2">
                         <SparklesIcon className="h-4 w-4" /> Submit & Analyze
                       </button>
                     )}
-                    {aiDocLoading && <span className="flex items-center gap-2 text-sm text-emerald-400 font-semibold"><SparklesIcon className="h-4 w-4 animate-pulse" /> Analyzing…</span>}
+                    {aiDocLoading && <span className="flex items-center gap-2 text-sm text-emerald-600 font-semibold"><SparklesIcon className="h-4 w-4 animate-pulse" /> Analyzing…</span>}
                     <button onClick={() => { setUploadingDoc(null); setAiDocName(""); setAiDocResult(null); }}
-                      className="rounded-lg border border-white/10 px-4 py-2 text-sm font-semibold text-slate-400 hover:bg-white/5 transition-colors">Cancel</button>
+                      className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-600 hover:bg-white transition-colors">Cancel</button>
                   </div>
                 </div>
               )}
 
               {aiDocResult && (
-                <div className="rounded-xl border border-emerald-800/50 overflow-hidden" style={{ background:"rgba(5,150,105,0.06)" }}>
-                  <div className="border-b border-emerald-800/30 px-6 py-4 flex items-center gap-3">
-                    <SparklesIcon className="h-5 w-5 text-emerald-400" />
+                <div className="rounded-xl border border-emerald-200 bg-white overflow-hidden">
+                  <div className="border-b border-emerald-200 bg-emerald-50 px-6 py-4 flex items-center gap-3">
+                    <SparklesIcon className="h-5 w-5 text-emerald-600" />
                     <div>
                       <h3 className="text-sm font-bold text-gray-900">AI Document Analysis</h3>
-                      <p className="text-xs text-slate-400">{aiDocResult.doc_type} · {aiDocName}</p>
+                      <p className="text-xs text-gray-500">{aiDocResult.doc_type} · {aiDocName}</p>
                     </div>
                   </div>
                   <div className="px-6 py-5 space-y-4">
-                    <p className="text-sm text-slate-300">{aiDocResult.summary}</p>
+                    <p className="text-sm text-gray-700">{aiDocResult.summary}</p>
                     {Object.values(aiDocResult.metrics || {}).some(v => v != null) && (
                       <div className="grid grid-cols-3 gap-3">
                         {aiDocResult.metrics.dscr != null && (
-                          <div className={`rounded-lg p-3 ${Number(aiDocResult.metrics.dscr) >= 1.25 ? "bg-emerald-900/40" : "bg-red-900/40"}`}>
-                            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">DSCR</p>
-                            <p className={`text-xl font-black ${Number(aiDocResult.metrics.dscr) >= 1.25 ? "text-emerald-400" : "text-red-400"}`}>{aiDocResult.metrics.dscr}×</p>
+                          <div className={`rounded-lg border p-3 ${Number(aiDocResult.metrics.dscr) >= 1.25 ? "border-emerald-200 bg-emerald-50" : "border-red-200 bg-red-50"}`}>
+                            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">DSCR</p>
+                            <p className={`text-xl font-black ${Number(aiDocResult.metrics.dscr) >= 1.25 ? "text-emerald-700" : "text-red-700"}`}>{aiDocResult.metrics.dscr}×</p>
                           </div>
                         )}
                         {aiDocResult.metrics.noi != null && (
-                          <div className="rounded-lg p-3" style={{ background:"rgba(255,255,255,0.05)" }}>
-                            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Annual NOI</p>
+                          <div className="rounded-lg border border-gray-200 bg-white p-3">
+                            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Annual NOI</p>
                             <p className="text-xl font-black text-gray-900">${Number(aiDocResult.metrics.noi).toLocaleString()}</p>
                           </div>
                         )}
                         {aiDocResult.metrics.occupancy != null && (
-                          <div className={`rounded-lg p-3 ${Number(aiDocResult.metrics.occupancy) >= 90 ? "bg-emerald-900/40" : "bg-amber-900/40"}`}>
-                            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Occupancy</p>
-                            <p className={`text-xl font-black ${Number(aiDocResult.metrics.occupancy) >= 90 ? "text-emerald-400" : "text-amber-400"}`}>{aiDocResult.metrics.occupancy}%</p>
+                          <div className={`rounded-lg border p-3 ${Number(aiDocResult.metrics.occupancy) >= 90 ? "border-emerald-200 bg-emerald-50" : "border-amber-200 bg-amber-50"}`}>
+                            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Occupancy</p>
+                            <p className={`text-xl font-black ${Number(aiDocResult.metrics.occupancy) >= 90 ? "text-emerald-700" : "text-amber-700"}`}>{aiDocResult.metrics.occupancy}%</p>
                           </div>
                         )}
                       </div>
                     )}
                     {aiDocResult.risk_flags?.length > 0 && (
                       <div>
-                        <p className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Risk Flags</p>
+                        <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2">Risk Flags</p>
                         <ul className="space-y-1">
                           {aiDocResult.risk_flags.map((f, i) => (
-                            <li key={i} className="flex items-start gap-2 text-sm text-slate-300">
-                              <ExclamationTriangleIcon className="h-4 w-4 text-amber-400 shrink-0 mt-0.5" />
+                            <li key={i} className="flex items-start gap-2 text-sm text-gray-700">
+                              <ExclamationTriangleIcon className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
                               {f}
                             </li>
                           ))}
@@ -669,7 +669,7 @@ export default function BorrowerPortal() {
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-wide text-emerald-500">Construction</p>
                   <h1 className="text-2xl font-black text-gray-900 mt-1">Draw Requests</h1>
-                  <p className="text-sm text-slate-400 mt-1">Submit and track construction draws. Each requires inspection approval before funding.</p>
+                  <p className="text-sm text-gray-500 mt-1">Submit and track construction draws. Each requires inspection approval before funding.</p>
                 </div>
                 <button onClick={() => setNewDrawOpen(!newDrawOpen)}
                   className="rounded-lg bg-emerald-700 px-4 py-2 text-sm font-bold text-white hover:bg-emerald-600 transition-colors">
@@ -678,29 +678,26 @@ export default function BorrowerPortal() {
               </div>
 
               {newDrawOpen && (
-                <div className="rounded-xl border border-white/8 p-6 space-y-4" style={{ background:"rgba(255,255,255,0.04)" }}>
+                <div className="rounded-xl border border-gray-200 bg-white p-6 space-y-4">
                   <p className="text-sm font-bold text-gray-900">New Draw Request — {loan.loan_ref}</p>
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-xs font-bold uppercase tracking-widest text-slate-500 mb-1.5">Draw Amount ($)</label>
+                      <label className="block text-xs font-bold uppercase tracking-widest text-gray-500 mb-1.5">Draw Amount ($)</label>
                       <input type="number" value={drawForm.amount} onChange={e => setDrawForm(f => ({ ...f, amount:e.target.value }))}
                         placeholder="0.00"
-                        className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-emerald-400/50"
-                        style={{ background:"rgba(255,255,255,0.06)" }} />
+                        className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/30" />
                     </div>
                     <div>
-                      <label className="block text-xs font-bold uppercase tracking-widest text-slate-500 mb-1.5">Milestone / Phase</label>
+                      <label className="block text-xs font-bold uppercase tracking-widest text-gray-500 mb-1.5">Milestone / Phase</label>
                       <input type="text" value={drawForm.milestone} onChange={e => setDrawForm(f => ({ ...f, milestone:e.target.value }))}
                         placeholder="Phase 3 — Units 19-24"
-                        className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-emerald-400/50"
-                        style={{ background:"rgba(255,255,255,0.06)" }} />
+                        className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/30" />
                     </div>
                     <div className="col-span-2">
-                      <label className="block text-xs font-bold uppercase tracking-widest text-slate-500 mb-1.5">Purpose</label>
+                      <label className="block text-xs font-bold uppercase tracking-widest text-gray-500 mb-1.5">Purpose</label>
                       <textarea value={drawForm.purpose} onChange={e => setDrawForm(f => ({ ...f, purpose:e.target.value }))} rows={2}
                         placeholder="Describe what this draw funds..."
-                        className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-emerald-400/50 resize-none"
-                        style={{ background:"rgba(255,255,255,0.06)" }} />
+                        className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 resize-none" />
                     </div>
                   </div>
                   <div className="flex items-center gap-3">
@@ -709,9 +706,9 @@ export default function BorrowerPortal() {
                       {submittingDraw ? "Submitting…" : "Submit Draw Request"}
                     </button>
                     <button onClick={() => setNewDrawOpen(false)}
-                      className="rounded-lg border border-white/10 px-4 py-2 text-sm font-semibold text-slate-400 hover:bg-white/5 transition-colors">Cancel</button>
+                      className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-600 hover:bg-gray-50 transition-colors">Cancel</button>
                   </div>
-                  <p className="text-xs text-slate-500">Draw requests require a site inspection by TRC Engineering before Kontra Servicing can release funds.</p>
+                  <p className="text-xs text-gray-500">Draw requests require a site inspection by TRC Engineering before Kontra Servicing can release funds.</p>
                 </div>
               )}
 
@@ -719,21 +716,21 @@ export default function BorrowerPortal() {
                 {draws.map(d => {
                   const s = DRAW_STATUS[d.status] ?? DRAW_STATUS.under_review;
                   return (
-                    <div key={d.id} className="rounded-xl border border-white/6 p-6" style={{ background:"rgba(255,255,255,0.03)" }}>
+                    <div key={d.id} className="rounded-xl border border-gray-200 bg-white p-6">
                       <div className="flex items-start justify-between gap-3 mb-4">
                         <div>
                           <p className="text-base font-black text-gray-900">{d.number}</p>
-                          <p className="text-sm text-slate-400 mt-0.5">{d.purpose}</p>
+                          <p className="text-sm text-gray-500 mt-0.5">{d.purpose}</p>
                         </div>
                         <div className="text-right">
                           <p className="text-xl font-black text-gray-900 tabular-nums">{fmt(d.amount)}</p>
                           <span className={`rounded-full px-2.5 py-0.5 text-xs font-bold ${s.color}`}>{s.label}</span>
                         </div>
                       </div>
-                      <div className="flex flex-wrap items-center gap-4 text-xs text-slate-500">
+                      <div className="flex flex-wrap items-center gap-4 text-xs text-gray-500">
                         <span>Submitted: {fmtDate(d.submitted_at)}</span>
-                        {d.funded_at && <span className="text-emerald-500">Funded: {fmtDate(d.funded_at)}</span>}
-                        <span className={`flex items-center gap-1 ${d.inspector_approved ? "text-emerald-500" : "text-amber-500"}`}>
+                        {d.funded_at && <span className="text-emerald-700">Funded: {fmtDate(d.funded_at)}</span>}
+                        <span className={`flex items-center gap-1 ${d.inspector_approved ? "text-emerald-700" : "text-amber-700"}`}>
                           {d.inspector_approved
                             ? <><CheckCircleIcon className="h-3.5 w-3.5" /> Inspector approved</>
                             : <><ClockIcon className="h-3.5 w-3.5" /> Inspection pending</>}
@@ -752,26 +749,26 @@ export default function BorrowerPortal() {
               <div>
                 <p className="text-xs font-semibold uppercase tracking-wide text-emerald-500">Capital Markets</p>
                 <h1 className="text-2xl font-black text-gray-900 mt-1">Token Status</h1>
-                <p className="text-sm text-slate-400 mt-1">
+                <p className="text-sm text-gray-500 mt-1">
                   Your loan has been packaged as a digital token (KTRA-2847) and distributed to institutional investors on the Kontra marketplace.
                   Your loan obligations remain exactly the same — only the holder of your debt has changed.
                 </p>
               </div>
 
               {/* Token identity card */}
-              <div className="rounded-xl border border-emerald-700/30 p-6" style={{ background:"rgba(5,150,105,0.08)" }}>
+              <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-6">
                 <div className="flex items-start justify-between gap-4">
                   <div>
-                    <p className="text-xs font-bold uppercase tracking-widest text-emerald-500">Token Symbol</p>
+                    <p className="text-xs font-bold uppercase tracking-widest text-emerald-700">Token Symbol</p>
                     <p className="text-4xl font-black text-gray-900 mt-1 tracking-tight">KTRA-2847</p>
-                    <p className="text-sm text-slate-400 mt-1">ERC-1400 Security Token · Ethereum Mainnet</p>
-                    <p className="text-xs text-slate-500 mt-2 font-mono">0x1a2b…e3f4 (contract)</p>
+                    <p className="text-sm text-gray-500 mt-1">ERC-1400 Security Token · Ethereum Mainnet</p>
+                    <p className="text-xs text-gray-500 mt-2 font-mono">0x1a2b…e3f4 (contract)</p>
                   </div>
                   <div className="text-right shrink-0">
-                    <p className="text-xs text-emerald-600 font-bold uppercase tracking-widest">Current NAV</p>
-                    <p className="text-4xl font-black text-emerald-400 mt-1 tabular-nums">$102.73</p>
-                    <p className="text-xs text-slate-500 mt-1">per token (face value $100.00)</p>
-                    <span className="mt-2 inline-block rounded-full bg-emerald-900/60 border border-emerald-700/40 px-3 py-1 text-xs font-bold text-emerald-400">
+                    <p className="text-xs text-emerald-700 font-bold uppercase tracking-widest">Current NAV</p>
+                    <p className="text-4xl font-black text-emerald-700 mt-1 tabular-nums">$102.73</p>
+                    <p className="text-xs text-gray-500 mt-1">per token (face value $100.00)</p>
+                    <span className="mt-2 inline-block rounded-full bg-emerald-100 border border-emerald-300 px-3 py-1 text-xs font-bold text-emerald-800">
                       ↑ $2.73 premium
                     </span>
                   </div>
@@ -782,34 +779,34 @@ export default function BorrowerPortal() {
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 {[
                   { label:"Total Token Supply", value:"314,000", sub:"tokens issued", color:"text-gray-900" },
-                  { label:"Investors Holding", value:"10,290", sub:"verified accredited", color:"text-violet-400" },
-                  { label:"Monthly Distribution", value:"$264,500", sub:"paid to token holders", color:"text-emerald-400" },
-                  { label:"Annualized Yield", value:"7.62%", sub:"net to investors", color:"text-amber-400" },
+                  { label:"Investors Holding", value:"10,290", sub:"verified accredited", color:"text-violet-700" },
+                  { label:"Monthly Distribution", value:"$264,500", sub:"paid to token holders", color:"text-emerald-700" },
+                  { label:"Annualized Yield", value:"7.62%", sub:"net to investors", color:"text-amber-700" },
                 ].map(s => (
-                  <div key={s.label} className="rounded-xl border border-white/6 p-4" style={{ background:"rgba(255,255,255,0.03)" }}>
-                    <p className="text-xs font-bold uppercase tracking-widest text-slate-500">{s.label}</p>
+                  <div key={s.label} className="rounded-xl border border-gray-200 bg-white p-4">
+                    <p className="text-xs font-bold uppercase tracking-widest text-gray-500">{s.label}</p>
                     <p className={`mt-2 text-xl font-black tabular-nums ${s.color}`}>{s.value}</p>
-                    <p className="text-xs text-slate-500 mt-0.5">{s.sub}</p>
+                    <p className="text-xs text-gray-500 mt-0.5">{s.sub}</p>
                   </div>
                 ))}
               </div>
 
               {/* What this means for you */}
-              <div className="rounded-xl border border-white/6 p-6 space-y-4" style={{ background:"rgba(255,255,255,0.03)" }}>
+              <div className="rounded-xl border border-gray-200 bg-white p-6 space-y-4">
                 <h2 className="text-base font-bold text-gray-900">What tokenization means for you</h2>
                 <div className="space-y-3">
                   {[
-                    { icon: CheckCircleIcon, color:"text-emerald-400", text:"Your loan terms are unchanged — same rate (8.75%), same maturity (Sep 2026), same payment schedule. Tokenization is a change in who holds your debt, not how it works." },
-                    { icon: CheckCircleIcon, color:"text-emerald-400", text:"Your monthly payment of $29,968.75 goes to Kontra Servicing, which distributes it to token holders through the cash flow waterfall. Nothing changes on your end." },
-                    { icon: CheckCircleIcon, color:"text-emerald-400", text:"Draw requests, covenant compliance, and document submissions still flow through your Kontra servicing team — tokenization doesn't change the servicing relationship." },
-                    { icon: ShieldCheckIcon, color:"text-blue-400", text:"Token transfers between investors are governed by ERC-1400 transfer restrictions (Reg D 506(c)). Investors can only transfer to other verified accredited investors. You are not involved in these trades." },
-                    { icon: ChartBarIcon, color:"text-violet-400", text:"The NAV premium ($102.73 vs $100 face) reflects strong DSCR (1.42×), good occupancy (91.7%), and on-time payment history. Maintaining covenant compliance directly supports this premium." },
+                    { icon: CheckCircleIcon, color:"text-emerald-600", text:"Your loan terms are unchanged — same rate (8.75%), same maturity (Sep 2026), same payment schedule. Tokenization is a change in who holds your debt, not how it works." },
+                    { icon: CheckCircleIcon, color:"text-emerald-600", text:"Your monthly payment of $29,968.75 goes to Kontra Servicing, which distributes it to token holders through the cash flow waterfall. Nothing changes on your end." },
+                    { icon: CheckCircleIcon, color:"text-emerald-600", text:"Draw requests, covenant compliance, and document submissions still flow through your Kontra servicing team — tokenization doesn't change the servicing relationship." },
+                    { icon: ShieldCheckIcon, color:"text-blue-600", text:"Token transfers between investors are governed by ERC-1400 transfer restrictions (Reg D 506(c)). Investors can only transfer to other verified accredited investors. You are not involved in these trades." },
+                    { icon: ChartBarIcon, color:"text-violet-600", text:"The NAV premium ($102.73 vs $100 face) reflects strong DSCR (1.42×), good occupancy (91.7%), and on-time payment history. Maintaining covenant compliance directly supports this premium." },
                   ].map((item, i) => {
                     const Icon = item.icon;
                     return (
                       <div key={i} className="flex items-start gap-3">
                         <Icon className={`h-5 w-5 shrink-0 mt-0.5 ${item.color}`} />
-                        <p className="text-sm text-slate-300 leading-relaxed">{item.text}</p>
+                        <p className="text-sm text-gray-700 leading-relaxed">{item.text}</p>
                       </div>
                     );
                   })}
@@ -817,7 +814,7 @@ export default function BorrowerPortal() {
               </div>
 
               {/* Issuance timeline */}
-              <div className="rounded-xl border border-white/6 p-6" style={{ background:"rgba(255,255,255,0.03)" }}>
+              <div className="rounded-xl border border-gray-200 bg-white p-6">
                 <h2 className="text-sm font-bold text-gray-900 mb-4">Token Issuance Timeline</h2>
                 <div className="space-y-3">
                   {[
@@ -828,12 +825,12 @@ export default function BorrowerPortal() {
                     { date:"May 1, 2026",  event:"Latest distribution — $264,500", note:"7.62% annualized yield, NAV $102.73" },
                   ].map((item, i) => (
                     <div key={i} className="flex items-start gap-4">
-                      <div className="w-28 shrink-0 text-xs text-slate-500 font-mono pt-0.5">{item.date}</div>
+                      <div className="w-28 shrink-0 text-xs text-gray-500 font-mono pt-0.5">{item.date}</div>
                       <div className="flex items-start gap-3">
                         <div className="mt-1.5 h-2 w-2 rounded-full bg-emerald-500 shrink-0" />
                         <div>
                           <p className="text-sm font-semibold text-gray-900">{item.event}</p>
-                          <p className="text-xs text-slate-500">{item.note}</p>
+                          <p className="text-xs text-gray-500">{item.note}</p>
                         </div>
                       </div>
                     </div>
@@ -852,23 +849,22 @@ export default function BorrowerPortal() {
               </div>
               <div className="space-y-4">
                 {notices.map(n => (
-                  <div key={n.id} className={`rounded-xl border p-5 ${n.type === "action_required" ? "border-amber-800/50" : "border-white/6"}`}
-                    style={{ background: n.type === "action_required" ? "rgba(217,119,6,0.08)" : "rgba(255,255,255,0.03)" }}>
+                  <div key={n.id} className={`rounded-xl border p-5 ${n.type === "action_required" ? "border-amber-200 bg-amber-50" : "border-gray-200 bg-white"}`}>
                     <div className="flex items-start gap-3">
-                      <div className={`mt-0.5 flex h-8 w-8 items-center justify-center rounded-full shrink-0 ${n.type === "action_required" ? "bg-amber-900/60" : "bg-white/8"}`}>
+                      <div className={`mt-0.5 flex h-8 w-8 items-center justify-center rounded-full shrink-0 ${n.type === "action_required" ? "bg-amber-100" : "bg-gray-100"}`}>
                         {n.type === "action_required"
-                          ? <ExclamationTriangleIcon className="h-4 w-4 text-amber-400" />
-                          : <DocumentTextIcon className="h-4 w-4 text-slate-400" />}
+                          ? <ExclamationTriangleIcon className="h-4 w-4 text-amber-700" />
+                          : <DocumentTextIcon className="h-4 w-4 text-gray-500" />}
                       </div>
                       <div className="flex-1">
                         <div className="flex items-center gap-2 mb-1">
                           {n.type === "action_required" && (
-                            <span className="rounded-full bg-amber-700 px-2 py-0.5 text-xs font-black text-white uppercase tracking-wide">Action Required</span>
+                            <span className="rounded-full bg-amber-600 px-2 py-0.5 text-xs font-black text-white uppercase tracking-wide">Action Required</span>
                           )}
-                          <span className="text-xs text-slate-500">{fmtDate(n.date)} · From {n.from}</span>
+                          <span className="text-xs text-gray-500">{fmtDate(n.date)} · From {n.from}</span>
                         </div>
                         <p className="text-sm font-bold text-gray-900">{n.subject}</p>
-                        <p className="text-sm text-slate-400 mt-1">{n.body}</p>
+                        <p className="text-sm text-gray-600 mt-1">{n.body}</p>
                       </div>
                     </div>
                   </div>
@@ -883,50 +879,48 @@ export default function BorrowerPortal() {
               <div>
                 <p className="text-xs font-semibold uppercase tracking-wide text-emerald-500">Communications</p>
                 <h1 className="text-2xl font-black text-gray-900 mt-1">Messages</h1>
-                <p className="text-sm text-slate-400 mt-1">Direct channel to your servicing team</p>
+                <p className="text-sm text-gray-500 mt-1">Direct channel to your servicing team</p>
               </div>
 
-              <div className="rounded-xl border border-white/6 overflow-hidden">
-                <div className="border-b border-white/6 px-6 py-4 flex items-center gap-3" style={{ background:"rgba(255,255,255,0.04)" }}>
-                  <div className="h-8 w-8 rounded-full bg-emerald-800 flex items-center justify-center text-white text-xs font-bold">KS</div>
+              <div className="rounded-xl border border-gray-200 bg-white overflow-hidden">
+                <div className="border-b border-gray-200 bg-white px-6 py-4 flex items-center gap-3">
+                  <div className="h-8 w-8 rounded-full bg-emerald-600 flex items-center justify-center text-white text-xs font-bold">KS</div>
                   <div>
                     <p className="text-sm font-bold text-gray-900">Kontra Servicing Team</p>
                     <div className="flex items-center gap-1.5">
-                      <div className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
-                      <p className="text-xs text-emerald-500 font-medium">Online · Responds within 1 business day</p>
+                      <div className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                      <p className="text-xs text-emerald-700 font-medium">Online · Responds within 1 business day</p>
                     </div>
                   </div>
                 </div>
 
-                <div className="px-6 py-4 space-y-4 min-h-64">
+                <div className="px-6 py-4 space-y-4 min-h-64 bg-gray-50">
                   {localMessages.map(m => (
                     <div key={m.id} className={`flex ${m.from === "borrower" ? "justify-end" : "justify-start"}`}>
-                      <div className={`max-w-xs lg:max-w-md rounded-2xl px-4 py-3 ${m.from === "borrower" ? "rounded-tr-sm text-gray-900" : "rounded-tl-sm text-gray-900"}`}
-                        style={{ background: m.from === "borrower" ? "#059669" : "rgba(255,255,255,0.08)" }}>
-                        <p className="text-xs font-semibold mb-1 opacity-60">{m.author}</p>
+                      <div className={`max-w-xs lg:max-w-md rounded-2xl px-4 py-3 ${m.from === "borrower" ? "rounded-tr-sm bg-emerald-600 text-white" : "rounded-tl-sm bg-white border border-gray-200 text-gray-900"}`}>
+                        <p className="text-xs font-semibold mb-1 opacity-70">{m.author}</p>
                         <p className="text-sm">{m.text}</p>
-                        <p className="text-xs mt-1 opacity-40">{new Date(m.ts).toLocaleTimeString("en-US", { hour:"numeric", minute:"2-digit" })}</p>
+                        <p className="text-xs mt-1 opacity-50">{new Date(m.ts).toLocaleTimeString("en-US", { hour:"numeric", minute:"2-digit" })}</p>
                       </div>
                     </div>
                   ))}
                 </div>
 
-                <div className="border-t border-white/6 px-4 py-3 flex items-end gap-3">
+                <div className="border-t border-gray-200 bg-white px-4 py-3 flex items-end gap-3">
                   <textarea
                     value={message}
                     onChange={e => setMessage(e.target.value)}
                     onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); } }}
                     placeholder="Type a message to your servicing team..."
                     rows={2}
-                    className="flex-1 rounded-xl border border-gray-200 px-4 py-2.5 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-emerald-400/50 resize-none"
-                    style={{ background:"rgba(255,255,255,0.06)" }}
+                    className="flex-1 rounded-xl border border-gray-300 bg-white px-4 py-2.5 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 resize-none"
                   />
                   <button onClick={sendMessage} disabled={!message.trim() || sendingMsg}
                     className="rounded-xl bg-emerald-700 px-4 py-2.5 text-sm font-bold text-white hover:bg-emerald-600 disabled:opacity-40 transition-colors">
                     {sendingMsg ? "Sending…" : "Send"}
                   </button>
                 </div>
-                <p className="px-6 pb-3 text-xs text-slate-600">Messages are logged to the servicing audit trail.</p>
+                <p className="px-6 pb-3 text-xs text-gray-500">Messages are logged to the servicing audit trail.</p>
               </div>
             </div>
           )}
