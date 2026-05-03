@@ -146,7 +146,7 @@ function CovenantGauge({ cov }: { cov: typeof DEMO_COVENANTS[0] }) {
     return (
       <div className={`rounded-xl border p-5 ${isBreach ? "border-red-700/50 bg-red-950/30" : isAttention ? "border-amber-700/50 bg-amber-950/30" : "border-emerald-800/40 bg-emerald-950/20"}`}>
         <div className="flex items-start justify-between mb-3">
-          <p className="text-sm font-bold text-white">{cov.name}</p>
+          <p className="text-sm font-bold text-gray-900">{cov.name}</p>
           <span className={`rounded-full px-2.5 py-0.5 text-xs font-bold ${isBreach ? "bg-red-900/60 text-red-400" : isAttention ? "bg-amber-900/60 text-amber-400" : "bg-emerald-900/60 text-emerald-400"}`}>
             {isBreach ? "Breach" : isAttention ? "Attention" : "OK"}
           </span>
@@ -167,7 +167,7 @@ function CovenantGauge({ cov }: { cov: typeof DEMO_COVENANTS[0] }) {
   return (
     <div className={`rounded-xl border p-5 ${isBreach ? "border-red-700/50 bg-red-950/30" : isAttention ? "border-amber-700/50 bg-amber-950/30" : "border-emerald-800/40 bg-emerald-950/20"}`}>
       <div className="flex items-start justify-between mb-1">
-        <p className="text-sm font-bold text-white">{cov.name}</p>
+        <p className="text-sm font-bold text-gray-900">{cov.name}</p>
         <span className={`rounded-full px-2.5 py-0.5 text-xs font-bold ${isBreach ? "bg-red-900/60 text-red-400" : isAttention ? "bg-amber-900/60 text-amber-400" : "bg-emerald-900/60 text-emerald-400"}`}>
           {isBreach ? "Breach" : isAttention ? "Attention" : "OK"}
         </span>
@@ -294,7 +294,7 @@ export default function BorrowerPortal() {
     <div className="flex h-screen overflow-hidden" style={{ background:"#060e09" }}>
 
       {/* ── SIDEBAR ── */}
-      <aside className="flex w-64 shrink-0 flex-col border-r border-white/5" style={{ background:"#0a1810" }}>
+      <aside className="flex w-64 shrink-0 flex-col border-r border-gray-200" style={{ background:"#ffffff" }}>
         {/* Logo */}
         <div className="flex items-center gap-3 px-5 py-5 border-b border-white/5">
           <div
@@ -302,7 +302,7 @@ export default function BorrowerPortal() {
             style={{ background:"#059669", boxShadow:"0 0 16px rgba(5,150,105,0.4)" }}
           >K</div>
           <div>
-            <p className="text-sm font-bold text-white" style={{ letterSpacing:"-0.02em" }}>Kontra</p>
+            <p className="text-sm font-bold text-gray-900" style={{ letterSpacing:"-0.02em" }}>Kontra</p>
             <p className="text-xs font-semibold" style={{ color:"#6ee7b7" }}>Borrower Portal</p>
           </div>
         </div>
@@ -310,7 +310,7 @@ export default function BorrowerPortal() {
         {/* Loan card */}
         <div className="mx-4 mt-4 rounded-xl border border-white/8 p-4" style={{ background:"rgba(5,150,105,0.08)" }}>
           <p className="text-xs font-bold uppercase tracking-widest text-slate-500">Active Loan</p>
-          <p className="mt-1 text-sm font-black text-white">{loan.loan_ref}</p>
+          <p className="mt-1 text-sm font-black text-gray-900">{loan.loan_ref}</p>
           <p className="text-xs text-slate-400 truncate">{loan.property_name}</p>
           <div className="mt-2 flex items-center gap-1.5">
             <div className="h-2 w-2 rounded-full bg-emerald-400" />
@@ -335,7 +335,7 @@ export default function BorrowerPortal() {
                 key={item.key}
                 onClick={() => setSection(item.key)}
                 className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-sm transition-all text-left ${
-                  active ? "bg-white/10 text-white font-medium" : "text-slate-400 hover:bg-white/5 hover:text-slate-200"
+                  active ? "bg-emerald-50 text-emerald-700 font-medium" : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"
                 }`}
               >
                 <Icon className={`h-4 w-4 shrink-0 ${active ? "text-emerald-400" : "text-slate-500"}`} />
@@ -360,7 +360,7 @@ export default function BorrowerPortal() {
           </div>
           <button
             onClick={async () => { await signOut(); navigate("/login", { replace:true }); }}
-            className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold text-slate-500 hover:bg-white/5 hover:text-slate-300 transition-all text-left"
+            className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold text-slate-500 hover:bg-gray-50 hover:text-gray-700 transition-all text-left"
           >
             <ArrowRightStartOnRectangleIcon className="h-4 w-4" />
             Log Out
@@ -377,7 +377,7 @@ export default function BorrowerPortal() {
             <div className="space-y-6">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-wide text-emerald-500">My Loan</p>
-                <h1 className="text-2xl font-black text-white mt-1">{loan.property_name}</h1>
+                <h1 className="text-2xl font-black text-gray-900 mt-1">{loan.property_name}</h1>
                 <p className="text-sm text-slate-400">{loan.property_address} · {loan.property_type}</p>
               </div>
 
@@ -392,7 +392,7 @@ export default function BorrowerPortal() {
                 ].map(item => (
                   <div key={item.label} className="rounded-xl border border-white/6 p-4" style={{ background:"rgba(255,255,255,0.04)" }}>
                     <p className="text-xs font-bold uppercase tracking-widest text-slate-500">{item.label}</p>
-                    <p className="mt-1.5 text-sm font-bold text-white">{item.value}</p>
+                    <p className="mt-1.5 text-sm font-bold text-gray-900">{item.value}</p>
                   </div>
                 ))}
               </div>
@@ -401,7 +401,7 @@ export default function BorrowerPortal() {
               <div className="rounded-xl border border-white/6 overflow-hidden" style={{ background:"rgba(255,255,255,0.03)" }}>
                 <div className="border-b border-white/6 px-6 py-4 flex items-center justify-between">
                   <div>
-                    <h2 className="text-base font-bold text-white">Covenant Health</h2>
+                    <h2 className="text-base font-bold text-gray-900">Covenant Health</h2>
                     <p className="text-xs text-slate-500 mt-0.5">Real-time compliance vs your loan agreement</p>
                   </div>
                   <button onClick={() => setSection("covenants")} className="text-xs font-semibold text-emerald-400 hover:text-emerald-300">
@@ -413,7 +413,7 @@ export default function BorrowerPortal() {
                     <div key={c.id} className="flex items-center justify-between px-6 py-3.5 hover:bg-white/3 transition-colors">
                       <p className="text-sm text-slate-300">{c.name}</p>
                       <div className="flex items-center gap-3">
-                        <span className="text-sm font-bold text-white tabular-nums">{c.current_value}</span>
+                        <span className="text-sm font-bold text-gray-900 tabular-nums">{c.current_value}</span>
                         <span className={`rounded-full px-2.5 py-0.5 text-xs font-bold ${c.status === "passing" ? "bg-emerald-900/60 text-emerald-400 border border-emerald-800/50" : c.status === "attention" ? "bg-amber-900/60 text-amber-400 border border-amber-800/50" : "bg-red-900/60 text-red-400 border border-red-800/50"}`}>
                           {c.status === "passing" ? "OK" : c.status === "attention" ? "Attention" : "Breach"}
                         </span>
@@ -445,14 +445,14 @@ export default function BorrowerPortal() {
             <div className="space-y-6">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-wide text-emerald-500">Payments</p>
-                <h1 className="text-2xl font-black text-white mt-1">Payment History</h1>
+                <h1 className="text-2xl font-black text-gray-900 mt-1">Payment History</h1>
               </div>
 
               <div className="rounded-xl border border-white/6 overflow-hidden" style={{ background:"rgba(255,255,255,0.04)" }}>
                 <div className="px-6 py-5 flex items-center justify-between" style={{ background:"rgba(5,150,105,0.12)" }}>
                   <div>
                     <p className="text-xs font-bold uppercase tracking-widest text-emerald-600">Next Payment Due</p>
-                    <p className="text-2xl font-black text-white mt-1">{fmt(loan.next_payment_amount)}</p>
+                    <p className="text-2xl font-black text-gray-900 mt-1">{fmt(loan.next_payment_amount)}</p>
                     <p className="text-sm text-slate-400 mt-0.5">{fmtDate(loan.next_payment_date)} · Interest Only</p>
                   </div>
                   <div className="text-right">
@@ -471,7 +471,7 @@ export default function BorrowerPortal() {
 
               <div className="rounded-xl border border-white/6 overflow-hidden">
                 <div className="border-b border-white/6 px-6 py-4" style={{ background:"rgba(255,255,255,0.03)" }}>
-                  <h2 className="text-base font-bold text-white">Payment History</h2>
+                  <h2 className="text-base font-bold text-gray-900">Payment History</h2>
                 </div>
                 <table className="w-full text-sm">
                   <thead>
@@ -484,8 +484,8 @@ export default function BorrowerPortal() {
                   <tbody className="divide-y divide-white/4">
                     {payments.map(p => (
                       <tr key={p.id} className="hover:bg-white/3 transition-colors">
-                        <td className="px-5 py-3 text-white font-semibold">{fmtDate(p.date)}</td>
-                        <td className="px-5 py-3 text-white font-bold tabular-nums">{fmt(p.amount)}</td>
+                        <td className="px-5 py-3 text-gray-900 font-semibold">{fmtDate(p.date)}</td>
+                        <td className="px-5 py-3 text-gray-900 font-bold tabular-nums">{fmt(p.amount)}</td>
                         <td className="px-5 py-3 text-slate-300 tabular-nums">{fmt(p.interest)}</td>
                         <td className="px-5 py-3 text-slate-500 tabular-nums">{p.principal === 0 ? "—" : fmt(p.principal)}</td>
                         <td className="px-5 py-3 text-slate-500 tabular-nums">{p.late_fee === 0 ? "—" : fmt(p.late_fee)}</td>
@@ -505,7 +505,7 @@ export default function BorrowerPortal() {
             <div className="space-y-6">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-wide text-emerald-500">Compliance</p>
-                <h1 className="text-2xl font-black text-white mt-1">Covenant Scorecard</h1>
+                <h1 className="text-2xl font-black text-gray-900 mt-1">Covenant Scorecard</h1>
                 <p className="text-sm text-slate-400 mt-1">
                   Live covenant readings calculated from your uploaded financials and servicer records. 
                   Any breach triggers a 60-day cure period per §8.2 of your loan agreement.
@@ -544,13 +544,13 @@ export default function BorrowerPortal() {
             <div className="space-y-6">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-wide text-emerald-500">Document Center</p>
-                <h1 className="text-2xl font-black text-white mt-1">Required Documents</h1>
+                <h1 className="text-2xl font-black text-gray-900 mt-1">Required Documents</h1>
                 <p className="text-sm text-slate-400 mt-1">Upload required documents for your servicer's review. AI extracts key metrics automatically on submission.</p>
               </div>
 
               <div className="rounded-xl border border-white/6 overflow-hidden">
                 <div className="border-b border-white/6 px-6 py-4 flex items-center justify-between" style={{ background:"rgba(255,255,255,0.03)" }}>
-                  <h2 className="text-base font-bold text-white">Document Checklist</h2>
+                  <h2 className="text-base font-bold text-gray-900">Document Checklist</h2>
                   <span className="text-xs text-slate-400">{documents.filter(d => d.status === "approved").length}/{documents.length} approved</span>
                 </div>
                 <div className="divide-y divide-white/4">
@@ -563,7 +563,7 @@ export default function BorrowerPortal() {
                           <Icon className={`h-4 w-4 ${doc.status === "approved" ? "text-emerald-400" : doc.status === "submitted" ? "text-blue-400" : "text-amber-400"}`} />
                         </div>
                         <div className="flex-1 min-w-0">
-                          <p className="text-sm font-semibold text-white">{doc.name}</p>
+                          <p className="text-sm font-semibold text-gray-900">{doc.name}</p>
                           <div className="flex items-center gap-3 mt-0.5">
                             <p className="text-xs text-slate-500">Due: {fmtDate(doc.due)}</p>
                             {doc.notes && <p className="text-xs text-slate-600">· {doc.notes}</p>}
@@ -591,7 +591,7 @@ export default function BorrowerPortal() {
               {uploadingDoc && (
                 <div className="rounded-xl border-2 border-dashed border-emerald-700/50 p-8 text-center" style={{ background:"rgba(5,150,105,0.05)" }}>
                   <ArrowUpTrayIcon className="h-8 w-8 text-emerald-500 mx-auto mb-3" />
-                  <p className="text-sm font-semibold text-white">{aiDocName ? `Selected: ${aiDocName}` : "Drag & drop or click to choose a file"}</p>
+                  <p className="text-sm font-semibold text-gray-900">{aiDocName ? `Selected: ${aiDocName}` : "Drag & drop or click to choose a file"}</p>
                   <p className="text-xs text-slate-500 mt-1">PDF, Excel, CSV · Max 25 MB · AI will extract key metrics</p>
                   <input ref={fileInputRef} type="file" className="hidden" accept=".pdf,.xlsx,.xls,.csv,.txt,.doc,.docx"
                     onChange={e => { const f = e.target.files?.[0]; if (f) setAiDocName(f.name); }} />
@@ -615,7 +615,7 @@ export default function BorrowerPortal() {
                   <div className="border-b border-emerald-800/30 px-6 py-4 flex items-center gap-3">
                     <SparklesIcon className="h-5 w-5 text-emerald-400" />
                     <div>
-                      <h3 className="text-sm font-bold text-white">AI Document Analysis</h3>
+                      <h3 className="text-sm font-bold text-gray-900">AI Document Analysis</h3>
                       <p className="text-xs text-slate-400">{aiDocResult.doc_type} · {aiDocName}</p>
                     </div>
                   </div>
@@ -632,7 +632,7 @@ export default function BorrowerPortal() {
                         {aiDocResult.metrics.noi != null && (
                           <div className="rounded-lg p-3" style={{ background:"rgba(255,255,255,0.05)" }}>
                             <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Annual NOI</p>
-                            <p className="text-xl font-black text-white">${Number(aiDocResult.metrics.noi).toLocaleString()}</p>
+                            <p className="text-xl font-black text-gray-900">${Number(aiDocResult.metrics.noi).toLocaleString()}</p>
                           </div>
                         )}
                         {aiDocResult.metrics.occupancy != null && (
@@ -668,7 +668,7 @@ export default function BorrowerPortal() {
               <div className="flex items-end justify-between">
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-wide text-emerald-500">Construction</p>
-                  <h1 className="text-2xl font-black text-white mt-1">Draw Requests</h1>
+                  <h1 className="text-2xl font-black text-gray-900 mt-1">Draw Requests</h1>
                   <p className="text-sm text-slate-400 mt-1">Submit and track construction draws. Each requires inspection approval before funding.</p>
                 </div>
                 <button onClick={() => setNewDrawOpen(!newDrawOpen)}
@@ -679,27 +679,27 @@ export default function BorrowerPortal() {
 
               {newDrawOpen && (
                 <div className="rounded-xl border border-white/8 p-6 space-y-4" style={{ background:"rgba(255,255,255,0.04)" }}>
-                  <p className="text-sm font-bold text-white">New Draw Request — {loan.loan_ref}</p>
+                  <p className="text-sm font-bold text-gray-900">New Draw Request — {loan.loan_ref}</p>
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <label className="block text-xs font-bold uppercase tracking-widest text-slate-500 mb-1.5">Draw Amount ($)</label>
                       <input type="number" value={drawForm.amount} onChange={e => setDrawForm(f => ({ ...f, amount:e.target.value }))}
                         placeholder="0.00"
-                        className="w-full rounded-lg border border-white/8 px-3 py-2 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:ring-2 focus:ring-emerald-700/50"
+                        className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-emerald-400/50"
                         style={{ background:"rgba(255,255,255,0.06)" }} />
                     </div>
                     <div>
                       <label className="block text-xs font-bold uppercase tracking-widest text-slate-500 mb-1.5">Milestone / Phase</label>
                       <input type="text" value={drawForm.milestone} onChange={e => setDrawForm(f => ({ ...f, milestone:e.target.value }))}
                         placeholder="Phase 3 — Units 19-24"
-                        className="w-full rounded-lg border border-white/8 px-3 py-2 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:ring-2 focus:ring-emerald-700/50"
+                        className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-emerald-400/50"
                         style={{ background:"rgba(255,255,255,0.06)" }} />
                     </div>
                     <div className="col-span-2">
                       <label className="block text-xs font-bold uppercase tracking-widest text-slate-500 mb-1.5">Purpose</label>
                       <textarea value={drawForm.purpose} onChange={e => setDrawForm(f => ({ ...f, purpose:e.target.value }))} rows={2}
                         placeholder="Describe what this draw funds..."
-                        className="w-full rounded-lg border border-white/8 px-3 py-2 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:ring-2 focus:ring-emerald-700/50 resize-none"
+                        className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-emerald-400/50 resize-none"
                         style={{ background:"rgba(255,255,255,0.06)" }} />
                     </div>
                   </div>
@@ -722,11 +722,11 @@ export default function BorrowerPortal() {
                     <div key={d.id} className="rounded-xl border border-white/6 p-6" style={{ background:"rgba(255,255,255,0.03)" }}>
                       <div className="flex items-start justify-between gap-3 mb-4">
                         <div>
-                          <p className="text-base font-black text-white">{d.number}</p>
+                          <p className="text-base font-black text-gray-900">{d.number}</p>
                           <p className="text-sm text-slate-400 mt-0.5">{d.purpose}</p>
                         </div>
                         <div className="text-right">
-                          <p className="text-xl font-black text-white tabular-nums">{fmt(d.amount)}</p>
+                          <p className="text-xl font-black text-gray-900 tabular-nums">{fmt(d.amount)}</p>
                           <span className={`rounded-full px-2.5 py-0.5 text-xs font-bold ${s.color}`}>{s.label}</span>
                         </div>
                       </div>
@@ -751,7 +751,7 @@ export default function BorrowerPortal() {
             <div className="space-y-6">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-wide text-emerald-500">Capital Markets</p>
-                <h1 className="text-2xl font-black text-white mt-1">Token Status</h1>
+                <h1 className="text-2xl font-black text-gray-900 mt-1">Token Status</h1>
                 <p className="text-sm text-slate-400 mt-1">
                   Your loan has been packaged as a digital token (KTRA-2847) and distributed to institutional investors on the Kontra marketplace.
                   Your loan obligations remain exactly the same — only the holder of your debt has changed.
@@ -763,7 +763,7 @@ export default function BorrowerPortal() {
                 <div className="flex items-start justify-between gap-4">
                   <div>
                     <p className="text-xs font-bold uppercase tracking-widest text-emerald-500">Token Symbol</p>
-                    <p className="text-4xl font-black text-white mt-1 tracking-tight">KTRA-2847</p>
+                    <p className="text-4xl font-black text-gray-900 mt-1 tracking-tight">KTRA-2847</p>
                     <p className="text-sm text-slate-400 mt-1">ERC-1400 Security Token · Ethereum Mainnet</p>
                     <p className="text-xs text-slate-500 mt-2 font-mono">0x1a2b…e3f4 (contract)</p>
                   </div>
@@ -781,7 +781,7 @@ export default function BorrowerPortal() {
               {/* Token metrics */}
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 {[
-                  { label:"Total Token Supply", value:"314,000", sub:"tokens issued", color:"text-white" },
+                  { label:"Total Token Supply", value:"314,000", sub:"tokens issued", color:"text-gray-900" },
                   { label:"Investors Holding", value:"10,290", sub:"verified accredited", color:"text-violet-400" },
                   { label:"Monthly Distribution", value:"$264,500", sub:"paid to token holders", color:"text-emerald-400" },
                   { label:"Annualized Yield", value:"7.62%", sub:"net to investors", color:"text-amber-400" },
@@ -796,7 +796,7 @@ export default function BorrowerPortal() {
 
               {/* What this means for you */}
               <div className="rounded-xl border border-white/6 p-6 space-y-4" style={{ background:"rgba(255,255,255,0.03)" }}>
-                <h2 className="text-base font-bold text-white">What tokenization means for you</h2>
+                <h2 className="text-base font-bold text-gray-900">What tokenization means for you</h2>
                 <div className="space-y-3">
                   {[
                     { icon: CheckCircleIcon, color:"text-emerald-400", text:"Your loan terms are unchanged — same rate (8.75%), same maturity (Sep 2026), same payment schedule. Tokenization is a change in who holds your debt, not how it works." },
@@ -818,7 +818,7 @@ export default function BorrowerPortal() {
 
               {/* Issuance timeline */}
               <div className="rounded-xl border border-white/6 p-6" style={{ background:"rgba(255,255,255,0.03)" }}>
-                <h2 className="text-sm font-bold text-white mb-4">Token Issuance Timeline</h2>
+                <h2 className="text-sm font-bold text-gray-900 mb-4">Token Issuance Timeline</h2>
                 <div className="space-y-3">
                   {[
                     { date:"Sep 15, 2024", event:"Loan originated — LN-2847", note:"$4.2M multifamily bridge loan funded" },
@@ -832,7 +832,7 @@ export default function BorrowerPortal() {
                       <div className="flex items-start gap-3">
                         <div className="mt-1.5 h-2 w-2 rounded-full bg-emerald-500 shrink-0" />
                         <div>
-                          <p className="text-sm font-semibold text-white">{item.event}</p>
+                          <p className="text-sm font-semibold text-gray-900">{item.event}</p>
                           <p className="text-xs text-slate-500">{item.note}</p>
                         </div>
                       </div>
@@ -848,7 +848,7 @@ export default function BorrowerPortal() {
             <div className="space-y-6">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-wide text-emerald-500">Communications</p>
-                <h1 className="text-2xl font-black text-white mt-1">Notices</h1>
+                <h1 className="text-2xl font-black text-gray-900 mt-1">Notices</h1>
               </div>
               <div className="space-y-4">
                 {notices.map(n => (
@@ -867,7 +867,7 @@ export default function BorrowerPortal() {
                           )}
                           <span className="text-xs text-slate-500">{fmtDate(n.date)} · From {n.from}</span>
                         </div>
-                        <p className="text-sm font-bold text-white">{n.subject}</p>
+                        <p className="text-sm font-bold text-gray-900">{n.subject}</p>
                         <p className="text-sm text-slate-400 mt-1">{n.body}</p>
                       </div>
                     </div>
@@ -882,7 +882,7 @@ export default function BorrowerPortal() {
             <div className="space-y-4">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-wide text-emerald-500">Communications</p>
-                <h1 className="text-2xl font-black text-white mt-1">Messages</h1>
+                <h1 className="text-2xl font-black text-gray-900 mt-1">Messages</h1>
                 <p className="text-sm text-slate-400 mt-1">Direct channel to your servicing team</p>
               </div>
 
@@ -890,7 +890,7 @@ export default function BorrowerPortal() {
                 <div className="border-b border-white/6 px-6 py-4 flex items-center gap-3" style={{ background:"rgba(255,255,255,0.04)" }}>
                   <div className="h-8 w-8 rounded-full bg-emerald-800 flex items-center justify-center text-white text-xs font-bold">KS</div>
                   <div>
-                    <p className="text-sm font-bold text-white">Kontra Servicing Team</p>
+                    <p className="text-sm font-bold text-gray-900">Kontra Servicing Team</p>
                     <div className="flex items-center gap-1.5">
                       <div className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
                       <p className="text-xs text-emerald-500 font-medium">Online · Responds within 1 business day</p>
@@ -901,7 +901,7 @@ export default function BorrowerPortal() {
                 <div className="px-6 py-4 space-y-4 min-h-64">
                   {localMessages.map(m => (
                     <div key={m.id} className={`flex ${m.from === "borrower" ? "justify-end" : "justify-start"}`}>
-                      <div className={`max-w-xs lg:max-w-md rounded-2xl px-4 py-3 ${m.from === "borrower" ? "rounded-tr-sm text-white" : "rounded-tl-sm text-white"}`}
+                      <div className={`max-w-xs lg:max-w-md rounded-2xl px-4 py-3 ${m.from === "borrower" ? "rounded-tr-sm text-gray-900" : "rounded-tl-sm text-gray-900"}`}
                         style={{ background: m.from === "borrower" ? "#059669" : "rgba(255,255,255,0.08)" }}>
                         <p className="text-xs font-semibold mb-1 opacity-60">{m.author}</p>
                         <p className="text-sm">{m.text}</p>
@@ -918,7 +918,7 @@ export default function BorrowerPortal() {
                     onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); } }}
                     placeholder="Type a message to your servicing team..."
                     rows={2}
-                    className="flex-1 rounded-xl border border-white/8 px-4 py-2.5 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:ring-2 focus:ring-emerald-700/50 resize-none"
+                    className="flex-1 rounded-xl border border-gray-200 px-4 py-2.5 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-emerald-400/50 resize-none"
                     style={{ background:"rgba(255,255,255,0.06)" }}
                   />
                   <button onClick={sendMessage} disabled={!message.trim() || sendingMsg}
