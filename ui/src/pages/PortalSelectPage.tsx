@@ -135,6 +135,7 @@ export default function PortalSelectPage() {
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
         const fetchedRole = (data?.app_role ?? "member") as AppRole;
+
         // Cache DB-resolved role so RequireRole can use it without a custom JWT hook
         try { localStorage.setItem("kontra_resolved_role", fetchedRole); } catch (_) {}
 
