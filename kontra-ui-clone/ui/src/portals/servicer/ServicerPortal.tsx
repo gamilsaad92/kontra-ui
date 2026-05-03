@@ -72,7 +72,7 @@ export default function ServicerPortal() {
             `flex items-center gap-2.5 rounded-lg px-3 py-2.5 text-sm transition ${
               isActive || location.pathname.startsWith(`${item.path}/`)
                 ? "bg-amber-500/15 text-amber-300 font-semibold"
-                : "text-slate-300 hover:bg-slate-800 hover:text-white"
+                : "text-slate-300 hover:bg-slate-700/50 hover:text-white"
             }`
           }
         >
@@ -109,7 +109,7 @@ export default function ServicerPortal() {
       {/* ── Sidebar ── */}
       <aside className={`fixed inset-y-0 left-0 z-50 flex w-64 shrink-0 flex-col bg-slate-950 text-slate-100 transform transition-transform duration-200 ease-in-out md:relative md:translate-x-0 ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}`}>
         {/* Logo + portal badge */}
-        <div className="px-4 pt-5 pb-4 border-b border-slate-800">
+        <div className="px-4 pt-5 pb-4 border-b border-slate-700/50">
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2.5">
               <div
@@ -132,7 +132,7 @@ export default function ServicerPortal() {
             </div>
             <button
               onClick={() => setSidebarOpen(false)}
-              className="md:hidden rounded-lg p-1 text-slate-400 hover:text-white hover:bg-slate-800 transition"
+              className="md:hidden rounded-lg p-1 text-slate-400 hover:text-white hover:bg-slate-700/50 transition"
             >
               <XMarkIcon className="h-5 w-5" />
             </button>
@@ -156,17 +156,17 @@ export default function ServicerPortal() {
                 Recent
               </p>
               {frequentItems.map((item) => renderNavItem(item))}
-              <hr className="border-slate-800 my-2" />
+              <hr className="border-slate-700/50 my-2" />
             </div>
           )}
           {navItems.map((item) => renderNavItem(item))}
         </nav>
 
         {/* Switch to Lender portal */}
-        <div className="border-t border-slate-800 px-3 py-3">
+        <div className="border-t border-slate-700/50 px-3 py-3">
           <NavLink
             to="/dashboard"
-            className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-slate-400 hover:bg-slate-800 hover:text-white transition"
+            className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-slate-400 hover:bg-slate-700/50 hover:text-white transition"
           >
             <ArrowTopRightOnSquareIcon className="h-4 w-4 shrink-0" />
             <span>Lender Portal</span>
@@ -174,12 +174,12 @@ export default function ServicerPortal() {
         </div>
 
         {/* Sign out */}
-        <div className="border-t border-slate-800 px-3 py-3">
+        <div className="border-t border-slate-700/50 px-3 py-3">
           <button
             type="button"
             onClick={handleSignOut}
             disabled={isSigningOut}
-            className="w-full rounded-lg border border-slate-800 px-3 py-2 text-sm font-semibold text-slate-200 transition hover:bg-slate-900 disabled:cursor-not-allowed disabled:opacity-60"
+            className="w-full rounded-lg border border-slate-700/50 px-3 py-2 text-sm font-semibold text-slate-200 transition hover:bg-slate-900 disabled:cursor-not-allowed disabled:opacity-60"
           >
             {isSigningOut ? "Logging out…" : "Log Out"}
           </button>
