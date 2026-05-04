@@ -194,6 +194,7 @@ export default function BorrowerPortal() {
   const { signOut } = useContext(AuthContext);
   const navigate    = useNavigate();
   const [section, setSection]           = useState<Section>("myloans");
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [loan, setLoan]                 = useState<LoanData>(DEMO_LOAN);
   const [payments, setPayments]         = useState<Payment[]>(DEMO_PAYMENTS);
   const [documents, setDocuments]       = useState<Doc[]>(DEMO_DOCUMENTS);
@@ -293,8 +294,13 @@ export default function BorrowerPortal() {
   return (
     <div className="flex h-screen overflow-hidden bg-gray-50">
 
+      {/* ── Mobile overlay ── */}
+      {mobileSidebarOpen && (
+        <div className="fixed inset-0 z-40 bg-black/50 lg:hidden" onClick={() => setMobileSidebarOpen(false)} />
+      )}
+
       {/* ── SIDEBAR ── */}
-      <aside className="flex w-64 shrink-0 flex-col border-r border-gray-200" style={{ background:"#ffffff" }}>
+      <aside className={`fixed inset-y-0 left-0 z-50 flex w-64 shrink-0 flex-col border-r border-gray-200 transition-transform duration-200 ease-in-out lg:relative lg:translate-x-0 ${mobileSidebarOpen ? "translate-x-0" : "-translate-x-full"}`} style={{ background:"#ffffff" }}>
         {/* Logo */}
         <div className="flex items-center gap-3 px-5 py-5 border-b border-gray-200">
           <div
@@ -369,8 +375,24 @@ export default function BorrowerPortal() {
       </aside>
 
       {/* ── MAIN ── */}
-      <main className="flex-1 overflow-y-auto bg-gray-50">
-        <div className="max-w-4xl mx-auto px-8 py-8 space-y-8">
+      <main className="flex-1 overflow-y-auto min-w-0 bg-gray-50">
+        {/* Mobile top bar */}
+        <div className="flex items-center justify-between px-4 py-3 bg-white border-b border-gray-200 lg:hidden">
+          <div className="flex items-center gap-2.5">
+            <div className="flex h-7 w-7 items-center justify-center rounded-lg font-black text-white text-sm" style={{ background: "#800020" }}>K</div>
+            <span className="text-sm font-bold text-gray-900">Borrower Portal</span>
+          </div>
+          <button
+            onClick={() => setMobileSidebarOpen(true)}
+            className="rounded-lg p-2 text-gray-500 hover:text-gray-900 hover:bg-gray-100 transition"
+            aria-label="Open menu"
+          >
+            <svg className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
+            </svg>
+          </button>
+        </div>
+        <div className="max-w-4xl mx-auto px-4 sm:px-8 py-6 sm:py-8 space-y-8">
 
           {/* ── MY LOAN ── */}
           {section === "myloans" && (
