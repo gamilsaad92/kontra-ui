@@ -87,6 +87,7 @@ export default function SaasDashboard() {
   const navigate = useNavigate();
   const [isSigningOut, setIsSigningOut] = useState(false);
   const [signOutError, setSignOutError] = useState<string | null>(null);
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
 
   const navItems = useMemo(() => lenderNavRoutes.filter((item) => !item.requiresAuth || session?.access_token), [session]);
 
@@ -281,9 +282,17 @@ export default function SaasDashboard() {
 
   return (
     <div className="flex min-h-screen" style={{ background: "#F8FAFC" }}>
+      {/* ── Mobile overlay ──────────────────────────────────── */}
+      {mobileSidebarOpen && (
+        <div
+          className="fixed inset-0 z-40 bg-black/60 lg:hidden"
+          onClick={() => setMobileSidebarOpen(false)}
+        />
+      )}
+
       {/* ── Sidebar ─────────────────────────────────────────── */}
       <aside
-        className="flex w-60 shrink-0 flex-col"
+        className={`fixed inset-y-0 left-0 z-50 flex w-60 shrink-0 flex-col transition-transform duration-200 ease-in-out lg:relative lg:translate-x-0 ${mobileSidebarOpen ? "translate-x-0" : "-translate-x-full"}`}
         style={{ background: "#0B0F19", borderRight: "1px solid rgba(255,255,255,0.06)" }}
       >
         {/* Logo */}
@@ -359,7 +368,27 @@ export default function SaasDashboard() {
       </aside>
 
       {/* ── Main content ────────────────────────────────────── */}
-      <main className="flex-1 overflow-y-auto" style={{ background: "#F8FAFC" }}>
+      <main className="flex-1 overflow-y-auto min-w-0" style={{ background: "#F8FAFC" }}>
+        {/* Mobile top bar */}
+        <div className="flex items-center justify-between px-4 py-3 lg:hidden" style={{ background: "#0B0F19", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+          <div className="flex items-center gap-2.5">
+            <div className="flex h-7 w-7 items-center justify-center rounded-lg" style={{ background: "#800020" }}>
+              <span className="text-sm font-black text-white" style={{ letterSpacing: "-0.05em" }}>K</span>
+            </div>
+            <span className="text-sm font-bold text-white">Kontra</span>
+          </div>
+          <button
+            onClick={() => setMobileSidebarOpen(true)}
+            className="rounded-lg p-2 text-slate-400 hover:text-white transition"
+            style={{ background: "rgba(255,255,255,0.06)" }}
+            aria-label="Open menu"
+          >
+            <svg className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
+            </svg>
+          </button>
+        </div>
+
         {!isDashboardRoute && !isServicingRoute && !sectionHasOwnHeader && (
           <header className="px-6 py-5 border-b border-gray-200 bg-white">
             <h1 className="text-lg font-semibold tracking-tight text-gray-900">{activeLabel}</h1>

@@ -217,6 +217,7 @@ export default function InvestorPortal() {
   const { signOut } = useContext(AuthContext);
   const navigate = useNavigate();
   const [section, setSection] = useState<Section>("portfolio");
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [holdings, setHoldings]     = useState<Holding[]>(DEMO_HOLDINGS);
   const [distributions, setDists]   = useState<Distribution[]>(DEMO_DISTRIBUTIONS);
   const [performance, setPerf]      = useState<LoanPerformance[]>(DEMO_PERFORMANCE);
@@ -280,8 +281,13 @@ export default function InvestorPortal() {
   return (
     <div className="flex h-screen bg-gray-50 text-slate-900 overflow-hidden">
 
+      {/* ── Mobile overlay ── */}
+      {mobileSidebarOpen && (
+        <div className="fixed inset-0 z-40 bg-black/50 lg:hidden" onClick={() => setMobileSidebarOpen(false)} />
+      )}
+
       {/* ── Sidebar ── */}
-      <aside className="flex w-60 flex-col border-r border-gray-200 bg-white">
+      <aside className={`fixed inset-y-0 left-0 z-50 flex w-60 flex-col border-r border-gray-200 bg-white transition-transform duration-200 ease-in-out lg:relative lg:translate-x-0 ${mobileSidebarOpen ? "translate-x-0" : "-translate-x-full"}`}>
         {/* Logo area */}
         <div className="flex items-center gap-3 px-5 py-5 border-b border-gray-200">
           <div className="flex h-8 w-8 items-center justify-center rounded-lg font-black text-white text-sm" style={{ background: "#800020" }}>K</div>
@@ -363,8 +369,24 @@ export default function InvestorPortal() {
       </aside>
 
       {/* ── Main Content ── */}
-      <main className="flex-1 overflow-y-auto bg-gray-50">
-        <div className="max-w-6xl mx-auto px-8 py-8 space-y-8">
+      <main className="flex-1 overflow-y-auto min-w-0 bg-gray-50">
+        {/* Mobile top bar */}
+        <div className="flex items-center justify-between px-4 py-3 bg-white border-b border-gray-200 lg:hidden">
+          <div className="flex items-center gap-2.5">
+            <div className="flex h-7 w-7 items-center justify-center rounded-lg font-black text-white text-sm" style={{ background: "#800020" }}>K</div>
+            <span className="text-sm font-bold text-gray-900">Investor Portal</span>
+          </div>
+          <button
+            onClick={() => setMobileSidebarOpen(true)}
+            className="rounded-lg p-2 text-gray-500 hover:text-gray-900 hover:bg-gray-100 transition"
+            aria-label="Open menu"
+          >
+            <svg className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
+            </svg>
+          </button>
+        </div>
+        <div className="max-w-6xl mx-auto px-4 sm:px-8 py-6 sm:py-8 space-y-8">
 
           {/* ── PORTFOLIO ── */}
           {section === "portfolio" && (
