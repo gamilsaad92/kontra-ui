@@ -8,15 +8,23 @@
       "scheme": "kontra-mobile",
       "userInterfaceStyle": "automatic",
       "newArchEnabled": true,
+      "runtimeVersion": {
+        "policy": "sdkVersion"
+      },
       "splash": {
         "image": "./assets/images/icon.png",
         "resizeMode": "contain",
         "backgroundColor": "#800020"
       },
-      "ios": { "supportsTablet": false },
-      "android": {},
+      "ios": { "supportsTablet": false, "bundleIdentifier": "com.kontraplatform.mobile" },
+      "android": { "package": "com.kontraplatform.mobile" },
       "web": { "favicon": "./assets/images/icon.png" },
       "plugins": [["expo-router",{"origin":"https://replit.com/"}],"expo-font","expo-web-browser"],
-      "experiments": { "typedRoutes": true, "reactCompiler": true }
+      "experiments": { "typedRoutes": true, "reactCompiler": true },
+      "extra": {
+        "eas": {
+          "projectId": ""
+        }
+      }
     }
   }
