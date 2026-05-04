@@ -5,12 +5,27 @@ import SignUpForm from "../components/SignUpForm";
 import { AuthContext } from "../lib/authContext";
 import { getAppRoleFromToken, getPortalPath } from "../lib/usePortalRouter";
 
+const DEMO_PORTALS = [
+  { role: "lender",   label: "Lender",   color: "#800020", path: "/dashboard",        desc: "Portfolio · Risk · Capital Markets" },
+  { role: "servicer", label: "Servicer", color: "#92400E", path: "/servicer/overview", desc: "Draws · Inspections · Payments" },
+  { role: "investor", label: "Investor", color: "#6D28D9", path: "/investor",           desc: "Holdings · Distributions · Governance" },
+  { role: "borrower", label: "Borrower", color: "#065F46", path: "/borrower",           desc: "Loan · Covenants · Documents" },
+];
+
 export default function LoginPage() {
-  const { session, loading } = useContext(AuthContext);
+  const { session, loading, loginAsDemo } = useContext(AuthContext);
   const [mode, setMode] = useState("login");
   const [redirecting, setRedirecting] = useState(false);
+  const [demoLoading, setDemoLoading] = useState(null);
   const navigate = useNavigate();
   const didRedirect = useRef(false);
+
+  const handleDemo = async (portal) => {
+    setDemoLoading(portal.role);
+    await loginAsDemo(portal.role);
+    navigate(portal.path, { replace: true });
+    setDemoLoading(null);
+  };
 
   useEffect(() => {
     const token = session?.access_token;
@@ -115,6 +130,51 @@ export default function LoginPage() {
           {mode === "login"
             ? <LoginForm onSwitch={() => setMode("signup")} />
             : <SignUpForm onSwitch={() => setMode("login")} />}
+
+          {/* ── Demo access ── */}
+          <div className="mt-8">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="h-px flex-1" style={{ background: "rgba(255,255,255,0.08)" }} />
+              <span className="text-[11px] font-semibold uppercase tracking-widest" style={{ color: "#475569" }}>
+                Or explore the demo
+              </span>
+              <div className="h-px flex-1" style={{ background: "rgba(255,255,255,0.08)" }} />
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+              {DEMO_PORTALS.map((portal) => (
+                <button
+                  key={portal.role}
+                  onClick={() => handleDemo(portal)}
+                  disabled={demoLoading !== null}
+                  className="flex flex-col items-start gap-1 rounded-xl px-3.5 py-3 text-left transition-all hover:scale-[1.02] disabled:opacity-50"
+                  style={{
+                    background: `${portal.color}12`,
+                    border: `1px solid ${portal.color}30`,
+                  }}
+                >
+                  <div className="flex items-center gap-2 w-full">
+                    <span
+                      className="rounded px-1.5 py-0.5 text-[9px] font-black uppercase tracking-widest"
+                      style={{ background: `${portal.color}25`, color: portal.color }}
+                    >
+                      {portal.label}
+                    </span>
+                    {demoLoading === portal.role && (
+                      <span className="ml-auto h-3 w-3 animate-spin rounded-full border border-t-transparent" style={{ borderColor: portal.color, borderTopColor: "transparent" }} />
+                    )}
+                  </div>
+                  <span className="text-[10px] leading-snug" style={{ color: "#64748b" }}>
+                    {portal.desc}
+                  </span>
+                </button>
+              ))}
+            </div>
+
+            <p className="mt-3 text-center text-[10px]" style={{ color: "#334155" }}>
+              No login required · Read-only demo data · No account needed
+            </p>
+          </div>
         </div>
       </div>
     </div>
