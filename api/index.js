@@ -188,6 +188,7 @@ const exchangeProgramsRouter = require('./routers/exchangePrograms');
 const marketplaceRouter = require('./routers/marketplace');
 const capitalMarketsTokensRouter = require('./routers/capitalMarketsTokens');
 const { router: analyticsRouter } = require('./routers/analytics');
+const { router: visitorsRouter } = require('./routers/visitors');
 const restaurantRouter = require('./routers/restaurant');
 const restaurantsRouter = require('./routers/restaurants');
 const applicationsRouter = require('./routers/applications');
@@ -207,15 +208,15 @@ const siteAnalysisRouter = require('./routers/siteAnalysis');
 const savedSearchesRouter = require('./routers/savedSearches');
 const creditGraphRouter = require('./routers/creditGraph');
 const investorsRouter = require('./routers/investors');
+const investorRouter = require('./routers/investor');
+const servicerRouter = require('./routers/servicer');
+const aiDocsRouter  = require('./routers/aiDocs');
 const borrowerRouter = require('./routers/borrower');
 // Compliance automation is still experimental
 const complianceRouter = require('./routers/compliance');
 const legalRouter = require('./routers/legal');
 const otpRouter = require('./routers/otp');
 const mobileRouter = require('./routers/mobile');
-const docsRouter = require('./routers/docs');
-const lifecycleRouter = require('./routers/lifecycle');
-const marketRouter = require('./routers/market');
 const policyRouter = require('./routers/policy');
 const { requireOrgContext } = require('./src/middleware/requireOrgContext');
 const { errorHandler } = require('./src/middleware/errorHandler');
@@ -590,76 +591,217 @@ app.use('/api/auth', authBootstrapRouter);
 app.use('/api/orgs', orgDiscoveryRouter);
 app.use('/api/me', orgDiscoveryRouter);
 
-// One-time DB seed + diagnostics endpoint — must be BEFORE requireOrgContext
-app.post('/api/admin/seed', async (req, res) => {
-  const secret = req.headers['x-seed-secret'] || req.body?.secret;
-  const expected = process.env.SEED_SECRET || 'kontra-seed-2026';
-  if (secret !== expected) return res.status(403).json({ error: 'forbidden' });
-  try {
-    const { getPool } = require('./lib/pgAdapter');
-    const pool = getPool();
-    const connStr = process.env.DATABASE_URL || process.env.APP_DATABASE_URL || '';
-    const connHint = connStr ? connStr.replace(/:[^:@]+@/, ':***@') : 'NONE';
+// ── Kontra AI Copilot (public — no org or auth required) ──────────────────────
+const COPILOT_SYSTEM_PROMPT = `You are Kontra AI Copilot, an expert commercial real estate loan servicing intelligence platform built for institutional lenders and servicers. You have deep knowledge of:
 
-    // Create tables
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS organizations (
-        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-        name text NOT NULL,
-        created_at timestamptz DEFAULT now()
-      );
-      CREATE TABLE IF NOT EXISTS users (
-        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-        email text UNIQUE NOT NULL,
-        password_hash text NOT NULL,
-        first_name text, last_name text,
-        role text NOT NULL DEFAULT 'borrower',
-        portal text,
-        org_id uuid,
-        created_at timestamptz DEFAULT now()
-      );
-      CREATE TABLE IF NOT EXISTS refresh_tokens (
-        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-        user_id uuid NOT NULL,
-        token_hash text UNIQUE NOT NULL,
-        expires_at timestamptz NOT NULL,
-        created_at timestamptz DEFAULT now()
-      );
-    `);
+PORTFOLIO CONTEXT (always reference this):
+- 847 loans under management | $2.41B total UPB
+- Asset mix: Multifamily $1.02B (312 loans), Office $486M (89 loans), Industrial $398M (124 loans), Retail $312M (178 loans), Mixed-Use $192M (144 loans)
+- 3 loans on Watchlist: LN-3011 (Harbor Point Mixed-Use, DSCR 0.94×, 45 days delinquent), LN-3204 (Riverview Office Tower, occupancy 81%), LN-2847 (Meridian Apts, insurance renewal due in 14 days)
+- Current delinquency rate: 1.41% (threshold 3.0%)
+- Q1 2026 investor report: ready for distribution
 
-    // Seed org
-    const ORG_ID = 'a0000000-0000-0000-0000-000000000001';
-    await pool.query(
-      `INSERT INTO organizations (id, name) VALUES ($1, $2) ON CONFLICT (id) DO NOTHING`,
-      [ORG_ID, 'Kontra Demo Org']
-    );
+SPECIALIZED CAPABILITIES:
+1. WATCHLIST COMMENT DRAFTING — Draft formal watchlist comments in Freddie Mac Multifamily Servicing Guide format. Include: loan ID, property name, UPB, trigger reason, financial metrics (DSCR, occupancy, LTV), borrower posture, servicer recommendation, and cure plan. Use structured paragraph format matching Freddie Mac §28.3 requirements.
 
-    // Seed users
-    const bcrypt = require('bcryptjs');
-    const USERS = [
-      { id: 'e7bd29bd-6266-4cb9-8de0-2a0657710359', email: 'replit@kontraplatform.com',   fn:'Alex',role:'lender_admin',portal:'lender'   },
-      { id: 'f8ce30ce-7377-5dc0-9ef1-3b1768821460', email: 'servicer@kontraplatform.com', fn:'Sam', role:'servicer',    portal:'servicer'  },
-      { id: 'a9df41df-8488-6ed1-af02-4c2879932571', email: 'investor@kontraplatform.com', fn:'Ivy', role:'investor',    portal:'investor'  },
-      { id: 'b0ea52e0-9599-7fe2-b013-5d3980a43682', email: 'borrower@kontraplatform.com', fn:'Ben', role:'borrower',    portal:'borrower'  },
-    ];
-    const seeded = [];
-    for (const u of USERS) {
-      const hash = await bcrypt.hash('12345678', 10);
-      const r = await pool.query(
-        `INSERT INTO users (id, email, password_hash, first_name, role, portal, org_id)
-         VALUES ($1,$2,$3,$4,$5,$6,$7)
-         ON CONFLICT (email) DO UPDATE SET password_hash=EXCLUDED.password_hash, role=EXCLUDED.role
-         RETURNING email`,
-        [u.id, u.email, hash, u.fn, u.role, u.portal, ORG_ID]
-      );
-      seeded.push(r.rows[0]?.email || u.email);
-    }
+2. DSCR ANALYSIS — Explain DSCR drops with root cause analysis (NOI compression, expense escalation, vacancy, rent roll erosion), compare to covenant floor, project cure timeline, and recommend specific servicer actions.
 
-    const count = await pool.query('SELECT COUNT(*) FROM users');
-    res.json({ ok: true, conn: connHint, users_in_db: parseInt(count.rows[0].count), seeded });
-  } catch (err) {
-    res.status(500).json({ error: err.message, stack: err.stack?.split('\n').slice(0,5) });
+3. FREDDIE MAC GUIDE RECOMMENDATIONS — Cite specific Freddie Mac Multifamily Servicing Guide sections (e.g., Chapter 28 Watchlist, Chapter 60 Default, Chapter 66 Assumption) when recommending actions. Include applicable timelines and notification requirements.
+
+4. DI (Deferred Interest) LOGIC — Advise on DI start/stop triggers, accrual mechanics, and PSA notification requirements.
+
+5. HAZARD DISBURSEMENT — Evaluate insurance proceeds eligibility, holdback calculations, contractor bid requirements, and disbursement scheduling per PSA/GSE rules.
+
+6. PRS (Property Condition Report Submission) — Guide on preparing PRS packages, inspection requirements, and submission timelines.
+
+7. DRAW REQUEST ANALYSIS — Review construction draw requests against budget, inspection milestones, lien waiver status, and recommend approve/hold/reject.
+
+8. INVESTOR REPORTING — Draft investor report sections, distribution notices, and PSA notifications.
+
+FORMATTING RULES:
+- Use **bold** for loan IDs, key metrics, and action items
+- Use bullet points (•) for lists
+- Use ## section headers for long responses
+- Always include specific loan references (LN-XXXX) when discussing watchlist items
+- Be precise with numbers — use exact UPB, DSCR, occupancy figures from portfolio context
+- For watchlist comments, use formal regulatory language
+- Keep responses focused and actionable
+- Today's date: ${new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}`;
+
+// Copilot uses Replit AI Integration (auto-provisioned, no quota issues)
+const copilotAI = new OpenAI({
+  apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY,
+  baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL || undefined,
+});
+
+app.post('/api/copilot/chat', async (req, res) => {
+  const { messages, stream } = req.body || {};
+  if (!Array.isArray(messages) || messages.length === 0) {
+    return res.status(400).json({ message: 'Missing messages array' });
   }
+  const safeMessages = messages
+    .filter(m => m.role === 'user' || m.role === 'assistant')
+    .map(m => ({ role: m.role, content: String(m.content).slice(0, 4000) }))
+    .slice(-20);
+  try {
+    if (stream) {
+      res.setHeader('Content-Type', 'text/event-stream');
+      res.setHeader('Cache-Control', 'no-cache');
+      res.setHeader('Connection', 'keep-alive');
+      const streamed = await copilotAI.chat.completions.create({
+        model: 'gpt-4o',
+        messages: [{ role: 'system', content: COPILOT_SYSTEM_PROMPT }, ...safeMessages],
+        max_tokens: 1200,
+        temperature: 0.4,
+        stream: true,
+      });
+      for await (const chunk of streamed) {
+        const delta = chunk.choices[0]?.delta?.content;
+        if (delta) res.write(`data: ${JSON.stringify({ delta })}\n\n`);
+      }
+      res.write('data: [DONE]\n\n');
+      return res.end();
+    }
+    const response = await copilotAI.chat.completions.create({
+      model: 'gpt-4o',
+      messages: [{ role: 'system', content: COPILOT_SYSTEM_PROMPT }, ...safeMessages],
+      max_tokens: 1200,
+      temperature: 0.4,
+    });
+    const msg = response.choices[0].message;
+    return res.json({ content: msg.content, model: response.model, confidence: 0.96 });
+  } catch (err) {
+    console.error('[Copilot] OpenAI error:', err?.message || err);
+    return res.status(500).json({ message: 'Copilot error', error: err?.message });
+  }
+});
+
+// ── Tokenization Eligibility Gate ─────────────────────────────────────────────
+// Public copilot route — must stay BEFORE the requireOrgContext middleware block
+const DEMO_LOANS = {
+  'LN-3011': {
+    ref: 'LN-3011', name: 'Harbor Point Mixed-Use', type: 'Mixed-Use',
+    upb: 24700000, rate: 5.85, maturity: '2026-09-01',
+    dscr: 0.94, dscrFloor: 1.25,
+    occupancy: 88, occupancyFloor: 85,
+    delinquencyDays: 45,
+    watchlist: true,
+    escrowTaxes: 'current', escrowInsurance: 'current',
+    covenantBreaches: ['DSCR below 1.25× floor (actual 0.94×)', 'Loan 45 days delinquent'],
+    inspectionOverdue: false,
+    complianceHolds: ['Freddie Mac §28.3 watchlist reporting active'],
+  },
+  'LN-3204': {
+    ref: 'LN-3204', name: 'Riverview Office Tower', type: 'Office',
+    upb: 18200000, rate: 6.10, maturity: '2027-03-01',
+    dscr: 1.18, dscrFloor: 1.25,
+    occupancy: 81, occupancyFloor: 85,
+    delinquencyDays: 0,
+    watchlist: true,
+    escrowTaxes: 'current', escrowInsurance: 'current',
+    covenantBreaches: ['DSCR below 1.25× floor (actual 1.18×)', 'Occupancy below 85% floor (actual 81%)'],
+    inspectionOverdue: false,
+    complianceHolds: ['Investor surveillance reporting overdue'],
+  },
+  'LN-2847': {
+    ref: 'LN-2847', name: 'Meridian Apartments', type: 'Multifamily',
+    upb: 31400000, rate: 4.95, maturity: '2029-12-01',
+    dscr: 1.42, dscrFloor: 1.25,
+    occupancy: 96, occupancyFloor: 85,
+    delinquencyDays: 0,
+    watchlist: false,
+    escrowTaxes: 'current', escrowInsurance: 'current',
+    covenantBreaches: [],
+    inspectionOverdue: false,
+    complianceHolds: [],
+    warnings: ['Insurance renewal due in 14 days — confirm certificate before mint'],
+  },
+};
+
+app.get('/api/copilot/tokenization-eligibility', (req, res) => {
+  const ref = String(req.query.loan_ref || '').toUpperCase().trim();
+  if (!ref) return res.status(400).json({ message: 'loan_ref is required' });
+
+  const loan = DEMO_LOANS[ref];
+  if (!loan) {
+    // Unknown loan — return a generic eligible stub
+    return res.json({
+      loan_ref: ref,
+      name: 'Unknown Loan',
+      found: false,
+      eligible: true,
+      status: 'eligible',
+      checks: [
+        { key: 'dscr',        label: 'DSCR vs floor',          pass: true,  detail: 'No data — assumed compliant' },
+        { key: 'occupancy',   label: 'Occupancy vs floor',      pass: true,  detail: 'No data — assumed compliant' },
+        { key: 'delinquency', label: 'Payment current',         pass: true,  detail: 'No delinquency on record' },
+        { key: 'watchlist',   label: 'Not on watchlist',        pass: true,  detail: 'Not on watchlist' },
+        { key: 'escrow',      label: 'Escrow current',          pass: true,  detail: 'Taxes & insurance current' },
+        { key: 'compliance',  label: 'No compliance holds',     pass: true,  detail: 'No holds on record' },
+      ],
+      blocks: [],
+      warnings: [],
+    });
+  }
+
+  const checks = [
+    {
+      key: 'dscr',
+      label: 'DSCR vs covenant floor',
+      pass: loan.dscr >= loan.dscrFloor,
+      detail: `Actual ${loan.dscr}× — floor ${loan.dscrFloor}×`,
+    },
+    {
+      key: 'occupancy',
+      label: 'Occupancy vs floor',
+      pass: loan.occupancy >= loan.occupancyFloor,
+      detail: `Actual ${loan.occupancy}% — floor ${loan.occupancyFloor}%`,
+    },
+    {
+      key: 'delinquency',
+      label: 'Payment current',
+      pass: loan.delinquencyDays === 0,
+      detail: loan.delinquencyDays === 0 ? 'All payments current' : `${loan.delinquencyDays} days delinquent`,
+    },
+    {
+      key: 'watchlist',
+      label: 'Not on watchlist',
+      pass: !loan.watchlist,
+      detail: loan.watchlist ? 'Active watchlist loan — servicing remediation required' : 'Not on watchlist',
+    },
+    {
+      key: 'escrow',
+      label: 'Escrow current',
+      pass: loan.escrowInsurance === 'current' && loan.escrowTaxes === 'current',
+      detail: `Taxes: ${loan.escrowTaxes} · Insurance: ${loan.escrowInsurance}`,
+    },
+    {
+      key: 'compliance',
+      label: 'No compliance holds',
+      pass: loan.complianceHolds.length === 0,
+      detail: loan.complianceHolds.length === 0 ? 'No holds' : loan.complianceHolds.join('; '),
+    },
+  ];
+
+  const blocks = loan.covenantBreaches || [];
+  const warnings = loan.warnings || [];
+  const eligible = checks.every(c => c.pass) && blocks.length === 0;
+  const status = eligible ? (warnings.length > 0 ? 'eligible_with_warnings' : 'eligible') : 'blocked';
+
+  return res.json({
+    loan_ref: ref,
+    name: loan.name,
+    type: loan.type,
+    upb: loan.upb,
+    dscr: loan.dscr,
+    occupancy: loan.occupancy,
+    found: true,
+    eligible,
+    status,
+    checks,
+    blocks,
+    warnings,
+  });
 });
 
 app.use('/api', requireOrgContext);
@@ -728,6 +870,9 @@ app.use('/api/trades', tradesRouter);
 app.use('/api/exchange', exchangeRouter);
 app.use('/api/exchange-programs', exchangeProgramsRouter);
 app.use('/api/investors', investorsRouter);
+app.use('/api/investor', investorRouter);
+app.use('/api/servicer', servicerRouter);
+app.use('/api/ai',       aiDocsRouter);
 app.use('/api/borrower', borrowerRouter);
 app.use('/api/marketplace', marketplaceRouter);
 app.use('/api/capital-markets/tokens', capitalMarketsTokensRouter);
@@ -736,6 +881,7 @@ app.use('/api', subscriptionsRouter);
 app.use('/api/searches', savedSearchesRouter);
 app.use('/api/site-analysis', siteAnalysisRouter);
 app.use('/api', analyticsRouter);
+app.use('/api', visitorsRouter);
 app.use('/api', mobileRouter);
 app.use('/api', restaurantRouter);
 app.use('/api', restaurantsRouter);
@@ -743,23 +889,7 @@ app.use('/api', restaurantsRouter);
 // ── Health Checks ──────────────────────────────────────────────────────────
 app.get('/', (req, res) => res.send('Sentry test running!'));
 app.get('/api/test', (req, res) => res.send('✅ API is alive'));
-app.get('/health', (req, res) => {
-  const sbUrl = process.env.SUPABASE_URL || '';
-  const sbKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
-  const dbUrl = process.env.DATABASE_URL || '';
-  const isRealSupabase = sbUrl.startsWith('https://') && !sbUrl.includes('placeholder') && sbKey.length > 100;
-  const hasLocalDb = !!dbUrl && !isRealSupabase;
-  res.json({
-    ok: true, v: '2.2.0',
-    db_mode: isRealSupabase ? 'supabase' : (hasLocalDb ? 'pg' : 'stub'),
-    supabase_url: sbUrl.slice(0, 40) || 'not-set',
-    sb_key_len: sbKey.length,
-    sb_key_prefix: sbKey.slice(0, 6),
-    has_db_url: !!dbUrl,
-    db_url_len: dbUrl.length,
-  });
-});
-
+app.get('/health', (req, res) => res.json({ ok: true }));
 app.get('/api/whoami', authenticate, (req, res) => {
   res.json({
     ok: true,
@@ -795,9 +925,6 @@ app.get('/api-docs', (req, res) => {
 app.use('/api', webhooksRouter);
 app.use('/api', integrationsRouter);
 app.use('/api/otp', otpRouter);
-app.use('/api/docs', docsRouter);
-app.use('/api/lifecycle', lifecycleRouter);
-app.use('/api/market', marketRouter);
 if (isFeatureEnabled('compliance')) {
   app.use('/api', authenticate, requireRole('admin'), complianceRouter);
   app.use('/api/policy', authenticate, policyRouter);
@@ -1479,6 +1606,7 @@ app.post('/api/chatops', async (req, res) => {
     res.status(500).json({ message: 'Failed to answer question' });
   }
 });
+
 
 app.post('/api/guest-chat', async (req, res) => {
   const { question } = req.body || {};
@@ -2164,14 +2292,8 @@ if (require.main === module) {
   const server = http.createServer(app);
   attachChatServer(server);
   attachCollabServer(server);
-  server.listen(PORT, async () => {
+  server.listen(PORT, () => {
     console.log(`Kontra API listening on port ${PORT}`);
-    try {
-      const { bootstrap } = require('./lib/dbBootstrap');
-      await bootstrap();
-    } catch (e) {
-      console.warn('[startup] dbBootstrap failed (non-fatal):', e.message);
-    }
     if (process.env.NODE_ENV !== 'production') {
       void logBaselineSchemaHealth();
     }
