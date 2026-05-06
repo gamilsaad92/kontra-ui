@@ -9,9 +9,11 @@ import InvestorPortal from "./portals/investor/InvestorPortal";
 import BorrowerPortal from "./portals/borrower/BorrowerPortal";
 import ServicerPortal from "./portals/servicer/ServicerPortal";
 import DemoModeGuide from "./components/DemoModeGuide";
+import AdminVisitorsPage from "./pages/AdminVisitorsPage";
 import { OrgProvider } from "./lib/OrgProvider";
 import { AuthContext } from "./lib/authContext";
 import { usePortalRouter } from "./lib/usePortalRouter";
+import { useVisitorTracking } from "./hooks/useVisitorTracking";
 
 function AuthedOrgProvider({ children }) {
   const { session } = useContext(AuthContext);
@@ -42,6 +44,7 @@ function AuthedOrgProvider({ children }) {
  */
 function AuthedApp() {
   usePortalRouter();
+  useVisitorTracking();
 
   return (
     <>
@@ -49,6 +52,7 @@ function AuthedApp() {
       <Routes>
       {/* ── Public ─────────────────────────────────────────── */}
       <Route path="/login" element={<LoginPage />} />
+      <Route path="/admin" element={<AdminVisitorsPage />} />
 
       {/* ── Post-login portal selection (neutral, no portal chrome) */}
       <Route
