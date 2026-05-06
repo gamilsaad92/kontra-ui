@@ -2,11 +2,11 @@ import { useState, useEffect, useCallback } from "react";
 
 const API_BASE = (import.meta.env.VITE_API_BASE || "").replace(/\/+$/, "");
 const PORTAL_COLORS = {
-  lender:   { bg: "bg-red-900/30",    text: "text-red-300",    dot: "bg-red-400"    },
-  servicer: { bg: "bg-amber-900/30",  text: "text-amber-300",  dot: "bg-amber-400"  },
-  investor: { bg: "bg-violet-900/30", text: "text-violet-300", dot: "bg-violet-400" },
-  borrower: { bg: "bg-emerald-900/30",text: "text-emerald-300",dot: "bg-emerald-400"},
-  other:    { bg: "bg-slate-800",     text: "text-slate-400",  dot: "bg-slate-500"  },
+  lender:   { bg: "bg-red-100",    text: "text-red-700",    dot: "bg-red-500"    },
+  servicer: { bg: "bg-amber-100",  text: "text-amber-700",  dot: "bg-amber-500"  },
+  investor: { bg: "bg-violet-100", text: "text-violet-700", dot: "bg-violet-500" },
+  borrower: { bg: "bg-emerald-100",text: "text-emerald-700",dot: "bg-emerald-500"},
+  other:    { bg: "bg-gray-100",   text: "text-gray-600",   dot: "bg-gray-400"   },
 };
 
 function PortalBadge({ portal }) {
@@ -21,10 +21,10 @@ function PortalBadge({ portal }) {
 
 function StatCard({ label, value, sub }) {
   return (
-    <div className="bg-slate-800/60 border border-slate-700 rounded-xl p-5 flex flex-col gap-1">
-      <p className="text-xs text-slate-400 uppercase tracking-wider">{label}</p>
-      <p className="text-3xl font-bold text-white">{value}</p>
-      {sub && <p className="text-xs text-slate-500">{sub}</p>}
+    <div className="bg-white border border-gray-200 rounded-xl p-5 flex flex-col gap-1 shadow-sm">
+      <p className="text-xs text-gray-500 uppercase tracking-wider font-medium">{label}</p>
+      <p className="text-3xl font-bold text-black">{value}</p>
+      {sub && <p className="text-xs text-gray-400">{sub}</p>}
     </div>
   );
 }
@@ -101,20 +101,20 @@ export default function AdminVisitorsPage() {
   // ── Login screen ────────────────────────────────────────────────────────────
   if (!authed) {
     return (
-      <div className="min-h-screen bg-slate-950 flex items-center justify-center p-4">
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
         <div className="w-full max-w-sm">
           <div className="flex items-center gap-3 mb-8">
             <div className="w-9 h-9 rounded-lg flex items-center justify-center font-bold text-white text-sm"
                  style={{ background: "#800020" }}>K</div>
             <div>
-              <p className="text-white font-semibold text-sm">Kontra Admin</p>
-              <p className="text-slate-500 text-xs">Visitor Analytics</p>
+              <p className="text-black font-semibold text-sm">Kontra Admin</p>
+              <p className="text-gray-500 text-xs">Visitor Analytics</p>
             </div>
           </div>
 
-          <form onSubmit={handleLogin} className="bg-slate-900 border border-slate-700 rounded-2xl p-7 flex flex-col gap-4">
-            <h1 className="text-white font-semibold text-lg">Admin Access</h1>
-            <p className="text-slate-400 text-sm">Enter your admin password to view visitor data.</p>
+          <form onSubmit={handleLogin} className="bg-white border border-gray-200 rounded-2xl p-7 flex flex-col gap-4 shadow-sm">
+            <h1 className="text-black font-semibold text-lg">Admin Access</h1>
+            <p className="text-gray-600 text-sm">Enter your admin password to view visitor data.</p>
 
             <input
               type="password"
@@ -122,10 +122,10 @@ export default function AdminVisitorsPage() {
               value={password}
               onChange={e => setPassword(e.target.value)}
               autoFocus
-              className="bg-slate-800 border border-slate-600 rounded-lg px-4 py-2.5 text-white text-sm
-                         placeholder:text-slate-500 focus:outline-none focus:border-red-800 transition"
+              className="bg-gray-50 border border-gray-300 rounded-lg px-4 py-2.5 text-black text-sm
+                         placeholder:text-gray-400 focus:outline-none focus:border-red-800 transition"
             />
-            {error && <p className="text-red-400 text-xs">{error}</p>}
+            {error && <p className="text-red-600 text-xs">{error}</p>}
             <button
               type="submit"
               className="w-full py-2.5 rounded-lg text-white text-sm font-semibold transition hover:opacity-90"
@@ -141,15 +141,15 @@ export default function AdminVisitorsPage() {
 
   // ── Dashboard ───────────────────────────────────────────────────────────────
   return (
-    <div className="min-h-screen bg-slate-950 text-white">
+    <div className="min-h-screen bg-gray-50 text-black">
       {/* Header */}
-      <div className="border-b border-slate-800 px-6 py-4 flex items-center justify-between">
+      <div className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between shadow-sm">
         <div className="flex items-center gap-3">
           <div className="w-8 h-8 rounded-lg flex items-center justify-center font-bold text-white text-sm"
                style={{ background: "#800020" }}>K</div>
           <div>
-            <p className="text-white font-semibold text-sm">Visitor Analytics</p>
-            <p className="text-slate-500 text-xs">
+            <p className="text-black font-semibold text-sm">Visitor Analytics</p>
+            <p className="text-gray-500 text-xs">
               {lastRefresh ? `Last updated ${formatTime(lastRefresh.toISOString())}` : "Loading..."}
             </p>
           </div>
@@ -157,8 +157,8 @@ export default function AdminVisitorsPage() {
         <button
           onClick={() => fetchVisitors(password)}
           disabled={loading}
-          className="flex items-center gap-2 px-3 py-1.5 bg-slate-800 hover:bg-slate-700
-                     border border-slate-600 rounded-lg text-xs text-slate-300 transition disabled:opacity-50"
+          className="flex items-center gap-2 px-3 py-1.5 bg-white hover:bg-gray-50
+                     border border-gray-300 rounded-lg text-xs text-gray-700 transition disabled:opacity-50 shadow-sm"
         >
           {loading ? (
             <svg className="w-3.5 h-3.5 animate-spin" viewBox="0 0 24 24" fill="none">
@@ -190,10 +190,10 @@ export default function AdminVisitorsPage() {
             <button
               key={p}
               onClick={() => setFilter(p)}
-              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition capitalize
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition capitalize border
                 ${filter === p
-                  ? "bg-white/10 text-white border border-white/20"
-                  : "text-slate-400 hover:text-white hover:bg-white/5"
+                  ? "bg-black text-white border-black"
+                  : "bg-white text-gray-600 border-gray-200 hover:border-gray-400 hover:text-black"
                 }`}
             >
               {p === "all" ? `All (${visitors.length})` : p}
@@ -202,56 +202,56 @@ export default function AdminVisitorsPage() {
         </div>
 
         {/* Table */}
-        <div className="bg-slate-900 border border-slate-700 rounded-xl overflow-hidden">
+        <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
           {filtered.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-20 text-slate-500">
+            <div className="flex flex-col items-center justify-center py-20 text-gray-400">
               <svg className="w-10 h-10 mb-3 opacity-40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
                 <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
                 <circle cx="9" cy="7" r="4"/>
                 <path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/>
               </svg>
-              <p className="text-sm">{loading ? "Loading visitors..." : "No visitors yet"}</p>
-              <p className="text-xs mt-1 opacity-60">Visits appear here in real-time as people view the platform</p>
+              <p className="text-sm text-gray-500">{loading ? "Loading visitors..." : "No visitors yet"}</p>
+              <p className="text-xs mt-1 text-gray-400">Visits appear here in real-time as people view the platform</p>
             </div>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="border-b border-slate-700 text-xs text-slate-400 uppercase tracking-wider">
-                    <th className="text-left px-4 py-3">When</th>
-                    <th className="text-left px-4 py-3">Company / Org</th>
-                    <th className="text-left px-4 py-3">Location</th>
-                    <th className="text-left px-4 py-3">Portal</th>
-                    <th className="text-left px-4 py-3">Page</th>
-                    <th className="text-left px-4 py-3">Device</th>
-                    <th className="text-left px-4 py-3">Browser</th>
+                  <tr className="border-b border-gray-200 bg-gray-50 text-xs text-gray-500 uppercase tracking-wider">
+                    <th className="text-left px-4 py-3 font-semibold">When</th>
+                    <th className="text-left px-4 py-3 font-semibold">Company / Org</th>
+                    <th className="text-left px-4 py-3 font-semibold">Location</th>
+                    <th className="text-left px-4 py-3 font-semibold">Portal</th>
+                    <th className="text-left px-4 py-3 font-semibold">Page</th>
+                    <th className="text-left px-4 py-3 font-semibold">Device</th>
+                    <th className="text-left px-4 py-3 font-semibold">Browser</th>
                   </tr>
                 </thead>
                 <tbody>
                   {filtered.map((v, i) => (
-                    <tr key={i} className="border-b border-slate-800 hover:bg-slate-800/40 transition">
-                      <td className="px-4 py-3 text-slate-400 whitespace-nowrap text-xs">
+                    <tr key={i} className="border-b border-gray-100 hover:bg-gray-50 transition">
+                      <td className="px-4 py-3 text-gray-500 whitespace-nowrap text-xs">
                         {formatTime(v.visited_at)}
                       </td>
                       <td className="px-4 py-3 max-w-[180px]">
-                        <p className="text-white truncate font-medium text-xs">
+                        <p className="text-black truncate font-medium text-xs">
                           {v.company || v.org || "Unknown"}
                         </p>
                         {v.ip && (
-                          <p className="text-slate-600 text-xs font-mono truncate">{v.ip}</p>
+                          <p className="text-gray-400 text-xs font-mono truncate">{v.ip}</p>
                         )}
                       </td>
-                      <td className="px-4 py-3 text-slate-300 text-xs whitespace-nowrap">
+                      <td className="px-4 py-3 text-black text-xs whitespace-nowrap">
                         {[v.city, v.country].filter(Boolean).join(", ") || "—"}
                       </td>
                       <td className="px-4 py-3">
                         <PortalBadge portal={v.portal} />
                       </td>
-                      <td className="px-4 py-3 text-slate-400 text-xs font-mono max-w-[160px] truncate">
+                      <td className="px-4 py-3 text-gray-600 text-xs font-mono max-w-[160px] truncate">
                         {v.page || "/"}
                       </td>
-                      <td className="px-4 py-3 text-slate-400 text-xs">{v.device || "—"}</td>
-                      <td className="px-4 py-3 text-slate-400 text-xs">{v.browser || "—"}</td>
+                      <td className="px-4 py-3 text-black text-xs">{v.device || "—"}</td>
+                      <td className="px-4 py-3 text-black text-xs">{v.browser || "—"}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -260,7 +260,7 @@ export default function AdminVisitorsPage() {
           )}
         </div>
 
-        <p className="text-xs text-slate-600 text-center">
+        <p className="text-xs text-gray-400 text-center">
           This page is private — only you can see it. Auto-refreshes every 30 seconds.
         </p>
       </div>
