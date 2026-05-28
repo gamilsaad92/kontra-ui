@@ -58,7 +58,7 @@ export const lenderNavRoutes = [
     requiresAuth: true,
   },
   {
-    label: "Tokenization",
+    label: "Tokenization Hub",
     path: "/onchain",
     icon: CubeTransparentIcon,
     requiresAuth: true,
@@ -124,9 +124,15 @@ export const lenderNavRoutes = [
     requiresAuth: true,
   },
   {
-    label: "Tokenization Exchange",
-    path: "/exchange",
-    icon: ChartPieIcon,
+    label: "Document Extraction",
+    path: "/document-extraction",
+    icon: DocumentMagnifyingGlassIcon,
+    requiresAuth: true,
+  },
+  {
+    label: "Covenant Agent",
+    path: "/covenant-agent",
+    icon: SparklesIcon,
     requiresAuth: true,
   },
   {
