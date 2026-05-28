@@ -61,6 +61,8 @@ import CreateOffering from "./dashboard/markets/distribution/CreateOffering";
 import DistributionMarketplace from "./dashboard/markets/distribution/DistributionMarketplace";
 import RfqsTrades from "./dashboard/markets/distribution/RfqsTrades";
 import Approvals from "./dashboard/markets/distribution/Approvals";
+import DocumentExtractionPage from "./dashboard/DocumentExtractionPage";
+import CovenantAgentPage from "./dashboard/CovenantAgentPage";
 
 type NavItem = (typeof lenderNavRoutes)[number];
 
@@ -112,9 +114,10 @@ export default function SaasDashboard() {
     { label: null, paths: ["/dashboard", "/ai-copilot", "/command"] },
     { label: "Portfolio", paths: ["/portfolio", "/analytics", "/reports"] },
     { label: "Compliance", paths: ["/governance", "/compliance-center", "/policy"] },
-    { label: "Capital Markets", paths: ["/markets", "/onchain", "/exchange"] },
+    { label: "Capital Markets", paths: ["/markets", "/onchain"] },
     { label: "Platform", paths: ["/workflow", "/integration", "/enterprise-api", "/agents"] },
-    { label: "Operations", paths: ["/servicing-ops", "/inspection", "/hazard-recovery", "/cost-governance", "/policy-command", "/tokenization"] },
+    { label: "Operations", paths: ["/servicing-ops", "/inspection", "/hazard-recovery", "/cost-governance", "/policy-command"] },
+    { label: "AI Tools", paths: ["/document-extraction", "/covenant-agent"] },
   ];
 
   const SETTINGS_PATHS = ["/settings/billing", "/settings/sso"];
@@ -243,6 +246,8 @@ export default function SaasDashboard() {
       <Route path="/exchange" element={<TokenizationExchangeCenter />} />
       <Route path="/policy-command" element={<AdminPolicyCommandCenter />} />
       <Route path="/agents" element={<AgentConsolePage />} />
+      <Route path="/document-extraction" element={<DocumentExtractionPage />} />
+      <Route path="/covenant-agent" element={<CovenantAgentPage />} />
       <Route path="/ai-copilot" element={<AICopilotPage />} />
       <Route path="/command" element={<CommandCenterPage />} />
       <Route path="/settings" element={<Navigate to="/settings/billing" replace />} />

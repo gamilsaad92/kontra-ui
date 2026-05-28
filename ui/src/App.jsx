@@ -10,6 +10,7 @@ import BorrowerPortal from "./portals/borrower/BorrowerPortal";
 import ServicerPortal from "./portals/servicer/ServicerPortal";
 import DemoModeGuide from "./components/DemoModeGuide";
 import AdminVisitorsPage from "./pages/AdminVisitorsPage";
+import WaitlistPage from "./pages/WaitlistPage";
 import { OrgProvider } from "./lib/OrgProvider";
 import { AuthContext } from "./lib/authContext";
 import { usePortalRouter } from "./lib/usePortalRouter";
@@ -52,6 +53,7 @@ function AuthedApp() {
       <Routes>
       {/* ── Public ─────────────────────────────────────────── */}
       <Route path="/login" element={<LoginPage />} />
+      <Route path="/waitlist" element={<WaitlistPage />} />
       <Route path="/admin" element={<AdminVisitorsPage />} />
 
       {/* ── Post-login portal selection (neutral, no portal chrome) */}
