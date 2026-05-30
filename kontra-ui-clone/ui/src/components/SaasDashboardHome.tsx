@@ -2,6 +2,7 @@ import { useContext, useState } from "react";
 import { Link } from "react-router-dom";
 import { AuthContext } from "../lib/authContext";
 import QuickStartTour from "./QuickStartTour";
+import ActivityFeedWidget from "./ActivityFeedWidget";
 import {
   ResponsiveContainer, PieChart, Pie, Cell, Tooltip as ReTooltip,
   BarChart, Bar, XAxis, YAxis, CartesianGrid,
@@ -379,22 +380,8 @@ export default function SaasDashboardHome({ apiBase: _ }: Props) {
             </div>
           </Card>
 
-          {/* Activity feed */}
-          <Card>
-            <CardHeader title="Recent Activity" action="Reports" actionHref="/reports" />
-            <div className="divide-y divide-gray-100">
-              {ACTIVITY.map((a, i) => (
-                <div key={i} className="flex items-start gap-3 px-4 py-3">
-                  <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: a.dot }} />
-                  <div className="min-w-0 flex-1">
-                    <p className="text-xs font-semibold text-gray-800">{a.type}</p>
-                    <p className="text-xs text-gray-500 truncate">{a.desc}</p>
-                  </div>
-                  <span className="text-[11px] text-gray-400 shrink-0 mt-0.5 whitespace-nowrap">{a.time}</span>
-                </div>
-              ))}
-            </div>
-          </Card>
+          {/* Live cross-portal activity feed */}
+          <ActivityFeedWidget />
         </div>
 
         {/* ── Row 5: Quick actions ─────────────────────────────── */}

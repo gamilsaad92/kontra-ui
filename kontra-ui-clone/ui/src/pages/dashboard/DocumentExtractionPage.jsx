@@ -1,5 +1,7 @@
 import { useState, useRef } from "react";
 
+const API_BASE = (import.meta.env.VITE_API_BASE || "").replace(/\/+$/, "");
+
 const MOCK_EXTRACTIONS = {
   "rent_roll": {
     type: "Rent Roll",
@@ -65,7 +67,29 @@ export default function DocumentExtractionPage() {
   const [docType, setDocType]   = useState("");
   const [fileName, setFileName] = useState("");
   const [result, setResult]     = useState(null);
+  const [tsStage, setTsStage]   = useState("idle"); // idle | loading | done | error
+  const [termSheet, setTermSheet] = useState("");
   const fileRef = useRef();
+
+  async function generateTermSheet() {
+    if (!result) return;
+    setTsStage("loading");
+    setTermSheet("");
+    try {
+      const res = await fetch(`${API_BASE}/api/underwriting/term-sheet`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ fields: result.fields, docType: result.type, fileName }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      const data = await res.json();
+      setTermSheet(data.termSheet);
+      setTsStage("done");
+    } catch (e) {
+      setTsStage("error");
+      setTermSheet(e.message || "Failed to generate term sheet.");
+    }
+  }
 
   function handleFile(e) {
     const file = e.target.files?.[0];
@@ -233,6 +257,70 @@ export default function DocumentExtractionPage() {
                 Supported by Ocrolus AI — trained on 100M+ financial documents.
               </p>
             </div>
+
+            {/* ── Term Sheet Generation ── */}
+            {tsStage === "idle" && (
+              <button
+                onClick={generateTermSheet}
+                className="w-full py-3 rounded-xl text-white text-sm font-semibold transition hover:opacity-90 flex items-center justify-center gap-2"
+                style={{ background: "#4F46E5" }}
+              >
+                <span>✦</span>
+                Generate AI Term Sheet →
+              </button>
+            )}
+
+            {tsStage === "loading" && (
+              <div className="bg-slate-900 border border-slate-700 rounded-xl p-6 flex flex-col items-center gap-4">
+                <svg className="w-7 h-7 animate-spin text-indigo-400" viewBox="0 0 24 24" fill="none">
+                  <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2.5" strokeDasharray="40" strokeDashoffset="10"/>
+                </svg>
+                <p className="text-sm text-slate-300">GPT-4o is drafting your term sheet...</p>
+                <p className="text-xs text-slate-500">Analyzing {result?.fields?.length} extracted fields · Applying market rate benchmarks</p>
+              </div>
+            )}
+
+            {tsStage === "done" && termSheet && (
+              <div className="bg-slate-900 border border-indigo-700/40 rounded-xl overflow-hidden">
+                <div className="px-5 py-3.5 border-b border-slate-700 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="text-indigo-400">✦</span>
+                    <p className="text-sm font-semibold text-white">AI-Generated Term Sheet</p>
+                    <span className="px-2 py-0.5 rounded text-xs bg-indigo-900/40 text-indigo-400 border border-indigo-700/30">GPT-4o</span>
+                  </div>
+                  <button
+                    onClick={() => { setTsStage("idle"); setTermSheet(""); }}
+                    className="text-slate-500 hover:text-slate-300 text-xs transition"
+                  >
+                    Regenerate
+                  </button>
+                </div>
+                <div className="px-5 py-5">
+                  <pre className="text-sm text-slate-200 whitespace-pre-wrap font-mono leading-relaxed">{termSheet}</pre>
+                </div>
+                <div className="px-5 py-3 border-t border-slate-700 flex gap-2">
+                  <button
+                    onClick={() => alert("In production: exports to Word/PDF and creates a loan file.")}
+                    className="px-4 py-2 rounded-lg text-white text-xs font-medium transition hover:opacity-90"
+                    style={{ background: "#800020" }}
+                  >
+                    Export to Loan File →
+                  </button>
+                  <button
+                    onClick={() => navigator.clipboard?.writeText(termSheet)}
+                    className="px-4 py-2 rounded-lg border border-slate-700 text-slate-300 text-xs hover:border-slate-500 transition"
+                  >
+                    Copy
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {tsStage === "error" && (
+              <div className="bg-red-900/20 border border-red-700/30 rounded-xl p-4 text-red-300 text-sm">
+                {termSheet}
+              </div>
+            )}
           </div>
         )}
       </div>
