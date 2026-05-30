@@ -63,6 +63,7 @@ import RfqsTrades from "./dashboard/markets/distribution/RfqsTrades";
 import Approvals from "./dashboard/markets/distribution/Approvals";
 import DocumentExtractionPage from "./dashboard/DocumentExtractionPage";
 import CovenantAgentPage from "./dashboard/CovenantAgentPage";
+import DemoTour from "../components/DemoTour";
 
 type NavItem = (typeof lenderNavRoutes)[number];
 
@@ -406,6 +407,7 @@ export default function SaasDashboard() {
           {content}
         </div>
       </main>
+      <DemoTour />
     </div>
   );
 }

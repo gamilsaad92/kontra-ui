@@ -198,7 +198,7 @@ const SEVERITY_COLOR: Record<string, string> = {
   low: "border-gray-200 bg-gray-50",
 };
 
-type Section = "portfolio" | "distributions" | "cashflow" | "performance" | "governance" | "documents" | "alerts" | "ai" | "marketplace" | "pricing";
+type Section = "portfolio" | "distributions" | "cashflow" | "performance" | "governance" | "documents" | "alerts" | "ai" | "marketplace" | "pricing" | "metrics";
 
 const NAV: { key: Section; label: string; icon: typeof ChartPieIcon; badge?: number; dividerBefore?: boolean }[] = [
   { key:"portfolio",     label:"Portfolio",           icon: ChartPieIcon },
@@ -211,6 +211,7 @@ const NAV: { key: Section; label: string; icon: typeof ChartPieIcon; badge?: num
   { key:"ai",            label:"AI Portfolio Brief",  icon: SparklesIcon, dividerBefore: true },
   { key:"marketplace",   label:"Debt Exchange",       icon: ArrowsRightLeftIcon },
   { key:"pricing",       label:"Token NAV Pricing",   icon: CurrencyDollarIcon },
+  { key:"metrics",       label:"Platform Metrics",    icon: ChartBarIcon, dividerBefore: true },
 ];
 
 export default function InvestorPortal() {
@@ -1460,6 +1461,112 @@ export default function InvestorPortal() {
                   </p>
                   <p className="text-xs text-gray-500 mt-1">Kontra = Stripe (infrastructure rails) + Nasdaq (marketplace liquidity) + Black Knight (servicing backbone)</p>
                 </div>
+              </div>
+            </div>
+          )}
+
+          {section === "metrics" && (
+            <div className="space-y-6">
+              <div>
+                <h1 className="text-2xl font-black text-gray-900">Platform Metrics</h1>
+                <p className="text-sm text-gray-500 mt-1">Live traction across all four Kontra portals — updated in real time.</p>
+              </div>
+
+              {/* Top KPIs */}
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                {[
+                  { label:"Total AUM",          value:"$604.7M",   delta:"+3.2% QoQ",    color:"text-violet-700", icon:"🏦" },
+                  { label:"Loans Originated",   value:"47",        delta:"+8 this quarter",color:"text-gray-900",  icon:"📋" },
+                  { label:"Active Investors",   value:"10,290",    delta:"+312 QTD",      color:"text-emerald-700",icon:"👥" },
+                  { label:"Tokens Issued",      value:"4",         delta:"$225.4M tokenized",color:"text-violet-700",icon:"⛓️" },
+                ].map(m => (
+                  <div key={m.label} className="rounded-xl border border-gray-200 bg-white p-5">
+                    <div className="flex items-center justify-between mb-3">
+                      <span className="text-xl">{m.icon}</span>
+                      <span className="text-xs text-emerald-600 font-semibold">{m.delta}</span>
+                    </div>
+                    <p className={`text-2xl font-black tabular-nums ${m.color}`}>{m.value}</p>
+                    <p className="text-xs text-gray-500 mt-1">{m.label}</p>
+                  </div>
+                ))}
+              </div>
+
+              {/* Secondary metrics */}
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                {[
+                  { label:"Monthly Distributions", value:"$264,500", sub:"Paid May 1, 2026" },
+                  { label:"Covenant Alerts Resolved", value:"23",    sub:"This quarter · 0 breaches" },
+                  { label:"AI Analyses Run",       value:"1,847",    sub:"Underwriting + covenants" },
+                  { label:"Active Servicers",      value:"3",        sub:"$604.7M under management" },
+                ].map(m => (
+                  <div key={m.label} className="rounded-xl border border-gray-100 bg-gray-50 p-4">
+                    <p className="text-xl font-black text-gray-900 tabular-nums">{m.value}</p>
+                    <p className="text-xs font-semibold text-gray-700 mt-1">{m.label}</p>
+                    <p className="text-xs text-gray-400 mt-0.5">{m.sub}</p>
+                  </div>
+                ))}
+              </div>
+
+              {/* Monthly volume growth */}
+              <div className="rounded-xl border border-gray-200 bg-white p-6">
+                <h2 className="text-base font-bold text-gray-900 mb-4">AUM Growth — Last 6 Months</h2>
+                <div className="flex items-end gap-2 h-24">
+                  {[
+                    { mo:"Dec", v:480 }, { mo:"Jan", v:512 }, { mo:"Feb", v:538 },
+                    { mo:"Mar", v:561 }, { mo:"Apr", v:587 }, { mo:"May", v:605 },
+                  ].map((d, i, arr) => {
+                    const max = Math.max(...arr.map(x => x.v));
+                    const h = Math.round((d.v / max) * 100);
+                    return (
+                      <div key={d.mo} className="flex-1 flex flex-col items-center gap-1">
+                        <span className="text-[10px] text-gray-400">${d.v}M</span>
+                        <div className="w-full rounded-t-md" style={{ height:`${h}%`, background:"#7C3AED", opacity: 0.7 + i * 0.05 }} />
+                        <span className="text-[10px] text-gray-500">{d.mo}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Revenue model */}
+              <div className="rounded-xl border border-violet-200 bg-violet-50 p-6">
+                <h2 className="text-base font-bold text-gray-900 mb-1">Revenue Model</h2>
+                <p className="text-xs text-gray-500 mb-4">Target state at scale — Stripe + Nasdaq + Black Knight for CRE</p>
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-4">
+                  {[
+                    { label:"SaaS ARR Target",    value:"$40M",   sub:"Lender + servicer subscriptions",   color:"text-violet-700" },
+                    { label:"Target Volume",      value:"$25B+",  sub:"Annual tokenized loan transactions", color:"text-emerald-700" },
+                    { label:"Transaction Revenue",value:"$37.5M", sub:"$25B × 15bps platform fee",         color:"text-amber-700" },
+                  ].map(s => (
+                    <div key={s.label} className="rounded-lg border border-white bg-white p-4">
+                      <p className="text-xs font-bold uppercase tracking-widest text-gray-400">{s.label}</p>
+                      <p className={`text-2xl font-black mt-2 ${s.color}`}>{s.value}</p>
+                      <p className="text-xs text-gray-500 mt-1">{s.sub}</p>
+                    </div>
+                  ))}
+                </div>
+                <div className="rounded-lg bg-white border border-emerald-200 px-5 py-3">
+                  <p className="text-sm text-gray-800">
+                    <strong>Combined ARR:</strong> $40M SaaS + $37.5M transaction = {" "}
+                    <strong className="text-emerald-700 text-base">~$77.5M annual revenue</strong>
+                  </p>
+                </div>
+              </div>
+
+              {/* Market opportunity */}
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                {[
+                  { label:"US CRE Debt Market",   value:"$4.5T",  sub:"Total addressable market",       icon:"🏗️" },
+                  { label:"CRE Loans Tokenized",  value:"~0%",    sub:"Market penetration today",        icon:"📈" },
+                  { label:"Kontra Addressable",   value:"$450B",  sub:"10% of market = $45B platform",  icon:"🎯" },
+                ].map(m => (
+                  <div key={m.label} className="rounded-xl border border-gray-200 bg-white p-5 text-center">
+                    <span className="text-3xl">{m.icon}</span>
+                    <p className="text-2xl font-black text-gray-900 mt-2">{m.value}</p>
+                    <p className="text-sm font-semibold text-gray-700 mt-1">{m.label}</p>
+                    <p className="text-xs text-gray-400 mt-0.5">{m.sub}</p>
+                  </div>
+                ))}
               </div>
             </div>
           )}
