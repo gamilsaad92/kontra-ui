@@ -100,25 +100,25 @@ export const lenderNavRoutes = [
     requiresAuth: true,
   },
   {
-    label: "Servicing Operations",
+    label: "Operations Center",
     path: "/servicing-ops",
     icon: BuildingOfficeIcon,
     requiresAuth: true,
   },
   {
-    label: "Inspection Intelligence",
+    label: "AI Inspection Review",
     path: "/inspection",
     icon: MagnifyingGlassIcon,
     requiresAuth: true,
   },
   {
-    label: "Hazard Loss Recovery",
+    label: "Property Recovery & Claims",
     path: "/hazard-recovery",
     icon: WrenchScrewdriverIcon,
     requiresAuth: true,
   },
   {
-    label: "Compliance & Covenant",
+    label: "Covenant & Compliance",
     path: "/compliance-center",
     icon: DocumentMagnifyingGlassIcon,
     requiresAuth: true,
@@ -130,7 +130,7 @@ export const lenderNavRoutes = [
     requiresAuth: true,
   },
   {
-    label: "Covenant Agent",
+    label: "AI Covenant Agent",
     path: "/covenant-agent",
     icon: SparklesIcon,
     requiresAuth: true,

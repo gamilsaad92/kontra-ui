@@ -312,9 +312,9 @@ export default function SaasDashboard() {
           <span className="text-sm font-bold text-white" style={{ letterSpacing: "-0.02em" }}>Kontra</span>
           <span
             className="ml-auto text-[10px] font-semibold px-1.5 py-0.5 rounded"
-            style={{ background: "rgba(229,72,77,0.15)", color: "#E5484D", letterSpacing: "0.05em" }}
+            style={{ background: "rgba(128,0,32,0.15)", color: "#800020", letterSpacing: "0.05em" }}
           >
-            LENDER
+            PRO
           </span>
         </div>
 
@@ -399,7 +399,7 @@ export default function SaasDashboard() {
           <header className="px-6 py-5 border-b border-gray-200 bg-white">
             <h1 className="text-lg font-semibold tracking-tight text-gray-900">{activeLabel}</h1>
             <p className="text-sm text-gray-500 mt-0.5">
-              Structured loan data infrastructure for servicing, compliance, and capital markets.
+              AI-powered tools for commercial real estate professionals.
             </p>
           </header>
         )}

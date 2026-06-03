@@ -1,0 +1,145 @@
+Do NOT rebuild Kontra from scratch.
+
+The objective is to convert the existing Kontra platform from a lender/servicer operating system into a public marketplace and AI tools platform while preserving the existing architecture, database, and functionality.
+
+Current modules should remain:
+
+* AI Inspection Review
+* Financial Analysis
+* Hazard Loss Tracking
+* Draw Review
+* Document Management
+* Dashboard
+* Mobile App
+* Authentication
+
+Required changes:
+
+1. PUBLIC HOMEPAGE
+
+Create a public landing page that explains Kontra as an AI-powered commercial real estate platform.
+
+Target users:
+
+* Property owners
+* Investors
+* Borrowers
+* Consultants
+* Inspectors
+* Engineers
+* Lenders
+* Asset managers
+
+Remove language implying Kontra is only for loan servicing.
+
+2. PUBLIC TOOL ACCESS
+
+Allow users to create accounts and access individual tools without belonging to a lender organization.
+
+Examples:
+
+* Upload property photos → AI inspection review
+* Upload financials → AI analysis
+* Upload claim documents → hazard loss tracking
+
+Users purchase tools individually or subscribe.
+
+3. MARKETPLACE LAYER
+
+Add a marketplace section where users can:
+
+* Find inspectors
+* Find engineers
+* Find consultants
+* Find property managers
+* Find environmental vendors
+
+Vendor profiles should include:
+
+* Company name
+* Description
+* Services
+* Coverage area
+* Ratings
+* Contact form
+
+4. KEEP EXISTING AI MODULES
+
+Existing lender workflows should be repositioned as public AI products.
+
+Examples:
+
+Current:
+“Loan Inspection Review”
+
+New:
+“AI Property Inspection Review”
+
+Current:
+“Borrower Financial Review”
+
+New:
+“AI Property Financial Analysis”
+
+Current:
+“Hazard Loss Management”
+
+New:
+“Property Recovery & Claim Tracking”
+
+5. PRICING MODEL
+
+Add:
+
+Free Tier
+
+* Limited reports
+
+Pro Tier
+
+* Monthly subscription
+
+Pay Per Use
+
+* Individual reports
+
+Enterprise
+
+* Existing lender and servicer clients
+
+6. DASHBOARD CHANGES
+
+Current dashboard focuses on loans.
+
+Convert dashboard to:
+
+* Properties
+* Projects
+* Reports
+* Marketplace Requests
+* Vendors
+* Documents
+
+7. SEO STRATEGY
+
+Build public pages for:
+
+* AI Inspection Review
+* Property Financial Analysis
+* DSCR Calculator
+* Multifamily Analysis
+* Property Damage Assessment
+* Insurance Claim Tracking
+
+The objective is organic user acquisition through search traffic rather than direct lender sales.
+
+8. IMPORTANT
+
+The platform should not appear to be competing directly with lender servicing operations.
+
+Position it as:
+
+“AI tools and marketplace for commercial real estate professionals.”
+
+Keep all existing backend logic and modules wherever possible.
+Refactor and reposition rather than rebuild.
