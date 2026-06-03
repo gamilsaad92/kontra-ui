@@ -2,28 +2,28 @@ import { useState } from "react";
 
 const API_BASE = (import.meta.env.VITE_API_BASE || "").replace(/\/+$/, "");
 
-const ROLES = ["Lender", "Servicer", "Investor", "Borrower", "Developer", "Other"];
+const ROLES = ["Property Owner", "Investor", "Lender", "Servicer", "Borrower", "Inspector", "Consultant", "Engineer", "Asset Manager", "Other"];
 
 const FEATURES = [
   {
-    icon: "🏦",
-    title: "Lender Portal",
-    desc: "AI-powered origination, covenant tracking, portfolio analytics, and tokenization — one unified workspace.",
+    icon: "🔍",
+    title: "AI Inspection Review",
+    desc: "Upload property photos and inspection reports — get instant AI condition assessments, deficiency lists, and cost-to-cure estimates.",
   },
   {
-    icon: "⚙️",
-    title: "Servicer Portal",
-    desc: "Automated draw management, inspection workflows, escrow tracking, and borrower financials in real time.",
+    icon: "📊",
+    title: "AI Financial Analysis",
+    desc: "Automated DSCR, NOI, and underwriting summaries from rent rolls and operating statements. Minutes, not days.",
   },
   {
-    icon: "📈",
-    title: "Investor Portal",
-    desc: "Live NAV, distribution history, token holdings, and secondary market access — fully transparent.",
+    icon: "🏷️",
+    title: "CRE Marketplace",
+    desc: "Find and connect with vetted inspectors, engineers, consultants, property managers, and environmental vendors.",
   },
   {
-    icon: "🔗",
-    title: "Tokenization",
-    desc: "Tokenize CRE loans on Ethereum. Distribute fractional interests. Enable secondary trading on Solana.",
+    icon: "🛡️",
+    title: "Covenant & Compliance",
+    desc: "Automated covenant monitoring, breach alerts, and cure workflows — with AI-powered document review built in.",
   },
 ];
 
