@@ -11,6 +11,10 @@ import ServicerPortal from "./portals/servicer/ServicerPortal";
 import DemoModeGuide from "./components/DemoModeGuide";
 import AdminVisitorsPage from "./pages/AdminVisitorsPage";
 import WaitlistPage from "./pages/WaitlistPage";
+import PublicHomePage from "./pages/PublicHomePage";
+import MarketplacePage from "./pages/MarketplacePage";
+import PricingPage from "./pages/PricingPage";
+import PublicToolPage from "./pages/PublicToolPage";
 import { OrgProvider } from "./lib/OrgProvider";
 import { AuthContext } from "./lib/authContext";
 import { usePortalRouter } from "./lib/usePortalRouter";
@@ -52,6 +56,10 @@ function AuthedApp() {
       <DemoModeGuide />
       <Routes>
       {/* ── Public ─────────────────────────────────────────── */}
+      <Route path="/home" element={<PublicHomePage />} />
+      <Route path="/marketplace" element={<MarketplacePage />} />
+      <Route path="/pricing" element={<PricingPage />} />
+      <Route path="/tools/:toolSlug" element={<PublicToolPage />} />
       <Route path="/login" element={<LoginPage />} />
       <Route path="/waitlist" element={<WaitlistPage />} />
       <Route path="/admin" element={<AdminVisitorsPage />} />
