@@ -1,0 +1,474 @@
+Implementation Goal:
+
+Convert the current Kontra app into one unified public marketplace + AI tools platform.
+
+Do not build a separate new app. Refactor the existing app so the public website, login, signup, dashboard, marketplace, and old modules all connect into one experience.
+
+Current problem:
+
+Public landing page says Kontra is a CRE AI tools marketplace, but after login users are redirected into the old lender/servicing platform. This creates two disconnected products.
+
+Target flow:
+
+Public Website
+→ Sign Up / Login
+→ Onboarding
+→ Unified Kontra Workspace
+→ User sees tools based on account type
+
+Required implementation steps:
+
+1. Update Routing
+
+Create one post-login entry point:
+
+/workspace
+
+After login or signup, all users should be redirected to:
+
+/workspace
+
+Do not redirect users directly to the old dashboard.
+
+Routes should be organized like this:
+
+/                  Public homepage
+/ai-tools          Public AI tools page
+/marketplace       Public marketplace page
+/pricing           Public pricing page
+/sign-in           Login
+/sign-up           Signup
+/onboarding        First-time user setup
+/workspace         Main authenticated dashboard
+/workspace/tools
+/workspace/marketplace
+/workspace/properties
+/workspace/projects
+/workspace/documents
+/workspace/reports
+/workspace/settings
+
+Legacy lender routes should be moved under:
+
+/workspace/enterprise
+
+or hidden unless the user is an enterprise user.
+
+2. Add Onboarding After Signup
+
+After new user signup, send them to onboarding before the dashboard.
+
+Onboarding questions:
+
+* What best describes you?
+
+  * Property Owner
+  * Investor
+  * Vendor / Service Provider
+  * Consultant
+  * Lender / Enterprise
+  * Other
+
+* What do you want to do first?
+
+  * Analyze a property
+  * Review inspection photos
+  * Upload financials
+  * Track a damage/claim issue
+  * Find vendors
+  * List my services
+  * Manage a portfolio
+
+Save these fields to the user profile table.
+
+Suggested database fields:
+
+user_type
+primary_goal
+onboarding_completed
+subscription_tier
+
+3. Create Unified Workspace Layout
+
+Replace the old lender dashboard as the default landing page.
+
+New sidebar navigation:
+
+Home
+AI Tools
+Marketplace
+Properties
+Projects
+Documents
+Reports
+Settings
+
+Enterprise-only section:
+
+Enterprise
+
+* Portfolio Monitoring
+* Covenant Tracking
+* Draw Review
+* Borrower Financials
+* Hazard Loss
+* Compliance
+
+Only show Enterprise if user_type = lender/enterprise or subscription_tier = enterprise.
+
+4. Reposition Existing Modules
+
+Do not delete old modules. Rename and reposition them.
+
+Current old module:
+Loans
+
+New module:
+Properties / Portfolio
+
+Current old module:
+Borrowers
+
+New module:
+Clients / Counterparties
+
+Current old module:
+Draw Requests
+
+New module:
+Project Funding Review
+
+Current old module:
+Hazard Loss
+
+New module:
+Property Recovery & Claim Tracking
+
+Current old module:
+Financial Review
+
+New module:
+AI Property Financial Analysis
+
+Current old module:
+Inspection Review
+
+New module:
+AI Property Inspection Review
+
+Current old module:
+Documents
+
+New module:
+Document AI / File Room
+
+5. Build Workspace Home
+
+The new /workspace page should look like a marketplace/product dashboard, not a bank servicing dashboard.
+
+Include cards:
+
+* Run AI Inspection Review
+* Analyze Property Financials
+* Track Property Damage / Claim
+* Find CRE Vendors
+* Post a Project
+* View My Reports
+
+Also include:
+
+Recent Reports
+Recent Projects
+Marketplace Activity
+Suggested Tools
+
+6. Build AI Tools Hub
+
+Create /workspace/tools.
+
+Tool cards:
+
+AI Property Inspection Review
+
+* Upload photos or inspection report
+* AI identifies issues
+* Generates report
+
+AI Property Financial Analysis
+
+* Upload rent roll / income statement
+* Calculates NOI, DSCR, occupancy, OPEX trends
+
+Property Recovery & Claim Tracking
+
+* Track damage, insurance claim, repair status, estimates
+
+Document AI
+
+* Extract data from leases, inspections, financials, invoices
+
+Covenant & Compliance Monitoring
+
+* Enterprise-only or Pro feature
+
+Draw / Project Review
+
+* Enterprise-only or Pro feature
+
+Each tool should have:
+
+* Start button
+* Pricing tag
+* Required uploads
+* Output example
+
+7. Build Marketplace Inside Workspace
+
+Create /workspace/marketplace.
+
+Marketplace sections:
+
+* Find Vendors
+* Post a Project
+* My Requests
+* My Vendor Profile
+
+Vendor categories:
+
+* Inspectors
+* Engineers
+* Environmental consultants
+* Property managers
+* Insurance claim consultants
+* Construction consultants
+* Appraisers
+
+Vendor profile fields:
+
+company_name
+service_category
+description
+coverage_area
+website
+contact_email
+phone
+hourly_rate or fee_range
+rating
+verified_status
+
+Project request fields:
+
+project_type
+property_type
+location
+description
+budget_range
+timeline
+attachments
+status
+
+8. Role-Based Experience
+
+After onboarding, customize dashboard.
+
+Property Owner sees:
+
+* Properties
+* AI Tools
+* Marketplace
+* Documents
+* Reports
+
+Investor sees:
+
+* Deal Analysis
+* Financial Analysis
+* Reports
+* Marketplace
+
+Vendor sees:
+
+* Marketplace
+* My Vendor Profile
+* Project Requests
+* Messages
+
+Consultant sees:
+
+* AI Tools
+* Marketplace
+* Reports
+* Clients
+
+Enterprise sees:
+
+* Portfolio
+* Compliance
+* Financials
+* Draw Review
+* Recovery
+* Marketplace
+
+9. Keep Existing Backend Logic
+
+Reuse existing APIs wherever possible.
+
+Map old data to new labels in the frontend first.
+
+Example:
+
+loan_id can still exist in backend, but frontend label should be Property / Asset.
+
+borrower_id can still exist in backend, but frontend label should be Client / Counterparty.
+
+draw_request can still exist in backend, but frontend label should be Project Funding Review.
+
+Do not break the current data model unless required.
+
+10. Update Authentication Redirects
+
+After sign-in:
+
+If onboarding_completed = false:
+redirect to /onboarding
+
+If onboarding_completed = true:
+redirect to /workspace
+
+After sign-up:
+
+redirect to /onboarding
+
+Do not redirect to old dashboard.
+
+11. Update Navigation Labels
+
+Remove or hide these public-facing labels:
+
+Loan Servicing
+Borrower Portal
+Lender Portal
+Servicer Dashboard
+Freddie Mac
+Default Interest
+Watchlist
+Agency Servicing
+
+Replace with:
+
+CRE AI Tools
+Property Analysis
+Portfolio Monitoring
+Marketplace
+Project Review
+Recovery Tracking
+Compliance Tools
+Document AI
+
+12. Pricing Integration
+
+Add pricing logic:
+
+Free:
+
+* Limited access
+* 1 sample report
+* Browse marketplace
+
+Pay-per-use:
+
+* Inspection report
+* Financial analysis report
+* Document extraction report
+
+Pro:
+
+* Monthly subscription
+* More reports
+* Saved properties
+* Marketplace requests
+
+Enterprise:
+
+* Portfolio tools
+* Compliance monitoring
+* Draw/project review
+* Custom workflows
+
+13. Important Compliance Positioning
+
+The app should not present itself as a replacement for a lender, servicer, bank, or asset manager.
+
+Avoid wording like:
+
+* We service loans
+* We manage lender portfolios
+* We replace servicers
+* Freddie Mac servicing automation
+
+Use wording like:
+
+* AI tools for CRE professionals
+* Property analysis and workflow automation
+* Marketplace for CRE services
+* Portfolio insights
+* Document and inspection automation
+
+14. Final Product Structure
+
+The final app should feel like:
+
+Public marketplace website
++
+Logged-in workspace
++
+AI tool library
++
+Vendor marketplace
++
+Optional enterprise modules
+
+Not:
+
+Public homepage
++
+Separate old lender system
+
+15. Priority Order
+
+Implement in this order:
+
+Phase 1:
+
+* Fix login/signup redirect
+* Add onboarding
+* Create /workspace
+* Replace old default dashboard
+
+Phase 2:
+
+* Update sidebar navigation
+* Reposition old modules under new labels
+* Build AI Tools hub
+
+Phase 3:
+
+* Build marketplace pages
+* Add vendor profiles
+* Add project posting
+
+Phase 4:
+
+* Add pricing/paywall
+* Add report limits
+* Add subscription tiers
+
+Phase 5:
+
+* Clean old lender language
+* Hide enterprise-only workflows
+* Polish UI
+
+Definition of success:
+
+A new public user can visit Kontra, sign up, complete onboarding, enter a unified workspace, run an AI tool, browse marketplace vendors, and never feel like they were dropped into an old bank servicing platform.
