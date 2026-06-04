@@ -15,6 +15,8 @@ import PublicHomePage from "./pages/PublicHomePage";
 import MarketplacePage from "./pages/MarketplacePage";
 import PricingPage from "./pages/PricingPage";
 import PublicToolPage from "./pages/PublicToolPage";
+import OnboardingPage from "./pages/OnboardingPage";
+import WorkspacePage from "./pages/WorkspacePage";
 import { OrgProvider } from "./lib/OrgProvider";
 import { AuthContext } from "./lib/authContext";
 import { usePortalRouter } from "./lib/usePortalRouter";
@@ -34,19 +36,6 @@ function AuthedOrgProvider({ children }) {
   );
 }
 
-/**
- * Root router that enforces authentication AND authorization:
- *   authentication = Supabase session (RequireAuth)
- *   authorization  = JWT app_role → portal access (RequireRole)
- *
- * After login, bare "/" is caught by usePortalRouter and redirected:
- *   investor / borrower  → directly to their portal (no selection screen)
- *   lender_admin / platform_admin → /select-portal (choose workspace)
- *   servicer / asset_manager → /servicer/overview (single-purpose role)
- *
- * Cross-portal access is blocked: a borrower navigating to /dashboard
- * is silently redirected to /borrower, etc.
- */
 function AuthedApp() {
   usePortalRouter();
   useVisitorTracking();
@@ -55,76 +44,96 @@ function AuthedApp() {
     <>
       <DemoModeGuide />
       <Routes>
-      {/* ── Public ─────────────────────────────────────────── */}
-      <Route path="/" element={<PublicHomePage />} />
-      <Route path="/home" element={<PublicHomePage />} />
-      <Route path="/marketplace" element={<MarketplacePage />} />
-      <Route path="/pricing" element={<PricingPage />} />
-      <Route path="/tools/:toolSlug" element={<PublicToolPage />} />
-      <Route path="/login" element={<LoginPage />} />
-      <Route path="/waitlist" element={<WaitlistPage />} />
-      <Route path="/admin" element={<AdminVisitorsPage />} />
+        {/* ── Fully public (no auth required) ──────────────────── */}
+        <Route path="/"            element={<PublicHomePage />} />
+        <Route path="/home"        element={<PublicHomePage />} />
+        <Route path="/marketplace" element={<MarketplacePage />} />
+        <Route path="/pricing"     element={<PricingPage />} />
+        <Route path="/tools/:toolSlug" element={<PublicToolPage />} />
+        <Route path="/login"       element={<LoginPage />} />
+        <Route path="/waitlist"    element={<WaitlistPage />} />
+        <Route path="/admin"       element={<AdminVisitorsPage />} />
 
-      {/* ── Post-login portal selection (neutral, no portal chrome) */}
-      <Route
-        path="/select-portal"
-        element={
-          <RequireAuth>
-            <PortalSelectPage />
-          </RequireAuth>
-        }
-      />
+        {/* ── Onboarding (auth required, no role required) ──────── */}
+        <Route
+          path="/onboarding"
+          element={
+            <RequireAuth>
+              <OnboardingPage />
+            </RequireAuth>
+          }
+        />
 
-      {/* ── Investor portal ── role: investor, platform_admin ── */}
-      <Route
-        path="/investor/*"
-        element={
-          <RequireAuth>
-            <RequireRole portal="investor">
-              <InvestorPortal />
-            </RequireRole>
-          </RequireAuth>
-        }
-      />
+        {/* ── Unified workspace (auth required) ────────────────── */}
+        <Route
+          path="/workspace/*"
+          element={
+            <RequireAuth>
+              <WorkspacePage />
+            </RequireAuth>
+          }
+        />
 
-      {/* ── Borrower portal ── role: borrower, platform_admin ── */}
-      <Route
-        path="/borrower/*"
-        element={
-          <RequireAuth>
-            <RequireRole portal="borrower">
-              <BorrowerPortal />
-            </RequireRole>
-          </RequireAuth>
-        }
-      />
+        {/* ── Legacy portal selection ───────────────────────────── */}
+        <Route
+          path="/select-portal"
+          element={
+            <RequireAuth>
+              <PortalSelectPage />
+            </RequireAuth>
+          }
+        />
 
-      {/* ── Servicer portal ── role: servicer, lender_admin, asset_manager, platform_admin ── */}
-      <Route
-        path="/servicer/*"
-        element={
-          <RequireAuth>
-            <RequireRole portal="servicer">
-              <ServicerPortal />
-            </RequireRole>
-          </RequireAuth>
-        }
-      />
+        {/* ── Investor portal ───────────────────────────────────── */}
+        <Route
+          path="/investor/*"
+          element={
+            <RequireAuth>
+              <RequireRole portal="investor">
+                <InvestorPortal />
+              </RequireRole>
+            </RequireAuth>
+          }
+        />
 
-      {/* ── Lender workspace ── role: lender_admin, asset_manager, platform_admin ── */}
-      <Route
-        path="/*"
-        element={
-          <RequireAuth>
-            <RequireRole portal="lender">
-              <SaasDashboard />
-            </RequireRole>
-          </RequireAuth>
-        }
-      />
+        {/* ── Borrower portal ───────────────────────────────────── */}
+        <Route
+          path="/borrower/*"
+          element={
+            <RequireAuth>
+              <RequireRole portal="borrower">
+                <BorrowerPortal />
+              </RequireRole>
+            </RequireAuth>
+          }
+        />
 
-      <Route path="*" element={<Navigate to="/" replace />} />
-    </Routes>
+        {/* ── Servicer portal ───────────────────────────────────── */}
+        <Route
+          path="/servicer/*"
+          element={
+            <RequireAuth>
+              <RequireRole portal="servicer">
+                <ServicerPortal />
+              </RequireRole>
+            </RequireAuth>
+          }
+        />
+
+        {/* ── Enterprise / Lender workspace (legacy, still functional) ─ */}
+        <Route
+          path="/*"
+          element={
+            <RequireAuth>
+              <RequireRole portal="lender">
+                <SaasDashboard />
+              </RequireRole>
+            </RequireAuth>
+          }
+        />
+
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
     </>
   );
 }
