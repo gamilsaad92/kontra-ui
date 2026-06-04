@@ -56,6 +56,7 @@ function AuthedApp() {
       <DemoModeGuide />
       <Routes>
       {/* ── Public ─────────────────────────────────────────── */}
+      <Route path="/" element={<PublicHomePage />} />
       <Route path="/home" element={<PublicHomePage />} />
       <Route path="/marketplace" element={<MarketplacePage />} />
       <Route path="/pricing" element={<PricingPage />} />
