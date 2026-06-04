@@ -34,6 +34,11 @@ const PUBLIC_PATHS = [
   "/forgot-password",
   "/reset-password",
   "/select-portal",
+  "/home",
+  "/marketplace",
+  "/pricing",
+  "/tools",
+  "/waitlist",
 ];
 
 // ── Helpers ────────────────────────────────────────────────────
