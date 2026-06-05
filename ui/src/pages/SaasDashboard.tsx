@@ -275,14 +275,7 @@ export default function SaasDashboard() {
       <Route path="/dashboard/payments" element={<LegacyRedirect to="/servicing/payments" />} />
       <Route path="/dashboard/assets" element={<LegacyRedirect to="/portfolio/assets" />} />
       <Route path="/assets" element={<LegacyRedirect to="/portfolio/assets" />} />
-      <Route
-        path="*"
-        element={
-          <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
-            Route not found. Redirecting to dashboard...
-          </div>
-        }
-      />
+      <Route path="*" element={<Navigate to="/dashboard" replace />} />
     </Routes>
   );
 
