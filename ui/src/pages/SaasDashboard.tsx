@@ -64,6 +64,11 @@ import Approvals from "./dashboard/markets/distribution/Approvals";
 import DocumentExtractionPage from "./dashboard/DocumentExtractionPage";
 import CovenantAgentPage from "./dashboard/CovenantAgentPage";
 import DemoTour from "../components/DemoTour";
+import MyPropertiesPage from "./dashboard/MyPropertiesPage";
+import WatchlistPage from "./dashboard/WatchlistPage";
+import MarketplacePage from "./dashboard/MarketplacePage";
+import DocumentsPage from "./dashboard/DocumentsPage";
+import TasksPage from "./dashboard/TasksPage";
 
 type NavItem = (typeof lenderNavRoutes)[number];
 
@@ -112,13 +117,10 @@ export default function SaasDashboard() {
 
   // Grouped sidebar sections — core features first, platform/ops after
   const NAV_SECTIONS: { label: string | null; paths: string[] }[] = [
-    { label: null, paths: ["/dashboard", "/ai-copilot", "/command"] },
-    { label: "Portfolio", paths: ["/portfolio", "/analytics", "/reports"] },
-    { label: "Compliance", paths: ["/governance", "/compliance-center", "/policy"] },
-    { label: "Capital Markets", paths: ["/markets", "/onchain"] },
-    { label: "Platform", paths: ["/workflow", "/integration", "/enterprise-api", "/agents"] },
-    { label: "Operations", paths: ["/servicing-ops", "/inspection", "/hazard-recovery", "/cost-governance", "/policy-command"] },
-    { label: "AI Tools", paths: ["/document-extraction", "/covenant-agent"] },
+    { label: null, paths: ["/dashboard"] },
+    { label: "Workspace", paths: ["/my-properties", "/marketplace", "/providers", "/documents", "/inspection", "/governance", "/tasks", "/document-extraction", "/watchlist"] },
+    { label: "Lender Tools", paths: ["/ai-copilot", "/portfolio", "/compliance-center", "/markets", "/onchain", "/analytics", "/reports", "/covenant-agent", "/command"] },
+    { label: "Platform", paths: ["/workflow", "/integration", "/enterprise-api", "/agents", "/servicing-ops", "/hazard-recovery", "/cost-governance", "/policy-command", "/policy"] },
   ];
 
   const SETTINGS_PATHS = ["/settings/billing", "/settings/sso"];
@@ -249,6 +251,12 @@ export default function SaasDashboard() {
       <Route path="/agents" element={<AgentConsolePage />} />
       <Route path="/document-extraction" element={<DocumentExtractionPage />} />
       <Route path="/covenant-agent" element={<CovenantAgentPage />} />
+      <Route path="/my-properties" element={<MyPropertiesPage />} />
+      <Route path="/marketplace" element={<MarketplacePage />} />
+      <Route path="/documents" element={<DocumentsPage />} />
+      <Route path="/tasks" element={<TasksPage />} />
+      <Route path="/watchlist" element={<WatchlistPage />} />
+      <Route path="/providers" element={<Navigate to="/service-providers" replace />} />
       <Route path="/ai-copilot" element={<AICopilotPage />} />
       <Route path="/command" element={<CommandCenterPage />} />
       <Route path="/settings" element={<Navigate to="/settings/billing" replace />} />
