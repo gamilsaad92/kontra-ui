@@ -16,6 +16,14 @@ import { AuthContext } from "./lib/authContext";
 import { usePortalRouter } from "./lib/usePortalRouter";
 import { useVisitorTracking } from "./hooks/useVisitorTracking";
 
+// Public marketplace pages
+import HomePage from "./pages/public/HomePage";
+import PropertiesPage from "./pages/public/PropertiesPage";
+import PropertyDetailPage from "./pages/public/PropertyDetailPage";
+import ServiceProvidersPage from "./pages/public/ServiceProvidersPage";
+import AiToolsPage from "./pages/public/AiToolsPage";
+import PricingPage from "./pages/public/PricingPage";
+
 function AuthedOrgProvider({ children }) {
   const { session } = useContext(AuthContext);
   const apiBase = import.meta.env.VITE_API_BASE?.replace(/\/+$/, "") || "";
@@ -31,17 +39,23 @@ function AuthedOrgProvider({ children }) {
 }
 
 /**
- * Root router that enforces authentication AND authorization:
- *   authentication = Supabase session (RequireAuth)
- *   authorization  = JWT app_role → portal access (RequireRole)
+ * Root router — public marketplace + authenticated portals.
  *
- * After login, bare "/" is caught by usePortalRouter and redirected:
- *   investor / borrower  → directly to their portal (no selection screen)
- *   lender_admin / platform_admin → /select-portal (choose workspace)
- *   servicer / asset_manager → /servicer/overview (single-purpose role)
+ * Public routes (no auth required):
+ *   /               → Homepage (CRE marketplace & OS)
+ *   /properties     → Property search & discovery
+ *   /properties/:id → Property detail page
+ *   /service-providers → Service provider marketplace
+ *   /ai-tools       → AI document tools
+ *   /pricing        → Pricing page
+ *   /waitlist       → Waitlist signup
+ *   /login          → Login / Sign Up
  *
- * Cross-portal access is blocked: a borrower navigating to /dashboard
- * is silently redirected to /borrower, etc.
+ * Authenticated portals:
+ *   /dashboard      → Lender workspace (SaasDashboard)
+ *   /investor/*     → Investor portal
+ *   /borrower/*     → Borrower portal
+ *   /servicer/*     → Servicer portal
  */
 function AuthedApp() {
   usePortalRouter();
@@ -51,71 +65,75 @@ function AuthedApp() {
     <>
       <DemoModeGuide />
       <Routes>
-      {/* ── Public ─────────────────────────────────────────── */}
-      <Route path="/login" element={<LoginPage />} />
-      <Route path="/waitlist" element={<WaitlistPage />} />
-      <Route path="/admin" element={<AdminVisitorsPage />} />
+        {/* ── Public marketplace (no auth required) ──────────── */}
+        <Route path="/" element={<HomePage />} />
+        <Route path="/properties" element={<PropertiesPage />} />
+        <Route path="/properties/:id" element={<PropertyDetailPage />} />
+        <Route path="/service-providers" element={<ServiceProvidersPage />} />
+        <Route path="/ai-tools" element={<AiToolsPage />} />
+        <Route path="/pricing" element={<PricingPage />} />
+        <Route path="/waitlist" element={<WaitlistPage />} />
+        <Route path="/login" element={<LoginPage />} />
+        <Route path="/admin" element={<AdminVisitorsPage />} />
 
-      {/* ── Post-login portal selection (neutral, no portal chrome) */}
-      <Route
-        path="/select-portal"
-        element={
-          <RequireAuth>
-            <PortalSelectPage />
-          </RequireAuth>
-        }
-      />
+        {/* ── Post-login portal selection ─────────────────────── */}
+        <Route
+          path="/select-portal"
+          element={
+            <RequireAuth>
+              <PortalSelectPage />
+            </RequireAuth>
+          }
+        />
 
-      {/* ── Investor portal ── role: investor, platform_admin ── */}
-      <Route
-        path="/investor/*"
-        element={
-          <RequireAuth>
-            <RequireRole portal="investor">
-              <InvestorPortal />
-            </RequireRole>
-          </RequireAuth>
-        }
-      />
+        {/* ── Investor portal ── role: investor, platform_admin ── */}
+        <Route
+          path="/investor/*"
+          element={
+            <RequireAuth>
+              <RequireRole portal="investor">
+                <InvestorPortal />
+              </RequireRole>
+            </RequireAuth>
+          }
+        />
 
-      {/* ── Borrower portal ── role: borrower, platform_admin ── */}
-      <Route
-        path="/borrower/*"
-        element={
-          <RequireAuth>
-            <RequireRole portal="borrower">
-              <BorrowerPortal />
-            </RequireRole>
-          </RequireAuth>
-        }
-      />
+        {/* ── Borrower portal ── role: borrower, platform_admin ── */}
+        <Route
+          path="/borrower/*"
+          element={
+            <RequireAuth>
+              <RequireRole portal="borrower">
+                <BorrowerPortal />
+              </RequireRole>
+            </RequireAuth>
+          }
+        />
 
-      {/* ── Servicer portal ── role: servicer, lender_admin, asset_manager, platform_admin ── */}
-      <Route
-        path="/servicer/*"
-        element={
-          <RequireAuth>
-            <RequireRole portal="servicer">
-              <ServicerPortal />
-            </RequireRole>
-          </RequireAuth>
-        }
-      />
+        {/* ── Servicer portal ── role: servicer, lender_admin, asset_manager, platform_admin ── */}
+        <Route
+          path="/servicer/*"
+          element={
+            <RequireAuth>
+              <RequireRole portal="servicer">
+                <ServicerPortal />
+              </RequireRole>
+            </RequireAuth>
+          }
+        />
 
-      {/* ── Lender workspace ── role: lender_admin, asset_manager, platform_admin ── */}
-      <Route
-        path="/*"
-        element={
-          <RequireAuth>
-            <RequireRole portal="lender">
-              <SaasDashboard />
-            </RequireRole>
-          </RequireAuth>
-        }
-      />
-
-      <Route path="*" element={<Navigate to="/" replace />} />
-    </Routes>
+        {/* ── Lender / admin workspace ── all dashboard routes ── */}
+        <Route
+          path="/*"
+          element={
+            <RequireAuth>
+              <RequireRole portal="lender">
+                <SaasDashboard />
+              </RequireRole>
+            </RequireAuth>
+          }
+        />
+      </Routes>
     </>
   );
 }

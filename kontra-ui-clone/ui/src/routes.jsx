@@ -18,9 +18,16 @@ import {
   DocumentMagnifyingGlassIcon,
   BuildingOfficeIcon,
   SparklesIcon,
+  BuildingStorefrontIcon,
+  DocumentTextIcon,
+  ClipboardDocumentCheckIcon,
+  StarIcon,
+  CheckCircleIcon,
+  FolderOpenIcon,
 } from "@heroicons/react/24/outline";
 
 export const lenderNavRoutes = [
+  // ── Core workspace ──────────────────────────────────────────
   {
     label: "Dashboard",
     path: "/dashboard",
@@ -28,15 +35,64 @@ export const lenderNavRoutes = [
     requiresAuth: true,
   },
   {
-    label: "AI Copilot",
-    path: "/ai-copilot",
+    label: "My Properties",
+    path: "/my-properties",
+    icon: BuildingOfficeIcon,
+    requiresAuth: true,
+  },
+  {
+    label: "Marketplace",
+    path: "/marketplace",
+    icon: BuildingStorefrontIcon,
+    requiresAuth: true,
+  },
+  {
+    label: "Service Providers",
+    path: "/providers",
+    icon: UsersIcon,
+    requiresAuth: true,
+  },
+  {
+    label: "Documents",
+    path: "/documents",
+    icon: FolderOpenIcon,
+    requiresAuth: true,
+  },
+  {
+    label: "Inspections",
+    path: "/inspection",
+    icon: MagnifyingGlassIcon,
+    requiresAuth: true,
+  },
+  {
+    label: "Compliance",
+    path: "/governance",
+    icon: ShieldCheckIcon,
+    requiresAuth: true,
+  },
+  {
+    label: "Tasks",
+    path: "/tasks",
+    icon: CheckCircleIcon,
+    requiresAuth: true,
+  },
+  {
+    label: "AI Review",
+    path: "/document-extraction",
     icon: SparklesIcon,
     requiresAuth: true,
   },
   {
-    label: "Command Center",
-    path: "/command",
-    icon: BoltIcon,
+    label: "Watchlist",
+    path: "/watchlist",
+    icon: StarIcon,
+    requiresAuth: true,
+  },
+  // ── Advanced / lender tools ──────────────────────────────────
+  {
+    label: "AI Copilot",
+    path: "/ai-copilot",
+    icon: SparklesIcon,
     requiresAuth: true,
   },
   {
@@ -46,9 +102,9 @@ export const lenderNavRoutes = [
     requiresAuth: true,
   },
   {
-    label: "Compliance & Legal",
-    path: "/governance",
-    icon: ShieldCheckIcon,
+    label: "Compliance & Covenant",
+    path: "/compliance-center",
+    icon: DocumentMagnifyingGlassIcon,
     requiresAuth: true,
   },
   {
@@ -73,6 +129,18 @@ export const lenderNavRoutes = [
     label: "Reports",
     path: "/reports",
     icon: ChartBarIcon,
+    requiresAuth: true,
+  },
+  {
+    label: "Covenant Agent",
+    path: "/covenant-agent",
+    icon: SparklesIcon,
+    requiresAuth: true,
+  },
+  {
+    label: "Command Center",
+    path: "/command",
+    icon: BoltIcon,
     requiresAuth: true,
   },
   {
@@ -106,33 +174,9 @@ export const lenderNavRoutes = [
     requiresAuth: true,
   },
   {
-    label: "Inspection Intelligence",
-    path: "/inspection",
-    icon: MagnifyingGlassIcon,
-    requiresAuth: true,
-  },
-  {
     label: "Hazard Loss Recovery",
     path: "/hazard-recovery",
     icon: WrenchScrewdriverIcon,
-    requiresAuth: true,
-  },
-  {
-    label: "Compliance & Covenant",
-    path: "/compliance-center",
-    icon: DocumentMagnifyingGlassIcon,
-    requiresAuth: true,
-  },
-  {
-    label: "Document Extraction",
-    path: "/document-extraction",
-    icon: DocumentMagnifyingGlassIcon,
-    requiresAuth: true,
-  },
-  {
-    label: "Covenant Agent",
-    path: "/covenant-agent",
-    icon: SparklesIcon,
     requiresAuth: true,
   },
   {
