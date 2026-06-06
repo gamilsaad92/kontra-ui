@@ -1,16 +1,27 @@
 import React, { useContext, useEffect, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import LoginForm from "../components/LoginForm";
 import SignUpForm from "../components/SignUpForm";
 import { AuthContext } from "../lib/authContext";
-import { getAppRoleFromToken, getPortalPath } from "../lib/usePortalRouter";
+import { getAppRoleFromToken } from "../lib/usePortalRouter";
 
 const DEMO_PORTALS = [
-  { role: "lender",   label: "Lender",   color: "#800020", path: "/dashboard",        desc: "Portfolio · Risk · Capital Markets" },
-  { role: "servicer", label: "Servicer", color: "#92400E", path: "/servicer/overview", desc: "Draws · Inspections · Payments" },
-  { role: "investor", label: "Investor", color: "#6D28D9", path: "/investor",           desc: "Holdings · Distributions · Governance" },
-  { role: "borrower", label: "Borrower", color: "#065F46", path: "/borrower",           desc: "Loan · Covenants · Documents" },
+  { role: "lender",   label: "Lender",   color: "#800020", desc: "Portfolio · Risk · Capital Markets" },
+  { role: "servicer", label: "Servicer", color: "#92400E", desc: "Draws · Inspections · Payments" },
+  { role: "investor", label: "Investor", color: "#6D28D9", desc: "Holdings · Distributions · Governance" },
+  { role: "borrower", label: "Borrower", color: "#065F46", desc: "Loan · Covenants · Documents" },
 ];
+
+/**
+ * Reads ?action=watchlist&propertyId=123 from the URL and stores the intent
+ * in localStorage so the destination page can complete the action after login.
+ */
+function saveIntent(action, propertyId) {
+  if (!action) return;
+  try {
+    localStorage.setItem("kontra_pending_action", JSON.stringify({ action, propertyId, savedAt: Date.now() }));
+  } catch (_) {}
+}
 
 export default function LoginPage() {
   const { session, loading, loginAsDemo } = useContext(AuthContext);
@@ -19,11 +30,29 @@ export default function LoginPage() {
   const [demoLoading, setDemoLoading] = useState(null);
   const navigate = useNavigate();
   const didRedirect = useRef(false);
+  const [searchParams] = useSearchParams();
+
+  // ?redirect=/app/watchlist&action=watchlist&propertyId=harbor-view
+  const redirectParam = searchParams.get("redirect");
+  const actionParam = searchParams.get("action");
+  const propertyIdParam = searchParams.get("propertyId");
+
+  // Show context-aware message if user was redirected here from an action
+  const actionMessages = {
+    watchlist: "Sign in to save this property to your watchlist.",
+    claim: "Sign in to claim this property.",
+    inspection: "Sign in to request an inspection.",
+    documents: "Sign in to access the document workspace.",
+  };
+  const contextMessage = actionParam ? actionMessages[actionParam] : null;
 
   const handleDemo = async (portal) => {
     setDemoLoading(portal.role);
     await loginAsDemo(portal.role);
-    navigate(portal.path, { replace: true });
+    // Save intent before navigating
+    if (actionParam) saveIntent(actionParam, propertyIdParam);
+    const dest = redirectParam || "/dashboard";
+    navigate(dest, { replace: true });
     setDemoLoading(null);
   };
 
@@ -32,20 +61,24 @@ export default function LoginPage() {
     if (!token || didRedirect.current) return;
     didRedirect.current = true;
     setRedirecting(true);
+
+    // Save any pending action intent
+    if (actionParam) saveIntent(actionParam, propertyIdParam);
+
     const roleFromJwt = getAppRoleFromToken(token);
+    const dest = redirectParam || "/dashboard";
+
     if (roleFromJwt !== "member") {
-      navigate(getPortalPath(roleFromJwt), { replace: true });
+      navigate(dest, { replace: true });
       return;
     }
     fetch("/api/onboarding/me", { headers: { Authorization: `Bearer ${token}` } })
       .then((r) => (r.ok ? r.json() : null))
-      .then((data) => {
-        const dbRole = data?.app_role ?? "member";
-        try { localStorage.setItem("kontra_resolved_role", dbRole); } catch (_) {}
-        navigate(getPortalPath(dbRole), { replace: true });
+      .then(() => {
+        navigate(dest, { replace: true });
       })
-      .catch(() => navigate("/select-portal", { replace: true }));
-  }, [session?.access_token, navigate]);
+      .catch(() => navigate(dest, { replace: true }));
+  }, [session?.access_token, navigate, redirectParam, actionParam, propertyIdParam]);
 
   if (loading || redirecting) {
     return (
@@ -71,28 +104,43 @@ export default function LoginPage() {
           borderRight: "1px solid rgba(255,255,255,0.07)",
         }}
       >
-        {/* Logo */}
-        <div className="flex items-center gap-2.5">
-          <div className="flex h-9 w-9 items-center justify-center rounded-xl" style={{ background: "#800020" }}>
-            <span className="text-sm font-black text-white" style={{ letterSpacing: "-0.05em" }}>K</span>
-          </div>
-          <div>
-            <span className="text-base font-bold text-white" style={{ letterSpacing: "-0.02em" }}>Kontra</span>
-            <span className="ml-2 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide" style={{ background: "rgba(128,0,32,0.15)", color: "#800020" }}>Beta</span>
-          </div>
+        {/* Logo + back to marketplace link */}
+        <div>
+          <Link to="/" className="flex items-center gap-2.5 mb-8">
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl" style={{ background: "#800020" }}>
+              <span className="text-sm font-black text-white" style={{ letterSpacing: "-0.05em" }}>K</span>
+            </div>
+            <div>
+              <span className="text-base font-bold text-white" style={{ letterSpacing: "-0.02em" }}>Kontra</span>
+              <span className="ml-2 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide" style={{ background: "rgba(128,0,32,0.15)", color: "#800020" }}>Beta</span>
+            </div>
+          </Link>
+          <Link to="/properties" className="text-xs font-medium text-gray-500 hover:text-gray-300 transition">
+            ← Back to marketplace
+          </Link>
         </div>
 
         {/* Hero copy */}
         <div>
           <p className="mb-2 text-xs font-bold uppercase tracking-widest" style={{ color: "#800020" }}>
-            Data Infrastructure · CRE Loan Servicing
+            CRE Marketplace + Operating System
           </p>
           <h2 className="mb-4 text-3xl font-black leading-tight text-white" style={{ letterSpacing: "-0.03em" }}>
-            The operating system<br />for CRE debt markets.
+            {contextMessage
+              ? <>One more step<br />to continue</>
+              : <>Your CRE workspace<br />starts here.</>}
           </h2>
-          <p className="text-sm leading-relaxed" style={{ color: "#94a3b8" }}>
-            Kontra connects lenders, servicers, investors, and borrowers on a single platform — from loan origination to on-chain tokenization and secondary trading.
-          </p>
+          {contextMessage ? (
+            <div className="rounded-xl px-4 py-3 mb-4" style={{ background: "rgba(128,0,32,0.12)", border: "1px solid rgba(128,0,32,0.2)" }}>
+              <p className="text-sm leading-relaxed" style={{ color: "#fca5a5" }}>
+                {contextMessage}
+              </p>
+            </div>
+          ) : (
+            <p className="text-sm leading-relaxed" style={{ color: "#94a3b8" }}>
+              Discover properties, track assets, analyze documents with AI, manage compliance, and connect with service providers — all in one place.
+            </p>
+          )}
         </div>
 
         {/* Footer */}
@@ -108,13 +156,22 @@ export default function LoginPage() {
 
         {/* Mobile logo */}
         <div className="mb-8 flex flex-col items-center gap-3 lg:hidden">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl" style={{ background: "#800020" }}>
-            <span className="text-base font-black text-white">K</span>
-          </div>
-          <span className="text-base font-bold text-white">Kontra</span>
+          <Link to="/" className="flex items-center gap-2">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl" style={{ background: "#800020" }}>
+              <span className="text-base font-black text-white">K</span>
+            </div>
+            <span className="text-base font-bold text-white">Kontra</span>
+          </Link>
         </div>
 
         <div className="w-full max-w-[360px]">
+          {/* Context banner (mobile only) */}
+          {contextMessage && (
+            <div className="mb-5 rounded-xl px-4 py-3 text-sm" style={{ background: "rgba(128,0,32,0.12)", border: "1px solid rgba(128,0,32,0.2)", color: "#fca5a5" }}>
+              {contextMessage}
+            </div>
+          )}
+
           {/* Heading */}
           <div className="mb-7">
             <h1 className="mb-1.5 text-2xl font-black text-white" style={{ letterSpacing: "-0.02em" }}>

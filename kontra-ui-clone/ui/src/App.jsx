@@ -16,13 +16,17 @@ import { AuthContext } from "./lib/authContext";
 import { usePortalRouter } from "./lib/usePortalRouter";
 import { useVisitorTracking } from "./hooks/useVisitorTracking";
 
-// Public marketplace pages
+// Public marketplace pages — no auth required
 import HomePage from "./pages/public/HomePage";
 import PropertiesPage from "./pages/public/PropertiesPage";
 import PropertyDetailPage from "./pages/public/PropertyDetailPage";
 import ServiceProvidersPage from "./pages/public/ServiceProvidersPage";
 import AiToolsPage from "./pages/public/AiToolsPage";
 import PricingPage from "./pages/public/PricingPage";
+
+// Unified workspace — any authenticated user
+import NewDashboard from "./pages/NewDashboard";
+import AppWorkspace from "./pages/app/AppWorkspace";
 
 function AuthedOrgProvider({ children }) {
   const { session } = useContext(AuthContext);
@@ -39,23 +43,14 @@ function AuthedOrgProvider({ children }) {
 }
 
 /**
- * Root router — public marketplace + authenticated portals.
+ * Unified routing — one seamless product from public marketplace to workspace.
  *
- * Public routes (no auth required):
- *   /               → Homepage (CRE marketplace & OS)
- *   /properties     → Property search & discovery
- *   /properties/:id → Property detail page
- *   /service-providers → Service provider marketplace
- *   /ai-tools       → AI document tools
- *   /pricing        → Pricing page
- *   /waitlist       → Waitlist signup
- *   /login          → Login / Sign Up
+ * PUBLIC (no auth):        /  /properties  /properties/:id  /service-providers  /ai-tools  /pricing
+ * WORKSPACE (any auth):    /dashboard  /app/*
+ * ADVANCED PORTALS:        /lender-tools/*  /investor/*  /borrower/*  /servicer/*
  *
- * Authenticated portals:
- *   /dashboard      → Lender workspace (SaasDashboard)
- *   /investor/*     → Investor portal
- *   /borrower/*     → Borrower portal
- *   /servicer/*     → Servicer portal
+ * After login → always /dashboard (unified hub, not the old role-specific portals).
+ * Lender tools accessible at /lender-tools/* for those who need the advanced platform.
  */
 function AuthedApp() {
   usePortalRouter();
@@ -65,7 +60,7 @@ function AuthedApp() {
     <>
       <DemoModeGuide />
       <Routes>
-        {/* ── Public marketplace (no auth required) ──────────── */}
+        {/* ── Public marketplace ── no auth required ──────────── */}
         <Route path="/" element={<HomePage />} />
         <Route path="/properties" element={<PropertiesPage />} />
         <Route path="/properties/:id" element={<PropertyDetailPage />} />
@@ -76,17 +71,31 @@ function AuthedApp() {
         <Route path="/login" element={<LoginPage />} />
         <Route path="/admin" element={<AdminVisitorsPage />} />
 
-        {/* ── Post-login portal selection ─────────────────────── */}
+        {/* ── Unified workspace ── any authenticated user ─────── */}
         <Route
-          path="/select-portal"
+          path="/dashboard"
           element={
             <RequireAuth>
-              <PortalSelectPage />
+              <NewDashboard />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/app/*"
+          element={
+            <RequireAuth>
+              <AppWorkspace />
             </RequireAuth>
           }
         />
 
-        {/* ── Investor portal ── role: investor, platform_admin ── */}
+        {/* ── Portal selection (legacy — redirect to dashboard) ── */}
+        <Route
+          path="/select-portal"
+          element={<RequireAuth><Navigate to="/dashboard" replace /></RequireAuth>}
+        />
+
+        {/* ── Investor portal ─────────────────────────────────── */}
         <Route
           path="/investor/*"
           element={
@@ -98,7 +107,7 @@ function AuthedApp() {
           }
         />
 
-        {/* ── Borrower portal ── role: borrower, platform_admin ── */}
+        {/* ── Borrower portal ─────────────────────────────────── */}
         <Route
           path="/borrower/*"
           element={
@@ -110,7 +119,7 @@ function AuthedApp() {
           }
         />
 
-        {/* ── Servicer portal ── role: servicer, lender_admin, asset_manager, platform_admin ── */}
+        {/* ── Servicer portal ─────────────────────────────────── */}
         <Route
           path="/servicer/*"
           element={
@@ -122,7 +131,30 @@ function AuthedApp() {
           }
         />
 
-        {/* ── Lender / admin workspace ── all dashboard routes ── */}
+        {/*
+         * ── Advanced lender tools ── /lender-tools/* ──────────
+         * All advanced portfolio/market/compliance tools live here.
+         * Accessible from the "Lender Tools" button in the nav.
+         * Not the default landing after login.
+         */}
+        <Route
+          path="/lender-tools/*"
+          element={
+            <RequireAuth>
+              <RequireRole portal="lender">
+                <SaasDashboard />
+              </RequireRole>
+            </RequireAuth>
+          }
+        />
+
+        {/*
+         * ── Legacy lender routes ── still accessible ───────────
+         * /portfolio, /markets, /governance, etc. were the old default
+         * lender portal routes. Keep them working so existing bookmarks
+         * and demo links don't break. SaasDashboard handles them
+         * internally with its own Routes block.
+         */}
         <Route
           path="/*"
           element={

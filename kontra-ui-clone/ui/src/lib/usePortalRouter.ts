@@ -5,11 +5,13 @@
  * Authorization  = app_role in JWT claims (what portal you enter).
  *
  * Routing rules after login:
- *   investor        → /investor
- *   borrower        → /borrower
- *   servicer        → /servicer/overview
- *   lender / lender_admin / asset_manager / platform_admin → /dashboard
- *   member/unknown  → /select-portal  (fallback — should not happen in demo)
+ *   ALL roles → /dashboard  (unified CRE workspace & marketplace hub)
+ *
+ * Advanced portals are still accessible via nav links:
+ *   /investor/*    Investor portal
+ *   /borrower/*    Borrower portal
+ *   /servicer/*    Servicer portal
+ *   /lender-tools/* Full lender platform (portfolio, markets, compliance)
  */
 
 import { useContext, useEffect } from "react";
@@ -34,6 +36,12 @@ const PUBLIC_PATHS = [
   "/forgot-password",
   "/reset-password",
   "/select-portal",
+  "/properties",
+  "/service-providers",
+  "/ai-tools",
+  "/pricing",
+  "/waitlist",
+  "/admin",
 ];
 
 // ── Helpers ────────────────────────────────────────────────────
@@ -62,42 +70,27 @@ export function getAppRoleFromToken(accessToken: string | null | undefined): App
   return (role as AppRole) ?? "member";
 }
 
-/** Returns the correct home path for a given role. */
-export function getPortalPath(role: AppRole | string): string {
-  switch (role) {
-    case "investor":
-      return "/investor";
-    case "borrower":
-      return "/borrower";
-    case "servicer":
-      return "/servicer/overview";
-    // All lender variants and admin roles go to the lender dashboard
-    case "lender":
-    case "lender_admin":
-    case "asset_manager":
-    case "platform_admin":
-      return "/dashboard";
-    default:
-      return "/select-portal";
-  }
+/**
+ * Returns the unified dashboard path for any role.
+ * All users land on /dashboard after login — the CRE marketplace hub.
+ * Advanced portals are accessible from the dashboard via navigation.
+ */
+export function getPortalPath(_role?: AppRole | string): string {
+  return "/dashboard";
 }
 
 /**
  * Returns the "home" link destination for the currently signed-in user.
- * Use this for logo/home nav links inside each portal.
  */
 export function usePortalHome(): string {
-  const { session } = useContext(AuthContext) as { session: { access_token?: string } | null };
-  const role = getAppRoleFromToken(session?.access_token);
-  return getPortalPath(role);
+  return "/dashboard";
 }
 
 // ── Hook ──────────────────────────────────────────────────────
 
 /**
  * Mount once inside AuthedApp (inside Router context).
- * Fires only when the user lands on bare "/" — redirects them to the
- * correct portal before any dashboard chrome loads.
+ * Fires when authenticated user lands on bare "/" — redirects to /dashboard.
  */
 export function usePortalRouter(): void {
   const { session } = useContext(AuthContext) as { session: { access_token?: string } | null };
@@ -116,9 +109,6 @@ export function usePortalRouter(): void {
     // Never redirect from public routes
     if (PUBLIC_PATHS.some((p) => pathname.startsWith(p))) return;
 
-    const role = getAppRoleFromToken(token);
-    const target = getPortalPath(role);
-
-    navigate(target, { replace: true });
+    navigate("/dashboard", { replace: true });
   }, [session?.access_token, location.pathname, navigate]);
 }

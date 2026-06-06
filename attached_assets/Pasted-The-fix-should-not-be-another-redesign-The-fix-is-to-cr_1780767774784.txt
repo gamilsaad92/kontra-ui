@@ -1,0 +1,58 @@
+The fix should not be another redesign. The fix is to create one unified user journey between the public marketplace and the logged-in app.
+
+Please focus on these items:
+
+1. Create one shared layout
+    Use the same header, branding, buttons, colors, and navigation logic across the landing page and app. The logged-in area should feel like the continuation of the landing page, not a different product.
+2. Fix the routing structure
+    Public pages should live under:
+
+* /
+* /properties
+* /properties/:id
+* /service-providers
+* /ai-tools
+
+Logged-in workspace should live under:
+
+* /dashboard
+* /app/properties
+* /app/properties/:id
+* /app/documents
+* /app/inspections
+* /app/compliance
+* /app/watchlist
+
+3. After login, route to the new workspace
+    Login and signup should redirect to /dashboard, not the old lender/borrower portal.
+4. Connect public actions to app actions
+    Public buttons need to work interactively:
+
+* “Add to Watchlist” → login if needed → save property → go to /app/watchlist
+* “Claim Property” → login if needed → open claim workflow
+* “Request Inspection” → login if needed → open inspection request
+* “Upload Documents” → login if needed → go to property document workspace
+
+5. Preserve the user’s intended action
+    If a user clicks something while logged out, save the action before login.
+
+Example:
+
+/login?redirect=/app/watchlist&action=watchlist&propertyId=123
+
+After login, the app should complete the action instead of sending the user to a generic dashboard.
+
+6. Make dashboard reflect marketplace activity
+    Dashboard should show:
+
+* saved properties
+* recently viewed properties
+* pending inspection requests
+* uploaded documents
+* compliance alerts
+* AI review activity
+
+7. Move old lender tools out of the default flow
+    If old lender tools are still needed, place them under /app/lender-tools, but do not make them the default landing experience.
+
+The main goal: Kontra should feel like one product. A user should discover a property publicly, click an action, sign in, and continue that same action inside the workspace.
