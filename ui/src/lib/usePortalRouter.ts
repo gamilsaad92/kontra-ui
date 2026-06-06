@@ -1,15 +1,24 @@
 /**
  * usePortalRouter — Authentication vs Authorization separation.
  *
- * After login, ALL users → /onboarding (if first time) or /workspace.
- * Legacy portals (/dashboard, /investor, /borrower, /servicer) remain
- * accessible and are linked from the Enterprise section of /workspace.
+ * Authentication = Supabase session (who you are).
+ * Authorization  = app_role in JWT claims (what portal you enter).
+ *
+ * Routing rules after login:
+ *   ALL roles → /dashboard  (unified CRE workspace & marketplace hub)
+ *
+ * Advanced portals are still accessible via nav links:
+ *   /investor/*    Investor portal
+ *   /borrower/*    Borrower portal
+ *   /servicer/*    Servicer portal
+ *   /lender-tools/* Full lender platform (portfolio, markets, compliance)
  */
 
 import { useContext, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { AuthContext } from "./authContext";
 
+// ── Types ──────────────────────────────────────────────────────
 type AppRole =
   | "platform_admin"
   | "lender_admin"
@@ -20,25 +29,24 @@ type AppRole =
   | "borrower"
   | "member";
 
-// ── Public path prefixes (never redirect away from these) ──────────
+// ── Public path prefixes (never redirect away from these) ───────
 const PUBLIC_PATHS = [
-  "/",
-  "/home",
-  "/marketplace",
-  "/pricing",
-  "/tools",
-  "/waitlist",
   "/login",
   "/signup",
   "/forgot-password",
   "/reset-password",
-  "/onboarding",
-  "/workspace",
   "/select-portal",
+  "/properties",
+  "/service-providers",
+  "/ai-tools",
+  "/pricing",
+  "/waitlist",
+  "/admin",
 ];
 
-// ── Helpers ────────────────────────────────────────────────────────
+// ── Helpers ────────────────────────────────────────────────────
 
+/** Decode JWT payload without verifying signature (Supabase already verified it). */
 function decodeJwtPayload(token: string): Record<string, unknown> | null {
   try {
     const base64 = token.split(".")[1];
@@ -50,6 +58,7 @@ function decodeJwtPayload(token: string): Record<string, unknown> | null {
   }
 }
 
+/** Extract app_role from JWT custom claims. */
 export function getAppRoleFromToken(accessToken: string | null | undefined): AppRole {
   if (!accessToken) return "member";
   const payload = decodeJwtPayload(accessToken);
@@ -61,35 +70,30 @@ export function getAppRoleFromToken(accessToken: string | null | undefined): App
   return (role as AppRole) ?? "member";
 }
 
-/** Still used by the old portals for their home-link logic. */
-export function getPortalPath(role: AppRole | string): string {
-  switch (role) {
-    case "investor":       return "/investor";
-    case "borrower":       return "/borrower";
-    case "servicer":       return "/servicer/overview";
-    case "lender":
-    case "lender_admin":
-    case "asset_manager":
-    case "platform_admin": return "/dashboard";
-    default:               return "/workspace";
-  }
+/**
+ * Returns the unified dashboard path for any role.
+ * All users land on /dashboard after login — the CRE marketplace hub.
+ * Advanced portals are accessible from the dashboard via navigation.
+ */
+export function getPortalPath(_role?: AppRole | string): string {
+  return "/dashboard";
 }
-
-export function usePortalHome(): string {
-  const { session } = useContext(AuthContext) as { session: { access_token?: string } | null };
-  const role = getAppRoleFromToken(session?.access_token);
-  return getPortalPath(role);
-}
-
-// ── Hook ──────────────────────────────────────────────────────────
 
 /**
- * Mount once inside AuthedApp.
- * Fires only when an authenticated user lands on bare "/" —
- * sends them to /onboarding (first time) or /workspace (returning).
+ * Returns the "home" link destination for the currently signed-in user.
+ */
+export function usePortalHome(): string {
+  return "/dashboard";
+}
+
+// ── Hook ──────────────────────────────────────────────────────
+
+/**
+ * Mount once inside AuthedApp (inside Router context).
+ * Fires when authenticated user lands on bare "/" — redirects to /dashboard.
  */
 export function usePortalRouter(): void {
-  const { session } = useContext(AuthContext) as { session: { access_token?: string; user?: { id?: string } } | null };
+  const { session } = useContext(AuthContext) as { session: { access_token?: string } | null };
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -99,17 +103,12 @@ export function usePortalRouter(): void {
 
     const pathname = location.pathname;
 
-    // Only act on bare root — leave all other paths alone
+    // Only fire on the bare root
     if (pathname !== "/" && pathname !== "") return;
 
-    // Check onboarding state for this user
-    const userId = session?.user?.id || "demo";
-    const onboardingDone = localStorage.getItem(`kontra_onboarding_${userId}`);
+    // Never redirect from public routes
+    if (PUBLIC_PATHS.some((p) => pathname.startsWith(p))) return;
 
-    if (!onboardingDone) {
-      navigate("/onboarding", { replace: true });
-    } else {
-      navigate("/workspace", { replace: true });
-    }
+    navigate("/dashboard", { replace: true });
   }, [session?.access_token, location.pathname, navigate]);
 }
