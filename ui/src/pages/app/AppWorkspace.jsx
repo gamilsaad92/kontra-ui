@@ -6,6 +6,7 @@ import DocumentsPage from "../dashboard/DocumentsPage";
 import WatchlistPage from "../dashboard/WatchlistPage";
 import TasksPage from "../dashboard/TasksPage";
 import MarketplacePage from "../dashboard/MarketplacePage";
+import AddPropertyPage from "./AddPropertyPage";
 
 const WORKSPACE_NAV = [
   { label: "My Properties", href: "/app/properties" },
@@ -145,6 +146,7 @@ export default function AppWorkspace() {
           <div className="flex-1 min-w-0">
             <Routes>
               <Route index element={<Navigate to="/app/properties" replace />} />
+              <Route path="add-property" element={<AddPropertyPage />} />
               <Route path="properties" element={<MyPropertiesPage />} />
               <Route path="properties/:id" element={<MyPropertiesPage />} />
               <Route path="documents" element={<DocumentsPage />} />
