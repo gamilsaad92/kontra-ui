@@ -186,20 +186,35 @@ export default function PublicLayout({ children, hideFooter = false }) {
                   <span className="font-semibold text-gray-900">Kontra</span>
                 </div>
                 <p className="text-sm text-gray-500 leading-relaxed max-w-xs">
-                  The CRE marketplace and operating system for smarter asset decisions.
+                  The AI-powered CRE workspace that gets your properties ready for financing, compliance, and tokenization.
                 </p>
               </div>
               {[
-                { title: "Marketplace", links: ["Properties", "Service Providers", "AI Tools", "Pricing"] },
-                { title: "Workspace", links: ["Dashboard", "My Properties", "Documents", "Watchlist"] },
-                { title: "Company", links: ["About", "Blog", "Careers", "Contact"] },
+                { title: "Marketplace", links: [
+                  { label: "Properties", href: "/properties" },
+                  { label: "Service Providers", href: "/service-providers" },
+                  { label: "AI Tools", href: "/ai-tools" },
+                  { label: "Pricing", href: "/pricing" },
+                ]},
+                { title: "Platform", links: [
+                  { label: "Tokenization", href: "/tokenization" },
+                  { label: "Dashboard", href: "/dashboard" },
+                  { label: "My Properties", href: "/app/properties" },
+                  { label: "Documents", href: "/app/documents" },
+                ]},
+                { title: "Company", links: [
+                  { label: "Privacy Policy", href: "/privacy" },
+                  { label: "Terms of Service", href: "/terms" },
+                  { label: "Contact", href: "mailto:hello@kontraplatform.com" },
+                  { label: "Security", href: "mailto:security@kontraplatform.com" },
+                ]},
               ].map((col) => (
                 <div key={col.title}>
                   <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-3">{col.title}</p>
                   <ul className="space-y-2">
                     {col.links.map((link) => (
-                      <li key={link}>
-                        <a href="#" className="text-sm text-gray-500 hover:text-gray-900 transition">{link}</a>
+                      <li key={link.label}>
+                        <a href={link.href} className="text-sm text-gray-500 hover:text-gray-900 transition">{link.label}</a>
                       </li>
                     ))}
                   </ul>
@@ -207,11 +222,11 @@ export default function PublicLayout({ children, hideFooter = false }) {
               ))}
             </div>
             <div className="mt-8 pt-6 border-t border-gray-200 flex flex-col md:flex-row items-center justify-between gap-3">
-              <p className="text-xs text-gray-400">© 2025 Kontra. All rights reserved.</p>
+              <p className="text-xs text-gray-400">© 2026 Kontra Platform, Inc. All rights reserved.</p>
               <div className="flex gap-4 text-xs text-gray-400">
-                <a href="#" className="hover:text-gray-600">Privacy</a>
-                <a href="#" className="hover:text-gray-600">Terms</a>
-                <a href="#" className="hover:text-gray-600">Security</a>
+                <a href="/privacy" className="hover:text-gray-600">Privacy</a>
+                <a href="/terms" className="hover:text-gray-600">Terms</a>
+                <a href="mailto:security@kontraplatform.com" className="hover:text-gray-600">Security</a>
               </div>
             </div>
           </div>
