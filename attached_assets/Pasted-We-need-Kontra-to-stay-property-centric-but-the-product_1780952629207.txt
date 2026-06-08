@@ -1,0 +1,21 @@
+We need Kontra to stay property-centric, but the product should clearly connect to blockchain and tokenization as the long-term infrastructure layer.
+
+Do not make tokenization the homepage or main user entry point. The front-end experience should still be: discover properties, manage property workspaces, upload documents, track inspections, review compliance, and analyze risk. However, every property should also have a digital asset foundation in the background.
+
+Please structure the platform around this hierarchy: Property → Workspace → Digital Asset Registry → Financing → Tokenization.
+
+Each property should have a normal operating workspace with tabs such as Overview, Documents, Financials, Inspections, Compliance, Tasks, Service Providers, AI Analysis, and Loans/Financing. In addition, add a “Digital Registry” or “Digital Ownership” tab that introduces the blockchain layer without making it the first thing users see.
+
+The Digital Registry should show the property’s verified digital record, including property ID, document history, inspection history, compliance status, ownership/claim status, and verification status. For now, this can be off-chain or simulated in the database, but the architecture should be built so document hashes, property records, ownership records, and future token records can later be written to blockchain.
+
+The tokenization module should be positioned as a future-ready feature, not the active core product. Use labels like “Digital Ownership,” “Investment Readiness,” or “Tokenization — Coming Soon/Beta.” The user should understand that before a property can be tokenized, Kontra first verifies its documents, inspections, compliance, financials, and ownership data.
+
+The public marketplace should still focus on properties, not loans or tokens. Public property pages can include a small section called “Digital Asset Status” showing whether the property is unclaimed, claimed, verified, investment-ready, or eligible for future digital ownership. This creates a connection to blockchain without making the product feel like a crypto platform.
+
+After login, the dashboard should remain property-based. Users should see their properties, watchlist, documents, inspections, compliance alerts, and AI reviews. Add a small “Digital Asset Registry” section showing how many properties are verified, pending verification, or potentially eligible for future tokenization.
+
+The blockchain/tokenization layer should be invisible until it adds value. First use cases should be audit trail, document verification, ownership verification, property record integrity, and investment readiness. Later, once the data foundation is strong, we can add actual token issuance, investor onboarding, cap table, distributions, and secondary market features.
+
+Do not bring back the old four-portal structure. Instead, keep one unified workspace where roles and permissions control what each user can see. Owners, investors, lenders, inspectors, and service providers should all interact with the same property record, but with different access rights.
+
+The key product message is: Kontra is the operating system for commercial real estate assets, with blockchain-powered digital ownership infrastructure built underneath. The property operating system creates trust, data, and verification; tokenization becomes the final layer once the asset is ready.

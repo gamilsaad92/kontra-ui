@@ -3,24 +3,42 @@ import { Link, useSearchParams } from "react-router-dom";
 import PublicLayout from "./PublicLayout";
 
 const PROPERTIES = [
-  { id: "westside-commons", name: "Westside Commons", type: "Multifamily", city: "Los Angeles", state: "CA", units: 234, sf: null, occupancy: 94, risk: "Low", riskColor: "#16a34a", score: 87, inspection: "Passed", market: "SoCal", yearBuilt: 2018 },
-  { id: "meridian-tower", name: "The Meridian", type: "Office", city: "Dallas", state: "TX", units: null, sf: 182000, occupancy: 78, risk: "Medium", riskColor: "#d97706", score: 62, inspection: "Due Soon", market: "DFW", yearBuilt: 2005 },
-  { id: "summit-industrial", name: "Summit Industrial Park", type: "Industrial", city: "Atlanta", state: "GA", units: null, sf: 145000, occupancy: 100, risk: "Low", riskColor: "#16a34a", score: 91, inspection: "Passed", market: "Atlanta", yearBuilt: 2015 },
-  { id: "harbor-view", name: "Harbor View Apartments", type: "Multifamily", city: "Miami", state: "FL", units: 312, sf: null, occupancy: 97, risk: "Low", riskColor: "#16a34a", score: 93, inspection: "Passed", market: "South FL", yearBuilt: 2020 },
-  { id: "oakwood-plaza", name: "Oakwood Business Plaza", type: "Office", city: "Phoenix", state: "AZ", units: null, sf: 82000, occupancy: 68, risk: "High", riskColor: "#dc2626", score: 44, inspection: "Failed", market: "Phoenix", yearBuilt: 1998 },
-  { id: "northgate-retail", name: "Northgate Retail Center", type: "Retail", city: "Chicago", state: "IL", units: null, sf: 94000, occupancy: 81, risk: "Medium", riskColor: "#d97706", score: 71, inspection: "Pending", market: "Chicago", yearBuilt: 2001 },
-  { id: "riverside-mixed", name: "Riverside Mixed-Use", type: "Mixed-Use", city: "Denver", state: "CO", units: 88, sf: 42000, occupancy: 91, risk: "Low", riskColor: "#16a34a", score: 85, inspection: "Passed", market: "Denver", yearBuilt: 2019 },
-  { id: "pinecrest-garden", name: "Pinecrest Garden Apts", type: "Multifamily", city: "Austin", state: "TX", units: 156, sf: null, occupancy: 89, risk: "Low", riskColor: "#16a34a", score: 79, inspection: "Passed", market: "Austin", yearBuilt: 2014 },
-  { id: "lakeshore-logistics", name: "Lakeshore Logistics Hub", type: "Industrial", city: "Columbus", state: "OH", units: null, sf: 290000, occupancy: 98, risk: "Low", riskColor: "#16a34a", score: 95, inspection: "Passed", market: "Columbus", yearBuilt: 2021 },
-  { id: "central-square", name: "Central Square Tower", type: "Office", city: "Seattle", state: "WA", units: null, sf: 220000, occupancy: 72, risk: "Medium", riskColor: "#d97706", score: 58, inspection: "Due Soon", market: "Seattle", yearBuilt: 2009 },
-  { id: "palm-garden", name: "Palm Garden Villas", type: "Multifamily", city: "Las Vegas", state: "NV", units: 420, sf: null, occupancy: 95, risk: "Low", riskColor: "#16a34a", score: 90, inspection: "Passed", market: "Las Vegas", yearBuilt: 2017 },
-  { id: "tech-corridor", name: "Tech Corridor Campus", type: "Office", city: "San Jose", state: "CA", units: null, sf: 310000, occupancy: 85, risk: "Low", riskColor: "#16a34a", score: 82, inspection: "Passed", market: "Bay Area", yearBuilt: 2016 },
+  { id: "westside-commons",   name: "Westside Commons",       type: "Multifamily", city: "Los Angeles", state: "CA", units: 234,  sf: null,    occupancy: 94,  risk: "Low",    riskColor: "#16a34a", score: 87, inspection: "Passed",   market: "SoCal",     yearBuilt: 2018, digitalStatus: "Verified" },
+  { id: "meridian-tower",     name: "The Meridian",           type: "Office",      city: "Dallas",      state: "TX", units: null, sf: 182000, occupancy: 78,  risk: "Medium", riskColor: "#d97706", score: 62, inspection: "Due Soon", market: "DFW",       yearBuilt: 2005, digitalStatus: "Unclaimed" },
+  { id: "summit-industrial",  name: "Summit Industrial Park", type: "Industrial",  city: "Atlanta",     state: "GA", units: null, sf: 145000, occupancy: 100, risk: "Low",    riskColor: "#16a34a", score: 91, inspection: "Passed",   market: "Atlanta",   yearBuilt: 2015, digitalStatus: "Investment-Ready" },
+  { id: "harbor-view",        name: "Harbor View Apartments", type: "Multifamily", city: "Miami",       state: "FL", units: 312,  sf: null,    occupancy: 97,  risk: "Low",    riskColor: "#16a34a", score: 93, inspection: "Passed",   market: "South FL",  yearBuilt: 2020, digitalStatus: "Investment-Ready" },
+  { id: "oakwood-plaza",      name: "Oakwood Business Plaza", type: "Office",      city: "Phoenix",     state: "AZ", units: null, sf: 82000,  occupancy: 68,  risk: "High",   riskColor: "#dc2626", score: 44, inspection: "Failed",   market: "Phoenix",   yearBuilt: 1998, digitalStatus: "Unclaimed" },
+  { id: "northgate-retail",   name: "Northgate Retail Center",type: "Retail",      city: "Chicago",     state: "IL", units: null, sf: 94000,  occupancy: 81,  risk: "Medium", riskColor: "#d97706", score: 71, inspection: "Pending",  market: "Chicago",   yearBuilt: 2001, digitalStatus: "Claimed" },
+  { id: "riverside-mixed",    name: "Riverside Mixed-Use",    type: "Mixed-Use",   city: "Denver",      state: "CO", units: 88,   sf: 42000,  occupancy: 91,  risk: "Low",    riskColor: "#16a34a", score: 85, inspection: "Passed",   market: "Denver",    yearBuilt: 2019, digitalStatus: "Verified" },
+  { id: "pinecrest-garden",   name: "Pinecrest Garden Apts",  type: "Multifamily", city: "Austin",      state: "TX", units: 156,  sf: null,    occupancy: 89,  risk: "Low",    riskColor: "#16a34a", score: 79, inspection: "Passed",   market: "Austin",    yearBuilt: 2014, digitalStatus: "Claimed" },
+  { id: "lakeshore-logistics",name: "Lakeshore Logistics Hub",type: "Industrial",  city: "Columbus",    state: "OH", units: null, sf: 290000, occupancy: 98,  risk: "Low",    riskColor: "#16a34a", score: 95, inspection: "Passed",   market: "Columbus",  yearBuilt: 2021, digitalStatus: "Investment-Ready" },
+  { id: "central-square",     name: "Central Square Tower",   type: "Office",      city: "Seattle",     state: "WA", units: null, sf: 220000, occupancy: 72,  risk: "Medium", riskColor: "#d97706", score: 58, inspection: "Due Soon", market: "Seattle",   yearBuilt: 2009, digitalStatus: "Unclaimed" },
+  { id: "palm-garden",        name: "Palm Garden Villas",     type: "Multifamily", city: "Las Vegas",   state: "NV", units: 420,  sf: null,    occupancy: 95,  risk: "Low",    riskColor: "#16a34a", score: 90, inspection: "Passed",   market: "Las Vegas", yearBuilt: 2017, digitalStatus: "Verified" },
+  { id: "tech-corridor",      name: "Tech Corridor Campus",   type: "Office",      city: "San Jose",    state: "CA", units: null, sf: 310000, occupancy: 85,  risk: "Low",    riskColor: "#16a34a", score: 82, inspection: "Passed",   market: "Bay Area",  yearBuilt: 2016, digitalStatus: "Verified" },
 ];
 
 const TYPES = ["All", "Multifamily", "Office", "Industrial", "Retail", "Mixed-Use"];
 const RISK_LEVELS = ["All", "Low", "Medium", "High"];
 
 const TYPE_ICONS = { Multifamily: "🏠", Office: "🏢", Industrial: "🏭", Retail: "🏬", "Mixed-Use": "🏙️" };
+
+const DIGITAL_STATUS = {
+  "Investment-Ready": { label: "Investment-Ready", color: "#92400e", bg: "#fffbeb", dot: "#f59e0b" },
+  "Verified":          { label: "Verified",          color: "#065f46", bg: "#f0fdf4", dot: "#16a34a" },
+  "Claimed":           { label: "Claimed",           color: "#1e3a8a", bg: "#eff6ff", dot: "#3b82f6" },
+  "Unclaimed":         { label: "Unclaimed",         color: "#6b7280", bg: "#f9fafb", dot: "#d1d5db" },
+};
+
+function DigitalStatusBadge({ status }) {
+  const cfg = DIGITAL_STATUS[status] || DIGITAL_STATUS["Unclaimed"];
+  return (
+    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium"
+      style={{ background: cfg.bg, color: cfg.color }}>
+      <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: cfg.dot }} />
+      {cfg.label}
+    </span>
+  );
+}
 
 export default function PropertiesPage() {
   const [searchParams] = useSearchParams();
@@ -159,6 +177,9 @@ export default function PropertiesPage() {
                     <div className="mt-2 flex justify-between items-center">
                       <span className="text-xs text-gray-400">Inspection: {p.inspection}</span>
                       <span className="text-xs font-medium" style={{ color: "#800020" }}>View →</span>
+                    </div>
+                    <div className="mt-2 pt-2 border-t border-gray-50">
+                      <DigitalStatusBadge status={p.digitalStatus} />
                     </div>
                   </div>
                 </Link>
