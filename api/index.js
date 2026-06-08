@@ -2292,7 +2292,127 @@ async function logBaselineSchemaHealth() {
   console.log('[schema] Baseline migration check passed.');
 }
 
+// ── User Properties CRUD ──────────────────────────────────────────────────
+
+function mapDbToProperty(row) {
+  return {
+    id: row.id,
+    name: row.name,
+    type: row.type || null,
+    address: row.address || null,
+    city: row.city || null,
+    state: row.state || null,
+    units: row.units || null,
+    sqft: row.sqft || null,
+    yearBuilt: row.year_built || null,
+    occupancy: row.occupancy || null,
+    noi: row.noi || null,
+    status: row.status || 'Active',
+    risk: 'Unknown',
+    riskColor: '#6b7280',
+    createdAt: row.created_at,
+  };
+}
+
+app.get('/api/user-properties', authenticate, async (req, res) => {
+  const userId = req.user?.id;
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    const { data, error } = await supabase
+      .from('user_properties')
+      .select('*')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false });
+    if (error) throw error;
+    res.json({ properties: (data || []).map(mapDbToProperty) });
+  } catch (err) {
+    console.error('[user-properties GET]', err.message);
+    res.json({ properties: [] }); // Fail gracefully — client falls back to localStorage
+  }
+});
+
+app.post('/api/user-properties', authenticate, async (req, res) => {
+  const userId = req.user?.id;
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+  const { name, type, address, city, state, units, sqft, yearBuilt, occupancy, noi } = req.body || {};
+  if (!name) return res.status(400).json({ error: 'Property name required' });
+  try {
+    const { data, error } = await supabase
+      .from('user_properties')
+      .insert([{
+        user_id: userId,
+        name,
+        type: type || null,
+        address: address || null,
+        city: city || null,
+        state: state || null,
+        units: units ? Number(units) : null,
+        sqft: sqft ? Number(sqft) : null,
+        year_built: yearBuilt ? Number(yearBuilt) : null,
+        occupancy: occupancy ? Number(occupancy) : null,
+        noi: noi ? Number(noi) : null,
+      }])
+      .select()
+      .single();
+    if (error) throw error;
+    res.json({ property: mapDbToProperty(data) });
+  } catch (err) {
+    console.error('[user-properties POST]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.put('/api/user-properties/:id', authenticate, async (req, res) => {
+  const userId = req.user?.id;
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+  const { name, type, address, city, state, units, sqft, yearBuilt, occupancy, noi } = req.body || {};
+  try {
+    const updates = {};
+    if (name) updates.name = name;
+    if (type !== undefined) updates.type = type;
+    if (address !== undefined) updates.address = address;
+    if (city !== undefined) updates.city = city;
+    if (state !== undefined) updates.state = state;
+    if (units !== undefined) updates.units = units ? Number(units) : null;
+    if (sqft !== undefined) updates.sqft = sqft ? Number(sqft) : null;
+    if (yearBuilt !== undefined) updates.year_built = yearBuilt ? Number(yearBuilt) : null;
+    if (occupancy !== undefined) updates.occupancy = occupancy ? Number(occupancy) : null;
+    if (noi !== undefined) updates.noi = noi ? Number(noi) : null;
+    const { data, error } = await supabase
+      .from('user_properties')
+      .update(updates)
+      .eq('id', req.params.id)
+      .eq('user_id', userId)
+      .select()
+      .single();
+    if (error) throw error;
+    res.json({ property: mapDbToProperty(data) });
+  } catch (err) {
+    console.error('[user-properties PUT]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/user-properties/:id', authenticate, async (req, res) => {
+  const userId = req.user?.id;
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    const { error } = await supabase
+      .from('user_properties')
+      .delete()
+      .eq('id', req.params.id)
+      .eq('user_id', userId);
+    if (error) throw error;
+    res.json({ success: true });
+  } catch (err) {
+    console.error('[user-properties DELETE]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ── CRE AI Document Analysis Endpoints ────────────────────────────────────
+
+const aiRateLimit = require('./middlewares/aiRateLimit');
 
 function extractReadableText(buffer) {
   const raw = buffer.toString('utf8');
@@ -2300,7 +2420,7 @@ function extractReadableText(buffer) {
   return cleaned.trim().slice(0, 12000);
 }
 
-app.post('/api/ai/analyze-inspection', upload.single('file'), async (req, res) => {
+app.post('/api/ai/analyze-inspection', aiRateLimit, upload.single('file'), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
   try {
     const text = extractReadableText(req.file.buffer);
@@ -2324,7 +2444,7 @@ ${text ? `Inspection report text:\n${text}` : 'No readable text extracted. Gener
   }
 });
 
-app.post('/api/ai/score-property', async (req, res) => {
+app.post('/api/ai/score-property', aiRateLimit, async (req, res) => {
   const { occupancy, noi, yearBuilt, propertyType, units, sqft } = req.body || {};
   try {
     const completion = await openai.chat.completions.create({
@@ -2346,7 +2466,7 @@ Property: Type=${propertyType||'Unknown'}, Occupancy=${occupancy||'?'}%, NOI=$${
   }
 });
 
-app.post('/api/ai/review-insurance', upload.single('file'), async (req, res) => {
+app.post('/api/ai/review-insurance', aiRateLimit, upload.single('file'), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
   try {
     const text = extractReadableText(req.file.buffer);
@@ -2369,7 +2489,7 @@ Policy text:\n${text||'No readable text — generate a plausible insurance revie
   }
 });
 
-app.post('/api/ai/review-financials', upload.single('file'), async (req, res) => {
+app.post('/api/ai/review-financials', aiRateLimit, upload.single('file'), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
   try {
     const text = extractReadableText(req.file.buffer);
