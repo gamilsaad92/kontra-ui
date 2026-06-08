@@ -251,6 +251,37 @@ function PropertyDashboard({ properties, userName }) {
             </div>
           </div>
 
+          {/* Digital Asset Registry */}
+          <div className="bg-white rounded-2xl border border-gray-200 p-5">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-sm font-bold text-gray-900">🔗 Digital Asset Registry</h2>
+              <span className="text-xs px-2 py-0.5 rounded-full bg-blue-50 text-blue-600 font-semibold border border-blue-100">
+                Off-chain
+              </span>
+            </div>
+            <div className="space-y-2 mb-4">
+              {[
+                { label: "Properties in registry", value: properties.length },
+                { label: "Verified", value: 0 },
+                { label: "Investment-Ready", value: 0 },
+              ].map((row) => (
+                <div key={row.label} className="flex items-center justify-between text-xs py-1 border-b border-gray-50 last:border-0">
+                  <span className="text-gray-500">{row.label}</span>
+                  <span className="font-semibold text-gray-900">{row.value}</span>
+                </div>
+              ))}
+            </div>
+            <div className="p-3 rounded-lg bg-gray-50 mb-3">
+              <p className="text-xs text-gray-600 leading-relaxed">
+                Upload documents, complete inspections, and clear compliance to advance your properties toward Investment-Ready status.
+              </p>
+            </div>
+            <Link to="/app/properties"
+              className="block text-center text-xs font-semibold py-2 px-3 rounded-lg border border-gray-200 hover:bg-gray-50 transition text-gray-700">
+              Open Property Registry →
+            </Link>
+          </div>
+
           {/* Lender tools */}
           <div className="rounded-2xl p-5 text-white" style={{ background: "#0f1623" }}>
             <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-2">Advanced</p>
@@ -258,7 +289,7 @@ function PropertyDashboard({ properties, userName }) {
             <p className="text-xs text-gray-400 leading-relaxed mb-4">
               Portfolio analytics, capital markets, covenant tracking, and more.
             </p>
-            <Link to="/portfolio"
+            <Link to="/lender-tools"
               className="block text-center px-3 py-2 rounded-lg text-xs font-semibold text-white border border-white/20 hover:bg-white/10 transition">
               Open Lender Portal →
             </Link>
