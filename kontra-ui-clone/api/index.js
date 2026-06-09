@@ -2410,6 +2410,52 @@ app.delete('/api/user-properties/:id', authenticate, async (req, res) => {
   }
 });
 
+// ── Stripe Checkout ────────────────────────────────────────────────────────
+app.post('/api/checkout', authenticate, async (req, res) => {
+  try {
+    const stripeKey = process.env.STRIPE_SECRET_KEY;
+    if (!stripeKey || stripeKey.startsWith('placeholder') || stripeKey.length < 20) {
+      return res.status(503).json({
+        error: 'Stripe not configured',
+        message: 'Payments are not yet enabled. Contact hello@kontraplatform.com to upgrade.',
+      });
+    }
+    const stripe = require('stripe')(stripeKey);
+    const { billing = 'monthly' } = req.body;
+    const origin = req.headers.origin || 'https://kontraplatform.com';
+
+    const priceId = billing === 'annual'
+      ? (process.env.STRIPE_PRICE_PRO_ANNUAL || null)
+      : (process.env.STRIPE_PRICE_PRO_MONTHLY || null);
+
+    if (!priceId) {
+      return res.status(503).json({
+        error: 'Stripe price not configured',
+        message: 'Contact hello@kontraplatform.com to set up your subscription.',
+      });
+    }
+
+    const userId = req.user?.id;
+    const userEmail = req.user?.email;
+
+    const sessionParams = {
+      mode: 'subscription',
+      payment_method_types: ['card'],
+      line_items: [{ price: priceId, quantity: 1 }],
+      success_url: `${origin}/dashboard?checkout=success&plan=professional`,
+      cancel_url: `${origin}/pricing?checkout=canceled`,
+      metadata: { userId: userId || '', billing },
+    };
+    if (userEmail) sessionParams.customer_email = userEmail;
+
+    const checkoutSession = await stripe.checkout.sessions.create(sessionParams);
+    res.json({ url: checkoutSession.url });
+  } catch (err) {
+    console.error('[checkout]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ── CRE AI Document Analysis Endpoints ────────────────────────────────────
 
 const aiRateLimit = require('./middlewares/aiRateLimit');

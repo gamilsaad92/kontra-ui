@@ -97,12 +97,11 @@ export default function HomePage() {
             Now in early access — join 400+ CRE professionals
           </div>
           <h1 className="text-4xl md:text-6xl font-bold leading-tight tracking-tight mb-6 max-w-4xl mx-auto">
-            Commercial Real Estate{" "}
-            <span style={{ color: "#e8a0a0" }}>Intelligence, Operations,</span>
-            {" "}and Compliance in One Platform
+            Get Your CRE Properties{" "}
+            <span style={{ color: "#e8a0a0" }}>Investment-Ready.</span>
           </h1>
           <p className="text-lg text-gray-400 max-w-2xl mx-auto mb-10 leading-relaxed">
-            Track properties, inspections, documents, compliance, vendors, and risk from a single workspace. For property owners, asset managers, and operators.
+            The AI-powered operating system for commercial real estate. Organize every property, pass every compliance check, and build the data foundation lenders and investors need.
           </p>
 
           {/* Primary CTAs */}
