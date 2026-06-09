@@ -25,7 +25,9 @@ CREATE INDEX IF NOT EXISTS user_properties_user_id_idx ON user_properties(user_i
 -- Row-level security: users can only read/write their own properties
 ALTER TABLE user_properties ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY IF NOT EXISTS "Users manage own properties"
+-- PostgreSQL does not support CREATE POLICY IF NOT EXISTS — drop first
+DROP POLICY IF EXISTS "Users manage own properties" ON user_properties;
+CREATE POLICY "Users manage own properties"
   ON user_properties
   FOR ALL
   USING (auth.uid() = user_id)
