@@ -1,4 +1,5 @@
 import { useState } from "react";
+import PublicLayout from "./public/PublicLayout";
 
 const API_BASE = (import.meta.env.VITE_API_BASE || "").replace(/\/+$/, "");
 
@@ -60,22 +61,9 @@ export default function WaitlistPage() {
   }
 
   return (
-    <div className="min-h-screen bg-white text-black font-sans">
-      {/* Nav */}
-      <header className="border-b border-gray-100 px-6 py-4 flex items-center justify-between max-w-7xl mx-auto">
-        <div className="flex items-center gap-2.5">
-          <div className="w-8 h-8 rounded-lg flex items-center justify-center text-white font-bold text-sm"
-               style={{ background: "#800020" }}>K</div>
-          <span className="font-semibold text-lg text-black">Kontra</span>
-        </div>
-        <a href="/login"
-           className="text-sm font-medium px-4 py-2 rounded-lg border border-gray-200 text-gray-700 hover:border-gray-400 transition">
-          Sign in
-        </a>
-      </header>
-
+    <PublicLayout>
       {/* Hero */}
-      <section className="max-w-4xl mx-auto px-6 pt-20 pb-16 text-center">
+      <section className="max-w-4xl mx-auto px-6 pt-16 pb-16 text-center">
         <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-red-50 text-red-800 text-xs font-medium mb-6 border border-red-100">
           <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
           Early access — limited spots available
@@ -217,17 +205,6 @@ export default function WaitlistPage() {
         </div>
       </section>
 
-      {/* Footer */}
-      <footer className="border-t border-gray-100 px-6 py-8">
-        <div className="max-w-7xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="w-6 h-6 rounded flex items-center justify-center text-white font-bold text-xs"
-                 style={{ background: "#800020" }}>K</div>
-            <span className="text-sm text-gray-400">Kontra Platform · kontraplatform.com</span>
-          </div>
-          <p className="text-xs text-gray-400">© 2025 Kontra. All rights reserved.</p>
-        </div>
-      </footer>
-    </div>
+    </PublicLayout>
   );
 }
