@@ -58,12 +58,37 @@ export function useProperties() {
       headers: { Authorization: `Bearer ${token}` },
     })
       .then((data) => {
-        const props = data.properties || [];
-        setProperties(props);
-        localStorage.setItem(LS_KEY, JSON.stringify(props));
+        const apiProps = data.properties || [];
+        // Read what's currently in localStorage
+        let localProps = [];
+        try {
+          const raw = localStorage.getItem(LS_KEY);
+          localProps = raw ? JSON.parse(raw) : [];
+        } catch { /* ignore */ }
+
+        if (apiProps.length > 0) {
+          // API has data — it's the source of truth
+          setProperties(apiProps);
+          localStorage.setItem(LS_KEY, JSON.stringify(apiProps));
+        } else if (localProps.length > 0) {
+          // API returned empty but we have local data (e.g. API was down during save)
+          // Keep local data and push it up to the API so it persists
+          setProperties(localProps);
+          localProps.forEach((p) => {
+            apiFetch("/api/user-properties", {
+              method: "POST",
+              headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+              body: JSON.stringify(p),
+            }).catch(() => {/* best-effort sync */});
+          });
+        } else {
+          // Genuinely empty — new user
+          setProperties([]);
+          localStorage.setItem(LS_KEY, JSON.stringify([]));
+        }
       })
       .catch(() => {
-        // API unavailable — keep localStorage state, still works
+        // API unavailable — keep whatever is in state/localStorage, still works
       })
       .finally(() => setLoading(false));
   }, [token]);
