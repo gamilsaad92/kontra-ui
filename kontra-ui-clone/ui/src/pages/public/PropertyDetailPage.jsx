@@ -176,19 +176,52 @@ export default function PropertyDetailPage() {
   const navigate = useNavigate();
   const { addProperty } = useProperties();
   const [activeTab, setActiveTab] = useState("Overview");
-  const [watchlisted, setWatchlisted] = useState(false);
   const [claimState, setClaimState] = useState("idle"); // idle | claiming | claimed
 
   const property = PROPERTIES[id] || Object.values(PROPERTIES)[0];
   const digitalStatus = DIGITAL_STATUS_MAP[property.id] || "Unclaimed";
   const statusCfg = DIGITAL_STATUS_CFG[digitalStatus];
 
+  // Watchlist persisted to localStorage so WatchlistPage reflects it
+  const WL_KEY = "kontra_watchlist";
+  const [watchlisted, setWatchlisted] = useState(() => {
+    try {
+      const raw = localStorage.getItem(WL_KEY);
+      const list = raw ? JSON.parse(raw) : [];
+      return list.some((i) => i.id === property.id);
+    } catch { return false; }
+  });
+
   const handleWatchlist = () => {
-    if (session) {
-      setWatchlisted(!watchlisted);
-    } else {
+    if (!session) {
       navigate(`/login?redirect=/app/watchlist&action=watchlist&propertyId=${property.id}`);
+      return;
     }
+    try {
+      const raw = localStorage.getItem(WL_KEY);
+      let list = raw ? JSON.parse(raw) : [];
+      if (watchlisted) {
+        list = list.filter((i) => i.id !== property.id);
+      } else {
+        list = [
+          {
+            id: property.id,
+            name: property.name,
+            market: property.market,
+            type: property.type,
+            occupancy: property.occupancy,
+            risk: property.risk,
+            riskColor: property.riskColor,
+            score: property.score,
+            savedDate: new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
+            lastUpdate: "Added to watchlist",
+          },
+          ...list,
+        ];
+      }
+      localStorage.setItem(WL_KEY, JSON.stringify(list));
+    } catch {}
+    setWatchlisted((w) => !w);
   };
 
   const handleClaim = async () => {
