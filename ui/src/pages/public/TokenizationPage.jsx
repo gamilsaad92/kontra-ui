@@ -109,7 +109,7 @@ export default function TokenizationPage() {
                 <p className={`text-sm font-bold mb-1.5 ${step.active ? "text-gray-900" : "text-gray-400"}`}>{step.label}</p>
                 <p className={`text-xs leading-relaxed ${step.active ? "text-gray-500" : "text-gray-400"}`}>{step.desc}</p>
                 {!step.active && (
-                  <span className="inline-block mt-2 text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-400 font-medium">Coming</span>
+                  <span className="inline-block mt-2 text-xs px-2 py-0.5 rounded-full bg-amber-50 text-amber-600 font-medium border border-amber-100">In Roadmap</span>
                 )}
               </div>
               {i < HIERARCHY.length - 1 && (
@@ -229,19 +229,19 @@ export default function TokenizationPage() {
 
         {/* ── Future: Partner platforms ─────────────────────────── */}
         <div className="rounded-2xl border border-gray-200 bg-gray-50 p-8 mb-16 text-center">
-          <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-2">Future Layer · Q4 2026</p>
+          <p className="text-xs font-semibold uppercase tracking-wider text-amber-600 mb-2">Coming Q4 2026</p>
           <h2 className="text-xl font-bold text-gray-900 mb-3">Tokenization Platform Integrations</h2>
           <p className="text-sm text-gray-500 max-w-md mx-auto leading-relaxed mb-6">
-            Kontra-verified properties will be able to submit their Investment Readiness Reports directly to regulated tokenization platforms — with all five pillars already documented and structured.
+            Kontra-verified properties will submit their Investment Readiness Reports directly to regulated tokenization platforms — all five pillars already documented and structured for immediate onboarding.
           </p>
           <div className="flex flex-wrap justify-center gap-3 mb-4">
             {["Securitize", "Republic", "tZERO", "Ondo Finance"].map((name) => (
-              <span key={name} className="px-4 py-2 rounded-xl bg-white border border-gray-200 text-sm font-medium text-gray-500">
+              <span key={name} className="px-4 py-2 rounded-xl bg-white border border-gray-200 text-sm font-medium text-gray-600">
                 {name}
               </span>
             ))}
           </div>
-          <p className="text-xs text-gray-400">Direct integrations in development · Not yet live</p>
+          <p className="text-xs text-gray-400">Integration partnerships in progress · Early access for Investment-Ready properties</p>
         </div>
 
         {/* ── Bottom CTA ────────────────────────────────────────── */}
