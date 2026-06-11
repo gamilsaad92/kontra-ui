@@ -83,7 +83,7 @@ export default function PrivacyPage() {
             Back to Kontra
           </Link>
           <h1 className="text-3xl font-bold text-gray-900 mb-3">Privacy Policy</h1>
-          <p className="text-sm text-gray-500">Effective date: June 1, 2026 · Last updated: June 8, 2026</p>
+          <p className="text-sm text-gray-500">Effective date: June 9, 2026 · Last updated: June 9, 2026</p>
           <p className="text-sm text-gray-600 mt-4 leading-relaxed">
             Kontra Platform, Inc. ("Kontra", "we", "us") operates kontraplatform.com and the Kontra CRE workspace. 
             This policy explains what data we collect, how we use it, and your rights as a user.
