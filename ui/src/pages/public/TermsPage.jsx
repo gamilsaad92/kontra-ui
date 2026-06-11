@@ -69,7 +69,7 @@ export default function TermsPage() {
             Back to Kontra
           </Link>
           <h1 className="text-3xl font-bold text-gray-900 mb-3">Terms of Service</h1>
-          <p className="text-sm text-gray-500">Effective date: June 1, 2026 · Last updated: June 8, 2026</p>
+          <p className="text-sm text-gray-500">Effective date: June 9, 2026 · Last updated: June 9, 2026</p>
           <p className="text-sm text-gray-600 mt-4 leading-relaxed">
             These Terms of Service govern your use of Kontra's platform and services. Please read them carefully.
           </p>
