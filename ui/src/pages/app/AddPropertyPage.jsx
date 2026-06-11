@@ -47,10 +47,13 @@ export default function AddPropertyPage() {
   const handleSave = async () => {
     if (!validateStep()) return;
     setSaving(true);
-    const prop = addProperty(form);
-    await new Promise((r) => setTimeout(r, 600));
-    setSaving(false);
-    navigate("/app/properties", { state: { newPropertyId: prop.id } });
+    try {
+      const prop = await addProperty(form);
+      navigate("/app/properties", { state: { newPropertyId: prop?.id } });
+    } catch (err) {
+      console.error("[AddProperty] save failed:", err);
+      setSaving(false);
+    }
   };
 
   const fieldClass = (name) =>
