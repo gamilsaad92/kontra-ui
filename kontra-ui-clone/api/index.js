@@ -2417,6 +2417,56 @@ app.delete('/api/user-properties/:id', authenticate, async (req, res) => {
   }
 });
 
+// ── Stripe Guest Checkout (no auth required — for public deal room pages) ──
+app.post('/api/checkout/guest', async (req, res) => {
+  try {
+    const stripeKey = process.env.STRIPE_SECRET_KEY;
+    if (!stripeKey || stripeKey.startsWith('placeholder') || stripeKey.length < 20) {
+      return res.status(503).json({
+        error: 'Stripe not configured',
+        message: 'Payments are not yet enabled. Contact hello@kontraplatform.com to upgrade.',
+      });
+    }
+    const stripe = require('stripe')(stripeKey);
+    const { propertyId, propertyName, plan = 'deal', email } = req.body;
+    const origin = req.headers.origin || 'https://kontraplatform.com';
+
+    const PLANS = {
+      deal: { name: 'Kontra Deal Room', amount: 49900, mode: 'payment' },
+      pro_monthly: { name: 'Kontra Pro — Monthly', amount: 29900, mode: 'subscription', interval: 'month' },
+      pro_annual: { name: 'Kontra Pro — Annual', amount: 249900, mode: 'subscription', interval: 'year' },
+    };
+    const cfg = PLANS[plan] || PLANS.deal;
+    const description = propertyName ? `Deal room for ${propertyName}` : 'Per-deal access for all parties';
+
+    const lineItem = {
+      quantity: 1,
+      price_data: {
+        currency: 'usd',
+        product_data: { name: cfg.name, description },
+        unit_amount: cfg.amount,
+        ...(cfg.mode === 'subscription' ? { recurring: { interval: cfg.interval } } : {}),
+      },
+    };
+
+    const sessionParams = {
+      mode: cfg.mode,
+      payment_method_types: ['card'],
+      line_items: [lineItem],
+      success_url: `${origin}/dashboard?checkout=success&plan=${plan}${propertyId ? `&property=${propertyId}` : ''}`,
+      cancel_url: `${origin}/deal-room/${propertyId || ''}?role=${req.body.role || 'lender'}&checkout=canceled`,
+      metadata: { plan, propertyId: propertyId || '', propertyName: propertyName || '' },
+    };
+    if (email) sessionParams.customer_email = email;
+
+    const session = await stripe.checkout.sessions.create(sessionParams);
+    res.json({ url: session.url });
+  } catch (err) {
+    console.error('[checkout/guest]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ── Stripe Checkout ────────────────────────────────────────────────────────
 app.post('/api/checkout', authenticate, async (req, res) => {
   try {
