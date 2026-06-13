@@ -2428,30 +2428,52 @@ app.post('/api/checkout', authenticate, async (req, res) => {
       });
     }
     const stripe = require('stripe')(stripeKey);
-    const { billing = 'monthly' } = req.body;
+    const { propertyId, propertyName, plan = 'deal' } = req.body;
     const origin = req.headers.origin || 'https://kontraplatform.com';
-
-    const priceId = billing === 'annual'
-      ? (process.env.STRIPE_PRICE_PRO_ANNUAL || null)
-      : (process.env.STRIPE_PRICE_PRO_MONTHLY || null);
-
-    if (!priceId) {
-      return res.status(503).json({
-        error: 'Stripe price not configured',
-        message: 'Contact hello@kontraplatform.com to set up your subscription.',
-      });
-    }
-
     const userId = req.user?.id;
     const userEmail = req.user?.email;
 
+    // Plan config — inline pricing, no pre-created Stripe price IDs required
+    const PLANS = {
+      deal: {
+        name: 'Kontra Deal Room',
+        description: propertyName ? `Deal room for ${propertyName}` : 'Per-deal access for all parties',
+        amount: 49900, // $499.00
+        mode: 'payment',
+      },
+      pro_monthly: {
+        name: 'Kontra Pro — Monthly',
+        description: 'Unlimited deal rooms, full AI suite',
+        amount: 29900, // $299/mo
+        mode: 'subscription',
+      },
+      pro_annual: {
+        name: 'Kontra Pro — Annual',
+        description: 'Unlimited deal rooms, full AI suite (billed annually)',
+        amount: 249900, // $2,499/yr
+        mode: 'subscription',
+      },
+    };
+
+    const cfg = PLANS[plan] || PLANS.deal;
+
+    const lineItem = {
+      quantity: 1,
+      price_data: {
+        currency: 'usd',
+        product_data: { name: cfg.name, description: cfg.description },
+        unit_amount: cfg.amount,
+        ...(cfg.mode === 'subscription' ? { recurring: { interval: plan === 'pro_annual' ? 'year' : 'month' } } : {}),
+      },
+    };
+
     const sessionParams = {
-      mode: 'subscription',
+      mode: cfg.mode,
       payment_method_types: ['card'],
-      line_items: [{ price: priceId, quantity: 1 }],
-      success_url: `${origin}/dashboard?checkout=success&plan=professional`,
+      line_items: [lineItem],
+      success_url: `${origin}/dashboard?checkout=success&plan=${plan}${propertyId ? `&property=${propertyId}` : ''}`,
       cancel_url: `${origin}/pricing?checkout=canceled`,
-      metadata: { userId: userId || '', billing },
+      metadata: { userId: userId || '', plan, propertyId: propertyId || '' },
     };
     if (userEmail) sessionParams.customer_email = userEmail;
 
