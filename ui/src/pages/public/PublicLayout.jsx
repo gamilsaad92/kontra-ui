@@ -3,11 +3,10 @@ import { Link, useLocation } from "react-router-dom";
 import { AuthContext } from "../../lib/authContext";
 
 const PUBLIC_NAV = [
-  { label: "Properties", href: "/properties" },
-  { label: "Service Providers", href: "/service-providers" },
-  { label: "AI Tools", href: "/ai-tools" },
+  { label: "How It Works", href: "/how-it-works" },
+  { label: "AI Tools",     href: "/ai-tools" },
   { label: "Tokenization", href: "/tokenization" },
-  { label: "Pricing", href: "/pricing" },
+  { label: "Pricing",      href: "/pricing" },
 ];
 
 const APP_NAV = [
@@ -187,15 +186,15 @@ export default function PublicLayout({ children, hideFooter = false }) {
                   <span className="font-semibold text-gray-900">Kontra</span>
                 </div>
                 <p className="text-sm text-gray-500 leading-relaxed max-w-xs">
-                  The AI-powered CRE workspace that gets your properties ready for financing, compliance, and tokenization.
+                  The deal room where lenders, borrowers, inspectors, insurers, and investors work together on every CRE transaction.
                 </p>
               </div>
               {[
-                { title: "Marketplace", links: [
-                  { label: "Properties", href: "/properties" },
-                  { label: "Service Providers", href: "/service-providers" },
+                { title: "Deal Room", links: [
+                  { label: "How It Works", href: "/how-it-works" },
                   { label: "AI Tools", href: "/ai-tools" },
                   { label: "Pricing", href: "/pricing" },
+                  { label: "Service Providers", href: "/service-providers" },
                 ]},
                 { title: "Platform", links: [
                   { label: "Tokenization", href: "/tokenization" },
