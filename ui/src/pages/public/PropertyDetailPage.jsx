@@ -3,6 +3,7 @@ import { Link, useParams, useNavigate } from "react-router-dom";
 import PublicLayout from "./PublicLayout";
 import { AuthContext } from "../../lib/authContext";
 import { useProperties } from "../../hooks/useProperties";
+import InviteModal from "../../components/InviteModal";
 
 const PROPERTIES = {
   "harbor-view": {
@@ -177,6 +178,7 @@ export default function PropertyDetailPage() {
   const { addProperty } = useProperties();
   const [activeTab, setActiveTab] = useState("Overview");
   const [claimState, setClaimState] = useState("idle"); // idle | claiming | claimed
+  const [inviteOpen, setInviteOpen] = useState(false);
 
   const property = PROPERTIES[id] || Object.values(PROPERTIES)[0];
   const digitalStatus = DIGITAL_STATUS_MAP[property.id] || "Unclaimed";
@@ -301,6 +303,10 @@ export default function PropertyDetailPage() {
                     watchlisted ? "bg-yellow-400 text-yellow-900 border-yellow-400" : "bg-white/10 text-white border-white/30 hover:bg-white/20"
                   }`}>
                   {watchlisted ? "⭐ Saved" : "☆ Watchlist"}
+                </button>
+                <button onClick={() => setInviteOpen(true)}
+                  className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold bg-white/10 text-white border border-white/30 hover:bg-white/20 transition">
+                  🔗 Invite Parties
                 </button>
                 <button onClick={handleClaim} disabled={claimState === "claiming"}
                   className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-60"
@@ -524,6 +530,9 @@ export default function PropertyDetailPage() {
           </div>
         </div>
       </div>
+      {inviteOpen && (
+        <InviteModal property={property} onClose={() => setInviteOpen(false)} />
+      )}
     </PublicLayout>
   );
 }
