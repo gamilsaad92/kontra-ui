@@ -25,6 +25,7 @@ import AiToolsPage from "./pages/public/AiToolsPage";
 import PricingPage from "./pages/public/PricingPage";
 import TokenizationPage from "./pages/public/TokenizationPage";
 import HowItWorksPage from "./pages/public/HowItWorksPage";
+import DealRoomPage from "./pages/public/DealRoomPage";
 import PrivacyPage from "./pages/public/PrivacyPage";
 import TermsPage from "./pages/public/TermsPage";
 
@@ -73,6 +74,7 @@ function AuthedApp() {
         <Route path="/pricing" element={<PricingPage />} />
         <Route path="/tokenization" element={<TokenizationPage />} />
         <Route path="/how-it-works" element={<HowItWorksPage />} />
+        <Route path="/deal-room/:propertyId" element={<DealRoomPage />} />
         <Route path="/privacy" element={<PrivacyPage />} />
         <Route path="/terms" element={<TermsPage />} />
         <Route path="/waitlist" element={<WaitlistPage />} />
