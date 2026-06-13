@@ -2,6 +2,8 @@ import React, { useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import PublicLayout from "./PublicLayout";
 
+const API_BASE = (import.meta.env.VITE_API_BASE || "").replace(/\/+$/, "");
+
 const PROPERTIES = {
   "harbor-view": {
     id: "harbor-view", name: "Harbor View Apartments", type: "Multifamily", market: "Miami, FL",
@@ -322,6 +324,33 @@ export default function DealRoomPage() {
   const [searchParams] = useSearchParams();
   const role = searchParams.get("role") || "lender";
   const from = searchParams.get("from") || "";
+  const [checkoutLoading, setCheckoutLoading] = useState(false);
+  const [checkoutError, setCheckoutError] = useState("");
+
+  async function handleActivate() {
+    setCheckoutLoading(true);
+    setCheckoutError("");
+    try {
+      const res = await fetch(`${API_BASE}/api/checkout`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ plan: "deal", propertyId, propertyName: property?.name }),
+      });
+      const data = await res.json();
+      if (data.url) {
+        window.location.href = data.url;
+      } else if (data.error === "Stripe not configured") {
+        window.location.href = `mailto:hello@kontraplatform.com?subject=Activate Deal Room — ${property?.name}`;
+      } else {
+        setCheckoutError(data.message || "Something went wrong. Please try again.");
+      }
+    } catch {
+      setCheckoutError("Network error — please try again.");
+    } finally {
+      setCheckoutLoading(false);
+    }
+  }
 
   const property = PROPERTIES[propertyId];
   const roleConfig = ROLE_CONFIG[role] || ROLE_CONFIG.lender;
@@ -418,32 +447,65 @@ export default function DealRoomPage() {
           })}
         </div>
 
-        {/* Join CTA */}
-        <div className="rounded-2xl text-white px-8 py-10 text-center"
-          style={{ background: `linear-gradient(135deg, ${roleConfig.color} 0%, ${roleConfig.color}cc 100%)` }}>
-          <p className="text-xs font-semibold uppercase tracking-wider mb-2 text-white/70">
-            Ready to join this deal?
-          </p>
-          <h3 className="text-xl font-bold mb-2">Sign in to take action</h3>
-          <p className="text-sm text-white/80 mb-6 max-w-md mx-auto leading-relaxed">
-            {role === "inspector"
-              ? "Submit your inspection report, upload findings, and communicate directly with the lender — all from your account."
-              : role === "insurer"
-              ? "Upload the insurance certificate, review AI-flagged coverage gaps, and track expiration dates from your account."
-              : "Access the full document package, download reports, and communicate with all parties from your account."}
-          </p>
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
-            <Link to={`/login?redirect=/deal-room/${propertyId}?role=${role}`}
-              className="px-6 py-2.5 rounded-xl text-sm font-bold bg-white transition hover:opacity-90"
+        {/* Activate Deal Room CTA */}
+        <div className="rounded-2xl overflow-hidden border border-gray-200">
+          {/* Top — payment */}
+          <div className="px-8 py-8 text-center"
+            style={{ background: `linear-gradient(135deg, ${roleConfig.color} 0%, ${roleConfig.color}dd 100%)` }}>
+            <p className="text-xs font-semibold uppercase tracking-wider text-white/60 mb-2">One-time deal fee</p>
+            <div className="text-4xl font-black text-white mb-1">$499</div>
+            <p className="text-sm text-white/80 mb-5">Activates the full deal room for all parties on this property</p>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 max-w-xl mx-auto mb-6">
+              {[
+                "All-party deal room",
+                "AI document analysis",
+                "Role-scoped access",
+                "Compliance tracking",
+              ].map((f) => (
+                <div key={f} className="bg-white/10 rounded-xl px-3 py-2 text-xs text-white/90 font-medium">{f}</div>
+              ))}
+            </div>
+            <button
+              onClick={handleActivate}
+              disabled={checkoutLoading}
+              className="inline-flex items-center gap-2 px-8 py-3 rounded-xl text-sm font-bold bg-white transition hover:opacity-90 disabled:opacity-60"
               style={{ color: roleConfig.color }}>
-              Sign In →
-            </Link>
-            <Link to={`/login?redirect=/deal-room/${propertyId}?role=${role}`}
-              className="px-6 py-2.5 rounded-xl text-sm font-bold border border-white/30 text-white hover:bg-white/10 transition">
-              Create Free Account
-            </Link>
+              {checkoutLoading ? (
+                <>
+                  <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+                  </svg>
+                  Preparing checkout…
+                </>
+              ) : (
+                "Activate Deal Room — $499 →"
+              )}
+            </button>
+            {checkoutError && (
+              <p className="text-xs text-red-200 mt-3">{checkoutError}</p>
+            )}
+            <p className="text-xs text-white/40 mt-3">Secure checkout via Stripe · One-time fee · No subscription</p>
           </div>
-          <p className="text-xs text-white/50 mt-4">Free accounts available · No credit card required</p>
+
+          {/* Bottom — free account option */}
+          <div className="bg-gray-50 px-8 py-5 flex flex-col sm:flex-row items-center justify-between gap-4 border-t border-gray-100">
+            <div>
+              <p className="text-sm font-semibold text-gray-800">Already have access?</p>
+              <p className="text-xs text-gray-400">Sign in to view your full deal room and take action</p>
+            </div>
+            <div className="flex items-center gap-3 shrink-0">
+              <Link to={`/login?redirect=/deal-room/${propertyId}?role=${role}`}
+                className="px-5 py-2 rounded-xl text-sm font-semibold text-white transition hover:opacity-90"
+                style={{ background: roleConfig.color }}>
+                Sign In →
+              </Link>
+              <Link to={`/login?redirect=/deal-room/${propertyId}?role=${role}`}
+                className="px-5 py-2 rounded-xl text-sm font-semibold border border-gray-200 text-gray-600 hover:bg-gray-100 transition">
+                Create Account
+              </Link>
+            </div>
+          </div>
         </div>
       </div>
     </PublicLayout>
