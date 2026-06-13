@@ -22,10 +22,17 @@ const { forecastProject } = require('./construction');
 const { isFeatureEnabled } = require('./featureFlags');
 const { scanForCompliance, gatherEvidence } = require('./compliance');
 require('dotenv').config();
-["SUPABASE_URL","SUPABASE_SERVICE_ROLE_KEY","OPENAI_API_KEY","SENTRY_DSN","STRIPE_SECRET_KEY","ENCRYPTION_KEY","PII_ENCRYPTION_KEY"].forEach(k => {
+// Hard required — platform cannot function without these
+["SUPABASE_URL","SUPABASE_SERVICE_ROLE_KEY","OPENAI_API_KEY"].forEach(k => {
   if (!process.env[k]) {
-    console.error(`Missing ${k}`);
+    console.error(`[FATAL] Missing required env var: ${k}`);
     process.exit(1);
+  }
+});
+// Optional — warn but stay running; features degrade gracefully
+["SENTRY_DSN","STRIPE_SECRET_KEY","ENCRYPTION_KEY","PII_ENCRYPTION_KEY"].forEach(k => {
+  if (!process.env[k]) {
+    console.warn(`[WARN] Optional env var not set: ${k} — related features disabled`);
   }
 });
 

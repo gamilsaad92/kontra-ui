@@ -7,35 +7,38 @@ const API_BASE = (import.meta.env.VITE_API_BASE || "").replace(/\/+$/, "");
 
 const PLANS = [
   {
-    id: "starter",
-    name: "Starter",
-    price: { monthly: 0, annual: 0 },
-    desc: "For individuals exploring Kontra.",
-    color: "#6b7280",
+    id: "deal",
+    name: "Per Deal",
+    price: { monthly: 499, annual: 499 },
+    priceNote: "per deal",
+    desc: "For a single transaction. Pay once, close the deal.",
+    color: "#065f46",
     features: [
-      "Up to 3 properties",
-      "Public property search",
-      "AI Document Review (5/mo)",
-      "Basic compliance tracking",
-      "Email support",
+      "1 property deal room",
+      "Unlimited party invites",
+      "Full AI document suite",
+      "Investment Readiness Report",
+      "All party portals included",
+      "90-day access after close",
     ],
-    cta: "Get Started Free",
-    ctaAction: "signup",
+    cta: "Start a Deal Room",
+    ctaAction: "contact",
     highlight: false,
   },
   {
     id: "professional",
     name: "Professional",
     price: { monthly: 199, annual: 159 },
-    desc: "For property owners and asset managers.",
+    priceNote: "/mo",
+    desc: "For owners and managers with ongoing deals.",
     color: "#800020",
     features: [
-      "Up to 25 properties",
+      "Up to 25 active deal rooms",
       "Full AI document suite",
       "Inspection management",
-      "Service provider marketplace",
+      "Service provider network",
       "Compliance automation",
-      "Watchlist & alerts",
+      "Watchlist & portfolio alerts",
       "Priority support",
     ],
     cta: "Start 14-Day Trial",
@@ -46,10 +49,11 @@ const PLANS = [
     id: "enterprise",
     name: "Enterprise",
     price: { monthly: null, annual: null },
-    desc: "For lenders, servicers, and portfolios.",
+    priceNote: null,
+    desc: "For lenders, servicers, and institutional portfolios.",
     color: "#1e40af",
     features: [
-      "Unlimited properties",
+      "Unlimited deal rooms",
       "All Professional features",
       "Lender & Servicer portals",
       "Investor portal",
@@ -150,10 +154,15 @@ export default function PricingPage() {
                 ) : (
                   <div>
                     <span className="text-3xl font-bold text-gray-900">
-                      ${annual ? plan.price.annual : plan.price.monthly}
+                      ${plan.id === "deal" ? plan.price.monthly : (annual ? plan.price.annual : plan.price.monthly)}
                     </span>
-                    <span className="text-gray-400 text-sm">/mo</span>
-                    {annual && <p className="text-xs text-gray-400 mt-0.5">Billed annually · Save ${(plan.price.monthly - plan.price.annual) * 12}/yr</p>}
+                    <span className="text-gray-400 text-sm">{plan.priceNote}</span>
+                    {annual && plan.id !== "deal" && plan.price.monthly !== plan.price.annual && (
+                      <p className="text-xs text-gray-400 mt-0.5">Billed annually · Save ${(plan.price.monthly - plan.price.annual) * 12}/yr</p>
+                    )}
+                    {plan.id === "deal" && (
+                      <p className="text-xs text-gray-400 mt-0.5">One-time · No subscription required</p>
+                    )}
                   </div>
                 )}
               </div>
