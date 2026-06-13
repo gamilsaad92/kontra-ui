@@ -16,12 +16,14 @@ function toOrgUuidStr(orgId) {
 function requireOrgContext(req, res, next) {
   const path = (req.originalUrl || '').split('?')[0];
 
-  // Always skip health, dev, and public AI routes
+  // Always skip health, dev, public AI, and guest checkout routes
   if (
     path === '/api/health' ||
     path.startsWith('/api/dev/') ||
     path.startsWith('/api/auth/') ||
-    path.startsWith('/api/copilot/')
+    path.startsWith('/api/copilot/') ||
+    path.startsWith('/api/checkout/guest') ||
+    path === '/api/waitlist'
   ) {
     return next();
   }
