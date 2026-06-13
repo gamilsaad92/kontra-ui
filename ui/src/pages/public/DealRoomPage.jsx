@@ -331,11 +331,10 @@ export default function DealRoomPage() {
     setCheckoutLoading(true);
     setCheckoutError("");
     try {
-      const res = await fetch(`${API_BASE}/api/checkout`, {
+      const res = await fetch(`${API_BASE}/api/checkout/guest`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ plan: "deal", propertyId, propertyName: property?.name }),
+        body: JSON.stringify({ plan: "deal", propertyId, propertyName: property?.name, role }),
       });
       const data = await res.json();
       if (data.url) {
