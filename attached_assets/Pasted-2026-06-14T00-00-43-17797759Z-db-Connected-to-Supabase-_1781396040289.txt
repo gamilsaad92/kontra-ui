@@ -1,0 +1,50 @@
+2026-06-14T00:00:43.17797759Z [db] Connected to Supabase: https://jfhojgtnmcfqretrrxam.supabase.co | key_len: 41
+2026-06-14T00:00:43.878268026Z REDIS_URL not set, using in-memory cache only
+2026-06-14T00:00:51.169218268Z Error: Cannot find module './routers/investor'
+2026-06-14T00:00:51.169238558Z Require stack:
+2026-06-14T00:00:51.169242198Z - /opt/render/project/src/api/index.js
+2026-06-14T00:00:51.169245588Z     at Function._resolveFilename (node:internal/modules/cjs/loader:1225:15)
+2026-06-14T00:00:51.169248868Z     at Function._load (node:internal/modules/cjs/loader:1055:27)
+2026-06-14T00:00:51.169251539Z     at TracingChannel.traceSync (node:diagnostics_channel:322:14)
+2026-06-14T00:00:51.169254119Z     at wrapModuleLoad (node:internal/modules/cjs/loader:220:24)
+2026-06-14T00:00:51.169256428Z     at Module.<anonymous> (node:internal/modules/cjs/loader:1311:12)
+2026-06-14T00:00:51.169259248Z     at Module.patchedRequire (/opt/render/project/src/api/node_modules/require-in-the-middle/index.js:233:34)
+2026-06-14T00:00:51.169263669Z     at Hook._require.Module.require (/opt/render/project/src/api/node_modules/require-in-the-middle/index.js:181:27)
+2026-06-14T00:00:51.169266419Z     at require (node:internal/modules/helpers:136:16)
+2026-06-14T00:00:51.169273419Z     at Object.<anonymous> (/opt/render/project/src/api/index.js:222:24)
+2026-06-14T00:00:51.169276159Z     at Module._compile (node:internal/modules/cjs/loader:1554:14) {
+2026-06-14T00:00:51.169279489Z   code: 'MODULE_NOT_FOUND',
+2026-06-14T00:00:51.169282039Z   requireStack: [ '/opt/render/project/src/api/index.js' ]
+2026-06-14T00:00:51.169284489Z }
+2026-06-14T00:00:54.692925467Z ==> Exited with status 1
+2026-06-14T00:00:54.695030959Z ==> Common ways to troubleshoot your deploy: https://render.com/docs/troubleshooting-deploys
+2026-06-14T00:01:00.450760822Z ==> Running 'node index.js'
+2026-06-14T00:09:31.026941269Z [REQ] GET /api/health
+2026-06-14T00:09:37.300623666Z ==> Deploying...
+2026-06-14T00:09:51.406771705Z [REQ] GET /api/health
+2026-06-14T00:09:55.160228634Z ==> Running 'node index.js'
+2026-06-14T00:09:59.870829604Z [db] Connected to Supabase: https://jfhojgtnmcfqretrrxam.supabase.co | key_len: 41
+2026-06-14T00:10:00.566151106Z REDIS_URL not set, using in-memory cache only
+2026-06-14T00:10:08.464334756Z Error: Cannot find module './routers/investor'
+2026-06-14T00:10:08.464353457Z Require stack:
+2026-06-14T00:10:08.464356097Z - /opt/render/project/src/api/index.js
+2026-06-14T00:10:08.464358987Z     at Function._resolveFilename (node:internal/modules/cjs/loader:1225:15)
+2026-06-14T00:10:08.464361537Z     at Function._load (node:internal/modules/cjs/loader:1055:27)
+2026-06-14T00:10:08.464363527Z     at TracingChannel.traceSync (node:diagnostics_channel:322:14)
+2026-06-14T00:10:08.464365537Z     at wrapModuleLoad (node:internal/modules/cjs/loader:220:24)
+2026-06-14T00:10:08.464367587Z     at Module.<anonymous> (node:internal/modules/cjs/loader:1311:12)
+2026-06-14T00:10:08.464370477Z     at Module.patchedRequire (/opt/render/project/src/api/node_modules/require-in-the-middle/index.js:233:34)
+2026-06-14T00:10:08.464374057Z     at Hook._require.Module.require (/opt/render/project/src/api/node_modules/require-in-the-middle/index.js:181:27)
+2026-06-14T00:10:08.464376077Z     at require (node:internal/modules/helpers:136:16)
+2026-06-14T00:10:08.464378488Z     at Object.<anonymous> (/opt/render/project/src/api/index.js:222:24)
+2026-06-14T00:10:08.464381608Z     at Module._compile (node:internal/modules/cjs/loader:1554:14) {
+2026-06-14T00:10:08.464385368Z   code: 'MODULE_NOT_FOUND',
+2026-06-14T00:10:08.464388488Z   requireStack: [ '/opt/render/project/src/api/index.js' ]
+2026-06-14T00:10:08.464391688Z }
+2026-06-14T00:10:10.740732949Z ==> Exited with status 1
+2026-06-14T00:10:10.746547591Z ==> Common ways to troubleshoot your deploy: https://render.com/docs/troubleshooting-deploys
+2026-06-14T00:10:11.623463783Z [REQ] GET /api/health
+2026-06-14T00:10:16.15182696Z ==> Running 'node index.js'
+2026-06-14T00:10:31.84413826Z [REQ] GET /api/health
+2026-06-14T00:10:52.060222248Z [REQ] GET /api/health
+2026-06-14T00:11:14.787599597Z [REQ] GET /api/health
