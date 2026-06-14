@@ -596,7 +596,7 @@ app.use(
 app.use(auditLogger);
 app.use(rateLimit);
 app.get('/api/health', (_req, res) => {
-  res.json({ ok: true });
+  res.json({ ok: true, version: 'v2-checkout-fix', deployed: new Date().toISOString() });
 });
 app.use('/api/auth', authBootstrapRouter);
 app.use('/api/orgs', orgDiscoveryRouter);
