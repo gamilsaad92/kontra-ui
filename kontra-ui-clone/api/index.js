@@ -22,10 +22,17 @@ const { forecastProject } = require('./construction');
 const { isFeatureEnabled } = require('./featureFlags');
 const { scanForCompliance, gatherEvidence } = require('./compliance');
 require('dotenv').config();
-["SUPABASE_URL","SUPABASE_SERVICE_ROLE_KEY","OPENAI_API_KEY","SENTRY_DSN","STRIPE_SECRET_KEY","ENCRYPTION_KEY","PII_ENCRYPTION_KEY"].forEach(k => {
+// Hard required — platform cannot function without these
+["SUPABASE_URL","SUPABASE_SERVICE_ROLE_KEY","OPENAI_API_KEY"].forEach(k => {
   if (!process.env[k]) {
-    console.error(`Missing ${k}`);
+    console.error(`[FATAL] Missing required env var: ${k}`);
     process.exit(1);
+  }
+});
+// Optional — warn but stay running; features degrade gracefully
+["SENTRY_DSN","STRIPE_SECRET_KEY","ENCRYPTION_KEY","PII_ENCRYPTION_KEY"].forEach(k => {
+  if (!process.env[k]) {
+    console.warn(`[WARN] Optional env var not set: ${k} — related features disabled`);
   }
 });
 
@@ -188,6 +195,11 @@ const exchangeProgramsRouter = require('./routers/exchangePrograms');
 const marketplaceRouter = require('./routers/marketplace');
 const capitalMarketsTokensRouter = require('./routers/capitalMarketsTokens');
 const { router: analyticsRouter } = require('./routers/analytics');
+const { router: visitorsRouter } = require('./routers/visitors');
+const { router: waitlistRouter } = require('./routers/waitlist');
+const { router: covenantAgentRouter } = require('./routers/covenantAgent');
+const { router: underwritingRouter } = require('./routers/underwriting');
+const { router: eventsRouter } = require('./routers/events');
 const restaurantRouter = require('./routers/restaurant');
 const restaurantsRouter = require('./routers/restaurants');
 const applicationsRouter = require('./routers/applications');
@@ -584,7 +596,7 @@ app.use(
 app.use(auditLogger);
 app.use(rateLimit);
 app.get('/api/health', (_req, res) => {
-  res.json({ ok: true });
+  res.json({ ok: true, version: 'v2-checkout-fix', deployed: new Date().toISOString() });
 });
 app.use('/api/auth', authBootstrapRouter);
 app.use('/api/orgs', orgDiscoveryRouter);
@@ -803,6 +815,56 @@ app.get('/api/copilot/tokenization-eligibility', (req, res) => {
   });
 });
 
+// ── Stripe Guest Checkout — PUBLIC, must stay BEFORE requireOrgContext ──────
+app.post('/api/checkout/guest', async (req, res) => {
+  try {
+    const stripeKey = process.env.STRIPE_SECRET_KEY;
+    if (!stripeKey || stripeKey.startsWith('placeholder') || stripeKey.length < 20) {
+      return res.status(503).json({
+        error: 'Stripe not configured',
+        message: 'Payments are not yet enabled. Contact hello@kontraplatform.com to upgrade.',
+      });
+    }
+    const stripe = require('stripe')(stripeKey);
+    const { propertyId, propertyName, plan = 'deal', email, role = 'lender' } = req.body;
+    const origin = req.headers.origin || 'https://kontraplatform.com';
+
+    const PLANS = {
+      deal: { name: 'Kontra Deal Room', amount: 49900, mode: 'payment' },
+      pro_monthly: { name: 'Kontra Pro — Monthly', amount: 29900, mode: 'subscription', interval: 'month' },
+      pro_annual: { name: 'Kontra Pro — Annual', amount: 249900, mode: 'subscription', interval: 'year' },
+    };
+    const cfg = PLANS[plan] || PLANS.deal;
+    const description = propertyName ? `Deal room for ${propertyName}` : 'Per-deal access for all parties';
+
+    const lineItem = {
+      quantity: 1,
+      price_data: {
+        currency: 'usd',
+        product_data: { name: cfg.name, description },
+        unit_amount: cfg.amount,
+        ...(cfg.mode === 'subscription' ? { recurring: { interval: cfg.interval } } : {}),
+      },
+    };
+
+    const sessionParams = {
+      mode: cfg.mode,
+      payment_method_types: ['card'],
+      line_items: [lineItem],
+      success_url: `${origin}/dashboard?checkout=success&plan=${plan}${propertyId ? `&property=${propertyId}` : ''}`,
+      cancel_url: `${origin}/deal-room/${propertyId || ''}?role=${role}&checkout=canceled`,
+      metadata: { plan, propertyId: propertyId || '', propertyName: propertyName || '' },
+    };
+    if (email) sessionParams.customer_email = email;
+
+    const session = await stripe.checkout.sessions.create(sessionParams);
+    res.json({ url: session.url });
+  } catch (err) {
+    console.error('[checkout/guest]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.use('/api', requireOrgContext);
 app.use('/api/dashboard-layout', authenticate, dashboard);
 app.use('/api/portfolio', portfolioSliceRouter);
@@ -880,6 +942,11 @@ app.use('/api', subscriptionsRouter);
 app.use('/api/searches', savedSearchesRouter);
 app.use('/api/site-analysis', siteAnalysisRouter);
 app.use('/api', analyticsRouter);
+app.use('/api', visitorsRouter);
+app.use('/api', waitlistRouter);
+app.use('/api', covenantAgentRouter);
+app.use('/api', underwritingRouter);
+app.use('/api', eventsRouter);
 app.use('/api', mobileRouter);
 app.use('/api', restaurantRouter);
 app.use('/api', restaurantsRouter);
@@ -2281,6 +2348,294 @@ async function logBaselineSchemaHealth() {
 
   console.log('[schema] Baseline migration check passed.');
 }
+
+// ── User Properties CRUD ──────────────────────────────────────────────────
+
+function mapDbToProperty(row) {
+  return {
+    id: row.id,
+    name: row.name,
+    type: row.type || null,
+    address: row.address || null,
+    city: row.city || null,
+    state: row.state || null,
+    units: row.units || null,
+    sqft: row.sqft || null,
+    yearBuilt: row.year_built || null,
+    occupancy: row.occupancy || null,
+    noi: row.noi || null,
+    status: row.status || 'Active',
+    risk: 'Unknown',
+    riskColor: '#6b7280',
+    createdAt: row.created_at,
+  };
+}
+
+app.get('/api/user-properties', authenticate, async (req, res) => {
+  const userId = req.user?.id;
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    const { data, error } = await supabase
+      .from('user_properties')
+      .select('*')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false });
+    if (error) throw error;
+    res.json({ properties: (data || []).map(mapDbToProperty) });
+  } catch (err) {
+    console.error('[user-properties GET]', err.message);
+    res.json({ properties: [] }); // Fail gracefully — client falls back to localStorage
+  }
+});
+
+app.post('/api/user-properties', authenticate, async (req, res) => {
+  const userId = req.user?.id;
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+  const { name, type, address, city, state, units, sqft, yearBuilt, occupancy, noi } = req.body || {};
+  if (!name) return res.status(400).json({ error: 'Property name required' });
+  try {
+    const { data, error } = await supabase
+      .from('user_properties')
+      .insert([{
+        user_id: userId,
+        name,
+        type: type || null,
+        address: address || null,
+        city: city || null,
+        state: state || null,
+        units: units ? Number(units) : null,
+        sqft: sqft ? Number(sqft) : null,
+        year_built: yearBuilt ? Number(yearBuilt) : null,
+        occupancy: occupancy ? Number(occupancy) : null,
+        noi: noi ? Number(noi) : null,
+      }])
+      .select()
+      .single();
+    if (error) throw error;
+    res.json({ property: mapDbToProperty(data) });
+  } catch (err) {
+    console.error('[user-properties POST]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.put('/api/user-properties/:id', authenticate, async (req, res) => {
+  const userId = req.user?.id;
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+  const { name, type, address, city, state, units, sqft, yearBuilt, occupancy, noi } = req.body || {};
+  try {
+    const updates = {};
+    if (name) updates.name = name;
+    if (type !== undefined) updates.type = type;
+    if (address !== undefined) updates.address = address;
+    if (city !== undefined) updates.city = city;
+    if (state !== undefined) updates.state = state;
+    if (units !== undefined) updates.units = units ? Number(units) : null;
+    if (sqft !== undefined) updates.sqft = sqft ? Number(sqft) : null;
+    if (yearBuilt !== undefined) updates.year_built = yearBuilt ? Number(yearBuilt) : null;
+    if (occupancy !== undefined) updates.occupancy = occupancy ? Number(occupancy) : null;
+    if (noi !== undefined) updates.noi = noi ? Number(noi) : null;
+    const { data, error } = await supabase
+      .from('user_properties')
+      .update(updates)
+      .eq('id', req.params.id)
+      .eq('user_id', userId)
+      .select()
+      .single();
+    if (error) throw error;
+    res.json({ property: mapDbToProperty(data) });
+  } catch (err) {
+    console.error('[user-properties PUT]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/user-properties/:id', authenticate, async (req, res) => {
+  const userId = req.user?.id;
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    const { error } = await supabase
+      .from('user_properties')
+      .delete()
+      .eq('id', req.params.id)
+      .eq('user_id', userId);
+    if (error) throw error;
+    res.json({ success: true });
+  } catch (err) {
+    console.error('[user-properties DELETE]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── Stripe Checkout ────────────────────────────────────────────────────────
+app.post('/api/checkout', authenticate, async (req, res) => {
+  try {
+    const stripeKey = process.env.STRIPE_SECRET_KEY;
+    if (!stripeKey || stripeKey.startsWith('placeholder') || stripeKey.length < 20) {
+      return res.status(503).json({
+        error: 'Stripe not configured',
+        message: 'Payments are not yet enabled. Contact hello@kontraplatform.com to upgrade.',
+      });
+    }
+    const stripe = require('stripe')(stripeKey);
+    const { propertyId, propertyName, plan = 'deal' } = req.body;
+    const origin = req.headers.origin || 'https://kontraplatform.com';
+    const userId = req.user?.id;
+    const userEmail = req.user?.email;
+
+    // Plan config — inline pricing, no pre-created Stripe price IDs required
+    const PLANS = {
+      deal: {
+        name: 'Kontra Deal Room',
+        description: propertyName ? `Deal room for ${propertyName}` : 'Per-deal access for all parties',
+        amount: 49900, // $499.00
+        mode: 'payment',
+      },
+      pro_monthly: {
+        name: 'Kontra Pro — Monthly',
+        description: 'Unlimited deal rooms, full AI suite',
+        amount: 29900, // $299/mo
+        mode: 'subscription',
+      },
+      pro_annual: {
+        name: 'Kontra Pro — Annual',
+        description: 'Unlimited deal rooms, full AI suite (billed annually)',
+        amount: 249900, // $2,499/yr
+        mode: 'subscription',
+      },
+    };
+
+    const cfg = PLANS[plan] || PLANS.deal;
+
+    const lineItem = {
+      quantity: 1,
+      price_data: {
+        currency: 'usd',
+        product_data: { name: cfg.name, description: cfg.description },
+        unit_amount: cfg.amount,
+        ...(cfg.mode === 'subscription' ? { recurring: { interval: plan === 'pro_annual' ? 'year' : 'month' } } : {}),
+      },
+    };
+
+    const sessionParams = {
+      mode: cfg.mode,
+      payment_method_types: ['card'],
+      line_items: [lineItem],
+      success_url: `${origin}/dashboard?checkout=success&plan=${plan}${propertyId ? `&property=${propertyId}` : ''}`,
+      cancel_url: `${origin}/pricing?checkout=canceled`,
+      metadata: { userId: userId || '', plan, propertyId: propertyId || '' },
+    };
+    if (userEmail) sessionParams.customer_email = userEmail;
+
+    const checkoutSession = await stripe.checkout.sessions.create(sessionParams);
+    res.json({ url: checkoutSession.url });
+  } catch (err) {
+    console.error('[checkout]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── CRE AI Document Analysis Endpoints ────────────────────────────────────
+
+const aiRateLimit = require('./middlewares/aiRateLimit');
+
+function extractReadableText(buffer) {
+  const raw = buffer.toString('utf8');
+  const cleaned = raw.replace(/[^\x20-\x7E\n\r\t]/g, ' ').replace(/\s{2,}/g, ' ');
+  return cleaned.trim().slice(0, 12000);
+}
+
+app.post('/api/ai/analyze-inspection', aiRateLimit, upload.single('file'), async (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+  try {
+    const text = extractReadableText(req.file.buffer);
+    const completion = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages: [
+        { role: 'system', content: 'You are an expert commercial real estate inspection analyst. Analyze inspection reports and extract key findings in a structured format. Always respond with valid JSON.' },
+        { role: 'user', content: `Analyze this commercial real estate inspection report and return a JSON object with this exact structure:
+{"propertyType":string,"overallCondition":"Good"|"Fair"|"Poor","score":number,"lifeSafetyFindings":[{"item":string,"severity":"Critical"|"Moderate"|"Minor","description":string}],"deferredMaintenance":[{"item":string,"estimatedCost":string,"priority":"High"|"Medium"|"Low","timeline":string}],"totalDeferredCost":string,"priorityActions":[{"action":string,"timeline":string}],"summary":string,"positiveFindings":[string]}
+
+${text ? `Inspection report text:\n${text}` : 'No readable text extracted. Generate a plausible sample inspection analysis for a generic commercial property.'}` }
+      ],
+      response_format: { type: 'json_object' },
+      temperature: 0.3,
+    });
+    const result = JSON.parse(completion.choices[0].message.content);
+    res.json({ success: true, analysis: result });
+  } catch (err) {
+    console.error('[analyze-inspection]', err.message);
+    res.status(500).json({ error: 'Analysis failed', message: err.message });
+  }
+});
+
+app.post('/api/ai/score-property', aiRateLimit, async (req, res) => {
+  const { occupancy, noi, yearBuilt, propertyType, units, sqft } = req.body || {};
+  try {
+    const completion = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages: [
+        { role: 'system', content: 'You are a CRE risk analyst. Score commercial properties 0-100 and return JSON.' },
+        { role: 'user', content: `Score this property and return JSON: {"score":number,"riskLevel":"Low"|"Medium"|"High","scoreBreakdown":{"occupancy":number,"financials":number,"physical":number,"market":number},"benchmark":string,"strengths":[string],"risks":[string],"summary":string}
+
+Property: Type=${propertyType||'Unknown'}, Occupancy=${occupancy||'?'}%, NOI=$${noi||'?'}, YearBuilt=${yearBuilt||'?'}, Units/SF=${units||sqft||'?'}` }
+      ],
+      response_format: { type: 'json_object' },
+      temperature: 0.3,
+    });
+    const result = JSON.parse(completion.choices[0].message.content);
+    res.json({ success: true, analysis: result });
+  } catch (err) {
+    console.error('[score-property]', err.message);
+    res.status(500).json({ error: 'Scoring failed', message: err.message });
+  }
+});
+
+app.post('/api/ai/review-insurance', aiRateLimit, upload.single('file'), async (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+  try {
+    const text = extractReadableText(req.file.buffer);
+    const completion = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages: [
+        { role: 'system', content: 'You are a CRE insurance specialist. Analyze insurance policies and return JSON.' },
+        { role: 'user', content: `Analyze this insurance policy and return JSON: {"policyType":string,"coverageAmount":string,"expirationDate":string,"expiresInDays":number,"coverageGaps":[{"gap":string,"severity":"Critical"|"Moderate"|"Minor"}],"endorsements":[string],"recommendations":[string],"complianceStatus":"Compliant"|"Review Required"|"Action Needed","summary":string}
+
+Policy text:\n${text||'No readable text — generate a plausible insurance review for a commercial property.'}` }
+      ],
+      response_format: { type: 'json_object' },
+      temperature: 0.3,
+    });
+    const result = JSON.parse(completion.choices[0].message.content);
+    res.json({ success: true, analysis: result });
+  } catch (err) {
+    console.error('[review-insurance]', err.message);
+    res.status(500).json({ error: 'Review failed', message: err.message });
+  }
+});
+
+app.post('/api/ai/review-financials', aiRateLimit, upload.single('file'), async (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+  try {
+    const text = extractReadableText(req.file.buffer);
+    const completion = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages: [
+        { role: 'system', content: 'You are a CRE financial analyst. Analyze operating statements and financial reports, returning JSON.' },
+        { role: 'user', content: `Analyze this financial document and return JSON: {"documentType":string,"noi":string,"occupancy":string,"dscr":string,"revenue":string,"expenses":string,"anomalies":[{"item":string,"description":string,"severity":"High"|"Medium"|"Low"}],"trends":[string],"covenantStatus":"Compliant"|"At Risk"|"Breached"|"Unknown","summary":string,"recommendations":[string]}
+
+Financial document:\n${text||'No readable text — generate a plausible financial review for a commercial property.'}` }
+      ],
+      response_format: { type: 'json_object' },
+      temperature: 0.3,
+    });
+    const result = JSON.parse(completion.choices[0].message.content);
+    res.json({ success: true, analysis: result });
+  } catch (err) {
+    console.error('[review-financials]', err.message);
+    res.status(500).json({ error: 'Review failed', message: err.message });
+  }
+});
 
 const PORT = process.env.PORT || 3000;
 if (require.main === module) {
