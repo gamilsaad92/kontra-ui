@@ -26,6 +26,7 @@ import PricingPage from "./pages/public/PricingPage";
 import TokenizationPage from "./pages/public/TokenizationPage";
 import HowItWorksPage from "./pages/public/HowItWorksPage";
 import DealRoomPage from "./pages/public/DealRoomPage";
+import CreateDealRoomPage from "./pages/public/CreateDealRoomPage";
 import CheckoutSuccessPage from "./pages/public/CheckoutSuccessPage";
 import CheckoutCancelPage from "./pages/public/CheckoutCancelPage";
 import PrivacyPage from "./pages/public/PrivacyPage";
@@ -77,6 +78,7 @@ function AuthedApp() {
         <Route path="/tokenization" element={<TokenizationPage />} />
         <Route path="/how-it-works" element={<HowItWorksPage />} />
         <Route path="/deal-room/:propertyId" element={<DealRoomPage />} />
+        <Route path="/create-deal-room" element={<CreateDealRoomPage />} />
         <Route path="/checkout/success" element={<CheckoutSuccessPage />} />
         <Route path="/checkout/cancel" element={<CheckoutCancelPage />} />
         <Route path="/privacy" element={<PrivacyPage />} />
