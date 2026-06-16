@@ -816,6 +816,9 @@ app.get('/api/copilot/tokenization-eligibility', (req, res) => {
 });
 
 // ── Stripe Guest Checkout — PUBLIC, must stay BEFORE requireOrgContext ──────
+// In-memory store for pending deal rooms (checkout → webhook bridge)
+const pendingDealRooms = new Map();
+
 app.post('/api/checkout/guest', async (req, res) => {
   try {
     const stripeKey = process.env.STRIPE_SECRET_KEY;
@@ -826,7 +829,7 @@ app.post('/api/checkout/guest', async (req, res) => {
       });
     }
     const stripe = require('stripe')(stripeKey);
-    const { propertyId, propertyName, plan = 'deal', email, role = 'lender' } = req.body;
+    const { propertyId, propertyName, plan = 'deal', email, role = 'lender', meta = {} } = req.body;
     const origin = req.headers.origin || 'https://kontraplatform.com';
 
     const PLANS = {
@@ -858,6 +861,26 @@ app.post('/api/checkout/guest', async (req, res) => {
     if (email) sessionParams.customer_email = email;
 
     const session = await stripe.checkout.sessions.create(sessionParams);
+
+    // Store deal room data in memory (webhook picks it up within seconds)
+    if (propertyId) {
+      pendingDealRooms.set(session.id, {
+        property_id: propertyId,
+        property_name: propertyName || propertyId,
+        email: email || '',
+        role,
+        address: meta.address || '',
+        property_type: meta.type || '',
+        property_size: meta.size || '',
+        deal_type: meta.dealType || '',
+        deal_amount: meta.dealAmount || '',
+        closing_date: meta.closingDate || '',
+        first_name: meta.firstName || '',
+        last_name: meta.lastName || '',
+        created_at: new Date().toISOString(),
+      });
+    }
+
     res.json({ url: session.url });
   } catch (err) {
     console.error('[checkout/guest]', err.message);
@@ -895,25 +918,70 @@ app.post('/api/webhook/stripe',
 
       console.log(`[webhook] ✅ Payment confirmed — $${amountPaid} | ${plan} | ${propertyId} | ${customerEmail}`);
 
+      // Pull pending deal room data stored at checkout time
+      const pending = pendingDealRooms.get(session.id) || {};
+      pendingDealRooms.delete(session.id);
+
+      const dealRoomRecord = {
+        stripe_session_id: session.id,
+        plan,
+        property_id: propertyId || pending.property_id || '',
+        property_name: propertyName || pending.property_name || '',
+        role: role || pending.role || 'owner',
+        customer_email: customerEmail || pending.email || '',
+        amount_paid: parseFloat(amountPaid),
+        activated_at: new Date().toISOString(),
+        status: 'active',
+        address: pending.address || '',
+        property_type: pending.property_type || '',
+        property_size: pending.property_size || '',
+        deal_type: pending.deal_type || '',
+        deal_amount: pending.deal_amount || '',
+        closing_date: pending.closing_date || '',
+        first_name: pending.first_name || '',
+        last_name: pending.last_name || '',
+      };
+
+      try {
+        await supabase.from('deal_rooms').upsert(dealRoomRecord, { onConflict: 'property_id' });
+        console.log(`[webhook] ✅ Deal room saved — ${dealRoomRecord.property_id}`);
+      } catch (dbErr) {
+        console.warn('[webhook] deal_rooms upsert skipped:', dbErr.message);
+      }
+
+      // Also log to activations table (legacy)
       try {
         await supabase.from('deal_room_activations').insert({
-          stripe_session_id: session.id,
-          plan,
-          property_id: propertyId,
-          property_name: propertyName,
-          role,
-          customer_email: customerEmail,
-          amount_paid: parseFloat(amountPaid),
-          activated_at: new Date().toISOString(),
-        }).select();
-      } catch (dbErr) {
-        console.warn('[webhook] DB insert skipped (table may not exist yet):', dbErr.message);
-      }
+          stripe_session_id: session.id, plan, property_id: propertyId,
+          property_name: propertyName, role, customer_email: customerEmail,
+          amount_paid: parseFloat(amountPaid), activated_at: new Date().toISOString(),
+        });
+      } catch (_) {}
     }
 
     res.json({ received: true });
   }
 );
+
+// ── Public deal room lookup — no auth required ────────────────────────────────
+app.get('/api/public/deal-room/:propertyId', async (req, res) => {
+  const { propertyId } = req.params;
+  try {
+    const { data, error } = await supabase
+      .from('deal_rooms')
+      .select('*')
+      .eq('property_id', propertyId)
+      .eq('status', 'active')
+      .single();
+    if (error || !data) return res.status(404).json({ error: 'Deal room not found' });
+    // Strip sensitive fields before returning
+    const { customer_email, first_name, last_name, stripe_session_id, ...safe } = data;
+    res.json(safe);
+  } catch (err) {
+    console.error('[deal-room-public]', err.message);
+    res.status(404).json({ error: 'Deal room not found' });
+  }
+});
 
 app.use('/api', requireOrgContext);
 app.use('/api/dashboard-layout', authenticate, dashboard);
