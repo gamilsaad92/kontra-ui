@@ -104,10 +104,10 @@ export default function PublicLayout({ children, hideFooter = false }) {
                   className="text-sm font-medium text-gray-600 hover:text-gray-900 px-4 py-2 rounded-lg hover:bg-gray-50 transition">
                   Sign In
                 </Link>
-                <Link to="/login"
+                <Link to="/create-deal-room"
                   className="text-sm font-semibold px-4 py-2 rounded-lg text-white transition hover:opacity-90"
                   style={{ background: "#800020" }}>
-                  Get Started
+                  Create Deal Room
                 </Link>
               </>
             )}
