@@ -5,7 +5,6 @@ import { AuthContext } from "../../lib/authContext";
 const PUBLIC_NAV = [
   { label: "How It Works", href: "/how-it-works" },
   { label: "AI Tools",     href: "/ai-tools" },
-  { label: "Tokenization", href: "/tokenization" },
   { label: "Pricing",      href: "/pricing" },
 ];
 
@@ -197,10 +196,10 @@ export default function PublicLayout({ children, hideFooter = false }) {
                   { label: "Service Providers", href: "/service-providers" },
                 ]},
                 { title: "Platform", links: [
-                  { label: "Tokenization", href: "/tokenization" },
                   { label: "Dashboard", href: "/dashboard" },
                   { label: "My Properties", href: "/app/properties" },
                   { label: "Documents", href: "/app/documents" },
+                  { label: "Properties", href: "/properties" },
                 ]},
                 { title: "Company", links: [
                   { label: "Privacy Policy", href: "/privacy" },
