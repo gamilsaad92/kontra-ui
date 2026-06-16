@@ -851,9 +851,9 @@ app.post('/api/checkout/guest', async (req, res) => {
       mode: cfg.mode,
       payment_method_types: ['card'],
       line_items: [lineItem],
-      success_url: `${origin}/dashboard?checkout=success&plan=${plan}${propertyId ? `&property=${propertyId}` : ''}`,
-      cancel_url: `${origin}/deal-room/${propertyId || ''}?role=${role}&checkout=canceled`,
-      metadata: { plan, propertyId: propertyId || '', propertyName: propertyName || '' },
+      success_url: `${origin}/checkout/success?plan=${plan}${propertyId ? `&property=${propertyId}` : ''}&session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${origin}/checkout/cancel?plan=${plan}${propertyId ? `&property=${propertyId}` : ''}&role=${role}`,
+      metadata: { plan, propertyId: propertyId || '', propertyName: propertyName || '', role },
     };
     if (email) sessionParams.customer_email = email;
 
@@ -864,6 +864,56 @@ app.post('/api/checkout/guest', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
+// ── Stripe Webhook — PUBLIC, must stay BEFORE requireOrgContext ──────────────
+app.post('/api/webhook/stripe',
+  express.raw({ type: 'application/json' }),
+  async (req, res) => {
+    const sig = req.headers['stripe-signature'];
+    const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
+    let event;
+
+    try {
+      if (webhookSecret) {
+        const stripeKey = process.env.STRIPE_SECRET_KEY;
+        const stripe = require('stripe')(stripeKey);
+        event = stripe.webhooks.constructEvent(req.body, sig, webhookSecret);
+      } else {
+        event = JSON.parse(req.body.toString());
+        console.warn('[webhook] STRIPE_WEBHOOK_SECRET not set — skipping signature verification');
+      }
+    } catch (err) {
+      console.error('[webhook] Signature verification failed:', err.message);
+      return res.status(400).json({ error: `Webhook error: ${err.message}` });
+    }
+
+    if (event.type === 'checkout.session.completed') {
+      const session = event.data.object;
+      const { plan, propertyId, propertyName, role } = session.metadata || {};
+      const customerEmail = session.customer_details?.email || session.customer_email || '';
+      const amountPaid = (session.amount_total / 100).toFixed(2);
+
+      console.log(`[webhook] ✅ Payment confirmed — $${amountPaid} | ${plan} | ${propertyId} | ${customerEmail}`);
+
+      try {
+        await supabase.from('deal_room_activations').insert({
+          stripe_session_id: session.id,
+          plan,
+          property_id: propertyId,
+          property_name: propertyName,
+          role,
+          customer_email: customerEmail,
+          amount_paid: parseFloat(amountPaid),
+          activated_at: new Date().toISOString(),
+        }).select();
+      } catch (dbErr) {
+        console.warn('[webhook] DB insert skipped (table may not exist yet):', dbErr.message);
+      }
+    }
+
+    res.json({ received: true });
+  }
+);
 
 app.use('/api', requireOrgContext);
 app.use('/api/dashboard-layout', authenticate, dashboard);
