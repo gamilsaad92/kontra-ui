@@ -142,10 +142,10 @@ export default function HomePage() {
           </p>
 
           <div className="flex flex-col sm:flex-row items-center justify-center gap-3 mb-14">
-            <Link to="/login"
+            <Link to="/create-deal-room"
               className="px-7 py-3.5 rounded-xl text-sm font-semibold text-white transition hover:opacity-90"
               style={{ background: "#800020" }}>
-              Start a Deal Room — Free
+              Create Your Deal Room — $499
             </Link>
             <Link to="/how-it-works"
               className="px-7 py-3.5 rounded-xl text-sm font-semibold border border-white/20 text-white hover:bg-white/10 transition">
@@ -468,25 +468,25 @@ export default function HomePage() {
       <section className="bg-gray-950 py-20">
         <div className="max-w-3xl mx-auto px-6 text-center">
           <h2 className="text-3xl font-bold text-white mb-4 leading-tight">
-            Start your first deal room.<br />
-            <span style={{ color: "#e8a0a0" }}>Free. No credit card.</span>
+            Your deal room is ready in minutes.<br />
+            <span style={{ color: "#e8a0a0" }}>$499. One property. Every party included.</span>
           </h2>
           <p className="text-gray-400 text-sm mb-8 max-w-xl mx-auto leading-relaxed">
-            Add your property, invite your lender and inspector, and see what it feels like when everyone works from the same data.
+            Enter your property, invite your lender, inspector, and insurer — everyone works from the same data, no email chains.
           </p>
           <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
-            <Link to="/login"
+            <Link to="/create-deal-room"
               className="px-8 py-3.5 rounded-xl text-sm font-semibold text-white transition hover:opacity-90"
               style={{ background: "#800020" }}>
               Create Your Deal Room →
             </Link>
-            <Link to="/pricing"
+            <Link to="/properties"
               className="px-8 py-3.5 rounded-xl text-sm font-semibold border border-white/20 text-white hover:bg-white/10 transition">
-              View Pricing
+              See a Live Demo
             </Link>
           </div>
           <p className="text-xs text-gray-600 mt-5">
-            Per-deal pricing available · No long-term contracts · Cancel anytime
+            One-time payment · No subscription · All parties included
           </p>
         </div>
       </section>
