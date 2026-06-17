@@ -6,6 +6,7 @@ const PUBLIC_NAV = [
   { label: "How It Works", href: "/how-it-works" },
   { label: "AI Tools",     href: "/ai-tools" },
   { label: "Pricing",      href: "/pricing" },
+  { label: "About",        href: "/about" },
 ];
 
 const APP_NAV = [
@@ -202,10 +203,10 @@ export default function PublicLayout({ children, hideFooter = false }) {
                   { label: "Properties", href: "/properties" },
                 ]},
                 { title: "Company", links: [
+                  { label: "About", href: "/about" },
                   { label: "Privacy Policy", href: "/privacy" },
                   { label: "Terms of Service", href: "/terms" },
                   { label: "Contact", href: "mailto:hello@kontraplatform.com" },
-                  { label: "Security", href: "mailto:security@kontraplatform.com" },
                 ]},
               ].map((col) => (
                 <div key={col.title}>

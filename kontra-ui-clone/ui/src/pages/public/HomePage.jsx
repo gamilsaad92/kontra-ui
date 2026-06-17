@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useRef } from "react";
 import { Link } from "react-router-dom";
 import PublicLayout from "./PublicLayout";
 
@@ -116,6 +116,60 @@ const STATS = [
   { value: "5 pillars",  label: "Investment-Readiness checklist" },
   { value: "Free",       label: "AI tools — no credit card" },
 ];
+
+function EmailCapture() {
+  const [email, setEmail] = useState("");
+  const [status, setStatus] = useState("idle");
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!email) return;
+    setStatus("loading");
+    try {
+      const base = import.meta.env.VITE_API_BASE?.replace(/\/+$/, "") || "";
+      await fetch(`${base}/api/waitlist`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
+      });
+    } catch (_) {}
+    setStatus("done");
+    setEmail("");
+  };
+
+  return (
+    <section className="border-y border-gray-100 bg-gray-50 py-12">
+      <div className="max-w-xl mx-auto px-6 text-center">
+        <p className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: "#800020" }}>Stay in the loop</p>
+        <h3 className="text-lg font-bold text-gray-900 mb-1">Not ready to start a deal room yet?</h3>
+        <p className="text-sm text-gray-500 mb-6">Get notified when we add new AI tools, party roles, and platform updates.</p>
+        {status === "done" ? (
+          <div className="flex items-center justify-center gap-2 text-sm font-medium text-green-700 bg-green-50 border border-green-200 px-5 py-3 rounded-xl">
+            <span>✓</span> You're on the list — we'll be in touch.
+          </div>
+        ) : (
+          <form onSubmit={handleSubmit} className="flex gap-2 max-w-md mx-auto">
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="your@email.com"
+              required
+              className="flex-1 px-4 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-red-800/20 focus:border-red-800/40"
+            />
+            <button
+              type="submit"
+              disabled={status === "loading"}
+              className="px-5 py-2.5 rounded-xl text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-60"
+              style={{ background: "#800020" }}>
+              {status === "loading" ? "…" : "Notify me"}
+            </button>
+          </form>
+        )}
+      </div>
+    </section>
+  );
+}
 
 export default function HomePage() {
   const [expandedTool, setExpandedTool] = useState(0);
@@ -463,6 +517,9 @@ export default function HomePage() {
           </div>
         </div>
       </section>
+
+      {/* ── Email capture ──────────────────────────────────────── */}
+      <EmailCapture />
 
       {/* ── Final CTA ──────────────────────────────────────────── */}
       <section className="bg-gray-950 py-20">
