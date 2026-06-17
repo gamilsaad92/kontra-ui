@@ -2,6 +2,14 @@ import React, { useState, useEffect } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import PublicLayout from "./PublicLayout";
 
+function usePageTitle(title) {
+  useEffect(() => {
+    const prev = document.title;
+    if (title) document.title = `${title} — Kontra Deal Room`;
+    return () => { document.title = prev; };
+  }, [title]);
+}
+
 const API_BASE = (import.meta.env.VITE_API_BASE || "").replace(/\/+$/, "");
 
 // ── Demo properties (hardcoded) ──────────────────────────────────────────────
@@ -288,6 +296,84 @@ function PropertyPanel({ property }) {
   );
 }
 
+// ── Investment Readiness summary bar (demo rooms) ────────────────────────────
+function ReadinessSummaryBar({ property }) {
+  const pillars = [
+    { icon: "🔍", label: "Physical", done: property.score >= 70 },
+    { icon: "🛡️", label: "Insurance", done: true },
+    { icon: "💰", label: "Financial", done: true },
+    { icon: "✅", label: "Compliance", done: property.compliancePassed === property.complianceItems },
+    { icon: "📜", label: "Legal", done: property.score >= 85 },
+  ];
+  const done = pillars.filter((p) => p.done).length;
+  const pct = done * 20;
+  const color = done >= 4 ? "#16a34a" : done >= 3 ? "#d97706" : "#dc2626";
+
+  return (
+    <div className="bg-white rounded-2xl border border-gray-200 p-5 mb-6">
+      <div className="flex items-center justify-between mb-3">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">Investment Readiness</p>
+          <p className="text-base font-bold text-gray-900 mt-0.5">
+            <span style={{ color }}>{done}/5 pillars verified</span>
+            <span className="text-sm font-medium text-gray-400 ml-2">
+              {done >= 5 ? "— Investment-Ready ✓" : done >= 4 ? "— Near complete" : "— In progress"}
+            </span>
+          </p>
+        </div>
+        <div className="text-3xl font-black" style={{ color }}>{pct}%</div>
+      </div>
+      <div className="h-2 w-full rounded-full bg-gray-100 overflow-hidden mb-3">
+        <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, background: color }} />
+      </div>
+      <div className="flex gap-2">
+        {pillars.map((p) => (
+          <div key={p.label}
+            className="flex-1 flex flex-col items-center gap-1 px-2 py-2 rounded-xl text-center"
+            style={{ background: p.done ? color + "10" : "#f3f4f6" }}>
+            <span className="text-base">{p.icon}</span>
+            <span className="text-[10px] font-medium" style={{ color: p.done ? color : "#9ca3af" }}>{p.label}</span>
+            <span className="text-[9px] font-bold" style={{ color: p.done ? color : "#d1d5db" }}>
+              {p.done ? "✓" : "pending"}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ── Activity feed (demo rooms) ────────────────────────────────────────────────
+function ActivityFeedPanel({ property }) {
+  const activities = [
+    { icon: "🤖", text: `AI analyzed inspection report — ${property.compliancePassed >= 5 ? "3 findings, all resolved" : "2 open items flagged"}`, time: "2m ago", color: "#800020" },
+    { icon: "📊", text: "Operating statement reviewed — DSCR calculated", time: "14m ago", color: "#1e40af" },
+    { icon: "🔍", text: `Inspection report submitted by inspector`, time: "1h ago", color: "#d97706" },
+    { icon: "🛡️", text: "Insurance certificate uploaded and verified", time: "3h ago", color: "#065f46" },
+    { icon: "🏦", text: "Lender viewed financial package", time: "5h ago", color: "#800020" },
+  ];
+
+  return (
+    <div className="bg-white rounded-2xl border border-gray-200 p-5">
+      <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-4">Recent Activity</p>
+      <div className="space-y-0">
+        {activities.map((a, i) => (
+          <div key={i} className="flex items-start gap-3 py-2.5 border-t border-gray-100 first:border-t-0">
+            <div className="w-7 h-7 rounded-lg flex items-center justify-center text-sm shrink-0 mt-0.5"
+              style={{ background: a.color + "12" }}>
+              {a.icon}
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-xs text-gray-700 leading-relaxed">{a.text}</p>
+            </div>
+            <span className="text-[10px] text-gray-400 shrink-0 mt-0.5">{a.time}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ── Panels for custom (pending) deal rooms ───────────────────────────────────
 function PendingPanel({ title, icon, description }) {
   return (
@@ -417,6 +503,8 @@ export default function DealRoomPage() {
 
   const roleConfig = ROLE_CONFIG[role] || ROLE_CONFIG.lender;
 
+  usePageTitle(property?.name || property?.property_name);
+
   // Loading state
   if (loadingApi && isCustom) {
     return (
@@ -526,6 +614,11 @@ export default function DealRoomPage() {
           </div>
         )}
 
+        {/* Investment Readiness summary bar — demo rooms only */}
+        {!property.isCustom && (
+          <ReadinessSummaryBar property={property} />
+        )}
+
         {/* Role headline */}
         <div className="bg-white rounded-2xl border border-gray-200 p-5 mb-6"
           style={{ borderLeftWidth: 4, borderLeftColor: roleConfig.color }}>
@@ -534,12 +627,19 @@ export default function DealRoomPage() {
         </div>
 
         {/* Role-scoped sections */}
-        <div className="grid md:grid-cols-2 gap-5 mb-8">
+        <div className="grid md:grid-cols-2 gap-5 mb-6">
           {roleConfig.sections.map((sectionKey) => {
             const Panel = SECTION_MAP[sectionKey];
             return Panel ? <Panel key={sectionKey} /> : null;
           })}
         </div>
+
+        {/* Activity feed — demo rooms only */}
+        {!property.isCustom && (
+          <div className="mb-8">
+            <ActivityFeedPanel property={property} />
+          </div>
+        )}
 
         {/* Activate CTA (only for demo rooms) */}
         {!property.isCustom && (
