@@ -115,15 +115,15 @@ export default function LoginPage() {
               <span className="ml-2 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide" style={{ background: "rgba(128,0,32,0.15)", color: "#800020" }}>Beta</span>
             </div>
           </Link>
-          <Link to="/properties" className="text-xs font-medium text-gray-500 hover:text-gray-300 transition">
-            ← Back to marketplace
+          <Link to="/" className="text-xs font-medium text-gray-500 hover:text-gray-300 transition">
+            ← Back to home
           </Link>
         </div>
 
         {/* Hero copy */}
         <div>
           <p className="mb-2 text-xs font-bold uppercase tracking-widest" style={{ color: "#800020" }}>
-            CRE Marketplace + Operating System
+            CRE Deal Room Infrastructure
           </p>
           <h2 className="mb-4 text-3xl font-black leading-tight text-white" style={{ letterSpacing: "-0.03em" }}>
             {contextMessage
@@ -146,7 +146,7 @@ export default function LoginPage() {
         {/* Footer */}
         <div className="flex items-center gap-3">
           <div className="h-px flex-1" style={{ background: "rgba(255,255,255,0.06)" }} />
-          <span className="text-[11px]" style={{ color: "#475569" }}>Secure · Encrypted · Reg D/S Compliant</span>
+          <span className="text-[11px]" style={{ color: "#475569" }}>Secure · Encrypted · SOC 2 Ready</span>
           <div className="h-px flex-1" style={{ background: "rgba(255,255,255,0.06)" }} />
         </div>
       </div>
