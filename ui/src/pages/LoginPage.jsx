@@ -112,7 +112,6 @@ export default function LoginPage() {
             </div>
             <div>
               <span className="text-base font-bold text-white" style={{ letterSpacing: "-0.02em" }}>Kontra</span>
-              <span className="ml-2 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide" style={{ background: "rgba(128,0,32,0.15)", color: "#800020" }}>Beta</span>
             </div>
           </Link>
           <Link to="/" className="text-xs font-medium text-gray-500 hover:text-gray-300 transition">
