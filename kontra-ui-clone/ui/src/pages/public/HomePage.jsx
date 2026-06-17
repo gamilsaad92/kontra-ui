@@ -39,7 +39,7 @@ const HOW_IT_WORKS = [
     step: "04",
     icon: "🏅",
     title: "Property becomes Investment-Ready",
-    desc: "All five pillars documented and verified. Ready for financing, compliance review, or tokenization on-chain.",
+    desc: "All five pillars documented and verified. Ready for financing submission and compliance review.",
     color: "#6d28d9",
   },
 ];
@@ -129,7 +129,7 @@ export default function HomePage() {
         <div className="max-w-7xl mx-auto px-6 pt-20 pb-24 text-center">
           <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-red-950/60 text-red-300 text-xs font-medium mb-8 border border-red-900/40">
             <span className="w-1.5 h-1.5 rounded-full bg-red-400 animate-pulse" />
-            CRE Deal Infrastructure — Now in Beta
+            CRE Deal Infrastructure — Now Live
           </div>
           <h1 className="text-4xl md:text-6xl font-bold leading-tight tracking-tight mb-6 max-w-4xl mx-auto">
             The deal room where{" "}
@@ -138,7 +138,7 @@ export default function HomePage() {
           </h1>
           <p className="text-lg text-gray-400 max-w-2xl mx-auto mb-10 leading-relaxed">
             Lenders, borrowers, inspectors, insurers, underwriters, engineers — one AI-powered workspace per property.
-            Structured data. No more email chains. Tokenization-ready.
+            Structured data. No more email chains. Every deal closed faster.
           </p>
 
           <div className="flex flex-col sm:flex-row items-center justify-center gap-3 mb-14">
@@ -184,7 +184,7 @@ export default function HomePage() {
           <p className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: "#800020" }}>How it works</p>
           <h2 className="text-3xl font-bold text-gray-900 mb-3">One deal. Every party. One workspace.</h2>
           <p className="text-gray-500 text-sm max-w-xl mx-auto leading-relaxed">
-            From first document upload to tokenization-ready — every step happens in one place, shared across all parties in real time.
+            From first document upload to financing-ready — every step happens in one place, shared across all parties in real time.
           </p>
         </div>
 
@@ -408,24 +408,24 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* ── Tokenization destination ───────────────────────────── */}
+      {/* ── Why Kontra ─────────────────────────────────────────── */}
       <section className="max-w-7xl mx-auto px-6 py-20">
         <div className="grid lg:grid-cols-2 gap-12 items-center">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: "#800020" }}>The end destination</p>
+            <p className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: "#800020" }}>Built for how CRE actually works</p>
             <h2 className="text-2xl font-bold text-gray-900 mb-4">
-              Every deal room builds toward tokenization
+              Every party gets exactly what they need — nothing more
             </h2>
             <p className="text-gray-500 leading-relaxed mb-6">
-              Kontra isn't just a document manager. Every step — inspection, insurance, financial review, compliance — builds the verified data record that tokenization platforms require. When your property is Investment-Ready, it can go on-chain.
+              CRE deals stall because the wrong people can't find the right documents. Kontra gives every party — lender, inspector, insurer, attorney — a private, role-scoped view of the same deal. No more emailing PDFs. No more "who has the latest version?"
             </p>
             <div className="space-y-2.5">
               {[
-                "Physical condition verified by licensed inspector",
-                "Insurance coverage confirmed and structured",
-                "Financials reviewed and DSCR calculated",
-                "Compliance checklist completed",
-                "Legal structure documented",
+                "Lender sees financials, DSCR, and risk score",
+                "Inspector uploads their report directly into the room",
+                "Insurer reviews coverage gaps flagged by AI",
+                "Attorney sees compliance checklist and legal docs",
+                "Owner tracks everything in one dashboard",
               ].map((point, i) => (
                 <div key={i} className="flex items-start gap-2.5">
                   <div className="w-5 h-5 rounded-full flex items-center justify-center text-white text-[10px] font-bold shrink-0 mt-0.5"
@@ -435,21 +435,21 @@ export default function HomePage() {
               ))}
             </div>
             <div className="mt-6">
-              <Link to="/tokenization"
+              <Link to="/create-deal-room"
                 className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold text-white transition hover:opacity-90"
                 style={{ background: "#800020" }}>
-                See the tokenization roadmap →
+                Create your deal room — $499 →
               </Link>
             </div>
           </div>
           <div className="bg-gray-950 rounded-2xl p-6 text-white">
             <p className="text-xs text-gray-400 uppercase tracking-wider font-medium mb-4">Investment Readiness Report</p>
             {[
-              { icon: "🔍", label: "Physical Condition",     status: "Verified",  color: "#16a34a" },
-              { icon: "🛡️", label: "Insurance Coverage",    status: "Verified",  color: "#16a34a" },
-              { icon: "💰", label: "Financial Review",       status: "Verified",  color: "#16a34a" },
-              { icon: "✅", label: "Compliance Checklist",   status: "Verified",  color: "#16a34a" },
-              { icon: "📜", label: "Legal Structure",        status: "In Review", color: "#f59e0b" },
+              { icon: "🔍", label: "Physical Condition",   status: "Verified",   color: "#16a34a" },
+              { icon: "🛡️", label: "Insurance Coverage",  status: "Verified",   color: "#16a34a" },
+              { icon: "💰", label: "Financial Review",     status: "Verified",   color: "#16a34a" },
+              { icon: "✅", label: "Compliance Checklist", status: "Verified",   color: "#16a34a" },
+              { icon: "📜", label: "Legal Structure",      status: "In Review",  color: "#f59e0b" },
             ].map((item) => (
               <div key={item.label} className="flex items-center gap-3 px-3 py-2.5 rounded-lg bg-white/5 mb-2">
                 <span className="text-base w-6">{item.icon}</span>
