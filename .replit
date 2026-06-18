@@ -73,3 +73,4 @@ JWT_SECRET = "104f3d700a890f9cd8cb2dae1b8ebb4f3a6d1df6952e7fcf19b30460f57f0412a7
 SUPABASE_URL = "https://jfhojgtnmcfqretrrxam.supabase.co"
 VITE_STRIPE_PUBLISHABLE_KEY = "pk_test_51ThwNd3mhz23iJ8qrJNL4lFARwCO4cDrLSIZdvo3sIlaKwXhZHDtm2QqVBD4TX4rv2n3C4J74LzXkHS4mVRv4LNE00l7QGlXYw"
 RENDER_DEPLOY_HOOK = "https://api.render.com/deploy/srv-cvugrsmuk2gs738c6dfg?key=Qy-Wr7bDjFU"
+STRIPE_WEBHOOK_SECRET = "whsec_oGWbSOx2NJ3r05lfiFSN5QWNZ9pZkze3"
