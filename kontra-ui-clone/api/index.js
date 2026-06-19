@@ -896,11 +896,16 @@ app.post('/api/checkout/demo', async (req, res) => {
     const fakeSessionId = 'demo_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
     const pid = propertyId || (propertyName || 'demo').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 
-    pendingDealRooms.set(fakeSessionId, {
+    const dealRoomRecord = {
+      stripe_session_id: fakeSessionId,
+      plan,
       property_id: pid,
       property_name: propertyName || pid,
-      email: email || '',
-      role,
+      role: role || 'owner',
+      customer_email: email || '',
+      amount_paid: 0,
+      activated_at: new Date().toISOString(),
+      status: 'active',
       address: meta.address || '',
       property_type: meta.type || '',
       property_size: meta.size || '',
@@ -909,9 +914,14 @@ app.post('/api/checkout/demo', async (req, res) => {
       closing_date: meta.closingDate || '',
       first_name: meta.firstName || '',
       last_name: meta.lastName || '',
-      created_at: new Date().toISOString(),
-      demo: true,
-    });
+    };
+
+    try {
+      await supabase.from('deal_rooms').upsert(dealRoomRecord, { onConflict: 'property_id' });
+      console.log(`[demo] ✅ Deal room created — ${pid}`);
+    } catch (dbErr) {
+      console.warn('[demo] deal_rooms upsert failed:', dbErr.message);
+    }
 
     const successUrl = `${origin}/checkout/success?plan=${plan}&property=${pid}&session_id=${fakeSessionId}&demo=true`;
     res.json({ url: successUrl });
