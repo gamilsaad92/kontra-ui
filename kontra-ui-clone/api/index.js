@@ -888,6 +888,39 @@ app.post('/api/checkout/guest', async (req, res) => {
   }
 });
 
+// ── Demo Checkout — bypasses Stripe for local/internal testing ──────────────
+app.post('/api/checkout/demo', async (req, res) => {
+  try {
+    const { propertyId, propertyName, plan = 'deal', email, role = 'owner', meta = {} } = req.body;
+    const origin = req.headers.origin || 'https://kontraplatform.com';
+    const fakeSessionId = 'demo_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
+    const pid = propertyId || (propertyName || 'demo').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+
+    pendingDealRooms.set(fakeSessionId, {
+      property_id: pid,
+      property_name: propertyName || pid,
+      email: email || '',
+      role,
+      address: meta.address || '',
+      property_type: meta.type || '',
+      property_size: meta.size || '',
+      deal_type: meta.dealType || '',
+      deal_amount: meta.dealAmount || '',
+      closing_date: meta.closingDate || '',
+      first_name: meta.firstName || '',
+      last_name: meta.lastName || '',
+      created_at: new Date().toISOString(),
+      demo: true,
+    });
+
+    const successUrl = `${origin}/checkout/success?plan=${plan}&property=${pid}&session_id=${fakeSessionId}&demo=true`;
+    res.json({ url: successUrl });
+  } catch (err) {
+    console.error('[checkout/demo]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ── Stripe Webhook — PUBLIC, must stay BEFORE requireOrgContext ──────────────
 app.post('/api/webhook/stripe',
   express.raw({ type: 'application/json' }),

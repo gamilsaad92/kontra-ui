@@ -48,31 +48,36 @@ export default function CreateDealRoomPage() {
     return true;
   };
 
-  const handleLaunch = async () => {
+  const buildPayload = () => {
+    const propertyId = form.propertyName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+    return {
+      propertyId,
+      propertyName: form.propertyName,
+      plan: "deal",
+      email: form.email,
+      role: form.role,
+      meta: {
+        address: form.propertyAddress,
+        type: form.propertyType,
+        size: form.propertySize,
+        dealType: form.dealType,
+        dealAmount: form.dealAmount,
+        closingDate: form.closingDate,
+        firstName: form.firstName,
+        lastName: form.lastName,
+      },
+    };
+  };
+
+  const handleLaunch = async (demo = false) => {
     setLoading(true);
     setError("");
     try {
-      const propertyId = form.propertyName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
-      const res = await fetch(`${API_BASE}/api/checkout/guest`, {
+      const endpoint = demo ? `${API_BASE}/api/checkout/demo` : `${API_BASE}/api/checkout/guest`;
+      const res = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          propertyId,
-          propertyName: form.propertyName,
-          plan: "deal",
-          email: form.email,
-          role: form.role,
-          meta: {
-            address: form.propertyAddress,
-            type: form.propertyType,
-            size: form.propertySize,
-            dealType: form.dealType,
-            dealAmount: form.dealAmount,
-            closingDate: form.closingDate,
-            firstName: form.firstName,
-            lastName: form.lastName,
-          },
-        }),
+        body: JSON.stringify(buildPayload()),
       });
       const data = await res.json();
       if (data.url) {
@@ -315,15 +320,21 @@ export default function CreateDealRoomPage() {
                 Continue →
               </button>
             ) : (
-              <button onClick={handleLaunch} disabled={loading}
-                className="flex-1 py-3 rounded-xl text-sm font-bold text-white transition disabled:opacity-70 hover:opacity-90 flex items-center justify-center gap-2"
-                style={{ background: "#800020" }}>
-                {loading ? (
-                  <><svg className="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg> Redirecting to payment…</>
-                ) : (
-                  <>🔐 Pay $499 & Launch Deal Room</>
-                )}
-              </button>
+              <div className="flex-1 flex flex-col gap-2">
+                <button onClick={() => handleLaunch(false)} disabled={loading}
+                  className="w-full py-3 rounded-xl text-sm font-bold text-white transition disabled:opacity-70 hover:opacity-90 flex items-center justify-center gap-2"
+                  style={{ background: "#800020" }}>
+                  {loading ? (
+                    <><svg className="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg> Launching…</>
+                  ) : (
+                    <>🔐 Pay $499 & Launch Deal Room</>
+                  )}
+                </button>
+                <button onClick={() => handleLaunch(true)} disabled={loading}
+                  className="w-full py-2.5 rounded-xl text-sm font-semibold text-gray-600 border border-gray-200 bg-white hover:bg-gray-50 transition disabled:opacity-50 flex items-center justify-center gap-2">
+                  🧪 Try Demo (skip payment)
+                </button>
+              </div>
             )}
           </div>
 
