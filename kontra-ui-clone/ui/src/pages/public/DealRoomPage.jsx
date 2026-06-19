@@ -106,6 +106,24 @@ const ROLE_CONFIG = {
     subtext: "Review the legal structure documentation, title history, and compliance checklist for this property.",
     sections: ["compliance", "documents", "property"],
   },
+  owner: {
+    icon: "🏢", label: "Property Owner", color: "#800020",
+    headline: "Welcome to your deal room",
+    subtext: "As the property owner, you have a full view of all parties, documents, compliance status, and deal progress. Share the role-specific links below to invite each party.",
+    sections: ["financials", "risk", "compliance", "documents", "property"],
+  },
+  borrower: {
+    icon: "🤝", label: "Borrower / Sponsor", color: "#1d4ed8",
+    headline: "You've been invited to this deal room",
+    subtext: "As the borrower, you can view the deal structure, track compliance requirements, upload financial documents, and monitor deal progress in real time.",
+    sections: ["financials", "compliance", "documents", "property"],
+  },
+  broker: {
+    icon: "🏷️", label: "Broker", color: "#7c3aed",
+    headline: "You've been invited to coordinate this deal",
+    subtext: "As the broker, you have visibility across all deal parties. Track document status, compliance milestones, and share role-scoped links with each party.",
+    sections: ["financials", "risk", "compliance", "documents", "property"],
+  },
 };
 
 // ── Panels for demo (data-rich) deal rooms ───────────────────────────────────
