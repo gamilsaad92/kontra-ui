@@ -56,6 +56,47 @@ const DEMO_PROPERTIES = {
   },
 };
 
+// ── Generate realistic sample data for newly created deal rooms ──────────────
+function generateDemoData(apiProp) {
+  const amount = parseFloat((apiProp.deal_amount || "").replace(/[^0-9.]/g, "")) || 5000000;
+  const type = apiProp.property_type || "Multifamily";
+
+  // Type-based defaults
+  const defaults = {
+    "Multifamily":         { capRate: 6.8, occupancy: 94, dscr: "1.38x", ltv: "61%", debtYield: "8.4%", score: 88, risk: "Low",    riskColor: "#16a34a", units: Math.round(amount / 180000) },
+    "Office":              { capRate: 7.2, occupancy: 82, dscr: "1.22x", ltv: "68%", debtYield: "7.8%", score: 65, risk: "Medium", riskColor: "#d97706", units: null },
+    "Industrial":          { capRate: 6.5, occupancy: 97, dscr: "1.48x", ltv: "55%", debtYield: "9.2%", score: 92, risk: "Low",    riskColor: "#16a34a", units: null },
+    "Retail":              { capRate: 7.5, occupancy: 88, dscr: "1.28x", ltv: "63%", debtYield: "8.1%", score: 74, risk: "Low",    riskColor: "#16a34a", units: null },
+    "Mixed-Use":           { capRate: 7.0, occupancy: 91, dscr: "1.32x", ltv: "64%", debtYield: "8.0%", score: 79, risk: "Low",    riskColor: "#16a34a", units: null },
+    "Hotel / Hospitality": { capRate: 8.1, occupancy: 76, dscr: "1.18x", ltv: "70%", debtYield: "7.2%", score: 61, risk: "Medium", riskColor: "#d97706", units: null },
+    "Self-Storage":        { capRate: 6.2, occupancy: 93, dscr: "1.44x", ltv: "58%", debtYield: "8.8%", score: 85, risk: "Low",    riskColor: "#16a34a", units: null },
+    "Land / Development":  { capRate: 5.5, occupancy: 0,  dscr: "N/A",   ltv: "60%", debtYield: "N/A",  score: 58, risk: "Medium", riskColor: "#d97706", units: null },
+  };
+  const d = defaults[type] || defaults["Multifamily"];
+  const noi = Math.round(amount * (d.capRate / 100) / 50000) * 50000;
+  const today = new Date();
+  const inspMonth = today.toLocaleString("default", { month: "short" }) + " " + today.getFullYear();
+  const insExpiry = new Date(today.setMonth(today.getMonth() + 14)).toLocaleString("default", { month: "short", year: "numeric" });
+
+  return {
+    noi,
+    capRate: d.capRate,
+    occupancy: d.occupancy,
+    dscr: d.dscr,
+    ltv: d.ltv,
+    debtYield: d.debtYield,
+    score: d.score,
+    risk: d.risk,
+    riskColor: d.riskColor,
+    inspectionStatus: `Passed — ${inspMonth}`,
+    insuranceStatus: `Active · Expires ${insExpiry}`,
+    complianceItems: 6,
+    compliancePassed: d.score >= 80 ? 6 : 4,
+    highlights: [],
+    units: d.units,
+  };
+}
+
 // Images by property type for custom deal rooms
 const TYPE_IMAGES = {
   "Multifamily":         "https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?w=1200&q=80",
@@ -496,24 +537,25 @@ export default function DealRoomPage() {
   // Build display property object
   let property = demoProperty;
   if (!property && apiProperty) {
+    const sample = generateDemoData(apiProperty);
     property = {
       ...apiProperty,
+      ...sample,
       name: apiProperty.property_name,
       type: apiProperty.property_type || "Commercial",
       market: apiProperty.address?.split(",").slice(-2).join(",").trim() || "",
       image: TYPE_IMAGES[apiProperty.property_type] || DEFAULT_IMAGE,
-      risk: "Pending", riskColor: "#6b7280", score: 0,
       isCustom: true,
     };
   } else if (!property && !loadingApi) {
-    // Derive from slug as fallback
     const derivedName = propertyId.replace(/-/g, " ").replace(/\b\w/g, c => c.toUpperCase());
+    const sample = generateDemoData({ property_type: "Multifamily", deal_amount: "" });
     property = {
+      ...sample,
       id: propertyId,
       name: derivedName,
       type: "Commercial", market: "",
       address: "", image: DEFAULT_IMAGE,
-      risk: "Pending", riskColor: "#6b7280", score: 0,
       isCustom: true,
       property_type: "", property_size: "", deal_type: "", deal_amount: "",
     };
@@ -552,18 +594,16 @@ export default function DealRoomPage() {
     );
   }
 
-  const SECTION_MAP = property.isCustom
-    ? buildPendingSectionMap(property)
-    : {
-        financials: () => <FinancialsPanel property={property} />,
-        risk:       () => <RiskPanel property={property} />,
-        compliance: () => <CompliancePanel property={property} />,
-        inspection: () => <InspectionPanel property={property} />,
-        insurance:  () => <InsurancePanel property={property} />,
-        readiness:  () => <ReadinessPanel property={property} />,
-        documents:  () => <DocumentsPanel />,
-        property:   () => <PropertyPanel property={property} />,
-      };
+  const SECTION_MAP = {
+    financials: () => <FinancialsPanel property={property} />,
+    risk:       () => <RiskPanel property={property} />,
+    compliance: () => <CompliancePanel property={property} />,
+    inspection: () => <InspectionPanel property={property} />,
+    insurance:  () => <InsurancePanel property={property} />,
+    readiness:  () => <ReadinessPanel property={property} />,
+    documents:  () => <DocumentsPanel />,
+    property:   () => property.isCustom ? <PendingPropertyPanel property={property} /> : <PropertyPanel property={property} />,
+  };
 
   return (
     <PublicLayout hideFooter>
