@@ -24,6 +24,10 @@ const { forecastProject } = require('./construction');
 const { isFeatureEnabled } = require('./featureFlags');
 const { scanForCompliance, gatherEvidence } = require('./compliance');
 require('dotenv').config();
+// Allow OPENAI_API_KEY1 as the active key (e.g. after rotating to a new key)
+if (process.env.OPENAI_API_KEY1) {
+  process.env.OPENAI_API_KEY = process.env.OPENAI_API_KEY1;
+}
 // Hard required — platform cannot function without these
 ["SUPABASE_URL","SUPABASE_SERVICE_ROLE_KEY","OPENAI_API_KEY"].forEach(k => {
   if (!process.env[k]) {
