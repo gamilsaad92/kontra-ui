@@ -6,6 +6,7 @@ require('dotenv').config(process.env.NODE_ENV !== 'production' ? { override: tru
 const express = require('express');
 const Sentry = require('@sentry/node');
 const cors = require('cors');
+const helmet = require('helmet');
 const multer = require('multer');
 const { supabase, replica } = require('./db');
 const OpenAI = require('openai');          // ← v4+ default export
@@ -114,6 +115,7 @@ const corsOptions = {
 
 const app = express();
 
+app.use(helmet());
 app.use(cors(corsOptions));
 app.options('*', cors(corsOptions));
 
@@ -139,7 +141,28 @@ if (Sentry.Handlers?.requestHandler) {
 } else if (Sentry.expressMiddleware) {
   app.use(Sentry.expressMiddleware());
 }
-const upload = multer({ storage: multer.memoryStorage() });
+const ALLOWED_MIMETYPES = new Set([
+  'application/pdf',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'application/vnd.ms-excel',
+  'text/plain',
+  'text/csv',
+  'image/jpeg',
+  'image/png',
+]);
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 20 * 1024 * 1024 },
+  fileFilter(_req, file, cb) {
+    if (ALLOWED_MIMETYPES.has(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error(`File type not allowed: ${file.mimetype}`));
+    }
+  },
+});
 
 // ── OpenAI Client (v4+ SDK) ────────────────────────────────────────────────
 const openai = new OpenAI({
