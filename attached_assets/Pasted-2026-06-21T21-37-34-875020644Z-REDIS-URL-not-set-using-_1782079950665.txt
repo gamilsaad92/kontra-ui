@@ -1,0 +1,50 @@
+2026-06-21T21:37:34.875020644Z REDIS_URL not set, using in-memory cache only
+2026-06-21T21:37:44.082225754Z Kontra API listening on port 10000
+2026-06-21T21:37:45.575783207Z [score-assets] analyzed 0 records
+2026-06-21T21:37:45.771839701Z [REQ] POST /api/track
+2026-06-21T21:37:46.578916765Z [score-loans] analyzed 0 records
+2026-06-21T21:37:46.795281147Z [score-troubled] analyzed 0 records
+2026-06-21T22:05:20.379408493Z ==> Running 'node index.js'
+2026-06-21T22:05:24.77024693Z [db] Connected to Supabase: https://jfhojgtnmcfqretrrxam.supabase.co | key_len: 41
+2026-06-21T22:05:25.477023651Z REDIS_URL not set, using in-memory cache only
+2026-06-21T22:05:34.371971591Z Kontra API listening on port 10000
+2026-06-21T22:05:35.472805532Z [score-assets] analyzed 0 records
+2026-06-21T22:05:35.774464416Z [score-loans] analyzed 0 records
+2026-06-21T22:05:36.072217136Z [score-troubled] analyzed 0 records
+2026-06-21T22:05:43.06550847Z [REQ] GET /api/env
+2026-06-21T22:05:43.369041758Z [REQ] GET /api/env
+2026-06-21T22:05:43.504383377Z [REQ] GET /api/config
+2026-06-21T22:05:43.897501085Z [REQ] GET /api/config
+2026-06-21T22:09:51.774258368Z ==> Deploying...
+2026-06-21T22:10:13.377008685Z node:internal/modules/cjs/loader:1228
+2026-06-21T22:10:13.377033916Z   throw err;
+2026-06-21T22:10:13.377038976Z   ^
+2026-06-21T22:10:13.377043066Z 
+2026-06-21T22:10:13.377085358Z Error: Cannot find module 'helmet'
+2026-06-21T22:10:13.377090088Z Require stack:
+2026-06-21T22:10:13.377094118Z - /opt/render/project/src/api/index.js
+2026-06-21T22:10:13.377099088Z     at Function._resolveFilename (node:internal/modules/cjs/loader:1225:15)
+2026-06-21T22:10:13.377103688Z     at Function._load (node:internal/modules/cjs/loader:1055:27)
+2026-06-21T22:10:13.377107868Z     at TracingChannel.traceSync (node:diagnostics_channel:322:14)
+2026-06-21T22:10:13.377111928Z     at wrapModuleLoad (node:internal/modules/cjs/loader:220:24)
+2026-06-21T22:10:13.377115889Z     at Module.require (node:internal/modules/cjs/loader:1311:12)
+2026-06-21T22:10:13.377119789Z     at require (node:internal/modules/helpers:136:16)
+2026-06-21T22:10:13.377123639Z     at Object.<anonymous> (/opt/render/project/src/api/index.js:9:16)
+2026-06-21T22:10:13.377127799Z     at Module._compile (node:internal/modules/cjs/loader:1554:14)
+2026-06-21T22:10:13.377131779Z     at Object..js (node:internal/modules/cjs/loader:1706:10)
+2026-06-21T22:10:13.377136119Z     at Module.load (node:internal/modules/cjs/loader:1289:32) {
+2026-06-21T22:10:13.377140609Z   code: 'MODULE_NOT_FOUND',
+2026-06-21T22:10:13.37714487Z   requireStack: [ '/opt/render/project/src/api/index.js' ]
+2026-06-21T22:10:13.37714878Z }
+2026-06-21T22:10:13.37715261Z 
+2026-06-21T22:10:13.37715657Z Node.js v22.14.0
+2026-06-21T22:10:14.450679459Z ==> Exited with status 1
+2026-06-21T22:10:14.454089722Z ==> Common ways to troubleshoot your deploy: https://render.com/docs/troubleshooting-deploys
+2026-06-21T22:10:20.234215103Z ==> Running 'node index.js'
+2026-06-21T22:10:32.641149968Z ==> Running 'node index.js'
+2026-06-21T22:10:36.836615279Z [db] Connected to Supabase: https://jfhojgtnmcfqretrrxam.supabase.co | key_len: 41
+2026-06-21T22:10:37.529286508Z REDIS_URL not set, using in-memory cache only
+2026-06-21T22:10:46.738093509Z Kontra API listening on port 10000
+2026-06-21T22:10:48.031312042Z [score-assets] analyzed 0 records
+2026-06-21T22:10:48.330926876Z [score-loans] analyzed 0 records
+2026-06-21T22:10:48.630605712Z [score-troubled] analyzed 0 records
