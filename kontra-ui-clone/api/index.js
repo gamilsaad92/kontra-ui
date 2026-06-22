@@ -162,10 +162,12 @@ const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 20 * 1024 * 1024 },
   fileFilter(_req, file, cb) {
-    if (ALLOWED_MIMETYPES.has(file.mimetype)) {
+    const ext = (file.originalname || '').split('.').pop().toLowerCase();
+    const ALLOWED_EXTS = new Set(['pdf','doc','docx','xlsx','xls','xlsm','xlsb','csv','txt','jpg','jpeg','png']);
+    if (ALLOWED_MIMETYPES.has(file.mimetype) || ALLOWED_EXTS.has(ext)) {
       cb(null, true);
     } else {
-      cb(new Error(`File type not allowed: ${file.mimetype}`));
+      cb(new Error(`File type not allowed: ${file.mimetype} (${file.originalname})`));
     }
   },
 });
@@ -1057,53 +1059,88 @@ app.get('/api/public/deal-room/:propertyId', async (req, res) => {
 });
 
 // ── Public AI Tools — free, no auth required ──────────────────────────────
-async function extractTextFromFile(buffer, mimetype = '') {
+
+// Convert PDF to images using pdftoppm, then OCR via GPT-4o Vision
+async function extractPdfViaVision(buffer) {
+  const { execSync } = require('child_process');
+  const fsSync = require('fs');
+  const pathMod = require('path');
+  const os = require('os');
+  const tmpDir = fsSync.mkdtempSync(pathMod.join(os.tmpdir(), 'kontra-pdf-'));
+  const pdfPath = pathMod.join(tmpDir, 'doc.pdf');
+  const imgBase = pathMod.join(tmpDir, 'page');
   try {
-    // PDF
-    if (mimetype === 'application/pdf' || buffer.slice(0,4).toString() === '%PDF') {
-      const pdfMod = require('pdf-parse');
-      const pdfParse = typeof pdfMod === 'function' ? pdfMod : (pdfMod.default || pdfMod);
-      const data = await pdfParse(buffer);
-      return (data.text || '').slice(0, 15000);
-    }
-    // Excel (including .xlsm macro-enabled)
-    if (mimetype.includes('spreadsheet') || mimetype.includes('excel') ||
-        mimetype.includes('macroEnabled') || mimetype === 'text/csv') {
-      const XLSX = require('xlsx');
-      const wb = XLSX.read(buffer, { type: 'buffer' });
-      const rows = [];
-      wb.SheetNames.forEach(name => {
-        const sheet = wb.Sheets[name];
-        const csv = XLSX.utils.sheet_to_csv(sheet);
-        rows.push(`[Sheet: ${name}]\n${csv}`);
-      });
-      return rows.join('\n\n').slice(0, 15000);
-    }
-    // CSV / plain text
-    if (mimetype === 'text/plain' || mimetype === 'text/csv') {
-      return buffer.toString('utf8').slice(0, 15000);
-    }
-    // Word docs and fallback — strip binary, keep readable chars
-    const raw = buffer.toString('utf8', 0, Math.min(buffer.length, 60000));
-    const cleaned = raw.replace(/[^\x20-\x7E\n\r\t]/g, ' ').replace(/\s{3,}/g, '\n');
-    return cleaned.trim().slice(0, 12000);
-  } catch (e) {
-    console.error('[extractTextFromFile]', e.message);
-    return '';
+    fsSync.writeFileSync(pdfPath, buffer);
+    // First try pdftotext (fast, works for text-based PDFs)
+    try {
+      const txt = execSync(`pdftotext "${pdfPath}" -`, { timeout: 10000 }).toString().trim();
+      if (txt.length > 80) {
+        console.log('[pdf] pdftotext extracted', txt.length, 'chars');
+        return txt.slice(0, 15000);
+      }
+    } catch (_) {}
+    // Fall back to image rendering + GPT-4o Vision (works for scanned PDFs)
+    execSync(`pdftoppm -r 150 -png -l 4 "${pdfPath}" "${imgBase}"`, { timeout: 30000 });
+    const pngs = fsSync.readdirSync(tmpDir).filter(f => f.endsWith('.png')).sort().slice(0, 4);
+    if (pngs.length === 0) throw new Error('PDF produced no pages');
+    console.log('[pdf] vision pipeline — pages:', pngs.length);
+    const imageContent = pngs.map(f => ({
+      type: 'image_url',
+      image_url: { url: `data:image/png;base64,${fsSync.readFileSync(pathMod.join(tmpDir, f)).toString('base64')}`, detail: 'high' }
+    }));
+    const visionRes = await openai.chat.completions.create({
+      model: 'gpt-4o',
+      messages: [{ role: 'user', content: [
+        { type: 'text', text: 'Transcribe ALL text from this document exactly as it appears. Include every number, label, line item, percentage, and dollar value. Preserve table structure. Do not summarize — output the complete raw text.' },
+        ...imageContent
+      ]}],
+      max_tokens: 4096,
+    });
+    return visionRes.choices[0]?.message?.content || '';
+  } finally {
+    try { execSync(`rm -rf "${tmpDir}"`); } catch (_) {}
   }
 }
 
-// Keep sync wrapper for any legacy callers
-function extractReadableText(buffer) {
-  const raw = buffer.toString('utf8', 0, Math.min(buffer.length, 50000));
-  const cleaned = raw.replace(/[^\x20-\x7E\n\r\t]/g, ' ').replace(/\s{3,}/g, '\n');
-  return cleaned.trim().slice(0, 12000);
+async function extractTextFromFile(buffer, mimetype = '', filename = '') {
+  const ext = ((filename || '').split('.').pop() || '').toLowerCase();
+  // PDF — vision pipeline (text + scanned)
+  if (mimetype === 'application/pdf' || ext === 'pdf' || buffer.slice(0,4).toString() === '%PDF') {
+    return extractPdfViaVision(buffer);
+  }
+  // Excel — .xlsx, .xls, .xlsm, .xlsb
+  if (mimetype.includes('spreadsheet') || mimetype.includes('excel') ||
+      mimetype.includes('macroEnabled') || mimetype.includes('ms-excel') ||
+      ['xlsx','xls','xlsm','xlsb'].includes(ext)) {
+    const XLSX = require('xlsx');
+    const wb = XLSX.read(buffer, { type: 'buffer' });
+    const rows = [];
+    for (const name of wb.SheetNames.slice(0, 8)) {
+      const sheet = wb.Sheets[name];
+      const csv = XLSX.utils.sheet_to_csv(sheet);
+      if (csv.replace(/,/g,'').replace(/\n/g,'').trim().length > 20) {
+        rows.push(`[Sheet: ${name}]\n${csv}`);
+      }
+    }
+    return rows.join('\n\n').slice(0, 15000);
+  }
+  // CSV / plain text
+  if (mimetype === 'text/csv' || mimetype === 'text/plain' || ext === 'csv') {
+    return buffer.toString('utf8').slice(0, 15000);
+  }
+  // DOCX / fallback — strip binary noise
+  const raw = buffer.toString('utf8', 0, Math.min(buffer.length, 60000));
+  return raw.replace(/[^\x20-\x7E\n\r\t]/g, ' ').replace(/\s{3,}/g, '\n').trim().slice(0, 12000);
 }
 
 app.post('/api/ai/analyze-inspection', aiRateLimit, upload.single('file'), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+  console.log('[analyze-inspection] file:', req.file.originalname, 'mime:', req.file.mimetype, 'size:', req.file.size);
   try {
-    const text = await extractTextFromFile(req.file.buffer, req.file.mimetype);
+    const text = await extractTextFromFile(req.file.buffer, req.file.mimetype, req.file.originalname);
+    if (!text || text.trim().length < 30) {
+      return res.status(422).json({ error: 'Could not extract text from this file. Please ensure the file is not password-protected and contains readable content.' });
+    }
     const completion = await openai.chat.completions.create({
       model: 'gpt-4o-mini',
       messages: [
@@ -1111,7 +1148,7 @@ app.post('/api/ai/analyze-inspection', aiRateLimit, upload.single('file'), async
         { role: 'user', content: `Analyze this commercial real estate inspection report and return a JSON object with this exact structure:
 {"propertyType":string,"overallCondition":"Good"|"Fair"|"Poor","score":number,"lifeSafetyFindings":[{"item":string,"severity":"Critical"|"Moderate"|"Minor","description":string}],"deferredMaintenance":[{"item":string,"estimatedCost":string,"priority":"High"|"Medium"|"Low","timeline":string}],"totalDeferredCost":string,"priorityActions":[{"action":string,"timeline":string}],"summary":string,"positiveFindings":[string]}
 
-${text ? `Inspection report text:\n${text}` : 'No readable text extracted. Generate a plausible sample inspection analysis for a generic commercial property.'}` }
+Inspection report text:\n${text}` }
       ],
       response_format: { type: 'json_object' },
       temperature: 0.3,
@@ -1148,15 +1185,19 @@ Property: Type=${propertyType||'Unknown'}, Occupancy=${occupancy||'?'}%, NOI=$${
 
 app.post('/api/ai/review-insurance', aiRateLimit, upload.single('file'), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+  console.log('[review-insurance] file:', req.file.originalname, 'mime:', req.file.mimetype);
   try {
-    const text = await extractTextFromFile(req.file.buffer, req.file.mimetype);
+    const text = await extractTextFromFile(req.file.buffer, req.file.mimetype, req.file.originalname);
+    if (!text || text.trim().length < 30) {
+      return res.status(422).json({ error: 'Could not extract text from this file. Please ensure it is not password-protected and contains readable content.' });
+    }
     const completion = await openai.chat.completions.create({
       model: 'gpt-4o-mini',
       messages: [
         { role: 'system', content: 'You are a CRE insurance specialist. Analyze insurance policies and return JSON.' },
         { role: 'user', content: `Analyze this insurance policy and return JSON: {"policyType":string,"coverageAmount":string,"expirationDate":string,"expiresInDays":number,"coverageGaps":[{"gap":string,"severity":"Critical"|"Moderate"|"Minor"}],"endorsements":[string],"recommendations":[string],"complianceStatus":"Compliant"|"Review Required"|"Action Needed","summary":string}
 
-Policy text:\n${text||'No readable text — generate a plausible insurance review for a commercial property.'}` }
+Policy text:\n${text}` }
       ],
       response_format: { type: 'json_object' },
       temperature: 0.3,
@@ -1171,15 +1212,19 @@ Policy text:\n${text||'No readable text — generate a plausible insurance revie
 
 app.post('/api/ai/review-financials', aiRateLimit, upload.single('file'), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+  console.log('[review-financials] file:', req.file.originalname, 'mime:', req.file.mimetype);
   try {
-    const text = await extractTextFromFile(req.file.buffer, req.file.mimetype);
+    const text = await extractTextFromFile(req.file.buffer, req.file.mimetype, req.file.originalname);
+    if (!text || text.trim().length < 30) {
+      return res.status(422).json({ error: 'Could not extract text from this file. Please ensure it is not password-protected and contains readable content.' });
+    }
     const completion = await openai.chat.completions.create({
       model: 'gpt-4o-mini',
       messages: [
-        { role: 'system', content: 'You are a CRE financial analyst. Analyze operating statements and financial reports, returning JSON.' },
+        { role: 'system', content: 'You are a CRE financial analyst. Analyze operating statements and financial reports, returning JSON. Only report figures that are explicitly present in the document.' },
         { role: 'user', content: `Analyze this financial document and return JSON: {"documentType":string,"noi":string,"occupancy":string,"dscr":string,"revenue":string,"expenses":string,"anomalies":[{"item":string,"description":string,"severity":"High"|"Medium"|"Low"}],"trends":[string],"covenantStatus":"Compliant"|"At Risk"|"Breached"|"Unknown","summary":string,"recommendations":[string]}
 
-Financial document:\n${text||'No readable text — generate a plausible financial review for a commercial property.'}` }
+Financial document:\n${text}` }
       ],
       response_format: { type: 'json_object' },
       temperature: 0.3,
