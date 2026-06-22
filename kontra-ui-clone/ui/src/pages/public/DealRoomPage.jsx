@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import PublicLayout from "./PublicLayout";
 
@@ -467,16 +467,392 @@ function PendingPropertyPanel({ property }) {
   );
 }
 
+// ── Reusable upload + AI analyze panel ────────────────────────────────────
+function UploadAnalyzePanel({ title, icon, endpoint, accept, uploadLabel, hint, formatResult }) {
+  const [status, setStatus] = useState("idle");
+  const [result, setResult] = useState(null);
+  const [fileName, setFileName] = useState("");
+  const [errorMsg, setErrorMsg] = useState("");
+  const inputRef = useRef(null);
+
+  async function handleFile(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setFileName(file.name);
+    setStatus("uploading");
+    setErrorMsg("");
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await fetch(`${API_BASE}${endpoint}`, { method: "POST", body: fd });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || `Server error ${res.status}`);
+      setResult(json.analysis);
+      setStatus("done");
+    } catch (err) {
+      setErrorMsg(err.message);
+      setStatus("error");
+    }
+    e.target.value = "";
+  }
+
+  return (
+    <div className="bg-white rounded-2xl border border-gray-200 p-5">
+      <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-4">{title}</p>
+
+      {status === "idle" && (
+        <div className="border-2 border-dashed border-gray-200 rounded-xl p-6 text-center">
+          <div className="text-3xl mb-2">{icon}</div>
+          <p className="text-sm font-semibold text-gray-700 mb-1">{uploadLabel}</p>
+          {hint && <p className="text-xs text-gray-400 mb-4 max-w-xs mx-auto">{hint}</p>}
+          <button onClick={() => inputRef.current?.click()}
+            className="px-5 py-2.5 rounded-xl text-xs font-bold text-white transition hover:opacity-90"
+            style={{ background: "#800020" }}>
+            Choose File →
+          </button>
+          <input ref={inputRef} type="file" accept={accept} className="hidden" onChange={handleFile} />
+        </div>
+      )}
+
+      {status === "uploading" && (
+        <div className="text-center py-8">
+          <svg className="w-8 h-8 animate-spin mx-auto mb-3" style={{ color: "#800020" }} fill="none" viewBox="0 0 24 24">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+          </svg>
+          <p className="text-sm font-semibold text-gray-700">Analyzing with GPT-4o…</p>
+          <p className="text-xs text-gray-400 mt-1 truncate max-w-[200px] mx-auto">{fileName}</p>
+        </div>
+      )}
+
+      {status === "done" && result && (
+        <div>
+          <div className="flex items-center gap-2 mb-3 flex-wrap">
+            <span className="text-xs font-bold text-green-700 bg-green-50 px-2 py-0.5 rounded-full">✓ AI Analysis Complete</span>
+            <span className="text-xs text-gray-400 truncate max-w-[160px]">{fileName}</span>
+          </div>
+          {formatResult(result)}
+          <button onClick={() => { setStatus("idle"); setResult(null); setFileName(""); }}
+            className="mt-4 text-xs text-gray-400 hover:text-gray-600 underline block">
+            Upload another document
+          </button>
+        </div>
+      )}
+
+      {status === "error" && (
+        <div className="text-center py-6">
+          <div className="text-2xl mb-2">⚠️</div>
+          <p className="text-sm font-semibold text-red-700 mb-1">Analysis failed</p>
+          <p className="text-xs text-red-400 mb-4 max-w-xs mx-auto">{errorMsg}</p>
+          <button onClick={() => setStatus("idle")}
+            className="px-4 py-2 rounded-xl text-xs font-bold text-white hover:opacity-90"
+            style={{ background: "#800020" }}>
+            Try Again
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ResultRow({ label, value, highlight }) {
+  if (!value) return null;
+  return (
+    <div className="flex items-start justify-between py-1.5 border-t border-gray-100 first:border-t-0 gap-2">
+      <span className="text-xs text-gray-400 shrink-0">{label}</span>
+      <span className={`text-xs font-semibold text-right ${highlight ? "text-red-700" : "text-gray-800"}`}>{value}</span>
+    </div>
+  );
+}
+
+function ResultList({ label, items, highlight }) {
+  if (!items?.length) return null;
+  return (
+    <div className="mt-2">
+      <p className="text-xs font-semibold text-gray-500 mb-1">{label}</p>
+      <ul className="space-y-1">
+        {items.slice(0, 4).map((item, i) => (
+          <li key={i} className={`text-xs rounded-lg px-3 py-1.5 ${highlight ? "bg-red-50 text-red-700" : "bg-gray-50 text-gray-700"}`}>
+            {typeof item === "string" ? item : item.item || item.action || item.gap || JSON.stringify(item)}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function InspectionUploadPanel() {
+  return (
+    <UploadAnalyzePanel
+      title="Inspection Status" icon="🔍"
+      endpoint="/api/ai/analyze-inspection"
+      accept=".pdf,.doc,.docx"
+      uploadLabel="Upload Inspection Report"
+      hint="PDF or DOCX — AI extracts condition, life-safety findings, and deferred maintenance costs"
+      formatResult={(a) => (
+        <div>
+          <ResultRow label="Condition" value={a.overallCondition} />
+          <ResultRow label="Score" value={a.score != null ? `${a.score}/100` : null} />
+          <ResultRow label="Deferred Cost" value={a.totalDeferredCost} highlight={!!a.totalDeferredCost} />
+          <ResultRow label="Life Safety" value={a.lifeSafetyFindings?.length ? `${a.lifeSafetyFindings.length} finding(s)` : "None flagged"} highlight={a.lifeSafetyFindings?.length > 0} />
+          <ResultList label="Priority Actions" items={a.priorityActions?.map(p => p.action || p)} />
+          {a.summary && <p className="text-xs text-gray-500 mt-3 italic border-t border-gray-100 pt-2">{a.summary.slice(0, 180)}{a.summary.length > 180 ? "…" : ""}</p>}
+        </div>
+      )}
+    />
+  );
+}
+
+function InsuranceUploadPanel() {
+  return (
+    <UploadAnalyzePanel
+      title="Insurance Status" icon="🛡️"
+      endpoint="/api/ai/review-insurance"
+      accept=".pdf,.doc,.docx"
+      uploadLabel="Upload Insurance Certificate"
+      hint="PDF — AI reviews coverage amounts, flags gaps, and tracks expiration dates"
+      formatResult={(a) => (
+        <div>
+          <ResultRow label="Status" value={a.complianceStatus} highlight={a.complianceStatus === "Non-Compliant"} />
+          <ResultRow label="Coverage" value={a.coverageAmount} />
+          <ResultRow label="Expires" value={a.expiresInDays != null ? `${a.expiresInDays} days` : null} highlight={a.expiresInDays != null && a.expiresInDays < 45} />
+          <ResultRow label="Insurer" value={a.insurer} />
+          <ResultList label="Coverage Gaps" items={a.coverageGaps?.map(g => g.gap || g)} highlight />
+          {a.summary && <p className="text-xs text-gray-500 mt-3 italic border-t border-gray-100 pt-2">{a.summary.slice(0, 180)}{a.summary.length > 180 ? "…" : ""}</p>}
+        </div>
+      )}
+    />
+  );
+}
+
+function FinancialsUploadPanel() {
+  return (
+    <UploadAnalyzePanel
+      title="Financial Overview" icon="📊"
+      endpoint="/api/ai/review-financials"
+      accept=".pdf,.doc,.docx,.xlsx,.xls,.csv"
+      uploadLabel="Upload Operating Statement or Rent Roll"
+      hint="PDF, Excel, or CSV — AI extracts NOI, DSCR, occupancy, and flags anomalies"
+      formatResult={(a) => (
+        <div>
+          <ResultRow label="NOI" value={a.noi} />
+          <ResultRow label="Occupancy" value={a.occupancy} />
+          <ResultRow label="DSCR" value={a.dscr} />
+          <ResultRow label="Revenue" value={a.revenue} />
+          <ResultRow label="Expenses" value={a.expenses} />
+          <ResultRow label="Covenants" value={a.covenantStatus} highlight={a.covenantStatus === "Breached" || a.covenantStatus === "At Risk"} />
+          <ResultList label="Anomalies Flagged" items={a.anomalies?.map(x => `${x.item} — ${x.description}`)} highlight />
+          <ResultList label="Trends" items={a.trends} />
+          {a.summary && <p className="text-xs text-gray-500 mt-3 italic border-t border-gray-100 pt-2">{a.summary.slice(0, 180)}{a.summary.length > 180 ? "…" : ""}</p>}
+        </div>
+      )}
+    />
+  );
+}
+
+function RiskUploadPanel({ property }) {
+  const [status, setStatus] = useState("idle");
+  const [result, setResult] = useState(null);
+  const [errorMsg, setErrorMsg] = useState("");
+  const [form, setForm] = useState({
+    propertyName: property?.property_name || property?.name || "",
+    propertyType: property?.property_type || "Multifamily",
+    address: property?.address || "",
+    units: "", askingPrice: "", capRate: "", occupancy: "",
+  });
+
+  const types = ["Multifamily", "Office", "Retail", "Industrial", "Mixed-Use", "Hospitality", "Self-Storage", "Other"];
+
+  async function handleScore() {
+    setStatus("loading"); setErrorMsg("");
+    try {
+      const res = await fetch(`${API_BASE}/api/ai/score-property`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...form, units: Number(form.units) || undefined, askingPrice: Number(form.askingPrice) || undefined, capRate: Number(form.capRate) || undefined, occupancy: Number(form.occupancy) || undefined }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || `Server error ${res.status}`);
+      setResult(json.analysis); setStatus("done");
+    } catch (err) { setErrorMsg(err.message); setStatus("error"); }
+  }
+
+  const riskColor = { Low: "#16a34a", Medium: "#d97706", High: "#dc2626", "Very High": "#9b1c1c" };
+
+  return (
+    <div className="bg-white rounded-2xl border border-gray-200 p-5">
+      <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-4">Risk Assessment</p>
+
+      {(status === "idle" || status === "error") && (
+        <div className="space-y-3">
+          <div className="grid grid-cols-2 gap-2">
+            <div className="col-span-2">
+              <label className="text-xs text-gray-400 mb-1 block">Property Name</label>
+              <input value={form.propertyName} onChange={e => setForm(f => ({ ...f, propertyName: e.target.value }))}
+                className="w-full text-xs border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:border-red-800" placeholder="123 Main St" />
+            </div>
+            <div>
+              <label className="text-xs text-gray-400 mb-1 block">Property Type</label>
+              <select value={form.propertyType} onChange={e => setForm(f => ({ ...f, propertyType: e.target.value }))}
+                className="w-full text-xs border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:border-red-800 bg-white">
+                {types.map(t => <option key={t}>{t}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="text-xs text-gray-400 mb-1 block">Units / Sq Ft</label>
+              <input value={form.units} onChange={e => setForm(f => ({ ...f, units: e.target.value }))}
+                className="w-full text-xs border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:border-red-800" placeholder="e.g. 48" type="number" />
+            </div>
+            <div>
+              <label className="text-xs text-gray-400 mb-1 block">Asking Price ($)</label>
+              <input value={form.askingPrice} onChange={e => setForm(f => ({ ...f, askingPrice: e.target.value }))}
+                className="w-full text-xs border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:border-red-800" placeholder="e.g. 4500000" type="number" />
+            </div>
+            <div>
+              <label className="text-xs text-gray-400 mb-1 block">Cap Rate (%)</label>
+              <input value={form.capRate} onChange={e => setForm(f => ({ ...f, capRate: e.target.value }))}
+                className="w-full text-xs border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:border-red-800" placeholder="e.g. 5.8" type="number" step="0.1" />
+            </div>
+            <div>
+              <label className="text-xs text-gray-400 mb-1 block">Occupancy (%)</label>
+              <input value={form.occupancy} onChange={e => setForm(f => ({ ...f, occupancy: e.target.value }))}
+                className="w-full text-xs border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:border-red-800" placeholder="e.g. 92" type="number" />
+            </div>
+          </div>
+          {errorMsg && <p className="text-xs text-red-500">{errorMsg}</p>}
+          <button onClick={handleScore} disabled={!form.propertyName}
+            className="w-full py-2.5 rounded-xl text-xs font-bold text-white transition hover:opacity-90 disabled:opacity-40"
+            style={{ background: "#800020" }}>
+            ⚡ Generate Risk Score
+          </button>
+        </div>
+      )}
+
+      {status === "loading" && (
+        <div className="text-center py-8">
+          <svg className="w-8 h-8 animate-spin mx-auto mb-3" style={{ color: "#800020" }} fill="none" viewBox="0 0 24 24">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+          </svg>
+          <p className="text-sm font-semibold text-gray-700">Scoring with GPT-4o…</p>
+        </div>
+      )}
+
+      {status === "done" && result && (
+        <div>
+          <div className="text-center py-4 rounded-xl mb-4" style={{ background: (riskColor[result.riskLevel] || "#800020") + "11" }}>
+            <div className="text-4xl font-black mb-1" style={{ color: riskColor[result.riskLevel] || "#800020" }}>{result.score}/100</div>
+            <div className="text-xs font-bold uppercase tracking-wider" style={{ color: riskColor[result.riskLevel] || "#800020" }}>{result.riskLevel} Risk</div>
+          </div>
+          {result.scoreBreakdown && (
+            <div className="grid grid-cols-2 gap-2 mb-3">
+              {Object.entries(result.scoreBreakdown).map(([k, v]) => (
+                <div key={k} className="bg-gray-50 rounded-lg px-3 py-2 text-center">
+                  <div className="text-sm font-bold text-gray-800">{v}</div>
+                  <div className="text-[10px] text-gray-400 capitalize">{k}</div>
+                </div>
+              ))}
+            </div>
+          )}
+          <ResultList label="Strengths" items={result.strengths} />
+          <ResultList label="Risks" items={result.risks} highlight />
+          {result.summary && <p className="text-xs text-gray-500 mt-3 italic border-t border-gray-100 pt-2">{result.summary.slice(0, 180)}{result.summary.length > 180 ? "…" : ""}</p>}
+          <button onClick={() => { setStatus("idle"); setResult(null); }} className="mt-3 text-xs text-gray-400 hover:text-gray-600 underline block">Score another property</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function DocumentsUploadPanel() {
+  const [docs, setDocs] = useState([]);
+  const [uploading, setUploading] = useState(false);
+  const inputRef = useRef(null);
+
+  function handleFiles(e) {
+    const files = Array.from(e.target.files || []);
+    if (!files.length) return;
+    setUploading(true);
+    setTimeout(() => {
+      setDocs(prev => [
+        ...files.map(f => ({
+          name: f.name, size: (f.size / 1024).toFixed(0) + " KB",
+          type: f.name.match(/\.pdf$/i) ? "PDF" : f.name.match(/\.xlsx?$/i) ? "Excel" : f.name.match(/\.docx?$/i) ? "Word" : "File",
+          time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+        })),
+        ...prev,
+      ]);
+      setUploading(false);
+    }, 800);
+    e.target.value = "";
+  }
+
+  return (
+    <div className="bg-white rounded-2xl border border-gray-200 p-5">
+      <div className="flex items-center justify-between mb-4">
+        <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">Document Package</p>
+        {docs.length > 0 && (
+          <button onClick={() => inputRef.current?.click()}
+            className="text-xs font-bold text-white px-3 py-1.5 rounded-lg hover:opacity-90"
+            style={{ background: "#800020" }}>
+            + Add
+          </button>
+        )}
+      </div>
+      <input ref={inputRef} type="file" multiple accept=".pdf,.doc,.docx,.xlsx,.xls,.csv,.txt" className="hidden" onChange={handleFiles} />
+
+      {docs.length === 0 && !uploading && (
+        <div className="border-2 border-dashed border-gray-200 rounded-xl p-6 text-center">
+          <div className="text-3xl mb-2">📄</div>
+          <p className="text-sm font-semibold text-gray-700 mb-1">Upload Deal Documents</p>
+          <p className="text-xs text-gray-400 mb-4">Leases, rent rolls, loan agreements, title reports — any deal file</p>
+          <button onClick={() => inputRef.current?.click()}
+            className="px-5 py-2.5 rounded-xl text-xs font-bold text-white transition hover:opacity-90"
+            style={{ background: "#800020" }}>
+            Choose Files →
+          </button>
+        </div>
+      )}
+
+      {uploading && (
+        <div className="text-center py-4">
+          <svg className="w-6 h-6 animate-spin mx-auto mb-2" style={{ color: "#800020" }} fill="none" viewBox="0 0 24 24">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+          </svg>
+          <p className="text-xs text-gray-500">Uploading…</p>
+        </div>
+      )}
+
+      {docs.length > 0 && !uploading && (
+        <ul className="space-y-2">
+          {docs.map((d, i) => (
+            <li key={i} className="flex items-center gap-3 p-2.5 rounded-xl bg-gray-50">
+              <div className="w-8 h-8 rounded-lg bg-white border border-gray-200 flex items-center justify-center text-base shrink-0">
+                {d.type === "PDF" ? "📋" : d.type === "Excel" ? "📊" : d.type === "Word" ? "📝" : "📄"}
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-semibold text-gray-800 truncate">{d.name}</p>
+                <p className="text-[10px] text-gray-400">{d.type} · {d.size} · {d.time}</p>
+              </div>
+              <span className="text-[10px] font-semibold text-green-700 bg-green-50 px-2 py-0.5 rounded-full shrink-0">Uploaded</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 // Build pending section map based on role
 function buildPendingSectionMap(property) {
   return {
-    financials: () => <PendingPanel title="Financial Overview" icon="📊" description="Upload your operating statement and rent roll — AI will extract NOI, DSCR, cap rate, and more." />,
-    risk:       () => <PendingPanel title="Risk Assessment" icon="⚡" description="Your Kontra Property Health Score will be generated once documents are uploaded." />,
-    compliance: () => <PendingPanel title="Compliance Status" icon="✅" description="Compliance checklist will populate as documents are reviewed." />,
-    inspection: () => <PendingPanel title="Inspection Status" icon="🔍" description="Send the inspector their invite link — their report uploads directly into this deal room." />,
-    insurance:  () => <PendingPanel title="Insurance Status" icon="🛡️" description="Send the insurer their invite link to upload the certificate and coverage details." />,
+    financials: () => <FinancialsUploadPanel />,
+    risk:       () => <RiskUploadPanel property={property} />,
+    compliance: () => <PendingPanel title="Compliance Status" icon="✅" description="Compliance checklist will populate as documents are reviewed and parties complete their submissions." />,
+    inspection: () => <InspectionUploadPanel />,
+    insurance:  () => <InsuranceUploadPanel />,
     readiness:  () => <PendingPanel title="Investment Readiness" icon="🏅" description="All 5 readiness pillars will be tracked as parties submit their documentation." />,
-    documents:  () => <PendingPanel title="Document Package" icon="📄" description="Documents uploaded by each party will appear here, AI-reviewed and organized." />,
+    documents:  () => <DocumentsUploadPanel />,
     property:   () => <PendingPropertyPanel property={property} />,
   };
 }
@@ -594,16 +970,18 @@ export default function DealRoomPage() {
     );
   }
 
-  const SECTION_MAP = {
-    financials: () => <FinancialsPanel property={property} />,
-    risk:       () => <RiskPanel property={property} />,
-    compliance: () => <CompliancePanel property={property} />,
-    inspection: () => <InspectionPanel property={property} />,
-    insurance:  () => <InsurancePanel property={property} />,
-    readiness:  () => <ReadinessPanel property={property} />,
-    documents:  () => <DocumentsPanel />,
-    property:   () => property.isCustom ? <PendingPropertyPanel property={property} /> : <PropertyPanel property={property} />,
-  };
+  const SECTION_MAP = property.isCustom
+    ? buildPendingSectionMap(property)
+    : {
+        financials: () => <FinancialsPanel property={property} />,
+        risk:       () => <RiskPanel property={property} />,
+        compliance: () => <CompliancePanel property={property} />,
+        inspection: () => <InspectionPanel property={property} />,
+        insurance:  () => <InsurancePanel property={property} />,
+        readiness:  () => <ReadinessPanel property={property} />,
+        documents:  () => <DocumentsPanel />,
+        property:   () => <PropertyPanel property={property} />,
+      };
 
   return (
     <PublicLayout hideFooter>
