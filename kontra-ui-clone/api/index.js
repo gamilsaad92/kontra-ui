@@ -6,6 +6,7 @@ require('dotenv').config(process.env.NODE_ENV !== 'production' ? { override: tru
 const express = require('express');
 const Sentry = require('@sentry/node');
 const cors = require('cors');
+const helmet = require('helmet');
 const multer = require('multer');
 const { supabase, replica } = require('./db');
 const OpenAI = require('openai');          // ← v4+ default export
@@ -18,10 +19,15 @@ const path = require('path');
 const http = require('http');
 const attachChatServer = require('./chatServer');
 const attachCollabServer = require('./collabServer');
+const aiRateLimit = require('./middlewares/aiRateLimit');
 const { forecastProject } = require('./construction');
 const { isFeatureEnabled } = require('./featureFlags');
 const { scanForCompliance, gatherEvidence } = require('./compliance');
 require('dotenv').config();
+// Allow OPENAI_API_KEY1 as the active key (e.g. after rotating to a new key)
+if (process.env.OPENAI_API_KEY1) {
+  process.env.OPENAI_API_KEY = process.env.OPENAI_API_KEY1;
+}
 // Hard required — platform cannot function without these
 ["SUPABASE_URL","SUPABASE_SERVICE_ROLE_KEY","OPENAI_API_KEY"].forEach(k => {
   if (!process.env[k]) {
@@ -113,6 +119,7 @@ const corsOptions = {
 
 const app = express();
 
+app.use(helmet());
 app.use(cors(corsOptions));
 app.options('*', cors(corsOptions));
 
@@ -138,7 +145,32 @@ if (Sentry.Handlers?.requestHandler) {
 } else if (Sentry.expressMiddleware) {
   app.use(Sentry.expressMiddleware());
 }
-const upload = multer({ storage: multer.memoryStorage() });
+const ALLOWED_MIMETYPES = new Set([
+  'application/pdf',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'application/vnd.ms-excel',
+  'application/vnd.ms-excel.sheet.macroEnabled.12',   // .xlsm
+  'application/vnd.ms-excel.sheet.binary.macroEnabled.12', // .xlsb
+  'text/plain',
+  'text/csv',
+  'image/jpeg',
+  'image/png',
+]);
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 20 * 1024 * 1024 },
+  fileFilter(_req, file, cb) {
+    const ext = (file.originalname || '').split('.').pop().toLowerCase();
+    const ALLOWED_EXTS = new Set(['pdf','doc','docx','xlsx','xls','xlsm','xlsb','csv','txt','jpg','jpeg','png']);
+    if (ALLOWED_MIMETYPES.has(file.mimetype) || ALLOWED_EXTS.has(ext)) {
+      cb(null, true);
+    } else {
+      cb(new Error(`File type not allowed: ${file.mimetype} (${file.originalname})`));
+    }
+  },
+});
 
 // ── OpenAI Client (v4+ SDK) ────────────────────────────────────────────────
 const openai = new OpenAI({
@@ -816,6 +848,9 @@ app.get('/api/copilot/tokenization-eligibility', (req, res) => {
 });
 
 // ── Stripe Guest Checkout — PUBLIC, must stay BEFORE requireOrgContext ──────
+// In-memory store for pending deal rooms (checkout → webhook bridge)
+const pendingDealRooms = new Map();
+
 app.post('/api/checkout/guest', async (req, res) => {
   try {
     const stripeKey = process.env.STRIPE_SECRET_KEY;
@@ -826,7 +861,7 @@ app.post('/api/checkout/guest', async (req, res) => {
       });
     }
     const stripe = require('stripe')(stripeKey);
-    const { propertyId, propertyName, plan = 'deal', email, role = 'lender' } = req.body;
+    const { propertyId, propertyName, plan = 'deal', email, role = 'lender', meta = {} } = req.body;
     const origin = req.headers.origin || 'https://kontraplatform.com';
 
     const PLANS = {
@@ -851,17 +886,467 @@ app.post('/api/checkout/guest', async (req, res) => {
       mode: cfg.mode,
       payment_method_types: ['card'],
       line_items: [lineItem],
-      success_url: `${origin}/dashboard?checkout=success&plan=${plan}${propertyId ? `&property=${propertyId}` : ''}`,
-      cancel_url: `${origin}/deal-room/${propertyId || ''}?role=${role}&checkout=canceled`,
-      metadata: { plan, propertyId: propertyId || '', propertyName: propertyName || '' },
+      success_url: `${origin}/checkout/success?plan=${plan}${propertyId ? `&property=${propertyId}` : ''}&session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${origin}/checkout/cancel?plan=${plan}${propertyId ? `&property=${propertyId}` : ''}&role=${role}`,
+      metadata: { plan, propertyId: propertyId || '', propertyName: propertyName || '', role },
     };
     if (email) sessionParams.customer_email = email;
 
     const session = await stripe.checkout.sessions.create(sessionParams);
+
+    // Store deal room data in memory (webhook picks it up within seconds)
+    if (propertyId) {
+      pendingDealRooms.set(session.id, {
+        property_id: propertyId,
+        property_name: propertyName || propertyId,
+        email: email || '',
+        role,
+        address: meta.address || '',
+        property_type: meta.type || '',
+        property_size: meta.size || '',
+        deal_type: meta.dealType || '',
+        deal_amount: meta.dealAmount || '',
+        closing_date: meta.closingDate || '',
+        first_name: meta.firstName || '',
+        last_name: meta.lastName || '',
+        created_at: new Date().toISOString(),
+      });
+    }
+
     res.json({ url: session.url });
   } catch (err) {
     console.error('[checkout/guest]', err.message);
     res.status(500).json({ error: err.message });
+  }
+});
+
+// ── Demo Checkout — bypasses Stripe for local/internal testing ──────────────
+app.post('/api/checkout/demo', async (req, res) => {
+  try {
+    const { propertyId, propertyName, plan = 'deal', email, role = 'owner', meta = {} } = req.body;
+    const origin = req.headers.origin || 'https://kontraplatform.com';
+    const fakeSessionId = 'demo_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
+    const pid = propertyId || (propertyName || 'demo').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+
+    const dealRoomRecord = {
+      stripe_session_id: fakeSessionId,
+      plan,
+      property_id: pid,
+      property_name: propertyName || pid,
+      role: role || 'owner',
+      customer_email: email || '',
+      amount_paid: 0,
+      activated_at: new Date().toISOString(),
+      status: 'active',
+      address: meta.address || '',
+      property_type: meta.type || '',
+      property_size: meta.size || '',
+      deal_type: meta.dealType || '',
+      deal_amount: meta.dealAmount || '',
+      closing_date: meta.closingDate || '',
+      first_name: meta.firstName || '',
+      last_name: meta.lastName || '',
+    };
+
+    try {
+      await supabase.from('deal_rooms').upsert(dealRoomRecord, { onConflict: 'property_id' });
+      console.log(`[demo] ✅ Deal room created — ${pid}`);
+    } catch (dbErr) {
+      console.warn('[demo] deal_rooms upsert failed:', dbErr.message);
+    }
+
+    const successUrl = `${origin}/checkout/success?plan=${plan}&property=${pid}&session_id=${fakeSessionId}&demo=true`;
+    res.json({ url: successUrl });
+  } catch (err) {
+    console.error('[checkout/demo]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── Stripe Webhook — PUBLIC, must stay BEFORE requireOrgContext ──────────────
+app.post('/api/webhook/stripe',
+  express.raw({ type: 'application/json' }),
+  async (req, res) => {
+    const sig = req.headers['stripe-signature'];
+    const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
+    let event;
+
+    try {
+      if (webhookSecret) {
+        const stripeKey = process.env.STRIPE_SECRET_KEY;
+        const stripe = require('stripe')(stripeKey);
+        event = stripe.webhooks.constructEvent(req.body, sig, webhookSecret);
+      } else {
+        event = JSON.parse(req.body.toString());
+        console.warn('[webhook] STRIPE_WEBHOOK_SECRET not set — skipping signature verification');
+      }
+    } catch (err) {
+      console.error('[webhook] Signature verification failed:', err.message);
+      return res.status(400).json({ error: `Webhook error: ${err.message}` });
+    }
+
+    if (event.type === 'checkout.session.completed') {
+      const session = event.data.object;
+      const { plan, propertyId, propertyName, role } = session.metadata || {};
+      const customerEmail = session.customer_details?.email || session.customer_email || '';
+      const amountPaid = (session.amount_total / 100).toFixed(2);
+
+      console.log(`[webhook] ✅ Payment confirmed — $${amountPaid} | ${plan} | ${propertyId} | ${customerEmail}`);
+
+      // Pull pending deal room data stored at checkout time
+      const pending = pendingDealRooms.get(session.id) || {};
+      pendingDealRooms.delete(session.id);
+
+      const dealRoomRecord = {
+        stripe_session_id: session.id,
+        plan,
+        property_id: propertyId || pending.property_id || '',
+        property_name: propertyName || pending.property_name || '',
+        role: role || pending.role || 'owner',
+        customer_email: customerEmail || pending.email || '',
+        amount_paid: parseFloat(amountPaid),
+        activated_at: new Date().toISOString(),
+        status: 'active',
+        address: pending.address || '',
+        property_type: pending.property_type || '',
+        property_size: pending.property_size || '',
+        deal_type: pending.deal_type || '',
+        deal_amount: pending.deal_amount || '',
+        closing_date: pending.closing_date || '',
+        first_name: pending.first_name || '',
+        last_name: pending.last_name || '',
+      };
+
+      try {
+        await supabase.from('deal_rooms').upsert(dealRoomRecord, { onConflict: 'property_id' });
+        console.log(`[webhook] ✅ Deal room saved — ${dealRoomRecord.property_id}`);
+      } catch (dbErr) {
+        console.warn('[webhook] deal_rooms upsert skipped:', dbErr.message);
+      }
+
+      // Also log to activations table (legacy)
+      try {
+        await supabase.from('deal_room_activations').insert({
+          stripe_session_id: session.id, plan, property_id: propertyId,
+          property_name: propertyName, role, customer_email: customerEmail,
+          amount_paid: parseFloat(amountPaid), activated_at: new Date().toISOString(),
+        });
+      } catch (_) {}
+    }
+
+    res.json({ received: true });
+  }
+);
+
+// ── Public deal room lookup — no auth required ────────────────────────────────
+app.get('/api/public/deal-room/:propertyId', async (req, res) => {
+  const { propertyId } = req.params;
+  try {
+    const { data, error } = await supabase
+      .from('deal_rooms')
+      .select('*')
+      .eq('property_id', propertyId)
+      .eq('status', 'active')
+      .single();
+    if (error || !data) return res.status(404).json({ error: 'Deal room not found' });
+    // Strip sensitive fields before returning
+    const { customer_email, first_name, last_name, stripe_session_id, ...safe } = data;
+    res.json(safe);
+  } catch (err) {
+    console.error('[deal-room-public]', err.message);
+    res.status(404).json({ error: 'Deal room not found' });
+  }
+});
+
+// ── My deal rooms — lookup by owner email ──────────────────────────────────
+app.get('/api/public/my-rooms', async (req, res) => {
+  const email = (req.query.email || '').trim().toLowerCase();
+  if (!email) return res.status(400).json({ error: 'email required' });
+  try {
+    const { data, error } = await supabase
+      .from('deal_rooms')
+      .select('property_id, property_name, property_type, deal_amount, deal_type, address, status, created_at, activated_at')
+      .ilike('customer_email', email)
+      .order('created_at', { ascending: false });
+    if (error) throw error;
+    res.json({ rooms: data || [] });
+  } catch (err) {
+    console.error('[my-rooms]', err.message);
+    res.status(500).json({ error: 'Failed to fetch rooms' });
+  }
+});
+
+// ── Public analyses fetch — no auth required ──────────────────────────────
+app.get('/api/public/deal-room/:propertyId/analyses', async (req, res) => {
+  const { propertyId } = req.params;
+  try {
+    const { data, error } = await supabase
+      .from('deal_analyses')
+      .select('id, section, filename, analysis, uploaded_by_role, created_at')
+      .eq('property_id', propertyId)
+      .order('created_at', { ascending: false });
+    if (error) throw error;
+    // De-duplicate: keep only the latest per section
+    const seen = {};
+    const deduped = (data || []).filter(a => {
+      if (seen[a.section]) return false;
+      seen[a.section] = true;
+      return true;
+    });
+    res.json({ analyses: deduped });
+  } catch (err) {
+    console.error('[analyses-fetch]', err.message);
+    res.json({ analyses: [] });
+  }
+});
+
+// ── Owner email notification helper ───────────────────────────────────────
+async function notifyOwner(propertyId, section, summary) {
+  try {
+    const { data: room } = await supabase
+      .from('deal_rooms')
+      .select('customer_email, property_name, first_name')
+      .eq('property_id', propertyId)
+      .single();
+    if (!room?.customer_email) return;
+    const RESEND_KEY = process.env.RESEND_API_KEY;
+    if (!RESEND_KEY) return;
+    const sectionLabel = { inspection: 'Inspection Report', insurance: 'Insurance Certificate', financials: 'Financial Statement' }[section] || section;
+    const name = room.first_name || 'there';
+    const propName = room.property_name || propertyId;
+    await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${RESEND_KEY}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        from: 'Kontra <notifications@kontraplatform.com>',
+        to: room.customer_email,
+        subject: `New document uploaded: ${sectionLabel} — ${propName}`,
+        html: `<div style="font-family:sans-serif;max-width:520px;margin:auto;padding:24px">
+          <h2 style="color:#800020;margin-bottom:4px">New document analyzed</h2>
+          <p style="color:#555">Hi ${name},</p>
+          <p style="color:#555">A <strong>${sectionLabel}</strong> was just uploaded to your deal room for <strong>${propName}</strong> and analyzed by AI.</p>
+          ${summary ? `<p style="background:#f9fafb;border-radius:8px;padding:12px;color:#374151;font-size:14px">${summary}</p>` : ''}
+          <a href="https://kontraplatform.com/deal-room/${propertyId}?role=owner" style="display:inline-block;margin-top:16px;padding:12px 20px;background:#800020;color:white;border-radius:8px;text-decoration:none;font-weight:bold">View Deal Room →</a>
+          <p style="color:#aaa;font-size:12px;margin-top:24px">Kontra · CRE Deal Intelligence</p>
+        </div>`
+      })
+    });
+    console.log(`[notifyOwner] email sent to ${room.customer_email} for ${section}`);
+  } catch (e) {
+    console.warn('[notifyOwner]', e.message);
+  }
+}
+
+// ── Public AI Tools — free, no auth required ──────────────────────────────
+
+// Convert PDF to images using pdftoppm, then OCR via GPT-4o Vision
+async function extractPdfViaVision(buffer) {
+  const { execSync } = require('child_process');
+  const fsSync = require('fs');
+  const pathMod = require('path');
+  const os = require('os');
+  const tmpDir = fsSync.mkdtempSync(pathMod.join(os.tmpdir(), 'kontra-pdf-'));
+  const pdfPath = pathMod.join(tmpDir, 'doc.pdf');
+  const imgBase = pathMod.join(tmpDir, 'page');
+  try {
+    fsSync.writeFileSync(pdfPath, buffer);
+    // First try pdftotext (fast, works for text-based PDFs)
+    try {
+      const txt = execSync(`pdftotext "${pdfPath}" -`, { timeout: 10000 }).toString().trim();
+      if (txt.length > 80) {
+        console.log('[pdf] pdftotext extracted', txt.length, 'chars');
+        return txt.slice(0, 15000);
+      }
+    } catch (_) {}
+    // Fall back to image rendering + GPT-4o Vision (works for scanned PDFs)
+    execSync(`pdftoppm -r 150 -png -l 4 "${pdfPath}" "${imgBase}"`, { timeout: 30000 });
+    const pngs = fsSync.readdirSync(tmpDir).filter(f => f.endsWith('.png')).sort().slice(0, 4);
+    if (pngs.length === 0) throw new Error('PDF produced no pages');
+    console.log('[pdf] vision pipeline — pages:', pngs.length);
+    const imageContent = pngs.map(f => ({
+      type: 'image_url',
+      image_url: { url: `data:image/png;base64,${fsSync.readFileSync(pathMod.join(tmpDir, f)).toString('base64')}`, detail: 'high' }
+    }));
+    const visionRes = await openai.chat.completions.create({
+      model: 'gpt-4o',
+      messages: [{ role: 'user', content: [
+        { type: 'text', text: 'Transcribe ALL text from this document exactly as it appears. Include every number, label, line item, percentage, and dollar value. Preserve table structure. Do not summarize — output the complete raw text.' },
+        ...imageContent
+      ]}],
+      max_tokens: 4096,
+    });
+    return visionRes.choices[0]?.message?.content || '';
+  } finally {
+    try { execSync(`rm -rf "${tmpDir}"`); } catch (_) {}
+  }
+}
+
+async function extractTextFromFile(buffer, mimetype = '', filename = '') {
+  const ext = ((filename || '').split('.').pop() || '').toLowerCase();
+  // PDF — vision pipeline (text + scanned)
+  if (mimetype === 'application/pdf' || ext === 'pdf' || buffer.slice(0,4).toString() === '%PDF') {
+    return extractPdfViaVision(buffer);
+  }
+  // Excel — .xlsx, .xls, .xlsm, .xlsb
+  if (mimetype.includes('spreadsheet') || mimetype.includes('excel') ||
+      mimetype.includes('macroEnabled') || mimetype.includes('ms-excel') ||
+      ['xlsx','xls','xlsm','xlsb'].includes(ext)) {
+    const XLSX = require('xlsx');
+    const wb = XLSX.read(buffer, { type: 'buffer' });
+    const rows = [];
+    for (const name of wb.SheetNames.slice(0, 8)) {
+      const sheet = wb.Sheets[name];
+      const csv = XLSX.utils.sheet_to_csv(sheet);
+      if (csv.replace(/,/g,'').replace(/\n/g,'').trim().length > 20) {
+        rows.push(`[Sheet: ${name}]\n${csv}`);
+      }
+    }
+    return rows.join('\n\n').slice(0, 15000);
+  }
+  // CSV / plain text
+  if (mimetype === 'text/csv' || mimetype === 'text/plain' || ext === 'csv') {
+    return buffer.toString('utf8').slice(0, 15000);
+  }
+  // DOCX / fallback — strip binary noise
+  const raw = buffer.toString('utf8', 0, Math.min(buffer.length, 60000));
+  return raw.replace(/[^\x20-\x7E\n\r\t]/g, ' ').replace(/\s{3,}/g, '\n').trim().slice(0, 12000);
+}
+
+app.post('/api/ai/analyze-inspection', aiRateLimit, upload.single('file'), async (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+  console.log('[analyze-inspection] file:', req.file.originalname, 'mime:', req.file.mimetype, 'size:', req.file.size);
+  try {
+    const text = await extractTextFromFile(req.file.buffer, req.file.mimetype, req.file.originalname);
+    if (!text || text.trim().length < 30) {
+      return res.status(422).json({ error: 'Could not extract text from this file. Please ensure the file is not password-protected and contains readable content.' });
+    }
+    const completion = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages: [
+        { role: 'system', content: 'You are an expert commercial real estate inspection analyst. Analyze inspection reports and extract key findings in a structured format. Always respond with valid JSON.' },
+        { role: 'user', content: `Analyze this commercial real estate inspection report and return a JSON object with this exact structure:
+{"propertyType":string,"overallCondition":"Good"|"Fair"|"Poor","score":number,"lifeSafetyFindings":[{"item":string,"severity":"Critical"|"Moderate"|"Minor","description":string}],"deferredMaintenance":[{"item":string,"estimatedCost":string,"priority":"High"|"Medium"|"Low","timeline":string}],"totalDeferredCost":string,"priorityActions":[{"action":string,"timeline":string}],"summary":string,"positiveFindings":[string]}
+
+Inspection report text:\n${text}` }
+      ],
+      response_format: { type: 'json_object' },
+      temperature: 0.3,
+    });
+    const result = JSON.parse(completion.choices[0].message.content);
+    res.json({ success: true, analysis: result });
+    // Persist analysis (fire-and-forget)
+    const { property_id, role } = req.body;
+    if (property_id) {
+      supabase.from('deal_analyses').insert({
+        property_id, section: 'inspection',
+        filename: req.file.originalname, analysis: result,
+        uploaded_by_role: role || 'unknown',
+      }).then(({ error: e }) => {
+        if (e) console.warn('[deal_analyses] inspection save:', e.message);
+      });
+      notifyOwner(property_id, 'inspection', result.summary);
+    }
+  } catch (err) {
+    console.error('[analyze-inspection]', err.message);
+    res.status(500).json({ error: 'Analysis failed', message: err.message });
+  }
+});
+
+app.post('/api/ai/score-property', aiRateLimit, async (req, res) => {
+  const { occupancy, noi, yearBuilt, propertyType, units, sqft } = req.body || {};
+  try {
+    const completion = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages: [
+        { role: 'system', content: 'You are a CRE risk analyst. Score commercial properties 0-100 and return JSON.' },
+        { role: 'user', content: `Score this property and return JSON: {"score":number,"riskLevel":"Low"|"Medium"|"High","scoreBreakdown":{"occupancy":number,"financials":number,"physical":number,"market":number},"benchmark":string,"strengths":[string],"risks":[string],"summary":string}
+
+Property: Type=${propertyType||'Unknown'}, Occupancy=${occupancy||'?'}%, NOI=$${noi||'?'}, YearBuilt=${yearBuilt||'?'}, Units/SF=${units||sqft||'?'}` }
+      ],
+      response_format: { type: 'json_object' },
+      temperature: 0.3,
+    });
+    const result = JSON.parse(completion.choices[0].message.content);
+    res.json({ success: true, analysis: result });
+  } catch (err) {
+    console.error('[score-property]', err.message);
+    res.status(500).json({ error: 'Scoring failed', message: err.message });
+  }
+});
+
+app.post('/api/ai/review-insurance', aiRateLimit, upload.single('file'), async (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+  console.log('[review-insurance] file:', req.file.originalname, 'mime:', req.file.mimetype);
+  try {
+    const text = await extractTextFromFile(req.file.buffer, req.file.mimetype, req.file.originalname);
+    if (!text || text.trim().length < 30) {
+      return res.status(422).json({ error: 'Could not extract text from this file. Please ensure it is not password-protected and contains readable content.' });
+    }
+    const completion = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages: [
+        { role: 'system', content: 'You are a CRE insurance specialist. Analyze insurance policies and return JSON.' },
+        { role: 'user', content: `Analyze this insurance policy and return JSON: {"policyType":string,"coverageAmount":string,"expirationDate":string,"expiresInDays":number,"coverageGaps":[{"gap":string,"severity":"Critical"|"Moderate"|"Minor"}],"endorsements":[string],"recommendations":[string],"complianceStatus":"Compliant"|"Review Required"|"Action Needed","summary":string}
+
+Policy text:\n${text}` }
+      ],
+      response_format: { type: 'json_object' },
+      temperature: 0.3,
+    });
+    const result = JSON.parse(completion.choices[0].message.content);
+    res.json({ success: true, analysis: result });
+    const { property_id, role } = req.body;
+    if (property_id) {
+      supabase.from('deal_analyses').insert({
+        property_id, section: 'insurance',
+        filename: req.file.originalname, analysis: result,
+        uploaded_by_role: role || 'unknown',
+      }).then(({ error: e }) => {
+        if (e) console.warn('[deal_analyses] insurance save:', e.message);
+      });
+      notifyOwner(property_id, 'insurance', result.summary);
+    }
+  } catch (err) {
+    console.error('[review-insurance]', err.message);
+    res.status(500).json({ error: 'Review failed', message: err.message });
+  }
+});
+
+app.post('/api/ai/review-financials', aiRateLimit, upload.single('file'), async (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+  console.log('[review-financials] file:', req.file.originalname, 'mime:', req.file.mimetype);
+  try {
+    const text = await extractTextFromFile(req.file.buffer, req.file.mimetype, req.file.originalname);
+    if (!text || text.trim().length < 30) {
+      return res.status(422).json({ error: 'Could not extract text from this file. Please ensure it is not password-protected and contains readable content.' });
+    }
+    const completion = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages: [
+        { role: 'system', content: 'You are a CRE financial analyst. Analyze operating statements and financial reports, returning JSON. Only report figures that are explicitly present in the document.' },
+        { role: 'user', content: `Analyze this financial document and return JSON: {"documentType":string,"noi":string,"occupancy":string,"dscr":string,"revenue":string,"expenses":string,"anomalies":[{"item":string,"description":string,"severity":"High"|"Medium"|"Low"}],"trends":[string],"covenantStatus":"Compliant"|"At Risk"|"Breached"|"Unknown","summary":string,"recommendations":[string]}
+
+Financial document:\n${text}` }
+      ],
+      response_format: { type: 'json_object' },
+      temperature: 0.3,
+    });
+    const result = JSON.parse(completion.choices[0].message.content);
+    res.json({ success: true, analysis: result });
+    const { property_id, role } = req.body;
+    if (property_id) {
+      supabase.from('deal_analyses').insert({
+        property_id, section: 'financials',
+        filename: req.file.originalname, analysis: result,
+        uploaded_by_role: role || 'unknown',
+      }).then(({ error: e }) => {
+        if (e) console.warn('[deal_analyses] financials save:', e.message);
+      });
+      notifyOwner(property_id, 'financials', result.summary);
+    }
+  } catch (err) {
+    console.error('[review-financials]', err.message);
+    res.status(500).json({ error: 'Review failed', message: err.message });
   }
 });
 
@@ -2535,107 +3020,6 @@ app.post('/api/checkout', authenticate, async (req, res) => {
   }
 });
 
-// ── CRE AI Document Analysis Endpoints ────────────────────────────────────
-
-const aiRateLimit = require('./middlewares/aiRateLimit');
-
-function extractReadableText(buffer) {
-  const raw = buffer.toString('utf8');
-  const cleaned = raw.replace(/[^\x20-\x7E\n\r\t]/g, ' ').replace(/\s{2,}/g, ' ');
-  return cleaned.trim().slice(0, 12000);
-}
-
-app.post('/api/ai/analyze-inspection', aiRateLimit, upload.single('file'), async (req, res) => {
-  if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
-  try {
-    const text = extractReadableText(req.file.buffer);
-    const completion = await openai.chat.completions.create({
-      model: 'gpt-4o-mini',
-      messages: [
-        { role: 'system', content: 'You are an expert commercial real estate inspection analyst. Analyze inspection reports and extract key findings in a structured format. Always respond with valid JSON.' },
-        { role: 'user', content: `Analyze this commercial real estate inspection report and return a JSON object with this exact structure:
-{"propertyType":string,"overallCondition":"Good"|"Fair"|"Poor","score":number,"lifeSafetyFindings":[{"item":string,"severity":"Critical"|"Moderate"|"Minor","description":string}],"deferredMaintenance":[{"item":string,"estimatedCost":string,"priority":"High"|"Medium"|"Low","timeline":string}],"totalDeferredCost":string,"priorityActions":[{"action":string,"timeline":string}],"summary":string,"positiveFindings":[string]}
-
-${text ? `Inspection report text:\n${text}` : 'No readable text extracted. Generate a plausible sample inspection analysis for a generic commercial property.'}` }
-      ],
-      response_format: { type: 'json_object' },
-      temperature: 0.3,
-    });
-    const result = JSON.parse(completion.choices[0].message.content);
-    res.json({ success: true, analysis: result });
-  } catch (err) {
-    console.error('[analyze-inspection]', err.message);
-    res.status(500).json({ error: 'Analysis failed', message: err.message });
-  }
-});
-
-app.post('/api/ai/score-property', aiRateLimit, async (req, res) => {
-  const { occupancy, noi, yearBuilt, propertyType, units, sqft } = req.body || {};
-  try {
-    const completion = await openai.chat.completions.create({
-      model: 'gpt-4o-mini',
-      messages: [
-        { role: 'system', content: 'You are a CRE risk analyst. Score commercial properties 0-100 and return JSON.' },
-        { role: 'user', content: `Score this property and return JSON: {"score":number,"riskLevel":"Low"|"Medium"|"High","scoreBreakdown":{"occupancy":number,"financials":number,"physical":number,"market":number},"benchmark":string,"strengths":[string],"risks":[string],"summary":string}
-
-Property: Type=${propertyType||'Unknown'}, Occupancy=${occupancy||'?'}%, NOI=$${noi||'?'}, YearBuilt=${yearBuilt||'?'}, Units/SF=${units||sqft||'?'}` }
-      ],
-      response_format: { type: 'json_object' },
-      temperature: 0.3,
-    });
-    const result = JSON.parse(completion.choices[0].message.content);
-    res.json({ success: true, analysis: result });
-  } catch (err) {
-    console.error('[score-property]', err.message);
-    res.status(500).json({ error: 'Scoring failed', message: err.message });
-  }
-});
-
-app.post('/api/ai/review-insurance', aiRateLimit, upload.single('file'), async (req, res) => {
-  if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
-  try {
-    const text = extractReadableText(req.file.buffer);
-    const completion = await openai.chat.completions.create({
-      model: 'gpt-4o-mini',
-      messages: [
-        { role: 'system', content: 'You are a CRE insurance specialist. Analyze insurance policies and return JSON.' },
-        { role: 'user', content: `Analyze this insurance policy and return JSON: {"policyType":string,"coverageAmount":string,"expirationDate":string,"expiresInDays":number,"coverageGaps":[{"gap":string,"severity":"Critical"|"Moderate"|"Minor"}],"endorsements":[string],"recommendations":[string],"complianceStatus":"Compliant"|"Review Required"|"Action Needed","summary":string}
-
-Policy text:\n${text||'No readable text — generate a plausible insurance review for a commercial property.'}` }
-      ],
-      response_format: { type: 'json_object' },
-      temperature: 0.3,
-    });
-    const result = JSON.parse(completion.choices[0].message.content);
-    res.json({ success: true, analysis: result });
-  } catch (err) {
-    console.error('[review-insurance]', err.message);
-    res.status(500).json({ error: 'Review failed', message: err.message });
-  }
-});
-
-app.post('/api/ai/review-financials', aiRateLimit, upload.single('file'), async (req, res) => {
-  if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
-  try {
-    const text = extractReadableText(req.file.buffer);
-    const completion = await openai.chat.completions.create({
-      model: 'gpt-4o-mini',
-      messages: [
-        { role: 'system', content: 'You are a CRE financial analyst. Analyze operating statements and financial reports, returning JSON.' },
-        { role: 'user', content: `Analyze this financial document and return JSON: {"documentType":string,"noi":string,"occupancy":string,"dscr":string,"revenue":string,"expenses":string,"anomalies":[{"item":string,"description":string,"severity":"High"|"Medium"|"Low"}],"trends":[string],"covenantStatus":"Compliant"|"At Risk"|"Breached"|"Unknown","summary":string,"recommendations":[string]}
-
-Financial document:\n${text||'No readable text — generate a plausible financial review for a commercial property.'}` }
-      ],
-      response_format: { type: 'json_object' },
-      temperature: 0.3,
-    });
-    const result = JSON.parse(completion.choices[0].message.content);
-    res.json({ success: true, analysis: result });
-  } catch (err) {
-    console.error('[review-financials]', err.message);
-    res.status(500).json({ error: 'Review failed', message: err.message });
-  }
-});
 
 const PORT = process.env.PORT || 3000;
 if (require.main === module) {
