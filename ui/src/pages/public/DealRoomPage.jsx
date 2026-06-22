@@ -468,7 +468,7 @@ function PendingPropertyPanel({ property }) {
 }
 
 // ── Reusable upload + AI analyze panel ────────────────────────────────────
-function UploadAnalyzePanel({ title, icon, endpoint, accept, uploadLabel, hint, formatResult }) {
+function UploadAnalyzePanel({ title, icon, endpoint, accept, uploadLabel, hint, formatResult, propertyId, role, onAnalysisSaved }) {
   const [status, setStatus] = useState("idle");
   const [result, setResult] = useState(null);
   const [fileName, setFileName] = useState("");
@@ -484,11 +484,14 @@ function UploadAnalyzePanel({ title, icon, endpoint, accept, uploadLabel, hint, 
     try {
       const fd = new FormData();
       fd.append("file", file);
+      if (propertyId) fd.append("property_id", propertyId);
+      if (role) fd.append("role", role);
       const res = await fetch(`${API_BASE}${endpoint}`, { method: "POST", body: fd });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || `Server error ${res.status}`);
       setResult(json.analysis);
       setStatus("done");
+      if (onAnalysisSaved) onAnalysisSaved();
     } catch (err) {
       setErrorMsg(err.message);
       setStatus("error");
@@ -581,7 +584,7 @@ function ResultList({ label, items, highlight }) {
   );
 }
 
-function InspectionUploadPanel() {
+function InspectionUploadPanel({ propertyId, role, onAnalysisSaved }) {
   return (
     <UploadAnalyzePanel
       title="Inspection Status" icon="🔍"
@@ -589,6 +592,7 @@ function InspectionUploadPanel() {
       accept=".pdf,.doc,.docx,.xlsx,.xls,.xlsm,.xlsb,.csv"
       uploadLabel="Upload Inspection Report"
       hint="PDF, DOCX, or Excel — AI extracts condition, life-safety findings, and deferred maintenance costs"
+      propertyId={propertyId} role={role} onAnalysisSaved={onAnalysisSaved}
       formatResult={(a) => (
         <div>
           <ResultRow label="Condition" value={a.overallCondition} />
@@ -603,7 +607,7 @@ function InspectionUploadPanel() {
   );
 }
 
-function InsuranceUploadPanel() {
+function InsuranceUploadPanel({ propertyId, role, onAnalysisSaved }) {
   return (
     <UploadAnalyzePanel
       title="Insurance Status" icon="🛡️"
@@ -611,6 +615,7 @@ function InsuranceUploadPanel() {
       accept=".pdf,.doc,.docx"
       uploadLabel="Upload Insurance Certificate"
       hint="PDF — AI reviews coverage amounts, flags gaps, and tracks expiration dates"
+      propertyId={propertyId} role={role} onAnalysisSaved={onAnalysisSaved}
       formatResult={(a) => (
         <div>
           <ResultRow label="Status" value={a.complianceStatus} highlight={a.complianceStatus === "Non-Compliant"} />
@@ -625,7 +630,7 @@ function InsuranceUploadPanel() {
   );
 }
 
-function FinancialsUploadPanel() {
+function FinancialsUploadPanel({ propertyId, role, onAnalysisSaved }) {
   return (
     <UploadAnalyzePanel
       title="Financial Overview" icon="📊"
@@ -633,6 +638,7 @@ function FinancialsUploadPanel() {
       accept=".pdf,.doc,.docx,.xlsx,.xls,.xlsm,.xlsb,.csv"
       uploadLabel="Upload Operating Statement or Rent Roll"
       hint="PDF, Excel, or CSV — AI extracts NOI, DSCR, occupancy, and flags anomalies"
+      propertyId={propertyId} role={role} onAnalysisSaved={onAnalysisSaved}
       formatResult={(a) => (
         <div>
           <ResultRow label="NOI" value={a.noi} />
@@ -843,14 +849,147 @@ function DocumentsUploadPanel() {
   );
 }
 
+// ── Deal Intelligence Dashboard — shows all saved AI analyses ─────────────
+function DealIntelligenceDashboard({ propertyId, refreshKey }) {
+  const [analyses, setAnalyses] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    setLoading(true);
+    fetch(`${API_BASE}/api/public/deal-room/${propertyId}/analyses`)
+      .then(r => r.ok ? r.json() : { analyses: [] })
+      .then(d => { setAnalyses(d.analyses || []); setLoading(false); })
+      .catch(() => setLoading(false));
+  }, [propertyId, refreshKey]);
+
+  const SECTIONS = [
+    { key: "inspection", icon: "🔍", label: "Inspection",  color: "#d97706" },
+    { key: "insurance",  icon: "🛡️", label: "Insurance",   color: "#2563eb" },
+    { key: "financials", icon: "📊", label: "Financials",  color: "#16a34a" },
+  ];
+
+  // Latest per section
+  const bySection = {};
+  for (const a of analyses) {
+    if (!bySection[a.section]) bySection[a.section] = a;
+  }
+
+  const doneCount = Object.keys(bySection).length;
+
+  function getBadge(section, analysis) {
+    if (section === "inspection")  return { label: analysis.overallCondition, color: analysis.overallCondition === "Good" ? "#16a34a" : analysis.overallCondition === "Fair" ? "#d97706" : "#dc2626" };
+    if (section === "insurance")   return { label: analysis.complianceStatus, color: analysis.complianceStatus === "Compliant" ? "#16a34a" : "#d97706" };
+    if (section === "financials")  return { label: analysis.covenantStatus, color: analysis.covenantStatus === "Compliant" ? "#16a34a" : analysis.covenantStatus === "At Risk" ? "#d97706" : analysis.covenantStatus === "Breached" ? "#dc2626" : "#6b7280" };
+    return null;
+  }
+
+  function getHighlight(section, analysis) {
+    if (section === "inspection")  return analysis.totalDeferredCost ? `Deferred maintenance: ${analysis.totalDeferredCost}` : null;
+    if (section === "insurance")   return analysis.expirationDate ? `Expires: ${analysis.expirationDate}${analysis.expiresInDays != null ? ` (${analysis.expiresInDays} days)` : ""}` : null;
+    if (section === "financials")  return analysis.noi ? `NOI: ${analysis.noi}${analysis.dscr ? ` · DSCR: ${analysis.dscr}` : ""}` : null;
+    return null;
+  }
+
+  if (loading) return (
+    <div className="bg-white rounded-2xl border border-gray-200 p-5 mb-6 animate-pulse">
+      <div className="h-4 w-32 bg-gray-100 rounded mb-3" />
+      <div className="h-16 bg-gray-50 rounded-xl" />
+    </div>
+  );
+
+  return (
+    <div className="bg-white rounded-2xl border border-gray-200 p-5 mb-6">
+      <div className="flex items-center justify-between mb-4">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">Deal Intelligence</p>
+          <p className="text-base font-bold text-gray-900 mt-0.5">
+            {doneCount === 0 ? "Waiting for documents" : `${doneCount}/3 sections analyzed`}
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          {doneCount > 0 && (
+            <button onClick={() => window.print()}
+              className="px-3 py-1.5 rounded-lg text-xs font-semibold text-gray-600 bg-gray-100 hover:bg-gray-200 transition">
+              🖨 Print Summary
+            </button>
+          )}
+          <div className="text-2xl font-black" style={{ color: doneCount === 3 ? "#16a34a" : doneCount >= 1 ? "#d97706" : "#9ca3af" }}>
+            {Math.round(doneCount / 3 * 100)}%
+          </div>
+        </div>
+      </div>
+
+      {/* Readiness bar */}
+      <div className="h-1.5 w-full rounded-full bg-gray-100 overflow-hidden mb-4">
+        <div className="h-full rounded-full transition-all duration-700"
+          style={{ width: `${Math.round(doneCount / 3 * 100)}%`, background: doneCount === 3 ? "#16a34a" : "#d97706" }} />
+      </div>
+
+      <div className="space-y-2.5">
+        {SECTIONS.map(({ key, icon, label, color }) => {
+          const a = bySection[key];
+          if (!a) return (
+            <div key={key} className="flex items-center gap-3 px-4 py-3 rounded-xl bg-gray-50 border border-gray-100">
+              <span className="text-lg">{icon}</span>
+              <div className="flex-1">
+                <p className="text-xs font-semibold text-gray-400">{label}</p>
+                <p className="text-[10px] text-gray-300">Awaiting upload</p>
+              </div>
+              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-gray-100 text-gray-400">Pending</span>
+            </div>
+          );
+          const badge = getBadge(key, a.analysis);
+          const highlight = getHighlight(key, a.analysis);
+          return (
+            <div key={key} className="px-4 py-3 rounded-xl border border-gray-100 bg-gray-50">
+              <div className="flex items-center justify-between mb-1">
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="text-base shrink-0">{icon}</span>
+                  <p className="text-xs font-bold text-gray-800">{label}</p>
+                  <span className="text-[10px] text-gray-400 truncate hidden sm:block">{a.filename}</span>
+                </div>
+                {badge && (
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 ml-2"
+                    style={{ background: badge.color + "18", color: badge.color }}>
+                    {badge.label}
+                  </span>
+                )}
+              </div>
+              {a.analysis.summary && (
+                <p className="text-xs text-gray-600 leading-relaxed mt-1">
+                  {a.analysis.summary.slice(0, 200)}{a.analysis.summary.length > 200 ? "…" : ""}
+                </p>
+              )}
+              {highlight && (
+                <p className="text-xs font-semibold mt-1" style={{ color }}>{highlight}</p>
+              )}
+              <p className="text-[10px] text-gray-400 mt-1.5">
+                Uploaded by {a.uploaded_by_role} · {new Date(a.created_at).toLocaleDateString()}
+              </p>
+            </div>
+          );
+        })}
+      </div>
+
+      {doneCount === 3 && (
+        <div className="mt-4 p-3 rounded-xl bg-green-50 border border-green-100">
+          <p className="text-xs font-semibold text-green-800">✓ Deal room fully populated — ready to share with your lender</p>
+          <p className="text-[10px] text-green-600 mt-0.5">All three key sections have been analyzed. Use the invite links below to send the lender their view.</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // Build pending section map based on role
-function buildPendingSectionMap(property) {
+function buildPendingSectionMap(property, role, onAnalysisSaved) {
+  const pid = property?.id || property?.property_id;
   return {
-    financials: () => <FinancialsUploadPanel />,
+    financials: () => <FinancialsUploadPanel propertyId={pid} role={role} onAnalysisSaved={onAnalysisSaved} />,
     risk:       () => <RiskUploadPanel property={property} />,
     compliance: () => <PendingPanel title="Compliance Status" icon="✅" description="Compliance checklist will populate as documents are reviewed and parties complete their submissions." />,
-    inspection: () => <InspectionUploadPanel />,
-    insurance:  () => <InsuranceUploadPanel />,
+    inspection: () => <InspectionUploadPanel propertyId={pid} role={role} onAnalysisSaved={onAnalysisSaved} />,
+    insurance:  () => <InsuranceUploadPanel propertyId={pid} role={role} onAnalysisSaved={onAnalysisSaved} />,
     readiness:  () => <PendingPanel title="Investment Readiness" icon="🏅" description="All 5 readiness pillars will be tracked as parties submit their documentation." />,
     documents:  () => <DocumentsUploadPanel />,
     property:   () => <PendingPropertyPanel property={property} />,
@@ -867,6 +1006,9 @@ export default function DealRoomPage() {
   const [checkoutError, setCheckoutError] = useState("");
   const [apiProperty, setApiProperty] = useState(null);
   const [loadingApi, setLoadingApi] = useState(true);
+  const [analysesRefreshKey, setAnalysesRefreshKey] = useState(0);
+
+  const onAnalysisSaved = () => setAnalysesRefreshKey(k => k + 1);
 
   // Try to fetch custom deal room from API
   useEffect(() => {
@@ -971,7 +1113,7 @@ export default function DealRoomPage() {
   }
 
   const SECTION_MAP = property.isCustom
-    ? buildPendingSectionMap(property)
+    ? buildPendingSectionMap(property, role, onAnalysisSaved)
     : {
         financials: () => <FinancialsPanel property={property} />,
         risk:       () => <RiskPanel property={property} />,
@@ -1055,18 +1197,12 @@ export default function DealRoomPage() {
           </div>
         </div>
 
-        {/* Custom deal room notice */}
+        {/* Deal Intelligence Dashboard — custom rooms: live AI analysis aggregated */}
         {property.isCustom && (
-          <div className="bg-blue-50 border border-blue-100 rounded-2xl p-4 mb-6 flex items-start gap-3">
-            <span className="text-xl shrink-0">🔑</span>
-            <div>
-              <p className="text-sm font-semibold text-blue-900">This deal room is active and ready</p>
-              <p className="text-xs text-blue-700 mt-0.5">
-                Documents, financial data, and risk scores will populate as each party uploads their materials.
-                Use the invite links to bring in your lender, inspector, insurer, and other parties.
-              </p>
-            </div>
-          </div>
+          <DealIntelligenceDashboard
+            propertyId={property.id || property.property_id || propertyId}
+            refreshKey={analysesRefreshKey}
+          />
         )}
 
         {/* Investment Readiness summary bar — demo rooms only */}
