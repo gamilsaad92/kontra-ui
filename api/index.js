@@ -151,6 +151,8 @@ const ALLOWED_MIMETYPES = new Set([
   'application/msword',
   'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
   'application/vnd.ms-excel',
+  'application/vnd.ms-excel.sheet.macroEnabled.12',   // .xlsm
+  'application/vnd.ms-excel.sheet.binary.macroEnabled.12', // .xlsb
   'text/plain',
   'text/csv',
   'image/jpeg',
@@ -1016,13 +1018,14 @@ async function extractTextFromFile(buffer, mimetype = '') {
   try {
     // PDF
     if (mimetype === 'application/pdf' || buffer.slice(0,4).toString() === '%PDF') {
-      const pdfParse = require('pdf-parse');
+      const pdfMod = require('pdf-parse');
+      const pdfParse = typeof pdfMod === 'function' ? pdfMod : (pdfMod.default || pdfMod);
       const data = await pdfParse(buffer);
       return (data.text || '').slice(0, 15000);
     }
-    // Excel
+    // Excel (including .xlsm macro-enabled)
     if (mimetype.includes('spreadsheet') || mimetype.includes('excel') ||
-        mimetype === 'text/csv') {
+        mimetype.includes('macroEnabled') || mimetype === 'text/csv') {
       const XLSX = require('xlsx');
       const wb = XLSX.read(buffer, { type: 'buffer' });
       const rows = [];
