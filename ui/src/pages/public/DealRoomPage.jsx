@@ -586,7 +586,7 @@ function InspectionUploadPanel() {
     <UploadAnalyzePanel
       title="Inspection Status" icon="🔍"
       endpoint="/api/ai/analyze-inspection"
-      accept=".pdf,.doc,.docx,.xlsx,.xls,.csv"
+      accept=".pdf,.doc,.docx,.xlsx,.xls,.xlsm,.xlsb,.csv"
       uploadLabel="Upload Inspection Report"
       hint="PDF, DOCX, or Excel — AI extracts condition, life-safety findings, and deferred maintenance costs"
       formatResult={(a) => (
@@ -630,7 +630,7 @@ function FinancialsUploadPanel() {
     <UploadAnalyzePanel
       title="Financial Overview" icon="📊"
       endpoint="/api/ai/review-financials"
-      accept=".pdf,.doc,.docx,.xlsx,.xls,.csv"
+      accept=".pdf,.doc,.docx,.xlsx,.xls,.xlsm,.xlsb,.csv"
       uploadLabel="Upload Operating Statement or Rent Roll"
       hint="PDF, Excel, or CSV — AI extracts NOI, DSCR, occupancy, and flags anomalies"
       formatResult={(a) => (
