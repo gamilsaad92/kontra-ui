@@ -1058,6 +1058,67 @@ app.get('/api/public/deal-room/:propertyId', async (req, res) => {
   }
 });
 
+// ── Public analyses fetch — no auth required ──────────────────────────────
+app.get('/api/public/deal-room/:propertyId/analyses', async (req, res) => {
+  const { propertyId } = req.params;
+  try {
+    const { data, error } = await supabase
+      .from('deal_analyses')
+      .select('id, section, filename, analysis, uploaded_by_role, created_at')
+      .eq('property_id', propertyId)
+      .order('created_at', { ascending: false });
+    if (error) throw error;
+    // De-duplicate: keep only the latest per section
+    const seen = {};
+    const deduped = (data || []).filter(a => {
+      if (seen[a.section]) return false;
+      seen[a.section] = true;
+      return true;
+    });
+    res.json({ analyses: deduped });
+  } catch (err) {
+    console.error('[analyses-fetch]', err.message);
+    res.json({ analyses: [] });
+  }
+});
+
+// ── Owner email notification helper ───────────────────────────────────────
+async function notifyOwner(propertyId, section, summary) {
+  try {
+    const { data: room } = await supabase
+      .from('deal_rooms')
+      .select('customer_email, property_name, first_name')
+      .eq('property_id', propertyId)
+      .single();
+    if (!room?.customer_email) return;
+    const RESEND_KEY = process.env.RESEND_API_KEY;
+    if (!RESEND_KEY) return;
+    const sectionLabel = { inspection: 'Inspection Report', insurance: 'Insurance Certificate', financials: 'Financial Statement' }[section] || section;
+    const name = room.first_name || 'there';
+    const propName = room.property_name || propertyId;
+    await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${RESEND_KEY}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        from: 'Kontra <notifications@kontraplatform.com>',
+        to: room.customer_email,
+        subject: `New document uploaded: ${sectionLabel} — ${propName}`,
+        html: `<div style="font-family:sans-serif;max-width:520px;margin:auto;padding:24px">
+          <h2 style="color:#800020;margin-bottom:4px">New document analyzed</h2>
+          <p style="color:#555">Hi ${name},</p>
+          <p style="color:#555">A <strong>${sectionLabel}</strong> was just uploaded to your deal room for <strong>${propName}</strong> and analyzed by AI.</p>
+          ${summary ? `<p style="background:#f9fafb;border-radius:8px;padding:12px;color:#374151;font-size:14px">${summary}</p>` : ''}
+          <a href="https://kontraplatform.com/deal-room/${propertyId}?role=owner" style="display:inline-block;margin-top:16px;padding:12px 20px;background:#800020;color:white;border-radius:8px;text-decoration:none;font-weight:bold">View Deal Room →</a>
+          <p style="color:#aaa;font-size:12px;margin-top:24px">Kontra · CRE Deal Intelligence</p>
+        </div>`
+      })
+    });
+    console.log(`[notifyOwner] email sent to ${room.customer_email} for ${section}`);
+  } catch (e) {
+    console.warn('[notifyOwner]', e.message);
+  }
+}
+
 // ── Public AI Tools — free, no auth required ──────────────────────────────
 
 // Convert PDF to images using pdftoppm, then OCR via GPT-4o Vision
@@ -1155,6 +1216,18 @@ Inspection report text:\n${text}` }
     });
     const result = JSON.parse(completion.choices[0].message.content);
     res.json({ success: true, analysis: result });
+    // Persist analysis (fire-and-forget)
+    const { property_id, role } = req.body;
+    if (property_id) {
+      supabase.from('deal_analyses').insert({
+        property_id, section: 'inspection',
+        filename: req.file.originalname, analysis: result,
+        uploaded_by_role: role || 'unknown',
+      }).then(({ error: e }) => {
+        if (e) console.warn('[deal_analyses] inspection save:', e.message);
+      });
+      notifyOwner(property_id, 'inspection', result.summary);
+    }
   } catch (err) {
     console.error('[analyze-inspection]', err.message);
     res.status(500).json({ error: 'Analysis failed', message: err.message });
@@ -1204,6 +1277,17 @@ Policy text:\n${text}` }
     });
     const result = JSON.parse(completion.choices[0].message.content);
     res.json({ success: true, analysis: result });
+    const { property_id, role } = req.body;
+    if (property_id) {
+      supabase.from('deal_analyses').insert({
+        property_id, section: 'insurance',
+        filename: req.file.originalname, analysis: result,
+        uploaded_by_role: role || 'unknown',
+      }).then(({ error: e }) => {
+        if (e) console.warn('[deal_analyses] insurance save:', e.message);
+      });
+      notifyOwner(property_id, 'insurance', result.summary);
+    }
   } catch (err) {
     console.error('[review-insurance]', err.message);
     res.status(500).json({ error: 'Review failed', message: err.message });
@@ -1231,6 +1315,17 @@ Financial document:\n${text}` }
     });
     const result = JSON.parse(completion.choices[0].message.content);
     res.json({ success: true, analysis: result });
+    const { property_id, role } = req.body;
+    if (property_id) {
+      supabase.from('deal_analyses').insert({
+        property_id, section: 'financials',
+        filename: req.file.originalname, analysis: result,
+        uploaded_by_role: role || 'unknown',
+      }).then(({ error: e }) => {
+        if (e) console.warn('[deal_analyses] financials save:', e.message);
+      });
+      notifyOwner(property_id, 'financials', result.summary);
+    }
   } catch (err) {
     console.error('[review-financials]', err.message);
     res.status(500).json({ error: 'Review failed', message: err.message });
