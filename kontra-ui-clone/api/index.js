@@ -1055,18 +1055,52 @@ app.get('/api/public/deal-room/:propertyId', async (req, res) => {
 });
 
 // ── Public AI Tools — free, no auth required ──────────────────────────────
-function extractReadableText(buffer) {
+async function extractTextFromFile(buffer, mimetype = '') {
   try {
-    const raw = buffer.toString('utf8', 0, Math.min(buffer.length, 50000));
+    // PDF
+    if (mimetype === 'application/pdf' || buffer.slice(0,4).toString() === '%PDF') {
+      const pdfParse = require('pdf-parse');
+      const data = await pdfParse(buffer);
+      return (data.text || '').slice(0, 15000);
+    }
+    // Excel
+    if (mimetype.includes('spreadsheet') || mimetype.includes('excel') ||
+        mimetype === 'text/csv') {
+      const XLSX = require('xlsx');
+      const wb = XLSX.read(buffer, { type: 'buffer' });
+      const rows = [];
+      wb.SheetNames.forEach(name => {
+        const sheet = wb.Sheets[name];
+        const csv = XLSX.utils.sheet_to_csv(sheet);
+        rows.push(`[Sheet: ${name}]\n${csv}`);
+      });
+      return rows.join('\n\n').slice(0, 15000);
+    }
+    // CSV / plain text
+    if (mimetype === 'text/plain' || mimetype === 'text/csv') {
+      return buffer.toString('utf8').slice(0, 15000);
+    }
+    // Word docs and fallback — strip binary, keep readable chars
+    const raw = buffer.toString('utf8', 0, Math.min(buffer.length, 60000));
     const cleaned = raw.replace(/[^\x20-\x7E\n\r\t]/g, ' ').replace(/\s{3,}/g, '\n');
     return cleaned.trim().slice(0, 12000);
-  } catch { return ''; }
+  } catch (e) {
+    console.error('[extractTextFromFile]', e.message);
+    return '';
+  }
+}
+
+// Keep sync wrapper for any legacy callers
+function extractReadableText(buffer) {
+  const raw = buffer.toString('utf8', 0, Math.min(buffer.length, 50000));
+  const cleaned = raw.replace(/[^\x20-\x7E\n\r\t]/g, ' ').replace(/\s{3,}/g, '\n');
+  return cleaned.trim().slice(0, 12000);
 }
 
 app.post('/api/ai/analyze-inspection', aiRateLimit, upload.single('file'), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
   try {
-    const text = extractReadableText(req.file.buffer);
+    const text = await extractTextFromFile(req.file.buffer, req.file.mimetype);
     const completion = await openai.chat.completions.create({
       model: 'gpt-4o-mini',
       messages: [
@@ -1112,7 +1146,7 @@ Property: Type=${propertyType||'Unknown'}, Occupancy=${occupancy||'?'}%, NOI=$${
 app.post('/api/ai/review-insurance', aiRateLimit, upload.single('file'), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
   try {
-    const text = extractReadableText(req.file.buffer);
+    const text = await extractTextFromFile(req.file.buffer, req.file.mimetype);
     const completion = await openai.chat.completions.create({
       model: 'gpt-4o-mini',
       messages: [
@@ -1135,7 +1169,7 @@ Policy text:\n${text||'No readable text — generate a plausible insurance revie
 app.post('/api/ai/review-financials', aiRateLimit, upload.single('file'), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
   try {
-    const text = extractReadableText(req.file.buffer);
+    const text = await extractTextFromFile(req.file.buffer, req.file.mimetype);
     const completion = await openai.chat.completions.create({
       model: 'gpt-4o-mini',
       messages: [

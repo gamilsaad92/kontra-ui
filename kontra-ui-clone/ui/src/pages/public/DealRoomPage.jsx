@@ -586,9 +586,9 @@ function InspectionUploadPanel() {
     <UploadAnalyzePanel
       title="Inspection Status" icon="🔍"
       endpoint="/api/ai/analyze-inspection"
-      accept=".pdf,.doc,.docx"
+      accept=".pdf,.doc,.docx,.xlsx,.xls,.csv"
       uploadLabel="Upload Inspection Report"
-      hint="PDF or DOCX — AI extracts condition, life-safety findings, and deferred maintenance costs"
+      hint="PDF, DOCX, or Excel — AI extracts condition, life-safety findings, and deferred maintenance costs"
       formatResult={(a) => (
         <div>
           <ResultRow label="Condition" value={a.overallCondition} />
