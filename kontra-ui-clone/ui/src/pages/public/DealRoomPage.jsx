@@ -985,28 +985,47 @@ export default function DealRoomPage() {
 
   return (
     <PublicLayout hideFooter>
-      {/* Invite banner */}
-      <div className="border-b border-gray-200 bg-white px-6 py-3">
-        <div className="max-w-5xl mx-auto flex items-center justify-between gap-4">
-          <div className="flex items-center gap-2.5">
-            <div className="w-7 h-7 rounded-lg flex items-center justify-center text-base shrink-0"
-              style={{ background: roleConfig.color + "12" }}>
-              {roleConfig.icon}
+      {/* Top bar — owner (custom rooms) vs invite (demo rooms) */}
+      {property.isCustom ? (
+        <div className="border-b border-green-100 bg-green-50 px-6 py-3">
+          <div className="max-w-5xl mx-auto flex items-center justify-between gap-4">
+            <div className="flex items-center gap-2.5">
+              <div className="w-7 h-7 rounded-lg flex items-center justify-center text-base shrink-0 bg-green-100">
+                🔑
+              </div>
+              <div>
+                <p className="text-xs font-semibold text-green-900">Deal room active — upload documents below</p>
+                <p className="text-[10px] text-green-600">No sign-in required · AI analyzes each file as it's uploaded</p>
+              </div>
             </div>
-            <div>
-              <p className="text-xs font-semibold text-gray-800">
-                {from ? `${decodeURIComponent(from)} invited you` : "You've been invited"} · <span style={{ color: roleConfig.color }}>{roleConfig.label} view</span>
-              </p>
-              <p className="text-[10px] text-gray-400">Role-scoped deal room — sign in to take action</p>
-            </div>
+            <span className="shrink-0 px-3 py-1.5 rounded-xl text-xs font-bold text-green-700 bg-green-100">
+              ✓ Paid & Active
+            </span>
           </div>
-          <Link to={`/login?redirect=/deal-room/${propertyId}?role=${role}`}
-            className="shrink-0 px-4 py-2 rounded-xl text-xs font-bold text-white transition hover:opacity-90"
-            style={{ background: roleConfig.color }}>
-            Sign In to Join →
-          </Link>
         </div>
-      </div>
+      ) : (
+        <div className="border-b border-gray-200 bg-white px-6 py-3">
+          <div className="max-w-5xl mx-auto flex items-center justify-between gap-4">
+            <div className="flex items-center gap-2.5">
+              <div className="w-7 h-7 rounded-lg flex items-center justify-center text-base shrink-0"
+                style={{ background: roleConfig.color + "12" }}>
+                {roleConfig.icon}
+              </div>
+              <div>
+                <p className="text-xs font-semibold text-gray-800">
+                  {from ? `${decodeURIComponent(from)} invited you` : "You've been invited"} · <span style={{ color: roleConfig.color }}>{roleConfig.label} view</span>
+                </p>
+                <p className="text-[10px] text-gray-400">Role-scoped deal room · Demo mode</p>
+              </div>
+            </div>
+            <Link to="/create-deal-room"
+              className="shrink-0 px-4 py-2 rounded-xl text-xs font-bold text-white transition hover:opacity-90"
+              style={{ background: roleConfig.color }}>
+              Create Your Room →
+            </Link>
+          </div>
+        </div>
+      )}
 
       <div className="max-w-5xl mx-auto px-6 py-8">
 
@@ -1114,18 +1133,34 @@ export default function DealRoomPage() {
           </div>
         )}
 
-        {/* Active deal room footer (for paid custom rooms) */}
+        {/* Active deal room footer — invite links for custom rooms */}
         {property.isCustom && (
-          <div className="bg-gray-50 rounded-2xl border border-gray-200 px-6 py-5 flex flex-col sm:flex-row items-center justify-between gap-4">
-            <div>
-              <p className="text-sm font-semibold text-gray-800">Ready to upload documents?</p>
-              <p className="text-xs text-gray-400">Sign in to add files, manage your deal, and invite more parties</p>
+          <div className="bg-gray-50 rounded-2xl border border-gray-200 px-6 py-5">
+            <p className="text-sm font-semibold text-gray-800 mb-1">Share role-scoped invite links</p>
+            <p className="text-xs text-gray-400 mb-4">Each party sees only what's relevant to their role. Copy and send directly.</p>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+              {[
+                { role: "lender", icon: "🏦", label: "Lender" },
+                { role: "inspector", icon: "🔍", label: "Inspector" },
+                { role: "insurer", icon: "🛡️", label: "Insurance Broker" },
+                { role: "attorney", icon: "📜", label: "Attorney" },
+                { role: "investor", icon: "📊", label: "Investor" },
+                { role: "servicer", icon: "⚙️", label: "Servicer" },
+              ].map((r) => {
+                const url = `${window.location.origin}/deal-room/${propertyId}?role=${r.role}`;
+                return (
+                  <button key={r.role} onClick={() => navigator.clipboard.writeText(url)}
+                    className="flex items-center gap-2 px-3 py-2.5 rounded-xl bg-white border border-gray-200 hover:border-gray-300 text-left transition group">
+                    <span className="text-base shrink-0">{r.icon}</span>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-semibold text-gray-700">{r.label}</p>
+                      <p className="text-[10px] text-gray-400 group-hover:text-gray-600">Click to copy link</p>
+                    </div>
+                  </button>
+                );
+              })}
             </div>
-            <Link to={`/login?redirect=/deal-room/${propertyId}?role=${role}`}
-              className="shrink-0 px-5 py-2.5 rounded-xl text-sm font-bold text-white transition hover:opacity-90"
-              style={{ background: "#800020" }}>
-              Sign In →
-            </Link>
+            <p className="text-[10px] text-gray-400 mt-3 text-center">Need help? Email <a href="mailto:hello@kontraplatform.com" className="underline">hello@kontraplatform.com</a></p>
           </div>
         )}
 

@@ -104,10 +104,10 @@ export default function CheckoutSuccessPage() {
           {/* Actions */}
           <div className="flex flex-col sm:flex-row gap-3">
             {property && (
-              <Link to={`/deal-room/${property}?role=lender`}
+              <Link to={`/deal-room/${property}?role=owner`}
                 className="flex-1 inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl text-sm font-bold text-white transition hover:opacity-90"
                 style={{ background: "#800020" }}>
-                Open Deal Room →
+                Open My Deal Room →
               </Link>
             )}
             <a href="mailto:hello@kontraplatform.com"
