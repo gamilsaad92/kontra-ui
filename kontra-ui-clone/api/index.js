@@ -1058,6 +1058,24 @@ app.get('/api/public/deal-room/:propertyId', async (req, res) => {
   }
 });
 
+// ── My deal rooms — lookup by owner email ──────────────────────────────────
+app.get('/api/public/my-rooms', async (req, res) => {
+  const email = (req.query.email || '').trim().toLowerCase();
+  if (!email) return res.status(400).json({ error: 'email required' });
+  try {
+    const { data, error } = await supabase
+      .from('deal_rooms')
+      .select('property_id, property_name, property_type, deal_amount, deal_type, address, status, created_at, activated_at')
+      .ilike('customer_email', email)
+      .order('created_at', { ascending: false });
+    if (error) throw error;
+    res.json({ rooms: data || [] });
+  } catch (err) {
+    console.error('[my-rooms]', err.message);
+    res.status(500).json({ error: 'Failed to fetch rooms' });
+  }
+});
+
 // ── Public analyses fetch — no auth required ──────────────────────────────
 app.get('/api/public/deal-room/:propertyId/analyses', async (req, res) => {
   const { propertyId } = req.params;
