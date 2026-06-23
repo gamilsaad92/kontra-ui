@@ -514,6 +514,10 @@ function UploadAnalyzePanel({ title, icon, endpoint, accept, uploadLabel, hint, 
             Choose File →
           </button>
           <input ref={inputRef} type="file" accept={accept} className="hidden" onChange={handleFile} />
+          <p className="text-[10px] text-gray-400 mt-3 leading-relaxed max-w-xs mx-auto">
+            File is stored securely and analyzed by AI (OpenAI API). Retained per our{" "}
+            <a href="/privacy" target="_blank" className="underline hover:text-gray-600">Privacy Policy</a>.
+          </p>
         </div>
       )}
 
