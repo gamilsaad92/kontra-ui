@@ -630,6 +630,41 @@ app.use(rateLimit);
 app.get('/api/health', (_req, res) => {
   res.json({ ok: true, version: 'v2-checkout-fix', deployed: new Date().toISOString() });
 });
+
+// ── Public deal room routes — registered EARLY, before any org/auth middleware ──
+app.get('/api/public/my-rooms', async (req, res) => {
+  const email = (req.query.email || '').trim().toLowerCase();
+  if (!email) return res.status(400).json({ error: 'email required' });
+  try {
+    const { data, error } = await supabase
+      .from('deal_rooms')
+      .select('property_id, property_name, property_type, deal_amount, deal_type, address, status, created_at, activated_at')
+      .ilike('customer_email', email)
+      .order('created_at', { ascending: false });
+    if (error) throw error;
+    res.json({ rooms: data || [] });
+  } catch (err) {
+    console.error('[my-rooms-early]', err.message);
+    res.status(500).json({ error: 'Failed to fetch rooms' });
+  }
+});
+
+app.get('/api/public/document-url', async (req, res) => {
+  const storagePath = (req.query.path || '').trim();
+  if (!storagePath) return res.status(400).json({ error: 'path required' });
+  try {
+    const { data, error } = await supabase.storage
+      .from('deal-documents')
+      .createSignedUrl(storagePath, 3600);
+    if (error || !data?.signedUrl) return res.status(404).json({ error: 'Document not found or expired' });
+    res.redirect(data.signedUrl);
+  } catch (err) {
+    console.error('[document-url-early]', err.message);
+    res.status(500).json({ error: 'Failed to generate download link' });
+  }
+});
+// ── End early public routes ──────────────────────────────────────────────────
+
 app.use('/api/auth', authBootstrapRouter);
 app.use('/api/orgs', orgDiscoveryRouter);
 app.use('/api/me', orgDiscoveryRouter);
