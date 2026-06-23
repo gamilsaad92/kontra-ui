@@ -1082,7 +1082,7 @@ app.get('/api/public/deal-room/:propertyId/analyses', async (req, res) => {
   try {
     const { data, error } = await supabase
       .from('deal_analyses')
-      .select('id, section, filename, analysis, uploaded_by_role, created_at')
+      .select('id, section, filename, analysis, uploaded_by_role, created_at, storage_path')
       .eq('property_id', propertyId)
       .order('created_at', { ascending: false });
     if (error) throw error;
@@ -1100,7 +1100,40 @@ app.get('/api/public/deal-room/:propertyId/analyses', async (req, res) => {
   }
 });
 
+// ── Signed download URL for a stored document ─────────────────────────────────
+app.get('/api/public/document-url', async (req, res) => {
+  const storagePath = (req.query.path || '').trim();
+  if (!storagePath) return res.status(400).json({ error: 'path required' });
+  try {
+    const { data, error } = await supabase.storage
+      .from('deal-documents')
+      .createSignedUrl(storagePath, 3600);
+    if (error || !data?.signedUrl) return res.status(404).json({ error: 'Document not found or expired' });
+    res.redirect(data.signedUrl);
+  } catch (err) {
+    console.error('[document-url]', err.message);
+    res.status(500).json({ error: 'Failed to generate download link' });
+  }
+});
+
 // ── Owner email notification helper ───────────────────────────────────────
+// ── Upload original file to Supabase Storage (fire-and-forget) ───────────────
+async function uploadToStorage(buffer, mimetype, propertyId, section, filename) {
+  try {
+    const safe = (filename || 'doc').replace(/[^a-zA-Z0-9._-]/g, '_');
+    const path = `${propertyId}/${section}/${Date.now()}-${safe}`;
+    const { data, error } = await supabase.storage
+      .from('deal-documents')
+      .upload(path, buffer, { contentType: mimetype || 'application/octet-stream', upsert: false });
+    if (error) { console.warn('[storage] upload failed:', error.message); return null; }
+    console.log('[storage] saved:', path);
+    return data.path;
+  } catch (err) {
+    console.warn('[storage] upload error:', err.message);
+    return null;
+  }
+}
+
 async function notifyOwner(propertyId, section, summary) {
   try {
     const { data: room } = await supabase
@@ -1234,15 +1267,19 @@ Inspection report text:\n${text}` }
     });
     const result = JSON.parse(completion.choices[0].message.content);
     res.json({ success: true, analysis: result });
-    // Persist analysis (fire-and-forget)
+    // Persist analysis + store original file (fire-and-forget)
     const { property_id, role } = req.body;
     if (property_id) {
-      supabase.from('deal_analyses').insert({
-        property_id, section: 'inspection',
-        filename: req.file.originalname, analysis: result,
-        uploaded_by_role: role || 'unknown',
-      }).then(({ error: e }) => {
-        if (e) console.warn('[deal_analyses] inspection save:', e.message);
+      const _buf = req.file.buffer, _mime = req.file.mimetype, _name = req.file.originalname;
+      uploadToStorage(_buf, _mime, property_id, 'inspection', _name).then(storagePath => {
+        supabase.from('deal_analyses').insert({
+          property_id, section: 'inspection',
+          filename: _name, analysis: result,
+          uploaded_by_role: role || 'unknown',
+          storage_path: storagePath,
+        }).then(({ error: e }) => {
+          if (e) console.warn('[deal_analyses] inspection save:', e.message);
+        });
       });
       notifyOwner(property_id, 'inspection', result.summary);
     }
@@ -1297,12 +1334,16 @@ Policy text:\n${text}` }
     res.json({ success: true, analysis: result });
     const { property_id, role } = req.body;
     if (property_id) {
-      supabase.from('deal_analyses').insert({
-        property_id, section: 'insurance',
-        filename: req.file.originalname, analysis: result,
-        uploaded_by_role: role || 'unknown',
-      }).then(({ error: e }) => {
-        if (e) console.warn('[deal_analyses] insurance save:', e.message);
+      const _buf = req.file.buffer, _mime = req.file.mimetype, _name = req.file.originalname;
+      uploadToStorage(_buf, _mime, property_id, 'insurance', _name).then(storagePath => {
+        supabase.from('deal_analyses').insert({
+          property_id, section: 'insurance',
+          filename: _name, analysis: result,
+          uploaded_by_role: role || 'unknown',
+          storage_path: storagePath,
+        }).then(({ error: e }) => {
+          if (e) console.warn('[deal_analyses] insurance save:', e.message);
+        });
       });
       notifyOwner(property_id, 'insurance', result.summary);
     }
@@ -1335,12 +1376,16 @@ Financial document:\n${text}` }
     res.json({ success: true, analysis: result });
     const { property_id, role } = req.body;
     if (property_id) {
-      supabase.from('deal_analyses').insert({
-        property_id, section: 'financials',
-        filename: req.file.originalname, analysis: result,
-        uploaded_by_role: role || 'unknown',
-      }).then(({ error: e }) => {
-        if (e) console.warn('[deal_analyses] financials save:', e.message);
+      const _buf = req.file.buffer, _mime = req.file.mimetype, _name = req.file.originalname;
+      uploadToStorage(_buf, _mime, property_id, 'financials', _name).then(storagePath => {
+        supabase.from('deal_analyses').insert({
+          property_id, section: 'financials',
+          filename: _name, analysis: result,
+          uploaded_by_role: role || 'unknown',
+          storage_path: storagePath,
+        }).then(({ error: e }) => {
+          if (e) console.warn('[deal_analyses] financials save:', e.message);
+        });
       });
       notifyOwner(property_id, 'financials', result.summary);
     }

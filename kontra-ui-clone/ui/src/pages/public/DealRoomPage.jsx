@@ -947,6 +947,15 @@ function DealIntelligenceDashboard({ propertyId, refreshKey }) {
                   <span className="text-base shrink-0">{icon}</span>
                   <p className="text-xs font-bold text-gray-800">{label}</p>
                   <span className="text-[10px] text-gray-400 truncate hidden sm:block">{a.filename}</span>
+                  {a.storage_path && (
+                    <a
+                      href={`${API_BASE}/api/public/document-url?path=${encodeURIComponent(a.storage_path)}`}
+                      target="_blank" rel="noopener noreferrer"
+                      className="text-[10px] font-semibold px-2 py-0.5 rounded-full border hidden sm:inline-flex items-center gap-1 hover:bg-gray-100 transition shrink-0"
+                      style={{ color: "#800020", borderColor: "#80002030" }}>
+                      ↓ Original
+                    </a>
+                  )}
                 </div>
                 {badge && (
                   <span className="text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 ml-2"
