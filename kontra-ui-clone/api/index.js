@@ -1151,7 +1151,112 @@ app.get('/api/public/document-url', async (req, res) => {
   }
 });
 
+// ── Deal Coordination — party submissions & lifecycle stage ───────────────
+
+app.get('/api/public/deal-room/:propertyId/coordination', async (req, res) => {
+  const { propertyId } = req.params;
+  try {
+    const [roomRes, submissionsRes, analysesRes] = await Promise.all([
+      supabase.from('deal_rooms').select('deal_stage, property_name').eq('property_id', propertyId).maybeSingle(),
+      supabase.from('party_submissions').select('*').eq('property_id', propertyId),
+      supabase.from('deal_analyses').select('uploaded_by_role').eq('property_id', propertyId),
+    ]);
+    const stage = roomRes.data?.deal_stage || 'uploading';
+    const submissions = submissionsRes.data || [];
+    const docsByRole = {};
+    (analysesRes.data || []).forEach(a => {
+      if (a.uploaded_by_role) docsByRole[a.uploaded_by_role] = (docsByRole[a.uploaded_by_role] || 0) + 1;
+    });
+    res.json({ stage, submissions, docsByRole });
+  } catch (err) {
+    console.error('[coordination]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/public/deal-room/:propertyId/submit', async (req, res) => {
+  const { propertyId } = req.params;
+  const { role, name, email, notes } = req.body || {};
+  if (!role) return res.status(400).json({ error: 'role required' });
+  try {
+    const { count } = await supabase
+      .from('deal_analyses')
+      .select('id', { count: 'exact', head: true })
+      .eq('property_id', propertyId)
+      .eq('uploaded_by_role', role);
+    const { error } = await supabase.from('party_submissions').upsert({
+      property_id: propertyId,
+      role,
+      name: name || role,
+      email: email || null,
+      doc_count: count || 0,
+      submitted_at: new Date().toISOString(),
+      notes: notes || null,
+    }, { onConflict: 'property_id,role' });
+    if (error) throw error;
+    notifyPartySubmitted(propertyId, role, name).catch(() => {});
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('[submit]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/public/deal-room/:propertyId/advance', async (req, res) => {
+  const { propertyId } = req.params;
+  const { stage } = req.body || {};
+  const VALID = ['uploading', 'under_review', 'approved', 'closing', 'funded'];
+  if (!VALID.includes(stage)) return res.status(400).json({ error: 'invalid stage' });
+  try {
+    const { error } = await supabase.from('deal_rooms').update({ deal_stage: stage }).eq('property_id', propertyId);
+    if (error) throw error;
+    res.json({ ok: true, stage });
+  } catch (err) {
+    console.error('[advance]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ── Owner email notification helper ───────────────────────────────────────
+async function notifyPartySubmitted(propertyId, role, name) {
+  try {
+    const { data: room } = await supabase
+      .from('deal_rooms')
+      .select('customer_email, property_name, first_name')
+      .eq('property_id', propertyId)
+      .single();
+    if (!room?.customer_email) return;
+    const RESEND_KEY = process.env.RESEND_API_KEY;
+    if (!RESEND_KEY) return;
+    const roleLabels = {
+      lender: 'Lender / Underwriter', inspector: 'Inspector', insurance: 'Insurance Broker',
+      attorney: 'Attorney', investor: 'Investor', servicer: 'Servicer', owner: 'Owner',
+    };
+    const roleLabel = roleLabels[role] || role;
+    const submitterName = name || roleLabel;
+    const ownerName = room.first_name || 'there';
+    const propName = room.property_name || propertyId;
+    await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${RESEND_KEY}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        from: 'Kontra <notifications@kontraplatform.com>',
+        to: room.customer_email,
+        subject: `${submitterName} submitted their documents — ${propName}`,
+        html: `<div style="font-family:sans-serif;max-width:520px;margin:auto;padding:24px">
+          <h2 style="color:#800020;margin-bottom:4px">Party documents submitted</h2>
+          <p style="color:#555">Hi ${ownerName},</p>
+          <p style="color:#555">The <strong>${roleLabel}</strong> for <strong>${propName}</strong> has submitted their documents and signaled they are ready for review.</p>
+          <a href="https://kontraplatform.com/deal-room/${propertyId}?role=owner" style="display:inline-block;margin-top:16px;padding:12px 20px;background:#800020;color:white;border-radius:8px;text-decoration:none;font-weight:bold">View Deal Room →</a>
+          <p style="color:#aaa;font-size:12px;margin-top:24px">Kontra · CRE Deal Intelligence</p>
+        </div>`,
+      }),
+    });
+  } catch (e) {
+    console.warn('[notifyPartySubmitted]', e.message);
+  }
+}
+
 // ── Upload original file to Supabase Storage (fire-and-forget) ───────────────
 async function uploadToStorage(buffer, mimetype, propertyId, section, filename) {
   try {

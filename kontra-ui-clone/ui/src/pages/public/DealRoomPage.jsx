@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import PublicLayout from "./PublicLayout";
+import DealCoordinationPanel from "./DealCoordinationPanel";
 
 function usePageTitle(title) {
   useEffect(() => {
@@ -1244,6 +1245,14 @@ export default function DealRoomPage() {
           <DealIntelligenceDashboard
             propertyId={property.id || property.property_id || propertyId}
             refreshKey={analysesRefreshKey}
+          />
+        )}
+
+        {/* Deal Coordination Panel — party status + lifecycle stage (custom rooms only) */}
+        {property.isCustom && (
+          <DealCoordinationPanel
+            propertyId={property.id || property.property_id || propertyId}
+            role={role}
           />
         )}
 
