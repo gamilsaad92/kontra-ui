@@ -1,17 +1,17 @@
 -- Run this in the Supabase SQL editor:
 -- https://supabase.com/dashboard/project/jfhojgtnmcfqretrrxam/editor
 
--- 1. Add storage_path column to deal_analyses
+-- 1. Add storage_path column to deal_analyses (safe to re-run)
 ALTER TABLE deal_analyses
   ADD COLUMN IF NOT EXISTS storage_path TEXT;
 
--- 2. Create the storage bucket (run once — safe to re-run)
+-- 2. Create the storage bucket (safe to re-run)
 INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
 VALUES (
   'deal-documents',
   'deal-documents',
   false,
-  52428800,  -- 50 MB per file
+  52428800,
   ARRAY[
     'application/pdf',
     'application/msword',
@@ -26,8 +26,10 @@ VALUES (
 )
 ON CONFLICT (id) DO NOTHING;
 
--- 3. Storage policy — service role full access (signed URLs for everyone else)
-CREATE POLICY IF NOT EXISTS "Service role can manage deal documents"
+-- 3. Storage policy — drop first to avoid duplicate error, then recreate
+DROP POLICY IF EXISTS "Service role can manage deal documents" ON storage.objects;
+
+CREATE POLICY "Service role can manage deal documents"
   ON storage.objects FOR ALL
   TO service_role
   USING (bucket_id = 'deal-documents');
