@@ -1061,6 +1061,35 @@ export default function DealRoomPage() {
     }
   }
 
+  async function handleDemoActivate() {
+    setCheckoutLoading(true);
+    setCheckoutError("");
+    try {
+      const property = DEMO_PROPERTIES[propertyId] || apiProperty;
+      const res = await fetch(`${API_BASE}/api/checkout/demo`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          plan: "deal",
+          propertyId,
+          propertyName: property?.property_name || property?.name || propertyId,
+          email: "dev@kontraplatform.com",
+          role: "owner",
+        }),
+      });
+      const data = await res.json();
+      if (data.url) {
+        window.location.href = data.url;
+      } else {
+        setCheckoutError(data.error || "Demo activation failed.");
+      }
+    } catch {
+      setCheckoutError("Network error — please try again.");
+    } finally {
+      setCheckoutLoading(false);
+    }
+  }
+
   // Resolve property: demo first, then API, then derive from slug
   const demoProperty = DEMO_PROPERTIES[propertyId];
   const isCustom = !demoProperty;
@@ -1265,6 +1294,12 @@ export default function DealRoomPage() {
                   <><svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>Preparing…</>
                 ) : "Activate Deal Room — $499 →"}
               </button>
+              {import.meta.env.DEV && (
+                <button onClick={handleDemoActivate} disabled={checkoutLoading}
+                  className="mt-3 inline-flex items-center gap-1.5 px-5 py-2 rounded-lg text-xs font-semibold bg-white/10 text-white/70 border border-white/20 hover:bg-white/20 transition disabled:opacity-40">
+                  ⚡ Dev: Skip Payment
+                </button>
+              )}
               {checkoutError && <p className="text-xs text-red-200 mt-3">{checkoutError}</p>}
               <p className="text-xs text-white/40 mt-3">Secure checkout via Stripe · One-time fee</p>
             </div>
