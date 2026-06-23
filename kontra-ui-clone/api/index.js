@@ -1167,6 +1167,7 @@ app.get('/api/public/deal-room/:propertyId/coordination', async (req, res) => {
     (analysesRes.data || []).forEach(a => {
       if (a.uploaded_by_role) docsByRole[a.uploaded_by_role] = (docsByRole[a.uploaded_by_role] || 0) + 1;
     });
+    res.set('Cache-Control', 'no-store');
     res.json({ stage, submissions, docsByRole });
   } catch (err) {
     console.error('[coordination]', err.message);

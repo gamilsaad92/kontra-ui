@@ -46,8 +46,13 @@ export default function DealCoordinationPanel({ propertyId, role }) {
 
   const fetchCoordination = useCallback(async () => {
     try {
-      const res = await fetch(`${API_BASE}/api/public/deal-room/${propertyId}/coordination`);
-      if (!res.ok) return;
+      const res = await fetch(`${API_BASE}/api/public/deal-room/${propertyId}/coordination?t=${Date.now()}`, {
+        headers: { 'Cache-Control': 'no-cache' },
+      });
+      if (!res.ok) {
+        console.warn('[coordination] fetch failed:', res.status);
+        return;
+      }
       const json = await res.json();
       setData(json);
       const alreadySubmitted = (json.submissions || []).some(s => s.role === role);

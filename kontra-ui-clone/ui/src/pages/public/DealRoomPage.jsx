@@ -996,8 +996,8 @@ function DealIntelligenceDashboard({ propertyId, refreshKey }) {
 }
 
 // Build pending section map based on role
-function buildPendingSectionMap(property, role, onAnalysisSaved) {
-  const pid = property?.id || property?.property_id;
+function buildPendingSectionMap(property, role, onAnalysisSaved, urlPropertyId) {
+  const pid = urlPropertyId || property?.property_id || property?.id;
   return {
     financials: () => <FinancialsUploadPanel propertyId={pid} role={role} onAnalysisSaved={onAnalysisSaved} />,
     risk:       () => <RiskUploadPanel property={property} />,
@@ -1156,7 +1156,7 @@ export default function DealRoomPage() {
   }
 
   const SECTION_MAP = property.isCustom
-    ? buildPendingSectionMap(property, role, onAnalysisSaved)
+    ? buildPendingSectionMap(property, role, onAnalysisSaved, propertyId)
     : {
         financials: () => <FinancialsPanel property={property} />,
         risk:       () => <RiskPanel property={property} />,
@@ -1243,7 +1243,7 @@ export default function DealRoomPage() {
         {/* Deal Intelligence Dashboard — custom rooms: live AI analysis aggregated */}
         {property.isCustom && (
           <DealIntelligenceDashboard
-            propertyId={property.id || property.property_id || propertyId}
+            propertyId={propertyId || property.property_id || property.id}
             refreshKey={analysesRefreshKey}
           />
         )}
@@ -1251,7 +1251,7 @@ export default function DealRoomPage() {
         {/* Deal Coordination Panel — party status + lifecycle stage (custom rooms only) */}
         {property.isCustom && (
           <DealCoordinationPanel
-            propertyId={property.id || property.property_id || propertyId}
+            propertyId={propertyId || property.property_id || property.id}
             role={role}
           />
         )}
