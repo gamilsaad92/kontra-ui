@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import PublicLayout from "./PublicLayout";
+import DealCoordinationPanel from "./DealCoordinationPanel";
 
 function usePageTitle(title) {
   useEffect(() => {
@@ -995,8 +996,8 @@ function DealIntelligenceDashboard({ propertyId, refreshKey }) {
 }
 
 // Build pending section map based on role
-function buildPendingSectionMap(property, role, onAnalysisSaved) {
-  const pid = property?.id || property?.property_id;
+function buildPendingSectionMap(property, role, onAnalysisSaved, urlPropertyId) {
+  const pid = urlPropertyId || property?.property_id || property?.id;
   return {
     financials: () => <FinancialsUploadPanel propertyId={pid} role={role} onAnalysisSaved={onAnalysisSaved} />,
     risk:       () => <RiskUploadPanel property={property} />,
@@ -1053,6 +1054,35 @@ export default function DealRoomPage() {
         window.location.href = `mailto:hello@kontraplatform.com?subject=Activate Deal Room — ${propertyId}`;
       } else {
         setCheckoutError(data.message || "Something went wrong. Please try again.");
+      }
+    } catch {
+      setCheckoutError("Network error — please try again.");
+    } finally {
+      setCheckoutLoading(false);
+    }
+  }
+
+  async function handleDemoActivate() {
+    setCheckoutLoading(true);
+    setCheckoutError("");
+    try {
+      const property = DEMO_PROPERTIES[propertyId] || apiProperty;
+      const res = await fetch(`${API_BASE}/api/checkout/demo`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          plan: "deal",
+          propertyId,
+          propertyName: property?.property_name || property?.name || propertyId,
+          email: "dev@kontraplatform.com",
+          role: "owner",
+        }),
+      });
+      const data = await res.json();
+      if (data.url) {
+        window.location.href = data.url;
+      } else {
+        setCheckoutError(data.error || "Demo activation failed.");
       }
     } catch {
       setCheckoutError("Network error — please try again.");
@@ -1126,7 +1156,7 @@ export default function DealRoomPage() {
   }
 
   const SECTION_MAP = property.isCustom
-    ? buildPendingSectionMap(property, role, onAnalysisSaved)
+    ? buildPendingSectionMap(property, role, onAnalysisSaved, propertyId)
     : {
         financials: () => <FinancialsPanel property={property} />,
         risk:       () => <RiskPanel property={property} />,
@@ -1213,8 +1243,16 @@ export default function DealRoomPage() {
         {/* Deal Intelligence Dashboard — custom rooms: live AI analysis aggregated */}
         {property.isCustom && (
           <DealIntelligenceDashboard
-            propertyId={property.id || property.property_id || propertyId}
+            propertyId={propertyId || property.property_id || property.id}
             refreshKey={analysesRefreshKey}
+          />
+        )}
+
+        {/* Deal Coordination Panel — party status + lifecycle stage (custom rooms only) */}
+        {property.isCustom && (
+          <DealCoordinationPanel
+            propertyId={propertyId || property.property_id || property.id}
+            role={role}
           />
         )}
 
@@ -1265,6 +1303,12 @@ export default function DealRoomPage() {
                   <><svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>Preparing…</>
                 ) : "Activate Deal Room — $499 →"}
               </button>
+              {import.meta.env.DEV && (
+                <button onClick={handleDemoActivate} disabled={checkoutLoading}
+                  className="mt-3 inline-flex items-center gap-1.5 px-5 py-2 rounded-lg text-xs font-semibold bg-white/10 text-white/70 border border-white/20 hover:bg-white/20 transition disabled:opacity-40">
+                  ⚡ Dev: Skip Payment
+                </button>
+              )}
               {checkoutError && <p className="text-xs text-red-200 mt-3">{checkoutError}</p>}
               <p className="text-xs text-white/40 mt-3">Secure checkout via Stripe · One-time fee</p>
             </div>

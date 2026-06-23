@@ -26,6 +26,10 @@ function getPool() {
     _pool.on('error', (err) => {
       console.error('[pgAdapter] Pool error:', err.message);
     });
+    // Disable RLS for local dev — RLS is enforced by Supabase service role in production
+    _pool.on('connect', (client) => {
+      client.query('SET row_security = off').catch(() => {});
+    });
   }
   return _pool;
 }
@@ -277,7 +281,9 @@ class QueryBuilder {
         const rows = this._upsertData;
         const allCols = [...new Set(rows.flatMap(r => Object.keys(r)))];
         const colsSql = allCols.map(c => `"${c}"`).join(', ');
-        const conflict = this._onConflict ? `("${this._onConflict}")` : '(id)';
+        const conflict = this._onConflict
+          ? `(${this._onConflict.split(',').map(c => `"${c.trim()}"`).join(', ')})`
+          : '(id)';
         const updateSet = allCols.filter(c => c !== 'id').map(c => `"${c}" = EXCLUDED."${c}"`).join(', ');
         const insertedRows = [];
         for (const row of rows) {
