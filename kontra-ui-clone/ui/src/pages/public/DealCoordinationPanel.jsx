@@ -11,13 +11,13 @@ const STAGES = [
 ];
 
 const ROLE_META = {
-  owner:     { label: 'Owner / Borrower',    icon: '🏢', required: true },
-  lender:    { label: 'Lender / Underwriter',icon: '🏦', required: true },
-  inspector: { label: 'Inspector',           icon: '🔍', required: true },
-  insurance: { label: 'Insurance Broker',    icon: '🛡️', required: true },
-  attorney:  { label: 'Attorney',            icon: '⚖️', required: false },
-  investor:  { label: 'Investor',            icon: '📊', required: false },
-  servicer:  { label: 'Servicer',            icon: '⚙️', required: false },
+  owner:     { label: 'Owner / Borrower',    icon: '🏢', required: true,  needsDocs: false },
+  lender:    { label: 'Lender / Underwriter',icon: '🏦', required: true,  needsDocs: true  },
+  inspector: { label: 'Inspector',           icon: '🔍', required: true,  needsDocs: true  },
+  insurer:   { label: 'Insurance Broker',    icon: '🛡️', required: true,  needsDocs: true  },
+  attorney:  { label: 'Attorney',            icon: '⚖️', required: false, needsDocs: false },
+  investor:  { label: 'Investor',            icon: '📊', required: false, needsDocs: false },
+  servicer:  { label: 'Servicer',            icon: '⚙️', required: false, needsDocs: false },
 };
 
 const NEXT_STAGE = {
@@ -118,6 +118,7 @@ export default function DealCoordinationPanel({ propertyId, role }) {
   const allRequiredIn = requiredRoles.every(r => submittedRoles.has(r));
   const currentUserSubmission = submissions.find(s => s.role === role);
   const myDocCount = docsByRole[role] || 0;
+  const myMeta = ROLE_META[role];
 
   return (
     <div className="mb-6 rounded-2xl border border-gray-200 bg-white overflow-hidden">
@@ -132,14 +133,20 @@ export default function DealCoordinationPanel({ propertyId, role }) {
             </h3>
           </div>
           {canAdvance && !isFunded && (
-            <button
-              onClick={handleAdvance}
-              disabled={advancing || (!allRequiredIn && stage === 'uploading')}
-              title={stage === 'uploading' && !allRequiredIn ? 'Waiting for required parties to submit' : ''}
-              className="px-4 py-2 rounded-xl text-xs font-bold text-white bg-[#800020] transition hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed"
-            >
-              {advancing ? 'Updating…' : ADVANCE_LABEL[stage] + ' →'}
-            </button>
+            <div className="flex flex-col items-end gap-1">
+              <button
+                onClick={handleAdvance}
+                disabled={advancing}
+                className="px-4 py-2 rounded-xl text-xs font-bold text-white bg-[#800020] transition hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                {advancing ? 'Updating…' : ADVANCE_LABEL[stage] + ' →'}
+              </button>
+              {stage === 'uploading' && !allRequiredIn && (
+                <p className="text-[9px] text-amber-500 font-medium text-right">
+                  ⚠ {requiredRoles.filter(r => !submittedRoles.has(r)).length} required {requiredRoles.filter(r => !submittedRoles.has(r)).length === 1 ? 'party' : 'parties'} pending
+                </p>
+              )}
+            </div>
           )}
           {isFunded && (
             <span className="px-3 py-1.5 rounded-xl text-xs font-bold text-green-700 bg-green-100">🏦 Deal Funded</span>
@@ -249,17 +256,19 @@ export default function DealCoordinationPanel({ propertyId, role }) {
                 <p className="text-sm font-semibold text-gray-800">Done uploading your documents?</p>
                 <p className="text-xs text-gray-400">
                   {myDocCount > 0
-                    ? `You've uploaded ${myDocCount} document${myDocCount !== 1 ? 's' : ''} — notify the team you're ready for review`
-                    : 'Upload your documents above, then signal the team when you\'re done'}
+                    ? `${myDocCount} document${myDocCount !== 1 ? 's' : ''} uploaded — signal the team you're ready for review`
+                    : myMeta?.needsDocs
+                      ? 'Upload your documents above, then signal the team when you\'re done'
+                      : 'Signal the team when you\'re ready to proceed'}
                 </p>
               </div>
               <button
                 onClick={() => setShowNamePrompt(true)}
-                disabled={myDocCount === 0}
-                title={myDocCount === 0 ? 'Upload at least one document first' : ''}
+                disabled={myMeta?.needsDocs && myDocCount === 0}
+                title={myMeta?.needsDocs && myDocCount === 0 ? 'Upload your documents above first' : ''}
                 className="shrink-0 px-4 py-2 rounded-xl text-xs font-bold text-white bg-[#800020] hover:opacity-90 transition disabled:opacity-40 disabled:cursor-not-allowed"
               >
-                Submit My Documents →
+                Signal Ready →
               </button>
             </div>
           )}

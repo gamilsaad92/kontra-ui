@@ -130,6 +130,12 @@ const ROLE_CONFIG = {
     subtext: "Review any coverage gaps flagged by AI and upload the insurance certificate. Expiration dates are tracked automatically for the lender.",
     sections: ["insurance", "property", "documents"],
   },
+  insurance: {
+    icon: "🛡️", label: "Insurance Broker", color: "#065f46",
+    headline: "You've been invited to provide insurance coverage",
+    subtext: "Review any coverage gaps flagged by AI and upload the insurance certificate. Expiration dates are tracked automatically for the lender.",
+    sections: ["insurance", "property", "documents"],
+  },
   investor: {
     icon: "📊", label: "Investor", color: "#6d28d9",
     headline: "You've been invited to review this investment",
@@ -146,7 +152,7 @@ const ROLE_CONFIG = {
     icon: "📜", label: "Attorney / Title", color: "#374151",
     headline: "You've been invited to review the legal package",
     subtext: "Review the legal structure documentation, title history, and compliance checklist for this property.",
-    sections: ["compliance", "documents", "property"],
+    sections: ["legal", "compliance", "documents", "property"],
   },
   owner: {
     icon: "🏢", label: "Property Owner", color: "#800020",
@@ -774,6 +780,29 @@ function RiskUploadPanel({ property }) {
   );
 }
 
+function LegalDocUploadPanel({ propertyId, role, onAnalysisSaved }) {
+  return (
+    <UploadAnalyzePanel
+      title="Legal / Title Review" icon="⚖️"
+      endpoint="/api/ai/review-legal"
+      accept=".pdf,.doc,.docx,.txt"
+      uploadLabel="Upload Legal Document"
+      hint="Purchase agreement, title report, lease, or loan docs — AI flags key dates, contingencies, and red flags"
+      propertyId={propertyId} role={role} onAnalysisSaved={onAnalysisSaved}
+      formatResult={(a) => (
+        <div>
+          <ResultRow label="Document" value={a.documentType} />
+          <ResultRow label="Status" value={a.complianceStatus} highlight={a.complianceStatus === 'Issues Found'} />
+          <ResultList label="Key Dates" items={a.keyDates?.map(d => `${d.event}: ${d.date}`)} />
+          <ResultList label="Red Flags" items={a.redFlags?.map(f => `${f.issue} (${f.severity})`)} highlight />
+          <ResultList label="Contingencies" items={a.contingencies} />
+          {a.summary && <p className="text-xs text-gray-500 mt-3 italic border-t border-gray-100 pt-2">{a.summary.slice(0, 180)}{a.summary.length > 180 ? "…" : ""}</p>}
+        </div>
+      )}
+    />
+  );
+}
+
 function DocumentsUploadPanel() {
   const [docs, setDocs] = useState([]);
   const [uploading, setUploading] = useState(false);
@@ -1004,6 +1033,7 @@ function buildPendingSectionMap(property, role, onAnalysisSaved, urlPropertyId) 
     compliance: () => <PendingPanel title="Compliance Status" icon="✅" description="Compliance checklist will populate as documents are reviewed and parties complete their submissions." />,
     inspection: () => <InspectionUploadPanel propertyId={pid} role={role} onAnalysisSaved={onAnalysisSaved} />,
     insurance:  () => <InsuranceUploadPanel propertyId={pid} role={role} onAnalysisSaved={onAnalysisSaved} />,
+    legal:      () => <LegalDocUploadPanel propertyId={pid} role={role} onAnalysisSaved={onAnalysisSaved} />,
     readiness:  () => <PendingPanel title="Investment Readiness" icon="🏅" description="All 5 readiness pillars will be tracked as parties submit their documentation." />,
     documents:  () => <DocumentsUploadPanel />,
     property:   () => <PendingPropertyPanel property={property} />,

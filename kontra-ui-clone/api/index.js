@@ -1536,6 +1536,48 @@ Financial document:\n${text}` }
   }
 });
 
+app.post('/api/ai/review-legal', aiRateLimit, upload.single('file'), async (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+  console.log('[review-legal] file:', req.file.originalname, 'mime:', req.file.mimetype);
+  try {
+    const text = await extractTextFromFile(req.file.buffer, req.file.mimetype, req.file.originalname);
+    if (!text || text.trim().length < 30) {
+      return res.status(422).json({ error: 'Could not extract text from this file.' });
+    }
+    const completion = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages: [
+        { role: 'system', content: 'You are a CRE legal analyst. Review legal documents (purchase agreements, title reports, lease agreements, loan docs) and extract key terms in JSON.' },
+        { role: 'user', content: `Analyze this CRE legal document and return JSON: {"documentType":string,"parties":[string],"keyDates":[{"event":string,"date":string}],"contingencies":[string],"redFlags":[{"issue":string,"severity":"Critical"|"Moderate"|"Minor"}],"covenants":[string],"complianceStatus":"Clear"|"Review Required"|"Issues Found","summary":string,"recommendations":[string]}
+
+Legal document:\n${text}` }
+      ],
+      response_format: { type: 'json_object' },
+      temperature: 0.3,
+    });
+    const result = JSON.parse(completion.choices[0].message.content);
+    res.json({ success: true, analysis: result });
+    const { property_id, role } = req.body;
+    if (property_id) {
+      const _buf = req.file.buffer, _mime = req.file.mimetype, _name = req.file.originalname;
+      uploadToStorage(_buf, _mime, property_id, 'legal', _name).then(storagePath => {
+        supabase.from('deal_analyses').insert({
+          property_id, section: 'legal',
+          filename: _name, analysis: result,
+          uploaded_by_role: role || 'attorney',
+          storage_path: storagePath,
+        }).then(({ error: e }) => {
+          if (e) console.warn('[deal_analyses] legal save:', e.message);
+        });
+      });
+      notifyOwner(property_id, 'legal', result.summary);
+    }
+  } catch (err) {
+    console.error('[review-legal]', err.message);
+    res.status(500).json({ error: 'Review failed', message: err.message });
+  }
+});
+
 app.use('/api', requireOrgContext);
 app.use('/api/dashboard-layout', authenticate, dashboard);
 app.use('/api/portfolio', portfolioSliceRouter);
