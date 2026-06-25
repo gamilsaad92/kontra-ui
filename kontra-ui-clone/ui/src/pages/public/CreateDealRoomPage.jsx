@@ -13,6 +13,7 @@ const DEAL_TYPES = [
   { id: "acquisition", label: "Acquisition", desc: "Buying a property" },
   { id: "refinance", label: "Refinance", desc: "Replacing existing debt" },
   { id: "construction", label: "Construction / Value-Add", desc: "Development or major renovation" },
+  { id: "flag_conversion", label: "Flag Conversion", desc: "Switching hotel brand / franchise" },
   { id: "sale", label: "Sale", desc: "Listing for sale with diligence room" },
 ];
 

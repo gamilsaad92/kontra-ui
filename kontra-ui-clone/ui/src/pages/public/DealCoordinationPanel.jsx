@@ -15,9 +15,10 @@ const ROLE_META = {
   lender:    { label: 'Lender / Underwriter',icon: '🏦', required: true,  needsDocs: true  },
   inspector: { label: 'Inspector',           icon: '🔍', required: true,  needsDocs: true  },
   insurer:   { label: 'Insurance Broker',    icon: '🛡️', required: true,  needsDocs: true  },
-  attorney:  { label: 'Attorney',            icon: '⚖️', required: false, needsDocs: false },
-  investor:  { label: 'Investor',            icon: '📊', required: false, needsDocs: false },
-  servicer:  { label: 'Servicer',            icon: '⚙️', required: false, needsDocs: false },
+  attorney:   { label: 'Attorney',            icon: '⚖️', required: false, needsDocs: false },
+  investor:   { label: 'Investor',            icon: '📊', required: false, needsDocs: false },
+  servicer:   { label: 'Servicer',            icon: '⚙️', required: false, needsDocs: false },
+  franchisor: { label: 'Franchisor / Brand',  icon: '🏨', required: false, needsDocs: false },
 };
 
 const NEXT_STAGE = {
