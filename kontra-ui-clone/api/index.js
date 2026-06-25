@@ -1505,8 +1505,10 @@ app.post('/api/ai/review-financials', aiRateLimit, upload.single('file'), async 
     const completion = await openai.chat.completions.create({
       model: 'gpt-4o-mini',
       messages: [
-        { role: 'system', content: 'You are a CRE financial analyst. Analyze operating statements and financial reports, returning JSON. Only report figures that are explicitly present in the document.' },
-        { role: 'user', content: `Analyze this financial document and return JSON: {"documentType":string,"noi":string,"occupancy":string,"dscr":string,"revenue":string,"expenses":string,"anomalies":[{"item":string,"description":string,"severity":"High"|"Medium"|"Low"}],"trends":[string],"covenantStatus":"Compliant"|"At Risk"|"Breached"|"Unknown","summary":string,"recommendations":[string]}
+        { role: 'system', content: 'You are a CRE financial analyst specializing in both traditional commercial properties and hospitality assets. Analyze operating statements, hotel P&L statements, STR reports, and financial reports, returning JSON. Only report figures that are explicitly present in the document.' },
+        { role: 'user', content: `Analyze this financial document and return JSON: {"documentType":string,"noi":string,"occupancy":string,"dscr":string,"revenue":string,"expenses":string,"revpar":string|null,"adr":string|null,"gopPar":string|null,"revparIndex":string|null,"roomsRevenue":string|null,"fbRevenue":string|null,"anomalies":[{"item":string,"description":string,"severity":"High"|"Medium"|"Low"}],"trends":[string],"covenantStatus":"Compliant"|"At Risk"|"Breached"|"Unknown","summary":string,"recommendations":[string]}
+
+Notes: revpar=Revenue Per Available Room, adr=Average Daily Rate, gopPar=Gross Operating Profit Per Available Room, revparIndex=RevPAR Index vs comp set (e.g. "108.2"). Only populate hotel fields if document is a hotel P&L or STR report.
 
 Financial document:\n${text}` }
       ],
@@ -1574,6 +1576,48 @@ Legal document:\n${text}` }
     }
   } catch (err) {
     console.error('[review-legal]', err.message);
+    res.status(500).json({ error: 'Review failed', message: err.message });
+  }
+});
+
+app.post('/api/ai/review-brand-standards', aiRateLimit, upload.single('file'), async (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+  console.log('[review-brand-standards] file:', req.file.originalname);
+  try {
+    const text = await extractTextFromFile(req.file.buffer, req.file.mimetype, req.file.originalname);
+    if (!text || text.trim().length < 30) {
+      return res.status(422).json({ error: 'Could not extract text from this file.' });
+    }
+    const completion = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages: [
+        { role: 'system', content: 'You are a hospitality industry expert specializing in hotel franchise agreements, Property Improvement Plans (PIPs), and brand standards compliance for flags like Marriott, Hilton, Hyatt, IHG, and Wyndham.' },
+        { role: 'user', content: `Analyze this hotel franchise or PIP document and return JSON: {"documentType":string,"brandName":string|null,"franchiseTerm":string|null,"brandFees":{"royaltyFee":string|null,"marketingFee":string|null,"reservationFee":string|null},"pipItems":[{"category":string,"item":string,"deadline":string|null,"estimatedCost":string|null,"priority":"Required"|"Recommended"|"Optional"}],"totalEstimatedPIPCost":string|null,"complianceDeadline":string|null,"terminationClauses":[string],"keyRestrictions":[string],"redFlags":[{"issue":string,"severity":"Critical"|"Moderate"|"Minor"}],"complianceStatus":"Compliant"|"PIP Required"|"Non-Compliant"|"Review Required","summary":string,"recommendations":[string]}
+
+Document:\n${text}` }
+      ],
+      response_format: { type: 'json_object' },
+      temperature: 0.3,
+    });
+    const result = JSON.parse(completion.choices[0].message.content);
+    res.json({ success: true, analysis: result });
+    const { property_id, role } = req.body;
+    if (property_id) {
+      const _buf = req.file.buffer, _mime = req.file.mimetype, _name = req.file.originalname;
+      uploadToStorage(_buf, _mime, property_id, 'brand-standards', _name).then(storagePath => {
+        supabase.from('deal_analyses').insert({
+          property_id, section: 'brand-standards',
+          filename: _name, analysis: result,
+          uploaded_by_role: role || 'owner',
+          storage_path: storagePath,
+        }).then(({ error: e }) => {
+          if (e) console.warn('[deal_analyses] brand-standards save:', e.message);
+        });
+      });
+      notifyOwner(property_id, 'brand-standards', result.summary);
+    }
+  } catch (err) {
+    console.error('[review-brand-standards]', err.message);
     res.status(500).json({ error: 'Review failed', message: err.message });
   }
 });

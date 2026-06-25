@@ -172,6 +172,12 @@ const ROLE_CONFIG = {
     subtext: "As the broker, you have visibility across all deal parties. Track document status, compliance milestones, and share role-scoped links with each party.",
     sections: ["financials", "risk", "compliance", "documents", "property"],
   },
+  franchisor: {
+    icon: "🏨", label: "Franchisor / Brand", color: "#0369a1",
+    headline: "You've been invited to review this hotel deal room",
+    subtext: "As the franchisor representative, you can review the Property Improvement Plan, brand standards compliance, and flag any requirements before deal close.",
+    sections: ["brand-standards", "compliance", "documents", "property"],
+  },
 };
 
 // ── Panels for demo (data-rich) deal rooms ───────────────────────────────────
@@ -657,6 +663,12 @@ function FinancialsUploadPanel({ propertyId, role, onAnalysisSaved }) {
           <ResultRow label="DSCR" value={a.dscr} />
           <ResultRow label="Revenue" value={a.revenue} />
           <ResultRow label="Expenses" value={a.expenses} />
+          {a.revpar && <ResultRow label="RevPAR" value={a.revpar} />}
+          {a.adr && <ResultRow label="ADR" value={a.adr} />}
+          {a.gopPar && <ResultRow label="GOP PAR" value={a.gopPar} />}
+          {a.revparIndex && <ResultRow label="RevPAR Index" value={a.revparIndex} />}
+          {a.roomsRevenue && <ResultRow label="Rooms Revenue" value={a.roomsRevenue} />}
+          {a.fbRevenue && <ResultRow label="F&B Revenue" value={a.fbRevenue} />}
           <ResultRow label="Covenants" value={a.covenantStatus} highlight={a.covenantStatus === "Breached" || a.covenantStatus === "At Risk"} />
           <ResultList label="Anomalies Flagged" items={a.anomalies?.map(x => `${x.item} — ${x.description}`)} highlight />
           <ResultList label="Trends" items={a.trends} />
@@ -777,6 +789,32 @@ function RiskUploadPanel({ property }) {
         </div>
       )}
     </div>
+  );
+}
+
+function BrandStandardsUploadPanel({ propertyId, role, onAnalysisSaved }) {
+  return (
+    <UploadAnalyzePanel
+      title="Brand Standards / PIP" icon="🏨"
+      endpoint="/api/ai/review-brand-standards"
+      accept=".pdf,.doc,.docx,.txt"
+      uploadLabel="Upload Franchise Agreement or PIP"
+      hint="Franchise agreement, Property Improvement Plan, or brand standards doc — AI extracts PIP items, fees, deadlines, and compliance gaps"
+      propertyId={propertyId} role={role} onAnalysisSaved={onAnalysisSaved}
+      formatResult={(a) => (
+        <div>
+          <ResultRow label="Brand" value={a.brandName} />
+          <ResultRow label="Status" value={a.complianceStatus} highlight={a.complianceStatus === 'PIP Required' || a.complianceStatus === 'Non-Compliant'} />
+          <ResultRow label="PIP Cost" value={a.totalEstimatedPIPCost} highlight={!!a.totalEstimatedPIPCost} />
+          <ResultRow label="Deadline" value={a.complianceDeadline} />
+          <ResultRow label="Franchise Term" value={a.franchiseTerm} />
+          {a.brandFees?.royaltyFee && <ResultRow label="Royalty Fee" value={a.brandFees.royaltyFee} />}
+          <ResultList label="PIP Items (Required)" items={a.pipItems?.filter(p => p.priority === 'Required').map(p => `${p.category}: ${p.item}${p.estimatedCost ? ` — ${p.estimatedCost}` : ''}`)} highlight />
+          <ResultList label="Red Flags" items={a.redFlags?.map(f => `${f.issue} (${f.severity})`)} highlight />
+          {a.summary && <p className="text-xs text-gray-500 mt-3 italic border-t border-gray-100 pt-2">{a.summary.slice(0, 180)}{a.summary.length > 180 ? "…" : ""}</p>}
+        </div>
+      )}
+    />
   );
 }
 
@@ -1033,7 +1071,8 @@ function buildPendingSectionMap(property, role, onAnalysisSaved, urlPropertyId) 
     compliance: () => <PendingPanel title="Compliance Status" icon="✅" description="Compliance checklist will populate as documents are reviewed and parties complete their submissions." />,
     inspection: () => <InspectionUploadPanel propertyId={pid} role={role} onAnalysisSaved={onAnalysisSaved} />,
     insurance:  () => <InsuranceUploadPanel propertyId={pid} role={role} onAnalysisSaved={onAnalysisSaved} />,
-    legal:      () => <LegalDocUploadPanel propertyId={pid} role={role} onAnalysisSaved={onAnalysisSaved} />,
+    legal:            () => <LegalDocUploadPanel propertyId={pid} role={role} onAnalysisSaved={onAnalysisSaved} />,
+    'brand-standards': () => <BrandStandardsUploadPanel propertyId={pid} role={role} onAnalysisSaved={onAnalysisSaved} />,
     readiness:  () => <PendingPanel title="Investment Readiness" icon="🏅" description="All 5 readiness pillars will be tracked as parties submit their documentation." />,
     documents:  () => <DocumentsUploadPanel />,
     property:   () => <PendingPropertyPanel property={property} />,
@@ -1152,7 +1191,12 @@ export default function DealRoomPage() {
     };
   }
 
-  const roleConfig = ROLE_CONFIG[role] || ROLE_CONFIG.lender;
+  const baseRoleConfig = ROLE_CONFIG[role] || ROLE_CONFIG.lender;
+  const isHotel = (property?.property_type || "").toLowerCase().includes("hotel") ||
+                  (property?.property_type || "").toLowerCase().includes("hospitality");
+  const roleConfig = isHotel && ['owner', 'broker', 'borrower'].includes(role)
+    ? { ...baseRoleConfig, sections: ['brand-standards', ...baseRoleConfig.sections] }
+    : baseRoleConfig;
 
   usePageTitle(property?.name || property?.property_name);
 
