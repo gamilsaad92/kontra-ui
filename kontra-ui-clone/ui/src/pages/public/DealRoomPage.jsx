@@ -2,6 +2,8 @@ import React, { useState, useEffect, useRef } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import PublicLayout from "./PublicLayout";
 import DealCoordinationPanel from "./DealCoordinationPanel";
+import ActivityTimeline from "./ActivityTimeline";
+import CommentsPanel from "./CommentsPanel";
 
 function usePageTitle(title) {
   useEffect(() => {
@@ -601,81 +603,133 @@ function ResultList({ label, items, highlight }) {
   );
 }
 
+function ConfidenceBadge({ confidence }) {
+  if (confidence == null) return null;
+  const color = confidence >= 90 ? '#16a34a' : confidence >= 70 ? '#d97706' : '#dc2626';
+  return (
+    <div className="flex items-center gap-2 mt-3 pt-2 border-t border-gray-100">
+      <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">AI Confidence</p>
+      <div className="h-1.5 w-16 rounded-full bg-gray-100 overflow-hidden">
+        <div className="h-full rounded-full" style={{ width: `${confidence}%`, background: color }} />
+      </div>
+      <span className="text-xs font-bold" style={{ color }}>{confidence}%</span>
+    </div>
+  );
+}
+
+function SourceCitations({ sources }) {
+  if (!sources?.length) return null;
+  return (
+    <div className="mt-2">
+      <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5">Source Citations</p>
+      <div className="space-y-1">
+        {sources.slice(0, 3).map((s, i) => (
+          <div key={i} className="flex gap-2 bg-purple-50 rounded-lg px-3 py-1.5">
+            <span className="text-[10px] font-bold text-purple-700 shrink-0 mt-0.5 whitespace-nowrap">{s.page}</span>
+            <span className="text-[10px] text-gray-500 italic line-clamp-2">"{s.quote}"</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function InspectionUploadPanel({ propertyId, role, onAnalysisSaved }) {
   return (
-    <UploadAnalyzePanel
-      title="Inspection Status" icon="🔍"
-      endpoint="/api/ai/analyze-inspection"
-      accept=".pdf,.doc,.docx,.xlsx,.xls,.xlsm,.xlsb,.csv"
-      uploadLabel="Upload Inspection Report"
-      hint="PDF, DOCX, or Excel — AI extracts condition, life-safety findings, and deferred maintenance costs"
-      propertyId={propertyId} role={role} onAnalysisSaved={onAnalysisSaved}
-      formatResult={(a) => (
-        <div>
-          <ResultRow label="Condition" value={a.overallCondition} />
-          <ResultRow label="Score" value={a.score != null ? `${a.score}/100` : null} />
-          <ResultRow label="Deferred Cost" value={a.totalDeferredCost} highlight={!!a.totalDeferredCost} />
-          <ResultRow label="Life Safety" value={a.lifeSafetyFindings?.length ? `${a.lifeSafetyFindings.length} finding(s)` : "None flagged"} highlight={a.lifeSafetyFindings?.length > 0} />
-          <ResultList label="Priority Actions" items={a.priorityActions?.map(p => p.action || p)} />
-          {a.summary && <p className="text-xs text-gray-500 mt-3 italic border-t border-gray-100 pt-2">{a.summary.slice(0, 180)}{a.summary.length > 180 ? "…" : ""}</p>}
-        </div>
-      )}
-    />
+    <div>
+      <UploadAnalyzePanel
+        title="Inspection Status" icon="🔍"
+        endpoint="/api/ai/analyze-inspection"
+        accept=".pdf,.doc,.docx,.xlsx,.xls,.xlsm,.xlsb,.csv"
+        uploadLabel="Upload Inspection Report"
+        hint="PDF, DOCX, or Excel — AI extracts condition, life-safety findings, and deferred maintenance costs"
+        propertyId={propertyId} role={role} onAnalysisSaved={onAnalysisSaved}
+        formatResult={(a) => (
+          <div>
+            <ResultRow label="Condition" value={a.overallCondition} />
+            <ResultRow label="Score" value={a.score != null ? `${a.score}/100` : null} />
+            <ResultRow label="Deferred Cost" value={a.totalDeferredCost} highlight={!!a.totalDeferredCost} />
+            <ResultRow label="Life Safety" value={a.lifeSafetyFindings?.length ? `${a.lifeSafetyFindings.length} finding(s)` : "None flagged"} highlight={a.lifeSafetyFindings?.length > 0} />
+            <ResultList label="Priority Actions" items={a.priorityActions?.map(p => p.action || p)} />
+            {a.summary && <p className="text-xs text-gray-500 mt-3 italic border-t border-gray-100 pt-2">{a.summary.slice(0, 180)}{a.summary.length > 180 ? "…" : ""}</p>}
+            <ConfidenceBadge confidence={a.confidence} />
+            <SourceCitations sources={a.sources} />
+          </div>
+        )}
+      />
+      <div className="mt-2">
+        <CommentsPanel propertyId={propertyId} section="inspection" role={role} />
+      </div>
+    </div>
   );
 }
 
 function InsuranceUploadPanel({ propertyId, role, onAnalysisSaved }) {
   return (
-    <UploadAnalyzePanel
-      title="Insurance Status" icon="🛡️"
-      endpoint="/api/ai/review-insurance"
-      accept=".pdf,.doc,.docx"
-      uploadLabel="Upload Insurance Certificate"
-      hint="PDF — AI reviews coverage amounts, flags gaps, and tracks expiration dates"
-      propertyId={propertyId} role={role} onAnalysisSaved={onAnalysisSaved}
-      formatResult={(a) => (
-        <div>
-          <ResultRow label="Status" value={a.complianceStatus} highlight={a.complianceStatus === "Non-Compliant"} />
-          <ResultRow label="Coverage" value={a.coverageAmount} />
-          <ResultRow label="Expires" value={a.expiresInDays != null ? `${a.expiresInDays} days` : null} highlight={a.expiresInDays != null && a.expiresInDays < 45} />
-          <ResultRow label="Insurer" value={a.insurer} />
-          <ResultList label="Coverage Gaps" items={a.coverageGaps?.map(g => g.gap || g)} highlight />
-          {a.summary && <p className="text-xs text-gray-500 mt-3 italic border-t border-gray-100 pt-2">{a.summary.slice(0, 180)}{a.summary.length > 180 ? "…" : ""}</p>}
-        </div>
-      )}
-    />
+    <div>
+      <UploadAnalyzePanel
+        title="Insurance Status" icon="🛡️"
+        endpoint="/api/ai/review-insurance"
+        accept=".pdf,.doc,.docx"
+        uploadLabel="Upload Insurance Certificate"
+        hint="PDF — AI reviews coverage amounts, flags gaps, and tracks expiration dates"
+        propertyId={propertyId} role={role} onAnalysisSaved={onAnalysisSaved}
+        formatResult={(a) => (
+          <div>
+            <ResultRow label="Status" value={a.complianceStatus} highlight={a.complianceStatus === "Non-Compliant"} />
+            <ResultRow label="Coverage" value={a.coverageAmount} />
+            <ResultRow label="Expires" value={a.expiresInDays != null ? `${a.expiresInDays} days` : null} highlight={a.expiresInDays != null && a.expiresInDays < 45} />
+            <ResultRow label="Insurer" value={a.insurer} />
+            <ResultList label="Coverage Gaps" items={a.coverageGaps?.map(g => g.gap || g)} highlight />
+            {a.summary && <p className="text-xs text-gray-500 mt-3 italic border-t border-gray-100 pt-2">{a.summary.slice(0, 180)}{a.summary.length > 180 ? "…" : ""}</p>}
+            <ConfidenceBadge confidence={a.confidence} />
+            <SourceCitations sources={a.sources} />
+          </div>
+        )}
+      />
+      <div className="mt-2">
+        <CommentsPanel propertyId={propertyId} section="insurance" role={role} />
+      </div>
+    </div>
   );
 }
 
 function FinancialsUploadPanel({ propertyId, role, onAnalysisSaved }) {
   return (
-    <UploadAnalyzePanel
-      title="Financial Overview" icon="📊"
-      endpoint="/api/ai/review-financials"
-      accept=".pdf,.doc,.docx,.xlsx,.xls,.xlsm,.xlsb,.csv"
-      uploadLabel="Upload Operating Statement or Rent Roll"
-      hint="PDF, Excel, or CSV — AI extracts NOI, DSCR, occupancy, and flags anomalies"
-      propertyId={propertyId} role={role} onAnalysisSaved={onAnalysisSaved}
-      formatResult={(a) => (
-        <div>
-          <ResultRow label="NOI" value={a.noi} />
-          <ResultRow label="Occupancy" value={a.occupancy} />
-          <ResultRow label="DSCR" value={a.dscr} />
-          <ResultRow label="Revenue" value={a.revenue} />
-          <ResultRow label="Expenses" value={a.expenses} />
-          {a.revpar && <ResultRow label="RevPAR" value={a.revpar} />}
-          {a.adr && <ResultRow label="ADR" value={a.adr} />}
-          {a.gopPar && <ResultRow label="GOP PAR" value={a.gopPar} />}
-          {a.revparIndex && <ResultRow label="RevPAR Index" value={a.revparIndex} />}
-          {a.roomsRevenue && <ResultRow label="Rooms Revenue" value={a.roomsRevenue} />}
-          {a.fbRevenue && <ResultRow label="F&B Revenue" value={a.fbRevenue} />}
-          <ResultRow label="Covenants" value={a.covenantStatus} highlight={a.covenantStatus === "Breached" || a.covenantStatus === "At Risk"} />
-          <ResultList label="Anomalies Flagged" items={a.anomalies?.map(x => `${x.item} — ${x.description}`)} highlight />
-          <ResultList label="Trends" items={a.trends} />
-          {a.summary && <p className="text-xs text-gray-500 mt-3 italic border-t border-gray-100 pt-2">{a.summary.slice(0, 180)}{a.summary.length > 180 ? "…" : ""}</p>}
-        </div>
-      )}
-    />
+    <div>
+      <UploadAnalyzePanel
+        title="Financial Overview" icon="📊"
+        endpoint="/api/ai/review-financials"
+        accept=".pdf,.doc,.docx,.xlsx,.xls,.xlsm,.xlsb,.csv"
+        uploadLabel="Upload Operating Statement or Rent Roll"
+        hint="PDF, Excel, or CSV — AI extracts NOI, DSCR, occupancy, and flags anomalies"
+        propertyId={propertyId} role={role} onAnalysisSaved={onAnalysisSaved}
+        formatResult={(a) => (
+          <div>
+            <ResultRow label="NOI" value={a.noi} />
+            <ResultRow label="Occupancy" value={a.occupancy} />
+            <ResultRow label="DSCR" value={a.dscr} />
+            <ResultRow label="Revenue" value={a.revenue} />
+            <ResultRow label="Expenses" value={a.expenses} />
+            {a.revpar && <ResultRow label="RevPAR" value={a.revpar} />}
+            {a.adr && <ResultRow label="ADR" value={a.adr} />}
+            {a.gopPar && <ResultRow label="GOP PAR" value={a.gopPar} />}
+            {a.revparIndex && <ResultRow label="RevPAR Index" value={a.revparIndex} />}
+            {a.roomsRevenue && <ResultRow label="Rooms Revenue" value={a.roomsRevenue} />}
+            {a.fbRevenue && <ResultRow label="F&B Revenue" value={a.fbRevenue} />}
+            <ResultRow label="Covenants" value={a.covenantStatus} highlight={a.covenantStatus === "Breached" || a.covenantStatus === "At Risk"} />
+            <ResultList label="Anomalies Flagged" items={a.anomalies?.map(x => `${x.item} — ${x.description}`)} highlight />
+            <ResultList label="Trends" items={a.trends} />
+            {a.summary && <p className="text-xs text-gray-500 mt-3 italic border-t border-gray-100 pt-2">{a.summary.slice(0, 180)}{a.summary.length > 180 ? "…" : ""}</p>}
+            <ConfidenceBadge confidence={a.confidence} />
+            <SourceCitations sources={a.sources} />
+          </div>
+        )}
+      />
+      <div className="mt-2">
+        <CommentsPanel propertyId={propertyId} section="financials" role={role} />
+      </div>
+    </div>
   );
 }
 
@@ -794,50 +848,64 @@ function RiskUploadPanel({ property }) {
 
 function BrandStandardsUploadPanel({ propertyId, role, onAnalysisSaved }) {
   return (
-    <UploadAnalyzePanel
-      title="Brand Standards / PIP" icon="🏨"
-      endpoint="/api/ai/review-brand-standards"
-      accept=".pdf,.doc,.docx,.txt"
-      uploadLabel="Upload Franchise Agreement or PIP"
-      hint="Franchise agreement, Property Improvement Plan, or brand standards doc — AI extracts PIP items, fees, deadlines, and compliance gaps"
-      propertyId={propertyId} role={role} onAnalysisSaved={onAnalysisSaved}
-      formatResult={(a) => (
-        <div>
-          <ResultRow label="Brand" value={a.brandName} />
-          <ResultRow label="Status" value={a.complianceStatus} highlight={a.complianceStatus === 'PIP Required' || a.complianceStatus === 'Non-Compliant'} />
-          <ResultRow label="PIP Cost" value={a.totalEstimatedPIPCost} highlight={!!a.totalEstimatedPIPCost} />
-          <ResultRow label="Deadline" value={a.complianceDeadline} />
-          <ResultRow label="Franchise Term" value={a.franchiseTerm} />
-          {a.brandFees?.royaltyFee && <ResultRow label="Royalty Fee" value={a.brandFees.royaltyFee} />}
-          <ResultList label="PIP Items (Required)" items={a.pipItems?.filter(p => p.priority === 'Required').map(p => `${p.category}: ${p.item}${p.estimatedCost ? ` — ${p.estimatedCost}` : ''}`)} highlight />
-          <ResultList label="Red Flags" items={a.redFlags?.map(f => `${f.issue} (${f.severity})`)} highlight />
-          {a.summary && <p className="text-xs text-gray-500 mt-3 italic border-t border-gray-100 pt-2">{a.summary.slice(0, 180)}{a.summary.length > 180 ? "…" : ""}</p>}
-        </div>
-      )}
-    />
+    <div>
+      <UploadAnalyzePanel
+        title="Brand Standards / PIP" icon="🏨"
+        endpoint="/api/ai/review-brand-standards"
+        accept=".pdf,.doc,.docx,.txt"
+        uploadLabel="Upload Franchise Agreement or PIP"
+        hint="Franchise agreement, Property Improvement Plan, or brand standards doc — AI extracts PIP items, fees, deadlines, and compliance gaps"
+        propertyId={propertyId} role={role} onAnalysisSaved={onAnalysisSaved}
+        formatResult={(a) => (
+          <div>
+            <ResultRow label="Brand" value={a.brandName} />
+            <ResultRow label="Status" value={a.complianceStatus} highlight={a.complianceStatus === 'PIP Required' || a.complianceStatus === 'Non-Compliant'} />
+            <ResultRow label="PIP Cost" value={a.totalEstimatedPIPCost} highlight={!!a.totalEstimatedPIPCost} />
+            <ResultRow label="Deadline" value={a.complianceDeadline} />
+            <ResultRow label="Franchise Term" value={a.franchiseTerm} />
+            {a.brandFees?.royaltyFee && <ResultRow label="Royalty Fee" value={a.brandFees.royaltyFee} />}
+            <ResultList label="PIP Items (Required)" items={a.pipItems?.filter(p => p.priority === 'Required').map(p => `${p.category}: ${p.item}${p.estimatedCost ? ` — ${p.estimatedCost}` : ''}`)} highlight />
+            <ResultList label="Red Flags" items={a.redFlags?.map(f => `${f.issue} (${f.severity})`)} highlight />
+            {a.summary && <p className="text-xs text-gray-500 mt-3 italic border-t border-gray-100 pt-2">{a.summary.slice(0, 180)}{a.summary.length > 180 ? "…" : ""}</p>}
+            <ConfidenceBadge confidence={a.confidence} />
+            <SourceCitations sources={a.sources} />
+          </div>
+        )}
+      />
+      <div className="mt-2">
+        <CommentsPanel propertyId={propertyId} section="brand-standards" role={role} />
+      </div>
+    </div>
   );
 }
 
 function LegalDocUploadPanel({ propertyId, role, onAnalysisSaved }) {
   return (
-    <UploadAnalyzePanel
-      title="Legal / Title Review" icon="⚖️"
-      endpoint="/api/ai/review-legal"
-      accept=".pdf,.doc,.docx,.txt"
-      uploadLabel="Upload Legal Document"
-      hint="Purchase agreement, title report, lease, or loan docs — AI flags key dates, contingencies, and red flags"
-      propertyId={propertyId} role={role} onAnalysisSaved={onAnalysisSaved}
-      formatResult={(a) => (
-        <div>
-          <ResultRow label="Document" value={a.documentType} />
-          <ResultRow label="Status" value={a.complianceStatus} highlight={a.complianceStatus === 'Issues Found'} />
-          <ResultList label="Key Dates" items={a.keyDates?.map(d => `${d.event}: ${d.date}`)} />
-          <ResultList label="Red Flags" items={a.redFlags?.map(f => `${f.issue} (${f.severity})`)} highlight />
-          <ResultList label="Contingencies" items={a.contingencies} />
-          {a.summary && <p className="text-xs text-gray-500 mt-3 italic border-t border-gray-100 pt-2">{a.summary.slice(0, 180)}{a.summary.length > 180 ? "…" : ""}</p>}
-        </div>
-      )}
-    />
+    <div>
+      <UploadAnalyzePanel
+        title="Legal / Title Review" icon="⚖️"
+        endpoint="/api/ai/review-legal"
+        accept=".pdf,.doc,.docx,.txt"
+        uploadLabel="Upload Legal Document"
+        hint="Purchase agreement, title report, lease, or loan docs — AI flags key dates, contingencies, and red flags"
+        propertyId={propertyId} role={role} onAnalysisSaved={onAnalysisSaved}
+        formatResult={(a) => (
+          <div>
+            <ResultRow label="Document" value={a.documentType} />
+            <ResultRow label="Status" value={a.complianceStatus} highlight={a.complianceStatus === 'Issues Found'} />
+            <ResultList label="Key Dates" items={a.keyDates?.map(d => `${d.event}: ${d.date}`)} />
+            <ResultList label="Red Flags" items={a.redFlags?.map(f => `${f.issue} (${f.severity})`)} highlight />
+            <ResultList label="Contingencies" items={a.contingencies} />
+            {a.summary && <p className="text-xs text-gray-500 mt-3 italic border-t border-gray-100 pt-2">{a.summary.slice(0, 180)}{a.summary.length > 180 ? "…" : ""}</p>}
+            <ConfidenceBadge confidence={a.confidence} />
+            <SourceCitations sources={a.sources} />
+          </div>
+        )}
+      />
+      <div className="mt-2">
+        <CommentsPanel propertyId={propertyId} section="legal" role={role} />
+      </div>
+    </div>
   );
 }
 
@@ -1328,6 +1396,15 @@ export default function DealRoomPage() {
             propertyId={propertyId || property.property_id || property.id}
             role={role}
           />
+        )}
+
+        {/* Activity Timeline — live event log (custom rooms only) */}
+        {property.isCustom && (
+          <div className="mb-6">
+            <ActivityTimeline
+              propertyId={propertyId || property.property_id || property.id}
+            />
+          </div>
         )}
 
         {/* Investment Readiness summary bar — demo rooms only */}
