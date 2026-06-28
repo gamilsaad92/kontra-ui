@@ -1195,6 +1195,8 @@ app.post('/api/public/deal-room/:propertyId/submit', async (req, res) => {
       notes: notes || null,
     }, { onConflict: 'property_id,role' });
     if (error) throw error;
+    const _roleLabels = { lender: 'Lender', inspector: 'Inspector', insurer: 'Insurance Broker', attorney: 'Attorney', investor: 'Investor', servicer: 'Servicer', owner: 'Owner', borrower: 'Borrower' };
+    logEvent(propertyId, 'party_submitted', role, name || role, `${name || _roleLabels[role] || role} signaled ready`, { role });
     notifyPartySubmitted(propertyId, role, name).catch(() => {});
     res.json({ ok: true });
   } catch (err) {
@@ -1211,6 +1213,8 @@ app.post('/api/public/deal-room/:propertyId/advance', async (req, res) => {
   try {
     const { error } = await supabase.from('deal_rooms').update({ deal_stage: stage }).eq('property_id', propertyId);
     if (error) throw error;
+    const STAGE_LABELS = { uploading: 'Uploading', under_review: 'Under Review', approved: 'Approved', closing: 'Closing', funded: 'Funded' };
+    logEvent(propertyId, 'stage_advanced', 'owner', null, `Deal advanced to ${STAGE_LABELS[stage] || stage}`, { stage });
     res.json({ ok: true, stage });
   } catch (err) {
     console.error('[advance]', err.message);
@@ -1274,6 +1278,110 @@ async function uploadToStorage(buffer, mimetype, propertyId, section, filename) 
     return null;
   }
 }
+
+// ── Event logger ────────────────────────────────────────────────────────────
+async function logEvent(propertyId, eventType, actorRole, actorName, description, metadata = {}) {
+  try {
+    await supabase.from('deal_events').insert({
+      property_id: propertyId, event_type: eventType, actor_role: actorRole,
+      actor_name: actorName, description, metadata,
+    });
+  } catch (e) { console.warn('[logEvent]', e.message); }
+}
+
+// ── Lender notification (inspector/insurer → lender) ───────────────────────
+async function notifyLender(propertyId, uploaderRole, section, summary) {
+  try {
+    const [lenderRes, roomRes] = await Promise.all([
+      supabase.from('party_submissions').select('email,name').eq('property_id', propertyId).eq('role', 'lender').maybeSingle(),
+      supabase.from('deal_rooms').select('property_name').eq('property_id', propertyId).single(),
+    ]);
+    if (!lenderRes.data?.email) return;
+    const RESEND_KEY = process.env.RESEND_API_KEY;
+    if (!RESEND_KEY) return;
+    const propName = roomRes.data?.property_name || propertyId;
+    const SECTION_LABELS = { inspection: 'Inspection Report', insurance: 'Insurance Certificate', financials: 'Financial Statement', legal: 'Legal Document', 'brand-standards': 'Brand Standards / PIP' };
+    const ROLE_LABELS = { inspector: 'Inspector', insurer: 'Insurance Broker', insurance: 'Insurance Broker', attorney: 'Attorney', owner: 'Owner / Borrower' };
+    await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${RESEND_KEY}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        from: 'Kontra <notifications@kontraplatform.com>',
+        to: lenderRes.data.email,
+        subject: `New document ready for review: ${SECTION_LABELS[section] || section} — ${propName}`,
+        html: `<div style="font-family:sans-serif;max-width:520px;margin:auto;padding:24px"><h2 style="color:#800020;margin-bottom:4px">Document ready for review</h2><p style="color:#555">Hi ${lenderRes.data.name || 'there'},</p><p style="color:#555">The <strong>${ROLE_LABELS[uploaderRole] || uploaderRole}</strong> uploaded a <strong>${SECTION_LABELS[section] || section}</strong> to <strong>${propName}</strong>. AI has analyzed it and it is ready for your review.</p>${summary ? `<p style="background:#f9fafb;border-radius:8px;padding:12px;color:#374151;font-size:14px">${summary}</p>` : ''}<a href="https://kontraplatform.com/deal-room/${propertyId}?role=lender" style="display:inline-block;margin-top:16px;padding:12px 20px;background:#800020;color:white;border-radius:8px;text-decoration:none;font-weight:bold">Review Deal Room →</a><p style="color:#aaa;font-size:12px;margin-top:24px">Kontra · CRE Deal Intelligence</p></div>`,
+      }),
+    });
+    console.log(`[notifyLender] sent for ${section}`);
+  } catch (e) { console.warn('[notifyLender]', e.message); }
+}
+
+// ── Activity timeline ───────────────────────────────────────────────────────
+app.get('/api/public/deal-room/:propertyId/events', async (req, res) => {
+  const { propertyId } = req.params;
+  try {
+    const { data, error } = await supabase.from('deal_events').select('*')
+      .eq('property_id', propertyId).order('created_at', { ascending: false }).limit(50);
+    if (error) throw error;
+    res.set('Cache-Control', 'no-store');
+    res.json({ events: data || [] });
+  } catch (err) { console.error('[events]', err.message); res.json({ events: [] }); }
+});
+
+// ── Comments ────────────────────────────────────────────────────────────────
+app.get('/api/public/deal-room/:propertyId/comments', async (req, res) => {
+  const { propertyId } = req.params;
+  const { section } = req.query;
+  try {
+    let q = supabase.from('deal_comments').select('*').eq('property_id', propertyId);
+    if (section) q = q.eq('section', section);
+    const { data, error } = await q.order('created_at', { ascending: true });
+    if (error) throw error;
+    res.json({ comments: data || [] });
+  } catch (err) { console.error('[comments-get]', err.message); res.json({ comments: [] }); }
+});
+
+app.post('/api/public/deal-room/:propertyId/comments', async (req, res) => {
+  const { propertyId } = req.params;
+  const { section, role, author_name, content } = req.body || {};
+  if (!section || !role || !content) return res.status(400).json({ error: 'section, role, content required' });
+  try {
+    const { data, error } = await supabase.from('deal_comments').insert({
+      property_id: propertyId, section, role, author_name: author_name || role, content,
+    }).select().single();
+    if (error) throw error;
+    logEvent(propertyId, 'comment_added', role, author_name, `Comment on ${section}`, { section });
+    res.json({ comment: data });
+  } catch (err) { console.error('[comments-post]', err.message); res.status(500).json({ error: err.message }); }
+});
+
+app.patch('/api/public/deal-room/:propertyId/comments/:commentId/resolve', async (req, res) => {
+  const { propertyId, commentId } = req.params;
+  try {
+    const { error } = await supabase.from('deal_comments').update({ resolved: true })
+      .eq('id', commentId).eq('property_id', propertyId);
+    if (error) throw error;
+    res.json({ ok: true });
+  } catch (err) { console.error('[comment-resolve]', err.message); res.status(500).json({ error: err.message }); }
+});
+
+// ── Submission approval status ──────────────────────────────────────────────
+app.patch('/api/public/deal-room/:propertyId/submissions/:subRole/status', async (req, res) => {
+  const { propertyId, subRole } = req.params;
+  const { status, status_note, updater_role } = req.body || {};
+  const VALID_STATUS = ['submitted', 'needs_revision', 'approved', 'rejected'];
+  if (!VALID_STATUS.includes(status)) return res.status(400).json({ error: 'invalid status' });
+  try {
+    const { error } = await supabase.from('party_submissions').update({
+      status, status_note: status_note || null, status_updated_at: new Date().toISOString(),
+    }).eq('property_id', propertyId).eq('role', subRole);
+    if (error) throw error;
+    const STATUS_LABELS = { submitted: 'Submitted', needs_revision: 'Needs Revision', approved: 'Approved', rejected: 'Rejected' };
+    logEvent(propertyId, 'status_changed', updater_role || 'owner', null,
+      `${subRole} submission marked ${STATUS_LABELS[status] || status}`, { role: subRole, status });
+    res.json({ ok: true });
+  } catch (err) { console.error('[submission-status]', err.message); res.status(500).json({ error: err.message }); }
+});
 
 async function notifyOwner(propertyId, section, summary) {
   try {
@@ -1399,7 +1507,9 @@ app.post('/api/ai/analyze-inspection', aiRateLimit, upload.single('file'), async
       messages: [
         { role: 'system', content: 'You are an expert commercial real estate inspection analyst. Analyze inspection reports and extract key findings in a structured format. Always respond with valid JSON.' },
         { role: 'user', content: `Analyze this commercial real estate inspection report and return a JSON object with this exact structure:
-{"propertyType":string,"overallCondition":"Good"|"Fair"|"Poor","score":number,"lifeSafetyFindings":[{"item":string,"severity":"Critical"|"Moderate"|"Minor","description":string}],"deferredMaintenance":[{"item":string,"estimatedCost":string,"priority":"High"|"Medium"|"Low","timeline":string}],"totalDeferredCost":string,"priorityActions":[{"action":string,"timeline":string}],"summary":string,"positiveFindings":[string]}
+{"propertyType":string,"overallCondition":"Good"|"Fair"|"Poor","score":number,"lifeSafetyFindings":[{"item":string,"severity":"Critical"|"Moderate"|"Minor","description":string}],"deferredMaintenance":[{"item":string,"estimatedCost":string,"priority":"High"|"Medium"|"Low","timeline":string}],"totalDeferredCost":string,"priorityActions":[{"action":string,"timeline":string}],"summary":string,"positiveFindings":[string],"confidence":number,"sources":[{"page":string,"quote":string}]}
+
+confidence is 0-100 representing your overall confidence in the extracted data based on document clarity. sources lists 2-4 specific page references and brief verbatim quotes for the most important extracted values (condition score, deferred costs, life-safety items).
 
 Inspection report text:\n${text}` }
       ],
@@ -1423,6 +1533,8 @@ Inspection report text:\n${text}` }
         });
       });
       notifyOwner(property_id, 'inspection', result.summary);
+      logEvent(property_id, 'document_analyzed', role || 'unknown', null, 'Inspection Report analyzed by AI', { section: 'inspection', filename: req.file.originalname });
+      if (role === 'inspector') notifyLender(property_id, role, 'inspection', result.summary).catch(() => {});
     }
   } catch (err) {
     console.error('[analyze-inspection]', err.message);
@@ -1464,7 +1576,9 @@ app.post('/api/ai/review-insurance', aiRateLimit, upload.single('file'), async (
       model: 'gpt-4o-mini',
       messages: [
         { role: 'system', content: 'You are a CRE insurance specialist. Analyze insurance policies and return JSON.' },
-        { role: 'user', content: `Analyze this insurance policy and return JSON: {"policyType":string,"coverageAmount":string,"expirationDate":string,"expiresInDays":number,"coverageGaps":[{"gap":string,"severity":"Critical"|"Moderate"|"Minor"}],"endorsements":[string],"recommendations":[string],"complianceStatus":"Compliant"|"Review Required"|"Action Needed","summary":string}
+        { role: 'user', content: `Analyze this insurance policy and return JSON: {"policyType":string,"coverageAmount":string,"expirationDate":string,"expiresInDays":number,"coverageGaps":[{"gap":string,"severity":"Critical"|"Moderate"|"Minor"}],"endorsements":[string],"recommendations":[string],"complianceStatus":"Compliant"|"Review Required"|"Action Needed","summary":string,"confidence":number,"sources":[{"page":string,"quote":string}]}
+
+confidence is 0-100 based on document clarity. sources lists 2-4 page references and brief verbatim quotes for key figures (coverage amount, expiration date, policy limits).
 
 Policy text:\n${text}` }
       ],
@@ -1487,6 +1601,8 @@ Policy text:\n${text}` }
         });
       });
       notifyOwner(property_id, 'insurance', result.summary);
+      logEvent(property_id, 'document_analyzed', role || 'unknown', null, 'Insurance Certificate analyzed by AI', { section: 'insurance', filename: req.file.originalname });
+      if (['insurer', 'insurance'].includes(role)) notifyLender(property_id, role, 'insurance', result.summary).catch(() => {});
     }
   } catch (err) {
     console.error('[review-insurance]', err.message);
@@ -1506,9 +1622,9 @@ app.post('/api/ai/review-financials', aiRateLimit, upload.single('file'), async 
       model: 'gpt-4o-mini',
       messages: [
         { role: 'system', content: 'You are a CRE financial analyst specializing in both traditional commercial properties and hospitality assets. Analyze operating statements, hotel P&L statements, STR reports, and financial reports, returning JSON. Only report figures that are explicitly present in the document.' },
-        { role: 'user', content: `Analyze this financial document and return JSON: {"documentType":string,"noi":string,"occupancy":string,"dscr":string,"revenue":string,"expenses":string,"revpar":string|null,"adr":string|null,"gopPar":string|null,"revparIndex":string|null,"roomsRevenue":string|null,"fbRevenue":string|null,"anomalies":[{"item":string,"description":string,"severity":"High"|"Medium"|"Low"}],"trends":[string],"covenantStatus":"Compliant"|"At Risk"|"Breached"|"Unknown","summary":string,"recommendations":[string]}
+        { role: 'user', content: `Analyze this financial document and return JSON: {"documentType":string,"noi":string,"occupancy":string,"dscr":string,"revenue":string,"expenses":string,"revpar":string|null,"adr":string|null,"gopPar":string|null,"revparIndex":string|null,"roomsRevenue":string|null,"fbRevenue":string|null,"anomalies":[{"item":string,"description":string,"severity":"High"|"Medium"|"Low"}],"trends":[string],"covenantStatus":"Compliant"|"At Risk"|"Breached"|"Unknown","summary":string,"recommendations":[string],"confidence":number,"sources":[{"page":string,"quote":string}]}
 
-Notes: revpar=Revenue Per Available Room, adr=Average Daily Rate, gopPar=Gross Operating Profit Per Available Room, revparIndex=RevPAR Index vs comp set (e.g. "108.2"). Only populate hotel fields if document is a hotel P&L or STR report.
+Notes: revpar=Revenue Per Available Room, adr=Average Daily Rate, gopPar=Gross Operating Profit Per Available Room, revparIndex=RevPAR Index vs comp set (e.g. "108.2"). Only populate hotel fields if document is a hotel P&L or STR report. confidence is 0-100 based on document quality. sources lists 2-4 page references and verbatim quotes for key figures (NOI, DSCR, revenue, occupancy).
 
 Financial document:\n${text}` }
       ],
@@ -1531,6 +1647,8 @@ Financial document:\n${text}` }
         });
       });
       notifyOwner(property_id, 'financials', result.summary);
+      logEvent(property_id, 'document_analyzed', role || 'unknown', null, 'Financial Statement analyzed by AI', { section: 'financials', filename: req.file.originalname });
+      if (['owner', 'borrower'].includes(role)) notifyLender(property_id, role, 'financials', result.summary).catch(() => {});
     }
   } catch (err) {
     console.error('[review-financials]', err.message);
@@ -1550,7 +1668,9 @@ app.post('/api/ai/review-legal', aiRateLimit, upload.single('file'), async (req,
       model: 'gpt-4o-mini',
       messages: [
         { role: 'system', content: 'You are a CRE legal analyst. Review legal documents (purchase agreements, title reports, lease agreements, loan docs) and extract key terms in JSON.' },
-        { role: 'user', content: `Analyze this CRE legal document and return JSON: {"documentType":string,"parties":[string],"keyDates":[{"event":string,"date":string}],"contingencies":[string],"redFlags":[{"issue":string,"severity":"Critical"|"Moderate"|"Minor"}],"covenants":[string],"complianceStatus":"Clear"|"Review Required"|"Issues Found","summary":string,"recommendations":[string]}
+        { role: 'user', content: `Analyze this CRE legal document and return JSON: {"documentType":string,"parties":[string],"keyDates":[{"event":string,"date":string}],"contingencies":[string],"redFlags":[{"issue":string,"severity":"Critical"|"Moderate"|"Minor"}],"covenants":[string],"complianceStatus":"Clear"|"Review Required"|"Issues Found","summary":string,"recommendations":[string],"confidence":number,"sources":[{"page":string,"quote":string}]}
+
+confidence is 0-100 based on document clarity. sources lists 2-4 page references and verbatim quotes for key terms (parties, key dates, critical red flags).
 
 Legal document:\n${text}` }
       ],
@@ -1573,6 +1693,8 @@ Legal document:\n${text}` }
         });
       });
       notifyOwner(property_id, 'legal', result.summary);
+      logEvent(property_id, 'document_analyzed', role || 'unknown', null, 'Legal Document analyzed by AI', { section: 'legal', filename: req.file.originalname });
+      if (role === 'attorney') notifyLender(property_id, role, 'legal', result.summary).catch(() => {});
     }
   } catch (err) {
     console.error('[review-legal]', err.message);
@@ -1592,7 +1714,9 @@ app.post('/api/ai/review-brand-standards', aiRateLimit, upload.single('file'), a
       model: 'gpt-4o-mini',
       messages: [
         { role: 'system', content: 'You are a hospitality industry expert specializing in hotel franchise agreements, Property Improvement Plans (PIPs), and brand standards compliance for flags like Marriott, Hilton, Hyatt, IHG, and Wyndham.' },
-        { role: 'user', content: `Analyze this hotel franchise or PIP document and return JSON: {"documentType":string,"brandName":string|null,"franchiseTerm":string|null,"brandFees":{"royaltyFee":string|null,"marketingFee":string|null,"reservationFee":string|null},"pipItems":[{"category":string,"item":string,"deadline":string|null,"estimatedCost":string|null,"priority":"Required"|"Recommended"|"Optional"}],"totalEstimatedPIPCost":string|null,"complianceDeadline":string|null,"terminationClauses":[string],"keyRestrictions":[string],"redFlags":[{"issue":string,"severity":"Critical"|"Moderate"|"Minor"}],"complianceStatus":"Compliant"|"PIP Required"|"Non-Compliant"|"Review Required","summary":string,"recommendations":[string]}
+        { role: 'user', content: `Analyze this hotel franchise or PIP document and return JSON: {"documentType":string,"brandName":string|null,"franchiseTerm":string|null,"brandFees":{"royaltyFee":string|null,"marketingFee":string|null,"reservationFee":string|null},"pipItems":[{"category":string,"item":string,"deadline":string|null,"estimatedCost":string|null,"priority":"Required"|"Recommended"|"Optional"}],"totalEstimatedPIPCost":string|null,"complianceDeadline":string|null,"terminationClauses":[string],"keyRestrictions":[string],"redFlags":[{"issue":string,"severity":"Critical"|"Moderate"|"Minor"}],"complianceStatus":"Compliant"|"PIP Required"|"Non-Compliant"|"Review Required","summary":string,"recommendations":[string],"confidence":number,"sources":[{"page":string,"quote":string}]}
+
+confidence is 0-100 based on document clarity. sources lists 2-4 page references and verbatim quotes for key items (PIP costs, compliance deadlines, brand fees).
 
 Document:\n${text}` }
       ],
@@ -1615,6 +1739,7 @@ Document:\n${text}` }
         });
       });
       notifyOwner(property_id, 'brand-standards', result.summary);
+      logEvent(property_id, 'document_analyzed', role || 'unknown', null, 'Brand Standards / PIP analyzed by AI', { section: 'brand-standards', filename: req.file.originalname });
     }
   } catch (err) {
     console.error('[review-brand-standards]', err.message);

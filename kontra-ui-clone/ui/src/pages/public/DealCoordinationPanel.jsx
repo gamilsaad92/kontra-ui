@@ -35,6 +35,23 @@ const ADVANCE_LABEL = {
   closing:      'Mark as Funded',
 };
 
+const STATUS_CONFIG = {
+  submitted:      { label: 'Submitted',     bg: 'bg-blue-50',   text: 'text-blue-700',   dot: 'bg-blue-500'   },
+  needs_revision: { label: 'Needs Revision',bg: 'bg-amber-50',  text: 'text-amber-700',  dot: 'bg-amber-500'  },
+  approved:       { label: 'Approved',      bg: 'bg-green-50',  text: 'text-green-700',  dot: 'bg-green-500'  },
+  rejected:       { label: 'Rejected',      bg: 'bg-red-50',    text: 'text-red-700',    dot: 'bg-red-500'    },
+};
+
+function StatusBadge({ status }) {
+  const cfg = STATUS_CONFIG[status] || STATUS_CONFIG.submitted;
+  return (
+    <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-bold ${cfg.bg} ${cfg.text}`}>
+      <span className={`w-1.5 h-1.5 rounded-full ${cfg.dot}`} />
+      {cfg.label}
+    </span>
+  );
+}
+
 export default function DealCoordinationPanel({ propertyId, role }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -44,16 +61,16 @@ export default function DealCoordinationPanel({ propertyId, role }) {
   const [showNamePrompt, setShowNamePrompt] = useState(false);
   const [submitterName, setSubmitterName] = useState('');
   const [submitterNotes, setSubmitterNotes] = useState('');
+  const [updatingStatus, setUpdatingStatus] = useState(null);
+  const [statusNote, setStatusNote] = useState('');
+  const [showStatusFor, setShowStatusFor] = useState(null);
 
   const fetchCoordination = useCallback(async () => {
     try {
       const res = await fetch(`${API_BASE}/api/public/deal-room/${propertyId}/coordination?t=${Date.now()}`, {
         headers: { 'Cache-Control': 'no-cache' },
       });
-      if (!res.ok) {
-        console.warn('[coordination] fetch failed:', res.status);
-        return;
-      }
+      if (!res.ok) return;
       const json = await res.json();
       setData(json);
       const alreadySubmitted = (json.submissions || []).some(s => s.role === role);
@@ -105,6 +122,24 @@ export default function DealCoordinationPanel({ propertyId, role }) {
     }
   }
 
+  async function handleSetStatus(subRole, status) {
+    setUpdatingStatus(subRole);
+    try {
+      const res = await fetch(`${API_BASE}/api/public/deal-room/${propertyId}/submissions/${subRole}/status`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status, status_note: statusNote || null, updater_role: role }),
+      });
+      if (res.ok) {
+        setShowStatusFor(null);
+        setStatusNote('');
+        await fetchCoordination();
+      }
+    } catch { /* silent */ } finally {
+      setUpdatingStatus(null);
+    }
+  }
+
   if (loading) return null;
   if (!data) return null;
 
@@ -114,6 +149,7 @@ export default function DealCoordinationPanel({ propertyId, role }) {
   const docsByRole = data.docsByRole || {};
   const isFunded = stage === 'funded';
   const canAdvance = (role === 'owner' || role === 'lender') && !isFunded;
+  const canSetStatus = role === 'owner' || role === 'lender';
   const submittedRoles = new Set(submissions.map(s => s.role));
   const requiredRoles = Object.entries(ROLE_META).filter(([, m]) => m.required).map(([k]) => k);
   const allRequiredIn = requiredRoles.every(r => submittedRoles.has(r));
@@ -189,6 +225,8 @@ export default function DealCoordinationPanel({ propertyId, role }) {
             const docs = docsByRole[roleKey] || 0;
             const isMe = roleKey === role;
             const isSubmitted = !!sub;
+            const subStatus = sub?.status || 'submitted';
+            const isShowingStatus = showStatusFor === roleKey;
 
             return (
               <div key={roleKey}
@@ -202,11 +240,53 @@ export default function DealCoordinationPanel({ propertyId, role }) {
                 <div className="text-base mb-1">{meta.icon}</div>
                 <p className="text-[10px] font-semibold text-gray-700 leading-tight">{meta.label}</p>
                 {meta.required && <p className="text-[8px] text-gray-400 mb-1">Required</p>}
-                <div className="mt-1.5 flex items-center gap-1">
+                <div className="mt-1.5 flex flex-col gap-1">
                   {isSubmitted ? (
                     <>
-                      <span className="text-[9px] font-bold text-green-600">✓ Submitted</span>
-                      {docs > 0 && <span className="text-[9px] text-gray-400">· {docs} doc{docs !== 1 ? 's' : ''}</span>}
+                      <StatusBadge status={subStatus} />
+                      {docs > 0 && <span className="text-[9px] text-gray-400">{docs} doc{docs !== 1 ? 's' : ''}</span>}
+                      {/* Owner/lender approval controls */}
+                      {canSetStatus && !isMe && (
+                        <div className="mt-1">
+                          {isShowingStatus ? (
+                            <div className="space-y-1">
+                              <input
+                                type="text"
+                                placeholder="Note (optional)"
+                                value={statusNote}
+                                onChange={e => setStatusNote(e.target.value)}
+                                className="w-full px-1.5 py-1 text-[9px] border border-gray-200 rounded focus:outline-none"
+                              />
+                              <div className="flex flex-wrap gap-1">
+                                {['approved', 'needs_revision', 'rejected'].map(s => (
+                                  <button key={s} onClick={() => handleSetStatus(roleKey, s)}
+                                    disabled={updatingStatus === roleKey}
+                                    className={`px-1.5 py-0.5 rounded text-[8px] font-bold transition
+                                      ${s === 'approved' ? 'bg-green-100 text-green-700 hover:bg-green-200' :
+                                        s === 'needs_revision' ? 'bg-amber-100 text-amber-700 hover:bg-amber-200' :
+                                        'bg-red-100 text-red-700 hover:bg-red-200'}`}>
+                                    {updatingStatus === roleKey ? '…' :
+                                      s === 'approved' ? 'Approve' :
+                                      s === 'needs_revision' ? 'Revision' : 'Reject'}
+                                  </button>
+                                ))}
+                                <button onClick={() => { setShowStatusFor(null); setStatusNote(''); }}
+                                  className="px-1.5 py-0.5 rounded text-[8px] text-gray-400 hover:text-gray-600">
+                                  ✕
+                                </button>
+                              </div>
+                            </div>
+                          ) : (
+                            <button onClick={() => setShowStatusFor(roleKey)}
+                              className="text-[9px] text-gray-400 hover:text-gray-600 transition underline">
+                              Set status
+                            </button>
+                          )}
+                        </div>
+                      )}
+                      {sub?.status_note && (
+                        <p className="text-[8px] text-gray-400 italic">"{sub.status_note}"</p>
+                      )}
                     </>
                   ) : (
                     <span className={`text-[9px] font-semibold ${meta.required ? 'text-amber-500' : 'text-gray-400'}`}>
@@ -220,7 +300,7 @@ export default function DealCoordinationPanel({ propertyId, role }) {
         </div>
       </div>
 
-      {/* Submit CTA — current user's action */}
+      {/* Submit CTA */}
       {!submitted && stage !== 'funded' && (
         <div className="px-6 py-4 border-t border-gray-100 bg-gray-50">
           {showNamePrompt ? (
