@@ -1175,6 +1175,42 @@ app.post('/api/public/my-rooms/verify-otp', async (req, res) => {
   }
 });
 
+// ── Stripe billing portal — lets owner manage/cancel subscription ────────────
+app.post('/api/public/billing-portal', async (req, res) => {
+  const email = (req.body?.email || '').trim().toLowerCase();
+  if (!email) return res.status(400).json({ error: 'email required' });
+  const stripeKey = process.env.STRIPE_SECRET_KEY;
+  if (!stripeKey || stripeKey.startsWith('placeholder')) {
+    return res.status(500).json({ error: 'Billing not configured' });
+  }
+  try {
+    const stripe = require('stripe')(stripeKey);
+    // Find the Stripe customer by email
+    const customers = await stripe.customers.list({ email, limit: 5 });
+    if (!customers.data.length) {
+      return res.status(404).json({ error: 'No billing account found for this email. Make sure you are using the same email from your Stripe receipt.' });
+    }
+    // Use the most recent customer (last created)
+    const customer = customers.data[0];
+    const returnUrl = process.env.SITE_URL
+      ? `${process.env.SITE_URL}/my-deal-rooms`
+      : 'https://kontraplatform.com/my-deal-rooms';
+    const portalSession = await stripe.billingPortal.sessions.create({
+      customer: customer.id,
+      return_url: returnUrl,
+    });
+    console.log(`[billing-portal] created for customer ${customer.id} (${email})`);
+    res.json({ url: portalSession.url });
+  } catch (err) {
+    console.error('[billing-portal]', err.message);
+    // Billing portal not configured in Stripe dashboard
+    if (err.message?.includes('configuration') || err.code === 'portal_configuration_not_found') {
+      return res.status(503).json({ error: 'billing_portal_not_configured' });
+    }
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Legacy GET — backwards compat
 app.get('/api/public/my-rooms', async (req, res) => {
   const email = (req.query.email || '').trim().toLowerCase();

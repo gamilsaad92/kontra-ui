@@ -191,6 +191,7 @@ export default function MyDealRoomsPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [resendCountdown, setResendCountdown] = useState(0);
+  const [billingState, setBillingState] = useState("idle"); // idle | loading | error | not_configured
 
   // Restore session
   useEffect(() => {
@@ -258,6 +259,28 @@ export default function MyDealRoomsPage() {
   function signOut() {
     sessionStorage.removeItem(SESSION_KEY);
     setStep("email"); setRooms([]); setEmail(""); setOwnerName(""); setError("");
+  }
+
+  async function manageBilling() {
+    setBillingState("loading");
+    try {
+      const res = await fetch(`${API_BASE}/api/public/billing-portal`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: email.trim().toLowerCase() }),
+      });
+      const data = await res.json();
+      if (data.error === "billing_portal_not_configured") {
+        setBillingState("not_configured");
+        setTimeout(() => setBillingState("idle"), 5000);
+        return;
+      }
+      if (!res.ok) throw new Error(data.error || "Failed");
+      window.location.href = data.url;
+    } catch (err) {
+      setBillingState("error");
+      setTimeout(() => setBillingState("idle"), 4000);
+    }
   }
 
   // ── STEP: email ────────────────────────────────────────────────────────
@@ -368,6 +391,13 @@ export default function MyDealRoomsPage() {
               style={{ background: "#800020" }}>
               + New Deal Room
             </Link>
+            <button onClick={manageBilling} disabled={billingState === "loading"}
+              className="px-4 py-2 rounded-xl text-xs font-semibold border border-gray-200 text-gray-600 hover:bg-gray-50 transition disabled:opacity-40 whitespace-nowrap">
+              {billingState === "loading" ? "Opening…"
+                : billingState === "not_configured" ? "Portal not set up yet"
+                : billingState === "error" ? "Try again later"
+                : "💳 Manage Billing"}
+            </button>
             <button onClick={signOut} className="text-[10px] text-gray-400 hover:text-gray-600 underline">
               Sign out
             </button>
