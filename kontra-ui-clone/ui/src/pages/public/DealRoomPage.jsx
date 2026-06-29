@@ -4,6 +4,7 @@ import PublicLayout from "./PublicLayout";
 import DealCoordinationPanel from "./DealCoordinationPanel";
 import ActivityTimeline from "./ActivityTimeline";
 import CommentsPanel from "./CommentsPanel";
+import DealHealthPanel from "./DealHealthPanel";
 
 function usePageTitle(title) {
   useEffect(() => {
@@ -1387,6 +1388,13 @@ export default function DealRoomPage() {
           <DealIntelligenceDashboard
             propertyId={propertyId || property.property_id || property.id}
             refreshKey={analysesRefreshKey}
+          />
+        )}
+
+        {/* Deal Health Score + Action Items — custom rooms only */}
+        {property.isCustom && (
+          <DealHealthPanel
+            propertyId={propertyId || property.property_id || property.id}
           />
         )}
 
