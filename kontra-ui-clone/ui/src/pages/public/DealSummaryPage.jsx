@@ -32,17 +32,17 @@ function healthScore(analyses) {
   const ins  = analyses.find(a => a.section === "insurance");
   const fin  = analyses.find(a => a.section === "financials");
   if (insp) {
-    const t = (insp.analysis || "").toLowerCase();
+    const t = getText(insp.analysis).toLowerCase();
     score += t.includes("good") || t.includes("excellent") ? 15 : t.includes("minor") ? 8 : 0;
     if (t.match(/deferred.*\$[\d,]+k?/)) score -= 5;
   }
   if (ins) {
-    const t = (ins.analysis || "").toLowerCase();
+    const t = getText(ins.analysis).toLowerCase();
     score += t.includes("compliant") || t.includes("comprehensive") ? 12 : 5;
     if (t.includes("gap")) score -= 4;
   }
   if (fin) {
-    const t = (fin.analysis || "").toLowerCase();
+    const t = getText(fin.analysis).toLowerCase();
     const dscr = t.match(/dscr[:\s]*([0-9.]+)/i);
     if (dscr) {
       const v = parseFloat(dscr[1]);
@@ -65,7 +65,7 @@ function extractMetrics(analyses) {
   const metrics = [];
   const fin = analyses.find(a => a.section === "financials");
   if (fin) {
-    const t = fin.analysis || "";
+    const t = getText(fin.analysis);
     const noi   = t.match(/NOI[:\s]*\$?([\d,]+)/i);
     const dscr  = t.match(/DSCR[:\s]*([0-9.]+)/i);
     const occ   = t.match(/occupanc[yi][:\s]*([0-9]+)%/i);
@@ -77,13 +77,13 @@ function extractMetrics(analyses) {
   }
   const ins = analyses.find(a => a.section === "insurance");
   if (ins) {
-    const t = ins.analysis || "";
+    const t = getText(ins.analysis);
     const exp = t.match(/[Ee]xpires?[:\s]*([A-Za-z0-9\-\/]+)/);
     if (exp) metrics.push({ label: "Ins. Expiry", value: exp[1] });
   }
   const insp = analyses.find(a => a.section === "inspection");
   if (insp) {
-    const t = insp.analysis || "";
+    const t = getText(insp.analysis);
     const dm = t.match(/[Dd]eferred[^$]*\$([\d,]+)/);
     if (dm) metrics.push({ label: "Deferred Maint.", value: `$${dm[1]}` });
   }
@@ -97,6 +97,21 @@ const SECTION_META = {
 };
 
 const SECTION_ORDER = ["inspection", "insurance", "financials"];
+
+// analysis field is an object { summary, confidence, sources } — extract plain text safely
+function getText(analysis) {
+  if (!analysis) return "";
+  if (typeof analysis === "string") return analysis;
+  return analysis.summary || analysis.text || JSON.stringify(analysis);
+}
+function getConfidence(analysis) {
+  if (!analysis || typeof analysis === "string") return null;
+  return analysis.confidence || null;
+}
+function getSources(analysis) {
+  if (!analysis || typeof analysis === "string") return [];
+  return analysis.sources || [];
+}
 
 export default function DealSummaryPage() {
   const { propertyId } = useParams();
@@ -279,12 +294,12 @@ export default function DealSummaryPage() {
                     </div>
                     <div className="px-4 py-3.5">
                       <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-line">
-                        {a.analysis || "No analysis available."}
+                        {getText(a.analysis) || "No analysis available."}
                       </p>
-                      {(a.confidence || (a.sources?.length > 0)) && (
+                      {(getConfidence(a.analysis) || getSources(a.analysis).length > 0) && (
                         <p className="text-[10px] text-gray-400 mt-2.5 pt-2 border-t border-gray-50">
-                          {a.confidence && <>AI Confidence: <strong>{a.confidence}</strong></>}
-                          {a.sources?.length > 0 && ` · Sources: ${a.sources.slice(0, 3).join(", ")}`}
+                          {getConfidence(a.analysis) && <>AI Confidence: <strong>{getConfidence(a.analysis)}</strong></>}
+                          {getSources(a.analysis).length > 0 && ` · Sources: ${getSources(a.analysis).slice(0, 3).join(", ")}`}
                         </p>
                       )}
                     </div>
