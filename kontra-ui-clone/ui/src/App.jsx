@@ -26,6 +26,7 @@ import PricingPage from "./pages/public/PricingPage";
 import TokenizationPage from "./pages/public/TokenizationPage";
 import HowItWorksPage from "./pages/public/HowItWorksPage";
 import DealRoomPage from "./pages/public/DealRoomPage";
+import DealSummaryPage from "./pages/public/DealSummaryPage";
 import CreateDealRoomPage from "./pages/public/CreateDealRoomPage";
 import MyDealRoomsPage from "./pages/public/MyDealRoomsPage";
 import CheckoutSuccessPage from "./pages/public/CheckoutSuccessPage";
@@ -52,16 +53,6 @@ function AuthedOrgProvider({ children }) {
   );
 }
 
-/**
- * Unified routing — one seamless product from public marketplace to workspace.
- *
- * PUBLIC (no auth):        /  /properties  /properties/:id  /service-providers  /ai-tools  /pricing
- * WORKSPACE (any auth):    /dashboard  /app/*
- * ADVANCED PORTALS:        /lender-tools/*  /investor/*  /borrower/*  /servicer/*
- *
- * After login → always /dashboard (unified hub, not the old role-specific portals).
- * Lender tools accessible at /lender-tools/* for those who need the advanced platform.
- */
 function AuthedApp() {
   usePortalRouter();
   useVisitorTracking();
@@ -80,6 +71,7 @@ function AuthedApp() {
         <Route path="/tokenization" element={<TokenizationPage />} />
         <Route path="/how-it-works" element={<HowItWorksPage />} />
         <Route path="/deal-room/:propertyId" element={<DealRoomPage />} />
+        <Route path="/deal-room/:propertyId/summary" element={<DealSummaryPage />} />
         <Route path="/create-deal-room" element={<CreateDealRoomPage />} />
         <Route path="/my-deal-rooms" element={<MyDealRoomsPage />} />
         <Route path="/checkout/success" element={<CheckoutSuccessPage />} />
@@ -151,12 +143,6 @@ function AuthedApp() {
           }
         />
 
-        {/*
-         * ── Advanced lender tools ── /lender-tools/* ──────────
-         * All advanced portfolio/market/compliance tools live here.
-         * Accessible from the "Lender Tools" button in the nav.
-         * Not the default landing after login.
-         */}
         <Route
           path="/lender-tools/*"
           element={
@@ -168,13 +154,6 @@ function AuthedApp() {
           }
         />
 
-        {/*
-         * ── Legacy lender routes ── still accessible ───────────
-         * /portfolio, /markets, /governance, etc. were the old default
-         * lender portal routes. Keep them working so existing bookmarks
-         * and demo links don't break. SaasDashboard handles them
-         * internally with its own Routes block.
-         */}
         <Route
           path="/*"
           element={
