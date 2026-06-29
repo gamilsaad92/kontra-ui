@@ -636,6 +636,26 @@ function SourceCitations({ sources }) {
   );
 }
 
+function ShareButton({ propertyId }) {
+  const [state, setState] = useState("idle"); // idle | copied
+  const shareUrl = `${window.location.origin}/deal-room/${propertyId}/share`;
+  function handleShare() {
+    navigator.clipboard?.writeText(shareUrl).then(() => {
+      setState("copied");
+      setTimeout(() => setState("idle"), 2500);
+    });
+  }
+  return (
+    <button onClick={handleShare}
+      className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold border transition"
+      style={state === "copied"
+        ? { background: "#f0fdf4", color: "#15803d", borderColor: "#bbf7d0" }
+        : { background: "white", color: "#800020", borderColor: "#80002030" }}>
+      {state === "copied" ? "✓ Link Copied!" : "↗ Share Deal"}
+    </button>
+  );
+}
+
 function InspectionUploadPanel({ propertyId, role, onAnalysisSaved }) {
   return (
     <div>
@@ -1327,9 +1347,12 @@ export default function DealRoomPage() {
                 <p className="text-[10px] text-green-600">No sign-in required · AI analyzes each file as it's uploaded</p>
               </div>
             </div>
-            <span className="shrink-0 px-3 py-1.5 rounded-xl text-xs font-bold text-green-700 bg-green-100">
-              ✓ Paid & Active
-            </span>
+            <div className="flex items-center gap-2 shrink-0">
+              <ShareButton propertyId={propertyId} />
+              <span className="px-3 py-1.5 rounded-xl text-xs font-bold text-green-700 bg-green-100">
+                ✓ Paid & Active
+              </span>
+            </div>
           </div>
         </div>
       ) : (

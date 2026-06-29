@@ -27,6 +27,7 @@ import TokenizationPage from "./pages/public/TokenizationPage";
 import HowItWorksPage from "./pages/public/HowItWorksPage";
 import DealRoomPage from "./pages/public/DealRoomPage";
 import DealSummaryPage from "./pages/public/DealSummaryPage";
+import DealSharePage from "./pages/public/DealSharePage";
 import CreateDealRoomPage from "./pages/public/CreateDealRoomPage";
 import MyDealRoomsPage from "./pages/public/MyDealRoomsPage";
 import CheckoutSuccessPage from "./pages/public/CheckoutSuccessPage";
@@ -72,6 +73,7 @@ function AuthedApp() {
         <Route path="/how-it-works" element={<HowItWorksPage />} />
         <Route path="/deal-room/:propertyId" element={<DealRoomPage />} />
         <Route path="/deal-room/:propertyId/summary" element={<DealSummaryPage />} />
+        <Route path="/deal-room/:propertyId/share" element={<DealSharePage />} />
         <Route path="/create-deal-room" element={<CreateDealRoomPage />} />
         <Route path="/my-deal-rooms" element={<MyDealRoomsPage />} />
         <Route path="/checkout/success" element={<CheckoutSuccessPage />} />
