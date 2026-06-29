@@ -192,6 +192,7 @@ export default function MyDealRoomsPage() {
   const [error, setError] = useState("");
   const [resendCountdown, setResendCountdown] = useState(0);
   const [billingState, setBillingState] = useState("idle"); // idle | loading | error | not_configured
+  const [analytics, setAnalytics] = useState(null);
 
   // Restore session
   useEffect(() => {
@@ -204,6 +205,15 @@ export default function MyDealRoomsPage() {
       }
     } catch {}
   }, []);
+
+  // Analytics fetch — fires once the user reaches the dashboard
+  useEffect(() => {
+    if (step !== "dashboard" || !email) return;
+    fetch(`${API_BASE}/api/public/my-rooms/analytics?email=${encodeURIComponent(email.trim().toLowerCase())}`)
+      .then(r => r.json())
+      .then(d => setAnalytics(d))
+      .catch(() => {});
+  }, [step, email]);
 
   // Resend countdown
   useEffect(() => {
@@ -403,6 +413,76 @@ export default function MyDealRoomsPage() {
             </button>
           </div>
         </div>
+
+        {/* ── Analytics strip ──────────────────────────────────────────── */}
+        {analytics && (
+          <div className="grid grid-cols-3 gap-3 mb-6">
+            {[
+              {
+                label: "Total Deals",
+                value: analytics.totalDeals,
+                icon: "🏢",
+                alert: false,
+              },
+              {
+                label: "Waiting on Borrower",
+                value: analytics.waitingOnBorrower,
+                icon: "⏳",
+                alert: analytics.waitingOnBorrower > 0,
+                hint: "active rooms missing financial upload",
+              },
+              {
+                label: "Waiting on Inspector",
+                value: analytics.waitingOnInspector,
+                icon: "🔍",
+                alert: analytics.waitingOnInspector > 0,
+                hint: "active rooms missing inspection report",
+              },
+              {
+                label: "Avg Days Active",
+                value: analytics.avgDaysActive != null ? `${analytics.avgDaysActive}d` : "—",
+                icon: "📅",
+                alert: false,
+                hint: "from activation to today",
+              },
+              {
+                label: "Documents Uploaded",
+                value: analytics.documentsUploaded,
+                icon: "📄",
+                alert: false,
+              },
+              {
+                label: "AI Reviews Completed",
+                value: analytics.aiReviewsCompleted,
+                icon: "🤖",
+                alert: false,
+              },
+            ].map(({ label, value, icon, alert, hint }) => (
+              <div
+                key={label}
+                className="rounded-2xl border px-4 py-3 flex flex-col gap-0.5 transition"
+                style={{
+                  background: alert ? "#fff8f8" : "#fafafa",
+                  borderColor: alert ? "#fecaca" : "#e5e7eb",
+                }}>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-base leading-none">{icon}</span>
+                  <span
+                    className="text-2xl font-extrabold leading-none"
+                    style={{ color: alert ? "#800020" : "#111827" }}>
+                    {value}
+                  </span>
+                </div>
+                <p className="text-[11px] font-semibold text-gray-500 leading-tight mt-0.5">
+                  {label}
+                </p>
+                {hint && (
+                  <p className="text-[10px] text-gray-400 leading-tight">{hint}</p>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
 
         {rooms.length === 0 ? (
           <div className="text-center py-20 border border-dashed border-gray-200 rounded-2xl">

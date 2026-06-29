@@ -1211,6 +1211,69 @@ app.post('/api/public/billing-portal', async (req, res) => {
   }
 });
 
+// ── Owner analytics dashboard ──────────────────────────────────────────────────
+app.get('/api/public/my-rooms/analytics', async (req, res) => {
+  const email = (req.query.email || '').trim().toLowerCase();
+  if (!email) return res.status(400).json({ error: 'email required' });
+  try {
+    const { data: rooms } = await supabase
+      .from('deal_rooms')
+      .select('property_id, deal_stage, status, activated_at')
+      .ilike('customer_email', email);
+
+    if (!rooms?.length) {
+      return res.json({ totalDeals: 0, waitingOnBorrower: 0, waitingOnInspector: 0, avgDaysActive: null, documentsUploaded: 0, aiReviewsCompleted: 0 });
+    }
+
+    const propertyIds = rooms.map(r => r.property_id);
+
+    const [analysesRes] = await Promise.all([
+      supabase.from('deal_analyses').select('property_id, section').in('property_id', propertyIds),
+    ]);
+    const analyses = analysesRes.data || [];
+
+    // Group by property
+    const sectionsByProp = {};
+    for (const a of analyses) {
+      if (!sectionsByProp[a.property_id]) sectionsByProp[a.property_id] = new Set();
+      sectionsByProp[a.property_id].add(a.section);
+    }
+
+    const activeRooms = rooms.filter(r => r.status === 'active');
+    let waitingOnBorrower = 0;
+    let waitingOnInspector = 0;
+    for (const room of activeRooms) {
+      const sections = sectionsByProp[room.property_id] || new Set();
+      if (!sections.has('financials')) waitingOnBorrower++;
+      if (!sections.has('inspection')) waitingOnInspector++;
+    }
+
+    // Average days active (activated → today)
+    const activatedRooms = activeRooms.filter(r => r.activated_at);
+    const avgDaysActive = activatedRooms.length > 0
+      ? Math.round(activatedRooms.reduce((sum, r) =>
+          sum + (Date.now() - new Date(r.activated_at).getTime()) / 86400000, 0
+        ) / activatedRooms.length)
+      : null;
+
+    const AI_SECTIONS = new Set(['inspection', 'insurance', 'financials', 'legal', 'brand-standards']);
+    const aiReviewsCompleted = analyses.filter(a => AI_SECTIONS.has(a.section)).length;
+
+    console.log(`[analytics] ${email} → ${rooms.length} deals, ${analyses.length} docs`);
+    res.json({
+      totalDeals: rooms.length,
+      waitingOnBorrower,
+      waitingOnInspector,
+      avgDaysActive,
+      documentsUploaded: analyses.length,
+      aiReviewsCompleted,
+    });
+  } catch (err) {
+    console.error('[analytics]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Legacy GET — backwards compat
 app.get('/api/public/my-rooms', async (req, res) => {
   const email = (req.query.email || '').trim().toLowerCase();
