@@ -6,6 +6,7 @@ import ActivityTimeline from "./ActivityTimeline";
 import CommentsPanel from "./CommentsPanel";
 import DealHealthPanel from "./DealHealthPanel";
 import InvitePanel from "./InvitePanel";
+import DocumentChecklistPanel from "./DocumentChecklistPanel";
 
 function usePageTitle(title) {
   useEffect(() => {
@@ -1419,6 +1420,15 @@ export default function DealRoomPage() {
         {property.isCustom && (
           <DealHealthPanel
             propertyId={propertyId || property.property_id || property.id}
+          />
+        )}
+
+        {/* Due Diligence Checklist — property-type-aware, with AI completeness issues */}
+        {property.isCustom && (
+          <DocumentChecklistPanel
+            propertyId={propertyId || property.property_id || property.id}
+            propertyType={property.property_type || property.type}
+            role={role}
           />
         )}
 

@@ -1265,6 +1265,52 @@ app.get('/api/public/deal-room/:propertyId/analyses', async (req, res) => {
   }
 });
 
+// ── Lightweight document tracking — no AI, just records upload in deal_analyses ─
+app.post('/api/public/deal-room/:propertyId/track-document', upload.single('file'), async (req, res) => {
+  const { propertyId } = req.params;
+  const { section, role } = req.body || {};
+  if (!propertyId || !section) return res.status(400).json({ error: 'propertyId and section required' });
+
+  const LIGHTWEIGHT_SECTIONS = [
+    'purchase_agreement', 'rent_roll', 'estoppel', 'environmental', 'survey', 'title'
+  ];
+  if (!LIGHTWEIGHT_SECTIONS.includes(section)) {
+    return res.status(400).json({ error: `Section '${section}' requires AI analysis — use the AI upload endpoint instead` });
+  }
+
+  const filename = req.file?.originalname || `${section}.pdf`;
+  const SECTION_LABELS = {
+    purchase_agreement: 'Purchase Agreement',
+    rent_roll: 'Rent Roll',
+    estoppel: 'Estoppel Certificate',
+    environmental: 'Environmental Report',
+    survey: 'Survey / ALTA',
+    title: 'Title Commitment',
+  };
+  try {
+    let storagePath = null;
+    if (req.file) {
+      storagePath = await uploadToStorage(req.file.buffer, req.file.mimetype, propertyId, section, filename).catch(() => null);
+    }
+    const { error } = await supabase.from('deal_analyses').insert({
+      property_id: propertyId,
+      section,
+      filename,
+      analysis: { summary: `${SECTION_LABELS[section] || section} uploaded and recorded.`, documentType: SECTION_LABELS[section], confidence: 100 },
+      uploaded_by_role: role || 'owner',
+      storage_path: storagePath,
+    });
+    if (error) throw error;
+    logEvent(propertyId, 'document_uploaded', role || 'owner', null, `${SECTION_LABELS[section]} uploaded`, { section, filename }).catch(() => {});
+    notifyOwner(propertyId, section, `${SECTION_LABELS[section] || section} has been uploaded.`).catch(() => {});
+    console.log(`[track-document] ${section} recorded for ${propertyId}`);
+    res.json({ ok: true, section, filename });
+  } catch (err) {
+    console.error('[track-document]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ── Signed download URL for a stored document ─────────────────────────────────
 app.get('/api/public/document-url', async (req, res) => {
   const storagePath = (req.query.path || '').trim();
