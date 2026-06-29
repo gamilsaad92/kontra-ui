@@ -1216,6 +1216,7 @@ app.post('/api/public/deal-room/:propertyId/advance', async (req, res) => {
     const STAGE_LABELS = { uploading: 'Uploading', under_review: 'Under Review', approved: 'Approved', closing: 'Closing', funded: 'Funded' };
     logEvent(propertyId, 'stage_advanced', 'owner', null, `Deal advanced to ${STAGE_LABELS[stage] || stage}`, { stage });
     res.json({ ok: true, stage });
+    notifyStageAdvance(propertyId, stage).catch(() => {});
   } catch (err) {
     console.error('[advance]', err.message);
     res.status(500).json({ error: err.message });
@@ -1316,6 +1317,95 @@ async function notifyLender(propertyId, uploaderRole, section, summary) {
   } catch (e) { console.warn('[notifyLender]', e.message); }
 }
 
+// ── Stage advance email — all submitted parties + owner ──────────────────────
+async function notifyStageAdvance(propertyId, stage) {
+  const STAGE_LABELS = { under_review: 'Under Review', approved: 'Approved', closing: 'Closing', funded: 'Funded' };
+  const stageLabel = STAGE_LABELS[stage] || stage;
+  const RESEND_KEY = process.env.RESEND_API_KEY;
+  if (!RESEND_KEY) return;
+  try {
+    const [roomRes, subsRes] = await Promise.all([
+      supabase.from('deal_rooms').select('customer_email, property_name, first_name').eq('property_id', propertyId).single(),
+      supabase.from('party_submissions').select('email, name, role').eq('property_id', propertyId),
+    ]);
+    const room = roomRes.data;
+    const propName = room?.property_name || propertyId;
+    const roleLinks = {
+      lender: 'lender', inspector: 'inspector', insurer: 'insurer',
+      attorney: 'attorney', investor: 'investor', servicer: 'servicer',
+    };
+    const makeHtml = (toName, toRole) => `<div style="font-family:sans-serif;max-width:520px;margin:auto;padding:24px">
+      <h2 style="color:#800020;margin-bottom:4px">Deal stage updated</h2>
+      <p style="color:#555">Hi ${toName || 'there'},</p>
+      <p style="color:#555">The deal for <strong>${propName}</strong> has advanced to <strong>${stageLabel}</strong>.</p>
+      <a href="https://kontraplatform.com/deal-room/${propertyId}?role=${toRole}" style="display:inline-block;margin-top:16px;padding:12px 20px;background:#800020;color:white;border-radius:8px;text-decoration:none;font-weight:bold">View Deal Room →</a>
+      <p style="color:#aaa;font-size:12px;margin-top:24px">Kontra · CRE Deal Intelligence</p>
+    </div>`;
+
+    const emails = [];
+    // Owner
+    if (room?.customer_email) {
+      emails.push({ to: room.customer_email, name: room.first_name, role: 'owner' });
+    }
+    // Submitted parties with email
+    for (const sub of subsRes.data || []) {
+      if (sub.email && sub.email !== room?.customer_email) {
+        emails.push({ to: sub.email, name: sub.name, role: roleLinks[sub.role] || sub.role });
+      }
+    }
+    await Promise.allSettled(emails.map(({ to, name, role }) =>
+      fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${RESEND_KEY}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          from: 'Kontra <notifications@kontraplatform.com>',
+          to,
+          subject: `Deal advanced to ${stageLabel} — ${propName}`,
+          html: makeHtml(name, role),
+        }),
+      })
+    ));
+    console.log(`[notifyStageAdvance] sent to ${emails.length} recipient(s) for stage=${stage}`);
+  } catch (e) { console.warn('[notifyStageAdvance]', e.message); }
+}
+
+// ── Status change email — notify owner of the update ────────────────────────
+async function notifyStatusChange(propertyId, subRole, status, statusNote, updaterRole) {
+  const STATUS_LABELS = { approved: 'Approved ✓', needs_revision: 'Needs Revision', rejected: 'Rejected' };
+  const ROLE_LABELS = { lender: 'Lender', inspector: 'Inspector', insurer: 'Insurance Broker', attorney: 'Attorney', owner: 'Owner', investor: 'Investor' };
+  const RESEND_KEY = process.env.RESEND_API_KEY;
+  if (!RESEND_KEY) return;
+  try {
+    const { data: room } = await supabase.from('deal_rooms')
+      .select('customer_email, property_name, first_name').eq('property_id', propertyId).single();
+    if (!room?.customer_email) return;
+    const propName = room.property_name || propertyId;
+    const partyLabel = ROLE_LABELS[subRole] || subRole;
+    const statusLabel = STATUS_LABELS[status] || status;
+    const updaterLabel = ROLE_LABELS[updaterRole] || updaterRole;
+    const noteHtml = statusNote ? `<p style="background:#f9fafb;border-radius:8px;padding:12px;color:#374151;font-size:14px;margin-top:8px">"${statusNote}"</p>` : '';
+    const color = status === 'approved' ? '#16a34a' : status === 'rejected' ? '#dc2626' : '#d97706';
+    await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${RESEND_KEY}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        from: 'Kontra <notifications@kontraplatform.com>',
+        to: room.customer_email,
+        subject: `${partyLabel} submission: ${statusLabel} — ${propName}`,
+        html: `<div style="font-family:sans-serif;max-width:520px;margin:auto;padding:24px">
+          <h2 style="color:${color};margin-bottom:4px">Submission status updated</h2>
+          <p style="color:#555">Hi ${room.first_name || 'there'},</p>
+          <p style="color:#555">The <strong>${partyLabel}</strong> submission for <strong>${propName}</strong> has been marked <strong style="color:${color}">${statusLabel}</strong> by the ${updaterLabel}.</p>
+          ${noteHtml}
+          <a href="https://kontraplatform.com/deal-room/${propertyId}?role=owner" style="display:inline-block;margin-top:16px;padding:12px 20px;background:#800020;color:white;border-radius:8px;text-decoration:none;font-weight:bold">View Deal Room →</a>
+          <p style="color:#aaa;font-size:12px;margin-top:24px">Kontra · CRE Deal Intelligence</p>
+        </div>`,
+      }),
+    });
+    console.log(`[notifyStatusChange] sent for ${subRole} → ${status}`);
+  } catch (e) { console.warn('[notifyStatusChange]', e.message); }
+}
+
 // ── Activity timeline ───────────────────────────────────────────────────────
 app.get('/api/public/deal-room/:propertyId/events', async (req, res) => {
   const { propertyId } = req.params;
@@ -1380,6 +1470,7 @@ app.patch('/api/public/deal-room/:propertyId/submissions/:subRole/status', async
     logEvent(propertyId, 'status_changed', updater_role || 'owner', null,
       `${subRole} submission marked ${STATUS_LABELS[status] || status}`, { role: subRole, status });
     res.json({ ok: true });
+    notifyStatusChange(propertyId, subRole, status, status_note, updater_role).catch(() => {});
   } catch (err) { console.error('[submission-status]', err.message); res.status(500).json({ error: err.message }); }
 });
 
