@@ -124,7 +124,7 @@ function getCompletenessIssues(analysis, section) {
 }
 
 // ── Main component ─────────────────────────────────────────────────────────────
-export default function DocumentChecklistPanel({ propertyId, propertyType, role }) {
+export default function DocumentChecklistPanel({ propertyId, propertyType, role, isDemo = false }) {
   const [analyses, setAnalyses] = useState([]);
   const [loading, setLoading] = useState(true);
   const [uploadingSection, setUploadingSection] = useState(null);
@@ -280,7 +280,7 @@ export default function DocumentChecklistPanel({ propertyId, propertyType, role 
                       </div>
 
                       {/* Upload button for non-AI lightweight docs */}
-                      {!done && !item.ai && (
+                      {!done && !isDemo && !item.ai && (
                         <div className="shrink-0">
                           <input
                             type="file"
@@ -301,7 +301,7 @@ export default function DocumentChecklistPanel({ propertyId, propertyType, role 
                           </button>
                         </div>
                       )}
-                      {!done && item.ai && (
+                      {!done && !isDemo && item.ai && (
                         <span className="shrink-0 text-[11px] text-gray-400 italic">
                           Use upload card ↓
                         </span>
