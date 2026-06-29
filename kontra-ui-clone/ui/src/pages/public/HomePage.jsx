@@ -111,10 +111,11 @@ const FREE_TOOLS = [
 ];
 
 const STATS = [
-  { value: "8 parties",  label: "All in one workspace" },
-  { value: "GPT-4o",     label: "Document analysis engine" },
-  { value: "5 pillars",  label: "Investment-Readiness checklist" },
-  { value: "Free",       label: "AI tools — no credit card" },
+  { value: "2 min",       label: "Average deal room setup" },
+  { value: "18 sec",      label: "Average AI review" },
+  { value: "Unlimited",   label: "Participants supported" },
+  { value: "Unlimited",   label: "Documents per deal" },
+  { value: "Included",    label: "90-day access" },
 ];
 
 function EmailCapture() {
@@ -222,11 +223,17 @@ export default function HomePage() {
 
       {/* ── Stats ──────────────────────────────────────────────── */}
       <section className="border-b border-gray-100 bg-white">
-        <div className="max-w-7xl mx-auto px-6 py-8 grid grid-cols-2 md:grid-cols-4 gap-6">
-          {STATS.map((s) => (
-            <div key={s.label} className="text-center">
-              <div className="text-2xl font-bold text-gray-900">{s.value}</div>
-              <div className="text-sm text-gray-500 mt-0.5">{s.label}</div>
+        <div className="max-w-5xl mx-auto px-6 py-10 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-px bg-gray-100 rounded-2xl overflow-hidden shadow-sm">
+          {STATS.map((s, i) => (
+            <div key={s.label}
+              className="flex flex-col items-center justify-center text-center bg-white px-5 py-6"
+              style={{ borderRadius: i === 0 ? "1rem 0 0 1rem" : i === STATS.length - 1 ? "0 1rem 1rem 0" : "0" }}>
+              <div className="text-3xl font-extrabold text-gray-900 tracking-tight leading-none">
+                {s.value}
+              </div>
+              <div className="text-[11px] font-medium text-gray-400 mt-2 leading-snug max-w-[90px]">
+                {s.label}
+              </div>
             </div>
           ))}
         </div>
