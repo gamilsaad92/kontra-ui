@@ -1050,10 +1050,10 @@ function DealIntelligenceDashboard({ propertyId, refreshKey }) {
         </div>
         <div className="flex items-center gap-2">
           {doneCount > 0 && (
-            <button onClick={() => window.print()}
+            <a href={`/deal-room/${propertyId}/summary`} target="_blank" rel="noopener noreferrer"
               className="px-3 py-1.5 rounded-lg text-xs font-semibold text-gray-600 bg-gray-100 hover:bg-gray-200 transition">
               🖨 Print Summary
-            </button>
+            </a>
           )}
           <div className="text-2xl font-black" style={{ color: doneCount === 3 ? "#16a34a" : doneCount >= 1 ? "#d97706" : "#9ca3af" }}>
             {Math.round(doneCount / 3 * 100)}%
