@@ -202,9 +202,10 @@ export default function HomePage() {
               style={{ background: "#800020" }}>
               Create Your Deal Room — $499
             </Link>
-            <Link to="/how-it-works"
-              className="px-7 py-3.5 rounded-xl text-sm font-semibold border border-white/20 text-white hover:bg-white/10 transition">
-              See How It Works
+            <Link to="/deal-room/kontra-demo"
+              className="px-7 py-3.5 rounded-xl text-sm font-semibold border border-white/30 text-white hover:bg-white/10 transition flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse shrink-0" />
+              View Live Demo
             </Link>
           </div>
 

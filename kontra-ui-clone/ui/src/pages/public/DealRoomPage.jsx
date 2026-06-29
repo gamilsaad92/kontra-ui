@@ -1282,6 +1282,15 @@ export default function DealRoomPage() {
     };
   }
 
+  const isDemo = propertyId === 'kontra-demo';
+
+  // For the demo room — override with a great hero image
+  if (isDemo && property) {
+    property.image = "https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?w=1200&q=80";
+    property.market = "Austin, TX";
+    property.deal_amount = property.deal_amount || "14,000,000";
+  }
+
   const baseRoleConfig = ROLE_CONFIG[role] || ROLE_CONFIG.lender;
   const isHotel = (property?.property_type || "").toLowerCase().includes("hotel") ||
                   (property?.property_type || "").toLowerCase().includes("hospitality");
@@ -1335,8 +1344,27 @@ export default function DealRoomPage() {
 
   return (
     <PublicLayout hideFooter>
-      {/* Top bar — owner (custom rooms) vs invite (demo rooms) */}
-      {property.isCustom ? (
+      {/* Top bar — demo banner | owner bar | invite bar */}
+      {isDemo ? (
+        <div className="border-b border-indigo-100 px-6 py-3" style={{ background: "linear-gradient(90deg, #1e1b4b 0%, #312e81 100%)" }}>
+          <div className="max-w-5xl mx-auto flex items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white/10 text-[11px] font-bold text-white">
+                <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
+                LIVE DEMO
+              </span>
+              <div>
+                <p className="text-xs font-semibold text-white">The Meridian Apartments — $14M Acquisition</p>
+                <p className="text-[10px] text-white/50">Explore a real Kontra deal room · Read-only · No signup required</p>
+              </div>
+            </div>
+            <Link to="/create-deal-room"
+              className="shrink-0 px-4 py-2 rounded-xl text-xs font-bold text-indigo-900 bg-white hover:opacity-90 transition whitespace-nowrap">
+              Create Your Deal Room →
+            </Link>
+          </div>
+        </div>
+      ) : property.isCustom ? (
         <div className="border-b border-green-100 bg-green-50 px-6 py-3">
           <div className="max-w-5xl mx-auto flex items-center justify-between gap-4">
             <div className="flex items-center gap-2.5">
@@ -1389,7 +1417,8 @@ export default function DealRoomPage() {
             <div className="flex-1">
               <p className="text-xs text-white/60 mb-0.5">
                 {property.type}{property.market ? ` · ${property.market}` : ""}
-                {property.isCustom && <span className="ml-2 px-1.5 py-0.5 rounded bg-amber-500/30 text-amber-200 text-[10px] font-semibold">Awaiting Documents</span>}
+                {property.isCustom && !isDemo && <span className="ml-2 px-1.5 py-0.5 rounded bg-amber-500/30 text-amber-200 text-[10px] font-semibold">Awaiting Documents</span>}
+              {isDemo && <span className="ml-2 px-1.5 py-0.5 rounded text-[10px] font-semibold" style={{ background: "rgba(99,102,241,0.4)", color: "#c7d2fe" }}>Under Review</span>}
               </p>
               <h1 className="text-xl font-bold text-white">{property.name}</h1>
               <p className="text-xs text-white/70">{property.address}</p>
@@ -1429,6 +1458,7 @@ export default function DealRoomPage() {
             propertyId={propertyId || property.property_id || property.id}
             propertyType={property.property_type || property.type}
             role={role}
+            isDemo={isDemo}
           />
         )}
 
@@ -1520,11 +1550,46 @@ export default function DealRoomPage() {
         )}
 
         {/* Invite panel — request documents from each party */}
-        {property.isCustom && (
+        {property.isCustom && !isDemo && (
           <InvitePanel
             propertyId={propertyId || property.property_id || property.id}
             senderName={property.first_name || property.property_name || undefined}
           />
+        )}
+
+        {/* Demo bottom CTA */}
+        {isDemo && (
+          <div className="rounded-2xl overflow-hidden border border-indigo-100 mt-2">
+            <div className="px-8 py-8 text-center" style={{ background: "linear-gradient(135deg, #1e1b4b 0%, #4338ca 100%)" }}>
+              <p className="text-xs font-semibold uppercase tracking-wider text-white/50 mb-2">
+                You just experienced Kontra
+              </p>
+              <h2 className="text-2xl font-extrabold text-white mb-2">
+                Ready to close your deal faster?
+              </h2>
+              <p className="text-sm text-white/60 mb-6 max-w-md mx-auto">
+                Set up a deal room for your property in under 2 minutes. AI analyzes every document as it's uploaded. Every party gets their own view.
+              </p>
+              <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
+                <Link to="/create-deal-room"
+                  className="px-8 py-3 rounded-xl text-sm font-bold bg-white text-indigo-900 hover:opacity-90 transition">
+                  Create Your Deal Room — $499 →
+                </Link>
+                <Link to="/pricing"
+                  className="px-6 py-3 rounded-xl text-sm font-semibold border border-white/20 text-white/80 hover:bg-white/10 transition">
+                  See Pricing
+                </Link>
+              </div>
+              <p className="text-[10px] text-white/30 mt-4">One-time fee · No subscription · 90-day access included</p>
+            </div>
+            <div className="bg-gray-50 px-8 py-4 flex flex-wrap items-center justify-center gap-x-6 gap-y-2 border-t border-gray-100">
+              {["2 min setup", "18 sec AI review", "Unlimited participants", "Unlimited documents"].map(f => (
+                <span key={f} className="text-xs text-gray-500 flex items-center gap-1.5">
+                  <span className="text-green-500">✓</span> {f}
+                </span>
+              ))}
+            </div>
+          </div>
         )}
 
       </div>
