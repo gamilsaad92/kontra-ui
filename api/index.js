@@ -1235,17 +1235,22 @@ app.get('/api/public/deal-room/:propertyId/analyses', async (req, res) => {
   try {
     const { data, error } = await supabase
       .from('deal_analyses')
-      .select('id, section, filename, analysis, uploaded_by_role, created_at, storage_path')
+      .select('id, section, filename, analysis, uploaded_by_role, created_at, storage_path, version')
       .eq('property_id', propertyId)
-      .order('created_at', { ascending: false });
+      .order('version', { ascending: false });
     if (error) throw error;
-    // De-duplicate: keep only the latest per section
+    // De-duplicate: keep only the latest per section; collect all versions for history
     const seen = {};
+    const history = {}; // section → array of all versions
+    for (const a of (data || [])) {
+      if (!history[a.section]) history[a.section] = [];
+      history[a.section].push({ id: a.id, version: a.version || 1, filename: a.filename, uploaded_by_role: a.uploaded_by_role, created_at: a.created_at });
+    }
     const deduped = (data || []).filter(a => {
       if (seen[a.section]) return false;
       seen[a.section] = true;
       return true;
-    });
+    }).map(a => ({ ...a, version: a.version || 1, versionHistory: history[a.section] || [] }));
     res.json({ analyses: deduped });
   } catch (err) {
     console.error('[analyses-fetch]', err.message);
@@ -1441,6 +1446,21 @@ async function notifyPartySubmitted(propertyId, role, name) {
   } catch (e) {
     console.warn('[notifyPartySubmitted]', e.message);
   }
+}
+
+// ── File versioning: get next version number for a section ───────────────────
+async function getNextVersion(propertyId, section) {
+  try {
+    const { data } = await supabase
+      .from('deal_analyses')
+      .select('version')
+      .eq('property_id', propertyId)
+      .eq('section', section)
+      .order('version', { ascending: false })
+      .limit(1);
+    if (data && data.length > 0 && data[0].version) return data[0].version + 1;
+    return 1;
+  } catch { return 1; }
 }
 
 // ── Upload original file to Supabase Storage (fire-and-forget) ───────────────
@@ -1793,16 +1813,18 @@ Inspection report text:\n${text}` }
     const { property_id, role } = req.body;
     if (property_id) {
       const _buf = req.file.buffer, _mime = req.file.mimetype, _name = req.file.originalname;
-      uploadToStorage(_buf, _mime, property_id, 'inspection', _name).then(storagePath => {
-        supabase.from('deal_analyses').insert({
+      (async () => {
+        const version = await getNextVersion(property_id, 'inspection');
+        const storagePath = await uploadToStorage(_buf, _mime, property_id, 'inspection', _name);
+        const { error: e } = await supabase.from('deal_analyses').insert({
           property_id, section: 'inspection',
           filename: _name, analysis: result,
           uploaded_by_role: role || 'unknown',
-          storage_path: storagePath,
-        }).then(({ error: e }) => {
-          if (e) console.warn('[deal_analyses] inspection save:', e.message);
+          storage_path: storagePath, version,
         });
-      });
+        if (e) console.warn('[deal_analyses] inspection save:', e.message);
+        else console.log(`[deal_analyses] inspection v${version} saved`);
+      })().catch(e => console.warn('[deal_analyses] inspection:', e.message));
       notifyOwner(property_id, 'inspection', result.summary);
       logEvent(property_id, 'document_analyzed', role || 'unknown', null, 'Inspection Report analyzed by AI', { section: 'inspection', filename: req.file.originalname });
       if (role === 'inspector') notifyLender(property_id, role, 'inspection', result.summary).catch(() => {});
@@ -1861,16 +1883,18 @@ Policy text:\n${text}` }
     const { property_id, role } = req.body;
     if (property_id) {
       const _buf = req.file.buffer, _mime = req.file.mimetype, _name = req.file.originalname;
-      uploadToStorage(_buf, _mime, property_id, 'insurance', _name).then(storagePath => {
-        supabase.from('deal_analyses').insert({
+      (async () => {
+        const version = await getNextVersion(property_id, 'insurance');
+        const storagePath = await uploadToStorage(_buf, _mime, property_id, 'insurance', _name);
+        const { error: e } = await supabase.from('deal_analyses').insert({
           property_id, section: 'insurance',
           filename: _name, analysis: result,
           uploaded_by_role: role || 'unknown',
-          storage_path: storagePath,
-        }).then(({ error: e }) => {
-          if (e) console.warn('[deal_analyses] insurance save:', e.message);
+          storage_path: storagePath, version,
         });
-      });
+        if (e) console.warn('[deal_analyses] insurance save:', e.message);
+        else console.log(`[deal_analyses] insurance v${version} saved`);
+      })().catch(e => console.warn('[deal_analyses] insurance:', e.message));
       notifyOwner(property_id, 'insurance', result.summary);
       logEvent(property_id, 'document_analyzed', role || 'unknown', null, 'Insurance Certificate analyzed by AI', { section: 'insurance', filename: req.file.originalname });
       if (['insurer', 'insurance'].includes(role)) notifyLender(property_id, role, 'insurance', result.summary).catch(() => {});
@@ -1907,16 +1931,18 @@ Financial document:\n${text}` }
     const { property_id, role } = req.body;
     if (property_id) {
       const _buf = req.file.buffer, _mime = req.file.mimetype, _name = req.file.originalname;
-      uploadToStorage(_buf, _mime, property_id, 'financials', _name).then(storagePath => {
-        supabase.from('deal_analyses').insert({
+      (async () => {
+        const version = await getNextVersion(property_id, 'financials');
+        const storagePath = await uploadToStorage(_buf, _mime, property_id, 'financials', _name);
+        const { error: e } = await supabase.from('deal_analyses').insert({
           property_id, section: 'financials',
           filename: _name, analysis: result,
           uploaded_by_role: role || 'unknown',
-          storage_path: storagePath,
-        }).then(({ error: e }) => {
-          if (e) console.warn('[deal_analyses] financials save:', e.message);
+          storage_path: storagePath, version,
         });
-      });
+        if (e) console.warn('[deal_analyses] financials save:', e.message);
+        else console.log(`[deal_analyses] financials v${version} saved`);
+      })().catch(e => console.warn('[deal_analyses] financials:', e.message));
       notifyOwner(property_id, 'financials', result.summary);
       logEvent(property_id, 'document_analyzed', role || 'unknown', null, 'Financial Statement analyzed by AI', { section: 'financials', filename: req.file.originalname });
       if (['owner', 'borrower'].includes(role)) notifyLender(property_id, role, 'financials', result.summary).catch(() => {});
@@ -3697,6 +3723,17 @@ if (require.main === module) {
   const server = http.createServer(app);
   attachChatServer(server);
   attachCollabServer(server);
+  // Schema migration: add version column if missing (idempotent)
+  supabase.rpc('run_sql', { query: 'ALTER TABLE deal_analyses ADD COLUMN IF NOT EXISTS version INTEGER DEFAULT 1' })
+    .then(({ error }) => {
+      if (error && !error.message?.includes('does not exist')) {
+        // rpc not available — try via raw insert fallback (column may already exist)
+        console.log('[migration] version column check skipped (rpc unavailable)');
+      } else if (!error) {
+        console.log('[migration] deal_analyses.version column ensured');
+      }
+    }).catch(() => {});
+
   server.listen(PORT, () => {
     console.log(`Kontra API listening on port ${PORT}`);
     if (process.env.NODE_ENV !== 'production') {
