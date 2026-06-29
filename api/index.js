@@ -1205,6 +1205,68 @@ app.post('/api/public/deal-room/:propertyId/submit', async (req, res) => {
   }
 });
 
+// ── Send role-scoped invite email ────────────────────────────────────────────
+app.post('/api/public/deal-room/:propertyId/invite', async (req, res) => {
+  const { propertyId } = req.params;
+  const { role, email, senderName } = req.body || {};
+  if (!role || !email) return res.status(400).json({ error: 'role and email required' });
+  if (!email.includes('@')) return res.status(400).json({ error: 'invalid email' });
+  const RESEND_KEY = process.env.RESEND_API_KEY;
+  if (!RESEND_KEY) return res.status(500).json({ error: 'Email not configured' });
+  try {
+    const { data: room } = await supabase.from('deal_rooms')
+      .select('property_name, first_name, customer_email')
+      .eq('property_id', propertyId).single();
+    const propName = room?.property_name || propertyId;
+    const fromName = senderName || room?.first_name || 'The deal coordinator';
+    const ROLE_LABELS = {
+      lender: 'Lender / Underwriter', inspector: 'Inspector', insurer: 'Insurance Broker',
+      attorney: 'Attorney', investor: 'Investor', servicer: 'Servicer', franchisor: 'Franchisor / Brand',
+    };
+    const ROLE_ACTIONS = {
+      lender: 'review the financial package and provide your underwriting feedback',
+      inspector: 'upload your property inspection report',
+      insurer: 'upload the insurance certificate and coverage details',
+      attorney: 'review the legal documents and flag any issues',
+      investor: 'review the investment package',
+      servicer: 'access and review the servicing package',
+      franchisor: 'upload brand standards and PIP documentation',
+    };
+    const roleLabel = ROLE_LABELS[role] || role;
+    const roleAction = ROLE_ACTIONS[role] || 'access the deal room';
+    const inviteUrl = `https://kontraplatform.com/deal-room/${propertyId}?role=${role}`;
+    await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${RESEND_KEY}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        from: 'Kontra <notifications@kontraplatform.com>',
+        to: email,
+        subject: `You've been invited to a deal room — ${propName}`,
+        html: `<div style="font-family:sans-serif;max-width:560px;margin:auto;padding:32px 24px">
+          <div style="margin-bottom:24px">
+            <span style="display:inline-block;background:#800020;color:white;font-weight:800;font-size:15px;padding:6px 14px;border-radius:8px;letter-spacing:0.5px">Kontra</span>
+          </div>
+          <h2 style="color:#111;font-size:22px;font-weight:800;margin:0 0 8px">You've been invited</h2>
+          <p style="color:#555;font-size:15px;margin:0 0 6px"><strong>${fromName}</strong> has added you as <strong>${roleLabel}</strong> to their deal room for <strong>${propName}</strong>.</p>
+          <p style="color:#555;font-size:14px;margin:0 0 24px">Your role: ${roleAction}. No account required — click below to access your role-scoped view.</p>
+          <a href="${inviteUrl}" style="display:inline-block;padding:14px 28px;background:#800020;color:white;border-radius:10px;text-decoration:none;font-weight:700;font-size:15px">Open Deal Room →</a>
+          <div style="margin-top:28px;padding:16px;background:#f9fafb;border-radius:10px;border:1px solid #eee">
+            <p style="color:#888;font-size:12px;margin:0 0 4px">What is Kontra?</p>
+            <p style="color:#555;font-size:13px;margin:0">Kontra is CRE deal room infrastructure. All parties upload their documents, AI analyzes them instantly, and the deal coordinator sees everything in one place. No email chains required.</p>
+          </div>
+          <p style="color:#bbb;font-size:11px;margin-top:24px">You received this because ${fromName} added your email to this deal room. If this is a mistake, you can safely ignore it.</p>
+        </div>`,
+      }),
+    });
+    logEvent(propertyId, 'invite_sent', 'owner', senderName || null, `${roleLabel} invited: ${email}`, { role, email });
+    console.log(`[invite] sent to ${email} for role=${role}`);
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('[invite]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.post('/api/public/deal-room/:propertyId/advance', async (req, res) => {
   const { propertyId } = req.params;
   const { stage } = req.body || {};

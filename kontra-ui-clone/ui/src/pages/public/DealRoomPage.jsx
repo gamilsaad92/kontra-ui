@@ -5,6 +5,7 @@ import DealCoordinationPanel from "./DealCoordinationPanel";
 import ActivityTimeline from "./ActivityTimeline";
 import CommentsPanel from "./CommentsPanel";
 import DealHealthPanel from "./DealHealthPanel";
+import InvitePanel from "./InvitePanel";
 
 function usePageTitle(title) {
   useEffect(() => {
@@ -1485,35 +1486,12 @@ export default function DealRoomPage() {
           </div>
         )}
 
-        {/* Active deal room footer — invite links for custom rooms */}
+        {/* Invite panel — request documents from each party */}
         {property.isCustom && (
-          <div className="bg-gray-50 rounded-2xl border border-gray-200 px-6 py-5">
-            <p className="text-sm font-semibold text-gray-800 mb-1">Share role-scoped invite links</p>
-            <p className="text-xs text-gray-400 mb-4">Each party sees only what's relevant to their role. Copy and send directly.</p>
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-              {[
-                { role: "lender", icon: "🏦", label: "Lender" },
-                { role: "inspector", icon: "🔍", label: "Inspector" },
-                { role: "insurer", icon: "🛡️", label: "Insurance Broker" },
-                { role: "attorney", icon: "📜", label: "Attorney" },
-                { role: "investor", icon: "📊", label: "Investor" },
-                { role: "servicer", icon: "⚙️", label: "Servicer" },
-              ].map((r) => {
-                const url = `${window.location.origin}/deal-room/${propertyId}?role=${r.role}`;
-                return (
-                  <button key={r.role} onClick={() => navigator.clipboard.writeText(url)}
-                    className="flex items-center gap-2 px-3 py-2.5 rounded-xl bg-white border border-gray-200 hover:border-gray-300 text-left transition group">
-                    <span className="text-base shrink-0">{r.icon}</span>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs font-semibold text-gray-700">{r.label}</p>
-                      <p className="text-[10px] text-gray-400 group-hover:text-gray-600">Click to copy link</p>
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-            <p className="text-[10px] text-gray-400 mt-3 text-center">Need help? Email <a href="mailto:hello@kontraplatform.com" className="underline">hello@kontraplatform.com</a></p>
-          </div>
+          <InvitePanel
+            propertyId={propertyId || property.property_id || property.id}
+            senderName={property.first_name || property.property_name || undefined}
+          />
         )}
 
       </div>
