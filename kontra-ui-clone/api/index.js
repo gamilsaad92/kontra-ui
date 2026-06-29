@@ -1235,22 +1235,29 @@ app.get('/api/public/deal-room/:propertyId/analyses', async (req, res) => {
   try {
     const { data, error } = await supabase
       .from('deal_analyses')
-      .select('id, section, filename, analysis, uploaded_by_role, created_at, storage_path, version')
+      .select('id, section, filename, analysis, uploaded_by_role, created_at, storage_path')
       .eq('property_id', propertyId)
-      .order('version', { ascending: false });
+      .order('created_at', { ascending: true }); // oldest first → version = index+1
     if (error) throw error;
-    // De-duplicate: keep only the latest per section; collect all versions for history
-    const seen = {};
-    const history = {}; // section → array of all versions
-    for (const a of (data || [])) {
+    // Assign version by section-scoped sequence (no extra DB column needed)
+    const sectionCounters = {};
+    const allWithVersion = (data || []).map(a => {
+      sectionCounters[a.section] = (sectionCounters[a.section] || 0) + 1;
+      return { ...a, version: sectionCounters[a.section] };
+    });
+    // Build history map (all versions per section, newest last)
+    const history = {};
+    for (const a of allWithVersion) {
       if (!history[a.section]) history[a.section] = [];
-      history[a.section].push({ id: a.id, version: a.version || 1, filename: a.filename, uploaded_by_role: a.uploaded_by_role, created_at: a.created_at });
+      history[a.section].push({ id: a.id, version: a.version, filename: a.filename, uploaded_by_role: a.uploaded_by_role, created_at: a.created_at });
     }
-    const deduped = (data || []).filter(a => {
+    // De-duplicate: keep only the latest per section (highest version)
+    const seen = {};
+    const deduped = [...allWithVersion].reverse().filter(a => {
       if (seen[a.section]) return false;
       seen[a.section] = true;
       return true;
-    }).map(a => ({ ...a, version: a.version || 1, versionHistory: history[a.section] || [] }));
+    }).map(a => ({ ...a, versionHistory: history[a.section] || [] }));
     res.json({ analyses: deduped });
   } catch (err) {
     console.error('[analyses-fetch]', err.message);
@@ -1448,18 +1455,15 @@ async function notifyPartySubmitted(propertyId, role, name) {
   }
 }
 
-// ── File versioning: get next version number for a section ───────────────────
+// ── File versioning: count existing analyses for a section to derive version ──
 async function getNextVersion(propertyId, section) {
   try {
-    const { data } = await supabase
+    const { count } = await supabase
       .from('deal_analyses')
-      .select('version')
+      .select('id', { count: 'exact', head: true })
       .eq('property_id', propertyId)
-      .eq('section', section)
-      .order('version', { ascending: false })
-      .limit(1);
-    if (data && data.length > 0 && data[0].version) return data[0].version + 1;
-    return 1;
+      .eq('section', section);
+    return (count || 0) + 1;
   } catch { return 1; }
 }
 
@@ -1820,7 +1824,7 @@ Inspection report text:\n${text}` }
           property_id, section: 'inspection',
           filename: _name, analysis: result,
           uploaded_by_role: role || 'unknown',
-          storage_path: storagePath, version,
+          storage_path: storagePath,
         });
         if (e) console.warn('[deal_analyses] inspection save:', e.message);
         else console.log(`[deal_analyses] inspection v${version} saved`);
@@ -1890,7 +1894,7 @@ Policy text:\n${text}` }
           property_id, section: 'insurance',
           filename: _name, analysis: result,
           uploaded_by_role: role || 'unknown',
-          storage_path: storagePath, version,
+          storage_path: storagePath,
         });
         if (e) console.warn('[deal_analyses] insurance save:', e.message);
         else console.log(`[deal_analyses] insurance v${version} saved`);
@@ -1938,7 +1942,7 @@ Financial document:\n${text}` }
           property_id, section: 'financials',
           filename: _name, analysis: result,
           uploaded_by_role: role || 'unknown',
-          storage_path: storagePath, version,
+          storage_path: storagePath,
         });
         if (e) console.warn('[deal_analyses] financials save:', e.message);
         else console.log(`[deal_analyses] financials v${version} saved`);
@@ -3723,17 +3727,6 @@ if (require.main === module) {
   const server = http.createServer(app);
   attachChatServer(server);
   attachCollabServer(server);
-  // Schema migration: add version column if missing (idempotent)
-  supabase.rpc('run_sql', { query: 'ALTER TABLE deal_analyses ADD COLUMN IF NOT EXISTS version INTEGER DEFAULT 1' })
-    .then(({ error }) => {
-      if (error && !error.message?.includes('does not exist')) {
-        // rpc not available — try via raw insert fallback (column may already exist)
-        console.log('[migration] version column check skipped (rpc unavailable)');
-      } else if (!error) {
-        console.log('[migration] deal_analyses.version column ensured');
-      }
-    }).catch(() => {});
-
   server.listen(PORT, () => {
     console.log(`Kontra API listening on port ${PORT}`);
     if (process.env.NODE_ENV !== 'production') {
