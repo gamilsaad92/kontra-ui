@@ -1093,14 +1093,96 @@ app.get('/api/public/deal-room/:propertyId', async (req, res) => {
   }
 });
 
-// ── My deal rooms — lookup by owner email ──────────────────────────────────
+// ── My deal rooms — OTP auth + dashboard ────────────────────────────────────
+// In-memory OTP store: email → { code, expiresAt }
+const otpStore = new Map();
+
+app.post('/api/public/my-rooms/request-otp', async (req, res) => {
+  const RESEND_KEY = process.env.RESEND_API_KEY;
+  if (!RESEND_KEY) return res.status(500).json({ error: 'Email not configured' });
+  const email = (req.body?.email || '').trim().toLowerCase();
+  if (!email || !email.includes('@')) return res.status(400).json({ error: 'Valid email required' });
+  const code = String(Math.floor(100000 + Math.random() * 900000));
+  otpStore.set(email, { code, expiresAt: Date.now() + 10 * 60 * 1000 });
+  try {
+    await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${RESEND_KEY}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        from: 'Kontra <notifications@kontraplatform.com>',
+        to: email,
+        subject: `Your Kontra access code: ${code}`,
+        html: `<div style="font-family:sans-serif;max-width:480px;margin:auto;padding:32px 24px">
+          <div style="margin-bottom:28px">
+            <span style="display:inline-block;background:#800020;color:white;font-weight:800;font-size:15px;padding:6px 14px;border-radius:8px">Kontra</span>
+          </div>
+          <h2 style="color:#111;font-size:22px;font-weight:800;margin:0 0 8px">Your access code</h2>
+          <p style="color:#555;font-size:14px;margin:0 0 24px">Enter this code to view your deal rooms. It expires in 10 minutes.</p>
+          <div style="background:#f9fafb;border:2px solid #e5e7eb;border-radius:16px;padding:28px;text-align:center;margin:0 0 24px">
+            <div style="font-size:42px;font-weight:900;letter-spacing:12px;color:#111;font-family:monospace">${code}</div>
+          </div>
+          <p style="color:#999;font-size:12px">If you didn't request this, you can safely ignore this email.</p>
+        </div>`,
+      }),
+    });
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('[request-otp]', err.message);
+    res.status(500).json({ error: 'Failed to send code' });
+  }
+});
+
+app.post('/api/public/my-rooms/verify-otp', async (req, res) => {
+  const email = (req.body?.email || '').trim().toLowerCase();
+  const code = (req.body?.code || '').trim();
+  if (!email || !code) return res.status(400).json({ error: 'email and code required' });
+  const stored = otpStore.get(email);
+  if (!stored) return res.status(401).json({ error: 'No code found. Request a new one.' });
+  if (Date.now() > stored.expiresAt) {
+    otpStore.delete(email);
+    return res.status(401).json({ error: 'Code expired. Request a new one.' });
+  }
+  if (stored.code !== code) return res.status(401).json({ error: 'Incorrect code.' });
+  otpStore.delete(email);
+  try {
+    const { data: rooms, error } = await supabase
+      .from('deal_rooms')
+      .select('property_id, property_name, property_type, deal_amount, deal_type, address, status, deal_stage, first_name, created_at, activated_at')
+      .ilike('customer_email', email)
+      .order('created_at', { ascending: false });
+    if (error) throw error;
+    if (!rooms || rooms.length === 0) return res.json({ rooms: [] });
+    const ids = rooms.map(r => r.property_id);
+    const { data: subs } = await supabase
+      .from('party_submissions')
+      .select('property_id, role, status')
+      .in('property_id', ids);
+    const subMap = {};
+    (subs || []).forEach(s => {
+      if (!subMap[s.property_id]) subMap[s.property_id] = [];
+      subMap[s.property_id].push(s);
+    });
+    const enriched = rooms.map(r => ({
+      ...r,
+      first_name: undefined,
+      owner_name: r.first_name,
+      parties: subMap[r.property_id] || [],
+    }));
+    res.json({ rooms: enriched, email });
+  } catch (err) {
+    console.error('[verify-otp]', err.message);
+    res.status(500).json({ error: 'Failed to load rooms' });
+  }
+});
+
+// Legacy GET — backwards compat
 app.get('/api/public/my-rooms', async (req, res) => {
   const email = (req.query.email || '').trim().toLowerCase();
   if (!email) return res.status(400).json({ error: 'email required' });
   try {
     const { data, error } = await supabase
       .from('deal_rooms')
-      .select('property_id, property_name, property_type, deal_amount, deal_type, address, status, created_at, activated_at')
+      .select('property_id, property_name, property_type, deal_amount, deal_type, address, status, deal_stage, created_at, activated_at')
       .ilike('customer_email', email)
       .order('created_at', { ascending: false });
     if (error) throw error;
