@@ -13,6 +13,7 @@ const OpenAI = require('openai');          // ← v4+ default export
 const cache = require('./cache');
 const { addJob } = require('./jobQueue');
 const fs = require('fs');
+const crypto = require('crypto');
 const { workflows, addWorkflow } = require('./workflowStore');
 const { runWorkflow } = require('./hyperautomation');
 const path = require('path');
@@ -1362,6 +1363,7 @@ app.post('/api/public/deal-room/:propertyId/track-document', upload.single('file
       analysis: { summary: `${SECTION_LABELS[section] || section} uploaded and recorded.`, documentType: SECTION_LABELS[section], confidence: 100 },
       uploaded_by_role: role || 'owner',
       storage_path: storagePath,
+      document_hash: req.file ? crypto.createHash('sha256').update(req.file.buffer).digest('hex') : null,
     });
     if (error) throw error;
     logEvent(propertyId, 'document_uploaded', role || 'owner', null, `${SECTION_LABELS[section]} uploaded`, { section, filename }).catch(() => {});
@@ -1506,6 +1508,72 @@ app.post('/api/public/deal-room/:propertyId/invite', async (req, res) => {
   }
 });
 
+// ── Seals a closing record — called when deal_stage → funded ──────────────────
+async function sealClosingRecord(propertyId) {
+  try {
+    const [roomRes, partiesRes, docsRes] = await Promise.all([
+      supabase.from('deal_rooms')
+        .select('property_name, property_type, deal_amount, address, customer_email, first_name, activated_at')
+        .eq('property_id', propertyId).maybeSingle(),
+      supabase.from('party_submissions')
+        .select('role, name, email, status, submitted_at')
+        .eq('property_id', propertyId),
+      supabase.from('deal_analyses')
+        .select('section, filename, uploaded_by_role, created_at, document_hash')
+        .eq('property_id', propertyId),
+    ]);
+    const room = roomRes.data || {};
+    const parties = partiesRes.data || [];
+    const documents = docsRes.data || [];
+
+    const snapshot = {
+      sealed_at: new Date().toISOString(),
+      asset_id: propertyId,
+      property_name: room.property_name,
+      property_type: room.property_type,
+      deal_amount: room.deal_amount,
+      address: room.address,
+      owner_email: room.customer_email,
+      activated_at: room.activated_at,
+      parties: parties.map(p => ({
+        role: p.role, name: p.name, email: p.email,
+        status: p.status, submitted_at: p.submitted_at,
+      })),
+      documents: documents.map(d => ({
+        section: d.section, filename: d.filename,
+        uploaded_by: d.uploaded_by_role, uploaded_at: d.created_at,
+        sha256: d.document_hash,
+      })),
+      document_count: documents.length,
+      participant_count: parties.length,
+    };
+
+    const { error } = await supabase.from('closing_records').insert({
+      property_id: propertyId,
+      asset_id: propertyId,
+      property_name: room.property_name,
+      property_type: room.property_type,
+      deal_amount: room.deal_amount,
+      owner_email: room.customer_email,
+      document_count: documents.length,
+      participant_count: parties.length,
+      snapshot,
+    });
+    if (error) {
+      console.warn('[closing_record] insert:', error.message);
+    } else {
+      console.log(`[closing_record] sealed — ${propertyId} (${documents.length} docs, ${parties.length} parties)`);
+      logEvent(
+        propertyId, 'ownership_transfer', 'owner', room.first_name || null,
+        `Deal closed — ${room.property_name || propertyId} funding recorded`,
+        { asset_id: propertyId, document_count: documents.length, participant_count: parties.length }
+      ).catch(() => {});
+    }
+  } catch (e) {
+    console.warn('[sealClosingRecord]', e.message);
+  }
+}
+
 app.post('/api/public/deal-room/:propertyId/advance', async (req, res) => {
   const { propertyId } = req.params;
   const { stage } = req.body || {};
@@ -1518,6 +1586,8 @@ app.post('/api/public/deal-room/:propertyId/advance', async (req, res) => {
     logEvent(propertyId, 'stage_advanced', 'owner', null, `Deal advanced to ${STAGE_LABELS[stage] || stage}`, { stage });
     res.json({ ok: true, stage });
     notifyStageAdvance(propertyId, stage).catch(() => {});
+    // When a deal funds — seal the immutable closing record
+    if (stage === 'funded') sealClosingRecord(propertyId).catch(() => {});
   } catch (err) {
     console.error('[advance]', err.message);
     res.status(500).json({ error: err.message });
@@ -1934,6 +2004,7 @@ Inspection report text:\n${text}` }
           filename: _name, analysis: result,
           uploaded_by_role: role || 'unknown',
           storage_path: storagePath,
+          document_hash: crypto.createHash('sha256').update(_buf).digest('hex'),
         });
         if (e) console.warn('[deal_analyses] inspection save:', e.message);
         else console.log(`[deal_analyses] inspection v${version} saved`);
@@ -2004,6 +2075,7 @@ Policy text:\n${text}` }
           filename: _name, analysis: result,
           uploaded_by_role: role || 'unknown',
           storage_path: storagePath,
+          document_hash: crypto.createHash('sha256').update(_buf).digest('hex'),
         });
         if (e) console.warn('[deal_analyses] insurance save:', e.message);
         else console.log(`[deal_analyses] insurance v${version} saved`);
@@ -2052,6 +2124,7 @@ Financial document:\n${text}` }
           filename: _name, analysis: result,
           uploaded_by_role: role || 'unknown',
           storage_path: storagePath,
+          document_hash: crypto.createHash('sha256').update(_buf).digest('hex'),
         });
         if (e) console.warn('[deal_analyses] financials save:', e.message);
         else console.log(`[deal_analyses] financials v${version} saved`);
@@ -2092,12 +2165,14 @@ Legal document:\n${text}` }
     const { property_id, role } = req.body;
     if (property_id) {
       const _buf = req.file.buffer, _mime = req.file.mimetype, _name = req.file.originalname;
+      const _legalHash = crypto.createHash('sha256').update(_buf).digest('hex');
       uploadToStorage(_buf, _mime, property_id, 'legal', _name).then(storagePath => {
         supabase.from('deal_analyses').insert({
           property_id, section: 'legal',
           filename: _name, analysis: result,
           uploaded_by_role: role || 'attorney',
           storage_path: storagePath,
+          document_hash: _legalHash,
         }).then(({ error: e }) => {
           if (e) console.warn('[deal_analyses] legal save:', e.message);
         });
@@ -2138,12 +2213,14 @@ Document:\n${text}` }
     const { property_id, role } = req.body;
     if (property_id) {
       const _buf = req.file.buffer, _mime = req.file.mimetype, _name = req.file.originalname;
+      const _brandHash = crypto.createHash('sha256').update(_buf).digest('hex');
       uploadToStorage(_buf, _mime, property_id, 'brand-standards', _name).then(storagePath => {
         supabase.from('deal_analyses').insert({
           property_id, section: 'brand-standards',
           filename: _name, analysis: result,
           uploaded_by_role: role || 'owner',
           storage_path: storagePath,
+          document_hash: _brandHash,
         }).then(({ error: e }) => {
           if (e) console.warn('[deal_analyses] brand-standards save:', e.message);
         });
