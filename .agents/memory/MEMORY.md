@@ -1,3 +1,4 @@
 - [Kontra identifier conventions](kontra-identifiers.md) — use URL slug (propertyId from useParams) not property.id UUID as the canonical deal room key
 - [Kontra pgAdapter RLS](kontra-pgadapter-rls.md) — local dev PostgreSQL needs row_security=off; RLS blocks pool reads silently returning empty arrays
 - [Kontra deploy routing](kontra-deploy-routing.md) — production API is api/ dir on Render; all API changes must be copied api/ → synced before GitHub push
+- [Kontra Vercel build path](kontra-vercel-build-path.md) — Vercel builds from ui/ (repo root), NOT kontra-ui-clone/ui/; always push UI changes to ui/src/... not kontra-ui-clone/ui/src/...
