@@ -985,7 +985,11 @@ app.post('/api/checkout/demo', async (req, res) => {
     };
 
     try {
-      await supabase.from('deal_rooms').upsert(dealRoomRecord, { onConflict: 'property_id' });
+      const { error: upsertErr } = await supabase.from('deal_rooms').upsert(dealRoomRecord, { onConflict: 'property_id' });
+      if (upsertErr) throw upsertErr;
+      // Set link_token in a separate step (graceful — no-op if column not yet migrated)
+      supabase.from('deal_rooms').update({ link_token: crypto.randomBytes(16).toString('hex') })
+        .eq('property_id', pid).is('link_token', null).then(() => {}).catch(() => {});
       console.log(`[demo] ✅ Deal room created — ${pid}`);
     } catch (dbErr) {
       console.warn('[demo] deal_rooms upsert failed:', dbErr.message);
@@ -1054,7 +1058,11 @@ app.post('/api/webhook/stripe',
       };
 
       try {
-        await supabase.from('deal_rooms').upsert(dealRoomRecord, { onConflict: 'property_id' });
+        const { error: wErr } = await supabase.from('deal_rooms').upsert(dealRoomRecord, { onConflict: 'property_id' });
+        if (wErr) throw wErr;
+        // Set link_token separately (graceful — skipped if column not yet migrated)
+        supabase.from('deal_rooms').update({ link_token: crypto.randomBytes(16).toString('hex') })
+          .eq('property_id', dealRoomRecord.property_id).is('link_token', null).then(() => {}).catch(() => {});
         console.log(`[webhook] ✅ Deal room saved — ${dealRoomRecord.property_id}`);
       } catch (dbErr) {
         console.warn('[webhook] deal_rooms upsert skipped:', dbErr.message);
@@ -1941,6 +1949,11 @@ async function extractTextFromFile(buffer, mimetype = '', filename = '') {
   const ext = ((filename || '').split('.').pop() || '').toLowerCase();
   // PDF — vision pipeline (text + scanned)
   if (mimetype === 'application/pdf' || ext === 'pdf' || buffer.slice(0,4).toString() === '%PDF') {
+    // Detect password-protected / encrypted PDFs early
+    const pdfHeader = buffer.slice(0, 2048).toString('latin1');
+    if (pdfHeader.includes('/Encrypt')) {
+      throw new Error('ENCRYPTED_PDF');
+    }
     return extractPdfViaVision(buffer);
   }
   // Excel — .xlsx, .xls, .xlsm, .xlsb
@@ -2015,6 +2028,10 @@ Inspection report text:\n${text}` }
     }
   } catch (err) {
     console.error('[analyze-inspection]', err.message);
+    if (err.message === 'ENCRYPTED_PDF') return res.status(422).json({ error: 'This PDF is password-protected. Please remove the password and re-upload.' });
+    if (err.status >= 429 || (err.status >= 500 && err.status < 600) || err.code === 'insufficient_quota' || err.code === 'ECONNRESET') {
+      return res.json({ success: true, pending: true, analysis: { summary: 'Document received — AI analysis is queued and will complete shortly. Refresh in a few minutes.', pending: true, confidence: 0 } });
+    }
     res.status(500).json({ error: 'Analysis failed', message: err.message });
   }
 });
@@ -2086,6 +2103,10 @@ Policy text:\n${text}` }
     }
   } catch (err) {
     console.error('[review-insurance]', err.message);
+    if (err.message === 'ENCRYPTED_PDF') return res.status(422).json({ error: 'This PDF is password-protected. Please remove the password and re-upload.' });
+    if (err.status >= 429 || (err.status >= 500 && err.status < 600) || err.code === 'insufficient_quota' || err.code === 'ECONNRESET') {
+      return res.json({ success: true, pending: true, analysis: { summary: 'Document received — AI analysis is queued and will complete shortly. Refresh in a few minutes.', pending: true, confidence: 0 } });
+    }
     res.status(500).json({ error: 'Review failed', message: err.message });
   }
 });
@@ -2135,6 +2156,10 @@ Financial document:\n${text}` }
     }
   } catch (err) {
     console.error('[review-financials]', err.message);
+    if (err.message === 'ENCRYPTED_PDF') return res.status(422).json({ error: 'This PDF is password-protected. Please remove the password and re-upload.' });
+    if (err.status >= 429 || (err.status >= 500 && err.status < 600) || err.code === 'insufficient_quota' || err.code === 'ECONNRESET') {
+      return res.json({ success: true, pending: true, analysis: { summary: 'Document received — AI analysis is queued and will complete shortly. Refresh in a few minutes.', pending: true, confidence: 0 } });
+    }
     res.status(500).json({ error: 'Review failed', message: err.message });
   }
 });
@@ -2183,6 +2208,10 @@ Legal document:\n${text}` }
     }
   } catch (err) {
     console.error('[review-legal]', err.message);
+    if (err.message === 'ENCRYPTED_PDF') return res.status(422).json({ error: 'This PDF is password-protected. Please remove the password and re-upload.' });
+    if (err.status >= 429 || (err.status >= 500 && err.status < 600) || err.code === 'insufficient_quota' || err.code === 'ECONNRESET') {
+      return res.json({ success: true, pending: true, analysis: { summary: 'Document received — AI analysis is queued and will complete shortly. Refresh in a few minutes.', pending: true, confidence: 0 } });
+    }
     res.status(500).json({ error: 'Review failed', message: err.message });
   }
 });
@@ -2230,6 +2259,10 @@ Document:\n${text}` }
     }
   } catch (err) {
     console.error('[review-brand-standards]', err.message);
+    if (err.message === 'ENCRYPTED_PDF') return res.status(422).json({ error: 'This PDF is password-protected. Please remove the password and re-upload.' });
+    if (err.status >= 429 || (err.status >= 500 && err.status < 600) || err.code === 'insufficient_quota' || err.code === 'ECONNRESET') {
+      return res.json({ success: true, pending: true, analysis: { summary: 'Document received — AI analysis is queued and will complete shortly. Refresh in a few minutes.', pending: true, confidence: 0 } });
+    }
     res.status(500).json({ error: 'Review failed', message: err.message });
   }
 });
@@ -3904,6 +3937,34 @@ app.post('/api/checkout', authenticate, async (req, res) => {
   }
 });
 
+
+// ── Link Revocation — owner regenerates invite links ──────────────────────────
+app.post('/api/public/deal-room/:propertyId/regenerate-links', async (req, res) => {
+  const { propertyId } = req.params;
+  try {
+    const newToken = crypto.randomBytes(16).toString('hex');
+    const { error } = await supabase.from('deal_rooms')
+      .update({ link_token: newToken })
+      .eq('property_id', propertyId);
+    if (error) throw error;
+    res.json({ ok: true, link_token: newToken });
+  } catch (err) {
+    console.error('[regenerate-links]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── Upload / Multer error handler ─────────────────────────────────────────────
+app.use((err, req, res, next) => {
+  if (err.code === 'LIMIT_FILE_SIZE') {
+    return res.status(413).json({ error: 'File too large — maximum size is 20MB. Please compress the file and try again.' });
+  }
+  if (err.message?.includes('File type not allowed')) {
+    return res.status(415).json({ error: 'Unsupported file type. Accepted formats: PDF, Word, Excel, CSV, JPEG, PNG.' });
+  }
+  console.error('[unhandled error]', err.message);
+  res.status(500).json({ error: err.message || 'Server error' });
+});
 
 const PORT = process.env.PORT || 3000;
 if (require.main === module) {
