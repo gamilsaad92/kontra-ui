@@ -1,12 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import PublicLayout from "./PublicLayout";
-import DealCoordinationPanel from "./DealCoordinationPanel";
-import ActivityTimeline from "./ActivityTimeline";
-import CommentsPanel from "./CommentsPanel";
-import DealHealthPanel from "./DealHealthPanel";
-import InvitePanel from "./InvitePanel";
-import DocumentChecklistPanel from "./DocumentChecklistPanel";
 
 function usePageTitle(title) {
   useEffect(() => {
@@ -135,12 +129,6 @@ const ROLE_CONFIG = {
     subtext: "Review any coverage gaps flagged by AI and upload the insurance certificate. Expiration dates are tracked automatically for the lender.",
     sections: ["insurance", "property", "documents"],
   },
-  insurance: {
-    icon: "🛡️", label: "Insurance Broker", color: "#065f46",
-    headline: "You've been invited to provide insurance coverage",
-    subtext: "Review any coverage gaps flagged by AI and upload the insurance certificate. Expiration dates are tracked automatically for the lender.",
-    sections: ["insurance", "property", "documents"],
-  },
   investor: {
     icon: "📊", label: "Investor", color: "#6d28d9",
     headline: "You've been invited to review this investment",
@@ -157,7 +145,7 @@ const ROLE_CONFIG = {
     icon: "📜", label: "Attorney / Title", color: "#374151",
     headline: "You've been invited to review the legal package",
     subtext: "Review the legal structure documentation, title history, and compliance checklist for this property.",
-    sections: ["legal", "compliance", "documents", "property"],
+    sections: ["compliance", "documents", "property"],
   },
   owner: {
     icon: "🏢", label: "Property Owner", color: "#800020",
@@ -176,12 +164,6 @@ const ROLE_CONFIG = {
     headline: "You've been invited to coordinate this deal",
     subtext: "As the broker, you have visibility across all deal parties. Track document status, compliance milestones, and share role-scoped links with each party.",
     sections: ["financials", "risk", "compliance", "documents", "property"],
-  },
-  franchisor: {
-    icon: "🏨", label: "Franchisor / Brand", color: "#0369a1",
-    headline: "You've been invited to review this hotel deal room",
-    subtext: "As the franchisor representative, you can review the Property Improvement Plan, brand standards compliance, and flag any requirements before deal close.",
-    sections: ["brand-standards", "compliance", "documents", "property"],
   },
 };
 
@@ -532,10 +514,6 @@ function UploadAnalyzePanel({ title, icon, endpoint, accept, uploadLabel, hint, 
             Choose File →
           </button>
           <input ref={inputRef} type="file" accept={accept} className="hidden" onChange={handleFile} />
-          <p className="text-[10px] text-gray-400 mt-3 leading-relaxed max-w-xs mx-auto">
-            File is stored securely and analyzed by AI (OpenAI API). Retained per our{" "}
-            <a href="/privacy" target="_blank" className="underline hover:text-gray-600">Privacy Policy</a>.
-          </p>
         </div>
       )}
 
@@ -606,153 +584,75 @@ function ResultList({ label, items, highlight }) {
   );
 }
 
-function ConfidenceBadge({ confidence }) {
-  if (confidence == null) return null;
-  const color = confidence >= 90 ? '#16a34a' : confidence >= 70 ? '#d97706' : '#dc2626';
-  return (
-    <div className="flex items-center gap-2 mt-3 pt-2 border-t border-gray-100">
-      <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">AI Confidence</p>
-      <div className="h-1.5 w-16 rounded-full bg-gray-100 overflow-hidden">
-        <div className="h-full rounded-full" style={{ width: `${confidence}%`, background: color }} />
-      </div>
-      <span className="text-xs font-bold" style={{ color }}>{confidence}%</span>
-    </div>
-  );
-}
-
-function SourceCitations({ sources }) {
-  if (!sources?.length) return null;
-  return (
-    <div className="mt-2">
-      <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5">Source Citations</p>
-      <div className="space-y-1">
-        {sources.slice(0, 3).map((s, i) => (
-          <div key={i} className="flex gap-2 bg-purple-50 rounded-lg px-3 py-1.5">
-            <span className="text-[10px] font-bold text-purple-700 shrink-0 mt-0.5 whitespace-nowrap">{s.page}</span>
-            <span className="text-[10px] text-gray-500 italic line-clamp-2">"{s.quote}"</span>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function ShareButton({ propertyId }) {
-  const [state, setState] = useState("idle"); // idle | copied
-  const shareUrl = `${window.location.origin}/deal-room/${propertyId}/share`;
-  function handleShare() {
-    navigator.clipboard?.writeText(shareUrl).then(() => {
-      setState("copied");
-      setTimeout(() => setState("idle"), 2500);
-    });
-  }
-  return (
-    <button onClick={handleShare}
-      className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold border transition"
-      style={state === "copied"
-        ? { background: "#f0fdf4", color: "#15803d", borderColor: "#bbf7d0" }
-        : { background: "white", color: "#800020", borderColor: "#80002030" }}>
-      {state === "copied" ? "✓ Link Copied!" : "↗ Share Deal"}
-    </button>
-  );
-}
-
 function InspectionUploadPanel({ propertyId, role, onAnalysisSaved }) {
   return (
-    <div>
-      <UploadAnalyzePanel
-        title="Inspection Status" icon="🔍"
-        endpoint="/api/ai/analyze-inspection"
-        accept=".pdf,.doc,.docx,.xlsx,.xls,.xlsm,.xlsb,.csv"
-        uploadLabel="Upload Inspection Report"
-        hint="PDF, DOCX, or Excel — AI extracts condition, life-safety findings, and deferred maintenance costs"
-        propertyId={propertyId} role={role} onAnalysisSaved={onAnalysisSaved}
-        formatResult={(a) => (
-          <div>
-            <ResultRow label="Condition" value={a.overallCondition} />
-            <ResultRow label="Score" value={a.score != null ? `${a.score}/100` : null} />
-            <ResultRow label="Deferred Cost" value={a.totalDeferredCost} highlight={!!a.totalDeferredCost} />
-            <ResultRow label="Life Safety" value={a.lifeSafetyFindings?.length ? `${a.lifeSafetyFindings.length} finding(s)` : "None flagged"} highlight={a.lifeSafetyFindings?.length > 0} />
-            <ResultList label="Priority Actions" items={a.priorityActions?.map(p => p.action || p)} />
-            {a.summary && <p className="text-xs text-gray-500 mt-3 italic border-t border-gray-100 pt-2">{a.summary.slice(0, 180)}{a.summary.length > 180 ? "…" : ""}</p>}
-            <ConfidenceBadge confidence={a.confidence} />
-            <SourceCitations sources={a.sources} />
-          </div>
-        )}
-      />
-      <div className="mt-2">
-        <CommentsPanel propertyId={propertyId} section="inspection" role={role} />
-      </div>
-    </div>
+    <UploadAnalyzePanel
+      title="Inspection Status" icon="🔍"
+      endpoint="/api/ai/analyze-inspection"
+      accept=".pdf,.doc,.docx,.xlsx,.xls,.xlsm,.xlsb,.csv"
+      uploadLabel="Upload Inspection Report"
+      hint="PDF, DOCX, or Excel — AI extracts condition, life-safety findings, and deferred maintenance costs"
+      propertyId={propertyId} role={role} onAnalysisSaved={onAnalysisSaved}
+      formatResult={(a) => (
+        <div>
+          <ResultRow label="Condition" value={a.overallCondition} />
+          <ResultRow label="Score" value={a.score != null ? `${a.score}/100` : null} />
+          <ResultRow label="Deferred Cost" value={a.totalDeferredCost} highlight={!!a.totalDeferredCost} />
+          <ResultRow label="Life Safety" value={a.lifeSafetyFindings?.length ? `${a.lifeSafetyFindings.length} finding(s)` : "None flagged"} highlight={a.lifeSafetyFindings?.length > 0} />
+          <ResultList label="Priority Actions" items={a.priorityActions?.map(p => p.action || p)} />
+          {a.summary && <p className="text-xs text-gray-500 mt-3 italic border-t border-gray-100 pt-2">{a.summary.slice(0, 180)}{a.summary.length > 180 ? "…" : ""}</p>}
+        </div>
+      )}
+    />
   );
 }
 
 function InsuranceUploadPanel({ propertyId, role, onAnalysisSaved }) {
   return (
-    <div>
-      <UploadAnalyzePanel
-        title="Insurance Status" icon="🛡️"
-        endpoint="/api/ai/review-insurance"
-        accept=".pdf,.doc,.docx"
-        uploadLabel="Upload Insurance Certificate"
-        hint="PDF — AI reviews coverage amounts, flags gaps, and tracks expiration dates"
-        propertyId={propertyId} role={role} onAnalysisSaved={onAnalysisSaved}
-        formatResult={(a) => (
-          <div>
-            <ResultRow label="Status" value={a.complianceStatus} highlight={a.complianceStatus === "Non-Compliant"} />
-            <ResultRow label="Coverage" value={a.coverageAmount} />
-            <ResultRow label="Expires" value={a.expiresInDays != null ? `${a.expiresInDays} days` : null} highlight={a.expiresInDays != null && a.expiresInDays < 45} />
-            <ResultRow label="Insurer" value={a.insurer} />
-            <ResultList label="Coverage Gaps" items={a.coverageGaps?.map(g => g.gap || g)} highlight />
-            {a.summary && <p className="text-xs text-gray-500 mt-3 italic border-t border-gray-100 pt-2">{a.summary.slice(0, 180)}{a.summary.length > 180 ? "…" : ""}</p>}
-            <ConfidenceBadge confidence={a.confidence} />
-            <SourceCitations sources={a.sources} />
-          </div>
-        )}
-      />
-      <div className="mt-2">
-        <CommentsPanel propertyId={propertyId} section="insurance" role={role} />
-      </div>
-    </div>
+    <UploadAnalyzePanel
+      title="Insurance Status" icon="🛡️"
+      endpoint="/api/ai/review-insurance"
+      accept=".pdf,.doc,.docx"
+      uploadLabel="Upload Insurance Certificate"
+      hint="PDF — AI reviews coverage amounts, flags gaps, and tracks expiration dates"
+      propertyId={propertyId} role={role} onAnalysisSaved={onAnalysisSaved}
+      formatResult={(a) => (
+        <div>
+          <ResultRow label="Status" value={a.complianceStatus} highlight={a.complianceStatus === "Non-Compliant"} />
+          <ResultRow label="Coverage" value={a.coverageAmount} />
+          <ResultRow label="Expires" value={a.expiresInDays != null ? `${a.expiresInDays} days` : null} highlight={a.expiresInDays != null && a.expiresInDays < 45} />
+          <ResultRow label="Insurer" value={a.insurer} />
+          <ResultList label="Coverage Gaps" items={a.coverageGaps?.map(g => g.gap || g)} highlight />
+          {a.summary && <p className="text-xs text-gray-500 mt-3 italic border-t border-gray-100 pt-2">{a.summary.slice(0, 180)}{a.summary.length > 180 ? "…" : ""}</p>}
+        </div>
+      )}
+    />
   );
 }
 
 function FinancialsUploadPanel({ propertyId, role, onAnalysisSaved }) {
   return (
-    <div>
-      <UploadAnalyzePanel
-        title="Financial Overview" icon="📊"
-        endpoint="/api/ai/review-financials"
-        accept=".pdf,.doc,.docx,.xlsx,.xls,.xlsm,.xlsb,.csv"
-        uploadLabel="Upload Operating Statement or Rent Roll"
-        hint="PDF, Excel, or CSV — AI extracts NOI, DSCR, occupancy, and flags anomalies"
-        propertyId={propertyId} role={role} onAnalysisSaved={onAnalysisSaved}
-        formatResult={(a) => (
-          <div>
-            <ResultRow label="NOI" value={a.noi} />
-            <ResultRow label="Occupancy" value={a.occupancy} />
-            <ResultRow label="DSCR" value={a.dscr} />
-            <ResultRow label="Revenue" value={a.revenue} />
-            <ResultRow label="Expenses" value={a.expenses} />
-            {a.revpar && <ResultRow label="RevPAR" value={a.revpar} />}
-            {a.adr && <ResultRow label="ADR" value={a.adr} />}
-            {a.gopPar && <ResultRow label="GOP PAR" value={a.gopPar} />}
-            {a.revparIndex && <ResultRow label="RevPAR Index" value={a.revparIndex} />}
-            {a.roomsRevenue && <ResultRow label="Rooms Revenue" value={a.roomsRevenue} />}
-            {a.fbRevenue && <ResultRow label="F&B Revenue" value={a.fbRevenue} />}
-            <ResultRow label="Covenants" value={a.covenantStatus} highlight={a.covenantStatus === "Breached" || a.covenantStatus === "At Risk"} />
-            <ResultList label="Anomalies Flagged" items={a.anomalies?.map(x => `${x.item} — ${x.description}`)} highlight />
-            <ResultList label="Trends" items={a.trends} />
-            {a.summary && <p className="text-xs text-gray-500 mt-3 italic border-t border-gray-100 pt-2">{a.summary.slice(0, 180)}{a.summary.length > 180 ? "…" : ""}</p>}
-            <ConfidenceBadge confidence={a.confidence} />
-            <SourceCitations sources={a.sources} />
-          </div>
-        )}
-      />
-      <div className="mt-2">
-        <CommentsPanel propertyId={propertyId} section="financials" role={role} />
-      </div>
-    </div>
+    <UploadAnalyzePanel
+      title="Financial Overview" icon="📊"
+      endpoint="/api/ai/review-financials"
+      accept=".pdf,.doc,.docx,.xlsx,.xls,.xlsm,.xlsb,.csv"
+      uploadLabel="Upload Operating Statement or Rent Roll"
+      hint="PDF, Excel, or CSV — AI extracts NOI, DSCR, occupancy, and flags anomalies"
+      propertyId={propertyId} role={role} onAnalysisSaved={onAnalysisSaved}
+      formatResult={(a) => (
+        <div>
+          <ResultRow label="NOI" value={a.noi} />
+          <ResultRow label="Occupancy" value={a.occupancy} />
+          <ResultRow label="DSCR" value={a.dscr} />
+          <ResultRow label="Revenue" value={a.revenue} />
+          <ResultRow label="Expenses" value={a.expenses} />
+          <ResultRow label="Covenants" value={a.covenantStatus} highlight={a.covenantStatus === "Breached" || a.covenantStatus === "At Risk"} />
+          <ResultList label="Anomalies Flagged" items={a.anomalies?.map(x => `${x.item} — ${x.description}`)} highlight />
+          <ResultList label="Trends" items={a.trends} />
+          {a.summary && <p className="text-xs text-gray-500 mt-3 italic border-t border-gray-100 pt-2">{a.summary.slice(0, 180)}{a.summary.length > 180 ? "…" : ""}</p>}
+        </div>
+      )}
+    />
   );
 }
 
@@ -865,69 +765,6 @@ function RiskUploadPanel({ property }) {
           <button onClick={() => { setStatus("idle"); setResult(null); }} className="mt-3 text-xs text-gray-400 hover:text-gray-600 underline block">Score another property</button>
         </div>
       )}
-    </div>
-  );
-}
-
-function BrandStandardsUploadPanel({ propertyId, role, onAnalysisSaved }) {
-  return (
-    <div>
-      <UploadAnalyzePanel
-        title="Brand Standards / PIP" icon="🏨"
-        endpoint="/api/ai/review-brand-standards"
-        accept=".pdf,.doc,.docx,.txt"
-        uploadLabel="Upload Franchise Agreement or PIP"
-        hint="Franchise agreement, Property Improvement Plan, or brand standards doc — AI extracts PIP items, fees, deadlines, and compliance gaps"
-        propertyId={propertyId} role={role} onAnalysisSaved={onAnalysisSaved}
-        formatResult={(a) => (
-          <div>
-            <ResultRow label="Brand" value={a.brandName} />
-            <ResultRow label="Status" value={a.complianceStatus} highlight={a.complianceStatus === 'PIP Required' || a.complianceStatus === 'Non-Compliant'} />
-            <ResultRow label="PIP Cost" value={a.totalEstimatedPIPCost} highlight={!!a.totalEstimatedPIPCost} />
-            <ResultRow label="Deadline" value={a.complianceDeadline} />
-            <ResultRow label="Franchise Term" value={a.franchiseTerm} />
-            {a.brandFees?.royaltyFee && <ResultRow label="Royalty Fee" value={a.brandFees.royaltyFee} />}
-            <ResultList label="PIP Items (Required)" items={a.pipItems?.filter(p => p.priority === 'Required').map(p => `${p.category}: ${p.item}${p.estimatedCost ? ` — ${p.estimatedCost}` : ''}`)} highlight />
-            <ResultList label="Red Flags" items={a.redFlags?.map(f => `${f.issue} (${f.severity})`)} highlight />
-            {a.summary && <p className="text-xs text-gray-500 mt-3 italic border-t border-gray-100 pt-2">{a.summary.slice(0, 180)}{a.summary.length > 180 ? "…" : ""}</p>}
-            <ConfidenceBadge confidence={a.confidence} />
-            <SourceCitations sources={a.sources} />
-          </div>
-        )}
-      />
-      <div className="mt-2">
-        <CommentsPanel propertyId={propertyId} section="brand-standards" role={role} />
-      </div>
-    </div>
-  );
-}
-
-function LegalDocUploadPanel({ propertyId, role, onAnalysisSaved }) {
-  return (
-    <div>
-      <UploadAnalyzePanel
-        title="Legal / Title Review" icon="⚖️"
-        endpoint="/api/ai/review-legal"
-        accept=".pdf,.doc,.docx,.txt"
-        uploadLabel="Upload Legal Document"
-        hint="Purchase agreement, title report, lease, or loan docs — AI flags key dates, contingencies, and red flags"
-        propertyId={propertyId} role={role} onAnalysisSaved={onAnalysisSaved}
-        formatResult={(a) => (
-          <div>
-            <ResultRow label="Document" value={a.documentType} />
-            <ResultRow label="Status" value={a.complianceStatus} highlight={a.complianceStatus === 'Issues Found'} />
-            <ResultList label="Key Dates" items={a.keyDates?.map(d => `${d.event}: ${d.date}`)} />
-            <ResultList label="Red Flags" items={a.redFlags?.map(f => `${f.issue} (${f.severity})`)} highlight />
-            <ResultList label="Contingencies" items={a.contingencies} />
-            {a.summary && <p className="text-xs text-gray-500 mt-3 italic border-t border-gray-100 pt-2">{a.summary.slice(0, 180)}{a.summary.length > 180 ? "…" : ""}</p>}
-            <ConfidenceBadge confidence={a.confidence} />
-            <SourceCitations sources={a.sources} />
-          </div>
-        )}
-      />
-      <div className="mt-2">
-        <CommentsPanel propertyId={propertyId} section="legal" role={role} />
-      </div>
     </div>
   );
 }
@@ -1071,10 +908,10 @@ function DealIntelligenceDashboard({ propertyId, refreshKey }) {
         </div>
         <div className="flex items-center gap-2">
           {doneCount > 0 && (
-            <a href={`/deal-room/${propertyId}/summary`} target="_blank" rel="noopener noreferrer"
+            <button onClick={() => window.print()}
               className="px-3 py-1.5 rounded-lg text-xs font-semibold text-gray-600 bg-gray-100 hover:bg-gray-200 transition">
               🖨 Print Summary
-            </a>
+            </button>
           )}
           <div className="text-2xl font-black" style={{ color: doneCount === 3 ? "#16a34a" : doneCount >= 1 ? "#d97706" : "#9ca3af" }}>
             {Math.round(doneCount / 3 * 100)}%
@@ -1110,15 +947,6 @@ function DealIntelligenceDashboard({ propertyId, refreshKey }) {
                   <span className="text-base shrink-0">{icon}</span>
                   <p className="text-xs font-bold text-gray-800">{label}</p>
                   <span className="text-[10px] text-gray-400 truncate hidden sm:block">{a.filename}</span>
-                  {a.storage_path && (
-                    <a
-                      href={`${API_BASE}/api/public/document-url?path=${encodeURIComponent(a.storage_path)}`}
-                      target="_blank" rel="noopener noreferrer"
-                      className="text-[10px] font-semibold px-2 py-0.5 rounded-full border hidden sm:inline-flex items-center gap-1 hover:bg-gray-100 transition shrink-0"
-                      style={{ color: "#800020", borderColor: "#80002030" }}>
-                      ↓ Original
-                    </a>
-                  )}
                 </div>
                 {badge && (
                   <span className="text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 ml-2"
@@ -1154,16 +982,14 @@ function DealIntelligenceDashboard({ propertyId, refreshKey }) {
 }
 
 // Build pending section map based on role
-function buildPendingSectionMap(property, role, onAnalysisSaved, urlPropertyId) {
-  const pid = urlPropertyId || property?.property_id || property?.id;
+function buildPendingSectionMap(property, role, onAnalysisSaved) {
+  const pid = property?.id || property?.property_id;
   return {
     financials: () => <FinancialsUploadPanel propertyId={pid} role={role} onAnalysisSaved={onAnalysisSaved} />,
     risk:       () => <RiskUploadPanel property={property} />,
     compliance: () => <PendingPanel title="Compliance Status" icon="✅" description="Compliance checklist will populate as documents are reviewed and parties complete their submissions." />,
     inspection: () => <InspectionUploadPanel propertyId={pid} role={role} onAnalysisSaved={onAnalysisSaved} />,
     insurance:  () => <InsuranceUploadPanel propertyId={pid} role={role} onAnalysisSaved={onAnalysisSaved} />,
-    legal:            () => <LegalDocUploadPanel propertyId={pid} role={role} onAnalysisSaved={onAnalysisSaved} />,
-    'brand-standards': () => <BrandStandardsUploadPanel propertyId={pid} role={role} onAnalysisSaved={onAnalysisSaved} />,
     readiness:  () => <PendingPanel title="Investment Readiness" icon="🏅" description="All 5 readiness pillars will be tracked as parties submit their documentation." />,
     documents:  () => <DocumentsUploadPanel />,
     property:   () => <PendingPropertyPanel property={property} />,
@@ -1222,35 +1048,6 @@ export default function DealRoomPage() {
     }
   }
 
-  async function handleDemoActivate() {
-    setCheckoutLoading(true);
-    setCheckoutError("");
-    try {
-      const property = DEMO_PROPERTIES[propertyId] || apiProperty;
-      const res = await fetch(`${API_BASE}/api/checkout/demo`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          plan: "deal",
-          propertyId,
-          propertyName: property?.property_name || property?.name || propertyId,
-          email: "dev@kontraplatform.com",
-          role: "owner",
-        }),
-      });
-      const data = await res.json();
-      if (data.url) {
-        window.location.href = data.url;
-      } else {
-        setCheckoutError(data.error || "Demo activation failed.");
-      }
-    } catch {
-      setCheckoutError("Network error — please try again.");
-    } finally {
-      setCheckoutLoading(false);
-    }
-  }
-
   // Resolve property: demo first, then API, then derive from slug
   const demoProperty = DEMO_PROPERTIES[propertyId];
   const isCustom = !demoProperty;
@@ -1282,21 +1079,14 @@ export default function DealRoomPage() {
     };
   }
 
-  const isDemo = propertyId === 'kontra-demo';
+  const roleConfig = ROLE_CONFIG[role] || ROLE_CONFIG.lender;
 
-  // For the demo room — override with a great hero image
+  const isDemo = propertyId === 'kontra-demo';
   if (isDemo && property) {
     property.image = "https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?w=1200&q=80";
-    property.market = "Austin, TX";
-    property.deal_amount = property.deal_amount || "14,000,000";
+    property.market = property.market || "Austin, TX";
+    property.name = property.name || "The Meridian Apartments";
   }
-
-  const baseRoleConfig = ROLE_CONFIG[role] || ROLE_CONFIG.lender;
-  const isHotel = (property?.property_type || "").toLowerCase().includes("hotel") ||
-                  (property?.property_type || "").toLowerCase().includes("hospitality");
-  const roleConfig = isHotel && ['owner', 'broker', 'borrower'].includes(role)
-    ? { ...baseRoleConfig, sections: ['brand-standards', ...baseRoleConfig.sections] }
-    : baseRoleConfig;
 
   usePageTitle(property?.name || property?.property_name);
 
@@ -1330,7 +1120,7 @@ export default function DealRoomPage() {
   }
 
   const SECTION_MAP = property.isCustom
-    ? buildPendingSectionMap(property, role, onAnalysisSaved, propertyId)
+    ? buildPendingSectionMap(property, role, onAnalysisSaved)
     : {
         financials: () => <FinancialsPanel property={property} />,
         risk:       () => <RiskPanel property={property} />,
@@ -1344,7 +1134,7 @@ export default function DealRoomPage() {
 
   return (
     <PublicLayout hideFooter>
-      {/* Top bar — demo banner | owner bar | invite bar */}
+      {/* Top bar — demo banner | owner (custom rooms) | invite (demo rooms) */}
       {isDemo ? (
         <div className="border-b border-indigo-100 px-6 py-3" style={{ background: "linear-gradient(90deg, #1e1b4b 0%, #312e81 100%)" }}>
           <div className="max-w-5xl mx-auto flex items-center justify-between gap-4">
@@ -1376,12 +1166,9 @@ export default function DealRoomPage() {
                 <p className="text-[10px] text-green-600">No sign-in required · AI analyzes each file as it's uploaded</p>
               </div>
             </div>
-            <div className="flex items-center gap-2 shrink-0">
-              <ShareButton propertyId={propertyId} />
-              <span className="px-3 py-1.5 rounded-xl text-xs font-bold text-green-700 bg-green-100">
-                ✓ Paid & Active
-              </span>
-            </div>
+            <span className="shrink-0 px-3 py-1.5 rounded-xl text-xs font-bold text-green-700 bg-green-100">
+              ✓ Paid & Active
+            </span>
           </div>
         </div>
       ) : (
@@ -1418,7 +1205,7 @@ export default function DealRoomPage() {
               <p className="text-xs text-white/60 mb-0.5">
                 {property.type}{property.market ? ` · ${property.market}` : ""}
                 {property.isCustom && !isDemo && <span className="ml-2 px-1.5 py-0.5 rounded bg-amber-500/30 text-amber-200 text-[10px] font-semibold">Awaiting Documents</span>}
-              {isDemo && <span className="ml-2 px-1.5 py-0.5 rounded text-[10px] font-semibold" style={{ background: "rgba(99,102,241,0.4)", color: "#c7d2fe" }}>Under Review</span>}
+                {isDemo && <span className="ml-2 px-1.5 py-0.5 rounded text-[10px] font-semibold" style={{ background: "rgba(99,102,241,0.4)", color: "#c7d2fe" }}>Under Review</span>}
               </p>
               <h1 className="text-xl font-bold text-white">{property.name}</h1>
               <p className="text-xs text-white/70">{property.address}</p>
@@ -1440,43 +1227,9 @@ export default function DealRoomPage() {
         {/* Deal Intelligence Dashboard — custom rooms: live AI analysis aggregated */}
         {property.isCustom && (
           <DealIntelligenceDashboard
-            propertyId={propertyId || property.property_id || property.id}
+            propertyId={property.id || property.property_id || propertyId}
             refreshKey={analysesRefreshKey}
           />
-        )}
-
-        {/* Deal Health Score + Action Items — custom rooms only */}
-        {property.isCustom && (
-          <DealHealthPanel
-            propertyId={propertyId || property.property_id || property.id}
-          />
-        )}
-
-        {/* Due Diligence Checklist — property-type-aware, with AI completeness issues */}
-        {property.isCustom && (
-          <DocumentChecklistPanel
-            propertyId={propertyId || property.property_id || property.id}
-            propertyType={property.property_type || property.type}
-            role={role}
-            isDemo={isDemo}
-          />
-        )}
-
-        {/* Deal Coordination Panel — party status + lifecycle stage (custom rooms only) */}
-        {property.isCustom && (
-          <DealCoordinationPanel
-            propertyId={propertyId || property.property_id || property.id}
-            role={role}
-          />
-        )}
-
-        {/* Activity Timeline — live event log (custom rooms only) */}
-        {property.isCustom && (
-          <div className="mb-6">
-            <ActivityTimeline
-              propertyId={propertyId || property.property_id || property.id}
-            />
-          </div>
         )}
 
         {/* Investment Readiness summary bar — demo rooms only */}
@@ -1526,12 +1279,6 @@ export default function DealRoomPage() {
                   <><svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>Preparing…</>
                 ) : "Activate Deal Room — $499 →"}
               </button>
-              {import.meta.env.DEV && (
-                <button onClick={handleDemoActivate} disabled={checkoutLoading}
-                  className="mt-3 inline-flex items-center gap-1.5 px-5 py-2 rounded-lg text-xs font-semibold bg-white/10 text-white/70 border border-white/20 hover:bg-white/20 transition disabled:opacity-40">
-                  ⚡ Dev: Skip Payment
-                </button>
-              )}
               {checkoutError && <p className="text-xs text-red-200 mt-3">{checkoutError}</p>}
               <p className="text-xs text-white/40 mt-3">Secure checkout via Stripe · One-time fee</p>
             </div>
@@ -1549,15 +1296,38 @@ export default function DealRoomPage() {
           </div>
         )}
 
-        {/* Invite panel — request documents from each party */}
+        {/* Active deal room footer — invite links for custom rooms */}
         {property.isCustom && !isDemo && (
-          <InvitePanel
-            propertyId={propertyId || property.property_id || property.id}
-            senderName={property.first_name || property.property_name || undefined}
-          />
+          <div className="bg-gray-50 rounded-2xl border border-gray-200 px-6 py-5">
+            <p className="text-sm font-semibold text-gray-800 mb-1">Share role-scoped invite links</p>
+            <p className="text-xs text-gray-400 mb-4">Each party sees only what's relevant to their role. Copy and send directly.</p>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+              {[
+                { role: "lender", icon: "🏦", label: "Lender" },
+                { role: "inspector", icon: "🔍", label: "Inspector" },
+                { role: "insurer", icon: "🛡️", label: "Insurance Broker" },
+                { role: "attorney", icon: "📜", label: "Attorney" },
+                { role: "investor", icon: "📊", label: "Investor" },
+                { role: "servicer", icon: "⚙️", label: "Servicer" },
+              ].map((r) => {
+                const url = `${window.location.origin}/deal-room/${propertyId}?role=${r.role}`;
+                return (
+                  <button key={r.role} onClick={() => navigator.clipboard.writeText(url)}
+                    className="flex items-center gap-2 px-3 py-2.5 rounded-xl bg-white border border-gray-200 hover:border-gray-300 text-left transition group">
+                    <span className="text-base shrink-0">{r.icon}</span>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-semibold text-gray-700">{r.label}</p>
+                      <p className="text-[10px] text-gray-400 group-hover:text-gray-600">Click to copy link</p>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+            <p className="text-[10px] text-gray-400 mt-3 text-center">Need help? Email <a href="mailto:hello@kontraplatform.com" className="underline">hello@kontraplatform.com</a></p>
+          </div>
         )}
 
-        {/* Demo bottom CTA */}
+        {/* Demo bottom conversion CTA */}
         {isDemo && (
           <div className="rounded-2xl overflow-hidden border border-indigo-100 mt-2">
             <div className="px-8 py-8 text-center" style={{ background: "linear-gradient(135deg, #1e1b4b 0%, #4338ca 100%)" }}>
