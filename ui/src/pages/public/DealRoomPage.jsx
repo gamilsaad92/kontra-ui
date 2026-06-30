@@ -489,9 +489,13 @@ function UploadAnalyzePanel({ title, icon, endpoint, accept, uploadLabel, hint, 
       const res = await fetch(`${API_BASE}${endpoint}`, { method: "POST", body: fd });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || `Server error ${res.status}`);
-      setResult(json.analysis);
-      setStatus("done");
-      if (onAnalysisSaved) onAnalysisSaved();
+      if (json.pending) {
+        setStatus("pending");
+      } else {
+        setResult(json.analysis);
+        setStatus("done");
+        if (onAnalysisSaved) onAnalysisSaved();
+      }
     } catch (err) {
       setErrorMsg(err.message);
       setStatus("error");
@@ -523,8 +527,22 @@ function UploadAnalyzePanel({ title, icon, endpoint, accept, uploadLabel, hint, 
             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
             <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
           </svg>
-          <p className="text-sm font-semibold text-gray-700">Analyzing with GPT-4o…</p>
+          <p className="text-sm font-semibold text-gray-700">AI-assisted review in progress…</p>
           <p className="text-xs text-gray-400 mt-1 truncate max-w-[200px] mx-auto">{fileName}</p>
+        </div>
+      )}
+
+      {status === "pending" && (
+        <div className="text-center py-6">
+          <div className="text-2xl mb-2">⏳</div>
+          <p className="text-sm font-semibold text-gray-700 mb-1">Analysis Queued</p>
+          <p className="text-xs text-gray-400 mb-1 max-w-xs mx-auto">Document received — AI review is processing. Check back in a few minutes.</p>
+          <p className="text-[10px] text-gray-400 mb-4 truncate max-w-[200px] mx-auto">{fileName}</p>
+          <button onClick={() => setStatus("idle")}
+            className="px-4 py-2 rounded-xl text-xs font-bold text-white hover:opacity-90"
+            style={{ background: "#800020" }}>
+            Upload Another
+          </button>
         </div>
       )}
 
@@ -1299,7 +1317,26 @@ export default function DealRoomPage() {
         {/* Active deal room footer — invite links for custom rooms */}
         {property.isCustom && !isDemo && (
           <div className="bg-gray-50 rounded-2xl border border-gray-200 px-6 py-5">
-            <p className="text-sm font-semibold text-gray-800 mb-1">Share role-scoped invite links</p>
+            <div className="flex items-start justify-between gap-3 mb-1">
+              <p className="text-sm font-semibold text-gray-800">Share role-scoped invite links</p>
+              {role === "owner" && (
+                <button
+                  onClick={async () => {
+                    if (!window.confirm("Regenerate links? All previously shared invite links will stop working immediately.")) return;
+                    try {
+                      const res = await fetch(`${API_BASE}/api/public/deal-room/${propertyId}/regenerate-links`, { method: "POST" });
+                      const data = await res.json();
+                      if (data.ok) {
+                        window.alert("Links regenerated. Share the new links below.");
+                        window.location.reload();
+                      }
+                    } catch {}
+                  }}
+                  className="text-[10px] font-semibold text-red-700 border border-red-200 bg-white px-2.5 py-1 rounded-lg hover:bg-red-50 transition shrink-0">
+                  🔄 Revoke &amp; Regenerate
+                </button>
+              )}
+            </div>
             <p className="text-xs text-gray-400 mb-4">Each party sees only what's relevant to their role. Copy and send directly.</p>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
               {[
@@ -1310,7 +1347,8 @@ export default function DealRoomPage() {
                 { role: "investor", icon: "📊", label: "Investor" },
                 { role: "servicer", icon: "⚙️", label: "Servicer" },
               ].map((r) => {
-                const url = `${window.location.origin}/deal-room/${propertyId}?role=${r.role}`;
+                const token = property.link_token;
+                const url = `${window.location.origin}/deal-room/${propertyId}?role=${r.role}${token ? `&t=${token}` : ""}`;
                 return (
                   <button key={r.role} onClick={() => navigator.clipboard.writeText(url)}
                     className="flex items-center gap-2 px-3 py-2.5 rounded-xl bg-white border border-gray-200 hover:border-gray-300 text-left transition group">
@@ -1361,6 +1399,13 @@ export default function DealRoomPage() {
             </div>
           </div>
         )}
+
+        {/* Legal disclaimer */}
+        <div className="text-center pt-2 pb-6 px-4">
+          <p className="text-[10px] text-gray-400 max-w-2xl mx-auto leading-relaxed">
+            AI-assisted analyses are for informational purposes only and do not constitute legal, financial, or investment advice. All document reviews should be independently verified by qualified professionals before relying on them for any decision. Kontra is a document infrastructure platform and is not a licensed financial, legal, or real estate advisor.
+          </p>
+        </div>
 
       </div>
     </PublicLayout>
