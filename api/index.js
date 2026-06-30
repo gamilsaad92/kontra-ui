@@ -982,11 +982,14 @@ app.post('/api/checkout/demo', async (req, res) => {
       closing_date: meta.closingDate || '',
       first_name: meta.firstName || '',
       last_name: meta.lastName || '',
-      link_token: crypto.randomBytes(16).toString('hex'),
     };
 
     try {
-      await supabase.from('deal_rooms').upsert(dealRoomRecord, { onConflict: 'property_id' });
+      const { error: upsertErr } = await supabase.from('deal_rooms').upsert(dealRoomRecord, { onConflict: 'property_id' });
+      if (upsertErr) throw upsertErr;
+      // Set link_token in a separate step (graceful — no-op if column not yet migrated)
+      supabase.from('deal_rooms').update({ link_token: crypto.randomBytes(16).toString('hex') })
+        .eq('property_id', pid).is('link_token', null).then(() => {}).catch(() => {});
       console.log(`[demo] ✅ Deal room created — ${pid}`);
     } catch (dbErr) {
       console.warn('[demo] deal_rooms upsert failed:', dbErr.message);
@@ -1052,11 +1055,14 @@ app.post('/api/webhook/stripe',
         closing_date: pending.closing_date || '',
         first_name: pending.first_name || '',
         last_name: pending.last_name || '',
-        link_token: crypto.randomBytes(16).toString('hex'),
       };
 
       try {
-        await supabase.from('deal_rooms').upsert(dealRoomRecord, { onConflict: 'property_id' });
+        const { error: wErr } = await supabase.from('deal_rooms').upsert(dealRoomRecord, { onConflict: 'property_id' });
+        if (wErr) throw wErr;
+        // Set link_token separately (graceful — skipped if column not yet migrated)
+        supabase.from('deal_rooms').update({ link_token: crypto.randomBytes(16).toString('hex') })
+          .eq('property_id', dealRoomRecord.property_id).is('link_token', null).then(() => {}).catch(() => {});
         console.log(`[webhook] ✅ Deal room saved — ${dealRoomRecord.property_id}`);
       } catch (dbErr) {
         console.warn('[webhook] deal_rooms upsert skipped:', dbErr.message);
