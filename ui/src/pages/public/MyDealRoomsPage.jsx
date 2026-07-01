@@ -193,10 +193,10 @@ function AccessLayout({ children }) {
             </h2>
             <div className="space-y-3">
               {[
-                "AI reviews every document you upload",
-                "Lenders, inspectors, insurers — all in one room",
-                "Role-scoped access via secure link — no accounts",
-                "Manage all your deals from one dashboard",
+                "AI reviews every document as it's uploaded",
+                "Lenders, inspectors, insurers — one room, zero email chains",
+                "Every party accesses via secure link — no accounts needed",
+                "See every deal, every party, every status in one place",
               ].map(item => (
                 <div key={item} className="flex items-start gap-3">
                   <div className="w-4 h-4 rounded-full flex items-center justify-center shrink-0 mt-0.5"
