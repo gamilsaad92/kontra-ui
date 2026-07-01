@@ -1,0 +1,39 @@
+11:54:32.435 Running build in Washington, D.C., USA (East) – iad1
+11:54:32.436 Build machine configuration: 2 cores, 8 GB
+11:54:32.604 Cloning github.com/gamilsaad92/kontra-ui (Branch: main, Commit: e890f4b)
+11:54:35.599 Warning: Failed to fetch one or more git submodules
+11:54:35.606 Cloning completed: 3.002s
+11:54:37.871 Restored build cache from previous deployment (Gbz9EbP2zNVmmAuMj7uWS1dAEr99)
+11:54:38.117 Running "vercel build"
+11:54:38.134 Vercel CLI 54.18.6
+11:54:38.788 Installing dependencies...
+11:56:13.566 
+11:56:13.567 up to date in 2m
+11:56:13.568 
+11:56:13.568 220 packages are looking for funding
+11:56:13.568   run `npm fund` for details
+11:56:13.766 
+11:56:13.767 > kontra-ui@1.0.0 build
+11:56:13.767 > vite build
+11:56:13.768 
+11:56:14.050 The CJS build of Vite's Node API is deprecated. See https://vite.dev/guide/troubleshooting.html#vite-cjs-node-api-deprecated for more details.
+11:56:14.132 vite v5.4.21 building for production...
+11:56:14.207 transforming...
+11:56:16.955 [plugin:vite:esbuild] [plugin vite:esbuild] src/pages/public/PropertiesPage.jsx: Duplicate key "background" in object literal
+11:56:16.956 152|                      <div className="absolute top-2 right-2">
+11:56:16.956 153|                        <span className="px-2 py-0.5 rounded text-xs font-semibold"
+11:56:16.956 154|                          style={{ background: p.riskColor + "22", color: p.riskColor, backdropFilter: "blur(4px)", background: "rgba(255,255,255,0.85)" }}>
+11:56:16.956    |                                                                                                                    ^
+11:56:16.957 155|                          {p.risk}
+11:56:16.957 156|                        </span>
+11:56:16.957 
+11:56:19.750 ✓ 1945 modules transformed.
+11:56:19.753 x Build failed in 5.59s
+11:56:19.754 error during build:
+11:56:19.754 Could not resolve "./DealCoordinationPanel" from "src/pages/public/DealRoomPage.jsx"
+11:56:19.754 file: /vercel/path0/ui/src/pages/public/DealRoomPage.jsx
+11:56:19.754     at getRollupError (file:///vercel/path0/ui/node_modules/rollup/dist/es/shared/parseAst.js:317:41)
+11:56:19.754     at error (file:///vercel/path0/ui/node_modules/rollup/dist/es/shared/parseAst.js:313:42)
+11:56:19.754     at ModuleLoader.handleInvalidResolvedId (file:///vercel/path0/ui/node_modules/rollup/dist/es/shared/node-entry.js:22167:24)
+11:56:19.755     at file:///vercel/path0/ui/node_modules/rollup/dist/es/shared/node-entry.js:22127:26
+11:56:19.834 Error: Command "npm run build" exited with 1
