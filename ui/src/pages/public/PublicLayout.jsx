@@ -3,10 +3,9 @@ import { Link, useLocation } from "react-router-dom";
 import { AuthContext } from "../../lib/authContext";
 
 const PUBLIC_NAV = [
-  { label: "How It Works", href: "/how-it-works" },
-  { label: "AI Tools",     href: "/ai-tools" },
-  { label: "Pricing",      href: "/pricing" },
-  { label: "About",        href: "/about" },
+  { label: "Pricing",   href: "/pricing" },
+  { label: "Live Demo", href: "/deal-room/kontra-demo" },
+  { label: "AI Tools",  href: "/ai-tools" },
 ];
 
 const APP_NAV = [
