@@ -48,38 +48,50 @@ const PARTY_CARDS = [
   {
     icon: "🏦",
     role: "Lenders & Underwriters",
+    demoRole: "lender",
     color: "#800020",
-    gets: ["AI-analyzed inspection reports", "Structured financial statements", "DSCR, LTV, covenant tracking", "Compliance status per property", "Digital Asset Readiness score"],
+    tagline: "Review AI-underwritten deals. Approve in hours, not weeks.",
+    gets: ["AI-analyzed inspection reports & risk flags", "Structured financial statements with DSCR", "LTV, covenant tracking, compliance status", "Digital Asset Readiness score per property", "No account needed — access via secure deal link"],
   },
   {
     icon: "🏢",
     role: "Borrowers & Owners",
+    demoRole: "owner",
     color: "#1e40af",
-    gets: ["One workspace per property", "Document upload + AI review", "Deadline and compliance alerts", "Share with any party instantly", "Track deal progress end-to-end"],
+    tagline: "One workspace. Every party. Your deal, fully organized.",
+    gets: ["Upload documents — AI reviews them instantly", "Invite lender, inspector, insurer with one link", "Track deal progress and compliance in real time", "Revoke or regenerate participant access anytime", "Manage all your deal rooms from one dashboard"],
   },
   {
     icon: "📊",
     role: "Investors",
+    demoRole: "lender",
     color: "#6d28d9",
-    gets: ["Investment Readiness Reports", "Live NAV and occupancy data", "Token holdings and distributions", "Portfolio risk scoring", "Secondary market readiness"],
+    tagline: "See deal readiness at a glance before committing capital.",
+    gets: ["Investment Readiness Reports per property", "AI-summarized financials, inspection findings", "Risk score and peer benchmarking", "Access via secure link — no account required", "Portfolio-level visibility for multi-deal tracking"],
   },
   {
     icon: "🔍",
     role: "Inspectors & Engineers",
+    demoRole: "inspector",
     color: "#d97706",
-    gets: ["Submit reports directly to the workspace", "Findings auto-structured by AI", "Deferred maintenance tracking", "Connected to lender review", "Inspection history per property"],
+    tagline: "Upload your report. AI does the structuring. You're done.",
+    gets: ["Upload inspection reports directly to the deal room", "Findings auto-structured by AI — no reformatting", "Deferred maintenance costs extracted automatically", "Findings instantly visible to lender and owner", "No account needed — access via secure invite link"],
   },
   {
     icon: "🛡️",
     role: "Insurance & Risk",
+    demoRole: "inspector",
     color: "#065f46",
-    gets: ["Policy upload and AI gap analysis", "Expiration date tracking", "Coverage verification for lenders", "Flood, liability, casualty review", "Endorsement flag alerts"],
+    tagline: "Submit your certificate. Coverage verified automatically.",
+    gets: ["Upload policy docs directly into the deal room", "AI flags expiration dates and coverage gaps", "Endorsement and flood rider analysis", "Lender-visible verification — no email required", "Access via secure invite link — no account needed"],
   },
   {
     icon: "⚙️",
     role: "Servicers",
+    demoRole: "lender",
     color: "#92400e",
-    gets: ["Draw management workflows", "Borrower financial monitoring", "Escrow tracking per property", "Inspection scheduling", "Covenant breach alerts"],
+    tagline: "Monitor borrower compliance without chasing documents.",
+    gets: ["Draw management and escrow tracking per property", "Borrower financial monitoring with AI alerts", "Inspection scheduling and covenant breach flags", "Access via secure deal link — no account needed", "Real-time status updates across all parties"],
   },
 ];
 
@@ -111,11 +123,10 @@ const FREE_TOOLS = [
 ];
 
 const STATS = [
-  { value: "2 min",       label: "Average deal room setup" },
-  { value: "18 sec",      label: "Average AI review" },
-  { value: "Unlimited",   label: "Participants supported" },
-  { value: "Unlimited",   label: "Documents per deal" },
-  { value: "Included",    label: "90-day access" },
+  { value: "8 parties",  label: "All in one workspace" },
+  { value: "GPT-4o",     label: "Document analysis engine" },
+  { value: "5 pillars",  label: "Investment-Readiness checklist" },
+  { value: "Free",       label: "AI tools — no credit card" },
 ];
 
 function EmailCapture() {
@@ -203,8 +214,8 @@ export default function HomePage() {
               Create Your Deal Room — $499
             </Link>
             <Link to="/deal-room/kontra-demo"
-              className="px-7 py-3.5 rounded-xl text-sm font-semibold border border-white/30 text-white hover:bg-white/10 transition flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse shrink-0" />
+              className="flex items-center gap-2 px-7 py-3.5 rounded-xl text-sm font-semibold border border-white/20 text-white hover:bg-white/10 transition">
+              <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
               View Live Demo
             </Link>
           </div>
@@ -224,17 +235,11 @@ export default function HomePage() {
 
       {/* ── Stats ──────────────────────────────────────────────── */}
       <section className="border-b border-gray-100 bg-white">
-        <div className="max-w-5xl mx-auto px-6 py-10 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-px bg-gray-100 rounded-2xl overflow-hidden shadow-sm">
-          {STATS.map((s, i) => (
-            <div key={s.label}
-              className="flex flex-col items-center justify-center text-center bg-white px-5 py-6"
-              style={{ borderRadius: i === 0 ? "1rem 0 0 1rem" : i === STATS.length - 1 ? "0 1rem 1rem 0" : "0" }}>
-              <div className="text-3xl font-extrabold text-gray-900 tracking-tight leading-none">
-                {s.value}
-              </div>
-              <div className="text-[11px] font-medium text-gray-400 mt-2 leading-snug max-w-[90px]">
-                {s.label}
-              </div>
+        <div className="max-w-7xl mx-auto px-6 py-8 grid grid-cols-2 md:grid-cols-4 gap-6">
+          {STATS.map((s) => (
+            <div key={s.label} className="text-center">
+              <div className="text-2xl font-bold text-gray-900">{s.value}</div>
+              <div className="text-sm text-gray-500 mt-0.5">{s.label}</div>
             </div>
           ))}
         </div>
@@ -368,14 +373,14 @@ export default function HomePage() {
             <div key={p.role}
               className="max-w-2xl mx-auto bg-white rounded-2xl border-2 p-6 shadow-sm transition-all"
               style={{ borderColor: p.color + "40" }}>
-              <div className="flex items-center gap-3 mb-4">
+              <div className="flex items-center gap-3 mb-3">
                 <div className="w-12 h-12 rounded-xl flex items-center justify-center text-2xl"
                   style={{ background: p.color + "12" }}>
                   {p.icon}
                 </div>
                 <div>
                   <h3 className="font-bold text-gray-900">{p.role}</h3>
-                  <p className="text-xs text-gray-400">What you get in the deal room</p>
+                  <p className="text-xs text-gray-500 mt-0.5 leading-snug">{p.tagline}</p>
                 </div>
               </div>
               <ul className="space-y-2">
@@ -389,12 +394,14 @@ export default function HomePage() {
                   </li>
                 ))}
               </ul>
-              <div className="mt-5">
-                <Link to="/login"
+              <div className="mt-5 flex items-center gap-3">
+                <Link to={`/deal-room/kontra-demo?role=${p.demoRole}`}
                   className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold text-white transition hover:opacity-90"
                   style={{ background: p.color }}>
-                  Start as {p.role.split(" ")[0]} →
+                  <span className="w-1.5 h-1.5 rounded-full bg-white/70 animate-pulse" />
+                  See Demo →
                 </Link>
+                <span className="text-xs text-gray-400">No account needed</span>
               </div>
             </div>
           )
@@ -545,9 +552,9 @@ export default function HomePage() {
               style={{ background: "#800020" }}>
               Create Your Deal Room →
             </Link>
-            <Link to="/properties"
+            <Link to="/deal-room/kontra-demo"
               className="px-8 py-3.5 rounded-xl text-sm font-semibold border border-white/20 text-white hover:bg-white/10 transition">
-              See a Live Demo
+              See Live Demo
             </Link>
           </div>
           <p className="text-xs text-gray-600 mt-5">

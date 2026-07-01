@@ -3,11 +3,9 @@ import { Link, useLocation } from "react-router-dom";
 import { AuthContext } from "../../lib/authContext";
 
 const PUBLIC_NAV = [
-  { label: "How It Works", href: "/how-it-works" },
-  { label: "AI Tools",     href: "/ai-tools" },
-  { label: "Pricing",      href: "/pricing" },
-  { label: "About",        href: "/about" },
-  { label: "My Deal Rooms", href: "/my-deal-rooms" },
+  { label: "Pricing",   href: "/pricing" },
+  { label: "Live Demo", href: "/deal-room/kontra-demo" },
+  { label: "AI Tools",  href: "/ai-tools" },
 ];
 
 const APP_NAV = [
@@ -161,7 +159,7 @@ export default function PublicLayout({ children, hideFooter = false }) {
                   <Link to="/create-deal-room" onClick={() => setMenuOpen(false)}
                     className="block text-center px-4 py-2.5 rounded-lg text-sm font-semibold text-white"
                     style={{ background: "#800020" }}>
-                    Create Deal Room
+                    Get Started
                   </Link>
                 </>
               )}
