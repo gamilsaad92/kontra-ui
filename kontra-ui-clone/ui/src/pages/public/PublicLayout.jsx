@@ -189,17 +189,15 @@ export default function PublicLayout({ children, hideFooter = false }) {
                 </p>
               </div>
               {[
-                { title: "Deal Room", links: [
-                  { label: "How It Works", href: "/how-it-works" },
+                { title: "Product", links: [
+                  { label: "Live Demo", href: "/deal-room/kontra-demo" },
                   { label: "AI Tools", href: "/ai-tools" },
                   { label: "Pricing", href: "/pricing" },
-                  { label: "Service Providers", href: "/service-providers" },
+                  { label: "How It Works", href: "/how-it-works" },
                 ]},
-                { title: "Platform", links: [
-                  { label: "Dashboard", href: "/dashboard" },
-                  { label: "My Properties", href: "/app/properties" },
-                  { label: "Documents", href: "/app/documents" },
-                  { label: "Properties", href: "/properties" },
+                { title: "Owners", links: [
+                  { label: "My Deal Rooms", href: "/my-deal-rooms" },
+                  { label: "Create Deal Room", href: "/create-deal-room" },
                 ]},
                 { title: "Company", links: [
                   { label: "About", href: "/about" },
