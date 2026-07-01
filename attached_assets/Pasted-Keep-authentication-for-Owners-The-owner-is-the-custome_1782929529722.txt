@@ -1,0 +1,187 @@
+Keep authentication for Owners
+The owner is the customer.
+They're paying $499.
+
+They need:
+
+My Deal Rooms
+Billing portal
+Create new deal rooms
+Regenerate links
+Analytics
+Dashboard
+Those features require an identity.
+So I'd keep:
+
+Sign In
+
+↓
+
+My Deal Rooms
+
+↓
+
+Create Deal Room
+
+↓
+
+Manage Deals
+That makes sense.
+Keep invite links for everyone else
+Inspector
+Attorney
+
+Insurance broker
+
+Borrower
+
+Lender
+
+Investor
+
+Engineer
+
+Servicer
+
+should never need to create an account.
+
+Their experience should be
+
+Receive email
+
+↓
+
+Click link
+
+↓
+
+Upload
+
+↓
+
+Done
+That's one of Kontra's biggest competitive advantages.
+Don't lose it.
+
+I would simplify the UX
+You mentioned there are now two different layouts:
+Create Deal Room
+Sign In
+I'd actually merge them conceptually.
+For example:
+
+Homepage
+
+Open a Deal Room
+↓
+If not signed in
+
+Enter email
+
+↓
+
+One-time code
+
+↓
+
+Continue
+↓
+Dashboard
+
+↓
+
+Create Deal Room
+
+No separate "login page."
+
+No password.
+
+No account creation flow.
+
+Just email + OTP.
+
+That feels much lighter.
+
+Think about who your customer is
+There is only one customer.
+The owner.
+
+Everyone else is a participant.
+
+That's a very important distinction.
+
+Owner
+
+↓
+
+Creates room
+
+↓
+
+Invites
+
+↓
+
+Everyone joins through links
+That is much cleaner than requiring eight different user accounts.
+I would NOT build this
+Inspector Login
+
+Attorney Login
+
+Borrower Login
+
+Lender Login
+
+Investor Login
+Now you've built an enterprise identity platform.
+You don't need that.
+
+Think like DocuSign
+When someone sends you a document via DocuSign...
+Do you create an account?
+
+Usually not.
+
+You click the secure link.
+
+Sign.
+
+Done.
+
+That's why adoption is so high.
+
+Kontra should feel the same.
+
+Long term
+One day, yes.
+Large firms may want:
+
+SSO
+Azure AD
+Google Workspace
+Company accounts
+Team permissions
+Audit policies
+Those are enterprise features.
+Not launch features.
+
+My recommendation
+If I were designing Kontra today, it would look like this:
+User	Authentication
+Owner (payer)	✅ Email + OTP
+Inspector	❌ Secure invite link
+Attorney	❌ Secure invite link
+Insurance	❌ Secure invite link
+Borrower	❌ Secure invite link
+Lender	❌ Secure invite link
+Investor	❌ Secure invite link
+Engineer	❌ Secure invite link
+Servicer	❌ Secure invite link
+I would not remove owner authentication. The owner has ongoing resources to manage—deal rooms, billing, payments, and link revocation—so an identity is valuable there.
+For everyone else, I'd preserve the frictionless invite-link experience. In my view, that's one of Kontra's strongest product decisions because it minimizes barriers for occasional participants in a transaction while still giving the paying customer a secure, persistent workspace.
+
+
+
+
+
