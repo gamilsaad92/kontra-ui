@@ -101,9 +101,9 @@ export default function PublicLayout({ children, hideFooter = false }) {
               </>
             ) : (
               <>
-                <Link to="/login"
+                <Link to="/my-deal-rooms"
                   className="text-sm font-medium text-gray-600 hover:text-gray-900 px-4 py-2 rounded-lg hover:bg-gray-50 transition">
-                  Sign In
+                  My Deal Rooms
                 </Link>
                 <Link to="/create-deal-room"
                   className="text-sm font-semibold px-4 py-2 rounded-lg text-white transition hover:opacity-90"
@@ -153,11 +153,11 @@ export default function PublicLayout({ children, hideFooter = false }) {
                 </>
               ) : (
                 <>
-                  <Link to="/login" onClick={() => setMenuOpen(false)}
+                  <Link to="/my-deal-rooms" onClick={() => setMenuOpen(false)}
                     className="block text-center px-4 py-2.5 rounded-lg border border-gray-200 text-sm font-medium text-gray-700">
-                    Sign In
+                    My Deal Rooms
                   </Link>
-                  <Link to="/login" onClick={() => setMenuOpen(false)}
+                  <Link to="/create-deal-room" onClick={() => setMenuOpen(false)}
                     className="block text-center px-4 py-2.5 rounded-lg text-sm font-semibold text-white"
                     style={{ background: "#800020" }}>
                     Get Started
