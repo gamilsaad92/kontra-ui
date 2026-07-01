@@ -1537,13 +1537,13 @@ export default function DealRoomPage() {
             </div>
             <div className="bg-gray-50 px-8 py-5 flex flex-col sm:flex-row items-center justify-between gap-4 border-t border-gray-100">
               <div>
-                <p className="text-sm font-semibold text-gray-800">Already have access?</p>
-                <p className="text-xs text-gray-400">Sign in to view your full deal room</p>
+                <p className="text-sm font-semibold text-gray-800">Are you the owner of this deal room?</p>
+                <p className="text-xs text-gray-400">Access your dashboard to manage this room</p>
               </div>
-              <Link to={`/login?redirect=/deal-room/${propertyId}?role=${role}`}
+              <Link to="/my-deal-rooms"
                 className="px-5 py-2 rounded-xl text-sm font-semibold text-white transition hover:opacity-90"
                 style={{ background: roleConfig.color }}>
-                Sign In →
+                My Deal Rooms →
               </Link>
             </div>
           </div>

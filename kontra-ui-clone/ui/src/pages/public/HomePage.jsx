@@ -58,7 +58,7 @@ const PARTY_CARDS = [
     role: "Borrowers & Owners",
     demoRole: "owner",
     color: "#1e40af",
-    tagline: "One workspace. Every party. Your deal, fully organized.",
+    tagline: "One deal room. Every party. Your deal, fully organized.",
     gets: ["Upload documents — AI reviews them instantly", "Invite lender, inspector, insurer with one link", "Track deal progress and compliance in real time", "Revoke or regenerate participant access anytime", "Manage all your deal rooms from one dashboard"],
   },
   {
@@ -123,7 +123,7 @@ const FREE_TOOLS = [
 ];
 
 const STATS = [
-  { value: "8 parties",  label: "All in one workspace" },
+  { value: "8 parties",  label: "All in one deal room" },
   { value: "GPT-4o",     label: "Document analysis engine" },
   { value: "5 pillars",  label: "Investment-Readiness checklist" },
   { value: "Free",       label: "AI tools — no credit card" },
@@ -203,7 +203,7 @@ export default function HomePage() {
             works together.
           </h1>
           <p className="text-lg text-gray-400 max-w-2xl mx-auto mb-10 leading-relaxed">
-            Lenders, borrowers, inspectors, insurers, underwriters, engineers — one AI-powered workspace per property.
+            Lenders, borrowers, inspectors, insurers, underwriters, engineers — one AI-powered deal room per property.
             Structured data. No more email chains. Every deal closed faster.
           </p>
 
@@ -249,7 +249,7 @@ export default function HomePage() {
       <section id="how-it-works" className="max-w-7xl mx-auto px-6 py-20">
         <div className="text-center mb-12">
           <p className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: "#800020" }}>How it works</p>
-          <h2 className="text-3xl font-bold text-gray-900 mb-3">One deal. Every party. One workspace.</h2>
+          <h2 className="text-3xl font-bold text-gray-900 mb-3">One deal. Every party. One room.</h2>
           <p className="text-gray-500 text-sm max-w-xl mx-auto leading-relaxed">
             From first document upload to financing-ready — every step happens in one place, shared across all parties in real time.
           </p>
