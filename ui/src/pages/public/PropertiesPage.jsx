@@ -151,7 +151,7 @@ export default function PropertiesPage() {
                     </div>
                     <div className="absolute top-2 right-2">
                       <span className="px-2 py-0.5 rounded text-xs font-semibold"
-                        style={{ background: p.riskColor + "22", color: p.riskColor, backdropFilter: "blur(4px)", background: "rgba(255,255,255,0.85)" }}>
+                        style={{ color: p.riskColor, backdropFilter: "blur(4px)", background: "rgba(255,255,255,0.85)" }}>
                         {p.risk}
                       </span>
                     </div>
