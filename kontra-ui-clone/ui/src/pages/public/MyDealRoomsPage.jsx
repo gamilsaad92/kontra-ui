@@ -300,17 +300,17 @@ export default function MyDealRoomsPage() {
         <div className="text-center mb-10">
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-bold mb-5"
             style={{ background: "#fff0f3", color: "#800020" }}>
-            🏠 My Deal Rooms
+            🏠 Owner Dashboard
           </div>
-          <h1 className="text-3xl font-extrabold text-gray-900 mb-3">Sign in to your rooms</h1>
+          <h1 className="text-3xl font-extrabold text-gray-900 mb-3">Access My Deal Rooms</h1>
           <p className="text-gray-500 text-sm leading-relaxed">
-            Enter the email you used at checkout. We'll send a 6-digit code — no password needed.
+            Enter your email to access deal rooms you created. We'll send a 6-digit code — no password needed.
           </p>
         </div>
 
         <form onSubmit={requestOtp} className="space-y-3">
           <input type="email" value={email} onChange={e => setEmail(e.target.value)}
-            placeholder="you@example.com" required
+            placeholder="you@example.com" required autoFocus
             className="w-full px-4 py-3.5 rounded-xl border border-gray-200 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:border-transparent"
             style={{ "--tw-ring-color": "#800020" }} />
           {error && <p className="text-sm text-red-600">{error}</p>}
@@ -323,7 +323,7 @@ export default function MyDealRoomsPage() {
 
         <div className="mt-8 p-4 rounded-xl bg-gray-50 border border-gray-100 text-center">
           <p className="text-xs text-gray-400">
-            Don't have a deal room?{" "}
+            Don't have a deal room yet?{" "}
             <Link to="/create-deal-room" className="font-semibold underline" style={{ color: "#800020" }}>
               Create one for $499 →
             </Link>
