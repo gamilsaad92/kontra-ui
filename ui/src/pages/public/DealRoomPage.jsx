@@ -1402,7 +1402,7 @@ export default function DealRoomPage() {
 
         {/* Legal disclaimer */}
         <div className="text-center pt-2 pb-6 px-4">
-          <p className="text-[10px] text-gray-400 max-w-2xl mx-auto leading-relaxed">
+          <p className="text-xs text-gray-400 max-w-2xl mx-auto leading-relaxed" aria-label="legal-disclaimer">
             AI-assisted analyses are for informational purposes only and do not constitute legal, financial, or investment advice. All document reviews should be independently verified by qualified professionals before relying on them for any decision. Kontra is a document infrastructure platform and is not a licensed financial, legal, or real estate advisor.
           </p>
         </div>
