@@ -13,6 +13,7 @@ const DEAL_TYPES = [
   { id: "acquisition", label: "Acquisition", desc: "Buying a property" },
   { id: "refinance", label: "Refinance", desc: "Replacing existing debt" },
   { id: "construction", label: "Construction / Value-Add", desc: "Development or major renovation" },
+  { id: "flag_conversion", label: "Flag Conversion", desc: "Switching hotel brand / franchise" },
   { id: "sale", label: "Sale", desc: "Listing for sale with diligence room" },
 ];
 
@@ -69,11 +70,11 @@ export default function CreateDealRoomPage() {
     };
   };
 
-  const handleLaunch = async () => {
+  const handleLaunch = async (demo = false) => {
     setLoading(true);
     setError("");
     try {
-      const endpoint = `${API_BASE}/api/checkout/guest`;
+      const endpoint = demo ? `${API_BASE}/api/checkout/demo` : `${API_BASE}/api/checkout/guest`;
       const res = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -320,8 +321,9 @@ export default function CreateDealRoomPage() {
                 Continue →
               </button>
             ) : (
-              <button onClick={() => handleLaunch()} disabled={loading}
-                  className="flex-1 py-3 rounded-xl text-sm font-bold text-white transition disabled:opacity-40 disabled:cursor-not-allowed hover:opacity-90"
+              <div className="flex-1 flex flex-col gap-2">
+                <button onClick={() => handleLaunch(false)} disabled={loading}
+                  className="w-full py-3 rounded-xl text-sm font-bold text-white transition disabled:opacity-70 hover:opacity-90 flex items-center justify-center gap-2"
                   style={{ background: "#800020" }}>
                   {loading ? (
                     <><svg className="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg> Launching…</>
@@ -329,7 +331,12 @@ export default function CreateDealRoomPage() {
                     <>🔐 Pay $499 & Launch Deal Room</>
                   )}
                 </button>
-              )}
+                <button onClick={() => handleLaunch(true)} disabled={loading}
+                  className="w-full py-2.5 rounded-xl text-sm font-semibold text-gray-600 border border-gray-200 bg-white hover:bg-gray-50 transition disabled:opacity-50 flex items-center justify-center gap-2">
+                  🧪 Try Demo (skip payment)
+                </button>
+              </div>
+            )}
           </div>
 
           <p className="text-center text-xs text-gray-400 mt-4">

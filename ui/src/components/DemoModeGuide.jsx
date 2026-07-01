@@ -190,25 +190,9 @@ export default function DemoModeGuide() {
   const current = STEPS[step] ?? STEPS[0];
   const pct     = ((step + 1) / STEPS.length) * 100;
 
-  /* ── Inactive — floating "Demo" pill ─────────────────────────── */
+  /* ── Inactive — hidden ────────────────────────────────────────── */
   if (!active) {
-    return (
-      <button
-        onClick={start}
-        className="fixed bottom-6 right-6 z-50 flex items-center gap-2.5 rounded-full px-5 py-3 text-sm font-bold shadow-xl transition-all hover:scale-105 hover:shadow-2xl"
-        style={{
-          background: "linear-gradient(135deg, #800020, #6d28d9)",
-          color: "#fff",
-          letterSpacing: "-0.01em",
-          boxShadow: "0 4px 24px rgba(128,0,32,0.4), 0 2px 8px rgba(0,0,0,0.5)",
-        }}
-      >
-        <svg viewBox="0 0 24 24" fill="currentColor" className="h-4 w-4">
-          <path d="M8 5.14v14l11-7-11-7z" />
-        </svg>
-        Start Platform Tour
-      </button>
-    );
+    return null;
   }
 
   /* ── Active — minimized pill ──────────────────────────────────── */

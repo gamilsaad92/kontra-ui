@@ -42,7 +42,7 @@ const MORE_TOOLS = [
     icon: "🔨", title: "Deferred Maintenance Tracker", category: "Inspections",
     desc: "Combine multiple inspection reports into a single prioritized maintenance plan with cost estimates and remediation timelines.",
     output: ["Open Items: 7 (3 Critical, 2 Moderate, 2 Minor)", "Total Estimated Cost: $287,000", "Highest Priority: Boiler replacement — life safety risk"],
-    uploadLabel: "Upload Inspection Reports",
+    uploadLabel: "Upload Inspection Reports (PDF, Excel)",
   },
   {
     icon: "✅", title: "Compliance Checklist Generator", category: "Compliance",
