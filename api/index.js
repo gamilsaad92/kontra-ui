@@ -1114,11 +1114,11 @@ app.post('/api/public/my-rooms/request-otp', async (req, res) => {
   const code = String(Math.floor(100000 + Math.random() * 900000));
   otpStore.set(email, { code, expiresAt: Date.now() + 10 * 60 * 1000 });
   try {
-    await fetch('https://api.resend.com/emails', {
+    const sendRes = await fetch('https://api.resend.com/emails', {
       method: 'POST',
       headers: { Authorization: `Bearer ${RESEND_KEY}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        from: 'Kontra <notifications@kontraplatform.com>',
+        from: 'Kontra <onboarding@resend.dev>',
         to: email,
         subject: `Your Kontra access code: ${code}`,
         html: `<div style="font-family:sans-serif;max-width:480px;margin:auto;padding:32px 24px">
@@ -1134,6 +1134,11 @@ app.post('/api/public/my-rooms/request-otp', async (req, res) => {
         </div>`,
       }),
     });
+    const sendData = await sendRes.json();
+    if (!sendRes.ok) {
+      console.error('[request-otp] Resend error:', JSON.stringify(sendData));
+      return res.status(500).json({ error: `Email delivery failed: ${sendData?.message || sendData?.name || 'unknown error'}` });
+    }
     res.json({ ok: true });
   } catch (err) {
     console.error('[request-otp]', err.message);
