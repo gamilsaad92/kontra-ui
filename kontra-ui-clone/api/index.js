@@ -1118,7 +1118,7 @@ app.post('/api/public/my-rooms/request-otp', async (req, res) => {
       method: 'POST',
       headers: { Authorization: `Bearer ${RESEND_KEY}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        from: 'Kontra <onboarding@resend.dev>',
+        from: 'Kontra <notifications@kontraplatform.com>',
         to: email,
         subject: `Your Kontra access code: ${code}`,
         html: `<div style="font-family:sans-serif;max-width:480px;margin:auto;padding:32px 24px">
@@ -1526,7 +1526,7 @@ app.post('/api/public/deal-room/:propertyId/invite', async (req, res) => {
     const roleAction = ROLE_ACTIONS[role] || 'access the deal room';
     const inviteUrl = `https://kontraplatform.com/deal-room/${propertyId}?role=${role}`;
     await sendResendEmail(RESEND_KEY, {
-      from: 'Kontra <onboarding@resend.dev>',
+      from: 'Kontra <notifications@kontraplatform.com>',
       to: email,
       subject: `You've been invited to a deal room — ${propName}`,
       html: `<div style="font-family:sans-serif;max-width:560px;margin:auto;padding:32px 24px">
@@ -1661,7 +1661,7 @@ async function notifyPartySubmitted(propertyId, role, name) {
       method: 'POST',
       headers: { Authorization: `Bearer ${RESEND_KEY}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        from: 'Kontra <onboarding@resend.dev>',
+        from: 'Kontra <notifications@kontraplatform.com>',
         to: room.customer_email,
         subject: `${submitterName} submitted their documents — ${propName}`,
         html: `<div style="font-family:sans-serif;max-width:520px;margin:auto;padding:24px">
@@ -1734,7 +1734,7 @@ async function notifyLender(propertyId, uploaderRole, section, summary) {
       method: 'POST',
       headers: { Authorization: `Bearer ${RESEND_KEY}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        from: 'Kontra <onboarding@resend.dev>',
+        from: 'Kontra <notifications@kontraplatform.com>',
         to: lenderRes.data.email,
         subject: `New document ready for review: ${SECTION_LABELS[section] || section} — ${propName}`,
         html: `<div style="font-family:sans-serif;max-width:520px;margin:auto;padding:24px"><h2 style="color:#800020;margin-bottom:4px">Document ready for review</h2><p style="color:#555">Hi ${lenderRes.data.name || 'there'},</p><p style="color:#555">The <strong>${ROLE_LABELS[uploaderRole] || uploaderRole}</strong> uploaded a <strong>${SECTION_LABELS[section] || section}</strong> to <strong>${propName}</strong>. AI has analyzed it and it is ready for your review.</p>${summary ? `<p style="background:#f9fafb;border-radius:8px;padding:12px;color:#374151;font-size:14px">${summary}</p>` : ''}<a href="https://kontraplatform.com/deal-room/${propertyId}?role=lender" style="display:inline-block;margin-top:16px;padding:12px 20px;background:#800020;color:white;border-radius:8px;text-decoration:none;font-weight:bold">Review Deal Room →</a><p style="color:#aaa;font-size:12px;margin-top:24px">Kontra · CRE Deal Intelligence</p></div>`,
@@ -1785,7 +1785,7 @@ async function notifyStageAdvance(propertyId, stage) {
         method: 'POST',
         headers: { Authorization: `Bearer ${RESEND_KEY}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          from: 'Kontra <onboarding@resend.dev>',
+          from: 'Kontra <notifications@kontraplatform.com>',
           to,
           subject: `Deal advanced to ${stageLabel} — ${propName}`,
           html: makeHtml(name, role),
@@ -1816,7 +1816,7 @@ async function notifyStatusChange(propertyId, subRole, status, statusNote, updat
       method: 'POST',
       headers: { Authorization: `Bearer ${RESEND_KEY}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        from: 'Kontra <onboarding@resend.dev>',
+        from: 'Kontra <notifications@kontraplatform.com>',
         to: room.customer_email,
         subject: `${partyLabel} submission: ${statusLabel} — ${propName}`,
         html: `<div style="font-family:sans-serif;max-width:520px;margin:auto;padding:24px">
@@ -1918,7 +1918,7 @@ async function notifyOwner(propertyId, section, summary) {
       method: 'POST',
       headers: { Authorization: `Bearer ${RESEND_KEY}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        from: 'Kontra <onboarding@resend.dev>',
+        from: 'Kontra <notifications@kontraplatform.com>',
         to: room.customer_email,
         subject: `New document uploaded: ${sectionLabel} — ${propName}`,
         html: `<div style="font-family:sans-serif;max-width:520px;margin:auto;padding:24px">
