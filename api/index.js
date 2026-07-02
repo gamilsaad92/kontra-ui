@@ -1363,6 +1363,64 @@ app.get('/api/public/deal-room/:propertyId/analyses', async (req, res) => {
 });
 
 // ── Lightweight document tracking — no AI, just records upload in deal_analyses ─
+// ── AI prompts for lightweight sections ──────────────────────────────────────
+const LIGHTWEIGHT_AI_PROMPTS = {
+  purchase_agreement: {
+    system: 'You are a CRE transaction analyst. Extract key terms from purchase agreements and PSAs. Return JSON only.',
+    user: (text) => `Analyze this commercial real estate purchase agreement and return JSON:
+{"documentType":string,"purchasePrice":string|null,"closingDate":string|null,"daysToClose":number|null,"earnestMoney":string|null,"dueDiligencePeriod":string|null,"contingencies":[string],"keyParties":[{"role":string,"name":string}],"redFlags":[{"issue":string,"severity":"Critical"|"Moderate"|"Minor"}],"summary":string,"confidence":number}
+
+confidence is 0-100. Only populate fields explicitly present in the document.
+
+Purchase agreement text:\n${text}`,
+  },
+  rent_roll: {
+    system: 'You are a CRE financial analyst. Extract occupancy and rent data from rent rolls. Return JSON only.',
+    user: (text) => `Analyze this commercial real estate rent roll and return JSON:
+{"totalUnits":number|null,"occupiedUnits":number|null,"vacantUnits":number|null,"occupancyRate":string|null,"totalMonthlyRent":string|null,"averageRentPerUnit":string|null,"belowMarketUnits":number|null,"expiringLeases":[{"units":number,"expiryPeriod":string}],"anomalies":[{"item":string,"description":string,"severity":"High"|"Medium"|"Low"}],"covenantStatus":"Compliant"|"At Risk"|"Breached"|"Unknown","summary":string,"confidence":number}
+
+confidence is 0-100. Only populate fields explicitly present.
+
+Rent roll:\n${text}`,
+  },
+  title: {
+    system: 'You are a CRE title officer. Review title commitments and identify Schedule B exceptions and issues. Return JSON only.',
+    user: (text) => `Analyze this title commitment and return JSON:
+{"titleCompany":string|null,"effectiveDate":string|null,"scheduleBExceptions":[{"item":string,"description":string,"severity":"Critical"|"Moderate"|"Minor"}],"encumbrances":[string],"liens":[string],"easements":[string],"redFlags":[{"issue":string,"severity":"Critical"|"Moderate"|"Minor"}],"clearToClose":boolean|null,"summary":string,"confidence":number}
+
+confidence is 0-100. Schedule B exceptions are critical — list each one with its severity.
+
+Title commitment:\n${text}`,
+  },
+  environmental: {
+    system: 'You are a CRE environmental consultant. Review Phase I/II ESA reports and identify RECs and contamination issues. Return JSON only.',
+    user: (text) => `Analyze this environmental report and return JSON:
+{"reportType":string,"assessmentDate":string|null,"consultant":string|null,"recognizedEnvironmentalConditions":[{"item":string,"severity":"Critical"|"Moderate"|"Minor","description":string}],"historicalUses":[string],"recommendations":[string],"furtherActionRequired":boolean,"summary":string,"confidence":number}
+
+confidence is 0-100. RECs (Recognized Environmental Conditions) are the most important finding.
+
+Environmental report:\n${text}`,
+  },
+  survey: {
+    system: 'You are a CRE surveyor. Review ALTA and boundary surveys for encroachments, easements, and issues. Return JSON only.',
+    user: (text) => `Analyze this survey and return JSON:
+{"surveyType":string,"surveyDate":string|null,"surveyor":string|null,"lotSize":string|null,"encroachments":[string],"easements":[string],"zoning":string|null,"redFlags":[{"issue":string,"severity":"Critical"|"Moderate"|"Minor"}],"summary":string,"confidence":number}
+
+confidence is 0-100.
+
+Survey text:\n${text}`,
+  },
+  estoppel: {
+    system: 'You are a CRE lease analyst. Review estoppel certificates to verify lease terms and tenant representations. Return JSON only.',
+    user: (text) => `Analyze this estoppel certificate and return JSON:
+{"tenantName":string|null,"leaseStartDate":string|null,"leaseEndDate":string|null,"monthlyRent":string|null,"securityDeposit":string|null,"renewalOptions":[string],"disputes":boolean|null,"landlordDefaultsClaimed":boolean|null,"redFlags":[{"issue":string,"severity":"Critical"|"Moderate"|"Minor"}],"summary":string,"confidence":number}
+
+confidence is 0-100.
+
+Estoppel certificate:\n${text}`,
+  },
+};
+
 app.post('/api/public/deal-room/:propertyId/track-document', upload.single('file'), async (req, res) => {
   const { propertyId } = req.params;
   const { section, role } = req.body || {};
@@ -1384,25 +1442,68 @@ app.post('/api/public/deal-room/:propertyId/track-document', upload.single('file
     survey: 'Survey / ALTA',
     title: 'Title Commitment',
   };
+
   try {
-    let storagePath = null;
-    if (req.file) {
-      storagePath = await uploadToStorage(req.file.buffer, req.file.mimetype, propertyId, section, filename).catch(() => null);
-    }
-    const { error } = await supabase.from('deal_analyses').insert({
-      property_id: propertyId,
-      section,
-      filename,
-      analysis: { summary: `${SECTION_LABELS[section] || section} uploaded and recorded.`, documentType: SECTION_LABELS[section], confidence: 100 },
-      uploaded_by_role: role || 'owner',
-      storage_path: storagePath,
-      document_hash: req.file ? crypto.createHash('sha256').update(req.file.buffer).digest('hex') : null,
-    });
-    if (error) throw error;
+    const buf = req.file?.buffer;
+    const mime = req.file?.mimetype;
+    const hash = buf ? crypto.createHash('sha256').update(buf).digest('hex') : null;
+
+    // Respond immediately — AI runs in background
+    const pendingAnalysis = { summary: `${SECTION_LABELS[section]} uploaded — AI analysis in progress…`, documentType: SECTION_LABELS[section], confidence: 0, pending: true };
+    const [storagePath, insertRes] = await Promise.all([
+      buf ? uploadToStorage(buf, mime, propertyId, section, filename).catch(() => null) : Promise.resolve(null),
+      supabase.from('deal_analyses').insert({
+        property_id: propertyId, section, filename,
+        analysis: pendingAnalysis,
+        uploaded_by_role: role || 'owner',
+        document_hash: hash,
+      }).select('id').single(),
+    ]);
+    if (insertRes.error) throw insertRes.error;
+    const recordId = insertRes.data?.id;
+
     logEvent(propertyId, 'document_uploaded', role || 'owner', null, `${SECTION_LABELS[section]} uploaded`, { section, filename }).catch(() => {});
-    notifyOwner(propertyId, section, `${SECTION_LABELS[section] || section} has been uploaded.`).catch(() => {});
-    console.log(`[track-document] ${section} recorded for ${propertyId}`);
-    res.json({ ok: true, section, filename });
+    res.json({ ok: true, section, filename, pending: true });
+
+    // Background AI analysis
+    if (buf && LIGHTWEIGHT_AI_PROMPTS[section]) {
+      (async () => {
+        try {
+          const text = await extractTextFromFile(buf, mime, filename);
+          if (!text || text.trim().length < 30) throw new Error('insufficient text');
+          const prompt = LIGHTWEIGHT_AI_PROMPTS[section];
+          const completion = await openai.chat.completions.create({
+            model: 'gpt-4o-mini',
+            messages: [
+              { role: 'system', content: prompt.system },
+              { role: 'user', content: prompt.user(text) },
+            ],
+            response_format: { type: 'json_object' },
+            temperature: 0.3,
+          });
+          const result = JSON.parse(completion.choices[0].message.content);
+          // Update the record with real analysis
+          if (recordId) {
+            await supabase.from('deal_analyses').update({
+              analysis: result,
+              storage_path: storagePath,
+            }).eq('id', recordId);
+          }
+          notifyOwner(propertyId, section, result.summary).catch(() => {});
+          logEvent(propertyId, 'document_analyzed', role || 'owner', null, `${SECTION_LABELS[section]} analyzed by AI`, { section, filename }).catch(() => {});
+          console.log(`[track-document] AI analysis complete for ${section} — confidence ${result.confidence}`);
+        } catch (aiErr) {
+          console.warn(`[track-document] AI analysis failed for ${section}:`, aiErr.message);
+          // Update with a graceful fallback (not pending anymore)
+          if (recordId) {
+            await supabase.from('deal_analyses').update({
+              analysis: { summary: `${SECTION_LABELS[section]} uploaded and recorded. AI analysis unavailable.`, documentType: SECTION_LABELS[section], confidence: 0, storage_path: storagePath },
+              storage_path: storagePath,
+            }).eq('id', recordId).catch(() => {});
+          }
+        }
+      })();
+    }
   } catch (err) {
     console.error('[track-document]', err.message);
     res.status(500).json({ error: err.message });
