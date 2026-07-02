@@ -1528,7 +1528,9 @@ app.post('/api/public/deal-room/:propertyId/invite', async (req, res) => {
     await sendResendEmail(RESEND_KEY, {
       from: 'Kontra <notifications@kontraplatform.com>',
       to: email,
+      reply_to: 'support@kontraplatform.com',
       subject: `You've been invited to a deal room — ${propName}`,
+      text: `You've been invited to a deal room on Kontra\n\n${fromName} has added you as ${roleLabel} to their deal room for ${propName}.\n\nYour role: ${roleAction}. No account required.\n\nOpen your deal room:\n${inviteUrl}\n\n---\nKontra is CRE deal room infrastructure. All parties upload documents, AI analyzes them instantly, and the deal coordinator sees everything in one place.\n\nYou received this because ${fromName} added your email to this deal room. If this is a mistake, you can safely ignore it.`,
       html: `<div style="font-family:sans-serif;max-width:560px;margin:auto;padding:32px 24px">
         <div style="margin-bottom:24px">
           <span style="display:inline-block;background:#800020;color:white;font-weight:800;font-size:15px;padding:6px 14px;border-radius:8px;letter-spacing:0.5px">Kontra</span>
