@@ -1,0 +1,105 @@
+Here's what I would change
+I wouldn't make the default checklist longer.
+That's the mistake most enterprise software makes.
+
+Instead...
+
+Templates
+When the owner creates the room, ask:
+Transaction Type
+Acquisition
+Refinance
+Construction
+Loan Assumption
+Asset Sale
+Then ask:
+Property Type
+Multifamily
+Office
+Retail
+Industrial
+Hotel
+Self Storage
+Mixed Use
+Now Kontra builds the checklist automatically.
+Example:
+
+Multifamily Acquisition
+Current checklist is almost perfect.
+Hotel Acquisition
+Automatically adds:
+Franchise Agreement
+PIP
+STR Report
+Brand Standards
+Management Agreement
+Refinance
+Adds:
+Existing Note
+Existing Mortgage
+Current Insurance
+Current Financials
+Reserve Statements
+Construction
+Adds:
+Plans
+Permits
+Contractor Agreement
+Draw Schedule
+Budget
+This becomes a competitive advantage
+Instead of asking
+"What documents do I need?"
+
+Kontra says
+
+Here's your lender-ready checklist based on your transaction.
+That's valuable.
+One thing I'd add
+Every checklist item should have
+Required
+
+or
+
+Optional
+
+And maybe even
+
+Typically requested
+
+For example:
+
+Phase I Environmental
+
+Required
+
+Why?
+
+Most institutional lenders require a current Phase I ESA before closing.
+That helps less experienced borrowers.
+My recommendation
+I would not chase every lender's checklist.
+Instead, I'd aim for:
+
+A strong default checklist that covers the majority of standard commercial real estate transactions.
+Transaction- and property-specific templates that add or remove items as appropriate.
+The ability for the owner or lender to add custom checklist items when needed.
+That approach is more scalable than trying to encode every lender's individual process.
+One feature I think would make Kontra exceptional
+This fits your AI strategy perfectly.
+Imagine the checklist showing not just uploads, but AI validation:
+
+☑ Rent Roll — Uploaded
+✓ AI validated
+
+☑ Insurance Certificate — Uploaded
+⚠ Expires in 18 days
+
+☑ Title Commitment — Uploaded
+⚠ Schedule B exceptions require review
+
+☑ T-12 Financials — Uploaded
+✓ NOI extracted successfully
+
+☐ Phase I ESA — Missing
+At that point, the checklist becomes more than a document tracker—it becomes an intelligent due diligence assistant that tells users not only what's present, but whether it appears complete and whether there are issues that may need attention. That's the kind of feature I'd prioritize over simply adding more document types.
