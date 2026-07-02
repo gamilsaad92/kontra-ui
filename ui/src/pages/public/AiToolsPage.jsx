@@ -503,7 +503,7 @@ export default function AiToolsPage() {
                         </div>
                       ))}
                     </div>
-                    <Link to="/login"
+                    <Link to="/create-deal-room"
                       className="flex items-center justify-center gap-2 w-full px-4 py-2.5 rounded-xl text-sm font-semibold bg-gray-100 text-gray-700 hover:bg-gray-200 transition">
                       {tool.uploadLabel} →
                     </Link>
@@ -522,7 +522,7 @@ export default function AiToolsPage() {
                 <div className="text-3xl mb-3">{tool.icon}</div>
                 <h3 className="text-sm font-bold text-gray-900 mb-1">{tool.title}</h3>
                 <p className="text-sm text-gray-500 mb-4 leading-relaxed">{tool.desc}</p>
-                <Link to="/login"
+                <Link to="/create-deal-room"
                   className="flex items-center justify-center gap-2 w-full px-4 py-2.5 rounded-xl text-sm font-semibold bg-gray-100 text-gray-700 hover:bg-gray-200 transition">
                   {tool.uploadLabel} →
                 </Link>
@@ -533,19 +533,19 @@ export default function AiToolsPage() {
 
         {/* Bottom CTA */}
         <div className="mt-14 rounded-2xl text-white px-8 py-12 text-center" style={{ background: "#800020" }}>
-          <h2 className="text-xl font-bold mb-2">Ready to run AI on your properties?</h2>
+          <h2 className="text-xl font-bold mb-2">Ready to run AI on your deal?</h2>
           <p className="text-red-200 text-sm mb-6 max-w-md mx-auto leading-relaxed">
-            Start with the free tools. When you're ready, create a free account and connect tools to your property workspace — inspections, documents, compliance, all in one place.
+            These tools are included in every deal room. Create your room, upload documents, and AI reviews them instantly — no account required for invited parties.
           </p>
           <div className="flex flex-col sm:flex-row gap-3 justify-center">
-            <Link to="/login"
+            <Link to="/create-deal-room"
               className="px-6 py-3 rounded-xl bg-white text-sm font-semibold transition hover:bg-gray-100"
               style={{ color: "#800020" }}>
-              Create Free Account
+              Create Your Deal Room — $499
             </Link>
-            <Link to="/properties"
+            <Link to="/deal-room/kontra-demo"
               className="px-6 py-3 rounded-xl border border-red-300/50 bg-white/10 text-sm font-semibold text-white hover:bg-white/20 transition">
-              Explore Properties
+              View Live Demo
             </Link>
           </div>
         </div>

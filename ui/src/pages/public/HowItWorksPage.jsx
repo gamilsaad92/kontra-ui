@@ -270,10 +270,10 @@ export default function HowItWorksPage() {
                   </div>
                 </div>
                 <div className="mt-6 pt-5 border-t border-gray-100">
-                  <Link to="/login"
+                  <Link to="/deal-room/kontra-demo"
                     className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold text-white transition hover:opacity-90"
                     style={{ background: p.color }}>
-                    Join as {p.role} →
+                    See {p.role} view →
                   </Link>
                 </div>
               </div>
@@ -287,10 +287,10 @@ export default function HowItWorksPage() {
         <div className="max-w-2xl mx-auto px-6 text-center">
           <h2 className="text-3xl font-bold text-white mb-4">Ready to run your first deal?</h2>
           <p className="text-gray-400 text-sm mb-8 leading-relaxed">
-            Create a deal room free. Invite your lender, inspector, and insurer. See everyone working from the same data.
+            Create a deal room for $499. Invite your lender, inspector, and insurer. See everyone working from the same data — no accounts needed for any party.
           </p>
           <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
-            <Link to="/login"
+            <Link to="/create-deal-room"
               className="px-8 py-3.5 rounded-xl text-sm font-semibold text-white transition hover:opacity-90"
               style={{ background: "#800020" }}>
               Create Your Deal Room →
