@@ -1,0 +1,155 @@
+Things I'd improve
+None of these are blockers.
+They're refinements.
+1. The very top
+This is my biggest suggestion.
+The first thing I see is
+Waiting for documents
+0%
+That feels negative.
+I'd rather see
+Harbour Apartments
+
+Acquisition
+
+$8.5M
+
+Uploading
+
+0 of 9 documents received
+
+4 parties invited
+Lead with the deal.
+Not the missing documents.
+2. Risk score
+This one stood out.
+You currently show
+30/100
+
+High Risk
+before anything has been uploaded.
+That feels wrong.
+The system doesn't know anything yet.
+I'd change it to
+Risk Assessment
+
+Pending
+
+Upload financials and inspection to generate score.
+Only calculate risk after enough data exists.
+Otherwise users may think the property is actually risky.
+3. AI panels
+You have
+Financial
+Compliance
+Risk
+Document Package
+They're all empty.
+Instead I'd collapse them until documents exist.
+Empty sections create visual noise.
+4. Property photo
+Nice touch.
+Eventually it'd be amazing if AI automatically pulled a Google Street View or uploaded cover image.
+Not needed today.
+5. Welcome section
+I would shorten it.
+Current:
+Welcome to your deal room...
+I'd simply say
+Next Steps
+
+1. Invite parties
+
+2. Upload documents
+
+3. Track approvals
+People scan.
+6. Invite section
+I'd move this higher.
+Personally I'd reorder the page:
+Property
+
+↓
+
+Checklist
+
+↓
+
+Invite Parties
+
+↓
+
+Uploads
+
+↓
+
+AI
+
+↓
+
+Timeline
+Because inviting people is usually one of the first actions after creating the room.
+My biggest suggestion
+This isn't UI.
+It's product.
+I think you're trying to show everything immediately.
+I'd actually progressively reveal the interface.
+Example:
+Brand new room:
+Show only
+Checklist
+Invite parties
+Uploads
+Once financials uploaded...
+Reveal
+Financial Overview
+Once inspection uploaded...
+Reveal
+Condition Analysis
+Once insurance uploaded...
+Reveal
+Compliance
+The product feels like it's growing with the transaction.
+That's a very polished experience.
+What surprised me
+The workflow.
+It's coherent.
+Someone can actually understand:
+Create room
+↓
+Invite lender
+↓
+Invite inspector
+↓
+Upload docs
+↓
+AI reviews
+↓
+Signal ready
+↓
+Close
+That's hard to design well.
+One tiny UI thing
+The top navigation stays visible inside the deal room:
+Pricing
+
+Demo
+
+AI Tools
+
+My Deal Rooms
+
+Create Deal Room
+Personally...
+I'd remove almost all of that inside a live deal room.
+I'd rather see
+← My Deal Rooms
+
+Harbour Apartments
+
+Share
+
+Settings
+The owner is working.
+Don't tempt them back to marketing pages.
+That's common in products like Linear, Notion, and Stripe—they separate the marketing site from the application.
