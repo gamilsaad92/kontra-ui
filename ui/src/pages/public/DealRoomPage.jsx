@@ -1066,7 +1066,7 @@ function DealIntelligenceDashboard({ propertyId, refreshKey }) {
         <div>
           <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">Deal Intelligence</p>
           <p className="text-base font-bold text-gray-900 mt-0.5">
-            {doneCount === 0 ? "Waiting for documents" : `${doneCount}/3 sections analyzed`}
+            {doneCount === 0 ? "Upload documents to begin AI analysis" : `${doneCount}/3 sections analyzed`}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -1342,8 +1342,14 @@ export default function DealRoomPage() {
         property:   () => <PropertyPanel property={property} />,
       };
 
+  const pid = propertyId || property.property_id || property.id;
+
   return (
-    <PublicLayout hideFooter>
+    <PublicLayout
+      hideFooter
+      dealRoomMode={!!(property.isCustom && !isDemo)}
+      dealRoomTitle={property.name || property.property_name || ""}
+    >
       {/* Top bar — demo banner | owner bar | invite bar */}
       {isDemo ? (
         <div className="border-b border-indigo-100 px-6 py-3" style={{ background: "linear-gradient(90deg, #1e1b4b 0%, #312e81 100%)" }}>
@@ -1437,67 +1443,92 @@ export default function DealRoomPage() {
           </div>
         </div>
 
-        {/* Deal Intelligence Dashboard — custom rooms: live AI analysis aggregated */}
-        {property.isCustom && (
-          <DealIntelligenceDashboard
-            propertyId={propertyId || property.property_id || property.id}
-            refreshKey={analysesRefreshKey}
-          />
+        {/* Investment Readiness summary bar — demo rooms only */}
+        {!property.isCustom && (
+          <ReadinessSummaryBar property={property} />
         )}
 
-        {/* Deal Health Score + Action Items — custom rooms only */}
-        {property.isCustom && (
-          <DealHealthPanel
-            propertyId={propertyId || property.property_id || property.id}
-          />
-        )}
+        {/* Role headline — owner gets concise Next Steps; others get role description */}
+        <div className="bg-white rounded-2xl border border-gray-200 p-5 mb-6"
+          style={{ borderLeftWidth: 4, borderLeftColor: roleConfig.color }}>
+          {property.isCustom && role === "owner" ? (
+            <>
+              <h2 className="text-base font-bold text-gray-900 mb-3">Next Steps</h2>
+              <ol className="space-y-2.5">
+                {[
+                  "Invite parties — send role-specific links to your lender, inspector, insurer, and attorney",
+                  "Upload documents — AI reviews each file as it arrives and surfaces key findings",
+                  "Track approvals — monitor compliance, deal stage, and party status in real time",
+                ].map((text, i) => (
+                  <li key={i} className="flex items-start gap-2.5 text-sm text-gray-600">
+                    <span className="shrink-0 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold text-white mt-0.5"
+                      style={{ background: roleConfig.color }}>{i + 1}</span>
+                    {text}
+                  </li>
+                ))}
+              </ol>
+            </>
+          ) : (
+            <>
+              <h2 className="text-base font-bold text-gray-900 mb-1">{roleConfig.headline}</h2>
+              <p className="text-sm text-gray-500 leading-relaxed">{roleConfig.subtext}</p>
+            </>
+          )}
+        </div>
 
-        {/* Due Diligence Checklist — property-type-aware, with AI completeness issues */}
+        {/* Due Diligence Checklist */}
         {property.isCustom && (
           <DocumentChecklistPanel
-            propertyId={propertyId || property.property_id || property.id}
+            propertyId={pid}
             propertyType={property.property_type || property.type}
             role={role}
             isDemo={isDemo}
           />
         )}
 
-        {/* Deal Coordination Panel — party status + lifecycle stage (custom rooms only) */}
-        {property.isCustom && (
-          <DealCoordinationPanel
-            propertyId={propertyId || property.property_id || property.id}
-            role={role}
+        {/* Invite panel — early in the flow so owner invites first */}
+        {property.isCustom && !isDemo && (
+          <InvitePanel
+            propertyId={pid}
+            senderName={property.first_name || property.property_name || undefined}
           />
         )}
 
-        {/* Activity Timeline — live event log (custom rooms only) */}
-        {property.isCustom && (
-          <div className="mb-6">
-            <ActivityTimeline
-              propertyId={propertyId || property.property_id || property.id}
-            />
-          </div>
-        )}
-
-        {/* Investment Readiness summary bar — demo rooms only */}
-        {!property.isCustom && (
-          <ReadinessSummaryBar property={property} />
-        )}
-
-        {/* Role headline */}
-        <div className="bg-white rounded-2xl border border-gray-200 p-5 mb-6"
-          style={{ borderLeftWidth: 4, borderLeftColor: roleConfig.color }}>
-          <h2 className="text-base font-bold text-gray-900 mb-1">{roleConfig.headline}</h2>
-          <p className="text-sm text-gray-500 leading-relaxed">{roleConfig.subtext}</p>
-        </div>
-
-        {/* Role-scoped sections */}
+        {/* Role-scoped sections (uploads + AI panels) */}
         <div className="grid md:grid-cols-2 gap-5 mb-6">
           {roleConfig.sections.map((sectionKey) => {
             const Panel = SECTION_MAP[sectionKey];
             return Panel ? <Panel key={sectionKey} /> : null;
           })}
         </div>
+
+        {/* Deal Intelligence Dashboard — reveals as documents are uploaded */}
+        {property.isCustom && (
+          <DealIntelligenceDashboard
+            propertyId={pid}
+            refreshKey={analysesRefreshKey}
+          />
+        )}
+
+        {/* Deal Coordination Panel — party status + lifecycle stage */}
+        {property.isCustom && (
+          <DealCoordinationPanel
+            propertyId={pid}
+            role={role}
+          />
+        )}
+
+        {/* Activity Timeline */}
+        {property.isCustom && (
+          <div className="mb-6">
+            <ActivityTimeline propertyId={pid} />
+          </div>
+        )}
+
+        {/* Deal Health Score — bottom, after all context is loaded */}
+        {property.isCustom && (
+          <DealHealthPanel propertyId={pid} />
+        )}
 
         {/* Activity feed — demo rooms only */}
         {!property.isCustom && (
@@ -1547,14 +1578,6 @@ export default function DealRoomPage() {
               </Link>
             </div>
           </div>
-        )}
-
-        {/* Invite panel — request documents from each party */}
-        {property.isCustom && !isDemo && (
-          <InvitePanel
-            propertyId={propertyId || property.property_id || property.id}
-            senderName={property.first_name || property.property_name || undefined}
-          />
         )}
 
         {/* Demo bottom CTA */}
