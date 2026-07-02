@@ -1464,12 +1464,54 @@ app.post('/api/public/deal-room/:propertyId/track-document', upload.single('file
     logEvent(propertyId, 'document_uploaded', role || 'owner', null, `${SECTION_LABELS[section]} uploaded`, { section, filename }).catch(() => {});
     res.json({ ok: true, section, filename, pending: true });
 
-    // Background AI analysis
+    // Background AI analysis — uses fast text-only extraction (no vision pipeline to avoid hangs)
     if (buf && LIGHTWEIGHT_AI_PROMPTS[section]) {
-      (async () => {
+      const bgJob = (async () => {
+        const clearPending = async (analysis) => {
+          if (!recordId) return;
+          const { error } = await supabase.from('deal_analyses').update({ analysis, storage_path: storagePath }).eq('id', recordId);
+          if (error) console.warn('[track-document] DB update failed:', error.message);
+        };
         try {
-          const text = await extractTextFromFile(buf, mime, filename);
-          if (!text || text.trim().length < 30) throw new Error('insufficient text');
+          // Fast text extraction — skips vision pipeline to avoid hangs
+          let text = '';
+          try {
+            const ext = (filename || '').split('.').pop().toLowerCase();
+            if (mime.includes('spreadsheet') || mime.includes('excel') || mime.includes('ms-excel') || ['xlsx','xls','xlsm','xlsb'].includes(ext)) {
+              const XLSX = require('xlsx');
+              const wb = XLSX.read(buf, { type: 'buffer' });
+              const rows = [];
+              for (const name of wb.SheetNames.slice(0, 8)) {
+                const csv = XLSX.utils.sheet_to_csv(wb.Sheets[name]);
+                if (csv.replace(/,/g,'').replace(/\n/g,'').trim().length > 20) rows.push(`[Sheet: ${name}]\n${csv}`);
+              }
+              text = rows.join('\n\n').slice(0, 15000);
+            } else if (mime === 'text/csv' || ext === 'csv') {
+              text = buf.toString('utf8').slice(0, 15000);
+            } else if (mime === 'application/pdf' || ext === 'pdf' || buf.slice(0,4).toString() === '%PDF') {
+              // Fast path: pdftotext only (no vision fallback for background jobs)
+              const { execSync } = require('child_process');
+              const os = require('os');
+              const pathMod = require('path');
+              const tmpFile = pathMod.join(os.tmpdir(), `kontra_bg_${Date.now()}.pdf`);
+              fsSync.writeFileSync(tmpFile, buf);
+              try {
+                text = execSync(`pdftotext "${tmpFile}" -`, { timeout: 20000, encoding: 'utf8' }).slice(0, 15000);
+              } catch (_) {
+                text = '';
+              } finally {
+                try { fsSync.unlinkSync(tmpFile); } catch (_) {}
+              }
+            }
+            if (!text || text.trim().length < 30) {
+              text = buf.toString('utf8', 0, Math.min(buf.length, 12000)).replace(/[^\x20-\x7E\n\r\t]/g, ' ').replace(/\s{3,}/g, '\n').trim();
+            }
+          } catch (extractErr) {
+            console.warn('[track-document] text extraction error:', extractErr.message);
+          }
+
+          if (!text || text.trim().length < 30) throw new Error('insufficient text — document may be scanned or encrypted');
+
           const prompt = LIGHTWEIGHT_AI_PROMPTS[section];
           const completion = await openai.chat.completions.create({
             model: 'gpt-4o-mini',
@@ -1479,29 +1521,29 @@ app.post('/api/public/deal-room/:propertyId/track-document', upload.single('file
             ],
             response_format: { type: 'json_object' },
             temperature: 0.3,
+            timeout: 30000,
           });
           const result = JSON.parse(completion.choices[0].message.content);
-          // Update the record with real analysis
-          if (recordId) {
-            await supabase.from('deal_analyses').update({
-              analysis: result,
-              storage_path: storagePath,
-            }).eq('id', recordId);
-          }
+          await clearPending(result);
           notifyOwner(propertyId, section, result.summary).catch(() => {});
           logEvent(propertyId, 'document_analyzed', role || 'owner', null, `${SECTION_LABELS[section]} analyzed by AI`, { section, filename }).catch(() => {});
-          console.log(`[track-document] AI analysis complete for ${section} — confidence ${result.confidence}`);
+          console.log(`[track-document] ✓ ${section} analyzed — confidence ${result.confidence}`);
         } catch (aiErr) {
-          console.warn(`[track-document] AI analysis failed for ${section}:`, aiErr.message);
-          // Update with a graceful fallback (not pending anymore)
+          console.warn(`[track-document] AI failed for ${section}:`, aiErr.message);
+          await clearPending({ summary: `${SECTION_LABELS[section]} uploaded. AI could not analyze this file — it may be scanned or password-protected.`, documentType: SECTION_LABELS[section], confidence: 0 }).catch(() => {});
+        }
+      });
+      // Hard 50-second timeout so the record never stays "pending" forever
+      Promise.race([bgJob(), new Promise((_,rej) => setTimeout(() => rej(new Error('timeout')), 50000))])
+        .catch(async (err) => {
+          console.warn(`[track-document] bg job timed out or failed for ${section}:`, err.message);
           if (recordId) {
             await supabase.from('deal_analyses').update({
-              analysis: { summary: `${SECTION_LABELS[section]} uploaded and recorded. AI analysis unavailable.`, documentType: SECTION_LABELS[section], confidence: 0, storage_path: storagePath },
+              analysis: { summary: `${SECTION_LABELS[section]} uploaded. Analysis timed out — try re-uploading.`, documentType: SECTION_LABELS[section], confidence: 0 },
               storage_path: storagePath,
             }).eq('id', recordId).catch(() => {});
           }
-        }
-      })();
+        });
     }
   } catch (err) {
     console.error('[track-document]', err.message);
