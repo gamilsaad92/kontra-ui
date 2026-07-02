@@ -1479,6 +1479,22 @@ app.post('/api/public/deal-room/:propertyId/submit', async (req, res) => {
   }
 });
 
+// ── Shared email helper — logs Resend errors instead of swallowing them ──────
+async function sendResendEmail(key, payload) {
+  const r = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  const data = await r.json();
+  if (!r.ok) {
+    console.error('[resend-error]', r.status, JSON.stringify(data));
+    throw new Error(data.message || `Resend error ${r.status}`);
+  }
+  console.log('[resend-ok] id:', data.id, 'to:', payload.to);
+  return data;
+}
+
 // ── Send role-scoped invite email ────────────────────────────────────────────
 app.post('/api/public/deal-room/:propertyId/invite', async (req, res) => {
   const { propertyId } = req.params;
@@ -1509,31 +1525,26 @@ app.post('/api/public/deal-room/:propertyId/invite', async (req, res) => {
     const roleLabel = ROLE_LABELS[role] || role;
     const roleAction = ROLE_ACTIONS[role] || 'access the deal room';
     const inviteUrl = `https://kontraplatform.com/deal-room/${propertyId}?role=${role}`;
-    await fetch('https://api.resend.com/emails', {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${RESEND_KEY}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        from: 'Kontra <onboarding@resend.dev>',
-        to: email,
-        subject: `You've been invited to a deal room — ${propName}`,
-        html: `<div style="font-family:sans-serif;max-width:560px;margin:auto;padding:32px 24px">
-          <div style="margin-bottom:24px">
-            <span style="display:inline-block;background:#800020;color:white;font-weight:800;font-size:15px;padding:6px 14px;border-radius:8px;letter-spacing:0.5px">Kontra</span>
-          </div>
-          <h2 style="color:#111;font-size:22px;font-weight:800;margin:0 0 8px">You've been invited</h2>
-          <p style="color:#555;font-size:15px;margin:0 0 6px"><strong>${fromName}</strong> has added you as <strong>${roleLabel}</strong> to their deal room for <strong>${propName}</strong>.</p>
-          <p style="color:#555;font-size:14px;margin:0 0 24px">Your role: ${roleAction}. No account required — click below to access your role-scoped view.</p>
-          <a href="${inviteUrl}" style="display:inline-block;padding:14px 28px;background:#800020;color:white;border-radius:10px;text-decoration:none;font-weight:700;font-size:15px">Open Deal Room →</a>
-          <div style="margin-top:28px;padding:16px;background:#f9fafb;border-radius:10px;border:1px solid #eee">
-            <p style="color:#888;font-size:12px;margin:0 0 4px">What is Kontra?</p>
-            <p style="color:#555;font-size:13px;margin:0">Kontra is CRE deal room infrastructure. All parties upload their documents, AI analyzes them instantly, and the deal coordinator sees everything in one place. No email chains required.</p>
-          </div>
-          <p style="color:#bbb;font-size:11px;margin-top:24px">You received this because ${fromName} added your email to this deal room. If this is a mistake, you can safely ignore it.</p>
-        </div>`,
-      }),
+    await sendResendEmail(RESEND_KEY, {
+      from: 'Kontra <onboarding@resend.dev>',
+      to: email,
+      subject: `You've been invited to a deal room — ${propName}`,
+      html: `<div style="font-family:sans-serif;max-width:560px;margin:auto;padding:32px 24px">
+        <div style="margin-bottom:24px">
+          <span style="display:inline-block;background:#800020;color:white;font-weight:800;font-size:15px;padding:6px 14px;border-radius:8px;letter-spacing:0.5px">Kontra</span>
+        </div>
+        <h2 style="color:#111;font-size:22px;font-weight:800;margin:0 0 8px">You've been invited</h2>
+        <p style="color:#555;font-size:15px;margin:0 0 6px"><strong>${fromName}</strong> has added you as <strong>${roleLabel}</strong> to their deal room for <strong>${propName}</strong>.</p>
+        <p style="color:#555;font-size:14px;margin:0 0 24px">Your role: ${roleAction}. No account required — click below to access your role-scoped view.</p>
+        <a href="${inviteUrl}" style="display:inline-block;padding:14px 28px;background:#800020;color:white;border-radius:10px;text-decoration:none;font-weight:700;font-size:15px">Open Deal Room →</a>
+        <div style="margin-top:28px;padding:16px;background:#f9fafb;border-radius:10px;border:1px solid #eee">
+          <p style="color:#888;font-size:12px;margin:0 0 4px">What is Kontra?</p>
+          <p style="color:#555;font-size:13px;margin:0">Kontra is CRE deal room infrastructure. All parties upload their documents, AI analyzes them instantly, and the deal coordinator sees everything in one place. No email chains required.</p>
+        </div>
+        <p style="color:#bbb;font-size:11px;margin-top:24px">You received this because ${fromName} added your email to this deal room. If this is a mistake, you can safely ignore it.</p>
+      </div>`,
     });
     logEvent(propertyId, 'invite_sent', 'owner', senderName || null, `${roleLabel} invited: ${email}`, { role, email });
-    console.log(`[invite] sent to ${email} for role=${role}`);
     res.json({ ok: true });
   } catch (err) {
     console.error('[invite]', err.message);
