@@ -1189,6 +1189,26 @@ app.post('/api/public/my-rooms/verify-otp', async (req, res) => {
   }
 });
 
+// ── Delete deal room — owner only, verified by email match ───────────────────
+app.delete('/api/public/my-rooms/:propertyId', async (req, res) => {
+  const { propertyId } = req.params;
+  const email = (req.body?.email || '').trim().toLowerCase();
+  if (!email || !propertyId) return res.status(400).json({ error: 'email and propertyId required' });
+  try {
+    const { data: room, error: findErr } = await supabase
+      .from('deal_rooms').select('id, customer_email, property_name').eq('property_id', propertyId).maybeSingle();
+    if (findErr || !room) return res.status(404).json({ error: 'Room not found' });
+    if (room.customer_email.toLowerCase() !== email)
+      return res.status(403).json({ error: 'Not authorized to delete this room' });
+    const { error: delErr } = await supabase.from('deal_rooms').delete().eq('property_id', propertyId);
+    if (delErr) throw delErr;
+    res.json({ ok: true, deleted: room.property_name });
+  } catch (err) {
+    console.error('[delete-room]', err.message);
+    res.status(500).json({ error: 'Failed to delete room' });
+  }
+});
+
 // ── Stripe billing portal — lets owner manage/cancel subscription ────────────
 app.post('/api/public/billing-portal', async (req, res) => {
   const email = (req.body?.email || '').trim().toLowerCase();
