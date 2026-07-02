@@ -1456,7 +1456,6 @@ app.post('/api/public/deal-room/:propertyId/track-document', upload.single('file
         property_id: propertyId, section, filename,
         analysis: pendingAnalysis,
         uploaded_by_role: role || 'owner',
-        document_hash: hash,
       }).select('id').single(),
     ]);
     if (insertRes.error) throw insertRes.error;
@@ -1666,7 +1665,7 @@ async function sealClosingRecord(propertyId) {
         .select('role, name, email, status, submitted_at')
         .eq('property_id', propertyId),
       supabase.from('deal_analyses')
-        .select('section, filename, uploaded_by_role, created_at, document_hash')
+        .select('section, filename, uploaded_by_role, created_at, storage_path')
         .eq('property_id', propertyId),
     ]);
     const room = roomRes.data || {};
@@ -1689,7 +1688,6 @@ async function sealClosingRecord(propertyId) {
       documents: documents.map(d => ({
         section: d.section, filename: d.filename,
         uploaded_by: d.uploaded_by_role, uploaded_at: d.created_at,
-        sha256: d.document_hash,
       })),
       document_count: documents.length,
       participant_count: parties.length,
@@ -2156,7 +2154,6 @@ Inspection report text:\n${text}` }
           filename: _name, analysis: result,
           uploaded_by_role: role || 'unknown',
           storage_path: storagePath,
-          document_hash: crypto.createHash('sha256').update(_buf).digest('hex'),
         });
         if (e) console.warn('[deal_analyses] inspection save:', e.message);
         else console.log(`[deal_analyses] inspection v${version} saved`);
@@ -2231,7 +2228,6 @@ Policy text:\n${text}` }
           filename: _name, analysis: result,
           uploaded_by_role: role || 'unknown',
           storage_path: storagePath,
-          document_hash: crypto.createHash('sha256').update(_buf).digest('hex'),
         });
         if (e) console.warn('[deal_analyses] insurance save:', e.message);
         else console.log(`[deal_analyses] insurance v${version} saved`);
@@ -2284,7 +2280,6 @@ Financial document:\n${text}` }
           filename: _name, analysis: result,
           uploaded_by_role: role || 'unknown',
           storage_path: storagePath,
-          document_hash: crypto.createHash('sha256').update(_buf).digest('hex'),
         });
         if (e) console.warn('[deal_analyses] financials save:', e.message);
         else console.log(`[deal_analyses] financials v${version} saved`);
@@ -2336,7 +2331,6 @@ Legal document:\n${text}` }
           filename: _name, analysis: result,
           uploaded_by_role: role || 'attorney',
           storage_path: storagePath,
-          document_hash: _legalHash,
         }).then(({ error: e }) => {
           if (e) console.warn('[deal_analyses] legal save:', e.message);
         });
@@ -2388,7 +2382,6 @@ Document:\n${text}` }
           filename: _name, analysis: result,
           uploaded_by_role: role || 'owner',
           storage_path: storagePath,
-          document_hash: _brandHash,
         }).then(({ error: e }) => {
           if (e) console.warn('[deal_analyses] brand-standards save:', e.message);
         });
