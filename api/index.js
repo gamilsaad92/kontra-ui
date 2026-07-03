@@ -1518,8 +1518,7 @@ app.post('/api/public/deal-room/:propertyId/track-document', upload.single('file
             ],
             response_format: { type: 'json_object' },
             temperature: 0.3,
-            timeout: 30000,
-          });
+          }, { timeout: 30000 });
           const result = JSON.parse(completion.choices[0].message.content);
           await clearPending(result);
           notifyOwner(propertyId, section, result.summary).catch(() => {});
