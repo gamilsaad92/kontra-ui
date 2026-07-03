@@ -1489,18 +1489,15 @@ app.post('/api/public/deal-room/:propertyId/track-document', upload.single('file
             } else if (mime === 'text/csv' || ext === 'csv') {
               text = buf.toString('utf8').slice(0, 15000);
             } else if (mime === 'application/pdf' || ext === 'pdf' || buf.slice(0,4).toString() === '%PDF') {
-              // Fast path: pdftotext only (no vision fallback for background jobs)
-              const { execSync } = require('child_process');
-              const os = require('os');
-              const pathMod = require('path');
-              const tmpFile = pathMod.join(os.tmpdir(), `kontra_bg_${Date.now()}.pdf`);
-              fsSync.writeFileSync(tmpFile, buf);
+              // Fast path: pure-JS pdf-parse v2 (PDFParse class API — no system binary, works on Render)
               try {
-                text = execSync(`pdftotext "${tmpFile}" -`, { timeout: 20000, encoding: 'utf8' }).slice(0, 15000);
-              } catch (_) {
+                const { PDFParse } = require('pdf-parse');
+                const parser = new PDFParse({ data: buf });
+                const parsed = await parser.getText();
+                text = (parsed?.text || '').slice(0, 15000);
+              } catch (pdfErr) {
+                console.warn('[track-document] pdf-parse failed:', pdfErr.message);
                 text = '';
-              } finally {
-                try { fsSync.unlinkSync(tmpFile); } catch (_) {}
               }
             }
             if (!text || text.trim().length < 30) {
@@ -1521,8 +1518,7 @@ app.post('/api/public/deal-room/:propertyId/track-document', upload.single('file
             ],
             response_format: { type: 'json_object' },
             temperature: 0.3,
-            timeout: 30000,
-          });
+          }, { timeout: 30000 });
           const result = JSON.parse(completion.choices[0].message.content);
           await clearPending(result);
           notifyOwner(propertyId, section, result.summary).catch(() => {});
