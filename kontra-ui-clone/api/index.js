@@ -1475,8 +1475,10 @@ app.post('/api/public/deal-room/:propertyId/track-document', upload.single('file
         try {
           // Fast text extraction — skips vision pipeline to avoid hangs
           let text = '';
+          let isPdf = false;
           try {
             const ext = (filename || '').split('.').pop().toLowerCase();
+            isPdf = mime === 'application/pdf' || ext === 'pdf' || buf.slice(0,4).toString() === '%PDF';
             if (mime.includes('spreadsheet') || mime.includes('excel') || mime.includes('ms-excel') || ['xlsx','xls','xlsm','xlsb'].includes(ext)) {
               const XLSX = require('xlsx');
               const wb = XLSX.read(buf, { type: 'buffer' });
@@ -1488,7 +1490,7 @@ app.post('/api/public/deal-room/:propertyId/track-document', upload.single('file
               text = rows.join('\n\n').slice(0, 15000);
             } else if (mime === 'text/csv' || ext === 'csv') {
               text = buf.toString('utf8').slice(0, 15000);
-            } else if (mime === 'application/pdf' || ext === 'pdf' || buf.slice(0,4).toString() === '%PDF') {
+            } else if (isPdf) {
               // Fast path: pure-JS pdf-parse v2 (PDFParse class API — no system binary, works on Render)
               try {
                 const { PDFParse } = require('pdf-parse');
@@ -1500,14 +1502,23 @@ app.post('/api/public/deal-room/:propertyId/track-document', upload.single('file
                 text = '';
               }
             }
-            if (!text || text.trim().length < 30) {
+            // Raw-buffer fallback only makes sense for genuinely text-based files
+            // (unknown/plain-text formats). Decoding raw PDF/binary bytes produces
+            // structural garbage (e.g. "obj", "stream", "endobj") that can look like
+            // real text but isn't — sending it to the AI causes confusing false
+            // "no content" responses instead of an honest "can't extract text" error.
+            if ((!text || text.trim().length < 30) && !isPdf) {
               text = buf.toString('utf8', 0, Math.min(buf.length, 12000)).replace(/[^\x20-\x7E\n\r\t]/g, ' ').replace(/\s{3,}/g, '\n').trim();
             }
           } catch (extractErr) {
             console.warn('[track-document] text extraction error:', extractErr.message);
           }
 
-          if (!text || text.trim().length < 30) throw new Error('insufficient text — document may be scanned or encrypted');
+          if (!text || text.trim().length < 30) {
+            throw new Error(isPdf
+              ? 'no extractable text — this PDF appears to be scanned (image-only) or encrypted'
+              : 'insufficient text — document may be scanned or encrypted');
+          }
 
           const prompt = LIGHTWEIGHT_AI_PROMPTS[section];
           const completion = await openai.chat.completions.create({
@@ -1526,7 +1537,11 @@ app.post('/api/public/deal-room/:propertyId/track-document', upload.single('file
           console.log(`[track-document] ✓ ${section} analyzed — confidence ${result.confidence}`);
         } catch (aiErr) {
           console.warn(`[track-document] AI failed for ${section}:`, aiErr.message);
-          await clearPending({ summary: `${SECTION_LABELS[section]} uploaded. AI could not analyze this file — it may be scanned or password-protected.`, documentType: SECTION_LABELS[section], confidence: 0 }).catch(() => {});
+          const scanned = /scanned|encrypted/i.test(aiErr.message);
+          const summary = scanned
+            ? `${SECTION_LABELS[section]} uploaded. This file appears to be a scanned image or password-protected PDF, so the AI couldn't read its text. Try uploading a version with selectable text (e.g. the original digital file before signing/scanning).`
+            : `${SECTION_LABELS[section]} uploaded. AI could not analyze this file — it may be scanned or password-protected.`;
+          await clearPending({ summary, documentType: SECTION_LABELS[section], confidence: 0 }).catch(() => {});
         }
       });
       // Hard 50-second timeout so the record never stays "pending" forever
