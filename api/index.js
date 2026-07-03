@@ -1515,11 +1515,15 @@ app.post('/api/public/deal-room/:propertyId/track-document', upload.single('file
           }
 
           const prompt = LIGHTWEIGHT_AI_PROMPTS[section];
+          // Some scanned PDFs still produce "text" from pdf-parse — but it's just
+          // page-separator noise (e.g. "-- 1 of 62 --") with no real body content.
+          // Strip that noise before judging whether we actually got usable text.
+          const meaningfulText = (text || '').replace(/--\s*\d+\s*of\s*\d+\s*--/gi, '').trim();
           // No usable text layer (scanned/image-only PDF) — fall back to sending the
           // PDF directly to a vision-capable model so it can read the page images.
           // Only viable for PDFs within a sane size (larger files risk request-size
           // limits and slow/expensive vision calls).
-          const needsVision = isPdf && (!text || text.trim().length < 30);
+          const needsVision = isPdf && meaningfulText.length < 30;
           if (needsVision && buf.length > 15 * 1024 * 1024) {
             throw new Error('no extractable text — this PDF appears to be scanned (image-only) or encrypted, and is too large for image analysis');
           }
