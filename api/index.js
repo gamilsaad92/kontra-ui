@@ -1489,10 +1489,11 @@ app.post('/api/public/deal-room/:propertyId/track-document', upload.single('file
             } else if (mime === 'text/csv' || ext === 'csv') {
               text = buf.toString('utf8').slice(0, 15000);
             } else if (mime === 'application/pdf' || ext === 'pdf' || buf.slice(0,4).toString() === '%PDF') {
-              // Fast path: pure-JS pdf-parse (no system binary — works on Render, unlike pdftotext/pdftoppm)
+              // Fast path: pure-JS pdf-parse v2 (PDFParse class API — no system binary, works on Render)
               try {
-                const pdfParse = require('pdf-parse');
-                const parsed = await pdfParse(buf);
+                const { PDFParse } = require('pdf-parse');
+                const parser = new PDFParse({ data: buf });
+                const parsed = await parser.getText();
                 text = (parsed?.text || '').slice(0, 15000);
               } catch (pdfErr) {
                 console.warn('[track-document] pdf-parse failed:', pdfErr.message);
