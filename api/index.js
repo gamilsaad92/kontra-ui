@@ -1489,18 +1489,14 @@ app.post('/api/public/deal-room/:propertyId/track-document', upload.single('file
             } else if (mime === 'text/csv' || ext === 'csv') {
               text = buf.toString('utf8').slice(0, 15000);
             } else if (mime === 'application/pdf' || ext === 'pdf' || buf.slice(0,4).toString() === '%PDF') {
-              // Fast path: pdftotext only (no vision fallback for background jobs)
-              const { execSync } = require('child_process');
-              const os = require('os');
-              const pathMod = require('path');
-              const tmpFile = pathMod.join(os.tmpdir(), `kontra_bg_${Date.now()}.pdf`);
-              fsSync.writeFileSync(tmpFile, buf);
+              // Fast path: pure-JS pdf-parse (no system binary — works on Render, unlike pdftotext/pdftoppm)
               try {
-                text = execSync(`pdftotext "${tmpFile}" -`, { timeout: 20000, encoding: 'utf8' }).slice(0, 15000);
-              } catch (_) {
+                const pdfParse = require('pdf-parse');
+                const parsed = await pdfParse(buf);
+                text = (parsed?.text || '').slice(0, 15000);
+              } catch (pdfErr) {
+                console.warn('[track-document] pdf-parse failed:', pdfErr.message);
                 text = '';
-              } finally {
-                try { fsSync.unlinkSync(tmpFile); } catch (_) {}
               }
             }
             if (!text || text.trim().length < 30) {
