@@ -1526,7 +1526,7 @@ app.post('/api/public/deal-room/:propertyId/track-document', upload.single('file
           console.log(`[track-document] ✓ ${section} analyzed — confidence ${result.confidence}`);
         } catch (aiErr) {
           console.warn(`[track-document] AI failed for ${section}:`, aiErr.message);
-          await clearPending({ summary: `${SECTION_LABELS[section]} uploaded. AI could not analyze this file. [DEBUG v3: ${String(aiErr.message).slice(0,200)}]`, documentType: SECTION_LABELS[section], confidence: 0 }).catch(() => {});
+          await clearPending({ summary: `${SECTION_LABELS[section]} uploaded. AI could not analyze this file — it may be scanned or password-protected.`, documentType: SECTION_LABELS[section], confidence: 0 }).catch(() => {});
         }
       });
       // Hard 50-second timeout so the record never stays "pending" forever
