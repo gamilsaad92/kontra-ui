@@ -1514,27 +1514,57 @@ app.post('/api/public/deal-room/:propertyId/track-document', upload.single('file
             console.warn('[track-document] text extraction error:', extractErr.message);
           }
 
-          if (!text || text.trim().length < 30) {
-            throw new Error(isPdf
-              ? 'no extractable text — this PDF appears to be scanned (image-only) or encrypted'
-              : 'insufficient text — document may be scanned or encrypted');
+          const prompt = LIGHTWEIGHT_AI_PROMPTS[section];
+          // Some scanned PDFs still produce "text" from pdf-parse — but it's just
+          // page-separator noise (e.g. "-- 1 of 62 --") with no real body content.
+          // Strip that noise before judging whether we actually got usable text.
+          const meaningfulText = (text || '').replace(/--\s*\d+\s*of\s*\d+\s*--/gi, '').trim();
+          // No usable text layer (scanned/image-only PDF) — fall back to sending the
+          // PDF directly to a vision-capable model so it can read the page images.
+          // Only viable for PDFs within a sane size (larger files risk request-size
+          // limits and slow/expensive vision calls).
+          const needsVision = isPdf && meaningfulText.length < 30;
+          if (needsVision && buf.length > 15 * 1024 * 1024) {
+            throw new Error('no extractable text — this PDF appears to be scanned (image-only) or encrypted, and is too large for image analysis');
           }
 
-          const prompt = LIGHTWEIGHT_AI_PROMPTS[section];
-          const completion = await openai.chat.completions.create({
-            model: 'gpt-4o-mini',
-            messages: [
-              { role: 'system', content: prompt.system },
-              { role: 'user', content: prompt.user(text) },
-            ],
-            response_format: { type: 'json_object' },
-            temperature: 0.3,
-          }, { timeout: 30000 });
+          let completion;
+          if (needsVision) {
+            console.log(`[track-document] no text layer for ${filename} — falling back to vision analysis`);
+            completion = await openai.chat.completions.create({
+              model: 'gpt-4o-mini',
+              messages: [
+                { role: 'system', content: prompt.system },
+                {
+                  role: 'user',
+                  content: [
+                    { type: 'file', file: { filename, file_data: `data:application/pdf;base64,${buf.toString('base64')}` } },
+                    { type: 'text', text: prompt.user('(This PDF has no selectable text layer — it is a scanned document. Read the page images directly.)') },
+                  ],
+                },
+              ],
+              response_format: { type: 'json_object' },
+              temperature: 0.3,
+            }, { timeout: 45000 });
+          } else {
+            if (!text || text.trim().length < 30) {
+              throw new Error('insufficient text — document may be scanned or encrypted');
+            }
+            completion = await openai.chat.completions.create({
+              model: 'gpt-4o-mini',
+              messages: [
+                { role: 'system', content: prompt.system },
+                { role: 'user', content: prompt.user(text) },
+              ],
+              response_format: { type: 'json_object' },
+              temperature: 0.3,
+            }, { timeout: 30000 });
+          }
           const result = JSON.parse(completion.choices[0].message.content);
           await clearPending(result);
           notifyOwner(propertyId, section, result.summary).catch(() => {});
           logEvent(propertyId, 'document_analyzed', role || 'owner', null, `${SECTION_LABELS[section]} analyzed by AI`, { section, filename }).catch(() => {});
-          console.log(`[track-document] ✓ ${section} analyzed — confidence ${result.confidence}`);
+          console.log(`[track-document] ✓ ${section} analyzed${needsVision ? ' (vision)' : ''} — confidence ${result.confidence}`);
         } catch (aiErr) {
           console.warn(`[track-document] AI failed for ${section}:`, aiErr.message);
           const scanned = /scanned|encrypted/i.test(aiErr.message);
