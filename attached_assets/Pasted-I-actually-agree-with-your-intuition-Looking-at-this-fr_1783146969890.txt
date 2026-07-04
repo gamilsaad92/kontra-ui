@@ -1,0 +1,524 @@
+I actually agree with your intuition. Looking at this from the perspective of someone who has worked in CRE servicing and due diligence (and who knows what Kontra is trying to become), the page feels like **three different dashboards stacked together**, each trying to solve the same problem.
+
+The biggest issue isn't the design—it's that the **workflow is backwards**.
+
+---
+
+# 1. Uploading the same document twice ❌
+
+This is probably the biggest UX issue.
+
+For example:
+
+* Due Diligence Checklist
+
+  * Rent Roll ✔
+  * T-12 ✔
+
+Then later...
+
+* Financial Overview
+
+  * Upload Operating Statement or Rent Roll
+
+Why?
+
+The system already has those documents.
+
+Instead it should automatically become something like:
+
+```
+Financial Overview
+
+✔ Rent Roll
+Uploaded by Owner
+AI Processed
+
+Occupancy: 90%
+Monthly Rent: $36,000
+
+------------
+
+✔ T-12
+
+NOI
+DSCR
+Expenses
+Variance
+```
+
+No upload button.
+
+Just analysis.
+
+---
+
+Same thing with
+
+```
+Upload Deal Documents
+```
+
+Why?
+
+The deal documents are literally already uploaded above.
+
+This entire section should become
+
+```
+Document Vault
+
+17 Documents
+
+Purchase Agreement
+Rent Roll
+T12
+Inspection
+Insurance
+Environmental
+Title
+
+View All →
+```
+
+---
+
+# 2. Compliance Status makes no sense
+
+Current:
+
+```
+Compliance Status
+
+Awaiting Upload
+```
+
+Awaiting what?
+
+The user has no idea.
+
+Instead it should say
+
+```
+Compliance
+
+8 / 10 Required Documents
+
+Missing
+
+□ Insurance Certificate
+□ Survey
+
+Required parties
+
+□ Inspector
+□ Insurance Broker
+```
+
+Specific.
+
+Actionable.
+
+---
+
+# 3. Financial Overview should disappear
+
+You already extracted
+
+NOI
+
+Occupancy
+
+Rent
+
+Expenses
+
+Why ask again?
+
+Instead replace that card with
+
+```
+Financial Snapshot
+
+NOI
+$141,894
+
+Occupancy
+90%
+
+Annual Revenue
+
+DSCR
+
+Cap Rate
+
+Cash Flow
+
+AI Opinion
+
+Healthy
+Needs Review
+High Risk
+```
+
+No uploads.
+
+Only intelligence.
+
+---
+
+# 4. Risk Assessment shouldn't ask me to type numbers
+
+This one especially doesn't fit the workflow.
+
+Current
+
+```
+Property Name
+
+Units
+
+Occupancy
+
+Cap Rate
+
+Price
+```
+
+Then
+
+Generate Risk Score
+
+But...
+
+Kontra already knows:
+
+* purchase agreement
+* rent roll
+* T12
+
+It should auto-fill everything.
+
+Even better...
+
+Hide it.
+
+Automatically calculate.
+
+Instead show
+
+```
+Deal Risk
+
+Overall
+
+68
+
+Moderate
+
+Strengths
+
+High Occupancy
+
+Weaknesses
+
+Deferred Maintenance
+
+Missing Insurance
+
+Environmental Recommendation
+```
+
+Nobody wants to manually type information AI already extracted.
+
+---
+
+# 5. Too many upload sections
+
+Currently there are uploads in
+
+Checklist
+
+↓
+
+Financial Overview
+
+↓
+
+Document Package
+
+↓
+
+Party Requests
+
+That's four upload experiences.
+
+Should be ONE.
+
+The checklist.
+
+Everything else references it.
+
+---
+
+# 6. Deal Intelligence is excellent
+
+This is actually my favorite section.
+
+I'd move it much higher.
+
+Maybe immediately below the checklist.
+
+Because that's where the value is.
+
+---
+
+# 7. Party Status is great
+
+I actually like this section.
+
+But instead of
+
+```
+Awaiting
+```
+
+I'd say
+
+```
+Borrower
+
+15/15 docs uploaded
+
+Inspector
+
+Inspection Pending
+
+Insurance
+
+Waiting for COI
+
+Attorney
+
+Title Review
+
+Investor
+
+Waiting
+```
+
+Much clearer.
+
+---
+
+# 8. Timeline is empty
+
+Empty cards are wasted space.
+
+Hide them until something happens.
+
+Then
+
+```
+Timeline
+
+Yesterday
+
+Inspection uploaded
+
+Today
+
+AI found 3 life safety issues
+
+Today
+
+Title commitment uploaded
+
+Tomorrow
+
+Waiting for Insurance
+```
+
+---
+
+# 9. Deal Health Score is exactly what should be at the top
+
+This section is really good.
+
+I'd move it near the top.
+
+Imagine landing on the room and immediately seeing
+
+```
+Deal Health
+
+47
+
+High Risk
+
+Critical
+
+3 Life Safety
+
+Missing Insurance
+
+Schedule B
+
+Deferred Maintenance
+
+2 parties still pending
+```
+
+That's what a lender wants first.
+
+---
+
+# 10. The page is trying to be both a checklist and a dashboard
+
+That's the core problem.
+
+It mixes
+
+* uploads
+* AI
+* analytics
+* collaboration
+* compliance
+* workflow
+
+into one long page.
+
+Instead think of it like this.
+
+---
+
+## Phase 1
+
+Collect Documents
+
+```
+Checklist
+
+Upload
+
+Party Invites
+
+Progress
+```
+
+---
+
+## Phase 2
+
+Analyze Documents
+
+```
+AI Summary
+
+Financials
+
+Inspection
+
+Environmental
+
+Title
+
+Risk
+```
+
+---
+
+## Phase 3
+
+Close Deal
+
+```
+Outstanding Items
+
+Approvals
+
+Timeline
+
+Move to Underwriting
+```
+
+The user naturally progresses through the deal instead of scrolling through repeated information.
+
+---
+
+## My biggest recommendation
+
+If I were building Kontra, I would reduce this page by **30–40%**.
+
+Keep only:
+
+```
+Property Header
+
+↓
+
+Deal Health Score
+
+↓
+
+Due Diligence Checklist
+(the ONLY upload area)
+
+↓
+
+AI Findings
+
+↓
+
+Financial Summary
+
+↓
+
+Party Status
+
+↓
+
+Outstanding Items
+
+↓
+
+Timeline
+
+↓
+
+Move to Under Review
+```
+
+Everything else either disappears or becomes an automatic summary of documents that have already been uploaded.
+
+---
+
+### One more idea that could make Kontra stand out
+
+Instead of thinking in terms of **documents**, think in terms of **questions the lender needs answered**.
+
+For example, after documents are uploaded, the page could transform into:
+
+```
+Can we lend on this property?
+
+✅ Purchase price verified
+
+✅ NOI extracted
+
+⚠ Insurance missing
+
+⚠ 3 life safety violations
+
+✅ Environmental complete
+
+⚠ Title has Schedule B exceptions
+
+Overall readiness
+
+73%
+
+Ready for underwriting after 3 issues are resolved.
+```
+
+That shifts Kontra from being a document repository to an **AI underwriting workspace**—which is much closer to the product vision you've been describing.
