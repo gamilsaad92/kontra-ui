@@ -756,7 +756,117 @@ function FinancialsUploadPanel({ propertyId, role, onAnalysisSaved }) {
   );
 }
 
-function RiskUploadPanel({ property }) {
+// ── Auto Risk Signals — derived from documents already uploaded/analyzed ──
+function AutoRiskSignals({ propertyId, refreshKey }) {
+  const { analyses, loading } = useDealAnalyses(propertyId, refreshKey);
+  if (loading || !analyses.length) return null;
+
+  const flags = [];
+  for (const a of analyses) {
+    const an = a.analysis || {};
+    (an.redFlags || []).forEach(f => flags.push({ text: typeof f === "string" ? f : `${f.issue}${f.severity ? ` (${f.severity})` : ""}`, severity: (f.severity || "medium").toLowerCase() }));
+    (an.anomalies || []).forEach(f => flags.push({ text: typeof f === "string" ? f : `${f.item}: ${f.description}`, severity: (f.severity || "medium").toLowerCase() }));
+    (an.coverageGaps || []).forEach(f => flags.push({ text: typeof f === "string" ? f : (f.gap || JSON.stringify(f)), severity: "medium" }));
+    (an.lifeSafetyFindings || []).forEach(f => flags.push({ text: typeof f === "string" ? f : (f.issue || f.finding || JSON.stringify(f)), severity: "high" }));
+    (an.scheduleBExceptions || []).forEach(f => flags.push({ text: `Title exception: ${f.item || f.description || f}`, severity: (f.severity || "medium").toLowerCase() }));
+    if (an.covenantStatus === "Breached") flags.push({ text: "Financial covenant breached", severity: "high" });
+    else if (an.covenantStatus === "At Risk") flags.push({ text: "Financial covenant at risk", severity: "medium" });
+    if (an.complianceStatus === "Non-Compliant") flags.push({ text: `${a.section} flagged as non-compliant`, severity: "high" });
+    if (an.expiresInDays != null && an.expiresInDays < 45) flags.push({ text: `Insurance expires in ${an.expiresInDays} days`, severity: "medium" });
+    if (an.totalDeferredCost) flags.push({ text: `Deferred maintenance: ${an.totalDeferredCost}`, severity: "medium" });
+  }
+
+  const isHigh = (s) => s === "high" || s === "critical";
+  const highCount = flags.filter(f => isHigh(f.severity)).length;
+  const level = highCount > 0 ? "High" : flags.length > 2 ? "Medium" : flags.length > 0 ? "Low" : "Low";
+  const color = { High: "#dc2626", Medium: "#d97706", Low: "#16a34a" }[level];
+
+  return (
+    <div className="bg-white rounded-2xl border border-gray-200 p-5 mb-4">
+      <div className="flex items-center justify-between mb-3">
+        <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">Auto Risk Signals</p>
+        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full" style={{ background: color + "18", color }}>
+          {level} Signal Risk
+        </span>
+      </div>
+      {flags.length === 0 ? (
+        <p className="text-xs text-gray-400">No red flags or anomalies detected in the documents analyzed so far.</p>
+      ) : (
+        <ul className="space-y-1.5">
+          {flags.slice(0, 6).map((f, i) => (
+            <li key={i} className={`text-xs rounded-lg px-3 py-1.5 ${isHigh(f.severity) ? "bg-red-50 text-red-700" : "bg-amber-50 text-amber-700"}`}>
+              {f.text}
+            </li>
+          ))}
+        </ul>
+      )}
+      <p className="text-[10px] text-gray-400 mt-3">Derived automatically from documents already uploaded in this deal room. Use the score generator below for a full weighted risk assessment.</p>
+    </div>
+  );
+}
+
+// ── Compliance Status — derived from documents already uploaded/analyzed ──
+function ComplianceStatusPanel({ propertyId, refreshKey }) {
+  const { analyses, loading } = useDealAnalyses(propertyId, refreshKey);
+
+  const bySection = {};
+  for (const a of analyses) if (!bySection[a.section]) bySection[a.section] = a;
+
+  const CHECKS = [
+    { key: "insurance", label: "Insurance Coverage", check: (a) => a.analysis?.complianceStatus === "Compliant" },
+    { key: "legal", label: "Legal / Title Review", check: (a) => a.analysis?.complianceStatus && a.analysis.complianceStatus !== "Issues Found" },
+    { key: "title", label: "Title Commitment Clear", check: (a) => a.analysis?.clearToClose === true || (a.analysis?.scheduleBExceptions?.length ?? 1) === 0 },
+    { key: "financials", label: "Financial Covenants", check: (a) => a.analysis?.covenantStatus === "Compliant" },
+    { key: "inspection", label: "Inspection — Life Safety", check: (a) => !(a.analysis?.lifeSafetyFindings?.length > 0) },
+    { key: "brand-standards", label: "Brand Standards", check: (a) => a.analysis?.complianceStatus === "Compliant" },
+  ].filter(c => bySection[c.key]);
+
+  const passed = CHECKS.filter(c => c.check(bySection[c.key])).length;
+  const total = CHECKS.length;
+  const anyUploaded = Object.keys(bySection).length > 0;
+
+  if (loading) return (
+    <div className="bg-white rounded-2xl border border-gray-200 p-5 animate-pulse">
+      <div className="h-4 w-32 bg-gray-100 rounded mb-3" />
+      <div className="h-16 bg-gray-50 rounded-xl" />
+    </div>
+  );
+
+  if (!anyUploaded) {
+    return <PendingPanel title="Compliance Status" icon="✅" description="Compliance checklist will populate automatically as documents are uploaded and analyzed in the sections above." />;
+  }
+
+  return (
+    <div className="bg-white rounded-2xl border border-gray-200 p-5">
+      <div className="flex items-center justify-between mb-4">
+        <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">Compliance Status</p>
+        <div className="text-lg font-black" style={{ color: total > 0 && passed === total ? "#16a34a" : "#d97706" }}>
+          {total > 0 ? `${passed}/${total}` : "—"}
+        </div>
+      </div>
+      {total === 0 ? (
+        <p className="text-xs text-gray-400">No compliance-relevant documents analyzed yet. Upload insurance, legal, title, financial, inspection, or brand-standards documents to populate this checklist.</p>
+      ) : (
+        <div className="space-y-2">
+          {CHECKS.map(c => {
+            const ok = c.check(bySection[c.key]);
+            return (
+              <div key={c.key} className="flex items-center justify-between px-3 py-2 rounded-xl bg-gray-50 border border-gray-100">
+                <span className="text-xs font-medium text-gray-700">{c.label}</span>
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full" style={{ background: ok ? "#16a34a18" : "#d9770618", color: ok ? "#16a34a" : "#d97706" }}>
+                  {ok ? "Passed ✓" : "Needs Review"}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+      <p className="text-[10px] text-gray-400 mt-3">Checklist reflects documents already analyzed above — upload remaining sections to complete the compliance picture.</p>
+    </div>
+  );
+}
+
+function RiskUploadPanel({ property, propertyId, refreshKey }) {
   const [status, setStatus] = useState("idle");
   const [result, setResult] = useState(null);
   const [errorMsg, setErrorMsg] = useState("");
@@ -785,7 +895,9 @@ function RiskUploadPanel({ property }) {
   const riskColor = { Low: "#16a34a", Medium: "#d97706", High: "#dc2626", "Very High": "#9b1c1c" };
 
   return (
-    <div className="bg-white rounded-2xl border border-gray-200 p-5">
+    <div>
+      <AutoRiskSignals propertyId={propertyId} refreshKey={refreshKey} />
+      <div className="bg-white rounded-2xl border border-gray-200 p-5">
       <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-4">Risk Assessment</p>
 
       {(status === "idle" || status === "error") && (
@@ -865,6 +977,7 @@ function RiskUploadPanel({ property }) {
           <button onClick={() => { setStatus("idle"); setResult(null); }} className="mt-3 text-xs text-gray-400 hover:text-gray-600 underline block">Score another property</button>
         </div>
       )}
+      </div>
     </div>
   );
 }
@@ -932,98 +1045,155 @@ function LegalDocUploadPanel({ propertyId, role, onAnalysisSaved }) {
   );
 }
 
-function DocumentsUploadPanel() {
-  const [docs, setDocs] = useState([]);
-  const [uploading, setUploading] = useState(false);
-  const inputRef = useRef(null);
+const ADDITIONAL_DOC_TYPES = [
+  { key: "purchase_agreement", label: "Purchase Agreement", icon: "📝" },
+  { key: "title", label: "Title Commitment", icon: "📜" },
+  { key: "survey", label: "Survey / ALTA", icon: "📐" },
+  { key: "environmental", label: "Environmental Report", icon: "🌱" },
+  { key: "estoppel", label: "Estoppel Certificate", icon: "📄" },
+];
 
-  function handleFiles(e) {
-    const files = Array.from(e.target.files || []);
-    if (!files.length) return;
+function DocumentsUploadPanel({ propertyId, role, onAnalysisSaved, refreshKey }) {
+  const { analyses } = useDealAnalyses(propertyId, refreshKey);
+  const [activeType, setActiveType] = useState(ADDITIONAL_DOC_TYPES[0].key);
+  const [uploading, setUploading] = useState(false);
+  const [errorMsg, setErrorMsg] = useState("");
+  const inputRef = useRef(null);
+  const pollRef = useRef(null);
+
+  const docsBySection = {};
+  for (const a of analyses) {
+    if (ADDITIONAL_DOC_TYPES.some(t => t.key === a.section)) docsBySection[a.section] = a;
+  }
+
+  useEffect(() => () => { if (pollRef.current) clearInterval(pollRef.current); }, []);
+
+  async function handleFile(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
     setUploading(true);
-    setTimeout(() => {
-      setDocs(prev => [
-        ...files.map(f => ({
-          name: f.name, size: (f.size / 1024).toFixed(0) + " KB",
-          type: f.name.match(/\.pdf$/i) ? "PDF" : f.name.match(/\.xlsx?$/i) ? "Excel" : f.name.match(/\.docx?$/i) ? "Word" : "File",
-          time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-        })),
-        ...prev,
-      ]);
+    setErrorMsg("");
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      fd.append("section", activeType);
+      if (role) fd.append("role", role);
+      const res = await fetch(`${API_BASE}/api/public/deal-room/${propertyId}/track-document`, { method: "POST", body: fd });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || `Server error ${res.status}`);
+      onAnalysisSaved?.();
+      // AI analysis runs in the background — poll for the result to arrive
+      let attempts = 0;
+      if (pollRef.current) clearInterval(pollRef.current);
+      pollRef.current = setInterval(() => {
+        attempts += 1;
+        onAnalysisSaved?.();
+        if (attempts >= 13) clearInterval(pollRef.current);
+      }, 4000);
+    } catch (err) {
+      setErrorMsg(err.message);
+    } finally {
       setUploading(false);
-    }, 800);
-    e.target.value = "";
+      e.target.value = "";
+    }
   }
 
   return (
     <div className="bg-white rounded-2xl border border-gray-200 p-5">
-      <div className="flex items-center justify-between mb-4">
-        <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">Document Package</p>
-        {docs.length > 0 && (
-          <button onClick={() => inputRef.current?.click()}
-            className="text-xs font-bold text-white px-3 py-1.5 rounded-lg hover:opacity-90"
-            style={{ background: "#800020" }}>
-            + Add
+      <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-1">Additional Deal Documents</p>
+      <p className="text-[11px] text-gray-400 mb-4">Purchase agreement, title, survey, environmental, and estoppel documents — AI extracts key terms automatically. (Financials, inspection, and insurance have their own sections.)</p>
+
+      <div className="flex flex-wrap gap-1.5 mb-4">
+        {ADDITIONAL_DOC_TYPES.map(t => (
+          <button key={t.key} onClick={() => setActiveType(t.key)}
+            className="px-2.5 py-1.5 rounded-lg text-[11px] font-semibold border transition"
+            style={activeType === t.key
+              ? { background: "#800020", color: "white", borderColor: "#800020" }
+              : { background: "white", color: "#6b7280", borderColor: "#e5e7eb" }}>
+            {t.icon} {t.label}{docsBySection[t.key] ? " ✓" : ""}
           </button>
+        ))}
+      </div>
+
+      <input ref={inputRef} type="file" accept=".pdf,.doc,.docx" className="hidden" onChange={handleFile} />
+      <div className="border-2 border-dashed border-gray-200 rounded-xl p-5 text-center mb-4">
+        {uploading ? (
+          <>
+            <svg className="w-6 h-6 animate-spin mx-auto mb-2" style={{ color: "#800020" }} fill="none" viewBox="0 0 24 24">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+            </svg>
+            <p className="text-xs text-gray-500">Uploading…</p>
+          </>
+        ) : (
+          <>
+            <p className="text-sm font-semibold text-gray-700 mb-1">Upload {ADDITIONAL_DOC_TYPES.find(t => t.key === activeType)?.label}</p>
+            <button onClick={() => inputRef.current?.click()}
+              className="px-4 py-2 rounded-xl text-xs font-bold text-white hover:opacity-90"
+              style={{ background: "#800020" }}>
+              Choose File →
+            </button>
+          </>
         )}
       </div>
-      <input ref={inputRef} type="file" multiple accept=".pdf,.doc,.docx,.xlsx,.xls,.csv,.txt" className="hidden" onChange={handleFiles} />
+      {errorMsg && <p className="text-xs text-red-500 mb-3">{errorMsg}</p>}
 
-      {docs.length === 0 && !uploading && (
-        <div className="border-2 border-dashed border-gray-200 rounded-xl p-6 text-center">
-          <div className="text-3xl mb-2">📄</div>
-          <p className="text-sm font-semibold text-gray-700 mb-1">Upload Deal Documents</p>
-          <p className="text-xs text-gray-400 mb-4">Leases, rent rolls, loan agreements, title reports — any deal file</p>
-          <button onClick={() => inputRef.current?.click()}
-            className="px-5 py-2.5 rounded-xl text-xs font-bold text-white transition hover:opacity-90"
-            style={{ background: "#800020" }}>
-            Choose Files →
-          </button>
-        </div>
-      )}
-
-      {uploading && (
-        <div className="text-center py-4">
-          <svg className="w-6 h-6 animate-spin mx-auto mb-2" style={{ color: "#800020" }} fill="none" viewBox="0 0 24 24">
-            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
-            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
-          </svg>
-          <p className="text-xs text-gray-500">Uploading…</p>
-        </div>
-      )}
-
-      {docs.length > 0 && !uploading && (
+      {Object.keys(docsBySection).length > 0 && (
         <ul className="space-y-2">
-          {docs.map((d, i) => (
-            <li key={i} className="flex items-center gap-3 p-2.5 rounded-xl bg-gray-50">
-              <div className="w-8 h-8 rounded-lg bg-white border border-gray-200 flex items-center justify-center text-base shrink-0">
-                {d.type === "PDF" ? "📋" : d.type === "Excel" ? "📊" : d.type === "Word" ? "📝" : "📄"}
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-xs font-semibold text-gray-800 truncate">{d.name}</p>
-                <p className="text-[10px] text-gray-400">{d.type} · {d.size} · {d.time}</p>
-              </div>
-              <span className="text-[10px] font-semibold text-green-700 bg-green-50 px-2 py-0.5 rounded-full shrink-0">Uploaded</span>
-            </li>
-          ))}
+          {ADDITIONAL_DOC_TYPES.filter(t => docsBySection[t.key]).map(t => {
+            const a = docsBySection[t.key];
+            const pending = a.analysis?.pending;
+            return (
+              <li key={t.key} className="p-3 rounded-xl bg-gray-50 border border-gray-100">
+                <div className="flex items-center justify-between mb-1 gap-2">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span>{t.icon}</span>
+                    <p className="text-xs font-bold text-gray-800 truncate">{t.label}</p>
+                    <span className="text-[10px] text-gray-400 truncate hidden sm:inline">{a.filename}</span>
+                  </div>
+                  <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full shrink-0 ${pending ? "bg-amber-50 text-amber-600" : "bg-green-50 text-green-700"}`}>
+                    {pending ? "Analyzing…" : "Analyzed"}
+                  </span>
+                </div>
+                {a.analysis?.summary && (
+                  <p className="text-xs text-gray-600 leading-relaxed">{a.analysis.summary.slice(0, 180)}{a.analysis.summary.length > 180 ? "…" : ""}</p>
+                )}
+                {a.storage_path && (
+                  <a href={`${API_BASE}/api/public/document-url?path=${encodeURIComponent(a.storage_path)}`}
+                    target="_blank" rel="noopener noreferrer"
+                    className="text-[10px] font-semibold mt-1 inline-block hover:underline" style={{ color: "#800020" }}>
+                    ↓ Download Original
+                  </a>
+                )}
+              </li>
+            );
+          })}
         </ul>
       )}
     </div>
   );
 }
 
-// ── Deal Intelligence Dashboard — shows all saved AI analyses ─────────────
-function DealIntelligenceDashboard({ propertyId, refreshKey }) {
+// ── Shared hook: fetch all saved AI analyses for a deal room ─────────────
+function useDealAnalyses(propertyId, refreshKey) {
   const [analyses, setAnalyses] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    if (!propertyId) { setLoading(false); return; }
     setLoading(true);
     fetch(`${API_BASE}/api/public/deal-room/${propertyId}/analyses`)
       .then(r => r.ok ? r.json() : { analyses: [] })
       .then(d => { setAnalyses(d.analyses || []); setLoading(false); })
       .catch(() => setLoading(false));
   }, [propertyId, refreshKey]);
+
+  return { analyses, loading };
+}
+
+// ── Deal Intelligence Dashboard — shows all saved AI analyses ─────────────
+function DealIntelligenceDashboard({ propertyId, refreshKey }) {
+  const { analyses, loading } = useDealAnalyses(propertyId, refreshKey);
 
   const SECTIONS = [
     { key: "inspection", icon: "🔍", label: "Inspection",  color: "#d97706" },
@@ -1154,18 +1324,18 @@ function DealIntelligenceDashboard({ propertyId, refreshKey }) {
 }
 
 // Build pending section map based on role
-function buildPendingSectionMap(property, role, onAnalysisSaved, urlPropertyId) {
+function buildPendingSectionMap(property, role, onAnalysisSaved, urlPropertyId, refreshKey) {
   const pid = urlPropertyId || property?.property_id || property?.id;
   return {
     financials: () => <FinancialsUploadPanel propertyId={pid} role={role} onAnalysisSaved={onAnalysisSaved} />,
-    risk:       () => <RiskUploadPanel property={property} />,
-    compliance: () => <PendingPanel title="Compliance Status" icon="✅" description="Compliance checklist will populate as documents are reviewed and parties complete their submissions." />,
+    risk:       () => <RiskUploadPanel property={property} propertyId={pid} refreshKey={refreshKey} />,
+    compliance: () => <ComplianceStatusPanel propertyId={pid} refreshKey={refreshKey} />,
     inspection: () => <InspectionUploadPanel propertyId={pid} role={role} onAnalysisSaved={onAnalysisSaved} />,
     insurance:  () => <InsuranceUploadPanel propertyId={pid} role={role} onAnalysisSaved={onAnalysisSaved} />,
     legal:            () => <LegalDocUploadPanel propertyId={pid} role={role} onAnalysisSaved={onAnalysisSaved} />,
     'brand-standards': () => <BrandStandardsUploadPanel propertyId={pid} role={role} onAnalysisSaved={onAnalysisSaved} />,
     readiness:  () => <PendingPanel title="Investment Readiness" icon="🏅" description="All 5 readiness pillars will be tracked as parties submit their documentation." />,
-    documents:  () => <DocumentsUploadPanel />,
+    documents:  () => <DocumentsUploadPanel propertyId={pid} role={role} onAnalysisSaved={onAnalysisSaved} refreshKey={refreshKey} />,
     property:   () => <PendingPropertyPanel property={property} />,
   };
 }
@@ -1330,7 +1500,7 @@ export default function DealRoomPage() {
   }
 
   const SECTION_MAP = property.isCustom
-    ? buildPendingSectionMap(property, role, onAnalysisSaved, propertyId)
+    ? buildPendingSectionMap(property, role, onAnalysisSaved, propertyId, analysesRefreshKey)
     : {
         financials: () => <FinancialsPanel property={property} />,
         risk:       () => <RiskPanel property={property} />,

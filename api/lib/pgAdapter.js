@@ -53,6 +53,12 @@ class QueryBuilder {
   }
 
   select(cols) {
+    if (this._type === 'insert' || this._type === 'update' || this._type === 'upsert' || this._type === 'delete') {
+      // Chained after a mutation (e.g. .insert(...).select('id')) — this is just
+      // requesting which columns to return, not changing the operation itself.
+      // RETURNING * already covers this, so keep the original mutation type.
+      return this;
+    }
     this._type = 'select';
     this._selectCols = cols || '*';
     return this;
