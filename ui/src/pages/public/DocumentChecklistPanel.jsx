@@ -63,7 +63,7 @@ const TEMPLATES = {
 
 const DEFAULT_TEMPLATE = TEMPLATES.Multifamily;
 
-function getTemplate(propertyType) {
+export function getTemplate(propertyType) {
   if (!propertyType) return DEFAULT_TEMPLATE;
   const t = propertyType.toLowerCase();
   if (t.includes("hotel") || t.includes("hospitality") || t.includes("motel")) return TEMPLATES.Hotel;
