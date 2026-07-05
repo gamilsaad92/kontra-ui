@@ -17,14 +17,11 @@
 // pure data: no new backend route required.
 
 // ── Roles ────────────────────────────────────────────────────────────────────
-export const roles = [
-  { key: "buyer",   label: "Buyer",              icon: "💼", required: true,  needsDocs: false, invitable: false, canManage: true },
-  { key: "seller",  label: "Seller",              icon: "🏪", required: true,  needsDocs: true,  invitable: true, inviteAction: "provide financial statements and disclosures" },
-  { key: "cpa",     label: "CPA / Accountant",    shortLabel: "CPA", icon: "🧮", required: true,  needsDocs: true,  invitable: true, inviteAction: "review the quality of earnings report" },
-  { key: "counsel", label: "Legal Counsel",       icon: "⚖️", required: true,  needsDocs: true,  invitable: true, inviteAction: "review the purchase agreement" },
-  { key: "lender",  label: "Lender",              icon: "🏦", required: false, needsDocs: false, invitable: true, inviteAction: "review the financing package" },
-  { key: "broker",  label: "M&A Broker",          icon: "🤝", required: false, needsDocs: false, invitable: true, inviteAction: "coordinate the transaction" },
-];
+// Read from shared/workflowRoles.json — see creAcquisition.js for why (single
+// source of truth shared with the backend's pack-agnostic role labels).
+import rolesConfig from "../../../../shared/workflowRoles.json";
+
+export const roles = rolesConfig.business_acquisition.roles;
 
 export function getRole(key) {
   return roles.find(r => r.key === key) || null;

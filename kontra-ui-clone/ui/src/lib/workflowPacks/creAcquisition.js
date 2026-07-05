@@ -12,19 +12,17 @@
 // implementation of the template, they are the engine that executes it.
 
 // ── Roles ────────────────────────────────────────────────────────────────────
-// `label` is the full display label (party grid, invite panel).
-// `shortLabel` (falls back to `label`) is used in compact contexts like the
-// Deal Health "Awaiting: ..." action text.
-export const roles = [
-  { key: "owner",      label: "Owner / Borrower",     shortLabel: "Owner",       icon: "🏢", required: true,  needsDocs: false, invitable: false, canManage: true },
-  { key: "lender",      label: "Lender / Underwriter", shortLabel: "Lender",      icon: "🏦", required: true,  needsDocs: true,  invitable: true,  inviteAction: "review the financial package", canManage: true },
-  { key: "inspector",   label: "Inspector",            icon: "🔍", required: true,  needsDocs: true,  invitable: true,  inviteAction: "upload the inspection report" },
-  { key: "insurer",     label: "Insurance Broker",     icon: "🛡️", required: true,  needsDocs: true,  invitable: true,  inviteAction: "upload the insurance certificate" },
-  { key: "attorney",    label: "Attorney",             icon: "⚖️", required: false, needsDocs: false, invitable: true,  inviteAction: "review legal documents" },
-  { key: "investor",    label: "Investor",             icon: "📊", required: false, needsDocs: false, invitable: true,  inviteAction: "review the investment package" },
-  { key: "servicer",    label: "Servicer",             icon: "⚙️", required: false, needsDocs: false, invitable: true,  inviteAction: "access the servicing package" },
-  { key: "franchisor",  label: "Franchisor / Brand",   shortLabel: "Franchisor",  icon: "🏨", required: false, needsDocs: false, invitable: false },
-];
+// Role keys, labels, icons, colors, and invite-page copy are read from
+// shared/workflowRoles.json — the same file the backend (api/index.js) reads
+// for pack-agnostic email/notification/event-log role labels. This is the
+// same "single source of truth" pattern as stages (see workflowStages.json):
+// adding or editing a role only requires editing that JSON, never this file
+// or the backend, and role keys can safely mean different things across
+// packs (e.g. "lender" here vs in businessAcquisition.js) since consumers
+// always look roles up scoped to the active pack, not from a flat dict.
+import rolesConfig from "../../../../shared/workflowRoles.json";
+
+export const roles = rolesConfig.cre_acquisition.roles;
 
 export function getRole(key) {
   return roles.find(r => r.key === key) || null;
@@ -331,8 +329,9 @@ export const factColors = {
 
 // ── Outstanding Items grid — which of the risk/compliance/property panels
 // this pack supports. DealRoomPage intersects this with the role's requested
-// sections (ROLE_CONFIG) so a pack only needs to list what it actually has;
-// no per-widget "is this the CRE pack?" check is needed anywhere else. ──────
+// sections (from shared/workflowRoles.json, via pack.getRole()) so a pack
+// only needs to list what it actually has; no per-widget "is this the CRE
+// pack?" check is needed anywhere else. ──────────────────────────────────────
 export const outstandingItemsSections = ["risk", "compliance", "property"];
 
 // ── Dashboard: which sections get their own "Deal Intelligence" card, and

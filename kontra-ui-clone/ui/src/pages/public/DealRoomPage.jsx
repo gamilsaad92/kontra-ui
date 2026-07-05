@@ -118,108 +118,16 @@ const TYPE_IMAGES = {
 const DEFAULT_IMAGE = "https://images.unsplash.com/photo-1486325212027-8081e485255e?w=1200&q=80";
 
 // Note: "financials", "inspection", "insurance", "legal", "brand-standards", and "documents"
-// are intentionally NOT listed as sections below — the Due Diligence Checklist above already
-// covers uploading and AI-analyzing every one of those document types. Listing them again here
-// would just re-prompt the user to upload something they've already submitted. These per-role
-// sections only cover things the checklist doesn't: risk scoring, compliance rollup, readiness,
-// and basic property info.
-const ROLE_CONFIG = {
-  lender: {
-    icon: "🏦", label: "Lender / Underwriter", color: "#800020",
-    headline: "You've been invited to review this deal",
-    subtext: "As a lender, you have access to the financial package, risk score, compliance status, and AI-analyzed documents.",
-    sections: ["risk", "compliance"],
-  },
-  inspector: {
-    icon: "🔍", label: "Inspector / Engineer", color: "#d97706",
-    headline: "You've been invited to submit your report",
-    subtext: "As the inspector, upload your inspection report in the checklist above — findings are AI-structured and shared with the lender automatically.",
-    sections: ["property"],
-  },
-  insurer: {
-    icon: "🛡️", label: "Insurance Broker", color: "#065f46",
-    headline: "You've been invited to provide insurance coverage",
-    subtext: "Upload the insurance certificate in the checklist above. Coverage gaps and expiration dates are tracked automatically for the lender.",
-    sections: ["property"],
-  },
-  insurance: {
-    icon: "🛡️", label: "Insurance Broker", color: "#065f46",
-    headline: "You've been invited to provide insurance coverage",
-    subtext: "Upload the insurance certificate in the checklist above. Coverage gaps and expiration dates are tracked automatically for the lender.",
-    sections: ["property"],
-  },
-  investor: {
-    icon: "📊", label: "Investor", color: "#6d28d9",
-    headline: "You've been invited to review this investment",
-    subtext: "As an investor, you have access to the Investment Readiness Report, financial performance data, and status.",
-    sections: ["readiness", "risk"],
-  },
-  servicer: {
-    icon: "⚙️", label: "Servicer", color: "#92400e",
-    headline: "You've been invited to this servicing deal",
-    subtext: "As the servicer, you have access to draw management, borrower financials, escrow status, and covenant tracking.",
-    sections: ["compliance"],
-  },
-  attorney: {
-    icon: "📜", label: "Attorney / Title", color: "#374151",
-    headline: "You've been invited to review the legal package",
-    subtext: "Review the legal structure documentation, title history, and compliance checklist for this property. Legal documents are uploaded in the checklist above.",
-    sections: ["compliance", "property"],
-  },
-  owner: {
-    icon: "🏢", label: "Property Owner", color: "#800020",
-    headline: "Welcome to your deal room",
-    subtext: "As the property owner, you have a full view of all parties, documents, compliance status, and deal progress. Share the role-specific links below to invite each party.",
-    sections: ["risk", "compliance", "property"],
-  },
-  borrower: {
-    icon: "🤝", label: "Borrower / Sponsor", color: "#1d4ed8",
-    headline: "You've been invited to this deal room",
-    subtext: "As the borrower, you can view the deal structure, track compliance requirements, upload financial documents, and monitor deal progress in real time.",
-    sections: ["compliance", "property"],
-  },
-  broker: {
-    icon: "🏷️", label: "Broker", color: "#7c3aed",
-    headline: "You've been invited to coordinate this deal",
-    subtext: "As the broker, you have visibility across all deal parties. Track document status, compliance milestones, and share role-scoped links with each party.",
-    sections: ["risk", "compliance", "property"],
-  },
-  franchisor: {
-    icon: "🏨", label: "Franchisor / Brand", color: "#0369a1",
-    headline: "You've been invited to review this hotel deal room",
-    subtext: "As the franchisor representative, you can review the Property Improvement Plan, brand standards compliance, and flag any requirements before deal close.",
-    sections: ["compliance", "property"],
-  },
-  // ── Business Acquisition roles — the CRE-specific "Outstanding Items"
-  // dashboard (risk/compliance/property/financials) doesn't apply here, so
-  // these intentionally have no `sections`. Dynamic, pack-aware dashboards
-  // are a later sprint; for now the checklist/health/coordination/invite
-  // panels are the full experience for this pack.
-  buyer: {
-    icon: "💼", label: "Buyer", color: "#800020",
-    headline: "Welcome to your deal room",
-    subtext: "As the buyer, you have a full view of all parties, documents, and deal progress. Share the role-specific links below to invite your advisors and the seller.",
-    sections: [],
-  },
-  seller: {
-    icon: "🏪", label: "Seller", color: "#1d4ed8",
-    headline: "You've been invited to this deal room",
-    subtext: "As the seller, upload your financial statements and disclosures in the checklist above, and track the buyer's progress toward closing.",
-    sections: [],
-  },
-  cpa: {
-    icon: "🧮", label: "CPA / Accountant", color: "#065f46",
-    headline: "You've been invited to review the financials",
-    subtext: "As the CPA, review the financial statements, tax returns, and quality of earnings report uploaded in the checklist above.",
-    sections: [],
-  },
-  counsel: {
-    icon: "⚖️", label: "Legal Counsel", color: "#374151",
-    headline: "You've been invited to review the legal package",
-    subtext: "As legal counsel, review the purchase agreement and disclosure schedule uploaded in the checklist above.",
-    sections: [],
-  },
-};
+// are intentionally NOT listed as sections on any role below — the Due Diligence Checklist
+// above already covers uploading and AI-analyzing every one of those document types. Listing
+// them again here would just re-prompt the user to upload something they've already submitted.
+// These per-role sections only cover things the checklist doesn't: risk scoring, compliance
+// rollup, readiness, and basic property info.
+//
+// Role metadata itself (label/icon/color/headline/subtext/sections) is no longer defined here.
+// It lives in shared/workflowRoles.json, scoped per Workflow Pack, and is looked up below via
+// pack.getRole(role) — never from a flat cross-pack dict — since a role key like "lender" can
+// mean something different in another pack (see workflowPacks/*.js `roles` exports).
 
 // ── Panels for demo (data-rich) deal rooms ───────────────────────────────────
 function FinancialsPanel({ property }) {
@@ -1301,21 +1209,25 @@ export default function DealRoomPage() {
     property.deal_amount = property.deal_amount || "14,000,000";
   }
 
-  const baseRoleConfig = ROLE_CONFIG[role] || ROLE_CONFIG.lender;
-  const isHotel = (property?.property_type || "").toLowerCase().includes("hotel") ||
-                  (property?.property_type || "").toLowerCase().includes("hospitality");
-  const roleConfig = isHotel && ['owner', 'broker', 'borrower'].includes(role)
-    ? { ...baseRoleConfig, sections: ['brand-standards', ...baseRoleConfig.sections] }
-    : baseRoleConfig;
-
   // Which Workflow Pack powers this deal room. Demo properties are always
   // CRE Acquisition; custom rooms carry their pack id from creation time.
   const packId = demoProperty ? DEFAULT_PACK_ID : (apiProperty?.workflow_pack_id || DEFAULT_PACK_ID);
   const pack = getWorkflowPack(packId);
+
+  // Role metadata (label/icon/color/headline/subtext/sections) is looked up
+  // scoped to this pack — never from a flat cross-pack dict — since a role
+  // key like "lender" can mean something different in another pack.
+  const baseRoleConfig = pack.getRole(role) || pack.getRole("lender") || pack.roles[0];
+  const isHotel = (property?.property_type || "").toLowerCase().includes("hotel") ||
+                  (property?.property_type || "").toLowerCase().includes("hospitality");
+  const roleConfig = isHotel && ['owner', 'broker', 'borrower'].includes(role)
+    ? { ...baseRoleConfig, sections: ['brand-standards', ...(baseRoleConfig.sections || [])] }
+    : baseRoleConfig;
+
   // The "Outstanding Items" grid (risk/compliance/property panels) still
   // hardcodes CRE concepts (NOI, DSCR, occupancy) inside the panels
   // themselves, but *which* panels a pack supports is now pack-driven:
-  // ROLE_CONFIG says which sections a role wants to see, the pack's
+  // roleConfig.sections says which sections a role wants to see, the pack's
   // `outstandingItemsSections` says which ones it actually has. Business
   // Acquisition declares none, so the grid is naturally empty for it.
   const visibleOutstandingSections = roleConfig.sections.filter(
@@ -1557,7 +1469,7 @@ export default function DealRoomPage() {
 
         {/* Outstanding Items — role-scoped sections (risk/compliance/property).
             Which of these panels a pack supports comes from
-            pack.outstandingItemsSections; ROLE_CONFIG only says which
+            pack.outstandingItemsSections; roleConfig.sections only says which
             sections a role *wants* to see, the pack says which ones it
             actually *has*. Business Acquisition declares none yet, so this
             grid renders nothing for that pack without any packId check here. */}

@@ -1,12 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
+import { DEFAULT_PACK_ID, getWorkflowPack } from '../../lib/workflowPacks';
 
 const API_BASE = import.meta.env.VITE_API_BASE || '';
-
-const ROLE_COLORS = {
-  owner: '#800020', lender: '#1d4ed8', inspector: '#d97706',
-  insurer: '#065f46', insurance: '#065f46', attorney: '#374151',
-  investor: '#6d28d9', servicer: '#92400e', franchisor: '#0369a1',
-};
 
 function timeAgo(ts) {
   const diff = Date.now() - new Date(ts).getTime();
@@ -18,7 +13,8 @@ function timeAgo(ts) {
   return new Date(ts).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
 
-export default function CommentsPanel({ propertyId, section, role, authorName }) {
+export default function CommentsPanel({ propertyId, section, role, authorName, packId }) {
+  const pack = getWorkflowPack(packId || DEFAULT_PACK_ID);
   const [comments, setComments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [content, setContent] = useState('');
@@ -96,7 +92,7 @@ export default function CommentsPanel({ propertyId, section, role, authorName })
           {active.map(c => (
             <div key={c.id} className="flex gap-2.5">
               <div className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold text-white shrink-0 mt-0.5"
-                style={{ background: ROLE_COLORS[c.role] || '#6b7280' }}>
+                style={{ background: pack.getRole(c.role)?.color || '#6b7280' }}>
                 {(c.author_name || c.role).charAt(0).toUpperCase()}
               </div>
               <div className="flex-1 bg-gray-50 rounded-xl px-3 py-2">

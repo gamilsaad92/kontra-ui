@@ -1657,8 +1657,9 @@ app.post('/api/public/deal-room/:propertyId/submit', async (req, res) => {
       notes: notes || null,
     }, { onConflict: 'property_id,role' });
     if (error) throw error;
-    const _roleLabels = { lender: 'Lender', inspector: 'Inspector', insurer: 'Insurance Broker', attorney: 'Attorney', investor: 'Investor', servicer: 'Servicer', owner: 'Owner', borrower: 'Borrower' };
-    logEvent(propertyId, 'party_submitted', role, name || role, `${name || _roleLabels[role] || role} signaled ready`, { role });
+    const packId = await getRoomPackId(propertyId);
+    const roleLabel = getPackRoleLabel(packId, role);
+    logEvent(propertyId, 'party_submitted', role, name || role, `${name || roleLabel} signaled ready`, { role });
     notifyPartySubmitted(propertyId, role, name).catch(() => {});
     res.json({ ok: true });
   } catch (err) {
@@ -1693,25 +1694,14 @@ app.post('/api/public/deal-room/:propertyId/invite', async (req, res) => {
   if (!RESEND_KEY) return res.status(500).json({ error: 'Email not configured' });
   try {
     const { data: room } = await supabase.from('deal_rooms')
-      .select('property_name, first_name, customer_email')
+      .select('property_name, first_name, customer_email, workflow_pack_id')
       .eq('property_id', propertyId).single();
     const propName = room?.property_name || propertyId;
     const fromName = senderName || room?.first_name || 'The deal coordinator';
-    const ROLE_LABELS = {
-      lender: 'Lender / Underwriter', inspector: 'Inspector', insurer: 'Insurance Broker',
-      attorney: 'Attorney', investor: 'Investor', servicer: 'Servicer', franchisor: 'Franchisor / Brand',
-    };
-    const ROLE_ACTIONS = {
-      lender: 'review the financial package and provide your underwriting feedback',
-      inspector: 'upload your property inspection report',
-      insurer: 'upload the insurance certificate and coverage details',
-      attorney: 'review the legal documents and flag any issues',
-      investor: 'review the investment package',
-      servicer: 'access and review the servicing package',
-      franchisor: 'upload brand standards and PIP documentation',
-    };
-    const roleLabel = ROLE_LABELS[role] || role;
-    const roleAction = ROLE_ACTIONS[role] || 'access the deal room';
+    const packId = room?.workflow_pack_id || DEFAULT_PACK_ID;
+    const roleConfig = getPackRoleConfig(packId).roles.find(r => r.key === role);
+    const roleLabel = roleConfig?.label || role;
+    const roleAction = roleConfig?.inviteAction || 'access the deal room';
     const inviteUrl = `https://kontraplatform.com/deal-room/${propertyId}?role=${role}`;
     await sendResendEmail(RESEND_KEY, {
       from: 'Kontra <notifications@kontraplatform.com>',
@@ -1827,6 +1817,28 @@ function getPackStageLabel(packId, stageKey) {
   return stage ? stage.label : stageKey;
 }
 
+// ── Participant roles, per Workflow Pack ────────────────────────────────────
+// Single source of truth lives in shared/workflowRoles.json — the same file
+// the frontend workflow pack modules (ui/src/lib/workflowPacks/*.js) import
+// as their `roles` export. This keeps the backend pack-agnostic: it never
+// hardcodes a role key's meaning, since the same key (e.g. "lender") can
+// carry a different label/purpose in a different pack. Any email,
+// notification, or event-log line that shows a role's display name should
+// go through getPackRoleLabel(packId, roleKey), never a local map.
+const WORKFLOW_ROLES_CONFIG = require('../shared/workflowRoles.json');
+
+function getPackRoleConfig(packId) {
+  return WORKFLOW_ROLES_CONFIG[packId] || WORKFLOW_ROLES_CONFIG[DEFAULT_PACK_ID];
+}
+function getPackRoleLabel(packId, roleKey) {
+  const role = getPackRoleConfig(packId).roles.find(r => r.key === roleKey);
+  return role ? role.label : roleKey;
+}
+async function getRoomPackId(propertyId) {
+  const { data } = await supabase.from('deal_rooms').select('workflow_pack_id').eq('property_id', propertyId).maybeSingle();
+  return data?.workflow_pack_id || DEFAULT_PACK_ID;
+}
+
 app.post('/api/public/deal-room/:propertyId/advance', async (req, res) => {
   const { propertyId } = req.params;
   const { stage } = req.body || {};
@@ -1858,17 +1870,13 @@ async function notifyPartySubmitted(propertyId, role, name) {
   try {
     const { data: room } = await supabase
       .from('deal_rooms')
-      .select('customer_email, property_name, first_name')
+      .select('customer_email, property_name, first_name, workflow_pack_id')
       .eq('property_id', propertyId)
       .single();
     if (!room?.customer_email) return;
     const RESEND_KEY = process.env.RESEND_API_KEY;
     if (!RESEND_KEY) return;
-    const roleLabels = {
-      lender: 'Lender / Underwriter', inspector: 'Inspector', insurance: 'Insurance Broker',
-      attorney: 'Attorney', investor: 'Investor', servicer: 'Servicer', owner: 'Owner',
-    };
-    const roleLabel = roleLabels[role] || role;
+    const roleLabel = getPackRoleLabel(room.workflow_pack_id || DEFAULT_PACK_ID, role);
     const submitterName = name || roleLabel;
     const ownerName = room.first_name || 'there';
     const propName = room.property_name || propertyId;
@@ -1937,14 +1945,15 @@ async function notifyLender(propertyId, uploaderRole, section, summary) {
   try {
     const [lenderRes, roomRes] = await Promise.all([
       supabase.from('party_submissions').select('email,name').eq('property_id', propertyId).eq('role', 'lender').maybeSingle(),
-      supabase.from('deal_rooms').select('property_name').eq('property_id', propertyId).single(),
+      supabase.from('deal_rooms').select('property_name, workflow_pack_id').eq('property_id', propertyId).single(),
     ]);
     if (!lenderRes.data?.email) return;
     const RESEND_KEY = process.env.RESEND_API_KEY;
     if (!RESEND_KEY) return;
     const propName = roomRes.data?.property_name || propertyId;
+    const packId = roomRes.data?.workflow_pack_id || DEFAULT_PACK_ID;
     const SECTION_LABELS = { inspection: 'Inspection Report', insurance: 'Insurance Certificate', financials: 'Financial Statement', legal: 'Legal Document', 'brand-standards': 'Brand Standards / PIP' };
-    const ROLE_LABELS = { inspector: 'Inspector', insurer: 'Insurance Broker', insurance: 'Insurance Broker', attorney: 'Attorney', owner: 'Owner / Borrower' };
+    const uploaderLabel = getPackRoleLabel(packId, uploaderRole);
     await fetch('https://api.resend.com/emails', {
       method: 'POST',
       headers: { Authorization: `Bearer ${RESEND_KEY}`, 'Content-Type': 'application/json' },
@@ -1952,7 +1961,7 @@ async function notifyLender(propertyId, uploaderRole, section, summary) {
         from: 'Kontra <notifications@kontraplatform.com>',
         to: lenderRes.data.email,
         subject: `New document ready for review: ${SECTION_LABELS[section] || section} — ${propName}`,
-        html: `<div style="font-family:sans-serif;max-width:520px;margin:auto;padding:24px"><h2 style="color:#800020;margin-bottom:4px">Document ready for review</h2><p style="color:#555">Hi ${lenderRes.data.name || 'there'},</p><p style="color:#555">The <strong>${ROLE_LABELS[uploaderRole] || uploaderRole}</strong> uploaded a <strong>${SECTION_LABELS[section] || section}</strong> to <strong>${propName}</strong>. AI has analyzed it and it is ready for your review.</p>${summary ? `<p style="background:#f9fafb;border-radius:8px;padding:12px;color:#374151;font-size:14px">${summary}</p>` : ''}<a href="https://kontraplatform.com/deal-room/${propertyId}?role=lender" style="display:inline-block;margin-top:16px;padding:12px 20px;background:#800020;color:white;border-radius:8px;text-decoration:none;font-weight:bold">Review Deal Room →</a><p style="color:#aaa;font-size:12px;margin-top:24px">Kontra · CRE Deal Intelligence</p></div>`,
+        html: `<div style="font-family:sans-serif;max-width:520px;margin:auto;padding:24px"><h2 style="color:#800020;margin-bottom:4px">Document ready for review</h2><p style="color:#555">Hi ${lenderRes.data.name || 'there'},</p><p style="color:#555">The <strong>${uploaderLabel}</strong> uploaded a <strong>${SECTION_LABELS[section] || section}</strong> to <strong>${propName}</strong>. AI has analyzed it and it is ready for your review.</p>${summary ? `<p style="background:#f9fafb;border-radius:8px;padding:12px;color:#374151;font-size:14px">${summary}</p>` : ''}<a href="https://kontraplatform.com/deal-room/${propertyId}?role=lender" style="display:inline-block;margin-top:16px;padding:12px 20px;background:#800020;color:white;border-radius:8px;text-decoration:none;font-weight:bold">Review Deal Room →</a><p style="color:#aaa;font-size:12px;margin-top:24px">Kontra · CRE Deal Intelligence</p></div>`,
       }),
     });
     console.log(`[notifyLender] sent for ${section}`);
@@ -1961,21 +1970,17 @@ async function notifyLender(propertyId, uploaderRole, section, summary) {
 
 // ── Stage advance email — all submitted parties + owner ──────────────────────
 async function notifyStageAdvance(propertyId, stage) {
-  const STAGE_LABELS = { under_review: 'Under Review', approved: 'Approved', closing: 'Closing', funded: 'Funded' };
-  const stageLabel = STAGE_LABELS[stage] || stage;
   const RESEND_KEY = process.env.RESEND_API_KEY;
   if (!RESEND_KEY) return;
   try {
     const [roomRes, subsRes] = await Promise.all([
-      supabase.from('deal_rooms').select('customer_email, property_name, first_name').eq('property_id', propertyId).single(),
+      supabase.from('deal_rooms').select('customer_email, property_name, first_name, workflow_pack_id').eq('property_id', propertyId).single(),
       supabase.from('party_submissions').select('email, name, role').eq('property_id', propertyId),
     ]);
     const room = roomRes.data;
     const propName = room?.property_name || propertyId;
-    const roleLinks = {
-      lender: 'lender', inspector: 'inspector', insurer: 'insurer',
-      attorney: 'attorney', investor: 'investor', servicer: 'servicer',
-    };
+    const packId = room?.workflow_pack_id || DEFAULT_PACK_ID;
+    const stageLabel = getPackStageLabel(packId, stage);
     const makeHtml = (toName, toRole) => `<div style="font-family:sans-serif;max-width:520px;margin:auto;padding:24px">
       <h2 style="color:#800020;margin-bottom:4px">Deal stage updated</h2>
       <p style="color:#555">Hi ${toName || 'there'},</p>
@@ -1987,12 +1992,12 @@ async function notifyStageAdvance(propertyId, stage) {
     const emails = [];
     // Owner
     if (room?.customer_email) {
-      emails.push({ to: room.customer_email, name: room.first_name, role: 'owner' });
+      emails.push({ to: room.customer_email, name: room.first_name, role: getPackRoleConfig(packId).roles.find(r => r.canManage)?.key || 'owner' });
     }
     // Submitted parties with email
     for (const sub of subsRes.data || []) {
       if (sub.email && sub.email !== room?.customer_email) {
-        emails.push({ to: sub.email, name: sub.name, role: roleLinks[sub.role] || sub.role });
+        emails.push({ to: sub.email, name: sub.name, role: sub.role });
       }
     }
     await Promise.allSettled(emails.map(({ to, name, role }) =>
@@ -2014,17 +2019,17 @@ async function notifyStageAdvance(propertyId, stage) {
 // ── Status change email — notify owner of the update ────────────────────────
 async function notifyStatusChange(propertyId, subRole, status, statusNote, updaterRole) {
   const STATUS_LABELS = { approved: 'Approved ✓', needs_revision: 'Needs Revision', rejected: 'Rejected' };
-  const ROLE_LABELS = { lender: 'Lender', inspector: 'Inspector', insurer: 'Insurance Broker', attorney: 'Attorney', owner: 'Owner', investor: 'Investor' };
   const RESEND_KEY = process.env.RESEND_API_KEY;
   if (!RESEND_KEY) return;
   try {
     const { data: room } = await supabase.from('deal_rooms')
-      .select('customer_email, property_name, first_name').eq('property_id', propertyId).single();
+      .select('customer_email, property_name, first_name, workflow_pack_id').eq('property_id', propertyId).single();
     if (!room?.customer_email) return;
     const propName = room.property_name || propertyId;
-    const partyLabel = ROLE_LABELS[subRole] || subRole;
+    const packId = room.workflow_pack_id || DEFAULT_PACK_ID;
+    const partyLabel = getPackRoleLabel(packId, subRole);
     const statusLabel = STATUS_LABELS[status] || status;
-    const updaterLabel = ROLE_LABELS[updaterRole] || updaterRole;
+    const updaterLabel = getPackRoleLabel(packId, updaterRole);
     const noteHtml = statusNote ? `<p style="background:#f9fafb;border-radius:8px;padding:12px;color:#374151;font-size:14px;margin-top:8px">"${statusNote}"</p>` : '';
     const color = status === 'approved' ? '#16a34a' : status === 'rejected' ? '#dc2626' : '#d97706';
     await fetch('https://api.resend.com/emails', {
