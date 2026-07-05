@@ -1,27 +1,27 @@
 import { useState, useEffect } from 'react';
-import { getWorkflowTemplate, DEFAULT_TEMPLATE_ID } from '../../lib/workflowTemplates';
+import { getWorkflowPack, DEFAULT_PACK_ID } from '../../lib/workflowPacks';
 
 const API_BASE = import.meta.env.VITE_API_BASE || '';
 
 // Health scoring rules (required roles, thresholds, action text) live on the
-// active workflow template — see ui/src/lib/workflowTemplates/. This panel
+// active workflow template — see ui/src/lib/workflowPacks/. This panel
 // just renders whatever score + action list the template computes.
-export default function DealHealthPanel({ propertyId, templateId = DEFAULT_TEMPLATE_ID }) {
+export default function DealHealthPanel({ propertyId, packId = DEFAULT_PACK_ID }) {
   const [state, setState] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const workflowTemplate = getWorkflowTemplate(templateId);
+    const workflowPack = getWorkflowPack(packId);
     Promise.all([
       fetch(`${API_BASE}/api/public/deal-room/${propertyId}/analyses`).then(r => r.ok ? r.json() : { analyses: [] }),
       fetch(`${API_BASE}/api/public/deal-room/${propertyId}/coordination?t=${Date.now()}`).then(r => r.ok ? r.json() : {}),
     ]).then(([a, c]) => {
       const analyses = a.analyses || [];
       const submissions = c.submissions || [];
-      setState(workflowTemplate.computeHealth(analyses, submissions));
+      setState(workflowPack.computeHealth(analyses, submissions));
       setLoading(false);
     }).catch(() => setLoading(false));
-  }, [propertyId, templateId]);
+  }, [propertyId, packId]);
 
   if (loading) return (
     <div className="mb-6 bg-white rounded-2xl border border-gray-200 p-5 animate-pulse">

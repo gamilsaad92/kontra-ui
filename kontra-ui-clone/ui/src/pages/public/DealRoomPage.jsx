@@ -7,6 +7,7 @@ import CommentsPanel from "./CommentsPanel";
 import DealHealthPanel from "./DealHealthPanel";
 import InvitePanel from "./InvitePanel";
 import DocumentChecklistPanel, { getTemplate } from "./DocumentChecklistPanel";
+import { DEFAULT_PACK_ID } from "../../lib/workflowPacks";
 
 function usePageTitle(title) {
   useEffect(() => {
@@ -188,6 +189,35 @@ const ROLE_CONFIG = {
     headline: "You've been invited to review this hotel deal room",
     subtext: "As the franchisor representative, you can review the Property Improvement Plan, brand standards compliance, and flag any requirements before deal close.",
     sections: ["compliance", "property"],
+  },
+  // ── Business Acquisition roles — the CRE-specific "Outstanding Items"
+  // dashboard (risk/compliance/property/financials) doesn't apply here, so
+  // these intentionally have no `sections`. Dynamic, pack-aware dashboards
+  // are a later sprint; for now the checklist/health/coordination/invite
+  // panels are the full experience for this pack.
+  buyer: {
+    icon: "💼", label: "Buyer", color: "#800020",
+    headline: "Welcome to your deal room",
+    subtext: "As the buyer, you have a full view of all parties, documents, and deal progress. Share the role-specific links below to invite your advisors and the seller.",
+    sections: [],
+  },
+  seller: {
+    icon: "🏪", label: "Seller", color: "#1d4ed8",
+    headline: "You've been invited to this deal room",
+    subtext: "As the seller, upload your financial statements and disclosures in the checklist above, and track the buyer's progress toward closing.",
+    sections: [],
+  },
+  cpa: {
+    icon: "🧮", label: "CPA / Accountant", color: "#065f46",
+    headline: "You've been invited to review the financials",
+    subtext: "As the CPA, review the financial statements, tax returns, and quality of earnings report uploaded in the checklist above.",
+    sections: [],
+  },
+  counsel: {
+    icon: "⚖️", label: "Legal Counsel", color: "#374151",
+    headline: "You've been invited to review the legal package",
+    subtext: "As legal counsel, review the purchase agreement and disclosure schedule uploaded in the checklist above.",
+    sections: [],
   },
 };
 
@@ -1299,6 +1329,15 @@ export default function DealRoomPage() {
     ? { ...baseRoleConfig, sections: ['brand-standards', ...baseRoleConfig.sections] }
     : baseRoleConfig;
 
+  // Which Workflow Pack powers this deal room. Demo properties are always
+  // CRE Acquisition; custom rooms carry their pack id from creation time.
+  const packId = demoProperty ? DEFAULT_PACK_ID : (apiProperty?.workflow_pack_id || DEFAULT_PACK_ID);
+  // The CRE-specific "Outstanding Items" dashboard (risk/compliance/property/
+  // financials widgets) hardcodes CRE concepts like NOI, DSCR, and occupancy.
+  // Dynamic, pack-aware dashboards are a later sprint — for now, only show
+  // that dashboard for the CRE Acquisition pack.
+  const showCreDashboard = packId === DEFAULT_PACK_ID;
+
   usePageTitle(property?.name || property?.property_name);
 
   // Loading state
@@ -1484,6 +1523,7 @@ export default function DealRoomPage() {
             propertyType={property.property_type || property.type}
             role={role}
             isDemo={isDemo}
+            packId={packId}
           />
         )}
 
@@ -1492,24 +1532,26 @@ export default function DealRoomPage() {
           <InvitePanel
             propertyId={pid}
             senderName={property.first_name || property.property_name || undefined}
+            packId={packId}
           />
         )}
 
         {/* Deal Health Score — sets the tone right after the checklist */}
         {property.isCustom && (
-          <DealHealthPanel propertyId={pid} />
+          <DealHealthPanel propertyId={pid} packId={packId} />
         )}
 
-        {/* Deal Intelligence Dashboard (AI Findings) — reveals as documents are uploaded */}
-        {property.isCustom && (
+        {/* Deal Intelligence Dashboard (AI Findings) — reveals as documents are uploaded.
+            CRE-only for now: it reads CRE section keys (inspection/insurance/financials/legal). */}
+        {property.isCustom && showCreDashboard && (
           <DealIntelligenceDashboard
             propertyId={pid}
             refreshKey={analysesRefreshKey}
           />
         )}
 
-        {/* Financial Summary — auto-derived from uploaded docs, no re-entry */}
-        {property.isCustom && (
+        {/* Financial Summary — auto-derived from uploaded docs, no re-entry. CRE-only for now. */}
+        {property.isCustom && showCreDashboard && (
           <FinancialSnapshotPanel
             propertyId={pid}
             refreshKey={analysesRefreshKey}
@@ -1521,16 +1563,21 @@ export default function DealRoomPage() {
           <DealCoordinationPanel
             propertyId={pid}
             role={role}
+            packId={packId}
           />
         )}
 
-        {/* Outstanding Items — role-scoped sections (risk/compliance/property) */}
-        <div className="grid md:grid-cols-2 gap-5 mb-6">
-          {roleConfig.sections.map((sectionKey) => {
-            const Panel = SECTION_MAP[sectionKey];
-            return Panel ? <Panel key={sectionKey} /> : null;
-          })}
-        </div>
+        {/* Outstanding Items — role-scoped sections (risk/compliance/property). These
+            widgets hardcode CRE concepts (NOI, DSCR, occupancy), so they only render
+            for the CRE Acquisition pack until dashboards become pack-aware (Sprint 3). */}
+        {showCreDashboard && (
+          <div className="grid md:grid-cols-2 gap-5 mb-6">
+            {roleConfig.sections.map((sectionKey) => {
+              const Panel = SECTION_MAP[sectionKey];
+              return Panel ? <Panel key={sectionKey} /> : null;
+            })}
+          </div>
+        )}
 
         {/* Activity Timeline — last, historical record of everything above */}
         {property.isCustom && (

@@ -1,4 +1,4 @@
 - [Kontra identifier conventions](kontra-identifiers.md) — use URL slug (propertyId from useParams) not property.id UUID as the canonical deal room key
 - [Kontra pgAdapter RLS](kontra-pgadapter-rls.md) — local dev PostgreSQL needs row_security=off; RLS blocks pool reads silently returning empty arrays
 - [Kontra deploy routing](kontra-deploy-routing.md) — production API is api/ dir on Render (sync from kontra-ui-clone/api/); UI deploys from kontra-ui-clone/ui/src/ via Vercel — root-level ui/ and api/ dirs are unrelated legacy code, not deployed
-- [Kontra workflow templates](kontra-workflow-templates.md) — deal-room roles/stages/checklist/health now come from a shared workflow template module, not per-component copies
+- [Kontra Workflow Packs](kontra-workflow-packs.md) — deal-room roles/stages/checklist/health/dashboards come from a pluggable Workflow Pack (getWorkflowPack/packId), validated with CRE + Business Acquisition packs

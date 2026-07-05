@@ -1,12 +1,12 @@
 import { useState } from 'react';
-import { getWorkflowTemplate, DEFAULT_TEMPLATE_ID } from '../../lib/workflowTemplates';
+import { getWorkflowPack, DEFAULT_PACK_ID } from '../../lib/workflowPacks';
 
 const API_BASE = import.meta.env.VITE_API_BASE || '';
 
 // Which roles can be invited (and their icon/label/action copy) comes from
-// the active workflow template — see ui/src/lib/workflowTemplates/.
-function getInvitableRoles(templateId) {
-  return getWorkflowTemplate(templateId).roles
+// the active workflow template — see ui/src/lib/workflowPacks/.
+function getInvitableRoles(packId) {
+  return getWorkflowPack(packId).roles
     .filter(r => r.invitable)
     .map(r => ({ role: r.key, icon: r.icon, label: r.shortLabel || r.label, action: r.inviteAction }));
 }
@@ -89,8 +89,8 @@ function RoleCard({ r, propertyId, senderName }) {
   );
 }
 
-export default function InvitePanel({ propertyId, senderName, templateId = DEFAULT_TEMPLATE_ID }) {
-  const roles = getInvitableRoles(templateId);
+export default function InvitePanel({ propertyId, senderName, packId = DEFAULT_PACK_ID }) {
+  const roles = getInvitableRoles(packId);
   return (
     <div className="bg-gray-50 rounded-2xl border border-gray-200 px-6 py-5">
       <div className="mb-4">

@@ -898,6 +898,7 @@ app.post('/api/checkout/guest', async (req, res) => {
     }
     const stripe = require('stripe')(stripeKey);
     const { propertyId, propertyName, plan = 'deal', email, role = 'lender', meta = {} } = req.body;
+    const workflowPackId = meta.workflowPackId || 'cre_acquisition';
     const origin = req.headers.origin || 'https://kontraplatform.com';
 
     const PLANS = {
@@ -945,9 +946,11 @@ app.post('/api/checkout/guest', async (req, res) => {
         closing_date: meta.closingDate || '',
         first_name: meta.firstName || '',
         last_name: meta.lastName || '',
+        workflow_pack_id: workflowPackId,
         created_at: new Date().toISOString(),
       });
     }
+    // (workflowPackId is also read back out of `pending` in the webhook handler above)
 
     res.json({ url: session.url });
   } catch (err) {
@@ -982,6 +985,7 @@ app.post('/api/checkout/demo', async (req, res) => {
       closing_date: meta.closingDate || '',
       first_name: meta.firstName || '',
       last_name: meta.lastName || '',
+      workflow_pack_id: meta.workflowPackId || 'cre_acquisition',
     };
 
     try {
@@ -1055,6 +1059,7 @@ app.post('/api/webhook/stripe',
         closing_date: pending.closing_date || '',
         first_name: pending.first_name || '',
         last_name: pending.last_name || '',
+        workflow_pack_id: pending.workflow_pack_id || 'cre_acquisition',
       };
 
       try {

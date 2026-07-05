@@ -1,10 +1,10 @@
 import { useState, useEffect, useCallback } from 'react';
-import { getWorkflowTemplate, DEFAULT_TEMPLATE_ID } from '../../lib/workflowTemplates';
+import { getWorkflowPack, DEFAULT_PACK_ID } from '../../lib/workflowPacks';
 
 const API_BASE = import.meta.env.VITE_API_BASE || '';
 
 // Roles, lifecycle stages, and next-stage/advance-label maps all come from
-// the active workflow template — see ui/src/lib/workflowTemplates/.
+// the active workflow template — see ui/src/lib/workflowPacks/.
 
 const STATUS_CONFIG = {
   submitted:      { label: 'Submitted',     bg: 'bg-blue-50',   text: 'text-blue-700',   dot: 'bg-blue-500'   },
@@ -23,12 +23,12 @@ function StatusBadge({ status }) {
   );
 }
 
-export default function DealCoordinationPanel({ propertyId, role, templateId = DEFAULT_TEMPLATE_ID }) {
-  const workflowTemplate = getWorkflowTemplate(templateId);
-  const STAGES = workflowTemplate.stages;
-  const NEXT_STAGE = workflowTemplate.nextStage;
-  const ADVANCE_LABEL = workflowTemplate.advanceLabel;
-  const ROLE_META = Object.fromEntries(workflowTemplate.roles.map(r => [r.key, r]));
+export default function DealCoordinationPanel({ propertyId, role, packId = DEFAULT_PACK_ID }) {
+  const workflowPack = getWorkflowPack(packId);
+  const STAGES = workflowPack.stages;
+  const NEXT_STAGE = workflowPack.nextStage;
+  const ADVANCE_LABEL = workflowPack.advanceLabel;
+  const ROLE_META = Object.fromEntries(workflowPack.roles.map(r => [r.key, r]));
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -124,8 +124,9 @@ export default function DealCoordinationPanel({ propertyId, role, templateId = D
   const submissions = data.submissions || [];
   const docsByRole = data.docsByRole || {};
   const isFunded = stage === 'funded';
-  const canAdvance = (role === 'owner' || role === 'lender') && !isFunded;
-  const canSetStatus = role === 'owner' || role === 'lender';
+  const canManage = !!ROLE_META[role]?.canManage;
+  const canAdvance = canManage && !isFunded;
+  const canSetStatus = canManage;
   const submittedRoles = new Set(submissions.map(s => s.role));
   const requiredRoles = Object.entries(ROLE_META).filter(([, m]) => m.required).map(([k]) => k);
   const allRequiredIn = requiredRoles.every(r => submittedRoles.has(r));

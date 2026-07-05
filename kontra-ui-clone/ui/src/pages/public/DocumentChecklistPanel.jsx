@@ -1,22 +1,22 @@
 import { useState, useEffect, useRef } from "react";
-import { getWorkflowTemplate, DEFAULT_TEMPLATE_ID } from "../../lib/workflowTemplates";
+import { getWorkflowPack, DEFAULT_PACK_ID } from "../../lib/workflowPacks";
 
 const API_BASE = (import.meta.env.VITE_API_BASE || "").replace(/\/+$/, "");
 
 // Document schema, AI extraction rules, and upload routing all come from the
 // active workflow template (CRE Acquisition today) — see
-// ui/src/lib/workflowTemplates/. This panel is a generic renderer for
+// ui/src/lib/workflowPacks/. This panel is a generic renderer for
 // "whatever the template's checklist says."
 
 // Backward-compatible helper some callers still import directly.
-export function getTemplate(propertyType, templateId = DEFAULT_TEMPLATE_ID) {
-  return getWorkflowTemplate(templateId).getDocumentSchema(propertyType);
+export function getTemplate(propertyType, packId = DEFAULT_PACK_ID) {
+  return getWorkflowPack(packId).getDocumentSchema(propertyType);
 }
 
 // ── Main component ─────────────────────────────────────────────────────────────
-export default function DocumentChecklistPanel({ propertyId, propertyType, role, isDemo = false, templateId = DEFAULT_TEMPLATE_ID }) {
-  const workflowTemplate = getWorkflowTemplate(templateId);
-  const { getInlineFacts, getCompletenessIssues, factColors: FACT_COLORS, aiUploadEndpoints: AI_UPLOAD_ENDPOINTS } = workflowTemplate;
+export default function DocumentChecklistPanel({ propertyId, propertyType, role, isDemo = false, packId = DEFAULT_PACK_ID }) {
+  const workflowPack = getWorkflowPack(packId);
+  const { getInlineFacts, getCompletenessIssues, factColors: FACT_COLORS, aiUploadEndpoints: AI_UPLOAD_ENDPOINTS } = workflowPack;
   const [analyses, setAnalyses] = useState([]);
   const [loading, setLoading] = useState(true);
   const [uploadingSection, setUploadingSection] = useState(null);
@@ -43,7 +43,7 @@ export default function DocumentChecklistPanel({ propertyId, propertyType, role,
     return () => clearTimeout(t);
   }, [analyses]);
 
-  const template = workflowTemplate.getDocumentSchema(propertyType);
+  const template = workflowPack.getDocumentSchema(propertyType);
   const uploadedSections = new Set(analyses.map(a => a.section));
   const analysisBySection = Object.fromEntries(analyses.map(a => [a.section, a.analysis]));
   const filenameBySection = Object.fromEntries(analyses.map(a => [a.section, a.filename]));
