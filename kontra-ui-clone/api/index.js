@@ -2308,6 +2308,94 @@ Property: Type=${propertyType||'Unknown'}, Occupancy=${occupancy||'?'}%, NOI=$${
   }
 });
 
+// ── AI Next Action Engine ────────────────────────────────────────────────
+// Reasons over the deal's actual state (extracted document findings, party
+// status) with an LLM instead of fixed point-deduction rules — so nuance
+// (e.g. "DSCR is borderline but insurance just lapsed too, compounding
+// risk") comes from real reasoning, not a hardcoded formula. Generic over
+// any Workflow Pack: the caller (frontend, which already has the active
+// pack loaded) supplies the required docs/roles, this endpoint doesn't need
+// to know anything about CRE vs Business Acquisition. Cached in-memory per
+// exact input state so repeat panel loads don't re-call the LLM. ──────────
+const nextActionsCache = new Map();
+const NEXT_ACTIONS_CACHE_MAX = 500;
+
+function hashNextActionsInput(payload) {
+  const crypto = require('crypto');
+  return crypto.createHash('sha1').update(JSON.stringify(payload)).digest('hex');
+}
+
+app.post('/api/ai/next-actions', aiRateLimit, async (req, res) => {
+  const { propertyId, stageLabel, requiredDocs, requiredRoles, analyses, submissions } = req.body || {};
+  if (!propertyId) return res.status(400).json({ error: 'propertyId required' });
+
+  const cacheInput = { propertyId, stageLabel, requiredDocs, requiredRoles, analyses, submissions };
+  const cacheKey = hashNextActionsInput(cacheInput);
+  const cached = nextActionsCache.get(cacheKey);
+  if (cached) return res.json({ success: true, ...cached, cached: true });
+
+  try {
+    const docsBlock = (requiredDocs || []).map(d => `- ${d.label} (${d.required ? 'required' : 'optional'})`).join('\n') || 'none listed';
+    const rolesBlock = (requiredRoles || []).map(r => `- ${r.label}${r.required ? ' (required)' : ''}`).join('\n') || 'none listed';
+    const analysesBlock = (analyses || []).map(a => {
+      const an = a.analysis || {};
+      const flags = (an.risk_flags || []).join('; ') || 'none';
+      const metrics = an.metrics ? JSON.stringify(an.metrics) : 'none';
+      return `- [${a.section}] summary: ${an.summary || 'n/a'} | metrics: ${metrics} | risk flags: ${flags}`;
+    }).join('\n') || 'No documents analyzed yet.';
+    const submissionsBlock = (submissions || []).map(s => `- ${s.role}: ${s.status}${s.status_note ? ` (${s.status_note})` : ''}`).join('\n') || 'No party submissions yet.';
+
+    const systemPrompt = `You are a senior deal underwriter reasoning holistically over a deal room's current state — not applying fixed point deductions, but weighing how findings interact (e.g. two moderate risks compounding into one urgent action, or a missing document mattering more/less depending on deal stage). Return strict JSON:
+{
+  "score": number (0-100, overall deal health — higher is healthier),
+  "actions": [ { "sev": "error"|"warn"|"info"|"ok", "icon": string (single emoji), "text": string (plain-English, specific, under 100 chars) } ]
+}
+Rules:
+- Prioritize the most urgent/impactful issues first in the actions array.
+- If everything required is in good standing, return a single "ok" action saying so and a score of 90+.
+- Be specific — reference actual figures/findings from the data given, not generic advice.
+- Cap actions at 6; do not pad with filler.`;
+
+    const userPrompt = `Deal stage: ${stageLabel || 'unknown'}
+
+Required documents:
+${docsBlock}
+
+Required parties:
+${rolesBlock}
+
+AI-extracted findings from uploaded documents:
+${analysesBlock}
+
+Party submission status:
+${submissionsBlock}`;
+
+    const completion = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userPrompt },
+      ],
+      response_format: { type: 'json_object' },
+      temperature: 0.3,
+    });
+    const result = JSON.parse(completion.choices[0].message.content);
+    const score = Math.max(0, Math.min(100, Number(result.score) || 0));
+    const actions = Array.isArray(result.actions) ? result.actions.slice(0, 6) : [];
+    const payload = { score, actions };
+
+    if (nextActionsCache.size >= NEXT_ACTIONS_CACHE_MAX) {
+      nextActionsCache.delete(nextActionsCache.keys().next().value);
+    }
+    nextActionsCache.set(cacheKey, payload);
+
+    res.json({ success: true, ...payload });
+  } catch (err) {
+    console.error('[next-actions]', err.message);
+    res.status(500).json({ error: 'AI next-action scoring failed', message: err.message });
+  }
+});
+
 app.post('/api/ai/review-insurance', aiRateLimit, upload.single('file'), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
   console.log('[review-insurance] file:', req.file.originalname, 'mime:', req.file.mimetype);

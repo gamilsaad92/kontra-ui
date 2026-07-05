@@ -2,3 +2,4 @@
 - [Kontra pgAdapter RLS](kontra-pgadapter-rls.md) — local dev PostgreSQL needs row_security=off; RLS blocks pool reads silently returning empty arrays
 - [Kontra deploy routing](kontra-deploy-routing.md) — production API is api/ dir on Render (sync from kontra-ui-clone/api/); UI deploys from kontra-ui-clone/ui/src/ via Vercel — root-level ui/ and api/ dirs are unrelated legacy code, not deployed
 - [Kontra Workflow Packs](kontra-workflow-packs.md) — deal-room roles/stages/checklist/health/dashboards come from a pluggable Workflow Pack (getWorkflowPack/packId), validated with CRE + Business Acquisition packs
+- [Kontra AI Next Action Engine](kontra-next-action-engine.md) — health scoring is LLM-reasoned server-side (pack-agnostic), deterministic computeHealth() kept only as client-side fallback

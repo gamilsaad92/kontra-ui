@@ -3,24 +3,53 @@ import { getWorkflowPack, DEFAULT_PACK_ID } from '../../lib/workflowPacks';
 
 const API_BASE = import.meta.env.VITE_API_BASE || '';
 
-// Health scoring rules (required roles, thresholds, action text) live on the
-// active workflow template — see ui/src/lib/workflowPacks/. This panel
-// just renders whatever score + action list the template computes.
+// Health scoring: an LLM reasons holistically over the deal's actual state
+// (AI-extracted findings, party status, deal stage) via /api/ai/next-actions
+// — the deterministic pack.computeHealth() (fixed point deductions) is kept
+// only as an instant fallback if the AI call fails or is still loading, so
+// the panel never breaks or blocks. Generic over any Workflow Pack: this
+// component supplies the pack's own required docs/roles to the endpoint,
+// the endpoint doesn't hardcode anything CRE- or M&A-specific.
 export default function DealHealthPanel({ propertyId, packId = DEFAULT_PACK_ID }) {
   const [state, setState] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [aiPowered, setAiPowered] = useState(false);
 
   useEffect(() => {
+    let cancelled = false;
     const workflowPack = getWorkflowPack(packId);
     Promise.all([
       fetch(`${API_BASE}/api/public/deal-room/${propertyId}/analyses`).then(r => r.ok ? r.json() : { analyses: [] }),
       fetch(`${API_BASE}/api/public/deal-room/${propertyId}/coordination?t=${Date.now()}`).then(r => r.ok ? r.json() : {}),
     ]).then(([a, c]) => {
+      if (cancelled) return;
       const analyses = a.analyses || [];
       const submissions = c.submissions || [];
-      setState(workflowPack.computeHealth(analyses, submissions));
+      const fallback = workflowPack.computeHealth(analyses, submissions);
+      setState(fallback);
       setLoading(false);
+
+      const requiredDocs = (workflowPack.getDocumentSchema?.() || []).map(d => ({ label: d.label, required: !!d.required }));
+      const requiredRoles = (workflowPack.roles || []).map(r => ({ label: r.shortLabel || r.label, required: !!r.required }));
+
+      fetch(`${API_BASE}/api/ai/next-actions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          propertyId,
+          stageLabel: c.stage || null,
+          requiredDocs,
+          requiredRoles,
+          analyses: analyses.map(x => ({ section: x.section, analysis: x.analysis })),
+          submissions,
+        }),
+      }).then(r => r.ok ? r.json() : null).then(ai => {
+        if (cancelled || !ai?.success) return;
+        setState({ score: ai.score, actions: ai.actions });
+        setAiPowered(true);
+      }).catch(() => { /* keep deterministic fallback already shown */ });
     }).catch(() => setLoading(false));
+    return () => { cancelled = true; };
   }, [propertyId, packId]);
 
   if (loading) return (
@@ -67,7 +96,12 @@ export default function DealHealthPanel({ propertyId, packId = DEFAULT_PACK_ID }
         </div>
 
         <div className="flex-1 min-w-0">
-          <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-0.5">Deal Health Score</p>
+          <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-0.5 flex items-center gap-1.5">
+            Deal Health Score
+            {aiPowered && (
+              <span className="text-[9px] font-bold text-indigo-500 bg-indigo-50 px-1.5 py-0.5 rounded-full normal-case tracking-normal">✨ AI-reasoned</span>
+            )}
+          </p>
           <p className="text-lg font-bold text-gray-900 leading-tight">{emoji} {label}</p>
           {actions.length === 0 ? (
             <p className="text-xs text-green-600 font-semibold mt-1">✓ No action items — deal on track</p>
