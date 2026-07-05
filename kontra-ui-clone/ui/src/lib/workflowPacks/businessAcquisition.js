@@ -37,20 +37,35 @@ export function getRoleLabel(key, { short = false } = {}) {
 }
 
 // ── Lifecycle stages ─────────────────────────────────────────────────────────
-// Stage *keys* intentionally match the CRE Acquisition pack (uploading →
-// under_review → approved → closing → funded) — the backend coordination API
-// (advance/status endpoints) validates against a fixed set of stage keys that
-// isn't yet pack-aware, so packs share the same keys today and differentiate
-// only via label/icon/desc. Making the backend's valid-stage list itself
-// pack-driven is a later sprint if/when a pack needs genuinely different
-// lifecycle shapes (e.g. more/fewer stages).
-export const stages = [
-  { key: "uploading",    label: "Due Diligence", icon: "📤", desc: "Parties submitting documents" },
-  { key: "under_review", label: "Under Review",  icon: "🔍", desc: "Buyer & advisors reviewing submissions" },
-  { key: "approved",     label: "Approved",      icon: "✅", desc: "Deal approved — finalizing" },
-  { key: "closing",      label: "Closing",       icon: "✍️", desc: "Signing in process" },
-  { key: "funded",       label: "Closed",        icon: "🤝", desc: "Deal closed" },
-];
+// Stage keys + labels are read from shared/workflowStages.json — the same
+// file the backend (api/index.js) validates against, so the backend's
+// valid-stage list is now genuinely pack-driven. This pack happens to reuse
+// the CRE Acquisition stage keys today with different labels (Due Diligence,
+// Closed, etc); a future pack needing more/fewer stages only needs a new
+// entry in that JSON file, not a backend code change. Icon/desc below are
+// cosmetic UI-only metadata layered on by key.
+import stagesConfig from "../../../../shared/workflowStages.json";
+
+const STAGE_META = {
+  uploading:    { icon: "📤" },
+  under_review: { icon: "🔍" },
+  approved:     { icon: "✅" },
+  closing:      { icon: "✍️" },
+  funded:       { icon: "🤝" },
+};
+const STAGE_DESC = {
+  uploading:    "Parties submitting documents",
+  under_review: "Buyer & advisors reviewing submissions",
+  approved:     "Deal approved — finalizing",
+  closing:      "Signing in process",
+  funded:       "Deal closed",
+};
+
+export const stages = stagesConfig.business_acquisition.stages.map(s => ({
+  ...s,
+  ...(STAGE_META[s.key] || {}),
+  desc: STAGE_DESC[s.key] || "",
+}));
 
 export const nextStage = {
   uploading:    "under_review",
@@ -157,20 +172,88 @@ export const aiUploadEndpoints = Object.fromEntries(
 );
 export const trackSections = new Set(DOCUMENT_SCHEMA.map(d => d.section));
 
-// ── Outstanding Items grid — Business Acquisition doesn't have a risk score,
-// compliance rollup, or property-details equivalent yet, so none of the
-// three panels apply. DealRoomPage reads this straight from the pack. ──────
+// ── Outstanding Items grid — the CRE-specific risk/compliance/property
+// panels (NOI, DSCR, occupancy) don't have a Business Acquisition equivalent
+// and shouldn't get one — an M&A deal has no occupancy rate. This pack
+// correctly declares none; the "Deal Intelligence" + "Financial Snapshot"
+// dashboards below are its equivalent, built from the same AI-extracted
+// financials/QoE data instead of CRE-only fields. ───────────────────────────
 export const outstandingItemsSections = [];
 
-// ── Dashboard: no deep AI extraction yet, so no intelligence sections and no
-// snapshot stats — DealRoomPage reads these straight from the pack, so once
-// this pack gets real AI review these dashboards will start rendering with
-// zero changes to DealRoomPage itself. ──────────────────────────────────────
-export const intelligenceSections = [];
-export function getIntelligenceBadge(_section, _analysis) { return null; }
-export function getIntelligenceHighlight(_section, _analysis) { return null; }
-export function getSnapshotStats(_bySection) { return []; }
-export function getSnapshotFlag(_bySection) { return null; }
+// ── Dashboard: now that financials and QoE route through the universal AI
+// extraction endpoint (see aiExtraction metadata above), this pack has real
+// data to drive the same generic "Deal Intelligence" and "Financial
+// Snapshot" panels the CRE pack uses — DealRoomPage needed zero changes. ────
+export const intelligenceSections = [
+  { key: "financials", icon: "📊", label: "Financials",        color: "#16a34a" },
+  { key: "qoe",        icon: "🧮", label: "Quality of Earnings", color: "#2563eb" },
+];
+
+function marginBadge(margin) {
+  if (margin == null) return null;
+  const n = Number(margin);
+  if (n >= 15) return { label: "Healthy Margin", color: "#16a34a" };
+  if (n >= 5) return { label: "Moderate Margin", color: "#d97706" };
+  return { label: "Thin Margin", color: "#dc2626" };
+}
+
+export function getIntelligenceBadge(section, analysis) {
+  if (!analysis) return null;
+  const metrics = analysis.metrics || {};
+  if (section === "financials") return marginBadge(metrics.net_margin);
+  if (section === "qoe") {
+    const adj = Number(metrics.normalization_adjustments) || 0;
+    const ebitda = Number(metrics.adjusted_ebitda) || 0;
+    if (!ebitda) return null;
+    const adjRatio = adj / ebitda;
+    if (adjRatio > 0.3) return { label: "Large Adjustments", color: "#dc2626" };
+    if (adjRatio > 0.1) return { label: "Some Adjustments", color: "#d97706" };
+    return { label: "Clean Adjustments", color: "#16a34a" };
+  }
+  return null;
+}
+
+export function getIntelligenceHighlight(section, analysis) {
+  if (!analysis) return null;
+  const metrics = analysis.metrics || {};
+  if (section === "financials" && metrics.revenue != null) {
+    return `Revenue: $${Number(metrics.revenue).toLocaleString()}${metrics.ebitda != null ? ` · EBITDA: $${Number(metrics.ebitda).toLocaleString()}` : ""}`;
+  }
+  if (section === "qoe" && metrics.adjusted_ebitda != null) {
+    return `Adjusted EBITDA: $${Number(metrics.adjusted_ebitda).toLocaleString()}${metrics.normalization_adjustments != null ? ` (+$${Number(metrics.normalization_adjustments).toLocaleString()} adj.)` : ""}`;
+  }
+  return null;
+}
+
+// ── Dashboard: Financial Snapshot rollup — key numbers already extracted by
+// AI from the financial statements and QoE report, generic over whatever
+// metrics each document's aiExtraction schema declares. ────────────────────
+export function getSnapshotStats(bySection) {
+  const fin = bySection.financials?.metrics || {};
+  const qoe = bySection.qoe?.metrics || {};
+  return [
+    { label: "Revenue", value: fin.revenue != null ? `$${Number(fin.revenue).toLocaleString()}` : null },
+    { label: "EBITDA", value: fin.ebitda != null ? `$${Number(fin.ebitda).toLocaleString()}` : null },
+    { label: "SDE", value: fin.sde != null ? `$${Number(fin.sde).toLocaleString()}` : null },
+    { label: "Net Margin", value: fin.net_margin != null ? `${fin.net_margin}%` : null },
+    { label: "YoY Growth", value: fin.yoy_growth != null ? `${fin.yoy_growth}%` : null },
+    { label: "Adjusted EBITDA", value: qoe.adjusted_ebitda != null ? `$${Number(qoe.adjusted_ebitda).toLocaleString()}` : null },
+  ].filter(s => s.value);
+}
+
+export function getSnapshotFlag(bySection) {
+  const fin = bySection.financials?.metrics || {};
+  const qoe = bySection.qoe?.metrics || {};
+  if (fin.ebitda != null && Number(fin.ebitda) < 0) {
+    return { text: "Negative EBITDA reported", sev: "error" };
+  }
+  const ebitda = Number(qoe.adjusted_ebitda) || 0;
+  const adj = Number(qoe.normalization_adjustments) || 0;
+  if (ebitda && adj / ebitda > 0.3) {
+    return { text: "QoE normalization adjustments unusually large — review closely", sev: "warn" };
+  }
+  return null;
+}
 
 // ── Health scoring ───────────────────────────────────────────────────────────
 // No domain-specific parsing (no DSCR/occupancy equivalents yet) — health is

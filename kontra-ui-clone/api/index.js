@@ -1808,16 +1808,24 @@ async function sealClosingRecord(propertyId) {
 }
 
 // ── Lifecycle stage keys, per Workflow Pack ─────────────────────────────────
-// Mirrors the `stages` export in each pack's ui/src/lib/workflowPacks/*.js —
-// keep in sync if a pack ever ships stages the others don't share. Both
-// current packs (CRE Acquisition, Business Acquisition) happen to use the
-// same five keys today, so this map still resolves to identical arrays, but
-// validation is now pack-aware instead of a single hardcoded list.
-const PACK_STAGES = {
-  cre_acquisition: ['uploading', 'under_review', 'approved', 'closing', 'funded'],
-  business_acquisition: ['uploading', 'under_review', 'approved', 'closing', 'funded'],
-};
+// Single source of truth lives in shared/workflowStages.json — the same file
+// the frontend workflow pack modules (ui/src/lib/workflowPacks/*.js) import.
+// Adding a pack with different lifecycle stages requires editing ONLY that
+// JSON file; no backend code changes are needed for the API to validate and
+// label the new stages correctly.
+const WORKFLOW_STAGES_CONFIG = require('../shared/workflowStages.json');
 const DEFAULT_PACK_ID = 'cre_acquisition';
+
+function getPackStageConfig(packId) {
+  return WORKFLOW_STAGES_CONFIG[packId] || WORKFLOW_STAGES_CONFIG[DEFAULT_PACK_ID];
+}
+function getPackStageKeys(packId) {
+  return getPackStageConfig(packId).stages.map(s => s.key);
+}
+function getPackStageLabel(packId, stageKey) {
+  const stage = getPackStageConfig(packId).stages.find(s => s.key === stageKey);
+  return stage ? stage.label : stageKey;
+}
 
 app.post('/api/public/deal-room/:propertyId/advance', async (req, res) => {
   const { propertyId } = req.params;
@@ -1830,12 +1838,11 @@ app.post('/api/public/deal-room/:propertyId/advance', async (req, res) => {
       .single();
     if (fetchError) throw fetchError;
     const packId = room?.workflow_pack_id || DEFAULT_PACK_ID;
-    const VALID = PACK_STAGES[packId] || PACK_STAGES[DEFAULT_PACK_ID];
+    const VALID = getPackStageKeys(packId);
     if (!VALID.includes(stage)) return res.status(400).json({ error: 'invalid stage' });
     const { error } = await supabase.from('deal_rooms').update({ deal_stage: stage }).eq('property_id', propertyId);
     if (error) throw error;
-    const STAGE_LABELS = { uploading: 'Uploading', under_review: 'Under Review', approved: 'Approved', closing: 'Closing', funded: 'Funded' };
-    logEvent(propertyId, 'stage_advanced', 'owner', null, `Deal advanced to ${STAGE_LABELS[stage] || stage}`, { stage });
+    logEvent(propertyId, 'stage_advanced', 'owner', null, `Deal advanced to ${getPackStageLabel(packId, stage)}`, { stage });
     res.json({ ok: true, stage });
     notifyStageAdvance(propertyId, stage).catch(() => {});
     // When a deal funds — seal the immutable closing record

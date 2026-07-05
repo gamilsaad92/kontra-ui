@@ -37,13 +37,25 @@ export function getRoleLabel(key, { short = false } = {}) {
 }
 
 // ── Lifecycle stages ─────────────────────────────────────────────────────────
-export const stages = [
-  { key: "uploading",    label: "Uploading",    icon: "📤", desc: "Parties submitting documents" },
-  { key: "under_review", label: "Under Review", icon: "🔍", desc: "Lender reviewing submissions" },
-  { key: "approved",     label: "Approved",     icon: "✅", desc: "Deal approved — finalizing" },
-  { key: "closing",      label: "Closing",      icon: "✍️", desc: "Signing & funding in process" },
-  { key: "funded",       label: "Funded",       icon: "🏦", desc: "Deal closed and funded" },
-];
+// Stage keys + labels are read from shared/workflowStages.json — the same
+// file the backend (api/index.js) validates against. Icon/desc are cosmetic
+// UI-only metadata layered on top by key, so they can't drift the two ends
+// out of sync. Adding a pack with different stage keys only requires editing
+// that JSON file, not this file or the backend.
+import stagesConfig from "../../../../shared/workflowStages.json";
+
+const STAGE_META = {
+  uploading:    { icon: "📤", desc: "Parties submitting documents" },
+  under_review: { icon: "🔍", desc: "Lender reviewing submissions" },
+  approved:     { icon: "✅", desc: "Deal approved — finalizing" },
+  closing:      { icon: "✍️", desc: "Signing & funding in process" },
+  funded:       { icon: "🏦", desc: "Deal closed and funded" },
+};
+
+export const stages = stagesConfig.cre_acquisition.stages.map(s => ({
+  ...s,
+  ...(STAGE_META[s.key] || {}),
+}));
 
 export const nextStage = {
   uploading:    "under_review",
