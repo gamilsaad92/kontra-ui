@@ -1,15 +1,15 @@
 import { useState } from 'react';
+import { getWorkflowTemplate, DEFAULT_TEMPLATE_ID } from '../../lib/workflowTemplates';
 
 const API_BASE = import.meta.env.VITE_API_BASE || '';
 
-const ROLES = [
-  { role: 'lender',    icon: '🏦', label: 'Lender',           action: 'review the financial package' },
-  { role: 'inspector', icon: '🔍', label: 'Inspector',         action: 'upload the inspection report' },
-  { role: 'insurer',   icon: '🛡️', label: 'Insurance Broker',  action: 'upload the insurance certificate' },
-  { role: 'attorney',  icon: '⚖️', label: 'Attorney',          action: 'review legal documents' },
-  { role: 'investor',  icon: '📊', label: 'Investor',          action: 'review the investment package' },
-  { role: 'servicer',  icon: '⚙️', label: 'Servicer',          action: 'access the servicing package' },
-];
+// Which roles can be invited (and their icon/label/action copy) comes from
+// the active workflow template — see ui/src/lib/workflowTemplates/.
+function getInvitableRoles(templateId) {
+  return getWorkflowTemplate(templateId).roles
+    .filter(r => r.invitable)
+    .map(r => ({ role: r.key, icon: r.icon, label: r.shortLabel || r.label, action: r.inviteAction }));
+}
 
 function RoleCard({ r, propertyId, senderName }) {
   const [email, setEmail] = useState('');
@@ -89,7 +89,8 @@ function RoleCard({ r, propertyId, senderName }) {
   );
 }
 
-export default function InvitePanel({ propertyId, senderName }) {
+export default function InvitePanel({ propertyId, senderName, templateId = DEFAULT_TEMPLATE_ID }) {
+  const roles = getInvitableRoles(templateId);
   return (
     <div className="bg-gray-50 rounded-2xl border border-gray-200 px-6 py-5">
       <div className="mb-4">
@@ -99,7 +100,7 @@ export default function InvitePanel({ propertyId, senderName }) {
         </p>
       </div>
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-        {ROLES.map(r => (
+        {roles.map(r => (
           <RoleCard key={r.role} r={r} propertyId={propertyId} senderName={senderName} />
         ))}
       </div>

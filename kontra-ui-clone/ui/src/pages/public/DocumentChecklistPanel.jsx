@@ -1,275 +1,22 @@
 import { useState, useEffect, useRef } from "react";
+import { getWorkflowTemplate, DEFAULT_TEMPLATE_ID } from "../../lib/workflowTemplates";
 
 const API_BASE = (import.meta.env.VITE_API_BASE || "").replace(/\/+$/, "");
 
-// ── Templates per property type ────────────────────────────────────────────────
-const TEMPLATES = {
-  Multifamily: [
-    { id: "purchase_agreement", label: "Purchase Agreement",            section: "purchase_agreement", ai: true,  required: true },
-    { id: "rent_roll",          label: "Rent Roll",                     section: "rent_roll",          ai: true,  required: true },
-    { id: "financials",         label: "T-12 Financial Statement",      section: "financials",         ai: true,  required: true },
-    { id: "insurance",          label: "Insurance Certificate",         section: "insurance",          ai: true,  required: true },
-    { id: "inspection",         label: "Property Inspection Report",    section: "inspection",         ai: true,  required: true },
-    { id: "estoppel",           label: "Estoppel Certificates",         section: "estoppel",           ai: true,  required: false },
-    { id: "environmental",      label: "Environmental Report (Phase I)",section: "environmental",      ai: true,  required: true },
-    { id: "survey",             label: "Survey / ALTA",                 section: "survey",             ai: true,  required: false },
-    { id: "title",              label: "Title Commitment",              section: "title",              ai: true,  required: true },
-  ],
-  Office: [
-    { id: "purchase_agreement", label: "Purchase Agreement",            section: "purchase_agreement", ai: true,  required: true },
-    { id: "rent_roll",          label: "Rent Roll",                     section: "rent_roll",          ai: true,  required: true },
-    { id: "financials",         label: "T-12 Financial Statement",      section: "financials",         ai: true,  required: true },
-    { id: "insurance",          label: "Insurance Certificate",         section: "insurance",          ai: true,  required: true },
-    { id: "inspection",         label: "Property Inspection Report",    section: "inspection",         ai: true,  required: true },
-    { id: "estoppel",           label: "Estoppel / Lease Abstracts",    section: "estoppel",           ai: true,  required: true },
-    { id: "environmental",      label: "Environmental Report (Phase I)",section: "environmental",      ai: true,  required: true },
-    { id: "survey",             label: "Survey / ALTA",                 section: "survey",             ai: true,  required: false },
-    { id: "title",              label: "Title Commitment",              section: "title",              ai: true,  required: true },
-    { id: "legal",              label: "Loan / Legal Documents",        section: "legal",              ai: true,  required: false },
-  ],
-  Industrial: [
-    { id: "purchase_agreement", label: "Purchase Agreement",            section: "purchase_agreement", ai: true,  required: true },
-    { id: "financials",         label: "Financial Statement",           section: "financials",         ai: true,  required: true },
-    { id: "insurance",          label: "Insurance Certificate",         section: "insurance",          ai: true,  required: true },
-    { id: "inspection",         label: "Property Inspection Report",    section: "inspection",         ai: true,  required: true },
-    { id: "environmental",      label: "Environmental Report (Phase I)",section: "environmental",      ai: true,  required: true },
-    { id: "survey",             label: "Survey / ALTA",                 section: "survey",             ai: true,  required: false },
-    { id: "title",              label: "Title Commitment",              section: "title",              ai: true,  required: true },
-    { id: "legal",              label: "Lease / Legal Documents",       section: "legal",              ai: true,  required: false },
-  ],
-  Hotel: [
-    { id: "purchase_agreement", label: "Purchase Agreement",            section: "purchase_agreement", ai: true,  required: true },
-    { id: "brand_standards",    label: "PIP / Brand Standards",         section: "brand-standards",    ai: true,  required: true },
-    { id: "legal",              label: "Franchise Agreement",           section: "legal",              ai: true,  required: true },
-    { id: "financials",         label: "STR / P&L Statement",           section: "financials",         ai: true,  required: true },
-    { id: "insurance",          label: "Insurance Certificate",         section: "insurance",          ai: true,  required: true },
-    { id: "inspection",         label: "Property Inspection Report",    section: "inspection",         ai: true,  required: true },
-    { id: "environmental",      label: "Environmental Report (Phase I)",section: "environmental",      ai: true,  required: true },
-    { id: "survey",             label: "Survey / ALTA",                 section: "survey",             ai: true,  required: false },
-    { id: "title",              label: "Title Commitment",              section: "title",              ai: true,  required: true },
-  ],
-  Retail: [
-    { id: "purchase_agreement", label: "Purchase Agreement",            section: "purchase_agreement", ai: true,  required: true },
-    { id: "rent_roll",          label: "Rent Roll",                     section: "rent_roll",          ai: true,  required: true },
-    { id: "financials",         label: "T-12 Financial Statement",      section: "financials",         ai: true,  required: true },
-    { id: "insurance",          label: "Insurance Certificate",         section: "insurance",          ai: true,  required: true },
-    { id: "inspection",         label: "Property Inspection Report",    section: "inspection",         ai: true,  required: true },
-    { id: "estoppel",           label: "Estoppel / Lease Abstracts",    section: "estoppel",           ai: true,  required: true },
-    { id: "environmental",      label: "Environmental Report (Phase I)",section: "environmental",      ai: true,  required: true },
-    { id: "survey",             label: "Survey / ALTA",                 section: "survey",             ai: true,  required: false },
-    { id: "title",              label: "Title Commitment",              section: "title",              ai: true,  required: true },
-  ],
-};
+// Document schema, AI extraction rules, and upload routing all come from the
+// active workflow template (CRE Acquisition today) — see
+// ui/src/lib/workflowTemplates/. This panel is a generic renderer for
+// "whatever the template's checklist says."
 
-const DEFAULT_TEMPLATE = TEMPLATES.Multifamily;
-
-export function getTemplate(propertyType) {
-  if (!propertyType) return DEFAULT_TEMPLATE;
-  const t = propertyType.toLowerCase();
-  if (t.includes("hotel") || t.includes("hospitality") || t.includes("motel")) return TEMPLATES.Hotel;
-  if (t.includes("office")) return TEMPLATES.Office;
-  if (t.includes("industrial") || t.includes("warehouse")) return TEMPLATES.Industrial;
-  if (t.includes("retail") || t.includes("strip") || t.includes("shopping")) return TEMPLATES.Retail;
-  return TEMPLATES.Multifamily;
+// Backward-compatible helper some callers still import directly.
+export function getTemplate(propertyType, templateId = DEFAULT_TEMPLATE_ID) {
+  return getWorkflowTemplate(templateId).getDocumentSchema(propertyType);
 }
-
-// ── Extract inline key facts per section ──────────────────────────────────────
-function getInlineFacts(analysis, section) {
-  if (!analysis || typeof analysis !== "object" || analysis.pending) return [];
-  const facts = [];
-
-  if (section === "financials") {
-    if (analysis.noi) facts.push({ label: "NOI", value: analysis.noi, type: "good" });
-    if (analysis.occupancy) facts.push({ label: "Occupancy", value: analysis.occupancy, type: "good" });
-    if (analysis.dscr) facts.push({ label: "DSCR", value: analysis.dscr, type: "neutral" });
-    if (analysis.revpar) facts.push({ label: "RevPAR", value: analysis.revpar, type: "neutral" });
-    if (analysis.covenantStatus && analysis.covenantStatus !== "Compliant" && analysis.covenantStatus !== "Unknown")
-      facts.push({ label: "Covenant", value: analysis.covenantStatus, type: "warn" });
-  }
-
-  if (section === "insurance") {
-    if (analysis.coverageAmount) facts.push({ label: "Coverage", value: analysis.coverageAmount, type: "good" });
-    if (analysis.expirationDate) {
-      const days = analysis.expiresInDays;
-      facts.push({
-        label: "Expires",
-        value: days != null ? `${analysis.expirationDate} (${days}d)` : analysis.expirationDate,
-        type: days != null && days < 45 ? "warn" : "neutral",
-      });
-    }
-    if (analysis.complianceStatus && analysis.complianceStatus !== "Compliant")
-      facts.push({ label: "Status", value: analysis.complianceStatus, type: "warn" });
-  }
-
-  if (section === "inspection") {
-    if (analysis.overallCondition) facts.push({ label: "Condition", value: analysis.overallCondition, type: analysis.overallCondition === "Good" ? "good" : analysis.overallCondition === "Poor" ? "warn" : "neutral" });
-    if (analysis.totalDeferredCost) facts.push({ label: "Deferred Maint.", value: analysis.totalDeferredCost, type: "neutral" });
-    if (analysis.lifeSafetyFindings?.length) facts.push({ label: "Life Safety", value: `${analysis.lifeSafetyFindings.length} item${analysis.lifeSafetyFindings.length > 1 ? "s" : ""}`, type: "warn" });
-  }
-
-  if (section === "legal") {
-    if (analysis.documentType) facts.push({ label: "Type", value: analysis.documentType, type: "neutral" });
-    if (analysis.complianceStatus && analysis.complianceStatus !== "Clear")
-      facts.push({ label: "Status", value: analysis.complianceStatus, type: "warn" });
-    if (analysis.redFlags?.length)
-      facts.push({ label: "Red Flags", value: `${analysis.redFlags.length} found`, type: "warn" });
-  }
-
-  if (section === "brand-standards") {
-    if (analysis.brandName) facts.push({ label: "Brand", value: analysis.brandName, type: "neutral" });
-    if (analysis.totalEstimatedPIPCost) facts.push({ label: "PIP Cost", value: analysis.totalEstimatedPIPCost, type: "warn" });
-    if (analysis.complianceDeadline) facts.push({ label: "Deadline", value: analysis.complianceDeadline, type: "warn" });
-  }
-
-  if (section === "purchase_agreement") {
-    if (analysis.purchasePrice) facts.push({ label: "Price", value: analysis.purchasePrice, type: "good" });
-    if (analysis.closingDate) facts.push({ label: "Closing", value: analysis.closingDate, type: "neutral" });
-    if (analysis.earnestMoney) facts.push({ label: "Earnest $", value: analysis.earnestMoney, type: "neutral" });
-    if (analysis.dueDiligencePeriod) facts.push({ label: "DD Period", value: analysis.dueDiligencePeriod, type: "neutral" });
-    if (analysis.redFlags?.length) facts.push({ label: "Red Flags", value: `${analysis.redFlags.length} found`, type: "warn" });
-  }
-
-  if (section === "rent_roll") {
-    if (analysis.occupancyRate) facts.push({ label: "Occupancy", value: analysis.occupancyRate, type: "good" });
-    if (analysis.totalMonthlyRent) facts.push({ label: "Monthly Rent", value: analysis.totalMonthlyRent, type: "good" });
-    if (analysis.belowMarketUnits) facts.push({ label: "Below-Market", value: `${analysis.belowMarketUnits} units`, type: "warn" });
-    if (analysis.covenantStatus && analysis.covenantStatus !== "Compliant" && analysis.covenantStatus !== "Unknown")
-      facts.push({ label: "Covenant", value: analysis.covenantStatus, type: "warn" });
-  }
-
-  if (section === "title") {
-    if (analysis.titleCompany) facts.push({ label: "Title Co.", value: analysis.titleCompany, type: "neutral" });
-    const exceptions = analysis.scheduleBExceptions?.length || 0;
-    if (exceptions > 0) facts.push({ label: "Schedule B", value: `${exceptions} exception${exceptions > 1 ? "s" : ""}`, type: exceptions > 2 ? "warn" : "neutral" });
-    if (analysis.clearToClose === false) facts.push({ label: "Clear to Close", value: "Issues found", type: "warn" });
-    else if (analysis.clearToClose === true) facts.push({ label: "Clear to Close", value: "Yes", type: "good" });
-  }
-
-  if (section === "environmental") {
-    const recs = analysis.recognizedEnvironmentalConditions?.length || 0;
-    if (recs > 0) facts.push({ label: "RECs", value: `${recs} found`, type: "warn" });
-    else if (recs === 0 && analysis.confidence > 30) facts.push({ label: "RECs", value: "None found", type: "good" });
-    if (analysis.furtherActionRequired === true) facts.push({ label: "Phase II", value: "Recommended", type: "warn" });
-    else if (analysis.furtherActionRequired === false) facts.push({ label: "Phase II", value: "Not required", type: "good" });
-  }
-
-  if (section === "survey") {
-    if (analysis.lotSize) facts.push({ label: "Lot Size", value: analysis.lotSize, type: "neutral" });
-    if (analysis.zoning) facts.push({ label: "Zoning", value: analysis.zoning, type: "neutral" });
-    if (analysis.encroachments?.length) facts.push({ label: "Encroachments", value: `${analysis.encroachments.length} noted`, type: "warn" });
-  }
-
-  if (section === "estoppel") {
-    if (analysis.tenantName) facts.push({ label: "Tenant", value: analysis.tenantName, type: "neutral" });
-    if (analysis.leaseEndDate) facts.push({ label: "Lease End", value: analysis.leaseEndDate, type: "neutral" });
-    if (analysis.monthlyRent) facts.push({ label: "Rent", value: analysis.monthlyRent, type: "good" });
-    if (analysis.disputes === true) facts.push({ label: "Disputes", value: "Claimed", type: "warn" });
-    if (analysis.redFlags?.length) facts.push({ label: "Red Flags", value: `${analysis.redFlags.length} found`, type: "warn" });
-  }
-
-  return facts.slice(0, 4);
-}
-
-// ── Extract completeness issues from AI analysis ───────────────────────────────
-function getCompletenessIssues(analysis, section) {
-  if (!analysis || typeof analysis !== "object") return [];
-  const issues = [];
-
-  if (section === "insurance") {
-    (analysis.coverageGaps || [])
-      .filter(g => ["Critical", "Moderate"].includes(g.severity))
-      .forEach(g => issues.push({ text: g.gap, sev: g.severity }));
-    if (analysis.complianceStatus === "Action Needed")
-      issues.push({ text: "Policy compliance action required", sev: "Critical" });
-    if (analysis.expiresInDays != null && analysis.expiresInDays < 30)
-      issues.push({ text: `Policy expires in ${analysis.expiresInDays} days — renew immediately`, sev: "Critical" });
-    else if (analysis.expiresInDays != null && analysis.expiresInDays < 60)
-      issues.push({ text: `Policy expires in ${analysis.expiresInDays} days`, sev: "Moderate" });
-  }
-  if (section === "inspection") {
-    (analysis.lifeSafetyFindings || [])
-      .forEach(f => issues.push({ text: `Life safety: ${f.item}`, sev: f.severity || "Critical" }));
-    if (analysis.overallCondition === "Poor")
-      issues.push({ text: "Overall condition rated Poor — lender review required", sev: "Critical" });
-  }
-  if (section === "legal") {
-    (analysis.redFlags || [])
-      .filter(f => ["Critical", "Moderate"].includes(f.severity))
-      .forEach(f => issues.push({ text: f.issue, sev: f.severity }));
-    if (analysis.complianceStatus === "Issues Found")
-      issues.push({ text: "Legal compliance issues found — attorney review needed", sev: "Critical" });
-  }
-  if (section === "financials") {
-    (analysis.anomalies || [])
-      .filter(a => a.severity === "High")
-      .forEach(a => issues.push({ text: a.description, sev: "Critical" }));
-    if (analysis.covenantStatus === "Breached")
-      issues.push({ text: "Loan covenant breached — lender notification required", sev: "Critical" });
-    else if (analysis.covenantStatus === "At Risk")
-      issues.push({ text: "Covenant at risk — monitor before close", sev: "Moderate" });
-  }
-  if (section === "brand-standards") {
-    (analysis.redFlags || [])
-      .filter(f => f.severity === "Critical")
-      .forEach(f => issues.push({ text: f.issue, sev: "Critical" }));
-    if (analysis.totalEstimatedPIPCost)
-      issues.push({ text: `PIP cost estimate: ${analysis.totalEstimatedPIPCost}`, sev: "Moderate" });
-  }
-  if (section === "title") {
-    (analysis.scheduleBExceptions || [])
-      .filter(e => e.severity === "Critical")
-      .forEach(e => issues.push({ text: `Schedule B: ${e.item}`, sev: "Critical" }));
-    if (analysis.clearToClose === false)
-      issues.push({ text: "Title not clear to close — review required", sev: "Critical" });
-    (analysis.liens || []).slice(0, 2).forEach(l => issues.push({ text: `Lien: ${l}`, sev: "Moderate" }));
-  }
-  if (section === "environmental") {
-    (analysis.recognizedEnvironmentalConditions || [])
-      .filter(r => r.severity === "Critical")
-      .forEach(r => issues.push({ text: `REC: ${r.item}`, sev: "Critical" }));
-    if (analysis.furtherActionRequired === true)
-      issues.push({ text: "Phase II ESA recommended before closing", sev: "Moderate" });
-  }
-  if (section === "purchase_agreement") {
-    (analysis.redFlags || [])
-      .filter(f => f.severity === "Critical")
-      .forEach(f => issues.push({ text: f.issue, sev: "Critical" }));
-  }
-  if (section === "rent_roll") {
-    (analysis.anomalies || [])
-      .filter(a => a.severity === "High")
-      .forEach(a => issues.push({ text: a.description, sev: "Critical" }));
-    if (analysis.covenantStatus === "Breached")
-      issues.push({ text: "Occupancy covenant breached", sev: "Critical" });
-  }
-  if (section === "estoppel") {
-    if (analysis.disputes === true)
-      issues.push({ text: "Tenant disputes lease terms — verify with landlord", sev: "Critical" });
-    (analysis.redFlags || [])
-      .filter(f => f.severity === "Critical")
-      .forEach(f => issues.push({ text: f.issue, sev: "Critical" }));
-  }
-  return issues;
-}
-
-const FACT_COLORS = {
-  good: { bg: "#f0fdf4", text: "#15803d", border: "#bbf7d0" },
-  warn: { bg: "#fff7ed", text: "#c2410c", border: "#fed7aa" },
-  neutral: { bg: "#f8fafc", text: "#475569", border: "#e2e8f0" },
-};
-
-// ── Upload endpoint mapping ────────────────────────────────────────────────────
-const AI_UPLOAD_ENDPOINTS = {
-  inspection: "/api/ai/analyze-inspection",
-  insurance: "/api/ai/review-insurance",
-  financials: "/api/ai/review-financials",
-  legal: "/api/ai/review-legal",
-  "brand-standards": "/api/ai/review-brand-standards",
-};
-const TRACK_SECTIONS = new Set(["purchase_agreement","rent_roll","estoppel","environmental","survey","title"]);
 
 // ── Main component ─────────────────────────────────────────────────────────────
-export default function DocumentChecklistPanel({ propertyId, propertyType, role, isDemo = false }) {
+export default function DocumentChecklistPanel({ propertyId, propertyType, role, isDemo = false, templateId = DEFAULT_TEMPLATE_ID }) {
+  const workflowTemplate = getWorkflowTemplate(templateId);
+  const { getInlineFacts, getCompletenessIssues, factColors: FACT_COLORS, aiUploadEndpoints: AI_UPLOAD_ENDPOINTS } = workflowTemplate;
   const [analyses, setAnalyses] = useState([]);
   const [loading, setLoading] = useState(true);
   const [uploadingSection, setUploadingSection] = useState(null);
@@ -296,7 +43,7 @@ export default function DocumentChecklistPanel({ propertyId, propertyType, role,
     return () => clearTimeout(t);
   }, [analyses]);
 
-  const template = getTemplate(propertyType);
+  const template = workflowTemplate.getDocumentSchema(propertyType);
   const uploadedSections = new Set(analyses.map(a => a.section));
   const analysisBySection = Object.fromEntries(analyses.map(a => [a.section, a.analysis]));
   const filenameBySection = Object.fromEntries(analyses.map(a => [a.section, a.filename]));
