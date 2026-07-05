@@ -68,6 +68,16 @@ export default function DocumentChecklistPanel({ propertyId, propertyType, role,
     form.append("property_id", propertyId);
     form.append("section", section);
     form.append("role", role || "owner");
+    // Packs using the universal /api/ai/analyze-document endpoint (rather than
+    // a hardcoded CRE-specific route) declare their extraction metadata on the
+    // document schema entry itself — forward it along so the backend can
+    // build the AI prompt without any pack-specific backend code.
+    const docEntry = template.find(t => t.section === section);
+    if (docEntry?.aiExtraction) {
+      if (docEntry.aiExtraction.analystRole) form.append("analystRole", docEntry.aiExtraction.analystRole);
+      if (docEntry.aiExtraction.docTypes) form.append("docTypes", JSON.stringify(docEntry.aiExtraction.docTypes));
+      if (docEntry.aiExtraction.metrics) form.append("metricsSchema", JSON.stringify(docEntry.aiExtraction.metrics));
+    }
     try {
       const endpoint = isAiEndpoint
         ? `${API_BASE}${AI_UPLOAD_ENDPOINTS[section]}`

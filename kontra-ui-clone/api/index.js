@@ -2506,6 +2506,89 @@ Document:\n${text}` }
   }
 });
 
+// ── Universal AI extraction endpoint ─────────────────────────────────────────
+// Unlike the hardcoded /review-* endpoints above (one per CRE document type),
+// this endpoint is pack-driven: the caller (a workflow pack's document schema
+// entry, via DocumentChecklistPanel) supplies the analyst persona, expected
+// doc types, and the metrics to extract. This lets ANY workflow pack turn on
+// real AI extraction for a document section just by declaring metadata —
+// zero new backend code per pack. CRE Acquisition keeps its dedicated
+// endpoints (richer, hand-tuned prompts); newer/simpler packs (e.g. Business
+// Acquisition) use this one.
+app.post('/api/ai/analyze-document', aiRateLimit, upload.single('file'), async (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+  const { property_id, role, section } = req.body;
+  console.log('[analyze-document] section:', section, 'file:', req.file.originalname);
+  try {
+    const text = await extractTextFromFile(req.file.buffer, req.file.mimetype, req.file.originalname);
+    if (!text || text.trim().length < 30) {
+      return res.status(422).json({ error: 'Could not extract text from this file. Please ensure it is not password-protected and contains readable content.' });
+    }
+
+    let metricsSchema = {};
+    let docTypes = ['Other'];
+    let analystRole = 'senior financial analyst';
+    try {
+      if (req.body.metricsSchema) metricsSchema = JSON.parse(req.body.metricsSchema);
+      if (req.body.docTypes) docTypes = JSON.parse(req.body.docTypes);
+      if (req.body.analystRole) analystRole = String(req.body.analystRole).slice(0, 300);
+    } catch { /* fall back to defaults below */ }
+
+    const metricsBlock = Object.entries(metricsSchema)
+      .map(([key, desc]) => `    "${key}": number | null  (${desc})`)
+      .join(',\n') || '    "value": number | null';
+    const docTypeList = docTypes.map(d => `"${d}"`).join(', ');
+
+    const systemPrompt = `You are a ${analystRole}. Analyze the provided document excerpt and return a JSON object with this exact structure:
+{
+  "doc_type": string (one of: ${docTypeList}),
+  "summary": string (2-3 sentence plain English summary of the document's key findings),
+  "metrics": {
+${metricsBlock}
+  },
+  "risk_flags": string[],
+  "recommendations": string[]
+}
+Only report figures that are explicitly present in the document — use null if a value cannot be determined.
+Return only valid JSON. No extra text.`;
+
+    const completion = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: `Document content:\n\n${text}` },
+      ],
+      response_format: { type: 'json_object' },
+      temperature: 0.2,
+    });
+    const result = JSON.parse(completion.choices[0].message.content);
+    res.json({ success: true, analysis: result });
+
+    if (property_id && section) {
+      const _buf = req.file.buffer, _mime = req.file.mimetype, _name = req.file.originalname;
+      (async () => {
+        const storagePath = await uploadToStorage(_buf, _mime, property_id, section, _name);
+        const { error: e } = await supabase.from('deal_analyses').insert({
+          property_id, section,
+          filename: _name, analysis: result,
+          uploaded_by_role: role || 'unknown',
+          storage_path: storagePath,
+        });
+        if (e) console.warn(`[deal_analyses] ${section} save:`, e.message);
+        else console.log(`[deal_analyses] ${section} saved (analyze-document)`);
+      })().catch(e => console.warn(`[deal_analyses] ${section}:`, e.message));
+      logEvent(property_id, 'document_analyzed', role || 'unknown', null, `${section} analyzed by AI`, { section, filename: req.file.originalname });
+    }
+  } catch (err) {
+    console.error('[analyze-document]', err.message);
+    if (err.message === 'ENCRYPTED_PDF') return res.status(422).json({ error: 'This PDF is password-protected. Please remove the password and re-upload.' });
+    if (err.status >= 429 || (err.status >= 500 && err.status < 600) || err.code === 'insufficient_quota' || err.code === 'ECONNRESET') {
+      return res.json({ success: true, pending: true, analysis: { summary: 'Document received — AI analysis is queued and will complete shortly. Refresh in a few minutes.', pending: true, confidence: 0 } });
+    }
+    res.status(500).json({ error: 'Review failed', message: err.message });
+  }
+});
+
 app.use('/api', requireOrgContext);
 app.use('/api/dashboard-layout', authenticate, dashboard);
 app.use('/api/portfolio', portfolioSliceRouter);
