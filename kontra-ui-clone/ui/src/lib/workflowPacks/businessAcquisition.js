@@ -103,6 +103,16 @@ export const factColors = {
 export const aiUploadEndpoints = {};
 export const trackSections = new Set(DOCUMENT_SCHEMA.map(d => d.section));
 
+// ── Dashboard: no deep AI extraction yet, so no intelligence sections and no
+// snapshot stats — DealRoomPage reads these straight from the pack, so once
+// this pack gets real AI review these dashboards will start rendering with
+// zero changes to DealRoomPage itself. ──────────────────────────────────────
+export const intelligenceSections = [];
+export function getIntelligenceBadge(_section, _analysis) { return null; }
+export function getIntelligenceHighlight(_section, _analysis) { return null; }
+export function getSnapshotStats(_bySection) { return []; }
+export function getSnapshotFlag(_bySection) { return null; }
+
 // ── Health scoring ───────────────────────────────────────────────────────────
 // No domain-specific parsing (no DSCR/occupancy equivalents yet) — health is
 // simply: are the required documents in, and are the required parties in.
@@ -165,6 +175,11 @@ export const businessAcquisitionPack = {
   computeHealth,
   getRole,
   getRoleLabel,
+  intelligenceSections,
+  getIntelligenceBadge,
+  getIntelligenceHighlight,
+  getSnapshotStats,
+  getSnapshotFlag,
 };
 
 export default businessAcquisitionPack;

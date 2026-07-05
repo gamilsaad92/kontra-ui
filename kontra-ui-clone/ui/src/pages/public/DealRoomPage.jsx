@@ -7,7 +7,7 @@ import CommentsPanel from "./CommentsPanel";
 import DealHealthPanel from "./DealHealthPanel";
 import InvitePanel from "./InvitePanel";
 import DocumentChecklistPanel, { getTemplate } from "./DocumentChecklistPanel";
-import { DEFAULT_PACK_ID } from "../../lib/workflowPacks";
+import { DEFAULT_PACK_ID, getWorkflowPack } from "../../lib/workflowPacks";
 
 function usePageTitle(title) {
   useEffect(() => {
@@ -1003,15 +1003,15 @@ function useDealAnalyses(propertyId, refreshKey) {
   return { analyses, loading };
 }
 
-// ── Deal Intelligence Dashboard — shows all saved AI analyses ─────────────
-function DealIntelligenceDashboard({ propertyId, refreshKey }) {
+// ── Deal Intelligence Dashboard — shows all saved AI analyses. Which
+// sections get a card, and how each one is badged/highlighted, comes from
+// the active Workflow Pack — this component has no CRE-specific knowledge. ──
+function DealIntelligenceDashboard({ propertyId, refreshKey, packId = DEFAULT_PACK_ID }) {
   const { analyses, loading } = useDealAnalyses(propertyId, refreshKey);
-
-  const SECTIONS = [
-    { key: "inspection", icon: "🔍", label: "Inspection",  color: "#d97706" },
-    { key: "insurance",  icon: "🛡️", label: "Insurance",   color: "#2563eb" },
-    { key: "financials", icon: "📊", label: "Financials",  color: "#16a34a" },
-  ];
+  const pack = getWorkflowPack(packId);
+  const SECTIONS = pack.intelligenceSections || [];
+  const getBadge = pack.getIntelligenceBadge || (() => null);
+  const getHighlight = pack.getIntelligenceHighlight || (() => null);
 
   // Latest per section
   const bySection = {};
@@ -1021,19 +1021,7 @@ function DealIntelligenceDashboard({ propertyId, refreshKey }) {
 
   const doneCount = Object.keys(bySection).length;
 
-  function getBadge(section, analysis) {
-    if (section === "inspection")  return { label: analysis.overallCondition, color: analysis.overallCondition === "Good" ? "#16a34a" : analysis.overallCondition === "Fair" ? "#d97706" : "#dc2626" };
-    if (section === "insurance")   return { label: analysis.complianceStatus, color: analysis.complianceStatus === "Compliant" ? "#16a34a" : "#d97706" };
-    if (section === "financials")  return { label: analysis.covenantStatus, color: analysis.covenantStatus === "Compliant" ? "#16a34a" : analysis.covenantStatus === "At Risk" ? "#d97706" : analysis.covenantStatus === "Breached" ? "#dc2626" : "#6b7280" };
-    return null;
-  }
-
-  function getHighlight(section, analysis) {
-    if (section === "inspection")  return analysis.totalDeferredCost ? `Deferred maintenance: ${analysis.totalDeferredCost}` : null;
-    if (section === "insurance")   return analysis.expirationDate ? `Expires: ${analysis.expirationDate}${analysis.expiresInDays != null ? ` (${analysis.expiresInDays} days)` : ""}` : null;
-    if (section === "financials")  return analysis.noi ? `NOI: ${analysis.noi}${analysis.dscr ? ` · DSCR: ${analysis.dscr}` : ""}` : null;
-    return null;
-  }
+  if (SECTIONS.length === 0) return null;
 
   if (loading) return (
     <div className="bg-white rounded-2xl border border-gray-200 p-5 mb-6 animate-pulse">
@@ -1048,7 +1036,7 @@ function DealIntelligenceDashboard({ propertyId, refreshKey }) {
         <div>
           <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">Deal Intelligence</p>
           <p className="text-base font-bold text-gray-900 mt-0.5">
-            {doneCount === 0 ? "Upload documents to begin AI analysis" : `${doneCount}/3 sections analyzed`}
+            {doneCount === 0 ? "Upload documents to begin AI analysis" : `${doneCount}/${SECTIONS.length} sections analyzed`}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -1058,8 +1046,8 @@ function DealIntelligenceDashboard({ propertyId, refreshKey }) {
               🖨 Print Summary
             </a>
           )}
-          <div className="text-2xl font-black" style={{ color: doneCount === 3 ? "#16a34a" : doneCount >= 1 ? "#d97706" : "#9ca3af" }}>
-            {Math.round(doneCount / 3 * 100)}%
+          <div className="text-2xl font-black" style={{ color: doneCount === SECTIONS.length ? "#16a34a" : doneCount >= 1 ? "#d97706" : "#9ca3af" }}>
+            {Math.round(doneCount / SECTIONS.length * 100)}%
           </div>
         </div>
       </div>
@@ -1067,7 +1055,7 @@ function DealIntelligenceDashboard({ propertyId, refreshKey }) {
       {/* Readiness bar */}
       <div className="h-1.5 w-full rounded-full bg-gray-100 overflow-hidden mb-4">
         <div className="h-full rounded-full transition-all duration-700"
-          style={{ width: `${Math.round(doneCount / 3 * 100)}%`, background: doneCount === 3 ? "#16a34a" : "#d97706" }} />
+          style={{ width: `${Math.round(doneCount / SECTIONS.length * 100)}%`, background: doneCount === SECTIONS.length ? "#16a34a" : "#d97706" }} />
       </div>
 
       <div className="space-y-2.5">
@@ -1125,10 +1113,10 @@ function DealIntelligenceDashboard({ propertyId, refreshKey }) {
         })}
       </div>
 
-      {doneCount === 3 && (
+      {doneCount === SECTIONS.length && (
         <div className="mt-4 p-3 rounded-xl bg-green-50 border border-green-100">
           <p className="text-xs font-semibold text-green-800">✓ Deal room fully populated — ready to share with your lender</p>
-          <p className="text-[10px] text-green-600 mt-0.5">All three key sections have been analyzed. Use the invite links below to send the lender their view.</p>
+          <p className="text-[10px] text-green-600 mt-0.5">All key sections have been analyzed. Use the invite links below to send the lender their view.</p>
         </div>
       )}
     </div>
@@ -1138,23 +1126,16 @@ function DealIntelligenceDashboard({ propertyId, refreshKey }) {
 // ── Financial Summary — read-only rollup of key numbers already extracted ──
 // by AI from the purchase agreement, rent roll, and financial statements.
 // No upload button here — this is purely derived from the checklist above.
-function FinancialSnapshotPanel({ propertyId, refreshKey }) {
+// The rollup fields and covenant flag come from the active Workflow Pack —
+// this component has no CRE-specific knowledge of NOI/DSCR/etc.
+function FinancialSnapshotPanel({ propertyId, refreshKey, packId = DEFAULT_PACK_ID }) {
   const { analyses, loading } = useDealAnalyses(propertyId, refreshKey);
+  const pack = getWorkflowPack(packId);
 
   const bySection = {};
   for (const a of analyses) if (!bySection[a.section]) bySection[a.section] = a.analysis;
-  const fin = bySection.financials;
-  const pa = bySection.purchase_agreement;
-  const rr = bySection.rent_roll;
 
-  const stats = [
-    { label: "Purchase Price", value: pa?.purchasePrice },
-    { label: "NOI", value: fin?.noi },
-    { label: "DSCR", value: fin?.dscr },
-    { label: "Occupancy", value: fin?.occupancy || rr?.occupancyRate },
-    { label: "Monthly Rent", value: rr?.totalMonthlyRent },
-    { label: "Cap Rate", value: fin?.capRate },
-  ].filter(s => s.value);
+  const stats = (pack.getSnapshotStats ? pack.getSnapshotStats(bySection) : []);
 
   if (loading) return (
     <div className="bg-white rounded-2xl border border-gray-200 p-5 mb-6 animate-pulse">
@@ -1165,9 +1146,7 @@ function FinancialSnapshotPanel({ propertyId, refreshKey }) {
 
   if (stats.length === 0) return null;
 
-  const covenantFlag = fin?.covenantStatus === "Breached" ? { text: "Loan covenant breached", sev: "error" }
-    : fin?.covenantStatus === "At Risk" ? { text: "Loan covenant at risk", sev: "warn" }
-    : null;
+  const covenantFlag = pack.getSnapshotFlag ? pack.getSnapshotFlag(bySection) : null;
 
   return (
     <div className="bg-white rounded-2xl border border-gray-200 p-5 mb-6">
@@ -1332,10 +1311,12 @@ export default function DealRoomPage() {
   // Which Workflow Pack powers this deal room. Demo properties are always
   // CRE Acquisition; custom rooms carry their pack id from creation time.
   const packId = demoProperty ? DEFAULT_PACK_ID : (apiProperty?.workflow_pack_id || DEFAULT_PACK_ID);
-  // The CRE-specific "Outstanding Items" dashboard (risk/compliance/property/
-  // financials widgets) hardcodes CRE concepts like NOI, DSCR, and occupancy.
-  // Dynamic, pack-aware dashboards are a later sprint — for now, only show
-  // that dashboard for the CRE Acquisition pack.
+  // The "Outstanding Items" grid (risk/compliance/property panels) is still
+  // CRE-only: those widgets hardcode CRE concepts (NOI, DSCR, occupancy) and
+  // aren't wired to a per-pack config the way the Deal Intelligence and
+  // Financial Summary widgets now are. Business Acquisition roles already
+  // have empty `sections` in ROLE_CONFIG, so this grid would be empty for
+  // them anyway — this flag just skips rendering it outright for clarity.
   const showCreDashboard = packId === DEFAULT_PACK_ID;
 
   usePageTitle(property?.name || property?.property_name);
@@ -1542,19 +1523,23 @@ export default function DealRoomPage() {
         )}
 
         {/* Deal Intelligence Dashboard (AI Findings) — reveals as documents are uploaded.
-            CRE-only for now: it reads CRE section keys (inspection/insurance/financials/legal). */}
-        {property.isCustom && showCreDashboard && (
+            Pack-driven: which sections appear and how they're badged comes from the
+            active Workflow Pack, so this renders nothing until a pack defines any. */}
+        {property.isCustom && (
           <DealIntelligenceDashboard
             propertyId={pid}
             refreshKey={analysesRefreshKey}
+            packId={packId}
           />
         )}
 
-        {/* Financial Summary — auto-derived from uploaded docs, no re-entry. CRE-only for now. */}
-        {property.isCustom && showCreDashboard && (
+        {/* Financial Summary — auto-derived from uploaded docs, no re-entry. Pack-driven:
+            renders nothing until a pack's getSnapshotStats returns something. */}
+        {property.isCustom && (
           <FinancialSnapshotPanel
             propertyId={pid}
             refreshKey={analysesRefreshKey}
+            packId={packId}
           />
         )}
 

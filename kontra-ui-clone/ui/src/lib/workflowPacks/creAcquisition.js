@@ -317,6 +317,53 @@ export const factColors = {
   neutral: { bg: "#f8fafc", text: "#475569", border: "#e2e8f0" },
 };
 
+// ── Dashboard: which sections get their own "Deal Intelligence" card, and
+// how to badge/highlight each one. Business Acquisition has none of this yet
+// (no deep AI extraction), so its dashboard cards simply won't render —
+// DealRoomPage reads this straight from the pack instead of hardcoding CRE. ──
+export const intelligenceSections = [
+  { key: "inspection", icon: "🔍", label: "Inspection",  color: "#d97706" },
+  { key: "insurance",  icon: "🛡️", label: "Insurance",   color: "#2563eb" },
+  { key: "financials", icon: "📊", label: "Financials",  color: "#16a34a" },
+];
+
+export function getIntelligenceBadge(section, analysis) {
+  if (section === "inspection")  return { label: analysis.overallCondition, color: analysis.overallCondition === "Good" ? "#16a34a" : analysis.overallCondition === "Fair" ? "#d97706" : "#dc2626" };
+  if (section === "insurance")   return { label: analysis.complianceStatus, color: analysis.complianceStatus === "Compliant" ? "#16a34a" : "#d97706" };
+  if (section === "financials")  return { label: analysis.covenantStatus, color: analysis.covenantStatus === "Compliant" ? "#16a34a" : analysis.covenantStatus === "At Risk" ? "#d97706" : analysis.covenantStatus === "Breached" ? "#dc2626" : "#6b7280" };
+  return null;
+}
+
+export function getIntelligenceHighlight(section, analysis) {
+  if (section === "inspection")  return analysis.totalDeferredCost ? `Deferred maintenance: ${analysis.totalDeferredCost}` : null;
+  if (section === "insurance")   return analysis.expirationDate ? `Expires: ${analysis.expirationDate}${analysis.expiresInDays != null ? ` (${analysis.expiresInDays} days)` : ""}` : null;
+  if (section === "financials")  return analysis.noi ? `NOI: ${analysis.noi}${analysis.dscr ? ` · DSCR: ${analysis.dscr}` : ""}` : null;
+  return null;
+}
+
+// ── Dashboard: Financial Summary rollup — key numbers already extracted by
+// AI from the purchase agreement, rent roll, and financial statements. ──────
+export function getSnapshotStats(bySection) {
+  const fin = bySection.financials;
+  const pa = bySection.purchase_agreement;
+  const rr = bySection.rent_roll;
+  return [
+    { label: "Purchase Price", value: pa?.purchasePrice },
+    { label: "NOI", value: fin?.noi },
+    { label: "DSCR", value: fin?.dscr },
+    { label: "Occupancy", value: fin?.occupancy || rr?.occupancyRate },
+    { label: "Monthly Rent", value: rr?.totalMonthlyRent },
+    { label: "Cap Rate", value: fin?.capRate },
+  ].filter(s => s.value);
+}
+
+export function getSnapshotFlag(bySection) {
+  const fin = bySection.financials;
+  if (fin?.covenantStatus === "Breached") return { text: "Loan covenant breached", sev: "error" };
+  if (fin?.covenantStatus === "At Risk") return { text: "Loan covenant at risk", sev: "warn" };
+  return null;
+}
+
 // ── Upload routing: which sections get deep AI analysis vs. lightweight tracking ──
 export const aiUploadEndpoints = {
   inspection: "/api/ai/analyze-inspection",
@@ -476,6 +523,11 @@ export const creAcquisitionPack = {
   computeHealth,
   getRole,
   getRoleLabel,
+  intelligenceSections,
+  getIntelligenceBadge,
+  getIntelligenceHighlight,
+  getSnapshotStats,
+  getSnapshotFlag,
 };
 
 export default creAcquisitionPack;
