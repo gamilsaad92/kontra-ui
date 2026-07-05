@@ -103,6 +103,11 @@ export const factColors = {
 export const aiUploadEndpoints = {};
 export const trackSections = new Set(DOCUMENT_SCHEMA.map(d => d.section));
 
+// ── Outstanding Items grid — Business Acquisition doesn't have a risk score,
+// compliance rollup, or property-details equivalent yet, so none of the
+// three panels apply. DealRoomPage reads this straight from the pack. ──────
+export const outstandingItemsSections = [];
+
 // ── Dashboard: no deep AI extraction yet, so no intelligence sections and no
 // snapshot stats — DealRoomPage reads these straight from the pack, so once
 // this pack gets real AI review these dashboards will start rendering with
@@ -175,6 +180,7 @@ export const businessAcquisitionPack = {
   computeHealth,
   getRole,
   getRoleLabel,
+  outstandingItemsSections,
   intelligenceSections,
   getIntelligenceBadge,
   getIntelligenceHighlight,

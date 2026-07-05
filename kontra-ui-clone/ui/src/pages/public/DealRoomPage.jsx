@@ -1311,13 +1311,16 @@ export default function DealRoomPage() {
   // Which Workflow Pack powers this deal room. Demo properties are always
   // CRE Acquisition; custom rooms carry their pack id from creation time.
   const packId = demoProperty ? DEFAULT_PACK_ID : (apiProperty?.workflow_pack_id || DEFAULT_PACK_ID);
-  // The "Outstanding Items" grid (risk/compliance/property panels) is still
-  // CRE-only: those widgets hardcode CRE concepts (NOI, DSCR, occupancy) and
-  // aren't wired to a per-pack config the way the Deal Intelligence and
-  // Financial Summary widgets now are. Business Acquisition roles already
-  // have empty `sections` in ROLE_CONFIG, so this grid would be empty for
-  // them anyway — this flag just skips rendering it outright for clarity.
-  const showCreDashboard = packId === DEFAULT_PACK_ID;
+  const pack = getWorkflowPack(packId);
+  // The "Outstanding Items" grid (risk/compliance/property panels) still
+  // hardcodes CRE concepts (NOI, DSCR, occupancy) inside the panels
+  // themselves, but *which* panels a pack supports is now pack-driven:
+  // ROLE_CONFIG says which sections a role wants to see, the pack's
+  // `outstandingItemsSections` says which ones it actually has. Business
+  // Acquisition declares none, so the grid is naturally empty for it.
+  const visibleOutstandingSections = roleConfig.sections.filter(
+    (s) => pack.outstandingItemsSections?.includes(s)
+  );
 
   usePageTitle(property?.name || property?.property_name);
 
@@ -1552,12 +1555,15 @@ export default function DealRoomPage() {
           />
         )}
 
-        {/* Outstanding Items — role-scoped sections (risk/compliance/property). These
-            widgets hardcode CRE concepts (NOI, DSCR, occupancy), so they only render
-            for the CRE Acquisition pack until dashboards become pack-aware (Sprint 3). */}
-        {showCreDashboard && (
+        {/* Outstanding Items — role-scoped sections (risk/compliance/property).
+            Which of these panels a pack supports comes from
+            pack.outstandingItemsSections; ROLE_CONFIG only says which
+            sections a role *wants* to see, the pack says which ones it
+            actually *has*. Business Acquisition declares none yet, so this
+            grid renders nothing for that pack without any packId check here. */}
+        {visibleOutstandingSections.length > 0 && (
           <div className="grid md:grid-cols-2 gap-5 mb-6">
-            {roleConfig.sections.map((sectionKey) => {
+            {visibleOutstandingSections.map((sectionKey) => {
               const Panel = SECTION_MAP[sectionKey];
               return Panel ? <Panel key={sectionKey} /> : null;
             })}

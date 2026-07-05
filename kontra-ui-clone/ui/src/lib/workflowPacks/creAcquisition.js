@@ -317,6 +317,12 @@ export const factColors = {
   neutral: { bg: "#f8fafc", text: "#475569", border: "#e2e8f0" },
 };
 
+// ── Outstanding Items grid — which of the risk/compliance/property panels
+// this pack supports. DealRoomPage intersects this with the role's requested
+// sections (ROLE_CONFIG) so a pack only needs to list what it actually has;
+// no per-widget "is this the CRE pack?" check is needed anywhere else. ──────
+export const outstandingItemsSections = ["risk", "compliance", "property"];
+
 // ── Dashboard: which sections get their own "Deal Intelligence" card, and
 // how to badge/highlight each one. Business Acquisition has none of this yet
 // (no deep AI extraction), so its dashboard cards simply won't render —
@@ -523,6 +529,7 @@ export const creAcquisitionPack = {
   computeHealth,
   getRole,
   getRoleLabel,
+  outstandingItemsSections,
   intelligenceSections,
   getIntelligenceBadge,
   getIntelligenceHighlight,
