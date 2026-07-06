@@ -17,5 +17,14 @@
       { "key": "closing", "label": "Closing" },
       { "key": "funded", "label": "Closed" }
     ]
+  },
+  "fundraising": {
+    "stages": [
+      { "key": "uploading", "label": "Diligence" },
+      { "key": "under_review", "label": "Under Review" },
+      { "key": "approved", "label": "Term Sheet Signed" },
+      { "key": "closing", "label": "Closing" },
+      { "key": "funded", "label": "Funded" }
+    ]
   }
 }

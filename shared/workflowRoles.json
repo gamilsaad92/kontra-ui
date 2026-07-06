@@ -63,5 +63,29 @@
         "subtext": "As the M&A broker, you have visibility across all deal parties. Track document status and share role-scoped links with each party.",
         "sections": [] }
     ]
+  },
+  "fundraising": {
+    "roles": [
+      { "key": "founder", "label": "Founder / CEO", "shortLabel": "Founder", "icon": "🚀", "color": "#800020", "required": true, "needsDocs": false, "invitable": false, "canManage": true,
+        "headline": "Welcome to your deal room",
+        "subtext": "As the founder, you have a full view of all parties, documents, and round progress. Share the role-specific links below to invite your investor, counsel, and auditor.",
+        "sections": [] },
+      { "key": "investor", "label": "Investor", "icon": "💰", "color": "#1d4ed8", "required": true, "needsDocs": false, "invitable": true, "inviteAction": "review the data room and term sheet",
+        "headline": "You've been invited to review this round",
+        "subtext": "As the investor, review the term sheet, financials, and cap table uploaded in the checklist above to evaluate this investment.",
+        "sections": [] },
+      { "key": "counsel", "label": "Legal Counsel", "icon": "⚖️", "color": "#374151", "required": true, "needsDocs": true, "invitable": true, "inviteAction": "prepare the stock purchase agreement",
+        "headline": "You've been invited to review the legal package",
+        "subtext": "As legal counsel, prepare and review the stock purchase agreement and disclosure schedule uploaded in the checklist above.",
+        "sections": [] },
+      { "key": "auditor", "label": "Auditor", "icon": "🧾", "color": "#065f46", "required": false, "needsDocs": true, "invitable": true, "inviteAction": "provide audited financials",
+        "headline": "You've been invited to review the financials",
+        "subtext": "As the auditor, upload the audited financial statements in the checklist above for the investor's review.",
+        "sections": [] },
+      { "key": "banker", "label": "Placement Agent", "shortLabel": "Banker", "icon": "🤝", "color": "#7c3aed", "required": false, "needsDocs": false, "invitable": true, "inviteAction": "coordinate the round",
+        "headline": "You've been invited to coordinate this round",
+        "subtext": "As the placement agent, you have visibility across all parties. Track document status and share role-scoped links with each party.",
+        "sections": [] }
+    ]
   }
 }
