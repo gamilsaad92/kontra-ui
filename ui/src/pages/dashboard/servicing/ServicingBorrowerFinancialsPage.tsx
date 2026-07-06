@@ -1,118 +1,217 @@
-import { useState, useRef } from "react";
-  import { DocumentArrowUpIcon, SparklesIcon } from "@heroicons/react/24/outline";
-  import { api } from "../../../lib/apiClient";
-  import { useServicingContext } from "./ServicingContext";
+import { useState } from "react";
+import { api } from "../../../lib/apiClient";
+import { useServicingContext } from "./ServicingContext";
+import {
+  SparklesIcon,
+  ExclamationTriangleIcon,
+  CheckCircleIcon,
+  DocumentArrowUpIcon,
+} from "@heroicons/react/24/outline";
 
-  type AiDocResult = {
-    doc_type: string;
-    summary: string;
-    metrics: { dscr?: number | null; noi?: number | null; occupancy?: number | null; gross_revenue?: number | null; total_expenses?: number | null; net_income?: number | null };
-    covenants: { name: string; threshold: string; actual: string; status: "compliant" | "breach" | "watch" }[];
-    risk_flags: string[];
-    recommendations: string[];
-    notice?: string;
+type AiDocResult = {
+  doc_type: string;
+  summary: string;
+  metrics: {
+    dscr?: number | null;
+    noi?: number | null;
+    occupancy?: number | null;
+    gross_revenue?: number | null;
+    total_expenses?: number | null;
+    net_income?: number | null;
+  };
+  covenants: { name: string; threshold: string; actual: string; status: string }[];
+  risk_flags: string[];
+  recommendations: string[];
+  notice?: string;
+};
+
+export default function ServicingBorrowerFinancialsPage() {
+  const { addAlert, addTask, logAudit, requestApproval } = useServicingContext();
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [result, setResult]   = useState<AiDocResult | null>(null);
+  const [uploadError, setUploadError] = useState<string>("");
+
+  const handleUpload = async () => {
+    if (!selectedFile) {
+      setUploadError("Select a borrower financial file before uploading.");
+      return;
+    }
+    setUploadError("");
+    setResult(null);
+    setUploading(true);
+
+    const formData = new FormData();
+    formData.append("file", selectedFile);
+
+    try {
+      const { data } = await api.post<AiDocResult>("/ai/analyze", formData);
+
+      if (data) {
+        setResult(data);
+        const hasBreach = data.covenants?.some((c) => c.status === "breach");
+        const hasHighRisk = data.risk_flags?.length > 0;
+
+        addAlert({
+          id: `alert-fin-${Date.now()}`,
+          title: `AI analysis complete — ${data.doc_type}`,
+          detail: hasBreach
+            ? "Covenant breach detected. Review required before next payment cycle."
+            : data.summary.slice(0, 100),
+          severity: hasBreach ? "high" : hasHighRisk ? "medium" : "low",
+          category: "Borrower Financials",
+        });
+        addTask({
+          id: `task-fin-${Date.now()}`,
+          title: `Review AI financial summary — ${selectedFile.name}`,
+          detail: `${data.doc_type} uploaded. ${data.risk_flags?.length || 0} risk flags detected. Human review required.`,
+          status: "open",
+          category: "Borrower Financials",
+          requiresApproval: hasBreach,
+        });
+        logAudit({
+          id: `audit-fin-${Date.now()}`,
+          action: "Borrower financials analyzed by AI",
+          detail: `${selectedFile.name} — ${data.doc_type}. DSCR: ${data.metrics?.dscr ?? "N/A"}. ${data.risk_flags?.length || 0} risk flags.`,
+          timestamp: new Date().toISOString(),
+          status: hasBreach ? "pending-approval" : "logged",
+        });
+      }
+    } catch (err) {
+      setUploadError("AI analysis failed. Please try again.");
+      console.error("Financial analysis failed.", err);
+    } finally {
+      setUploading(false);
+    }
   };
 
-  const METRIC_LABELS: Record<string, string> = {
-    dscr: "DSCR", noi: "NOI", occupancy: "Occupancy %",
-    gross_revenue: "Gross Revenue", total_expenses: "Total Expenses", net_income: "Net Income",
+  const handleRequestClarification = () => {
+    requestApproval(
+      "Send borrower clarification request",
+      "Request follow-up on revenue variance and vacancy assumptions."
+    );
   };
 
-  const STATUS_COLORS = {
-    compliant: "text-emerald-700 bg-emerald-50 border-emerald-200",
-    breach:    "text-red-700 bg-red-50 border-red-200",
-    watch:     "text-amber-700 bg-amber-50 border-amber-200",
+  const metricColor = (val: number | null | undefined, good: number, warn: number, higher = true) => {
+    if (val == null) return "text-slate-500";
+    return higher
+      ? val >= good ? "text-emerald-600" : val >= warn ? "text-amber-600" : "text-red-600"
+      : val <= good ? "text-emerald-600" : val <= warn ? "text-amber-600" : "text-red-600";
   };
 
-  export default function ServicingBorrowerFinancialsPage() {
-    const { addAlert, addTask, logAudit, requestApproval } = useServicingContext();
-    const fileRef = useRef<HTMLInputElement>(null);
-    const [selectedFile, setSelectedFile] = useState<File | null>(null);
-    const [uploading, setUploading] = useState(false);
-    const [result, setResult] = useState<AiDocResult | null>(null);
-    const [uploadError, setUploadError] = useState<string>("");
+  return (
+    <div className="space-y-6">
+      {/* ── Upload Panel ── */}
+      <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+        <div className="flex items-center gap-2 mb-1">
+          <SparklesIcon className="h-5 w-5 text-violet-600" />
+          <h2 className="text-lg font-semibold text-slate-900">AI Borrower Financials Analysis</h2>
+        </div>
+        <p className="text-sm text-slate-500 mb-4">
+          Upload any borrower financial document — income statement, rent roll, or operating statement.
+          GPT-4o will extract DSCR, NOI, occupancy, covenant status, and risk flags automatically.
+        </p>
 
-    const handleUpload = async () => {
-      if (!selectedFile) { setUploadError("Select a borrower financial document first."); return; }
-      setUploadError(""); setUploading(true); setResult(null);
-      try {
-        const formData = new FormData();
-        formData.append("file", selectedFile);
-        const { data } = await api.post<AiDocResult>("/ai/analyze", formData);
-        if (data) {
-          setResult(data);
-          addAlert({ id: "alert-financial-upload", title: "Borrower financials analyzed", detail: `AI extraction complete — ${data.doc_type}`, severity: "medium", category: "Borrower Financials" });
-          addTask({ id: "task-financial-review", title: "Review AI financial summary", detail: "Validate DSCR, covenants, and risk flags before approval.", status: "open", category: "Borrower Financials" });
-          logAudit({ id: `audit-upload-${Date.now()}`, action: "Borrower financials analyzed by AI", detail: `File: ${selectedFile.name} · Type: ${data.doc_type}`, timestamp: new Date().toISOString(), status: "logged" });
-        }
-      } catch {
-        setResult({ doc_type: "Unknown", summary: "AI analysis temporarily unavailable. Document received and queued.", metrics: {}, covenants: [], risk_flags: [], recommendations: [] });
-      } finally { setUploading(false); }
-    };
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+          <input
+            type="file"
+            accept=".csv,.txt,.xlsx,.xls,.pdf,.doc,.docx"
+            className="flex-1 rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700"
+            onChange={(e) => {
+              setSelectedFile(e.target.files?.[0] ?? null);
+              setResult(null);
+              setUploadError("");
+            }}
+          />
+          <button
+            onClick={handleUpload}
+            disabled={uploading || !selectedFile}
+            className="flex items-center gap-2 rounded-lg bg-violet-700 px-5 py-2.5 text-sm font-bold text-white hover:bg-violet-800 transition-colors disabled:opacity-50"
+          >
+            {uploading ? (
+              <><SparklesIcon className="h-4 w-4 animate-pulse" /> Analyzing…</>
+            ) : (
+              <><DocumentArrowUpIcon className="h-4 w-4" /> Upload & Analyze</>
+            )}
+          </button>
+        </div>
+        {uploadError && <p className="mt-2 text-sm text-red-600">{uploadError}</p>}
+      </section>
 
-    return (
-      <div className="space-y-6">
-        {/* ── Upload Section ── */}
-        <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-          <div className="flex items-center gap-2 mb-1">
+      {/* ── AI Result ── */}
+      {result && (
+        <section className="rounded-xl border border-violet-200 bg-white shadow-sm overflow-hidden">
+          {/* Header */}
+          <div className="border-b border-violet-100 bg-violet-50 px-6 py-4 flex items-center gap-3">
             <SparklesIcon className="h-5 w-5 text-violet-600" />
-            <h2 className="text-lg font-semibold text-slate-900">AI Borrower Financials Analysis</h2>
-          </div>
-          <p className="text-sm text-slate-500 mb-4">Upload a borrower financial document — GPT-4o will extract DSCR, NOI, covenant compliance, and risk flags.</p>
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-            <input ref={fileRef} type="file" className="hidden" onChange={(e) => { setSelectedFile(e.target.files?.[0] || null); setUploadError(""); }} />
-            <button type="button" onClick={() => fileRef.current?.click()} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 transition-colors">
-              {selectedFile ? selectedFile.name : "Choose Document"}
-            </button>
-            <button type="button" onClick={handleUpload} disabled={!selectedFile || uploading}
-              className="flex items-center gap-2 rounded-lg bg-violet-600 px-5 py-2 text-sm font-bold text-white disabled:opacity-60 hover:bg-violet-500 transition-colors">
-              {uploading
-                ? <><SparklesIcon className="h-4 w-4 animate-pulse" /> Analyzing…</>
-                : <><DocumentArrowUpIcon className="h-4 w-4" /> Upload & Analyze</>}
-            </button>
-          </div>
-          {uploadError && <p className="mt-2 text-xs text-red-600">{uploadError}</p>}
-          <p className="mt-2 text-xs text-slate-400">PDF, Excel, CSV, or text · Max 25 MB · AI extracts key metrics automatically</p>
-        </section>
-
-        {/* ── AI Result ── */}
-        {result && (
-          <section className="rounded-xl border border-violet-200 bg-violet-50 p-6 shadow-sm space-y-5">
-            <div className="flex items-center gap-2">
-              <SparklesIcon className="h-5 w-5 text-violet-600" />
-              <div>
-                <h3 className="text-sm font-bold text-slate-900">AI Extraction Complete — {result.doc_type}</h3>
-                <p className="text-xs text-slate-500 mt-0.5">{result.summary}</p>
-              </div>
+            <div>
+              <h3 className="text-sm font-bold text-slate-900">AI Extraction Complete — {result.doc_type}</h3>
+              <p className="text-xs text-slate-500">{selectedFile?.name}</p>
             </div>
+          </div>
 
-            {/* Metrics */}
-            {Object.keys(result.metrics || {}).length > 0 && (
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                {Object.entries(result.metrics).filter(([,v]) => v != null).map(([k,v]) => (
-                  <div key={k} className="rounded-lg bg-white border border-violet-200 p-3">
-                    <p className="text-xs font-bold uppercase tracking-widest text-slate-500">{METRIC_LABELS[k] || k}</p>
-                    <p className="text-xl font-black text-slate-900 mt-1">
-                      {k === "dscr" ? (v as number)?.toFixed(2) + "x"
-                        : k === "occupancy" ? (v as number)?.toFixed(1) + "%"
-                        : typeof v === "number" && v > 999 ? "$" + (v as number).toLocaleString()
-                        : String(v)}
-                    </p>
-                  </div>
-                ))}
+          <div className="px-6 py-5 space-y-5">
+            {/* Summary */}
+            <p className="text-sm text-slate-700 leading-relaxed">{result.summary}</p>
+
+            {/* Key Metrics */}
+            {Object.values(result.metrics || {}).some((v) => v != null) && (
+              <div>
+                <p className="text-xs font-bold text-slate-400 uppercase tracking-wide mb-3">Extracted Metrics</p>
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+                  {result.metrics.dscr != null && (
+                    <div className={`rounded-lg border p-3 text-center ${Number(result.metrics.dscr) >= 1.25 ? "border-emerald-200 bg-emerald-50" : "border-red-200 bg-red-50"}`}>
+                      <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">DSCR</p>
+                      <p className={`text-2xl font-black mt-1 ${metricColor(result.metrics.dscr, 1.25, 1.1)}`}>{result.metrics.dscr}x</p>
+                    </div>
+                  )}
+                  {result.metrics.occupancy != null && (
+                    <div className={`rounded-lg border p-3 text-center ${Number(result.metrics.occupancy) >= 90 ? "border-emerald-200 bg-emerald-50" : "border-amber-200 bg-amber-50"}`}>
+                      <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Occupancy</p>
+                      <p className={`text-2xl font-black mt-1 ${metricColor(result.metrics.occupancy, 90, 80)}`}>{result.metrics.occupancy}%</p>
+                    </div>
+                  )}
+                  {result.metrics.noi != null && (
+                    <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-center">
+                      <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Annual NOI</p>
+                      <p className="text-lg font-black text-slate-800 mt-1">${Number(result.metrics.noi).toLocaleString()}</p>
+                    </div>
+                  )}
+                  {result.metrics.gross_revenue != null && (
+                    <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-center">
+                      <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Gross Revenue</p>
+                      <p className="text-lg font-black text-slate-800 mt-1">${Number(result.metrics.gross_revenue).toLocaleString()}</p>
+                    </div>
+                  )}
+                  {result.metrics.total_expenses != null && (
+                    <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-center">
+                      <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Total Expenses</p>
+                      <p className="text-lg font-black text-slate-800 mt-1">${Number(result.metrics.total_expenses).toLocaleString()}</p>
+                    </div>
+                  )}
+                  {result.metrics.net_income != null && (
+                    <div className={`rounded-lg border p-3 text-center ${Number(result.metrics.net_income) >= 0 ? "border-emerald-200 bg-emerald-50" : "border-red-200 bg-red-50"}`}>
+                      <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Net Income</p>
+                      <p className={`text-lg font-black mt-1 ${Number(result.metrics.net_income) >= 0 ? "text-emerald-700" : "text-red-600"}`}>${Number(result.metrics.net_income).toLocaleString()}</p>
+                    </div>
+                  )}
+                </div>
               </div>
             )}
 
-            {/* Covenants */}
+            {/* Covenant Status */}
             {result.covenants?.length > 0 && (
               <div>
-                <p className="text-xs font-bold uppercase tracking-widest text-slate-500 mb-2">Covenant Compliance</p>
-                <div className="space-y-2">
+                <p className="text-xs font-bold text-slate-400 uppercase tracking-wide mb-3">Covenant Compliance</p>
+                <div className="divide-y divide-slate-100 rounded-xl border border-slate-200 overflow-hidden">
                   {result.covenants.map((c, i) => (
-                    <div key={i} className={`flex items-center justify-between rounded-lg border px-4 py-2.5 text-sm ${STATUS_COLORS[c.status] || STATUS_COLORS.watch}`}>
-                      <span className="font-medium">{c.name}</span>
-                      <span className="text-xs">Required: {c.threshold} · Actual: {c.actual}</span>
-                      <span className="text-xs font-bold uppercase">{c.status}</span>
+                    <div key={i} className={`flex items-center justify-between px-4 py-3 ${c.status === "breach" ? "bg-red-50" : c.status === "watch" ? "bg-amber-50" : "bg-white"}`}>
+                      <span className="text-sm font-semibold text-slate-700">{c.name}</span>
+                      <div className="flex items-center gap-4 text-xs">
+                        <span className="text-slate-500">floor: <strong>{c.threshold}</strong></span>
+                        <span className="font-bold text-slate-900">{c.actual}</span>
+                        <span className={`rounded-full px-2.5 py-0.5 font-black uppercase ${c.status === "breach" ? "bg-red-100 text-red-700" : c.status === "watch" ? "bg-amber-100 text-amber-700" : "bg-emerald-100 text-emerald-700"}`}>{c.status}</span>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -122,52 +221,77 @@ import { useState, useRef } from "react";
             {/* Risk Flags */}
             {result.risk_flags?.length > 0 && (
               <div>
-                <p className="text-xs font-bold uppercase tracking-widest text-red-600 mb-2">Risk Flags</p>
-                {result.risk_flags.map((f, i) => <p key={i} className="text-sm text-red-700">• {f}</p>)}
+                <p className="text-xs font-bold text-slate-400 uppercase tracking-wide mb-3">Risk Flags</p>
+                <ul className="space-y-2">
+                  {result.risk_flags.map((f, i) => (
+                    <li key={i} className="flex items-start gap-2 text-sm text-slate-700">
+                      <ExclamationTriangleIcon className="h-4 w-4 text-amber-500 shrink-0 mt-0.5" />
+                      {f}
+                    </li>
+                  ))}
+                </ul>
               </div>
             )}
 
             {/* Recommendations */}
             {result.recommendations?.length > 0 && (
               <div>
-                <p className="text-xs font-bold uppercase tracking-widest text-slate-500 mb-2">Recommendations</p>
-                {result.recommendations.map((r, i) => (
-                  <p key={i} className="text-sm text-slate-700 flex gap-2"><span className="text-violet-600">→</span>{r}</p>
-                ))}
+                <p className="text-xs font-bold text-slate-400 uppercase tracking-wide mb-3">Servicer Recommendations</p>
+                <ol className="space-y-2">
+                  {result.recommendations.map((r, i) => (
+                    <li key={i} className="flex items-start gap-2 text-sm text-slate-700">
+                      <span className="shrink-0 flex h-5 w-5 items-center justify-center rounded-full bg-violet-100 text-xs font-black text-violet-700">{i + 1}</span>
+                      {r}
+                    </li>
+                  ))}
+                </ol>
               </div>
             )}
 
-            <button type="button" onClick={() => requestApproval("Route AI financial summary to underwriter", result.summary)}
-              className="rounded-lg border border-violet-300 bg-white px-4 py-2 text-sm font-semibold text-violet-700 hover:bg-violet-50 transition-colors">
-              Route to Underwriter for Approval
-            </button>
-          </section>
-        )}
+            {result.notice && (
+              <p className="text-xs text-slate-400 italic">{result.notice}</p>
+            )}
 
-        {/* ── Static Info Cards ── */}
-        {!result && !uploading && (
-          <div className="grid gap-4 lg:grid-cols-2">
-            <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-              <h3 className="text-xs font-bold uppercase tracking-widest text-slate-500 mb-3">Typical Variance Drivers</h3>
-              <ul className="space-y-1 text-sm text-slate-600 list-disc pl-4">
-                <li>Rent collections down due to seasonal turnover</li>
-                <li>Utilities expense up from HVAC replacements</li>
-                <li>Capex draw timing shifted from forecast</li>
-                <li>Vacancy above stabilized assumption</li>
-              </ul>
-            </div>
-            <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-              <h3 className="text-xs font-bold uppercase tracking-widest text-slate-500 mb-3">Common Risk Flags</h3>
-              <ul className="space-y-1 text-sm text-slate-600 list-disc pl-4">
-                <li>Debt service coverage trending below 1.20x</li>
-                <li>Occupancy slipped more than 5 points</li>
-                <li>Anchor tenant renewal pipeline delayed</li>
-                <li>Gross revenue declining quarter-over-quarter</li>
-              </ul>
+            {/* Action Row */}
+            <div className="flex items-center gap-3 pt-2 border-t border-slate-100">
+              <button
+                onClick={handleRequestClarification}
+                className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-colors"
+              >
+                Request Borrower Clarification
+              </button>
+              <button
+                onClick={() => requestApproval("Approve financial package", `Approve ${selectedFile?.name} for covenant compliance.`)}
+                className="flex items-center gap-2 rounded-lg bg-emerald-700 px-4 py-2 text-sm font-bold text-white hover:bg-emerald-800 transition-colors"
+              >
+                <CheckCircleIcon className="h-4 w-4" /> Approve Package
+              </button>
             </div>
           </div>
-        )}
-      </div>
-    );
-  }
-  
+        </section>
+      )}
+
+      {/* ── Hardcoded variance/risk context (shown before any upload) ── */}
+      {!result && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+            <h3 className="text-sm font-bold text-slate-700 mb-3">Typical Variance Drivers</h3>
+            <ul className="space-y-2 text-sm text-slate-600">
+              <li className="flex gap-2"><span className="text-amber-500 font-bold">·</span> Rent collections down due to seasonal turnover</li>
+              <li className="flex gap-2"><span className="text-amber-500 font-bold">·</span> Utilities expense increases from HVAC replacements</li>
+              <li className="flex gap-2"><span className="text-amber-500 font-bold">·</span> Capex draw timing shifts</li>
+            </ul>
+          </section>
+          <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+            <h3 className="text-sm font-bold text-slate-700 mb-3">Common Risk Flags</h3>
+            <ul className="space-y-2 text-sm text-slate-600">
+              <li className="flex gap-2"><ExclamationTriangleIcon className="h-4 w-4 text-red-400 shrink-0 mt-0.5" /> DSCR trending below 1.20x covenant floor</li>
+              <li className="flex gap-2"><ExclamationTriangleIcon className="h-4 w-4 text-red-400 shrink-0 mt-0.5" /> Occupancy decline in consecutive quarters</li>
+              <li className="flex gap-2"><ExclamationTriangleIcon className="h-4 w-4 text-amber-400 shrink-0 mt-0.5" /> Lease renewal pipeline stalled</li>
+            </ul>
+          </section>
+        </div>
+      )}
+    </div>
+  );
+}

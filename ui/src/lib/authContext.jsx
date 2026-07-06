@@ -187,9 +187,29 @@ async function tryRefreshSession(storedSession) {
   }
 }
 
+function readStoredSessionSync() {
+  try {
+    const raw = window.localStorage?.getItem(SESSION_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed?.access_token) return null;
+    if (parsed.expires_at && parsed.expires_at * 1000 < Date.now()) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
 export function AuthProvider({ children }) {
   const [session, setSessionState] = useState(null);
-  const [loading, setLoading] = useState(true);
+  // Start loading=false if no stored session — avoids black flash on login page
+  const [loading, setLoading] = useState(() => {
+    try {
+      return Boolean(readStoredSessionSync());
+    } catch {
+      return false;
+    }
+  });
 
   const setSession = useCallback((newSession) => {
     storeSession(newSession);

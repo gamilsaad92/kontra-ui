@@ -89,6 +89,24 @@ export default function DashboardShell() {
             <main className="p-6">
               <Outlet />
             </main>
+
+            {/* Copyright footer */}
+            <footer className="border-t px-6 py-3 flex items-center justify-between" style={{ borderColor: 'rgba(0,0,0,0.08)' }}>
+              <span className="text-xs" style={{ color: '#aaa' }}>
+                © {new Date().getFullYear()} Kontra Technologies, Inc. · Proprietary &amp; Confidential
+              </span>
+              <a
+                href="/terms"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-xs transition-colors"
+                style={{ color: '#bbb' }}
+                onMouseEnter={e => e.target.style.color = '#800020'}
+                onMouseLeave={e => e.target.style.color = '#bbb'}
+              >
+                Terms of Service
+              </a>
+            </footer>
           </div>
         </div>
       </div>

@@ -34,7 +34,7 @@ const FAQS = [
   },
   {
     q: "Who can access the deal room?",
-    a: "Anyone you invite. Owner, lender, inspector, insurer, attorney, underwriter — each gets a role-scoped link to the same deal room. No accounts required for invited parties.",
+    a: "Anyone you invite. Owner, lender, inspector, insurer, attorney, underwriter — each gets a role-scoped link to the same workspace. No account creation required for invited parties.",
   },
   {
     q: "What documents does AI analyze?",

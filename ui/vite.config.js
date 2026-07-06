@@ -76,12 +76,12 @@ export default defineConfig(({ mode }) => {
       include: ["react", "react-dom"],
     },
     server: {
-      port: 5173,
+      port: parseInt(process.env.PORT || "5173"),
       host: "0.0.0.0",
       allowedHosts: true,
       proxy: {
         "/api": {
-          target: `http://localhost:${env.VITE_API_PROXY_PORT || 3000}`,
+          target: `http://localhost:${env.VITE_API_PROXY_PORT || 3001}`,
           changeOrigin: true,
           secure: false,
         },

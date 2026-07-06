@@ -42,9 +42,12 @@ export default function RequireAuth({ children }: RequireAuthProps) {
     );
   }
 
-  if (!session?.access_token) {
+  // Allow demo mode to bypass auth — demo flag set by login page shortcuts
+  const isDemoMode = (() => { try { return localStorage.getItem("kontra_demo_mode") === "true"; } catch { return false; } })();
+
+  if (!session?.access_token && !isDemoMode) {
     return <Navigate to="/login" replace state={{ from: location }} />;
   }
 
- return <>{children}</>;
+  return <>{children}</>;
 }

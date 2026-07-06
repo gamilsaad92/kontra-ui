@@ -228,7 +228,7 @@ export async function apiFetch(
     const finalInit: RequestInit = {
       ...init,
       headers: requestHeaders,
-      credentials: init.credentials ?? "omit",
+      credentials: init.credentials ?? "same-origin",
     };
 
     const doFetch = baseFetch ?? fetch;
