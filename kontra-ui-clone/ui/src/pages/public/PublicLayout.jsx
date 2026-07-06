@@ -57,6 +57,10 @@ export default function PublicLayout({ children, hideFooter = false, dealRoomMod
                   className="text-sm font-medium text-gray-600 hover:text-gray-900 px-4 py-2 rounded-lg hover:bg-gray-50 transition">
                   My Deal Rooms
                 </Link>
+                <Link to="/workflow-pack-builder"
+                  className="text-sm font-medium text-gray-600 hover:text-gray-900 px-4 py-2 rounded-lg hover:bg-gray-50 transition">
+                  Build a Pack
+                </Link>
                 <Link to="/create-deal-room"
                   className="text-sm font-semibold px-4 py-2 rounded-lg text-white transition hover:opacity-90"
                   style={{ background: "#800020" }}>
@@ -87,6 +91,10 @@ export default function PublicLayout({ children, hideFooter = false, dealRoomMod
                   <Link to="/my-deal-rooms" onClick={() => setMenuOpen(false)}
                     className="block text-center px-4 py-2.5 rounded-lg border border-gray-200 text-sm font-medium text-gray-700">
                     My Deal Rooms
+                  </Link>
+                  <Link to="/workflow-pack-builder" onClick={() => setMenuOpen(false)}
+                    className="block text-center px-4 py-2.5 rounded-lg border border-gray-200 text-sm font-medium text-gray-700">
+                    Build a Pack
                   </Link>
                   <Link to="/create-deal-room" onClick={() => setMenuOpen(false)}
                     className="block text-center px-4 py-2.5 rounded-lg text-sm font-semibold text-white"
@@ -130,6 +138,7 @@ export default function PublicLayout({ children, hideFooter = false, dealRoomMod
                 { title: "Owners", links: [
                   { label: "My Deal Rooms", href: "/my-deal-rooms" },
                   { label: "Create Deal Room", href: "/create-deal-room" },
+                  { label: "Build a Workflow Pack", href: "/workflow-pack-builder" },
                 ]},
                 { title: "Company", links: [
                   { label: "About", href: "/about" },

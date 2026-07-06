@@ -230,6 +230,7 @@ const capitalMarketsTokensRouter = require('./routers/capitalMarketsTokens');
 const { router: analyticsRouter } = require('./routers/analytics');
 const { router: visitorsRouter } = require('./routers/visitors');
 const { router: waitlistRouter } = require('./routers/waitlist');
+const { router: workflowPacksRouter } = require('./routers/workflowPacks');
 const { router: covenantAgentRouter } = require('./routers/covenantAgent');
 const { router: underwritingRouter } = require('./routers/underwriting');
 const { router: eventsRouter } = require('./routers/events');
@@ -2688,6 +2689,11 @@ Return only valid JSON. No extra text.`;
     res.status(500).json({ error: 'Review failed', message: err.message });
   }
 });
+
+// Workflow Packs — PUBLIC, must stay BEFORE requireOrgContext. These power
+// public, unauthenticated deal rooms (built via the Workflow Pack Builder),
+// same as the public deal-room routes above.
+app.use('/api', workflowPacksRouter);
 
 app.use('/api', requireOrgContext);
 app.use('/api/dashboard-layout', authenticate, dashboard);

@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useParams, Link } from "react-router-dom";
-import { getWorkflowPack } from "../../lib/workflowPacks";
+import { getWorkflowPack, ensureWorkflowPackLoaded } from "../../lib/workflowPacks";
 
 const API_BASE = (import.meta.env.VITE_API_BASE || "").replace(/\/+$/, "");
 
@@ -131,8 +131,9 @@ export default function DealSharePage() {
       fetch(`${API_BASE}/api/public/deal-room/${propertyId}`).then(r => r.json()),
       fetch(`${API_BASE}/api/public/deal-room/${propertyId}/analyses`).then(r => r.ok ? r.json() : { analyses: [] }),
       fetch(`${API_BASE}/api/public/deal-room/${propertyId}/coordination`).then(r => r.ok ? r.json() : { parties: [] }),
-    ]).then(([roomData, anData, coordData]) => {
+    ]).then(async ([roomData, anData, coordData]) => {
       if (roomData.error) { setError(roomData.error); return; }
+      if (roomData.workflow_pack_id) await ensureWorkflowPackLoaded(roomData.workflow_pack_id);
       setRoom(roomData);
       setAn(anData.analyses || []);
       setParties(coordData.parties || []);

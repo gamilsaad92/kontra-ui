@@ -5,3 +5,4 @@
 - [Kontra AI Next Action Engine](kontra-next-action-engine.md) — health scoring is LLM-reasoned server-side (pack-agnostic), deterministic computeHealth() kept only as client-side fallback
 - [Kontra universal role metadata](kontra-workflow-roles.md) — role label/icon/color/copy lives in shared/workflowRoles.json scoped per pack; never a flat cross-pack dict
 - [Kontra stage-key limitation](kontra-stage-keys-limitation.md) — lifecycle stage keys are still hardcoded in several frontend files, not fully pack-driven like roles/docs are
+- [Kontra custom pack builder](kontra-custom-pack-builder.md) — builder-created packs only set structural role fields, not prose (headline/subtext/sections); always guard or default those in registerCustomPack, and test new panels against a custom pack

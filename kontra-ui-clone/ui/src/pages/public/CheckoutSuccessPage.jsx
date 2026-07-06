@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import PublicLayout from "./PublicLayout";
-import { getWorkflowPack } from "../../lib/workflowPacks";
+import { getWorkflowPack, ensureWorkflowPackLoaded } from "../../lib/workflowPacks";
 
 const API_BASE = (import.meta.env.VITE_API_BASE || "").replace(/\/+$/, "");
 
@@ -33,8 +33,9 @@ export default function CheckoutSuccessPage() {
     if (!property) return;
     fetch(`${API_BASE}/api/public/deal-room/${property}`)
       .then((r) => (r.ok ? r.json() : null))
-      .then((room) => {
+      .then(async (room) => {
         if (!room || room.error) return;
+        if (room.workflow_pack_id) await ensureWorkflowPackLoaded(room.workflow_pack_id);
         const pack = getWorkflowPack(room.workflow_pack_id);
         const invitable = (pack.roles || [])
           .filter((r) => r.invitable)

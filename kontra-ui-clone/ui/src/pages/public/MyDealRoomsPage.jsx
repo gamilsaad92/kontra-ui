@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { Link } from "react-router-dom";
-import { getWorkflowPack } from "../../lib/workflowPacks";
+import { getWorkflowPack, ensureWorkflowPackLoaded } from "../../lib/workflowPacks";
 
 const API_BASE = (import.meta.env.VITE_API_BASE || "").replace(/\/+$/, "");
 const SESSION_KEY = "kontra_my_rooms_session";
@@ -302,8 +302,11 @@ export default function MyDealRoomsPage() {
       const saved = sessionStorage.getItem(SESSION_KEY);
       if (saved) {
         const { rooms: r, email: e, ownerName: n } = JSON.parse(saved);
-        setRooms(r); setEmail(e); setOwnerName(n || "");
-        setStep("dashboard");
+        const packIds = [...new Set((r || []).map(room => room.workflow_pack_id).filter(Boolean))];
+        Promise.all(packIds.map(id => ensureWorkflowPackLoaded(id))).finally(() => {
+          setRooms(r); setEmail(e); setOwnerName(n || "");
+          setStep("dashboard");
+        });
       }
     } catch {}
   }, []);
@@ -347,6 +350,8 @@ export default function MyDealRoomsPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Invalid code — please try again");
       const n = data.rooms?.[0]?.owner_name || "";
+      const packIds = [...new Set((data.rooms || []).map(r => r.workflow_pack_id).filter(Boolean))];
+      await Promise.all(packIds.map(id => ensureWorkflowPackLoaded(id)));
       setRooms(data.rooms || []); setOwnerName(n);
       sessionStorage.setItem(SESSION_KEY, JSON.stringify({ rooms: data.rooms || [], email: data.email || email, ownerName: n }));
       setStep("dashboard");

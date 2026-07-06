@@ -1,14 +1,9 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import PublicLayout from "./PublicLayout";
-import { listWorkflowPacks, DEFAULT_PACK_ID } from "../../lib/workflowPacks";
+import { listWorkflowPacks, fetchCustomPacks, DEFAULT_PACK_ID } from "../../lib/workflowPacks";
 
 const API_BASE = (import.meta.env.VITE_API_BASE || "").replace(/\/+$/, "");
-
-// Which Workflow Pack a deal room uses drives the entire rest of its experience
-// (checklist, roles, health scoring, coordination stages). This is the only
-// place a user chooses it — see ui/src/lib/workflowPacks/.
-const WORKFLOW_PACKS = listWorkflowPacks();
 
 const PROPERTY_TYPES = [
   "Multifamily", "Office", "Industrial", "Retail", "Mixed-Use",
@@ -30,6 +25,17 @@ export default function CreateDealRoomPage() {
   const [step, setStep] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  // Which Workflow Pack a deal room uses drives the entire rest of its
+  // experience (checklist, roles, health scoring, coordination stages).
+  // This is the only place a user chooses it — see ui/src/lib/workflowPacks/.
+  // Custom packs (built via the Workflow Pack Builder) are stored server-side
+  // and registered at runtime, so this list starts with the built-in packs
+  // and grows once fetchCustomPacks() resolves.
+  const [workflowPacks, setWorkflowPacks] = useState(() => listWorkflowPacks());
+
+  useEffect(() => {
+    fetchCustomPacks().then(() => setWorkflowPacks(listWorkflowPacks()));
+  }, []);
 
   const [form, setForm] = useState({
     packId: DEFAULT_PACK_ID,
@@ -49,12 +55,12 @@ export default function CreateDealRoomPage() {
 
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
   const setPack = (packId) => {
-    const pack = WORKFLOW_PACKS.find(p => p.id === packId);
+    const pack = workflowPacks.find(p => p.id === packId);
     setForm((f) => ({ ...f, packId, role: pack?.roles?.[0]?.key || f.role }));
   };
 
   const isBusinessPack = form.packId !== DEFAULT_PACK_ID;
-  const activePack = WORKFLOW_PACKS.find(p => p.id === form.packId) || WORKFLOW_PACKS[0];
+  const activePack = workflowPacks.find(p => p.id === form.packId) || workflowPacks[0];
 
   const canNext = () => {
     if (step === 0) return form.propertyName && form.propertyAddress && (isBusinessPack || form.propertyType);
@@ -147,7 +153,7 @@ export default function CreateDealRoomPage() {
               <div className="space-y-4">
                 <h2 className="font-semibold text-gray-900 mb-1">What kind of deal are you closing?</h2>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-2">
-                  {WORKFLOW_PACKS.map(p => (
+                  {workflowPacks.map(p => (
                     <button key={p.id} onClick={() => setPack(p.id)}
                       className={`border rounded-xl p-3.5 text-left transition-all ${form.packId === p.id ? "border-red-800 bg-red-50" : "border-gray-200 hover:border-gray-300"}`}>
                       <p className={`text-sm font-semibold ${form.packId === p.id ? "text-red-800" : "text-gray-800"}`}>{p.label}</p>

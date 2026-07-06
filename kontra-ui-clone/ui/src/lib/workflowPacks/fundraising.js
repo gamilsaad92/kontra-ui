@@ -5,42 +5,20 @@
 // a different transaction shape (a round, not a purchase) with its own
 // roles (founder/investor/counsel/auditor/banker instead of
 // owner/lender/buyer/seller) and documents (term sheet, cap table, SAFE/SPA
-// instead of purchase agreements). It's built the same way as Business
-// Acquisition: pure data on top of the shared engine — no panel or engine
-// code changes required.
+// instead of purchase agreements).
 //
-// Like Business Acquisition, financials and audited financials route
-// through the platform's universal AI extraction endpoint
-// (POST /api/ai/analyze-document) via each schema entry's `aiExtraction`
-// metadata, so no new backend route was needed for AI to reason over this
-// pack's documents either.
+// Built on genericPackFactory — the same generic health scoring / AI-fact
+// extraction machinery Business Acquisition uses, with only the
+// domain-specific dashboard judgement (runway badge, snapshot ordering)
+// layered on top as overrides.
 
-// ── Roles ────────────────────────────────────────────────────────────────────
-// Read from shared/workflowRoles.json — single source of truth shared with
-// the backend's pack-agnostic role labels (see creAcquisition.js).
 import rolesConfig from "../../../../shared/workflowRoles.json";
+import stagesConfig from "../../../../shared/workflowStages.json";
+import { createGenericPack } from "./genericPackFactory";
 
 export const roles = rolesConfig.fundraising.roles;
 
-export function getRole(key) {
-  return roles.find(r => r.key === key) || null;
-}
-
-export function getRoleLabel(key, { short = false } = {}) {
-  const r = getRole(key);
-  if (!r) return key;
-  return short ? (r.shortLabel || r.label) : r.label;
-}
-
 // ── Lifecycle stages ─────────────────────────────────────────────────────────
-// Reuses the platform's five-stage lifecycle keys (uploading/under_review/
-// approved/closing/funded) with round-specific labels — the same approach
-// Business Acquisition takes. Stage *keys* are still shared across packs
-// today (several panels compare against these keys directly), so a new pack
-// customizes labels/icons/desc, not the key set, until that's generalized
-// further.
-import stagesConfig from "../../../../shared/workflowStages.json";
-
 const STAGE_META = {
   uploading:    { icon: "📤" },
   under_review: { icon: "🔍" },
@@ -61,13 +39,6 @@ export const stages = stagesConfig.fundraising.stages.map(s => ({
   ...(STAGE_META[s.key] || {}),
   desc: STAGE_DESC[s.key] || "",
 }));
-
-export const nextStage = {
-  uploading:    "under_review",
-  under_review: "approved",
-  approved:     "closing",
-  closing:      "funded",
-};
 
 export const advanceLabel = {
   uploading:    "Move to Under Review",
@@ -106,68 +77,19 @@ const DOCUMENT_SCHEMA = [
   { id: "disclosure_schedule", label: "Disclosure Schedule",       section: "disclosure_schedule", ai: false, required: false },
 ];
 
-const DOLLAR_METRIC_PATTERN = /revenue|mrr|arr|burn|capital|adjustments/i;
-
 function humanizeMetricKey(key) {
   return key.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase())
     .replace(/Mrr/, "MRR").replace(/Arr/, "ARR").replace(/Yoy/, "YoY").replace(/Pct/, "%");
 }
 
-export function getDocumentSchema(_dealSubtype) {
-  return DOCUMENT_SCHEMA;
-}
-
-// ── Extraction rules: generic over whatever metrics a doc's aiExtraction
-// schema declares — no per-metric-name code, so new metrics just show up. ──
-export function getInlineFacts(analysis, section) {
-  if (!analysis || typeof analysis !== "object" || analysis.pending) return [];
-  const doc = DOCUMENT_SCHEMA.find(d => d.section === section);
-  const metricDefs = doc?.aiExtraction?.metrics;
-  const metrics = analysis.metrics;
-  if (!metricDefs || !metrics) return [];
-
-  return Object.keys(metricDefs)
-    .filter(key => metrics[key] != null)
-    .map(key => ({
-      label: humanizeMetricKey(key),
-      value: DOLLAR_METRIC_PATTERN.test(key)
-        ? `$${Number(metrics[key]).toLocaleString()}`
-        : `${metrics[key]}${key.includes("pct") || key.includes("growth") ? "%" : ""}`,
-      type: "neutral",
-    }));
-}
-
-export function getCompletenessIssues(analysis, section) {
-  if (!analysis || typeof analysis !== "object") return [];
-  const issues = [];
-  (analysis.risk_flags || []).forEach(flag => issues.push({ text: flag, sev: "Moderate" }));
+function getExtraCompletenessIssues(analysis, section) {
   if (section === "financials" && analysis.metrics?.runway_months != null && Number(analysis.metrics.runway_months) < 6) {
-    issues.push({ text: "Less than 6 months of runway remaining — flag for urgent diligence", sev: "Critical" });
+    return [{ text: "Less than 6 months of runway remaining — flag for urgent diligence", sev: "Critical" }];
   }
-  return issues;
+  return [];
 }
 
-export const factColors = {
-  good: { bg: "#f0fdf4", text: "#15803d", border: "#bbf7d0" },
-  warn: { bg: "#fff7ed", text: "#c2410c", border: "#fed7aa" },
-  neutral: { bg: "#f8fafc", text: "#475569", border: "#e2e8f0" },
-};
-
-// ── Upload routing: financials and audited financials route through the
-// platform's universal AI extraction endpoint; everything else uses the
-// generic lightweight tracking endpoint. ────────────────────────────────────
-export const aiUploadEndpoints = Object.fromEntries(
-  DOCUMENT_SCHEMA.filter(d => d.ai).map(d => [d.section, "/api/ai/analyze-document"])
-);
-export const trackSections = new Set(DOCUMENT_SCHEMA.map(d => d.section));
-
-// ── Outstanding Items grid — no CRE-only equivalents (NOI/DSCR/occupancy)
-// apply to a fundraising round; the Deal Intelligence + Financial Snapshot
-// dashboards below are this pack's equivalent instead. ─────────────────────
-export const outstandingItemsSections = [];
-
-// ── Dashboard ────────────────────────────────────────────────────────────────
-export const intelligenceSections = [
+const intelligenceSections = [
   { key: "financials",         icon: "📈", label: "Financials",          color: "#16a34a" },
   { key: "audited_financials", icon: "🧾", label: "Audited Financials",  color: "#2563eb" },
 ];
@@ -180,7 +102,7 @@ function runwayBadge(months) {
   return { label: "Low Runway", color: "#dc2626" };
 }
 
-export function getIntelligenceBadge(section, analysis) {
+function getIntelligenceBadge(section, analysis) {
   if (!analysis) return null;
   const metrics = analysis.metrics || {};
   if (section === "financials") return runwayBadge(metrics.runway_months);
@@ -193,7 +115,7 @@ export function getIntelligenceBadge(section, analysis) {
   return null;
 }
 
-export function getIntelligenceHighlight(section, analysis) {
+function getIntelligenceHighlight(section, analysis) {
   if (!analysis) return null;
   const metrics = analysis.metrics || {};
   if (section === "financials" && (metrics.arr != null || metrics.mrr != null)) {
@@ -205,9 +127,7 @@ export function getIntelligenceHighlight(section, analysis) {
   return null;
 }
 
-// ── Dashboard: Financial Snapshot rollup — generic over whatever metrics
-// each document's aiExtraction schema declares. ────────────────────────────
-export function getSnapshotStats(bySection) {
+function getSnapshotStats(bySection) {
   const fin = bySection.financials?.metrics || {};
   const aud = bySection.audited_financials?.metrics || {};
   return [
@@ -220,7 +140,7 @@ export function getSnapshotStats(bySection) {
   ].filter(s => s.value);
 }
 
-export function getSnapshotFlag(bySection) {
+function getSnapshotFlag(bySection) {
   const fin = bySection.financials?.metrics || {};
   const aud = bySection.audited_financials?.metrics || {};
   if (fin.runway_months != null && Number(fin.runway_months) < 6) {
@@ -233,57 +153,26 @@ export function getSnapshotFlag(bySection) {
   return null;
 }
 
-// ── Health scoring ───────────────────────────────────────────────────────────
-export function computeHealth(analyses, submissions) {
-  const bySection = {};
-  for (const a of analyses) {
-    if (!bySection[a.section]) bySection[a.section] = a.analysis;
-  }
-
-  const requiredRoles = roles.filter(r => r.required).map(r => r.key);
-  const submittedRoles = new Set(submissions.map(s => s.role));
-  let score = 100;
-  const actions = [];
-
-  const requiredDocs = DOCUMENT_SCHEMA.filter(d => d.required);
-  for (const doc of requiredDocs) {
-    if (!bySection[doc.section]) {
-      score -= 12;
-      actions.push({ sev: "error", icon: "📄", text: `${doc.label} not yet uploaded` });
-    }
-  }
-
-  for (const roleKey of requiredRoles) {
-    const role = getRole(roleKey);
-    if (role?.needsDocs && !submittedRoles.has(roleKey)) {
-      score -= 8;
-      actions.push({ sev: "warn", icon: role.icon, text: `Awaiting: ${role.shortLabel || role.label}` });
-    }
-  }
-
-  const needsRevision = submissions.filter(s => s.status === "needs_revision").length;
-  if (needsRevision > 0) {
-    score -= needsRevision * 5;
-    actions.push({ sev: "warn", icon: "✏️", text: `${needsRevision} submission${needsRevision > 1 ? "s" : ""} need revision` });
-  }
-
-  score = Math.max(0, Math.min(100, score));
-  if (actions.length === 0) {
-    actions.push({ sev: "ok", icon: "✅", text: "All required documents and parties are in good standing" });
-  }
-
-  return { score, actions };
-}
-
-// ── Pack manifest ────────────────────────────────────────────────────────────
-export const fundraisingPack = {
+export const fundraisingPack = createGenericPack({
   id: "fundraising",
   name: "Fundraising",
   description: "Raising an investment round (term sheet through funding)",
   roles,
   stages,
-  nextStage,
   advanceLabel,
+  documentSchema: DOCUMENT_SCHEMA,
+  humanizeMetricKey,
+  dollarMetricPattern: /revenue|mrr|arr|burn|capital|adjustments/i,
+  getExtraCompletenessIssues,
+  intelligenceSections,
+  getIntelligenceBadge,
+  getIntelligenceHighlight,
+  getSnapshotStats,
+  getSnapshotFlag,
+});
+
+export const {
+  nextStage,
   getDocumentSchema,
   getInlineFacts,
   getCompletenessIssues,
@@ -294,11 +183,6 @@ export const fundraisingPack = {
   getRole,
   getRoleLabel,
   outstandingItemsSections,
-  intelligenceSections,
-  getIntelligenceBadge,
-  getIntelligenceHighlight,
-  getSnapshotStats,
-  getSnapshotFlag,
-};
+} = fundraisingPack;
 
 export default fundraisingPack;

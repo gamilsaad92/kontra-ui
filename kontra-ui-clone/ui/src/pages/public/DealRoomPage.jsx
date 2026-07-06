@@ -7,7 +7,7 @@ import CommentsPanel from "./CommentsPanel";
 import DealHealthPanel from "./DealHealthPanel";
 import InvitePanel from "./InvitePanel";
 import DocumentChecklistPanel, { getTemplate } from "./DocumentChecklistPanel";
-import { DEFAULT_PACK_ID, getWorkflowPack } from "../../lib/workflowPacks";
+import { DEFAULT_PACK_ID, getWorkflowPack, ensureWorkflowPackLoaded } from "../../lib/workflowPacks";
 
 function usePageTitle(title) {
   useEffect(() => {
@@ -1111,7 +1111,11 @@ export default function DealRoomPage() {
     }
     fetch(`${API_BASE}/api/public/deal-room/${propertyId}`)
       .then(r => r.ok ? r.json() : null)
-      .then(data => { setApiProperty(data); setLoadingApi(false); })
+      .then(async data => {
+        if (data?.workflow_pack_id) await ensureWorkflowPackLoaded(data.workflow_pack_id);
+        setApiProperty(data);
+        setLoadingApi(false);
+      })
       .catch(() => setLoadingApi(false));
   }, [propertyId]);
 
@@ -1230,7 +1234,7 @@ export default function DealRoomPage() {
   // roleConfig.sections says which sections a role wants to see, the pack's
   // `outstandingItemsSections` says which ones it actually has. Business
   // Acquisition declares none, so the grid is naturally empty for it.
-  const visibleOutstandingSections = roleConfig.sections.filter(
+  const visibleOutstandingSections = (roleConfig.sections || []).filter(
     (s) => pack.outstandingItemsSections?.includes(s)
   );
 
