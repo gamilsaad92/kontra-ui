@@ -26,6 +26,7 @@ Key capabilities include:
 - Do not make changes to the `artifacts/kontra-ui` folder.
 - Do not make changes to the `lib/api-client-react` folder.
 - Do not make changes to the `lib/api-zod` folder.
+- Always keep GitHub in sync with this workspace automatically — push completed work without asking for confirmation each time. (Exception: if a push would require force-pushing over diverged/conflicting history, that must go through a background reconciliation task instead of a direct force-push, per safety rules — not a silent skip.)
 
 ## System Architecture
 

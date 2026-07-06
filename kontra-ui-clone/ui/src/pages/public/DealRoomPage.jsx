@@ -5,6 +5,8 @@ import DealCoordinationPanel from "./DealCoordinationPanel";
 import ActivityTimeline from "./ActivityTimeline";
 import CommentsPanel from "./CommentsPanel";
 import DealHealthPanel from "./DealHealthPanel";
+import TasksPanel from "./TasksPanel";
+import AIOperationsManager from "./AIOperationsManager";
 import InvitePanel from "./InvitePanel";
 import DocumentChecklistPanel, { getTemplate } from "./DocumentChecklistPanel";
 import { DEFAULT_PACK_ID, getWorkflowPack, ensureWorkflowPackLoaded } from "../../lib/workflowPacks";
@@ -1416,6 +1418,15 @@ export default function DealRoomPage() {
           )}
         </div>
 
+        {/* AI Operations Manager — answer engine grounded in the Task Engine,
+            not a reporting dashboard. This is the first thing an owner sees:
+            deal status, what's blocking closing, what AI already prepared,
+            and a free-form question box. See lib/operationsManager.js and
+            .agents/memory/kontra-task-architecture.md. */}
+        {property.isCustom && (
+          <AIOperationsManager propertyId={pid} ownerName={property.first_name} />
+        )}
+
         {/* Due Diligence Checklist */}
         {property.isCustom && (
           <DocumentChecklistPanel
@@ -1439,6 +1450,13 @@ export default function DealRoomPage() {
         {/* Deal Health Score — sets the tone right after the checklist */}
         {property.isCustom && (
           <DealHealthPanel propertyId={pid} packId={packId} />
+        )}
+
+        {/* Tasks — Task Engine + AI Ownership Layer (Observe Mode). Every open
+            item has an explicit owner (human role or AI); AI-drafted actions
+            (e.g. reminder emails) require an explicit Approve click. */}
+        {property.isCustom && (
+          <TasksPanel propertyId={pid} role={role} />
         )}
 
         {/* Deal Intelligence Dashboard (AI Findings) — reveals as documents are uploaded.

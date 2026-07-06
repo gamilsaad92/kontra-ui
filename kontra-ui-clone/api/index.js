@@ -28,6 +28,9 @@ const {
   notifyOwner,
 } = require('./lib/dealRoomHelpers');
 const aiDealReviewRouter = require('./routers/aiDealReview');
+const tasksRouter = require('./routers/tasks');
+const operationsManagerRouter = require('./routers/operationsManager');
+const { evaluateDealRoomForTasks } = require('./lib/taskEngine');
 const OpenAI = require('openai');          // ← v4+ default export
 const cache = require('./cache');
 const { addJob } = require('./jobQueue');
@@ -1589,6 +1592,7 @@ app.post('/api/public/deal-room/:propertyId/track-document', upload.single('file
           await clearPending(result);
           notifyOwner(propertyId, section, result.summary).catch(() => {});
           logEvent(propertyId, 'document_analyzed', role || 'owner', null, `${SECTION_LABELS[section]} analyzed by AI`, { section, filename }).catch(() => {});
+          evaluateDealRoomForTasks(propertyId).catch(e => console.warn('[tasks] auto-evaluate on analysis failed:', e.message));
           console.log(`[track-document] ✓ ${section} analyzed${needsVision ? ' (vision)' : ''} — confidence ${result.confidence}`);
         } catch (aiErr) {
           console.warn(`[track-document] AI failed for ${section}:`, aiErr.message);
@@ -1681,6 +1685,7 @@ app.post('/api/public/deal-room/:propertyId/submit', async (req, res) => {
     const roleLabel = getPackRoleLabel(packId, role);
     logEvent(propertyId, 'party_submitted', role, name || role, `${name || roleLabel} signaled ready`, { role });
     notifyPartySubmitted(propertyId, role, name).catch(() => {});
+    evaluateDealRoomForTasks(propertyId).catch(e => console.warn('[tasks] auto-evaluate on submit failed:', e.message));
     res.json({ ok: true });
   } catch (err) {
     console.error('[submit]', err.message);
@@ -1832,6 +1837,16 @@ app.patch('/api/public/deal-room/:propertyId/submissions/:subRole/status', async
 
 // ── Public AI Tools — extracted to routers/aiDealReview.js ──────────────────
 app.use('/api/ai', aiDealReviewRouter);
+
+// ── Task Engine + AI Ownership Layer — PUBLIC, must stay BEFORE
+// requireOrgContext (same property-scoped access model as the other public
+// deal-room routes above). See lib/taskEngine.js for the Observe Mode rules.
+app.use('/api/public', tasksRouter);
+
+// AI Operations Manager — PUBLIC, must stay BEFORE requireOrgContext. Answer
+// engine grounded in the Task Engine above; read-only, no task mutation.
+// See lib/operationsManager.js and .agents/memory/kontra-task-architecture.md.
+app.use('/api/public', operationsManagerRouter);
 
 // Workflow Packs — PUBLIC, must stay BEFORE requireOrgContext. These power
 // public, unauthenticated deal rooms (built via the Workflow Pack Builder),
