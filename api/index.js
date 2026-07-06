@@ -1570,6 +1570,7 @@ app.post('/api/public/deal-room/:propertyId/track-document', upload.single('file
           await clearPending(result);
           notifyOwner(propertyId, section, result.summary).catch(() => {});
           logEvent(propertyId, 'document_analyzed', role || 'owner', null, `${SECTION_LABELS[section]} analyzed by AI`, { section, filename }).catch(() => {});
+          evaluateDealRoomForTasks(propertyId).catch(e => console.warn('[tasks] auto-evaluate on analysis failed:', e.message));
           console.log(`[track-document] ✓ ${section} analyzed${needsVision ? ' (vision)' : ''} — confidence ${result.confidence}`);
         } catch (aiErr) {
           console.warn(`[track-document] AI failed for ${section}:`, aiErr.message);
@@ -1661,6 +1662,7 @@ app.post('/api/public/deal-room/:propertyId/submit', async (req, res) => {
     const packId = await getRoomPackId(propertyId);
     const roleLabel = getPackRoleLabel(packId, role);
     logEvent(propertyId, 'party_submitted', role, name || role, `${name || roleLabel} signaled ready`, { role });
+    evaluateDealRoomForTasks(propertyId).catch(e => console.warn('[tasks] auto-evaluate on submit failed:', e.message));
     notifyPartySubmitted(propertyId, role, name).catch(() => {});
     res.json({ ok: true });
   } catch (err) {
@@ -2690,6 +2692,417 @@ Return only valid JSON. No extra text.`;
   }
 });
 
+
+  // ── Task Engine + AI Ownership Layer (Observe Mode) — PUBLIC, must stay
+  // BEFORE requireOrgContext (same property-scoped access model as the other
+  // public deal-room routes above). Ported from kontra-ui-clone/api/lib/taskEngine.js
+  // — see docs/TASK_ARCHITECTURE.md ("everything is a task"). Every open item has
+  // an explicit owner (human role or AI); AI-drafted actions (e.g. reminder
+  // emails) require an explicit human Approve click — this layer never executes
+  // a draft_action on its own.
+  const TASK_OPEN_STATUSES = ['pending', 'in_progress', 'escalated'];
+
+  async function listTasksForRoom(propertyId) {
+    const { data, error } = await supabase
+      .from('deal_room_tasks')
+      .select('*')
+      .eq('property_id', propertyId)
+      .order('created_at', { ascending: false });
+    if (error) { console.warn('[taskEngine] listTasksForRoom:', error.message); return []; }
+    return data || [];
+  }
+
+  async function createDealRoomTask(propertyId, fields) {
+    const row = {
+      property_id: propertyId,
+      task_type: fields.taskType,
+      title: fields.title,
+      description: fields.description || null,
+      owner_type: fields.ownerType || 'human',
+      owner_role: fields.ownerRole || null,
+      status: fields.status || 'pending',
+      evidence: JSON.stringify(fields.evidence || []),
+      draft_action: fields.draftAction ? JSON.stringify(fields.draftAction) : null,
+      source_type: fields.sourceType || null,
+      source_id: fields.sourceId || null,
+      due_at: fields.dueAt || null,
+    };
+    const { data, error } = await supabase.from('deal_room_tasks').insert(row).select('*').single();
+    if (error) { console.warn('[taskEngine] createTask:', error.message); return null; }
+    return data;
+  }
+
+  async function updateDealRoomTaskStatus(taskId, status) {
+    const { data, error } = await supabase
+      .from('deal_room_tasks')
+      .update({ status, updated_at: new Date().toISOString() })
+      .eq('id', taskId)
+      .select('*')
+      .single();
+    if (error) { console.warn('[taskEngine] updateTaskStatus:', error.message); return null; }
+    return data;
+  }
+
+  async function approveDealRoomTask(taskId) {
+    const { data: task, error } = await supabase.from('deal_room_tasks').select('*').eq('id', taskId).maybeSingle();
+    if (error || !task) return { ok: false, error: 'Task not found' };
+    if (task.status === 'completed') return { ok: false, error: 'Task already completed' };
+
+    const action = task.draft_action;
+    try {
+      if (action?.type === 'email') {
+        const RESEND_KEY = process.env.RESEND_API_KEY;
+        if (RESEND_KEY) {
+          await sendResendEmail(RESEND_KEY, {
+            from: 'Kontra <notifications@kontraplatform.com>',
+            to: action.to,
+            subject: action.subject,
+            html: action.html || `<p>${action.body || ''}</p>`,
+          });
+        } else {
+          console.warn('[taskEngine] approveTask: RESEND_API_KEY not set, skipping actual send');
+        }
+      }
+      await updateDealRoomTaskStatus(taskId, 'completed');
+      logEvent(task.property_id, 'task_approved', 'owner', null,
+        `Approved: ${task.title}`, { taskId, taskType: task.task_type }).catch(() => {});
+      return { ok: true };
+    } catch (e) {
+      console.warn('[taskEngine] approveTask failed:', e.message);
+      return { ok: false, error: e.message };
+    }
+  }
+
+  async function dismissDealRoomTask(taskId) {
+    const task = await updateDealRoomTaskStatus(taskId, 'dismissed');
+    if (task) {
+      logEvent(task.property_id, 'task_dismissed', 'owner', null,
+        `Dismissed: ${task.title}`, { taskId, taskType: task.task_type }).catch(() => {});
+    }
+    return task;
+  }
+
+  async function evaluateDealRoomForTasks(propertyId) {
+    const packId = await getRoomPackId(propertyId);
+    const roleConfig = getPackRoleConfig(packId);
+
+    const [existingRes, submissionsRes, analysesRes] = await Promise.all([
+      supabase.from('deal_room_tasks').select('task_type, source_type, source_id, status').eq('property_id', propertyId),
+      supabase.from('party_submissions').select('role, email, name, status, submitted_at').eq('property_id', propertyId),
+      supabase.from('deal_analyses').select('id, section, filename, analysis, created_at').eq('property_id', propertyId),
+    ]);
+
+    const existing = existingRes.data || [];
+    const submissions = submissionsRes.data || [];
+    const analyses = analysesRes.data || [];
+
+    const hasOpenTask = (taskType, sourceId) => existing.some(t =>
+      t.task_type === taskType && t.source_id === sourceId && TASK_OPEN_STATUSES.includes(t.status));
+
+    const created = [];
+
+    const requiredRoles = (roleConfig.roles || []).filter(r => r.required && r.needsDocs);
+    for (const role of requiredRoles) {
+      const sub = submissions.find(s => s.role === role.key);
+      if (sub) continue;
+      const sourceId = `missing-role:${role.key}`;
+      if (hasOpenTask('missing_participant', sourceId)) continue;
+      const roleLabel = getPackRoleLabel(packId, role.key);
+      const task = await createDealRoomTask(propertyId, {
+        taskType: 'missing_participant',
+        title: `${roleLabel} has not been invited or submitted documents yet`,
+        description: `The ${roleLabel} role is required for this deal type but has no submission on record.`,
+        ownerType: 'ai',
+        ownerRole: 'owner',
+        evidence: [`No party_submissions record found for role "${role.key}" (${roleLabel}).`],
+        draftAction: null,
+        sourceType: 'party_role',
+        sourceId,
+      });
+      if (task) created.push(task);
+    }
+
+    for (const sub of submissions) {
+      if (sub.status !== 'pending' && sub.status !== 'invited') continue;
+      const sourceId = `pending-submission:${sub.role}`;
+      if (hasOpenTask('pending_submission', sourceId)) continue;
+      const roleLabel = getPackRoleLabel(packId, sub.role);
+      const task = await createDealRoomTask(propertyId, {
+        taskType: 'pending_submission',
+        title: `${roleLabel} invited but hasn't submitted yet`,
+        description: `${sub.name || roleLabel} was invited but has not completed their submission.`,
+        ownerType: 'ai',
+        ownerRole: sub.role,
+        evidence: [`party_submissions.status = "${sub.status}" for role "${sub.role}" (invited, not yet submitted).`],
+        draftAction: sub.email ? {
+          type: 'email',
+          to: sub.email,
+          subject: `Reminder: your documents for this deal room`,
+          body: `Hi ${sub.name || roleLabel}, this is a reminder to complete your document submission for this deal room when you have a moment.`,
+        } : null,
+        sourceType: 'party_submission',
+        sourceId,
+      });
+      if (task) created.push(task);
+    }
+
+    const EXPIRY_HINT = /expir|renew|lapsed?\b/i;
+    const MISSING_HINT = /missing (appendix|schedule|exhibit|attachment)/i;
+    for (const doc of analyses) {
+      const summary = doc.analysis?.summary || '';
+      if (!summary) continue;
+      const sourceId = `analysis:${doc.id}`;
+      if (hasOpenTask('document_flag', sourceId)) continue;
+      let flagReason = null;
+      if (EXPIRY_HINT.test(summary)) flagReason = 'expiration';
+      else if (MISSING_HINT.test(summary)) flagReason = 'missing_reference';
+      if (!flagReason) continue;
+      const task = await createDealRoomTask(propertyId, {
+        taskType: 'document_flag',
+        title: flagReason === 'expiration'
+          ? `${doc.filename || doc.section} may be expiring or lapsed`
+          : `${doc.filename || doc.section} references a missing attachment`,
+        description: summary,
+        ownerType: 'ai',
+        ownerRole: 'owner',
+        evidence: [`AI analysis of "${doc.filename || doc.section}": ${summary}`],
+        draftAction: null,
+        sourceType: 'deal_analysis',
+        sourceId,
+      });
+      if (task) created.push(task);
+    }
+
+    return created;
+  }
+
+  app.get('/api/public/deal-room/:propertyId/tasks', async (req, res) => {
+    try {
+      const tasks = await listTasksForRoom(req.params.propertyId);
+      res.json({ tasks });
+    } catch (err) {
+      console.error('[tasks] list failed:', err.message);
+      res.status(500).json({ error: 'Failed to load tasks' });
+    }
+  });
+
+  app.post('/api/public/deal-room/:propertyId/tasks/refresh', async (req, res) => {
+    try {
+      const created = await evaluateDealRoomForTasks(req.params.propertyId);
+      const tasks = await listTasksForRoom(req.params.propertyId);
+      res.json({ tasks, createdCount: created.length });
+    } catch (err) {
+      console.error('[tasks] refresh failed:', err.message);
+      res.status(500).json({ error: 'Failed to refresh tasks' });
+    }
+  });
+
+  app.post('/api/tasks/:taskId/approve', async (req, res) => {
+    try {
+      const result = await approveDealRoomTask(req.params.taskId);
+      if (!result.ok) return res.status(400).json({ error: result.error });
+      res.json({ ok: true });
+    } catch (err) {
+      console.error('[tasks] approve failed:', err.message);
+      res.status(500).json({ error: 'Failed to approve task' });
+    }
+  });
+
+  app.post('/api/tasks/:taskId/dismiss', async (req, res) => {
+    try {
+      const task = await dismissDealRoomTask(req.params.taskId);
+      if (!task) return res.status(404).json({ error: 'Task not found' });
+      res.json({ ok: true });
+    } catch (err) {
+      console.error('[tasks] dismiss failed:', err.message);
+      res.status(500).json({ error: 'Failed to dismiss task' });
+    }
+  });
+
+  // ── AI Operations Manager (answer engine) — PUBLIC, must stay BEFORE
+  // requireOrgContext. Grounded strictly in the Task Engine above; read-only,
+  // never mutates deal_room_tasks. Ported from
+  // kontra-ui-clone/api/lib/operationsManager.js — see
+  // .agents/memory/kontra-task-architecture.md.
+  async function buildOpsManagerContext(propertyId) {
+    const [{ data: room }, tasks] = await Promise.all([
+      supabase
+        .from('deal_rooms')
+        .select('property_name, deal_stage, workflow_pack_id, closing_date, deal_type, deal_amount')
+        .eq('property_id', propertyId)
+        .maybeSingle(),
+      listTasksForRoom(propertyId),
+    ]);
+
+    const packId = room?.workflow_pack_id || DEFAULT_PACK_ID;
+    const stageLabel = room?.deal_stage ? getPackStageLabel(packId, room.deal_stage) : null;
+
+    const openTasks = tasks.filter(t => ['pending', 'in_progress', 'escalated'].includes(t.status));
+    const recentlyResolved = tasks
+      .filter(t => ['completed', 'dismissed'].includes(t.status))
+      .slice(0, 10);
+
+    const describeTask = t => ({
+      id: t.id,
+      title: t.title,
+      description: t.description || null,
+      ownedBy: t.owner_type === 'ai' ? 'AI' : getPackRoleLabel(packId, t.owner_role || 'unknown'),
+      status: t.status,
+      evidence: Array.isArray(t.evidence) ? t.evidence : [],
+      hasDraftAction: !!t.draft_action,
+      dueAt: t.due_at,
+      createdAt: t.created_at,
+    });
+
+    return {
+      room: room
+        ? {
+            propertyName: room.property_name,
+            stage: stageLabel,
+            dealType: room.deal_type,
+            dealAmount: room.deal_amount,
+            closingDate: room.closing_date,
+          }
+        : null,
+      openTasks: openTasks.map(describeTask),
+      recentlyResolved: recentlyResolved.map(describeTask),
+    };
+  }
+
+  function opsManagerContextToPrompt(ctx) {
+    return JSON.stringify(
+      { deal: ctx.room, open_tasks: ctx.openTasks, recently_resolved_tasks: ctx.recentlyResolved },
+      null,
+      2
+    );
+  }
+
+  const OPS_MANAGER_GROUNDING_RULES = `You are the AI Operations Manager for a commercial real estate deal room.
+  You reason ONLY from the JSON context provided (open_tasks, recently_resolved_tasks, deal). Never invent
+  facts, people, dates, or documents that are not present in that context. If the context does not contain
+  enough information to answer, say so plainly instead of guessing.
+
+  Think like a banker, not a confidence score: cite the specific task/evidence behind every claim
+  (e.g. "Attorney has not uploaded Schedule B, due 2 days ago" rather than "some documents are missing").
+  Distinguish tasks that are actually on the critical path to closing from tasks that are open but not
+  blocking anything. Every open task has an explicit owner — a human role or "AI" — always name the owner.`;
+
+  function opsManagerFallbackBriefing(ctx) {
+    const blocking = ctx.openTasks
+      .filter(t => t.status === 'escalated' || t.status === 'pending')
+      .map(t => ({ taskId: t.id, owner: t.ownedBy, item: t.title, note: t.description || '' }));
+    const prepared = ctx.openTasks
+      .filter(t => t.hasDraftAction)
+      .map(t => `Draft prepared for: ${t.title}`);
+    return {
+      status: blocking.length ? 'at_risk' : 'on_track',
+      statusLabel: blocking.length ? 'At Risk' : 'On Track',
+      expectedClosing: ctx.room?.closingDate || null,
+      blocking,
+      prepared,
+      narrative: 'AI reasoning is unavailable right now, so this is a plain readout of open tasks rather than a reasoned summary.',
+      groundedTaskCount: ctx.openTasks.length,
+    };
+  }
+
+  async function getOpsManagerBriefing(propertyId) {
+    const ctx = await buildOpsManagerContext(propertyId);
+    if (!process.env.OPENAI_API_KEY) return opsManagerFallbackBriefing(ctx);
+
+    try {
+      const resp = await openai.chat.completions.create({
+        model: 'gpt-4o-mini',
+        response_format: { type: 'json_object' },
+        messages: [
+          {
+            role: 'system',
+            content: `${OPS_MANAGER_GROUNDING_RULES}
+
+  Produce a morning briefing as JSON:
+  {
+    "status": "on_track" | "at_risk" | "blocked",
+    "statusLabel": string (short, e.g. "On Track"),
+    "expectedClosing": string|null (from deal.closingDate, human readable, or null if unknown),
+    "blocking": [ { "taskId": string, "owner": string, "item": string, "note": string } ]
+      (only tasks that are genuinely on the critical path to closing — omit tasks that are open but not blocking),
+    "prepared": [ string ] (AI-owned tasks with a draft_action awaiting approval, phrased as what AI already prepared),
+    "narrative": string (2-3 sentences, reasoning not reporting — explain WHY the status is what it is)
+  }
+  If open_tasks is empty, status should be "on_track" and blocking/prepared should be empty arrays.`,
+          },
+          { role: 'user', content: opsManagerContextToPrompt(ctx) },
+        ],
+      });
+      const parsed = JSON.parse(resp.choices[0].message.content || '{}');
+      return { ...parsed, groundedTaskCount: ctx.openTasks.length };
+    } catch (err) {
+      console.error('[operationsManager] getBriefing LLM error:', err.message);
+      return opsManagerFallbackBriefing(ctx);
+    }
+  }
+
+  async function askOpsManagerQuestion(propertyId, question) {
+    if (!question || !question.trim()) {
+      return { answer: 'Ask a question about this workspace — e.g. "What\'s blocking closing?" or "What should happen next?"', citedTaskIds: [] };
+    }
+    const ctx = await buildOpsManagerContext(propertyId);
+    if (!process.env.OPENAI_API_KEY) {
+      return {
+        answer: `AI reasoning is unavailable right now. There are ${ctx.openTasks.length} open task(s) in this workspace.`,
+        citedTaskIds: ctx.openTasks.map(t => t.id),
+      };
+    }
+
+    try {
+      const resp = await openai.chat.completions.create({
+        model: 'gpt-4o-mini',
+        response_format: { type: 'json_object' },
+        messages: [
+          {
+            role: 'system',
+            content: `${OPS_MANAGER_GROUNDING_RULES}
+
+  Answer the user's operational question about this workspace. Respond as JSON:
+  { "answer": string (direct, reasoned answer — 1-4 sentences, may use short bullet-style lines separated by newlines),
+    "citedTaskIds": [ string ] (ids of open_tasks or recently_resolved_tasks referenced in the answer) }
+  If the question cannot be answered from the provided context, say so directly in "answer" and return an empty citedTaskIds array.`,
+          },
+          { role: 'user', content: `Workspace context:\n${opsManagerContextToPrompt(ctx)}\n\nQuestion: ${question}` },
+        ],
+      });
+      const parsed = JSON.parse(resp.choices[0].message.content || '{}');
+      return {
+        answer: parsed.answer || 'I could not generate an answer from the current workspace data.',
+        citedTaskIds: Array.isArray(parsed.citedTaskIds) ? parsed.citedTaskIds : [],
+      };
+    } catch (err) {
+      console.error('[operationsManager] askQuestion LLM error:', err.message);
+      return { answer: 'Something went wrong answering that question. Please try again.', citedTaskIds: [] };
+    }
+  }
+
+  app.get('/api/public/deal-room/:propertyId/brain/briefing', async (req, res) => {
+    try {
+      const briefing = await getOpsManagerBriefing(req.params.propertyId);
+      res.json(briefing);
+    } catch (err) {
+      console.error('[operationsManager] briefing failed:', err.message);
+      res.status(500).json({ error: 'Failed to load briefing' });
+    }
+  });
+
+  app.post('/api/public/deal-room/:propertyId/brain/ask', async (req, res) => {
+    try {
+      const { question } = req.body || {};
+      const result = await askOpsManagerQuestion(req.params.propertyId, question);
+      res.json(result);
+    } catch (err) {
+      console.error('[operationsManager] ask failed:', err.message);
+      res.status(500).json({ error: 'Failed to answer question' });
+    }
+  });
+
+  
 // Workflow Packs — PUBLIC, must stay BEFORE requireOrgContext. These power
 // public, unauthenticated deal rooms (built via the Workflow Pack Builder),
 // same as the public deal-room routes above.
