@@ -1,0 +1,30 @@
+{
+  "_comment": "Single source of truth for per-pack lifecycle stage keys, order, and labels. The backend (api/index.js) reads this directly to validate/advance a deal room's stage — no code change needed to add a pack with new stage keys, only a new entry here. Frontend workflow pack files (ui/src/lib/workflowPacks/*.js) import this same file and layer cosmetic-only metadata (icon, desc) on top by key.",
+  "cre_acquisition": {
+    "stages": [
+      { "key": "uploading", "label": "Uploading" },
+      { "key": "under_review", "label": "Under Review" },
+      { "key": "approved", "label": "Approved" },
+      { "key": "closing", "label": "Closing" },
+      { "key": "funded", "label": "Funded" }
+    ]
+  },
+  "business_acquisition": {
+    "stages": [
+      { "key": "uploading", "label": "Due Diligence" },
+      { "key": "under_review", "label": "Under Review" },
+      { "key": "approved", "label": "Approved" },
+      { "key": "closing", "label": "Closing" },
+      { "key": "funded", "label": "Closed" }
+    ]
+  },
+  "fundraising": {
+    "stages": [
+      { "key": "uploading", "label": "Diligence" },
+      { "key": "under_review", "label": "Under Review" },
+      { "key": "approved", "label": "Term Sheet Signed" },
+      { "key": "closing", "label": "Closing" },
+      { "key": "funded", "label": "Funded" }
+    ]
+  }
+}
