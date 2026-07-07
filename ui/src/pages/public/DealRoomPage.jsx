@@ -4,11 +4,12 @@ import PublicLayout from "./PublicLayout";
 import DealCoordinationPanel from "./DealCoordinationPanel";
 import ActivityTimeline from "./ActivityTimeline";
 import CommentsPanel from "./CommentsPanel";
-import DealHealthPanel from "./DealHealthPanel";
+import TransactionRiskPanel from "./TransactionRiskPanel";
+import TasksPanel from "./TasksPanel";
+import AIOperationsManager from "./AIOperationsManager";
 import InvitePanel from "./InvitePanel";
 import DocumentChecklistPanel, { getTemplate } from "./DocumentChecklistPanel";
-import AIOperationsManager from "./AIOperationsManager";
-import TasksPanel from "./TasksPanel";
+import { DEFAULT_PACK_ID, getWorkflowPack, ensureWorkflowPackLoaded } from "../../lib/workflowPacks";
 
 function usePageTitle(title) {
   useEffect(() => {
@@ -119,79 +120,16 @@ const TYPE_IMAGES = {
 const DEFAULT_IMAGE = "https://images.unsplash.com/photo-1486325212027-8081e485255e?w=1200&q=80";
 
 // Note: "financials", "inspection", "insurance", "legal", "brand-standards", and "documents"
-// are intentionally NOT listed as sections below — the Due Diligence Checklist above already
-// covers uploading and AI-analyzing every one of those document types. Listing them again here
-// would just re-prompt the user to upload something they've already submitted. These per-role
-// sections only cover things the checklist doesn't: risk scoring, compliance rollup, readiness,
-// and basic property info.
-const ROLE_CONFIG = {
-  lender: {
-    icon: "🏦", label: "Lender / Underwriter", color: "#800020",
-    headline: "You've been invited to review this deal",
-    subtext: "As a lender, you have access to the financial package, risk score, compliance status, and AI-analyzed documents.",
-    sections: ["risk", "compliance"],
-  },
-  inspector: {
-    icon: "🔍", label: "Inspector / Engineer", color: "#d97706",
-    headline: "You've been invited to submit your report",
-    subtext: "As the inspector, upload your inspection report in the checklist above — findings are AI-structured and shared with the lender automatically.",
-    sections: ["property"],
-  },
-  insurer: {
-    icon: "🛡️", label: "Insurance Broker", color: "#065f46",
-    headline: "You've been invited to provide insurance coverage",
-    subtext: "Upload the insurance certificate in the checklist above. Coverage gaps and expiration dates are tracked automatically for the lender.",
-    sections: ["property"],
-  },
-  insurance: {
-    icon: "🛡️", label: "Insurance Broker", color: "#065f46",
-    headline: "You've been invited to provide insurance coverage",
-    subtext: "Upload the insurance certificate in the checklist above. Coverage gaps and expiration dates are tracked automatically for the lender.",
-    sections: ["property"],
-  },
-  investor: {
-    icon: "📊", label: "Investor", color: "#6d28d9",
-    headline: "You've been invited to review this investment",
-    subtext: "As an investor, you have access to the Investment Readiness Report, financial performance data, and status.",
-    sections: ["readiness", "risk"],
-  },
-  servicer: {
-    icon: "⚙️", label: "Servicer", color: "#92400e",
-    headline: "You've been invited to this servicing deal",
-    subtext: "As the servicer, you have access to draw management, borrower financials, escrow status, and covenant tracking.",
-    sections: ["compliance"],
-  },
-  attorney: {
-    icon: "📜", label: "Attorney / Title", color: "#374151",
-    headline: "You've been invited to review the legal package",
-    subtext: "Review the legal structure documentation, title history, and compliance checklist for this property. Legal documents are uploaded in the checklist above.",
-    sections: ["compliance", "property"],
-  },
-  owner: {
-    icon: "🏢", label: "Property Owner", color: "#800020",
-    headline: "Welcome to your deal room",
-    subtext: "As the property owner, you have a full view of all parties, documents, compliance status, and deal progress. Share the role-specific links below to invite each party.",
-    sections: ["risk", "compliance", "property"],
-  },
-  borrower: {
-    icon: "🤝", label: "Borrower / Sponsor", color: "#1d4ed8",
-    headline: "You've been invited to this deal room",
-    subtext: "As the borrower, you can view the deal structure, track compliance requirements, upload financial documents, and monitor deal progress in real time.",
-    sections: ["compliance", "property"],
-  },
-  broker: {
-    icon: "🏷️", label: "Broker", color: "#7c3aed",
-    headline: "You've been invited to coordinate this deal",
-    subtext: "As the broker, you have visibility across all deal parties. Track document status, compliance milestones, and share role-scoped links with each party.",
-    sections: ["risk", "compliance", "property"],
-  },
-  franchisor: {
-    icon: "🏨", label: "Franchisor / Brand", color: "#0369a1",
-    headline: "You've been invited to review this hotel deal room",
-    subtext: "As the franchisor representative, you can review the Property Improvement Plan, brand standards compliance, and flag any requirements before deal close.",
-    sections: ["compliance", "property"],
-  },
-};
+// are intentionally NOT listed as sections on any role below — the Due Diligence Checklist
+// above already covers uploading and AI-analyzing every one of those document types. Listing
+// them again here would just re-prompt the user to upload something they've already submitted.
+// These per-role sections only cover things the checklist doesn't: risk scoring, compliance
+// rollup, readiness, and basic property info.
+//
+// Role metadata itself (label/icon/color/headline/subtext/sections) is no longer defined here.
+// It lives in shared/workflowRoles.json, scoped per Workflow Pack, and is looked up below via
+// pack.getRole(role) — never from a flat cross-pack dict — since a role key like "lender" can
+// mean something different in another pack (see workflowPacks/*.js `roles` exports).
 
 // ── Panels for demo (data-rich) deal rooms ───────────────────────────────────
 function FinancialsPanel({ property }) {
@@ -975,15 +913,15 @@ function useDealAnalyses(propertyId, refreshKey) {
   return { analyses, loading };
 }
 
-// ── Deal Intelligence Dashboard — shows all saved AI analyses ─────────────
-function DealIntelligenceDashboard({ propertyId, refreshKey }) {
+// ── Deal Intelligence Dashboard — shows all saved AI analyses. Which
+// sections get a card, and how each one is badged/highlighted, comes from
+// the active Workflow Pack — this component has no CRE-specific knowledge. ──
+function DealIntelligenceDashboard({ propertyId, refreshKey, packId = DEFAULT_PACK_ID }) {
   const { analyses, loading } = useDealAnalyses(propertyId, refreshKey);
-
-  const SECTIONS = [
-    { key: "inspection", icon: "🔍", label: "Inspection",  color: "#d97706" },
-    { key: "insurance",  icon: "🛡️", label: "Insurance",   color: "#2563eb" },
-    { key: "financials", icon: "📊", label: "Financials",  color: "#16a34a" },
-  ];
+  const pack = getWorkflowPack(packId);
+  const SECTIONS = pack.intelligenceSections || [];
+  const getBadge = pack.getIntelligenceBadge || (() => null);
+  const getHighlight = pack.getIntelligenceHighlight || (() => null);
 
   // Latest per section
   const bySection = {};
@@ -993,19 +931,7 @@ function DealIntelligenceDashboard({ propertyId, refreshKey }) {
 
   const doneCount = Object.keys(bySection).length;
 
-  function getBadge(section, analysis) {
-    if (section === "inspection")  return { label: analysis.overallCondition, color: analysis.overallCondition === "Good" ? "#16a34a" : analysis.overallCondition === "Fair" ? "#d97706" : "#dc2626" };
-    if (section === "insurance")   return { label: analysis.complianceStatus, color: analysis.complianceStatus === "Compliant" ? "#16a34a" : "#d97706" };
-    if (section === "financials")  return { label: analysis.covenantStatus, color: analysis.covenantStatus === "Compliant" ? "#16a34a" : analysis.covenantStatus === "At Risk" ? "#d97706" : analysis.covenantStatus === "Breached" ? "#dc2626" : "#6b7280" };
-    return null;
-  }
-
-  function getHighlight(section, analysis) {
-    if (section === "inspection")  return analysis.totalDeferredCost ? `Deferred maintenance: ${analysis.totalDeferredCost}` : null;
-    if (section === "insurance")   return analysis.expirationDate ? `Expires: ${analysis.expirationDate}${analysis.expiresInDays != null ? ` (${analysis.expiresInDays} days)` : ""}` : null;
-    if (section === "financials")  return analysis.noi ? `NOI: ${analysis.noi}${analysis.dscr ? ` · DSCR: ${analysis.dscr}` : ""}` : null;
-    return null;
-  }
+  if (SECTIONS.length === 0) return null;
 
   if (loading) return (
     <div className="bg-white rounded-2xl border border-gray-200 p-5 mb-6 animate-pulse">
@@ -1020,7 +946,7 @@ function DealIntelligenceDashboard({ propertyId, refreshKey }) {
         <div>
           <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">Deal Intelligence</p>
           <p className="text-base font-bold text-gray-900 mt-0.5">
-            {doneCount === 0 ? "Upload documents to begin AI analysis" : `${doneCount}/3 sections analyzed`}
+            {doneCount === 0 ? "Upload documents to begin AI analysis" : `${doneCount}/${SECTIONS.length} sections analyzed`}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -1030,8 +956,8 @@ function DealIntelligenceDashboard({ propertyId, refreshKey }) {
               🖨 Print Summary
             </a>
           )}
-          <div className="text-2xl font-black" style={{ color: doneCount === 3 ? "#16a34a" : doneCount >= 1 ? "#d97706" : "#9ca3af" }}>
-            {Math.round(doneCount / 3 * 100)}%
+          <div className="text-2xl font-black" style={{ color: doneCount === SECTIONS.length ? "#16a34a" : doneCount >= 1 ? "#d97706" : "#9ca3af" }}>
+            {Math.round(doneCount / SECTIONS.length * 100)}%
           </div>
         </div>
       </div>
@@ -1039,7 +965,7 @@ function DealIntelligenceDashboard({ propertyId, refreshKey }) {
       {/* Readiness bar */}
       <div className="h-1.5 w-full rounded-full bg-gray-100 overflow-hidden mb-4">
         <div className="h-full rounded-full transition-all duration-700"
-          style={{ width: `${Math.round(doneCount / 3 * 100)}%`, background: doneCount === 3 ? "#16a34a" : "#d97706" }} />
+          style={{ width: `${Math.round(doneCount / SECTIONS.length * 100)}%`, background: doneCount === SECTIONS.length ? "#16a34a" : "#d97706" }} />
       </div>
 
       <div className="space-y-2.5">
@@ -1097,10 +1023,10 @@ function DealIntelligenceDashboard({ propertyId, refreshKey }) {
         })}
       </div>
 
-      {doneCount === 3 && (
+      {doneCount === SECTIONS.length && (
         <div className="mt-4 p-3 rounded-xl bg-green-50 border border-green-100">
           <p className="text-xs font-semibold text-green-800">✓ Deal room fully populated — ready to share with your lender</p>
-          <p className="text-[10px] text-green-600 mt-0.5">All three key sections have been analyzed. Use the invite links below to send the lender their view.</p>
+          <p className="text-[10px] text-green-600 mt-0.5">All key sections have been analyzed. Use the invite links below to send the lender their view.</p>
         </div>
       )}
     </div>
@@ -1110,23 +1036,16 @@ function DealIntelligenceDashboard({ propertyId, refreshKey }) {
 // ── Financial Summary — read-only rollup of key numbers already extracted ──
 // by AI from the purchase agreement, rent roll, and financial statements.
 // No upload button here — this is purely derived from the checklist above.
-function FinancialSnapshotPanel({ propertyId, refreshKey }) {
+// The rollup fields and covenant flag come from the active Workflow Pack —
+// this component has no CRE-specific knowledge of NOI/DSCR/etc.
+function FinancialSnapshotPanel({ propertyId, refreshKey, packId = DEFAULT_PACK_ID }) {
   const { analyses, loading } = useDealAnalyses(propertyId, refreshKey);
+  const pack = getWorkflowPack(packId);
 
   const bySection = {};
   for (const a of analyses) if (!bySection[a.section]) bySection[a.section] = a.analysis;
-  const fin = bySection.financials;
-  const pa = bySection.purchase_agreement;
-  const rr = bySection.rent_roll;
 
-  const stats = [
-    { label: "Purchase Price", value: pa?.purchasePrice },
-    { label: "NOI", value: fin?.noi },
-    { label: "DSCR", value: fin?.dscr },
-    { label: "Occupancy", value: fin?.occupancy || rr?.occupancyRate },
-    { label: "Monthly Rent", value: rr?.totalMonthlyRent },
-    { label: "Cap Rate", value: fin?.capRate },
-  ].filter(s => s.value);
+  const stats = (pack.getSnapshotStats ? pack.getSnapshotStats(bySection) : []);
 
   if (loading) return (
     <div className="bg-white rounded-2xl border border-gray-200 p-5 mb-6 animate-pulse">
@@ -1137,9 +1056,7 @@ function FinancialSnapshotPanel({ propertyId, refreshKey }) {
 
   if (stats.length === 0) return null;
 
-  const covenantFlag = fin?.covenantStatus === "Breached" ? { text: "Loan covenant breached", sev: "error" }
-    : fin?.covenantStatus === "At Risk" ? { text: "Loan covenant at risk", sev: "warn" }
-    : null;
+  const covenantFlag = pack.getSnapshotFlag ? pack.getSnapshotFlag(bySection) : null;
 
   return (
     <div className="bg-white rounded-2xl border border-gray-200 p-5 mb-6">
@@ -1196,7 +1113,11 @@ export default function DealRoomPage() {
     }
     fetch(`${API_BASE}/api/public/deal-room/${propertyId}`)
       .then(r => r.ok ? r.json() : null)
-      .then(data => { setApiProperty(data); setLoadingApi(false); })
+      .then(async data => {
+        if (data?.workflow_pack_id) await ensureWorkflowPackLoaded(data.workflow_pack_id);
+        setApiProperty(data);
+        setLoadingApi(false);
+      })
       .catch(() => setLoadingApi(false));
   }, [propertyId]);
 
@@ -1294,12 +1215,30 @@ export default function DealRoomPage() {
     property.deal_amount = property.deal_amount || "14,000,000";
   }
 
-  const baseRoleConfig = ROLE_CONFIG[role] || ROLE_CONFIG.lender;
+  // Which Workflow Pack powers this deal room. Demo properties are always
+  // CRE Acquisition; custom rooms carry their pack id from creation time.
+  const packId = demoProperty ? DEFAULT_PACK_ID : (apiProperty?.workflow_pack_id || DEFAULT_PACK_ID);
+  const pack = getWorkflowPack(packId);
+
+  // Role metadata (label/icon/color/headline/subtext/sections) is looked up
+  // scoped to this pack — never from a flat cross-pack dict — since a role
+  // key like "lender" can mean something different in another pack.
+  const baseRoleConfig = pack.getRole(role) || pack.getRole("lender") || pack.roles[0];
   const isHotel = (property?.property_type || "").toLowerCase().includes("hotel") ||
                   (property?.property_type || "").toLowerCase().includes("hospitality");
   const roleConfig = isHotel && ['owner', 'broker', 'borrower'].includes(role)
-    ? { ...baseRoleConfig, sections: ['brand-standards', ...baseRoleConfig.sections] }
+    ? { ...baseRoleConfig, sections: ['brand-standards', ...(baseRoleConfig.sections || [])] }
     : baseRoleConfig;
+
+  // The "Outstanding Items" grid (risk/compliance/property panels) still
+  // hardcodes CRE concepts (NOI, DSCR, occupancy) inside the panels
+  // themselves, but *which* panels a pack supports is now pack-driven:
+  // roleConfig.sections says which sections a role wants to see, the pack's
+  // `outstandingItemsSections` says which ones it actually has. Business
+  // Acquisition declares none, so the grid is naturally empty for it.
+  const visibleOutstandingSections = (roleConfig.sections || []).filter(
+    (s) => pack.outstandingItemsSections?.includes(s)
+  );
 
   usePageTitle(property?.name || property?.property_name);
 
@@ -1479,24 +1418,23 @@ export default function DealRoomPage() {
           )}
         </div>
 
-        {/* AI Operations Manager — answer engine grounded in the Task Engine */}
+        {/* AI Operations Manager — answer engine grounded in the Task Engine,
+            not a reporting dashboard. This is the first thing an owner sees:
+            deal status, what's blocking closing, what AI already prepared,
+            and a free-form question box. See lib/operationsManager.js and
+            .agents/memory/kontra-task-architecture.md. */}
         {property.isCustom && (
           <AIOperationsManager propertyId={pid} ownerName={property.first_name} />
         )}
 
-        {/* Tasks — every blocking item has an explicit owner (human role or AI);
-              AI-drafted actions require an explicit Approve click. */}
-          {property.isCustom && (
-            <TasksPanel propertyId={pid} role={role} />
-          )}
-
-          {/* Due Diligence Checklist */}
+        {/* Due Diligence Checklist */}
         {property.isCustom && (
           <DocumentChecklistPanel
             propertyId={pid}
             propertyType={property.property_type || property.type}
             role={role}
             isDemo={isDemo}
+            packId={packId}
           />
         )}
 
@@ -1505,27 +1443,40 @@ export default function DealRoomPage() {
           <InvitePanel
             propertyId={pid}
             senderName={property.first_name || property.property_name || undefined}
+            packId={packId}
           />
         )}
 
-        {/* Deal Health Score — sets the tone right after the checklist */}
+        {/* Transaction Risk — replaces numeric Deal Health score */}
         {property.isCustom && (
-          <DealHealthPanel propertyId={pid} />
+          <TransactionRiskPanel propertyId={pid} />
         )}
 
-        {/* Deal Intelligence Dashboard (AI Findings) — reveals as documents are uploaded */}
+        {/* Tasks — Task Engine + AI Ownership Layer (Observe Mode). Every open
+            item has an explicit owner (human role or AI); AI-drafted actions
+            (e.g. reminder emails) require an explicit Approve click. */}
+        {property.isCustom && (
+          <TasksPanel propertyId={pid} role={role} />
+        )}
+
+        {/* Deal Intelligence Dashboard (AI Findings) — reveals as documents are uploaded.
+            Pack-driven: which sections appear and how they're badged comes from the
+            active Workflow Pack, so this renders nothing until a pack defines any. */}
         {property.isCustom && (
           <DealIntelligenceDashboard
             propertyId={pid}
             refreshKey={analysesRefreshKey}
+            packId={packId}
           />
         )}
 
-        {/* Financial Summary — auto-derived from uploaded docs, no re-entry */}
+        {/* Financial Summary — auto-derived from uploaded docs, no re-entry. Pack-driven:
+            renders nothing until a pack's getSnapshotStats returns something. */}
         {property.isCustom && (
           <FinancialSnapshotPanel
             propertyId={pid}
             refreshKey={analysesRefreshKey}
+            packId={packId}
           />
         )}
 
@@ -1534,16 +1485,24 @@ export default function DealRoomPage() {
           <DealCoordinationPanel
             propertyId={pid}
             role={role}
+            packId={packId}
           />
         )}
 
-        {/* Outstanding Items — role-scoped sections (risk/compliance/property) */}
-        <div className="grid md:grid-cols-2 gap-5 mb-6">
-          {roleConfig.sections.map((sectionKey) => {
-            const Panel = SECTION_MAP[sectionKey];
-            return Panel ? <Panel key={sectionKey} /> : null;
-          })}
-        </div>
+        {/* Outstanding Items — role-scoped sections (risk/compliance/property).
+            Which of these panels a pack supports comes from
+            pack.outstandingItemsSections; roleConfig.sections only says which
+            sections a role *wants* to see, the pack says which ones it
+            actually *has*. Business Acquisition declares none yet, so this
+            grid renders nothing for that pack without any packId check here. */}
+        {visibleOutstandingSections.length > 0 && (
+          <div className="grid md:grid-cols-2 gap-5 mb-6">
+            {visibleOutstandingSections.map((sectionKey) => {
+              const Panel = SECTION_MAP[sectionKey];
+              return Panel ? <Panel key={sectionKey} /> : null;
+            })}
+          </div>
+        )}
 
         {/* Activity Timeline — last, historical record of everything above */}
         {property.isCustom && (
