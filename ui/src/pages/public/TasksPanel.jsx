@@ -273,18 +273,34 @@ export default function TasksPanel({ propertyId, role }) {
                     {hasDraftEmail && (
                       <div style={{
                         marginTop: 8,
-                        background: '#f5f3ff', border: '1px solid #e9d5ff',
-                        borderRadius: 8, padding: '8px 10px',
+                        background: '#fdf7f9',
+                        border: '1px solid #f0e4e8',
+                        borderRadius: 10,
+                        overflow: 'hidden',
                       }}>
-                        <p style={{ fontSize: 11, fontWeight: 700, color: '#7c3aed', marginBottom: 2 }}>
-                          Drafted email to {task.draft_action.to}
-                        </p>
-                        <p style={{ fontSize: 11, color: '#8b5cf6' }}>{task.draft_action.subject}</p>
-                        {task.draft_action.body && (
-                          <p style={{ fontSize: 11, color: '#a78bfa', marginTop: 4, fontStyle: 'italic' }}>
-                            "{task.draft_action.body}"
+                        {/* Email header bar */}
+                        <div style={{
+                          background: '#800020',
+                          padding: '7px 12px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 6,
+                        }}>
+                          <span style={{ fontSize: 10, fontWeight: 700, color: 'rgba(255,255,255,0.7)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Drafted email</span>
+                          <span style={{ flex: 1 }} />
+                          <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.6)' }}>→ {task.draft_action.to}</span>
+                        </div>
+                        {/* Email preview body */}
+                        <div style={{ padding: '10px 12px' }}>
+                          <p style={{ margin: '0 0 4px', fontSize: 11, fontWeight: 700, color: '#374151' }}>
+                            {task.draft_action.subject}
                           </p>
-                        )}
+                          {task.draft_action.body && (
+                            <p style={{ margin: 0, fontSize: 11, color: '#6b7280', lineHeight: 1.5, fontStyle: 'italic' }}>
+                              "{task.draft_action.body}"
+                            </p>
+                          )}
+                        </div>
                       </div>
                     )}
 
