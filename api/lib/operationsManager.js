@@ -220,6 +220,33 @@ async function getBriefing(propertyId) {
   };
   if (!openai) return fallback();
 
+  // Deterministically compute criticalPath + nonBlockingTaskIds from chain
+  // before calling the LLM, so AI only provides narrative — never overrides structure.
+  const chainStatus = ctx.chainStatus;
+  const activeStep = chainStatus?.activeStep;
+  const criticalTaskIds = chainStatus?.criticalTaskIds || new Set();
+  const parallelTaskIds = chainStatus?.parallelTaskIds || new Set();
+
+  const criticalPathDetermined = (activeStep?.openTasks || []).map(t => ({
+    taskId: t.id,
+    owner: t.owner_type === 'ai' ? 'AI' : getPackRoleLabel(ctx.packId, t.owner_role || 'unknown'),
+    item: t.title,
+    note: t.description || '',
+    chainStep: activeStep.step,
+  }));
+
+  // Tasks in later chain steps (blocked) + parallel tracks = non-blocking
+  const nonBlockingDetermined = ctx.openTasks
+    .filter(t => !criticalTaskIds.has(t.id))
+    .map(t => t.id);
+
+  const taskRisksDetermined = {};
+  ctx.openTasks.forEach(t => {
+    taskRisksDetermined[t.id] = criticalTaskIds.has(t.id) ? 'critical'
+      : parallelTaskIds.has(t.id) ? 'medium'
+      : 'high'; // later chain steps — important, not yet actionable
+  });
+
   try {
     const resp = await openai.chat.completions.create({
       model: 'gpt-4o-mini',
@@ -229,57 +256,51 @@ async function getBriefing(propertyId) {
           role: 'system',
           content: `${GROUNDING_RULES}
 
-Produce a morning briefing as JSON:
+The critical path, task risks, and non-blocking tasks have already been computed from the dependency chain.
+Your job is ONLY to provide:
+1. The overall status and narrative
+2. A parallel note (if relevant)
+3. Any AI-prepared items
+
+Respond as JSON:
 {
   "status": "on_track" | "at_risk" | "blocked",
-  "statusLabel": string,
+  "statusLabel": string (short, e.g. "On Track", "At Risk", "Blocked"),
   "expectedClosing": string|null,
-  "criticalPath": [
-    { "taskId": string, "owner": string, "item": string, "note": string, "chainStep": number|null }
-  ]
-  — ONLY tasks in the earliest incomplete closing_chain step. If nothing genuinely blocks closing, return [].
-  "nonBlockingTaskIds": [string]
-  — IDs of open tasks NOT on the critical path (parallel tracks, later chain steps, etc.).
+  "narrative": string (2-3 sentences max. Name the active chain step (e.g. "Step 1: Due Diligence").
+    Say what's blocking it and what the next step is once it clears.
+    If all is clear, say so confidently. Do NOT list tasks.),
   "parallelNote": string|null
-  — If nonBlockingTaskIds is non-empty, one sentence explaining those are open but not delaying closing.
-    Example: "Inspector and attorney reviews are open but run parallel — they do not gate Underwriting."
-    If nonBlockingTaskIds is empty, return null.
-  "taskRisks": { "[taskId]": "critical" | "high" | "medium" | "low" }
-  — "critical" = in active chain step, "high" = in a later chain step or will block soon,
-    "medium" = parallel track open, "low" = housekeeping.
-  "prepared": [string],
-  "narrative": string (2-3 sentences max. Lead with the single most important fact.
-    If the chain is clear, say so confidently. If the active step is blocked, name it and say what gates the next step.
-    Do NOT list tasks — the UI does that.)
+    (One sentence about tasks that are open but NOT on the critical path — e.g. attorney review.
+     If nothing relevant, return null.),
+  "prepared": [string]
 }
-If open_tasks is empty, return status "on_track", empty arrays, and a confident narrative.`,
+The closing_chain in context shows which step is active. Focus only on the EARLIEST in_progress step.`,
         },
         { role: 'user', content: contextToPrompt(ctx) },
       ],
     });
     const parsed = JSON.parse(resp.choices[0].message.content || '{}');
 
-    // Annotate criticalPath items with their chain step from our computed chain
-    const criticalTaskIds = ctx.chainStatus?.criticalTaskIds || new Set();
-    const criticalPath = (parsed.criticalPath || []).map(item => ({
-      ...item,
-      chainStep: item.chainStep ?? (criticalTaskIds.has(item.taskId) ? ctx.chainStatus?.activeStep?.step : null),
-    }));
-
     const result = {
-      ...parsed,
-      criticalPath,
-      blocking: criticalPath,
-      chain: ctx.chainStatus?.chain?.map(s => ({
-        step: s.step,
-        label: s.label,
-        description: s.description,
-        stepStatus: s.stepStatus,
-        openCount: s.openCount || 0,
-        totalSteps: ctx.chainStatus.totalSteps,
+      status:          parsed.status || (criticalPathDetermined.length ? 'at_risk' : 'on_track'),
+      statusLabel:     parsed.statusLabel || (criticalPathDetermined.length ? 'At Risk' : 'On Track'),
+      expectedClosing: parsed.expectedClosing || ctx.room?.closingDate || null,
+      narrative:       parsed.narrative || null,
+      parallelNote:    parsed.parallelNote || null,
+      prepared:        parsed.prepared || [],
+      // Always use deterministic values, never LLM-computed ones
+      criticalPath:    criticalPathDetermined,
+      blocking:        criticalPathDetermined,
+      nonBlockingTaskIds: nonBlockingDetermined,
+      taskRisks:       taskRisksDetermined,
+      chain: chainStatus?.chain?.map(s => ({
+        step: s.step, label: s.label, description: s.description,
+        stepStatus: s.stepStatus, openCount: s.openCount || 0,
+        totalSteps: chainStatus.totalSteps,
       })) || null,
-      openTaskCount: ctx.openTasks.length,
-      reviewedCount: ctx.openTasks.length + ctx.recentlyResolved.length,
+      openTaskCount:  ctx.openTasks.length,
+      reviewedCount:  ctx.openTasks.length + ctx.recentlyResolved.length,
     };
     setCache(propertyId, result);
     return result;
