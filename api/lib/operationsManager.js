@@ -50,6 +50,19 @@ function setCache(propertyId, data) {
 //   • Which step is the active blocker
 //   • Which tasks are on the critical path (their step is the earliest incomplete step)
 //   • Which tasks are on parallel tracks (not in any chain step)
+
+// Extract the "subject role" from a task — the party the task is about.
+// owner_role stores who should ACTION the task ('owner'), not which party is absent.
+// source_id encodes the subject: 'missing-role:inspector', 'pending-submission:lender', etc.
+function subjectRoleOf(task) {
+  const sid = task.source_id || task.sourceId || '';
+  const m = sid.match(/^(?:missing-role|pending-submission):(.+)$/);
+  if (m) return m[1];
+  // Fallback: use owner_role if it's not a generic 'owner'/'ai' value
+  const or = task.owner_role || task.ownerRole || '';
+  return ['owner', 'ai'].includes(or) ? null : or;
+}
+
 function computeChainStatus(packId, tasks) {
   const deps = getDependencies();
   const packDeps = deps[packId] || deps[DEFAULT_PACK_ID] || null;
@@ -65,15 +78,15 @@ function computeChainStatus(packId, tasks) {
   const chainSteps = closingChain.map(step => {
     if (step.roleKeys.length === 0) {
       // Terminal/admin step — status is derived from prior steps, not tasks
-      return { ...step, tasks: [], stepStatus: 'waiting', openCount: 0 };
+      return { ...step, tasks: [], openTasks: [], stepStatus: 'waiting', openCount: 0 };
     }
-    const stepTasks = tasks.filter(t => step.roleKeys.includes(t.owner_role || t.ownerRole));
+    const stepTasks = tasks.filter(t => step.roleKeys.includes(subjectRoleOf(t)));
     const openStepTasks = stepTasks.filter(t => OPEN.includes(t.status));
     const hasAnyTask = stepTasks.length > 0;
     let stepStatus;
-    if (!hasAnyTask)          stepStatus = 'pending';   // no tasks created yet
-    else if (openStepTasks.length > 0) stepStatus = 'in_progress'; // tasks exist but open
-    else                       stepStatus = 'complete';  // all tasks resolved
+    if (!hasAnyTask)                   stepStatus = 'pending';
+    else if (openStepTasks.length > 0) stepStatus = 'in_progress';
+    else                               stepStatus = 'complete';
     return { ...step, tasks: stepTasks, openTasks: openStepTasks, stepStatus, openCount: openStepTasks.length };
   });
 
