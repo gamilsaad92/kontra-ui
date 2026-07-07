@@ -2,15 +2,12 @@ import { useState, useEffect, useCallback } from 'react';
 
 const API_BASE = (import.meta.env.VITE_API_BASE || '').replace(/\/+$/, '');
 
-// Task Engine display panel.
-// Risk levels come from the Operations Manager briefing (cached server-side,
-// so the second fetch is free). "critical" floats to top.
 const STATUS_STYLES = {
-  pending:    { label: 'Open',       bg: '#fef3c7', color: '#92400e' },
-  in_progress:{ label: 'In Progress',bg: '#dbeafe', color: '#1d4ed8' },
-  escalated:  { label: 'Escalated',  bg: '#fee2e2', color: '#b91c1c' },
-  completed:  { label: 'Done',       bg: '#dcfce7', color: '#166534' },
-  dismissed:  { label: 'Dismissed',  bg: '#f3f4f6', color: '#6b7280' },
+  pending:    { label: 'Open',        bg: '#fef3c7', color: '#92400e' },
+  in_progress:{ label: 'In Progress', bg: '#dbeafe', color: '#1d4ed8' },
+  escalated:  { label: 'Escalated',   bg: '#fee2e2', color: '#b91c1c' },
+  completed:  { label: 'Done',        bg: '#dcfce7', color: '#166534' },
+  dismissed:  { label: 'Dismissed',   bg: '#f3f4f6', color: '#6b7280' },
 };
 
 const RISK_STYLES = {
@@ -24,8 +21,12 @@ function RiskBadge({ risk }) {
   if (!risk || !RISK_STYLES[risk]) return null;
   const s = RISK_STYLES[risk];
   return (
-    <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide shrink-0"
-      style={{ background: s.bg, color: s.color }}>
+    <span style={{
+      display: 'inline-flex', alignItems: 'center',
+      padding: '2px 6px', borderRadius: 4,
+      fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em',
+      background: s.bg, color: s.color, flexShrink: 0,
+    }}>
       {s.label}
     </span>
   );
@@ -34,10 +35,43 @@ function RiskBadge({ risk }) {
 function OwnerBadge({ ownerType, ownerRole }) {
   const isAi = ownerType === 'ai';
   return (
-    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold shrink-0"
-      style={{ background: isAi ? '#ede9fe' : '#e5e7eb', color: isAi ? '#6d28d9' : '#374151' }}>
+    <span style={{
+      display: 'inline-flex', alignItems: 'center', gap: 4,
+      padding: '2px 8px', borderRadius: 999,
+      fontSize: 11, fontWeight: 600, flexShrink: 0,
+      background: isAi ? '#ede9fe' : '#e5e7eb',
+      color: isAi ? '#6d28d9' : '#374151',
+    }}>
       {isAi ? '🤖 AI' : `👤 ${ownerRole || 'Human'}`}
     </span>
+  );
+}
+
+function Toast({ message, type = 'success', onDone }) {
+  useEffect(() => {
+    const t = setTimeout(onDone, 3500);
+    return () => clearTimeout(t);
+  }, [onDone]);
+
+  const colors = type === 'success'
+    ? { bg: '#f0fdf4', border: '#86efac', color: '#166534' }
+    : { bg: '#fef2f2', border: '#fca5a5', color: '#991b1b' };
+
+  return (
+    <div style={{
+      position: 'fixed', bottom: 24, right: 24, zIndex: 9999,
+      padding: '12px 18px',
+      borderRadius: 12,
+      border: `1px solid ${colors.border}`,
+      background: colors.bg,
+      color: colors.color,
+      fontSize: 13, fontWeight: 600,
+      boxShadow: '0 4px 20px rgba(0,0,0,0.08)',
+      maxWidth: 320,
+      animation: 'fadeInUp 0.2s ease',
+    }}>
+      {message}
+    </div>
   );
 }
 
@@ -46,6 +80,11 @@ export default function TasksPanel({ propertyId, role }) {
   const [taskRisks, setTaskRisks] = useState({});
   const [busyId, setBusyId]       = useState(null);
   const [error, setError]         = useState(null);
+  const [toast, setToast]         = useState(null); // { message, type }
+
+  const showToast = (message, type = 'success') => {
+    setToast({ message, type });
+  };
 
   const load = useCallback(async () => {
     try {
@@ -67,7 +106,6 @@ export default function TasksPanel({ propertyId, role }) {
     }
   }, [propertyId, load]);
 
-  // Fetch briefing for risk data — server caches it 60s so no extra LLM call
   const loadRisks = useCallback(async () => {
     try {
       const r = await fetch(`${API_BASE}/api/public/deal-room/${propertyId}/brain/briefing`);
@@ -83,17 +121,32 @@ export default function TasksPanel({ propertyId, role }) {
 
   useEffect(() => {
     load().then(refresh);
-    // Delay risk fetch by 600ms — AIOperationsManager already fired at 400ms,
-    // so the server cache will be warm by the time we ask.
     const t = setTimeout(loadRisks, 600);
     return () => clearTimeout(t);
   }, [load, refresh, loadRisks]);
 
-  const act = async (taskId, action) => {
+  const act = async (taskId, action, task) => {
     setBusyId(taskId);
+    setError(null);
     try {
       const r = await fetch(`${API_BASE}/api/public/tasks/${taskId}/${action}`, { method: 'POST' });
       if (!r.ok) throw new Error(`Failed to ${action} task`);
+      const result = await r.json();
+
+      // Toast feedback
+      if (action === 'approve') {
+        if (result.emailSent) {
+          showToast(`✔ Email sent to ${result.emailTo}`);
+        } else {
+          showToast('✔ Task marked complete');
+        }
+      } else if (action === 'dismiss') {
+        showToast('Task dismissed', 'neutral');
+      }
+
+      // Signal siblings to refresh the Morning Brief (server cache was just busted)
+      window.dispatchEvent(new CustomEvent('kontra:task-resolved', { detail: { propertyId } }));
+
       await load();
     } catch (e) {
       setError(e.message);
@@ -104,9 +157,12 @@ export default function TasksPanel({ propertyId, role }) {
 
   if (tasks === null) {
     return (
-      <div className="mb-6 bg-white rounded-2xl border border-gray-200 p-5 animate-pulse">
-        <div className="h-4 w-32 bg-gray-100 rounded mb-3" />
-        <div className="h-10 bg-gray-50 rounded" />
+      <div style={{
+        marginBottom: 24, background: '#fff',
+        borderRadius: 16, border: '1px solid #f3f4f6', padding: 20,
+      }}>
+        <div style={{ height: 14, width: 100, background: '#f3f4f6', borderRadius: 6, marginBottom: 12 }} />
+        <div style={{ height: 40, background: '#fafafa', borderRadius: 10 }} />
       </div>
     );
   }
@@ -114,107 +170,193 @@ export default function TasksPanel({ propertyId, role }) {
   const openTasks = tasks
     .filter(t => ['pending', 'in_progress', 'escalated'].includes(t.status))
     .sort((a, b) => {
-      // Sort by risk level: critical first
       const rA = RISK_STYLES[taskRisks[a.id]]?.order ?? 4;
       const rB = RISK_STYLES[taskRisks[b.id]]?.order ?? 4;
       return rA - rB;
     });
   const doneTasks = tasks.filter(t => ['completed', 'dismissed'].includes(t.status));
-
   const criticalCount = openTasks.filter(t => taskRisks[t.id] === 'critical').length;
 
   return (
-    <div className="mb-6 bg-white rounded-2xl border border-gray-200">
-      <div className="flex items-center justify-between px-5 pt-5 pb-3">
-        <div className="flex items-center gap-2">
-          <h3 className="text-sm font-bold text-gray-900">Tasks</h3>
-          {criticalCount > 0 && (
-            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wide"
-              style={{ background: '#fee2e2', color: '#991b1b' }}>
-              {criticalCount} critical
-            </span>
-          )}
+    <>
+      {toast && (
+        <Toast
+          message={toast.message}
+          type={toast.type}
+          onDone={() => setToast(null)}
+        />
+      )}
+
+      <div style={{
+        marginBottom: 24, background: '#fff',
+        borderRadius: 16, border: '1px solid #f3f4f6',
+      }}>
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          padding: '20px 20px 12px',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <h3 style={{ fontSize: 14, fontWeight: 700, color: '#111827', margin: 0 }}>Tasks</h3>
+            {criticalCount > 0 && (
+              <span style={{
+                fontSize: 10, fontWeight: 700, padding: '2px 6px', borderRadius: 4,
+                textTransform: 'uppercase', letterSpacing: '0.04em',
+                background: '#fee2e2', color: '#991b1b',
+              }}>
+                {criticalCount} critical
+              </span>
+            )}
+          </div>
+          <span style={{ fontSize: 12, color: '#9ca3af' }}>{openTasks.length} open</span>
         </div>
-        <span className="text-xs text-gray-400">{openTasks.length} open</span>
-      </div>
 
-      {error && <p className="text-xs text-red-500 px-5 pb-3">{error}</p>}
+        {error && (
+          <p style={{ fontSize: 12, color: '#ef4444', padding: '0 20px 12px' }}>{error}</p>
+        )}
 
-      <div className="px-5 pb-5">
-        {openTasks.length === 0 ? (
-          <p className="text-sm text-gray-500">
-            Nothing needs attention right now — the Operations Manager is watching for missing documents, expiring items, and outstanding participants.
-          </p>
-        ) : (
-          <ul className="space-y-3">
-            {openTasks.map(task => {
-              const style = STATUS_STYLES[task.status] || STATUS_STYLES.pending;
-              const risk  = taskRisks[task.id];
-              const evidence = Array.isArray(task.evidence) ? task.evidence : [];
-              const isCritical = risk === 'critical';
-              return (
-                <li key={task.id}
-                  className="border rounded-xl p-3"
-                  style={isCritical ? { borderColor: '#fecaca', background: '#fff9f9' } : { borderColor: '#f3f4f6' }}>
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="flex items-center gap-2 flex-wrap">
+        <div style={{ padding: '0 20px 20px' }}>
+          {openTasks.length === 0 ? (
+            <p style={{ fontSize: 13, color: '#9ca3af', lineHeight: 1.6 }}>
+              Nothing needs attention — the Operations Manager is watching for missing documents,
+              expiring items, and outstanding participants.
+            </p>
+          ) : (
+            <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: 12 }}>
+              {openTasks.map(task => {
+                const style    = STATUS_STYLES[task.status] || STATUS_STYLES.pending;
+                const risk     = taskRisks[task.id];
+                const evidence = Array.isArray(task.evidence) ? task.evidence : [];
+                const isCritical = risk === 'critical';
+                const hasDraftEmail = task.draft_action?.type === 'email';
+                const isAiOwned = task.owner_type === 'ai';
+                const isBusy = busyId === task.id;
+
+                return (
+                  <li key={task.id} style={{
+                    border: `1px solid ${isCritical ? '#fecaca' : '#f3f4f6'}`,
+                    background: isCritical ? '#fff9f9' : '#fff',
+                    borderRadius: 12,
+                    padding: 12,
+                  }}>
+                    {/* Badges row */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                       <OwnerBadge ownerType={task.owner_type} ownerRole={task.owner_role} />
-                      <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold"
-                        style={{ background: style.bg, color: style.color }}>
+                      <span style={{
+                        padding: '2px 8px', borderRadius: 999, fontSize: 11, fontWeight: 600,
+                        background: style.bg, color: style.color,
+                      }}>
                         {style.label}
                       </span>
                       <RiskBadge risk={risk} />
                     </div>
-                  </div>
-                  <p className="text-sm font-semibold text-gray-900 mt-2">{task.title}</p>
-                  {evidence.length > 0 && (
-                    <ul className="mt-1.5 space-y-1">
-                      {evidence.map((e, i) => (
-                        <li key={i} className="text-xs text-gray-500 bg-gray-50 rounded-lg px-2.5 py-1.5">{e}</li>
-                      ))}
-                    </ul>
-                  )}
-                  {task.draft_action?.type === 'email' && (
-                    <div className="mt-2 text-xs bg-violet-50 border border-violet-100 rounded-lg px-2.5 py-2">
-                      <p className="font-semibold text-violet-700 mb-0.5">Drafted email to {task.draft_action.to}</p>
-                      <p className="text-violet-600">{task.draft_action.subject}</p>
-                    </div>
-                  )}
-                  {task.owner_type === 'ai' && (
-                    <div className="flex gap-2 mt-2.5">
-                      {task.draft_action && (
-                        <button disabled={busyId === task.id} onClick={() => act(task.id, 'approve')}
-                          className="text-xs font-semibold px-3 py-1.5 rounded-lg text-white disabled:opacity-50"
-                          style={{ background: '#800020' }}>
-                          Approve &amp; Send
-                        </button>
-                      )}
-                      <button disabled={busyId === task.id} onClick={() => act(task.id, 'dismiss')}
-                        className="text-xs font-semibold px-3 py-1.5 rounded-lg border border-gray-200 text-gray-600 disabled:opacity-50">
-                        Dismiss
-                      </button>
-                    </div>
-                  )}
-                </li>
-              );
-            })}
-          </ul>
-        )}
 
-        {doneTasks.length > 0 && (
-          <details className="mt-3">
-            <summary className="text-xs text-gray-400 cursor-pointer select-none">{doneTasks.length} resolved</summary>
-            <ul className="mt-2 space-y-1">
-              {doneTasks.map(task => (
-                <li key={task.id} className="text-xs text-gray-400 flex items-center gap-2">
-                  <OwnerBadge ownerType={task.owner_type} ownerRole={task.owner_role} />
-                  <span className="line-through">{task.title}</span>
-                </li>
-              ))}
+                    {/* Title */}
+                    <p style={{ fontSize: 13, fontWeight: 600, color: '#111827', margin: '8px 0 0', lineHeight: 1.35 }}>
+                      {task.title}
+                    </p>
+
+                    {/* Evidence */}
+                    {evidence.length > 0 && (
+                      <ul style={{ listStyle: 'none', padding: 0, margin: '6px 0 0', display: 'flex', flexDirection: 'column', gap: 4 }}>
+                        {evidence.map((e, i) => (
+                          <li key={i} style={{
+                            fontSize: 11, color: '#6b7280',
+                            background: '#f9fafb', borderRadius: 8, padding: '5px 10px',
+                          }}>
+                            {e}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+
+                    {/* Drafted email preview */}
+                    {hasDraftEmail && (
+                      <div style={{
+                        marginTop: 8,
+                        background: '#f5f3ff', border: '1px solid #e9d5ff',
+                        borderRadius: 8, padding: '8px 10px',
+                      }}>
+                        <p style={{ fontSize: 11, fontWeight: 700, color: '#7c3aed', marginBottom: 2 }}>
+                          Drafted email to {task.draft_action.to}
+                        </p>
+                        <p style={{ fontSize: 11, color: '#8b5cf6' }}>{task.draft_action.subject}</p>
+                        {task.draft_action.body && (
+                          <p style={{ fontSize: 11, color: '#a78bfa', marginTop: 4, fontStyle: 'italic' }}>
+                            "{task.draft_action.body}"
+                          </p>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Action buttons — only for AI-owned tasks */}
+                    {isAiOwned && (
+                      <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+                        {hasDraftEmail ? (
+                          <button
+                            disabled={isBusy}
+                            onClick={() => act(task.id, 'approve', task)}
+                            style={{
+                              fontSize: 12, fontWeight: 600, padding: '6px 14px',
+                              borderRadius: 8, border: 'none', cursor: isBusy ? 'not-allowed' : 'pointer',
+                              background: '#800020', color: '#fff', opacity: isBusy ? 0.5 : 1,
+                              transition: 'opacity 0.15s',
+                            }}
+                          >
+                            {isBusy ? '…' : 'Approve & Send'}
+                          </button>
+                        ) : (
+                          <button
+                            disabled={isBusy}
+                            onClick={() => act(task.id, 'approve', task)}
+                            style={{
+                              fontSize: 12, fontWeight: 600, padding: '6px 14px',
+                              borderRadius: 8, border: '1px solid #d1d5db',
+                              cursor: isBusy ? 'not-allowed' : 'pointer',
+                              background: '#fff', color: '#374151', opacity: isBusy ? 0.5 : 1,
+                              transition: 'opacity 0.15s',
+                            }}
+                          >
+                            {isBusy ? '…' : 'Mark Done'}
+                          </button>
+                        )}
+                        <button
+                          disabled={isBusy}
+                          onClick={() => act(task.id, 'dismiss', task)}
+                          style={{
+                            fontSize: 12, fontWeight: 600, padding: '6px 14px',
+                            borderRadius: 8, border: '1px solid #e5e7eb',
+                            cursor: isBusy ? 'not-allowed' : 'pointer',
+                            background: '#fff', color: '#9ca3af', opacity: isBusy ? 0.5 : 1,
+                            transition: 'opacity 0.15s',
+                          }}
+                        >
+                          Dismiss
+                        </button>
+                      </div>
+                    )}
+                  </li>
+                );
+              })}
             </ul>
-          </details>
-        )}
+          )}
+
+          {doneTasks.length > 0 && (
+            <details style={{ marginTop: 12 }}>
+              <summary style={{ fontSize: 12, color: '#9ca3af', cursor: 'pointer', userSelect: 'none' }}>
+                {doneTasks.length} resolved
+              </summary>
+              <ul style={{ listStyle: 'none', padding: 0, margin: '8px 0 0', display: 'flex', flexDirection: 'column', gap: 4 }}>
+                {doneTasks.map(task => (
+                  <li key={task.id} style={{ fontSize: 12, color: '#9ca3af', display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <OwnerBadge ownerType={task.owner_type} ownerRole={task.owner_role} />
+                    <span style={{ textDecoration: 'line-through' }}>{task.title}</span>
+                  </li>
+                ))}
+              </ul>
+            </details>
+          )}
+        </div>
       </div>
-    </div>
+    </>
   );
 }
