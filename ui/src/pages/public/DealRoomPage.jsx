@@ -1294,20 +1294,21 @@ export default function DealRoomPage() {
     >
       {/* Top bar — demo banner | owner bar | invite bar */}
       {isDemo ? (
-        <div className="border-b border-indigo-100 px-6 py-3" style={{ background: "linear-gradient(90deg, #1e1b4b 0%, #312e81 100%)" }}>
+        <div className="border-b px-6 py-3" style={{ background: "linear-gradient(90deg, #4a0010 0%, #800020 100%)", borderColor: "rgba(255,255,255,0.08)" }}>
           <div className="max-w-5xl mx-auto flex items-center justify-between gap-4">
             <div className="flex items-center gap-3">
-              <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white/10 text-[11px] font-bold text-white">
-                <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
+              <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold text-white" style={{ background: "rgba(255,255,255,0.12)" }}>
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
                 LIVE DEMO
               </span>
               <div>
-                <p className="text-xs font-semibold text-white">The Meridian Apartments — $14M Acquisition</p>
-                <p className="text-[10px] text-white/50">Explore a real Kontra deal room · Read-only · No signup required</p>
+                <p className="text-xs font-semibold text-white">550 Madison Avenue — $28.5M Acquisition · Closing at risk</p>
+                <p className="text-[10px] text-white/50">Explore a real Kontra deal room · All AI features active · No signup required</p>
               </div>
             </div>
             <Link to="/create-deal-room"
-              className="shrink-0 px-4 py-2 rounded-xl text-xs font-bold text-indigo-900 bg-white hover:opacity-90 transition whitespace-nowrap">
+              className="shrink-0 px-4 py-2 rounded-xl text-xs font-bold transition whitespace-nowrap"
+              style={{ background: "rgba(255,255,255,0.15)", color: "#fff", border: "1px solid rgba(255,255,255,0.2)" }}>
               Create Your Deal Room →
             </Link>
           </div>
