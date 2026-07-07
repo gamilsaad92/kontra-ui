@@ -163,6 +163,17 @@ export default function AIOperationsManager({ propertyId, ownerName, onBriefingL
     return () => clearTimeout(t);
   }, [loadBriefing]);
 
+  // Refresh when TasksPanel resolves a task (server cache was just busted)
+  useEffect(() => {
+    const handler = (e) => {
+      if (!e.detail?.propertyId || e.detail.propertyId === propertyId) {
+        loadBriefing();
+      }
+    };
+    window.addEventListener('kontra:task-resolved', handler);
+    return () => window.removeEventListener('kontra:task-resolved', handler);
+  }, [propertyId, loadBriefing]);
+
   const ask = async (q) => {
     const text = (q ?? question).trim();
     if (!text) return;
