@@ -112,6 +112,7 @@ async function approveTask(taskId) {
   if (task.status === 'completed') return { ok: false, error: 'Task already completed' };
 
   const action = task.draft_action;
+  let emailSent = false;
   try {
     if (action?.type === 'email') {
       const RESEND_KEY = process.env.RESEND_API_KEY;
@@ -122,16 +123,15 @@ async function approveTask(taskId) {
           subject: action.subject,
           html: action.html || `<p>${action.body || ''}</p>`,
         });
+        emailSent = true;
       } else {
         console.warn('[taskEngine] approveTask: RESEND_API_KEY not set, skipping actual send');
       }
     }
-    // Non-email draft actions (e.g. "advance_stage") are intentionally not
-    // auto-executed yet — Observe Mode only ships the email-drafting path.
     await updateTaskStatus(taskId, 'completed');
     logEvent(task.property_id, 'task_approved', 'owner', null,
       `Approved: ${task.title}`, { taskId, taskType: task.task_type }).catch(() => {});
-    return { ok: true };
+    return { ok: true, propertyId: task.property_id, emailSent, emailTo: emailSent ? action.to : null };
   } catch (e) {
     console.warn('[taskEngine] approveTask failed:', e.message);
     return { ok: false, error: e.message };
