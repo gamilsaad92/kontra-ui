@@ -411,8 +411,13 @@ If the question cannot be answered from context, say so directly.`,
   }
 }
 
+function clearCache(propertyId) {
+  briefingCache.delete(propertyId);
+}
+
 module.exports = {
   buildGroundedContext,
   getBriefing,
   askQuestion,
+  clearCache,
 };
