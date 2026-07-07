@@ -14,6 +14,7 @@ const {
   approveTask,
   dismissTask,
 } = require('../lib/taskEngine');
+const { clearCache: clearBriefingCache } = require('../lib/operationsManager');
 
 router.get('/deal-room/:propertyId/tasks', async (req, res) => {
   try {
@@ -40,7 +41,9 @@ router.post('/tasks/:taskId/approve', async (req, res) => {
   try {
     const result = await approveTask(req.params.taskId);
     if (!result.ok) return res.status(400).json({ error: result.error });
-    res.json({ ok: true });
+    // Bust the briefing cache so the Morning Brief reflects the resolved task immediately
+    if (result.propertyId) clearBriefingCache(result.propertyId);
+    res.json({ ok: true, emailSent: result.emailSent, emailTo: result.emailTo });
   } catch (err) {
     console.error('[tasks] approve failed:', err.message);
     res.status(500).json({ error: 'Failed to approve task' });
@@ -51,6 +54,7 @@ router.post('/tasks/:taskId/dismiss', async (req, res) => {
   try {
     const task = await dismissTask(req.params.taskId);
     if (!task) return res.status(404).json({ error: 'Task not found' });
+    if (task.property_id) clearBriefingCache(task.property_id);
     res.json({ ok: true });
   } catch (err) {
     console.error('[tasks] dismiss failed:', err.message);
