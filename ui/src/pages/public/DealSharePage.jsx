@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useParams, Link } from "react-router-dom";
+import { getWorkflowPack, ensureWorkflowPackLoaded } from "../../lib/workflowPacks";
 
 const API_BASE = (import.meta.env.VITE_API_BASE || "").replace(/\/+$/, "");
 
@@ -23,12 +24,25 @@ const SECTION_META = {
   financials: { icon: "📊", label: "Financial Overview",  color: "#15803d" },
 };
 
-const REQUIRED_ROLES = [
+// Fallback for CRE Acquisition rooms when the pack lookup can't run yet
+// (e.g. room hasn't loaded). Kept in sync with getRequiredRoles() below.
+const FALLBACK_REQUIRED_ROLES = [
   { role: "lender",    icon: "🏦", label: "Lender" },
   { role: "inspector", icon: "🔍", label: "Inspector" },
   { role: "insurer",   icon: "🛡️", label: "Insurer" },
   { role: "attorney",  icon: "⚖️", label: "Attorney" },
 ];
+
+// Which roles show in "Due Diligence Status" is pack-driven — each pack's
+// `roles` list already marks `required: true` per role, so this reads
+// straight from the pack instead of hardcoding CRE role keys.
+function getRequiredRoles(workflowPackId) {
+  const pack = getWorkflowPack(workflowPackId);
+  const required = (pack.roles || [])
+    .filter((r) => r.required && r.key !== "owner")
+    .map((r) => ({ role: r.key, icon: r.icon, label: r.shortLabel || r.label }));
+  return required.length > 0 ? required : FALLBACK_REQUIRED_ROLES;
+}
 
 function getText(analysis) {
   if (!analysis) return "";
@@ -117,8 +131,9 @@ export default function DealSharePage() {
       fetch(`${API_BASE}/api/public/deal-room/${propertyId}`).then(r => r.json()),
       fetch(`${API_BASE}/api/public/deal-room/${propertyId}/analyses`).then(r => r.ok ? r.json() : { analyses: [] }),
       fetch(`${API_BASE}/api/public/deal-room/${propertyId}/coordination`).then(r => r.ok ? r.json() : { parties: [] }),
-    ]).then(([roomData, anData, coordData]) => {
+    ]).then(async ([roomData, anData, coordData]) => {
       if (roomData.error) { setError(roomData.error); return; }
+      if (roomData.workflow_pack_id) await ensureWorkflowPackLoaded(roomData.workflow_pack_id);
       setRoom(roomData);
       setAn(anData.analyses || []);
       setParties(coordData.parties || []);
@@ -152,6 +167,7 @@ export default function DealSharePage() {
   const stage       = room.deal_stage || "uploading";
   const stageCfg    = STAGE_CONFIG[stage] || STAGE_CONFIG.uploading;
   const submittedSet = new Set(parties.filter(p => p.doc_count > 0 || p.status === "submitted" || p.status === "approved").map(p => p.role));
+  const requiredRoles = getRequiredRoles(room.workflow_pack_id);
   const orderedAn   = ["inspection", "insurance", "financials"].map(s => analyses.find(a => a.section === s)).filter(Boolean);
   const completePct = Math.round(orderedAn.length / 3 * 100);
 
@@ -303,7 +319,7 @@ export default function DealSharePage() {
           <div className="bg-white rounded-2xl border border-gray-100 p-5 shadow-sm">
             <h3 className="text-xs font-black text-gray-400 uppercase tracking-widest mb-4">Due Diligence Status</h3>
             <div className="space-y-2.5">
-              {REQUIRED_ROLES.map(({ role, icon, label }) => {
+              {requiredRoles.map(({ role, icon, label }) => {
                 const submitted = submittedSet.has(role);
                 const p = parties.find(x => x.role === role);
                 const isApproved = p?.status === "approved";

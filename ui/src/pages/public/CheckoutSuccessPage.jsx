@@ -1,8 +1,12 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import PublicLayout from "./PublicLayout";
+import { getWorkflowPack, ensureWorkflowPackLoaded } from "../../lib/workflowPacks";
 
-const ROLES = [
+const API_BASE = (import.meta.env.VITE_API_BASE || "").replace(/\/+$/, "");
+
+// Fallback for CRE Acquisition rooms while workflow_pack_id is loading.
+const FALLBACK_ROLES = [
   { id: "lender",    icon: "🏦", label: "Lender / Underwriter" },
   { id: "inspector", icon: "🔍", label: "Inspector / Engineer" },
   { id: "insurer",   icon: "🛡️", label: "Insurance Broker" },
@@ -16,6 +20,31 @@ export default function CheckoutSuccessPage() {
   const property = searchParams.get("property") || "";
   const plan = searchParams.get("plan") || "deal";
   const [copied, setCopied] = useState("");
+  // Which invite links to show is pack-driven — each pack's `roles` list
+  // marks invitable roles (Business Acquisition invites buyer/cpa/counsel
+  // rather than CRE's lender/inspector/insurer). Fetch the room's pack once.
+  const [roles, setRoles] = useState(FALLBACK_ROLES);
+  // The creator's own role isn't always "owner" — Business Acquisition's
+  // creator role is "buyer" (no "owner" role exists in that pack), so this
+  // must come from the room record rather than being hardcoded.
+  const [ownRole, setOwnRole] = useState("owner");
+
+  useEffect(() => {
+    if (!property) return;
+    fetch(`${API_BASE}/api/public/deal-room/${property}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then(async (room) => {
+        if (!room || room.error) return;
+        if (room.workflow_pack_id) await ensureWorkflowPackLoaded(room.workflow_pack_id);
+        const pack = getWorkflowPack(room.workflow_pack_id);
+        const invitable = (pack.roles || [])
+          .filter((r) => r.invitable)
+          .map((r) => ({ id: r.key, icon: r.icon, label: r.label }));
+        if (invitable.length > 0) setRoles(invitable);
+        if (room.role) setOwnRole(room.role);
+      })
+      .catch(() => {});
+  }, [property]);
 
   const planLabel = plan === "pro_annual" ? "Pro Annual" : plan === "pro_monthly" ? "Pro Monthly" : "Deal Room";
   const propertyLabel = property
@@ -59,7 +88,7 @@ export default function CheckoutSuccessPage() {
                 <p className="text-xs text-gray-500 mt-0.5">Each link shows only what's relevant to that role. Click to copy.</p>
               </div>
               <div className="divide-y divide-gray-100">
-                {ROLES.map((r) => {
+                {roles.map((r) => {
                   const url = `${BASE}/deal-room/${property}?role=${r.id}`;
                   return (
                     <div key={r.id} className="flex items-center gap-3 px-5 py-3">
@@ -104,7 +133,7 @@ export default function CheckoutSuccessPage() {
           {/* Actions */}
           <div className="flex flex-col sm:flex-row gap-3">
             {property && (
-              <Link to={`/deal-room/${property}?role=owner`}
+              <Link to={`/deal-room/${property}?role=${ownRole}`}
                 className="flex-1 inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl text-sm font-bold text-white transition hover:opacity-90"
                 style={{ background: "#800020" }}>
                 Open My Deal Room →

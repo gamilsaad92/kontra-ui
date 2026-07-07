@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { Link } from "react-router-dom";
+import { getWorkflowPack, ensureWorkflowPackLoaded } from "../../lib/workflowPacks";
 
 const API_BASE = (import.meta.env.VITE_API_BASE || "").replace(/\/+$/, "");
 const SESSION_KEY = "kontra_my_rooms_session";
@@ -18,7 +19,32 @@ const STAGE_CONFIG = {
   funded:       { label: "Funded",       color: "#7c3aed", bg: "#f5f3ff", icon: "🎉", step: 4 },
 };
 
-const REQUIRED_ROLES = ["lender", "inspector", "insurer", "attorney"];
+// Fallback for CRE Acquisition rooms while workflow_pack_id is unavailable.
+const FALLBACK_ROLES = ["lender", "inspector", "insurer", "attorney", "investor", "servicer"];
+const FALLBACK_REQUIRED_ROLES = ["lender", "inspector", "insurer", "attorney"];
+
+// Which role chips to show, and which are "required," is pack-driven —
+// each pack's `roles` list already knows its own role keys and marks
+// required: true, so this reads straight from the pack instead of
+// hardcoding CRE role keys (which don't match Business Acquisition roles
+// like buyer/seller/cpa/counsel).
+function getPackRoles(workflowPackId) {
+  const pack = getWorkflowPack(workflowPackId);
+  const roleKeys = (pack.roles || []).filter(r => r.key !== "owner" && r.key !== "buyer").map(r => r.key);
+  const requiredKeys = (pack.roles || []).filter(r => r.required && r.key !== "owner" && r.key !== "buyer").map(r => r.key);
+  return {
+    roles: roleKeys.length > 0 ? roleKeys : FALLBACK_ROLES,
+    required: requiredKeys.length > 0 ? requiredKeys : FALLBACK_REQUIRED_ROLES,
+  };
+}
+
+// The creator's own "back to room" link needs a valid role for the pack —
+// CRE's primary role is "owner" but Business Acquisition has no "owner"
+// role (its primary role is "buyer"), so this must come from the pack.
+function getPrimaryRole(workflowPackId) {
+  const pack = getWorkflowPack(workflowPackId);
+  return pack.roles?.[0]?.key || "owner";
+}
 
 function timeAgo(dateStr) {
   if (!dateStr) return "";
@@ -44,8 +70,8 @@ function StageBar({ stage }) {
   );
 }
 
-function PartyMini({ parties }) {
-  const roles = ["lender", "inspector", "insurer", "attorney", "investor", "servicer"];
+function PartyMini({ parties, workflowPackId }) {
+  const { roles, required } = getPackRoles(workflowPackId);
   const submitted = new Set((parties || []).filter(p => p.status === "submitted" || p.role).map(p => p.role));
   const approved  = new Set((parties || []).filter(p => p.status === "approved").map(p => p.role));
   const count = submitted.size;
@@ -55,7 +81,7 @@ function PartyMini({ parties }) {
         {roles.map(r => {
           const isSub = submitted.has(r);
           const isApproved = approved.has(r);
-          const isReq = REQUIRED_ROLES.includes(r);
+          const isReq = required.includes(r);
           return (
             <div key={r} title={r}
               className={`w-4 h-4 rounded-sm text-[7px] flex items-center justify-center font-bold
@@ -79,7 +105,7 @@ function DealCard({ room, email, onDeleted }) {
   const isActive = room.status === "active";
 
   function copyLink() {
-    const url = `${window.location.origin}/deal-room/${room.property_id}?role=owner`;
+    const url = `${window.location.origin}/deal-room/${room.property_id}?role=${getPrimaryRole(room.workflow_pack_id)}`;
     navigator.clipboard?.writeText(url);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
@@ -130,10 +156,10 @@ function DealCard({ room, email, onDeleted }) {
             <span>· {timeAgo(room.created_at)}</span>
           </div>
           <StageBar stage={stage} />
-          <PartyMini parties={room.parties} />
+          <PartyMini parties={room.parties} workflowPackId={room.workflow_pack_id} />
         </div>
         <div className="flex flex-col gap-1.5 shrink-0">
-          <Link to={`/deal-room/${room.property_id}?role=owner`}
+          <Link to={`/deal-room/${room.property_id}?role=${getPrimaryRole(room.workflow_pack_id)}`}
             className="px-4 py-2 rounded-xl text-xs font-bold text-white text-center hover:opacity-90 transition whitespace-nowrap"
             style={{ background: "#800020" }}>
             Open Room →
@@ -276,8 +302,11 @@ export default function MyDealRoomsPage() {
       const saved = sessionStorage.getItem(SESSION_KEY);
       if (saved) {
         const { rooms: r, email: e, ownerName: n } = JSON.parse(saved);
-        setRooms(r); setEmail(e); setOwnerName(n || "");
-        setStep("dashboard");
+        const packIds = [...new Set((r || []).map(room => room.workflow_pack_id).filter(Boolean))];
+        Promise.all(packIds.map(id => ensureWorkflowPackLoaded(id))).finally(() => {
+          setRooms(r); setEmail(e); setOwnerName(n || "");
+          setStep("dashboard");
+        });
       }
     } catch {}
   }, []);
@@ -321,6 +350,8 @@ export default function MyDealRoomsPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Invalid code — please try again");
       const n = data.rooms?.[0]?.owner_name || "";
+      const packIds = [...new Set((data.rooms || []).map(r => r.workflow_pack_id).filter(Boolean))];
+      await Promise.all(packIds.map(id => ensureWorkflowPackLoaded(id)));
       setRooms(data.rooms || []); setOwnerName(n);
       sessionStorage.setItem(SESSION_KEY, JSON.stringify({ rooms: data.rooms || [], email: data.email || email, ownerName: n }));
       setStep("dashboard");

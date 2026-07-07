@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useParams, Link } from "react-router-dom";
+import { getWorkflowPack, ensureWorkflowPackLoaded } from "../../lib/workflowPacks";
 
 const API_BASE = (import.meta.env.VITE_API_BASE || "").replace(/\/+$/, "");
 
@@ -11,12 +12,31 @@ const STAGE_LABELS = {
   funded: "Funded",
 };
 
-const ROLE_LABELS = {
+// Fallback for CRE Acquisition rooms when the pack lookup can't run yet.
+const FALLBACK_ROLE_LABELS = {
   owner: "Owner / Borrower", lender: "Lender / Underwriter",
   inspector: "Inspector", insurer: "Insurance Broker",
   attorney: "Attorney", investor: "Investor",
   servicer: "Servicer", franchisor: "Franchisor / Brand",
 };
+
+// Party role labels are pack-driven — each pack's `roles` list already has
+// a human label per role key, so this reads straight from the pack instead
+// of hardcoding CRE role keys (which don't match Business Acquisition roles
+// like buyer/seller/cpa/counsel).
+function getRoleLabel(role, workflowPackId) {
+  const pack = getWorkflowPack(workflowPackId);
+  return pack.getRoleLabel?.(role) || FALLBACK_ROLE_LABELS[role] || role;
+}
+
+// "Back to deal room" links need a valid role for the pack — CRE's primary
+// role is "owner" but Business Acquisition has no "owner" role (its primary
+// role is "buyer"), so this must come from the pack's role list, not be
+// hardcoded.
+function getPrimaryRole(workflowPackId) {
+  const pack = getWorkflowPack(workflowPackId);
+  return pack.roles?.[0]?.key || "owner";
+}
 
 const STATUS_STYLE = {
   submitted:      { label: "Submitted",      color: "#b45309", bg: "#fffbeb" },
@@ -130,8 +150,9 @@ export default function DealSummaryPage() {
       fetch(`${API_BASE}/api/public/deal-room/${propertyId}`).then(r => r.json()),
       fetch(`${API_BASE}/api/public/deal-room/${propertyId}/analyses`).then(r => r.ok ? r.json() : { analyses: [] }),
       fetch(`${API_BASE}/api/public/deal-room/${propertyId}/coordination`).then(r => r.ok ? r.json() : { parties: [] }),
-    ]).then(([roomData, anData, coordData]) => {
+    ]).then(async ([roomData, anData, coordData]) => {
       if (roomData.error) { setError(roomData.error); return; }
+      if (roomData.workflow_pack_id) await ensureWorkflowPackLoaded(roomData.workflow_pack_id);
       setRoom(roomData);
       setAn(anData.analyses || []);
       setParties(coordData.parties || []);
@@ -149,7 +170,7 @@ export default function DealSummaryPage() {
     <div className="min-h-screen flex items-center justify-center bg-white">
       <div className="text-center">
         <p className="text-red-500 text-sm mb-4">{error}</p>
-        <Link to={`/deal-room/${propertyId}?role=owner`} className="text-sm underline text-gray-500">
+        <Link to={`/deal-room/${propertyId}?role=${getPrimaryRole(room?.workflow_pack_id)}`} className="text-sm underline text-gray-500">
           ← Back to deal room
         </Link>
       </div>
@@ -173,7 +194,7 @@ export default function DealSummaryPage() {
 
       {/* Toolbar — hidden when printing */}
       <div className="no-print bg-white border-b border-gray-100 px-6 py-3 flex items-center justify-between sticky top-0 z-10 shadow-sm">
-        <Link to={`/deal-room/${propertyId}?role=owner`}
+        <Link to={`/deal-room/${propertyId}?role=${getPrimaryRole(room?.workflow_pack_id)}`}
           className="text-sm text-gray-500 hover:text-gray-800 flex items-center gap-1.5 transition">
           ← Back to deal room
         </Link>
@@ -333,7 +354,7 @@ export default function DealSummaryPage() {
                     return (
                       <tr key={p.role} className={i % 2 === 0 ? "bg-white" : "bg-gray-50/40"}>
                         <td className="px-4 py-2.5 font-semibold text-gray-700 text-xs">
-                          {ROLE_LABELS[p.role] || p.role}
+                          {getRoleLabel(p.role, room.workflow_pack_id)}
                         </td>
                         <td className="px-4 py-2.5 text-gray-600 text-xs">{p.name || "—"}</td>
                         <td className="px-4 py-2.5 text-gray-500 text-xs">{p.doc_count || 0}</td>

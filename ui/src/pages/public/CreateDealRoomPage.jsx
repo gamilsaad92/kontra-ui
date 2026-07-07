@@ -1,6 +1,7 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import PublicLayout from "./PublicLayout";
+import { listWorkflowPacks, fetchCustomPacks, DEFAULT_PACK_ID } from "../../lib/workflowPacks";
 
 const API_BASE = (import.meta.env.VITE_API_BASE || "").replace(/\/+$/, "");
 
@@ -17,15 +18,27 @@ const DEAL_TYPES = [
   { id: "sale", label: "Sale", desc: "Listing for sale with diligence room" },
 ];
 
-const STEPS = ["Property Info", "Deal Details", "Your Info", "Launch"];
+const STEPS = ["Workspace", "Details", "Your Info", "Launch"];
 
 export default function CreateDealRoomPage() {
   const navigate = useNavigate();
   const [step, setStep] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  // Which Workflow Pack a deal room uses drives the entire rest of its
+  // experience (checklist, roles, health scoring, coordination stages).
+  // This is the only place a user chooses it — see ui/src/lib/workflowPacks/.
+  // Custom packs (built via the Workflow Pack Builder) are stored server-side
+  // and registered at runtime, so this list starts with the built-in packs
+  // and grows once fetchCustomPacks() resolves.
+  const [workflowPacks, setWorkflowPacks] = useState(() => listWorkflowPacks());
+
+  useEffect(() => {
+    fetchCustomPacks().then(() => setWorkflowPacks(listWorkflowPacks()));
+  }, []);
 
   const [form, setForm] = useState({
+    packId: DEFAULT_PACK_ID,
     propertyName: "",
     propertyAddress: "",
     propertyType: "",
@@ -41,9 +54,16 @@ export default function CreateDealRoomPage() {
   });
 
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
+  const setPack = (packId) => {
+    const pack = workflowPacks.find(p => p.id === packId);
+    setForm((f) => ({ ...f, packId, role: pack?.roles?.[0]?.key || f.role }));
+  };
+
+  const isBusinessPack = form.packId !== DEFAULT_PACK_ID;
+  const activePack = workflowPacks.find(p => p.id === form.packId) || workflowPacks[0];
 
   const canNext = () => {
-    if (step === 0) return form.propertyName && form.propertyAddress && form.propertyType;
+    if (step === 0) return form.propertyName && form.propertyAddress && (isBusinessPack || form.propertyType);
     if (step === 1) return form.dealType && form.dealAmount;
     if (step === 2) return form.firstName && form.lastName && form.email && form.agree;
     return true;
@@ -66,6 +86,7 @@ export default function CreateDealRoomPage() {
         closingDate: form.closingDate,
         firstName: form.firstName,
         lastName: form.lastName,
+        workflowPackId: form.packId,
       },
     };
   };
@@ -127,50 +148,77 @@ export default function CreateDealRoomPage() {
 
           <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6 mb-4">
 
-            {/* Step 0 — Property Info */}
+            {/* Step 0 — Workspace + Property/Business Info */}
             {step === 0 && (
               <div className="space-y-4">
-                <h2 className="font-semibold text-gray-900 mb-4">Tell us about the property</h2>
-                <div>
-                  <label className="block text-xs font-semibold text-gray-500 mb-1">Property Name *</label>
+                <h2 className="font-semibold text-gray-900 mb-1">What kind of deal are you closing?</h2>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-2">
+                  {workflowPacks.map(p => (
+                    <button key={p.id} onClick={() => setPack(p.id)}
+                      className={`border rounded-xl p-3.5 text-left transition-all ${form.packId === p.id ? "border-red-800 bg-red-50" : "border-gray-200 hover:border-gray-300"}`}>
+                      <p className={`text-sm font-semibold ${form.packId === p.id ? "text-red-800" : "text-gray-800"}`}>{p.label}</p>
+                      <p className="text-xs text-gray-500 mt-0.5">{p.description}</p>
+                    </button>
+                  ))}
+                </div>
+
+                <div className="pt-2">
+                  <label className="block text-xs font-semibold text-gray-500 mb-1">
+                    {isBusinessPack ? "Business Name *" : "Property Name *"}
+                  </label>
                   <input
                     className="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-red-800/20 focus:border-red-800"
-                    placeholder="e.g. Harbor View Apartments"
+                    placeholder={isBusinessPack ? "e.g. Acme Manufacturing LLC" : "e.g. Harbor View Apartments"}
                     value={form.propertyName}
                     onChange={e => set("propertyName", e.target.value)}
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-gray-500 mb-1">Property Address *</label>
+                  <label className="block text-xs font-semibold text-gray-500 mb-1">
+                    {isBusinessPack ? "Business Location *" : "Property Address *"}
+                  </label>
                   <input
                     className="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-red-800/20 focus:border-red-800"
-                    placeholder="123 Main St, City, State ZIP"
+                    placeholder={isBusinessPack ? "City, State" : "123 Main St, City, State ZIP"}
                     value={form.propertyAddress}
                     onChange={e => set("propertyAddress", e.target.value)}
                   />
                 </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs font-semibold text-gray-500 mb-1">Property Type *</label>
-                    <select
-                      className="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-red-800/20 focus:border-red-800 bg-white"
-                      value={form.propertyType}
-                      onChange={e => set("propertyType", e.target.value)}
-                    >
-                      <option value="">Select type</option>
-                      {PROPERTY_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-                    </select>
+                {!isBusinessPack && (
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-500 mb-1">Property Type *</label>
+                      <select
+                        className="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-red-800/20 focus:border-red-800 bg-white"
+                        value={form.propertyType}
+                        onChange={e => set("propertyType", e.target.value)}
+                      >
+                        <option value="">Select type</option>
+                        {PROPERTY_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-500 mb-1">Size (SF or units)</label>
+                      <input
+                        className="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-red-800/20 focus:border-red-800"
+                        placeholder="e.g. 45,000 SF"
+                        value={form.propertySize}
+                        onChange={e => set("propertySize", e.target.value)}
+                      />
+                    </div>
                   </div>
+                )}
+                {isBusinessPack && (
                   <div>
-                    <label className="block text-xs font-semibold text-gray-500 mb-1">Size (SF or units)</label>
+                    <label className="block text-xs font-semibold text-gray-500 mb-1">Industry (optional)</label>
                     <input
                       className="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-red-800/20 focus:border-red-800"
-                      placeholder="e.g. 45,000 SF"
+                      placeholder="e.g. Manufacturing"
                       value={form.propertySize}
                       onChange={e => set("propertySize", e.target.value)}
                     />
                   </div>
-                </div>
+                )}
               </div>
             )}
 
@@ -249,11 +297,19 @@ export default function CreateDealRoomPage() {
                     value={form.role}
                     onChange={e => set("role", e.target.value)}
                   >
-                    <option value="owner">Property Owner</option>
-                    <option value="borrower">Borrower / Sponsor</option>
-                    <option value="broker">Broker</option>
-                    <option value="lender">Lender</option>
-                    <option value="attorney">Attorney</option>
+                    {isBusinessPack ? (
+                      (activePack.roles || []).map(r => (
+                        <option key={r.key} value={r.key}>{r.label}</option>
+                      ))
+                    ) : (
+                      <>
+                        <option value="owner">Property Owner</option>
+                        <option value="borrower">Borrower / Sponsor</option>
+                        <option value="broker">Broker</option>
+                        <option value="lender">Lender</option>
+                        <option value="attorney">Attorney</option>
+                      </>
+                    )}
                   </select>
                 </div>
                 <label className="flex items-start gap-2.5 cursor-pointer pt-1">
@@ -272,9 +328,10 @@ export default function CreateDealRoomPage() {
                 <h2 className="font-semibold text-gray-900 mb-4">Review & Launch</h2>
                 <div className="space-y-3 mb-6">
                   {[
-                    { label: "Property", value: form.propertyName },
-                    { label: "Address", value: form.propertyAddress },
-                    { label: "Type", value: form.propertyType + (form.propertySize ? ` · ${form.propertySize}` : "") },
+                    { label: "Workspace", value: activePack.name },
+                    { label: isBusinessPack ? "Business" : "Property", value: form.propertyName },
+                    { label: isBusinessPack ? "Location" : "Address", value: form.propertyAddress },
+                    ...(isBusinessPack ? [] : [{ label: "Type", value: form.propertyType + (form.propertySize ? ` · ${form.propertySize}` : "") }]),
                     { label: "Deal", value: DEAL_TYPES.find(d => d.id === form.dealType)?.label + (form.dealAmount ? ` · ${form.dealAmount}` : "") },
                     { label: "Contact", value: `${form.firstName} ${form.lastName} · ${form.email}` },
                   ].map(r => (
