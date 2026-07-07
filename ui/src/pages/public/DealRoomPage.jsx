@@ -7,6 +7,7 @@ import CommentsPanel from "./CommentsPanel";
 import DealHealthPanel from "./DealHealthPanel";
 import InvitePanel from "./InvitePanel";
 import DocumentChecklistPanel, { getTemplate } from "./DocumentChecklistPanel";
+import AIOperationsManager from "./AIOperationsManager";
 
 function usePageTitle(title) {
   useEffect(() => {
@@ -1476,6 +1477,11 @@ export default function DealRoomPage() {
             </>
           )}
         </div>
+
+        {/* AI Operations Manager — answer engine grounded in the Task Engine */}
+        {property.isCustom && (
+          <AIOperationsManager propertyId={pid} ownerName={property.first_name} />
+        )}
 
         {/* Due Diligence Checklist */}
         {property.isCustom && (

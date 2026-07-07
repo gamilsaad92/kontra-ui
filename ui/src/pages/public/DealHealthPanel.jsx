@@ -1,157 +1,59 @@
 import { useState, useEffect } from 'react';
+import { getWorkflowPack, DEFAULT_PACK_ID } from '../../lib/workflowPacks';
 
 const API_BASE = import.meta.env.VITE_API_BASE || '';
 
-const REQUIRED_ROLES = ['owner', 'lender', 'inspector', 'insurer'];
-
-const ROLE_LABELS = {
-  owner: 'Owner', lender: 'Lender', inspector: 'Inspector',
-  insurer: 'Insurance Broker', attorney: 'Attorney',
-  investor: 'Investor', servicer: 'Servicer', franchisor: 'Franchisor',
-};
-
-function parseDSCR(dscr) {
-  if (!dscr) return null;
-  const n = parseFloat(String(dscr).replace(/[^0-9.]/g, ''));
-  return isNaN(n) ? null : n;
-}
-
-function parseDays(val) {
-  if (val == null) return null;
-  const n = parseInt(String(val));
-  return isNaN(n) ? null : n;
-}
-
-function computeHealth(analyses, submissions) {
-  const bySection = {};
-  for (const a of analyses) {
-    if (!bySection[a.section]) bySection[a.section] = a.analysis;
-  }
-
-  const submittedRoles = new Set(submissions.map(s => s.role));
-  let score = 100;
-  const actions = [];
-
-  // ── Inspection ──────────────────────────────────────────────────────────
-  const insp = bySection['inspection'];
-  if (!insp) {
-    score -= 20;
-    actions.push({ sev: 'error', icon: '🔍', text: 'Inspection report not yet uploaded' });
-  } else {
-    if (insp.overallCondition === 'Poor') {
-      score -= 15;
-      actions.push({ sev: 'error', icon: '🔍', text: 'Inspection: Poor condition — action required' });
-    } else if (insp.overallCondition === 'Fair') {
-      score -= 5;
-      actions.push({ sev: 'warn', icon: '🔍', text: 'Inspection condition rated Fair — review findings' });
-    }
-    if (insp.lifeSafetyFindings?.length > 0) {
-      score -= 10;
-      actions.push({ sev: 'error', icon: '🚨', text: `${insp.lifeSafetyFindings.length} life-safety finding(s) require immediate attention` });
-    }
-    if (insp.totalDeferredCost) {
-      score -= 3;
-      actions.push({ sev: 'warn', icon: '🔧', text: `Deferred maintenance estimated at ${insp.totalDeferredCost}` });
-    }
-  }
-
-  // ── Insurance ────────────────────────────────────────────────────────────
-  const ins = bySection['insurance'];
-  if (!ins) {
-    score -= 15;
-    actions.push({ sev: 'error', icon: '🛡️', text: 'Insurance certificate not yet uploaded' });
-  } else {
-    if (ins.complianceStatus === 'Non-Compliant') {
-      score -= 15;
-      actions.push({ sev: 'error', icon: '🛡️', text: 'Insurance is non-compliant — coverage gaps must be addressed' });
-    }
-    const days = parseDays(ins.expiresInDays);
-    if (days != null && days < 30) {
-      score -= 10;
-      actions.push({ sev: 'error', icon: '📅', text: `Insurance expires in ${days} day${days === 1 ? '' : 's'} — renewal urgent` });
-    } else if (days != null && days < 60) {
-      score -= 5;
-      actions.push({ sev: 'warn', icon: '📅', text: `Insurance expires in ${days} days — schedule renewal` });
-    }
-    if (ins.coverageGaps?.length > 0) {
-      score -= 3;
-      actions.push({ sev: 'warn', icon: '🛡️', text: `${ins.coverageGaps.length} coverage gap(s) identified` });
-    }
-  }
-
-  // ── Financials ───────────────────────────────────────────────────────────
-  const fin = bySection['financials'];
-  if (!fin) {
-    score -= 15;
-    actions.push({ sev: 'error', icon: '📊', text: 'Financial statements not yet uploaded' });
-  } else {
-    const dscr = parseDSCR(fin.dscr);
-    if (dscr != null && dscr < 1.0) {
-      score -= 20;
-      actions.push({ sev: 'error', icon: '📊', text: `DSCR critically low: ${fin.dscr} — lender minimum typically 1.20×` });
-    } else if (dscr != null && dscr < 1.25) {
-      score -= 10;
-      actions.push({ sev: 'warn', icon: '📊', text: `DSCR below 1.25× threshold: ${fin.dscr}` });
-    }
-    if (fin.covenantStatus === 'Breached') {
-      score -= 20;
-      actions.push({ sev: 'error', icon: '⚠️', text: 'Loan covenant breached — lender notification required' });
-    } else if (fin.covenantStatus === 'At Risk') {
-      score -= 10;
-      actions.push({ sev: 'warn', icon: '⚠️', text: 'Loan covenant at risk — monitor closely' });
-    }
-    if (fin.anomalies?.length > 0) {
-      score -= 3;
-      actions.push({ sev: 'warn', icon: '📉', text: `${fin.anomalies.length} financial anomaly(s) flagged by AI` });
-    }
-  }
-
-  // ── Brand / PIP ──────────────────────────────────────────────────────────
-  const brand = bySection['brand-standards'];
-  if (brand?.complianceStatus === 'PIP Required' || brand?.complianceStatus === 'Non-Compliant') {
-    score -= 5;
-    actions.push({ sev: 'warn', icon: '🏨', text: `Brand PIP required${brand.totalEstimatedPIPCost ? ' — est. ' + brand.totalEstimatedPIPCost : ''}` });
-  }
-
-  // ── Legal ────────────────────────────────────────────────────────────────
-  const legal = bySection['legal'];
-  if (legal?.complianceStatus === 'Issues Found') {
-    score -= 5;
-    actions.push({ sev: 'warn', icon: '⚖️', text: `Legal issues identified — review before closing` });
-  }
-
-  // ── Missing parties ──────────────────────────────────────────────────────
-  const missing = REQUIRED_ROLES.filter(r => !submittedRoles.has(r));
-  if (missing.length > 0) {
-    score -= missing.length * 5;
-    actions.push({ sev: 'info', icon: '⏳', text: `Awaiting: ${missing.map(r => ROLE_LABELS[r] || r).join(', ')}` });
-  }
-
-  // ── Needs revision ───────────────────────────────────────────────────────
-  for (const s of submissions.filter(s => s.status === 'needs_revision')) {
-    score -= 5;
-    const label = ROLE_LABELS[s.role] || s.role;
-    actions.push({ sev: 'warn', icon: '🔄', text: `${label} submission flagged for revision${s.status_note ? ': ' + s.status_note : ''}` });
-  }
-
-  return { score: Math.max(0, Math.min(100, score)), actions };
-}
-
-export default function DealHealthPanel({ propertyId }) {
+// Health scoring: an LLM reasons holistically over the deal's actual state
+// (AI-extracted findings, party status, deal stage) via /api/ai/next-actions
+// — the deterministic pack.computeHealth() (fixed point deductions) is kept
+// only as an instant fallback if the AI call fails or is still loading, so
+// the panel never breaks or blocks. Generic over any Workflow Pack: this
+// component supplies the pack's own required docs/roles to the endpoint,
+// the endpoint doesn't hardcode anything CRE- or M&A-specific.
+export default function DealHealthPanel({ propertyId, packId = DEFAULT_PACK_ID }) {
   const [state, setState] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [aiPowered, setAiPowered] = useState(false);
 
   useEffect(() => {
+    let cancelled = false;
+    const workflowPack = getWorkflowPack(packId);
     Promise.all([
       fetch(`${API_BASE}/api/public/deal-room/${propertyId}/analyses`).then(r => r.ok ? r.json() : { analyses: [] }),
       fetch(`${API_BASE}/api/public/deal-room/${propertyId}/coordination?t=${Date.now()}`).then(r => r.ok ? r.json() : {}),
     ]).then(([a, c]) => {
+      if (cancelled) return;
       const analyses = a.analyses || [];
       const submissions = c.submissions || [];
-      setState(computeHealth(analyses, submissions));
+      const fallback = workflowPack.computeHealth(analyses, submissions);
+      setState(fallback);
       setLoading(false);
+
+      const requiredDocs = (workflowPack.getDocumentSchema?.() || []).map(d => ({ label: d.label, required: !!d.required }));
+      const requiredRoles = (workflowPack.roles || []).map(r => ({ label: r.shortLabel || r.label, required: !!r.required }));
+
+      setTimeout(() => {
+        if (cancelled) return;
+        fetch(`${API_BASE}/api/ai/next-actions`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            propertyId,
+            stageLabel: c.stage || null,
+            requiredDocs,
+            requiredRoles,
+            analyses: analyses.map(x => ({ section: x.section, analysis: x.analysis })),
+            submissions,
+          }),
+        }).then(r => r.ok ? r.json() : null).then(ai => {
+          if (cancelled || !ai?.success) return;
+          setState({ score: ai.score, actions: ai.actions });
+          setAiPowered(true);
+        }).catch(() => { /* keep deterministic fallback already shown */ });
+      }, 800);
     }).catch(() => setLoading(false));
-  }, [propertyId]);
+    return () => { cancelled = true; };
+  }, [propertyId, packId]);
 
   if (loading) return (
     <div className="mb-6 bg-white rounded-2xl border border-gray-200 p-5 animate-pulse">
@@ -197,7 +99,12 @@ export default function DealHealthPanel({ propertyId }) {
         </div>
 
         <div className="flex-1 min-w-0">
-          <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-0.5">Deal Health Score</p>
+          <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-0.5 flex items-center gap-1.5">
+            Deal Health Score
+            {aiPowered && (
+              <span className="text-[9px] font-bold text-indigo-500 bg-indigo-50 px-1.5 py-0.5 rounded-full normal-case tracking-normal">✨ AI-reasoned</span>
+            )}
+          </p>
           <p className="text-lg font-bold text-gray-900 leading-tight">{emoji} {label}</p>
           {actions.length === 0 ? (
             <p className="text-xs text-green-600 font-semibold mt-1">✓ No action items — deal on track</p>
