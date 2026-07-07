@@ -1,0 +1,64 @@
+{
+  "cre_acquisition": {
+    "closingChain": [
+      {
+        "step": 1,
+        "label": "Due Diligence",
+        "description": "Property inspected and insurance coverage verified",
+        "roleKeys": ["inspector", "insurer"],
+        "gatesStep": 2
+      },
+      {
+        "step": 2,
+        "label": "Underwriting",
+        "description": "Lender reviews financial package and underwrites the loan",
+        "roleKeys": ["lender"],
+        "gatesStep": 3
+      },
+      {
+        "step": 3,
+        "label": "Loan Committee",
+        "description": "Loan committee approves based on underwriting and due diligence",
+        "roleKeys": [],
+        "gatesStep": 4
+      },
+      {
+        "step": 4,
+        "label": "Closing",
+        "description": "Title clears, documents execute, deal funds",
+        "roleKeys": [],
+        "gatesStep": null
+      }
+    ],
+    "parallelTracks": [
+      { "label": "Legal Review", "roleKeys": ["attorney"] },
+      { "label": "Owner Coordination", "roleKeys": ["owner"] }
+    ]
+  },
+  "business_acquisition": {
+    "closingChain": [
+      {
+        "step": 1,
+        "label": "Due Diligence",
+        "description": "Financial review and business audit",
+        "roleKeys": ["accountant", "attorney"],
+        "gatesStep": 2
+      },
+      {
+        "step": 2,
+        "label": "Financing",
+        "description": "Lender approves loan or buyer confirms equity",
+        "roleKeys": ["lender"],
+        "gatesStep": 3
+      },
+      {
+        "step": 3,
+        "label": "Closing",
+        "description": "Documents executed, ownership transferred",
+        "roleKeys": [],
+        "gatesStep": null
+      }
+    ],
+    "parallelTracks": []
+  }
+}
