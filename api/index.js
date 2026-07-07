@@ -1110,6 +1110,76 @@ app.post('/api/webhook/stripe',
   }
 );
 
+// ── Demo deal room — always served without Supabase ──────────────────────────
+// All /api/public/deal-room/kontra-demo/* routes are intercepted here before
+// the real handlers so the demo always works regardless of DB state.
+;(() => {
+  const { PROPERTY, TASKS, BRIEFING, DEMO_QA_CONTEXT } = require('./lib/demoData');
+  const openai = new OpenAI();
+  const DEMO_ID = 'kontra-demo';
+
+  app.get(`/api/public/deal-room/${DEMO_ID}`, (_req, res) => res.json(PROPERTY));
+
+  app.get(`/api/public/deal-room/${DEMO_ID}/tasks`, (_req, res) =>
+    res.json({ tasks: TASKS }));
+
+  app.post(`/api/public/deal-room/${DEMO_ID}/tasks/refresh`, (_req, res) =>
+    res.json({ tasks: TASKS }));
+
+  app.get(`/api/public/deal-room/${DEMO_ID}/brain/briefing`, (_req, res) =>
+    res.json(BRIEFING));
+
+  app.post(`/api/public/deal-room/${DEMO_ID}/brain/ask`, async (req, res) => {
+    const { question } = req.body || {};
+    if (!question) return res.status(400).json({ error: 'question required' });
+    try {
+      const completion = await openai.chat.completions.create({
+        model: 'gpt-4o-mini',
+        messages: [
+          { role: 'system', content: DEMO_QA_CONTEXT },
+          { role: 'user', content: question },
+        ],
+        max_tokens: 200,
+        temperature: 0.4,
+      });
+      res.json({ answer: completion.choices[0].message.content.trim() });
+    } catch (e) {
+      res.json({ answer: 'The inspection report is the critical item right now — everything else is secondary until Marcus Webb submits.' });
+    }
+  });
+
+  app.post(`/api/public/deal-room/${DEMO_ID}/tasks/demo-task-inspector/approve`, (_req, res) =>
+    res.json({ ok: true, demo: true, message: 'Demo mode — email not sent. In a live deal room this would deliver the reminder to Marcus Webb.' }));
+
+  app.post(`/api/public/deal-room/${DEMO_ID}/tasks/demo-task-insurer/approve`, (_req, res) =>
+    res.json({ ok: true, demo: true, message: 'Demo mode — email not sent. In a live deal room this would deliver the reminder to Priya Nair.' }));
+
+  app.post(`/api/tasks/:taskId/approve`, (req, res, next) => {
+    if (String(req.params.taskId).startsWith('demo-')) {
+      return res.json({ ok: true, demo: true, message: 'Demo mode — no action taken.' });
+    }
+    next();
+  });
+
+  app.post(`/api/tasks/:taskId/dismiss`, (req, res, next) => {
+    if (String(req.params.taskId).startsWith('demo-')) {
+      return res.json({ ok: true, demo: true });
+    }
+    next();
+  });
+
+  app.get(`/api/public/deal-room/${DEMO_ID}/coordination`, (_req, res) =>
+    res.json({ stage: 'due-diligence', stageLabel: 'Due Diligence', parties: [
+      { role: 'lender',    label: 'Lender',           status: 'submitted', name: 'First Republic Capital' },
+      { role: 'inspector', label: 'Inspector',         status: 'invited',   name: 'Marcus Webb' },
+      { role: 'insurer',   label: 'Insurance Broker',  status: 'invited',   name: 'Priya Nair' },
+    ]}));
+
+  app.get(`/api/public/deal-room/${DEMO_ID}/analyses`, (_req, res) => res.json({ analyses: [] }));
+  app.get(`/api/public/deal-room/${DEMO_ID}/events`, (_req, res) => res.json({ events: [] }));
+  app.get(`/api/public/deal-room/${DEMO_ID}/comments`, (_req, res) => res.json({ comments: [] }));
+})();
+
 // ── Public deal room lookup — no auth required ────────────────────────────────
 app.get('/api/public/deal-room/:propertyId', async (req, res) => {
   const { propertyId } = req.params;
