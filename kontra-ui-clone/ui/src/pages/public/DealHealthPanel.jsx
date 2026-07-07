@@ -32,22 +32,25 @@ export default function DealHealthPanel({ propertyId, packId = DEFAULT_PACK_ID }
       const requiredDocs = (workflowPack.getDocumentSchema?.() || []).map(d => ({ label: d.label, required: !!d.required }));
       const requiredRoles = (workflowPack.roles || []).map(r => ({ label: r.shortLabel || r.label, required: !!r.required }));
 
-      fetch(`${API_BASE}/api/ai/next-actions`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          propertyId,
-          stageLabel: c.stage || null,
-          requiredDocs,
-          requiredRoles,
-          analyses: analyses.map(x => ({ section: x.section, analysis: x.analysis })),
-          submissions,
-        }),
-      }).then(r => r.ok ? r.json() : null).then(ai => {
-        if (cancelled || !ai?.success) return;
-        setState({ score: ai.score, actions: ai.actions });
-        setAiPowered(true);
-      }).catch(() => { /* keep deterministic fallback already shown */ });
+      setTimeout(() => {
+        if (cancelled) return;
+        fetch(`${API_BASE}/api/ai/next-actions`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            propertyId,
+            stageLabel: c.stage || null,
+            requiredDocs,
+            requiredRoles,
+            analyses: analyses.map(x => ({ section: x.section, analysis: x.analysis })),
+            submissions,
+          }),
+        }).then(r => r.ok ? r.json() : null).then(ai => {
+          if (cancelled || !ai?.success) return;
+          setState({ score: ai.score, actions: ai.actions });
+          setAiPowered(true);
+        }).catch(() => { /* keep deterministic fallback already shown */ });
+      }, 800);
     }).catch(() => setLoading(false));
     return () => { cancelled = true; };
   }, [propertyId, packId]);
