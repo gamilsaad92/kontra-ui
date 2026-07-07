@@ -29,6 +29,7 @@ import DealRoomPage from "./pages/public/DealRoomPage";
 import DealSummaryPage from "./pages/public/DealSummaryPage";
 import DealSharePage from "./pages/public/DealSharePage";
 import CreateDealRoomPage from "./pages/public/CreateDealRoomPage";
+import WorkflowPackBuilderPage from "./pages/public/WorkflowPackBuilderPage";
 import MyDealRoomsPage from "./pages/public/MyDealRoomsPage";
 import CheckoutSuccessPage from "./pages/public/CheckoutSuccessPage";
 import CheckoutCancelPage from "./pages/public/CheckoutCancelPage";
@@ -75,6 +76,7 @@ function AuthedApp() {
         <Route path="/deal-room/:propertyId/summary" element={<DealSummaryPage />} />
         <Route path="/deal-room/:propertyId/share" element={<DealSharePage />} />
         <Route path="/create-deal-room" element={<CreateDealRoomPage />} />
+        <Route path="/workflow-pack-builder" element={<WorkflowPackBuilderPage />} />
         <Route path="/my-deal-rooms" element={<MyDealRoomsPage />} />
         <Route path="/checkout/success" element={<CheckoutSuccessPage />} />
         <Route path="/checkout/cancel" element={<CheckoutCancelPage />} />
