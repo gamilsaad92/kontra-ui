@@ -8,6 +8,7 @@ import DealHealthPanel from "./DealHealthPanel";
 import InvitePanel from "./InvitePanel";
 import DocumentChecklistPanel, { getTemplate } from "./DocumentChecklistPanel";
 import AIOperationsManager from "./AIOperationsManager";
+import TasksPanel from "./TasksPanel";
 
 function usePageTitle(title) {
   useEffect(() => {
@@ -1483,7 +1484,13 @@ export default function DealRoomPage() {
           <AIOperationsManager propertyId={pid} ownerName={property.first_name} />
         )}
 
-        {/* Due Diligence Checklist */}
+        {/* Tasks — every blocking item has an explicit owner (human role or AI);
+              AI-drafted actions require an explicit Approve click. */}
+          {property.isCustom && (
+            <TasksPanel propertyId={pid} role={role} />
+          )}
+
+          {/* Due Diligence Checklist */}
         {property.isCustom && (
           <DocumentChecklistPanel
             propertyId={pid}
