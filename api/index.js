@@ -1189,7 +1189,7 @@ app.post('/api/public/my-rooms/verify-otp', async (req, res) => {
   try {
     const { data: rooms, error } = await supabase
       .from('deal_rooms')
-      .select('property_id, property_name, property_type, deal_amount, deal_type, address, status, deal_stage, created_at, activated_at, workflow_pack_id')
+      .select('property_id, property_name, property_type, deal_amount, deal_type, address, status, deal_stage, created_at, activated_at')
       .ilike('customer_email', email)
       .order('created_at', { ascending: false });
     if (error) throw error;
