@@ -29,16 +29,25 @@ export default function AIOperationsManager({ propertyId, ownerName }) {
   const [answer, setAnswer] = useState(null);
 
   const loadBriefing = useCallback(async () => {
+    const url = `${API_BASE}/api/public/deal-room/${propertyId}/brain/briefing`;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 12000);
     try {
-      const r = await fetch(`${API_BASE}/api/public/deal-room/${propertyId}/brain/briefing`);
-      if (!r.ok) throw new Error('Failed to load briefing');
+      const r = await fetch(url, { signal: controller.signal });
+      clearTimeout(timeout);
+      if (!r.ok) throw new Error('HTTP ' + r.status);
       setBriefing(await r.json());
     } catch (e) {
-      setError(e.message);
+      clearTimeout(timeout);
+      if (e.name !== 'AbortError') setError(e.message);
+      else setError('Timed out — retrying…');
     }
   }, [propertyId]);
 
-  useEffect(() => { loadBriefing(); }, [loadBriefing]);
+  useEffect(() => {
+    const t = setTimeout(() => loadBriefing(), 400);
+    return () => clearTimeout(t);
+  }, [loadBriefing]);
 
   const ask = async (q) => {
     const text = (q ?? question).trim();
