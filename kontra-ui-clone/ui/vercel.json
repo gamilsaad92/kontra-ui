@@ -18,7 +18,6 @@
     "VITE_SUPABASE_ANON_KEY": "<YOUR_PUBLIC_ANON_KEY>",
     "VITE_SENTRY_DSN": "<your-dsn>",
     "VITE_NEW_DASH": "true"
-  }
-,
-  "_deployTrigger": "1783380560140"
+  },
+  "_deployTrigger": "1783396800000"
 }
