@@ -60,6 +60,94 @@ getPg();
 
 const OPEN_STATUSES = ['pending', 'in_progress', 'escalated'];
 
+// ── Role-specific reminder copy ───────────────────────────────────────────────
+const ROLE_REMINDER_COPY = {
+  inspector:    { verb: 'Submit Inspection Report →',    body: 'Your property inspection report is needed to complete due diligence. The deal cannot advance to underwriting until your inspection is on file.' },
+  insurer:      { verb: 'Submit Insurance Certificate →', body: 'Insurance documentation is required before underwriting can begin. Please upload your certificate of coverage for this property.' },
+  insurance_broker: { verb: 'Submit Insurance Certificate →', body: 'Insurance documentation is required before underwriting can begin. Please upload your certificate of coverage for this property.' },
+  lender:       { verb: 'Submit Underwriting Package →', body: 'The deal is waiting on your underwriting review before it can advance to the loan committee stage. Please complete your submission when you have a moment.' },
+  attorney:     { verb: 'Submit Legal Documents →',      body: 'Your legal review and any title-related documents are needed to move this deal forward. Please upload when ready.' },
+  owner:        { verb: 'Submit Documents →',            body: 'Your documents are needed to keep this deal on track. Please complete your submission at your earliest convenience.' },
+};
+
+const SITE_URL = process.env.SITE_URL || 'https://kontraplatform.com';
+
+function buildReminderEmailHtml({ name, roleLabel, roleKey, propertyName, propertyId }) {
+  const copy = ROLE_REMINDER_COPY[roleKey] || ROLE_REMINDER_COPY.owner;
+  const submitUrl = `${SITE_URL}/deal-room/${propertyId}?role=${roleKey}`;
+  const displayName = name || roleLabel;
+  const dealName = propertyName || 'your deal room';
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#f3f4f6;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#f3f4f6;padding:40px 16px">
+<tr><td>
+  <table width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;margin:0 auto;background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.07)">
+
+    <!-- Brand header -->
+    <tr>
+      <td style="background:#800020;padding:22px 32px">
+        <table cellpadding="0" cellspacing="0"><tr>
+          <td style="background:rgba(255,255,255,0.15);border-radius:7px;padding:5px 11px">
+            <span style="color:#ffffff;font-size:14px;font-weight:800;letter-spacing:-0.02em">K</span>
+          </td>
+          <td style="padding-left:10px">
+            <span style="color:#ffffff;font-size:15px;font-weight:700;letter-spacing:-0.01em">Kontra</span>
+          </td>
+        </tr></table>
+      </td>
+    </tr>
+
+    <!-- Body -->
+    <tr>
+      <td style="padding:36px 32px 28px">
+        <p style="margin:0 0 6px 0;font-size:11px;font-weight:700;color:#800020;text-transform:uppercase;letter-spacing:0.1em">${dealName}</p>
+        <h1 style="margin:0 0 24px 0;font-size:22px;font-weight:800;color:#111827;line-height:1.2">Your submission is needed.</h1>
+
+        <p style="margin:0 0 14px 0;font-size:14px;color:#374151;line-height:1.7">Hi ${displayName},</p>
+        <p style="margin:0 0 28px 0;font-size:14px;color:#374151;line-height:1.7">${copy.body}</p>
+
+        <!-- CTA button -->
+        <table cellpadding="0" cellspacing="0" style="margin:0 0 28px 0">
+          <tr>
+            <td style="background:#800020;border-radius:10px">
+              <a href="${submitUrl}"
+                style="display:inline-block;padding:13px 26px;color:#ffffff;font-size:14px;font-weight:600;text-decoration:none;letter-spacing:-0.01em">
+                ${copy.verb}
+              </a>
+            </td>
+          </tr>
+        </table>
+
+        <p style="margin:0;font-size:12px;color:#9ca3af;line-height:1.6">
+          Or copy this link into your browser:<br>
+          <a href="${submitUrl}" style="color:#800020;word-break:break-all">${submitUrl}</a>
+        </p>
+      </td>
+    </tr>
+
+    <!-- Divider -->
+    <tr><td style="height:1px;background:#f3f4f6"></td></tr>
+
+    <!-- Footer -->
+    <tr>
+      <td style="padding:18px 32px">
+        <p style="margin:0;font-size:12px;color:#9ca3af;line-height:1.6">
+          Sent by <a href="https://kontraplatform.com" style="color:#9ca3af;text-decoration:none">Kontra</a>
+          · CRE Deal Intelligence · You were invited as the <strong>${roleLabel}</strong> for this deal room.
+        </p>
+      </td>
+    </tr>
+
+  </table>
+</td></tr>
+</table>
+</body>
+</html>`;
+}
+
 // ── CRUD ─────────────────────────────────────────────────────────────────
 async function listTasksForRoom(propertyId) {
   const { data, error } = await supabase
@@ -156,11 +244,14 @@ async function evaluateDealRoomForTasks(propertyId) {
   const packId = await getRoomPackId(propertyId);
   const roleConfig = getPackRoleConfig(packId);
 
-  const [existingRes, submissionsRes, analysesRes] = await Promise.all([
+  const [existingRes, submissionsRes, analysesRes, roomRes] = await Promise.all([
     supabase.from('deal_room_tasks').select('task_type, source_type, source_id, status').eq('property_id', propertyId),
     supabase.from('party_submissions').select('role, email, name, status, submitted_at').eq('property_id', propertyId),
     supabase.from('deal_analyses').select('id, section, filename, analysis, created_at').eq('property_id', propertyId),
+    supabase.from('deal_rooms').select('property_name').eq('property_id', propertyId).maybeSingle(),
   ]);
+
+  const propertyName = roomRes.data?.property_name || null;
 
   const existing = existingRes.data || [];
   const submissions = submissionsRes.data || [];
@@ -209,8 +300,15 @@ async function evaluateDealRoomForTasks(propertyId) {
       draftAction: sub.email ? {
         type: 'email',
         to: sub.email,
-        subject: `Reminder: your documents for this deal room`,
-        body: `Hi ${sub.name || roleLabel}, this is a reminder to complete your document submission for this deal room when you have a moment.`,
+        subject: `Action required: ${roleLabel} documents needed — ${propertyName || propertyId}`,
+        body: (ROLE_REMINDER_COPY[sub.role] || ROLE_REMINDER_COPY.owner).body,
+        html: buildReminderEmailHtml({
+          name: sub.name,
+          roleLabel,
+          roleKey: sub.role,
+          propertyName,
+          propertyId,
+        }),
       } : null,
       sourceType: 'party_submission',
       sourceId,
