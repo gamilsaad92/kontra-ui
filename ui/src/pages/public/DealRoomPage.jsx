@@ -583,6 +583,83 @@ function SourceCitations({ sources }) {
   );
 }
 
+// ── Onboarding Progress — replaces the old static "Next Steps" text with
+// real, verifiable progress for a brand-new owner room. Nothing here is
+// mocked: invited counts come from deal_events, document counts from
+// deal_analyses (via /coordination), and the AI step from the Task Engine
+// actually having generated something. Rows link straight to the panel
+// that completes them so there's no hunting around the page. ──
+function OnboardingProgress({ propertyId, accentColor, totalInvitable }) {
+  const [state, setState] = useState({ loading: true, invitedRoles: 0, docCount: 0, taskCount: 0 });
+
+  useEffect(() => {
+    let cancelled = false;
+    Promise.all([
+      fetch(`${API_BASE}/api/public/deal-room/${propertyId}/events`).then(r => r.ok ? r.json() : { events: [] }).catch(() => ({ events: [] })),
+      fetch(`${API_BASE}/api/public/deal-room/${propertyId}/coordination`).then(r => r.ok ? r.json() : {}).catch(() => ({})),
+      fetch(`${API_BASE}/api/public/deal-room/${propertyId}/tasks`).then(r => r.ok ? r.json() : { tasks: [] }).catch(() => ({ tasks: [] })),
+    ]).then(([evRes, coord, taskRes]) => {
+      if (cancelled) return;
+      const invitedRoles = new Set(
+        (evRes.events || []).filter(e => e.event_type === "invite_sent" && e.metadata?.role).map(e => e.metadata.role)
+      ).size;
+      const docCount = Object.values(coord.docsByRole || {}).reduce((a, b) => a + b, 0);
+      const taskCount = (taskRes.tasks || []).length;
+      setState({ loading: false, invitedRoles, docCount, taskCount });
+    }).catch(() => cancelled || setState(s => ({ ...s, loading: false })));
+    return () => { cancelled = true; };
+  }, [propertyId]);
+
+  if (state.loading) {
+    return <div className="h-16 rounded-xl bg-gray-50 animate-pulse" />;
+  }
+
+  const steps = [
+    {
+      label: "Invite parties",
+      detail: totalInvitable
+        ? `${state.invitedRoles}/${totalInvitable} invited — send role-specific links to your lender, inspector, insurer, and attorney`
+        : "Send role-specific links to your lender, inspector, insurer, and attorney",
+      done: state.invitedRoles > 0,
+      href: "#invite-panel",
+    },
+    {
+      label: "Upload documents",
+      detail: state.docCount > 0
+        ? `${state.docCount} document${state.docCount === 1 ? "" : "s"} uploaded — AI reviews each file as it arrives`
+        : "AI reviews each file as it arrives and surfaces key findings",
+      done: state.docCount > 0,
+      href: "#documents-panel",
+    },
+    {
+      label: "AI takes over",
+      detail: state.taskCount > 0
+        ? `${state.taskCount} task${state.taskCount === 1 ? "" : "s"} identified — approvals, compliance, and deal stage tracked automatically`
+        : "Once documents arrive, AI tracks approvals, compliance, and deal stage automatically",
+      done: state.taskCount > 0,
+      href: "#tasks-panel",
+    },
+  ];
+
+  return (
+    <ol className="space-y-2.5">
+      {steps.map((s, i) => (
+        <li key={s.label}>
+          <a href={s.href} className="flex items-start gap-2.5 text-sm group">
+            <span className="shrink-0 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold mt-0.5 transition"
+              style={s.done ? { background: "#16a34a", color: "#fff" } : { background: accentColor, color: "#fff" }}>
+              {s.done ? "✓" : i + 1}
+            </span>
+            <span className={s.done ? "text-gray-400 line-through decoration-gray-300" : "text-gray-600 group-hover:text-gray-900"}>
+              {s.detail}
+            </span>
+          </a>
+        </li>
+      ))}
+    </ol>
+  );
+}
+
 function ShareButton({ propertyId }) {
   const [state, setState] = useState("idle"); // idle | copied
   const shareUrl = `${window.location.origin}/deal-room/${propertyId}/share`;
@@ -1397,19 +1474,27 @@ export default function DealRoomPage() {
           {property.isCustom && role === "owner" ? (
             <>
               <h2 className="text-base font-bold text-gray-900 mb-3">Next Steps</h2>
-              <ol className="space-y-2.5">
-                {[
-                  "Invite parties — send role-specific links to your lender, inspector, insurer, and attorney",
-                  "Upload documents — AI reviews each file as it arrives and surfaces key findings",
-                  "Track approvals — monitor compliance, deal stage, and party status in real time",
-                ].map((text, i) => (
-                  <li key={i} className="flex items-start gap-2.5 text-sm text-gray-600">
-                    <span className="shrink-0 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold text-white mt-0.5"
-                      style={{ background: roleConfig.color }}>{i + 1}</span>
-                    {text}
-                  </li>
-                ))}
-              </ol>
+              {!isDemo ? (
+                <OnboardingProgress
+                  propertyId={pid}
+                  accentColor={roleConfig.color}
+                  totalInvitable={(pack.roles || []).filter(r => r.invitable).length}
+                />
+              ) : (
+                <ol className="space-y-2.5">
+                  {[
+                    "Invite parties — send role-specific links to your lender, inspector, insurer, and attorney",
+                    "Upload documents — AI reviews each file as it arrives and surfaces key findings",
+                    "Track approvals — monitor compliance, deal stage, and party status in real time",
+                  ].map((text, i) => (
+                    <li key={i} className="flex items-start gap-2.5 text-sm text-gray-600">
+                      <span className="shrink-0 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold text-white mt-0.5"
+                        style={{ background: roleConfig.color }}>{i + 1}</span>
+                      {text}
+                    </li>
+                  ))}
+                </ol>
+              )}
             </>
           ) : (
             <>
@@ -1430,22 +1515,26 @@ export default function DealRoomPage() {
 
         {/* Due Diligence Checklist */}
         {property.isCustom && (
-          <DocumentChecklistPanel
-            propertyId={pid}
-            propertyType={property.property_type || property.type}
-            role={role}
-            isDemo={isDemo}
-            packId={packId}
-          />
+          <div id="documents-panel">
+            <DocumentChecklistPanel
+              propertyId={pid}
+              propertyType={property.property_type || property.type}
+              role={role}
+              isDemo={isDemo}
+              packId={packId}
+            />
+          </div>
         )}
 
         {/* Invite panel — early in the flow so owner invites first */}
         {property.isCustom && !isDemo && (
-          <InvitePanel
-            propertyId={pid}
-            senderName={property.first_name || property.property_name || undefined}
-            packId={packId}
-          />
+          <div id="invite-panel">
+            <InvitePanel
+              propertyId={pid}
+              senderName={property.first_name || property.property_name || undefined}
+              packId={packId}
+            />
+          </div>
         )}
 
         {/* Transaction Risk — replaces numeric Deal Health score */}
@@ -1457,7 +1546,9 @@ export default function DealRoomPage() {
             item has an explicit owner (human role or AI); AI-drafted actions
             (e.g. reminder emails) require an explicit Approve click. */}
         {property.isCustom && (
-          <TasksPanel propertyId={pid} role={role} />
+          <div id="tasks-panel">
+            <TasksPanel propertyId={pid} role={role} />
+          </div>
         )}
 
         {/* Deal Intelligence Dashboard (AI Findings) — reveals as documents are uploaded.
