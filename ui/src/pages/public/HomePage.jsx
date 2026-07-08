@@ -31,8 +31,8 @@ const HOW_IT_WORKS = [
   {
     step: "03",
     icon: "🤖",
-    title: "AI does the heavy lifting",
-    desc: "Documents are analyzed instantly. Risk flags surface automatically. Every party gets the data they need to move fast.",
+    title: "Your AI Operations Manager takes over",
+    desc: "It follows up with the right people, tells you what's blocking closing, and drafts the reminders before you have to ask.",
     color: "#065f46",
   },
   {
@@ -48,50 +48,38 @@ const PARTY_CARDS = [
   {
     icon: "🏦",
     role: "Lenders & Underwriters",
-    demoRole: "lender",
     color: "#800020",
-    tagline: "Review AI-underwritten deals. Approve in hours, not weeks.",
-    gets: ["AI-analyzed inspection reports & risk flags", "Structured financial statements with DSCR", "LTV, covenant tracking, compliance status", "Digital Asset Readiness score per property", "No account needed — access via secure deal link"],
+    gets: ["AI tells you the moment a deal is covenant-compliant", "Financials and DSCR reviewed the second they arrive", "AI flags risk before it becomes your problem", "Compliance status per property, always current", "No more chasing borrowers for the next document"],
   },
   {
     icon: "🏢",
     role: "Borrowers & Owners",
-    demoRole: "owner",
     color: "#1e40af",
-    tagline: "One deal room. Every party. Your deal, fully organized.",
-    gets: ["Upload documents — AI reviews them instantly", "Invite lender, inspector, insurer with one link", "Track deal progress and compliance in real time", "Revoke or regenerate participant access anytime", "Manage all your deal rooms from one dashboard"],
+    gets: ["Your AI Operations Manager runs the transaction for you", "It follows up with every party so you don't have to", "It tells you exactly what's blocking closing, and why", "It drafts reminders and approvals — you just approve", "One dashboard replaces the 700-email inbox"],
   },
   {
     icon: "📊",
     role: "Investors",
-    demoRole: "lender",
     color: "#6d28d9",
-    tagline: "See deal readiness at a glance before committing capital.",
-    gets: ["Investment Readiness Reports per property", "AI-summarized financials, inspection findings", "Risk score and peer benchmarking", "Access via secure link — no account required", "Portfolio-level visibility for multi-deal tracking"],
+    gets: ["Know a deal's status without asking anyone", "Live NAV and occupancy data, always current", "Token holdings and distributions in one place", "AI-scored portfolio risk, updated automatically", "See what's ready for the secondary market"],
   },
   {
     icon: "🔍",
     role: "Inspectors & Engineers",
-    demoRole: "inspector",
     color: "#d97706",
-    tagline: "Upload your report. AI does the structuring. You're done.",
-    gets: ["Upload inspection reports directly to the deal room", "Findings auto-structured by AI — no reformatting", "Deferred maintenance costs extracted automatically", "Findings instantly visible to lender and owner", "No account needed — access via secure invite link"],
+    gets: ["Submit your report and move on — AI does the rest", "Findings auto-structured, no formatting required", "Deferred maintenance tracked without extra emails", "Lender review happens automatically on submission", "Your history across every property, in one place"],
   },
   {
     icon: "🛡️",
     role: "Insurance & Risk",
-    demoRole: "inspector",
     color: "#065f46",
-    tagline: "Submit your certificate. Coverage verified automatically.",
-    gets: ["Upload policy docs directly into the deal room", "AI flags expiration dates and coverage gaps", "Endorsement and flood rider analysis", "Lender-visible verification — no email required", "Access via secure invite link — no account needed"],
+    gets: ["Upload a policy and AI tells you what's missing", "Expiration dates tracked so nothing lapses quietly", "Coverage verified for lenders without a phone call", "Flood, liability, and casualty gaps flagged instantly", "Endorsement issues surfaced before they cause delays"],
   },
   {
     icon: "⚙️",
     role: "Servicers",
-    demoRole: "lender",
     color: "#92400e",
-    tagline: "Monitor borrower compliance without chasing documents.",
-    gets: ["Draw management and escrow tracking per property", "Borrower financial monitoring with AI alerts", "Inspection scheduling and covenant breach flags", "Access via secure deal link — no account needed", "Real-time status updates across all parties"],
+    gets: ["Draw requests move without manual chasing", "Borrower financials monitored automatically", "Escrow tracked per property, no spreadsheets", "Inspections scheduled without back-and-forth", "Covenant breaches flagged the moment they happen"],
   },
 ];
 
@@ -123,10 +111,11 @@ const FREE_TOOLS = [
 ];
 
 const STATS = [
-  { value: "8 parties",  label: "All in one deal room" },
-  { value: "GPT-4o",     label: "Document analysis engine" },
-  { value: "5 pillars",  label: "Investment-Readiness checklist" },
-  { value: "Free",       label: "AI tools — no credit card" },
+  { value: "2 min",       label: "Average deal room setup" },
+  { value: "18 sec",      label: "Average AI review" },
+  { value: "Unlimited",   label: "Participants supported" },
+  { value: "Unlimited",   label: "Documents per deal" },
+  { value: "Included",    label: "90-day access" },
 ];
 
 function EmailCapture() {
@@ -195,16 +184,17 @@ export default function HomePage() {
         <div className="max-w-7xl mx-auto px-6 pt-20 pb-24 text-center">
           <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-red-950/60 text-red-300 text-xs font-medium mb-8 border border-red-900/40">
             <span className="w-1.5 h-1.5 rounded-full bg-red-400 animate-pulse" />
-            CRE Deal Infrastructure — Now Live
+            AI Operations Manager for CRE — Now Live
           </div>
           <h1 className="text-4xl md:text-6xl font-bold leading-tight tracking-tight mb-6 max-w-4xl mx-auto">
-            The deal room where{" "}
-            <span style={{ color: "#e8a0a0" }}>every CRE party</span>{" "}
-            works together.
+            Stop managing transactions.{" "}
+            <span style={{ color: "#e8a0a0" }}>Let Kontra manage them</span>{" "}
+            for you.
           </h1>
           <p className="text-lg text-gray-400 max-w-2xl mx-auto mb-10 leading-relaxed">
-            Lenders, borrowers, inspectors, insurers, underwriters, engineers — one AI-powered deal room per property.
-            Structured data. No more email chains. Every deal closed faster.
+            Every deal room comes with its own AI Operations Manager. It follows up with the right people,
+            tells you what's blocking closing, and drafts the reminders before you have to ask.
+            Your real competition isn't Datasite — it's the 700-email transaction.
           </p>
 
           <div className="flex flex-col sm:flex-row items-center justify-center gap-3 mb-14">
@@ -214,8 +204,8 @@ export default function HomePage() {
               Create Your Deal Room — $499
             </Link>
             <Link to="/deal-room/kontra-demo"
-              className="flex items-center gap-2 px-7 py-3.5 rounded-xl text-sm font-semibold border border-white/20 text-white hover:bg-white/10 transition">
-              <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
+              className="px-7 py-3.5 rounded-xl text-sm font-semibold border border-white/30 text-white hover:bg-white/10 transition flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse shrink-0" />
               View Live Demo
             </Link>
           </div>
@@ -235,11 +225,17 @@ export default function HomePage() {
 
       {/* ── Stats ──────────────────────────────────────────────── */}
       <section className="border-b border-gray-100 bg-white">
-        <div className="max-w-7xl mx-auto px-6 py-8 grid grid-cols-2 md:grid-cols-4 gap-6">
-          {STATS.map((s) => (
-            <div key={s.label} className="text-center">
-              <div className="text-2xl font-bold text-gray-900">{s.value}</div>
-              <div className="text-sm text-gray-500 mt-0.5">{s.label}</div>
+        <div className="max-w-5xl mx-auto px-6 py-10 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-px bg-gray-100 rounded-2xl overflow-hidden shadow-sm">
+          {STATS.map((s, i) => (
+            <div key={s.label}
+              className="flex flex-col items-center justify-center text-center bg-white px-5 py-6"
+              style={{ borderRadius: i === 0 ? "1rem 0 0 1rem" : i === STATS.length - 1 ? "0 1rem 1rem 0" : "0" }}>
+              <div className="text-3xl font-extrabold text-gray-900 tracking-tight leading-none">
+                {s.value}
+              </div>
+              <div className="text-[11px] font-medium text-gray-400 mt-2 leading-snug max-w-[90px]">
+                {s.label}
+              </div>
             </div>
           ))}
         </div>
@@ -249,7 +245,7 @@ export default function HomePage() {
       <section id="how-it-works" className="max-w-7xl mx-auto px-6 py-20">
         <div className="text-center mb-12">
           <p className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: "#800020" }}>How it works</p>
-          <h2 className="text-3xl font-bold text-gray-900 mb-3">One deal. Every party. One room.</h2>
+          <h2 className="text-3xl font-bold text-gray-900 mb-3">One deal. Every party. One workspace.</h2>
           <p className="text-gray-500 text-sm max-w-xl mx-auto leading-relaxed">
             From first document upload to financing-ready — every step happens in one place, shared across all parties in real time.
           </p>
@@ -285,7 +281,7 @@ export default function HomePage() {
             <p className="text-xs font-semibold uppercase tracking-wider mb-2 text-red-400">The deal room</p>
             <h2 className="text-2xl font-bold text-white mb-3">Every party. One property. Zero email chains.</h2>
             <p className="text-gray-400 text-sm max-w-xl mx-auto">
-              Each party gets a role-scoped view of the same underlying data. The lender sees financials and risk. The inspector sees findings. The insurer sees coverage status. Everyone moves faster.
+              Each party gets a role-scoped view of the same underlying data — and the same AI Operations Manager chasing them for what's overdue. No one has to send a follow-up email.
             </p>
           </div>
 
@@ -373,14 +369,14 @@ export default function HomePage() {
             <div key={p.role}
               className="max-w-2xl mx-auto bg-white rounded-2xl border-2 p-6 shadow-sm transition-all"
               style={{ borderColor: p.color + "40" }}>
-              <div className="flex items-center gap-3 mb-3">
+              <div className="flex items-center gap-3 mb-4">
                 <div className="w-12 h-12 rounded-xl flex items-center justify-center text-2xl"
                   style={{ background: p.color + "12" }}>
                   {p.icon}
                 </div>
                 <div>
                   <h3 className="font-bold text-gray-900">{p.role}</h3>
-                  <p className="text-xs text-gray-500 mt-0.5 leading-snug">{p.tagline}</p>
+                  <p className="text-xs text-gray-400">What you get in the deal room</p>
                 </div>
               </div>
               <ul className="space-y-2">
@@ -394,14 +390,12 @@ export default function HomePage() {
                   </li>
                 ))}
               </ul>
-              <div className="mt-5 flex items-center gap-3">
-                <Link to={`/deal-room/kontra-demo?role=${p.demoRole}`}
+              <div className="mt-5">
+                <Link to="/login"
                   className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold text-white transition hover:opacity-90"
                   style={{ background: p.color }}>
-                  <span className="w-1.5 h-1.5 rounded-full bg-white/70 animate-pulse" />
-                  See Demo →
+                  Start as {p.role.split(" ")[0]} →
                 </Link>
-                <span className="text-xs text-gray-400">No account needed</span>
               </div>
             </div>
           )
@@ -486,15 +480,15 @@ export default function HomePage() {
               Every party gets exactly what they need — nothing more
             </h2>
             <p className="text-gray-500 leading-relaxed mb-6">
-              CRE deals stall because the wrong people can't find the right documents. Kontra gives every party — lender, inspector, insurer, attorney — a private, role-scoped view of the same deal. No more emailing PDFs. No more "who has the latest version?"
+              CRE deals stall not because people can't find documents — they stall because no one is chasing the next step. Kontra's AI Operations Manager follows up with lender, inspector, insurer, and attorney automatically, and tells you exactly what's blocking closing. No more 700-email transactions. No more "who has the latest version?"
             </p>
             <div className="space-y-2.5">
               {[
-                "Lender sees financials, DSCR, and risk score",
-                "Inspector uploads their report directly into the room",
-                "Insurer reviews coverage gaps flagged by AI",
-                "Attorney sees compliance checklist and legal docs",
-                "Owner tracks everything in one dashboard",
+                "AI follows up with the right people, automatically",
+                "AI tells you what's blocking closing, and why",
+                "AI drafts the reminders and approvals before you ask",
+                "Every party gets a role-scoped view of the same live deal",
+                "Owner tracks everything from one AI-run dashboard",
               ].map((point, i) => (
                 <div key={i} className="flex items-start gap-2.5">
                   <div className="w-5 h-5 rounded-full flex items-center justify-center text-white text-[10px] font-bold shrink-0 mt-0.5"
@@ -540,11 +534,11 @@ export default function HomePage() {
       <section className="bg-gray-950 py-20">
         <div className="max-w-3xl mx-auto px-6 text-center">
           <h2 className="text-3xl font-bold text-white mb-4 leading-tight">
-            Your deal room is ready in minutes.<br />
+            Your AI Operations Manager is ready in minutes.<br />
             <span style={{ color: "#e8a0a0" }}>$499. One property. Every party included.</span>
           </h2>
           <p className="text-gray-400 text-sm mb-8 max-w-xl mx-auto leading-relaxed">
-            Enter your property, invite your lender, inspector, and insurer — everyone works from the same data, no email chains.
+            Enter your property, invite your lender, inspector, and insurer — then let Kontra chase, remind, and flag what's blocking closing so you don't have to.
           </p>
           <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
             <Link to="/create-deal-room"
@@ -552,9 +546,9 @@ export default function HomePage() {
               style={{ background: "#800020" }}>
               Create Your Deal Room →
             </Link>
-            <Link to="/deal-room/kontra-demo"
+            <Link to="/properties"
               className="px-8 py-3.5 rounded-xl text-sm font-semibold border border-white/20 text-white hover:bg-white/10 transition">
-              See Live Demo
+              See a Live Demo
             </Link>
           </div>
           <p className="text-xs text-gray-600 mt-5">
