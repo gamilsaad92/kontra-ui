@@ -19,5 +19,5 @@
     "VITE_SENTRY_DSN": "<your-dsn>",
     "VITE_NEW_DASH": "true"
   },
-  "_deployTrigger": "1783396800000"
+  "_deployTrigger": "1783491715104"
 }
