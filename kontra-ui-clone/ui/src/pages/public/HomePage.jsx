@@ -31,8 +31,8 @@ const HOW_IT_WORKS = [
   {
     step: "03",
     icon: "🤖",
-    title: "AI does the heavy lifting",
-    desc: "Documents are analyzed instantly. Risk flags surface automatically. Every party gets the data they need to move fast.",
+    title: "Your AI Operations Manager takes over",
+    desc: "It follows up with the right people, tells you what's blocking closing, and drafts the reminders before you have to ask.",
     color: "#065f46",
   },
   {
@@ -49,37 +49,37 @@ const PARTY_CARDS = [
     icon: "🏦",
     role: "Lenders & Underwriters",
     color: "#800020",
-    gets: ["AI-analyzed inspection reports", "Structured financial statements", "DSCR, LTV, covenant tracking", "Compliance status per property", "Digital Asset Readiness score"],
+    gets: ["AI tells you the moment a deal is covenant-compliant", "Financials and DSCR reviewed the second they arrive", "AI flags risk before it becomes your problem", "Compliance status per property, always current", "No more chasing borrowers for the next document"],
   },
   {
     icon: "🏢",
     role: "Borrowers & Owners",
     color: "#1e40af",
-    gets: ["One workspace per property", "Document upload + AI review", "Deadline and compliance alerts", "Share with any party instantly", "Track deal progress end-to-end"],
+    gets: ["Your AI Operations Manager runs the transaction for you", "It follows up with every party so you don't have to", "It tells you exactly what's blocking closing, and why", "It drafts reminders and approvals — you just approve", "One dashboard replaces the 700-email inbox"],
   },
   {
     icon: "📊",
     role: "Investors",
     color: "#6d28d9",
-    gets: ["Investment Readiness Reports", "Live NAV and occupancy data", "Token holdings and distributions", "Portfolio risk scoring", "Secondary market readiness"],
+    gets: ["Know a deal's status without asking anyone", "Live NAV and occupancy data, always current", "Token holdings and distributions in one place", "AI-scored portfolio risk, updated automatically", "See what's ready for the secondary market"],
   },
   {
     icon: "🔍",
     role: "Inspectors & Engineers",
     color: "#d97706",
-    gets: ["Submit reports directly to the workspace", "Findings auto-structured by AI", "Deferred maintenance tracking", "Connected to lender review", "Inspection history per property"],
+    gets: ["Submit your report and move on — AI does the rest", "Findings auto-structured, no formatting required", "Deferred maintenance tracked without extra emails", "Lender review happens automatically on submission", "Your history across every property, in one place"],
   },
   {
     icon: "🛡️",
     role: "Insurance & Risk",
     color: "#065f46",
-    gets: ["Policy upload and AI gap analysis", "Expiration date tracking", "Coverage verification for lenders", "Flood, liability, casualty review", "Endorsement flag alerts"],
+    gets: ["Upload a policy and AI tells you what's missing", "Expiration dates tracked so nothing lapses quietly", "Coverage verified for lenders without a phone call", "Flood, liability, and casualty gaps flagged instantly", "Endorsement issues surfaced before they cause delays"],
   },
   {
     icon: "⚙️",
     role: "Servicers",
     color: "#92400e",
-    gets: ["Draw management workflows", "Borrower financial monitoring", "Escrow tracking per property", "Inspection scheduling", "Covenant breach alerts"],
+    gets: ["Draw requests move without manual chasing", "Borrower financials monitored automatically", "Escrow tracked per property, no spreadsheets", "Inspections scheduled without back-and-forth", "Covenant breaches flagged the moment they happen"],
   },
 ];
 
@@ -184,16 +184,17 @@ export default function HomePage() {
         <div className="max-w-7xl mx-auto px-6 pt-20 pb-24 text-center">
           <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-red-950/60 text-red-300 text-xs font-medium mb-8 border border-red-900/40">
             <span className="w-1.5 h-1.5 rounded-full bg-red-400 animate-pulse" />
-            CRE Deal Infrastructure — Now Live
+            AI Operations Manager for CRE — Now Live
           </div>
           <h1 className="text-4xl md:text-6xl font-bold leading-tight tracking-tight mb-6 max-w-4xl mx-auto">
-            The deal room where{" "}
-            <span style={{ color: "#e8a0a0" }}>every CRE party</span>{" "}
-            works together.
+            Stop managing transactions.{" "}
+            <span style={{ color: "#e8a0a0" }}>Let Kontra manage them</span>{" "}
+            for you.
           </h1>
           <p className="text-lg text-gray-400 max-w-2xl mx-auto mb-10 leading-relaxed">
-            Lenders, borrowers, inspectors, insurers, underwriters, engineers — one AI-powered workspace per property.
-            Structured data. No more email chains. Every deal closed faster.
+            Every deal room comes with its own AI Operations Manager. It follows up with the right people,
+            tells you what's blocking closing, and drafts the reminders before you have to ask.
+            Your real competition isn't Datasite — it's the 700-email transaction.
           </p>
 
           <div className="flex flex-col sm:flex-row items-center justify-center gap-3 mb-14">
@@ -280,7 +281,7 @@ export default function HomePage() {
             <p className="text-xs font-semibold uppercase tracking-wider mb-2 text-red-400">The deal room</p>
             <h2 className="text-2xl font-bold text-white mb-3">Every party. One property. Zero email chains.</h2>
             <p className="text-gray-400 text-sm max-w-xl mx-auto">
-              Each party gets a role-scoped view of the same underlying data. The lender sees financials and risk. The inspector sees findings. The insurer sees coverage status. Everyone moves faster.
+              Each party gets a role-scoped view of the same underlying data — and the same AI Operations Manager chasing them for what's overdue. No one has to send a follow-up email.
             </p>
           </div>
 
@@ -479,15 +480,15 @@ export default function HomePage() {
               Every party gets exactly what they need — nothing more
             </h2>
             <p className="text-gray-500 leading-relaxed mb-6">
-              CRE deals stall because the wrong people can't find the right documents. Kontra gives every party — lender, inspector, insurer, attorney — a private, role-scoped view of the same deal. No more emailing PDFs. No more "who has the latest version?"
+              CRE deals stall not because people can't find documents — they stall because no one is chasing the next step. Kontra's AI Operations Manager follows up with lender, inspector, insurer, and attorney automatically, and tells you exactly what's blocking closing. No more 700-email transactions. No more "who has the latest version?"
             </p>
             <div className="space-y-2.5">
               {[
-                "Lender sees financials, DSCR, and risk score",
-                "Inspector uploads their report directly into the room",
-                "Insurer reviews coverage gaps flagged by AI",
-                "Attorney sees compliance checklist and legal docs",
-                "Owner tracks everything in one dashboard",
+                "AI follows up with the right people, automatically",
+                "AI tells you what's blocking closing, and why",
+                "AI drafts the reminders and approvals before you ask",
+                "Every party gets a role-scoped view of the same live deal",
+                "Owner tracks everything from one AI-run dashboard",
               ].map((point, i) => (
                 <div key={i} className="flex items-start gap-2.5">
                   <div className="w-5 h-5 rounded-full flex items-center justify-center text-white text-[10px] font-bold shrink-0 mt-0.5"
@@ -533,11 +534,11 @@ export default function HomePage() {
       <section className="bg-gray-950 py-20">
         <div className="max-w-3xl mx-auto px-6 text-center">
           <h2 className="text-3xl font-bold text-white mb-4 leading-tight">
-            Your deal room is ready in minutes.<br />
+            Your AI Operations Manager is ready in minutes.<br />
             <span style={{ color: "#e8a0a0" }}>$499. One property. Every party included.</span>
           </h2>
           <p className="text-gray-400 text-sm mb-8 max-w-xl mx-auto leading-relaxed">
-            Enter your property, invite your lender, inspector, and insurer — everyone works from the same data, no email chains.
+            Enter your property, invite your lender, inspector, and insurer — then let Kontra chase, remind, and flag what's blocking closing so you don't have to.
           </p>
           <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
             <Link to="/create-deal-room"
