@@ -1386,7 +1386,7 @@ export default function DealRoomPage() {
             <Link to="/create-deal-room"
               className="shrink-0 px-4 py-2 rounded-xl text-xs font-bold transition whitespace-nowrap"
               style={{ background: "rgba(255,255,255,0.15)", color: "#fff", border: "1px solid rgba(255,255,255,0.2)" }}>
-              Create Your Deal Room →
+              Create Your Workspace →
             </Link>
           </div>
         </div>
@@ -1669,7 +1669,7 @@ export default function DealRoomPage() {
               <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
                 <Link to="/create-deal-room"
                   className="px-8 py-3 rounded-xl text-sm font-bold bg-white text-indigo-900 hover:opacity-90 transition">
-                  Create Your Deal Room — $499 →
+                  Create Your Workspace — $499 →
                 </Link>
                 <Link to="/pricing"
                   className="px-6 py-3 rounded-xl text-sm font-semibold border border-white/20 text-white/80 hover:bg-white/10 transition">

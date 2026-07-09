@@ -541,7 +541,7 @@ export default function AiToolsPage() {
             <Link to="/create-deal-room"
               className="px-6 py-3 rounded-xl bg-white text-sm font-semibold transition hover:bg-gray-100"
               style={{ color: "#800020" }}>
-              Create Your Deal Room — $499
+              Create Your Workspace — $499
             </Link>
             <Link to="/deal-room/kontra-demo"
               className="px-6 py-3 rounded-xl border border-red-300/50 bg-white/10 text-sm font-semibold text-white hover:bg-white/20 transition">

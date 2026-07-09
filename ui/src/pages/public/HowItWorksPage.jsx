@@ -293,7 +293,7 @@ export default function HowItWorksPage() {
             <Link to="/create-deal-room"
               className="px-8 py-3.5 rounded-xl text-sm font-semibold text-white transition hover:opacity-90"
               style={{ background: "#800020" }}>
-              Create Your Deal Room →
+              Create Your Workspace →
             </Link>
             <Link to="/pricing"
               className="px-8 py-3.5 rounded-xl text-sm font-semibold border border-white/20 text-white hover:bg-white/10 transition">

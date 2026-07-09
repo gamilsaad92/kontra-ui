@@ -166,7 +166,7 @@ export default function AboutPage() {
             <Link to="/create-deal-room"
               className="inline-flex items-center gap-2 px-6 py-3 rounded-xl text-sm font-semibold text-white hover:opacity-90 transition"
               style={{ background: "#800020" }}>
-              Create Your Deal Room — $499 →
+              Create Your Workspace — $499 →
             </Link>
           </div>
         </div>
