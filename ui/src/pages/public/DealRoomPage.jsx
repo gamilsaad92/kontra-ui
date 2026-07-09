@@ -1295,7 +1295,15 @@ export default function DealRoomPage() {
 
   // Which Workflow Pack powers this deal room. Demo properties are always
   // CRE Acquisition; custom rooms carry their pack id from creation time.
-  const packId = demoProperty ? DEFAULT_PACK_ID : (apiProperty?.workflow_pack_id || DEFAULT_PACK_ID);
+  // Fallback: rooms created before pack-aware deploy have workflow_pack_id=null —
+  // infer from deal_type so they don't silently revert to CRE.
+  const DEAL_TYPE_TO_PACK = {
+    full_acquisition: "business_acquisition", asset_purchase: "business_acquisition",
+    mbo: "business_acquisition", merger: "business_acquisition",
+    seed: "fundraising", series_a: "fundraising", series_b_plus: "fundraising", bridge: "fundraising",
+  };
+  const inferredPackId = apiProperty?.deal_type ? (DEAL_TYPE_TO_PACK[apiProperty.deal_type] || DEFAULT_PACK_ID) : DEFAULT_PACK_ID;
+  const packId = demoProperty ? DEFAULT_PACK_ID : (apiProperty?.workflow_pack_id || inferredPackId);
   const pack = getWorkflowPack(packId);
   const isCREPack = packId === DEFAULT_PACK_ID;
 
