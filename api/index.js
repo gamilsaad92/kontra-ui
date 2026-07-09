@@ -1013,11 +1013,22 @@ app.post('/api/checkout/demo', async (req, res) => {
 
     try {
       const { error: upsertErr } = await supabase.from('deal_rooms').upsert(dealRoomRecord, { onConflict: 'property_id' });
-      if (upsertErr) throw upsertErr;
+      if (upsertErr) {
+        // 42703 = column does not exist — workflow_pack_id column not yet migrated; retry without it
+        if (upsertErr.code === '42703') {
+          const { workflow_pack_id: _drop, ...baseRecord } = dealRoomRecord;
+          const { error: retryErr } = await supabase.from('deal_rooms').upsert(baseRecord, { onConflict: 'property_id' });
+          if (retryErr) throw retryErr;
+          console.log(`[demo] ✅ Deal room created (no workflow_pack_id col yet) — ${pid}`);
+        } else {
+          throw upsertErr;
+        }
+      } else {
+        console.log(`[demo] ✅ Deal room created — ${pid}`);
+      }
       // Set link_token in a separate step (graceful — no-op if column not yet migrated)
       supabase.from('deal_rooms').update({ link_token: crypto.randomBytes(16).toString('hex') })
         .eq('property_id', pid).is('link_token', null).then(() => {}).catch(() => {});
-      console.log(`[demo] ✅ Deal room created — ${pid}`);
     } catch (dbErr) {
       console.warn('[demo] deal_rooms upsert failed:', dbErr.message);
     }
@@ -1087,11 +1098,22 @@ app.post('/api/webhook/stripe',
 
       try {
         const { error: wErr } = await supabase.from('deal_rooms').upsert(dealRoomRecord, { onConflict: 'property_id' });
-        if (wErr) throw wErr;
+        if (wErr) {
+          // 42703 = column does not exist — workflow_pack_id column not yet migrated; retry without it
+          if (wErr.code === '42703') {
+            const { workflow_pack_id: _drop, ...baseRecord } = dealRoomRecord;
+            const { error: retryErr } = await supabase.from('deal_rooms').upsert(baseRecord, { onConflict: 'property_id' });
+            if (retryErr) throw retryErr;
+            console.log(`[webhook] ✅ Deal room saved (no workflow_pack_id col yet) — ${dealRoomRecord.property_id}`);
+          } else {
+            throw wErr;
+          }
+        } else {
+          console.log(`[webhook] ✅ Deal room saved — ${dealRoomRecord.property_id}`);
+        }
         // Set link_token separately (graceful — skipped if column not yet migrated)
         supabase.from('deal_rooms').update({ link_token: crypto.randomBytes(16).toString('hex') })
           .eq('property_id', dealRoomRecord.property_id).is('link_token', null).then(() => {}).catch(() => {});
-        console.log(`[webhook] ✅ Deal room saved — ${dealRoomRecord.property_id}`);
       } catch (dbErr) {
         console.warn('[webhook] deal_rooms upsert skipped:', dbErr.message);
       }
