@@ -241,7 +241,7 @@ function AccessLayout({ children }) {
         <Link to="/create-deal-room"
           className="text-xs font-semibold px-3.5 py-2 rounded-lg text-white hover:opacity-90 transition"
           style={{ background: "#800020" }}>
-          Create Deal Room →
+          Create Workspace →
         </Link>
       </header>
       <div className="flex flex-1 overflow-hidden">

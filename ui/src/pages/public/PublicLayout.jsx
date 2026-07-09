@@ -109,7 +109,7 @@ export default function PublicLayout({ children, hideFooter = false }) {
                 <Link to="/create-deal-room"
                   className="text-sm font-semibold px-4 py-2 rounded-lg text-white transition hover:opacity-90"
                   style={{ background: "#800020" }}>
-                  Create Deal Room
+                  Create Workspace
                 </Link>
               </>
             )}
@@ -161,7 +161,7 @@ export default function PublicLayout({ children, hideFooter = false }) {
                   <Link to="/create-deal-room" onClick={() => setMenuOpen(false)}
                     className="block text-center px-4 py-2.5 rounded-lg text-sm font-semibold text-white"
                     style={{ background: "#800020" }}>
-                    Create Deal Room
+                    Create Workspace
                   </Link>
                 </>
               )}
