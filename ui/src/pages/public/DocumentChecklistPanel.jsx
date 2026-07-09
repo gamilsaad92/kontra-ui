@@ -137,7 +137,7 @@ export default function DocumentChecklistPanel({ propertyId, propertyType, role,
         onClick={() => setExpanded(e => !e)}
         className="w-full flex items-center justify-between px-5 py-4 hover:bg-gray-50 transition text-left">
         <div className="flex items-center gap-3 flex-wrap">
-          <div className="text-base font-bold text-gray-900">Due Diligence Checklist</div>
+          <div className="text-base font-bold text-gray-900">{workflowPack.checklistTitle || "Due Diligence Checklist"}</div>
           {!loading && template.length > 0 && (
             <span className="px-2.5 py-0.5 rounded-full text-xs font-bold text-white"
               style={{ background: statusColor }}>

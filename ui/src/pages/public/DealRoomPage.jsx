@@ -591,7 +591,7 @@ function SourceCitations({ sources }) {
 // deal_analyses (via /coordination), and the AI step from the Task Engine
 // actually having generated something. Rows link straight to the panel
 // that completes them so there's no hunting around the page. ──
-function OnboardingProgress({ propertyId, accentColor, totalInvitable }) {
+function OnboardingProgress({ propertyId, accentColor, totalInvitable, pack }) {
   const [state, setState] = useState({ loading: true, invitedRoles: 0, docCount: 0, taskCount: 0 });
 
   useEffect(() => {
@@ -619,9 +619,15 @@ function OnboardingProgress({ propertyId, accentColor, totalInvitable }) {
   const steps = [
     {
       label: "Invite parties",
-      detail: totalInvitable
-        ? `${state.invitedRoles}/${totalInvitable} invited — send role-specific links to your lender, inspector, insurer, and attorney`
-        : "Send role-specific links to your lender, inspector, insurer, and attorney",
+      detail: (() => {
+        const invitableLabels = (pack?.roles || []).filter(r => r.invitable).map(r => r.label);
+        const roleList = invitableLabels.length > 0
+          ? invitableLabels.slice(0, 4).join(", ")
+          : "lender, inspector, insurer, and attorney";
+        return totalInvitable
+          ? `${state.invitedRoles}/${totalInvitable} invited — send role-specific links to your ${roleList}`
+          : `Send role-specific links to your ${roleList}`;
+      })(),
       done: state.invitedRoles > 0,
       href: "#invite-panel",
     },
@@ -1526,6 +1532,7 @@ export default function DealRoomPage() {
                   propertyId={pid}
                   accentColor={roleConfig.color}
                   totalInvitable={(pack.roles || []).filter(r => r.invitable).length}
+                  pack={pack}
                 />
               ) : (
                 <ol className="space-y-2.5">

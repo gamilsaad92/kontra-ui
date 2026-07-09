@@ -233,6 +233,7 @@ export function createGenericPack(config) {
     id,
     name,
     description,
+    checklistTitle: config.checklistTitle || `${name} Checklist`,
     roles,
     stages,
     nextStage,

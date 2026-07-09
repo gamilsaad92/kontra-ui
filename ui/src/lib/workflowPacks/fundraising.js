@@ -12,8 +12,8 @@
 // domain-specific dashboard judgement (runway badge, snapshot ordering)
 // layered on top as overrides.
 
-import rolesConfig from "../../shared/workflowRoles.json";
-import stagesConfig from "../../shared/workflowStages.json";
+import rolesConfig from "../../../../shared/workflowRoles.json";
+import stagesConfig from "../../../../shared/workflowStages.json";
 import { createGenericPack } from "./genericPackFactory";
 
 export const roles = rolesConfig.fundraising.roles;
@@ -157,6 +157,7 @@ export const fundraisingPack = createGenericPack({
   id: "fundraising",
   name: "Fundraising",
   description: "Raising an investment round (term sheet through funding)",
+  checklistTitle: "Fundraising Checklist",
   roles,
   stages,
   advanceLabel,
