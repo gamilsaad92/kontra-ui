@@ -7,6 +7,7 @@ import CommentsPanel from "./CommentsPanel";
 import TransactionRiskPanel from "./TransactionRiskPanel";
 import TasksPanel from "./TasksPanel";
 import AIOperationsManager from "./AIOperationsManager";
+import DailyStandup from "./DailyStandup";
 import InvitePanel from "./InvitePanel";
 import DocumentChecklistPanel, { getTemplate } from "./DocumentChecklistPanel";
 import { DEFAULT_PACK_ID, getWorkflowPack, ensureWorkflowPackLoaded } from "../../lib/workflowPacks";
@@ -1296,6 +1297,7 @@ export default function DealRoomPage() {
   // CRE Acquisition; custom rooms carry their pack id from creation time.
   const packId = demoProperty ? DEFAULT_PACK_ID : (apiProperty?.workflow_pack_id || DEFAULT_PACK_ID);
   const pack = getWorkflowPack(packId);
+  const isCREPack = packId === DEFAULT_PACK_ID;
 
   // Role metadata (label/icon/color/headline/subtext/sections) is looked up
   // scoped to this pack — never from a flat cross-pack dict — since a role
@@ -1442,7 +1444,9 @@ export default function DealRoomPage() {
           <div className="absolute inset-0 bg-gradient-to-r from-black/70 to-black/30 flex items-end p-5">
             <div className="flex-1">
               <p className="text-xs text-white/60 mb-0.5">
-                {property.type}{property.market ? ` · ${property.market}` : ""}
+                {isCREPack
+                  ? [property.type, property.market].filter(Boolean).join(" · ")
+                  : [pack.name, property.market || property.address].filter(Boolean).join(" · ")}
                 {property.isCustom && !isDemo && <span className="ml-2 px-1.5 py-0.5 rounded bg-amber-500/30 text-amber-200 text-[10px] font-semibold">Awaiting Documents</span>}
               {isDemo && <span className="ml-2 px-1.5 py-0.5 rounded text-[10px] font-semibold" style={{ background: "rgba(99,102,241,0.4)", color: "#c7d2fe" }}>Under Review</span>}
               </p>
@@ -1468,6 +1472,23 @@ export default function DealRoomPage() {
           <ReadinessSummaryBar property={property} />
         )}
 
+        {/* AI Operations Manager — the primary interface, not a reporting
+            dashboard. Advisor feedback: "the AI should talk first, the UI
+            should be supporting evidence." This must render before the Next
+            Steps card so the greeting + status is the very first thing an
+            owner sees, not buried below a checklist. See lib/operationsManager.js
+            and .agents/memory/kontra-task-architecture.md. */}
+        {property.isCustom && (
+          <AIOperationsManager propertyId={pid} ownerName={property.first_name} dealName={property.name || property.property_name} />
+        )}
+
+        {/* Daily Standup — evening counterpart to the morning briefing above.
+            Same grounding (Task Engine + closing chain), different lens: what
+            moved today, what's still open, and what's planned for tomorrow. */}
+        {property.isCustom && (
+          <DailyStandup propertyId={pid} ownerName={property.first_name} />
+        )}
+
         {/* Role headline — owner gets concise Next Steps; others get role description */}
         <div className="bg-white rounded-2xl border border-gray-200 p-5 mb-6"
           style={{ borderLeftWidth: 4, borderLeftColor: roleConfig.color }}>
@@ -1483,9 +1504,9 @@ export default function DealRoomPage() {
               ) : (
                 <ol className="space-y-2.5">
                   {[
-                    "Invite parties — send role-specific links to your lender, inspector, insurer, and attorney",
+                    `Invite parties — send role-specific links to ${(pack.roles || []).filter(r => r.invitable).slice(0, 3).map(r => r.label).join(", ") || "every stakeholder"}`,
                     "Upload documents — AI reviews each file as it arrives and surfaces key findings",
-                    "Track approvals — monitor compliance, deal stage, and party status in real time",
+                    "Track approvals — monitor deal stage, party status, and action items in real time",
                   ].map((text, i) => (
                     <li key={i} className="flex items-start gap-2.5 text-sm text-gray-600">
                       <span className="shrink-0 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold text-white mt-0.5"
@@ -1503,15 +1524,6 @@ export default function DealRoomPage() {
             </>
           )}
         </div>
-
-        {/* AI Operations Manager — answer engine grounded in the Task Engine,
-            not a reporting dashboard. This is the first thing an owner sees:
-            deal status, what's blocking closing, what AI already prepared,
-            and a free-form question box. See lib/operationsManager.js and
-            .agents/memory/kontra-task-architecture.md. */}
-        {property.isCustom && (
-          <AIOperationsManager propertyId={pid} ownerName={property.first_name} />
-        )}
 
         {/* Due Diligence Checklist */}
         {property.isCustom && (

@@ -82,7 +82,7 @@ export default function SaasDashboardHome({ apiBase }: Props) {
   const { memo, actions } = buildMemo(DEMO_ALERTS, firstName);
 
   useEffect(() => {
-    document.title = "Kontra · Lender Dashboard";
+    document.title = "Kontra · Operations Dashboard";
     const token = session?.access_token;
     if (!token) return;
     api
