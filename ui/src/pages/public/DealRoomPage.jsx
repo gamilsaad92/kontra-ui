@@ -1296,15 +1296,32 @@ export default function DealRoomPage() {
 
   // Which Workflow Pack powers this deal room. Demo properties are always
   // CRE Acquisition; custom rooms carry their pack id from creation time.
-  // Fallback: rooms created before pack-aware deploy have workflow_pack_id=null —
-  // infer from deal_type so they don't silently revert to CRE.
+  //
+  // Priority: deal_type inference wins when it gives a definitive non-CRE answer,
+  // because: (a) the workflow_pack_id DB column may not exist on older Supabase
+  // instances (column added by manual migration 005), causing the field to come
+  // back undefined; (b) even if the column exists, its DEFAULT 'cre_acquisition'
+  // may have overwritten the actual pack for rooms created before migration ran.
+  // deal_type is always stored correctly and is the ground truth from the form.
   const DEAL_TYPE_TO_PACK = {
+    // CRE types — explicit so inference returns the default and doesn't fall through
+    acquisition: DEFAULT_PACK_ID, refinance: DEFAULT_PACK_ID, construction: DEFAULT_PACK_ID,
+    flag_conversion: DEFAULT_PACK_ID, sale: DEFAULT_PACK_ID, ground_lease: DEFAULT_PACK_ID,
+    // Business acquisition sub-types + direct pack-id alias
     full_acquisition: "business_acquisition", asset_purchase: "business_acquisition",
     mbo: "business_acquisition", merger: "business_acquisition",
+    business_acquisition: "business_acquisition",
+    // Fundraising sub-types + direct pack-id alias
     seed: "fundraising", series_a: "fundraising", series_b_plus: "fundraising", bridge: "fundraising",
+    fundraising: "fundraising",
   };
-  const inferredPackId = apiProperty?.deal_type ? (DEAL_TYPE_TO_PACK[apiProperty.deal_type] || DEFAULT_PACK_ID) : DEFAULT_PACK_ID;
-  const packId = demoProperty ? DEFAULT_PACK_ID : (apiProperty?.workflow_pack_id || inferredPackId);
+  // null means "no signal from deal_type" (empty / unknown type) — fall back to stored value
+  const inferredPackId = apiProperty?.deal_type
+    ? (DEAL_TYPE_TO_PACK[apiProperty.deal_type] ?? null)
+    : null;
+  const packId = demoProperty
+    ? DEFAULT_PACK_ID
+    : (inferredPackId ?? apiProperty?.workflow_pack_id ?? DEFAULT_PACK_ID);
   const pack = getWorkflowPack(packId);
   const isCREPack = packId === DEFAULT_PACK_ID;
 

@@ -3621,6 +3621,27 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: err.message || 'Server error' });
 });
 
+// ── Startup migration: ensure workflow_pack_id column exists ─────────────────
+// Migration 005 is manual-only; run it automatically here so Render/production
+// gets the column on first boot without a manual Supabase SQL editor step.
+async function ensureWorkflowPackIdColumn() {
+  try {
+    const { Pool } = require('pg');
+    const pool = new Pool({
+      connectionString: process.env.DATABASE_URL || process.env.SUPABASE_DB_URL,
+      ssl: { rejectUnauthorized: false },
+    });
+    await pool.query(
+      `ALTER TABLE deal_rooms ADD COLUMN IF NOT EXISTS workflow_pack_id text DEFAULT 'cre_acquisition'`
+    );
+    await pool.end();
+    console.log('[startup] deal_rooms.workflow_pack_id column ready');
+  } catch (err) {
+    // Non-fatal: Supabase service role may not allow DDL via pooler — fall back gracefully
+    console.warn('[startup] workflow_pack_id column ensure skipped:', err.message);
+  }
+}
+
 const PORT = process.env.PORT || 3000;
 if (require.main === module) {
   if (process.env.NODE_ENV === 'production') {
@@ -3631,6 +3652,7 @@ if (require.main === module) {
   attachCollabServer(server);
   server.listen(PORT, () => {
     console.log(`Kontra API listening on port ${PORT}`);
+    void ensureWorkflowPackIdColumn();
     if (process.env.NODE_ENV !== 'production') {
       void logBaselineSchemaHealth();
     }
