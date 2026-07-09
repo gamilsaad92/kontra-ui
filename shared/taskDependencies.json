@@ -60,5 +60,47 @@
       }
     ],
     "parallelTracks": []
+  },
+  "fundraising": {
+    "closingChain": [
+      {
+        "step": 1,
+        "label": "Diligence Upload",
+        "description": "Founder uploads term sheet, cap table, and financials",
+        "roleKeys": ["founder_ceo"],
+        "gatesStep": 2
+      },
+      {
+        "step": 2,
+        "label": "Investor Review",
+        "description": "Investor and counsel review submitted documents",
+        "roleKeys": ["investor"],
+        "gatesStep": 3
+      },
+      {
+        "step": 3,
+        "label": "Legal & Audit",
+        "description": "Counsel finalizes agreements; auditor reviews financials",
+        "roleKeys": ["counsel", "auditor"],
+        "gatesStep": 4
+      },
+      {
+        "step": 4,
+        "label": "Closing",
+        "description": "Definitive agreements signed",
+        "roleKeys": [],
+        "gatesStep": 5
+      },
+      {
+        "step": 5,
+        "label": "Funded",
+        "description": "Capital wired — round closed",
+        "roleKeys": [],
+        "gatesStep": null
+      }
+    ],
+    "parallelTracks": [
+      { "label": "Banking", "roleKeys": ["banker"] }
+    ]
   }
 }
