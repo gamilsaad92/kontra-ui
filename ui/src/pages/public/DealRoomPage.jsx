@@ -9,7 +9,8 @@ import TasksPanel from "./TasksPanel";
 import AIOperationsManager from "./AIOperationsManager";
 import DailyStandup from "./DailyStandup";
 import InvitePanel from "./InvitePanel";
-import DocumentChecklistPanel, { getTemplate } from "./DocumentChecklistPanel";
+import DocumentChecklistPanel from "./DocumentChecklistPanel";
+import { getTemplate } from "./documentChecklistUtils";
 import { DEFAULT_PACK_ID, getWorkflowPack, ensureWorkflowPackLoaded } from "../../lib/workflowPacks";
 
 function usePageTitle(title) {
@@ -1171,7 +1172,7 @@ function buildPendingSectionMap(property, role, onAnalysisSaved, urlPropertyId, 
 export default function DealRoomPage() {
   const { propertyId } = useParams();
   const [searchParams] = useSearchParams();
-  const role = searchParams.get("role") || "lender";
+  const role = searchParams.get("role") || "owner";
   const from = searchParams.get("from") || "";
 
   const [checkoutLoading, setCheckoutLoading] = useState(false);

@@ -3,10 +3,6 @@ import { getWorkflowPack, DEFAULT_PACK_ID } from "../../lib/workflowPacks";
 
 const API_BASE = (import.meta.env.VITE_API_BASE || "").replace(/\/+$/, "");
 
-export function getTemplate(propertyType, packId = DEFAULT_PACK_ID) {
-  return getWorkflowPack(packId).getDocumentSchema(propertyType);
-}
-
 export default function DocumentChecklistPanel({ propertyId, propertyType, role, isDemo = false, packId = DEFAULT_PACK_ID }) {
   const workflowPack = getWorkflowPack(packId);
   const { getInlineFacts, getCompletenessIssues, factColors: FACT_COLORS, aiUploadEndpoints: AI_UPLOAD_ENDPOINTS } = workflowPack;
