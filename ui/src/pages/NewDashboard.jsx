@@ -6,13 +6,13 @@ import { useProperties } from "../hooks/useProperties";
 
 const ONBOARDING_STEPS = [
   {
-    n: 1, icon: "🏢", title: "Add your first property",
-    desc: "Name, address, type, occupancy. Takes 2 minutes.", href: "/app/add-property",
-    cta: "Add Property →",
+    n: 1, icon: "🗂️", title: "Create a deal room",
+    desc: "Choose your workflow — CRE, business acquisition, fundraising, or custom.", href: "/create-deal-room",
+    cta: "Create Workspace →",
   },
   {
-    n: 2, icon: "📁", title: "Upload a document",
-    desc: "Inspection report, lease, financials — AI will analyze it.", href: "/app/documents",
+    n: 2, icon: "📁", title: "Upload documents",
+    desc: "Drop in any document — AI analyzes it instantly.", href: "/app/documents",
     cta: "Upload Document →",
   },
   {
@@ -44,7 +44,7 @@ function OnboardingEmptyState({ userName }) {
         <div className="text-5xl mb-4">👋</div>
         <h1 className="text-2xl font-bold text-gray-900 mb-2">Welcome to Kontra, {userName}</h1>
         <p className="text-gray-500 text-sm max-w-md mx-auto leading-relaxed">
-          Your CRE workspace is ready. Let's set up your first property — it takes about 2 minutes.
+          Your workspace is ready. Create your first deal room — CRE, business acquisition, fundraising, or custom.
         </p>
       </div>
 
@@ -67,12 +67,12 @@ function OnboardingEmptyState({ userName }) {
 
       {/* Add property CTA */}
       <div className="text-center mb-16">
-        <Link to="/app/add-property"
+        <Link to="/create-deal-room"
           className="inline-flex items-center gap-2 px-8 py-3.5 rounded-xl text-sm font-semibold text-white transition hover:opacity-90"
           style={{ background: "#800020" }}>
-          + Add Your First Property
+          + Create Your First Workspace
         </Link>
-        <p className="text-xs text-gray-400 mt-3">Free · No credit card · Properties stored in your workspace</p>
+        <p className="text-xs text-gray-400 mt-3">$499 one-time · All parties included · Deal room live in minutes</p>
       </div>
 
       {/* Explore while you wait */}
@@ -82,7 +82,7 @@ function OnboardingEmptyState({ userName }) {
         </p>
         <div className="grid sm:grid-cols-3 gap-4 max-w-2xl mx-auto">
           {[
-            { icon: "🏠", title: "Browse Properties", desc: "Discover CRE assets on the marketplace", href: "/properties" },
+            { icon: "🏠", title: "Browse Listings", desc: "Discover deals on the marketplace", href: "/properties" },
             { icon: "🤖", title: "Free AI Tools", desc: "Inspection analyzer, health score, and more", href: "/ai-tools" },
             { icon: "🔧", title: "Service Providers", desc: "Inspectors, appraisers, property managers", href: "/service-providers" },
           ].map((item) => (
