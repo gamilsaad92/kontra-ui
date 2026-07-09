@@ -137,7 +137,7 @@ export default function HowItWorksPage() {
             <span style={{ color: "#e8a0a0" }}>Zero email chains.</span>
           </h1>
           <p className="text-gray-400 text-lg max-w-2xl mx-auto leading-relaxed">
-            From first document to tokenization-ready — see exactly how a CRE deal flows through Kontra, who does what, and what each party gets.
+            From first document to closing-ready — see exactly how a deal flows through Kontra, who does what, and what each party gets.
           </p>
         </div>
       </section>

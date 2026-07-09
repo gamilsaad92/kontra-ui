@@ -428,7 +428,7 @@ export default function AiToolsPage() {
           <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-green-900/40 text-green-400 text-xs font-semibold mb-5 border border-green-800/40">
             ✓ 4 tools free — no account required
           </div>
-          <h1 className="text-3xl md:text-4xl font-bold mb-4">AI Tools for CRE Operators</h1>
+          <h1 className="text-3xl md:text-4xl font-bold mb-4">AI Tools for Transaction Teams</h1>
           <p className="text-gray-400 text-sm max-w-xl mx-auto leading-relaxed">
             Upload a document. Get real AI analysis in seconds. Inspection reports, insurance policies, financial statements — powered by GPT-4o.
           </p>

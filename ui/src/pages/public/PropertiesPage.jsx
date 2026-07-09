@@ -72,7 +72,7 @@ export default function PropertiesPage() {
       {/* Page header */}
       <div className="bg-gray-50 border-b border-gray-200 py-10">
         <div className="max-w-7xl mx-auto px-6">
-          <h1 className="text-2xl font-bold text-gray-900 mb-1">CRE Properties</h1>
+          <h1 className="text-2xl font-bold text-gray-900 mb-1">Properties</h1>
           <p className="text-sm text-gray-500">Discover, track, and analyze commercial real estate assets across the US.</p>
         </div>
       </div>

@@ -15,7 +15,7 @@ export default function MarketplacePage() {
     <div>
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h2 className="text-xl font-bold text-gray-900">CRE Marketplace</h2>
+          <h2 className="text-xl font-bold text-gray-900">Marketplace</h2>
           <p className="text-sm text-gray-500 mt-0.5">Discover and track commercial real estate assets across the US.</p>
         </div>
         <Link to="/properties"

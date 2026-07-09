@@ -187,7 +187,7 @@ export default function PublicLayout({ children, hideFooter = false }) {
                   <span className="font-semibold text-gray-900">Kontra</span>
                 </div>
                 <p className="text-sm text-gray-500 leading-relaxed max-w-xs">
-                  The deal room where lenders, borrowers, inspectors, insurers, and investors work together on every CRE transaction.
+                  The workspace where every party on a transaction — lenders, borrowers, inspectors, insurers, buyers, sellers — works from the same verified data.
                 </p>
               </div>
               {[

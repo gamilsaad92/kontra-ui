@@ -382,7 +382,7 @@ export default function DealSharePage() {
               Kontra
             </span>
             <div>
-              <p className="text-sm font-bold text-gray-800">CRE deal room infrastructure</p>
+              <p className="text-sm font-bold text-gray-800">Transaction workspace infrastructure</p>
               <p className="text-xs text-gray-400">AI-analyzed documents · All parties in one place</p>
             </div>
           </div>

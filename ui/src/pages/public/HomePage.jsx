@@ -184,7 +184,7 @@ export default function HomePage() {
         <div className="max-w-7xl mx-auto px-6 pt-20 pb-24 text-center">
           <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-red-950/60 text-red-300 text-xs font-medium mb-8 border border-red-900/40">
             <span className="w-1.5 h-1.5 rounded-full bg-red-400 animate-pulse" />
-            AI Operations Manager for CRE — Now Live
+            AI Operations Manager — Now Live
           </div>
           <h1 className="text-4xl md:text-6xl font-bold leading-tight tracking-tight mb-6 max-w-4xl mx-auto">
             Every transaction gets its own Operations Manager.
@@ -473,12 +473,12 @@ export default function HomePage() {
       <section className="max-w-7xl mx-auto px-6 py-20">
         <div className="grid lg:grid-cols-2 gap-12 items-center">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: "#800020" }}>Built for how CRE actually works</p>
+            <p className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: "#800020" }}>Built for how complex transactions actually work</p>
             <h2 className="text-2xl font-bold text-gray-900 mb-4">
               Every party gets exactly what they need — nothing more
             </h2>
             <p className="text-gray-500 leading-relaxed mb-6">
-              CRE deals stall not because people can't find documents — they stall because no one is chasing the next step. Kontra's AI Operations Manager follows up with lender, inspector, insurer, and attorney automatically, and tells you exactly what's blocking closing. No more 700-email transactions. No more "who has the latest version?"
+              Deals stall not because people can't find documents — they stall because no one is chasing the next step. Kontra's AI Operations Manager follows up with the right people automatically, and tells you exactly what's blocking closing. No more 700-email transactions. No more "who has the latest version?"
             </p>
             <div className="space-y-2.5">
               {[

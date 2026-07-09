@@ -122,12 +122,12 @@ export default function LoginPage() {
         {/* Hero copy */}
         <div>
           <p className="mb-2 text-xs font-bold uppercase tracking-widest" style={{ color: "#800020" }}>
-            CRE Deal Room Infrastructure
+            Transaction Workspace Infrastructure
           </p>
           <h2 className="mb-4 text-3xl font-black leading-tight text-white" style={{ letterSpacing: "-0.03em" }}>
             {contextMessage
               ? <>One more step<br />to continue</>
-              : <>Your CRE workspace<br />starts here.</>}
+              : <>Your workspace<br />starts here.</>}
           </h2>
           {contextMessage ? (
             <div className="rounded-xl px-4 py-3 mb-4" style={{ background: "rgba(128,0,32,0.12)", border: "1px solid rgba(128,0,32,0.2)" }}>
