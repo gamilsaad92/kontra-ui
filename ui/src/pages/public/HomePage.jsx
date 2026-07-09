@@ -187,9 +187,7 @@ export default function HomePage() {
             AI Operations Manager for CRE — Now Live
           </div>
           <h1 className="text-4xl md:text-6xl font-bold leading-tight tracking-tight mb-6 max-w-4xl mx-auto">
-            Stop managing transactions.{" "}
-            <span style={{ color: "#e8a0a0" }}>Let Kontra manage them</span>{" "}
-            for you.
+            Every transaction gets its own Operations Manager.
           </h1>
           <p className="text-lg text-gray-400 max-w-2xl mx-auto mb-10 leading-relaxed">
             Every deal room comes with its own AI Operations Manager. It follows up with the right people,
@@ -201,7 +199,7 @@ export default function HomePage() {
             <Link to="/create-deal-room"
               className="px-7 py-3.5 rounded-xl text-sm font-semibold text-white transition hover:opacity-90"
               style={{ background: "#800020" }}>
-              Create Your Deal Room — $499
+              Create Your Workspace — $499
             </Link>
             <Link to="/deal-room/kontra-demo"
               className="px-7 py-3.5 rounded-xl text-sm font-semibold border border-white/30 text-white hover:bg-white/10 transition flex items-center gap-2">
@@ -544,7 +542,7 @@ export default function HomePage() {
             <Link to="/create-deal-room"
               className="px-8 py-3.5 rounded-xl text-sm font-semibold text-white transition hover:opacity-90"
               style={{ background: "#800020" }}>
-              Create Your Deal Room →
+              Create Your Workspace →
             </Link>
             <Link to="/properties"
               className="px-8 py-3.5 rounded-xl text-sm font-semibold border border-white/20 text-white hover:bg-white/10 transition">
