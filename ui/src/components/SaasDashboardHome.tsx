@@ -44,6 +44,33 @@ function SevDot({ sev }: { sev: string }) {
   );
 }
 
+function buildMemo(alerts: typeof DEMO_ALERTS, firstName: string): { memo: string; actions: { label: string; route: string }[] } {
+  const high = alerts.filter((a) => a.sev === "high");
+  const med = alerts.filter((a) => a.sev === "medium");
+  const actions = [...high, ...med].slice(0, 2).map((a) => ({ label: `${a.property} — ${a.issue.split("—")[0].trim()}`, route: a.route }));
+
+  if (high.length === 0) {
+    return {
+      memo: `${firstName}, your portfolio is clean today. No critical flags across 847 active loans. Three medium items are open — insurance expiry on Sunset Ridge is the closest deadline at 14 days.`,
+      actions,
+    };
+  }
+
+  if (high.length === 1) {
+    const h = high[0];
+    return {
+      memo: `${firstName}, one item needs your attention today. ${h.property} (${h.loan}) has a ${h.issue.toLowerCase()}. I've flagged it for immediate review — everything else in the portfolio is tracking normally.`,
+      actions,
+    };
+  }
+
+  const [h1, h2] = high;
+  return {
+    memo: `${firstName}, two items need immediate attention. ${h1.property} has a ${h1.issue.split("—")[1]?.trim() || h1.issue} — below the required floor. ${h2.property}'s ${h2.issue.toLowerCase()}. I've queued both for your review.`,
+    actions,
+  };
+}
+
 export default function SaasDashboardHome({ apiBase }: Props) {
   const { session } = useContext(AuthContext);
   const [kpis, setKpis] = useState(DEMO_KPIS);
@@ -52,6 +79,7 @@ export default function SaasDashboardHome({ apiBase }: Props) {
   const firstName = user?.first_name || "Alex";
   const hour = new Date().getHours();
   const greeting = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
+  const { memo, actions } = buildMemo(DEMO_ALERTS, firstName);
 
   useEffect(() => {
     document.title = "Kontra · Lender Dashboard";
@@ -77,10 +105,7 @@ export default function SaasDashboardHome({ apiBase }: Props) {
       <div className="px-6 pt-6 pb-4 border-b border-white/5">
         <div className="flex items-start justify-between">
           <div>
-            <h1 className="text-xl font-semibold text-white" style={{ letterSpacing: "-0.02em" }}>
-              {greeting}, {firstName}.
-            </h1>
-            <p className="text-sm text-slate-500 mt-0.5">
+            <p className="text-sm text-slate-500">
               {new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })} · Platform Demo
             </p>
           </div>
@@ -111,6 +136,72 @@ export default function SaasDashboardHome({ apiBase }: Props) {
       </div>
 
       <div className="px-6 py-5 space-y-6">
+
+        {/* ── AI Operations Manager Briefing ── */}
+        <div
+          className="rounded-2xl p-5"
+          style={{
+            background: "linear-gradient(135deg, rgba(128,0,32,0.12) 0%, rgba(15,23,42,0.8) 60%)",
+            border: "1px solid rgba(128,0,32,0.25)",
+          }}
+        >
+          <div className="flex items-start justify-between gap-4">
+            <div className="flex-1 min-w-0">
+              {/* Header */}
+              <div className="flex items-center gap-2 mb-3">
+                <span
+                  className="h-1.5 w-1.5 rounded-full animate-pulse"
+                  style={{ background: "#d4687a", boxShadow: "0 0 6px rgba(212,104,122,0.8)" }}
+                />
+                <span className="text-[11px] font-semibold tracking-widest uppercase" style={{ color: "#d4687a" }}>
+                  AI Operations Manager
+                </span>
+              </div>
+
+              {/* Greeting */}
+              <h1 className="text-xl font-semibold text-white mb-2" style={{ letterSpacing: "-0.02em" }}>
+                {greeting}, {firstName}.
+              </h1>
+
+              {/* Memo */}
+              <p className="text-sm text-slate-300 leading-relaxed max-w-2xl mb-4" style={{ fontVariantNumeric: "tabular-nums" }}>
+                {memo}
+              </p>
+
+              {/* Action items */}
+              {actions.length > 0 && (
+                <div className="flex flex-col gap-1.5">
+                  {actions.map((a, i) => (
+                    <Link
+                      key={i}
+                      to={a.route}
+                      className="inline-flex items-center gap-2 text-xs text-slate-400 hover:text-white transition group w-fit"
+                    >
+                      <span
+                        className="h-4 w-4 rounded flex items-center justify-center text-[9px] font-bold shrink-0 group-hover:scale-110 transition-transform"
+                        style={{ background: "rgba(128,0,32,0.3)", color: "#d4687a" }}
+                      >
+                        {i + 1}
+                      </span>
+                      <span className="truncate">{a.label}</span>
+                      <span className="opacity-0 group-hover:opacity-100 transition">→</span>
+                    </Link>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Full briefing link */}
+            <Link
+              to="/ai-copilot"
+              className="shrink-0 rounded-xl px-4 py-2.5 text-xs font-semibold transition hover:opacity-90 whitespace-nowrap"
+              style={{ background: "rgba(128,0,32,0.25)", color: "#d4687a", border: "1px solid rgba(128,0,32,0.3)" }}
+            >
+              Full briefing →
+            </Link>
+          </div>
+        </div>
+
         {/* KPI row */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           {kpis.map((kpi) => (
