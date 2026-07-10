@@ -1014,8 +1014,12 @@ app.post('/api/checkout/demo', async (req, res) => {
     try {
       const { error: upsertErr } = await supabase.from('deal_rooms').upsert(dealRoomRecord, { onConflict: 'property_id' });
       if (upsertErr) {
-        // 42703 = column does not exist — workflow_pack_id column not yet migrated; retry without it
-        if (upsertErr.code === '42703') {
+        // 42703 = raw Postgres "column does not exist"; PGRST204 = PostgREST
+        // schema-cache miss for the column (what Supabase actually returns).
+        // Either way workflow_pack_id isn't migrated yet — retry without it.
+        const isMissingColumn = upsertErr.code === '42703' || upsertErr.code === 'PGRST204' ||
+          /column .*workflow_pack_id.* schema cache/i.test(upsertErr.message || '');
+        if (isMissingColumn) {
           const { workflow_pack_id: _drop, ...baseRecord } = dealRoomRecord;
           const { error: retryErr } = await supabase.from('deal_rooms').upsert(baseRecord, { onConflict: 'property_id' });
           if (retryErr) throw retryErr;
@@ -1099,8 +1103,12 @@ app.post('/api/webhook/stripe',
       try {
         const { error: wErr } = await supabase.from('deal_rooms').upsert(dealRoomRecord, { onConflict: 'property_id' });
         if (wErr) {
-          // 42703 = column does not exist — workflow_pack_id column not yet migrated; retry without it
-          if (wErr.code === '42703') {
+          // 42703 = raw Postgres "column does not exist"; PGRST204 = PostgREST
+          // schema-cache miss for the column (what Supabase actually returns).
+          // Either way workflow_pack_id isn't migrated yet — retry without it.
+          const isMissingColumn = wErr.code === '42703' || wErr.code === 'PGRST204' ||
+            /column .*workflow_pack_id.* schema cache/i.test(wErr.message || '');
+          if (isMissingColumn) {
             const { workflow_pack_id: _drop, ...baseRecord } = dealRoomRecord;
             const { error: retryErr } = await supabase.from('deal_rooms').upsert(baseRecord, { onConflict: 'property_id' });
             if (retryErr) throw retryErr;
