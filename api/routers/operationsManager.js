@@ -6,7 +6,7 @@
 // created. See lib/operationsManager.js and .agents/memory/kontra-task-architecture.md.
 const express = require('express');
 const router = express.Router();
-const { getBriefing, askQuestion } = require('../lib/operationsManager');
+const { getBriefing, getStandup, askQuestion } = require('../lib/operationsManager');
 
 router.get('/deal-room/:propertyId/brain/briefing', async (req, res) => {
   try {
@@ -15,6 +15,16 @@ router.get('/deal-room/:propertyId/brain/briefing', async (req, res) => {
   } catch (err) {
     console.error('[operationsManager] briefing failed:', err.message);
     res.status(500).json({ error: 'Failed to load briefing' });
+  }
+});
+
+router.get('/deal-room/:propertyId/brain/standup', async (req, res) => {
+  try {
+    const standup = await getStandup(req.params.propertyId);
+    res.json(standup);
+  } catch (err) {
+    console.error('[operationsManager] standup failed:', err.message);
+    res.status(500).json({ error: 'Failed to load standup' });
   }
 });
 

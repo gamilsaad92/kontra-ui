@@ -411,13 +411,137 @@ If the question cannot be answered from context, say so directly.`,
   }
 }
 
+// ── Daily standup (evening wrap-up) ───────────────────────────────────────────
+const standupCache = new Map();
+
+function getCachedStandup(propertyId) {
+  const entry = standupCache.get(propertyId);
+  if (entry && Date.now() < entry.expiresAt) return entry.data;
+  standupCache.delete(propertyId);
+  return null;
+}
+
+function setCachedStandup(propertyId, data) {
+  standupCache.set(propertyId, { data, expiresAt: Date.now() + BRIEFING_TTL_MS });
+}
+
+function describeStandupTask(ctx, t) {
+  return {
+    id: t.id,
+    title: t.title,
+    ownedBy: t.owner_type === 'ai' ? 'AI' : getPackRoleLabel(ctx.packId, t.owner_role || 'unknown'),
+    status: t.status,
+  };
+}
+
+function buildFallbackStandup(ctx, completedToday, stillBlocked) {
+  const narrative = completedToday.length
+    ? `${completedToday.length} item${completedToday.length === 1 ? '' : 's'} completed today.` +
+      (stillBlocked.length
+        ? ` ${stillBlocked.length} item${stillBlocked.length === 1 ? '' : 's'} still ${stillBlocked.length === 1 ? 'is' : 'are'} open.`
+        : ' Nothing else is blocking closing.')
+    : stillBlocked.length
+      ? `No items were completed today. ${stillBlocked.length} item${stillBlocked.length === 1 ? '' : 's'} remain open.`
+      : 'No activity today. Nothing is blocking closing.';
+
+  return {
+    date: new Date().toISOString().slice(0, 10),
+    narrative,
+    tomorrowPlan: stillBlocked.slice(0, 3).map(t => `Follow up on: ${t.title}`),
+    risks: [],
+    completedToday,
+    stillBlocked,
+    completedCount: completedToday.length,
+    blockedCount: stillBlocked.length,
+  };
+}
+
+async function getStandup(propertyId) {
+  const cached = getCachedStandup(propertyId);
+  if (cached) return cached;
+
+  const { listTasksForRoom: listTasks } = require('./taskEngine');
+  const [ctx, allTasks] = await Promise.all([
+    buildGroundedContext(propertyId),
+    listTasks(propertyId),
+  ]);
+
+  const startOfToday = new Date();
+  startOfToday.setUTCHours(0, 0, 0, 0);
+
+  const completedToday = allTasks
+    .filter(t => ['completed', 'dismissed'].includes(t.status) && t.updated_at && new Date(t.updated_at) >= startOfToday)
+    .map(t => describeStandupTask(ctx, t));
+
+  const stillBlocked = (ctx.chainStatus?.activeStep?.openTasks || []).map(t => describeStandupTask(ctx, t));
+
+  const fallback = () => {
+    const result = buildFallbackStandup(ctx, completedToday, stillBlocked);
+    setCachedStandup(propertyId, result);
+    return result;
+  };
+
+  const openai = getOpenAI();
+  if (!openai) return fallback();
+
+  try {
+    const resp = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      response_format: { type: 'json_object' },
+      messages: [
+        {
+          role: 'system',
+          content: `${GROUNDING_RULES}
+
+This is an END-OF-DAY STANDUP, not the morning briefing. "Completed today" and "still blocked" have
+already been computed deterministically from real task data — do not restate them as lists, just
+reason about them narratively.
+
+Respond as JSON:
+{
+  "narrative": string (2-3 sentences max. What moved today, and what's still open. Be specific about
+    the active chain step if something is blocked. If nothing happened today, say so plainly.),
+  "tomorrowPlan": [string] (1-3 short, concrete next steps for tomorrow, grounded only in open_tasks
+    and closing_chain — never invent new tasks),
+  "risks": [string] (0-2 short items naming anything at real risk of slipping, e.g. a task that has
+    been open a long time relative to the closing date. Return [] if nothing is clearly at risk.)
+}`,
+        },
+        {
+          role: 'user',
+          content: `${contextToPrompt(ctx)}\n\nCompleted today: ${JSON.stringify(completedToday)}`,
+        },
+      ],
+    });
+    const parsed = JSON.parse(resp.choices[0].message.content || '{}');
+
+    const result = {
+      date: new Date().toISOString().slice(0, 10),
+      narrative: parsed.narrative || null,
+      tomorrowPlan: Array.isArray(parsed.tomorrowPlan) ? parsed.tomorrowPlan : [],
+      risks: Array.isArray(parsed.risks) ? parsed.risks : [],
+      completedToday,
+      stillBlocked,
+      completedCount: completedToday.length,
+      blockedCount: stillBlocked.length,
+    };
+    setCachedStandup(propertyId, result);
+    return result;
+  } catch (err) {
+    console.error('[operationsManager] getStandup LLM error:', err.message);
+    return fallback();
+  }
+}
+
 function clearCache(propertyId) {
   briefingCache.delete(propertyId);
+  standupCache.delete(propertyId);
 }
 
 module.exports = {
   buildGroundedContext,
   getBriefing,
+  getStandup,
   askQuestion,
   clearCache,
 };
