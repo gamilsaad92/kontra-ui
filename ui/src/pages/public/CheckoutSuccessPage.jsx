@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import PublicLayout from "./PublicLayout";
-import { getWorkflowPack, ensureWorkflowPackLoaded } from "../../lib/workflowPacks";
+import { getWorkflowPack, ensureWorkflowPackLoaded, resolvePackId } from "../../lib/workflowPacks";
 
 const API_BASE = (import.meta.env.VITE_API_BASE || "").replace(/\/+$/, "");
 
@@ -35,8 +35,9 @@ export default function CheckoutSuccessPage() {
       .then((r) => (r.ok ? r.json() : null))
       .then(async (room) => {
         if (!room || room.error) return;
-        if (room.workflow_pack_id) await ensureWorkflowPackLoaded(room.workflow_pack_id);
-        const pack = getWorkflowPack(room.workflow_pack_id);
+        const packId = resolvePackId(room);
+        if (packId) await ensureWorkflowPackLoaded(packId);
+        const pack = getWorkflowPack(packId);
         const invitable = (pack.roles || [])
           .filter((r) => r.invitable)
           .map((r) => ({ id: r.key, icon: r.icon, label: r.label }));

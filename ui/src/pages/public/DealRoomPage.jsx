@@ -11,7 +11,7 @@ import DailyStandup from "./DailyStandup";
 import InvitePanel from "./InvitePanel";
 import DocumentChecklistPanel from "./DocumentChecklistPanel";
 import { getTemplate } from "./documentChecklistUtils";
-import { DEFAULT_PACK_ID, getWorkflowPack, ensureWorkflowPackLoaded } from "../../lib/workflowPacks";
+import { DEFAULT_PACK_ID, getWorkflowPack, ensureWorkflowPackLoaded, resolvePackId } from "../../lib/workflowPacks";
 
 function usePageTitle(title) {
   useEffect(() => {
@@ -1302,32 +1302,11 @@ export default function DealRoomPage() {
 
   // Which Workflow Pack powers this deal room. Demo properties are always
   // CRE Acquisition; custom rooms carry their pack id from creation time.
-  //
-  // Priority: deal_type inference wins when it gives a definitive non-CRE answer,
-  // because: (a) the workflow_pack_id DB column may not exist on older Supabase
-  // instances (column added by manual migration 005), causing the field to come
-  // back undefined; (b) even if the column exists, its DEFAULT 'cre_acquisition'
-  // may have overwritten the actual pack for rooms created before migration ran.
-  // deal_type is always stored correctly and is the ground truth from the form.
-  const DEAL_TYPE_TO_PACK = {
-    // CRE types — explicit so inference returns the default and doesn't fall through
-    acquisition: DEFAULT_PACK_ID, refinance: DEFAULT_PACK_ID, construction: DEFAULT_PACK_ID,
-    flag_conversion: DEFAULT_PACK_ID, sale: DEFAULT_PACK_ID, ground_lease: DEFAULT_PACK_ID,
-    // Business acquisition sub-types + direct pack-id alias
-    full_acquisition: "business_acquisition", asset_purchase: "business_acquisition",
-    mbo: "business_acquisition", merger: "business_acquisition",
-    business_acquisition: "business_acquisition",
-    // Fundraising sub-types + direct pack-id alias
-    seed: "fundraising", series_a: "fundraising", series_b_plus: "fundraising", bridge: "fundraising",
-    fundraising: "fundraising",
-  };
-  // null means "no signal from deal_type" (empty / unknown type) — fall back to stored value
-  const inferredPackId = apiProperty?.deal_type
-    ? (DEAL_TYPE_TO_PACK[apiProperty.deal_type] ?? null)
-    : null;
-  const packId = demoProperty
-    ? DEFAULT_PACK_ID
-    : (inferredPackId ?? apiProperty?.workflow_pack_id ?? DEFAULT_PACK_ID);
+  // Resolution (deal_type inference wins over the stored workflow_pack_id
+  // column) lives in one shared place — lib/workflowPacks.resolvePackId —
+  // so every page that needs a room's pack (this page, checkout success,
+  // invite links, etc.) agrees, instead of duplicating/drifting logic.
+  const packId = demoProperty ? DEFAULT_PACK_ID : resolvePackId(apiProperty);
   const pack = getWorkflowPack(packId);
   const isCREPack = packId === DEFAULT_PACK_ID;
 

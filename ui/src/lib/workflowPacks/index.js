@@ -106,6 +106,31 @@ export function getWorkflowPack(packId) {
   return PACKS[packId] || PACKS[DEFAULT_PACK_ID];
 }
 
+// deal_type -> pack id. Priority: deal_type inference wins over the stored
+// workflow_pack_id column, because (a) that column may not exist yet on
+// older/production Supabase schemas (returns undefined), and (b) even where
+// it exists its DEFAULT may have overwritten the true pack for rooms created
+// before a migration ran. deal_type is always stored correctly and is the
+// ground truth captured from the creation form — every place that resolves
+// a room's pack (deal room page, checkout success, invite links, etc.)
+// should go through this one function instead of reading workflow_pack_id
+// directly.
+const DEAL_TYPE_TO_PACK = {
+  acquisition: DEFAULT_PACK_ID, refinance: DEFAULT_PACK_ID, construction: DEFAULT_PACK_ID,
+  flag_conversion: DEFAULT_PACK_ID, sale: DEFAULT_PACK_ID, ground_lease: DEFAULT_PACK_ID,
+  full_acquisition: "business_acquisition", asset_purchase: "business_acquisition",
+  mbo: "business_acquisition", merger: "business_acquisition",
+  business_acquisition: "business_acquisition",
+  seed: "fundraising", series_a: "fundraising", series_b_plus: "fundraising", bridge: "fundraising",
+  fundraising: "fundraising",
+};
+
+export function resolvePackId(room) {
+  if (!room) return DEFAULT_PACK_ID;
+  const inferred = room.deal_type ? (DEAL_TYPE_TO_PACK[room.deal_type] ?? null) : null;
+  return inferred ?? room.workflow_pack_id ?? DEFAULT_PACK_ID;
+}
+
 export function listWorkflowPacks() {
   return Object.values(PACKS).map(p => ({
     id: p.id,

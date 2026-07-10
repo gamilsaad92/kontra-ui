@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useParams, Link } from "react-router-dom";
-import { getWorkflowPack, ensureWorkflowPackLoaded } from "../../lib/workflowPacks";
+import { getWorkflowPack, ensureWorkflowPackLoaded, resolvePackId } from "../../lib/workflowPacks";
 
 const API_BASE = (import.meta.env.VITE_API_BASE || "").replace(/\/+$/, "");
 
@@ -24,8 +24,8 @@ const FALLBACK_ROLE_LABELS = {
 // a human label per role key, so this reads straight from the pack instead
 // of hardcoding CRE role keys (which don't match Business Acquisition roles
 // like buyer/seller/cpa/counsel).
-function getRoleLabel(role, workflowPackId) {
-  const pack = getWorkflowPack(workflowPackId);
+function getRoleLabel(role, room) {
+  const pack = getWorkflowPack(resolvePackId(room));
   return pack.getRoleLabel?.(role) || FALLBACK_ROLE_LABELS[role] || role;
 }
 
@@ -33,8 +33,8 @@ function getRoleLabel(role, workflowPackId) {
 // role is "owner" but Business Acquisition has no "owner" role (its primary
 // role is "buyer"), so this must come from the pack's role list, not be
 // hardcoded.
-function getPrimaryRole(workflowPackId) {
-  const pack = getWorkflowPack(workflowPackId);
+function getPrimaryRole(room) {
+  const pack = getWorkflowPack(resolvePackId(room));
   return pack.roles?.[0]?.key || "owner";
 }
 
@@ -152,7 +152,8 @@ export default function DealSummaryPage() {
       fetch(`${API_BASE}/api/public/deal-room/${propertyId}/coordination`).then(r => r.ok ? r.json() : { parties: [] }),
     ]).then(async ([roomData, anData, coordData]) => {
       if (roomData.error) { setError(roomData.error); return; }
-      if (roomData.workflow_pack_id) await ensureWorkflowPackLoaded(roomData.workflow_pack_id);
+      const packId = resolvePackId(roomData);
+      if (packId) await ensureWorkflowPackLoaded(packId);
       setRoom(roomData);
       setAn(anData.analyses || []);
       setParties(coordData.parties || []);
@@ -170,7 +171,7 @@ export default function DealSummaryPage() {
     <div className="min-h-screen flex items-center justify-center bg-white">
       <div className="text-center">
         <p className="text-red-500 text-sm mb-4">{error}</p>
-        <Link to={`/deal-room/${propertyId}?role=${getPrimaryRole(room?.workflow_pack_id)}`} className="text-sm underline text-gray-500">
+        <Link to={`/deal-room/${propertyId}?role=${getPrimaryRole(room)}`} className="text-sm underline text-gray-500">
           ← Back to deal room
         </Link>
       </div>
@@ -194,7 +195,7 @@ export default function DealSummaryPage() {
 
       {/* Toolbar — hidden when printing */}
       <div className="no-print bg-white border-b border-gray-100 px-6 py-3 flex items-center justify-between sticky top-0 z-10 shadow-sm">
-        <Link to={`/deal-room/${propertyId}?role=${getPrimaryRole(room?.workflow_pack_id)}`}
+        <Link to={`/deal-room/${propertyId}?role=${getPrimaryRole(room)}`}
           className="text-sm text-gray-500 hover:text-gray-800 flex items-center gap-1.5 transition">
           ← Back to deal room
         </Link>
@@ -354,7 +355,7 @@ export default function DealSummaryPage() {
                     return (
                       <tr key={p.role} className={i % 2 === 0 ? "bg-white" : "bg-gray-50/40"}>
                         <td className="px-4 py-2.5 font-semibold text-gray-700 text-xs">
-                          {getRoleLabel(p.role, room.workflow_pack_id)}
+                          {getRoleLabel(p.role, room)}
                         </td>
                         <td className="px-4 py-2.5 text-gray-600 text-xs">{p.name || "—"}</td>
                         <td className="px-4 py-2.5 text-gray-500 text-xs">{p.doc_count || 0}</td>
