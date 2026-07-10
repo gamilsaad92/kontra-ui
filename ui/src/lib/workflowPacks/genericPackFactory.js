@@ -229,12 +229,37 @@ export function createGenericPack(config) {
     return { score, actions };
   }
 
+  // ── Onboarding checklist ("Step 2 — Populate your deal room") ────────────
+  // Built-in packs (CRE/Business Acquisition/Fundraising) hand-write these
+  // for a polished, deal-specific narrative. A custom pack built through the
+  // Workflow Pack Builder UI can optionally do the same (config.onboardingSteps),
+  // but if it doesn't, derive a sensible default straight from the pack's own
+  // document checklist + roles so it never falls back to another pack's copy.
+  function defaultOnboardingSteps() {
+    const steps = documentSchema.slice(0, 3).map(doc => ({
+      icon: "📄",
+      title: `Add ${doc.label.toLowerCase()}`,
+      desc: doc.ai
+        ? "AI reviews it automatically and surfaces key details."
+        : "Upload it to keep this deal room moving.",
+    }));
+    const docUploaderRole = roles.find(r => r.needsDocs && r.key !== roles[0]?.key);
+    if (docUploaderRole) {
+      steps.push({
+        icon: docUploaderRole.icon || "📨",
+        title: `Invite the ${docUploaderRole.label.toLowerCase()}`,
+        desc: "Send their role-specific link above so their documents land directly in this room.",
+      });
+    }
+    return steps;
+  }
+
   return {
     id,
     name,
     description,
     checklistTitle: config.checklistTitle || `${name} Checklist`,
-    onboardingSteps: config.onboardingSteps || [],
+    onboardingSteps: config.onboardingSteps?.length ? config.onboardingSteps : defaultOnboardingSteps(),
     roles,
     stages,
     nextStage,

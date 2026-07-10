@@ -100,8 +100,8 @@ router.post('/workflow-packs', async (req, res) => {
   const pg = getPg();
   if (!pg) return res.status(503).json({ error: 'Database unavailable' });
 
-  const { name, description = '', roles, stages, documents } = req.body || {};
-  const config = { name, description, roles, stages, documents };
+  const { name, description = '', roles, stages, documents, onboardingSteps } = req.body || {};
+  const config = { name, description, roles, stages, documents, ...(Array.isArray(onboardingSteps) && onboardingSteps.length ? { onboardingSteps } : {}) };
   const errors = validateConfig(config);
   if (errors.length) return res.status(400).json({ error: errors.join('; ') });
 

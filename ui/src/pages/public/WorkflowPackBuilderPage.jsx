@@ -27,6 +27,10 @@ function newDocument() {
   return { id: "", label: "", required: true, ai: false, metrics: "" };
 }
 
+function newOnboardingStep() {
+  return { icon: "📄", title: "", desc: "" };
+}
+
 function slugKey(s) {
   return String(s || "").toLowerCase().trim().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
 }
@@ -38,6 +42,7 @@ export default function WorkflowPackBuilderPage() {
   const [roles, setRoles] = useState([newRole(0), newRole(1)]);
   const [stages, setStages] = useState([{ key: "uploading", label: "Uploading Documents" }, { key: "under_review", label: "Under Review" }, { key: "approved", label: "Approved" }]);
   const [documents, setDocuments] = useState([newDocument()]);
+  const [onboardingSteps, setOnboardingSteps] = useState([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [saved, setSaved] = useState(null);
@@ -45,6 +50,7 @@ export default function WorkflowPackBuilderPage() {
   const updateRole = (i, patch) => setRoles(rs => rs.map((r, idx) => idx === i ? { ...r, ...patch } : r));
   const updateStage = (i, patch) => setStages(ss => ss.map((s, idx) => idx === i ? { ...s, ...patch } : s));
   const updateDoc = (i, patch) => setDocuments(ds => ds.map((d, idx) => idx === i ? { ...d, ...patch } : d));
+  const updateStep = (i, patch) => setOnboardingSteps(steps => steps.map((s, idx) => idx === i ? { ...s, ...patch } : s));
 
   const canSave = name.trim() &&
     roles.length > 0 && roles.every(r => r.key.trim() && r.label.trim()) &&
@@ -75,6 +81,9 @@ export default function WorkflowPackBuilderPage() {
             },
           } : {}),
         })),
+        onboardingSteps: onboardingSteps
+          .filter(s => s.title.trim())
+          .map(s => ({ icon: s.icon || "📄", title: s.title.trim(), desc: s.desc.trim() })),
       };
       const res = await fetch(`${API_BASE}/api/workflow-packs`, {
         method: "POST",
@@ -105,7 +114,7 @@ export default function WorkflowPackBuilderPage() {
               <button onClick={() => navigate("/create-deal-room")} className="w-full py-2.5 rounded-lg text-white font-semibold text-sm" style={{ background: "#800020" }}>
                 Create a deal room with it →
               </button>
-              <button onClick={() => { setSaved(null); setName(""); setDescription(""); setRoles([newRole(0), newRole(1)]); setStages([{ key: "uploading", label: "Uploading Documents" }, { key: "under_review", label: "Under Review" }, { key: "approved", label: "Approved" }]); setDocuments([newDocument()]); }}
+              <button onClick={() => { setSaved(null); setName(""); setDescription(""); setRoles([newRole(0), newRole(1)]); setStages([{ key: "uploading", label: "Uploading Documents" }, { key: "under_review", label: "Under Review" }, { key: "approved", label: "Approved" }]); setDocuments([newDocument()]); setOnboardingSteps([]); }}
                 className="w-full py-2.5 rounded-lg border border-gray-200 text-gray-700 font-semibold text-sm hover:bg-gray-50">
                 Build another pack
               </button>
@@ -224,6 +233,37 @@ export default function WorkflowPackBuilderPage() {
                   )}
                 </div>
               ))}
+            </div>
+          </section>
+
+          {/* Onboarding checklist copy (optional) */}
+          <section className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6 mb-5">
+            <div className="flex items-center justify-between mb-1">
+              <h2 className="font-semibold text-gray-900">Onboarding checklist (optional)</h2>
+              <button onClick={() => setOnboardingSteps(steps => [...steps, newOnboardingStep()])}
+                className="text-xs font-semibold text-red-800 hover:underline">+ Add step</button>
+            </div>
+            <p className="text-xs text-gray-400 mb-4">
+              Shown as "Step 2 — Populate your deal room" after checkout. Leave blank and we'll generate sensible steps from your document checklist automatically.
+            </p>
+            <div className="space-y-3">
+              {onboardingSteps.map((s, i) => (
+                <div key={i} className="border border-gray-200 rounded-xl p-3.5 space-y-2">
+                  <div className="flex items-center gap-2">
+                    <select value={s.icon} onChange={e => updateStep(i, { icon: e.target.value })} className="border border-gray-200 rounded-lg px-2 py-1.5 text-sm">
+                      {ICON_CHOICES.map(ic => <option key={ic} value={ic}>{ic}</option>)}
+                    </select>
+                    <input value={s.title} onChange={e => updateStep(i, { title: e.target.value })}
+                      placeholder="Step title (e.g. Upload financial statements)" className="flex-1 border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm" />
+                    <button onClick={() => setOnboardingSteps(steps => steps.filter((_, idx) => idx !== i))} className="text-gray-400 hover:text-red-600 text-xs">Remove</button>
+                  </div>
+                  <input value={s.desc} onChange={e => updateStep(i, { desc: e.target.value })}
+                    placeholder="Short description of what happens next" className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs" />
+                </div>
+              ))}
+              {onboardingSteps.length === 0 && (
+                <p className="text-xs text-gray-400 italic">No custom steps yet — default steps will be generated from your document checklist.</p>
+              )}
             </div>
           </section>
 

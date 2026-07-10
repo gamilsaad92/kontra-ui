@@ -58,6 +58,7 @@ export function registerCustomPack(config) {
     roles: (config.roles || []).map((r, i) => withRoleCopyDefaults(r, i === 0)),
     stages: config.stages,
     documentSchema: (config.documents || []).map(d => ({ ...d, section: d.section || d.id })),
+    onboardingSteps: config.onboardingSteps,
   });
   PACKS[config.id] = pack;
   return pack;
