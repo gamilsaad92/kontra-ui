@@ -523,11 +523,18 @@ export function computeHealth(analyses, submissions) {
   return { score: Math.max(0, Math.min(100, score)), actions };
 }
 
+export const onboardingSteps = [
+  { icon: "📄", title: "Upload financial statements", desc: "Operating statement, rent roll, T12 — AI structures them automatically" },
+  { icon: "🔍", title: "Request an inspection report", desc: "Send the inspector link above; their report goes directly into the room" },
+  { icon: "🛡️", title: "Add insurance certificate", desc: "AI reviews coverage gaps and tracks expiration dates for your lender" },
+];
+
 export const creAcquisitionPack = {
   id: "cre_acquisition",
   name: "CRE Acquisition",
   description: "Buying, refinancing, or converting a commercial property",
   checklistTitle: "Due Diligence Checklist",
+  onboardingSteps,
   roles,
   stages,
   nextStage,

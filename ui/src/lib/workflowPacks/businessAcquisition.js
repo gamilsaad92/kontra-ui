@@ -158,11 +158,18 @@ function getSnapshotFlag(bySection) {
   return null;
 }
 
+export const onboardingSteps = [
+  { icon: "📄", title: "Upload financial statements", desc: "P&L, balance sheet, tax returns — AI structures them automatically" },
+  { icon: "🧮", title: "Request a quality of earnings report", desc: "Send the CPA link above; their report goes directly into the room" },
+  { icon: "⚖️", title: "Add the purchase agreement", desc: "AI reviews terms and flags disclosure gaps for legal counsel" },
+];
+
 export const businessAcquisitionPack = createGenericPack({
   id: "business_acquisition",
   name: "Business Acquisition",
   description: "Buying or selling a company (LOI through closing)",
   checklistTitle: "Due Diligence Checklist",
+  onboardingSteps,
   roles,
   stages,
   advanceLabel,

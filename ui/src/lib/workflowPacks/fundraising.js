@@ -153,11 +153,18 @@ function getSnapshotFlag(bySection) {
   return null;
 }
 
+export const onboardingSteps = [
+  { icon: "📈", title: "Upload financial statements", desc: "MRR, burn rate, runway — AI structures them automatically" },
+  { icon: "🧾", title: "Request audited financials", desc: "Send the auditor link above; their report goes directly into the room" },
+  { icon: "📝", title: "Add the term sheet & cap table", desc: "AI tracks ownership changes and flags terms investors should review" },
+];
+
 export const fundraisingPack = createGenericPack({
   id: "fundraising",
   name: "Fundraising",
   description: "Raising an investment round (term sheet through funding)",
   checklistTitle: "Fundraising Checklist",
+  onboardingSteps,
   roles,
   stages,
   advanceLabel,

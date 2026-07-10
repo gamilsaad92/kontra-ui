@@ -234,6 +234,7 @@ export function createGenericPack(config) {
     name,
     description,
     checklistTitle: config.checklistTitle || `${name} Checklist`,
+    onboardingSteps: config.onboardingSteps || [],
     roles,
     stages,
     nextStage,
