@@ -3,29 +3,29 @@ import { Link } from "react-router-dom";
 import PublicLayout from "./PublicLayout";
 
 const PARTIES = [
-  { icon: "🏦", label: "Lenders",       color: "#800020" },
-  { icon: "🏢", label: "Borrowers",     color: "#1e40af" },
-  { icon: "📊", label: "Investors",     color: "#6d28d9" },
-  { icon: "🔍", label: "Inspectors",    color: "#d97706" },
-  { icon: "🛡️", label: "Insurers",      color: "#065f46" },
-  { icon: "📐", label: "Underwriters",  color: "#7c3aed" },
-  { icon: "🏗️", label: "Engineers",     color: "#0369a1" },
-  { icon: "⚙️", label: "Servicers",     color: "#92400e" },
+  { icon: "🏦", label: "Lenders & Investors",  color: "#800020" },
+  { icon: "🏢", label: "Buyers & Borrowers",   color: "#1e40af" },
+  { icon: "🏪", label: "Sellers",              color: "#0369a1" },
+  { icon: "🚀", label: "Founders & CEOs",      color: "#6d28d9" },
+  { icon: "🧮", label: "CPAs & Auditors",      color: "#065f46" },
+  { icon: "⚖️", label: "Legal Counsel",        color: "#374151" },
+  { icon: "🔍", label: "Inspectors",           color: "#d97706" },
+  { icon: "🤝", label: "Brokers & Advisors",   color: "#7c3aed" },
 ];
 
 const HOW_IT_WORKS = [
   {
     step: "01",
-    icon: "🏢",
-    title: "Owner creates the deal room",
-    desc: "Add your property in minutes. Upload documents, financials, inspections — Kontra structures everything automatically.",
+    icon: "🗂️",
+    title: "Deal principal creates the workspace",
+    desc: "Choose your workflow pack — CRE Acquisition, Business Acquisition, or Fundraising. Upload documents and Kontra structures everything automatically.",
     color: "#800020",
   },
   {
     step: "02",
     icon: "🔗",
     title: "Invite every party with one link",
-    desc: "Send your lender, inspector, insurer, and underwriter a role-scoped link. Each sees only what's relevant to them — no email chains, no forwarded PDFs.",
+    desc: "Send each advisor, counterparty, and reviewer a role-scoped link. Each sees only what's relevant to them — no email chains, no forwarded PDFs.",
     color: "#1e40af",
   },
   {
@@ -38,8 +38,8 @@ const HOW_IT_WORKS = [
   {
     step: "04",
     icon: "🏅",
-    title: "Property becomes Investment-Ready",
-    desc: "All five pillars documented and verified. Ready for financing submission and compliance review.",
+    title: "Deal reaches closing-ready",
+    desc: "Every document reviewed, every party current. Your AI Operations Manager tells you the moment you're ready to close.",
     color: "#6d28d9",
   },
 ];
@@ -47,39 +47,39 @@ const HOW_IT_WORKS = [
 const PARTY_CARDS = [
   {
     icon: "🏦",
-    role: "Lenders & Underwriters",
+    role: "Lenders & Investors",
     color: "#800020",
-    gets: ["AI tells you the moment a deal is covenant-compliant", "Financials and DSCR reviewed the second they arrive", "AI flags risk before it becomes your problem", "Compliance status per property, always current", "No more chasing borrowers for the next document"],
+    gets: ["AI tells you the moment a deal is diligence-complete", "Financials reviewed and structured the second they arrive", "AI flags risk before it becomes your problem", "Compliance status per deal, always current", "No more chasing the other side for the next document"],
   },
   {
     icon: "🏢",
-    role: "Borrowers & Owners",
+    role: "Buyers & Borrowers",
     color: "#1e40af",
     gets: ["Your AI Operations Manager runs the transaction for you", "It follows up with every party so you don't have to", "It tells you exactly what's blocking closing, and why", "It drafts reminders and approvals — you just approve", "One dashboard replaces the 700-email inbox"],
   },
   {
-    icon: "📊",
-    role: "Investors",
+    icon: "🏪",
+    role: "Sellers",
+    color: "#0369a1",
+    gets: ["Upload your documents once — AI structures everything", "Know exactly what the buyer still needs from you", "No repeated requests for the same file", "Buyer's progress visible in real time", "Closing stays on track without constant check-ins"],
+  },
+  {
+    icon: "🚀",
+    role: "Founders & CEOs",
     color: "#6d28d9",
-    gets: ["Know a deal's status without asking anyone", "Live NAV and occupancy data, always current", "Token holdings and distributions in one place", "AI-scored portfolio risk, updated automatically", "See what's ready for the secondary market"],
+    gets: ["AI Operations Manager coordinates your entire round", "Investor data room organized and current automatically", "Know which LP is outstanding before your weekly call", "Term sheet and cap table reviewed the moment they land", "Close faster — AI surfaces what's blocking each investor"],
   },
   {
-    icon: "🔍",
-    role: "Inspectors & Engineers",
-    color: "#d97706",
-    gets: ["Submit your report and move on — AI does the rest", "Findings auto-structured, no formatting required", "Deferred maintenance tracked without extra emails", "Lender review happens automatically on submission", "Your history across every property, in one place"],
-  },
-  {
-    icon: "🛡️",
-    role: "Insurance & Risk",
+    icon: "🧮",
+    role: "CPAs & Auditors",
     color: "#065f46",
-    gets: ["Upload a policy and AI tells you what's missing", "Expiration dates tracked so nothing lapses quietly", "Coverage verified for lenders without a phone call", "Flood, liability, and casualty gaps flagged instantly", "Endorsement issues surfaced before they cause delays"],
+    gets: ["Upload financials or QoE once — AI extracts the key metrics", "Your findings surface immediately to the right parties", "No reformatting or summary emails required", "Deal principal sees your analysis the moment it's submitted", "Your engagement history across every deal, in one place"],
   },
   {
-    icon: "⚙️",
-    role: "Servicers",
-    color: "#92400e",
-    gets: ["Draw requests move without manual chasing", "Borrower financials monitored automatically", "Escrow tracked per property, no spreadsheets", "Inspections scheduled without back-and-forth", "Covenant breaches flagged the moment they happen"],
+    icon: "⚖️",
+    role: "Counsel & Advisors",
+    color: "#374151",
+    gets: ["Review only what's been flagged — no document hunting", "AI structures incoming docs so you start with context", "Redlines and comments delivered to the right party instantly", "Know which document is blocking closing before the call", "Role-scoped access — no irrelevant deal noise"],
   },
 ];
 
