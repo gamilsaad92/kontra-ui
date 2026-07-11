@@ -16,58 +16,56 @@ const PILLARS = [
     icon: "🏗️",
     title: "Infrastructure",
     items: [
-      "API server hosted on Render (SOC 2 Type II certified infrastructure).",
-      "Database and file storage on Supabase, running on AWS (SOC 2 Type II, ISO 27001).",
-      "Document files stored in AWS S3-compatible storage — never on local or shared disk.",
-      "Automated daily database backups with point-in-time recovery.",
+      "API server hosted on Render. Render maintains SOC 2 Type 2 and related compliance controls covering its infrastructure.",
+      "Database and file storage on Supabase, running on AWS. Supabase maintains SOC 2 and ISO 27001 certifications covering its infrastructure.",
+      "These provider certifications apply to each provider's own infrastructure and do not mean that Kontra itself holds those certifications.",
+      "Document files stored in AWS S3-compatible storage.",
     ],
   },
   {
     icon: "🔒",
     title: "Access Controls",
     items: [
-      "Deal room data is isolated by property ID using row-level security — no cross-tenant data access is possible at the database layer.",
-      "Third-party parties (lenders, inspectors, attorneys) who upload via invite link cannot access other participants' uploads or the deal room owner's view.",
-      "Internal Kontra staff access to production data requires multi-factor authentication and is logged.",
-      "No Kontra employee can access your uploaded documents without a signed URL generated on demand.",
+      "Row-level security and application-level authorization controls are designed to prevent unauthorized cross-workspace data access.",
+      "Third-party participants who upload via invite link cannot access other participants' uploads or the workspace owner's view.",
+      "Production document access is restricted to authorized personnel with a legitimate operational need, requires authenticated access, and is logged.",
+      "Document download links are signed and expire after 1 hour.",
     ],
   },
   {
     icon: "🤖",
     title: "AI Processing",
     items: [
-      "Document text is sent to OpenAI's API (GPT-4o / GPT-4o-mini) for analysis at upload time only.",
-      "OpenAI's API terms prohibit training models on API inputs — your document content is not used to train any AI model.",
-      "OpenAI does not retain document content after the API call completes.",
-      "AI-generated recommendations, task assignments, and deal health assessments are logged and attributable.",
+      "Document text is sent to OpenAI's API (GPT-4o / GPT-4o-mini) for analysis at upload time.",
+      "By default, OpenAI does not use API inputs or outputs to train its models. Depending on the API configuration and endpoint used, OpenAI may retain certain inputs and outputs for up to 30 days for abuse monitoring.",
+      "Kontra will update this disclosure if it obtains approved Zero Data Retention status with OpenAI.",
+      "AI-generated recommendations, task assignments, and deal health assessments are recorded in a workspace audit log.",
     ],
   },
   {
     icon: "📋",
     title: "Audit Logging",
     items: [
-      "Every AI-generated recommendation is logged with a timestamp and the model that produced it.",
-      "Every task creation, assignment, status change, and resolution is recorded in an immutable audit trail.",
-      "Every document upload, AI analysis, and approval action is attributed to the initiating party.",
-      "Audit logs are available to workspace owners and are retained for the life of the deal room plus seven years.",
+      "Material workspace actions — AI-generated recommendations, task creation, task status changes, document uploads, AI analysis results, and approvals — are recorded in an application audit log with timestamps and attributed parties.",
+      "Audit logs are designed to be append-only through the application layer. Administrative or infrastructure-level access is separate and restricted.",
+      "Workspace owners can request an audit log export by emailing privacy@kontraplatform.com.",
     ],
   },
   {
     icon: "🛡️",
     title: "Data Isolation",
     items: [
-      "Each deal room is isolated — no workspace can read data from another workspace.",
-      "Deal room participants only see documents and tasks scoped to their role and upload session.",
-      "Workspace owners retain full visibility and control over all parties' uploads.",
-      "Development and production environments are fully separated — no production data is used in testing.",
+      "Each workspace is isolated — row-level security and application-level controls are designed to prevent one workspace from reading data belonging to another.",
+      "Workspace participants only see documents and tasks scoped to their role and upload session.",
+      "Workspace owners retain full visibility and control over all participants' uploads.",
+      "Development and production environments are separated.",
     ],
   },
   {
     icon: "📣",
     title: "Incident Response",
     items: [
-      "In the event of a confirmed data breach affecting personal information, affected workspace owners will be notified within 72 hours.",
-      "Security incidents are logged and reviewed by the Kontra team.",
+      "In the event of a confirmed data breach affecting personal information, Kontra will provide legally required notices without unreasonable delay and within any time period required by applicable law.",
       "To report a security concern, email security@kontraplatform.com — we respond within 24 hours on business days.",
     ],
   },
@@ -75,9 +73,9 @@ const PILLARS = [
     icon: "📆",
     title: "Compliance Roadmap",
     items: [
-      "SOC 2 Type II audit is on the roadmap for enterprise readiness.",
+      "SOC 2 Type II audit is on the roadmap for enterprise readiness. Kontra is not currently SOC 2 certified.",
       "Data Processing Agreement (DPA) templates are available upon request for enterprise customers.",
-      "Document retention policy is designed to meet IRS § 6501 and SEC Rule 17a-4 requirements.",
+      "For vendor security questionnaires, email legal@kontraplatform.com.",
     ],
   },
 ];
@@ -108,12 +106,12 @@ export default function SecurityPage() {
             {[
               ["Encryption in transit", "TLS 1.3"],
               ["Encryption at rest", "AES-256"],
-              ["Infrastructure", "AWS / Render / Supabase"],
+              ["Infrastructure providers", "AWS · Render · Supabase"],
               ["Document link expiry", "1 hour (signed URLs)"],
-              ["AI training on your data", "Never"],
+              ["AI training on your data", "Not by default"],
               ["Data sold to third parties", "Never"],
-              ["Audit logging", "Every action, immutable"],
-              ["Data retention", "Deal life + 7 years"],
+              ["Audit logging", "Material actions logged"],
+              ["Kontra SOC 2 certified", "Not yet (roadmap)"],
             ].map(([label, value]) => (
               <div key={label} className="flex justify-between text-sm py-1 border-b border-gray-100">
                 <span className="text-gray-600">{label}</span>
@@ -150,7 +148,7 @@ export default function SecurityPage() {
               <a href="mailto:security@kontraplatform.com" className="underline hover:text-gray-900">
                 security@kontraplatform.com
               </a>
-              {" "}— we respond within 24 hours on business days. Please include as much detail as possible.
+              {" "}— we respond within 24 hours on business days.
             </p>
           </div>
           <div>
@@ -163,9 +161,6 @@ export default function SecurityPage() {
               .
             </p>
           </div>
-          <p className="text-sm text-gray-500">
-            Kontra Platform, Inc. · 1 World Trade Center · New York, NY 10007
-          </p>
         </div>
       </div>
     </PublicLayout>

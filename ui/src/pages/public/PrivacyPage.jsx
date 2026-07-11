@@ -6,10 +6,10 @@ const SECTIONS = [
   {
     title: "Information We Collect",
     content: [
-      "**Deal room details**: When you create a deal room, we collect your name, email address, property name, property type, address, deal amount, and deal type.",
-      "**Uploaded documents**: Inspection reports, insurance certificates, financial statements, and other documents uploaded by deal room parties (owner, lender, inspector, insurer, attorney). These files are stored in encrypted cloud storage for the duration of the deal and for a minimum of 7 years following loan maturity — see Document Retention below.",
-      "**AI analysis results**: Structured data extracted from uploaded documents (e.g. NOI, DSCR, condition score, coverage gaps) is stored in our database alongside the property record.",
-      "**Payment data**: When you purchase a deal room, Stripe processes your payment. We receive a payment confirmation and your email — we never see or store your card number.",
+      "**Workspace and transaction details**: When you create a workspace, we collect your name, email address, workspace name, transaction type, location, deal amount, and other details you provide during setup.",
+      "**Uploaded documents**: Financial statements, legal agreements, diligence materials, and other documents uploaded by workspace participants. These files are stored in encrypted cloud storage for the duration of the workspace — see Retention below.",
+      "**AI analysis results**: Structured data extracted from uploaded documents (e.g. financial metrics, condition assessments, coverage gaps) is stored in our database alongside the workspace record.",
+      "**Payment data**: When you purchase a workspace, Stripe processes your payment. We receive a payment confirmation and your email — we never see or store your card number.",
       "**Usage data**: Pages visited, features used, and actions taken within the platform, used to improve the product.",
       "**Device and technical data**: IP address, browser type, and access times — collected automatically.",
     ],
@@ -17,64 +17,63 @@ const SECTIONS = [
   {
     title: "How We Use Your Information",
     content: [
-      "**Provide the service**: Run AI document analysis, maintain deal room records, and enable multi-party collaboration on transactions.",
-      "**Document retrieval**: Store original uploaded documents so they remain accessible to deal room owners throughout the deal lifecycle — eliminating the need to re-request documents from parties.",
-      "**Improve the product**: Understand how features are used to prioritize improvements. We never use your specific property data or documents to train AI models.",
-      "**Communicate with you**: Send transactional emails (deal room activation, document upload notifications, task updates) and, with your consent, product updates.",
+      "**Provide the service**: Run AI document analysis, maintain workspace records, and enable multi-party collaboration on transactions.",
+      "**Document retrieval**: Store original uploaded documents so they remain accessible to workspace owners throughout the active workspace period.",
+      "**Improve the product**: Understand how features are used to prioritize improvements. We do not use your specific transaction data or documents to train AI models.",
+      "**Communicate with you**: Send transactional emails (workspace activation, document upload notifications, task updates) and, with your consent, product updates.",
       "**Security and fraud prevention**: Detect and prevent unauthorized access, abuse, and fraud.",
-      "**Legal and regulatory compliance**: Comply with applicable securities laws, IRS record-keeping requirements, and respond to lawful requests from authorities.",
+      "**Legal compliance**: Comply with applicable law and respond to lawful requests from authorities.",
+    ],
+  },
+  {
+    title: "AI and Third-Party Processing",
+    content: [
+      "**OpenAI**: Document text is sent to OpenAI's API (GPT-4o / GPT-4o-mini) for analysis. By default, OpenAI does not use API inputs or outputs to train its models. Depending on the API configuration and endpoint used, OpenAI may retain certain inputs and outputs for up to 30 days for abuse monitoring and legal compliance. Kontra will update this disclosure if it obtains approved Zero Data Retention status with OpenAI.",
+      "**Supabase**: Database, authentication, and file storage provider running on AWS. See supabase.com/privacy. Supabase maintains its own SOC 2 and ISO 27001 certifications, which cover Supabase's infrastructure — not Kontra itself.",
+      "**Stripe**: Payment processing. We never store card information. See stripe.com/privacy.",
+      "**Render**: API server hosting. See render.com/privacy. Render maintains SOC 2 Type 2 controls covering its infrastructure.",
+      "**Resend**: Transactional email delivery. See resend.com/privacy.",
+      "We do not use advertising networks, data brokers, or behavioral tracking pixels. Provider certifications listed above apply to those providers' infrastructure and do not mean that Kontra itself holds those certifications.",
     ],
   },
   {
     title: "Document Storage and Retention",
     content: [
-      "**Where documents are stored**: Uploaded files are stored in Supabase Storage (AWS S3-compatible infrastructure, AES-256 encryption at rest, TLS 1.3 in transit). Documents are never publicly accessible — access requires a time-limited signed URL (1-hour expiry) generated on demand.",
-      "**Who can access documents**: Only the deal room owner (via their owner URL) and Kontra's service infrastructure can generate download links. Third-party parties (lender, inspector, etc.) who uploaded documents do not retain access after their session.",
-      "**Retention period**: Documents are retained for the life of the associated deal room, plus a minimum of 7 years following loan maturity, consistent with IRS financial record requirements (26 U.S.C. § 6501) and SEC record-keeping rules (Rule 17a-4). This retention period supports downstream regulatory compliance.",
-      "**Deletion**: Deal room owners may request deletion of all documents associated with their property by emailing privacy@kontraplatform.com. Deletion requests are processed within 30 days. Note that documents subject to active regulatory hold or litigation cannot be deleted until the hold is lifted.",
-      "**OpenAI processing**: Document text is extracted and sent to OpenAI's API (GPT-4o) for analysis. This processing occurs at upload time only. OpenAI's API terms (openai.com/policies/usage-policies) prohibit training models on API inputs. OpenAI does not retain document content after the API call completes.",
+      "**Where documents are stored**: Uploaded files are stored in Supabase Storage (AWS S3-compatible infrastructure, AES-256 encryption at rest, TLS 1.3 in transit). Documents are not publicly accessible — access requires a time-limited signed URL generated on demand.",
+      "**Who can access documents**: Production document access is restricted to authorized personnel with a legitimate operational need, requires authenticated access, and is logged. Third-party participants who uploaded documents do not retain access after their session.",
+      "**Retention period**: Workspace data is retained for the duration of the active workspace. Following workspace termination or account deletion, data is retained for up to 30 days to allow export requests, after which it is deleted. Customers requiring longer retention for legal, contractual, or compliance reasons may contact support@kontraplatform.com — subject to a written agreement.",
+      "**Deletion**: Workspace owners may request deletion of all documents and data associated with their workspace by emailing privacy@kontraplatform.com. Requests are processed within 30 days. Data subject to an active legal hold cannot be deleted until the hold is lifted.",
     ],
   },
   {
     title: "Audit Logging",
     content: [
-      "**What is logged**: Every AI-generated recommendation, task creation, task assignment, status change, document upload, document analysis, approval, and automated action is recorded in an immutable audit trail with a timestamp and attributed party.",
-      "**Purpose**: Audit logs allow workspace owners to review all activity and attributable actions within their deal room. They also support regulatory and compliance inquiries.",
-      "**Retention**: Audit logs are retained for the life of the deal room plus a minimum of 7 years, consistent with the document retention policy above.",
-      "**Access**: Workspace owners may request an export of their deal room audit log by emailing privacy@kontraplatform.com.",
+      "**What is logged**: Material workspace actions — including AI-generated recommendations, task creation, task status changes, document uploads, AI analysis results, and approvals — are recorded in an application audit log with a timestamp and attributed party.",
+      "**Purpose**: Audit logs allow workspace owners to review activity within their workspace and support compliance or legal inquiries.",
+      "**Retention**: Audit logs are retained for the duration of the workspace plus the 30-day post-termination window, or longer if required by applicable law or a written agreement.",
+      "**Access**: Workspace owners may request an export of their workspace audit log by emailing privacy@kontraplatform.com.",
     ],
   },
   {
     title: "Data Security",
     content: [
       "All data is encrypted in transit (TLS 1.3) and at rest (AES-256).",
-      "Database records are protected by row-level security — each deal room's data is isolated by property ID.",
+      "Row-level security and application-level authorization controls are designed to prevent unauthorized cross-workspace data access.",
       "Document download links are signed and expire after 1 hour — sharing a link does not grant permanent access.",
-      "We do not sell your data to third parties. Ever.",
-      "In the event of a data breach affecting personal information, we will notify affected users within 72 hours as required by applicable law.",
-    ],
-  },
-  {
-    title: "Third-Party Services",
-    content: [
-      "**OpenAI**: Document text is sent to OpenAI's API for AI analysis at upload time. OpenAI does not train on API data. See openai.com/policies.",
-      "**Supabase**: Database, authentication, and file storage provider running on AWS. See supabase.com/privacy.",
-      "**Stripe**: Payment processing. We never store card information. See stripe.com/privacy.",
-      "**Render**: API server hosting. See render.com/privacy.",
-      "**Resend**: Transactional email delivery (deal room notifications). See resend.com/privacy.",
-      "We do not use advertising networks, data brokers, or behavioral tracking pixels.",
+      "We do not sell your data to third parties.",
+      "In the event of a data breach affecting personal information, Kontra will provide legally required notices without unreasonable delay and within any time period required by applicable law.",
     ],
   },
   {
     title: "Your Rights",
     content: [
-      "**Access**: Request a copy of all data and documents we hold associated with your deal room.",
-      "**Correction**: Contact us to correct inaccurate deal room records.",
-      "**Deletion**: Request deletion of all documents and data associated with your deal room. Processed within 30 days, subject to regulatory retention requirements.",
-      "**Portability**: Request your deal analysis data in JSON format.",
-      "**Audit log export**: Request a full export of all logged actions in your deal room.",
-      "**Opt-out**: Unsubscribe from non-transactional emails at any time. Upload notification emails cannot be disabled while a deal room is active.",
-      "To exercise any of these rights, email privacy@kontraplatform.com with your deal room property ID and the email used at checkout.",
+      "**Access**: Request a copy of all data and documents we hold associated with your workspace.",
+      "**Correction**: Contact us to correct inaccurate workspace records.",
+      "**Deletion**: Request deletion of all documents and data associated with your workspace. Processed within 30 days, subject to legal holds or contractual retention agreements.",
+      "**Portability**: Request your workspace analysis data in JSON format.",
+      "**Audit log export**: Request an export of all logged actions in your workspace.",
+      "**Opt-out**: Unsubscribe from non-transactional emails at any time.",
+      "To exercise any of these rights, email privacy@kontraplatform.com with your workspace property ID and the email used at checkout.",
     ],
   },
   {
@@ -88,14 +87,14 @@ const SECTIONS = [
     title: "CCPA Notice (California Residents)",
     content: [
       "If you are a California resident, you have the right to know what personal information we collect, request deletion, and opt out of sale (we do not sell personal information).",
-      "Categories of personal information collected: identifiers (name, email), commercial information (deal terms, payment records), and documents you upload.",
+      "Categories of personal information collected: identifiers (name, email), commercial information (transaction terms, payment records), and documents you upload.",
       "To submit a CCPA request, email privacy@kontraplatform.com.",
     ],
   },
   {
     title: "Changes to This Policy",
     content: [
-      "We will notify deal room owners by email at least 14 days before material changes to this policy take effect.",
+      "We will notify workspace owners by email at least 14 days before material changes to this policy take effect.",
       "The effective date at the top of this page reflects the most recent update.",
     ],
   },
@@ -115,7 +114,7 @@ export default function PrivacyPage() {
           <h1 className="text-3xl font-bold text-gray-900 mb-3">Privacy Policy</h1>
           <p className="text-sm text-gray-500">Effective date: June 22, 2026 · Last updated: July 11, 2026</p>
           <p className="text-sm text-gray-600 mt-4 leading-relaxed">
-            Kontra Platform, Inc. ("Kontra", "we", "us") operates kontraplatform.com and the Kontra deal room platform.
+            Kontra ("we", "us") operates kontraplatform.com and the Kontra deal room platform.
             This policy explains what data we collect, how we store it, how long we keep it, and your rights.
           </p>
         </div>
@@ -124,12 +123,11 @@ export default function PrivacyPage() {
           <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-2">Key facts</p>
           <div className="space-y-2">
             {[
-              "📄  Uploaded documents are stored encrypted in Supabase Storage (AWS), not discarded after analysis.",
-              "🤖  Document text is processed by OpenAI's API at upload time. OpenAI does not retain or train on this data.",
-              "🔒  Downloads require a signed link that expires in 1 hour — no permanent public access.",
-              "📅  Documents are kept for the life of the deal + minimum 7 years after loan maturity (IRS & SEC compliance).",
-              "📋  Every AI recommendation, task action, and approval is logged in an immutable audit trail.",
-              "🗑️  Owners can request full deletion by emailing privacy@kontraplatform.com.",
+              "📄  Uploaded documents are stored encrypted in Supabase Storage (AWS) for the duration of your active workspace.",
+              "🤖  Document text is sent to OpenAI's API at analysis time. OpenAI does not train on API data by default; inputs may be retained up to 30 days for abuse monitoring.",
+              "🔒  Document download links are signed and expire after 1 hour.",
+              "📋  Material AI recommendations, task actions, and approvals are recorded in a workspace audit log.",
+              "🗑️  Workspace owners can request deletion by emailing privacy@kontraplatform.com.",
             ].map((fact, i) => (
               <p key={i} className="text-sm text-gray-600">{fact}</p>
             ))}
@@ -166,9 +164,6 @@ export default function PrivacyPage() {
             <a href="mailto:privacy@kontraplatform.com" className="underline hover:text-gray-900">
               privacy@kontraplatform.com
             </a>
-          </p>
-          <p className="text-sm text-gray-600 mt-1">
-            Kontra Platform, Inc. · 1 World Trade Center · New York, NY 10007
           </p>
         </div>
       </div>
