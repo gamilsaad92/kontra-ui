@@ -1685,13 +1685,18 @@ app.post('/api/public/deal-room/:propertyId/track-document', upload.single('file
     const mime = req.file?.mimetype;
     const hash = buf ? crypto.createHash('sha256').update(buf).digest('hex') : null;
 
-    // Respond immediately — AI runs in background
-    const pendingAnalysis = { summary: `${SECTION_LABELS[section]} uploaded — AI analysis in progress…`, documentType: SECTION_LABELS[section], confidence: 0, pending: true };
+    // For sections with an AI prompt, start pending and analyze in background.
+    // For sections without an AI prompt (LOI, tax returns, cap table, etc.), mark complete immediately.
+    const hasAiPrompt = !!(buf && LIGHTWEIGHT_AI_PROMPTS[section]);
+    const initialAnalysis = hasAiPrompt
+      ? { summary: `${SECTION_LABELS[section]} uploaded — AI analysis in progress…`, documentType: SECTION_LABELS[section], confidence: 0, pending: true }
+      : { summary: `${SECTION_LABELS[section]} received and logged.`, documentType: SECTION_LABELS[section], confidence: 100, pending: false };
+
     const [storagePath, insertRes] = await Promise.all([
       buf ? uploadToStorage(buf, mime, propertyId, section, filename).catch(() => null) : Promise.resolve(null),
       supabase.from('deal_analyses').insert({
         property_id: propertyId, section, filename,
-        analysis: pendingAnalysis,
+        analysis: initialAnalysis,
         uploaded_by_role: role || 'owner',
       }).select('id').single(),
     ]);
@@ -1699,7 +1704,7 @@ app.post('/api/public/deal-room/:propertyId/track-document', upload.single('file
     const recordId = insertRes.data?.id;
 
     logEvent(propertyId, 'document_uploaded', role || 'owner', null, `${SECTION_LABELS[section]} uploaded`, { section, filename }).catch(() => {});
-    res.json({ ok: true, section, filename, pending: true });
+    res.json({ ok: true, section, filename, pending: hasAiPrompt });
 
     // Background AI analysis — uses fast text-only extraction (no vision pipeline to avoid hangs)
     if (buf && LIGHTWEIGHT_AI_PROMPTS[section]) {
