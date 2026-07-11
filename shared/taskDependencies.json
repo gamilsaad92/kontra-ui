@@ -41,7 +41,7 @@
         "step": 1,
         "label": "Due Diligence",
         "description": "Financial review and business audit",
-        "roleKeys": ["accountant", "attorney"],
+        "roleKeys": ["cpa", "counsel"],
         "gatesStep": 2
       },
       {
@@ -67,7 +67,7 @@
         "step": 1,
         "label": "Diligence Upload",
         "description": "Founder uploads term sheet, cap table, and financials",
-        "roleKeys": ["founder_ceo"],
+        "roleKeys": ["founder"],
         "gatesStep": 2
       },
       {

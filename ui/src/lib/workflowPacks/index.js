@@ -129,6 +129,12 @@ const DEAL_TYPE_TO_PACK = {
 export function resolvePackId(room) {
   if (!room) return DEFAULT_PACK_ID;
   const inferred = room.deal_type ? (DEAL_TYPE_TO_PACK[room.deal_type] ?? null) : null;
+  // If deal_type inference points to the CRE default but workflow_pack_id explicitly
+  // names a non-default pack, trust workflow_pack_id — the creation form stores it correctly
+  // even when deal_type wasn't backfilled on older rooms.
+  if ((!inferred || inferred === DEFAULT_PACK_ID) && room.workflow_pack_id && room.workflow_pack_id !== DEFAULT_PACK_ID) {
+    return room.workflow_pack_id;
+  }
   return inferred ?? room.workflow_pack_id ?? DEFAULT_PACK_ID;
 }
 

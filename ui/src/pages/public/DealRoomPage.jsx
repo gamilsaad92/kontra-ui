@@ -1014,7 +1014,7 @@ function DealIntelligenceDashboard({ propertyId, refreshKey, packId = DEFAULT_PA
     if (!bySection[a.section]) bySection[a.section] = a;
   }
 
-  const doneCount = Object.keys(bySection).length;
+  const doneCount = SECTIONS.filter(s => bySection[s.key]).length;
 
   if (SECTIONS.length === 0) return null;
 
@@ -1546,6 +1546,7 @@ export default function DealRoomPage() {
               role={role}
               isDemo={isDemo}
               packId={packId}
+              onAnalysisSaved={onAnalysisSaved}
             />
           </div>
         )}

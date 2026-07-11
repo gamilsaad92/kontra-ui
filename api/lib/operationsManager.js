@@ -128,7 +128,21 @@ async function buildGroundedContext(propertyId) {
     listTasksForRoom(propertyId),
   ]);
 
-  const packId = room?.workflow_pack_id || DEFAULT_PACK_ID;
+  // Resolve packId: deal_type takes priority (same mapping as frontend resolvePackId),
+  // then workflow_pack_id, then CRE default.
+  const DEAL_TYPE_TO_PACK = {
+    acquisition: DEFAULT_PACK_ID, refinance: DEFAULT_PACK_ID, construction: DEFAULT_PACK_ID,
+    flag_conversion: DEFAULT_PACK_ID, sale: DEFAULT_PACK_ID, ground_lease: DEFAULT_PACK_ID,
+    full_acquisition: 'business_acquisition', asset_purchase: 'business_acquisition',
+    mbo: 'business_acquisition', merger: 'business_acquisition', business_acquisition: 'business_acquisition',
+    seed: 'fundraising', series_a: 'fundraising', series_b_plus: 'fundraising',
+    bridge: 'fundraising', fundraising: 'fundraising',
+  };
+  const inferredPack = room?.deal_type ? (DEAL_TYPE_TO_PACK[room.deal_type] ?? null) : null;
+  // If deal_type inference resolves to the default CRE pack but workflow_pack_id says otherwise, trust workflow_pack_id
+  const packId = (inferredPack && inferredPack !== DEFAULT_PACK_ID)
+    ? inferredPack
+    : (room?.workflow_pack_id || inferredPack || DEFAULT_PACK_ID);
   const stageLabel = room?.deal_stage ? getPackStageLabel(packId, room.deal_stage) : null;
 
   const openTasks = tasks.filter(t => ['pending', 'in_progress', 'escalated'].includes(t.status));
@@ -190,12 +204,12 @@ function contextToPrompt(ctx) {
   );
 }
 
-const GROUNDING_RULES = `You are the Operations Manager for a commercial real estate deal room.
+const GROUNDING_RULES = `You are the Operations Manager for a transaction deal room (may be CRE acquisition, business acquisition, or fundraising — follow the deal context provided).
 You reason ONLY from the JSON context provided (closing_chain, open_tasks, recently_resolved_tasks, deal). Never invent
 facts, people, dates, or documents not present in that context. If the context does not contain
 enough information to answer, say so plainly instead of guessing.
 
-Think like a senior banker: cite the specific task and evidence behind every claim.
+Think like a senior deal professional: cite the specific task and evidence behind every claim.
 
 DEPENDENCY CHAIN REASONING: The closing_chain shows sequential steps where each step gates the next.
 The earliest step that is NOT "complete" is the ACTIVE BLOCKER — tasks in that step are on the critical path.
