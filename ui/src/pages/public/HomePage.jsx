@@ -190,8 +190,8 @@ export default function HomePage() {
             Every transaction gets its own Operations Manager.
           </h1>
           <p className="text-lg text-gray-400 max-w-2xl mx-auto mb-10 leading-relaxed">
-            Every deal room comes with its own AI Operations Manager. It follows up with the right people,
-            tells you what's blocking closing, and drafts the reminders before you have to ask.
+            AI that keeps transactions moving — not just documents organized. Kontra follows up with the right
+            people, surfaces what's blocking closing, and coordinates every party in a deal from a single workspace.
             Your real competition isn't Datasite — it's the 700-email transaction.
           </p>
 
