@@ -12,7 +12,7 @@ const PROPERTY = {
   address: 'San Francisco, CA',
   market: 'Bay Area',
   status: 'active',
-  workflow_pack_id: 'biz-acquisition',
+  workflow_pack_id: 'business_acquisition',
   first_name: '',
   created_at: new Date(Date.now() - 22 * 24 * 60 * 60 * 1000).toISOString(),
 };
@@ -27,7 +27,7 @@ const TASKS = [
     title: 'QoE report is 10 days overdue',
     description:
       'Davidson Advisory (CPA) was engaged on June 20 but has not delivered the Quality of Earnings report. ' +
-      'The LOI cannot be finalized and the purchase price cannot be confirmed without it.',
+      'The purchase price cannot be confirmed and the deal cannot advance to Under Review without it.',
     status: 'open',
     owner_type: 'ai',
     owner_role: null,
@@ -42,7 +42,7 @@ const TASKS = [
       subject: 'Action required: QoE report needed — Brightline Services acquisition',
       body:
         'Hi Sarah, the Quality of Earnings report for Brightline Services is now 10 days past the agreed delivery date. ' +
-        'We cannot finalize the LOI or confirm the purchase price structure without it. ' +
+        'We cannot confirm the purchase price structure or move this deal forward without it. ' +
         'Please provide a revised delivery date at your earliest convenience.',
     },
   },
@@ -67,21 +67,21 @@ const TASKS = [
       subject: 'Action required: Working capital schedule — Brightline Services',
       body:
         'Hi Tom, we are still waiting on the normalized working capital schedule from Brightline. ' +
-        'This is needed to complete the purchase price mechanics section of the LOI. ' +
+        'This is needed to complete the purchase price mechanics before the deal can advance to Under Review. ' +
         'Please submit at your earliest convenience.',
     },
   },
   {
-    id: 'biz-task-attorney',
+    id: 'biz-task-counsel',
     property_id: PROPERTY_ID,
-    title: 'LOI drafted and under attorney review',
+    title: 'LOI drafted and under legal counsel review',
     description:
       'Vance & Partners has received the draft LOI and is reviewing. Expected turnaround: 2 business days.',
     status: 'open',
     owner_type: 'human',
-    owner_role: 'attorney',
+    owner_role: 'counsel',
     task_type: 'document_review',
-    role_key: 'attorney',
+    role_key: 'counsel',
     priority: 'normal',
     created_at: days(2),
     waiting_on: null,
@@ -111,14 +111,14 @@ const BRIEFING = {
   statusLabel: 'At Risk',
   reviewedCount: 4,
   narrative:
-    'The QoE report is 10 days overdue and is blocking everything downstream — the LOI cannot be finalized, ' +
-    'the purchase price cannot be confirmed, and the lender will not begin underwriting without it. ' +
+    'The QoE report is 10 days overdue and is blocking everything downstream — the purchase price cannot be confirmed ' +
+    'and this deal cannot advance to Under Review without it. ' +
     'Davidson Advisory needs to commit to a delivery date today. ' +
     'I have a follow-up drafted for your approval.',
   criticalPath: [
     {
       item: 'QoE report is 10 days overdue',
-      note: 'Davidson Advisory engaged June 20. No delivery. LOI and purchase price are gated on this.',
+      note: 'Davidson Advisory engaged June 20. No delivery. Purchase price and advancement to Under Review are gated on this.',
       owner: 'AI',
       chainStep: 1,
     },
@@ -127,10 +127,10 @@ const BRIEFING = {
   parallelNote:
     'The working capital schedule is also outstanding but can be finalized after the QoE — it will not cause additional delay once the QoE is received.',
   chain: [
-    { step: 'due-diligence',     label: 'Due Diligence',     stepStatus: 'in_progress', openCount: 3 },
-    { step: 'loi',               label: 'Letter of Intent',  stepStatus: 'pending',     openCount: 0 },
-    { step: 'purchase-agreement',label: 'Purchase Agreement', stepStatus: 'pending',    openCount: 0 },
-    { step: 'closing',           label: 'Closing',           stepStatus: 'pending',     openCount: 0 },
+    { step: 'uploading',    label: 'Due Diligence',  stepStatus: 'in_progress', openCount: 3 },
+    { step: 'under_review', label: 'Under Review',   stepStatus: 'pending',     openCount: 0 },
+    { step: 'approved',     label: 'Approved',       stepStatus: 'pending',     openCount: 0 },
+    { step: 'closing',      label: 'Closing',        stepStatus: 'pending',     openCount: 0 },
   ],
   prepared: [
     'Follow-up email to Davidson Advisory (CPA) — ready to send on your approval',
@@ -143,8 +143,8 @@ const DEMO_QA_CONTEXT = `
 You are the AI Operations Manager for a Kontra deal room.
 Deal: Brightline Services LLC, $6.2M business acquisition in San Francisco.
 Current status: At Risk. QoE report from Davidson Advisory is 10 days overdue.
-Parties: Sarah Davidson (CPA, overdue QoE), Tom Briggs (Seller, working capital pending), Vance & Partners (Attorney, reviewing LOI), Meridian Advisors (Broker, submitted CIM).
-Critical path: Due Diligence (3 open) → LOI → Purchase Agreement → Closing.
+Parties: Sarah Davidson (CPA, overdue QoE), Tom Briggs (Seller, working capital pending), Vance & Partners (Legal Counsel, reviewing LOI), Meridian Advisors (M&A Broker, submitted CIM).
+Critical path: Due Diligence (3 open) → Under Review → Approved → Closing.
 Expected closing: September 12, 2026 if QoE delivered this week.
 Answer concisely and confidently, like a senior M&A transaction coordinator. Keep answers under 4 sentences.
 `;
