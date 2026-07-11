@@ -291,7 +291,7 @@ export default function DealCoordinationPanel({ propertyId, role, packId = DEFAU
                 className="px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#800020]/20"
               />
               <textarea
-                placeholder="Notes for the lender (optional)"
+                placeholder="Add a note for the team (optional)"
                 value={submitterNotes}
                 onChange={e => setSubmitterNotes(e.target.value)}
                 rows={2}
@@ -311,20 +311,16 @@ export default function DealCoordinationPanel({ propertyId, role, packId = DEFAU
           ) : (
             <div className="flex items-center justify-between gap-4">
               <div>
-                <p className="text-sm font-semibold text-gray-800">Done uploading your documents?</p>
+                <p className="text-sm font-semibold text-gray-800">Ready to proceed?</p>
                 <p className="text-xs text-gray-400">
                   {myDocCount > 0
                     ? `${myDocCount} document${myDocCount !== 1 ? 's' : ''} uploaded — signal the team you're ready for review`
-                    : myMeta?.needsDocs
-                      ? 'Upload your documents above, then signal the team when you\'re done'
-                      : 'Signal the team when you\'re ready to proceed'}
+                    : 'Signal the team when you\'re ready to proceed'}
                 </p>
               </div>
               <button
                 onClick={() => setShowNamePrompt(true)}
-                disabled={myMeta?.needsDocs && myDocCount === 0}
-                title={myMeta?.needsDocs && myDocCount === 0 ? 'Upload your documents above first' : ''}
-                className="shrink-0 px-4 py-2 rounded-xl text-xs font-bold text-white bg-[#800020] hover:opacity-90 transition disabled:opacity-40 disabled:cursor-not-allowed"
+                className="shrink-0 px-4 py-2 rounded-xl text-xs font-bold text-white bg-[#800020] hover:opacity-90 transition"
               >
                 Signal Ready →
               </button>
