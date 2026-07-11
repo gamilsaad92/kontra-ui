@@ -42,7 +42,7 @@
         "headline": "Welcome to your deal room",
         "subtext": "As the buyer, you have a full view of all parties, documents, and deal progress. Share the role-specific links below to invite your advisors and the seller.",
         "sections": [] },
-      { "key": "seller", "label": "Seller", "icon": "🏪", "color": "#1d4ed8", "required": true, "needsDocs": true, "invitable": true, "inviteAction": "provide financial statements and disclosures",
+      { "key": "seller", "label": "Seller", "icon": "🏪", "color": "#1d4ed8", "required": true, "needsDocs": false, "invitable": true, "inviteAction": "review the documents and confirm you're ready to proceed",
         "headline": "You've been invited to this deal room",
         "subtext": "As the seller, upload your financial statements and disclosures in the checklist above, and track the buyer's progress toward closing.",
         "sections": [] },
