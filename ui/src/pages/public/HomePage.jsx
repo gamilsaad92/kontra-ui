@@ -1,6 +1,61 @@
-import React, { useState } from "react";
-import { Link } from "react-router-dom";
+import React, { useState, useRef, useEffect } from "react";
+import { Link, useNavigate } from "react-router-dom";
 import PublicLayout from "./PublicLayout";
+
+const DEMOS = [
+  { icon: "🏢", label: "CRE Acquisition",      sub: "550 Madison Ave · $28.5M",           slug: "/deal-room/kontra-demo",             color: "#800020" },
+  { icon: "💼", label: "Business Acquisition", sub: "Brightline Services LLC · $6.2M",    slug: "/deal-room/kontra-demo-biz",         color: "#1e40af" },
+  { icon: "📈", label: "Fundraising",          sub: "Nexus Ventures Fund II · $25M raise", slug: "/deal-room/kontra-demo-fundraising", color: "#065f46" },
+];
+
+function LiveDemoButton() {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    if (!open) return;
+    function handleClick(e) { if (ref.current && !ref.current.contains(e.target)) setOpen(false); }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [open]);
+
+  return (
+    <div className="relative" ref={ref}>
+      <button
+        onClick={() => setOpen(o => !o)}
+        className="px-7 py-3.5 rounded-xl text-sm font-semibold border border-white/30 text-white hover:bg-white/10 transition flex items-center gap-2">
+        <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse shrink-0" />
+        View Live Demo
+        <svg className={`w-3.5 h-3.5 transition-transform ${open ? "rotate-180" : ""}`} fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
+
+      {open && (
+        <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 w-72 rounded-2xl bg-gray-900 border border-white/10 shadow-2xl z-50 overflow-hidden">
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-500 px-4 pt-3.5 pb-1">Choose a live demo</p>
+          {DEMOS.map(d => (
+            <button
+              key={d.slug}
+              onClick={() => { setOpen(false); navigate(d.slug); }}
+              className="w-full flex items-center gap-3 px-4 py-3 hover:bg-white/5 transition text-left group">
+              <span className="w-9 h-9 rounded-xl flex items-center justify-center text-lg shrink-0"
+                style={{ background: d.color + "33" }}>{d.icon}</span>
+              <div className="min-w-0">
+                <p className="text-sm font-semibold text-white leading-tight">{d.label}</p>
+                <p className="text-xs text-gray-400 truncate">{d.sub}</p>
+              </div>
+              <svg className="w-4 h-4 text-gray-600 group-hover:text-gray-300 transition ml-auto shrink-0" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+              </svg>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 const PARTIES = [
   { icon: "🏦", label: "Lenders & Investors",  color: "#800020" },
@@ -201,11 +256,7 @@ export default function HomePage() {
               style={{ background: "#800020" }}>
               Create Your Workspace — $499
             </Link>
-            <Link to="/deal-room/kontra-demo"
-              className="px-7 py-3.5 rounded-xl text-sm font-semibold border border-white/30 text-white hover:bg-white/10 transition flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse shrink-0" />
-              View Live Demo
-            </Link>
+            <LiveDemoButton />
           </div>
 
           {/* Party strip */}
