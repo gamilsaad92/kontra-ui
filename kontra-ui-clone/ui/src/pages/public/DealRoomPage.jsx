@@ -4,12 +4,14 @@ import PublicLayout from "./PublicLayout";
 import DealCoordinationPanel from "./DealCoordinationPanel";
 import ActivityTimeline from "./ActivityTimeline";
 import CommentsPanel from "./CommentsPanel";
-import DealHealthPanel from "./DealHealthPanel";
+import TransactionRiskPanel from "./TransactionRiskPanel";
 import TasksPanel from "./TasksPanel";
 import AIOperationsManager from "./AIOperationsManager";
+import DailyStandup from "./DailyStandup";
 import InvitePanel from "./InvitePanel";
-import DocumentChecklistPanel, { getTemplate } from "./DocumentChecklistPanel";
-import { DEFAULT_PACK_ID, getWorkflowPack, ensureWorkflowPackLoaded } from "../../lib/workflowPacks";
+import DocumentChecklistPanel from "./DocumentChecklistPanel";
+import { getTemplate } from "./documentChecklistUtils";
+import { DEFAULT_PACK_ID, getWorkflowPack, ensureWorkflowPackLoaded, resolvePackId } from "../../lib/workflowPacks";
 
 function usePageTitle(title) {
   useEffect(() => {
@@ -583,6 +585,89 @@ function SourceCitations({ sources }) {
   );
 }
 
+// ── Onboarding Progress — replaces the old static "Next Steps" text with
+// real, verifiable progress for a brand-new owner room. Nothing here is
+// mocked: invited counts come from deal_events, document counts from
+// deal_analyses (via /coordination), and the AI step from the Task Engine
+// actually having generated something. Rows link straight to the panel
+// that completes them so there's no hunting around the page. ──
+function OnboardingProgress({ propertyId, accentColor, totalInvitable, pack }) {
+  const [state, setState] = useState({ loading: true, invitedRoles: 0, docCount: 0, taskCount: 0 });
+
+  useEffect(() => {
+    let cancelled = false;
+    Promise.all([
+      fetch(`${API_BASE}/api/public/deal-room/${propertyId}/events`).then(r => r.ok ? r.json() : { events: [] }).catch(() => ({ events: [] })),
+      fetch(`${API_BASE}/api/public/deal-room/${propertyId}/coordination`).then(r => r.ok ? r.json() : {}).catch(() => ({})),
+      fetch(`${API_BASE}/api/public/deal-room/${propertyId}/tasks`).then(r => r.ok ? r.json() : { tasks: [] }).catch(() => ({ tasks: [] })),
+    ]).then(([evRes, coord, taskRes]) => {
+      if (cancelled) return;
+      const invitedRoles = new Set(
+        (evRes.events || []).filter(e => e.event_type === "invite_sent" && e.metadata?.role).map(e => e.metadata.role)
+      ).size;
+      const docCount = Object.values(coord.docsByRole || {}).reduce((a, b) => a + b, 0);
+      const taskCount = (taskRes.tasks || []).length;
+      setState({ loading: false, invitedRoles, docCount, taskCount });
+    }).catch(() => cancelled || setState(s => ({ ...s, loading: false })));
+    return () => { cancelled = true; };
+  }, [propertyId]);
+
+  if (state.loading) {
+    return <div className="h-16 rounded-xl bg-gray-50 animate-pulse" />;
+  }
+
+  const steps = [
+    {
+      label: "Invite parties",
+      detail: (() => {
+        const invitableLabels = (pack?.roles || []).filter(r => r.invitable).map(r => r.label);
+        const roleList = invitableLabels.length > 0
+          ? invitableLabels.slice(0, 4).join(", ")
+          : "lender, inspector, insurer, and attorney";
+        return totalInvitable
+          ? `${state.invitedRoles}/${totalInvitable} invited — send role-specific links to your ${roleList}`
+          : `Send role-specific links to your ${roleList}`;
+      })(),
+      done: state.invitedRoles > 0,
+      href: "#invite-panel",
+    },
+    {
+      label: "Upload documents",
+      detail: state.docCount > 0
+        ? `${state.docCount} document${state.docCount === 1 ? "" : "s"} uploaded — AI reviews each file as it arrives`
+        : "AI reviews each file as it arrives and surfaces key findings",
+      done: state.docCount > 0,
+      href: "#documents-panel",
+    },
+    {
+      label: "AI takes over",
+      detail: state.taskCount > 0
+        ? `${state.taskCount} task${state.taskCount === 1 ? "" : "s"} identified — approvals, compliance, and deal stage tracked automatically`
+        : "Once documents arrive, AI tracks approvals, compliance, and deal stage automatically",
+      done: state.taskCount > 0,
+      href: "#tasks-panel",
+    },
+  ];
+
+  return (
+    <ol className="space-y-2.5">
+      {steps.map((s, i) => (
+        <li key={s.label}>
+          <a href={s.href} className="flex items-start gap-2.5 text-sm group">
+            <span className="shrink-0 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold mt-0.5 transition"
+              style={s.done ? { background: "#16a34a", color: "#fff" } : { background: accentColor, color: "#fff" }}>
+              {s.done ? "✓" : i + 1}
+            </span>
+            <span className={s.done ? "text-gray-400 line-through decoration-gray-300" : "text-gray-600 group-hover:text-gray-900"}>
+              {s.detail}
+            </span>
+          </a>
+        </li>
+      ))}
+    </ol>
+  );
+}
+
 function ShareButton({ propertyId }) {
   const [state, setState] = useState("idle"); // idle | copied
   const shareUrl = `${window.location.origin}/deal-room/${propertyId}/share`;
@@ -929,7 +1014,7 @@ function DealIntelligenceDashboard({ propertyId, refreshKey, packId = DEFAULT_PA
     if (!bySection[a.section]) bySection[a.section] = a;
   }
 
-  const doneCount = Object.keys(bySection).length;
+  const doneCount = SECTIONS.filter(s => bySection[s.key]).length;
 
   if (SECTIONS.length === 0) return null;
 
@@ -1093,7 +1178,7 @@ function buildPendingSectionMap(property, role, onAnalysisSaved, urlPropertyId, 
 export default function DealRoomPage() {
   const { propertyId } = useParams();
   const [searchParams] = useSearchParams();
-  const role = searchParams.get("role") || "lender";
+  const role = searchParams.get("role") || "owner";
   const from = searchParams.get("from") || "";
 
   const [checkoutLoading, setCheckoutLoading] = useState(false);
@@ -1217,13 +1302,32 @@ export default function DealRoomPage() {
 
   // Which Workflow Pack powers this deal room. Demo properties are always
   // CRE Acquisition; custom rooms carry their pack id from creation time.
-  const packId = demoProperty ? DEFAULT_PACK_ID : (apiProperty?.workflow_pack_id || DEFAULT_PACK_ID);
+  // Resolution (deal_type inference wins over the stored workflow_pack_id
+  // column) lives in one shared place — lib/workflowPacks.resolvePackId —
+  // so every page that needs a room's pack (this page, checkout success,
+  // invite links, etc.) agrees, instead of duplicating/drifting logic.
+  const packId = demoProperty ? DEFAULT_PACK_ID : resolvePackId(apiProperty);
   const pack = getWorkflowPack(packId);
+  const isCREPack = packId === DEFAULT_PACK_ID;
 
   // Role metadata (label/icon/color/headline/subtext/sections) is looked up
   // scoped to this pack — never from a flat cross-pack dict — since a role
   // key like "lender" can mean something different in another pack.
-  const baseRoleConfig = pack.getRole(role) || pack.getRole("lender") || pack.roles[0];
+  // Fallback: if the role isn't in this pack (e.g. old bundle, typo, new role
+  // not yet deployed), show a neutral "invited" message rather than the primary
+  // owner's private "full view of all parties" copy.
+  const _genericFallback = {
+    key: role,
+    label: role.charAt(0).toUpperCase() + role.slice(1),
+    icon: "👤",
+    color: pack.roles[0]?.color || "#800020",
+    needsDocs: false,
+    headline: "You've been invited to this deal room",
+    subtext: "You can review the documents and status shared in this deal room.",
+    sections: [],
+    invitable: true,
+  };
+  const baseRoleConfig = pack.getRole(role) || _genericFallback;
   const isHotel = (property?.property_type || "").toLowerCase().includes("hotel") ||
                   (property?.property_type || "").toLowerCase().includes("hospitality");
   const roleConfig = isHotel && ['owner', 'broker', 'borrower'].includes(role)
@@ -1294,21 +1398,22 @@ export default function DealRoomPage() {
     >
       {/* Top bar — demo banner | owner bar | invite bar */}
       {isDemo ? (
-        <div className="border-b border-indigo-100 px-6 py-3" style={{ background: "linear-gradient(90deg, #1e1b4b 0%, #312e81 100%)" }}>
+        <div className="border-b px-6 py-3" style={{ background: "linear-gradient(90deg, #4a0010 0%, #800020 100%)", borderColor: "rgba(255,255,255,0.08)" }}>
           <div className="max-w-5xl mx-auto flex items-center justify-between gap-4">
             <div className="flex items-center gap-3">
-              <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white/10 text-[11px] font-bold text-white">
-                <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
+              <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold text-white" style={{ background: "rgba(255,255,255,0.12)" }}>
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
                 LIVE DEMO
               </span>
               <div>
-                <p className="text-xs font-semibold text-white">The Meridian Apartments — $14M Acquisition</p>
-                <p className="text-[10px] text-white/50">Explore a real Kontra deal room · Read-only · No signup required</p>
+                <p className="text-xs font-semibold text-white">550 Madison Avenue — $28.5M Acquisition · Closing at risk</p>
+                <p className="text-[10px] text-white/50">Explore a real Kontra deal room · All AI features active · No signup required</p>
               </div>
             </div>
             <Link to="/create-deal-room"
-              className="shrink-0 px-4 py-2 rounded-xl text-xs font-bold text-indigo-900 bg-white hover:opacity-90 transition whitespace-nowrap">
-              Create Your Deal Room →
+              className="shrink-0 px-4 py-2 rounded-xl text-xs font-bold transition whitespace-nowrap"
+              style={{ background: "rgba(255,255,255,0.15)", color: "#fff", border: "1px solid rgba(255,255,255,0.2)" }}>
+              Create Your Workspace →
             </Link>
           </div>
         </div>
@@ -1364,7 +1469,9 @@ export default function DealRoomPage() {
           <div className="absolute inset-0 bg-gradient-to-r from-black/70 to-black/30 flex items-end p-5">
             <div className="flex-1">
               <p className="text-xs text-white/60 mb-0.5">
-                {property.type}{property.market ? ` · ${property.market}` : ""}
+                {isCREPack
+                  ? [property.type, property.market].filter(Boolean).join(" · ")
+                  : [pack.name, property.market || property.address].filter(Boolean).join(" · ")}
                 {property.isCustom && !isDemo && <span className="ml-2 px-1.5 py-0.5 rounded bg-amber-500/30 text-amber-200 text-[10px] font-semibold">Awaiting Documents</span>}
               {isDemo && <span className="ml-2 px-1.5 py-0.5 rounded text-[10px] font-semibold" style={{ background: "rgba(99,102,241,0.4)", color: "#c7d2fe" }}>Under Review</span>}
               </p>
@@ -1390,25 +1497,51 @@ export default function DealRoomPage() {
           <ReadinessSummaryBar property={property} />
         )}
 
+        {/* AI Operations Manager — the primary interface, not a reporting
+            dashboard. Advisor feedback: "the AI should talk first, the UI
+            should be supporting evidence." This must render before the Next
+            Steps card so the greeting + status is the very first thing an
+            owner sees, not buried below a checklist. See lib/operationsManager.js
+            and .agents/memory/kontra-task-architecture.md. */}
+        {property.isCustom && (
+          <AIOperationsManager propertyId={pid} ownerName={property.first_name} dealName={property.name || property.property_name} />
+        )}
+
+        {/* Daily Standup — evening counterpart to the morning briefing above.
+            Same grounding (Task Engine + closing chain), different lens: what
+            moved today, what's still open, and what's planned for tomorrow. */}
+        {property.isCustom && (
+          <DailyStandup propertyId={pid} ownerName={property.first_name} />
+        )}
+
         {/* Role headline — owner gets concise Next Steps; others get role description */}
         <div className="bg-white rounded-2xl border border-gray-200 p-5 mb-6"
           style={{ borderLeftWidth: 4, borderLeftColor: roleConfig.color }}>
           {property.isCustom && role === "owner" ? (
             <>
               <h2 className="text-base font-bold text-gray-900 mb-3">Next Steps</h2>
-              <ol className="space-y-2.5">
-                {[
-                  "Invite parties — send role-specific links to your lender, inspector, insurer, and attorney",
-                  "Upload documents — AI reviews each file as it arrives and surfaces key findings",
-                  "Track approvals — monitor compliance, deal stage, and party status in real time",
-                ].map((text, i) => (
-                  <li key={i} className="flex items-start gap-2.5 text-sm text-gray-600">
-                    <span className="shrink-0 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold text-white mt-0.5"
-                      style={{ background: roleConfig.color }}>{i + 1}</span>
-                    {text}
-                  </li>
-                ))}
-              </ol>
+              {!isDemo ? (
+                <OnboardingProgress
+                  propertyId={pid}
+                  accentColor={roleConfig.color}
+                  totalInvitable={(pack.roles || []).filter(r => r.invitable).length}
+                  pack={pack}
+                />
+              ) : (
+                <ol className="space-y-2.5">
+                  {[
+                    `Invite parties — send role-specific links to ${(pack.roles || []).filter(r => r.invitable).slice(0, 3).map(r => r.label).join(", ") || "every stakeholder"}`,
+                    "Upload documents — AI reviews each file as it arrives and surfaces key findings",
+                    "Track approvals — monitor deal stage, party status, and action items in real time",
+                  ].map((text, i) => (
+                    <li key={i} className="flex items-start gap-2.5 text-sm text-gray-600">
+                      <span className="shrink-0 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold text-white mt-0.5"
+                        style={{ background: roleConfig.color }}>{i + 1}</span>
+                      {text}
+                    </li>
+                  ))}
+                </ol>
+              )}
             </>
           ) : (
             <>
@@ -1418,45 +1551,43 @@ export default function DealRoomPage() {
           )}
         </div>
 
-        {/* AI Operations Manager — answer engine grounded in the Task Engine,
-            not a reporting dashboard. This is the first thing an owner sees:
-            deal status, what's blocking closing, what AI already prepared,
-            and a free-form question box. See lib/operationsManager.js and
-            .agents/memory/kontra-task-architecture.md. */}
-        {property.isCustom && (
-          <AIOperationsManager propertyId={pid} ownerName={property.first_name} />
-        )}
-
         {/* Due Diligence Checklist */}
         {property.isCustom && (
-          <DocumentChecklistPanel
-            propertyId={pid}
-            propertyType={property.property_type || property.type}
-            role={role}
-            isDemo={isDemo}
-            packId={packId}
-          />
+          <div id="documents-panel">
+            <DocumentChecklistPanel
+              propertyId={pid}
+              propertyType={property.property_type || property.type}
+              role={role}
+              isDemo={isDemo}
+              packId={packId}
+              onAnalysisSaved={onAnalysisSaved}
+            />
+          </div>
         )}
 
         {/* Invite panel — early in the flow so owner invites first */}
         {property.isCustom && !isDemo && (
-          <InvitePanel
-            propertyId={pid}
-            senderName={property.first_name || property.property_name || undefined}
-            packId={packId}
-          />
+          <div id="invite-panel">
+            <InvitePanel
+              propertyId={pid}
+              senderName={property.first_name || property.property_name || undefined}
+              packId={packId}
+            />
+          </div>
         )}
 
-        {/* Deal Health Score — sets the tone right after the checklist */}
+        {/* Transaction Risk — replaces numeric Deal Health score */}
         {property.isCustom && (
-          <DealHealthPanel propertyId={pid} packId={packId} />
+          <TransactionRiskPanel propertyId={pid} />
         )}
 
         {/* Tasks — Task Engine + AI Ownership Layer (Observe Mode). Every open
             item has an explicit owner (human role or AI); AI-drafted actions
             (e.g. reminder emails) require an explicit Approve click. */}
         {property.isCustom && (
-          <TasksPanel propertyId={pid} role={role} />
+          <div id="tasks-panel">
+            <TasksPanel propertyId={pid} role={role} />
+          </div>
         )}
 
         {/* Deal Intelligence Dashboard (AI Findings) — reveals as documents are uploaded.
@@ -1577,7 +1708,7 @@ export default function DealRoomPage() {
               <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
                 <Link to="/create-deal-room"
                   className="px-8 py-3 rounded-xl text-sm font-bold bg-white text-indigo-900 hover:opacity-90 transition">
-                  Create Your Deal Room — $499 →
+                  Create Your Workspace — $499 →
                 </Link>
                 <Link to="/pricing"
                   className="px-6 py-3 rounded-xl text-sm font-semibold border border-white/20 text-white/80 hover:bg-white/10 transition">
