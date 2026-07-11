@@ -1210,6 +1210,101 @@ app.post('/api/webhook/stripe',
   app.get(`/api/public/deal-room/${DEMO_ID}/comments`, (_req, res) => res.json({ comments: [] }));
 })();
 
+// ── Business Acquisition demo — kontra-demo-biz ───────────────────────────────
+;(() => {
+  const { PROPERTY, TASKS, BRIEFING, DEMO_QA_CONTEXT } = require('./lib/demoDataBiz');
+  const openai = new OpenAI();
+  const BIZ_ID = 'kontra-demo-biz';
+
+  app.get(`/api/public/deal-room/${BIZ_ID}`, (_req, res) => res.json(PROPERTY));
+  app.get(`/api/public/deal-room/${BIZ_ID}/tasks`, (_req, res) => res.json({ tasks: TASKS }));
+  app.post(`/api/public/deal-room/${BIZ_ID}/tasks/refresh`, (_req, res) => res.json({ tasks: TASKS }));
+  app.get(`/api/public/deal-room/${BIZ_ID}/brain/briefing`, (_req, res) => res.json(BRIEFING));
+
+  app.post(`/api/public/deal-room/${BIZ_ID}/brain/ask`, async (req, res) => {
+    const { question } = req.body || {};
+    if (!question) return res.status(400).json({ error: 'question required' });
+    try {
+      const completion = await openai.chat.completions.create({
+        model: 'gpt-4o-mini',
+        messages: [
+          { role: 'system', content: DEMO_QA_CONTEXT },
+          { role: 'user', content: question },
+        ],
+        max_tokens: 200,
+        temperature: 0.4,
+      });
+      res.json({ answer: completion.choices[0].message.content.trim() });
+    } catch (e) {
+      res.json({ answer: 'The QoE report is the critical item — the LOI cannot be finalized until Davidson Advisory delivers it.' });
+    }
+  });
+
+  app.post(`/api/public/deal-room/${BIZ_ID}/tasks/biz-task-cpa/approve`, (_req, res) =>
+    res.json({ ok: true, demo: true, message: 'Demo mode — email not sent. In a live deal room this would deliver the follow-up to Davidson Advisory.' }));
+  app.post(`/api/public/deal-room/${BIZ_ID}/tasks/biz-task-seller/approve`, (_req, res) =>
+    res.json({ ok: true, demo: true, message: 'Demo mode — email not sent. In a live deal room this would deliver the follow-up to Tom Briggs.' }));
+
+  app.get(`/api/public/deal-room/${BIZ_ID}/coordination`, (_req, res) =>
+    res.json({ stage: 'due-diligence', stageLabel: 'Due Diligence', parties: [
+      { role: 'cpa',      label: 'CPA / Accountant', status: 'invited',   name: 'Davidson Advisory' },
+      { role: 'attorney', label: 'Attorney',          status: 'submitted', name: 'Vance & Partners' },
+      { role: 'broker',   label: 'M&A Broker',        status: 'submitted', name: 'Meridian Advisors' },
+    ]}));
+
+  app.get(`/api/public/deal-room/${BIZ_ID}/analyses`, (_req, res) => res.json({ analyses: [] }));
+  app.get(`/api/public/deal-room/${BIZ_ID}/events`, (_req, res) => res.json({ events: [] }));
+  app.get(`/api/public/deal-room/${BIZ_ID}/comments`, (_req, res) => res.json({ comments: [] }));
+})();
+
+// ── Fundraising demo — kontra-demo-fundraising ────────────────────────────────
+;(() => {
+  const { PROPERTY, TASKS, BRIEFING, DEMO_QA_CONTEXT } = require('./lib/demoDataFundraising');
+  const openai = new OpenAI();
+  const FUND_ID = 'kontra-demo-fundraising';
+
+  app.get(`/api/public/deal-room/${FUND_ID}`, (_req, res) => res.json(PROPERTY));
+  app.get(`/api/public/deal-room/${FUND_ID}/tasks`, (_req, res) => res.json({ tasks: TASKS }));
+  app.post(`/api/public/deal-room/${FUND_ID}/tasks/refresh`, (_req, res) => res.json({ tasks: TASKS }));
+  app.get(`/api/public/deal-room/${FUND_ID}/brain/briefing`, (_req, res) => res.json(BRIEFING));
+
+  app.post(`/api/public/deal-room/${FUND_ID}/brain/ask`, async (req, res) => {
+    const { question } = req.body || {};
+    if (!question) return res.status(400).json({ error: 'question required' });
+    try {
+      const completion = await openai.chat.completions.create({
+        model: 'gpt-4o-mini',
+        messages: [
+          { role: 'system', content: DEMO_QA_CONTEXT },
+          { role: 'user', content: question },
+        ],
+        max_tokens: 200,
+        temperature: 0.4,
+      });
+      res.json({ answer: completion.choices[0].message.content.trim() });
+    } catch (e) {
+      res.json({ answer: 'Two subscription agreements from committed LPs are outstanding — Clearwater\'s $5M agreement is the most urgent before the August 1 close.' });
+    }
+  });
+
+  app.post(`/api/public/deal-room/${FUND_ID}/tasks/fund-task-lp1/approve`, (_req, res) =>
+    res.json({ ok: true, demo: true, message: 'Demo mode — email not sent. In a live deal room this would send the follow-up to Clearwater Capital.' }));
+  app.post(`/api/public/deal-room/${FUND_ID}/tasks/fund-task-lp2/approve`, (_req, res) =>
+    res.json({ ok: true, demo: true, message: 'Demo mode — email not sent. In a live deal room this would send the follow-up to Vantage Family Office.' }));
+
+  app.get(`/api/public/deal-room/${FUND_ID}/coordination`, (_req, res) =>
+    res.json({ stage: 'soft-circle', stageLabel: 'Soft Circle', parties: [
+      { role: 'investor_relations', label: 'LP — Clearwater Capital',     status: 'invited',   name: 'Jessica Wu' },
+      { role: 'investor_relations', label: 'LP — Vantage Family Office',  status: 'invited',   name: 'Mark Chen' },
+      { role: 'attorney',           label: 'Legal Counsel',               status: 'submitted', name: 'Thornton LLP' },
+      { role: 'advisor',            label: 'Financial Advisor',           status: 'submitted', name: 'Atlas Partners' },
+    ]}));
+
+  app.get(`/api/public/deal-room/${FUND_ID}/analyses`, (_req, res) => res.json({ analyses: [] }));
+  app.get(`/api/public/deal-room/${FUND_ID}/events`, (_req, res) => res.json({ events: [] }));
+  app.get(`/api/public/deal-room/${FUND_ID}/comments`, (_req, res) => res.json({ comments: [] }));
+})();
+
 // ── Public deal room lookup — no auth required ────────────────────────────────
 app.get('/api/public/deal-room/:propertyId', async (req, res) => {
   const { propertyId } = req.params;

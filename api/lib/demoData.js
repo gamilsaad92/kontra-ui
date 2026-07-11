@@ -13,7 +13,7 @@ const PROPERTY = {
   market: 'Midtown Manhattan',
   status: 'active',
   workflow_pack_id: 'cre-acquisition',
-  first_name: 'Jamil',
+  first_name: '',
   created_at: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(),
 };
 

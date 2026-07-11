@@ -90,6 +90,7 @@ const WORKFLOW_PACKS = [
     icon: "🏢",
     title: "CRE Acquisition",
     color: "#800020",
+    demoSlug: "/deal-room/kontra-demo",
     description: "Commercial real estate acquisitions, refinancing, and lending transactions.",
     parties: [
       { icon: "🏢", role: "Borrower / Owner", desc: "Creates workspace, uploads documents, tracks all parties" },
@@ -103,6 +104,7 @@ const WORKFLOW_PACKS = [
     icon: "💼",
     title: "Business Acquisition",
     color: "#1e40af",
+    demoSlug: "/deal-room/kontra-demo-biz",
     description: "M&A transactions, business purchases, and buy-side / sell-side diligence.",
     parties: [
       { icon: "🤝", role: "Buyer", desc: "Creates workspace, drives diligence checklist, tracks all parties" },
@@ -116,6 +118,7 @@ const WORKFLOW_PACKS = [
     icon: "📈",
     title: "Fundraising",
     color: "#065f46",
+    demoSlug: "/deal-room/kontra-demo-fundraising",
     description: "Capital raise processes for founders, fund managers, and deal sponsors.",
     parties: [
       { icon: "🚀", role: "Deal Principal", desc: "Creates workspace, manages investor document requests" },
@@ -274,7 +277,7 @@ export default function HowItWorksPage() {
                 </div>
 
                 <div className="mt-6 pt-5 border-t border-gray-100">
-                  <Link to="/deal-room/kontra-demo"
+                  <Link to={p.demoSlug}
                     className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold text-white transition hover:opacity-90"
                     style={{ background: p.color }}>
                     See a live {p.title} deal room →
