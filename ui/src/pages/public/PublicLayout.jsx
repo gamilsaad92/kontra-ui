@@ -199,9 +199,8 @@ export default function PublicLayout({ children, hideFooter = false }) {
                 ]},
                 { title: "Platform", links: [
                   { label: "Dashboard", href: "/dashboard" },
-                  { label: "My Properties", href: "/app/properties" },
+                  { label: "My Deal Rooms", href: "/my-deal-rooms" },
                   { label: "Documents", href: "/app/documents" },
-                  { label: "Properties", href: "/properties" },
                 ]},
                 { title: "Company", links: [
                   { label: "About", href: "/about" },
@@ -224,7 +223,7 @@ export default function PublicLayout({ children, hideFooter = false }) {
               ))}
             </div>
             <div className="mt-8 pt-6 border-t border-gray-200 flex flex-col md:flex-row items-center justify-between gap-3">
-              <p className="text-xs text-gray-400">© 2026 Kontra Platform, Inc. All rights reserved.</p>
+              <p className="text-xs text-gray-400">© 2026 Kontra. All rights reserved.</p>
               <div className="flex gap-4 text-xs text-gray-400">
                 <a href="/privacy" className="hover:text-gray-600">Privacy</a>
                 <a href="/terms" className="hover:text-gray-600">Terms</a>

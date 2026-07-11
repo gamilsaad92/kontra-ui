@@ -7,8 +7,8 @@ const PILLARS = [
     icon: "🔐",
     title: "Encryption",
     items: [
-      "All data in transit is encrypted with TLS 1.3.",
-      "All data at rest is encrypted with AES-256 — documents, database records, and AI analysis outputs.",
+      "Kontra's public web and API connections use modern TLS encryption. Infrastructure-level connections may use TLS 1.2 or higher depending on provider configuration.",
+      "Kontra's infrastructure providers encrypt stored data at rest using industry-standard encryption, including AES-256 where supported and configured.",
       "Document download links are signed and expire after 1 hour. Sharing a link does not grant permanent access.",
     ],
   },
@@ -16,9 +16,9 @@ const PILLARS = [
     icon: "🏗️",
     title: "Infrastructure",
     items: [
-      "API server hosted on Render. Render maintains SOC 2 Type 2 and related compliance controls covering its infrastructure.",
-      "Database and file storage on Supabase, running on AWS. Supabase maintains SOC 2 and ISO 27001 certifications covering its infrastructure.",
-      "These provider certifications apply to each provider's own infrastructure and do not mean that Kontra itself holds those certifications.",
+      "API server hosted on Render. Render maintains SOC 2 Type 2 and related compliance controls covering its own infrastructure.",
+      "Database and file storage on Supabase, running on AWS. Supabase maintains SOC 2 and ISO 27001 certifications covering its own infrastructure.",
+      "Provider certifications apply to each provider's own infrastructure and do not mean that Kontra itself holds those certifications. Kontra is not currently SOC 2 certified (see Compliance Roadmap).",
       "Document files stored in AWS S3-compatible storage.",
     ],
   },
@@ -73,7 +73,7 @@ const PILLARS = [
     icon: "📆",
     title: "Compliance Roadmap",
     items: [
-      "SOC 2 Type II audit is on the roadmap for enterprise readiness. Kontra is not currently SOC 2 certified.",
+      "Kontra is not currently SOC 2 certified. SOC 2 Type II audit is on the roadmap for enterprise readiness.",
       "Data Processing Agreement (DPA) templates are available upon request for enterprise customers.",
       "For vendor security questionnaires, email legal@kontraplatform.com.",
     ],
@@ -104,14 +104,14 @@ export default function SecurityPage() {
           <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-3">At a glance</p>
           <div className="grid grid-cols-2 gap-x-8 gap-y-2">
             {[
-              ["Encryption in transit", "TLS 1.3"],
-              ["Encryption at rest", "AES-256"],
+              ["Encryption in transit", "Modern TLS (1.2+)"],
+              ["Encryption at rest", "AES-256 (provider-level)"],
               ["Infrastructure providers", "AWS · Render · Supabase"],
               ["Document link expiry", "1 hour (signed URLs)"],
               ["AI training on your data", "Not by default"],
               ["Data sold to third parties", "Never"],
               ["Audit logging", "Material actions logged"],
-              ["Kontra SOC 2 certified", "Not yet (roadmap)"],
+              ["Kontra SOC 2 certified", "Not yet — roadmap"],
             ].map(([label, value]) => (
               <div key={label} className="flex justify-between text-sm py-1 border-b border-gray-100">
                 <span className="text-gray-600">{label}</span>
