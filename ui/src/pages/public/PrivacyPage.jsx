@@ -47,7 +47,7 @@ const SECTIONS = [
       "**Who can access documents**: Production document access is restricted to authorized personnel with a legitimate operational need, requires authenticated access, and is logged. Third-party participants who uploaded documents do not retain access after their session.",
       "**Retention period**: Workspace data is retained for the duration of the active workspace. Following workspace closure or account termination, data is retained for up to 30 days to allow export requests, after which it is deleted. Deleted data may remain in encrypted backups for a limited period until those backups are overwritten in the ordinary course.",
       "**Longer retention by agreement**: Customers requiring longer retention for legal, contractual, or compliance reasons may contact support@kontraplatform.com — subject to a written agreement.",
-      "**Deletion requests**: Workspace owners may request deletion of all documents and data by emailing privacy@kontraplatform.com. Requests are processed within 30 days. Data subject to an active legal hold cannot be deleted until the hold is lifted.",
+      "**Deletion requests**: Workspace owners may request deletion of all documents and data by emailing privacy@kontraplatform.com. An early deletion request closes workspace access, begins deletion processing, and is irreversible once completed — export any records you need before submitting. Requests are processed within 30 days. Data subject to an active legal hold cannot be deleted until the hold is lifted. Deleted data may remain in encrypted backups until those backups are overwritten in the ordinary course.",
     ],
   },
   {
@@ -92,12 +92,13 @@ const SECTIONS = [
   {
     title: "CCPA Notice (California Residents)",
     content: [
+      "To the extent the CCPA/CPRA applies to Kontra, California residents may have the following rights.",
       "**Categories of personal information collected**: Identifiers (name, email, IP address); commercial information (transaction details, payment records); documents you upload; AI-extracted transaction data; usage and device data.",
       "**Sources**: Directly from you when you create a workspace or upload documents; automatically from your device; from participants you invite to your workspace.",
       "**Business purposes**: To provide and improve the platform, process payments, send transactional communications, and comply with law.",
       "**Service providers**: We disclose data to the service providers listed above (OpenAI, Supabase, Stripe, Render, Resend) for the purposes of operating the platform.",
       "**Sale or sharing**: We do not sell personal information. We do not share personal information for cross-context behavioral advertising.",
-      "**Sensitive personal information**: We do not collect sensitive personal information as defined by CPRA beyond what is contained in documents you choose to upload.",
+      "**Sensitive personal information**: Kontra does not intentionally request sensitive personal information (such as Social Security numbers, financial account numbers, or government ID numbers) as a standard workspace field. Sensitive information may nevertheless be contained in documents uploaded by users. Users should avoid uploading unnecessary sensitive information and must have authority and a lawful basis to provide it.",
       "**Your rights**: You have the right to know, access, correct, delete, and opt out of sale or sharing of your personal information. You also have the right to non-discrimination for exercising these rights.",
       "**Authorized agents**: An authorized agent may submit a request on your behalf by emailing privacy@kontraplatform.com with written authorization from you.",
       "**Identity verification**: We will verify your identity before processing access or deletion requests — typically by confirming the email address associated with the workspace.",
@@ -140,7 +141,7 @@ export default function PrivacyPage() {
               "🤖  Document text is sent to OpenAI's API at analysis time. OpenAI does not train on API data by default; inputs may be retained up to 30 days for abuse monitoring.",
               "🔒  Document download links are signed and expire after 1 hour.",
               "📋  Material AI recommendations, task actions, and approvals are recorded in a workspace audit log.",
-              "🗑️  Data is deleted 30 days after workspace closure. Workspace owners can request earlier deletion.",
+              "🗑️  Following closure, data remains available for export for up to 30 days and is then scheduled for deletion, subject to backup rotation, legal holds, and written retention agreements.",
             ].map((fact, i) => (
               <p key={i} className="text-sm text-gray-600">{fact}</p>
             ))}

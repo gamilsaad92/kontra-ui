@@ -66,7 +66,7 @@ const PILLARS = [
     title: "Incident Response",
     items: [
       "In the event of a confirmed data breach affecting personal information, Kontra will provide legally required notices without unreasonable delay and within any time period required by applicable law.",
-      "To report a security concern, email security@kontraplatform.com — we respond within 24 hours on business days.",
+      "To report a security concern, email security@kontraplatform.com — we aim to acknowledge reports within one business day.",
     ],
   },
   {
@@ -74,7 +74,7 @@ const PILLARS = [
     title: "Compliance Roadmap",
     items: [
       "Kontra is not currently SOC 2 certified. SOC 2 Type II audit is on the roadmap for enterprise readiness.",
-      "Data Processing Agreement (DPA) templates are available upon request for enterprise customers.",
+      "Enterprise DPA support is planned and may be discussed upon request.",
       "For vendor security questionnaires, email legal@kontraplatform.com.",
     ],
   },
@@ -148,7 +148,7 @@ export default function SecurityPage() {
               <a href="mailto:security@kontraplatform.com" className="underline hover:text-gray-900">
                 security@kontraplatform.com
               </a>
-              {" "}— we respond within 24 hours on business days.
+              {" "}— we aim to acknowledge reports within one business day.
             </p>
           </div>
           <div>

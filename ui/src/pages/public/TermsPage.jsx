@@ -21,7 +21,7 @@ const SECTIONS = [
   },
   {
     title: "5. Account Registration and Link Security",
-    content: "You must provide accurate information when creating an account. You are responsible for maintaining the security of your account credentials and any access links (owner links and participant invite links) associated with your workspace. Do not share sensitive access links with unauthorized parties. Notify us immediately at security@kontraplatform.com if you suspect unauthorized access to your account or workspace links. We may suspend accounts that violate these terms or that we reasonably believe are being used fraudulently.",
+    content: "You must provide accurate information when creating an account. The workspace owner is the individual or organization that purchases a workspace, or an authorized administrator designated by that organization. If an employee purchases a workspace on behalf of an organization and later leaves, ownership and administrative control over the workspace data remains with the organization — not the individual. Kontra may transfer administrative access upon request from the organization, subject to identity verification. You are responsible for maintaining the security of your account credentials and any access links (owner links and participant invite links) associated with your workspace. Do not share sensitive access links with unauthorized parties. Notify us immediately at security@kontraplatform.com if you suspect unauthorized access to your account or workspace links. We may suspend accounts that violate these terms or that we reasonably believe are being used fraudulently.",
   },
   {
     title: "6. Electronic Communications",
