@@ -315,12 +315,16 @@ export default function DealCoordinationPanel({ propertyId, role, packId = DEFAU
                 <p className="text-xs text-gray-400">
                   {myDocCount > 0
                     ? `${myDocCount} document${myDocCount !== 1 ? 's' : ''} uploaded — signal the team you're ready for review`
-                    : 'Signal the team when you\'re ready to proceed'}
+                    : myMeta?.needsDocs
+                      ? 'Upload your documents above, then signal the team when you\'re done'
+                      : 'Signal the team when you\'re ready to proceed'}
                 </p>
               </div>
               <button
                 onClick={() => setShowNamePrompt(true)}
-                className="shrink-0 px-4 py-2 rounded-xl text-xs font-bold text-white bg-[#800020] hover:opacity-90 transition"
+                disabled={myMeta?.needsDocs && myDocCount === 0}
+                title={myMeta?.needsDocs && myDocCount === 0 ? 'Upload your documents above first' : ''}
+                className="shrink-0 px-4 py-2 rounded-xl text-xs font-bold text-white bg-[#800020] hover:opacity-90 transition disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 Signal Ready →
               </button>
