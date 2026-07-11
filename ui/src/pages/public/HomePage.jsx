@@ -3,9 +3,9 @@ import { Link, useNavigate } from "react-router-dom";
 import PublicLayout from "./PublicLayout";
 
 const DEMOS = [
-  { icon: "🏢", label: "CRE Acquisition",      sub: "550 Madison Ave · $28.5M",           slug: "/deal-room/kontra-demo",             color: "#800020" },
-  { icon: "💼", label: "Business Acquisition", sub: "Brightline Services LLC · $6.2M",    slug: "/deal-room/kontra-demo-biz",         color: "#1e40af" },
-  { icon: "📈", label: "Fundraising",          sub: "Nexus Ventures Fund II · $25M raise", slug: "/deal-room/kontra-demo-fundraising", color: "#065f46" },
+  { icon: "🏢", label: "CRE Acquisition",      sub: "Commercial real estate acquisitions & financing", slug: "/deal-room/kontra-demo",             color: "#800020" },
+  { icon: "💼", label: "Business Acquisition", sub: "M&A, business purchases & diligence",             slug: "/deal-room/kontra-demo-biz",         color: "#1e40af" },
+  { icon: "📈", label: "Fundraising",          sub: "Capital raises for founders & fund managers",     slug: "/deal-room/kontra-demo-fundraising", color: "#065f46" },
 ];
 
 function LiveDemoButton() {
