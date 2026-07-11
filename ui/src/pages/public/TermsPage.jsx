@@ -65,7 +65,7 @@ const SECTIONS = [
   },
   {
     title: "16. Indemnification",
-    content: "You agree to defend and indemnify Kontra and its operators, officers, directors, employees, and agents from and against any claims, damages, or expenses (including legal fees) arising from: (a) your use of the platform; (b) your violation of these terms; (c) your violation of any third party's rights; (d) any content you upload that infringes third-party rights; or (e) any securities or regulatory violation arising from your use of the Fundraising or tokenization features.",
+    content: "You agree to defend and indemnify Kontra and its operator, personnel, and agents from and against any claims, damages, or expenses (including legal fees) arising from: (a) your use of the platform; (b) your violation of these terms; (c) your violation of any third party's rights; (d) any content you upload that infringes third-party rights; or (e) any securities or regulatory violation arising from your use of the Fundraising or tokenization features.",
   },
   {
     title: "17. Termination",
