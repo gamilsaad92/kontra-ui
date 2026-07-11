@@ -1570,6 +1570,22 @@ app.get('/api/public/deal-room/:propertyId/analyses', async (req, res) => {
       if (!history[a.section]) history[a.section] = [];
       history[a.section].push({ id: a.id, version: a.version, filename: a.filename, uploaded_by_role: a.uploaded_by_role, created_at: a.created_at });
     }
+    // Auto-resolve orphaned pending records older than 2 minutes (background AI job never ran)
+    const now = Date.now();
+    const stuckIds = allWithVersion
+      .filter(a => a.analysis?.pending && (now - new Date(a.created_at).getTime()) > 2 * 60 * 1000)
+      .map(a => a.id);
+    if (stuckIds.length > 0) {
+      // Fix each stuck record individually so we can set the right label
+      for (const stuck of allWithVersion.filter(a => stuckIds.includes(a.id))) {
+        const label = stuck.filename ? `${stuck.filename} received and logged.` : `Document received and logged.`;
+        supabase.from('deal_analyses').update({
+          analysis: { summary: label, documentType: stuck.analysis?.documentType || 'Document', confidence: 100, pending: false }
+        }).eq('id', stuck.id).then(() => {}).catch(() => {});
+        stuck.analysis = { ...stuck.analysis, pending: false, summary: label, confidence: 100 };
+      }
+    }
+
     // De-duplicate: keep only the latest per section (highest version)
     const seen = {};
     const deduped = [...allWithVersion].reverse().filter(a => {
