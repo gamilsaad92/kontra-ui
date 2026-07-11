@@ -1649,7 +1649,12 @@ app.post('/api/public/deal-room/:propertyId/track-document', upload.single('file
   if (!propertyId || !section) return res.status(400).json({ error: 'propertyId and section required' });
 
   const LIGHTWEIGHT_SECTIONS = [
-    'purchase_agreement', 'rent_roll', 'estoppel', 'environmental', 'survey', 'title'
+    // CRE Acquisition
+    'purchase_agreement', 'rent_roll', 'estoppel', 'environmental', 'survey', 'title',
+    // Business Acquisition
+    'loi', 'tax_returns', 'cap_table', 'contracts', 'disclosure_schedule',
+    // Fundraising
+    'term_sheet', 'spa',
   ];
   if (!LIGHTWEIGHT_SECTIONS.includes(section)) {
     return res.status(400).json({ error: `Section '${section}' requires AI analysis — use the AI upload endpoint instead` });
@@ -1657,12 +1662,22 @@ app.post('/api/public/deal-room/:propertyId/track-document', upload.single('file
 
   const filename = req.file?.originalname || `${section}.pdf`;
   const SECTION_LABELS = {
+    // CRE Acquisition
     purchase_agreement: 'Purchase Agreement',
     rent_roll: 'Rent Roll',
     estoppel: 'Estoppel Certificate',
     environmental: 'Environmental Report',
     survey: 'Survey / ALTA',
     title: 'Title Commitment',
+    // Business Acquisition
+    loi: 'Letter of Intent',
+    tax_returns: 'Tax Returns',
+    cap_table: 'Cap Table / Ownership',
+    contracts: 'Material Contracts',
+    disclosure_schedule: 'Disclosure Schedule',
+    // Fundraising
+    term_sheet: 'Term Sheet',
+    spa: 'Stock Purchase Agreement / SAFE',
   };
 
   try {
