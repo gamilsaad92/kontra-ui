@@ -1,39 +1,10 @@
 import { useState, useEffect, useCallback } from 'react';
+import { getWorkflowPack, DEFAULT_PACK_ID } from '../../lib/workflowPacks';
 
 const API_BASE = import.meta.env.VITE_API_BASE || '';
 
-const STAGES = [
-  { key: 'uploading',    label: 'Uploading',    icon: '📤', desc: 'Parties submitting documents' },
-  { key: 'under_review', label: 'Under Review', icon: '🔍', desc: 'Lender reviewing submissions' },
-  { key: 'approved',     label: 'Approved',     icon: '✅', desc: 'Deal approved — finalizing' },
-  { key: 'closing',      label: 'Closing',      icon: '✍️', desc: 'Signing & funding in process' },
-  { key: 'funded',       label: 'Funded',       icon: '🏦', desc: 'Deal closed and funded' },
-];
-
-const ROLE_META = {
-  owner:     { label: 'Owner / Borrower',    icon: '🏢', required: true,  needsDocs: false },
-  lender:    { label: 'Lender / Underwriter',icon: '🏦', required: true,  needsDocs: true  },
-  inspector: { label: 'Inspector',           icon: '🔍', required: true,  needsDocs: true  },
-  insurer:   { label: 'Insurance Broker',    icon: '🛡️', required: true,  needsDocs: true  },
-  attorney:   { label: 'Attorney',            icon: '⚖️', required: false, needsDocs: false },
-  investor:   { label: 'Investor',            icon: '📊', required: false, needsDocs: false },
-  servicer:   { label: 'Servicer',            icon: '⚙️', required: false, needsDocs: false },
-  franchisor: { label: 'Franchisor / Brand',  icon: '🏨', required: false, needsDocs: false },
-};
-
-const NEXT_STAGE = {
-  uploading:    'under_review',
-  under_review: 'approved',
-  approved:     'closing',
-  closing:      'funded',
-};
-
-const ADVANCE_LABEL = {
-  uploading:    'Move to Under Review',
-  under_review: 'Mark as Approved',
-  approved:     'Begin Closing',
-  closing:      'Mark as Funded',
-};
+// Roles, lifecycle stages, and next-stage/advance-label maps all come from
+// the active workflow template — see ui/src/lib/workflowPacks/.
 
 const STATUS_CONFIG = {
   submitted:      { label: 'Submitted',     bg: 'bg-blue-50',   text: 'text-blue-700',   dot: 'bg-blue-500'   },
@@ -52,7 +23,12 @@ function StatusBadge({ status }) {
   );
 }
 
-export default function DealCoordinationPanel({ propertyId, role }) {
+export default function DealCoordinationPanel({ propertyId, role, packId = DEFAULT_PACK_ID }) {
+  const workflowPack = getWorkflowPack(packId);
+  const STAGES = workflowPack.stages;
+  const NEXT_STAGE = workflowPack.nextStage;
+  const ADVANCE_LABEL = workflowPack.advanceLabel;
+  const ROLE_META = Object.fromEntries(workflowPack.roles.map(r => [r.key, r]));
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -148,8 +124,9 @@ export default function DealCoordinationPanel({ propertyId, role }) {
   const submissions = data.submissions || [];
   const docsByRole = data.docsByRole || {};
   const isFunded = stage === 'funded';
-  const canAdvance = (role === 'owner' || role === 'lender') && !isFunded;
-  const canSetStatus = role === 'owner' || role === 'lender';
+  const canManage = !!ROLE_META[role]?.canManage;
+  const canAdvance = canManage && !isFunded;
+  const canSetStatus = canManage;
   const submittedRoles = new Set(submissions.map(s => s.role));
   const requiredRoles = Object.entries(ROLE_META).filter(([, m]) => m.required).map(([k]) => k);
   const allRequiredIn = requiredRoles.every(r => submittedRoles.has(r));
@@ -314,7 +291,7 @@ export default function DealCoordinationPanel({ propertyId, role }) {
                 className="px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#800020]/20"
               />
               <textarea
-                placeholder="Notes for the lender (optional)"
+                placeholder="Add a note for the team (optional)"
                 value={submitterNotes}
                 onChange={e => setSubmitterNotes(e.target.value)}
                 rows={2}
