@@ -276,6 +276,10 @@ Your job is ONLY to provide:
 2. A parallel note (if relevant)
 3. Any AI-prepared items
 
+${ctx.openTasks.length === 0 ? `IMPORTANT — ZERO OPEN TASKS: open_tasks is empty. There is nothing blocking this deal.
+Status MUST be "on_track". The narrative must NOT use words like "pending", "blocking", "preventing", or "stalled".
+Instead write 1-2 sentences that confirm the deal is progressing normally and name what the team is waiting on next (e.g. lender review, closing docs). Be brief and confident.` : ''}
+
 Respond as JSON:
 {
   "status": "on_track" | "at_risk" | "blocked",
