@@ -17,10 +17,10 @@ const SECTIONS = [
   {
     title: "How We Use Your Information",
     content: [
-      "**Provide the service**: Run AI document analysis, maintain deal room records, and enable multi-party collaboration on CRE transactions.",
-      "**Document retrieval**: Store original uploaded documents so they remain accessible to deal room owners throughout the loan lifecycle and any subsequent tokenization process — eliminating the need to re-request documents from parties.",
+      "**Provide the service**: Run AI document analysis, maintain deal room records, and enable multi-party collaboration on transactions.",
+      "**Document retrieval**: Store original uploaded documents so they remain accessible to deal room owners throughout the deal lifecycle — eliminating the need to re-request documents from parties.",
       "**Improve the product**: Understand how features are used to prioritize improvements. We never use your specific property data or documents to train AI models.",
-      "**Communicate with you**: Send transactional emails (deal room activation, document upload notifications) and, with your consent, product updates.",
+      "**Communicate with you**: Send transactional emails (deal room activation, document upload notifications, task updates) and, with your consent, product updates.",
       "**Security and fraud prevention**: Detect and prevent unauthorized access, abuse, and fraud.",
       "**Legal and regulatory compliance**: Comply with applicable securities laws, IRS record-keeping requirements, and respond to lawful requests from authorities.",
     ],
@@ -30,9 +30,18 @@ const SECTIONS = [
     content: [
       "**Where documents are stored**: Uploaded files are stored in Supabase Storage (AWS S3-compatible infrastructure, AES-256 encryption at rest, TLS 1.3 in transit). Documents are never publicly accessible — access requires a time-limited signed URL (1-hour expiry) generated on demand.",
       "**Who can access documents**: Only the deal room owner (via their owner URL) and Kontra's service infrastructure can generate download links. Third-party parties (lender, inspector, etc.) who uploaded documents do not retain access after their session.",
-      "**Retention period**: Documents are retained for the life of the associated deal room, plus a minimum of 7 years following loan maturity, consistent with IRS financial record requirements (26 U.S.C. § 6501) and SEC record-keeping rules (Rule 17a-4). This retention period supports downstream loan tokenization and regulatory compliance.",
+      "**Retention period**: Documents are retained for the life of the associated deal room, plus a minimum of 7 years following loan maturity, consistent with IRS financial record requirements (26 U.S.C. § 6501) and SEC record-keeping rules (Rule 17a-4). This retention period supports downstream regulatory compliance.",
       "**Deletion**: Deal room owners may request deletion of all documents associated with their property by emailing privacy@kontraplatform.com. Deletion requests are processed within 30 days. Note that documents subject to active regulatory hold or litigation cannot be deleted until the hold is lifted.",
       "**OpenAI processing**: Document text is extracted and sent to OpenAI's API (GPT-4o) for analysis. This processing occurs at upload time only. OpenAI's API terms (openai.com/policies/usage-policies) prohibit training models on API inputs. OpenAI does not retain document content after the API call completes.",
+    ],
+  },
+  {
+    title: "Audit Logging",
+    content: [
+      "**What is logged**: Every AI-generated recommendation, task creation, task assignment, status change, document upload, document analysis, approval, and automated action is recorded in an immutable audit trail with a timestamp and attributed party.",
+      "**Purpose**: Audit logs allow workspace owners to review all activity and attributable actions within their deal room. They also support regulatory and compliance inquiries.",
+      "**Retention**: Audit logs are retained for the life of the deal room plus a minimum of 7 years, consistent with the document retention policy above.",
+      "**Access**: Workspace owners may request an export of their deal room audit log by emailing privacy@kontraplatform.com.",
     ],
   },
   {
@@ -63,6 +72,7 @@ const SECTIONS = [
       "**Correction**: Contact us to correct inaccurate deal room records.",
       "**Deletion**: Request deletion of all documents and data associated with your deal room. Processed within 30 days, subject to regulatory retention requirements.",
       "**Portability**: Request your deal analysis data in JSON format.",
+      "**Audit log export**: Request a full export of all logged actions in your deal room.",
       "**Opt-out**: Unsubscribe from non-transactional emails at any time. Upload notification emails cannot be disabled while a deal room is active.",
       "To exercise any of these rights, email privacy@kontraplatform.com with your deal room property ID and the email used at checkout.",
     ],
@@ -103,22 +113,22 @@ export default function PrivacyPage() {
             Back to Kontra
           </Link>
           <h1 className="text-3xl font-bold text-gray-900 mb-3">Privacy Policy</h1>
-          <p className="text-sm text-gray-500">Effective date: June 22, 2026 · Last updated: June 22, 2026</p>
+          <p className="text-sm text-gray-500">Effective date: June 22, 2026 · Last updated: July 11, 2026</p>
           <p className="text-sm text-gray-600 mt-4 leading-relaxed">
-            Kontra Platform, Inc. ("Kontra", "we", "us") operates kontraplatform.com and the Kontra CRE deal room platform.
+            Kontra Platform, Inc. ("Kontra", "we", "us") operates kontraplatform.com and the Kontra deal room platform.
             This policy explains what data we collect, how we store it, how long we keep it, and your rights.
           </p>
         </div>
 
-        {/* Document storage highlight box */}
         <div className="mb-10 p-5 rounded-xl border border-gray-200 bg-gray-50">
-          <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-2">Key facts about document storage</p>
+          <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-2">Key facts</p>
           <div className="space-y-2">
             {[
               "📄  Uploaded documents are stored encrypted in Supabase Storage (AWS), not discarded after analysis.",
               "🤖  Document text is processed by OpenAI's API at upload time. OpenAI does not retain or train on this data.",
               "🔒  Downloads require a signed link that expires in 1 hour — no permanent public access.",
               "📅  Documents are kept for the life of the deal + minimum 7 years after loan maturity (IRS & SEC compliance).",
+              "📋  Every AI recommendation, task action, and approval is logged in an immutable audit trail.",
               "🗑️  Owners can request full deletion by emailing privacy@kontraplatform.com.",
             ].map((fact, i) => (
               <p key={i} className="text-sm text-gray-600">{fact}</p>

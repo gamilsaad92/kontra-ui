@@ -35,6 +35,7 @@ import CheckoutSuccessPage from "./pages/public/CheckoutSuccessPage";
 import CheckoutCancelPage from "./pages/public/CheckoutCancelPage";
 import PrivacyPage from "./pages/public/PrivacyPage";
 import TermsPage from "./pages/public/TermsPage";
+import SecurityPage from "./pages/public/SecurityPage";
 import AboutPage from "./pages/public/AboutPage";
 
 // Unified workspace — any authenticated user
@@ -82,6 +83,7 @@ function AuthedApp() {
         <Route path="/checkout/cancel" element={<CheckoutCancelPage />} />
         <Route path="/privacy" element={<PrivacyPage />} />
         <Route path="/terms" element={<TermsPage />} />
+        <Route path="/security" element={<SecurityPage />} />
         <Route path="/about" element={<AboutPage />} />
         <Route path="/waitlist" element={<WaitlistPage />} />
         <Route path="/login" element={<LoginPage />} />

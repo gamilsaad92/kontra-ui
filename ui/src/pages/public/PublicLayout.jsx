@@ -207,6 +207,7 @@ export default function PublicLayout({ children, hideFooter = false }) {
                   { label: "About", href: "/about" },
                   { label: "Privacy Policy", href: "/privacy" },
                   { label: "Terms of Service", href: "/terms" },
+                  { label: "Security", href: "/security" },
                   { label: "Contact", href: "mailto:hello@kontraplatform.com" },
                 ]},
               ].map((col) => (
@@ -227,7 +228,7 @@ export default function PublicLayout({ children, hideFooter = false }) {
               <div className="flex gap-4 text-xs text-gray-400">
                 <a href="/privacy" className="hover:text-gray-600">Privacy</a>
                 <a href="/terms" className="hover:text-gray-600">Terms</a>
-                <a href="mailto:security@kontraplatform.com" className="hover:text-gray-600">Security</a>
+                <a href="/security" className="hover:text-gray-600">Security</a>
               </div>
             </div>
           </div>
