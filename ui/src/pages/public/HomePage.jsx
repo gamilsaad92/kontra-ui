@@ -389,10 +389,10 @@ export default function HomePage() {
                 ))}
               </ul>
               <div className="mt-5">
-                <Link to="/login"
+                <Link to="/create-deal-room"
                   className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold text-white transition hover:opacity-90"
                   style={{ background: p.color }}>
-                  Start as {p.role.split(" ")[0]} →
+                  Create your workspace →
                 </Link>
               </div>
             </div>
