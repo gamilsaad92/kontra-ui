@@ -296,9 +296,23 @@ The closing_chain in context shows which step is active. Focus only on the EARLI
     });
     const parsed = JSON.parse(resp.choices[0].message.content || '{}');
 
+    // Deterministic status override: if there are literally zero open tasks,
+    // the deal cannot be "blocked" — pending chain steps without tasks just means
+    // the step hasn't kicked off yet, which is normal deal flow.
+    const deterministicStatus = ctx.openTasks.length === 0
+      ? 'on_track'
+      : criticalPathDetermined.length > 0
+        ? (parsed.status || 'at_risk')
+        : (parsed.status || 'on_track');
+    const deterministicStatusLabel = ctx.openTasks.length === 0
+      ? 'On Track'
+      : criticalPathDetermined.length > 0
+        ? (parsed.statusLabel || 'At Risk')
+        : (parsed.statusLabel || 'On Track');
+
     const result = {
-      status:          parsed.status || (criticalPathDetermined.length ? 'at_risk' : 'on_track'),
-      statusLabel:     parsed.statusLabel || (criticalPathDetermined.length ? 'At Risk' : 'On Track'),
+      status:          deterministicStatus,
+      statusLabel:     deterministicStatusLabel,
       expectedClosing: parsed.expectedClosing || ctx.room?.closingDate || null,
       narrative:       parsed.narrative || null,
       parallelNote:    parsed.parallelNote || null,
@@ -351,11 +365,13 @@ function buildFallbackBriefing(ctx) {
     .map(t => `Prepared draft for: ${t.title}`);
 
   const activeStep = chainStatus?.activeStep;
-  const narrative = activeStep
-    ? `Step ${activeStep.step}: ${activeStep.label} is the active blocker — ${activeStep.openCount} task(s) need resolution before the next step can begin.`
-    : criticalPath.length
-      ? 'AI reasoning is temporarily unavailable — showing a plain readout of open tasks.'
-      : 'All tasks are resolved. The transaction is on track.';
+  const narrative = ctx.openTasks.length === 0
+    ? 'No open tasks — the deal room is progressing normally.'
+    : activeStep && activeStep.openCount > 0
+      ? `Step ${activeStep.step}: ${activeStep.label} is the active blocker — ${activeStep.openCount} task(s) need resolution before the next step can begin.`
+      : criticalPath.length
+        ? 'AI reasoning is temporarily unavailable — showing a plain readout of open tasks.'
+        : 'All tasks are resolved. The transaction is on track.';
 
   return {
     status: criticalPath.length ? 'at_risk' : 'on_track',
