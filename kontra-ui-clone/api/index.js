@@ -97,8 +97,8 @@ const allowedOrigins = Array.from(new Set([
 const allowedOriginMatchers = [
   ...allowedOrigins,
   /\.vercel\.app$/,
-  /\.replit\.dev$/,
-  /\.repl\.co$/,
+  /\.replit\.dev(:\d+)?$/,
+  /\.repl\.co(:\d+)?$/,
   /localhost(:\d+)?$/,
   /127\.0\.0\.1(:\d+)?$/,
 ];
@@ -1013,11 +1013,26 @@ app.post('/api/checkout/demo', async (req, res) => {
 
     try {
       const { error: upsertErr } = await supabase.from('deal_rooms').upsert(dealRoomRecord, { onConflict: 'property_id' });
-      if (upsertErr) throw upsertErr;
+      if (upsertErr) {
+        // 42703 = raw Postgres "column does not exist"; PGRST204 = PostgREST
+        // schema-cache miss for the column (what Supabase actually returns).
+        // Either way workflow_pack_id isn't migrated yet — retry without it.
+        const isMissingColumn = upsertErr.code === '42703' || upsertErr.code === 'PGRST204' ||
+          /column .*workflow_pack_id.* schema cache/i.test(upsertErr.message || '');
+        if (isMissingColumn) {
+          const { workflow_pack_id: _drop, ...baseRecord } = dealRoomRecord;
+          const { error: retryErr } = await supabase.from('deal_rooms').upsert(baseRecord, { onConflict: 'property_id' });
+          if (retryErr) throw retryErr;
+          console.log(`[demo] ✅ Deal room created (no workflow_pack_id col yet) — ${pid}`);
+        } else {
+          throw upsertErr;
+        }
+      } else {
+        console.log(`[demo] ✅ Deal room created — ${pid}`);
+      }
       // Set link_token in a separate step (graceful — no-op if column not yet migrated)
       supabase.from('deal_rooms').update({ link_token: crypto.randomBytes(16).toString('hex') })
         .eq('property_id', pid).is('link_token', null).then(() => {}).catch(() => {});
-      console.log(`[demo] ✅ Deal room created — ${pid}`);
     } catch (dbErr) {
       console.warn('[demo] deal_rooms upsert failed:', dbErr.message);
     }
@@ -1087,11 +1102,26 @@ app.post('/api/webhook/stripe',
 
       try {
         const { error: wErr } = await supabase.from('deal_rooms').upsert(dealRoomRecord, { onConflict: 'property_id' });
-        if (wErr) throw wErr;
+        if (wErr) {
+          // 42703 = raw Postgres "column does not exist"; PGRST204 = PostgREST
+          // schema-cache miss for the column (what Supabase actually returns).
+          // Either way workflow_pack_id isn't migrated yet — retry without it.
+          const isMissingColumn = wErr.code === '42703' || wErr.code === 'PGRST204' ||
+            /column .*workflow_pack_id.* schema cache/i.test(wErr.message || '');
+          if (isMissingColumn) {
+            const { workflow_pack_id: _drop, ...baseRecord } = dealRoomRecord;
+            const { error: retryErr } = await supabase.from('deal_rooms').upsert(baseRecord, { onConflict: 'property_id' });
+            if (retryErr) throw retryErr;
+            console.log(`[webhook] ✅ Deal room saved (no workflow_pack_id col yet) — ${dealRoomRecord.property_id}`);
+          } else {
+            throw wErr;
+          }
+        } else {
+          console.log(`[webhook] ✅ Deal room saved — ${dealRoomRecord.property_id}`);
+        }
         // Set link_token separately (graceful — skipped if column not yet migrated)
         supabase.from('deal_rooms').update({ link_token: crypto.randomBytes(16).toString('hex') })
           .eq('property_id', dealRoomRecord.property_id).is('link_token', null).then(() => {}).catch(() => {});
-        console.log(`[webhook] ✅ Deal room saved — ${dealRoomRecord.property_id}`);
       } catch (dbErr) {
         console.warn('[webhook] deal_rooms upsert skipped:', dbErr.message);
       }
@@ -1109,6 +1139,171 @@ app.post('/api/webhook/stripe',
     res.json({ received: true });
   }
 );
+
+// ── Demo deal room — always served without Supabase ──────────────────────────
+// All /api/public/deal-room/kontra-demo/* routes are intercepted here before
+// the real handlers so the demo always works regardless of DB state.
+;(() => {
+  const { PROPERTY, TASKS, BRIEFING, DEMO_QA_CONTEXT } = require('./lib/demoData');
+  const openai = new OpenAI();
+  const DEMO_ID = 'kontra-demo';
+
+  app.get(`/api/public/deal-room/${DEMO_ID}`, (_req, res) => res.json(PROPERTY));
+
+  app.get(`/api/public/deal-room/${DEMO_ID}/tasks`, (_req, res) =>
+    res.json({ tasks: TASKS }));
+
+  app.post(`/api/public/deal-room/${DEMO_ID}/tasks/refresh`, (_req, res) =>
+    res.json({ tasks: TASKS }));
+
+  app.get(`/api/public/deal-room/${DEMO_ID}/brain/briefing`, (_req, res) =>
+    res.json(BRIEFING));
+
+  app.post(`/api/public/deal-room/${DEMO_ID}/brain/ask`, async (req, res) => {
+    const { question } = req.body || {};
+    if (!question) return res.status(400).json({ error: 'question required' });
+    try {
+      const completion = await openai.chat.completions.create({
+        model: 'gpt-4o-mini',
+        messages: [
+          { role: 'system', content: DEMO_QA_CONTEXT },
+          { role: 'user', content: question },
+        ],
+        max_tokens: 200,
+        temperature: 0.4,
+      });
+      res.json({ answer: completion.choices[0].message.content.trim() });
+    } catch (e) {
+      res.json({ answer: 'The inspection report is the critical item right now — everything else is secondary until Marcus Webb submits.' });
+    }
+  });
+
+  app.post(`/api/public/deal-room/${DEMO_ID}/tasks/demo-task-inspector/approve`, (_req, res) =>
+    res.json({ ok: true, demo: true, message: 'Demo mode — email not sent. In a live deal room this would deliver the reminder to Marcus Webb.' }));
+
+  app.post(`/api/public/deal-room/${DEMO_ID}/tasks/demo-task-insurer/approve`, (_req, res) =>
+    res.json({ ok: true, demo: true, message: 'Demo mode — email not sent. In a live deal room this would deliver the reminder to Priya Nair.' }));
+
+  app.post(`/api/tasks/:taskId/approve`, (req, res, next) => {
+    if (String(req.params.taskId).startsWith('demo-')) {
+      return res.json({ ok: true, demo: true, message: 'Demo mode — no action taken.' });
+    }
+    next();
+  });
+
+  app.post(`/api/tasks/:taskId/dismiss`, (req, res, next) => {
+    if (String(req.params.taskId).startsWith('demo-')) {
+      return res.json({ ok: true, demo: true });
+    }
+    next();
+  });
+
+  app.get(`/api/public/deal-room/${DEMO_ID}/coordination`, (_req, res) =>
+    res.json({ stage: 'due-diligence', stageLabel: 'Due Diligence', parties: [
+      { role: 'lender',    label: 'Lender',           status: 'submitted', name: 'First Republic Capital' },
+      { role: 'inspector', label: 'Inspector',         status: 'invited',   name: 'Marcus Webb' },
+      { role: 'insurer',   label: 'Insurance Broker',  status: 'invited',   name: 'Priya Nair' },
+    ]}));
+
+  app.get(`/api/public/deal-room/${DEMO_ID}/analyses`, (_req, res) => res.json({ analyses: [] }));
+  app.get(`/api/public/deal-room/${DEMO_ID}/events`, (_req, res) => res.json({ events: [] }));
+  app.get(`/api/public/deal-room/${DEMO_ID}/comments`, (_req, res) => res.json({ comments: [] }));
+})();
+
+// ── Business Acquisition demo — kontra-demo-biz ───────────────────────────────
+;(() => {
+  const { PROPERTY, TASKS, BRIEFING, DEMO_QA_CONTEXT } = require('./lib/demoDataBiz');
+  const openai = new OpenAI();
+  const BIZ_ID = 'kontra-demo-biz';
+
+  app.get(`/api/public/deal-room/${BIZ_ID}`, (_req, res) => res.json(PROPERTY));
+  app.get(`/api/public/deal-room/${BIZ_ID}/tasks`, (_req, res) => res.json({ tasks: TASKS }));
+  app.post(`/api/public/deal-room/${BIZ_ID}/tasks/refresh`, (_req, res) => res.json({ tasks: TASKS }));
+  app.get(`/api/public/deal-room/${BIZ_ID}/brain/briefing`, (_req, res) => res.json(BRIEFING));
+
+  app.post(`/api/public/deal-room/${BIZ_ID}/brain/ask`, async (req, res) => {
+    const { question } = req.body || {};
+    if (!question) return res.status(400).json({ error: 'question required' });
+    try {
+      const completion = await openai.chat.completions.create({
+        model: 'gpt-4o-mini',
+        messages: [
+          { role: 'system', content: DEMO_QA_CONTEXT },
+          { role: 'user', content: question },
+        ],
+        max_tokens: 200,
+        temperature: 0.4,
+      });
+      res.json({ answer: completion.choices[0].message.content.trim() });
+    } catch (e) {
+      res.json({ answer: 'The QoE report is the critical item — the LOI cannot be finalized until Davidson Advisory delivers it.' });
+    }
+  });
+
+  app.post(`/api/public/deal-room/${BIZ_ID}/tasks/biz-task-cpa/approve`, (_req, res) =>
+    res.json({ ok: true, demo: true, message: 'Demo mode — email not sent. In a live deal room this would deliver the follow-up to Davidson Advisory.' }));
+  app.post(`/api/public/deal-room/${BIZ_ID}/tasks/biz-task-seller/approve`, (_req, res) =>
+    res.json({ ok: true, demo: true, message: 'Demo mode — email not sent. In a live deal room this would deliver the follow-up to Tom Briggs.' }));
+
+  app.get(`/api/public/deal-room/${BIZ_ID}/coordination`, (_req, res) =>
+    res.json({ stage: 'due-diligence', stageLabel: 'Due Diligence', parties: [
+      { role: 'cpa',      label: 'CPA / Accountant', status: 'invited',   name: 'Davidson Advisory' },
+      { role: 'attorney', label: 'Attorney',          status: 'submitted', name: 'Vance & Partners' },
+      { role: 'broker',   label: 'M&A Broker',        status: 'submitted', name: 'Meridian Advisors' },
+    ]}));
+
+  app.get(`/api/public/deal-room/${BIZ_ID}/analyses`, (_req, res) => res.json({ analyses: [] }));
+  app.get(`/api/public/deal-room/${BIZ_ID}/events`, (_req, res) => res.json({ events: [] }));
+  app.get(`/api/public/deal-room/${BIZ_ID}/comments`, (_req, res) => res.json({ comments: [] }));
+})();
+
+// ── Fundraising demo — kontra-demo-fundraising ────────────────────────────────
+;(() => {
+  const { PROPERTY, TASKS, BRIEFING, DEMO_QA_CONTEXT } = require('./lib/demoDataFundraising');
+  const openai = new OpenAI();
+  const FUND_ID = 'kontra-demo-fundraising';
+
+  app.get(`/api/public/deal-room/${FUND_ID}`, (_req, res) => res.json(PROPERTY));
+  app.get(`/api/public/deal-room/${FUND_ID}/tasks`, (_req, res) => res.json({ tasks: TASKS }));
+  app.post(`/api/public/deal-room/${FUND_ID}/tasks/refresh`, (_req, res) => res.json({ tasks: TASKS }));
+  app.get(`/api/public/deal-room/${FUND_ID}/brain/briefing`, (_req, res) => res.json(BRIEFING));
+
+  app.post(`/api/public/deal-room/${FUND_ID}/brain/ask`, async (req, res) => {
+    const { question } = req.body || {};
+    if (!question) return res.status(400).json({ error: 'question required' });
+    try {
+      const completion = await openai.chat.completions.create({
+        model: 'gpt-4o-mini',
+        messages: [
+          { role: 'system', content: DEMO_QA_CONTEXT },
+          { role: 'user', content: question },
+        ],
+        max_tokens: 200,
+        temperature: 0.4,
+      });
+      res.json({ answer: completion.choices[0].message.content.trim() });
+    } catch (e) {
+      res.json({ answer: 'Two subscription agreements from committed LPs are outstanding — Clearwater\'s $5M agreement is the most urgent before the August 1 close.' });
+    }
+  });
+
+  app.post(`/api/public/deal-room/${FUND_ID}/tasks/fund-task-lp1/approve`, (_req, res) =>
+    res.json({ ok: true, demo: true, message: 'Demo mode — email not sent. In a live deal room this would send the follow-up to Clearwater Capital.' }));
+  app.post(`/api/public/deal-room/${FUND_ID}/tasks/fund-task-lp2/approve`, (_req, res) =>
+    res.json({ ok: true, demo: true, message: 'Demo mode — email not sent. In a live deal room this would send the follow-up to Vantage Family Office.' }));
+
+  app.get(`/api/public/deal-room/${FUND_ID}/coordination`, (_req, res) =>
+    res.json({ stage: 'soft-circle', stageLabel: 'Soft Circle', parties: [
+      { role: 'investor_relations', label: 'LP — Clearwater Capital',     status: 'invited',   name: 'Jessica Wu' },
+      { role: 'investor_relations', label: 'LP — Vantage Family Office',  status: 'invited',   name: 'Mark Chen' },
+      { role: 'attorney',           label: 'Legal Counsel',               status: 'submitted', name: 'Thornton LLP' },
+      { role: 'advisor',            label: 'Financial Advisor',           status: 'submitted', name: 'Atlas Partners' },
+    ]}));
+
+  app.get(`/api/public/deal-room/${FUND_ID}/analyses`, (_req, res) => res.json({ analyses: [] }));
+  app.get(`/api/public/deal-room/${FUND_ID}/events`, (_req, res) => res.json({ events: [] }));
+  app.get(`/api/public/deal-room/${FUND_ID}/comments`, (_req, res) => res.json({ comments: [] }));
+})();
 
 // ── Public deal room lookup — no auth required ────────────────────────────────
 app.get('/api/public/deal-room/:propertyId', async (req, res) => {
@@ -1189,7 +1384,7 @@ app.post('/api/public/my-rooms/verify-otp', async (req, res) => {
   try {
     const { data: rooms, error } = await supabase
       .from('deal_rooms')
-      .select('property_id, property_name, property_type, deal_amount, deal_type, address, status, deal_stage, first_name, created_at, activated_at, workflow_pack_id')
+      .select('property_id, property_name, property_type, deal_amount, deal_type, address, status, deal_stage, created_at, activated_at')
       .ilike('customer_email', email)
       .order('created_at', { ascending: false });
     if (error) throw error;
@@ -1206,8 +1401,7 @@ app.post('/api/public/my-rooms/verify-otp', async (req, res) => {
     });
     const enriched = rooms.map(r => ({
       ...r,
-      first_name: undefined,
-      owner_name: r.first_name,
+      owner_name: r.owner_name || null,
       parties: subMap[r.property_id] || [],
     }));
     res.json({ rooms: enriched, email });
@@ -1354,10 +1548,44 @@ app.get('/api/public/my-rooms', async (req, res) => {
   }
 });
 
+// ── Document-assignment config — used for role-scoped analyses filtering ──────
+const DOC_ASSIGNMENTS = (() => {
+  try {
+    return require('../shared/document_assignments.json');
+  } catch { return {}; }
+})();
+
+function getSectionAssignments(packId, propertyType) {
+  const pack = DOC_ASSIGNMENTS[packId];
+  if (!pack) return null;
+  if (pack.sections) return pack.sections;
+  if (pack.byPropertyType) return pack.byPropertyType[propertyType] || pack.byPropertyType['Multifamily'] || null;
+  return null;
+}
+
+function isCoordinatorRole(packId, role) {
+  const pack = DOC_ASSIGNMENTS[packId];
+  return pack?.coordinatorRoles?.includes(role) ?? true; // unknown pack → allow all
+}
+
 // ── Public analyses fetch — no auth required ──────────────────────────────
 app.get('/api/public/deal-room/:propertyId/analyses', async (req, res) => {
   const { propertyId } = req.params;
+  const { role } = req.query; // optional: scopes results to this role's assigned sections
   try {
+    // Resolve pack + property_type if role filtering is needed
+    let packId = null;
+    let propertyType = null;
+    if (role) {
+      const { data: room } = await supabase
+        .from('deal_rooms')
+        .select('workflow_pack_id, property_type')
+        .eq('property_id', propertyId)
+        .maybeSingle();
+      packId = room?.workflow_pack_id || 'cre_acquisition';
+      propertyType = room?.property_type || 'Multifamily';
+    }
+
     const { data, error } = await supabase
       .from('deal_analyses')
       .select('id, section, filename, analysis, uploaded_by_role, created_at, storage_path')
@@ -1376,6 +1604,22 @@ app.get('/api/public/deal-room/:propertyId/analyses', async (req, res) => {
       if (!history[a.section]) history[a.section] = [];
       history[a.section].push({ id: a.id, version: a.version, filename: a.filename, uploaded_by_role: a.uploaded_by_role, created_at: a.created_at });
     }
+    // Auto-resolve orphaned pending records older than 2 minutes (background AI job never ran)
+    const now = Date.now();
+    const stuckIds = allWithVersion
+      .filter(a => a.analysis?.pending && (now - new Date(a.created_at).getTime()) > 2 * 60 * 1000)
+      .map(a => a.id);
+    if (stuckIds.length > 0) {
+      // Fix each stuck record individually so we can set the right label
+      for (const stuck of allWithVersion.filter(a => stuckIds.includes(a.id))) {
+        const label = stuck.filename ? `${stuck.filename} received and logged.` : `Document received and logged.`;
+        supabase.from('deal_analyses').update({
+          analysis: { summary: label, documentType: stuck.analysis?.documentType || 'Document', confidence: 100, pending: false }
+        }).eq('id', stuck.id).then(() => {}).catch(() => {});
+        stuck.analysis = { ...stuck.analysis, pending: false, summary: label, confidence: 100 };
+      }
+    }
+
     // De-duplicate: keep only the latest per section (highest version)
     const seen = {};
     const deduped = [...allWithVersion].reverse().filter(a => {
@@ -1383,7 +1627,23 @@ app.get('/api/public/deal-room/:propertyId/analyses', async (req, res) => {
       seen[a.section] = true;
       return true;
     }).map(a => ({ ...a, versionHistory: history[a.section] || [] }));
-    res.json({ analyses: deduped });
+
+    // Role-scoped filtering: if caller provided ?role=, hide sections not assigned to them.
+    // Coordinator roles (canManage) always see everything.
+    // Custom sections (not in the assignments map) are always visible to all.
+    let filtered = deduped;
+    if (role && packId && !isCoordinatorRole(packId, role)) {
+      const assignments = getSectionAssignments(packId, propertyType);
+      if (assignments) {
+        filtered = deduped.filter(a => {
+          const assignedTo = assignments[a.section];
+          // Section not in the map (e.g. custom upload) → visible to all
+          if (!assignedTo) return true;
+          return assignedTo.includes(role);
+        });
+      }
+    }
+    res.json({ analyses: filtered });
   } catch (err) {
     console.error('[analyses-fetch]', err.message);
     res.json({ analyses: [] });
@@ -1455,7 +1715,12 @@ app.post('/api/public/deal-room/:propertyId/track-document', upload.single('file
   if (!propertyId || !section) return res.status(400).json({ error: 'propertyId and section required' });
 
   const LIGHTWEIGHT_SECTIONS = [
-    'purchase_agreement', 'rent_roll', 'estoppel', 'environmental', 'survey', 'title'
+    // CRE Acquisition
+    'purchase_agreement', 'rent_roll', 'estoppel', 'environmental', 'survey', 'title',
+    // Business Acquisition
+    'loi', 'tax_returns', 'cap_table', 'contracts', 'disclosure_schedule',
+    // Fundraising
+    'term_sheet', 'spa',
   ];
   if (!LIGHTWEIGHT_SECTIONS.includes(section)) {
     return res.status(400).json({ error: `Section '${section}' requires AI analysis — use the AI upload endpoint instead` });
@@ -1463,12 +1728,22 @@ app.post('/api/public/deal-room/:propertyId/track-document', upload.single('file
 
   const filename = req.file?.originalname || `${section}.pdf`;
   const SECTION_LABELS = {
+    // CRE Acquisition
     purchase_agreement: 'Purchase Agreement',
     rent_roll: 'Rent Roll',
     estoppel: 'Estoppel Certificate',
     environmental: 'Environmental Report',
     survey: 'Survey / ALTA',
     title: 'Title Commitment',
+    // Business Acquisition
+    loi: 'Letter of Intent',
+    tax_returns: 'Tax Returns',
+    cap_table: 'Cap Table / Ownership',
+    contracts: 'Material Contracts',
+    disclosure_schedule: 'Disclosure Schedule',
+    // Fundraising
+    term_sheet: 'Term Sheet',
+    spa: 'Stock Purchase Agreement / SAFE',
   };
 
   try {
@@ -1476,13 +1751,18 @@ app.post('/api/public/deal-room/:propertyId/track-document', upload.single('file
     const mime = req.file?.mimetype;
     const hash = buf ? crypto.createHash('sha256').update(buf).digest('hex') : null;
 
-    // Respond immediately — AI runs in background
-    const pendingAnalysis = { summary: `${SECTION_LABELS[section]} uploaded — AI analysis in progress…`, documentType: SECTION_LABELS[section], confidence: 0, pending: true };
+    // For sections with an AI prompt, start pending and analyze in background.
+    // For sections without an AI prompt (LOI, tax returns, cap table, etc.), mark complete immediately.
+    const hasAiPrompt = !!(buf && LIGHTWEIGHT_AI_PROMPTS[section]);
+    const initialAnalysis = hasAiPrompt
+      ? { summary: `${SECTION_LABELS[section]} uploaded — AI analysis in progress…`, documentType: SECTION_LABELS[section], confidence: 0, pending: true }
+      : { summary: `${SECTION_LABELS[section]} received and logged.`, documentType: SECTION_LABELS[section], confidence: 100, pending: false };
+
     const [storagePath, insertRes] = await Promise.all([
       buf ? uploadToStorage(buf, mime, propertyId, section, filename).catch(() => null) : Promise.resolve(null),
       supabase.from('deal_analyses').insert({
         property_id: propertyId, section, filename,
-        analysis: pendingAnalysis,
+        analysis: initialAnalysis,
         uploaded_by_role: role || 'owner',
       }).select('id').single(),
     ]);
@@ -1490,7 +1770,7 @@ app.post('/api/public/deal-room/:propertyId/track-document', upload.single('file
     const recordId = insertRes.data?.id;
 
     logEvent(propertyId, 'document_uploaded', role || 'owner', null, `${SECTION_LABELS[section]} uploaded`, { section, filename }).catch(() => {});
-    res.json({ ok: true, section, filename, pending: true });
+    res.json({ ok: true, section, filename, pending: hasAiPrompt });
 
     // Background AI analysis — uses fast text-only extraction (no vision pipeline to avoid hangs)
     if (buf && LIGHTWEIGHT_AI_PROMPTS[section]) {
@@ -3552,6 +3832,27 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: err.message || 'Server error' });
 });
 
+// ── Startup migration: ensure workflow_pack_id column exists ─────────────────
+// Migration 005 is manual-only; run it automatically here so Render/production
+// gets the column on first boot without a manual Supabase SQL editor step.
+async function ensureWorkflowPackIdColumn() {
+  try {
+    const { Pool } = require('pg');
+    const pool = new Pool({
+      connectionString: process.env.DATABASE_URL || process.env.SUPABASE_DB_URL,
+      ssl: { rejectUnauthorized: false },
+    });
+    await pool.query(
+      `ALTER TABLE deal_rooms ADD COLUMN IF NOT EXISTS workflow_pack_id text DEFAULT 'cre_acquisition'`
+    );
+    await pool.end();
+    console.log('[startup] deal_rooms.workflow_pack_id column ready');
+  } catch (err) {
+    // Non-fatal: Supabase service role may not allow DDL via pooler — fall back gracefully
+    console.warn('[startup] workflow_pack_id column ensure skipped:', err.message);
+  }
+}
+
 const PORT = process.env.PORT || 3000;
 if (require.main === module) {
   if (process.env.NODE_ENV === 'production') {
@@ -3562,6 +3863,7 @@ if (require.main === module) {
   attachCollabServer(server);
   server.listen(PORT, () => {
     console.log(`Kontra API listening on port ${PORT}`);
+    void ensureWorkflowPackIdColumn();
     if (process.env.NODE_ENV !== 'production') {
       void logBaselineSchemaHealth();
     }

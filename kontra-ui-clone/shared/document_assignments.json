@@ -1,0 +1,87 @@
+{
+  "_comment": "Server-side source of truth for which role is responsible for each document section, per pack. The backend analyses endpoint reads this to filter returned analyses by role. Keep in sync with the assignedTo arrays in ui/src/lib/workflowPacks/*.js. coordinatorRoles lists roles with canManage:true that always see all documents.",
+  "business_acquisition": {
+    "coordinatorRoles": ["buyer"],
+    "sections": {
+      "loi":                 ["buyer"],
+      "purchase_agreement":  ["counsel"],
+      "financials":          ["seller"],
+      "tax_returns":         ["seller"],
+      "cap_table":           ["seller"],
+      "qoe":                 ["cpa"],
+      "contracts":           ["seller", "counsel"],
+      "disclosure_schedule": ["seller"]
+    }
+  },
+  "cre_acquisition": {
+    "coordinatorRoles": ["owner", "lender"],
+    "byPropertyType": {
+      "Multifamily": {
+        "purchase_agreement": ["owner"],
+        "rent_roll":          ["owner"],
+        "financials":         ["owner"],
+        "insurance":          ["insurer"],
+        "inspection":         ["inspector"],
+        "estoppel":           ["owner"],
+        "environmental":      ["inspector"],
+        "survey":             ["owner"],
+        "title":              ["attorney"]
+      },
+      "Office": {
+        "purchase_agreement": ["owner"],
+        "rent_roll":          ["owner"],
+        "financials":         ["owner"],
+        "insurance":          ["insurer"],
+        "inspection":         ["inspector"],
+        "estoppel":           ["owner"],
+        "environmental":      ["inspector"],
+        "survey":             ["owner"],
+        "title":              ["attorney"],
+        "legal":              ["attorney"]
+      },
+      "Industrial": {
+        "purchase_agreement": ["owner"],
+        "financials":         ["owner"],
+        "insurance":          ["insurer"],
+        "inspection":         ["inspector"],
+        "environmental":      ["inspector"],
+        "survey":             ["owner"],
+        "title":              ["attorney"],
+        "legal":              ["attorney"]
+      },
+      "Hotel": {
+        "purchase_agreement": ["owner"],
+        "brand_standards":    ["owner"],
+        "legal":              ["attorney"],
+        "financials":         ["owner"],
+        "insurance":          ["insurer"],
+        "inspection":         ["inspector"],
+        "environmental":      ["inspector"],
+        "survey":             ["owner"],
+        "title":              ["attorney"]
+      },
+      "Retail": {
+        "purchase_agreement": ["owner"],
+        "rent_roll":          ["owner"],
+        "financials":         ["owner"],
+        "insurance":          ["insurer"],
+        "inspection":         ["inspector"],
+        "estoppel":           ["owner"],
+        "environmental":      ["inspector"],
+        "survey":             ["owner"],
+        "title":              ["attorney"]
+      }
+    }
+  },
+  "fundraising": {
+    "coordinatorRoles": ["founder"],
+    "sections": {
+      "term_sheet":         ["founder"],
+      "cap_table":          ["founder"],
+      "financials":         ["founder"],
+      "audited_financials": ["auditor"],
+      "spa":                ["counsel"],
+      "disclosure_schedule":["founder"]
+    }
+  }
+}
