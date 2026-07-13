@@ -250,7 +250,7 @@ function AccessLayout({ children }) {
           style={{ background: "#0f172a" }}>
           <div>
             <p className="text-xs font-bold uppercase tracking-widest mb-8" style={{ color: "#800020" }}>
-              CRE Deal Room Infrastructure
+              Deal Room Infrastructure
             </p>
             <h2 className="text-3xl font-bold text-white leading-snug mb-6">
               One deal room.<br />Every party.<br />No email chains.

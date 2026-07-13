@@ -187,7 +187,7 @@ export default function PublicLayout({ children, hideFooter = false }) {
                   <span className="font-semibold text-gray-900">Kontra</span>
                 </div>
                 <p className="text-sm text-gray-500 leading-relaxed max-w-xs">
-                  The deal room where lenders, borrowers, inspectors, insurers, and investors work together on every CRE transaction.
+                  The AI Operations Platform for Complex Transactions. Every document. Every party. Every decision. Coordinated by AI.
                 </p>
               </div>
               {[
@@ -199,14 +199,14 @@ export default function PublicLayout({ children, hideFooter = false }) {
                 ]},
                 { title: "Platform", links: [
                   { label: "Dashboard", href: "/dashboard" },
-                  { label: "My Properties", href: "/app/properties" },
+                  { label: "My Deal Rooms", href: "/my-deal-rooms" },
                   { label: "Documents", href: "/app/documents" },
-                  { label: "Properties", href: "/properties" },
                 ]},
                 { title: "Company", links: [
                   { label: "About", href: "/about" },
                   { label: "Privacy Policy", href: "/privacy" },
                   { label: "Terms of Service", href: "/terms" },
+                  { label: "Security", href: "/security" },
                   { label: "Contact", href: "mailto:hello@kontraplatform.com" },
                 ]},
               ].map((col) => (
@@ -223,11 +223,11 @@ export default function PublicLayout({ children, hideFooter = false }) {
               ))}
             </div>
             <div className="mt-8 pt-6 border-t border-gray-200 flex flex-col md:flex-row items-center justify-between gap-3">
-              <p className="text-xs text-gray-400">© 2026 Kontra Platform, Inc. All rights reserved.</p>
+              <p className="text-xs text-gray-400">© 2026 Kontra. All rights reserved.</p>
               <div className="flex gap-4 text-xs text-gray-400">
                 <a href="/privacy" className="hover:text-gray-600">Privacy</a>
                 <a href="/terms" className="hover:text-gray-600">Terms</a>
-                <a href="mailto:security@kontraplatform.com" className="hover:text-gray-600">Security</a>
+                <a href="/security" className="hover:text-gray-600">Security</a>
               </div>
             </div>
           </div>

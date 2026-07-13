@@ -72,7 +72,7 @@ const HOW_IT_WORKS = [
   {
     step: "01",
     icon: "🗂️",
-    title: "Deal principal creates the workspace",
+    title: "Deal principal creates the deal room",
     desc: "Choose your workflow pack — CRE Acquisition, Business Acquisition, or Fundraising. Upload documents and Kontra structures everything automatically.",
     color: "#800020",
   },
@@ -254,7 +254,7 @@ export default function HomePage() {
             <Link to="/create-deal-room"
               className="px-7 py-3.5 rounded-xl text-sm font-semibold text-white transition hover:opacity-90"
               style={{ background: "#800020" }}>
-              Create Your Workspace — $499
+              Create Your Deal Room — $499
             </Link>
             <LiveDemoButton />
           </div>
@@ -593,7 +593,7 @@ export default function HomePage() {
             <Link to="/create-deal-room"
               className="px-8 py-3.5 rounded-xl text-sm font-semibold text-white transition hover:opacity-90"
               style={{ background: "#800020" }}>
-              Create Your Workspace →
+              Create Your Deal Room →
             </Link>
             <Link to="/properties"
               className="px-8 py-3.5 rounded-xl text-sm font-semibold border border-white/20 text-white hover:bg-white/10 transition">
