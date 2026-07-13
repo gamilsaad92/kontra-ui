@@ -47,10 +47,13 @@ export const advanceLabel = {
 };
 
 // ── Document schema ──────────────────────────────────────────────────────────
+// assignedTo: which role is responsible for uploading this document.
+// Coordinator roles (canManage: true) see all docs grouped by party.
+// Non-coordinator parties see only their own docs ("Your Documents" view).
 const DOCUMENT_SCHEMA = [
-  { id: "loi",                 label: "Letter of Intent",           section: "loi",                 ai: false, required: true },
-  { id: "purchase_agreement",  label: "Purchase Agreement",         section: "purchase_agreement",  ai: false, required: true },
-  { id: "financials",          label: "Financial Statements (3-yr)",section: "financials",           ai: true,  required: true,
+  { id: "loi",                 label: "Letter of Intent",           section: "loi",                 ai: false, required: true,  assignedTo: ["buyer"] },
+  { id: "purchase_agreement",  label: "Purchase Agreement",         section: "purchase_agreement",  ai: false, required: true,  assignedTo: ["counsel"] },
+  { id: "financials",          label: "Financial Statements (3-yr)",section: "financials",           ai: true,  required: true,  assignedTo: ["seller"],
     aiExtraction: {
       analystRole: "M&A financial analyst reviewing a small/mid-size business acquisition",
       docTypes: ["Income Statement", "Balance Sheet", "Cash Flow Statement", "Financial Statements", "Other"],
@@ -62,9 +65,9 @@ const DOCUMENT_SCHEMA = [
         yoy_growth: "year-over-year revenue growth as a percentage",
       },
     } },
-  { id: "tax_returns",         label: "Tax Returns (3-yr)",         section: "tax_returns",          ai: false, required: true },
-  { id: "cap_table",           label: "Cap Table / Ownership",      section: "cap_table",            ai: false, required: true },
-  { id: "qoe",                 label: "Quality of Earnings Report", section: "qoe",                  ai: true,  required: false,
+  { id: "tax_returns",         label: "Tax Returns (3-yr)",         section: "tax_returns",          ai: false, required: true,  assignedTo: ["seller"] },
+  { id: "cap_table",           label: "Cap Table / Ownership",      section: "cap_table",            ai: false, required: true,  assignedTo: ["seller"] },
+  { id: "qoe",                 label: "Quality of Earnings Report", section: "qoe",                  ai: true,  required: false, assignedTo: ["cpa"],
     aiExtraction: {
       analystRole: "M&A due diligence accountant reviewing a quality of earnings (QoE) report",
       docTypes: ["Quality of Earnings Report", "Other"],
@@ -74,8 +77,8 @@ const DOCUMENT_SCHEMA = [
         working_capital: "estimated normalized net working capital in dollars",
       },
     } },
-  { id: "contracts",           label: "Material Contracts",         section: "contracts",            ai: false, required: false },
-  { id: "disclosure_schedule", label: "Disclosure Schedule",        section: "disclosure_schedule",  ai: false, required: false },
+  { id: "contracts",           label: "Material Contracts",         section: "contracts",            ai: false, required: false, assignedTo: ["seller", "counsel"] },
+  { id: "disclosure_schedule", label: "Disclosure Schedule",        section: "disclosure_schedule",  ai: false, required: false, assignedTo: ["seller"] },
 ];
 
 function humanizeMetricKey(key) {
@@ -158,10 +161,18 @@ function getSnapshotFlag(bySection) {
   return null;
 }
 
+export const onboardingSteps = [
+  { icon: "📄", title: "Upload financial statements", desc: "P&L, balance sheet, tax returns — AI structures them automatically" },
+  { icon: "🧮", title: "Request a quality of earnings report", desc: "Send the CPA link above; their report goes directly into the room" },
+  { icon: "⚖️", title: "Add the purchase agreement", desc: "AI reviews terms and flags disclosure gaps for legal counsel" },
+];
+
 export const businessAcquisitionPack = createGenericPack({
   id: "business_acquisition",
   name: "Business Acquisition",
   description: "Buying or selling a company (LOI through closing)",
+  checklistTitle: "Due Diligence Checklist",
+  onboardingSteps,
   roles,
   stages,
   advanceLabel,

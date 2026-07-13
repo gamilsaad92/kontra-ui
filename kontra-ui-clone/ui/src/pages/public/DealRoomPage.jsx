@@ -1617,6 +1617,7 @@ export default function DealRoomPage() {
             propertyId={pid}
             role={role}
             packId={packId}
+            propertyType={property.property_type || property.type}
           />
         )}
 
