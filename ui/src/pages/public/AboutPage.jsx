@@ -115,7 +115,7 @@ export default function AboutPage() {
               Kontra is a young company based in Pasadena, California. We're not a marketplace, we're not a brokerage, and we're not trying to tokenize your property. We're building transaction workspace infrastructure — the coordination layer that every complex deal needs but nobody has built well.
             </p>
             <p className="text-gray-500 leading-relaxed">
-              We're live, accepting deals, and actively talking to lenders, borrowers, business buyers, and service providers. If you're working on a complex transaction and want to close faster, we'd love to show you what a Kontra workspace looks like on your deal.
+              We're live, accepting deals, and actively talking to lenders, borrowers, business buyers, and service providers. If you're working on a complex transaction and want to keep every party aligned through closing, we'd love to show you what a Kontra workspace looks like on your deal.
             </p>
           </div>
           <div className="space-y-4">
@@ -166,7 +166,7 @@ export default function AboutPage() {
             <Link to="/create-deal-room"
               className="inline-flex items-center gap-2 px-6 py-3 rounded-xl text-sm font-semibold text-white hover:opacity-90 transition"
               style={{ background: "#800020" }}>
-              Create Your Workspace — $499 →
+              Create Your Deal Room — $499 →
             </Link>
           </div>
         </div>

@@ -3,9 +3,9 @@ import { Link, useNavigate } from "react-router-dom";
 import PublicLayout from "./PublicLayout";
 
 const DEMOS = [
-  { icon: "🏢", label: "CRE Acquisition",      sub: "Commercial real estate acquisitions & financing", slug: "/deal-room/kontra-demo",             color: "#800020" },
   { icon: "💼", label: "Business Acquisition", sub: "M&A, business purchases & diligence",             slug: "/deal-room/kontra-demo-biz",         color: "#1e40af" },
   { icon: "📈", label: "Fundraising",          sub: "Capital raises for founders & fund managers",     slug: "/deal-room/kontra-demo-fundraising", color: "#065f46" },
+  { icon: "🏢", label: "CRE Acquisition",      sub: "Commercial real estate acquisitions & financing", slug: "/deal-room/kontra-demo",             color: "#800020" },
 ];
 
 function LiveDemoButton() {
@@ -72,7 +72,7 @@ const HOW_IT_WORKS = [
   {
     step: "01",
     icon: "🗂️",
-    title: "Deal principal creates the workspace",
+    title: "Deal principal creates the deal room",
     desc: "Choose your workflow pack — CRE Acquisition, Business Acquisition, or Fundraising. Upload documents and Kontra structures everything automatically.",
     color: "#800020",
   },
@@ -86,8 +86,8 @@ const HOW_IT_WORKS = [
   {
     step: "03",
     icon: "🤖",
-    title: "Your AI Operations Manager takes over",
-    desc: "It follows up with the right people, tells you what's blocking closing, and drafts the reminders before you have to ask.",
+    title: "Your AI Operations Manager coordinates from day one",
+    desc: "It follows up with the right people, surfaces what's blocking progress, and drafts the reminders before you have to ask.",
     color: "#065f46",
   },
   {
@@ -110,7 +110,7 @@ const PARTY_CARDS = [
     icon: "🏢",
     role: "Buyers & Borrowers",
     color: "#1e40af",
-    gets: ["Your AI Operations Manager runs the transaction for you", "It follows up with every party so you don't have to", "It tells you exactly what's blocking closing, and why", "It drafts reminders and approvals — you just approve", "One dashboard replaces the 700-email inbox"],
+    gets: ["Your AI Operations Manager coordinates the transaction for you", "It follows up with every party so you don't have to", "It tells you exactly what's blocking closing, and why", "It drafts reminders and nudges — you stay in control", "One dashboard replaces the 700-email inbox"],
   },
   {
     icon: "🏪",
@@ -122,7 +122,7 @@ const PARTY_CARDS = [
     icon: "🚀",
     role: "Founders & CEOs",
     color: "#6d28d9",
-    gets: ["AI Operations Manager coordinates your entire round", "Investor data room organized and current automatically", "Know which LP is outstanding before your weekly call", "Term sheet and cap table reviewed the moment they land", "Close faster — AI surfaces what's blocking each investor"],
+    gets: ["AI Operations Manager coordinates your entire round", "Investor data room organized and current automatically", "Know which LP is outstanding before your weekly call", "Term sheet and cap table reviewed the moment they land", "Track closing progress — AI surfaces what's blocking each investor"],
   },
   {
     icon: "🧮",
@@ -254,7 +254,7 @@ export default function HomePage() {
             <Link to="/create-deal-room"
               className="px-7 py-3.5 rounded-xl text-sm font-semibold text-white transition hover:opacity-90"
               style={{ background: "#800020" }}>
-              Create Your Workspace — $499
+              Create Your Deal Room — $499
             </Link>
             <LiveDemoButton />
           </div>
@@ -339,13 +339,13 @@ export default function HomePage() {
             {/* Center */}
             <div className="bg-white/5 border border-white/10 rounded-2xl p-5 mb-4">
               <div className="flex items-center gap-3 mb-4">
-                <div className="w-10 h-10 rounded-xl bg-red-900/50 flex items-center justify-center text-lg">🏢</div>
+                <div className="w-10 h-10 rounded-xl bg-blue-900/50 flex items-center justify-center text-lg">💼</div>
                 <div>
-                  <p className="text-sm font-semibold text-white">Westside Commons</p>
-                  <p className="text-xs text-gray-400">Los Angeles, CA · Multifamily · 234 units</p>
+                  <p className="text-sm font-semibold text-white">Brightline Services LLC</p>
+                  <p className="text-xs text-gray-400">San Francisco, CA · Business Acquisition · $6.2M</p>
                 </div>
                 <div className="ml-auto flex items-center gap-2">
-                  <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-green-900/50 text-green-400">87/100</span>
+                  <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-amber-900/50 text-amber-400">At Risk</span>
                   <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-blue-900/50 text-blue-300">Deal Room Active</span>
                 </div>
               </div>
@@ -353,10 +353,10 @@ export default function HomePage() {
               {/* Parties connected */}
               <div className="flex flex-wrap gap-2 mb-4">
                 {[
-                  { icon: "🏦", label: "First Republic Lending", role: "Lender", status: "Reviewing", statusColor: "#f59e0b" },
-                  { icon: "🔍", label: "Meridian Inspection Co.", role: "Inspector", status: "Report Submitted", statusColor: "#16a34a" },
-                  { icon: "🛡️", label: "Covanta Insurance", role: "Insurer", status: "Cert Pending", statusColor: "#f59e0b" },
-                  { icon: "📐", label: "Atlas Engineering", role: "Engineer", status: "Engaged", statusColor: "#16a34a" },
+                  { icon: "🏪", label: "Tom Briggs (Seller)", role: "Seller", status: "Docs Pending", statusColor: "#f59e0b" },
+                  { icon: "🧮", label: "Davidson Advisory", role: "CPA", status: "QoE Overdue", statusColor: "#ef4444" },
+                  { icon: "⚖️", label: "Vance & Partners", role: "Legal Counsel", status: "Reviewing LOI", statusColor: "#f59e0b" },
+                  { icon: "🤝", label: "Meridian Advisors", role: "M&A Broker", status: "CIM Submitted", statusColor: "#16a34a" },
                 ].map((party) => (
                   <div key={party.label} className="flex items-center gap-2 px-3 py-2 rounded-xl bg-white/5 border border-white/10">
                     <span className="text-base">{party.icon}</span>
@@ -371,9 +371,9 @@ export default function HomePage() {
               {/* Document feed */}
               <div className="space-y-1.5">
                 {[
-                  { icon: "📄", text: "Inspection report analyzed — 3 findings flagged", time: "2m ago", color: "#f59e0b" },
-                  { icon: "💰", text: "Q3 Financials reviewed — DSCR 1.28x, compliant", time: "1h ago", color: "#16a34a" },
-                  { icon: "🛡️", text: "Insurance cert requested from Covanta Insurance", time: "3h ago", color: "#3b82f6" },
+                  { icon: "📊", text: "QoE report is 10 days overdue — follow-up drafted for your approval", time: "2m ago", color: "#ef4444" },
+                  { icon: "📄", text: "Letter of Intent analyzed — 2 open items flagged for Legal", time: "1h ago", color: "#f59e0b" },
+                  { icon: "💰", text: "3-year financials reviewed — revenue trend and EBITDA margin extracted", time: "3h ago", color: "#16a34a" },
                 ].map((item, i) => (
                   <div key={i} className="flex items-center gap-2.5 px-3 py-2 rounded-lg bg-white/3">
                     <span className="text-sm">{item.icon}</span>
@@ -593,7 +593,7 @@ export default function HomePage() {
             <Link to="/create-deal-room"
               className="px-8 py-3.5 rounded-xl text-sm font-semibold text-white transition hover:opacity-90"
               style={{ background: "#800020" }}>
-              Create Your Workspace →
+              Create Your Deal Room →
             </Link>
             <Link to="/properties"
               className="px-8 py-3.5 rounded-xl text-sm font-semibold border border-white/20 text-white hover:bg-white/10 transition">

@@ -1313,7 +1313,21 @@ export default function DealRoomPage() {
   // Role metadata (label/icon/color/headline/subtext/sections) is looked up
   // scoped to this pack — never from a flat cross-pack dict — since a role
   // key like "lender" can mean something different in another pack.
-  const baseRoleConfig = pack.getRole(role) || pack.getRole("lender") || pack.roles[0];
+  // Fallback: if the role isn't in this pack (e.g. old bundle, typo, new role
+  // not yet deployed), show a neutral "invited" message rather than the primary
+  // owner's private "full view of all parties" copy.
+  const _genericFallback = {
+    key: role,
+    label: role.charAt(0).toUpperCase() + role.slice(1),
+    icon: "👤",
+    color: pack.roles[0]?.color || "#800020",
+    needsDocs: false,
+    headline: "You've been invited to this deal room",
+    subtext: "You can review the documents and status shared in this deal room.",
+    sections: [],
+    invitable: true,
+  };
+  const baseRoleConfig = pack.getRole(role) || _genericFallback;
   const isHotel = (property?.property_type || "").toLowerCase().includes("hotel") ||
                   (property?.property_type || "").toLowerCase().includes("hospitality");
   const roleConfig = isHotel && ['owner', 'broker', 'borrower'].includes(role)
@@ -1603,6 +1617,7 @@ export default function DealRoomPage() {
             propertyId={pid}
             role={role}
             packId={packId}
+            propertyType={property.property_type || property.type}
           />
         )}
 
@@ -1686,7 +1701,7 @@ export default function DealRoomPage() {
                 You just experienced Kontra
               </p>
               <h2 className="text-2xl font-extrabold text-white mb-2">
-                Ready to close your deal faster?
+                Ready to coordinate your deal to closing?
               </h2>
               <p className="text-sm text-white/60 mb-6 max-w-md mx-auto">
                 Set up a deal room for your property in under 2 minutes. AI analyzes every document as it's uploaded. Every party gets their own view.

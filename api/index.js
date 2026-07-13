@@ -31,6 +31,22 @@ const aiDealReviewRouter = require('./routers/aiDealReview');
 const tasksRouter = require('./routers/tasks');
 const operationsManagerRouter = require('./routers/operationsManager');
 const { evaluateDealRoomForTasks } = require('./lib/taskEngine');
+
+// Pack inference map — mirrors DEAL_TYPE_TO_PACK in dealRoomHelpers.js so that
+// room creation writes the correct workflow_pack_id from day one.
+const DEAL_TYPE_TO_PACK_INDEX = {
+  full_acquisition:    'business_acquisition',
+  asset_purchase:      'business_acquisition',
+  stock_purchase:      'business_acquisition',
+  business_acquisition:'business_acquisition',
+  seed:                'fundraising',
+  series_a:            'fundraising',
+  series_b:            'fundraising',
+  series_c:            'fundraising',
+  debt_raise:          'fundraising',
+  equity_raise:        'fundraising',
+  fundraising:         'fundraising',
+};
 const OpenAI = require('openai');          // ← v4+ default export
 const cache = require('./cache');
 const { addJob } = require('./jobQueue');
@@ -1008,7 +1024,7 @@ app.post('/api/checkout/demo', async (req, res) => {
       closing_date: meta.closingDate || '',
       first_name: meta.firstName || '',
       last_name: meta.lastName || '',
-      workflow_pack_id: meta.workflowPackId || 'cre_acquisition',
+      workflow_pack_id: meta.workflowPackId || DEAL_TYPE_TO_PACK_INDEX[meta.dealType] || 'cre_acquisition',
     };
 
     try {
@@ -1097,7 +1113,7 @@ app.post('/api/webhook/stripe',
         closing_date: pending.closing_date || '',
         first_name: pending.first_name || '',
         last_name: pending.last_name || '',
-        workflow_pack_id: pending.workflow_pack_id || 'cre_acquisition',
+        workflow_pack_id: pending.workflow_pack_id || DEAL_TYPE_TO_PACK_INDEX[pending.deal_type] || 'cre_acquisition',
       };
 
       try {
@@ -1548,10 +1564,44 @@ app.get('/api/public/my-rooms', async (req, res) => {
   }
 });
 
+// ── Document-assignment config — used for role-scoped analyses filtering ──────
+const DOC_ASSIGNMENTS = (() => {
+  try {
+    return require('../shared/document_assignments.json');
+  } catch { return {}; }
+})();
+
+function getSectionAssignments(packId, propertyType) {
+  const pack = DOC_ASSIGNMENTS[packId];
+  if (!pack) return null;
+  if (pack.sections) return pack.sections;
+  if (pack.byPropertyType) return pack.byPropertyType[propertyType] || pack.byPropertyType['Multifamily'] || null;
+  return null;
+}
+
+function isCoordinatorRole(packId, role) {
+  const pack = DOC_ASSIGNMENTS[packId];
+  return pack?.coordinatorRoles?.includes(role) ?? true; // unknown pack → allow all
+}
+
 // ── Public analyses fetch — no auth required ──────────────────────────────
 app.get('/api/public/deal-room/:propertyId/analyses', async (req, res) => {
   const { propertyId } = req.params;
+  const { role } = req.query; // optional: scopes results to this role's assigned sections
   try {
+    // Resolve pack + property_type if role filtering is needed
+    let packId = null;
+    let propertyType = null;
+    if (role) {
+      const { data: room } = await supabase
+        .from('deal_rooms')
+        .select('workflow_pack_id, property_type')
+        .eq('property_id', propertyId)
+        .maybeSingle();
+      packId = room?.workflow_pack_id || 'cre_acquisition';
+      propertyType = room?.property_type || 'Multifamily';
+    }
+
     const { data, error } = await supabase
       .from('deal_analyses')
       .select('id, section, filename, analysis, uploaded_by_role, created_at, storage_path')
@@ -1593,7 +1643,23 @@ app.get('/api/public/deal-room/:propertyId/analyses', async (req, res) => {
       seen[a.section] = true;
       return true;
     }).map(a => ({ ...a, versionHistory: history[a.section] || [] }));
-    res.json({ analyses: deduped });
+
+    // Role-scoped filtering: if caller provided ?role=, hide sections not assigned to them.
+    // Coordinator roles (canManage) always see everything.
+    // Custom sections (not in the assignments map) are always visible to all.
+    let filtered = deduped;
+    if (role && packId && !isCoordinatorRole(packId, role)) {
+      const assignments = getSectionAssignments(packId, propertyType);
+      if (assignments) {
+        filtered = deduped.filter(a => {
+          const assignedTo = assignments[a.section];
+          // Section not in the map (e.g. custom upload) → visible to all
+          if (!assignedTo) return true;
+          return assignedTo.includes(role);
+        });
+      }
+    }
+    res.json({ analyses: filtered });
   } catch (err) {
     console.error('[analyses-fetch]', err.message);
     res.json({ analyses: [] });

@@ -34,7 +34,7 @@ const FAQS = [
   },
   {
     q: "Who can access the deal room?",
-    a: "Anyone you invite. Owner, lender, inspector, insurer, attorney, underwriter — each gets a role-scoped link to the same deal room. No accounts required for invited parties.",
+    a: "Anyone you invite. Owner, lender, inspector, insurer, attorney, underwriter — each gets a role-scoped link to the same workspace. No account creation required for invited parties.",
   },
   {
     q: "What documents does AI analyze?",
@@ -89,8 +89,8 @@ export default function PricingPage() {
             One price.<br />Zero confusion.
           </h1>
           <p className="text-gray-500 text-base max-w-md mx-auto leading-relaxed">
-            Commercial real estate transactions shouldn't require 700 emails.
-            Open a deal room and close faster.
+            Complex transactions shouldn't require 700 emails.
+            Open a deal room and coordinate every step to closing.
           </p>
         </div>
 

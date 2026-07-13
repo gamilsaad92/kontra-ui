@@ -9,9 +9,9 @@ const STEPS = [
     color: "#800020",
     title: "Choose your workflow and create the workspace",
     who: "Deal Owner",
-    desc: "Select your transaction type — CRE Acquisition, Business Acquisition, or Fundraising. Add deal details and parties. Kontra generates a custom task checklist, document requirements, and role assignments specific to that transaction type.",
+    desc: "Select your transaction type — Business Acquisition, Fundraising, or CRE Acquisition. Add deal details and parties. Kontra generates a custom task checklist, document requirements, and role assignments specific to that transaction type.",
     actions: [
-      "Select workflow pack: CRE Acquisition, Business Acquisition, or Fundraising",
+      "Select workflow pack: Business Acquisition, Fundraising, or CRE Acquisition",
       "Name the deal and set basic parameters",
       "Kontra builds a custom checklist for your transaction type",
       "Deal room is live in under 60 seconds",
@@ -46,9 +46,9 @@ const STEPS = [
     step: "03",
     icon: "🤖",
     color: "#065f46",
-    title: "AI Operations Manager takes over",
+    title: "AI Operations Manager coordinates every party",
     who: "Every party benefits",
-    desc: "Every uploaded document is analyzed by GPT-4o in seconds. Tasks are auto-assigned with deadlines. The AI Operations Manager surfaces what's blocking progress, identifies the critical path, and drafts follow-up messages before you have to ask.",
+    desc: "Every uploaded document is analyzed by GPT-4o in seconds. Tasks are auto-assigned with deadlines. The AI Operations Manager surfaces what's blocking progress, identifies the critical path, and drafts follow-up messages — you decide what to send.",
     actions: [
       "Documents analyzed and structured automatically",
       "Tasks assigned to the right party with context",
@@ -144,7 +144,7 @@ export default function HowItWorksPage() {
             <span style={{ color: "#e8a0a0" }}>Every complex transaction.</span>
           </h1>
           <p className="text-gray-400 text-lg max-w-2xl mx-auto leading-relaxed">
-            CRE acquisitions, business acquisitions, fundraising — Kontra runs the same four-step workflow for every transaction type. See exactly how a deal moves from kickoff to close.
+            Business acquisitions, fundraising, CRE — Kontra coordinates the same four-step workflow for every transaction type. See exactly how a deal moves from kickoff to closing-ready.
           </p>
         </div>
       </section>
@@ -293,7 +293,7 @@ export default function HowItWorksPage() {
       <section className="max-w-7xl mx-auto px-6 py-20">
         <div className="rounded-3xl bg-gray-950 p-10 md:p-14 text-white text-center">
           <p className="text-xs font-semibold uppercase tracking-wider mb-3 text-red-400">The difference</p>
-          <h2 className="text-3xl font-bold mb-4">Most deal rooms store documents.<br />Kontra runs the deal.</h2>
+          <h2 className="text-3xl font-bold mb-4">Most deal rooms store documents.<br />Kontra coordinates every step to closing.</h2>
           <p className="text-gray-400 text-base max-w-2xl mx-auto mb-10 leading-relaxed">
             The AI Operations Manager tracks every open task, surfaces what's blocking closing, and coordinates each party — so deals don't stall in inboxes. You get a Morning Briefing and Daily Standup every day telling you exactly where the deal stands.
           </p>

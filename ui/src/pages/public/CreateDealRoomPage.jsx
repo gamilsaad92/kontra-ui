@@ -52,7 +52,7 @@ export default function CreateDealRoomPage() {
   }, []);
 
   const [form, setForm] = useState({
-    packId: DEFAULT_PACK_ID,
+    packId: "business_acquisition",
     propertyName: "",
     propertyAddress: "",
     propertyType: "",
@@ -139,7 +139,7 @@ export default function CreateDealRoomPage() {
               <span className="w-2 h-2 rounded-full bg-green-400 inline-block"></span>
               Deal room live in minutes
             </div>
-            <h1 className="text-2xl font-bold text-gray-900 mb-2">Create Your Workspace</h1>
+            <h1 className="text-2xl font-bold text-gray-900 mb-2">Create Your Deal Room</h1>
             <p className="text-gray-500 text-sm">
               $499 one-time · All parties included · No subscription required
             </p>
