@@ -5,21 +5,21 @@ import PublicLayout from "./PublicLayout";
 const STEPS = [
   {
     step: "01",
-    icon: "🏢",
+    icon: "⚙️",
     color: "#800020",
-    title: "Owner creates the deal room",
-    who: "Borrower / Property Owner",
-    desc: "Add your property address, type, and basic details. Kontra creates a dedicated workspace for that asset — a structured deal room where everything lives.",
+    title: "Choose your workflow and create the workspace",
+    who: "Deal Owner",
+    desc: "Select your transaction type — Business Acquisition, Fundraising, or CRE Acquisition. Add deal details and parties. Kontra generates a custom task checklist, document requirements, and role assignments specific to that transaction type.",
     actions: [
-      "Upload inspection reports, financials, leases, insurance certs",
-      "AI analyzes every document in seconds",
-      "Property Health Score calculated automatically",
-      "Compliance checklist generated from document data",
+      "Select workflow pack: Business Acquisition, Fundraising, or CRE Acquisition",
+      "Name the deal and set basic parameters",
+      "Kontra builds a custom checklist for your transaction type",
+      "Deal room is live in under 60 seconds",
     ],
     visual: [
-      { icon: "📄", text: "Inspection Report uploaded", status: "Analyzed", color: "#16a34a" },
-      { icon: "💰", text: "Q3 Operating Statement", status: "Analyzed", color: "#16a34a" },
-      { icon: "🛡️", text: "Insurance Certificate", status: "Processing", color: "#f59e0b" },
+      { icon: "🏢", text: "CRE Acquisition · 124 Oak St", status: "Workspace created", color: "#16a34a" },
+      { icon: "💼", text: "Business Acquisition · Acme Corp", status: "Checklist ready", color: "#16a34a" },
+      { icon: "📈", text: "Fundraising · Series A", status: "Roles configured", color: "#f59e0b" },
     ],
   },
   {
@@ -28,103 +28,110 @@ const STEPS = [
     color: "#1e40af",
     title: "Invite every party with one link",
     who: "All deal parties",
-    desc: "Share the workspace with your lender, inspector, insurance broker, engineer, or underwriter. Each gets a role-scoped view — they see exactly what's relevant to them, nothing more.",
+    desc: "Send each participant a role-scoped invite link — no account required. Each party sees exactly what's relevant to their role. Documents they upload go directly into the right checklist slot. Nothing leaks across roles.",
     actions: [
-      "Lender sees financials, risk score, compliance status",
-      "Inspector submits and updates their report directly",
-      "Insurer reviews coverage gaps flagged by AI",
-      "Underwriter accesses structured data package",
+      "Each party gets a unique, role-scoped link",
+      "No sign-up required for participants",
+      "Documents land in the right checklist slot automatically",
+      "Owner sees everyone's status in real time",
     ],
     visual: [
-      { icon: "🏦", text: "First Republic Lending", status: "Reviewing", color: "#f59e0b" },
-      { icon: "🔍", text: "Meridian Inspections", status: "Report Submitted", color: "#16a34a" },
-      { icon: "🛡️", text: "Covanta Insurance", status: "Cert Pending", color: "#f59e0b" },
-      { icon: "📐", text: "Atlas Engineering", status: "Engaged", color: "#16a34a" },
+      { icon: "⚖️", text: "Attorney · Deal Room Link sent", status: "Opened", color: "#16a34a" },
+      { icon: "🏦", text: "Lender · Financials requested", status: "Uploading", color: "#f59e0b" },
+      { icon: "🔍", text: "CPA · Q3 Statements needed", status: "Pending", color: "#9ca3af" },
+      { icon: "📋", text: "Broker · NDA uploaded", status: "Verified ✓", color: "#16a34a" },
     ],
   },
   {
     step: "03",
     icon: "🤖",
     color: "#065f46",
-    title: "AI does the heavy lifting",
+    title: "AI Operations Manager coordinates every party",
     who: "Every party benefits",
-    desc: "Every uploaded document is analyzed by GPT-4o. Risk flags surface automatically. Parties get structured summaries instead of raw PDFs. Everyone moves faster because nobody has to read 80-page reports.",
+    desc: "Every uploaded document is analyzed by GPT-4o in seconds. Tasks are auto-assigned with deadlines. The AI Operations Manager surfaces what's blocking progress, identifies the critical path, and drafts follow-up messages — you decide what to send.",
     actions: [
-      "Inspection: life safety findings, deferred maintenance costs, priority items",
-      "Financials: NOI, DSCR, expense anomalies, covenant compliance",
-      "Insurance: coverage gaps, expiration dates, endorsement issues",
-      "Leases: key terms, expiration schedule, rent roll summary",
+      "Documents analyzed and structured automatically",
+      "Tasks assigned to the right party with context",
+      "Critical path updated as items complete",
+      "Morning Briefing and Daily Standup surface blockers each day",
     ],
     visual: [
-      { icon: "⚡", text: "Inspection analyzed in 8 seconds", status: "3 findings", color: "#f59e0b" },
-      { icon: "✅", text: "DSCR calculated: 1.28x", status: "Compliant", color: "#16a34a" },
-      { icon: "🚨", text: "Flood rider missing", status: "Action needed", color: "#dc2626" },
+      { icon: "⚡", text: "Purchase Agreement analyzed", status: "3 flags", color: "#f59e0b" },
+      { icon: "📊", text: "Financials → EBITDA extracted", status: "Reviewed", color: "#16a34a" },
+      { icon: "🚨", text: "Attorney signature pending", status: "Day 12 — overdue", color: "#dc2626" },
+      { icon: "✅", text: "NDA complete · Next: LOI", status: "On track", color: "#16a34a" },
     ],
   },
   {
     step: "04",
-    icon: "🏅",
+    icon: "🏁",
     color: "#6d28d9",
-    title: "Property becomes Investment-Ready",
-    who: "Owner + Lender + Investor",
-    desc: "When all five pillars are verified — physical, insurance, financial, compliance, legal — Kontra issues an Investment Readiness Report. The property is ready for financing, institutional investment, or tokenization.",
+    title: "Close with confidence",
+    who: "Owner + All parties",
+    desc: "Every critical-path item tracked. Every party working from the same verified documents. The Operations Manager tells you each morning exactly where the deal stands and what needs to happen today to stay on schedule.",
     actions: [
-      "Investment Readiness Report generated automatically",
-      "Submit directly to lenders or tokenization platforms",
-      "Report shared with all parties in the deal room",
-      "Property listed as Investment-Ready in the registry",
+      "Deal health score shows readiness at a glance",
+      "All checklist items verified before closing",
+      "Full audit log of every action, AI recommendation, and approval",
+      "Documents exported for closing or counsel review",
     ],
     visual: [
-      { icon: "🔍", text: "Physical Condition", status: "Verified ✓", color: "#16a34a" },
-      { icon: "🛡️", text: "Insurance Coverage", status: "Verified ✓", color: "#16a34a" },
-      { icon: "💰", text: "Financial Review", status: "Verified ✓", color: "#16a34a" },
-      { icon: "✅", text: "Compliance", status: "Verified ✓", color: "#16a34a" },
-      { icon: "📜", text: "Legal Structure", status: "Verified ✓", color: "#16a34a" },
+      { icon: "🟢", text: "Due Diligence", status: "Complete ✓", color: "#16a34a" },
+      { icon: "🟢", text: "Financing", status: "Complete ✓", color: "#16a34a" },
+      { icon: "🟢", text: "Legal Review", status: "Complete ✓", color: "#16a34a" },
+      { icon: "🟡", text: "Final Signatures", status: "In progress", color: "#f59e0b" },
+      { icon: "⏳", text: "Closing", status: "Scheduled", color: "#9ca3af" },
     ],
   },
 ];
 
-const PARTY_FLOWS = [
+const WORKFLOW_PACKS = [
   {
     icon: "🏢",
-    role: "Borrower / Owner",
+    title: "CRE Acquisition",
     color: "#800020",
-    entry: "Creates the deal room",
-    journey: ["Adds property details", "Uploads all documents", "AI analyzes everything", "Invites all parties", "Tracks deal progress"],
+    demoSlug: "/deal-room/kontra-demo",
+    description: "Commercial real estate acquisitions, refinancing, and lending transactions.",
+    parties: [
+      { icon: "🏢", role: "Borrower / Owner", desc: "Creates workspace, uploads documents, tracks all parties" },
+      { icon: "🏦", role: "Lender / Underwriter", desc: "Reviews AI-analyzed financials, compliance status, risk score" },
+      { icon: "🔍", role: "Inspector", desc: "Submits inspection report; AI structures findings for lender" },
+      { icon: "🛡️", role: "Insurance Broker", desc: "Uploads cert; AI flags coverage gaps and expiration dates" },
+      { icon: "⚖️", role: "Attorney", desc: "Reviews title, legal structure, and closing documents" },
+    ],
   },
   {
-    icon: "🏦",
-    role: "Lender",
+    icon: "💼",
+    title: "Business Acquisition",
     color: "#1e40af",
-    entry: "Receives invite link",
-    journey: ["Gets role-scoped access", "Reviews AI-analyzed financials", "Checks compliance status", "Downloads data package", "Issues term sheet"],
+    demoSlug: "/deal-room/kontra-demo-biz",
+    description: "M&A transactions, business purchases, and buy-side / sell-side diligence.",
+    parties: [
+      { icon: "🤝", role: "Buyer", desc: "Creates workspace, drives diligence checklist, tracks all parties" },
+      { icon: "🏢", role: "Seller", desc: "Uploads financials, contracts, and operating documents" },
+      { icon: "📊", role: "CPA / Accountant", desc: "Provides audited financials; AI extracts EBITDA and anomalies" },
+      { icon: "⚖️", role: "Attorney", desc: "Reviews purchase agreement, reps & warranties, closing docs" },
+      { icon: "📋", role: "M&A Broker / Advisor", desc: "Coordinates parties, tracks LOI and deal milestones" },
+    ],
   },
   {
-    icon: "🔍",
-    role: "Inspector",
-    color: "#d97706",
-    entry: "Receives invite link",
-    journey: ["Submits inspection report", "AI structures findings", "Lender sees summary", "Deferred maintenance tracked", "Follow-up items logged"],
-  },
-  {
-    icon: "🛡️",
-    role: "Insurer / Broker",
+    icon: "📈",
+    title: "Fundraising",
     color: "#065f46",
-    entry: "Receives invite link",
-    journey: ["Reviews coverage gaps flagged by AI", "Uploads insurance cert", "Expiration auto-tracked", "Lender sees coverage status", "Cert stored in registry"],
-  },
-  {
-    icon: "📊",
-    role: "Investor",
-    color: "#6d28d9",
-    entry: "Invited to Investment-Ready property",
-    journey: ["Reviews Readiness Report", "Sees 5-pillar verification", "Accesses financial summaries", "Token structure reviewed", "Participates in deal"],
+    demoSlug: "/deal-room/kontra-demo-fundraising",
+    description: "Capital raise processes for founders, fund managers, and deal sponsors.",
+    parties: [
+      { icon: "🚀", role: "Deal Principal", desc: "Creates workspace, manages investor document requests" },
+      { icon: "👥", role: "Investor Relations", desc: "Coordinates LP or investor onboarding and document delivery" },
+      { icon: "⚖️", role: "Legal Counsel", desc: "Reviews subscription agreements, term sheets, and compliance docs" },
+      { icon: "📊", role: "Financial Advisor", desc: "Prepares financial model, projections, and data room materials" },
+    ],
   },
 ];
 
 export default function HowItWorksPage() {
   const [activeStep, setActiveStep] = useState(0);
-  const [activeParty, setActiveParty] = useState(0);
+  const [activePack, setActivePack] = useState(0);
 
   return (
     <PublicLayout>
@@ -133,11 +140,11 @@ export default function HowItWorksPage() {
         <div className="max-w-4xl mx-auto px-6 text-center">
           <p className="text-xs font-semibold uppercase tracking-wider mb-3 text-red-400">How Kontra works</p>
           <h1 className="text-4xl md:text-5xl font-bold leading-tight mb-5">
-            One deal. Every party.<br />
-            <span style={{ color: "#e8a0a0" }}>Zero email chains.</span>
+            One AI Operations Manager.<br />
+            <span style={{ color: "#e8a0a0" }}>Every complex transaction.</span>
           </h1>
           <p className="text-gray-400 text-lg max-w-2xl mx-auto leading-relaxed">
-            From first document to tokenization-ready — see exactly how a CRE deal flows through Kontra, who does what, and what each party gets.
+            Business acquisitions, fundraising, CRE — Kontra coordinates the same four-step workflow for every transaction type. See exactly how a deal moves from kickoff to closing-ready.
           </p>
         </div>
       </section>
@@ -146,7 +153,7 @@ export default function HowItWorksPage() {
       <section className="max-w-7xl mx-auto px-6 py-20">
         <div className="text-center mb-12">
           <h2 className="text-2xl font-bold text-gray-900">The 4-step deal flow</h2>
-          <p className="text-gray-500 text-sm mt-2">Click each step to see what happens and who's involved.</p>
+          <p className="text-gray-500 text-sm mt-2">The same workflow engine runs every transaction type.</p>
         </div>
 
         {/* Step selector */}
@@ -219,61 +226,61 @@ export default function HowItWorksPage() {
         ))}
       </section>
 
-      {/* Party flows */}
+      {/* Workflow packs */}
       <section className="bg-gray-50 py-20">
         <div className="max-w-7xl mx-auto px-6">
           <div className="text-center mb-12">
-            <p className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: "#800020" }}>Every role explained</p>
-            <h2 className="text-2xl font-bold text-gray-900">What does each party actually do?</h2>
-            <p className="text-gray-500 text-sm mt-2">Select your role to see your exact journey through a deal.</p>
+            <p className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: "#800020" }}>Workflow Packs</p>
+            <h2 className="text-2xl font-bold text-gray-900">Who's in the deal room?</h2>
+            <p className="text-gray-500 text-sm mt-2">Each workflow pack configures the right roles, checklist, and tasks for your transaction type.</p>
           </div>
 
-          <div className="flex flex-wrap justify-center gap-2 mb-8">
-            {PARTY_FLOWS.map((p, i) => (
-              <button key={p.role}
-                onClick={() => setActiveParty(i)}
-                className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold transition-all ${
-                  activeParty === i ? "text-white" : "bg-white border border-gray-200 text-gray-600 hover:bg-gray-50"
+          {/* Pack selector */}
+          <div className="flex flex-wrap justify-center gap-3 mb-10">
+            {WORKFLOW_PACKS.map((p, i) => (
+              <button key={p.title}
+                onClick={() => setActivePack(i)}
+                className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold transition-all border-2 ${
+                  activePack === i ? "text-white border-transparent" : "bg-white border-gray-200 text-gray-600 hover:bg-gray-50"
                 }`}
-                style={activeParty === i ? { background: p.color } : {}}>
-                <span>{p.icon}</span> {p.role}
+                style={activePack === i ? { background: p.color } : {}}>
+                <span>{p.icon}</span> {p.title}
               </button>
             ))}
           </div>
 
-          {PARTY_FLOWS.map((p, i) => (
-            activeParty === i && (
-              <div key={p.role} className="max-w-2xl mx-auto bg-white rounded-2xl border-2 p-8"
+          {WORKFLOW_PACKS.map((p, i) => (
+            activePack === i && (
+              <div key={p.title} className="max-w-2xl mx-auto bg-white rounded-2xl border-2 p-8"
                 style={{ borderColor: p.color + "30" }}>
-                <div className="flex items-center gap-3 mb-6">
-                  <div className="w-14 h-14 rounded-2xl flex items-center justify-center text-3xl"
+                <div className="flex items-center gap-3 mb-2">
+                  <div className="w-12 h-12 rounded-2xl flex items-center justify-center text-2xl"
                     style={{ background: p.color + "12" }}>
                     {p.icon}
                   </div>
                   <div>
-                    <h3 className="text-lg font-bold text-gray-900">{p.role}</h3>
-                    <p className="text-sm text-gray-400">Entry point: <span className="font-medium text-gray-600">{p.entry}</span></p>
+                    <h3 className="text-lg font-bold text-gray-900">{p.title}</h3>
+                    <p className="text-sm text-gray-500">{p.description}</p>
                   </div>
                 </div>
-                <div className="relative">
-                  <div className="absolute left-3 top-3 bottom-3 w-px" style={{ background: p.color + "30" }} />
-                  <div className="space-y-4 pl-8">
-                    {p.journey.map((step, j) => (
-                      <div key={j} className="relative">
-                        <div className="absolute -left-5 w-4 h-4 rounded-full border-2 bg-white flex items-center justify-center"
-                          style={{ borderColor: p.color }}>
-                          <div className="w-1.5 h-1.5 rounded-full" style={{ background: p.color }} />
-                        </div>
-                        <p className="text-sm text-gray-700">{step}</p>
+
+                <div className="mt-6 space-y-3">
+                  {p.parties.map((party) => (
+                    <div key={party.role} className="flex items-start gap-3 p-3 rounded-xl bg-gray-50">
+                      <span className="text-xl mt-0.5">{party.icon}</span>
+                      <div>
+                        <p className="text-sm font-semibold text-gray-900">{party.role}</p>
+                        <p className="text-xs text-gray-500 leading-snug">{party.desc}</p>
                       </div>
-                    ))}
-                  </div>
+                    </div>
+                  ))}
                 </div>
+
                 <div className="mt-6 pt-5 border-t border-gray-100">
-                  <Link to="/deal-room/kontra-demo"
+                  <Link to={p.demoSlug}
                     className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold text-white transition hover:opacity-90"
                     style={{ background: p.color }}>
-                    See {p.role} view →
+                    See a live {p.title} deal room →
                   </Link>
                 </div>
               </div>
@@ -282,18 +289,42 @@ export default function HowItWorksPage() {
         </div>
       </section>
 
+      {/* AI Operations Manager callout */}
+      <section className="max-w-7xl mx-auto px-6 py-20">
+        <div className="rounded-3xl bg-gray-950 p-10 md:p-14 text-white text-center">
+          <p className="text-xs font-semibold uppercase tracking-wider mb-3 text-red-400">The difference</p>
+          <h2 className="text-3xl font-bold mb-4">Most deal rooms store documents.<br />Kontra coordinates every step to closing.</h2>
+          <p className="text-gray-400 text-base max-w-2xl mx-auto mb-10 leading-relaxed">
+            The AI Operations Manager tracks every open task, surfaces what's blocking closing, and coordinates each party — so deals don't stall in inboxes. You get a Morning Briefing and Daily Standup every day telling you exactly where the deal stands.
+          </p>
+          <div className="grid md:grid-cols-3 gap-6 text-left max-w-3xl mx-auto">
+            {[
+              { icon: "☀️", title: "Morning Briefing", desc: "Daily AI memo: deal health, critical blockers, what needs your attention today." },
+              { icon: "📊", title: "Daily Standup", desc: "End-of-day summary of every action taken, task completed, and flag raised across all parties." },
+              { icon: "🎯", title: "Critical Path Tracking", desc: "AI identifies what's on the critical path and what's causing schedule risk before it becomes a problem." },
+            ].map((f) => (
+              <div key={f.title} className="bg-white/5 rounded-2xl p-5">
+                <div className="text-2xl mb-3">{f.icon}</div>
+                <p className="text-sm font-semibold mb-1">{f.title}</p>
+                <p className="text-xs text-gray-400 leading-relaxed">{f.desc}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
       {/* CTA */}
       <section className="bg-gray-950 py-20">
         <div className="max-w-2xl mx-auto px-6 text-center">
           <h2 className="text-3xl font-bold text-white mb-4">Ready to run your first deal?</h2>
           <p className="text-gray-400 text-sm mb-8 leading-relaxed">
-            Create a deal room for $499. Invite your lender, inspector, and insurer. See everyone working from the same data — no accounts needed for any party.
+            Create a workspace for $499. Choose your workflow pack. Invite your parties. The AI Operations Manager handles the rest — no accounts needed for any participant.
           </p>
           <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
             <Link to="/create-deal-room"
               className="px-8 py-3.5 rounded-xl text-sm font-semibold text-white transition hover:opacity-90"
               style={{ background: "#800020" }}>
-              Create Your Deal Room →
+              Create Your Workspace →
             </Link>
             <Link to="/pricing"
               className="px-8 py-3.5 rounded-xl text-sm font-semibold border border-white/20 text-white hover:bg-white/10 transition">

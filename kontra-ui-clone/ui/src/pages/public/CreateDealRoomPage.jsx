@@ -10,13 +10,27 @@ const PROPERTY_TYPES = [
   "Hotel / Hospitality", "Self-Storage", "Land / Development", "Other",
 ];
 
-const DEAL_TYPES = [
-  { id: "acquisition", label: "Acquisition", desc: "Buying a property" },
-  { id: "refinance", label: "Refinance", desc: "Replacing existing debt" },
-  { id: "construction", label: "Construction / Value-Add", desc: "Development or major renovation" },
-  { id: "flag_conversion", label: "Flag Conversion", desc: "Switching hotel brand / franchise" },
-  { id: "sale", label: "Sale", desc: "Listing for sale with diligence room" },
-];
+const DEAL_TYPES_BY_PACK = {
+  cre_acquisition: [
+    { id: "acquisition",    label: "Acquisition",              desc: "Buying a property" },
+    { id: "refinance",      label: "Refinance",                desc: "Replacing existing debt" },
+    { id: "construction",   label: "Construction / Value-Add", desc: "Development or major renovation" },
+    { id: "flag_conversion",label: "Flag Conversion",          desc: "Switching hotel brand / franchise" },
+    { id: "sale",           label: "Sale",                     desc: "Listing for sale with diligence room" },
+  ],
+  business_acquisition: [
+    { id: "full_acquisition",label: "Full Acquisition",        desc: "Buying 100% of the business" },
+    { id: "asset_purchase",  label: "Asset Purchase",          desc: "Acquiring specific assets, not the entity" },
+    { id: "mbo",             label: "Management Buyout (MBO)", desc: "Management team buying the business" },
+    { id: "merger",          label: "Merger / Consolidation",  desc: "Two companies combining" },
+  ],
+  fundraising: [
+    { id: "seed",         label: "Pre-Seed / Seed",         desc: "Early-stage equity or SAFE" },
+    { id: "series_a",     label: "Series A",                desc: "First institutional round" },
+    { id: "series_b_plus",label: "Series B+",               desc: "Growth-stage round" },
+    { id: "bridge",       label: "Bridge / Convertible Note",desc: "Short-term financing ahead of next round" },
+  ],
+};
 
 const STEPS = ["Workspace", "Details", "Your Info", "Launch"];
 
@@ -38,7 +52,7 @@ export default function CreateDealRoomPage() {
   }, []);
 
   const [form, setForm] = useState({
-    packId: DEFAULT_PACK_ID,
+    packId: "business_acquisition",
     propertyName: "",
     propertyAddress: "",
     propertyType: "",
@@ -59,7 +73,9 @@ export default function CreateDealRoomPage() {
     setForm((f) => ({ ...f, packId, role: pack?.roles?.[0]?.key || f.role }));
   };
 
-  const isBusinessPack = form.packId !== DEFAULT_PACK_ID;
+  const isCREPack = form.packId === DEFAULT_PACK_ID;
+  const isBusinessPack = !isCREPack;
+  const activeDealTypes = DEAL_TYPES_BY_PACK[form.packId] || DEAL_TYPES_BY_PACK[DEFAULT_PACK_ID];
   const activePack = workflowPacks.find(p => p.id === form.packId) || workflowPacks[0];
 
   const canNext = () => {
@@ -123,7 +139,7 @@ export default function CreateDealRoomPage() {
               <span className="w-2 h-2 rounded-full bg-green-400 inline-block"></span>
               Deal room live in minutes
             </div>
-            <h1 className="text-2xl font-bold text-gray-900 mb-2">Create Your Deal Room</h1>
+            <h1 className="text-2xl font-bold text-gray-900 mb-2">Create Your Workspace</h1>
             <p className="text-gray-500 text-sm">
               $499 one-time · All parties included · No subscription required
             </p>
@@ -227,7 +243,7 @@ export default function CreateDealRoomPage() {
               <div className="space-y-4">
                 <h2 className="font-semibold text-gray-900 mb-4">What kind of deal is this?</h2>
                 <div className="grid grid-cols-2 gap-2">
-                  {DEAL_TYPES.map(d => (
+                  {activeDealTypes.map(d => (
                     <button key={d.id} onClick={() => set("dealType", d.id)}
                       className={`border rounded-xl p-3.5 text-left transition-all ${form.dealType === d.id ? "border-red-800 bg-red-50" : "border-gray-200 hover:border-gray-300"}`}>
                       <p className={`text-sm font-semibold ${form.dealType === d.id ? "text-red-800" : "text-gray-800"}`}>{d.label}</p>
@@ -329,10 +345,10 @@ export default function CreateDealRoomPage() {
                 <div className="space-y-3 mb-6">
                   {[
                     { label: "Workspace", value: activePack.name },
-                    { label: isBusinessPack ? "Business" : "Property", value: form.propertyName },
-                    { label: isBusinessPack ? "Location" : "Address", value: form.propertyAddress },
-                    ...(isBusinessPack ? [] : [{ label: "Type", value: form.propertyType + (form.propertySize ? ` · ${form.propertySize}` : "") }]),
-                    { label: "Deal", value: DEAL_TYPES.find(d => d.id === form.dealType)?.label + (form.dealAmount ? ` · ${form.dealAmount}` : "") },
+                    { label: isCREPack ? "Property" : "Name", value: form.propertyName },
+                    { label: isCREPack ? "Address" : "Location", value: form.propertyAddress },
+                    ...(isCREPack ? [{ label: "Type", value: form.propertyType + (form.propertySize ? ` · ${form.propertySize}` : "") }] : []),
+                    { label: "Deal", value: activeDealTypes.find(d => d.id === form.dealType)?.label + (form.dealAmount ? ` · ${form.dealAmount}` : "") },
                     { label: "Contact", value: `${form.firstName} ${form.lastName} · ${form.email}` },
                   ].map(r => (
                     <div key={r.label} className="flex justify-between items-start gap-4 py-2.5 border-b border-gray-100 last:border-0">
@@ -348,7 +364,7 @@ export default function CreateDealRoomPage() {
                     <span className="text-lg font-bold text-gray-900">$499</span>
                   </div>
                   <ul className="text-xs text-gray-500 space-y-1">
-                    {["All party portals (lender, inspector, insurer, attorney, investor)", "AI document analysis", "Compliance tracking", "Role-scoped invite links", "90-day access after close"].map(f => (
+                    {[`All party portals — role-scoped access for every stakeholder`, "AI document analysis", "Deal health & compliance tracking", "Role-scoped invite links", "90-day access after close"].map(f => (
                       <li key={f} className="flex items-center gap-1.5"><span className="text-green-500">✓</span>{f}</li>
                     ))}
                   </ul>

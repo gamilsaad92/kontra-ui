@@ -1701,7 +1701,7 @@ export default function DealRoomPage() {
                 You just experienced Kontra
               </p>
               <h2 className="text-2xl font-extrabold text-white mb-2">
-                Ready to close your deal faster?
+                Ready to coordinate your deal to closing?
               </h2>
               <p className="text-sm text-white/60 mb-6 max-w-md mx-auto">
                 Set up a deal room for your property in under 2 minutes. AI analyzes every document as it's uploaded. Every party gets their own view.

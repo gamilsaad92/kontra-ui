@@ -1,45 +1,100 @@
-import React, { useState } from "react";
-import { Link } from "react-router-dom";
+import React, { useState, useRef, useEffect } from "react";
+import { Link, useNavigate } from "react-router-dom";
 import PublicLayout from "./PublicLayout";
 
+const DEMOS = [
+  { icon: "💼", label: "Business Acquisition", sub: "M&A, business purchases & diligence",             slug: "/deal-room/kontra-demo-biz",         color: "#1e40af" },
+  { icon: "📈", label: "Fundraising",          sub: "Capital raises for founders & fund managers",     slug: "/deal-room/kontra-demo-fundraising", color: "#065f46" },
+  { icon: "🏢", label: "CRE Acquisition",      sub: "Commercial real estate acquisitions & financing", slug: "/deal-room/kontra-demo",             color: "#800020" },
+];
+
+function LiveDemoButton() {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    if (!open) return;
+    function handleClick(e) { if (ref.current && !ref.current.contains(e.target)) setOpen(false); }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [open]);
+
+  return (
+    <div className="relative" ref={ref}>
+      <button
+        onClick={() => setOpen(o => !o)}
+        className="px-7 py-3.5 rounded-xl text-sm font-semibold border border-white/30 text-white hover:bg-white/10 transition flex items-center gap-2">
+        <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse shrink-0" />
+        View Live Demo
+        <svg className={`w-3.5 h-3.5 transition-transform ${open ? "rotate-180" : ""}`} fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
+
+      {open && (
+        <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 w-72 rounded-2xl bg-gray-900 border border-white/10 shadow-2xl z-50 overflow-hidden">
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-500 px-4 pt-3.5 pb-1">Choose a live demo</p>
+          {DEMOS.map(d => (
+            <button
+              key={d.slug}
+              onClick={() => { setOpen(false); navigate(d.slug); }}
+              className="w-full flex items-center gap-3 px-4 py-3 hover:bg-white/5 transition text-left group">
+              <span className="w-9 h-9 rounded-xl flex items-center justify-center text-lg shrink-0"
+                style={{ background: d.color + "33" }}>{d.icon}</span>
+              <div className="min-w-0">
+                <p className="text-sm font-semibold text-white leading-tight">{d.label}</p>
+                <p className="text-xs text-gray-400 truncate">{d.sub}</p>
+              </div>
+              <svg className="w-4 h-4 text-gray-600 group-hover:text-gray-300 transition ml-auto shrink-0" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+              </svg>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 const PARTIES = [
-  { icon: "🏦", label: "Lenders",       color: "#800020" },
-  { icon: "🏢", label: "Borrowers",     color: "#1e40af" },
-  { icon: "📊", label: "Investors",     color: "#6d28d9" },
-  { icon: "🔍", label: "Inspectors",    color: "#d97706" },
-  { icon: "🛡️", label: "Insurers",      color: "#065f46" },
-  { icon: "📐", label: "Underwriters",  color: "#7c3aed" },
-  { icon: "🏗️", label: "Engineers",     color: "#0369a1" },
-  { icon: "⚙️", label: "Servicers",     color: "#92400e" },
+  { icon: "🏦", label: "Lenders & Investors",  color: "#800020" },
+  { icon: "🏢", label: "Buyers & Borrowers",   color: "#1e40af" },
+  { icon: "🏪", label: "Sellers",              color: "#0369a1" },
+  { icon: "🚀", label: "Founders & CEOs",      color: "#6d28d9" },
+  { icon: "🧮", label: "CPAs & Auditors",      color: "#065f46" },
+  { icon: "⚖️", label: "Legal Counsel",        color: "#374151" },
+  { icon: "🔍", label: "Inspectors",           color: "#d97706" },
+  { icon: "🤝", label: "Brokers & Advisors",   color: "#7c3aed" },
 ];
 
 const HOW_IT_WORKS = [
   {
     step: "01",
-    icon: "🏢",
-    title: "Owner creates the deal room",
-    desc: "Add your property in minutes. Upload documents, financials, inspections — Kontra structures everything automatically.",
+    icon: "🗂️",
+    title: "Deal principal creates the workspace",
+    desc: "Choose your workflow pack — CRE Acquisition, Business Acquisition, or Fundraising. Upload documents and Kontra structures everything automatically.",
     color: "#800020",
   },
   {
     step: "02",
     icon: "🔗",
     title: "Invite every party with one link",
-    desc: "Send your lender, inspector, insurer, and underwriter a role-scoped link. Each sees only what's relevant to them — no email chains, no forwarded PDFs.",
+    desc: "Send each advisor, counterparty, and reviewer a role-scoped link. Each sees only what's relevant to them — no email chains, no forwarded PDFs.",
     color: "#1e40af",
   },
   {
     step: "03",
     icon: "🤖",
-    title: "Your AI Operations Manager takes over",
-    desc: "It follows up with the right people, tells you what's blocking closing, and drafts the reminders before you have to ask.",
+    title: "Your AI Operations Manager coordinates from day one",
+    desc: "It follows up with the right people, surfaces what's blocking progress, and drafts the reminders before you have to ask.",
     color: "#065f46",
   },
   {
     step: "04",
     icon: "🏅",
-    title: "Property becomes Investment-Ready",
-    desc: "All five pillars documented and verified. Ready for financing submission and compliance review.",
+    title: "Deal reaches closing-ready",
+    desc: "Every document reviewed, every party current. Your AI Operations Manager tells you the moment you're ready to close.",
     color: "#6d28d9",
   },
 ];
@@ -47,39 +102,39 @@ const HOW_IT_WORKS = [
 const PARTY_CARDS = [
   {
     icon: "🏦",
-    role: "Lenders & Underwriters",
+    role: "Lenders & Investors",
     color: "#800020",
-    gets: ["AI tells you the moment a deal is covenant-compliant", "Financials and DSCR reviewed the second they arrive", "AI flags risk before it becomes your problem", "Compliance status per property, always current", "No more chasing borrowers for the next document"],
+    gets: ["AI tells you the moment a deal is diligence-complete", "Financials reviewed and structured the second they arrive", "AI flags risk before it becomes your problem", "Compliance status per deal, always current", "No more chasing the other side for the next document"],
   },
   {
     icon: "🏢",
-    role: "Borrowers & Owners",
+    role: "Buyers & Borrowers",
     color: "#1e40af",
-    gets: ["Your AI Operations Manager runs the transaction for you", "It follows up with every party so you don't have to", "It tells you exactly what's blocking closing, and why", "It drafts reminders and approvals — you just approve", "One dashboard replaces the 700-email inbox"],
+    gets: ["Your AI Operations Manager coordinates the transaction for you", "It follows up with every party so you don't have to", "It tells you exactly what's blocking closing, and why", "It drafts reminders and nudges — you stay in control", "One dashboard replaces the 700-email inbox"],
   },
   {
-    icon: "📊",
-    role: "Investors",
+    icon: "🏪",
+    role: "Sellers",
+    color: "#0369a1",
+    gets: ["Upload your documents once — AI structures everything", "Know exactly what the buyer still needs from you", "No repeated requests for the same file", "Buyer's progress visible in real time", "Closing stays on track without constant check-ins"],
+  },
+  {
+    icon: "🚀",
+    role: "Founders & CEOs",
     color: "#6d28d9",
-    gets: ["Know a deal's status without asking anyone", "Live NAV and occupancy data, always current", "Token holdings and distributions in one place", "AI-scored portfolio risk, updated automatically", "See what's ready for the secondary market"],
+    gets: ["AI Operations Manager coordinates your entire round", "Investor data room organized and current automatically", "Know which LP is outstanding before your weekly call", "Term sheet and cap table reviewed the moment they land", "Track closing progress — AI surfaces what's blocking each investor"],
   },
   {
-    icon: "🔍",
-    role: "Inspectors & Engineers",
-    color: "#d97706",
-    gets: ["Submit your report and move on — AI does the rest", "Findings auto-structured, no formatting required", "Deferred maintenance tracked without extra emails", "Lender review happens automatically on submission", "Your history across every property, in one place"],
-  },
-  {
-    icon: "🛡️",
-    role: "Insurance & Risk",
+    icon: "🧮",
+    role: "CPAs & Auditors",
     color: "#065f46",
-    gets: ["Upload a policy and AI tells you what's missing", "Expiration dates tracked so nothing lapses quietly", "Coverage verified for lenders without a phone call", "Flood, liability, and casualty gaps flagged instantly", "Endorsement issues surfaced before they cause delays"],
+    gets: ["Upload financials or QoE once — AI extracts the key metrics", "Your findings surface immediately to the right parties", "No reformatting or summary emails required", "Deal principal sees your analysis the moment it's submitted", "Your engagement history across every deal, in one place"],
   },
   {
-    icon: "⚙️",
-    role: "Servicers",
-    color: "#92400e",
-    gets: ["Draw requests move without manual chasing", "Borrower financials monitored automatically", "Escrow tracked per property, no spreadsheets", "Inspections scheduled without back-and-forth", "Covenant breaches flagged the moment they happen"],
+    icon: "⚖️",
+    role: "Counsel & Advisors",
+    color: "#374151",
+    gets: ["Review only what's been flagged — no document hunting", "AI structures incoming docs so you start with context", "Redlines and comments delivered to the right party instantly", "Know which document is blocking closing before the call", "Role-scoped access — no irrelevant deal noise"],
   },
 ];
 
@@ -184,16 +239,14 @@ export default function HomePage() {
         <div className="max-w-7xl mx-auto px-6 pt-20 pb-24 text-center">
           <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-red-950/60 text-red-300 text-xs font-medium mb-8 border border-red-900/40">
             <span className="w-1.5 h-1.5 rounded-full bg-red-400 animate-pulse" />
-            AI Operations Manager for CRE — Now Live
+            AI Operations Manager — Now Live
           </div>
           <h1 className="text-4xl md:text-6xl font-bold leading-tight tracking-tight mb-6 max-w-4xl mx-auto">
-            Stop managing transactions.{" "}
-            <span style={{ color: "#e8a0a0" }}>Let Kontra manage them</span>{" "}
-            for you.
+            Every transaction gets its own Operations Manager.
           </h1>
           <p className="text-lg text-gray-400 max-w-2xl mx-auto mb-10 leading-relaxed">
-            Every deal room comes with its own AI Operations Manager. It follows up with the right people,
-            tells you what's blocking closing, and drafts the reminders before you have to ask.
+            AI that keeps transactions moving — not just documents organized. Kontra follows up with the right
+            people, surfaces what's blocking closing, and coordinates every party in a deal from a single workspace.
             Your real competition isn't Datasite — it's the 700-email transaction.
           </p>
 
@@ -201,13 +254,9 @@ export default function HomePage() {
             <Link to="/create-deal-room"
               className="px-7 py-3.5 rounded-xl text-sm font-semibold text-white transition hover:opacity-90"
               style={{ background: "#800020" }}>
-              Create Your Deal Room — $499
+              Create Your Workspace — $499
             </Link>
-            <Link to="/deal-room/kontra-demo"
-              className="px-7 py-3.5 rounded-xl text-sm font-semibold border border-white/30 text-white hover:bg-white/10 transition flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse shrink-0" />
-              View Live Demo
-            </Link>
+            <LiveDemoButton />
           </div>
 
           {/* Party strip */}
@@ -290,13 +339,13 @@ export default function HomePage() {
             {/* Center */}
             <div className="bg-white/5 border border-white/10 rounded-2xl p-5 mb-4">
               <div className="flex items-center gap-3 mb-4">
-                <div className="w-10 h-10 rounded-xl bg-red-900/50 flex items-center justify-center text-lg">🏢</div>
+                <div className="w-10 h-10 rounded-xl bg-blue-900/50 flex items-center justify-center text-lg">💼</div>
                 <div>
-                  <p className="text-sm font-semibold text-white">Westside Commons</p>
-                  <p className="text-xs text-gray-400">Los Angeles, CA · Multifamily · 234 units</p>
+                  <p className="text-sm font-semibold text-white">Brightline Services LLC</p>
+                  <p className="text-xs text-gray-400">San Francisco, CA · Business Acquisition · $6.2M</p>
                 </div>
                 <div className="ml-auto flex items-center gap-2">
-                  <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-green-900/50 text-green-400">87/100</span>
+                  <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-amber-900/50 text-amber-400">At Risk</span>
                   <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-blue-900/50 text-blue-300">Deal Room Active</span>
                 </div>
               </div>
@@ -304,10 +353,10 @@ export default function HomePage() {
               {/* Parties connected */}
               <div className="flex flex-wrap gap-2 mb-4">
                 {[
-                  { icon: "🏦", label: "First Republic Lending", role: "Lender", status: "Reviewing", statusColor: "#f59e0b" },
-                  { icon: "🔍", label: "Meridian Inspection Co.", role: "Inspector", status: "Report Submitted", statusColor: "#16a34a" },
-                  { icon: "🛡️", label: "Covanta Insurance", role: "Insurer", status: "Cert Pending", statusColor: "#f59e0b" },
-                  { icon: "📐", label: "Atlas Engineering", role: "Engineer", status: "Engaged", statusColor: "#16a34a" },
+                  { icon: "🏪", label: "Tom Briggs (Seller)", role: "Seller", status: "Docs Pending", statusColor: "#f59e0b" },
+                  { icon: "🧮", label: "Davidson Advisory", role: "CPA", status: "QoE Overdue", statusColor: "#ef4444" },
+                  { icon: "⚖️", label: "Vance & Partners", role: "Legal Counsel", status: "Reviewing LOI", statusColor: "#f59e0b" },
+                  { icon: "🤝", label: "Meridian Advisors", role: "M&A Broker", status: "CIM Submitted", statusColor: "#16a34a" },
                 ].map((party) => (
                   <div key={party.label} className="flex items-center gap-2 px-3 py-2 rounded-xl bg-white/5 border border-white/10">
                     <span className="text-base">{party.icon}</span>
@@ -322,9 +371,9 @@ export default function HomePage() {
               {/* Document feed */}
               <div className="space-y-1.5">
                 {[
-                  { icon: "📄", text: "Inspection report analyzed — 3 findings flagged", time: "2m ago", color: "#f59e0b" },
-                  { icon: "💰", text: "Q3 Financials reviewed — DSCR 1.28x, compliant", time: "1h ago", color: "#16a34a" },
-                  { icon: "🛡️", text: "Insurance cert requested from Covanta Insurance", time: "3h ago", color: "#3b82f6" },
+                  { icon: "📊", text: "QoE report is 10 days overdue — follow-up drafted for your approval", time: "2m ago", color: "#ef4444" },
+                  { icon: "📄", text: "Letter of Intent analyzed — 2 open items flagged for Legal", time: "1h ago", color: "#f59e0b" },
+                  { icon: "💰", text: "3-year financials reviewed — revenue trend and EBITDA margin extracted", time: "3h ago", color: "#16a34a" },
                 ].map((item, i) => (
                   <div key={i} className="flex items-center gap-2.5 px-3 py-2 rounded-lg bg-white/3">
                     <span className="text-sm">{item.icon}</span>
@@ -391,10 +440,10 @@ export default function HomePage() {
                 ))}
               </ul>
               <div className="mt-5">
-                <Link to="/login"
+                <Link to="/create-deal-room"
                   className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold text-white transition hover:opacity-90"
                   style={{ background: p.color }}>
-                  Start as {p.role.split(" ")[0]} →
+                  Create your workspace →
                 </Link>
               </div>
             </div>
@@ -475,12 +524,12 @@ export default function HomePage() {
       <section className="max-w-7xl mx-auto px-6 py-20">
         <div className="grid lg:grid-cols-2 gap-12 items-center">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: "#800020" }}>Built for how CRE actually works</p>
+            <p className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: "#800020" }}>Built for how complex transactions actually work</p>
             <h2 className="text-2xl font-bold text-gray-900 mb-4">
               Every party gets exactly what they need — nothing more
             </h2>
             <p className="text-gray-500 leading-relaxed mb-6">
-              CRE deals stall not because people can't find documents — they stall because no one is chasing the next step. Kontra's AI Operations Manager follows up with lender, inspector, insurer, and attorney automatically, and tells you exactly what's blocking closing. No more 700-email transactions. No more "who has the latest version?"
+              Deals stall not because people can't find documents — they stall because no one is chasing the next step. Kontra's AI Operations Manager follows up with the right people automatically, and tells you exactly what's blocking closing. No more 700-email transactions. No more "who has the latest version?"
             </p>
             <div className="space-y-2.5">
               {[
@@ -544,7 +593,7 @@ export default function HomePage() {
             <Link to="/create-deal-room"
               className="px-8 py-3.5 rounded-xl text-sm font-semibold text-white transition hover:opacity-90"
               style={{ background: "#800020" }}>
-              Create Your Deal Room →
+              Create Your Workspace →
             </Link>
             <Link to="/properties"
               className="px-8 py-3.5 rounded-xl text-sm font-semibold border border-white/20 text-white hover:bg-white/10 transition">
