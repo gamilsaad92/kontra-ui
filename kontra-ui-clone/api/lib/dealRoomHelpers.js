@@ -12,6 +12,25 @@ const { supabase } = require('../db');
 const WORKFLOW_STAGES_CONFIG = require('../../shared/workflowStages.json');
 const DEFAULT_PACK_ID = 'cre_acquisition';
 
+// ── Pack inference from deal_type (mirrors frontend lib/workflowPacks/index.js) ─
+// When a room's workflow_pack_id is null or CRE-default, we infer the correct
+// pack from deal_type so the task engine, briefing, and analyses always use
+// the right pack without requiring a DB write (PostgREST schema cache may be
+// stale for workflow_pack_id writes, but deal_type is a base column).
+const DEAL_TYPE_TO_PACK = {
+  full_acquisition:    'business_acquisition',
+  asset_purchase:      'business_acquisition',
+  stock_purchase:      'business_acquisition',
+  business_acquisition:'business_acquisition',
+  seed:                'fundraising',
+  series_a:            'fundraising',
+  series_b:            'fundraising',
+  series_c:            'fundraising',
+  debt_raise:          'fundraising',
+  equity_raise:        'fundraising',
+  fundraising:         'fundraising',
+};
+
 function getPackStageConfig(packId) {
   return WORKFLOW_STAGES_CONFIG[packId] || WORKFLOW_STAGES_CONFIG[DEFAULT_PACK_ID];
 }
@@ -37,8 +56,16 @@ function getPackRoleLabel(packId, roleKey) {
   return role ? role.label : roleKey;
 }
 async function getRoomPackId(propertyId) {
-  const { data } = await supabase.from('deal_rooms').select('workflow_pack_id').eq('property_id', propertyId).maybeSingle();
-  return data?.workflow_pack_id || DEFAULT_PACK_ID;
+  // Select both columns; workflow_pack_id may silently return null if PostgREST
+  // schema cache is stale, so we always prefer deal_type inference first.
+  const { data } = await supabase.from('deal_rooms')
+    .select('workflow_pack_id, deal_type')
+    .eq('property_id', propertyId).maybeSingle();
+  if (!data) return DEFAULT_PACK_ID;
+  // deal_type inference wins — mirrors frontend resolvePackId in workflowPacks/index.js
+  const inferred = data.deal_type ? (DEAL_TYPE_TO_PACK[data.deal_type] ?? null) : null;
+  if (inferred) return inferred;
+  return data.workflow_pack_id || DEFAULT_PACK_ID;
 }
 
 // ── Shared email helper — logs Resend errors instead of swallowing them ──────

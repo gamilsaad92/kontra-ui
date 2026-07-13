@@ -31,6 +31,22 @@ const aiDealReviewRouter = require('./routers/aiDealReview');
 const tasksRouter = require('./routers/tasks');
 const operationsManagerRouter = require('./routers/operationsManager');
 const { evaluateDealRoomForTasks } = require('./lib/taskEngine');
+
+// Pack inference map — mirrors DEAL_TYPE_TO_PACK in dealRoomHelpers.js so that
+// room creation writes the correct workflow_pack_id from day one.
+const DEAL_TYPE_TO_PACK_INDEX = {
+  full_acquisition:    'business_acquisition',
+  asset_purchase:      'business_acquisition',
+  stock_purchase:      'business_acquisition',
+  business_acquisition:'business_acquisition',
+  seed:                'fundraising',
+  series_a:            'fundraising',
+  series_b:            'fundraising',
+  series_c:            'fundraising',
+  debt_raise:          'fundraising',
+  equity_raise:        'fundraising',
+  fundraising:         'fundraising',
+};
 const OpenAI = require('openai');          // ← v4+ default export
 const cache = require('./cache');
 const { addJob } = require('./jobQueue');
@@ -1008,7 +1024,7 @@ app.post('/api/checkout/demo', async (req, res) => {
       closing_date: meta.closingDate || '',
       first_name: meta.firstName || '',
       last_name: meta.lastName || '',
-      workflow_pack_id: meta.workflowPackId || 'cre_acquisition',
+      workflow_pack_id: meta.workflowPackId || DEAL_TYPE_TO_PACK_INDEX[meta.dealType] || 'cre_acquisition',
     };
 
     try {
@@ -1097,7 +1113,7 @@ app.post('/api/webhook/stripe',
         closing_date: pending.closing_date || '',
         first_name: pending.first_name || '',
         last_name: pending.last_name || '',
-        workflow_pack_id: pending.workflow_pack_id || 'cre_acquisition',
+        workflow_pack_id: pending.workflow_pack_id || DEAL_TYPE_TO_PACK_INDEX[pending.deal_type] || 'cre_acquisition',
       };
 
       try {
