@@ -9,7 +9,8 @@ const multer = require('multer');
 const OpenAI = require('openai');
 const { supabase } = require('../db');
 const aiRateLimit = require('../middlewares/aiRateLimit');
-const { uploadToStorage, logEvent, getNextVersion, notifyOwner, notifyLender } = require('../lib/dealRoomHelpers');
+const { uploadToStorage, logEvent, getNextVersion, notifyOwner, notifyLender, getRoomPackId } = require('../lib/dealRoomHelpers');
+const { runVerification } = require('../lib/verificationEngine');
 
 const router = express.Router();
 
@@ -162,6 +163,7 @@ Inspection report text:\n${text}` }
       notifyOwner(property_id, 'inspection', result.summary);
       logEvent(property_id, 'document_analyzed', role || 'unknown', null, 'Inspection Report analyzed by AI', { section: 'inspection', filename: req.file.originalname });
       if (role === 'inspector') notifyLender(property_id, role, 'inspection', result.summary).catch(() => {});
+      getRoomPackId(property_id).then(packId => runVerification(property_id, packId)).catch(e => console.warn('[verification] inspection trigger:', e.message));
     }
   } catch (err) {
     console.error('[analyze-inspection]', err.message);
@@ -323,6 +325,7 @@ Policy text:\n${text}` }
       notifyOwner(property_id, 'insurance', result.summary);
       logEvent(property_id, 'document_analyzed', role || 'unknown', null, 'Insurance Certificate analyzed by AI', { section: 'insurance', filename: req.file.originalname });
       if (['insurer', 'insurance'].includes(role)) notifyLender(property_id, role, 'insurance', result.summary).catch(() => {});
+      getRoomPackId(property_id).then(packId => runVerification(property_id, packId)).catch(e => console.warn('[verification] insurance trigger:', e.message));
     }
   } catch (err) {
     console.error('[review-insurance]', err.message);
@@ -375,6 +378,7 @@ Financial document:\n${text}` }
       notifyOwner(property_id, 'financials', result.summary);
       logEvent(property_id, 'document_analyzed', role || 'unknown', null, 'Financial Statement analyzed by AI', { section: 'financials', filename: req.file.originalname });
       if (['owner', 'borrower'].includes(role)) notifyLender(property_id, role, 'financials', result.summary).catch(() => {});
+      getRoomPackId(property_id).then(packId => runVerification(property_id, packId)).catch(e => console.warn('[verification] financials trigger:', e.message));
     }
   } catch (err) {
     console.error('[review-financials]', err.message);

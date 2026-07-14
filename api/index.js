@@ -30,6 +30,8 @@ const {
 const aiDealReviewRouter = require('./routers/aiDealReview');
 const tasksRouter = require('./routers/tasks');
 const operationsManagerRouter = require('./routers/operationsManager');
+const verificationRouter = require('./routers/verification');
+const { runVerification } = require('./lib/verificationEngine');
 const { evaluateDealRoomForTasks } = require('./lib/taskEngine');
 
 // Pack inference map — mirrors DEAL_TYPE_TO_PACK in dealRoomHelpers.js so that
@@ -1889,6 +1891,7 @@ app.post('/api/public/deal-room/:propertyId/track-document', upload.single('file
           notifyOwner(propertyId, section, result.summary).catch(() => {});
           logEvent(propertyId, 'document_analyzed', role || 'owner', null, `${SECTION_LABELS[section]} analyzed by AI`, { section, filename }).catch(() => {});
           evaluateDealRoomForTasks(propertyId).catch(e => console.warn('[tasks] auto-evaluate on analysis failed:', e.message));
+          getRoomPackId(propertyId).then(packId => runVerification(propertyId, packId)).catch(e => console.warn('[verification] trigger failed:', e.message));
           console.log(`[track-document] ✓ ${section} analyzed${needsVision ? ' (vision)' : ''} — confidence ${result.confidence}`);
         } catch (aiErr) {
           console.warn(`[track-document] AI failed for ${section}:`, aiErr.message);
@@ -2138,6 +2141,7 @@ app.use('/api/ai', aiDealReviewRouter);
 // requireOrgContext (same property-scoped access model as the other public
 // deal-room routes above). See lib/taskEngine.js for the Observe Mode rules.
 app.use('/api/public', tasksRouter);
+app.use('/api/public', verificationRouter);
 
 // AI Operations Manager — PUBLIC, must stay BEFORE requireOrgContext. Answer
 // engine grounded in the Task Engine above; read-only, no task mutation.

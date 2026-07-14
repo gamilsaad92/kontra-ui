@@ -10,6 +10,7 @@ import AIOperationsManager from "./AIOperationsManager";
 import DailyStandup from "./DailyStandup";
 import InvitePanel from "./InvitePanel";
 import DocumentChecklistPanel from "./DocumentChecklistPanel";
+import VerificationPanel from "./VerificationPanel";
 import { getTemplate } from "./documentChecklistUtils";
 import { DEFAULT_PACK_ID, getWorkflowPack, ensureWorkflowPackLoaded, resolvePackId } from "../../lib/workflowPacks";
 
@@ -1562,6 +1563,8 @@ export default function DealRoomPage() {
               packId={packId}
               onAnalysisSaved={onAnalysisSaved}
             />
+            {/* Verification log — surfaces cross-document consistency checks */}
+            <VerificationPanel propertyId={pid} />
           </div>
         )}
 
