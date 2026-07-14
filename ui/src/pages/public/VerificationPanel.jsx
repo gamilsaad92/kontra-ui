@@ -149,7 +149,7 @@ function CheckRow({ check, isLast }) {
             </p>
           )}
           <p style={{ margin: "3px 0 0", fontSize: 10, color: "#9ca3af" }}>
-            {new Date(check.updated_at).toLocaleString()}
+            {new Date(check.run_at || check.created_at).toLocaleString()}
           </p>
         </div>
       </div>
@@ -174,9 +174,24 @@ export default function VerificationPanel({ propertyId }) {
         });
         if (!res.ok) throw new Error("not ok");
         const json = await res.json();
-        if (!cancelled) setData(json);
+        if (!cancelled) {
+          // New shape: { runs: [{ run_id, run_at, pack_id, checks: [] }], summary }
+          // Flatten into a normalised state: latest run's checks for display + full runs for history
+          const runs = json.runs || [];
+          const latestChecks = runs.length > 0 ? (runs[0].checks || []) : [];
+          // Sort: discrepancy first, then pending, then verified
+          latestChecks.sort((a, b) => {
+            const order = { discrepancy: 0, pending_review: 1, verified: 2 };
+            return (order[a.status] ?? 3) - (order[b.status] ?? 3);
+          });
+          setData({
+            results: latestChecks,
+            summary: json.summary || { verified: 0, discrepancies: 0, pending: 0 },
+            runs,
+          });
+        }
       } catch {
-        if (!cancelled) setData({ results: [], summary: { verified: 0, discrepancies: 0, pending: 0 } });
+        if (!cancelled) setData({ results: [], summary: { verified: 0, discrepancies: 0, pending: 0 }, runs: [] });
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -196,8 +211,21 @@ export default function VerificationPanel({ propertyId }) {
       });
       // Reload after short delay to pick up results
       setTimeout(async () => {
-        const res = await fetch(`${API_BASE}/api/public/deal-room/${propertyId}/verification`);
-        if (res.ok) setData(await res.json());
+        try {
+          const res = await fetch(`${API_BASE}/api/public/deal-room/${propertyId}/verification`, {
+            headers: { "Cache-Control": "no-store" },
+          });
+          if (res.ok) {
+            const json = await res.json();
+            const runs = json.runs || [];
+            const latestChecks = runs.length > 0 ? (runs[0].checks || []) : [];
+            latestChecks.sort((a, b) => {
+              const order = { discrepancy: 0, pending_review: 1, verified: 2 };
+              return (order[a.status] ?? 3) - (order[b.status] ?? 3);
+            });
+            setData({ results: latestChecks, summary: json.summary || { verified: 0, discrepancies: 0, pending: 0 }, runs });
+          }
+        } catch {}
         setTriggering(false);
       }, 2000);
     } catch {

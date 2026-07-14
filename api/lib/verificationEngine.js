@@ -372,36 +372,43 @@ async function runBaChecks(pool, runId, propertyId, extractionsBySection, dealRo
   // Seller-stated deal amount from deal room (the canonical asking price field)
   const dealAmount = parseNumber(dealRoom?.deal_amount) ?? null;
 
-  // ── Check 1: Financials TTM revenue vs seller-stated deal_amount ──
-  // The deal_amount is the purchase price agreed in the deal room — used here
-  // as a sanity check that the business revenue can support the valuation.
-  // A revenue multiple >5× is a yellow flag; >10× is a critical red flag.
-  if (finData.ttm_revenue != null && dealAmount != null && finData.ttm_revenue > 0) {
-    const multiple = dealAmount / finData.ttm_revenue;
-    const isHighMultiple = multiple > 5;
-    const isCritical = multiple > 10;
+  // ── Check 1: Seller-stated financials EBITDA vs tax-return net income ──
+  // Tax returns (IRS-filed) are the independently verified source.
+  // Seller-prepared financials (marked-up, adjusted EBITDA) are the
+  // seller-stated figures. Comparing the two surfaces common BA red flags:
+  // add-backs that don't hold up, non-recurring revenue included, owner
+  // compensation re-characterised as profit.
+  const taxNetIncome = taxData.net_income ?? null;
+  if (finData.ebitda != null && taxNetIncome != null) {
+    // EBITDA > net_income is normal (D&A + tax add-backs). Flag when
+    // EBITDA is more than 40% above tax net income — unusually aggressive.
+    const ebitdaPremiumPct = taxNetIncome !== 0
+      ? ((finData.ebitda - taxNetIncome) / Math.abs(taxNetIncome)) * 100
+      : null;
+    const isAggressive = ebitdaPremiumPct != null && ebitdaPremiumPct > 40;
     checks.push({
       property_id: propertyId, pack_id: 'business_acquisition',
-      check_type: 'revenue_multiple_sanity',
-      doc_section_a: 'financials', doc_section_b: null,
-      status: isCritical ? 'discrepancy' : isHighMultiple ? 'discrepancy' : 'verified',
-      badge_label: (isCritical || isHighMultiple) ? 'Discrepancy Found' : 'Verified',
-      severity: isCritical ? 'critical' : isHighMultiple ? 'warning' : 'info',
-      value_a: finData.ttm_revenue, value_b: dealAmount, delta_pct: null,
-      description: (isCritical || isHighMultiple)
-        ? `Deal amount (${formatCurrency(dealAmount)}) is ${multiple.toFixed(1)}× TTM revenue (${formatCurrency(finData.ttm_revenue)}). A revenue multiple above ${isCritical ? '10×' : '5×'} is ${isCritical ? 'unusually high — verify revenue figures and deal rationale' : 'elevated — confirm buyer understands the valuation basis'}.`
-        : `Deal amount (${formatCurrency(dealAmount)}) is ${multiple.toFixed(1)}× TTM revenue (${formatCurrency(finData.ttm_revenue)}) — within a normal range.`,
+      check_type: 'financials_vs_tax_ebitda',
+      doc_section_a: 'financials', doc_section_b: 'tax_returns',
+      status: isAggressive ? 'discrepancy' : 'verified',
+      badge_label: isAggressive ? 'Discrepancy Found' : 'Verified',
+      severity: isAggressive ? 'warning' : 'info',
+      value_a: finData.ebitda, value_b: taxNetIncome, delta_pct: ebitdaPremiumPct,
+      description: isAggressive
+        ? `Seller-stated EBITDA (${formatCurrency(finData.ebitda)}) is ${ebitdaPremiumPct?.toFixed(1)}% above tax-return net income (${formatCurrency(taxNetIncome)}). Add-backs of this magnitude warrant itemised review — flag for buyer's accountant.`
+        : `Seller-stated EBITDA (${formatCurrency(finData.ebitda)}) is consistent with tax-return net income (${formatCurrency(taxNetIncome)}) after normal add-backs.`,
     });
-  } else if (extractionsBySection._hasFinancials && finData.ttm_revenue == null) {
+  } else if (extractionsBySection._hasFinancials || extractionsBySection._hasTaxReturns) {
+    const missing = !extractionsBySection._hasFinancials ? 'financial statements' : !extractionsBySection._hasTaxReturns ? 'tax returns' : null;
     checks.push({
       property_id: propertyId, pack_id: 'business_acquisition',
-      check_type: 'revenue_multiple_sanity',
-      doc_section_a: 'financials', doc_section_b: null,
+      check_type: 'financials_vs_tax_ebitda',
+      doc_section_a: 'financials', doc_section_b: 'tax_returns',
       status: 'pending_review', badge_label: 'Pending Review', severity: 'info',
-      value_a: null, value_b: dealAmount, delta_pct: null,
-      description: finData._unreadable
-        ? 'Financial statement could not be read (scanned or encrypted PDF). Upload a text-based PDF to enable revenue multiple check.'
-        : 'Revenue figure could not be extracted from the financial statement. Ensure the document includes a total/TTM revenue line.',
+      value_a: finData.ebitda ?? null, value_b: taxNetIncome, delta_pct: null,
+      description: missing
+        ? `Waiting for ${missing} to compare seller-stated EBITDA against IRS-filed income.`
+        : 'EBITDA or net income could not be extracted. Ensure financial statements include an EBITDA line and tax returns include net/taxable income.',
     });
   }
 
@@ -606,4 +613,66 @@ async function getVerificationStatus(propertyId) {
   }
 }
 
-module.exports = { runVerification, getVerificationStatus, initVerificationTables };
+/**
+ * Fetch the complete append-only verification history for a deal room.
+ * Returns all runs with their checks, newest run first.
+ * Used by the full-log endpoint so auditors can see every check that ever ran.
+ */
+async function getFullVerificationLog(propertyId) {
+  try {
+    await initVerificationTables();
+    const pool = getPool();
+
+    // All runs for this property, newest first
+    const runsRes = await pool.query(
+      `SELECT id, pack_id, created_at FROM verification_runs
+       WHERE property_id = $1 ORDER BY id DESC`,
+      [propertyId]
+    );
+    const runs = runsRes.rows;
+
+    if (runs.length === 0) {
+      return { runs: [], summary: { verified: 0, discrepancies: 0, pending: 0 } };
+    }
+
+    // All checks across all runs (join for display convenience)
+    const checksRes = await pool.query(
+      `SELECT c.*, r.created_at AS run_at
+       FROM verification_checks c
+       JOIN verification_runs r ON r.id = c.run_id
+       WHERE c.property_id = $1
+       ORDER BY c.run_id DESC, c.id ASC`,
+      [propertyId]
+    );
+    const allChecks = checksRes.rows;
+
+    // Group checks by run_id
+    const checksByRun = {};
+    for (const c of allChecks) {
+      if (!checksByRun[c.run_id]) checksByRun[c.run_id] = [];
+      checksByRun[c.run_id].push(c);
+    }
+
+    const enrichedRuns = runs.map(r => ({
+      run_id: r.id,
+      pack_id: r.pack_id,
+      run_at: r.created_at,
+      checks: checksByRun[r.id] || [],
+    }));
+
+    // Summary from the latest run only (current state)
+    const latestChecks = checksByRun[runs[0].id] || [];
+    const summary = {
+      verified: latestChecks.filter(c => c.status === 'verified').length,
+      discrepancies: latestChecks.filter(c => c.status === 'discrepancy').length,
+      pending: latestChecks.filter(c => c.status === 'pending_review').length,
+    };
+
+    return { runs: enrichedRuns, summary };
+  } catch (err) {
+    console.warn('[verification] getFullVerificationLog failed:', err.message);
+    return { runs: [], summary: { verified: 0, discrepancies: 0, pending: 0 } };
+  }
+}
+
+module.exports = { runVerification, getVerificationStatus, getFullVerificationLog, initVerificationTables };
