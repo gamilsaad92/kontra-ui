@@ -372,16 +372,93 @@ async function runBaChecks(pool, runId, propertyId, extractionsBySection, dealRo
   // Seller-stated deal amount from deal room (the canonical asking price field)
   const dealAmount = parseNumber(dealRoom?.deal_amount) ?? null;
 
-  // ── Check 1: Seller-stated financials EBITDA vs tax-return net income ──
+  // ── Check 1: Financials TTM revenue vs seller-stated deal_amount ──
+  // deal_amount is the canonical seller-stated asking price from the deal room.
+  // The uploaded financials provide the independently extracted TTM revenue.
+  // Cross-checking these two surfaces whether the revenue figure implied by
+  // the seller's price actually matches the books they submitted.
+  // A deal_amount > 3× TTM revenue for a non-SaaS business is a flag.
+  if (finData.ttm_revenue != null && dealAmount != null && finData.ttm_revenue > 0) {
+    const revenueMultiple = dealAmount / finData.ttm_revenue;
+    const isElevated = revenueMultiple > 3;
+    const isCritical = revenueMultiple > 8;
+    checks.push({
+      property_id: propertyId, pack_id: 'business_acquisition',
+      check_type: 'ttm_revenue_vs_deal_amount',
+      doc_section_a: 'financials', doc_section_b: null,
+      status: (isCritical || isElevated) ? 'discrepancy' : 'verified',
+      badge_label: (isCritical || isElevated) ? 'Discrepancy Found' : 'Verified',
+      severity: isCritical ? 'critical' : isElevated ? 'warning' : 'info',
+      value_a: finData.ttm_revenue, value_b: dealAmount, delta_pct: null,
+      description: (isCritical || isElevated)
+        ? `Seller-stated asking price (${formatCurrency(dealAmount)}) is ${revenueMultiple.toFixed(1)}× the extracted TTM revenue (${formatCurrency(finData.ttm_revenue)}). A revenue multiple above ${isCritical ? '8×' : '3×'} is ${isCritical ? 'unusually high — verify revenue figures and deal rationale with seller' : 'elevated — confirm buyer understands the valuation basis'}.`
+        : `Asking price (${formatCurrency(dealAmount)}) is ${revenueMultiple.toFixed(1)}× TTM revenue (${formatCurrency(finData.ttm_revenue)}) — within a normal range for this deal type.`,
+    });
+  } else if (extractionsBySection._hasFinancials) {
+    checks.push({
+      property_id: propertyId, pack_id: 'business_acquisition',
+      check_type: 'ttm_revenue_vs_deal_amount',
+      doc_section_a: 'financials', doc_section_b: null,
+      status: 'pending_review', badge_label: 'Pending Review', severity: 'info',
+      value_a: null, value_b: dealAmount ?? null, delta_pct: null,
+      description: finData._unreadable
+        ? 'Financial statement could not be read (scanned or encrypted PDF). Upload a text-based PDF to enable revenue cross-check.'
+        : 'TTM revenue could not be extracted from the financial statement. Ensure the document includes a total/trailing-twelve-months revenue line.',
+    });
+  }
+
+  // ── Check 2: Financials EBITDA vs seller-stated deal_amount ──
+  // EBITDA-to-price multiple is the most common BA valuation basis.
+  // Seller states the price in deal_room.deal_amount; uploaded financials
+  // provide the independently extracted EBITDA. Normal EBITDA multiples
+  // for SMBs are 2×–5×; above 7× is a flag; negative EBITDA is critical.
+  if (finData.ebitda != null && dealAmount != null) {
+    if (finData.ebitda <= 0) {
+      checks.push({
+        property_id: propertyId, pack_id: 'business_acquisition',
+        check_type: 'ebitda_vs_deal_amount',
+        doc_section_a: 'financials', doc_section_b: null,
+        status: 'discrepancy', badge_label: 'Discrepancy Found', severity: 'critical',
+        value_a: finData.ebitda, value_b: dealAmount, delta_pct: null,
+        description: `Financials show negative or zero EBITDA (${formatCurrency(finData.ebitda)}) while the deal amount is ${formatCurrency(dealAmount)}. A business with no positive cash flow cannot support a standard acquisition price — requires seller explanation.`,
+      });
+    } else {
+      const ebitdaMultiple = dealAmount / finData.ebitda;
+      const isElevated = ebitdaMultiple > 7;
+      const isCritical = ebitdaMultiple > 12;
+      checks.push({
+        property_id: propertyId, pack_id: 'business_acquisition',
+        check_type: 'ebitda_vs_deal_amount',
+        doc_section_a: 'financials', doc_section_b: null,
+        status: (isCritical || isElevated) ? 'discrepancy' : 'verified',
+        badge_label: (isCritical || isElevated) ? 'Discrepancy Found' : 'Verified',
+        severity: isCritical ? 'critical' : isElevated ? 'warning' : 'info',
+        value_a: finData.ebitda, value_b: dealAmount, delta_pct: null,
+        description: (isCritical || isElevated)
+          ? `Deal amount (${formatCurrency(dealAmount)}) is ${ebitdaMultiple.toFixed(1)}× EBITDA (${formatCurrency(finData.ebitda)}). Above ${isCritical ? '12×' : '7×'} EBITDA is ${isCritical ? 'very aggressive for an SMB acquisition — validate all add-backs' : 'above typical SMB range (2×–5×)'}.`
+          : `Deal amount (${formatCurrency(dealAmount)}) is ${ebitdaMultiple.toFixed(1)}× EBITDA (${formatCurrency(finData.ebitda)}) — within a normal SMB acquisition range.`,
+      });
+    }
+  } else if (extractionsBySection._hasFinancials) {
+    checks.push({
+      property_id: propertyId, pack_id: 'business_acquisition',
+      check_type: 'ebitda_vs_deal_amount',
+      doc_section_a: 'financials', doc_section_b: null,
+      status: 'pending_review', badge_label: 'Pending Review', severity: 'info',
+      value_a: null, value_b: dealAmount ?? null, delta_pct: null,
+      description: finData._unreadable
+        ? 'Financial statement could not be read. Upload a text-based PDF to enable EBITDA cross-check.'
+        : 'EBITDA could not be extracted. Ensure financial statements include an EBITDA or operating cash flow line.',
+    });
+  }
+
+  // ── Check 3: Seller-stated financials EBITDA vs IRS tax-return net income ──
   // Tax returns (IRS-filed) are the independently verified source.
-  // Seller-prepared financials (marked-up, adjusted EBITDA) are the
-  // seller-stated figures. Comparing the two surfaces common BA red flags:
-  // add-backs that don't hold up, non-recurring revenue included, owner
-  // compensation re-characterised as profit.
+  // Seller-prepared financials (with add-backs) are the seller-stated figures.
+  // Comparing surfaced add-backs that don't hold up, non-recurring revenue,
+  // or owner compensation re-characterised as profit.
   const taxNetIncome = taxData.net_income ?? null;
   if (finData.ebitda != null && taxNetIncome != null) {
-    // EBITDA > net_income is normal (D&A + tax add-backs). Flag when
-    // EBITDA is more than 40% above tax net income — unusually aggressive.
     const ebitdaPremiumPct = taxNetIncome !== 0
       ? ((finData.ebitda - taxNetIncome) / Math.abs(taxNetIncome)) * 100
       : null;
@@ -395,8 +472,8 @@ async function runBaChecks(pool, runId, propertyId, extractionsBySection, dealRo
       severity: isAggressive ? 'warning' : 'info',
       value_a: finData.ebitda, value_b: taxNetIncome, delta_pct: ebitdaPremiumPct,
       description: isAggressive
-        ? `Seller-stated EBITDA (${formatCurrency(finData.ebitda)}) is ${ebitdaPremiumPct?.toFixed(1)}% above tax-return net income (${formatCurrency(taxNetIncome)}). Add-backs of this magnitude warrant itemised review — flag for buyer's accountant.`
-        : `Seller-stated EBITDA (${formatCurrency(finData.ebitda)}) is consistent with tax-return net income (${formatCurrency(taxNetIncome)}) after normal add-backs.`,
+        ? `Seller-stated EBITDA (${formatCurrency(finData.ebitda)}) is ${ebitdaPremiumPct?.toFixed(1)}% above IRS-filed net income (${formatCurrency(taxNetIncome)}). Add-backs of this magnitude warrant itemised review — flag for buyer's accountant.`
+        : `Seller-stated EBITDA (${formatCurrency(finData.ebitda)}) is consistent with IRS-filed net income (${formatCurrency(taxNetIncome)}) after normal D&A and tax add-backs.`,
     });
   } else if (extractionsBySection._hasFinancials || extractionsBySection._hasTaxReturns) {
     const missing = !extractionsBySection._hasFinancials ? 'financial statements' : !extractionsBySection._hasTaxReturns ? 'tax returns' : null;
@@ -408,11 +485,11 @@ async function runBaChecks(pool, runId, propertyId, extractionsBySection, dealRo
       value_a: finData.ebitda ?? null, value_b: taxNetIncome, delta_pct: null,
       description: missing
         ? `Waiting for ${missing} to compare seller-stated EBITDA against IRS-filed income.`
-        : 'EBITDA or net income could not be extracted. Ensure financial statements include an EBITDA line and tax returns include net/taxable income.',
+        : 'EBITDA or net income could not be extracted. Ensure financials include an EBITDA line and tax returns include net/taxable income.',
     });
   }
 
-  // ── Check 2: Tax returns revenue vs financials TTM revenue ──
+  // ── Check 4: Tax returns revenue vs financials TTM revenue ──
   if (taxData.revenue != null && finData.ttm_revenue != null) {
     const delta = pctDelta(taxData.revenue, finData.ttm_revenue);
     const isDiscrepancy = delta != null && delta > 10;
@@ -440,7 +517,7 @@ async function runBaChecks(pool, runId, propertyId, extractionsBySection, dealRo
     });
   }
 
-  // ── Check 3: LOI stated price vs deal room deal_amount ──
+  // ── Check 6: LOI stated price vs deal room deal_amount ──
   const loiPrice = loiData.stated_price ?? null;
   if (loiPrice != null && dealAmount != null) {
     const delta = pctDelta(loiPrice, dealAmount);
@@ -459,7 +536,7 @@ async function runBaChecks(pool, runId, propertyId, extractionsBySection, dealRo
     });
   }
 
-  // ── Check 4: EBITDA sanity — must be positive for a business for sale ──
+  // ── Check 7: EBITDA sanity — must be positive for a business for sale ──
   if (finData.ebitda != null) {
     const isNegative = finData.ebitda < 0;
     checks.push({
@@ -551,6 +628,12 @@ async function runVerification(propertyId, packId) {
         const fields = { ...extractionsBySection[sec] };
         const isUnreadable = fields._unreadable === true;
         delete fields._unreadable;
+        // Include confidence score from raw analysis if available
+        const rawAnalysis = latestBySection[sec];
+        const confidence = (rawAnalysis && typeof rawAnalysis.confidence === 'number')
+          ? rawAnalysis.confidence
+          : null;
+        if (confidence != null) fields.confidence = confidence;
         await pool.query(
           `INSERT INTO document_extractions (run_id, property_id, section, extracted_fields, is_unreadable)
            VALUES ($1,$2,$3,$4,$5)`,

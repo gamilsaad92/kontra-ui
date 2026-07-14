@@ -174,18 +174,29 @@ export default function DocumentChecklistPanel({ propertyId, propertyType, role,
   const statusColor = allRequiredDone ? "#16a34a" : pct > 50 ? "#d97706" : "#800020";
   const statusLabel = allRequiredDone ? "Complete" : template.length === 0 ? "Empty" : `${doneCount} of ${template.length} uploaded`;
 
+  // Sections that verification checks cover — any uploaded doc in this set
+  // must show one of the three verification states (Verified / Discrepancy / Pending)
+  const VERIFIED_SECTIONS = new Set([
+    'rent_roll', 'financials', 'inspection', 'insurance',
+    'tax_returns', 'loi', 'purchase_agreement',
+  ]);
+
   // ── Tiny verification badge shown inline on each document row ───────────────
   function VerificationBadge({ section }) {
     const vSec = verificationBySection[section];
-    if (!vSec) return null;
+    // For sections that verification covers: default to Pending Review
+    // when the section is in scope but no check has run for it yet.
+    const status = vSec?.status ?? (VERIFIED_SECTIONS.has(section) ? 'pending_review' : null);
+    if (!status) return null;
     const cfg = {
       verified:      { label: '✓ Verified',      bg: '#f0fdf4', border: '#bbf7d0', color: '#16a34a' },
       discrepancy:   { label: '⚠ Discrepancy',   bg: '#fff7ed', border: '#fed7aa', color: '#c2410c' },
       pending_review:{ label: '○ Pending',        bg: '#f9fafb', border: '#e5e7eb', color: '#6b7280' },
-    }[vSec.status] || null;
+    }[status] || null;
     if (!cfg) return null;
+    const tooltip = vSec?.checks?.[0]?.description || 'Verification pending — check will run after cross-document analysis';
     return (
-      <span title={vSec.checks?.[0]?.description || ''} style={{
+      <span title={tooltip} style={{
         display: 'inline-flex', alignItems: 'center', gap: 2,
         padding: '1px 6px', borderRadius: 999,
         background: cfg.bg, border: `1px solid ${cfg.border}`,

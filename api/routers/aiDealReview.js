@@ -159,11 +159,13 @@ Inspection report text:\n${text}` }
         });
         if (e) console.warn('[deal_analyses] inspection save:', e.message);
         else console.log(`[deal_analyses] inspection v${version} saved`);
+        // Trigger verification AFTER insert completes to avoid stale-data race
+        const packId = await getRoomPackId(property_id).catch(() => 'cre_acquisition');
+        await runVerification(property_id, packId).catch(e => console.warn('[verification] inspection trigger:', e.message));
       })().catch(e => console.warn('[deal_analyses] inspection:', e.message));
       notifyOwner(property_id, 'inspection', result.summary);
       logEvent(property_id, 'document_analyzed', role || 'unknown', null, 'Inspection Report analyzed by AI', { section: 'inspection', filename: req.file.originalname });
       if (role === 'inspector') notifyLender(property_id, role, 'inspection', result.summary).catch(() => {});
-      getRoomPackId(property_id).then(packId => runVerification(property_id, packId)).catch(e => console.warn('[verification] inspection trigger:', e.message));
     }
   } catch (err) {
     console.error('[analyze-inspection]', err.message);
@@ -321,11 +323,13 @@ Policy text:\n${text}` }
         });
         if (e) console.warn('[deal_analyses] insurance save:', e.message);
         else console.log(`[deal_analyses] insurance v${version} saved`);
+        // Trigger verification AFTER insert completes to avoid stale-data race
+        const packId = await getRoomPackId(property_id).catch(() => 'cre_acquisition');
+        await runVerification(property_id, packId).catch(e => console.warn('[verification] insurance trigger:', e.message));
       })().catch(e => console.warn('[deal_analyses] insurance:', e.message));
       notifyOwner(property_id, 'insurance', result.summary);
       logEvent(property_id, 'document_analyzed', role || 'unknown', null, 'Insurance Certificate analyzed by AI', { section: 'insurance', filename: req.file.originalname });
       if (['insurer', 'insurance'].includes(role)) notifyLender(property_id, role, 'insurance', result.summary).catch(() => {});
-      getRoomPackId(property_id).then(packId => runVerification(property_id, packId)).catch(e => console.warn('[verification] insurance trigger:', e.message));
     }
   } catch (err) {
     console.error('[review-insurance]', err.message);
@@ -374,11 +378,13 @@ Financial document:\n${text}` }
         });
         if (e) console.warn('[deal_analyses] financials save:', e.message);
         else console.log(`[deal_analyses] financials v${version} saved`);
+        // Trigger verification AFTER insert completes to avoid stale-data race
+        const packId = await getRoomPackId(property_id).catch(() => 'cre_acquisition');
+        await runVerification(property_id, packId).catch(e => console.warn('[verification] financials trigger:', e.message));
       })().catch(e => console.warn('[deal_analyses] financials:', e.message));
       notifyOwner(property_id, 'financials', result.summary);
       logEvent(property_id, 'document_analyzed', role || 'unknown', null, 'Financial Statement analyzed by AI', { section: 'financials', filename: req.file.originalname });
       if (['owner', 'borrower'].includes(role)) notifyLender(property_id, role, 'financials', result.summary).catch(() => {});
-      getRoomPackId(property_id).then(packId => runVerification(property_id, packId)).catch(e => console.warn('[verification] financials trigger:', e.message));
     }
   } catch (err) {
     console.error('[review-financials]', err.message);
