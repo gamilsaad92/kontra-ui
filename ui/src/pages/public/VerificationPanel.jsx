@@ -249,9 +249,9 @@ export default function VerificationPanel({ propertyId }) {
     );
   }
 
-  const results = data?.results || [];
+  const allRuns = data?.runs || [];
   const summary = data?.summary || { verified: 0, discrepancies: 0, pending: 0 };
-  const hasAny = results.length > 0;
+  const hasAny = allRuns.length > 0;
 
   return (
     <div
@@ -339,11 +339,34 @@ export default function VerificationPanel({ propertyId }) {
           ) : (
             <>
               <SummaryBar summary={summary} />
-              <div>
-                {results.map((check, i) => (
-                  <CheckRow key={check.id || check.check_type} check={check} isLast={i === results.length - 1} />
-                ))}
-              </div>
+              {allRuns.map((run, runIdx) => {
+                const runChecks = [...(run.checks || [])].sort((a, b) => {
+                  const order = { discrepancy: 0, pending_review: 1, verified: 2 };
+                  return (order[a.status] ?? 3) - (order[b.status] ?? 3);
+                });
+                const runNum = allRuns.length - runIdx;
+                const runTime = new Date(run.run_at || runChecks[0]?.created_at).toLocaleString();
+                return (
+                  <div key={run.run_id} style={{ marginBottom: runIdx < allRuns.length - 1 ? 20 : 0 }}>
+                    <div style={{
+                      display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                      fontSize: 10, fontWeight: 700, color: '#9ca3af', letterSpacing: '0.05em',
+                      textTransform: 'uppercase', paddingBottom: 4,
+                      borderBottom: '1px solid #f3f4f6', marginBottom: 2,
+                    }}>
+                      <span>Run #{runNum} · {runChecks.length} check{runChecks.length !== 1 ? 's' : ''}</span>
+                      <span>{runTime}</span>
+                    </div>
+                    {runChecks.map((check, i) => (
+                      <CheckRow
+                        key={check.id || `${run.run_id}-${check.check_type}-${i}`}
+                        check={check}
+                        isLast={i === runChecks.length - 1}
+                      />
+                    ))}
+                  </div>
+                );
+              })}
             </>
           )}
 

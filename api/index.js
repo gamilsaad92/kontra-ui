@@ -3865,8 +3865,14 @@ async function ensureWorkflowPackIdColumn() {
     await pool.query(
       `ALTER TABLE deal_rooms ADD COLUMN IF NOT EXISTS workflow_pack_id text DEFAULT 'cre_acquisition'`
     );
+    await pool.query(
+      `ALTER TABLE deal_rooms ADD COLUMN IF NOT EXISTS stated_revenue NUMERIC`
+    );
+    await pool.query(
+      `ALTER TABLE deal_rooms ADD COLUMN IF NOT EXISTS stated_ebitda NUMERIC`
+    );
     await pool.end();
-    console.log('[startup] deal_rooms.workflow_pack_id column ready');
+    console.log('[startup] deal_rooms.workflow_pack_id + stated_revenue + stated_ebitda columns ready');
   } catch (err) {
     // Non-fatal: Supabase service role may not allow DDL via pooler — fall back gracefully
     console.warn('[startup] workflow_pack_id column ensure skipped:', err.message);

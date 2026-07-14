@@ -422,16 +422,20 @@ Legal document:\n${text}` }
     const { property_id, role } = req.body;
     if (property_id) {
       const _buf = req.file.buffer, _mime = req.file.mimetype, _name = req.file.originalname;
-      uploadToStorage(_buf, _mime, property_id, 'legal', _name).then(storagePath => {
-        supabase.from('deal_analyses').insert({
+      (async () => {
+        const storagePath = await uploadToStorage(_buf, _mime, property_id, 'legal', _name);
+        const { error: e } = await supabase.from('deal_analyses').insert({
           property_id, section: 'legal',
           filename: _name, analysis: result,
           uploaded_by_role: role || 'attorney',
           storage_path: storagePath,
-        }).then(({ error: e }) => {
-          if (e) console.warn('[deal_analyses] legal save:', e.message);
         });
-      });
+        if (e) console.warn('[deal_analyses] legal save:', e.message);
+        else console.log('[deal_analyses] legal saved');
+        // Trigger verification AFTER insert completes to avoid stale-data race
+        const packId = await getRoomPackId(property_id).catch(() => 'cre_acquisition');
+        await runVerification(property_id, packId).catch(e => console.warn('[verification] legal trigger:', e.message));
+      })().catch(e => console.warn('[deal_analyses] legal:', e.message));
       notifyOwner(property_id, 'legal', result.summary);
       logEvent(property_id, 'document_analyzed', role || 'unknown', null, 'Legal Document analyzed by AI', { section: 'legal', filename: req.file.originalname });
       if (role === 'attorney') notifyLender(property_id, role, 'legal', result.summary).catch(() => {});
@@ -472,16 +476,20 @@ Document:\n${text}` }
     const { property_id, role } = req.body;
     if (property_id) {
       const _buf = req.file.buffer, _mime = req.file.mimetype, _name = req.file.originalname;
-      uploadToStorage(_buf, _mime, property_id, 'brand-standards', _name).then(storagePath => {
-        supabase.from('deal_analyses').insert({
+      (async () => {
+        const storagePath = await uploadToStorage(_buf, _mime, property_id, 'brand-standards', _name);
+        const { error: e } = await supabase.from('deal_analyses').insert({
           property_id, section: 'brand-standards',
           filename: _name, analysis: result,
           uploaded_by_role: role || 'owner',
           storage_path: storagePath,
-        }).then(({ error: e }) => {
-          if (e) console.warn('[deal_analyses] brand-standards save:', e.message);
         });
-      });
+        if (e) console.warn('[deal_analyses] brand-standards save:', e.message);
+        else console.log('[deal_analyses] brand-standards saved');
+        // Trigger verification AFTER insert completes to avoid stale-data race
+        const packId = await getRoomPackId(property_id).catch(() => 'cre_acquisition');
+        await runVerification(property_id, packId).catch(e => console.warn('[verification] brand-standards trigger:', e.message));
+      })().catch(e => console.warn('[deal_analyses] brand-standards:', e.message));
       notifyOwner(property_id, 'brand-standards', result.summary);
       logEvent(property_id, 'document_analyzed', role || 'unknown', null, 'Brand Standards / PIP analyzed by AI', { section: 'brand-standards', filename: req.file.originalname });
     }
@@ -565,6 +573,9 @@ Return only valid JSON. No extra text.`;
         });
         if (e) console.warn(`[deal_analyses] ${section} save:`, e.message);
         else console.log(`[deal_analyses] ${section} saved (analyze-document)`);
+        // Trigger verification AFTER insert completes to avoid stale-data race
+        const packId = await getRoomPackId(property_id).catch(() => 'cre_acquisition');
+        await runVerification(property_id, packId).catch(e => console.warn(`[verification] ${section} trigger:`, e.message));
       })().catch(e => console.warn(`[deal_analyses] ${section}:`, e.message));
       logEvent(property_id, 'document_analyzed', role || 'unknown', null, `${section} analyzed by AI`, { section, filename: req.file.originalname });
     }
