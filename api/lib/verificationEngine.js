@@ -1,20 +1,24 @@
 /**
  * verificationEngine.js — Cross-document consistency verification
  *
- * After any document is saved to deal_analyses, this engine:
- *  1. Reads all existing analyses for the deal room
- *  2. Runs pack-specific cross-checks on the extracted data
- *  3. Writes results to local Postgres verification_results table
+ * Append-only audit log design:
+ *   verification_runs   — one row per runVerification() call (run_id anchor)
+ *   verification_checks — one row per check per run (no UNIQUE; never mutated)
+ *   document_extractions — structured fields pulled from each doc per run
+ *
+ * getVerificationStatus() returns the LATEST check per check_type via
+ * DISTINCT ON (check_type) ORDER BY run_id DESC — safe to call any time.
  *
  * CRE Acquisition checks:
- *   - Rent roll monthly income vs operating statement GPR (annual / 12)
- *   - Rent roll occupancy vs operating statement vacancy
- *   - Operating statement NOI vs appraisal NOI (if available)
+ *   - Rent roll NOI vs operating statement NOI (>5% threshold)
+ *   - Rent roll occupancy vs operating statement vacancy rate
+ *   - Inspection + insurance physical due diligence completeness
  *
  * Business Acquisition checks:
- *   - Tax returns revenue vs financials TTM revenue
- *   - Financials EBITDA vs deal room stated deal amount (sanity range)
- *   - LOI price vs deal room deal_amount
+ *   - Financials TTM revenue vs seller-stated deal_amount (sanity range)
+ *   - Tax returns revenue vs financials TTM revenue (>10% threshold)
+ *   - LOI price vs deal room deal_amount (>5% threshold)
+ *   - EBITDA sanity (negative EBITDA = critical flag)
  *
  * Results: 'verified' | 'discrepancy' | 'pending_review'
  */
@@ -30,184 +34,317 @@ async function initVerificationTables() {
   if (_tablesReady) return;
   const pool = getPool();
   await pool.query(`
-    CREATE TABLE IF NOT EXISTS verification_results (
-      id SERIAL PRIMARY KEY,
+    CREATE TABLE IF NOT EXISTS verification_runs (
+      id          SERIAL PRIMARY KEY,
       property_id TEXT NOT NULL,
-      pack_id TEXT NOT NULL DEFAULT 'cre_acquisition',
-      check_type TEXT NOT NULL,
+      pack_id     TEXT NOT NULL DEFAULT 'cre_acquisition',
+      created_at  TIMESTAMPTZ DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS idx_vruns_property
+      ON verification_runs(property_id, id DESC);
+
+    CREATE TABLE IF NOT EXISTS verification_checks (
+      id            SERIAL PRIMARY KEY,
+      run_id        INT NOT NULL REFERENCES verification_runs(id) ON DELETE CASCADE,
+      property_id   TEXT NOT NULL,
+      pack_id       TEXT NOT NULL DEFAULT 'cre_acquisition',
+      check_type    TEXT NOT NULL,
       doc_section_a TEXT,
       doc_section_b TEXT,
-      status TEXT NOT NULL CHECK (status IN ('verified', 'discrepancy', 'pending_review')),
-      badge_label TEXT NOT NULL,
-      description TEXT,
-      value_a NUMERIC,
-      value_b NUMERIC,
-      delta_pct NUMERIC,
-      severity TEXT NOT NULL DEFAULT 'info' CHECK (severity IN ('info', 'warning', 'critical')),
-      created_at TIMESTAMPTZ DEFAULT NOW(),
-      updated_at TIMESTAMPTZ DEFAULT NOW(),
-      UNIQUE(property_id, check_type)
+      status        TEXT NOT NULL CHECK (status IN ('verified','discrepancy','pending_review')),
+      badge_label   TEXT NOT NULL,
+      description   TEXT,
+      value_a       NUMERIC,
+      value_b       NUMERIC,
+      delta_pct     NUMERIC,
+      severity      TEXT NOT NULL DEFAULT 'info'
+                    CHECK (severity IN ('info','warning','critical')),
+      created_at    TIMESTAMPTZ DEFAULT NOW()
     );
-    CREATE INDEX IF NOT EXISTS idx_verification_results_property
-      ON verification_results(property_id);
+    CREATE INDEX IF NOT EXISTS idx_vchecks_property_run
+      ON verification_checks(property_id, run_id DESC);
+
+    CREATE TABLE IF NOT EXISTS document_extractions (
+      id               SERIAL PRIMARY KEY,
+      run_id           INT NOT NULL REFERENCES verification_runs(id) ON DELETE CASCADE,
+      property_id      TEXT NOT NULL,
+      section          TEXT NOT NULL,
+      extracted_fields JSONB NOT NULL DEFAULT '{}',
+      is_unreadable    BOOLEAN NOT NULL DEFAULT FALSE,
+      created_at       TIMESTAMPTZ DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS idx_dextractions_run
+      ON document_extractions(run_id, property_id);
   `);
   _tablesReady = true;
 }
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+// ── Robust numeric helpers ───────────────────────────────────────────────────
+
+/**
+ * Parse a currency/numeric string to a float.
+ * Handles: "$1,200,000", "1.2M", "(900000)" for negatives, plain numbers.
+ * Returns null for unreadable values.
+ */
+function parseNumber(val) {
+  if (val == null) return null;
+  if (typeof val === 'number') return isNaN(val) ? null : val;
+  const s = String(val).trim();
+  if (!s || s === '—' || s === 'N/A' || s === 'n/a') return null;
+
+  // Detect parentheses-negative: "(1,200,000)"
+  const parens = /^\(([^)]+)\)$/.test(s);
+
+  // Expand shorthand: "1.2M" → 1200000, "500K" → 500000
+  const shorthand = s.match(/^[\$\s]*([\d,]+\.?\d*)\s*([KkMmBb])$/);
+  if (shorthand) {
+    const base = parseFloat(shorthand[1].replace(/,/g, ''));
+    const mult = { k: 1e3, m: 1e6, b: 1e9 }[shorthand[2].toLowerCase()] || 1;
+    return isNaN(base) ? null : (parens ? -base : base) * mult;
+  }
+
+  const cleaned = s.replace(/[^0-9.\-]/g, '');
+  if (!cleaned || cleaned === '.') return null;
+  const n = parseFloat(cleaned);
+  return isNaN(n) ? null : (parens ? -n : n);
+}
+
+/**
+ * Parse a percentage value to a decimal (0–1).
+ * Handles: "92.5%", "0.925", "92.5"
+ */
+function parsePct(val) {
+  if (val == null) return null;
+  const n = parseNumber(val);
+  if (n == null) return null;
+  return n > 1 ? n / 100 : n;
+}
 
 function pctDelta(a, b) {
-  if (!a || !b) return null;
-  return Math.abs((a - b) / Math.max(a, b)) * 100;
+  if (a == null || b == null || isNaN(a) || isNaN(b)) return null;
+  if (Math.max(Math.abs(a), Math.abs(b)) === 0) return 0;
+  return Math.abs((a - b) / Math.max(Math.abs(a), Math.abs(b))) * 100;
 }
 
 function formatCurrency(n) {
-  if (n == null) return '—';
-  if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(2)}M`;
-  if (n >= 1_000) return `$${(n / 1_000).toFixed(0)}K`;
+  if (n == null || isNaN(n)) return '—';
+  if (Math.abs(n) >= 1_000_000) return `$${(n / 1_000_000).toFixed(2)}M`;
+  if (Math.abs(n) >= 1_000) return `$${(n / 1_000).toFixed(0)}K`;
   return `$${n.toFixed(0)}`;
 }
 
-function upsertResult(pool, row) {
-  return pool.query(`
-    INSERT INTO verification_results
-      (property_id, pack_id, check_type, doc_section_a, doc_section_b, status,
-       badge_label, description, value_a, value_b, delta_pct, severity, updated_at)
-    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,NOW())
-    ON CONFLICT (property_id, check_type) DO UPDATE SET
-      pack_id=EXCLUDED.pack_id, doc_section_a=EXCLUDED.doc_section_a,
-      doc_section_b=EXCLUDED.doc_section_b, status=EXCLUDED.status,
-      badge_label=EXCLUDED.badge_label, description=EXCLUDED.description,
-      value_a=EXCLUDED.value_a, value_b=EXCLUDED.value_b,
-      delta_pct=EXCLUDED.delta_pct, severity=EXCLUDED.severity,
-      updated_at=NOW()
-  `, [
-    row.property_id, row.pack_id, row.check_type, row.doc_section_a, row.doc_section_b,
-    row.status, row.badge_label, row.description,
-    row.value_a ?? null, row.value_b ?? null, row.delta_pct ?? null, row.severity ?? 'info',
-  ]);
-}
+// ── Structured extraction ─────────────────────────────────────────────────────
 
-// ── Parse useful numbers out of analysis JSON ─────────────────────────────────
+/**
+ * Extract structured numeric fields from raw analysis JSON for a given section.
+ * All numeric fields are normalised via parseNumber() before use.
+ * Returns an object of { fieldName: number|boolean|string|null }.
+ * Also returns { _unreadable: true } if the doc was flagged as a scanned image.
+ */
+function extractFields(section, raw) {
+  if (!raw || typeof raw !== 'object') return { _unreadable: false };
 
-function parseAnalysis(section, analysis) {
-  if (!analysis || typeof analysis !== 'object') return {};
+  const isUnreadable =
+    raw.pending === true ||
+    (typeof raw.confidence === 'number' && raw.confidence === 0) ||
+    /scanned|encrypted|image.only|no.text/i.test(raw.summary || '');
+
+  if (isUnreadable) return { _unreadable: true };
+
   try {
     switch (section) {
       case 'rent_roll': {
-        // Track-document LIGHTWEIGHT_AI_PROMPTS format
-        const monthly = parseFloat(String(analysis.totalMonthlyRent || '').replace(/[^0-9.]/g, '')) || null;
-        const occ = parseFloat(String(analysis.occupancyRate || '').replace(/[^0-9.]/g, '')) || null;
-        const occDecimal = occ != null ? (occ > 1 ? occ / 100 : occ) : null;
-        return { monthly_rent: monthly, occupancy_rate: occDecimal };
+        // Both track-document lightweight and aiDealReview extended formats
+        const monthly_rent = parseNumber(raw.totalMonthlyRent || raw.monthlyRent || raw.grossScheduledRent);
+        const occ = parsePct(raw.occupancyRate || raw.occupancy);
+        // NOI may be provided directly on the rent roll (stabilized NOI, projected NOI)
+        const noi = parseNumber(
+          raw.netOperatingIncome || raw.noi || raw.stabilizedNoi || raw.projectedNoi
+        );
+        // Derive annualized EGI from monthly rent if NOI not explicit
+        const egi_annual = monthly_rent != null ? monthly_rent * 12 : null;
+        return { monthly_rent, occupancy_rate: occ, noi, egi_annual, _unreadable: false };
       }
+
       case 'financials': {
-        // aiDealReview router produces: netOperatingIncome, effectiveGrossIncome, revenue, ebitda
-        const noi = analysis.netOperatingIncome || analysis.noi || null;
-        const egi = analysis.effectiveGrossIncome || analysis.grossRevenue || null;
-        const revenue = analysis.revenue || analysis.annualRevenue || analysis.totalRevenue || egi;
-        const ebitda = analysis.ebitda || analysis.operatingIncome || null;
-        const ttm = analysis.trailingTwelveMonths || null; // BA specific
-        return { noi, egi, revenue, ebitda, ttm_revenue: ttm || revenue };
+        // Operating statement (CRE) or financial statements (BA) share this section
+        const noi = parseNumber(
+          raw.netOperatingIncome || raw.noi || raw.operatingIncome
+        );
+        const egi = parseNumber(
+          raw.effectiveGrossIncome || raw.effectiveGrossRevenue || raw.grossRevenue
+        );
+        const revenue = parseNumber(
+          raw.revenue || raw.annualRevenue || raw.totalRevenue || raw.trailingTwelveMonthsRevenue
+        );
+        const ttm_revenue = parseNumber(raw.trailingTwelveMonths || raw.ttmRevenue) ?? revenue;
+        const ebitda = parseNumber(raw.ebitda || raw.adjustedEbitda || raw.operatingCashFlow);
+        const op_expenses = parseNumber(raw.totalOperatingExpenses || raw.operatingExpenses);
+        return { noi, egi, revenue, ttm_revenue, ebitda, op_expenses, _unreadable: false };
       }
+
       case 'inspection': {
-        const overallOk = !(analysis.overallCondition === 'poor' || analysis.overallCondition === 'critical');
-        const criticalCount = analysis.totalCriticalCount ?? analysis.criticalCount ?? 0;
-        return { overall_ok: overallOk, critical_count: criticalCount };
+        const overallCondition = (raw.overallCondition || '').toLowerCase();
+        const overall_ok = !['poor', 'critical', 'failed', 'unsafe'].includes(overallCondition);
+        const critical_count = parseNumber(raw.totalCriticalCount ?? raw.criticalCount ?? raw.criticalItems) ?? 0;
+        return { overall_ok, critical_count, condition: overallCondition, _unreadable: false };
       }
+
       case 'insurance': {
-        const coverage = analysis.coverageAmount || null;
-        const expiry = analysis.expirationDate || null;
-        return { coverage_amount: coverage, expiry_date: expiry };
+        const coverage_amount = parseNumber(raw.coverageAmount || raw.totalCoverage);
+        const expiry_date = raw.expirationDate || raw.expiryDate || null;
+        return { coverage_amount, expiry_date, _unreadable: false };
       }
+
       case 'tax_returns': {
-        // BA pack — tax returns report revenue
-        const revenue = analysis.annualRevenue || analysis.grossRevenue || analysis.totalRevenue || null;
-        const income = analysis.netIncome || analysis.taxableIncome || null;
-        return { revenue, net_income: income };
+        const revenue = parseNumber(
+          raw.annualRevenue || raw.grossRevenue || raw.totalRevenue || raw.grossIncome
+        );
+        const net_income = parseNumber(raw.netIncome || raw.taxableIncome || raw.adjustedGrossIncome);
+        return { revenue, net_income, _unreadable: false };
       }
-      case 'purchase_agreement':
-      case 'loi': {
-        const price = parseFloat(String(analysis.purchasePrice || '').replace(/[^0-9.]/g, '')) || null;
-        return { stated_price: price };
+
+      case 'loi':
+      case 'purchase_agreement': {
+        const stated_price = parseNumber(raw.purchasePrice || raw.offerPrice || raw.price || raw.dealPrice);
+        return { stated_price, _unreadable: false };
       }
+
       default:
-        return {};
+        return { _unreadable: false };
     }
   } catch {
-    return {};
+    return { _unreadable: false };
   }
+}
+
+// ── Persist a single check (append-only) ─────────────────────────────────────
+
+function insertCheck(pool, runId, row) {
+  return pool.query(`
+    INSERT INTO verification_checks
+      (run_id, property_id, pack_id, check_type, doc_section_a, doc_section_b,
+       status, badge_label, description, value_a, value_b, delta_pct, severity)
+    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+  `, [
+    runId, row.property_id, row.pack_id, row.check_type,
+    row.doc_section_a ?? null, row.doc_section_b ?? null,
+    row.status, row.badge_label,
+    row.description ?? null,
+    row.value_a ?? null, row.value_b ?? null, row.delta_pct ?? null,
+    row.severity ?? 'info',
+  ]);
 }
 
 // ── CRE Acquisition checks ────────────────────────────────────────────────────
 
-async function runCreChecks(pool, propertyId, analysesBySection) {
+async function runCreChecks(pool, runId, propertyId, extractionsBySection) {
+  const rr = extractionsBySection.rent_roll || {};
+  const fs = extractionsBySection.financials || {};
+  const insp = extractionsBySection.inspection || {};
+  const ins = extractionsBySection.insurance || {};
+
   const checks = [];
 
-  // 1. Rent roll vs operating statement — monthly income consistency
-  const rr = parseAnalysis('rent_roll', analysesBySection.rent_roll);
-  const fs = parseAnalysis('financials', analysesBySection.financials);
+  // ── Check 1: Rent roll NOI vs operating statement NOI (core CRE check) ──
+  // Prefer direct NOI from both documents. Fall back to deriving rent-roll
+  // NOI from EGI minus operating expenses if the operating statement has
+  // both components but the rent roll lacks an explicit NOI field.
 
-  if (rr.monthly_rent != null && fs.egi != null) {
-    const rrAnnual = rr.monthly_rent * 12;
-    const delta = pctDelta(rrAnnual, fs.egi);
+  const rrNoi = rr.noi ?? null;
+  const fsNoi = fs.noi ?? null;
+
+  if (rr._unreadable || fs._unreadable) {
+    // At least one doc was a scanned image — surface that clearly
+    const unreadableSec = rr._unreadable ? 'rent roll' : 'operating statement';
+    checks.push({
+      property_id: propertyId, pack_id: 'cre_acquisition',
+      check_type: 'noi_cross_check',
+      doc_section_a: 'rent_roll', doc_section_b: 'financials',
+      status: 'pending_review', badge_label: 'Pending Review', severity: 'info',
+      value_a: null, value_b: null, delta_pct: null,
+      description: `Unreadable document — the ${unreadableSec} could not be parsed (scanned image or encrypted PDF). Upload a text-based PDF to enable NOI verification.`,
+    });
+  } else if (rrNoi != null && fsNoi != null) {
+    const delta = pctDelta(rrNoi, fsNoi);
     const isDiscrepancy = delta != null && delta > 5;
     checks.push({
       property_id: propertyId, pack_id: 'cre_acquisition',
-      check_type: 'rent_roll_vs_operating_income',
+      check_type: 'noi_cross_check',
       doc_section_a: 'rent_roll', doc_section_b: 'financials',
       status: isDiscrepancy ? 'discrepancy' : 'verified',
       badge_label: isDiscrepancy ? 'Discrepancy Found' : 'Verified',
       severity: isDiscrepancy ? (delta > 15 ? 'critical' : 'warning') : 'info',
-      value_a: rrAnnual, value_b: fs.egi, delta_pct: delta,
+      value_a: rrNoi, value_b: fsNoi, delta_pct: delta,
       description: isDiscrepancy
-        ? `Rent roll annualized income (${formatCurrency(rrAnnual)}) differs from operating statement EGI (${formatCurrency(fs.egi)}) by ${delta?.toFixed(1)}%. Review for vacancy loss accounting or off-market leases.`
-        : `Rent roll annualized income (${formatCurrency(rrAnnual)}) is consistent with operating statement EGI (${formatCurrency(fs.egi)}) — within 5%.`,
+        ? `Rent roll NOI (${formatCurrency(rrNoi)}) differs from operating statement NOI (${formatCurrency(fsNoi)}) by ${delta?.toFixed(1)}%. A gap >5% may signal vacancy loss discrepancies, unreported expenses, or off-market leases — flag for buyer review.`
+        : `Rent roll NOI (${formatCurrency(rrNoi)}) is consistent with operating statement NOI (${formatCurrency(fsNoi)}) — gap is within the 5% threshold.`,
     });
-  } else if (analysesBySection.rent_roll || analysesBySection.financials) {
-    const missing = !analysesBySection.rent_roll ? 'rent roll' : 'operating statement';
+  } else if (extractionsBySection._hasRentRoll || extractionsBySection._hasFinancials) {
+    // One or both docs uploaded but NOI not extractable — give precise reason
+    const noNoi = [];
+    if (extractionsBySection._hasRentRoll && rrNoi == null) noNoi.push('rent roll (no NOI field found)');
+    if (extractionsBySection._hasFinancials && fsNoi == null) noNoi.push('operating statement (no NOI field found)');
+    const missing = !extractionsBySection._hasRentRoll ? 'rent roll' : !extractionsBySection._hasFinancials ? 'operating statement' : null;
     checks.push({
       property_id: propertyId, pack_id: 'cre_acquisition',
-      check_type: 'rent_roll_vs_operating_income',
+      check_type: 'noi_cross_check',
       doc_section_a: 'rent_roll', doc_section_b: 'financials',
       status: 'pending_review', badge_label: 'Pending Review', severity: 'info',
-      value_a: rr.monthly_rent ? rr.monthly_rent * 12 : null, value_b: fs.egi,
-      description: `Waiting for ${missing} upload to run income consistency check.`,
+      value_a: rrNoi, value_b: fsNoi, delta_pct: null,
+      description: missing
+        ? `Waiting for ${missing} upload to run NOI consistency check.`
+        : `NOI could not be extracted from ${noNoi.join(' and ')}. Ensure documents include a net operating income line item.`,
     });
   }
 
-  // 2. NOI check — operating statement vs purchase agreement implied NOI (cap rate)
-  if (fs.noi != null) {
-    const noi = fs.noi;
+  // ── Check 2: Occupancy rate consistency ──
+  const rrOcc = rr.occupancy_rate ?? null;
+  // Operating statement vacancy rate (if available) gives occupancy = 1 - vacancy
+  const fsVacancy = fs.vacancy_rate != null ? fs.vacancy_rate : null;
+  const fsOcc = fsVacancy != null ? 1 - fsVacancy : null;
+
+  if (rrOcc != null && fsOcc != null) {
+    const delta = Math.abs(rrOcc - fsOcc) * 100; // in percentage points
+    const isDiscrepancy = delta > 5;
     checks.push({
       property_id: propertyId, pack_id: 'cre_acquisition',
-      check_type: 'noi_extracted',
-      doc_section_a: 'financials', doc_section_b: null,
-      status: 'verified', badge_label: 'Verified', severity: 'info',
-      value_a: noi, value_b: null, delta_pct: null,
-      description: `Operating statement NOI extracted: ${formatCurrency(noi)} / year. Used as baseline for cap rate and DSCR checks.`,
+      check_type: 'occupancy_cross_check',
+      doc_section_a: 'rent_roll', doc_section_b: 'financials',
+      status: isDiscrepancy ? 'discrepancy' : 'verified',
+      badge_label: isDiscrepancy ? 'Discrepancy Found' : 'Verified',
+      severity: isDiscrepancy ? 'warning' : 'info',
+      value_a: rrOcc * 100, value_b: fsOcc * 100, delta_pct: delta,
+      description: isDiscrepancy
+        ? `Rent roll occupancy (${(rrOcc * 100).toFixed(1)}%) differs from operating statement implied occupancy (${(fsOcc * 100).toFixed(1)}%) by ${delta.toFixed(1)} percentage points. Reconcile before closing.`
+        : `Occupancy rates are consistent between rent roll (${(rrOcc * 100).toFixed(1)}%) and operating statement (${(fsOcc * 100).toFixed(1)}%).`,
     });
   }
 
-  // 3. Inspection + insurance both present = complete package check
-  const hasInspection = !!analysesBySection.inspection;
-  const hasInsurance = !!analysesBySection.insurance;
+  // ── Check 3: Physical due diligence completeness ──
+  const hasInspection = !!extractionsBySection._hasInspection;
+  const hasInsurance = !!extractionsBySection._hasInsurance;
+
   if (hasInspection && hasInsurance) {
-    const inspOk = parseAnalysis('inspection', analysesBySection.inspection).overall_ok;
+    const overall_ok = insp.overall_ok !== false;
+    const criticalCount = insp.critical_count ?? 0;
     checks.push({
       property_id: propertyId, pack_id: 'cre_acquisition',
       check_type: 'physical_due_diligence_complete',
       doc_section_a: 'inspection', doc_section_b: 'insurance',
-      status: inspOk ? 'verified' : 'discrepancy',
-      badge_label: inspOk ? 'Verified' : 'Discrepancy Found',
-      severity: inspOk ? 'info' : 'warning',
+      status: overall_ok ? 'verified' : 'discrepancy',
+      badge_label: overall_ok ? 'Verified' : 'Discrepancy Found',
+      severity: overall_ok ? 'info' : (criticalCount > 2 ? 'critical' : 'warning'),
       value_a: null, value_b: null, delta_pct: null,
-      description: inspOk
+      description: overall_ok
         ? 'Inspection report and insurance certificate are both on file. Physical due diligence package is complete.'
-        : 'Inspection report indicates poor or critical property condition. Review findings before proceeding.',
+        : `Inspection report indicates ${insp.condition || 'poor'} condition${criticalCount > 0 ? ` with ${criticalCount} critical item${criticalCount > 1 ? 's' : ''}` : ''}. Review all findings before proceeding.`,
     });
   } else {
-    const missingDocs = [!hasInspection && 'inspection report', !hasInsurance && 'insurance certificate'].filter(Boolean).join(' and ');
+    const missingDocs = [
+      !hasInspection && 'inspection report',
+      !hasInsurance && 'insurance certificate',
+    ].filter(Boolean).join(' and ');
     checks.push({
       property_id: propertyId, pack_id: 'cre_acquisition',
       check_type: 'physical_due_diligence_complete',
@@ -219,20 +356,56 @@ async function runCreChecks(pool, propertyId, analysesBySection) {
   }
 
   for (const check of checks) {
-    await upsertResult(pool, check).catch(e => console.warn('[verification] upsert error:', e.message));
+    await insertCheck(pool, runId, check)
+      .catch(e => console.warn('[verification] insert error:', e.message));
   }
 }
 
 // ── Business Acquisition checks ───────────────────────────────────────────────
 
-async function runBaChecks(pool, propertyId, analysesBySection, dealRoom) {
+async function runBaChecks(pool, runId, propertyId, extractionsBySection, dealRoom) {
+  const taxData = extractionsBySection.tax_returns || {};
+  const finData = extractionsBySection.financials || {};
+  const loiData = extractionsBySection.loi || extractionsBySection.purchase_agreement || {};
   const checks = [];
 
-  const taxData = parseAnalysis('tax_returns', analysesBySection.tax_returns);
-  const finData = parseAnalysis('financials', analysesBySection.financials);
-  const loiData = parseAnalysis('loi', analysesBySection.loi);
+  // Seller-stated deal amount from deal room (the canonical asking price field)
+  const dealAmount = parseNumber(dealRoom?.deal_amount) ?? null;
 
-  // 1. Tax returns revenue vs financials TTM revenue
+  // ── Check 1: Financials TTM revenue vs seller-stated deal_amount ──
+  // The deal_amount is the purchase price agreed in the deal room — used here
+  // as a sanity check that the business revenue can support the valuation.
+  // A revenue multiple >5× is a yellow flag; >10× is a critical red flag.
+  if (finData.ttm_revenue != null && dealAmount != null && finData.ttm_revenue > 0) {
+    const multiple = dealAmount / finData.ttm_revenue;
+    const isHighMultiple = multiple > 5;
+    const isCritical = multiple > 10;
+    checks.push({
+      property_id: propertyId, pack_id: 'business_acquisition',
+      check_type: 'revenue_multiple_sanity',
+      doc_section_a: 'financials', doc_section_b: null,
+      status: isCritical ? 'discrepancy' : isHighMultiple ? 'discrepancy' : 'verified',
+      badge_label: (isCritical || isHighMultiple) ? 'Discrepancy Found' : 'Verified',
+      severity: isCritical ? 'critical' : isHighMultiple ? 'warning' : 'info',
+      value_a: finData.ttm_revenue, value_b: dealAmount, delta_pct: null,
+      description: (isCritical || isHighMultiple)
+        ? `Deal amount (${formatCurrency(dealAmount)}) is ${multiple.toFixed(1)}× TTM revenue (${formatCurrency(finData.ttm_revenue)}). A revenue multiple above ${isCritical ? '10×' : '5×'} is ${isCritical ? 'unusually high — verify revenue figures and deal rationale' : 'elevated — confirm buyer understands the valuation basis'}.`
+        : `Deal amount (${formatCurrency(dealAmount)}) is ${multiple.toFixed(1)}× TTM revenue (${formatCurrency(finData.ttm_revenue)}) — within a normal range.`,
+    });
+  } else if (extractionsBySection._hasFinancials && finData.ttm_revenue == null) {
+    checks.push({
+      property_id: propertyId, pack_id: 'business_acquisition',
+      check_type: 'revenue_multiple_sanity',
+      doc_section_a: 'financials', doc_section_b: null,
+      status: 'pending_review', badge_label: 'Pending Review', severity: 'info',
+      value_a: null, value_b: dealAmount, delta_pct: null,
+      description: finData._unreadable
+        ? 'Financial statement could not be read (scanned or encrypted PDF). Upload a text-based PDF to enable revenue multiple check.'
+        : 'Revenue figure could not be extracted from the financial statement. Ensure the document includes a total/TTM revenue line.',
+    });
+  }
+
+  // ── Check 2: Tax returns revenue vs financials TTM revenue ──
   if (taxData.revenue != null && finData.ttm_revenue != null) {
     const delta = pctDelta(taxData.revenue, finData.ttm_revenue);
     const isDiscrepancy = delta != null && delta > 10;
@@ -245,25 +418,25 @@ async function runBaChecks(pool, propertyId, analysesBySection, dealRoom) {
       severity: isDiscrepancy ? (delta > 25 ? 'critical' : 'warning') : 'info',
       value_a: taxData.revenue, value_b: finData.ttm_revenue, delta_pct: delta,
       description: isDiscrepancy
-        ? `Tax return revenue (${formatCurrency(taxData.revenue)}) differs from financial statements TTM revenue (${formatCurrency(finData.ttm_revenue)}) by ${delta?.toFixed(1)}%. This gap may indicate unreported revenue, timing differences, or data inconsistency — flag for buyer diligence.`
-        : `Tax return revenue (${formatCurrency(taxData.revenue)}) is consistent with financial statements TTM revenue (${formatCurrency(finData.ttm_revenue)}) — within 10%.`,
+        ? `Tax return revenue (${formatCurrency(taxData.revenue)}) differs from financial statement TTM revenue (${formatCurrency(finData.ttm_revenue)}) by ${delta?.toFixed(1)}%. A gap >10% may indicate unreported revenue, timing differences, or inconsistent accounting — flag for buyer's accountant.`
+        : `Tax return revenue (${formatCurrency(taxData.revenue)}) is consistent with financial statement TTM revenue (${formatCurrency(finData.ttm_revenue)}) — within the 10% threshold.`,
     });
-  } else if (analysesBySection.tax_returns || analysesBySection.financials) {
-    const missing = !analysesBySection.tax_returns ? 'tax returns' : 'financial statements';
+  } else if (extractionsBySection._hasTaxReturns || extractionsBySection._hasFinancials) {
+    const missing = !extractionsBySection._hasTaxReturns ? 'tax returns' : 'financial statements';
     checks.push({
       property_id: propertyId, pack_id: 'business_acquisition',
       check_type: 'tax_returns_vs_financials_revenue',
       doc_section_a: 'tax_returns', doc_section_b: 'financials',
       status: 'pending_review', badge_label: 'Pending Review', severity: 'info',
-      value_a: taxData.revenue, value_b: finData.ttm_revenue, delta_pct: null,
+      value_a: taxData.revenue ?? null, value_b: finData.ttm_revenue ?? null, delta_pct: null,
       description: `Waiting for ${missing} to cross-check reported revenue.`,
     });
   }
 
-  // 2. LOI stated price vs deal room deal_amount
-  const dealAmount = parseFloat(String(dealRoom?.deal_amount || '').replace(/[^0-9.]/g, '')) || null;
-  if (loiData.stated_price != null && dealAmount != null) {
-    const delta = pctDelta(loiData.stated_price, dealAmount);
+  // ── Check 3: LOI stated price vs deal room deal_amount ──
+  const loiPrice = loiData.stated_price ?? null;
+  if (loiPrice != null && dealAmount != null) {
+    const delta = pctDelta(loiPrice, dealAmount);
     const isDiscrepancy = delta != null && delta > 5;
     checks.push({
       property_id: propertyId, pack_id: 'business_acquisition',
@@ -272,14 +445,14 @@ async function runBaChecks(pool, propertyId, analysesBySection, dealRoom) {
       status: isDiscrepancy ? 'discrepancy' : 'verified',
       badge_label: isDiscrepancy ? 'Discrepancy Found' : 'Verified',
       severity: isDiscrepancy ? 'warning' : 'info',
-      value_a: loiData.stated_price, value_b: dealAmount, delta_pct: delta,
+      value_a: loiPrice, value_b: dealAmount, delta_pct: delta,
       description: isDiscrepancy
-        ? `LOI stated price (${formatCurrency(loiData.stated_price)}) differs from the deal room deal amount (${formatCurrency(dealAmount)}) by ${delta?.toFixed(1)}%. Confirm which figure is current before proceeding to PSA.`
-        : `LOI price (${formatCurrency(loiData.stated_price)}) matches deal room deal amount (${formatCurrency(dealAmount)}).`,
+        ? `LOI stated price (${formatCurrency(loiPrice)}) differs from the deal room deal amount (${formatCurrency(dealAmount)}) by ${delta?.toFixed(1)}%. Confirm which figure is current before advancing to a PSA.`
+        : `LOI price (${formatCurrency(loiPrice)}) matches the deal room deal amount (${formatCurrency(dealAmount)}).`,
     });
   }
 
-  // 3. EBITDA sanity check (must be positive)
+  // ── Check 4: EBITDA sanity — must be positive for a business for sale ──
   if (finData.ebitda != null) {
     const isNegative = finData.ebitda < 0;
     checks.push({
@@ -291,21 +464,33 @@ async function runBaChecks(pool, propertyId, analysesBySection, dealRoom) {
       severity: isNegative ? 'critical' : 'info',
       value_a: finData.ebitda, value_b: null, delta_pct: null,
       description: isNegative
-        ? `Financials show negative EBITDA (${formatCurrency(finData.ebitda)}). The business is not cash-flow positive — this is a material risk factor that requires explanation from the seller.`
+        ? `Financials show negative EBITDA (${formatCurrency(finData.ebitda)}). The business is not cash-flow positive — this is a material risk factor that requires seller explanation before proceeding.`
         : `EBITDA is positive (${formatCurrency(finData.ebitda)}). Business appears cash-flow positive based on submitted financials.`,
+    });
+  } else if (extractionsBySection._hasFinancials) {
+    checks.push({
+      property_id: propertyId, pack_id: 'business_acquisition',
+      check_type: 'ebitda_sanity',
+      doc_section_a: 'financials', doc_section_b: null,
+      status: 'pending_review', badge_label: 'Pending Review', severity: 'info',
+      value_a: null, value_b: null, delta_pct: null,
+      description: finData._unreadable
+        ? 'Financial statement could not be read (scanned or encrypted PDF). Upload a text-based PDF to enable EBITDA check.'
+        : 'EBITDA could not be extracted from the financial statement. Ensure the document includes an EBITDA or operating cash flow line.',
     });
   }
 
   for (const check of checks) {
-    await upsertResult(pool, check).catch(e => console.warn('[verification] upsert error:', e.message));
+    await insertCheck(pool, runId, check)
+      .catch(e => console.warn('[verification] insert error:', e.message));
   }
 }
 
 // ── Main entry point ──────────────────────────────────────────────────────────
 
 /**
- * Run all verification checks for a deal room. Safe to call repeatedly — all
- * checks are upserted so re-running after a new upload just refreshes results.
+ * Run all verification checks for a deal room.
+ * Creates a new run_id on every call — the log is append-only.
  *
  * @param {string} propertyId
  * @param {string} packId — 'cre_acquisition' | 'business_acquisition'
@@ -331,18 +516,50 @@ async function runVerification(propertyId, packId) {
     const dealRoom = roomRes.data || {};
 
     // Index by section — take the latest for each section
-    const bySection = {};
+    const latestBySection = {};
     for (const a of analyses) {
-      if (!bySection[a.section]) bySection[a.section] = a.analysis;
+      if (!latestBySection[a.section]) latestBySection[a.section] = a.analysis;
     }
 
+    // Extract structured fields per section + presence flags
+    const extractionsBySection = {};
+    const SECTIONS = ['rent_roll', 'financials', 'inspection', 'insurance', 'tax_returns', 'loi', 'purchase_agreement'];
+    for (const sec of SECTIONS) {
+      if (latestBySection[sec]) {
+        extractionsBySection[sec] = extractFields(sec, latestBySection[sec]);
+        extractionsBySection[`_has${sec.split('_').map(w => w[0].toUpperCase() + w.slice(1)).join('')}`] = true;
+      }
+    }
+
+    // ── Open a new run ──────────────────────────────────────────────────────
+    const runRow = await pool.query(
+      `INSERT INTO verification_runs (property_id, pack_id) VALUES ($1,$2) RETURNING id`,
+      [propertyId, packId || 'cre_acquisition']
+    );
+    const runId = runRow.rows[0].id;
+
+    // ── Persist document_extractions for this run ───────────────────────────
+    for (const sec of SECTIONS) {
+      if (extractionsBySection[sec]) {
+        const fields = { ...extractionsBySection[sec] };
+        const isUnreadable = fields._unreadable === true;
+        delete fields._unreadable;
+        await pool.query(
+          `INSERT INTO document_extractions (run_id, property_id, section, extracted_fields, is_unreadable)
+           VALUES ($1,$2,$3,$4,$5)`,
+          [runId, propertyId, sec, JSON.stringify(fields), isUnreadable]
+        ).catch(e => console.warn('[verification] extraction insert:', e.message));
+      }
+    }
+
+    // ── Run pack-specific checks ────────────────────────────────────────────
     if (packId === 'business_acquisition') {
-      await runBaChecks(pool, propertyId, bySection, dealRoom);
+      await runBaChecks(pool, runId, propertyId, extractionsBySection, dealRoom);
     } else {
-      await runCreChecks(pool, propertyId, bySection);
+      await runCreChecks(pool, runId, propertyId, extractionsBySection);
     }
 
-    console.log(`[verification] ✓ ${propertyId} (${packId}) — ${analyses.length} docs checked`);
+    console.log(`[verification] ✓ ${propertyId} (${packId}) run=${runId} — ${analyses.length} docs`);
   } catch (err) {
     console.warn('[verification] runVerification failed:', err.message);
   }
@@ -350,21 +567,38 @@ async function runVerification(propertyId, packId) {
 
 /**
  * Fetch current verification status for a deal room.
- * Returns { results: VerificationResult[], summary: { verified, discrepancies, pending } }
+ * Uses DISTINCT ON to return the LATEST result per check_type (append-only safe).
+ * Returns { results, summary }
  */
 async function getVerificationStatus(propertyId) {
   try {
     await initVerificationTables();
     const pool = getPool();
-    const { rows } = await pool.query(
-      `SELECT * FROM verification_results WHERE property_id = $1 ORDER BY severity DESC, updated_at DESC`,
-      [propertyId]
-    );
+
+    // Latest result per check_type via DISTINCT ON with run_id DESC
+    const { rows } = await pool.query(`
+      SELECT DISTINCT ON (check_type)
+        c.id, c.run_id, c.property_id, c.pack_id, c.check_type,
+        c.doc_section_a, c.doc_section_b, c.status, c.badge_label,
+        c.description, c.value_a, c.value_b, c.delta_pct, c.severity,
+        c.created_at,
+        r.created_at AS run_at
+      FROM verification_checks c
+      JOIN verification_runs r ON r.id = c.run_id
+      WHERE c.property_id = $1
+      ORDER BY check_type, c.run_id DESC
+    `, [propertyId]);
+
     const summary = {
       verified: rows.filter(r => r.status === 'verified').length,
       discrepancies: rows.filter(r => r.status === 'discrepancy').length,
       pending: rows.filter(r => r.status === 'pending_review').length,
     };
+    // Sort for display: discrepancies first, then pending, then verified
+    rows.sort((a, b) => {
+      const order = { discrepancy: 0, pending_review: 1, verified: 2 };
+      return (order[a.status] ?? 3) - (order[b.status] ?? 3);
+    });
     return { results: rows, summary };
   } catch (err) {
     console.warn('[verification] getVerificationStatus failed:', err.message);
