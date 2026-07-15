@@ -151,62 +151,62 @@ function extractFields(section, raw) {
 
   if (isUnreadable) return { _unreadable: true };
 
+  // analyze-document endpoint (used by BA and custom packs) stores extracted
+  // figures under raw.metrics rather than at the top level. Merge metrics
+  // into a flat lookup so every field access below works for both formats.
+  const m = (raw.metrics && typeof raw.metrics === 'object') ? raw.metrics : {};
+  // Helper: resolve a value from top-level raw or metrics fallback
+  const r = (...keys) => {
+    for (const k of keys) {
+      const v = raw[k] ?? m[k] ?? m[toSnake(k)] ?? m[toCamel(k)];
+      if (v != null) return v;
+    }
+    return undefined;
+  };
+
   try {
     switch (section) {
       case 'rent_roll': {
-        // Both track-document lightweight and aiDealReview extended formats
-        const monthly_rent = parseNumber(raw.totalMonthlyRent || raw.monthlyRent || raw.grossScheduledRent);
-        const occ = parsePct(raw.occupancyRate || raw.occupancy);
-        // NOI may be provided directly on the rent roll (stabilized NOI, projected NOI)
-        const noi = parseNumber(
-          raw.netOperatingIncome || raw.noi || raw.stabilizedNoi || raw.projectedNoi
-        );
-        // Derive annualized EGI from monthly rent if NOI not explicit
+        const monthly_rent = parseNumber(r('totalMonthlyRent', 'monthlyRent', 'grossScheduledRent', 'total_monthly_rent', 'monthly_rent'));
+        const occ = parsePct(r('occupancyRate', 'occupancy', 'occupancy_rate'));
+        const noi = parseNumber(r('netOperatingIncome', 'noi', 'stabilizedNoi', 'projectedNoi', 'net_operating_income'));
         const egi_annual = monthly_rent != null ? monthly_rent * 12 : null;
         return { monthly_rent, occupancy_rate: occ, noi, egi_annual, _unreadable: false };
       }
 
       case 'financials': {
-        // Operating statement (CRE) or financial statements (BA) share this section
-        const noi = parseNumber(
-          raw.netOperatingIncome || raw.noi || raw.operatingIncome
-        );
-        const egi = parseNumber(
-          raw.effectiveGrossIncome || raw.effectiveGrossRevenue || raw.grossRevenue
-        );
-        const revenue = parseNumber(
-          raw.revenue || raw.annualRevenue || raw.totalRevenue || raw.trailingTwelveMonthsRevenue
-        );
-        const ttm_revenue = parseNumber(raw.trailingTwelveMonths || raw.ttmRevenue) ?? revenue;
-        const ebitda = parseNumber(raw.ebitda || raw.adjustedEbitda || raw.operatingCashFlow);
-        const op_expenses = parseNumber(raw.totalOperatingExpenses || raw.operatingExpenses);
+        // Operating statement (CRE) or financial statements (BA) — share this section
+        const noi = parseNumber(r('netOperatingIncome', 'noi', 'operatingIncome', 'net_operating_income'));
+        const egi = parseNumber(r('effectiveGrossIncome', 'effectiveGrossRevenue', 'grossRevenue', 'gross_revenue'));
+        const revenue = parseNumber(r('revenue', 'annualRevenue', 'totalRevenue', 'trailingTwelveMonthsRevenue', 'annual_revenue', 'total_revenue', 'ttm_revenue'));
+        const ttm_revenue = parseNumber(r('trailingTwelveMonths', 'ttmRevenue', 'ttm_revenue', 'trailing_twelve_months_revenue')) ?? revenue;
+        const ebitda = parseNumber(r('ebitda', 'adjustedEbitda', 'adjusted_ebitda', 'operatingCashFlow', 'operating_cash_flow', 'adjusted_ebitda_ttm'));
+        const op_expenses = parseNumber(r('totalOperatingExpenses', 'operatingExpenses', 'total_operating_expenses', 'operating_expenses'));
         return { noi, egi, revenue, ttm_revenue, ebitda, op_expenses, _unreadable: false };
       }
 
       case 'inspection': {
-        const overallCondition = (raw.overallCondition || '').toLowerCase();
+        const overallCondition = (r('overallCondition', 'overall_condition', 'condition') || '').toLowerCase();
         const overall_ok = !['poor', 'critical', 'failed', 'unsafe'].includes(overallCondition);
-        const critical_count = parseNumber(raw.totalCriticalCount ?? raw.criticalCount ?? raw.criticalItems) ?? 0;
+        const critical_count = parseNumber(r('totalCriticalCount', 'criticalCount', 'criticalItems', 'critical_count') ?? 0) ?? 0;
         return { overall_ok, critical_count, condition: overallCondition, _unreadable: false };
       }
 
       case 'insurance': {
-        const coverage_amount = parseNumber(raw.coverageAmount || raw.totalCoverage);
-        const expiry_date = raw.expirationDate || raw.expiryDate || null;
+        const coverage_amount = parseNumber(r('coverageAmount', 'totalCoverage', 'coverage_amount', 'total_coverage'));
+        const expiry_date = r('expirationDate', 'expiryDate', 'expiration_date', 'expiry_date') || null;
         return { coverage_amount, expiry_date, _unreadable: false };
       }
 
       case 'tax_returns': {
-        const revenue = parseNumber(
-          raw.annualRevenue || raw.grossRevenue || raw.totalRevenue || raw.grossIncome
-        );
-        const net_income = parseNumber(raw.netIncome || raw.taxableIncome || raw.adjustedGrossIncome);
+        const revenue = parseNumber(r('annualRevenue', 'grossRevenue', 'totalRevenue', 'grossIncome', 'annual_revenue', 'gross_revenue', 'total_revenue', 'gross_income', 'revenue'));
+        const net_income = parseNumber(r('netIncome', 'taxableIncome', 'adjustedGrossIncome', 'net_income', 'taxable_income', 'adjusted_gross_income'));
         return { revenue, net_income, _unreadable: false };
       }
 
       case 'loi':
       case 'purchase_agreement': {
-        const stated_price = parseNumber(raw.purchasePrice || raw.offerPrice || raw.price || raw.dealPrice);
+        const stated_price = parseNumber(r('purchasePrice', 'offerPrice', 'price', 'dealPrice', 'purchase_price', 'offer_price', 'deal_price', 'asking_price', 'transaction_value'));
         return { stated_price, _unreadable: false };
       }
 
@@ -216,6 +216,14 @@ function extractFields(section, raw) {
   } catch {
     return { _unreadable: false };
   }
+}
+
+// camelCase → snake_case and snake_case → camelCase helpers for metrics key lookup
+function toSnake(k) {
+  return k.replace(/([A-Z])/g, '_$1').toLowerCase();
+}
+function toCamel(k) {
+  return k.replace(/_([a-z])/g, (_, c) => c.toUpperCase());
 }
 
 // ── Persist a single check (append-only) ─────────────────────────────────────
