@@ -174,27 +174,19 @@ export default function DocumentChecklistPanel({ propertyId, propertyType, role,
   const statusColor = allRequiredDone ? "#16a34a" : pct > 50 ? "#d97706" : "#800020";
   const statusLabel = allRequiredDone ? "Complete" : template.length === 0 ? "Empty" : `${doneCount} of ${template.length} uploaded`;
 
-  // Sections that verification checks cover — any uploaded doc in this set
-  // must show one of the three verification states (Verified / Discrepancy / Pending)
-  const VERIFIED_SECTIONS = new Set([
-    'rent_roll', 'financials', 'inspection', 'insurance',
-    'tax_returns', 'loi', 'purchase_agreement',
-  ]);
-
   // ── Tiny verification badge shown inline on each document row ───────────────
+  // Only renders when the verification engine has actually produced a result for
+  // this section. No badge = no opinion yet (avoids permanently-stuck Pending).
   function VerificationBadge({ section }) {
     const vSec = verificationBySection[section];
-    // For sections that verification covers: default to Pending Review
-    // when the section is in scope but no check has run for it yet.
-    const status = vSec?.status ?? (VERIFIED_SECTIONS.has(section) ? 'pending_review' : null);
-    if (!status) return null;
+    if (!vSec?.status) return null;
     const cfg = {
-      verified:      { label: '✓ Verified',      bg: '#f0fdf4', border: '#bbf7d0', color: '#16a34a' },
-      discrepancy:   { label: '⚠ Discrepancy',   bg: '#fff7ed', border: '#fed7aa', color: '#c2410c' },
-      pending_review:{ label: '○ Pending',        bg: '#f9fafb', border: '#e5e7eb', color: '#6b7280' },
-    }[status] || null;
+      verified:      { label: '✓ Verified',    bg: '#f0fdf4', border: '#bbf7d0', color: '#16a34a' },
+      discrepancy:   { label: '⚠ Discrepancy', bg: '#fff7ed', border: '#fed7aa', color: '#c2410c' },
+      pending_review:{ label: '○ Pending',      bg: '#f9fafb', border: '#e5e7eb', color: '#6b7280' },
+    }[vSec.status] || null;
     if (!cfg) return null;
-    const tooltip = vSec?.checks?.[0]?.description || 'Verification pending — check will run after cross-document analysis';
+    const tooltip = vSec.checks?.[0]?.description || '';
     return (
       <span title={tooltip} style={{
         display: 'inline-flex', alignItems: 'center', gap: 2,
