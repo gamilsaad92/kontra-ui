@@ -162,6 +162,30 @@ export default function VerificationPanel({ propertyId }) {
   const [loading, setLoading] = useState(true);
   const [open, setOpen] = useState(true);
   const [triggering, setTriggering] = useState(false);
+  const autoTriggered = React.useRef(false);
+
+  async function runAndReload() {
+    try {
+      await fetch(`${API_BASE}/api/public/deal-room/${propertyId}/verification/run`, {
+        method: "POST",
+      });
+    } catch { /* best effort */ }
+    // Wait briefly then reload to pick up results
+    await new Promise(r => setTimeout(r, 2500));
+    try {
+      const res = await fetch(`${API_BASE}/api/public/deal-room/${propertyId}/verification`, {
+        headers: { "Cache-Control": "no-store" },
+      });
+      if (res.ok) {
+        const json = await res.json();
+        const runs = json.runs || [];
+        setData({
+          summary: json.summary || { verified: 0, discrepancies: 0, pending: 0 },
+          runs,
+        });
+      }
+    } catch { /* ignore */ }
+  }
 
   useEffect(() => {
     if (!propertyId) return;
@@ -175,23 +199,20 @@ export default function VerificationPanel({ propertyId }) {
         if (!res.ok) throw new Error("not ok");
         const json = await res.json();
         if (!cancelled) {
-          // New shape: { runs: [{ run_id, run_at, pack_id, checks: [] }], summary }
-          // Flatten into a normalised state: latest run's checks for display + full runs for history
           const runs = json.runs || [];
-          const latestChecks = runs.length > 0 ? (runs[0].checks || []) : [];
-          // Sort: discrepancy first, then pending, then verified
-          latestChecks.sort((a, b) => {
-            const order = { discrepancy: 0, pending_review: 1, verified: 2 };
-            return (order[a.status] ?? 3) - (order[b.status] ?? 3);
-          });
           setData({
-            results: latestChecks,
             summary: json.summary || { verified: 0, discrepancies: 0, pending: 0 },
             runs,
           });
+          // Auto-trigger a first run if the deal has never been checked yet
+          // (handles existing deals with pre-uploaded documents)
+          if (runs.length === 0 && !autoTriggered.current) {
+            autoTriggered.current = true;
+            runAndReload().catch(() => {});
+          }
         }
       } catch {
-        if (!cancelled) setData({ results: [], summary: { verified: 0, discrepancies: 0, pending: 0 }, runs: [] });
+        if (!cancelled) setData({ summary: { verified: 0, discrepancies: 0, pending: 0 }, runs: [] });
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -218,12 +239,7 @@ export default function VerificationPanel({ propertyId }) {
           if (res.ok) {
             const json = await res.json();
             const runs = json.runs || [];
-            const latestChecks = runs.length > 0 ? (runs[0].checks || []) : [];
-            latestChecks.sort((a, b) => {
-              const order = { discrepancy: 0, pending_review: 1, verified: 2 };
-              return (order[a.status] ?? 3) - (order[b.status] ?? 3);
-            });
-            setData({ results: latestChecks, summary: json.summary || { verified: 0, discrepancies: 0, pending: 0 }, runs });
+            setData({ summary: json.summary || { verified: 0, discrepancies: 0, pending: 0 }, runs });
           }
         } catch {}
         setTriggering(false);
