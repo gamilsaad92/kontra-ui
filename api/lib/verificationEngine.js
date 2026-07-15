@@ -1,13 +1,9 @@
 /**
- * verificationEngine.js — Cross-document consistency verification
+ * verificationEngine.js — Cross-document consistency verification (stateless)
  *
- * Append-only audit log design:
- *   verification_runs   — one row per runVerification() call (run_id anchor)
- *   verification_checks — one row per check per run (no UNIQUE; never mutated)
- *   document_extractions — structured fields pulled from each doc per run
- *
- * getVerificationStatus() returns the LATEST check per check_type via
- * DISTINCT ON (check_type) ORDER BY run_id DESC — safe to call any time.
+ * All verification results are computed on-demand from Supabase's deal_analyses
+ * and deal_rooms tables. No PostgreSQL pool / separate tables needed — this
+ * removes the hard dependency on DATABASE_URL being present on Render.
  *
  * CRE Acquisition checks:
  *   - Rent roll NOI vs operating statement NOI (>5% threshold)
@@ -15,104 +11,38 @@
  *   - Inspection + insurance physical due diligence completeness
  *
  * Business Acquisition checks:
- *   - Financials TTM revenue vs seller-stated deal_amount (sanity range)
+ *   - Financials TTM revenue vs seller-stated revenue (>10% threshold)
+ *   - Financials EBITDA vs seller-stated EBITDA (>20% threshold)
+ *   - Financials EBITDA vs IRS tax-return net income (>40% premium)
  *   - Tax returns revenue vs financials TTM revenue (>10% threshold)
- *   - LOI price vs deal room deal_amount (>5% threshold)
- *   - EBITDA sanity (negative EBITDA = critical flag)
+ *   - LOI stated price vs deal_amount (>5% threshold)
+ *   - EBITDA sanity (negative = critical flag)
  *
  * Results: 'verified' | 'discrepancy' | 'pending_review'
  */
 
-const { getPool } = require('./pgAdapter');
 const { supabase } = require('../db');
-
-// ── Table bootstrap ───────────────────────────────────────────────────────────
-
-let _tablesReady = false;
-
-async function initVerificationTables() {
-  if (_tablesReady) return;
-  const pool = getPool();
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS verification_runs (
-      id          SERIAL PRIMARY KEY,
-      property_id TEXT NOT NULL,
-      pack_id     TEXT NOT NULL DEFAULT 'cre_acquisition',
-      created_at  TIMESTAMPTZ DEFAULT NOW()
-    );
-    CREATE INDEX IF NOT EXISTS idx_vruns_property
-      ON verification_runs(property_id, id DESC);
-
-    CREATE TABLE IF NOT EXISTS verification_checks (
-      id            SERIAL PRIMARY KEY,
-      run_id        INT NOT NULL REFERENCES verification_runs(id) ON DELETE CASCADE,
-      property_id   TEXT NOT NULL,
-      pack_id       TEXT NOT NULL DEFAULT 'cre_acquisition',
-      check_type    TEXT NOT NULL,
-      doc_section_a TEXT,
-      doc_section_b TEXT,
-      status        TEXT NOT NULL CHECK (status IN ('verified','discrepancy','pending_review')),
-      badge_label   TEXT NOT NULL,
-      description   TEXT,
-      value_a       NUMERIC,
-      value_b       NUMERIC,
-      delta_pct     NUMERIC,
-      severity      TEXT NOT NULL DEFAULT 'info'
-                    CHECK (severity IN ('info','warning','critical')),
-      created_at    TIMESTAMPTZ DEFAULT NOW()
-    );
-    CREATE INDEX IF NOT EXISTS idx_vchecks_property_run
-      ON verification_checks(property_id, run_id DESC);
-
-    CREATE TABLE IF NOT EXISTS document_extractions (
-      id               SERIAL PRIMARY KEY,
-      run_id           INT NOT NULL REFERENCES verification_runs(id) ON DELETE CASCADE,
-      property_id      TEXT NOT NULL,
-      section          TEXT NOT NULL,
-      extracted_fields JSONB NOT NULL DEFAULT '{}',
-      is_unreadable    BOOLEAN NOT NULL DEFAULT FALSE,
-      created_at       TIMESTAMPTZ DEFAULT NOW()
-    );
-    CREATE INDEX IF NOT EXISTS idx_dextractions_run
-      ON document_extractions(run_id, property_id);
-  `);
-  _tablesReady = true;
-}
 
 // ── Robust numeric helpers ───────────────────────────────────────────────────
 
-/**
- * Parse a currency/numeric string to a float.
- * Handles: "$1,200,000", "1.2M", "(900000)" for negatives, plain numbers.
- * Returns null for unreadable values.
- */
 function parseNumber(val) {
   if (val == null) return null;
   if (typeof val === 'number') return isNaN(val) ? null : val;
   const s = String(val).trim();
   if (!s || s === '—' || s === 'N/A' || s === 'n/a') return null;
-
-  // Detect parentheses-negative: "(1,200,000)"
   const parens = /^\(([^)]+)\)$/.test(s);
-
-  // Expand shorthand: "1.2M" → 1200000, "500K" → 500000
   const shorthand = s.match(/^[\$\s]*([\d,]+\.?\d*)\s*([KkMmBb])$/);
   if (shorthand) {
     const base = parseFloat(shorthand[1].replace(/,/g, ''));
     const mult = { k: 1e3, m: 1e6, b: 1e9 }[shorthand[2].toLowerCase()] || 1;
     return isNaN(base) ? null : (parens ? -base : base) * mult;
   }
-
   const cleaned = s.replace(/[^0-9.\-]/g, '');
   if (!cleaned || cleaned === '.') return null;
   const n = parseFloat(cleaned);
   return isNaN(n) ? null : (parens ? -n : n);
 }
 
-/**
- * Parse a percentage value to a decimal (0–1).
- * Handles: "92.5%", "0.925", "92.5"
- */
 function parsePct(val) {
   if (val == null) return null;
   const n = parseNumber(val);
@@ -133,14 +63,16 @@ function formatCurrency(n) {
   return `$${n.toFixed(0)}`;
 }
 
+// camelCase → snake_case and snake_case → camelCase helpers for metrics key lookup
+function toSnake(k) {
+  return k.replace(/([A-Z])/g, '_$1').toLowerCase();
+}
+function toCamel(k) {
+  return k.replace(/_([a-z])/g, (_, c) => c.toUpperCase());
+}
+
 // ── Structured extraction ─────────────────────────────────────────────────────
 
-/**
- * Extract structured numeric fields from raw analysis JSON for a given section.
- * All numeric fields are normalised via parseNumber() before use.
- * Returns an object of { fieldName: number|boolean|string|null }.
- * Also returns { _unreadable: true } if the doc was flagged as a scanned image.
- */
 function extractFields(section, raw) {
   if (!raw || typeof raw !== 'object') return { _unreadable: false };
 
@@ -151,11 +83,7 @@ function extractFields(section, raw) {
 
   if (isUnreadable) return { _unreadable: true };
 
-  // analyze-document endpoint (used by BA and custom packs) stores extracted
-  // figures under raw.metrics rather than at the top level. Merge metrics
-  // into a flat lookup so every field access below works for both formats.
   const m = (raw.metrics && typeof raw.metrics === 'object') ? raw.metrics : {};
-  // Helper: resolve a value from top-level raw or metrics fallback
   const r = (...keys) => {
     for (const k of keys) {
       const v = raw[k] ?? m[k] ?? m[toSnake(k)] ?? m[toCamel(k)];
@@ -175,7 +103,6 @@ function extractFields(section, raw) {
       }
 
       case 'financials': {
-        // Operating statement (CRE) or financial statements (BA) — share this section
         const noi = parseNumber(r('netOperatingIncome', 'noi', 'operatingIncome', 'net_operating_income'));
         const egi = parseNumber(r('effectiveGrossIncome', 'effectiveGrossRevenue', 'grossRevenue', 'gross_revenue'));
         const revenue = parseNumber(r('revenue', 'annualRevenue', 'totalRevenue', 'trailingTwelveMonthsRevenue', 'annual_revenue', 'total_revenue', 'ttm_revenue'));
@@ -218,55 +145,21 @@ function extractFields(section, raw) {
   }
 }
 
-// camelCase → snake_case and snake_case → camelCase helpers for metrics key lookup
-function toSnake(k) {
-  return k.replace(/([A-Z])/g, '_$1').toLowerCase();
-}
-function toCamel(k) {
-  return k.replace(/_([a-z])/g, (_, c) => c.toUpperCase());
-}
+// ── CRE Acquisition checks ─────────────────────────────────────────────────────
 
-// ── Persist a single check (append-only) ─────────────────────────────────────
-
-function insertCheck(pool, runId, row) {
-  return pool.query(`
-    INSERT INTO verification_checks
-      (run_id, property_id, pack_id, check_type, doc_section_a, doc_section_b,
-       status, badge_label, description, value_a, value_b, delta_pct, severity)
-    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
-  `, [
-    runId, row.property_id, row.pack_id, row.check_type,
-    row.doc_section_a ?? null, row.doc_section_b ?? null,
-    row.status, row.badge_label,
-    row.description ?? null,
-    row.value_a ?? null, row.value_b ?? null, row.delta_pct ?? null,
-    row.severity ?? 'info',
-  ]);
-}
-
-// ── CRE Acquisition checks ────────────────────────────────────────────────────
-
-async function runCreChecks(pool, runId, propertyId, extractionsBySection) {
-  const rr = extractionsBySection.rent_roll || {};
-  const fs = extractionsBySection.financials || {};
+function runCreChecks(propertyId, extractionsBySection) {
+  const rr   = extractionsBySection.rent_roll  || {};
+  const fs   = extractionsBySection.financials || {};
   const insp = extractionsBySection.inspection || {};
-  const ins = extractionsBySection.insurance || {};
-
   const checks = [];
 
-  // ── Check 1: Rent roll NOI vs operating statement NOI (core CRE check) ──
-  // Prefer direct NOI from both documents. Fall back to deriving rent-roll
-  // NOI from EGI minus operating expenses if the operating statement has
-  // both components but the rent roll lacks an explicit NOI field.
-
+  // Check 1: Rent roll NOI vs operating statement NOI
   const rrNoi = rr.noi ?? null;
   const fsNoi = fs.noi ?? null;
 
   if (rr._unreadable || fs._unreadable) {
-    // At least one doc was a scanned image — surface that clearly
     const unreadableSec = rr._unreadable ? 'rent roll' : 'operating statement';
     checks.push({
-      property_id: propertyId, pack_id: 'cre_acquisition',
       check_type: 'noi_cross_check',
       doc_section_a: 'rent_roll', doc_section_b: 'financials',
       status: 'pending_review', badge_label: 'Pending Review', severity: 'info',
@@ -277,7 +170,6 @@ async function runCreChecks(pool, runId, propertyId, extractionsBySection) {
     const delta = pctDelta(rrNoi, fsNoi);
     const isDiscrepancy = delta != null && delta > 5;
     checks.push({
-      property_id: propertyId, pack_id: 'cre_acquisition',
       check_type: 'noi_cross_check',
       doc_section_a: 'rent_roll', doc_section_b: 'financials',
       status: isDiscrepancy ? 'discrepancy' : 'verified',
@@ -289,13 +181,11 @@ async function runCreChecks(pool, runId, propertyId, extractionsBySection) {
         : `Rent roll NOI (${formatCurrency(rrNoi)}) is consistent with operating statement NOI (${formatCurrency(fsNoi)}) — gap is within the 5% threshold.`,
     });
   } else if (extractionsBySection._hasRentRoll || extractionsBySection._hasFinancials) {
-    // One or both docs uploaded but NOI not extractable — give precise reason
     const noNoi = [];
     if (extractionsBySection._hasRentRoll && rrNoi == null) noNoi.push('rent roll (no NOI field found)');
     if (extractionsBySection._hasFinancials && fsNoi == null) noNoi.push('operating statement (no NOI field found)');
     const missing = !extractionsBySection._hasRentRoll ? 'rent roll' : !extractionsBySection._hasFinancials ? 'operating statement' : null;
     checks.push({
-      property_id: propertyId, pack_id: 'cre_acquisition',
       check_type: 'noi_cross_check',
       doc_section_a: 'rent_roll', doc_section_b: 'financials',
       status: 'pending_review', badge_label: 'Pending Review', severity: 'info',
@@ -306,17 +196,15 @@ async function runCreChecks(pool, runId, propertyId, extractionsBySection) {
     });
   }
 
-  // ── Check 2: Occupancy rate consistency ──
+  // Check 2: Occupancy rate consistency
   const rrOcc = rr.occupancy_rate ?? null;
-  // Operating statement vacancy rate (if available) gives occupancy = 1 - vacancy
   const fsVacancy = fs.vacancy_rate != null ? fs.vacancy_rate : null;
   const fsOcc = fsVacancy != null ? 1 - fsVacancy : null;
 
   if (rrOcc != null && fsOcc != null) {
-    const delta = Math.abs(rrOcc - fsOcc) * 100; // in percentage points
+    const delta = Math.abs(rrOcc - fsOcc) * 100;
     const isDiscrepancy = delta > 5;
     checks.push({
-      property_id: propertyId, pack_id: 'cre_acquisition',
       check_type: 'occupancy_cross_check',
       doc_section_a: 'rent_roll', doc_section_b: 'financials',
       status: isDiscrepancy ? 'discrepancy' : 'verified',
@@ -329,15 +217,14 @@ async function runCreChecks(pool, runId, propertyId, extractionsBySection) {
     });
   }
 
-  // ── Check 3: Physical due diligence completeness ──
+  // Check 3: Physical due diligence completeness
   const hasInspection = !!extractionsBySection._hasInspection;
-  const hasInsurance = !!extractionsBySection._hasInsurance;
+  const hasInsurance  = !!extractionsBySection._hasInsurance;
 
   if (hasInspection && hasInsurance) {
-    const overall_ok = insp.overall_ok !== false;
+    const overall_ok   = insp.overall_ok !== false;
     const criticalCount = insp.critical_count ?? 0;
     checks.push({
-      property_id: propertyId, pack_id: 'cre_acquisition',
       check_type: 'physical_due_diligence_complete',
       doc_section_a: 'inspection', doc_section_b: 'insurance',
       status: overall_ok ? 'verified' : 'discrepancy',
@@ -351,10 +238,9 @@ async function runCreChecks(pool, runId, propertyId, extractionsBySection) {
   } else {
     const missingDocs = [
       !hasInspection && 'inspection report',
-      !hasInsurance && 'insurance certificate',
+      !hasInsurance  && 'insurance certificate',
     ].filter(Boolean).join(' and ');
     checks.push({
-      property_id: propertyId, pack_id: 'cre_acquisition',
       check_type: 'physical_due_diligence_complete',
       doc_section_a: 'inspection', doc_section_b: 'insurance',
       status: 'pending_review', badge_label: 'Pending Review', severity: 'info',
@@ -363,37 +249,27 @@ async function runCreChecks(pool, runId, propertyId, extractionsBySection) {
     });
   }
 
-  for (const check of checks) {
-    await insertCheck(pool, runId, check)
-      .catch(e => console.warn('[verification] insert error:', e.message));
-  }
+  return checks;
 }
 
 // ── Business Acquisition checks ───────────────────────────────────────────────
 
-async function runBaChecks(pool, runId, propertyId, extractionsBySection, dealRoom) {
+function runBaChecks(propertyId, extractionsBySection, dealRoom) {
   const taxData = extractionsBySection.tax_returns || {};
-  const finData = extractionsBySection.financials || {};
+  const finData = extractionsBySection.financials  || {};
   const loiData = extractionsBySection.loi || extractionsBySection.purchase_agreement || {};
-  const checks = [];
+  const checks  = [];
 
-  // Seller-stated deal amount from deal room (the canonical asking price field)
-  const dealAmount = parseNumber(dealRoom?.deal_amount) ?? null;
-  // Seller-stated revenue and EBITDA from the deal room summary panel
-  // (populated when the owner enters the business summary at deal room creation)
+  const dealAmount   = parseNumber(dealRoom?.deal_amount)    ?? null;
   const statedRevenue = parseNumber(dealRoom?.stated_revenue) ?? null;
   const statedEbitda  = parseNumber(dealRoom?.stated_ebitda)  ?? null;
 
-  // ── Check 1: Extracted financials TTM revenue vs seller-stated revenue ──
-  // Compares what the seller told you (stated_revenue in deal room summary)
-  // against what their independently uploaded financials actually show.
-  // A gap >10% surfaces undisclosed revenue adjustments or inconsistencies.
+  // Check 1: Financials TTM revenue vs seller-stated revenue
   if (finData.ttm_revenue != null && statedRevenue != null) {
     const delta = pctDelta(finData.ttm_revenue, statedRevenue);
     const isDiscrepancy = delta != null && delta > 10;
-    const isCritical = delta != null && delta > 25;
+    const isCritical    = delta != null && delta > 25;
     checks.push({
-      property_id: propertyId, pack_id: 'business_acquisition',
       check_type: 'ttm_revenue_vs_stated_revenue',
       doc_section_a: 'financials', doc_section_b: null,
       status: isDiscrepancy ? 'discrepancy' : 'verified',
@@ -406,7 +282,6 @@ async function runBaChecks(pool, runId, propertyId, extractionsBySection, dealRo
     });
   } else if (extractionsBySection._hasFinancials) {
     checks.push({
-      property_id: propertyId, pack_id: 'business_acquisition',
       check_type: 'ttm_revenue_vs_stated_revenue',
       doc_section_a: 'financials', doc_section_b: null,
       status: 'pending_review', badge_label: 'Pending Review', severity: 'info',
@@ -419,14 +294,10 @@ async function runBaChecks(pool, runId, propertyId, extractionsBySection, dealRo
     });
   }
 
-  // ── Check 2: Extracted financials EBITDA vs seller-stated EBITDA ──
-  // Compares the seller's disclosed EBITDA (deal room summary) against
-  // what their independently uploaded financials show. Add-backs in seller
-  // financials commonly inflate EBITDA; a gap >20% warrants itemised review.
+  // Check 2: Financials EBITDA vs seller-stated EBITDA
   if (finData.ebitda != null && statedEbitda != null) {
     if (finData.ebitda <= 0) {
       checks.push({
-        property_id: propertyId, pack_id: 'business_acquisition',
         check_type: 'ebitda_vs_stated_ebitda',
         doc_section_a: 'financials', doc_section_b: null,
         status: 'discrepancy', badge_label: 'Discrepancy Found', severity: 'critical',
@@ -436,9 +307,8 @@ async function runBaChecks(pool, runId, propertyId, extractionsBySection, dealRo
     } else {
       const delta = pctDelta(finData.ebitda, statedEbitda);
       const isDiscrepancy = delta != null && delta > 20;
-      const isCritical = delta != null && delta > 40;
+      const isCritical    = delta != null && delta > 40;
       checks.push({
-        property_id: propertyId, pack_id: 'business_acquisition',
         check_type: 'ebitda_vs_stated_ebitda',
         doc_section_a: 'financials', doc_section_b: null,
         status: isDiscrepancy ? 'discrepancy' : 'verified',
@@ -452,7 +322,6 @@ async function runBaChecks(pool, runId, propertyId, extractionsBySection, dealRo
     }
   } else if (extractionsBySection._hasFinancials) {
     checks.push({
-      property_id: propertyId, pack_id: 'business_acquisition',
       check_type: 'ebitda_vs_stated_ebitda',
       doc_section_a: 'financials', doc_section_b: null,
       status: 'pending_review', badge_label: 'Pending Review', severity: 'info',
@@ -465,11 +334,7 @@ async function runBaChecks(pool, runId, propertyId, extractionsBySection, dealRo
     });
   }
 
-  // ── Check 3: Seller-stated financials EBITDA vs IRS tax-return net income ──
-  // Tax returns (IRS-filed) are the independently verified source.
-  // Seller-prepared financials (with add-backs) are the seller-stated figures.
-  // Comparing surfaced add-backs that don't hold up, non-recurring revenue,
-  // or owner compensation re-characterised as profit.
+  // Check 3: Financials EBITDA vs IRS tax-return net income
   const taxNetIncome = taxData.net_income ?? null;
   if (finData.ebitda != null && taxNetIncome != null) {
     const ebitdaPremiumPct = taxNetIncome !== 0
@@ -477,7 +342,6 @@ async function runBaChecks(pool, runId, propertyId, extractionsBySection, dealRo
       : null;
     const isAggressive = ebitdaPremiumPct != null && ebitdaPremiumPct > 40;
     checks.push({
-      property_id: propertyId, pack_id: 'business_acquisition',
       check_type: 'financials_vs_tax_ebitda',
       doc_section_a: 'financials', doc_section_b: 'tax_returns',
       status: isAggressive ? 'discrepancy' : 'verified',
@@ -491,7 +355,6 @@ async function runBaChecks(pool, runId, propertyId, extractionsBySection, dealRo
   } else if (extractionsBySection._hasFinancials || extractionsBySection._hasTaxReturns) {
     const missing = !extractionsBySection._hasFinancials ? 'financial statements' : !extractionsBySection._hasTaxReturns ? 'tax returns' : null;
     checks.push({
-      property_id: propertyId, pack_id: 'business_acquisition',
       check_type: 'financials_vs_tax_ebitda',
       doc_section_a: 'financials', doc_section_b: 'tax_returns',
       status: 'pending_review', badge_label: 'Pending Review', severity: 'info',
@@ -502,12 +365,11 @@ async function runBaChecks(pool, runId, propertyId, extractionsBySection, dealRo
     });
   }
 
-  // ── Check 4: Tax returns revenue vs financials TTM revenue ──
+  // Check 4: Tax returns revenue vs financials TTM revenue
   if (taxData.revenue != null && finData.ttm_revenue != null) {
     const delta = pctDelta(taxData.revenue, finData.ttm_revenue);
     const isDiscrepancy = delta != null && delta > 10;
     checks.push({
-      property_id: propertyId, pack_id: 'business_acquisition',
       check_type: 'tax_returns_vs_financials_revenue',
       doc_section_a: 'tax_returns', doc_section_b: 'financials',
       status: isDiscrepancy ? 'discrepancy' : 'verified',
@@ -521,7 +383,6 @@ async function runBaChecks(pool, runId, propertyId, extractionsBySection, dealRo
   } else if (extractionsBySection._hasTaxReturns || extractionsBySection._hasFinancials) {
     const missing = !extractionsBySection._hasTaxReturns ? 'tax returns' : 'financial statements';
     checks.push({
-      property_id: propertyId, pack_id: 'business_acquisition',
       check_type: 'tax_returns_vs_financials_revenue',
       doc_section_a: 'tax_returns', doc_section_b: 'financials',
       status: 'pending_review', badge_label: 'Pending Review', severity: 'info',
@@ -530,13 +391,12 @@ async function runBaChecks(pool, runId, propertyId, extractionsBySection, dealRo
     });
   }
 
-  // ── Check 6: LOI stated price vs deal room deal_amount ──
+  // Check 6: LOI stated price vs deal_amount
   const loiPrice = loiData.stated_price ?? null;
   if (loiPrice != null && dealAmount != null) {
     const delta = pctDelta(loiPrice, dealAmount);
     const isDiscrepancy = delta != null && delta > 5;
     checks.push({
-      property_id: propertyId, pack_id: 'business_acquisition',
       check_type: 'loi_price_vs_deal_amount',
       doc_section_a: 'loi', doc_section_b: null,
       status: isDiscrepancy ? 'discrepancy' : 'verified',
@@ -549,11 +409,10 @@ async function runBaChecks(pool, runId, propertyId, extractionsBySection, dealRo
     });
   }
 
-  // ── Check 7: EBITDA sanity — must be positive for a business for sale ──
+  // Check 7: EBITDA sanity
   if (finData.ebitda != null) {
     const isNegative = finData.ebitda < 0;
     checks.push({
-      property_id: propertyId, pack_id: 'business_acquisition',
       check_type: 'ebitda_sanity',
       doc_section_a: 'financials', doc_section_b: null,
       status: isNegative ? 'discrepancy' : 'verified',
@@ -566,7 +425,6 @@ async function runBaChecks(pool, runId, propertyId, extractionsBySection, dealRo
     });
   } else if (extractionsBySection._hasFinancials) {
     checks.push({
-      property_id: propertyId, pack_id: 'business_acquisition',
       check_type: 'ebitda_sanity',
       doc_section_a: 'financials', doc_section_b: null,
       status: 'pending_review', badge_label: 'Pending Review', severity: 'info',
@@ -577,132 +435,126 @@ async function runBaChecks(pool, runId, propertyId, extractionsBySection, dealRo
     });
   }
 
-  for (const check of checks) {
-    await insertCheck(pool, runId, check)
-      .catch(e => console.warn('[verification] insert error:', e.message));
-  }
+  return checks;
 }
 
-// ── Main entry point ──────────────────────────────────────────────────────────
+// ── Core compute (stateless, Supabase-only) ───────────────────────────────────
 
 /**
- * Run all verification checks for a deal room.
- * Creates a new run_id on every call — the log is append-only.
- *
- * @param {string} propertyId
- * @param {string} packId — 'cre_acquisition' | 'business_acquisition'
+ * Fetch deal_analyses + deal_rooms from Supabase, run pack checks, and return
+ * { checks, summary, bySection } — no DB writes, safe to call at any time.
+ */
+async function computeVerification(propertyId, packId) {
+  const SECTIONS = ['rent_roll', 'financials', 'inspection', 'insurance', 'tax_returns', 'loi', 'purchase_agreement'];
+
+  const [analysesRes, roomRes] = await Promise.all([
+    supabase.from('deal_analyses')
+      .select('section, analysis, filename, created_at')
+      .eq('property_id', propertyId)
+      .order('created_at', { ascending: false }),
+    supabase.from('deal_rooms')
+      .select('deal_amount, deal_type, property_name, stated_revenue, stated_ebitda')
+      .eq('property_id', propertyId)
+      .maybeSingle(),
+  ]);
+
+  const analyses = analysesRes.data || [];
+  const dealRoom = roomRes.data  || {};
+
+  // Index by section — take the most recent for each section
+  const latestBySection = {};
+  for (const a of analyses) {
+    if (!latestBySection[a.section]) latestBySection[a.section] = a.analysis;
+  }
+
+  // Extract structured fields per section + set presence flags
+  const extractionsBySection = {};
+  for (const sec of SECTIONS) {
+    if (latestBySection[sec]) {
+      extractionsBySection[sec] = extractFields(sec, latestBySection[sec]);
+      // e.g. 'rent_roll' → '_hasRentRoll', 'tax_returns' → '_hasTaxReturns'
+      const flag = '_has' + sec.split('_').map(w => w[0].toUpperCase() + w.slice(1)).join('');
+      extractionsBySection[flag] = true;
+    }
+  }
+
+  // Resolve packId if not provided
+  const resolvedPackId = packId || (
+    extractionsBySection._hasRentRoll ? 'cre_acquisition' : 'business_acquisition'
+  );
+
+  const rawChecks = resolvedPackId === 'business_acquisition'
+    ? runBaChecks(propertyId, extractionsBySection, dealRoom)
+    : runCreChecks(propertyId, extractionsBySection);
+
+  // Stamp with property_id and pack_id
+  const checks = rawChecks.map(c => ({ ...c, property_id: propertyId, pack_id: resolvedPackId }));
+
+  const summary = {
+    verified:      checks.filter(c => c.status === 'verified').length,
+    discrepancies: checks.filter(c => c.status === 'discrepancy').length,
+    pending:       checks.filter(c => c.status === 'pending_review').length,
+  };
+
+  // Build bySection map — escalation: discrepancy > pending_review > verified
+  const bySection = {};
+  for (const c of checks) {
+    for (const sec of [c.doc_section_a, c.doc_section_b].filter(Boolean)) {
+      if (!bySection[sec]) bySection[sec] = { status: null, checks: [] };
+      const cur = bySection[sec].status;
+      if (c.status === 'discrepancy') {
+        bySection[sec].status = 'discrepancy';
+      } else if (c.status === 'pending_review' && cur !== 'discrepancy') {
+        bySection[sec].status = 'pending_review';
+      } else if (c.status === 'verified' && cur == null) {
+        bySection[sec].status = 'verified';
+      }
+      bySection[sec].checks.push({
+        check_type:  c.check_type,
+        status:      c.status,
+        badge_label: c.badge_label,
+        description: c.description,
+        severity:    c.severity,
+        value_a:     c.value_a,
+        value_b:     c.value_b,
+        delta_pct:   c.delta_pct,
+      });
+    }
+  }
+  // Sections with only null status → pending_review
+  for (const sec of Object.keys(bySection)) {
+    if (!bySection[sec].status) bySection[sec].status = 'pending_review';
+  }
+
+  console.log(`[verification] computed ${propertyId} (${resolvedPackId}) — ${analyses.length} docs, ${checks.length} checks`);
+  return { checks, summary, bySection };
+}
+
+// ── Public API ────────────────────────────────────────────────────────────────
+
+/**
+ * Run (compute) verification for a deal room.
+ * Stateless — no DB writes, just returns current computed state.
  */
 async function runVerification(propertyId, packId) {
-  try {
-    await initVerificationTables();
-    const pool = getPool();
-
-    // Fetch all analyses and deal room data in parallel
-    const [analysesRes, roomRes] = await Promise.all([
-      supabase.from('deal_analyses')
-        .select('section, analysis, filename, created_at')
-        .eq('property_id', propertyId)
-        .order('created_at', { ascending: false }),
-      supabase.from('deal_rooms')
-        .select('deal_amount, deal_type, property_name, stated_revenue, stated_ebitda')
-        .eq('property_id', propertyId)
-        .maybeSingle(),
-    ]);
-
-    const analyses = analysesRes.data || [];
-    const dealRoom = roomRes.data || {};
-
-    // Index by section — take the latest for each section
-    const latestBySection = {};
-    for (const a of analyses) {
-      if (!latestBySection[a.section]) latestBySection[a.section] = a.analysis;
-    }
-
-    // Extract structured fields per section + presence flags
-    const extractionsBySection = {};
-    const SECTIONS = ['rent_roll', 'financials', 'inspection', 'insurance', 'tax_returns', 'loi', 'purchase_agreement'];
-    for (const sec of SECTIONS) {
-      if (latestBySection[sec]) {
-        extractionsBySection[sec] = extractFields(sec, latestBySection[sec]);
-        extractionsBySection[`_has${sec.split('_').map(w => w[0].toUpperCase() + w.slice(1)).join('')}`] = true;
-      }
-    }
-
-    // ── Open a new run ──────────────────────────────────────────────────────
-    const runRow = await pool.query(
-      `INSERT INTO verification_runs (property_id, pack_id) VALUES ($1,$2) RETURNING id`,
-      [propertyId, packId || 'cre_acquisition']
-    );
-    const runId = runRow.rows[0].id;
-
-    // ── Persist document_extractions for this run ───────────────────────────
-    for (const sec of SECTIONS) {
-      if (extractionsBySection[sec]) {
-        const fields = { ...extractionsBySection[sec] };
-        const isUnreadable = fields._unreadable === true;
-        delete fields._unreadable;
-        // Include confidence score from raw analysis if available
-        const rawAnalysis = latestBySection[sec];
-        const confidence = (rawAnalysis && typeof rawAnalysis.confidence === 'number')
-          ? rawAnalysis.confidence
-          : null;
-        if (confidence != null) fields.confidence = confidence;
-        await pool.query(
-          `INSERT INTO document_extractions (run_id, property_id, section, extracted_fields, is_unreadable)
-           VALUES ($1,$2,$3,$4,$5)`,
-          [runId, propertyId, sec, JSON.stringify(fields), isUnreadable]
-        ).catch(e => console.warn('[verification] extraction insert:', e.message));
-      }
-    }
-
-    // ── Run pack-specific checks ────────────────────────────────────────────
-    if (packId === 'business_acquisition') {
-      await runBaChecks(pool, runId, propertyId, extractionsBySection, dealRoom);
-    } else {
-      await runCreChecks(pool, runId, propertyId, extractionsBySection);
-    }
-
-    console.log(`[verification] ✓ ${propertyId} (${packId}) run=${runId} — ${analyses.length} docs`);
-  } catch (err) {
-    console.warn('[verification] runVerification failed:', err.message);
-  }
+  return computeVerification(propertyId, packId);
 }
 
 /**
- * Fetch current verification status for a deal room.
- * Uses DISTINCT ON to return the LATEST result per check_type (append-only safe).
- * Returns { results, summary }
+ * Get badge-friendly status: latest check per check_type + per-section map.
+ * Returns { results, summary }.
  */
 async function getVerificationStatus(propertyId) {
   try {
-    await initVerificationTables();
-    const pool = getPool();
-
-    // Latest result per check_type via DISTINCT ON with run_id DESC
-    const { rows } = await pool.query(`
-      SELECT DISTINCT ON (check_type)
-        c.id, c.run_id, c.property_id, c.pack_id, c.check_type,
-        c.doc_section_a, c.doc_section_b, c.status, c.badge_label,
-        c.description, c.value_a, c.value_b, c.delta_pct, c.severity,
-        c.created_at,
-        r.created_at AS run_at
-      FROM verification_checks c
-      JOIN verification_runs r ON r.id = c.run_id
-      WHERE c.property_id = $1
-      ORDER BY check_type, c.run_id DESC
-    `, [propertyId]);
-
-    const summary = {
-      verified: rows.filter(r => r.status === 'verified').length,
-      discrepancies: rows.filter(r => r.status === 'discrepancy').length,
-      pending: rows.filter(r => r.status === 'pending_review').length,
-    };
-    // Sort for display: discrepancies first, then pending, then verified
-    rows.sort((a, b) => {
+    const { checks, summary } = await computeVerification(propertyId);
+    // Deduplicate by check_type — keep last occurrence (most specific)
+    const seen = new Map();
+    for (const c of checks) seen.set(c.check_type, c);
+    const results = Array.from(seen.values()).sort((a, b) => {
       const order = { discrepancy: 0, pending_review: 1, verified: 2 };
       return (order[a.status] ?? 3) - (order[b.status] ?? 3);
     });
-    return { results: rows, summary };
+    return { results, summary };
   } catch (err) {
     console.warn('[verification] getVerificationStatus failed:', err.message);
     return { results: [], summary: { verified: 0, discrepancies: 0, pending: 0 } };
@@ -710,65 +562,29 @@ async function getVerificationStatus(propertyId) {
 }
 
 /**
- * Fetch the complete append-only verification history for a deal room.
- * Returns all runs with their checks, newest run first.
- * Used by the full-log endpoint so auditors can see every check that ever ran.
+ * Get the full verification log formatted as a single synthetic run.
+ * Returns { runs: [{ run_id, pack_id, run_at, checks }], summary }.
  */
 async function getFullVerificationLog(propertyId) {
   try {
-    await initVerificationTables();
-    const pool = getPool();
-
-    // All runs for this property, newest first
-    const runsRes = await pool.query(
-      `SELECT id, pack_id, created_at FROM verification_runs
-       WHERE property_id = $1 ORDER BY id DESC`,
-      [propertyId]
-    );
-    const runs = runsRes.rows;
-
-    if (runs.length === 0) {
-      return { runs: [], summary: { verified: 0, discrepancies: 0, pending: 0 } };
+    const { checks, summary } = await computeVerification(propertyId);
+    if (checks.length === 0) {
+      return { runs: [], summary };
     }
-
-    // All checks across all runs (join for display convenience)
-    const checksRes = await pool.query(
-      `SELECT c.*, r.created_at AS run_at
-       FROM verification_checks c
-       JOIN verification_runs r ON r.id = c.run_id
-       WHERE c.property_id = $1
-       ORDER BY c.run_id DESC, c.id ASC`,
-      [propertyId]
-    );
-    const allChecks = checksRes.rows;
-
-    // Group checks by run_id
-    const checksByRun = {};
-    for (const c of allChecks) {
-      if (!checksByRun[c.run_id]) checksByRun[c.run_id] = [];
-      checksByRun[c.run_id].push(c);
-    }
-
-    const enrichedRuns = runs.map(r => ({
-      run_id: r.id,
-      pack_id: r.pack_id,
-      run_at: r.created_at,
-      checks: checksByRun[r.id] || [],
-    }));
-
-    // Summary from the latest run only (current state)
-    const latestChecks = checksByRun[runs[0].id] || [];
-    const summary = {
-      verified: latestChecks.filter(c => c.status === 'verified').length,
-      discrepancies: latestChecks.filter(c => c.status === 'discrepancy').length,
-      pending: latestChecks.filter(c => c.status === 'pending_review').length,
+    const run = {
+      run_id:  'current',
+      pack_id: checks[0]?.pack_id || 'unknown',
+      run_at:  new Date().toISOString(),
+      checks,
     };
-
-    return { runs: enrichedRuns, summary };
+    return { runs: [run], summary };
   } catch (err) {
     console.warn('[verification] getFullVerificationLog failed:', err.message);
     return { runs: [], summary: { verified: 0, discrepancies: 0, pending: 0 } };
   }
 }
+
+/** Legacy no-op — tables no longer needed. Kept for backward compat imports. */
+async function initVerificationTables() {}
 
 module.exports = { runVerification, getVerificationStatus, getFullVerificationLog, initVerificationTables };
