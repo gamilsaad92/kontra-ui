@@ -262,6 +262,13 @@ export default function DocumentsTabPanel({
     if (onAnalysisSaved) onAnalysisSaved(...args);
   };
 
+  useEffect(() => {
+    if (import.meta.env.DEV) {
+      window.__kontraTestTriggerHint__ = handleAnalysisSaved;
+      return () => { delete window.__kontraTestTriggerHint__; };
+    }
+  });
+
   const handleTabClick = (key) => {
     if (key === 'intelligence') dismissHint();
     setSearchParams(prev => {
@@ -318,7 +325,7 @@ export default function DocumentsTabPanel({
               >
                 <span
                   className="animate-ping absolute inline-flex rounded-full opacity-75"
-                  style={{ width: 10, height: 10, background: '#800020' }}
+                  style={{ width: 10, height: 10, background: '#800020', animation: hintOpaque ? undefined : 'none' }}
                 />
                 <span
                   className="relative inline-flex rounded-full"
