@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { getWorkflowPack, DEFAULT_PACK_ID } from '../../lib/workflowPacks';
 import DocumentChecklistPanel from './DocumentChecklistPanel';
 import VerificationPanel from './VerificationPanel';
@@ -21,7 +22,7 @@ function useDealAnalyses(propertyId, refreshKey) {
   return { analyses, loading };
 }
 
-function IntelligenceTab({ analyses, loading, packId, propertyId }) {
+function IntelligenceTab({ analyses, loading, packId, propertyId, onSwitchToChecklist }) {
   const pack = getWorkflowPack(packId);
   const SECTIONS = pack.intelligenceSections || [];
   const getBadge = pack.getIntelligenceBadge || (() => null);
@@ -53,12 +54,21 @@ function IntelligenceTab({ analyses, loading, packId, propertyId }) {
 
   if (analyses.length === 0) {
     return (
-      <div className="px-5 py-10 text-center">
-        <div className="text-3xl mb-3">🤖</div>
-        <p className="text-sm font-semibold text-gray-500 mb-1">No analyses yet</p>
-        <p className="text-xs text-gray-400 max-w-xs mx-auto">
-          Upload a document with AI analysis enabled in the Checklist tab to see insights here.
+      <div className="px-5 py-12 text-center">
+        <div className="text-4xl mb-4">🤖</div>
+        <p className="text-sm font-semibold text-gray-700 mb-2">AI analysis will appear here</p>
+        <p className="text-xs text-gray-400 max-w-xs mx-auto mb-5">
+          Upload a document with AI analysis enabled to unlock deal insights, risk flags, and a financial summary for this deal room.
         </p>
+        {onSwitchToChecklist && (
+          <button
+            onClick={onSwitchToChecklist}
+            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-semibold transition-all"
+            style={{ background: '#800020', color: '#fff' }}
+          >
+            ← Go to Checklist to upload
+          </button>
+        )}
       </div>
     );
   }
@@ -201,6 +211,8 @@ function IntelligenceTab({ analyses, loading, packId, propertyId }) {
   );
 }
 
+const hintKey = (propertyId) => `kontra_intelligence_hint_shown_${propertyId}`;
+
 export default function DocumentsTabPanel({
   propertyId,
   propertyType,
@@ -210,25 +222,69 @@ export default function DocumentsTabPanel({
   onAnalysisSaved,
   refreshKey,
 }) {
-  const [activeTab, setActiveTab] = useState('checklist');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const VALID_TABS = ['checklist', 'intelligence'];
+  const rawTab = searchParams.get('tab');
+  const activeTab = VALID_TABS.includes(rawTab) ? rawTab : 'checklist';
+
+  const [showHint, setShowHint] = useState(false);
+  const [hintOpaque, setHintOpaque] = useState(false);
+  const hintTimerRef = useRef(null);
+  const hintRafRef = useRef(null);
   const { analyses, loading } = useDealAnalyses(propertyId, refreshKey);
 
   const hasAnalyses = analyses.length > 0;
 
+  const dismissHint = () => {
+    clearTimeout(hintTimerRef.current);
+    cancelAnimationFrame(hintRafRef.current);
+    setHintOpaque(false);
+    hintTimerRef.current = setTimeout(() => setShowHint(false), 310);
+  };
+
+  useEffect(() => {
+    if (showHint) {
+      hintRafRef.current = requestAnimationFrame(() => setHintOpaque(true));
+      hintTimerRef.current = setTimeout(() => dismissHint(), 30000);
+    }
+    return () => {
+      clearTimeout(hintTimerRef.current);
+      cancelAnimationFrame(hintRafRef.current);
+    };
+  }, [showHint]);
+
+  const handleAnalysisSaved = (...args) => {
+    if (!localStorage.getItem(hintKey(propertyId))) {
+      setHintOpaque(false);
+      setShowHint(true);
+      localStorage.setItem(hintKey(propertyId), '1');
+    }
+    if (onAnalysisSaved) onAnalysisSaved(...args);
+  };
+
+  const handleTabClick = (key) => {
+    if (key === 'intelligence') dismissHint();
+    setSearchParams(prev => {
+      const next = new URLSearchParams(prev);
+      next.set('tab', key);
+      return next;
+    }, { replace: true });
+  };
+
   const tabs = [
     { key: 'checklist', label: 'Checklist' },
-    ...(hasAnalyses || loading ? [{ key: 'intelligence', label: 'Intelligence' }] : []),
+    { key: 'intelligence', label: 'Intelligence' },
   ];
 
   return (
     <div className="mb-6">
       {/* ── Tab bar ──────────────────────────────────────────────────── */}
-      <div className="flex items-center gap-1 mb-2 px-1">
+      <div className="flex flex-nowrap items-center gap-1 pt-1 mb-2 px-1">
         {tabs.map(tab => (
           <button
             key={tab.key}
-            onClick={() => setActiveTab(tab.key)}
-            className="px-4 py-1.5 rounded-full text-xs font-semibold transition-all"
+            onClick={() => handleTabClick(tab.key)}
+            className="relative overflow-visible shrink-0 whitespace-nowrap px-4 py-1.5 rounded-full text-xs font-semibold transition-all"
             style={{
               background: activeTab === tab.key ? '#800020' : 'transparent',
               color: activeTab === tab.key ? '#fff' : '#9ca3af',
@@ -249,6 +305,27 @@ export default function DocumentsTabPanel({
                 {analyses.length}
               </span>
             )}
+            {tab.key === 'intelligence' && showHint && activeTab !== 'intelligence' && (
+              <span
+                className="absolute -top-1 -right-1 flex items-center justify-center"
+                style={{
+                  width: 10,
+                  height: 10,
+                  opacity: hintOpaque ? 1 : 0,
+                  transition: hintOpaque ? 'opacity 200ms ease-in' : 'opacity 300ms ease-out',
+                }}
+                aria-label="New analysis available"
+              >
+                <span
+                  className="animate-ping absolute inline-flex rounded-full opacity-75"
+                  style={{ width: 10, height: 10, background: '#800020' }}
+                />
+                <span
+                  className="relative inline-flex rounded-full"
+                  style={{ width: 6, height: 6, background: '#800020' }}
+                />
+              </span>
+            )}
           </button>
         ))}
         <div className="flex-1" />
@@ -264,7 +341,7 @@ export default function DocumentsTabPanel({
             role={role}
             isDemo={isDemo}
             packId={packId}
-            onAnalysisSaved={onAnalysisSaved}
+            onAnalysisSaved={handleAnalysisSaved}
           />
           <VerificationPanel propertyId={propertyId} />
         </>
@@ -275,6 +352,7 @@ export default function DocumentsTabPanel({
             loading={loading}
             packId={packId}
             propertyId={propertyId}
+            onSwitchToChecklist={() => handleTabClick('checklist')}
           />
         </div>
       )}

@@ -171,7 +171,7 @@ export default function DealSummaryPage() {
     <div className="min-h-screen flex items-center justify-center bg-white">
       <div className="text-center">
         <p className="text-red-500 text-sm mb-4">{error}</p>
-        <Link to={`/deal-room/${propertyId}?role=${getPrimaryRole(room)}`} className="text-sm underline text-gray-500">
+        <Link to={`/deal-room/${propertyId}?role=${getPrimaryRole(room)}&tab=intelligence`} className="text-sm underline text-gray-500">
           ← Back to deal room
         </Link>
       </div>
@@ -195,7 +195,7 @@ export default function DealSummaryPage() {
 
       {/* Toolbar — hidden when printing */}
       <div className="no-print bg-white border-b border-gray-100 px-6 py-3 flex items-center justify-between sticky top-0 z-10 shadow-sm">
-        <Link to={`/deal-room/${propertyId}?role=${getPrimaryRole(room)}`}
+        <Link to={`/deal-room/${propertyId}?role=${getPrimaryRole(room)}&tab=intelligence`}
           className="text-sm text-gray-500 hover:text-gray-800 flex items-center gap-1.5 transition">
           ← Back to deal room
         </Link>
