@@ -265,7 +265,14 @@ export default function DocumentsTabPanel({
   useEffect(() => {
     if (import.meta.env.DEV) {
       window.__kontraTestTriggerHint__ = handleAnalysisSaved;
-      return () => { delete window.__kontraTestTriggerHint__; };
+      // Expose dismissHint directly so e2e tests can trigger the real 300ms
+      // fade-out path without changing activeTab (which would unmount the
+      // element immediately via the activeTab !== 'intelligence' guard).
+      window.__kontraTestTriggerDismiss__ = dismissHint;
+      return () => {
+        delete window.__kontraTestTriggerHint__;
+        delete window.__kontraTestTriggerDismiss__;
+      };
     }
   });
 

@@ -59,22 +59,26 @@ async function clearHintKeys(page, slugs) {
 /**
  * Cross-browser fade-out suite
  *
- * Verifies that when the hint dot fades out (after the user clicks the
- * Intelligence tab or after the 30s auto-dismiss timer), the ping ring
- * does not produce a visible flash in any browser.
+ * Verifies that when the hint dot fades out (via the 30s auto-dismiss path,
+ * which is the path that uses the 300ms opacity transition in-place), the
+ * ping ring does not produce a visible flash in any browser.
+ *
+ * IMPORTANT — why we use __kontraTestTriggerDismiss__ and NOT a tab click:
+ * Clicking the Intelligence tab changes `activeTab`, which causes the hint
+ * element to unmount IMMEDIATELY via the `activeTab !== 'intelligence'` guard.
+ * That means clicking the tab NEVER exercises the 300ms fade-out — the element
+ * is gone in one render cycle. To test the real fade-out, we call dismissHint()
+ * directly via the dev-mode window hook, leaving activeTab on 'checklist' so
+ * the element stays mounted while hintOpaque → false triggers:
+ *   1. `animation: 'none'` on the ring span  (synchronous with setState)
+ *   2. `opacity: 0` + 300ms CSS transition on the wrapper
+ *   3. After 310ms, `showHint = false` → element unmounts
  *
  * The fix: `animation: 'none'` replaces `animationPlayState: 'paused'`
- * on the ring span so the ring is immediately removed from the render
- * tree rather than frozen at an unpredictable keyframe position.
- * This is deterministic across Chromium, Firefox, and WebKit.
+ * on the ring span. This is deterministic in Chromium, Firefox, and WebKit —
+ * no "frozen at visible keyframe" risk from engine-specific pause timing.
  *
- * What this suite checks:
- *   a) After the tab switch that dismisses the dot, the aria-label element
- *      is gone from the DOM within 500ms (well inside the 300ms transition).
- *   b) During the transition window (0–300ms after dismiss) no element with
- *      the ping ring's aria-label is visible — i.e. no frame shows a flash.
- *   c) The transition completes in all three browser engines (chromium,
- *      firefox, webkit — configured in playwright.config.js).
+ * Browser coverage: chromium, firefox, webkit — see playwright.config.js.
  */
 test.describe('hint dot — cross-browser fade-out (no ring flash)', () => {
   test.beforeEach(async ({ page }) => {
@@ -82,67 +86,114 @@ test.describe('hint dot — cross-browser fade-out (no ring flash)', () => {
     await clearHintKeys(page, [PROP_A]);
   });
 
-  test('hint dot fades out cleanly — ring is not visible during or after dismiss', async ({ page }) => {
-    // Navigate and trigger a hint so the dot appears
+  /**
+   * Core cross-browser test:
+   * Triggers the real auto-dismiss path (dismissHint directly, NOT tab click),
+   * then asserts ring-specific behavior:
+   *   a) ring animationName switches to 'none' synchronously with setState
+   *   b) the wrapper element stays mounted during the 300ms transition
+   *   c) the wrapper is gone after 310ms (showHint → false)
+   *
+   * This test runs on chromium, firefox, and webkit via the projects config.
+   */
+  test('ring animationName becomes none immediately on dismiss, element stays mounted during fade', async ({ page }) => {
     await page.goto(dealRoomUrl(PROP_A));
 
     const hookPresent = await triggerAnalysisSaved(page);
-    expect(hookPresent, 'dev test hook must be present').toBe(true);
+    expect(hookPresent, 'dev trigger-hint hook must be present').toBe(true);
 
-    // Wait for the dot to be fully visible (fade-in complete)
-    const dot = page.locator('[aria-label="New analysis available"]');
-    await expect(dot).toBeVisible({ timeout: 2000 });
+    const dotWrapper = page.locator('[aria-label="New analysis available"]');
+    const ringSpan   = page.locator('[aria-label="New analysis available"] > span:first-child');
 
-    // Click the Intelligence tab — this dismisses the hint
-    const intelligenceTab = page.locator('button', { hasText: 'Intelligence' });
-    await intelligenceTab.click();
+    // Wait for the hint to be fully visible (hintOpaque = true)
+    await expect(dotWrapper).toBeVisible({ timeout: 2000 });
 
-    // Immediately after the click, poll over the 300ms transition window
-    // to confirm the dot never becomes (re-)visible. Any flash from a ring
-    // restart would appear as a brief visibility event here.
-    const START = Date.now();
-    let flashDetected = false;
-    while (Date.now() - START < 400) {
-      const visible = await dot.isVisible().catch(() => false);
-      if (visible) {
-        flashDetected = true;
-        break;
-      }
-      await page.waitForTimeout(16); // ~one frame
-    }
-    expect(flashDetected, 'ring must not flash visible during the 300ms fade-out').toBe(false);
-
-    // Confirm the element is fully gone from the DOM after the transition
-    await expect(dot).not.toBeVisible({ timeout: 500 });
-  });
-
-  test('ring animation is fully stopped before parent opacity reaches zero', async ({ page }) => {
-    await page.goto(dealRoomUrl(PROP_A));
-
-    const hookPresent = await triggerAnalysisSaved(page);
-    expect(hookPresent, 'dev test hook must be present').toBe(true);
-
-    await expect(
-      page.locator('[aria-label="New analysis available"]')
-    ).toBeVisible({ timeout: 2000 });
-
-    // Read the computed animation style on the ring span BEFORE dismiss
-    const ringSelector = '[aria-label="New analysis available"] span:first-child';
-    const animBefore = await page.locator(ringSelector).evaluate(
+    // Confirm the ring animation is running before we dismiss
+    const animBefore = await ringSpan.evaluate(
       (el) => getComputedStyle(el).animationName
     );
-    expect(animBefore).not.toBe('none'); // ring is running
+    expect(animBefore, 'ring must be running before dismiss').not.toBe('none');
 
-    // Dismiss via tab click
-    await page.locator('button', { hasText: 'Intelligence' }).click();
+    // ── Trigger the real fade-out path (dismissHint, NOT tab click) ──────────
+    // dismissHint(): sets hintOpaque=false → animation:none on ring, opacity:0
+    // on wrapper with 300ms ease-out → after 310ms setShowHint(false) unmounts.
+    const dismissHookPresent = await page.evaluate(() => {
+      if (typeof window.__kontraTestTriggerDismiss__ === 'function') {
+        window.__kontraTestTriggerDismiss__();
+        return true;
+      }
+      return false;
+    });
+    expect(dismissHookPresent, 'dev trigger-dismiss hook must be present').toBe(true);
 
-    // Within one frame after the click, the ring's animation must be 'none'
-    // (the `animation: 'none'` inline style takes effect synchronously in React)
+    // ── Assert ring-specific: animationName must be 'none' within one RAF ────
+    // React flushes synchronously on setState; the inline `animation: 'none'`
+    // style should take effect in the next paint cycle (≤16ms).
     await page.waitForTimeout(32); // two frames
-    const animAfter = await page.locator(ringSelector).evaluate(
+    const animAfter = await ringSpan.evaluate(
       (el) => getComputedStyle(el).animationName
-    ).catch(() => 'none'); // element unmounted = also fine
-    expect(animAfter, 'ring animation must be stopped immediately on dismiss').toBe('none');
+    );
+    expect(animAfter, 'ring animationName must be "none" immediately after dismiss').toBe('none');
+
+    // ── Assert wrapper stays mounted during the 300ms transition ─────────────
+    // At 32ms the wrapper must still be in the DOM (opacity transitioning).
+    const wrapperMounted = await dotWrapper.evaluate((el) => !!el.isConnected);
+    expect(wrapperMounted, 'wrapper must still be mounted during fade-out window').toBe(true);
+
+    // ── Assert element is gone after the 310ms timer fires ───────────────────
+    await expect(dotWrapper).not.toBeAttached({ timeout: 600 });
+  });
+
+  /**
+   * Flash-detection test: polls every frame during the 300ms fade window and
+   * asserts the ring span never becomes (re-)visible at opacity > 0.
+   *
+   * This guards against engines that might restart a paused animation on a
+   * new loop cycle (the original animationPlayState: 'paused' risk).
+   * With `animation: 'none'` the ring is rendered as a static non-animated
+   * element and fades with its parent — no restart is possible.
+   */
+  test('ring does not flash visible during the 300ms fade-out window', async ({ page }) => {
+    await page.goto(dealRoomUrl(PROP_A));
+
+    const hookPresent = await triggerAnalysisSaved(page);
+    expect(hookPresent, 'dev trigger-hint hook must be present').toBe(true);
+
+    const ringSpan = page.locator('[aria-label="New analysis available"] > span:first-child');
+    await expect(page.locator('[aria-label="New analysis available"]')).toBeVisible({ timeout: 2000 });
+
+    // Trigger the real fade-out
+    await page.evaluate(() => window.__kontraTestTriggerDismiss__?.());
+
+    // Poll every ~16ms for 350ms. The ring element's effective opacity is the
+    // product of its own CSS opacity and the parent wrapper's opacity (which is
+    // transitioning from 1→0 over 300ms). After animation:none is applied, the
+    // ring is a static circle fading with its parent — it will never be MORE
+    // opaque than the wrapper. If animationPlayState:paused was used instead and
+    // paused at an early keyframe, the ring could appear at near-full opacity
+    // for several frames, which would be caught here.
+    let maxOpacity = 0;
+    const start = Date.now();
+    while (Date.now() - start < 350) {
+      const opacity = await ringSpan.evaluate((el) => {
+        if (!el.isConnected) return 0;
+        // Walk up and multiply opacities to get the effective visual opacity
+        let o = 1;
+        let node = el;
+        while (node && node !== document.body) {
+          o *= parseFloat(getComputedStyle(node).opacity) || 0;
+          node = node.parentElement;
+        }
+        return o;
+      }).catch(() => 0);
+      if (opacity > maxOpacity) maxOpacity = opacity;
+      await page.waitForTimeout(16);
+    }
+    // The maximum observed opacity should be ≤ 1.0 (obviously) and should be
+    // low — by ~32ms the wrapper is already mid-transition. If there were a
+    // ring restart at 0% keyframe (opacity 0.75) with a static parent opacity,
+    // the product would spike near 0.75, well above 0.5.
+    expect(maxOpacity, 'ring effective opacity must never spike above 0.5 during fade').toBeLessThanOrEqual(0.5);
   });
 });
 
