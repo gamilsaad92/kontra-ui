@@ -156,44 +156,65 @@ test.describe('hint dot — cross-browser fade-out (no ring flash)', () => {
   test('ring does not flash visible during the 300ms fade-out window', async ({ page }) => {
     await page.goto(dealRoomUrl(PROP_A));
 
-    const hookPresent = await triggerAnalysisSaved(page);
-    expect(hookPresent, 'dev trigger-hint hook must be present').toBe(true);
+    const hintHookOk = await triggerAnalysisSaved(page);
+    expect(hintHookOk, 'dev trigger-hint hook must be present').toBe(true);
 
     const ringSpan = page.locator('[aria-label="New analysis available"] > span:first-child');
     await expect(page.locator('[aria-label="New analysis available"]')).toBeVisible({ timeout: 2000 });
 
-    // Trigger the real fade-out
-    await page.evaluate(() => window.__kontraTestTriggerDismiss__?.());
+    // Assert dismiss hook exists before calling it
+    const dismissHookPresent = await page.evaluate(
+      () => typeof window.__kontraTestTriggerDismiss__ === 'function'
+    );
+    expect(dismissHookPresent, 'dev trigger-dismiss hook must be present').toBe(true);
 
-    // Poll every ~16ms for 350ms. The ring element's effective opacity is the
-    // product of its own CSS opacity and the parent wrapper's opacity (which is
-    // transitioning from 1→0 over 300ms). After animation:none is applied, the
-    // ring is a static circle fading with its parent — it will never be MORE
-    // opaque than the wrapper. If animationPlayState:paused was used instead and
-    // paused at an early keyframe, the ring could appear at near-full opacity
-    // for several frames, which would be caught here.
-    let maxOpacity = 0;
+    // Trigger the real in-place fade-out (does NOT change activeTab)
+    await page.evaluate(() => window.__kontraTestTriggerDismiss__());
+
+    // ── Time-series opacity sampling ────────────────────────────────────────
+    // Strategy: a "flash" from animationPlayState:paused happens when the ping
+    // keyframe restarts at 0% (ring scale:1, ring opacity:0.75) AFTER the parent
+    // wrapper has already partially faded — producing an UPWARD jump in effective
+    // opacity. With `animation:none` the ring becomes a static element and can
+    // only fade monotonically with its parent.
+    //
+    // We assert no sample is MORE than a small epsilon (0.05) above the previous
+    // sample. Measurement jitter is fine; a jump ≥ 0.05 means the ring animation
+    // restarted and is the regression this test is designed to catch.
+    //
+    // Note: the first sample may be up to 0.75 (ring opacity-75 class × parent
+    // opacity still near 1). That is correct behavior — we don't cap the baseline,
+    // we only detect subsequent increases.
+    const EPSILON = 0.05; // tolerate tiny measurement-timing noise
+    let prevOpacity = null;
+    let upwardJump = null;
+
+    const getEffectiveOpacity = async () => ringSpan.evaluate((el) => {
+      if (!el.isConnected) return 0;
+      let o = 1;
+      let node = el;
+      while (node && node !== document.body) {
+        o *= parseFloat(getComputedStyle(node).opacity) ?? 1;
+        node = node.parentElement;
+      }
+      return o;
+    }).catch(() => 0);
+
     const start = Date.now();
-    while (Date.now() - start < 350) {
-      const opacity = await ringSpan.evaluate((el) => {
-        if (!el.isConnected) return 0;
-        // Walk up and multiply opacities to get the effective visual opacity
-        let o = 1;
-        let node = el;
-        while (node && node !== document.body) {
-          o *= parseFloat(getComputedStyle(node).opacity) || 0;
-          node = node.parentElement;
-        }
-        return o;
-      }).catch(() => 0);
-      if (opacity > maxOpacity) maxOpacity = opacity;
+    while (Date.now() - start < 380) {
+      const opacity = await getEffectiveOpacity();
+      if (prevOpacity !== null && opacity > prevOpacity + EPSILON) {
+        upwardJump = { from: prevOpacity, to: opacity, ms: Date.now() - start };
+        break;
+      }
+      prevOpacity = opacity;
       await page.waitForTimeout(16);
     }
-    // The maximum observed opacity should be ≤ 1.0 (obviously) and should be
-    // low — by ~32ms the wrapper is already mid-transition. If there were a
-    // ring restart at 0% keyframe (opacity 0.75) with a static parent opacity,
-    // the product would spike near 0.75, well above 0.5.
-    expect(maxOpacity, 'ring effective opacity must never spike above 0.5 during fade').toBeLessThanOrEqual(0.5);
+
+    expect(
+      upwardJump,
+      `ring opacity jumped upward during fade (${upwardJump ? `${upwardJump.from.toFixed(3)}→${upwardJump.to.toFixed(3)} at ${upwardJump.ms}ms` : 'none'}) — animation restart detected`
+    ).toBeNull();
   });
 });
 
