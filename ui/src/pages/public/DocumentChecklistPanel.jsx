@@ -129,6 +129,9 @@ export default function DocumentChecklistPanel({ propertyId, propertyType, role,
 
   const uploadedSections = new Set(analyses.map(a => a.section));
   const analysisBySection = Object.fromEntries(analyses.map(a => [a.section, a.analysis]));
+  const storagePathBySection = Object.fromEntries(
+    analyses.filter(a => a.storage_path).map(a => [a.section, a.storage_path])
+  );
 
   const requiredItems = template.filter(i => i.required);
   const doneCount = template.filter(i => uploadedSections.has(i.section)).length;
@@ -200,12 +203,25 @@ export default function DocumentChecklistPanel({ propertyId, propertyType, role,
     );
   }
 
+  async function handleDownload(storagePath, filename) {
+    const url = `${API_BASE}/api/public/document-url?path=${encodeURIComponent(storagePath)}`;
+    const a = document.createElement('a');
+    a.href = url;
+    a.target = '_blank';
+    a.rel = 'noopener noreferrer';
+    if (filename) a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  }
+
   // ── Item renderer (used in both flat and grouped views) ─────────────────────
   function renderItem(item) {
     const done = uploadedSections.has(item.section);
     const isUploading = uploadingSection === item.section;
     const analysis = analysisBySection[item.section];
     const isPending = analysis?.pending;
+    const storagePath = storagePathBySection[item.section] || null;
     const issues = done && !isPending ? getCompletenessIssues(analysis, item.section) : [];
     const facts = done && !isPending ? getInlineFacts(analysis, item.section) : [];
     const hasIssues = issues.length > 0;
@@ -335,6 +351,18 @@ export default function DocumentChecklistPanel({ propertyId, propertyType, role,
                   className="px-2 py-0.5 rounded text-[10px] font-medium border border-gray-100 text-gray-300 hover:text-gray-500 hover:border-gray-200 transition disabled:opacity-30">
                   re-upload
                 </button>
+                {storagePath && (
+                  <button
+                    onClick={() => handleDownload(storagePath, analyses.find(a => a.section === item.section)?.filename)}
+                    title="Download file"
+                    className="p-1 rounded text-gray-300 hover:text-gray-500 transition"
+                    aria-label="Download uploaded file">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5">
+                      <path d="M8 10.5a.75.75 0 0 1-.53-.22L4.72 7.53a.75.75 0 0 1 1.06-1.06L7 7.69V2.75a.75.75 0 0 1 1.5 0v4.94l1.22-1.22a.75.75 0 1 1 1.06 1.06L8.53 10.28A.75.75 0 0 1 8 10.5Z" />
+                      <path d="M2.5 13.25a.75.75 0 0 1 .75-.75h9.5a.75.75 0 0 1 0 1.5h-9.5a.75.75 0 0 1-.75-.75Z" />
+                    </svg>
+                  </button>
+                )}
               </>
             )}
             {/* Remove — visible on hover for coordinator only */}
