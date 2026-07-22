@@ -196,7 +196,7 @@ export default function TasksPanel({ propertyId, role }) {
           padding: '20px 20px 12px',
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <h3 style={{ fontSize: 14, fontWeight: 700, color: '#111827', margin: 0 }}>Tasks</h3>
+            <h3 style={{ fontSize: 14, fontWeight: 700, color: '#111827', margin: 0 }}>Today's Actions</h3>
             {criticalCount > 0 && (
               <span style={{
                 fontSize: 10, fontWeight: 700, padding: '2px 6px', borderRadius: 4,

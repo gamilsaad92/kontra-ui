@@ -1341,6 +1341,20 @@ export default function DealRoomPage() {
           <AIBriefingPanel propertyId={pid} ownerName={property.first_name} dealName={property.name || property.property_name} />
         )}
 
+        {/* Activity Timeline — right below briefing so "what changed?" is answered immediately */}
+        {property.isCustom && (
+          <div className="mb-6">
+            <ActivityTimeline propertyId={pid} />
+          </div>
+        )}
+
+        {/* Tasks / Today's Actions — AI-generated action items requiring attention */}
+        {property.isCustom && (
+          <div id="tasks-panel">
+            <TasksPanel propertyId={pid} role={role} />
+          </div>
+        )}
+
         {/* Role headline — owner gets concise Next Steps; others get role description */}
         <div className="bg-white rounded-2xl border border-gray-200 p-5 mb-6"
           style={{ borderLeftWidth: 4, borderLeftColor: roleConfig.color }}>
@@ -1418,15 +1432,6 @@ export default function DealRoomPage() {
           <TransactionRiskPanel propertyId={pid} />
         )}
 
-        {/* Tasks — Task Engine + AI Ownership Layer (Observe Mode). Every open
-            item has an explicit owner (human role or AI); AI-drafted actions
-            (e.g. reminder emails) require an explicit Approve click. */}
-        {property.isCustom && (
-          <div id="tasks-panel">
-            <TasksPanel propertyId={pid} role={role} />
-          </div>
-        )}
-
         {/* Deal Coordination Panel — party status + lifecycle stage */}
         {property.isCustom && (
           <DealCoordinationPanel
@@ -1452,12 +1457,6 @@ export default function DealRoomPage() {
           </div>
         )}
 
-        {/* Activity Timeline — last, historical record of everything above */}
-        {property.isCustom && (
-          <div className="mb-6">
-            <ActivityTimeline propertyId={pid} />
-          </div>
-        )}
 
         {/* Activity feed — demo rooms only */}
         {!property.isCustom && (

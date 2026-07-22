@@ -45,14 +45,16 @@ function RoleCard({ r, propertyId, senderName, onRemove }) {
 
   if (status === 'sent') {
     return (
-      <div className="rounded-xl border border-green-200 bg-green-50 px-4 py-3 flex items-start gap-3">
-        <span className="text-base mt-0.5">{r.icon}</span>
-        <div className="flex-1 min-w-0">
-          <p className="text-xs font-bold text-green-800">{r.label}</p>
-          <p className="text-[10px] text-green-600 mt-0.5">✓ Invite sent to <span className="font-semibold">{email}</span></p>
-          <button onClick={() => { setStatus('idle'); setEmail(''); }}
-            className="text-[9px] text-green-500 underline mt-1">Send another</button>
+      <div className="rounded-xl border border-green-200 bg-green-50 px-4 py-3">
+        <div className="flex items-center gap-2 mb-1.5">
+          <span className="text-base">{r.icon}</span>
+          <p className="text-xs font-bold text-green-800 flex-1 min-w-0">{r.label}</p>
+          <span className="text-[9px] font-bold text-green-700 bg-green-100 border border-green-200 rounded-full px-2 py-0.5 shrink-0">✓ Invited</span>
         </div>
+        <p className="text-[10px] text-green-600">Sent to <span className="font-semibold">{email}</span></p>
+        <p className="text-[10px] text-gray-400 mt-0.5">Awaiting documents</p>
+        <button onClick={() => { setStatus('idle'); setEmail(''); }}
+          className="text-[9px] text-green-500 underline mt-1.5 block">Send to another →</button>
       </div>
     );
   }
@@ -139,13 +141,15 @@ function CustomPartyCard({ propertyId, senderName }) {
 
   if (status === 'sent') {
     return (
-      <div className="rounded-xl border border-green-200 bg-green-50 px-4 py-3 flex items-start gap-3">
-        <span className="text-base mt-0.5">👤</span>
-        <div className="flex-1 min-w-0">
-          <p className="text-xs font-bold text-green-800">{label}</p>
-          <p className="text-[10px] text-green-600 mt-0.5">✓ Invite sent to <span className="font-semibold">{email}</span></p>
-          <button onClick={reset} className="text-[9px] text-green-500 underline mt-1">Send another</button>
+      <div className="rounded-xl border border-green-200 bg-green-50 px-4 py-3">
+        <div className="flex items-center gap-2 mb-1.5">
+          <span className="text-base">👤</span>
+          <p className="text-xs font-bold text-green-800 flex-1 min-w-0">{label}</p>
+          <span className="text-[9px] font-bold text-green-700 bg-green-100 border border-green-200 rounded-full px-2 py-0.5 shrink-0">✓ Invited</span>
         </div>
+        <p className="text-[10px] text-green-600">Sent to <span className="font-semibold">{email}</span></p>
+        <p className="text-[10px] text-gray-400 mt-0.5">Awaiting documents</p>
+        <button onClick={reset} className="text-[9px] text-green-500 underline mt-1.5 block">Send to another →</button>
       </div>
     );
   }

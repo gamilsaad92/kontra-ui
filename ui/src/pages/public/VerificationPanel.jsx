@@ -29,14 +29,21 @@ const STATUS_CONFIG = {
   },
 };
 
-const SEVERITY_COLOR = {
-  critical: "#dc2626",
-  warning: "#d97706",
-  info: "#6b7280",
+const SEVERITY_BADGE = {
+  critical: { icon: "○", label: "Critical",      bg: "#fef2f2", border: "#fecaca", color: "#991b1b", dot: "#dc2626" },
+  warning:  { icon: "○", label: "Moderate",      bg: "#fff7ed", border: "#fed7aa", color: "#c2410c", dot: "#f97316" },
+  info:     { icon: "○", label: "Informational", bg: "#eff6ff", border: "#bfdbfe", color: "#1d4ed8", dot: "#3b82f6" },
 };
 
-function StatusBadge({ status, small }) {
-  const cfg = STATUS_CONFIG[status] || STATUS_CONFIG.pending_review;
+function getCheckBadgeCfg(check) {
+  if (check.status === "verified")    return STATUS_CONFIG.verified;
+  if (check.status === "discrepancy") return STATUS_CONFIG.discrepancy;
+  if (check.severity && SEVERITY_BADGE[check.severity]) return SEVERITY_BADGE[check.severity];
+  return STATUS_CONFIG.pending_review;
+}
+
+function StatusBadge({ status, cfg: cfgOverride, small }) {
+  const cfg = cfgOverride || STATUS_CONFIG[status] || STATUS_CONFIG.pending_review;
   return (
     <span
       style={{
@@ -97,8 +104,7 @@ function SummaryBar({ summary }) {
 }
 
 function CheckRow({ check, isLast }) {
-  const cfg = STATUS_CONFIG[check.status] || STATUS_CONFIG.pending_review;
-  const sevColor = SEVERITY_COLOR[check.severity] || SEVERITY_COLOR.info;
+  const badgeCfg = getCheckBadgeCfg(check);
 
   return (
     <div
@@ -114,14 +120,14 @@ function CheckRow({ check, isLast }) {
             width: 7,
             height: 7,
             borderRadius: "50%",
-            background: check.status === "discrepancy" ? sevColor : cfg.dot,
+            background: badgeCfg.dot,
             marginTop: 5,
             flexShrink: 0,
           }}
         />
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-            <StatusBadge status={check.status} small />
+            <StatusBadge cfg={getCheckBadgeCfg(check)} small />
             {check.doc_section_a && (
               <span
                 style={{

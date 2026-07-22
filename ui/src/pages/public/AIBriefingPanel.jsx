@@ -166,13 +166,11 @@ function MorningContent({ briefing, firstName, dealName }) {
           marginBottom: 4,
           lineHeight: 1.1,
         }}>
-          {firstName ? `Good morning, ${firstName}.` : 'Good morning.'}
+          Morning Brief
         </h2>
-        {dealName && (
-          <p style={{ fontSize: 13, fontWeight: 600, color: '#9ca3af', marginBottom: 14 }}>
-            {dealName}
-          </p>
-        )}
+        <p style={{ fontSize: 13, fontWeight: 600, color: '#9ca3af', marginBottom: 14 }}>
+          {[firstName, dealName].filter(Boolean).join(' · ') || 'Deal Room'}
+        </p>
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
           <div>
             <p style={{ fontSize: 14, color: '#6b7280', lineHeight: 1.6 }}>
@@ -331,13 +329,11 @@ function AfternoonContent({ standup, briefing, firstName, dealName }) {
           marginBottom: 4,
           lineHeight: 1.1,
         }}>
-          {firstName ? `${timeOfDayGreeting()}, ${firstName}.` : `${timeOfDayGreeting()}.`}
+          Deal Operations Brief
         </h2>
-        {dealName && (
-          <p style={{ fontSize: 13, fontWeight: 600, color: '#9ca3af', marginBottom: 14 }}>
-            {dealName}
-          </p>
-        )}
+        <p style={{ fontSize: 13, fontWeight: 600, color: '#9ca3af', marginBottom: 14 }}>
+          {[firstName, dealName].filter(Boolean).join(' · ') || 'Deal Room'}
+        </p>
 
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
           {standup?.narrative ? (
@@ -611,7 +607,7 @@ export default function AIBriefingPanel({ propertyId, ownerName, dealName, onBri
           textTransform: 'uppercase',
           color: '#c4b5c8',
         }}>
-          AI Briefing · {morning ? 'Morning' : 'Afternoon'}
+          {morning ? 'Morning Brief' : 'Deal Operations Brief'}
         </p>
         {loadedAt && (
           <p style={{ fontSize: 9, color: '#d1d5db' }}>
