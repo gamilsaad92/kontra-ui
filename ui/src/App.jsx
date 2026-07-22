@@ -21,7 +21,6 @@ import HomePage from "./pages/public/HomePage";
 import PropertiesPage from "./pages/public/PropertiesPage";
 import PropertyDetailPage from "./pages/public/PropertyDetailPage";
 import ServiceProvidersPage from "./pages/public/ServiceProvidersPage";
-import AiToolsPage from "./pages/public/AiToolsPage";
 import PricingPage from "./pages/public/PricingPage";
 import TokenizationPage from "./pages/public/TokenizationPage";
 import HowItWorksPage from "./pages/public/HowItWorksPage";
@@ -69,7 +68,6 @@ function AuthedApp() {
         <Route path="/properties" element={<PropertiesPage />} />
         <Route path="/properties/:id" element={<PropertyDetailPage />} />
         <Route path="/service-providers" element={<ServiceProvidersPage />} />
-        <Route path="/ai-tools" element={<AiToolsPage />} />
         <Route path="/pricing" element={<PricingPage />} />
         <Route path="/tokenization" element={<TokenizationPage />} />
         <Route path="/how-it-works" element={<HowItWorksPage />} />

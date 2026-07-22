@@ -16,9 +16,9 @@ const ONBOARDING_STEPS = [
     cta: "Upload Document →",
   },
   {
-    n: 3, icon: "🤖", title: "Run AI analysis",
-    desc: "Get instant health scores, risk flags, and action items.", href: "/ai-tools",
-    cta: "Try Free Tools →",
+    n: 3, icon: "🤖", title: "AI analyzes automatically",
+    desc: "Every document you upload is analyzed instantly — risk flags, key metrics, and action items surface in your deal room.", href: "/create",
+    cta: "Open a Deal Room →",
   },
 ];
 
@@ -83,7 +83,7 @@ function OnboardingEmptyState({ userName }) {
         <div className="grid sm:grid-cols-3 gap-4 max-w-2xl mx-auto">
           {[
             { icon: "🏠", title: "Browse Listings", desc: "Discover deals on the marketplace", href: "/properties" },
-            { icon: "🤖", title: "Free AI Tools", desc: "Inspection analyzer, health score, and more", href: "/ai-tools" },
+            { icon: "🏢", title: "Open a Deal Room", desc: "Coordinate every party from one workspace", href: "/create" },
             { icon: "🔧", title: "Service Providers", desc: "Inspectors, appraisers, property managers", href: "/service-providers" },
           ].map((item) => (
             <Link key={item.title} to={item.href}
@@ -130,7 +130,7 @@ function PropertyDashboard({ properties, userName }) {
           { icon: "🏢", label: "My Properties", sub: `${properties.length} active`, href: "/app/properties", color: "#800020" },
           { icon: "⭐", label: "Watchlist", sub: "0 saved", href: "/app/watchlist", color: "#7c3aed" },
           { icon: "📁", label: "Documents", sub: "Upload docs", href: "/app/documents", color: "#2563eb" },
-          { icon: "🤖", label: "AI Review", sub: "Free tools", href: "/ai-tools", color: "#16a34a" },
+          { icon: "🏢", label: "Deal Room", sub: "Start a transaction", href: "/create", color: "#16a34a" },
         ].map((item) => (
           <Link key={item.label} to={item.href}
             className="group bg-white rounded-xl border border-gray-200 hover:border-gray-300 hover:shadow-sm transition-all p-4">
@@ -181,22 +181,22 @@ function PropertyDashboard({ properties, userName }) {
             </Link>
           </div>
 
-          {/* AI tools nudge */}
+          {/* Deal room nudge */}
           <div className="bg-white rounded-2xl border border-gray-200 p-5">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-sm font-bold text-gray-900">🤖 AI Tools — Free</h2>
-              <Link to="/ai-tools" className="text-xs font-medium" style={{ color: "#800020" }}>
-                View all →
+              <h2 className="text-sm font-bold text-gray-900">🏢 AI Transaction Workspace</h2>
+              <Link to="/create" className="text-xs font-medium" style={{ color: "#800020" }}>
+                Open one →
               </Link>
             </div>
             <div className="grid grid-cols-2 gap-3">
               {[
-                { icon: "🔍", title: "Inspection Analyzer", desc: "Upload report → get findings + cost estimates" },
-                { icon: "⚡", title: "Property Health Score", desc: "Get a 0–100 risk score in seconds" },
-                { icon: "🛡️", title: "Insurance Review", desc: "Find coverage gaps and expiration risks" },
-                { icon: "📊", title: "Financial Review", desc: "Upload P&L → get AI analysis" },
+                { icon: "🔍", title: "Document Intelligence", desc: "AI analyzes every uploaded document automatically" },
+                { icon: "⚡", title: "Deal Health Score", desc: "Real-time risk score across all parties and docs" },
+                { icon: "🛡️", title: "Role-Based Access", desc: "Every party sees only what they need" },
+                { icon: "📋", title: "Legal Intelligence", desc: "Surface legal docs and connect your attorney's AI" },
               ].map((tool) => (
-                <Link key={tool.title} to="/ai-tools"
+                <Link key={tool.title} to="/create"
                   className="group rounded-xl border border-gray-100 bg-gray-50 hover:bg-white hover:border-gray-200 hover:shadow-sm transition p-3">
                   <div className="text-xl mb-1.5">{tool.icon}</div>
                   <p className="text-xs font-semibold text-gray-900 group-hover:text-red-900 transition">{tool.title}</p>
@@ -236,7 +236,7 @@ function PropertyDashboard({ properties, userName }) {
             <div className="space-y-2.5">
               {[
                 { label: "Upload a document", desc: "Rent roll, inspection, insurance", href: "/app/documents", done: false },
-                { label: "Run AI analysis", desc: "Free — no account needed", href: "/ai-tools", done: false },
+                { label: "Open a deal room", desc: "AI analyzes every document as it arrives", href: "/create", done: false },
                 { label: "Request an inspection", desc: "Find inspectors in marketplace", href: "/service-providers", done: false },
               ].map((item, i) => (
                 <Link key={i} to={item.href}

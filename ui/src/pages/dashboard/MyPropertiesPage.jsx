@@ -16,8 +16,8 @@ function DigitalRegistryTab({ p }) {
   const PILLARS = [
     { label: "Property Claimed", desc: "Property record created in Kontra workspace", done: true },
     { label: "Documents Uploaded", desc: "Upload inspection, insurance, or financial docs to verify", done: false, href: "/app/documents" },
-    { label: "Inspection Verified", desc: "AI-analyzed third-party inspection report on file", done: false, href: "/ai-tools" },
-    { label: "Financials Verified", desc: "12-month operating statement uploaded and reviewed", done: false, href: "/ai-tools" },
+    { label: "Inspection Verified", desc: "AI-analyzed third-party inspection report on file", done: false, href: "/app/documents" },
+    { label: "Financials Verified", desc: "12-month operating statement uploaded and reviewed", done: false, href: "/app/documents" },
     { label: "Compliance Cleared", desc: "Insurance current, taxes paid, no open violations", done: false, href: "/app/compliance" },
   ];
 
@@ -239,18 +239,18 @@ function PropertyDetail({ p, onBack, updateProperty }) {
                 : `Add your first ${activeTab.toLowerCase()} item to get started.`}
             </p>
             {activeTab === "AI Analysis" ? (
-              <Link to="/ai-tools" className="mt-4 px-4 py-2 rounded-lg text-sm font-medium text-white" style={{ background: "#800020" }}>
-                Run Free AI Tools
+              <Link to="/create" className="mt-4 px-4 py-2 rounded-lg text-sm font-medium text-white" style={{ background: "#800020" }}>
+                Open a Deal Room
               </Link>
             ) : activeTab === "Service Providers" ? (
               <Link to="/service-providers" className="mt-4 px-4 py-2 rounded-lg text-sm font-medium text-white" style={{ background: "#800020" }}>
                 Browse Service Providers
               </Link>
             ) : (
-              <Link to={activeTab === "Documents" ? "/app/documents" : "/ai-tools"}
+              <Link to="/app/documents"
                 className="mt-4 px-4 py-2 rounded-lg text-sm font-medium text-white"
                 style={{ background: "#800020" }}>
-                {activeTab === "Documents" ? "Upload Document" : `Get Started`}
+                Upload Document
               </Link>
             )}
           </div>

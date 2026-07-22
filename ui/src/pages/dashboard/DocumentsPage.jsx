@@ -225,12 +225,6 @@ export default function DocumentsPage() {
                     </div>
                   )}
                 </div>
-                <div className="flex gap-2 mt-3">
-                  <Link to="/ai-tools"
-                    className="px-3 py-1.5 rounded-lg border border-gray-200 text-xs font-medium text-gray-600 hover:bg-gray-50">
-                    Run Full AI Analysis →
-                  </Link>
-                </div>
               </div>
             )}
           </div>
