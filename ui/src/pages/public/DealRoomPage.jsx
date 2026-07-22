@@ -9,6 +9,7 @@ import TasksPanel from "./TasksPanel";
 import AIBriefingPanel from "./AIBriefingPanel";
 import InvitePanel from "./InvitePanel";
 import DocumentsTabPanel from "./DocumentsTabPanel";
+import LegalReviewPanel from "./LegalReviewPanel";
 import { getTemplate } from "./documentChecklistUtils";
 import { DEFAULT_PACK_ID, getWorkflowPack, ensureWorkflowPackLoaded, resolvePackId } from "../../lib/workflowPacks";
 
@@ -1390,6 +1391,15 @@ export default function DealRoomPage() {
               refreshKey={analysesRefreshKey}
             />
           </div>
+        )}
+
+        {/* Legal Review — provider-agnostic legal AI interface (attorney role) */}
+        {property.isCustom && (
+          <LegalReviewPanel
+            propertyId={pid}
+            pack={pack}
+            isDemo={isDemo}
+          />
         )}
 
         {/* Invite panel — early in the flow so owner invites first */}
