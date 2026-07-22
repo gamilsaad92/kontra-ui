@@ -493,7 +493,7 @@ function UploadAnalyzePanel({ title, icon, endpoint, accept, uploadLabel, hint, 
             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
             <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
           </svg>
-          <p className="text-sm font-semibold text-gray-700">Analyzing with GPT-4o…</p>
+          <p className="text-sm font-semibold text-gray-700">Analyzing with AI…</p>
           <p className="text-xs text-gray-400 mt-1 truncate max-w-[200px] mx-auto">{fileName}</p>
         </div>
       )}
@@ -950,7 +950,7 @@ function RiskUploadPanel({ property, propertyId, refreshKey }) {
             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
             <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
           </svg>
-          <p className="text-sm font-semibold text-gray-700">Scoring with GPT-4o…</p>
+          <p className="text-sm font-semibold text-gray-700">Scoring with AI…</p>
         </div>
       )}
 
@@ -1393,7 +1393,7 @@ export default function DealRoomPage() {
           </div>
         )}
 
-        {/* Legal Review — provider-agnostic legal AI interface (attorney role) */}
+        {/* Legal Intelligence — provider-agnostic legal AI interface (attorney role) */}
         {property.isCustom && (
           <LegalReviewPanel
             propertyId={pid}

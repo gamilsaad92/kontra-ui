@@ -38,7 +38,7 @@ const FAQS = [
   },
   {
     q: "What documents does AI analyze?",
-    a: "Inspection reports, insurance policies, financial statements (with DSCR/NOI extraction), legal documents, and hotel PIP / brand standards — all powered by GPT-4o.",
+    a: "Inspection reports, insurance policies, financial statements (with DSCR/NOI extraction), legal documents, and hotel PIP / brand standards — all analyzed automatically.",
   },
   {
     q: "What is file versioning?",

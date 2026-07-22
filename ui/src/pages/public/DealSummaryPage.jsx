@@ -377,7 +377,7 @@ export default function DealSummaryPage() {
         {/* ── Footer ── */}
         <div className="border-t border-gray-100 pt-5 mt-4">
           <p className="text-[9px] text-gray-300 leading-relaxed mb-4">
-            This document was generated automatically by Kontra's AI deal room platform and is intended for internal use only.
+            This document was generated automatically by Kontra's AI transaction workspace and is intended for internal use only.
             AI-generated analyses are based on uploaded documents and should not be relied upon as the sole basis for any
             investment, lending, or legal decision. All parties should conduct independent due diligence.
             Kontra Platform, Inc. makes no warranties regarding the accuracy or completeness of this summary.

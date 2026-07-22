@@ -199,7 +199,7 @@ export default function WaitlistPage() {
             <p className="text-xs text-gray-500">lender, servicer, investor, borrower</p>
           </div>
           <div>
-            <p className="text-2xl font-bold text-black">GPT-4o</p>
+            <p className="text-2xl font-bold text-black">AI</p>
             <p className="text-xs text-gray-500">AI layer across all workflows</p>
           </div>
         </div>

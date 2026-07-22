@@ -348,7 +348,7 @@ function TerminalOutput({ status, result, errorMsg, sampleOutput }) {
           <div className="w-2.5 h-2.5 rounded-full bg-green-500" />
         </div>
         <span className="text-gray-500 text-xs">
-          {status === "loading" ? "Analyzing with GPT-4o…" : isReal ? "✓ AI Analysis Complete" : "Sample Output"}
+          {status === "loading" ? "Analyzing with AI…" : isReal ? "✓ AI Analysis Complete" : "Sample Output"}
         </span>
         {isReal && <span className="ml-auto px-1.5 py-0.5 rounded text-xs bg-green-900/50 text-green-400">Live</span>}
       </div>
@@ -430,7 +430,7 @@ export default function AiToolsPage() {
           </div>
           <h1 className="text-3xl md:text-4xl font-bold mb-4">AI Tools for Transaction Teams</h1>
           <p className="text-gray-400 text-sm max-w-xl mx-auto leading-relaxed">
-            Upload a document. Get real AI analysis in seconds. Inspection reports, insurance policies, financial statements — powered by GPT-4o.
+            Upload a document. Get real AI analysis in seconds. Inspection reports, insurance policies, financial statements — analyzed instantly by AI.
           </p>
         </div>
       </div>

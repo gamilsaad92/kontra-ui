@@ -48,7 +48,7 @@ const STEPS = [
     color: "#065f46",
     title: "AI Operations Manager coordinates every party",
     who: "Every party benefits",
-    desc: "Every uploaded document is analyzed by GPT-4o in seconds. Tasks are auto-assigned with deadlines. The AI Operations Manager surfaces what's blocking progress, identifies the critical path, and drafts follow-up messages — you decide what to send.",
+    desc: "Every uploaded document is analyzed by AI in seconds. Tasks are auto-assigned with deadlines. The AI Operations Manager surfaces what's blocking progress, identifies the critical path, and drafts follow-up messages — you decide what to send.",
     actions: [
       "Documents analyzed and structured automatically",
       "Tasks assigned to the right party with context",
