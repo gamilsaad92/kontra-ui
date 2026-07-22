@@ -169,7 +169,7 @@ function MorningContent({ briefing, firstName, dealName }) {
           Morning Brief
         </h2>
         <p style={{ fontSize: 13, fontWeight: 600, color: '#9ca3af', marginBottom: 14 }}>
-          {[firstName, dealName].filter(Boolean).join(' · ') || 'Deal Room'}
+          {dealName ? `${dealName} · Operations Manager` : 'Operations Manager'}
         </p>
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
           <div>
@@ -332,7 +332,7 @@ function AfternoonContent({ standup, briefing, firstName, dealName }) {
           Deal Operations Brief
         </h2>
         <p style={{ fontSize: 13, fontWeight: 600, color: '#9ca3af', marginBottom: 14 }}>
-          {[firstName, dealName].filter(Boolean).join(' · ') || 'Deal Room'}
+          {dealName ? `${dealName} · Operations Manager` : 'Operations Manager'}
         </p>
 
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>

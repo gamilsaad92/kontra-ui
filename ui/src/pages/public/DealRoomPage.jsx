@@ -1360,7 +1360,7 @@ export default function DealRoomPage() {
           style={{ borderLeftWidth: 4, borderLeftColor: roleConfig.color }}>
           {property.isCustom && role === "owner" ? (
             <>
-              <h2 className="text-base font-bold text-gray-900 mb-3">Next Steps</h2>
+              <h2 className="text-base font-bold text-gray-900 mb-3">Setup Checklist</h2>
               {!isDemo ? (
                 <OnboardingProgress
                   propertyId={pid}

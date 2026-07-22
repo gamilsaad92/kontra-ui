@@ -42,6 +42,23 @@ function getCheckBadgeCfg(check) {
   return STATUS_CONFIG.pending_review;
 }
 
+const SEVERITY_ORDER = { critical: 0, warning: 1, discrepancy: 2, info: 3, verified: 4 };
+
+function groupChecksBySeverity(checks) {
+  const groups = {};
+  for (const check of checks) {
+    const cfg = getCheckBadgeCfg(check);
+    const key = check.status === "verified" ? "verified"
+              : check.status === "discrepancy" ? "discrepancy"
+              : (check.severity || "info");
+    if (!groups[key]) groups[key] = { cfg, items: [] };
+    groups[key].items.push(check);
+  }
+  return Object.entries(groups)
+    .sort(([a], [b]) => (SEVERITY_ORDER[a] ?? 5) - (SEVERITY_ORDER[b] ?? 5))
+    .map(([key, g]) => ({ key, ...g }));
+}
+
 function StatusBadge({ status, cfg: cfgOverride, small }) {
   const cfg = cfgOverride || STATUS_CONFIG[status] || STATUS_CONFIG.pending_review;
   return (
@@ -379,12 +396,42 @@ export default function VerificationPanel({ propertyId }) {
                       <span>Run #{runNum} · {runChecks.length} check{runChecks.length !== 1 ? 's' : ''}</span>
                       <span>{runTime}</span>
                     </div>
-                    {runChecks.map((check, i) => (
-                      <CheckRow
-                        key={check.id || `${run.run_id}-${check.check_type}-${i}`}
-                        check={check}
-                        isLast={i === runChecks.length - 1}
-                      />
+                    {groupChecksBySeverity(runChecks).map(group => (
+                      <div key={group.key} style={{ marginBottom: 8 }}>
+                        <div style={{
+                          display: "flex", alignItems: "center", gap: 7,
+                          padding: "8px 0 5px", borderTop: "1px solid #f3f4f6",
+                        }}>
+                          <div style={{
+                            width: 7, height: 7, borderRadius: "50%",
+                            background: group.cfg.dot, flexShrink: 0,
+                          }} />
+                          <span style={{ fontSize: 11, fontWeight: 700, color: group.cfg.color }}>
+                            {group.cfg.label}
+                          </span>
+                          <span style={{ fontSize: 10, color: "#9ca3af" }}>
+                            ({group.items.length})
+                          </span>
+                        </div>
+                        {group.items.map((check, i) => (
+                          <div key={check.id || i} style={{
+                            display: "flex", alignItems: "flex-start", gap: 6,
+                            padding: "3px 0 3px 16px",
+                          }}>
+                            <span style={{ fontSize: 11, color: "#9ca3af", flexShrink: 0, marginTop: 1 }}>•</span>
+                            <div style={{ minWidth: 0 }}>
+                              <p style={{ margin: 0, fontSize: 12, color: "#374151", lineHeight: 1.5 }}>
+                                {check.description}
+                              </p>
+                              {check.value_a != null && check.value_b != null && check.delta_pct != null && (
+                                <p style={{ margin: "2px 0 0", fontSize: 11, color: "#6b7280" }}>
+                                  Gap: {check.delta_pct.toFixed(1)}%
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
                     ))}
                   </div>
                 );
