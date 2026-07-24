@@ -6,10 +6,11 @@ import ActivityTimeline from "./ActivityTimeline";
 import CommentsPanel from "./CommentsPanel";
 import TransactionRiskPanel from "./TransactionRiskPanel";
 import TasksPanel from "./TasksPanel";
-import AIOperationsManager from "./AIOperationsManager";
-import DailyStandup from "./DailyStandup";
+import AIBriefingPanel from "./AIBriefingPanel";
 import InvitePanel from "./InvitePanel";
-import DocumentChecklistPanel from "./DocumentChecklistPanel";
+import DocumentsTabPanel from "./DocumentsTabPanel";
+import LegalReviewPanel from "./LegalReviewPanel";
+import VerifiedAssetPackage from "./VerifiedAssetPackage";
 import { getTemplate } from "./documentChecklistUtils";
 import { DEFAULT_PACK_ID, getWorkflowPack, ensureWorkflowPackLoaded, resolvePackId } from "../../lib/workflowPacks";
 
@@ -493,7 +494,7 @@ function UploadAnalyzePanel({ title, icon, endpoint, accept, uploadLabel, hint, 
             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
             <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
           </svg>
-          <p className="text-sm font-semibold text-gray-700">Analyzing with GPT-4o…</p>
+          <p className="text-sm font-semibold text-gray-700">Analyzing with AI…</p>
           <p className="text-xs text-gray-400 mt-1 truncate max-w-[200px] mx-auto">{fileName}</p>
         </div>
       )}
@@ -950,7 +951,7 @@ function RiskUploadPanel({ property, propertyId, refreshKey }) {
             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
             <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
           </svg>
-          <p className="text-sm font-semibold text-gray-700">Scoring with GPT-4o…</p>
+          <p className="text-sm font-semibold text-gray-700">Scoring with AI…</p>
         </div>
       )}
 
@@ -982,6 +983,7 @@ function RiskUploadPanel({ property, propertyId, refreshKey }) {
 }
 
 // ── Shared hook: fetch all saved AI analyses for a deal room ─────────────
+// Kept here for RiskUploadPanel (auto-fill from extracted numbers).
 function useDealAnalyses(propertyId, refreshKey) {
   const [analyses, setAnalyses] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -996,172 +998,6 @@ function useDealAnalyses(propertyId, refreshKey) {
   }, [propertyId, refreshKey]);
 
   return { analyses, loading };
-}
-
-// ── Deal Intelligence Dashboard — shows all saved AI analyses. Which
-// sections get a card, and how each one is badged/highlighted, comes from
-// the active Workflow Pack — this component has no CRE-specific knowledge. ──
-function DealIntelligenceDashboard({ propertyId, refreshKey, packId = DEFAULT_PACK_ID }) {
-  const { analyses, loading } = useDealAnalyses(propertyId, refreshKey);
-  const pack = getWorkflowPack(packId);
-  const SECTIONS = pack.intelligenceSections || [];
-  const getBadge = pack.getIntelligenceBadge || (() => null);
-  const getHighlight = pack.getIntelligenceHighlight || (() => null);
-
-  // Latest per section
-  const bySection = {};
-  for (const a of analyses) {
-    if (!bySection[a.section]) bySection[a.section] = a;
-  }
-
-  const doneCount = SECTIONS.filter(s => bySection[s.key]).length;
-
-  if (SECTIONS.length === 0) return null;
-
-  if (loading) return (
-    <div className="bg-white rounded-2xl border border-gray-200 p-5 mb-6 animate-pulse">
-      <div className="h-4 w-32 bg-gray-100 rounded mb-3" />
-      <div className="h-16 bg-gray-50 rounded-xl" />
-    </div>
-  );
-
-  return (
-    <div className="bg-white rounded-2xl border border-gray-200 p-5 mb-6">
-      <div className="flex items-center justify-between mb-4">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">Deal Intelligence</p>
-          <p className="text-base font-bold text-gray-900 mt-0.5">
-            {doneCount === 0 ? "Upload documents to begin AI analysis" : `${doneCount}/${SECTIONS.length} sections analyzed`}
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          {doneCount > 0 && (
-            <a href={`/deal-room/${propertyId}/summary`} target="_blank" rel="noopener noreferrer"
-              className="px-3 py-1.5 rounded-lg text-xs font-semibold text-gray-600 bg-gray-100 hover:bg-gray-200 transition">
-              🖨 Print Summary
-            </a>
-          )}
-          <div className="text-2xl font-black" style={{ color: doneCount === SECTIONS.length ? "#16a34a" : doneCount >= 1 ? "#d97706" : "#9ca3af" }}>
-            {Math.round(doneCount / SECTIONS.length * 100)}%
-          </div>
-        </div>
-      </div>
-
-      {/* Readiness bar */}
-      <div className="h-1.5 w-full rounded-full bg-gray-100 overflow-hidden mb-4">
-        <div className="h-full rounded-full transition-all duration-700"
-          style={{ width: `${Math.round(doneCount / SECTIONS.length * 100)}%`, background: doneCount === SECTIONS.length ? "#16a34a" : "#d97706" }} />
-      </div>
-
-      <div className="space-y-2.5">
-        {SECTIONS.map(({ key, icon, label, color }) => {
-          const a = bySection[key];
-          if (!a) return (
-            <div key={key} className="flex items-center gap-3 px-4 py-3 rounded-xl bg-gray-50 border border-gray-100">
-              <span className="text-lg">{icon}</span>
-              <div className="flex-1">
-                <p className="text-xs font-semibold text-gray-400">{label}</p>
-                <p className="text-[10px] text-gray-300">Awaiting upload</p>
-              </div>
-              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-gray-100 text-gray-400">Pending</span>
-            </div>
-          );
-          const badge = getBadge(key, a.analysis);
-          const highlight = getHighlight(key, a.analysis);
-          return (
-            <div key={key} className="px-4 py-3 rounded-xl border border-gray-100 bg-gray-50">
-              <div className="flex items-center justify-between mb-1">
-                <div className="flex items-center gap-2 min-w-0">
-                  <span className="text-base shrink-0">{icon}</span>
-                  <p className="text-xs font-bold text-gray-800">{label}</p>
-                  <span className="text-[10px] text-gray-400 truncate hidden sm:block">{a.filename}</span>
-                  {a.storage_path && (
-                    <a
-                      href={`${API_BASE}/api/public/document-url?path=${encodeURIComponent(a.storage_path)}`}
-                      target="_blank" rel="noopener noreferrer"
-                      className="text-[10px] font-semibold px-2 py-0.5 rounded-full border hidden sm:inline-flex items-center gap-1 hover:bg-gray-100 transition shrink-0"
-                      style={{ color: "#800020", borderColor: "#80002030" }}>
-                      ↓ Original
-                    </a>
-                  )}
-                </div>
-                {badge && (
-                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 ml-2"
-                    style={{ background: badge.color + "18", color: badge.color }}>
-                    {badge.label}
-                  </span>
-                )}
-              </div>
-              {a.analysis.summary && (
-                <p className="text-xs text-gray-600 leading-relaxed mt-1">
-                  {a.analysis.summary.slice(0, 200)}{a.analysis.summary.length > 200 ? "…" : ""}
-                </p>
-              )}
-              {highlight && (
-                <p className="text-xs font-semibold mt-1" style={{ color }}>{highlight}</p>
-              )}
-              <p className="text-[10px] text-gray-400 mt-1.5">
-                Uploaded by {a.uploaded_by_role} · {new Date(a.created_at).toLocaleDateString()}
-              </p>
-            </div>
-          );
-        })}
-      </div>
-
-      {doneCount === SECTIONS.length && (
-        <div className="mt-4 p-3 rounded-xl bg-green-50 border border-green-100">
-          <p className="text-xs font-semibold text-green-800">✓ Deal room fully populated — ready to share with your lender</p>
-          <p className="text-[10px] text-green-600 mt-0.5">All key sections have been analyzed. Use the invite links below to send the lender their view.</p>
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ── Financial Summary — read-only rollup of key numbers already extracted ──
-// by AI from the purchase agreement, rent roll, and financial statements.
-// No upload button here — this is purely derived from the checklist above.
-// The rollup fields and covenant flag come from the active Workflow Pack —
-// this component has no CRE-specific knowledge of NOI/DSCR/etc.
-function FinancialSnapshotPanel({ propertyId, refreshKey, packId = DEFAULT_PACK_ID }) {
-  const { analyses, loading } = useDealAnalyses(propertyId, refreshKey);
-  const pack = getWorkflowPack(packId);
-
-  const bySection = {};
-  for (const a of analyses) if (!bySection[a.section]) bySection[a.section] = a.analysis;
-
-  const stats = (pack.getSnapshotStats ? pack.getSnapshotStats(bySection) : []);
-
-  if (loading) return (
-    <div className="bg-white rounded-2xl border border-gray-200 p-5 mb-6 animate-pulse">
-      <div className="h-4 w-32 bg-gray-100 rounded mb-3" />
-      <div className="h-16 bg-gray-50 rounded-xl" />
-    </div>
-  );
-
-  if (stats.length === 0) return null;
-
-  const covenantFlag = pack.getSnapshotFlag ? pack.getSnapshotFlag(bySection) : null;
-
-  return (
-    <div className="bg-white rounded-2xl border border-gray-200 p-5 mb-6">
-      <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-4">Financial Summary</p>
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
-        {stats.map(s => (
-          <div key={s.label} className="rounded-xl bg-gray-50 border border-gray-100 px-3 py-2.5 text-center">
-            <div className="text-sm font-bold text-gray-800">{s.value}</div>
-            <div className="text-[10px] text-gray-400 mt-0.5">{s.label}</div>
-          </div>
-        ))}
-      </div>
-      {covenantFlag && (
-        <div className={`mt-3 px-3 py-2 rounded-xl text-xs font-medium ${covenantFlag.sev === "error" ? "bg-red-50 text-red-700" : "bg-amber-50 text-amber-700"}`}>
-          ⚠ {covenantFlag.text}
-        </div>
-      )}
-      <p className="text-[10px] text-gray-400 mt-3">Pulled automatically from documents already uploaded — no need to re-enter these numbers.</p>
-    </div>
-  );
 }
 
 // Build pending section map based on role
@@ -1497,21 +1333,27 @@ export default function DealRoomPage() {
           <ReadinessSummaryBar property={property} />
         )}
 
-        {/* AI Operations Manager — the primary interface, not a reporting
-            dashboard. Advisor feedback: "the AI should talk first, the UI
-            should be supporting evidence." This must render before the Next
-            Steps card so the greeting + status is the very first thing an
-            owner sees, not buried below a checklist. See lib/operationsManager.js
-            and .agents/memory/kontra-task-architecture.md. */}
+        {/* AI Briefing Panel — unified morning/afternoon advisor view.
+            Adapts content by time of day: morning briefing + next actions
+            before noon; standup-style summary (what moved, what's open,
+            tomorrow's plan) from noon onwards. Both endpoints are fetched
+            in parallel so switching between them is instant. */}
         {property.isCustom && (
-          <AIOperationsManager propertyId={pid} ownerName={property.first_name} dealName={property.name || property.property_name} />
+          <AIBriefingPanel propertyId={pid} ownerName={property.first_name} dealName={property.name || property.property_name} />
         )}
 
-        {/* Daily Standup — evening counterpart to the morning briefing above.
-            Same grounding (Task Engine + closing chain), different lens: what
-            moved today, what's still open, and what's planned for tomorrow. */}
+        {/* Activity Timeline — right below briefing so "what changed?" is answered immediately */}
         {property.isCustom && (
-          <DailyStandup propertyId={pid} ownerName={property.first_name} />
+          <div className="mb-6">
+            <ActivityTimeline propertyId={pid} />
+          </div>
+        )}
+
+        {/* Tasks / Today's Actions — AI-generated action items requiring attention */}
+        {property.isCustom && (
+          <div id="tasks-panel">
+            <TasksPanel propertyId={pid} role={role} />
+          </div>
         )}
 
         {/* Role headline — owner gets concise Next Steps; others get role description */}
@@ -1519,7 +1361,7 @@ export default function DealRoomPage() {
           style={{ borderLeftWidth: 4, borderLeftColor: roleConfig.color }}>
           {property.isCustom && role === "owner" ? (
             <>
-              <h2 className="text-base font-bold text-gray-900 mb-3">Next Steps</h2>
+              <h2 className="text-base font-bold text-gray-900 mb-3">Setup Checklist</h2>
               {!isDemo ? (
                 <OnboardingProgress
                   propertyId={pid}
@@ -1551,18 +1393,28 @@ export default function DealRoomPage() {
           )}
         </div>
 
-        {/* Due Diligence Checklist */}
+        {/* Documents panel — Checklist + Intelligence tabs */}
         {property.isCustom && (
           <div id="documents-panel">
-            <DocumentChecklistPanel
+            <DocumentsTabPanel
               propertyId={pid}
               propertyType={property.property_type || property.type}
               role={role}
               isDemo={isDemo}
               packId={packId}
               onAnalysisSaved={onAnalysisSaved}
+              refreshKey={analysesRefreshKey}
             />
           </div>
+        )}
+
+        {/* Legal Intelligence — provider-agnostic legal AI interface (attorney role) */}
+        {property.isCustom && (
+          <LegalReviewPanel
+            propertyId={pid}
+            pack={pack}
+            isDemo={isDemo}
+          />
         )}
 
         {/* Invite panel — early in the flow so owner invites first */}
@@ -1581,36 +1433,6 @@ export default function DealRoomPage() {
           <TransactionRiskPanel propertyId={pid} />
         )}
 
-        {/* Tasks — Task Engine + AI Ownership Layer (Observe Mode). Every open
-            item has an explicit owner (human role or AI); AI-drafted actions
-            (e.g. reminder emails) require an explicit Approve click. */}
-        {property.isCustom && (
-          <div id="tasks-panel">
-            <TasksPanel propertyId={pid} role={role} />
-          </div>
-        )}
-
-        {/* Deal Intelligence Dashboard (AI Findings) — reveals as documents are uploaded.
-            Pack-driven: which sections appear and how they're badged comes from the
-            active Workflow Pack, so this renders nothing until a pack defines any. */}
-        {property.isCustom && (
-          <DealIntelligenceDashboard
-            propertyId={pid}
-            refreshKey={analysesRefreshKey}
-            packId={packId}
-          />
-        )}
-
-        {/* Financial Summary — auto-derived from uploaded docs, no re-entry. Pack-driven:
-            renders nothing until a pack's getSnapshotStats returns something. */}
-        {property.isCustom && (
-          <FinancialSnapshotPanel
-            propertyId={pid}
-            refreshKey={analysesRefreshKey}
-            packId={packId}
-          />
-        )}
-
         {/* Deal Coordination Panel — party status + lifecycle stage */}
         {property.isCustom && (
           <DealCoordinationPanel
@@ -1619,6 +1441,12 @@ export default function DealRoomPage() {
             packId={packId}
             propertyType={property.property_type || property.type}
           />
+        )}
+
+        {/* Verified Asset Package — structured digital closing record.
+            Shows a teaser during earlier stages; full package at Closing / Funded. */}
+        {property.isCustom && !isDemo && (
+          <VerifiedAssetPackage propertyId={pid} />
         )}
 
         {/* Outstanding Items — role-scoped sections (risk/compliance/property).
@@ -1636,12 +1464,6 @@ export default function DealRoomPage() {
           </div>
         )}
 
-        {/* Activity Timeline — last, historical record of everything above */}
-        {property.isCustom && (
-          <div className="mb-6">
-            <ActivityTimeline propertyId={pid} />
-          </div>
-        )}
 
         {/* Activity feed — demo rooms only */}
         {!property.isCustom && (

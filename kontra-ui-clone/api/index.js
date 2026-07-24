@@ -26,10 +26,15 @@ const {
   notifyStageAdvance,
   notifyStatusChange,
   notifyOwner,
+  notifyVAPReady,
 } = require('./lib/dealRoomHelpers');
 const aiDealReviewRouter = require('./routers/aiDealReview');
 const tasksRouter = require('./routers/tasks');
 const operationsManagerRouter = require('./routers/operationsManager');
+const verificationRouter = require('./routers/verification');
+const { runVerification } = require('./lib/verificationEngine');
+const verifiedAssetPackageRouter = require('./routers/verifiedAssetPackage');
+const { generateAndStoreVAP } = require('./routers/verifiedAssetPackage');
 const { evaluateDealRoomForTasks } = require('./lib/taskEngine');
 
 // Pack inference map — mirrors DEAL_TYPE_TO_PACK in dealRoomHelpers.js so that
@@ -1889,6 +1894,7 @@ app.post('/api/public/deal-room/:propertyId/track-document', upload.single('file
           notifyOwner(propertyId, section, result.summary).catch(() => {});
           logEvent(propertyId, 'document_analyzed', role || 'owner', null, `${SECTION_LABELS[section]} analyzed by AI`, { section, filename }).catch(() => {});
           evaluateDealRoomForTasks(propertyId).catch(e => console.warn('[tasks] auto-evaluate on analysis failed:', e.message));
+          getRoomPackId(propertyId).then(packId => runVerification(propertyId, packId)).catch(e => console.warn('[verification] trigger failed:', e.message));
           console.log(`[track-document] ✓ ${section} analyzed${needsVision ? ' (vision)' : ''} — confidence ${result.confidence}`);
         } catch (aiErr) {
           console.warn(`[track-document] AI failed for ${section}:`, aiErr.message);
@@ -2055,8 +2061,26 @@ app.post('/api/public/deal-room/:propertyId/advance', async (req, res) => {
     logEvent(propertyId, 'stage_advanced', 'owner', null, `Deal advanced to ${getPackStageLabel(packId, stage)}`, { stage });
     res.json({ ok: true, stage });
     notifyStageAdvance(propertyId, stage).catch(() => {});
-    // When a deal funds — seal the immutable closing record
-    if (stage === 'funded') sealClosingRecord(propertyId).catch(() => {});
+    // When a deal reaches closing or funded — generate + persist the VAP and notify the owner.
+    // generateAndStoreVAP returns null on failure (it swallows errors internally), so we
+    // gate all downstream actions on a truthy return value to avoid sending a "ready" email
+    // when the package actually failed to build.
+    if (stage === 'closing') {
+      generateAndStoreVAP(propertyId, { seal: false })
+        .then(pkg => { if (pkg) return notifyVAPReady(propertyId, stage); })
+        .catch(() => {});
+    }
+    if (stage === 'funded') {
+      generateAndStoreVAP(propertyId, { seal: true })
+        .then(pkg => {
+          if (!pkg) return;
+          return Promise.all([
+            sealClosingRecord(propertyId),
+            notifyVAPReady(propertyId, stage),
+          ]);
+        })
+        .catch(() => {});
+    }
   } catch (err) {
     console.error('[advance]', err.message);
     res.status(500).json({ error: err.message });
@@ -2138,6 +2162,8 @@ app.use('/api/ai', aiDealReviewRouter);
 // requireOrgContext (same property-scoped access model as the other public
 // deal-room routes above). See lib/taskEngine.js for the Observe Mode rules.
 app.use('/api/public', tasksRouter);
+app.use('/api/public', verificationRouter);
+app.use(verifiedAssetPackageRouter);
 
 // AI Operations Manager — PUBLIC, must stay BEFORE requireOrgContext. Answer
 // engine grounded in the Task Engine above; read-only, no task mutation.
@@ -3861,8 +3887,14 @@ async function ensureWorkflowPackIdColumn() {
     await pool.query(
       `ALTER TABLE deal_rooms ADD COLUMN IF NOT EXISTS workflow_pack_id text DEFAULT 'cre_acquisition'`
     );
+    await pool.query(
+      `ALTER TABLE deal_rooms ADD COLUMN IF NOT EXISTS stated_revenue NUMERIC`
+    );
+    await pool.query(
+      `ALTER TABLE deal_rooms ADD COLUMN IF NOT EXISTS stated_ebitda NUMERIC`
+    );
     await pool.end();
-    console.log('[startup] deal_rooms.workflow_pack_id column ready');
+    console.log('[startup] deal_rooms.workflow_pack_id + stated_revenue + stated_ebitda columns ready');
   } catch (err) {
     // Non-fatal: Supabase service role may not allow DDL via pooler — fall back gracefully
     console.warn('[startup] workflow_pack_id column ensure skipped:', err.message);

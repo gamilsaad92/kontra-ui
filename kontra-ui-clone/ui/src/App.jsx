@@ -21,13 +21,13 @@ import HomePage from "./pages/public/HomePage";
 import PropertiesPage from "./pages/public/PropertiesPage";
 import PropertyDetailPage from "./pages/public/PropertyDetailPage";
 import ServiceProvidersPage from "./pages/public/ServiceProvidersPage";
-import AiToolsPage from "./pages/public/AiToolsPage";
 import PricingPage from "./pages/public/PricingPage";
 import TokenizationPage from "./pages/public/TokenizationPage";
 import HowItWorksPage from "./pages/public/HowItWorksPage";
 import DealRoomPage from "./pages/public/DealRoomPage";
 import DealSummaryPage from "./pages/public/DealSummaryPage";
 import DealSharePage from "./pages/public/DealSharePage";
+import SharedVAPPage from "./pages/public/SharedVAPPage";
 import CreateDealRoomPage from "./pages/public/CreateDealRoomPage";
 import WorkflowPackBuilderPage from "./pages/public/WorkflowPackBuilderPage";
 import MyDealRoomsPage from "./pages/public/MyDealRoomsPage";
@@ -35,6 +35,7 @@ import CheckoutSuccessPage from "./pages/public/CheckoutSuccessPage";
 import CheckoutCancelPage from "./pages/public/CheckoutCancelPage";
 import PrivacyPage from "./pages/public/PrivacyPage";
 import TermsPage from "./pages/public/TermsPage";
+import SecurityPage from "./pages/public/SecurityPage";
 import AboutPage from "./pages/public/AboutPage";
 
 // Unified workspace — any authenticated user
@@ -68,13 +69,13 @@ function AuthedApp() {
         <Route path="/properties" element={<PropertiesPage />} />
         <Route path="/properties/:id" element={<PropertyDetailPage />} />
         <Route path="/service-providers" element={<ServiceProvidersPage />} />
-        <Route path="/ai-tools" element={<AiToolsPage />} />
         <Route path="/pricing" element={<PricingPage />} />
         <Route path="/tokenization" element={<TokenizationPage />} />
         <Route path="/how-it-works" element={<HowItWorksPage />} />
         <Route path="/deal-room/:propertyId" element={<DealRoomPage />} />
         <Route path="/deal-room/:propertyId/summary" element={<DealSummaryPage />} />
         <Route path="/deal-room/:propertyId/share" element={<DealSharePage />} />
+        <Route path="/verify/:token" element={<SharedVAPPage />} />
         <Route path="/create-deal-room" element={<CreateDealRoomPage />} />
         <Route path="/workflow-pack-builder" element={<WorkflowPackBuilderPage />} />
         <Route path="/my-deal-rooms" element={<MyDealRoomsPage />} />
@@ -82,6 +83,7 @@ function AuthedApp() {
         <Route path="/checkout/cancel" element={<CheckoutCancelPage />} />
         <Route path="/privacy" element={<PrivacyPage />} />
         <Route path="/terms" element={<TermsPage />} />
+        <Route path="/security" element={<SecurityPage />} />
         <Route path="/about" element={<AboutPage />} />
         <Route path="/waitlist" element={<WaitlistPage />} />
         <Route path="/login" element={<LoginPage />} />
