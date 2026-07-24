@@ -209,6 +209,21 @@ async function sealClosingRecord(propertyId) {
   }
 }
 
+// ── Notification audit log ─────────────────────────────────────────────────
+// Appends a record to deal_notifications so owners can see what emails were sent.
+// Fails silently if the table doesn't exist yet (migration may be pending).
+async function logNotification(propertyId, type, toEmail, subject) {
+  try {
+    await supabase.from('deal_notifications').insert({
+      property_id: propertyId,
+      type,
+      to_email: toEmail,
+      subject,
+      sent_at: new Date().toISOString(),
+    });
+  } catch (_) { /* silent — table may not exist */ }
+}
+
 // ── Owner email notification helper ───────────────────────────────────────
 async function notifyPartySubmitted(propertyId, role, name) {
   try {
@@ -224,13 +239,14 @@ async function notifyPartySubmitted(propertyId, role, name) {
     const submitterName = name || roleLabel;
     const ownerName = room.first_name || 'there';
     const propName = room.property_name || propertyId;
+    const subject = `${submitterName} submitted their documents — ${propName}`;
     await fetch('https://api.resend.com/emails', {
       method: 'POST',
       headers: { Authorization: `Bearer ${RESEND_KEY}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
         from: 'Kontra <notifications@kontraplatform.com>',
         to: room.customer_email,
-        subject: `${submitterName} submitted their documents — ${propName}`,
+        subject,
         html: `<div style="font-family:sans-serif;max-width:520px;margin:auto;padding:24px">
           <h2 style="color:#800020;margin-bottom:4px">Party documents submitted</h2>
           <p style="color:#555">Hi ${ownerName},</p>
@@ -240,6 +256,7 @@ async function notifyPartySubmitted(propertyId, role, name) {
         </div>`,
       }),
     });
+    await logNotification(propertyId, 'party_submitted', room.customer_email, subject);
   } catch (e) {
     console.warn('[notifyPartySubmitted]', e.message);
   }
@@ -269,6 +286,8 @@ async function notifyLender(propertyId, uploaderRole, section, summary) {
         html: `<div style="font-family:sans-serif;max-width:520px;margin:auto;padding:24px"><h2 style="color:#800020;margin-bottom:4px">Document ready for review</h2><p style="color:#555">Hi ${lenderRes.data.name || 'there'},</p><p style="color:#555">The <strong>${uploaderLabel}</strong> uploaded a <strong>${SECTION_LABELS[section] || section}</strong> to <strong>${propName}</strong>. AI has analyzed it and it is ready for your review.</p>${summary ? `<p style="background:#f9fafb;border-radius:8px;padding:12px;color:#374151;font-size:14px">${summary}</p>` : ''}<a href="https://kontraplatform.com/deal-room/${propertyId}?role=lender" style="display:inline-block;margin-top:16px;padding:12px 20px;background:#800020;color:white;border-radius:8px;text-decoration:none;font-weight:bold">Review Deal Room →</a><p style="color:#aaa;font-size:12px;margin-top:24px">Kontra · CRE Deal Intelligence</p></div>`,
       }),
     });
+    const lenderSubject = `New document ready for review: ${SECTION_LABELS[section] || section} — ${propName}`;
+    await logNotification(propertyId, 'lender_doc_ready', lenderRes.data.email, lenderSubject);
     console.log(`[notifyLender] sent for ${section}`);
   } catch (e) { console.warn('[notifyLender]', e.message); }
 }
@@ -303,6 +322,7 @@ async function notifyStageAdvance(propertyId, stage) {
         emails.push({ to: sub.email, name: sub.name, role: sub.role });
       }
     }
+    const stageSubject = `Deal advanced to ${stageLabel} — ${propName}`;
     await Promise.allSettled(emails.map(({ to, name, role }) =>
       fetch('https://api.resend.com/emails', {
         method: 'POST',
@@ -310,11 +330,12 @@ async function notifyStageAdvance(propertyId, stage) {
         body: JSON.stringify({
           from: 'Kontra <notifications@kontraplatform.com>',
           to,
-          subject: `Deal advanced to ${stageLabel} — ${propName}`,
+          subject: stageSubject,
           html: makeHtml(name, role),
         }),
       })
     ));
+    await Promise.allSettled(emails.map(({ to }) => logNotification(propertyId, 'stage_advance', to, stageSubject)));
     console.log(`[notifyStageAdvance] sent to ${emails.length} recipient(s) for stage=${stage}`);
   } catch (e) { console.warn('[notifyStageAdvance]', e.message); }
 }
@@ -352,6 +373,7 @@ async function notifyStatusChange(propertyId, subRole, status, statusNote, updat
         </div>`,
       }),
     });
+    await logNotification(propertyId, 'status_change', room.customer_email, `${partyLabel} submission: ${statusLabel} — ${propName}`);
     console.log(`[notifyStatusChange] sent for ${subRole} → ${status}`);
   } catch (e) { console.warn('[notifyStatusChange]', e.message); }
 }
@@ -370,10 +392,11 @@ async function notifyVAPReady(propertyId, stage) {
     const ownerName = room.first_name || 'there';
     const propName = room.property_name || propertyId;
     const stageLabel = stage === 'funded' ? 'Funded' : 'Closing';
+    const vapSubject = `Your Verified Asset Package is ready — ${propName}`;
     await sendResendEmail(RESEND_KEY, {
       from: 'Kontra <notifications@kontraplatform.com>',
       to: room.customer_email,
-      subject: `Your Verified Asset Package is ready — ${propName}`,
+      subject: vapSubject,
       html: `<div style="font-family:sans-serif;max-width:560px;margin:auto;padding:24px">
         <h2 style="color:#800020;margin-bottom:4px">Your Verified Asset Package is ready</h2>
         <p style="color:#555">Hi ${ownerName},</p>
@@ -390,6 +413,7 @@ async function notifyVAPReady(propertyId, stage) {
         <p style="color:#aaa;font-size:12px;margin-top:24px">Kontra · CRE Deal Intelligence</p>
       </div>`,
     });
+    await logNotification(propertyId, 'vap_ready', room.customer_email, vapSubject);
     console.log(`[notifyVAPReady] sent to ${room.customer_email} for stage=${stage}`);
   } catch (e) {
     console.warn('[notifyVAPReady]', e.message);
@@ -410,13 +434,14 @@ async function notifyOwner(propertyId, section, summary) {
     const sectionLabel = { inspection: 'Inspection Report', insurance: 'Insurance Certificate', financials: 'Financial Statement' }[section] || section;
     const name = room.first_name || 'there';
     const propName = room.property_name || propertyId;
+    const ownerSubject = `New document uploaded: ${sectionLabel} — ${propName}`;
     await fetch('https://api.resend.com/emails', {
       method: 'POST',
       headers: { Authorization: `Bearer ${RESEND_KEY}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
         from: 'Kontra <notifications@kontraplatform.com>',
         to: room.customer_email,
-        subject: `New document uploaded: ${sectionLabel} — ${propName}`,
+        subject: ownerSubject,
         html: `<div style="font-family:sans-serif;max-width:520px;margin:auto;padding:24px">
           <h2 style="color:#800020;margin-bottom:4px">New document analyzed</h2>
           <p style="color:#555">Hi ${name},</p>
@@ -427,6 +452,7 @@ async function notifyOwner(propertyId, section, summary) {
         </div>`
       })
     });
+    await logNotification(propertyId, 'doc_uploaded', room.customer_email, ownerSubject);
     console.log(`[notifyOwner] email sent to ${room.customer_email} for ${section}`);
   } catch (e) {
     console.warn('[notifyOwner]', e.message);
@@ -454,4 +480,5 @@ module.exports = {
   notifyStatusChange,
   notifyOwner,
   notifyVAPReady,
+  logNotification,
 };

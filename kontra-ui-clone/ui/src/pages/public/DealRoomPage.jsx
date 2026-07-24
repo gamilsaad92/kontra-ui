@@ -11,6 +11,23 @@ import InvitePanel from "./InvitePanel";
 import DocumentsTabPanel from "./DocumentsTabPanel";
 import LegalReviewPanel from "./LegalReviewPanel";
 import VerifiedAssetPackage from "./VerifiedAssetPackage";
+import NotificationsLog from "./NotificationsLog";
+
+// ── Error boundary — prevents a broken panel from crashing the whole page ────
+class PanelErrorBoundary extends React.Component {
+  constructor(props) { super(props); this.state = { error: null }; }
+  static getDerivedStateFromError(e) { return { error: e }; }
+  render() {
+    if (this.state.error) {
+      return (
+        <div className="rounded-2xl border border-red-100 bg-red-50 px-5 py-4 mb-6 text-xs text-red-400">
+          Panel failed to load — {this.state.error.message}
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 import { getTemplate } from "./documentChecklistUtils";
 import { DEFAULT_PACK_ID, getWorkflowPack, ensureWorkflowPackLoaded, resolvePackId } from "../../lib/workflowPacks";
 
@@ -1430,23 +1447,34 @@ export default function DealRoomPage() {
 
         {/* Transaction Risk — replaces numeric Deal Health score */}
         {property.isCustom && (
-          <TransactionRiskPanel propertyId={pid} />
+          <PanelErrorBoundary>
+            <TransactionRiskPanel propertyId={pid} />
+          </PanelErrorBoundary>
         )}
 
         {/* Deal Coordination Panel — party status + lifecycle stage */}
         {property.isCustom && (
-          <DealCoordinationPanel
-            propertyId={pid}
-            role={role}
-            packId={packId}
-            propertyType={property.property_type || property.type}
-          />
+          <PanelErrorBoundary>
+            <DealCoordinationPanel
+              propertyId={pid}
+              role={role}
+              packId={packId}
+              propertyType={property.property_type || property.type}
+            />
+          </PanelErrorBoundary>
         )}
 
         {/* Verified Asset Package — structured digital closing record.
             Shows a teaser during earlier stages; full package at Closing / Funded. */}
         {property.isCustom && !isDemo && (
-          <VerifiedAssetPackage propertyId={pid} />
+          <PanelErrorBoundary>
+            <VerifiedAssetPackage propertyId={pid} />
+          </PanelErrorBoundary>
+        )}
+
+        {/* Notification log — owner-only audit trail of sent emails */}
+        {property.isCustom && !isDemo && role === 'owner' && (
+          <NotificationsLog propertyId={pid} />
         )}
 
         {/* Outstanding Items — role-scoped sections (risk/compliance/property).

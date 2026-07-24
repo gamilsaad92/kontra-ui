@@ -2049,17 +2049,26 @@ app.post('/api/public/deal-room/:propertyId/advance', async (req, res) => {
   try {
     const { data: room, error: fetchError } = await supabase
       .from('deal_rooms')
-      .select('workflow_pack_id')
+      .select('workflow_pack_id, deal_stage')
       .eq('property_id', propertyId)
       .single();
     if (fetchError) throw fetchError;
     const packId = room?.workflow_pack_id || DEFAULT_PACK_ID;
     const VALID = getPackStageKeys(packId);
     if (!VALID.includes(stage)) return res.status(400).json({ error: 'invalid stage' });
+
+    const currentStage = room?.deal_stage;
+    const stageChanging = currentStage !== stage;
+
     const { error } = await supabase.from('deal_rooms').update({ deal_stage: stage }).eq('property_id', propertyId);
     if (error) throw error;
     logEvent(propertyId, 'stage_advanced', 'owner', null, `Deal advanced to ${getPackStageLabel(packId, stage)}`, { stage });
-    res.json({ ok: true, stage });
+    res.json({ ok: true, stage, unchanged: !stageChanging });
+
+    // Only fire notifications when the stage actually changes — prevents duplicate
+    // emails if the advance endpoint is called twice with the same stage.
+    if (!stageChanging) return;
+
     notifyStageAdvance(propertyId, stage).catch(() => {});
     // When a deal reaches closing or funded — generate + persist the VAP and notify the owner.
     // generateAndStoreVAP returns null on failure (it swallows errors internally), so we
@@ -2084,6 +2093,24 @@ app.post('/api/public/deal-room/:propertyId/advance', async (req, res) => {
   } catch (err) {
     console.error('[advance]', err.message);
     res.status(500).json({ error: err.message });
+  }
+});
+
+// ── Notification log — owner can see what emails were sent ──────────────────
+app.get('/api/public/deal-room/:propertyId/notifications', async (req, res) => {
+  const { propertyId } = req.params;
+  try {
+    const { data, error } = await supabase
+      .from('deal_notifications')
+      .select('id, type, to_email, subject, sent_at')
+      .eq('property_id', propertyId)
+      .order('sent_at', { ascending: false })
+      .limit(100);
+    if (error) throw error;
+    res.json({ notifications: data || [] });
+  } catch (err) {
+    // Graceful fallback — table may not exist yet (migration pending)
+    res.json({ notifications: [] });
   }
 });
 

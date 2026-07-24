@@ -16,10 +16,24 @@ CREATE INDEX IF NOT EXISTS idx_vap_property ON verified_asset_packages(property_
 -- Row-level security mirrors deal_rooms: public read, service-role write
 ALTER TABLE verified_asset_packages ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY IF NOT EXISTS "public_read_vap"
-  ON verified_asset_packages FOR SELECT USING (true);
+DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE tablename = 'verified_asset_packages' AND policyname = 'public_read_vap'
+  ) THEN
+    CREATE POLICY "public_read_vap"
+      ON verified_asset_packages FOR SELECT USING (true);
+  END IF;
+END $$;
 
-CREATE POLICY IF NOT EXISTS "service_role_write_vap"
-  ON verified_asset_packages FOR ALL
-  USING (auth.role() = 'service_role')
-  WITH CHECK (auth.role() = 'service_role');
+DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE tablename = 'verified_asset_packages' AND policyname = 'service_role_write_vap'
+  ) THEN
+    CREATE POLICY "service_role_write_vap"
+      ON verified_asset_packages FOR ALL
+      USING (auth.role() = 'service_role')
+      WITH CHECK (auth.role() = 'service_role');
+  END IF;
+END $$;
