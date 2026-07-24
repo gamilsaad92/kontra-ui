@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from "react";
+import { supabase as supabaseClient, isSupabaseConfigured } from "../../lib/supabaseClient";
 
 const API_BASE = (import.meta.env.VITE_API_BASE || "").replace(/\/+$/, "");
 
@@ -448,6 +449,25 @@ export default function VerifiedAssetPackage({ propertyId }) {
     if (!propertyId) return;
     if (force) setGenerating(true);
     try {
+      // ── Strategy 1: Supabase direct (public_read_vap RLS — no auth needed) ──
+      // This bypasses the API server so the package is always readable even when
+      // the API is unavailable or the endpoint is gated behind auth middleware.
+      if (!force && isSupabaseConfigured && supabaseClient) {
+        const { data: stored } = await supabaseClient
+          .from("verified_asset_packages")
+          .select("package, generated_at, sealed")
+          .eq("property_id", propertyId)
+          .maybeSingle();
+        if (stored?.package) {
+          setPkg({ ...stored.package, _stored: true, _sealed: stored.sealed });
+          setError(null);
+          setLoading(false);
+          setGenerating(false);
+          return;
+        }
+      }
+
+      // ── Strategy 2: API server (generates + stores on-demand) ────────────────
       const res = await fetch(`${API_BASE}/api/public/deal-room/${propertyId}/verified-asset-package`, {
         headers: { "Cache-Control": force ? "no-cache" : "default" },
       });
