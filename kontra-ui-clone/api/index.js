@@ -708,6 +708,10 @@ app.get('/api/public/document-url', async (req, res) => {
     res.status(500).json({ error: 'Failed to generate download link' });
   }
 });
+// ── Verified Asset Package — registered here (before any auth middleware) so
+// the public GET/POST endpoints are never intercepted by authenticate.js ─────
+app.use(verifiedAssetPackageRouter);
+
 // ── End early public routes ──────────────────────────────────────────────────
 
 app.use('/api/auth', authBootstrapRouter);
@@ -2190,7 +2194,6 @@ app.use('/api/ai', aiDealReviewRouter);
 // deal-room routes above). See lib/taskEngine.js for the Observe Mode rules.
 app.use('/api/public', tasksRouter);
 app.use('/api/public', verificationRouter);
-app.use(verifiedAssetPackageRouter);
 
 // AI Operations Manager — PUBLIC, must stay BEFORE requireOrgContext. Answer
 // engine grounded in the Task Engine above; read-only, no task mutation.
