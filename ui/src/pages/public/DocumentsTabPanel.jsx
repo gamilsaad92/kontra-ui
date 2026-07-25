@@ -54,20 +54,38 @@ function IntelligenceTab({ analyses, loading, packId, propertyId, onSwitchToChec
 
   if (analyses.length === 0) {
     return (
-      <div className="px-5 py-12 text-center">
-        <div className="text-4xl mb-4">🤖</div>
-        <p className="text-sm font-semibold text-gray-700 mb-2">AI analysis will appear here</p>
-        <p className="text-xs text-gray-400 max-w-xs mx-auto mb-5">
-          Upload a document with AI analysis enabled to unlock deal insights, risk flags, and a financial summary for this deal room.
-        </p>
-        {onSwitchToChecklist && (
-          <button
-            onClick={onSwitchToChecklist}
-            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-semibold transition-all"
-            style={{ background: '#800020', color: '#fff' }}
-          >
-            ← Go to Checklist to upload
-          </button>
+      <div className="px-5 pt-5 pb-6">
+        <div className="flex items-center gap-2 mb-4">
+          <span className="text-lg">🤖</span>
+          <div>
+            <p className="text-sm font-semibold text-gray-800">AI analysis will appear here</p>
+            <p className="text-xs text-gray-400">Upload documents to unlock insights for this deal</p>
+          </div>
+          {onSwitchToChecklist && (
+            <button
+              onClick={onSwitchToChecklist}
+              className="ml-auto inline-flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-semibold transition-all shrink-0"
+              style={{ background: '#800020', color: '#fff' }}
+            >
+              Upload →
+            </button>
+          )}
+        </div>
+        {SECTIONS.length > 0 && (
+          <div className="space-y-2">
+            {SECTIONS.map(s => (
+              <div key={s.key} className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-gray-50 border border-gray-100">
+                <span className="text-base opacity-40">{s.icon || '📋'}</span>
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-semibold text-gray-400">{s.label}</p>
+                  {s.description && (
+                    <p className="text-[10px] text-gray-300 truncate">{s.description}</p>
+                  )}
+                </div>
+                <span className="text-[10px] font-semibold text-gray-300 uppercase tracking-wide">Pending</span>
+              </div>
+            ))}
+          </div>
         )}
       </div>
     );

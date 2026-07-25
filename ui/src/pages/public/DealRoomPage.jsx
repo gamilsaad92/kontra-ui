@@ -9,9 +9,26 @@ import TasksPanel from "./TasksPanel";
 import AIBriefingPanel from "./AIBriefingPanel";
 import InvitePanel from "./InvitePanel";
 import DocumentsTabPanel from "./DocumentsTabPanel";
+import VerifiedAssetPackage from "./VerifiedAssetPackage";
+import NotificationsLog from "./NotificationsLog";
 import LegalReviewPanel from "./LegalReviewPanel";
 import { getTemplate } from "./documentChecklistUtils";
 import { DEFAULT_PACK_ID, getWorkflowPack, ensureWorkflowPackLoaded, resolvePackId } from "../../lib/workflowPacks";
+
+class PanelErrorBoundary extends React.Component {
+  constructor(props) { super(props); this.state = { error: null }; }
+  static getDerivedStateFromError(e) { return { error: e }; }
+  render() {
+    if (this.state.error) {
+      return (
+        <div className="rounded-2xl border border-red-100 bg-red-50 px-5 py-4 mb-6 text-xs text-red-400">
+          Panel failed to load — {this.state.error.message}
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 function usePageTitle(title) {
   useEffect(() => {
@@ -1440,6 +1457,18 @@ export default function DealRoomPage() {
             packId={packId}
             propertyType={property.property_type || property.type}
           />
+        )}
+
+        {/* Verified Asset Package — structured digital closing record */}
+        {property.isCustom && !isDemo && (
+          <PanelErrorBoundary>
+            <VerifiedAssetPackage propertyId={pid} />
+          </PanelErrorBoundary>
+        )}
+
+        {/* Notification log — owner-only audit trail of sent emails */}
+        {property.isCustom && !isDemo && role === 'owner' && (
+          <NotificationsLog propertyId={pid} />
         )}
 
         {/* Outstanding Items — role-scoped sections (risk/compliance/property).
