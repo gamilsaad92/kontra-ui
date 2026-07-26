@@ -2047,6 +2047,50 @@ app.post('/api/public/deal-room/:propertyId/invite', async (req, res) => {
   }
 });
 
+// ── Send an invite-link email (used by the per-invitation invite panel) ───────
+// This endpoint does NOT create the invite record — the client does that via
+// Supabase RPC. It only sends the email after the record is created.
+app.post('/api/public/deal-room/send-invite-email', async (req, res) => {
+  const { to, inviteUrl, roleLabel, propertyName, senderName } = req.body || {};
+  if (!to || !inviteUrl) return res.status(400).json({ error: 'to and inviteUrl required' });
+  if (!to.includes('@')) return res.status(400).json({ error: 'invalid email' });
+  const RESEND_KEY = process.env.RESEND_API_KEY;
+  if (!RESEND_KEY) return res.status(500).json({ error: 'Email not configured' });
+  try {
+    const role    = roleLabel   || 'Participant';
+    const prop    = propertyName || 'a deal room';
+    const sender  = senderName  || 'The deal coordinator';
+    await sendResendEmail(RESEND_KEY, {
+      from: 'Kontra <notifications@kontraplatform.com>',
+      to,
+      reply_to: 'support@kontraplatform.com',
+      subject: `You've been invited to ${prop} — Kontra Deal Room`,
+      text: `${sender} has invited you as ${role} to a deal room for ${prop} on Kontra.\n\nClick your personal invite link to verify your identity and access the deal room:\n${inviteUrl}\n\nThis link is unique to you — do not share it.\n\n---\nKontra is CRE deal room infrastructure. You received this because ${sender} added your email. If this is a mistake, ignore this email.`,
+      html: `<div style="font-family:sans-serif;max-width:560px;margin:auto;padding:32px 24px">
+        <div style="margin-bottom:24px">
+          <span style="display:inline-block;background:#800020;color:white;font-weight:800;font-size:15px;padding:6px 14px;border-radius:8px;letter-spacing:0.5px">Kontra</span>
+        </div>
+        <h2 style="color:#111;font-size:22px;font-weight:800;margin:0 0 8px">You've been invited</h2>
+        <p style="color:#555;font-size:15px;margin:0 0 6px"><strong>${sender}</strong> has invited you as <strong>${role}</strong> to a deal room for <strong>${prop}</strong>.</p>
+        <p style="color:#555;font-size:14px;margin:0 0 24px">Click your personal invite link below. You'll verify your identity with a one-time code before accessing the deal room.</p>
+        <a href="${inviteUrl}" style="display:inline-block;padding:14px 28px;background:#800020;color:white;border-radius:10px;text-decoration:none;font-weight:700;font-size:15px">Open my invite →</a>
+        <div style="margin-top:20px;padding:12px 16px;background:#fef9f0;border-radius:10px;border:1px solid #fde68a">
+          <p style="color:#92400e;font-size:12px;margin:0">🔒 This link is unique to you — do not forward it to others. Each participant must receive their own invite.</p>
+        </div>
+        <div style="margin-top:24px;padding:16px;background:#f9fafb;border-radius:10px;border:1px solid #eee">
+          <p style="color:#888;font-size:12px;margin:0 0 4px">What is Kontra?</p>
+          <p style="color:#555;font-size:13px;margin:0">CRE deal room infrastructure. All parties upload documents, AI analyzes them instantly, and the deal coordinator sees everything in one place.</p>
+        </div>
+        <p style="color:#bbb;font-size:11px;margin-top:24px">You received this because ${sender} added your email. If this is a mistake, ignore this email.</p>
+      </div>`,
+    });
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('[send-invite-email]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.post('/api/public/deal-room/:propertyId/advance', async (req, res) => {
   const { propertyId } = req.params;
   const { stage } = req.body || {};

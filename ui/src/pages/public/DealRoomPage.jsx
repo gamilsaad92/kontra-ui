@@ -1034,6 +1034,8 @@ export default function DealRoomPage() {
   const role = searchParams.get("role") || "owner";
   const from = searchParams.get("from") || "";
 
+  const inviteToken = searchParams.get("invite") || null;
+
   const [checkoutLoading, setCheckoutLoading] = useState(false);
   const [checkoutError, setCheckoutError] = useState("");
   const [apiProperty, setApiProperty] = useState(null);
@@ -1041,7 +1043,9 @@ export default function DealRoomPage() {
   const [analysesRefreshKey, setAnalysesRefreshKey] = useState(0);
 
   const onAnalysisSaved = () => setAnalysesRefreshKey(k => k + 1);
-  const [pinUnlocked, setPinUnlocked] = useState(false);
+  // sessionToken: null = not yet verified, string = verified participant session
+  const [sessionToken, setSessionToken] = useState(null);
+  const pinUnlocked = sessionToken !== null;
 
   // Try to fetch custom deal room from API
   useEffect(() => {
@@ -1200,13 +1204,16 @@ export default function DealRoomPage() {
 
   usePageTitle(property?.name || property?.property_name);
 
-  // PIN gate — non-owner participants on custom (non-demo) rooms must enter PIN if one is set
+  // Invite gate — non-owner participants on custom (non-demo) rooms must verify their invite.
+  // Owners always bypass the gate (role === 'owner').
+  // Demo rooms bypass the gate (demoProperty / isDemo).
   if (role !== 'owner' && !demoProperty && !isDemo && !pinUnlocked) {
     return (
       <DealRoomPinGate
         propertyId={propertyId}
         role={role}
-        onUnlocked={() => setPinUnlocked(true)}
+        inviteToken={inviteToken}
+        onUnlocked={(token) => setSessionToken(token)}
       />
     );
   }

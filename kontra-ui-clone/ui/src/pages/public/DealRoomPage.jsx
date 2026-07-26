@@ -9,12 +9,13 @@ import TasksPanel from "./TasksPanel";
 import AIBriefingPanel from "./AIBriefingPanel";
 import InvitePanel from "./InvitePanel";
 import DocumentsTabPanel from "./DocumentsTabPanel";
-import LegalReviewPanel from "./LegalReviewPanel";
 import VerifiedAssetPackage from "./VerifiedAssetPackage";
 import NotificationsLog from "./NotificationsLog";
+import LegalReviewPanel from "./LegalReviewPanel";
 import DealRoomPinGate from "./DealRoomPinGate";
+import { getTemplate } from "./documentChecklistUtils";
+import { DEFAULT_PACK_ID, getWorkflowPack, ensureWorkflowPackLoaded, resolvePackId } from "../../lib/workflowPacks";
 
-// ── Error boundary — prevents a broken panel from crashing the whole page ────
 class PanelErrorBoundary extends React.Component {
   constructor(props) { super(props); this.state = { error: null }; }
   static getDerivedStateFromError(e) { return { error: e }; }
@@ -29,8 +30,6 @@ class PanelErrorBoundary extends React.Component {
     return this.props.children;
   }
 }
-import { getTemplate } from "./documentChecklistUtils";
-import { DEFAULT_PACK_ID, getWorkflowPack, ensureWorkflowPackLoaded, resolvePackId } from "../../lib/workflowPacks";
 
 function usePageTitle(title) {
   useEffect(() => {
@@ -1035,6 +1034,8 @@ export default function DealRoomPage() {
   const role = searchParams.get("role") || "owner";
   const from = searchParams.get("from") || "";
 
+  const inviteToken = searchParams.get("invite") || null;
+
   const [checkoutLoading, setCheckoutLoading] = useState(false);
   const [checkoutError, setCheckoutError] = useState("");
   const [apiProperty, setApiProperty] = useState(null);
@@ -1042,6 +1043,9 @@ export default function DealRoomPage() {
   const [analysesRefreshKey, setAnalysesRefreshKey] = useState(0);
 
   const onAnalysisSaved = () => setAnalysesRefreshKey(k => k + 1);
+  // sessionToken: null = not yet verified, string = verified participant session
+  const [sessionToken, setSessionToken] = useState(null);
+  const pinUnlocked = sessionToken !== null;
 
   // Try to fetch custom deal room from API
   useEffect(() => {
@@ -1200,6 +1204,20 @@ export default function DealRoomPage() {
 
   usePageTitle(property?.name || property?.property_name);
 
+  // Invite gate — non-owner participants on custom (non-demo) rooms must verify their invite.
+  // Owners always bypass the gate (role === 'owner').
+  // Demo rooms bypass the gate (demoProperty / isDemo).
+  if (role !== 'owner' && !demoProperty && !isDemo && !pinUnlocked) {
+    return (
+      <DealRoomPinGate
+        propertyId={propertyId}
+        role={role}
+        inviteToken={inviteToken}
+        onUnlocked={(token) => setSessionToken(token)}
+      />
+    );
+  }
+
   // Loading state
   if (loadingApi && isCustom) {
     return (
@@ -1244,12 +1262,7 @@ export default function DealRoomPage() {
 
   const pid = propertyId || property.property_id || property.id;
 
-  // Non-owner participants on real (non-demo) rooms must pass the PIN gate.
-  // The gate checks whether a PIN has been set; if not, it holds the door
-  // closed with a "contact the owner" message rather than passing through.
-  const needsGate = isCustom && !isDemo && role !== 'owner';
-
-  const roomContent = (
+  return (
     <PublicLayout
       hideFooter
       dealRoomMode={!!(property.isCustom && !isDemo)}
@@ -1453,25 +1466,20 @@ export default function DealRoomPage() {
 
         {/* Transaction Risk — replaces numeric Deal Health score */}
         {property.isCustom && (
-          <PanelErrorBoundary>
-            <TransactionRiskPanel propertyId={pid} />
-          </PanelErrorBoundary>
+          <TransactionRiskPanel propertyId={pid} />
         )}
 
         {/* Deal Coordination Panel — party status + lifecycle stage */}
         {property.isCustom && (
-          <PanelErrorBoundary>
-            <DealCoordinationPanel
-              propertyId={pid}
-              role={role}
-              packId={packId}
-              propertyType={property.property_type || property.type}
-            />
-          </PanelErrorBoundary>
+          <DealCoordinationPanel
+            propertyId={pid}
+            role={role}
+            packId={packId}
+            propertyType={property.property_type || property.type}
+          />
         )}
 
-        {/* Verified Asset Package — structured digital closing record.
-            Shows a teaser during earlier stages; full package at Closing / Funded. */}
+        {/* Verified Asset Package — structured digital closing record */}
         {property.isCustom && !isDemo && (
           <PanelErrorBoundary>
             <VerifiedAssetPackage propertyId={pid} />
@@ -1587,13 +1595,5 @@ export default function DealRoomPage() {
       </div>
     </PublicLayout>
   );
-
-  if (needsGate) {
-    return (
-      <DealRoomPinGate propertyId={propertyId} roleKey={role}>
-        {roomContent}
-      </DealRoomPinGate>
-    );
-  }
-  return roomContent;
 }
+

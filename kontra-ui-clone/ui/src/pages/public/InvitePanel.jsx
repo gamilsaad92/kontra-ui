@@ -1,244 +1,265 @@
-import { useState } from 'react';
+/**
+ * InvitePanel — owner-facing invite creation and management.
+ *
+ * Flow:
+ *  1. Owner authenticates via email OTP (Supabase Auth).
+ *  2. Authenticated owner can create per-participant invites (email OTP or PIN).
+ *  3. Each invite gets a unique URL shown once for copying / sharing.
+ *  4. "Manage" tab lists all active invites with revoke actions.
+ */
+import { useState, useEffect, useCallback } from 'react';
 import { getWorkflowPack, DEFAULT_PACK_ID } from '../../lib/workflowPacks';
 import {
-  checkPinExists,
-  generatePinForRole,
+  createInvite,
+  generatePin,
+  getRoomInvites,
+  revokeInvite,
   requestOwnerOtp,
   verifyOwnerOtp,
-} from '../../lib/pinUtils';
+  getOwnerSession,
+} from '../../lib/inviteUtils';
 
-const API_BASE = import.meta.env.VITE_API_BASE || '';
+const API_BASE = (import.meta.env.VITE_API_BASE || '').replace(/\/+$/, '');
 
 function getInvitableRoles(packId) {
   return getWorkflowPack(packId).roles
     .filter(r => r.invitable)
-    .map(r => ({ role: r.key, icon: r.icon, label: r.shortLabel || r.label, action: r.inviteAction }));
+    .map(r => ({ role: r.key, icon: r.icon, label: r.shortLabel || r.label }));
 }
 
-// ── PIN generation inline flow ────────────────────────────────────────────────
-// Renders inside a role card after invite is sent or link is copied.
-// phase: 'nudge' | 'email' | 'otp-sent' | 'generating' | 'revealed'
-function PinFlow({ propertyId, roleKey, onDone }) {
-  const [phase,       setPhase]       = useState('nudge');
-  const [ownerEmail,  setOwnerEmail]  = useState('');
-  const [otp,         setOtp]         = useState('');
-  const [pin,         setPin]         = useState('');
-  const [err,         setErr]         = useState('');
-  const [loading,     setLoading]     = useState(false);
+// ── Owner OTP auth gate ───────────────────────────────────────────────────────
+
+function OwnerAuthGate({ onAuthenticated }) {
+  const [phase, setPhase]         = useState('email'); // email | otp_sent | working
+  const [email, setEmail]         = useState('');
+  const [otp, setOtp]             = useState('');
+  const [err, setErr]             = useState('');
+  const [loading, setLoading]     = useState(false);
 
   async function handleSendOtp(e) {
     e.preventDefault();
-    if (!ownerEmail.trim() || !ownerEmail.includes('@')) { setErr('Enter your email address'); return; }
+    if (!email.trim() || !email.includes('@')) { setErr('Enter your email address'); return; }
     setLoading(true); setErr('');
     try {
-      await requestOwnerOtp(ownerEmail.trim());
-      setPhase('otp-sent');
+      await requestOwnerOtp(email.trim());
+      setPhase('otp_sent');
     } catch (ex) {
-      setErr(ex.message || 'Could not send code');
-    } finally {
-      setLoading(false);
-    }
+      setErr(ex.message || 'Could not send verification code');
+    } finally { setLoading(false); }
   }
 
   async function handleVerifyOtp(e) {
     e.preventDefault();
-    if (!otp.trim()) { setErr('Enter the code'); return; }
+    if (otp.length < 6) { setErr('Enter the 6-digit code'); return; }
     setLoading(true); setErr('');
     try {
-      await verifyOwnerOtp(ownerEmail.trim(), otp.trim());
-      setPhase('generating');
-      const generated = await generatePinForRole(propertyId, roleKey);
-      setPin(generated);
-      setPhase('revealed');
-      if (onDone) onDone();
+      const session = await verifyOwnerOtp(email.trim(), otp.trim());
+      onAuthenticated(session);
     } catch (ex) {
-      setErr(ex.message || 'Verification failed');
-      setPhase('otp-sent');
-    } finally {
+      setErr(ex.message || 'Invalid code — try again');
       setLoading(false);
     }
   }
 
-  if (phase === 'nudge') {
-    return (
-      <div className="mt-2.5 border-t border-amber-100 pt-2.5">
-        <div className="flex items-start gap-2">
-          <span className="text-sm shrink-0 mt-0.5">🔒</span>
-          <div className="flex-1 min-w-0">
-            <p className="text-[10px] font-semibold text-amber-800 leading-tight">Link unprotected</p>
-            <p className="text-[9px] text-amber-600 mt-0.5 leading-tight">Anyone with this link can access the deal room.</p>
-          </div>
-          <button
-            onClick={() => setPhase('email')}
-            className="shrink-0 text-[9px] font-bold text-white bg-amber-500 hover:bg-amber-600 transition rounded-lg px-2 py-1">
-            Generate PIN
-          </button>
-        </div>
+  return (
+    <div className="bg-gray-50 rounded-2xl border border-gray-200 px-6 py-5">
+      <div className="mb-4">
+        <p className="text-sm font-bold text-gray-900">Invite participants</p>
+        <p className="text-xs text-gray-400 mt-0.5">
+          Verify your identity to create secure, per-person invite links.
+        </p>
       </div>
-    );
-  }
 
-  if (phase === 'email') {
-    return (
-      <div className="mt-2.5 border-t border-gray-100 pt-2.5">
-        <p className="text-[10px] font-semibold text-gray-700 mb-1.5">Verify your identity to generate a PIN</p>
-        <form onSubmit={handleSendOtp} className="space-y-1.5">
+      {phase === 'email' && (
+        <form onSubmit={handleSendOtp} className="space-y-2 max-w-xs">
           <input
             autoFocus type="email" placeholder="your@email.com"
-            value={ownerEmail}
-            onChange={e => { setOwnerEmail(e.target.value); setErr(''); }}
-            className="w-full text-[10px] px-2 py-1.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#800020]/20 focus:border-[#800020]/40 placeholder-gray-300"
+            value={email} onChange={e => { setEmail(e.target.value); setErr(''); }}
+            className="w-full text-xs px-3 py-2 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#800020]/20 focus:border-[#800020]/40 placeholder-gray-300"
           />
-          {err && <p className="text-[9px] text-red-500">{err}</p>}
-          <div className="flex gap-1.5">
-            <button type="submit" disabled={loading}
-              className="flex-1 py-1 rounded-lg text-[10px] font-bold text-white bg-[#800020] hover:opacity-90 transition disabled:opacity-40">
-              {loading ? 'Sending…' : 'Send code →'}
-            </button>
-            <button type="button" onClick={() => setPhase('nudge')}
-              className="px-2 py-1 rounded-lg text-[10px] text-gray-400 border border-gray-200 hover:text-gray-600 transition">
-              Cancel
-            </button>
-          </div>
+          {err && <p className="text-[10px] text-red-500">{err}</p>}
+          <button type="submit" disabled={loading || !email.trim()}
+            className="px-4 py-2 rounded-xl text-xs font-bold text-white bg-[#800020] hover:opacity-90 transition disabled:opacity-40">
+            {loading ? 'Sending…' : 'Send verification code →'}
+          </button>
         </form>
-      </div>
-    );
-  }
+      )}
 
-  if (phase === 'otp-sent') {
-    return (
-      <div className="mt-2.5 border-t border-gray-100 pt-2.5">
-        <p className="text-[10px] font-semibold text-gray-700 mb-0.5">Enter the code sent to your email</p>
-        <p className="text-[9px] text-gray-400 mb-1.5">{ownerEmail}</p>
-        <form onSubmit={handleVerifyOtp} className="space-y-1.5">
+      {phase === 'otp_sent' && (
+        <form onSubmit={handleVerifyOtp} className="space-y-2 max-w-xs">
+          <p className="text-xs text-gray-500 mb-1">Enter the code sent to <strong>{email}</strong></p>
           <input
-            autoFocus type="text" inputMode="numeric" placeholder="6-digit code"
-            value={otp}
-            onChange={e => { setOtp(e.target.value.replace(/\D/g, '').slice(0, 6)); setErr(''); }}
-            className="w-full text-[10px] px-2 py-1.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#800020]/20 focus:border-[#800020]/40 placeholder-gray-300 tracking-widest font-mono"
+            autoFocus type="text" inputMode="numeric" maxLength={6}
+            placeholder="6-digit code"
+            value={otp} onChange={e => { setOtp(e.target.value.replace(/\D/g, '').slice(0, 6)); setErr(''); }}
+            className="w-full text-xs px-3 py-2 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#800020]/20 focus:border-[#800020]/40 placeholder-gray-300 tracking-widest font-mono"
           />
-          {err && <p className="text-[9px] text-red-500">{err}</p>}
-          <div className="flex gap-1.5">
+          {err && <p className="text-[10px] text-red-500">{err}</p>}
+          <div className="flex gap-2">
             <button type="submit" disabled={loading || otp.length < 6}
-              className="flex-1 py-1 rounded-lg text-[10px] font-bold text-white bg-[#800020] hover:opacity-90 transition disabled:opacity-40">
+              className="flex-1 py-2 rounded-xl text-xs font-bold text-white bg-[#800020] hover:opacity-90 transition disabled:opacity-40">
               {loading ? 'Verifying…' : 'Verify →'}
             </button>
             <button type="button" onClick={() => { setPhase('email'); setOtp(''); setErr(''); }}
-              className="px-2 py-1 rounded-lg text-[10px] text-gray-400 border border-gray-200 hover:text-gray-600 transition">
+              className="px-3 py-2 rounded-xl text-xs text-gray-400 border border-gray-200 hover:text-gray-600 transition">
               ← Back
             </button>
           </div>
         </form>
-      </div>
-    );
-  }
-
-  if (phase === 'generating') {
-    return (
-      <div className="mt-2.5 border-t border-gray-100 pt-2.5 flex items-center gap-2">
-        <div className="w-3 h-3 border border-[#800020]/30 border-t-[#800020] rounded-full animate-spin shrink-0" />
-        <p className="text-[10px] text-gray-500">Generating PIN…</p>
-      </div>
-    );
-  }
-
-  if (phase === 'revealed') {
-    return (
-      <div className="mt-2.5 border-t border-green-100 pt-2.5">
-        <div className="bg-green-50 border border-green-200 rounded-lg px-3 py-2 text-center">
-          <p className="text-[9px] text-green-600 font-medium mb-0.5">Share this PIN with the participant</p>
-          <p className="text-xl font-bold text-green-800 tracking-[0.3em] font-mono">{pin}</p>
-          <p className="text-[8px] text-green-500 mt-0.5">Shown once — copy it now</p>
-        </div>
-      </div>
-    );
-  }
-
-  return null;
+      )}
+    </div>
+  );
 }
 
-// ── Role card ─────────────────────────────────────────────────────────────────
-function RoleCard({ r, propertyId, senderName, onRemove }) {
-  const [email,        setEmail]       = useState('');
-  const [status,       setStatus]      = useState('idle');
-  const [errMsg,       setErrMsg]      = useState('');
-  const [copied,       setCopied]      = useState(false);
+// ── Created-invite card — shown after an invite is created ───────────────────
 
-  // PIN check state
-  const [pinExists,    setPinExists]   = useState(null); // null=unknown, true/false
-  const [pinChecked,   setPinChecked]  = useState(false);
-  const [pinGenerated, setPinGenerated] = useState(false);
-
-  const url = `${window.location.origin}/deal-room/${propertyId}?role=${r.role}`;
-
-  async function probePin() {
-    if (pinChecked) return;
-    setPinChecked(true);
-    const exists = await checkPinExists(propertyId, r.role);
-    setPinExists(exists);
-  }
-
-  async function handleSend(e) {
-    e.preventDefault();
-    if (!email.trim() || !email.includes('@')) { setErrMsg('Enter a valid email'); return; }
-    setStatus('loading');
-    setErrMsg('');
-    try {
-      const res = await fetch(`${API_BASE}/api/public/deal-room/${propertyId}/invite`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ role: r.role, email: email.trim(), senderName }),
-      });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error || 'Failed to send');
-      setStatus('sent');
-      probePin(); // check PIN after successful invite
-    } catch (err) {
-      setErrMsg(err.message);
-      setStatus('error');
-    }
-  }
+function CreatedInviteCard({ inviteUrl, email, pin, method, onDismiss }) {
+  const [copied, setCopied] = useState(false);
+  const [emailSent, setEmailSent] = useState(false);
+  const [emailErr, setEmailErr] = useState('');
+  const [sendingEmail, setSendingEmail] = useState(false);
 
   function handleCopy() {
-    navigator.clipboard.writeText(url).then(() => {
+    navigator.clipboard.writeText(inviteUrl).then(() => {
       setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-      probePin(); // check PIN after link is copied
+      setTimeout(() => setCopied(false), 2500);
     });
   }
 
-  if (status === 'sent') {
-    return (
-      <div className="rounded-xl border border-green-200 bg-green-50 px-4 py-3">
-        <div className="flex items-center gap-2 mb-1.5">
-          <span className="text-base">{r.icon}</span>
-          <p className="text-xs font-bold text-green-800 flex-1 min-w-0">{r.label}</p>
-          <span className="text-[9px] font-bold text-green-700 bg-green-100 border border-green-200 rounded-full px-2 py-0.5 shrink-0">✓ Invited</span>
-        </div>
-        <p className="text-[10px] text-green-600">Sent to <span className="font-semibold">{email}</span></p>
-        <p className="text-[10px] text-gray-400 mt-0.5">Awaiting documents</p>
-        <button onClick={() => { setStatus('idle'); setEmail(''); setPinChecked(false); setPinExists(null); }}
-          className="text-[9px] text-green-500 underline mt-1.5 block">Send to another →</button>
+  async function handleSendEmail() {
+    if (!email) return;
+    setSendingEmail(true); setEmailErr('');
+    try {
+      const res = await fetch(`${API_BASE}/api/public/deal-room/send-invite-email`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ to: email, inviteUrl }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed');
+      setEmailSent(true);
+    } catch (ex) {
+      setEmailErr(ex.message || 'Could not send email');
+    } finally {
+      setSendingEmail(false);
+    }
+  }
 
-        {/* PIN nudge — shown when no PIN is set and owner hasn't generated one yet */}
-        {pinExists === false && !pinGenerated && (
-          <PinFlow
-            propertyId={propertyId}
-            roleKey={r.role}
-            onDone={() => setPinGenerated(true)}
-          />
-        )}
+  return (
+    <div className="rounded-xl border border-green-200 bg-green-50 px-4 py-3 space-y-2.5">
+      <div className="flex items-center gap-2">
+        <span className="text-green-600 text-base">✓</span>
+        <p className="text-xs font-bold text-green-800 flex-1">Invite created</p>
+        <button onClick={onDismiss} className="text-green-400 hover:text-green-600 text-xs transition">✕</button>
+      </div>
+
+      {/* Invite URL */}
+      <div className="bg-white border border-green-200 rounded-lg px-3 py-2 flex items-center gap-2">
+        <p className="text-[10px] text-gray-500 flex-1 truncate font-mono">{inviteUrl}</p>
+        <button onClick={handleCopy}
+          className="shrink-0 text-[10px] font-bold px-2 py-1 rounded-lg transition"
+          style={copied ? { background: '#16a34a', color: 'white' } : { background: '#f3f4f6', color: '#374151' }}>
+          {copied ? '✓ Copied' : 'Copy'}
+        </button>
+      </div>
+
+      {/* PIN reveal (pin method only) */}
+      {method === 'pin' && pin && (
+        <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-center">
+          <p className="text-[10px] text-amber-700 font-medium mb-0.5">Share this PIN with the participant</p>
+          <p className="text-lg font-bold text-amber-900 tracking-[0.3em] font-mono">{pin}</p>
+          <p className="text-[9px] text-amber-500 mt-0.5">Shown once — copy it now</p>
+        </div>
+      )}
+
+      {/* Email send button */}
+      {email && method === 'email_otp' && (
+        <div>
+          {emailSent ? (
+            <p className="text-[10px] text-green-600 font-medium">✓ Email sent to {email}</p>
+          ) : (
+            <div>
+              <button onClick={handleSendEmail} disabled={sendingEmail}
+                className="text-[10px] font-semibold text-[#800020] hover:opacity-80 transition disabled:opacity-40">
+                {sendingEmail ? 'Sending…' : `Also email this link to ${email} →`}
+              </button>
+              {emailErr && <p className="text-[9px] text-red-500 mt-0.5">{emailErr}</p>}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Role invite card ──────────────────────────────────────────────────────────
+
+function RoleCard({ r, propertyId, onRemove }) {
+  const [email, setEmail]     = useState('');
+  const [method, setMethod]   = useState('email_otp');
+  const [status, setStatus]   = useState('idle'); // idle | loading | created | error
+  const [errMsg, setErrMsg]   = useState('');
+  const [createdData, setCreatedData] = useState(null);
+
+  async function handleCreate(e) {
+    e.preventDefault();
+    if (method === 'email_otp' && (!email.trim() || !email.includes('@'))) {
+      setErrMsg('Enter a valid email address'); return;
+    }
+    setStatus('loading'); setErrMsg('');
+
+    const pin = method === 'pin' ? generatePin() : undefined;
+    const result = await createInvite({
+      propertyId,
+      roleKey: r.role,
+      invitedEmail: method === 'email_otp' ? email.trim() : (email.trim() || null),
+      verificationMethod: method,
+      pin,
+    });
+
+    if (!result.success) {
+      setErrMsg(result.error === 'not_owner'
+        ? 'You must be signed in as the deal owner to create invites.'
+        : result.error === 'token_conflict'
+        ? 'Token conflict — please try again.'
+        : result.error || 'Failed to create invite');
+      setStatus('error');
+      return;
+    }
+
+    const inviteUrl = `${window.location.origin}/deal-room/${propertyId}?invite=${result.invite_token}&role=${r.role}`;
+    setCreatedData({ inviteUrl, email: email.trim(), pin, method });
+    setStatus('created');
+  }
+
+  if (status === 'created' && createdData) {
+    return (
+      <div className="rounded-xl border border-gray-200 bg-white px-4 py-3 space-y-2">
+        <div className="flex items-center gap-2">
+          <span className="text-base">{r.icon}</span>
+          <p className="text-xs font-semibold text-gray-800 flex-1">{r.label}</p>
+        </div>
+        <CreatedInviteCard
+          {...createdData}
+          onDismiss={() => {
+            setStatus('idle');
+            setEmail(''); setErrMsg('');
+            setCreatedData(null);
+          }}
+        />
+        <button
+          onClick={() => { setStatus('idle'); setEmail(''); setErrMsg(''); setCreatedData(null); }}
+          className="text-[10px] text-[#800020] underline">
+          Invite another →
+        </button>
       </div>
     );
   }
 
   return (
     <div className="rounded-xl border border-gray-200 bg-white px-4 py-3 group/card relative">
-      {/* Remove button — hover reveal */}
       {onRemove && (
-        <button
-          onClick={onRemove}
-          title="Hide this role"
+        <button onClick={onRemove} title="Hide this role"
           className="absolute top-2 right-2 opacity-0 group-hover/card:opacity-100 text-gray-200 hover:text-red-400 transition text-xs leading-none">
           ✕
         </button>
@@ -247,91 +268,98 @@ function RoleCard({ r, propertyId, senderName, onRemove }) {
         <span className="text-base">{r.icon}</span>
         <p className="text-xs font-semibold text-gray-800">{r.label}</p>
       </div>
-      <form onSubmit={handleSend} className="space-y-1.5">
+
+      <form onSubmit={handleCreate} className="space-y-1.5">
         <input
-          type="email"
-          placeholder={`${r.label.toLowerCase()}@firm.com`}
+          type="email" placeholder={`${r.label.toLowerCase()}@firm.com`}
           value={email}
           onChange={e => { setEmail(e.target.value); setErrMsg(''); setStatus('idle'); }}
           className="w-full text-xs px-2.5 py-1.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#800020]/20 focus:border-[#800020]/40 placeholder-gray-300"
         />
-        {errMsg && <p className="text-[9px] text-red-500">{errMsg}</p>}
-        <div className="flex items-center gap-1.5">
-          <button type="submit" disabled={status === 'loading' || !email.trim()}
-            className="flex-1 py-1.5 rounded-lg text-[11px] font-bold text-white bg-[#800020] hover:opacity-90 transition disabled:opacity-40 disabled:cursor-not-allowed">
-            {status === 'loading' ? 'Sending…' : 'Send Invite →'}
-          </button>
-          <button type="button" onClick={handleCopy} title="Copy link instead"
-            className="px-2 py-1.5 rounded-lg text-[10px] font-semibold border border-gray-200 text-gray-400 hover:text-gray-600 hover:border-gray-300 transition shrink-0">
-            {copied ? '✓' : '🔗'}
-          </button>
-        </div>
-      </form>
 
-      {/* PIN nudge after copy — shown inline below the form */}
-      {pinExists === false && !pinGenerated && (
-        <PinFlow
-          propertyId={propertyId}
-          roleKey={r.role}
-          onDone={() => setPinGenerated(true)}
-        />
-      )}
+        {/* Method toggle */}
+        <div className="flex gap-1">
+          {[{ key: 'email_otp', label: 'Email verify' }, { key: 'pin', label: 'PIN only' }].map(opt => (
+            <button type="button" key={opt.key}
+              onClick={() => setMethod(opt.key)}
+              className={`flex-1 py-1 rounded-lg text-[10px] font-semibold transition ${
+                method === opt.key
+                  ? 'bg-[#800020]/10 text-[#800020] border border-[#800020]/20'
+                  : 'bg-gray-50 text-gray-400 border border-gray-200 hover:text-gray-600'
+              }`}>
+              {opt.label}
+            </button>
+          ))}
+        </div>
+
+        {method === 'pin' && (
+          <p className="text-[9px] text-gray-400">A 6-digit PIN is generated and shown once. Share it with the participant separately.</p>
+        )}
+
+        {errMsg && <p className="text-[9px] text-red-500">{errMsg}</p>}
+
+        <button type="submit" disabled={status === 'loading'}
+          className="w-full py-1.5 rounded-lg text-[11px] font-bold text-white bg-[#800020] hover:opacity-90 transition disabled:opacity-40">
+          {status === 'loading' ? 'Creating…' : 'Create invite →'}
+        </button>
+      </form>
     </div>
   );
 }
 
-// ── Custom / free-form party card ─────────────────────────────────────────────
-function CustomPartyCard({ propertyId, senderName }) {
-  const [open,   setOpen]   = useState(false);
-  const [label,  setLabel]  = useState('');
-  const [email,  setEmail]  = useState('');
-  const [status, setStatus] = useState('idle');
-  const [errMsg, setErrMsg] = useState('');
-  const [copied, setCopied] = useState(false);
+// ── Custom party card ─────────────────────────────────────────────────────────
 
-  function reset() { setOpen(false); setLabel(''); setEmail(''); setStatus('idle'); setErrMsg(''); }
+function CustomPartyCard({ propertyId }) {
+  const [open, setOpen]       = useState(false);
+  const [label, setLabel]     = useState('');
+  const [email, setEmail]     = useState('');
+  const [method, setMethod]   = useState('email_otp');
+  const [status, setStatus]   = useState('idle');
+  const [errMsg, setErrMsg]   = useState('');
+  const [createdData, setCreatedData] = useState(null);
 
   function getRoleKey() {
     return label.trim().toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '').slice(0, 32) || 'guest';
   }
 
-  async function handleSend(e) {
+  function reset() { setOpen(false); setLabel(''); setEmail(''); setStatus('idle'); setErrMsg(''); setCreatedData(null); }
+
+  async function handleCreate(e) {
     e.preventDefault();
     if (!label.trim()) { setErrMsg('Enter a role name'); return; }
-    if (!email.trim() || !email.includes('@')) { setErrMsg('Enter a valid email'); return; }
-    setStatus('loading');
-    setErrMsg('');
-    try {
-      const res = await fetch(`${API_BASE}/api/public/deal-room/${propertyId}/invite`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ role: getRoleKey(), email: email.trim(), senderName, customLabel: label.trim() }),
-      });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error || 'Failed to send');
-      setStatus('sent');
-    } catch (err) {
-      setErrMsg(err.message);
+    if (method === 'email_otp' && (!email.trim() || !email.includes('@'))) { setErrMsg('Enter a valid email'); return; }
+    setStatus('loading'); setErrMsg('');
+
+    const roleKey = getRoleKey();
+    const pin = method === 'pin' ? generatePin() : undefined;
+    const result = await createInvite({
+      propertyId,
+      roleKey,
+      invitedEmail: method === 'email_otp' ? email.trim() : (email.trim() || null),
+      verificationMethod: method,
+      pin,
+    });
+
+    if (!result.success) {
+      setErrMsg(result.error || 'Failed to create invite');
       setStatus('error');
+      return;
     }
+
+    const inviteUrl = `${window.location.origin}/deal-room/${propertyId}?invite=${result.invite_token}&role=${roleKey}`;
+    setCreatedData({ inviteUrl, email: email.trim(), pin, method });
+    setStatus('created');
   }
 
-  function handleCopy() {
-    const url = `${window.location.origin}/deal-room/${propertyId}?role=${getRoleKey()}`;
-    navigator.clipboard.writeText(url).then(() => { setCopied(true); setTimeout(() => setCopied(false), 2000); });
-  }
-
-  if (status === 'sent') {
+  if (status === 'created' && createdData) {
     return (
-      <div className="rounded-xl border border-green-200 bg-green-50 px-4 py-3">
-        <div className="flex items-center gap-2 mb-1.5">
+      <div className="rounded-xl border border-gray-200 bg-white px-4 py-3 space-y-2">
+        <div className="flex items-center gap-2">
           <span className="text-base">👤</span>
-          <p className="text-xs font-bold text-green-800 flex-1 min-w-0">{label}</p>
-          <span className="text-[9px] font-bold text-green-700 bg-green-100 border border-green-200 rounded-full px-2 py-0.5 shrink-0">✓ Invited</span>
+          <p className="text-xs font-semibold text-gray-800 flex-1">{label}</p>
         </div>
-        <p className="text-[10px] text-green-600">Sent to <span className="font-semibold">{email}</span></p>
-        <p className="text-[10px] text-gray-400 mt-0.5">Awaiting documents</p>
-        <button onClick={reset} className="text-[9px] text-green-500 underline mt-1.5 block">Send to another →</button>
+        <CreatedInviteCard {...createdData} onDismiss={reset} />
+        <button onClick={reset} className="text-[10px] text-[#800020] underline">Invite another →</button>
       </div>
     );
   }
@@ -353,36 +381,174 @@ function CustomPartyCard({ propertyId, senderName }) {
       <div className="flex items-center gap-2 mb-2.5">
         <span className="text-base">👤</span>
         <p className="text-xs font-semibold text-gray-700">Custom party</p>
-        <button onClick={() => { setOpen(false); setLabel(''); setEmail(''); setErrMsg(''); }}
-          className="ml-auto text-gray-300 hover:text-gray-500 text-xs transition">✕</button>
+        <button onClick={reset} className="ml-auto text-gray-300 hover:text-gray-500 text-xs transition">✕</button>
       </div>
-      <form onSubmit={handleSend} className="space-y-1.5">
+      <form onSubmit={handleCreate} className="space-y-1.5">
         <input autoFocus type="text" placeholder="Their role (e.g. IP Counsel)"
           value={label} onChange={e => { setLabel(e.target.value); setErrMsg(''); }}
           className="w-full text-xs px-2.5 py-1.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#800020]/20 focus:border-[#800020]/40 placeholder-gray-300"
         />
-        <input type="email" placeholder="email@firm.com"
+        <input type="email" placeholder="email@firm.com (optional for PIN method)"
           value={email} onChange={e => { setEmail(e.target.value); setErrMsg(''); }}
           className="w-full text-xs px-2.5 py-1.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#800020]/20 focus:border-[#800020]/40 placeholder-gray-300"
         />
-        {errMsg && <p className="text-[9px] text-red-500">{errMsg}</p>}
-        <div className="flex items-center gap-1.5">
-          <button type="submit" disabled={status === 'loading' || !label.trim() || !email.trim()}
-            className="flex-1 py-1.5 rounded-lg text-[11px] font-bold text-white bg-[#800020] hover:opacity-90 transition disabled:opacity-40 disabled:cursor-not-allowed">
-            {status === 'loading' ? 'Sending…' : 'Send Invite →'}
-          </button>
-          <button type="button" onClick={handleCopy} title="Copy link instead"
-            className="px-2 py-1.5 rounded-lg text-[10px] font-semibold border border-gray-200 text-gray-400 hover:text-gray-600 hover:border-gray-300 transition shrink-0">
-            {copied ? '✓' : '🔗'}
-          </button>
+        <div className="flex gap-1">
+          {[{ key: 'email_otp', label: 'Email verify' }, { key: 'pin', label: 'PIN only' }].map(opt => (
+            <button type="button" key={opt.key} onClick={() => setMethod(opt.key)}
+              className={`flex-1 py-1 rounded-lg text-[10px] font-semibold transition ${
+                method === opt.key ? 'bg-[#800020]/10 text-[#800020] border border-[#800020]/20' : 'bg-gray-50 text-gray-400 border border-gray-200 hover:text-gray-600'
+              }`}>
+              {opt.label}
+            </button>
+          ))}
         </div>
+        {errMsg && <p className="text-[9px] text-red-500">{errMsg}</p>}
+        <button type="submit" disabled={status === 'loading'}
+          className="w-full py-1.5 rounded-lg text-[11px] font-bold text-white bg-[#800020] hover:opacity-90 transition disabled:opacity-40">
+          {status === 'loading' ? 'Creating…' : 'Create invite →'}
+        </button>
       </form>
     </div>
   );
 }
 
-// ── Panel ─────────────────────────────────────────────────────────────────────
+// ── Invite management table ───────────────────────────────────────────────────
+
+const STATUS_STYLE = {
+  pending:  { bg: 'bg-amber-50',  text: 'text-amber-700',  label: 'Pending' },
+  accepted: { bg: 'bg-green-50',  text: 'text-green-700',  label: 'Active' },
+  revoked:  { bg: 'bg-red-50',    text: 'text-red-600',    label: 'Revoked' },
+  expired:  { bg: 'bg-gray-100',  text: 'text-gray-500',   label: 'Expired' },
+};
+
+function timeAgo(dateStr) {
+  if (!dateStr) return '—';
+  const diff = Date.now() - new Date(dateStr).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1)  return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24)  return `${hrs}h ago`;
+  return `${Math.floor(hrs / 24)}d ago`;
+}
+
+function InviteManagementTable({ propertyId, packId }) {
+  const [invites, setInvites]     = useState([]);
+  const [loading, setLoading]     = useState(true);
+  const [revoking, setRevoking]   = useState(null); // invite id being revoked
+
+  const allRoles = getWorkflowPack(packId).roles;
+  function getRoleLabel(roleKey) {
+    const r = allRoles.find(r => r.key === roleKey);
+    return r ? (r.shortLabel || r.label) : roleKey;
+  }
+
+  const refresh = useCallback(async () => {
+    setLoading(true);
+    const data = await getRoomInvites(propertyId);
+    setInvites(Array.isArray(data) ? data : []);
+    setLoading(false);
+  }, [propertyId]);
+
+  useEffect(() => { refresh(); }, [refresh]);
+
+  async function handleRevoke(inviteId) {
+    setRevoking(inviteId);
+    await revokeInvite(inviteId);
+    await refresh();
+    setRevoking(null);
+  }
+
+  if (loading) {
+    return (
+      <div className="flex items-center gap-2 py-4 text-xs text-gray-400">
+        <div className="w-4 h-4 border border-gray-200 border-t-[#800020] rounded-full animate-spin" />
+        Loading invites…
+      </div>
+    );
+  }
+
+  const active = invites.filter(i => i.status !== 'revoked' && i.status !== 'expired');
+  const inactive = invites.filter(i => i.status === 'revoked' || i.status === 'expired');
+
+  if (invites.length === 0) {
+    return (
+      <div className="text-center py-6">
+        <p className="text-sm font-semibold text-gray-500 mb-1">No invites yet</p>
+        <p className="text-xs text-gray-400">Switch to the Invite tab to create participant links.</p>
+      </div>
+    );
+  }
+
+  const renderRow = (inv) => {
+    const style = STATUS_STYLE[inv.status] || STATUS_STYLE.pending;
+    return (
+      <div key={inv.id} className="flex items-center gap-3 py-2.5 border-t border-gray-100 first:border-t-0">
+        {/* Role + email */}
+        <div className="flex-1 min-w-0">
+          <p className="text-xs font-semibold text-gray-800 truncate">
+            {getRoleLabel(inv.role_key)}
+          </p>
+          <p className="text-[10px] text-gray-400 truncate">
+            {inv.invited_email || (inv.verification_method === 'pin' ? 'PIN-only (no email)' : '—')}
+          </p>
+        </div>
+        {/* Status */}
+        <span className={`shrink-0 text-[10px] font-bold px-2 py-0.5 rounded-full ${style.bg} ${style.text}`}>
+          {style.label}
+        </span>
+        {/* Last seen */}
+        <span className="shrink-0 text-[10px] text-gray-400 hidden sm:block w-16 text-right">
+          {inv.last_seen_at ? timeAgo(inv.last_seen_at) : inv.accepted_at ? 'Verified' : '—'}
+        </span>
+        {/* Actions */}
+        {inv.status !== 'revoked' && inv.status !== 'expired' && (
+          <button
+            onClick={() => handleRevoke(inv.id)}
+            disabled={revoking === inv.id}
+            className="shrink-0 text-[10px] font-semibold text-red-500 hover:text-red-700 transition disabled:opacity-40">
+            {revoking === inv.id ? 'Revoking…' : 'Revoke'}
+          </button>
+        )}
+        {(inv.status === 'revoked' || inv.status === 'expired') && (
+          <span className="shrink-0 text-[10px] text-gray-300">—</span>
+        )}
+      </div>
+    );
+  };
+
+  return (
+    <div>
+      {/* Column headers */}
+      <div className="flex items-center gap-3 pb-1.5 text-[10px] font-bold uppercase tracking-wider text-gray-400">
+        <span className="flex-1">Participant / Role</span>
+        <span className="shrink-0 w-14">Status</span>
+        <span className="shrink-0 w-16 text-right hidden sm:block">Last seen</span>
+        <span className="shrink-0 w-12 text-right">Action</span>
+      </div>
+      {active.map(renderRow)}
+      {inactive.length > 0 && (
+        <details className="mt-2">
+          <summary className="text-[10px] text-gray-400 cursor-pointer hover:text-gray-600 py-1">
+            {inactive.length} revoked / expired
+          </summary>
+          {inactive.map(renderRow)}
+        </details>
+      )}
+      <button onClick={refresh} className="mt-3 text-[10px] text-gray-400 hover:text-gray-600 underline">
+        Refresh
+      </button>
+    </div>
+  );
+}
+
+// ── Main panel ────────────────────────────────────────────────────────────────
+
 export default function InvitePanel({ propertyId, senderName, packId = DEFAULT_PACK_ID }) {
+  const [ownerSession, setOwnerSession] = useState(null);
+  const [checkingAuth, setCheckingAuth] = useState(true);
+  const [activeTab, setActiveTab]       = useState('invite');
+
   const allRoles = getInvitableRoles(packId);
 
   const REMOVED_KEY = propertyId ? `kontra_removed_roles_${propertyId}` : null;
@@ -396,45 +562,89 @@ export default function InvitePanel({ propertyId, senderName, packId = DEFAULT_P
     setRemovedRoles(next);
     if (REMOVED_KEY) localStorage.setItem(REMOVED_KEY, JSON.stringify([...next]));
   }
-
   function handleRestoreRoles() {
     setRemovedRoles(new Set());
     if (REMOVED_KEY) localStorage.removeItem(REMOVED_KEY);
   }
-
   const visibleRoles = allRoles.filter(r => !removedRoles.has(r.role));
+
+  // Check if owner is already authenticated from a previous session
+  useEffect(() => {
+    getOwnerSession().then(session => {
+      setOwnerSession(session);
+      setCheckingAuth(false);
+    }).catch(() => setCheckingAuth(false));
+  }, []);
+
+  if (checkingAuth) {
+    return (
+      <div className="bg-gray-50 rounded-2xl border border-gray-200 px-6 py-5">
+        <div className="flex items-center gap-2 text-xs text-gray-400 py-2">
+          <div className="w-4 h-4 border border-gray-200 border-t-[#800020] rounded-full animate-spin" />
+          Checking authentication…
+        </div>
+      </div>
+    );
+  }
+
+  if (!ownerSession) {
+    return <OwnerAuthGate onAuthenticated={session => setOwnerSession(session)} />;
+  }
 
   return (
     <div className="bg-gray-50 rounded-2xl border border-gray-200 px-6 py-5">
+      {/* Header + tabs */}
       <div className="mb-4 flex items-start justify-between gap-4">
         <div>
-          <p className="text-sm font-bold text-gray-900">Request documents from each party</p>
+          <p className="text-sm font-bold text-gray-900">Participant access</p>
           <p className="text-xs text-gray-400 mt-0.5">
-            Enter their email — they'll get a direct upload link for their role. No account required.
+            Create a unique invite link for each participant — each link is verified individually.
           </p>
         </div>
-        {removedRoles.size > 0 && (
-          <button onClick={handleRestoreRoles}
-            className="text-[10px] text-gray-400 hover:text-gray-600 underline transition shrink-0 mt-0.5">
-            Restore {removedRoles.size} hidden
-          </button>
-        )}
+        <div className="flex gap-1 shrink-0">
+          {[{ key: 'invite', label: 'Invite' }, { key: 'manage', label: 'Manage' }].map(tab => (
+            <button key={tab.key} onClick={() => setActiveTab(tab.key)}
+              className={`px-3 py-1 rounded-lg text-[11px] font-bold transition ${
+                activeTab === tab.key
+                  ? 'bg-[#800020] text-white'
+                  : 'bg-white text-gray-500 border border-gray-200 hover:text-gray-700'
+              }`}>
+              {tab.label}
+            </button>
+          ))}
+        </div>
       </div>
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-        {visibleRoles.map(r => (
-          <RoleCard
-            key={r.role}
-            r={r}
-            propertyId={propertyId}
-            senderName={senderName}
-            onRemove={() => handleRemoveRole(r.role)}
-          />
-        ))}
-        <CustomPartyCard propertyId={propertyId} senderName={senderName} />
-      </div>
-      <p className="text-[10px] text-gray-400 mt-3 text-center">
-        Each party sees only what's relevant to their role · 🔗 button copies the link instead
-      </p>
+
+      {activeTab === 'invite' && (
+        <>
+          <div className="flex items-center justify-between mb-2">
+            {removedRoles.size > 0 && (
+              <button onClick={handleRestoreRoles}
+                className="text-[10px] text-gray-400 hover:text-gray-600 underline transition">
+                Restore {removedRoles.size} hidden
+              </button>
+            )}
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+            {visibleRoles.map(r => (
+              <RoleCard
+                key={r.role}
+                r={r}
+                propertyId={propertyId}
+                onRemove={() => handleRemoveRole(r.role)}
+              />
+            ))}
+            <CustomPartyCard propertyId={propertyId} />
+          </div>
+          <p className="text-[10px] text-gray-400 mt-3 text-center">
+            Each invite creates a unique link · Email OTP confirms identity · PIN grants immediate access
+          </p>
+        </>
+      )}
+
+      {activeTab === 'manage' && (
+        <InviteManagementTable propertyId={propertyId} packId={packId} />
+      )}
     </div>
   );
 }
