@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { getWorkflowPack, DEFAULT_PACK_ID } from '../../lib/workflowPacks';
+import { storePinForRole } from '../../lib/pinUtils';
 
 const API_BASE = import.meta.env.VITE_API_BASE || '';
 
@@ -9,11 +10,55 @@ function getInvitableRoles(packId) {
     .map(r => ({ role: r.key, icon: r.icon, label: r.shortLabel || r.label, action: r.inviteAction }));
 }
 
+// ── Small inline PIN reveal after "copy link" ─────────────────────────────────
+function PinReveal({ pin, onRegenerate, loading, error }) {
+  const [pinCopied, setPinCopied] = useState(false);
+  if (loading) {
+    return (
+      <div className="mt-2 flex items-center gap-1.5">
+        <div className="w-3 h-3 border border-amber-400 border-t-amber-700 rounded-full animate-spin shrink-0" />
+        <p className="text-[10px] text-amber-600">Generating PIN…</p>
+      </div>
+    );
+  }
+  if (error) {
+    return (
+      <p className="text-[10px] text-gray-400 mt-2">
+        PIN unavailable.{' '}
+        <button onClick={onRegenerate} className="underline text-gray-500">Retry</button>
+      </p>
+    );
+  }
+  function copyPin() {
+    navigator.clipboard.writeText(pin).then(() => { setPinCopied(true); setTimeout(() => setPinCopied(false), 2000); });
+  }
+  return (
+    <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-2">
+      <p className="text-[9px] font-bold text-amber-700 uppercase tracking-wide mb-1">Send PIN separately</p>
+      <div className="flex items-center gap-2">
+        <span className="text-sm font-black tracking-[0.25em] text-amber-900 flex-1">{pin}</span>
+        <button onClick={copyPin}
+          className={`text-[9px] font-bold px-2 py-1 rounded transition ${pinCopied ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700 hover:bg-amber-200'}`}>
+          {pinCopied ? '✓' : 'Copy'}
+        </button>
+        <button onClick={onRegenerate}
+          className="text-[9px] text-amber-500 hover:text-amber-700 underline transition">
+          New
+        </button>
+      </div>
+      <p className="text-[8px] text-amber-500 mt-1">Don't include this in the same message as the link</p>
+    </div>
+  );
+}
+
 function RoleCard({ r, propertyId, senderName, onRemove }) {
   const [email, setEmail] = useState('');
   const [status, setStatus] = useState('idle');
   const [errMsg, setErrMsg] = useState('');
   const [copied, setCopied] = useState(false);
+  // PIN state: null | { status: 'loading'|'ready'|'error', pin?: string, error?: string }
+  const [pinState, setPinState] = useState(null);
+
   const url = `${window.location.origin}/deal-room/${propertyId}?role=${r.role}`;
 
   async function handleSend(e) {
@@ -30,17 +75,31 @@ function RoleCard({ r, propertyId, senderName, onRemove }) {
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || 'Failed to send');
       setStatus('sent');
+      // Auto-generate PIN after successful invite send
+      generatePin();
     } catch (err) {
       setErrMsg(err.message);
       setStatus('error');
     }
   }
 
-  function handleCopy() {
+  async function generatePin() {
+    setPinState({ status: 'loading' });
+    try {
+      const pin = await storePinForRole(propertyId, r.role);
+      setPinState({ status: 'ready', pin });
+    } catch (err) {
+      setPinState({ status: 'error', error: err.message });
+    }
+  }
+
+  async function handleCopy() {
     navigator.clipboard.writeText(url).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     });
+    // Generate PIN on first copy if not already generated
+    if (!pinState) generatePin();
   }
 
   if (status === 'sent') {
@@ -53,7 +112,15 @@ function RoleCard({ r, propertyId, senderName, onRemove }) {
         </div>
         <p className="text-[10px] text-green-600">Sent to <span className="font-semibold">{email}</span></p>
         <p className="text-[10px] text-gray-400 mt-0.5">Awaiting documents</p>
-        <button onClick={() => { setStatus('idle'); setEmail(''); }}
+        {pinState && (
+          <PinReveal
+            pin={pinState.pin}
+            loading={pinState.status === 'loading'}
+            error={pinState.status === 'error' ? pinState.error : null}
+            onRegenerate={generatePin}
+          />
+        )}
+        <button onClick={() => { setStatus('idle'); setEmail(''); setPinState(null); }}
           className="text-[9px] text-green-500 underline mt-1.5 block">Send to another →</button>
       </div>
     );
@@ -94,6 +161,15 @@ function RoleCard({ r, propertyId, senderName, onRemove }) {
           </button>
         </div>
       </form>
+      {/* PIN reveal after copy */}
+      {pinState && (
+        <PinReveal
+          pin={pinState.pin}
+          loading={pinState.status === 'loading'}
+          error={pinState.status === 'error' ? pinState.error : null}
+          onRegenerate={generatePin}
+        />
+      )}
     </div>
   );
 }
@@ -106,11 +182,22 @@ function CustomPartyCard({ propertyId, senderName }) {
   const [status, setStatus] = useState('idle');
   const [errMsg, setErrMsg] = useState('');
   const [copied, setCopied] = useState(false);
+  const [pinState, setPinState] = useState(null);
 
-  function reset() { setOpen(false); setLabel(''); setEmail(''); setStatus('idle'); setErrMsg(''); }
+  function reset() { setOpen(false); setLabel(''); setEmail(''); setStatus('idle'); setErrMsg(''); setPinState(null); }
 
   function getRoleKey() {
     return label.trim().toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '').slice(0, 32) || 'guest';
+  }
+
+  async function generatePin(roleKey) {
+    setPinState({ status: 'loading' });
+    try {
+      const pin = await storePinForRole(propertyId, roleKey);
+      setPinState({ status: 'ready', pin });
+    } catch (err) {
+      setPinState({ status: 'error', error: err.message });
+    }
   }
 
   async function handleSend(e) {
@@ -128,15 +215,17 @@ function CustomPartyCard({ propertyId, senderName }) {
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || 'Failed to send');
       setStatus('sent');
+      generatePin(getRoleKey());
     } catch (err) {
       setErrMsg(err.message);
       setStatus('error');
     }
   }
 
-  function handleCopy() {
+  async function handleCopy() {
     const url = `${window.location.origin}/deal-room/${propertyId}?role=${getRoleKey()}`;
     navigator.clipboard.writeText(url).then(() => { setCopied(true); setTimeout(() => setCopied(false), 2000); });
+    if (!pinState) generatePin(getRoleKey());
   }
 
   if (status === 'sent') {
@@ -149,6 +238,14 @@ function CustomPartyCard({ propertyId, senderName }) {
         </div>
         <p className="text-[10px] text-green-600">Sent to <span className="font-semibold">{email}</span></p>
         <p className="text-[10px] text-gray-400 mt-0.5">Awaiting documents</p>
+        {pinState && (
+          <PinReveal
+            pin={pinState.pin}
+            loading={pinState.status === 'loading'}
+            error={pinState.status === 'error' ? pinState.error : null}
+            onRegenerate={() => generatePin(getRoleKey())}
+          />
+        )}
         <button onClick={reset} className="text-[9px] text-green-500 underline mt-1.5 block">Send to another →</button>
       </div>
     );
@@ -171,7 +268,7 @@ function CustomPartyCard({ propertyId, senderName }) {
       <div className="flex items-center gap-2 mb-2.5">
         <span className="text-base">👤</span>
         <p className="text-xs font-semibold text-gray-700">Custom party</p>
-        <button onClick={() => { setOpen(false); setLabel(''); setEmail(''); setErrMsg(''); }}
+        <button onClick={() => { setOpen(false); setLabel(''); setEmail(''); setErrMsg(''); setPinState(null); }}
           className="ml-auto text-gray-300 hover:text-gray-500 text-xs transition">✕</button>
       </div>
       <form onSubmit={handleSend} className="space-y-1.5">
@@ -195,6 +292,14 @@ function CustomPartyCard({ propertyId, senderName }) {
           </button>
         </div>
       </form>
+      {pinState && (
+        <PinReveal
+          pin={pinState.pin}
+          loading={pinState.status === 'loading'}
+          error={pinState.status === 'error' ? pinState.error : null}
+          onRegenerate={() => generatePin(getRoleKey())}
+        />
+      )}
     </div>
   );
 }
@@ -251,7 +356,7 @@ export default function InvitePanel({ propertyId, senderName, packId = DEFAULT_P
         <CustomPartyCard propertyId={propertyId} senderName={senderName} />
       </div>
       <p className="text-[10px] text-gray-400 mt-3 text-center">
-        Each party sees only what's relevant to their role · 🔗 button copies the link instead
+        Each party sees only what's relevant to their role · 🔗 copies the link · PIN protects access
       </p>
     </div>
   );
