@@ -1,4 +1,13 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, createContext, useContext } from "react";
+import { getInviteSession, touchSession, createSessionClient } from "../../lib/inviteUtils";
+
+/**
+ * SessionContext — provides the participant's verified session token and a
+ * pre-configured Supabase client that injects x-kontra-session on every query.
+ * Components that query Supabase directly after gate verification should
+ * consume this context: const { sessionClient } = useContext(DealRoomSessionContext).
+ */
+export const DealRoomSessionContext = createContext({ sessionToken: null, sessionClient: null });
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import PublicLayout from "./PublicLayout";
 import DealCoordinationPanel from "./DealCoordinationPanel";
@@ -1047,6 +1056,29 @@ export default function DealRoomPage() {
   const [sessionToken, setSessionToken] = useState(null);
   const pinUnlocked = sessionToken !== null;
 
+  // On mount: restore an existing participant session from localStorage so
+  // returning visitors (role !== owner) don't have to re-verify their invite.
+  // createSessionClient(token) creates a Supabase client with the
+  // x-kontra-session header pre-set for any direct DB queries post-unlock.
+  useEffect(() => {
+    if (role === 'owner') return;
+    const stored = getInviteSession(propertyId);
+    if (stored?.token) {
+      setSessionToken(stored.token);
+      // Keep the server-side session alive in the background
+      touchSession(stored.token).catch(() => {});
+    }
+  }, [propertyId, role]);
+
+  // Periodically refresh the session while the participant is active (every 10 min)
+  useEffect(() => {
+    if (!sessionToken || role === 'owner') return;
+    const interval = setInterval(() => {
+      touchSession(sessionToken).catch(() => {});
+    }, 10 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, [sessionToken, role]);
+
   // Try to fetch custom deal room from API
   useEffect(() => {
     // Skip API fetch for demo rooms
@@ -1262,7 +1294,10 @@ export default function DealRoomPage() {
 
   const pid = propertyId || property.property_id || property.id;
 
+  const sessionClient = sessionToken ? createSessionClient(sessionToken) : null;
+
   return (
+    <DealRoomSessionContext.Provider value={{ sessionToken, sessionClient }}>
     <PublicLayout
       hideFooter
       dealRoomMode={!!(property.isCustom && !isDemo)}
@@ -1594,6 +1629,7 @@ export default function DealRoomPage() {
 
       </div>
     </PublicLayout>
+    </DealRoomSessionContext.Provider>
   );
 }
 

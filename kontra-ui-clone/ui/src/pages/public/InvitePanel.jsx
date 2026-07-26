@@ -18,6 +18,7 @@ import {
   verifyOwnerOtp,
   getOwnerSession,
 } from '../../lib/inviteUtils';
+import { supabase } from '../../lib/supabaseClient';
 
 const API_BASE = (import.meta.env.VITE_API_BASE || '').replace(/\/+$/, '');
 
@@ -113,7 +114,9 @@ function OwnerAuthGate({ onAuthenticated }) {
 
 // ── Created-invite card — shown after an invite is created ───────────────────
 
-function CreatedInviteCard({ inviteUrl, email, pin, method, onDismiss }) {
+// inviteToken: the raw token returned by createInvite() — sent to the API so
+// it can derive the recipient, role, and URL server-side (never trusted from client).
+function CreatedInviteCard({ inviteUrl, inviteToken, email, pin, method, onDismiss }) {
   const [copied, setCopied] = useState(false);
   const [emailSent, setEmailSent] = useState(false);
   const [emailErr, setEmailErr] = useState('');
@@ -127,13 +130,22 @@ function CreatedInviteCard({ inviteUrl, email, pin, method, onDismiss }) {
   }
 
   async function handleSendEmail() {
-    if (!email) return;
+    if (!email || !inviteToken) return;
     setSendingEmail(true); setEmailErr('');
     try {
+      // Get the owner's current Supabase Auth JWT — required by the server to
+      // verify ownership before it will deliver the email.
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) throw new Error('Not authenticated — please refresh and try again');
+
       const res = await fetch(`${API_BASE}/api/public/deal-room/send-invite-email`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ to: email, inviteUrl }),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`,
+        },
+        // Server derives to/url/role/propName from the token — only token is sent
+        body: JSON.stringify({ inviteToken }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed');
@@ -228,7 +240,7 @@ function RoleCard({ r, propertyId, onRemove }) {
     }
 
     const inviteUrl = `${window.location.origin}/deal-room/${propertyId}?invite=${result.invite_token}&role=${r.role}`;
-    setCreatedData({ inviteUrl, email: email.trim(), pin, method });
+    setCreatedData({ inviteUrl, inviteToken: result.invite_token, email: email.trim(), pin, method });
     setStatus('created');
   }
 
@@ -347,7 +359,7 @@ function CustomPartyCard({ propertyId }) {
     }
 
     const inviteUrl = `${window.location.origin}/deal-room/${propertyId}?invite=${result.invite_token}&role=${roleKey}`;
-    setCreatedData({ inviteUrl, email: email.trim(), pin, method });
+    setCreatedData({ inviteUrl, inviteToken: result.invite_token, email: email.trim(), pin, method });
     setStatus('created');
   }
 
