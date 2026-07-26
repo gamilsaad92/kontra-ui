@@ -10,7 +10,7 @@ function getInvitableRoles(packId) {
     .map(r => ({ role: r.key, icon: r.icon, label: r.shortLabel || r.label, action: r.inviteAction }));
 }
 
-// ── Small inline PIN reveal after "copy link" ─────────────────────────────────
+// ── Small inline PIN reveal after "copy link" / "send invite" ─────────────────
 function PinReveal({ pin, onRegenerate, loading, error }) {
   const [pinCopied, setPinCopied] = useState(false);
   if (loading) {
@@ -51,12 +51,11 @@ function PinReveal({ pin, onRegenerate, loading, error }) {
   );
 }
 
-function RoleCard({ r, propertyId, senderName, onRemove }) {
+function RoleCard({ r, propertyId, linkToken, senderName, onRemove }) {
   const [email, setEmail] = useState('');
   const [status, setStatus] = useState('idle');
   const [errMsg, setErrMsg] = useState('');
   const [copied, setCopied] = useState(false);
-  // PIN state: null | { status: 'loading'|'ready'|'error', pin?: string, error?: string }
   const [pinState, setPinState] = useState(null);
 
   const url = `${window.location.origin}/deal-room/${propertyId}?role=${r.role}`;
@@ -75,7 +74,6 @@ function RoleCard({ r, propertyId, senderName, onRemove }) {
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || 'Failed to send');
       setStatus('sent');
-      // Auto-generate PIN after successful invite send
       generatePin();
     } catch (err) {
       setErrMsg(err.message);
@@ -86,7 +84,7 @@ function RoleCard({ r, propertyId, senderName, onRemove }) {
   async function generatePin() {
     setPinState({ status: 'loading' });
     try {
-      const pin = await storePinForRole(propertyId, r.role);
+      const pin = await storePinForRole(propertyId, r.role, linkToken);
       setPinState({ status: 'ready', pin });
     } catch (err) {
       setPinState({ status: 'error', error: err.message });
@@ -98,7 +96,6 @@ function RoleCard({ r, propertyId, senderName, onRemove }) {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     });
-    // Generate PIN on first copy if not already generated
     if (!pinState) generatePin();
   }
 
@@ -128,7 +125,6 @@ function RoleCard({ r, propertyId, senderName, onRemove }) {
 
   return (
     <div className="rounded-xl border border-gray-200 bg-white px-4 py-3 group/card relative">
-      {/* Remove button — hover reveal */}
       {onRemove && (
         <button
           onClick={onRemove}
@@ -161,7 +157,6 @@ function RoleCard({ r, propertyId, senderName, onRemove }) {
           </button>
         </div>
       </form>
-      {/* PIN reveal after copy */}
       {pinState && (
         <PinReveal
           pin={pinState.pin}
@@ -175,7 +170,7 @@ function RoleCard({ r, propertyId, senderName, onRemove }) {
 }
 
 // ── Custom / free-form party card ────────────────────────────────────────────
-function CustomPartyCard({ propertyId, senderName }) {
+function CustomPartyCard({ propertyId, linkToken, senderName }) {
   const [open, setOpen] = useState(false);
   const [label, setLabel] = useState('');
   const [email, setEmail] = useState('');
@@ -193,7 +188,7 @@ function CustomPartyCard({ propertyId, senderName }) {
   async function generatePin(roleKey) {
     setPinState({ status: 'loading' });
     try {
-      const pin = await storePinForRole(propertyId, roleKey);
+      const pin = await storePinForRole(propertyId, roleKey, linkToken);
       setPinState({ status: 'ready', pin });
     } catch (err) {
       setPinState({ status: 'error', error: err.message });
@@ -305,7 +300,7 @@ function CustomPartyCard({ propertyId, senderName }) {
 }
 
 // ── Panel ────────────────────────────────────────────────────────────────────
-export default function InvitePanel({ propertyId, senderName, packId = DEFAULT_PACK_ID }) {
+export default function InvitePanel({ propertyId, linkToken, senderName, packId = DEFAULT_PACK_ID }) {
   const allRoles = getInvitableRoles(packId);
 
   const REMOVED_KEY = propertyId ? `kontra_removed_roles_${propertyId}` : null;
@@ -349,11 +344,12 @@ export default function InvitePanel({ propertyId, senderName, packId = DEFAULT_P
             key={r.role}
             r={r}
             propertyId={propertyId}
+            linkToken={linkToken}
             senderName={senderName}
             onRemove={() => handleRemoveRole(r.role)}
           />
         ))}
-        <CustomPartyCard propertyId={propertyId} senderName={senderName} />
+        <CustomPartyCard propertyId={propertyId} linkToken={linkToken} senderName={senderName} />
       </div>
       <p className="text-[10px] text-gray-400 mt-3 text-center">
         Each party sees only what's relevant to their role · 🔗 copies the link · PIN protects access
