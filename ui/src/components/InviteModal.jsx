@@ -4,7 +4,7 @@ import {
   requestOwnerOtp,
   verifyOwnerOtp,
   getOwnerSession,
-} from "../../lib/pinUtils";
+} from "../lib/pinUtils";
 
 const PARTY_ROLES = [
   { role: "lender",   icon: "🏦", label: "Lender / Underwriter",  color: "#800020",
