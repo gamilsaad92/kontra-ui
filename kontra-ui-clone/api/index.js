@@ -246,6 +246,7 @@ const loanGovernanceRouter = require('./routers/loanGovernance');
 const onboardingRouter = require('./routers/onboarding');
 const rulesRouter     = require('./routers/rules');
 const invitesRouter = require('./routers/invites');
+const dealRoomSecurityV2Router = require('./routers/dealRoomSecurityV2');
 const documentReviewRouter = require('./routers/documentReview');
 // Optional routers for unfinished modules
 const ssoRouter = require('./routers/sso');
@@ -2386,6 +2387,8 @@ app.use('/api/loan-governance', loanGovernanceRouter);
 app.use('/api/onboarding', authenticate, onboardingRouter);
 app.use('/api/rules', authenticate, rulesRouter);
 app.use('/api/invites', invitesRouter);
+// Participant security v2 — feature-flagged, behind auth_v2_enabled per room
+app.use('/api/v2/deal-room', dealRoomSecurityV2Router);
 app.use('/api/analyze-financials', analyzeFinancialsRouter);
 app.use('/api/inspect-review', inspectReviewRouter);
 app.use('/api/document-review', documentReviewRouter);

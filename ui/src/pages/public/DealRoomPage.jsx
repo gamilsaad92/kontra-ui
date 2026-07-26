@@ -17,6 +17,8 @@ import TransactionRiskPanel from "./TransactionRiskPanel";
 import TasksPanel from "./TasksPanel";
 import AIBriefingPanel from "./AIBriefingPanel";
 import InvitePanel from "./InvitePanel";
+import InvitePanelV2 from "./InvitePanelV2";
+import DealRoomGateV2 from "./DealRoomGateV2";
 import DocumentsTabPanel from "./DocumentsTabPanel";
 import VerifiedAssetPackage from "./VerifiedAssetPackage";
 import NotificationsLog from "./NotificationsLog";
@@ -1052,9 +1054,28 @@ export default function DealRoomPage() {
   const [analysesRefreshKey, setAnalysesRefreshKey] = useState(0);
 
   const onAnalysisSaved = () => setAnalysesRefreshKey(k => k + 1);
-  // sessionToken: null = not yet verified, string = verified participant session
+  // sessionToken: null = not yet verified, string = verified participant session (v1 PIN flow)
   const [sessionToken, setSessionToken] = useState(null);
   const pinUnlocked = sessionToken !== null;
+
+  // v2 participant state — set after DealRoomGateV2 OTP verification
+  const [v2Session, setV2Session]   = useState(null);
+  const [v2RoleKey, setV2RoleKey]   = useState(null);
+  const v2Unlocked = v2Session !== null;
+
+  // Owner Supabase session — used by InvitePanelV2 to authenticate API calls
+  const [ownerSession, setOwnerSession] = useState(null);
+  useEffect(() => {
+    import('../../lib/supabaseClient').then(({ supabase }) => {
+      supabase.auth.getSession().then(({ data: { session } }) => {
+        if (session) setOwnerSession(session);
+      });
+      const { data: { subscription } } = supabase.auth.onAuthStateChange((_e, s) => {
+        setOwnerSession(s);
+      });
+      return () => subscription.unsubscribe();
+    });
+  }, []);
 
   // On mount: restore an existing participant session from localStorage so
   // returning visitors (role !== owner) don't have to re-verify their invite.
@@ -1236,18 +1257,33 @@ export default function DealRoomPage() {
 
   usePageTitle(property?.name || property?.property_name);
 
-  // Invite gate — non-owner participants on custom (non-demo) rooms must verify their invite.
-  // Owners always bypass the gate (role === 'owner').
-  // Demo rooms bypass the gate (demoProperty / isDemo).
-  if (role !== 'owner' && !demoProperty && !isDemo && !pinUnlocked) {
-    return (
-      <DealRoomPinGate
-        propertyId={propertyId}
-        role={role}
-        inviteToken={inviteToken}
-        onUnlocked={(token) => setSessionToken(token)}
-      />
-    );
+  // Invite gate — non-owner participants on custom (non-demo) rooms must verify.
+  // Owners always bypass. Demo rooms bypass.
+  // auth_v2_enabled on the room selects the gate version.
+  if (role !== 'owner' && !demoProperty && !isDemo) {
+    const useV2 = property?.auth_v2_enabled === true;
+    if (useV2 && !v2Unlocked) {
+      return (
+        <DealRoomGateV2
+          roomId={propertyId}
+          inviteToken={inviteToken}
+          onVerified={(session, roleKey) => {
+            setV2Session(session);
+            setV2RoleKey(roleKey);
+          }}
+        />
+      );
+    }
+    if (!useV2 && !pinUnlocked) {
+      return (
+        <DealRoomPinGate
+          propertyId={propertyId}
+          role={role}
+          inviteToken={inviteToken}
+          onUnlocked={(token) => setSessionToken(token)}
+        />
+      );
+    }
   }
 
   // Loading state
@@ -1488,14 +1524,22 @@ export default function DealRoomPage() {
           />
         )}
 
-        {/* Invite panel — owners only; participants see their own scoped view */}
+        {/* Invite panel — owners only; v2 when room has auth_v2_enabled, otherwise v1 */}
         {property.isCustom && !isDemo && role === 'owner' && (
           <div id="invite-panel">
-            <InvitePanel
-              propertyId={pid}
-              senderName={property.first_name || property.property_name || undefined}
-              packId={packId}
-            />
+            {property.auth_v2_enabled ? (
+              <InvitePanelV2
+                roomId={pid}
+                packId={packId}
+                ownerToken={ownerSession?.access_token || null}
+              />
+            ) : (
+              <InvitePanel
+                propertyId={pid}
+                senderName={property.first_name || property.property_name || undefined}
+                packId={packId}
+              />
+            )}
           </div>
         )}
 
