@@ -300,6 +300,52 @@ CREATE INDEX IF NOT EXISTS idx_ai_reviews_status        ON public.ai_reviews(sta
 CREATE INDEX IF NOT EXISTS idx_org_memberships_user_id  ON public.org_memberships(user_id);
 
 -- ─────────────────────────────────────────────────────────────────────────────
+-- TOKENIZATION: simplified ERC-20 pool token flow
+-- One token per pool. Blockchain = mint/burn/transfer only.
+-- All financial logic (NAV, DSCR, distributions) stays off-chain.
+-- ─────────────────────────────────────────────────────────────────────────────
+
+-- pool_loans: join table linking loans into pools
+CREATE TABLE IF NOT EXISTS public.pool_loans (
+  id         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  org_id     uuid NOT NULL,
+  pool_id    uuid NOT NULL,
+  loan_id    uuid NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (pool_id, loan_id)
+);
+
+-- pool_allocations: investor wallet → token amount
+-- ownership % = token_amount / pools.data->>'token_supply'
+CREATE TABLE IF NOT EXISTS public.pool_allocations (
+  id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  org_id          uuid NOT NULL,
+  pool_id         uuid NOT NULL,
+  investor_name   text NOT NULL,
+  wallet_address  text NOT NULL,
+  token_amount    bigint NOT NULL DEFAULT 0,
+  created_at      timestamptz NOT NULL DEFAULT now(),
+  updated_at      timestamptz NOT NULL DEFAULT now()
+);
+
+-- pool_whitelist: approved investor wallets for compliance gating
+CREATE TABLE IF NOT EXISTS public.pool_whitelist (
+  id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  org_id          uuid NOT NULL,
+  wallet_address  text NOT NULL,
+  investor_name   text,
+  kyc_status      text NOT NULL DEFAULT 'approved',
+  created_at      timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (org_id, wallet_address)
+);
+
+CREATE INDEX IF NOT EXISTS idx_pool_loans_pool_id      ON public.pool_loans(pool_id);
+CREATE INDEX IF NOT EXISTS idx_pool_loans_org_id       ON public.pool_loans(org_id);
+CREATE INDEX IF NOT EXISTS idx_pool_allocations_pool   ON public.pool_allocations(pool_id);
+CREATE INDEX IF NOT EXISTS idx_pool_allocations_org    ON public.pool_allocations(org_id);
+CREATE INDEX IF NOT EXISTS idx_pool_whitelist_org      ON public.pool_whitelist(org_id);
+
+-- ─────────────────────────────────────────────────────────────────────────────
 -- Cleanup helper function
 -- ─────────────────────────────────────────────────────────────────────────────
 DROP FUNCTION IF EXISTS _kontra_add_column_if_missing(text, text, text);

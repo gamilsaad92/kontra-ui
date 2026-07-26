@@ -27,6 +27,7 @@ import HowItWorksPage from "./pages/public/HowItWorksPage";
 import DealRoomPage from "./pages/public/DealRoomPage";
 import DealSummaryPage from "./pages/public/DealSummaryPage";
 import DealSharePage from "./pages/public/DealSharePage";
+import SharedVAPPage from "./pages/public/SharedVAPPage";
 import CreateDealRoomPage from "./pages/public/CreateDealRoomPage";
 import WorkflowPackBuilderPage from "./pages/public/WorkflowPackBuilderPage";
 import MyDealRoomsPage from "./pages/public/MyDealRoomsPage";
@@ -74,6 +75,7 @@ function AuthedApp() {
         <Route path="/deal-room/:propertyId" element={<DealRoomPage />} />
         <Route path="/deal-room/:propertyId/summary" element={<DealSummaryPage />} />
         <Route path="/deal-room/:propertyId/share" element={<DealSharePage />} />
+        <Route path="/verify/:token" element={<SharedVAPPage />} />
         <Route path="/create-deal-room" element={<CreateDealRoomPage />} />
         <Route path="/workflow-pack-builder" element={<WorkflowPackBuilderPage />} />
         <Route path="/my-deal-rooms" element={<MyDealRoomsPage />} />

@@ -2,6 +2,8 @@ import React from "react";
 import { Link } from "react-router-dom";
 import PublicLayout from "./PublicLayout";
 
+// ── PLACEHOLDER: Replace [BUSINESS ADDRESS] with your registered agent or virtual office address.
+
 const SECTIONS = [
   {
     title: "Information We Collect",
@@ -27,9 +29,16 @@ const SECTIONS = [
     ],
   },
   {
+    title: "AI Providers and Data Processing",
+    content: [
+      "Kontra may use one or more third-party AI providers to process document text and generate analysis. Current providers are listed below. We will update this section when providers change.",
+      "**OpenAI**: Document text is currently sent to OpenAI's API (GPT-4o / GPT-4o-mini) for analysis. By default, OpenAI does not use API inputs or outputs to train its models. Depending on the API configuration and endpoint used, OpenAI may retain certain inputs and outputs for up to 30 days for abuse monitoring and legal compliance. Kontra will update this disclosure if it obtains approved Zero Data Retention status with OpenAI. See openai.com/policies.",
+      "We do not send documents to AI providers for any purpose other than the analysis you initiate within your workspace.",
+    ],
+  },
+  {
     title: "Service Providers and Data Sharing",
     content: [
-      "**OpenAI**: Document text is sent to OpenAI's API (GPT-4o / GPT-4o-mini) for analysis. By default, OpenAI does not use API inputs or outputs to train its models. Depending on the API configuration and endpoint used, OpenAI may retain certain inputs and outputs for up to 30 days for abuse monitoring and legal compliance. Kontra will update this disclosure if it obtains approved Zero Data Retention status with OpenAI. See openai.com/policies.",
       "**Supabase**: Database, authentication, and file storage provider running on AWS. Supabase maintains SOC 2 and ISO 27001 certifications covering its own infrastructure. See supabase.com/privacy.",
       "**Stripe**: Payment processing. We never store card information. See stripe.com/privacy.",
       "**Render**: API server hosting. Render maintains SOC 2 Type 2 controls covering its own infrastructure. See render.com/privacy.",
@@ -46,6 +55,7 @@ const SECTIONS = [
       "**Where documents are stored**: Uploaded files are stored in Supabase Storage (AWS S3-compatible infrastructure). Documents are not publicly accessible — access requires a time-limited signed URL generated on demand.",
       "**Who can access documents**: Production document access is restricted to authorized personnel with a legitimate operational need, requires authenticated access, and is logged. Third-party participants who uploaded documents do not retain access after their session.",
       "**Retention period**: Workspace data is retained for the duration of the active workspace. Following workspace closure or account termination, data is retained for up to 30 days to allow export requests, after which it is deleted. Deleted data may remain in encrypted backups for a limited period until those backups are overwritten in the ordinary course.",
+      "**Export formats**: Workspace data and documents can be exported in PDF, ZIP, and JSON formats. Contact support@kontraplatform.com to request an export. Customers are responsible for verifying exported records before relying on them for legal, accounting, regulatory, or archival purposes.",
       "**Longer retention by agreement**: Customers requiring longer retention for legal, contractual, or compliance reasons may contact support@kontraplatform.com — subject to a written agreement.",
       "**Deletion requests**: Workspace owners may request deletion of all documents and data by emailing privacy@kontraplatform.com. An early deletion request closes workspace access, begins deletion processing, and is irreversible once completed — export any records you need before submitting. Requests are processed within 30 days. Data subject to an active legal hold cannot be deleted until the hold is lifted. Deleted data may remain in encrypted backups until those backups are overwritten in the ordinary course.",
     ],
@@ -67,6 +77,7 @@ const SECTIONS = [
       "Row-level security and application-level authorization controls are designed to prevent unauthorized cross-workspace data access.",
       "Document download links are signed and expire after 1 hour — sharing a link does not grant permanent access.",
       "We do not sell your data to third parties.",
+      "We maintain internal procedures for investigating, containing, and responding to security incidents.",
       "In the event of a data breach affecting personal information, Kontra will provide legally required notices without unreasonable delay and within any time period required by applicable law.",
     ],
   },
@@ -126,9 +137,9 @@ export default function PrivacyPage() {
             Back to Kontra
           </Link>
           <h1 className="text-3xl font-bold text-gray-900 mb-3">Privacy Policy</h1>
-          <p className="text-sm text-gray-500">Effective date: June 22, 2026 · Last updated: July 11, 2026</p>
+          <p className="text-sm text-gray-500">Effective date: June 22, 2026 · Last updated: July 24, 2026</p>
           <p className="text-sm text-gray-600 mt-4 leading-relaxed">
-            Kontra ("we", "us") operates kontraplatform.com and the Kontra deal room platform.
+            Kontra Platform LLC ("we", "us") operates kontraplatform.com and the Kontra deal room platform.
             This policy explains what data we collect, how we store it, how long we keep it, and your rights.
           </p>
         </div>
@@ -138,7 +149,7 @@ export default function PrivacyPage() {
           <div className="space-y-2">
             {[
               "📄  Uploaded documents are stored encrypted in Supabase Storage (AWS) for the duration of your active workspace.",
-              "🤖  Document text is sent to OpenAI's API at analysis time. OpenAI does not train on API data by default; inputs may be retained up to 30 days for abuse monitoring.",
+              "🤖  Document text is sent to third-party AI providers at analysis time. Current provider: OpenAI. OpenAI does not train on API data by default; inputs may be retained up to 30 days for abuse monitoring.",
               "🔒  Document download links are signed and expire after 1 hour.",
               "📋  Material AI recommendations, task actions, and approvals are recorded in a workspace audit log.",
               "🗑️  Following closure, data remains available for export for up to 30 days and is then scheduled for deletion, subject to backup rotation, legal holds, and written retention agreements.",
@@ -173,11 +184,14 @@ export default function PrivacyPage() {
 
         <div className="mt-12 p-5 rounded-xl bg-gray-50 border border-gray-200">
           <p className="text-sm font-semibold text-gray-900 mb-1">Contact Us</p>
-          <p className="text-sm text-gray-600">
+          <p className="text-sm text-gray-600 mb-2">
             Privacy requests and questions:{" "}
             <a href="mailto:privacy@kontraplatform.com" className="underline hover:text-gray-900">
               privacy@kontraplatform.com
             </a>
+          </p>
+          <p className="text-sm text-gray-500">
+            Kontra Platform LLC · [BUSINESS ADDRESS — update once registered agent address is confirmed]
           </p>
         </div>
       </div>

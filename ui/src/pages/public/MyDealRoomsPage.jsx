@@ -241,7 +241,7 @@ function AccessLayout({ children }) {
         <Link to="/create-deal-room"
           className="text-xs font-semibold px-3.5 py-2 rounded-lg text-white hover:opacity-90 transition"
           style={{ background: "#800020" }}>
-          Create Workspace →
+          Create Deal Room →
         </Link>
       </header>
       <div className="flex flex-1 overflow-hidden">
@@ -250,7 +250,7 @@ function AccessLayout({ children }) {
           style={{ background: "#0f172a" }}>
           <div>
             <p className="text-xs font-bold uppercase tracking-widest mb-8" style={{ color: "#800020" }}>
-              CRE Deal Room Infrastructure
+              Deal Room Infrastructure
             </p>
             <h2 className="text-3xl font-bold text-white leading-snug mb-6">
               One deal room.<br />Every party.<br />No email chains.

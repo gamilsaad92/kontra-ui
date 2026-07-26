@@ -54,7 +54,7 @@ export default function TransactionRiskPanel({ propertyId }) {
 
   useEffect(() => {
     let cancelled = false;
-    // Delay slightly so AIOperationsManager fires first (warms the 60s cache)
+    // Delay slightly so AIBriefingPanel fires first (warms the 60s cache)
     const t = setTimeout(async () => {
       try {
         const r = await fetch(`${API_BASE}/api/public/deal-room/${propertyId}/brain/briefing`);

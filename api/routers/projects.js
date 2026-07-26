@@ -1,11 +1,7 @@
 const express = require('express');
-const { createClient } = require('@supabase/supabase-js');
 
 const router = express.Router();
-const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY
-);
+const { supabase } = require('../db');
 
 router.post('/projects', async (req, res) => {
   const { name, number, address, owner_id } = req.body || {};

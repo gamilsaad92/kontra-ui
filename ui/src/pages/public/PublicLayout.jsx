@@ -4,6 +4,7 @@ import { AuthContext } from "../../lib/authContext";
 
 const PUBLIC_NAV = [
   { label: "How It Works", href: "/how-it-works" },
+  { label: "AI Tools",     href: "/ai-tools" },
   { label: "Pricing",      href: "/pricing" },
   { label: "About",        href: "/about" },
   { label: "My Deal Rooms", href: "/my-deal-rooms" },
@@ -192,6 +193,7 @@ export default function PublicLayout({ children, hideFooter = false }) {
               {[
                 { title: "Deal Room", links: [
                   { label: "How It Works", href: "/how-it-works" },
+                  { label: "AI Tools", href: "/ai-tools" },
                   { label: "Pricing", href: "/pricing" },
                   { label: "Service Providers", href: "/service-providers" },
                 ]},

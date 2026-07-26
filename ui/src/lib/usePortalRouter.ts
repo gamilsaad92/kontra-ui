@@ -38,6 +38,7 @@ const PUBLIC_PATHS = [
   "/select-portal",
   "/properties",
   "/service-providers",
+  "/ai-tools",
   "/pricing",
   "/waitlist",
   "/admin",

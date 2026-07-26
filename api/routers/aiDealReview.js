@@ -9,8 +9,7 @@ const multer = require('multer');
 const OpenAI = require('openai');
 const { supabase } = require('../db');
 const aiRateLimit = require('../middlewares/aiRateLimit');
-const { uploadToStorage, logEvent, getNextVersion, notifyOwner, notifyLender, getRoomPackId } = require('../lib/dealRoomHelpers');
-const { runVerification } = require('../lib/verificationEngine');
+const { uploadToStorage, logEvent, getNextVersion, notifyOwner, notifyLender } = require('../lib/dealRoomHelpers');
 
 const router = express.Router();
 
@@ -159,9 +158,6 @@ Inspection report text:\n${text}` }
         });
         if (e) console.warn('[deal_analyses] inspection save:', e.message);
         else console.log(`[deal_analyses] inspection v${version} saved`);
-        // Trigger verification AFTER insert completes to avoid stale-data race
-        const packId = await getRoomPackId(property_id).catch(() => 'cre_acquisition');
-        await runVerification(property_id, packId).catch(e => console.warn('[verification] inspection trigger:', e.message));
       })().catch(e => console.warn('[deal_analyses] inspection:', e.message));
       notifyOwner(property_id, 'inspection', result.summary);
       logEvent(property_id, 'document_analyzed', role || 'unknown', null, 'Inspection Report analyzed by AI', { section: 'inspection', filename: req.file.originalname });
@@ -323,9 +319,6 @@ Policy text:\n${text}` }
         });
         if (e) console.warn('[deal_analyses] insurance save:', e.message);
         else console.log(`[deal_analyses] insurance v${version} saved`);
-        // Trigger verification AFTER insert completes to avoid stale-data race
-        const packId = await getRoomPackId(property_id).catch(() => 'cre_acquisition');
-        await runVerification(property_id, packId).catch(e => console.warn('[verification] insurance trigger:', e.message));
       })().catch(e => console.warn('[deal_analyses] insurance:', e.message));
       notifyOwner(property_id, 'insurance', result.summary);
       logEvent(property_id, 'document_analyzed', role || 'unknown', null, 'Insurance Certificate analyzed by AI', { section: 'insurance', filename: req.file.originalname });
@@ -378,9 +371,6 @@ Financial document:\n${text}` }
         });
         if (e) console.warn('[deal_analyses] financials save:', e.message);
         else console.log(`[deal_analyses] financials v${version} saved`);
-        // Trigger verification AFTER insert completes to avoid stale-data race
-        const packId = await getRoomPackId(property_id).catch(() => 'cre_acquisition');
-        await runVerification(property_id, packId).catch(e => console.warn('[verification] financials trigger:', e.message));
       })().catch(e => console.warn('[deal_analyses] financials:', e.message));
       notifyOwner(property_id, 'financials', result.summary);
       logEvent(property_id, 'document_analyzed', role || 'unknown', null, 'Financial Statement analyzed by AI', { section: 'financials', filename: req.file.originalname });
@@ -422,20 +412,16 @@ Legal document:\n${text}` }
     const { property_id, role } = req.body;
     if (property_id) {
       const _buf = req.file.buffer, _mime = req.file.mimetype, _name = req.file.originalname;
-      (async () => {
-        const storagePath = await uploadToStorage(_buf, _mime, property_id, 'legal', _name);
-        const { error: e } = await supabase.from('deal_analyses').insert({
+      uploadToStorage(_buf, _mime, property_id, 'legal', _name).then(storagePath => {
+        supabase.from('deal_analyses').insert({
           property_id, section: 'legal',
           filename: _name, analysis: result,
           uploaded_by_role: role || 'attorney',
           storage_path: storagePath,
+        }).then(({ error: e }) => {
+          if (e) console.warn('[deal_analyses] legal save:', e.message);
         });
-        if (e) console.warn('[deal_analyses] legal save:', e.message);
-        else console.log('[deal_analyses] legal saved');
-        // Trigger verification AFTER insert completes to avoid stale-data race
-        const packId = await getRoomPackId(property_id).catch(() => 'cre_acquisition');
-        await runVerification(property_id, packId).catch(e => console.warn('[verification] legal trigger:', e.message));
-      })().catch(e => console.warn('[deal_analyses] legal:', e.message));
+      });
       notifyOwner(property_id, 'legal', result.summary);
       logEvent(property_id, 'document_analyzed', role || 'unknown', null, 'Legal Document analyzed by AI', { section: 'legal', filename: req.file.originalname });
       if (role === 'attorney') notifyLender(property_id, role, 'legal', result.summary).catch(() => {});
@@ -476,20 +462,16 @@ Document:\n${text}` }
     const { property_id, role } = req.body;
     if (property_id) {
       const _buf = req.file.buffer, _mime = req.file.mimetype, _name = req.file.originalname;
-      (async () => {
-        const storagePath = await uploadToStorage(_buf, _mime, property_id, 'brand-standards', _name);
-        const { error: e } = await supabase.from('deal_analyses').insert({
+      uploadToStorage(_buf, _mime, property_id, 'brand-standards', _name).then(storagePath => {
+        supabase.from('deal_analyses').insert({
           property_id, section: 'brand-standards',
           filename: _name, analysis: result,
           uploaded_by_role: role || 'owner',
           storage_path: storagePath,
+        }).then(({ error: e }) => {
+          if (e) console.warn('[deal_analyses] brand-standards save:', e.message);
         });
-        if (e) console.warn('[deal_analyses] brand-standards save:', e.message);
-        else console.log('[deal_analyses] brand-standards saved');
-        // Trigger verification AFTER insert completes to avoid stale-data race
-        const packId = await getRoomPackId(property_id).catch(() => 'cre_acquisition');
-        await runVerification(property_id, packId).catch(e => console.warn('[verification] brand-standards trigger:', e.message));
-      })().catch(e => console.warn('[deal_analyses] brand-standards:', e.message));
+      });
       notifyOwner(property_id, 'brand-standards', result.summary);
       logEvent(property_id, 'document_analyzed', role || 'unknown', null, 'Brand Standards / PIP analyzed by AI', { section: 'brand-standards', filename: req.file.originalname });
     }
@@ -573,9 +555,6 @@ Return only valid JSON. No extra text.`;
         });
         if (e) console.warn(`[deal_analyses] ${section} save:`, e.message);
         else console.log(`[deal_analyses] ${section} saved (analyze-document)`);
-        // Trigger verification AFTER insert completes to avoid stale-data race
-        const packId = await getRoomPackId(property_id).catch(() => 'cre_acquisition');
-        await runVerification(property_id, packId).catch(e => console.warn(`[verification] ${section} trigger:`, e.message));
       })().catch(e => console.warn(`[deal_analyses] ${section}:`, e.message));
       logEvent(property_id, 'document_analyzed', role || 'unknown', null, `${section} analyzed by AI`, { section, filename: req.file.originalname });
     }

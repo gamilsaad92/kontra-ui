@@ -2,7 +2,7 @@ const express = require('express');
 const { z } = require('zod');
 const { supabase } = require('../../db');
 const { createEntityRouter } = require('./entityRouter');
-const { getEntity, toOrgUuid } = require('../lib/crud');
+const { getEntity } = require('../lib/crud');
 const { selectFor } = require('../lib/selectColumns');
 
 const router = express.Router();
@@ -30,7 +30,7 @@ router.post('/pools/:id/loans', run(async (req, res) => {
 
   const { data, error } = await supabase
     .from('pool_loans')
-    .insert({ org_id: toOrgUuid('pool_loans', req.orgId), pool_id: idResult.data, loan_id: bodyResult.data.loan_id })
+    .insert({ org_id: req.orgId, pool_id: idResult.data, loan_id: bodyResult.data.loan_id })
     .select(selectFor('pool_loans'))
     .single();
 
@@ -48,7 +48,7 @@ router.delete('/pools/:id/loans/:loanId', run(async (req, res) => {
   const { data, error } = await supabase
     .from('pool_loans')
     .delete()
-    .eq('org_id', toOrgUuid('pool_loans', req.orgId))
+    .eq('org_id', req.orgId)
     .eq('pool_id', idResult.data)
     .eq('loan_id', loanIdResult.data)
     .select(selectFor('pool_loans'))
@@ -100,7 +100,7 @@ router.post('/pools/:id/tokenize', run(async (req, res) => {
     .from('pools')
     .update({ data: updatedData, status: 'active', updated_at: new Date().toISOString() })
     .eq('id', id.data)
-    .eq('org_id', toOrgUuid('pools', req.orgId))
+    .eq('org_id', req.orgId)
     .select()
     .single();
 
@@ -125,7 +125,7 @@ router.get('/pools/:id/allocations', run(async (req, res) => {
   const { data, error } = await supabase
     .from('pool_allocations')
     .select('*')
-    .eq('org_id', toOrgUuid('pool_allocations', req.orgId))
+    .eq('org_id', req.orgId)
     .eq('pool_id', id.data)
     .order('created_at', { ascending: true });
 
@@ -161,7 +161,7 @@ router.post('/pools/:id/allocations', run(async (req, res) => {
   const { data: existing } = await supabase
     .from('pool_allocations')
     .select('token_amount')
-    .eq('org_id', toOrgUuid('pool_allocations', req.orgId))
+    .eq('org_id', req.orgId)
     .eq('pool_id', id.data);
 
   const allocated = (existing || []).reduce((s, a) => s + (a.token_amount || 0), 0);
@@ -174,7 +174,7 @@ router.post('/pools/:id/allocations', run(async (req, res) => {
   const { data, error } = await supabase
     .from('pool_allocations')
     .insert({
-      org_id: toOrgUuid('pool_allocations', req.orgId),
+      org_id: req.orgId,
       pool_id: id.data,
       investor_name: body.data.investor_name,
       wallet_address: body.data.wallet_address,
@@ -204,7 +204,7 @@ router.delete('/pools/:id/allocations/:allocId', run(async (req, res) => {
     .delete()
     .eq('id', allocId.data)
     .eq('pool_id', id.data)
-    .eq('org_id', toOrgUuid('pool_allocations', req.orgId));
+    .eq('org_id', req.orgId);
 
   if (error) return res.status(400).json({ message: error.message });
   res.json({ ok: true });
@@ -217,7 +217,7 @@ router.get('/whitelist', run(async (req, res) => {
   const { data, error } = await supabase
     .from('pool_whitelist')
     .select('*')
-    .eq('org_id', toOrgUuid('pool_whitelist', req.orgId))
+    .eq('org_id', req.orgId)
     .order('created_at', { ascending: false });
 
   if (error) {
@@ -238,7 +238,7 @@ router.post('/whitelist', run(async (req, res) => {
   const { data, error } = await supabase
     .from('pool_whitelist')
     .upsert({
-      org_id: toOrgUuid('pool_whitelist', req.orgId),
+      org_id: req.orgId,
       wallet_address: body.data.wallet_address.toLowerCase(),
       investor_name: body.data.investor_name ?? null,
       kyc_status: body.data.kyc_status,
@@ -260,7 +260,7 @@ router.delete('/whitelist/:wallet', run(async (req, res) => {
   const { error } = await supabase
     .from('pool_whitelist')
     .delete()
-    .eq('org_id', toOrgUuid('pool_whitelist', req.orgId))
+    .eq('org_id', req.orgId)
     .eq('wallet_address', wallet.toLowerCase());
 
   if (error) return res.status(400).json({ message: error.message });

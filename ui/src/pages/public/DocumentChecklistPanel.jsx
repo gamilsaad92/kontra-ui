@@ -14,7 +14,6 @@ export default function DocumentChecklistPanel({ propertyId, propertyType, role,
   const [refreshKey, setRefreshKey] = useState(0);
   const [expanded, setExpanded] = useState(true);
   const [expandedItems, setExpandedItems] = useState({});
-  const [verificationBySection, setVerificationBySection] = useState({});
   const fileRefs = useRef({});
 
   // ── Per-deal customisation (localStorage, coordinator only) ─────────────────
@@ -73,23 +72,6 @@ export default function DocumentChecklistPanel({ propertyId, propertyType, role,
       .catch(() => setLoading(false));
   }, [propertyId, refreshKey]);
 
-  // Fetch per-section verification badges (updates every 30s or after new upload)
-  useEffect(() => {
-    if (!propertyId) return;
-    let cancelled = false;
-    function loadVerification() {
-      fetch(`${API_BASE}/api/public/deal-room/${propertyId}/verification/status`, {
-        headers: { 'Cache-Control': 'no-store' },
-      })
-        .then(r => r.ok ? r.json() : null)
-        .then(d => { if (!cancelled && d?.bySection) setVerificationBySection(d.bySection); })
-        .catch(() => {});
-    }
-    loadVerification();
-    const t = setInterval(loadVerification, 30000);
-    return () => { cancelled = true; clearInterval(t); };
-  }, [propertyId, refreshKey]);
-
   useEffect(() => {
     const hasPending = analyses.some(a => a.analysis?.pending);
     if (!hasPending) return;
@@ -129,9 +111,6 @@ export default function DocumentChecklistPanel({ propertyId, propertyType, role,
 
   const uploadedSections = new Set(analyses.map(a => a.section));
   const analysisBySection = Object.fromEntries(analyses.map(a => [a.section, a.analysis]));
-  const storagePathBySection = Object.fromEntries(
-    analyses.filter(a => a.storage_path).map(a => [a.section, a.storage_path])
-  );
 
   const requiredItems = template.filter(i => i.required);
   const doneCount = template.filter(i => uploadedSections.has(i.section)).length;
@@ -177,51 +156,12 @@ export default function DocumentChecklistPanel({ propertyId, propertyType, role,
   const statusColor = allRequiredDone ? "#16a34a" : pct > 50 ? "#d97706" : "#800020";
   const statusLabel = allRequiredDone ? "Complete" : template.length === 0 ? "Empty" : `${doneCount} of ${template.length} uploaded`;
 
-  // ── Tiny verification badge shown inline on each document row ───────────────
-  // Only renders when the verification engine has actually produced a result for
-  // this section. No badge = no opinion yet (avoids permanently-stuck Pending).
-  function VerificationBadge({ section }) {
-    const vSec = verificationBySection[section];
-    if (!vSec?.status) return null;
-    const cfg = {
-      verified:      { label: '✓ Verified',    bg: '#f0fdf4', border: '#bbf7d0', color: '#16a34a' },
-      discrepancy:   { label: '⚠ Discrepancy', bg: '#fff7ed', border: '#fed7aa', color: '#c2410c' },
-      pending_review:{ label: '○ Pending',      bg: '#f9fafb', border: '#e5e7eb', color: '#6b7280' },
-    }[vSec.status] || null;
-    if (!cfg) return null;
-    const tooltip = vSec.checks?.[0]?.description || '';
-    return (
-      <span title={tooltip} style={{
-        display: 'inline-flex', alignItems: 'center', gap: 2,
-        padding: '1px 6px', borderRadius: 999,
-        background: cfg.bg, border: `1px solid ${cfg.border}`,
-        color: cfg.color, fontSize: 9, fontWeight: 700,
-        letterSpacing: '0.02em', cursor: 'default', whiteSpace: 'nowrap',
-      }}>
-        {cfg.label}
-      </span>
-    );
-  }
-
-  async function handleDownload(storagePath, filename) {
-    const url = `${API_BASE}/api/public/document-url?path=${encodeURIComponent(storagePath)}`;
-    const a = document.createElement('a');
-    a.href = url;
-    a.target = '_blank';
-    a.rel = 'noopener noreferrer';
-    if (filename) a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-  }
-
   // ── Item renderer (used in both flat and grouped views) ─────────────────────
   function renderItem(item) {
     const done = uploadedSections.has(item.section);
     const isUploading = uploadingSection === item.section;
     const analysis = analysisBySection[item.section];
     const isPending = analysis?.pending;
-    const storagePath = storagePathBySection[item.section] || null;
     const issues = done && !isPending ? getCompletenessIssues(analysis, item.section) : [];
     const facts = done && !isPending ? getInlineFacts(analysis, item.section) : [];
     const hasIssues = issues.length > 0;
@@ -267,8 +207,6 @@ export default function DocumentChecklistPanel({ propertyId, propertyType, role,
               {isPending && (
                 <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-50 text-blue-500 font-medium animate-pulse">AI analyzing…</span>
               )}
-              {/* Verification status badge — shown once AI has run cross-doc checks */}
-              {done && !isPending && <VerificationBadge section={item.section} />}
             </div>
 
             {facts.length > 0 && (
@@ -351,18 +289,6 @@ export default function DocumentChecklistPanel({ propertyId, propertyType, role,
                   className="px-2 py-0.5 rounded text-[10px] font-medium border border-gray-100 text-gray-300 hover:text-gray-500 hover:border-gray-200 transition disabled:opacity-30">
                   re-upload
                 </button>
-                {storagePath && (
-                  <button
-                    onClick={() => handleDownload(storagePath, analyses.find(a => a.section === item.section)?.filename)}
-                    title="Download file"
-                    className="p-1 rounded text-gray-300 hover:text-gray-500 transition"
-                    aria-label="Download uploaded file">
-                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5">
-                      <path d="M8 10.5a.75.75 0 0 1-.53-.22L4.72 7.53a.75.75 0 0 1 1.06-1.06L7 7.69V2.75a.75.75 0 0 1 1.5 0v4.94l1.22-1.22a.75.75 0 1 1 1.06 1.06L8.53 10.28A.75.75 0 0 1 8 10.5Z" />
-                      <path d="M2.5 13.25a.75.75 0 0 1 .75-.75h9.5a.75.75 0 0 1 0 1.5h-9.5a.75.75 0 0 1-.75-.75Z" />
-                    </svg>
-                  </button>
-                )}
               </>
             )}
             {/* Remove — visible on hover for coordinator only */}

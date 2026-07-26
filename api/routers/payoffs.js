@@ -1,15 +1,11 @@
 const express = require('express');
-const { createClient } = require('@supabase/supabase-js');
 const authenticate = require('../middlewares/authenticate');
 
 const router = express.Router();
 
 router.use(authenticate);
 
-const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY
-);
+const { supabase } = require('../db');
 
 function ensureOrganization(req, res) {
   if (!req.organizationId) {

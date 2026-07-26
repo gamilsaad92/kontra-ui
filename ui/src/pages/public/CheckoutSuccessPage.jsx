@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import PublicLayout from "./PublicLayout";
-import { getWorkflowPack, ensureWorkflowPackLoaded, resolvePackId } from "../../lib/workflowPacks";
+import { getWorkflowPack, ensureWorkflowPackLoaded } from "../../lib/workflowPacks";
 
 const API_BASE = (import.meta.env.VITE_API_BASE || "").replace(/\/+$/, "");
 
@@ -13,14 +13,6 @@ const FALLBACK_ROLES = [
   { id: "attorney",  icon: "📜", label: "Attorney / Title" },
   { id: "investor",  icon: "📊", label: "Investor" },
   { id: "servicer",  icon: "⚙️", label: "Servicer" },
-];
-
-// Fallback "Step 2" onboarding checklist for CRE Acquisition rooms while the
-// pack is loading — mirrors creAcquisitionPack.onboardingSteps.
-const FALLBACK_ONBOARDING_STEPS = [
-  { icon: "📄", title: "Upload financial statements", desc: "Operating statement, rent roll, T12 — AI structures them automatically" },
-  { icon: "🔍", title: "Request an inspection report", desc: "Send the inspector link above; their report goes directly into the room" },
-  { icon: "🛡️", title: "Add insurance certificate", desc: "AI reviews coverage gaps and tracks expiration dates for your lender" },
 ];
 
 export default function CheckoutSuccessPage() {
@@ -36,11 +28,6 @@ export default function CheckoutSuccessPage() {
   // creator role is "buyer" (no "owner" role exists in that pack), so this
   // must come from the room record rather than being hardcoded.
   const [ownRole, setOwnRole] = useState("owner");
-  // "Step 2" onboarding checklist is pack-driven too — Business Acquisition
-  // and Fundraising rooms ask for different documents than CRE (no
-  // inspection report or insurance certificate for a stock purchase or a
-  // funding round).
-  const [onboardingSteps, setOnboardingSteps] = useState(FALLBACK_ONBOARDING_STEPS);
 
   useEffect(() => {
     if (!property) return;
@@ -48,14 +35,12 @@ export default function CheckoutSuccessPage() {
       .then((r) => (r.ok ? r.json() : null))
       .then(async (room) => {
         if (!room || room.error) return;
-        const packId = resolvePackId(room);
-        if (packId) await ensureWorkflowPackLoaded(packId);
-        const pack = getWorkflowPack(packId);
+        if (room.workflow_pack_id) await ensureWorkflowPackLoaded(room.workflow_pack_id);
+        const pack = getWorkflowPack(room.workflow_pack_id);
         const invitable = (pack.roles || [])
           .filter((r) => r.invitable)
           .map((r) => ({ id: r.key, icon: r.icon, label: r.label }));
         if (invitable.length > 0) setRoles(invitable);
-        if (pack.onboardingSteps?.length > 0) setOnboardingSteps(pack.onboardingSteps);
         if (room.role) setOwnRole(room.role);
       })
       .catch(() => {});
@@ -130,7 +115,11 @@ export default function CheckoutSuccessPage() {
           {/* Next steps */}
           <div className="bg-gray-50 rounded-2xl border border-gray-200 p-5 mb-5">
             <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-3">Step 2 — Populate your deal room</p>
-            {onboardingSteps.map((step) => (
+            {[
+              { icon: "📄", title: "Upload financial statements", desc: "Operating statement, rent roll, T12 — AI structures them automatically" },
+              { icon: "🔍", title: "Request an inspection report", desc: "Send the inspector link above; their report goes directly into the room" },
+              { icon: "🛡️", title: "Add insurance certificate", desc: "AI reviews coverage gaps and tracks expiration dates for your lender" },
+            ].map((step) => (
               <div key={step.title} className="flex gap-3 py-2.5 border-t border-gray-100 first:border-t-0">
                 <span className="text-lg shrink-0">{step.icon}</span>
                 <div>

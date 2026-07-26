@@ -26,12 +26,15 @@ const {
   notifyStageAdvance,
   notifyStatusChange,
   notifyOwner,
+  notifyVAPReady,
 } = require('./lib/dealRoomHelpers');
 const aiDealReviewRouter = require('./routers/aiDealReview');
 const tasksRouter = require('./routers/tasks');
 const operationsManagerRouter = require('./routers/operationsManager');
 const verificationRouter = require('./routers/verification');
 const { runVerification } = require('./lib/verificationEngine');
+const verifiedAssetPackageRouter = require('./routers/verifiedAssetPackage');
+const { generateAndStoreVAP } = require('./routers/verifiedAssetPackage');
 const { evaluateDealRoomForTasks } = require('./lib/taskEngine');
 
 // Pack inference map — mirrors DEAL_TYPE_TO_PACK in dealRoomHelpers.js so that
@@ -705,6 +708,10 @@ app.get('/api/public/document-url', async (req, res) => {
     res.status(500).json({ error: 'Failed to generate download link' });
   }
 });
+// ── Verified Asset Package — registered here (before any auth middleware) so
+// the public GET/POST endpoints are never intercepted by authenticate.js ─────
+app.use(verifiedAssetPackageRouter);
+
 // ── End early public routes ──────────────────────────────────────────────────
 
 app.use('/api/auth', authBootstrapRouter);
@@ -1921,15 +1928,67 @@ app.post('/api/public/deal-room/:propertyId/track-document', upload.single('file
 });
 
 // ── Signed download URL for a stored document ─────────────────────────────────
+// ── Authenticated document download ──────────────────────────────────────────
+// Requires owner auth (Authorization: Bearer <supabase-jwt>) OR a valid
+// participant session (x-kontra-session: <token>).  Derives propertyId from
+// the storage path (first segment: {propertyId}/{filename}) and validates
+// access before issuing a short-lived signed URL.
 app.get('/api/public/document-url', async (req, res) => {
   const storagePath = (req.query.path || '').trim();
   if (!storagePath) return res.status(400).json({ error: 'path required' });
+
+  // Extract propertyId from path — must be first segment
+  const propertyId = storagePath.split('/')[0];
+  if (!propertyId) return res.status(400).json({ error: 'invalid storage path' });
+
+  const bearerJwt    = (req.headers.authorization || '').replace(/^Bearer /i, '').trim() || null;
+  const sessionToken = (req.headers['x-kontra-session'] || '').trim() || null;
+
+  if (!bearerJwt && !sessionToken) {
+    return res.status(401).json({ error: 'Authentication required to download documents' });
+  }
+
   try {
+    let authorized = false;
+
+    if (bearerJwt) {
+      // Owner path: verify JWT → check customer_email matches the deal room
+      const { data: { user }, error: authErr } = await supabase.auth.getUser(bearerJwt);
+      if (!authErr && user?.email) {
+        const { data: room } = await supabase
+          .from('deal_rooms')
+          .select('customer_email')
+          .eq('property_id', propertyId)
+          .single();
+        if (room && room.customer_email?.toLowerCase() === user.email.toLowerCase()) {
+          authorized = true;
+        }
+      }
+    }
+
+    if (!authorized && sessionToken) {
+      // Participant path: hash the token and query deal_room_access_sessions directly.
+      // (The validate_session_for_property RPC reads from request.headers, not a param,
+      //  so it cannot be called server-side with an arbitrary token.)
+      const tokenHash = crypto.createHash('sha256').update(sessionToken).digest('hex');
+      const { data: sess } = await supabase
+        .from('deal_room_access_sessions')
+        .select('id')
+        .eq('session_token_hash', tokenHash)
+        .eq('property_id', propertyId)
+        .gt('expires_at', new Date().toISOString())
+        .is('revoked_at', null)
+        .maybeSingle();
+      if (sess) authorized = true;
+    }
+
+    if (!authorized) return res.status(403).json({ error: 'Access denied' });
+
     const { data, error } = await supabase.storage
       .from('deal-documents')
       .createSignedUrl(storagePath, 3600);
     if (error || !data?.signedUrl) return res.status(404).json({ error: 'Document not found or expired' });
-    res.redirect(data.signedUrl);
+    res.json({ url: data.signedUrl });
   } catch (err) {
     console.error('[document-url]', err.message);
     res.status(500).json({ error: 'Failed to generate download link' });
@@ -2040,29 +2099,166 @@ app.post('/api/public/deal-room/:propertyId/invite', async (req, res) => {
   }
 });
 
+// ── Send an invite-link email (used by the per-invitation invite panel) ───────
+// This endpoint does NOT create the invite record — the client does that via
+// Supabase RPC. It only sends the email after the record is created.
+// ── Send invite-link email — owner-authenticated, content derived server-side ─
+// The client sends ONLY the raw invite token + its own Supabase Auth JWT.
+// This endpoint hashes the token to look up the invite, verifies the caller
+// owns the deal room, then derives all email content (recipient, role, property)
+// from the database.  The client is never trusted for to/url/labels.
+app.post('/api/public/deal-room/send-invite-email', async (req, res) => {
+  // 1. Require owner authentication
+  const authHeader = req.headers.authorization || '';
+  const bearerJwt = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : null;
+  if (!bearerJwt) return res.status(401).json({ error: 'Owner authentication required' });
+
+  const { data: { user }, error: authErr } = await supabase.auth.getUser(bearerJwt);
+  if (authErr || !user?.email) return res.status(401).json({ error: 'Invalid auth token' });
+  const ownerEmail = user.email.toLowerCase();
+
+  // 2. Accept only the raw invite token from the client — nothing else is trusted
+  const { inviteToken } = req.body || {};
+  if (!inviteToken || typeof inviteToken !== 'string' || inviteToken.length < 32) {
+    return res.status(400).json({ error: 'inviteToken required' });
+  }
+
+  const RESEND_KEY = process.env.RESEND_API_KEY;
+  if (!RESEND_KEY) return res.status(500).json({ error: 'Email not configured' });
+
+  try {
+    // 3. Look up invite by hashed token — never trust the token at face value
+    const tokenHash = crypto.createHash('sha256').update(inviteToken).digest('hex');
+    const { data: invite, error: inviteErr } = await supabase
+      .from('deal_room_invites')
+      .select('id, property_id, invited_email, role_key, status')
+      .eq('token_hash', tokenHash)
+      .single();
+    if (inviteErr || !invite) return res.status(404).json({ error: 'Invite not found' });
+    if (invite.status === 'revoked') return res.status(400).json({ error: 'Invite is revoked' });
+    if (!invite.invited_email) return res.status(400).json({ error: 'This invite has no email recipient (PIN-only)' });
+
+    // 4. Verify caller is the deal room owner — must match deal_rooms.customer_email
+    const { data: room, error: roomErr } = await supabase
+      .from('deal_rooms')
+      .select('property_name, first_name, workflow_pack_id, customer_email')
+      .eq('property_id', invite.property_id)
+      .single();
+    if (roomErr || !room) return res.status(404).json({ error: 'Deal room not found' });
+    if ((room.customer_email || '').toLowerCase() !== ownerEmail) {
+      return res.status(403).json({ error: 'Not authorized for this deal room' });
+    }
+
+    // 5. Derive all email content from verified DB data — nothing from client
+    const packId     = room.workflow_pack_id || DEFAULT_PACK_ID;
+    const roleConfig = getPackRoleConfig(packId).roles.find(r => r.key === invite.role_key);
+    const roleLabel  = roleConfig?.label || invite.role_key;
+    const propName   = room.property_name || invite.property_id;
+    const senderName = room.first_name || 'The deal coordinator';
+    const inviteUrl  = `https://kontraplatform.com/deal-room/${invite.property_id}?invite=${inviteToken}&role=${invite.role_key}`;
+    const to         = invite.invited_email;
+
+    await sendResendEmail(RESEND_KEY, {
+      from: 'Kontra <notifications@kontraplatform.com>',
+      to,
+      reply_to: 'support@kontraplatform.com',
+      subject: `You've been invited to ${propName} — Kontra Deal Room`,
+      text: `${senderName} has invited you as ${roleLabel} to a deal room for ${propName} on Kontra.\n\nClick your personal invite link to verify your identity and access the deal room:\n${inviteUrl}\n\nThis link is unique to you — do not share it.\n\n---\nKontra is CRE deal room infrastructure. You received this because ${senderName} added your email. If this is a mistake, ignore this email.`,
+      html: `<div style="font-family:sans-serif;max-width:560px;margin:auto;padding:32px 24px">
+        <div style="margin-bottom:24px">
+          <span style="display:inline-block;background:#800020;color:white;font-weight:800;font-size:15px;padding:6px 14px;border-radius:8px;letter-spacing:0.5px">Kontra</span>
+        </div>
+        <h2 style="color:#111;font-size:22px;font-weight:800;margin:0 0 8px">You've been invited</h2>
+        <p style="color:#555;font-size:15px;margin:0 0 6px"><strong>${senderName}</strong> has invited you as <strong>${roleLabel}</strong> to the deal room for <strong>${propName}</strong>.</p>
+        <p style="color:#555;font-size:14px;margin:0 0 24px">Click your personal invite link below. You'll verify your identity with a one-time code before accessing the deal room.</p>
+        <a href="${inviteUrl}" style="display:inline-block;padding:14px 28px;background:#800020;color:white;border-radius:10px;text-decoration:none;font-weight:700;font-size:15px">Open my invite →</a>
+        <div style="margin-top:20px;padding:12px 16px;background:#fef9f0;border-radius:10px;border:1px solid #fde68a">
+          <p style="color:#92400e;font-size:12px;margin:0">🔒 This link is unique to you — do not forward it to others. Each participant must receive their own personal invite.</p>
+        </div>
+        <div style="margin-top:24px;padding:16px;background:#f9fafb;border-radius:10px;border:1px solid #eee">
+          <p style="color:#888;font-size:12px;margin:0 0 4px">What is Kontra?</p>
+          <p style="color:#555;font-size:13px;margin:0">CRE deal room infrastructure. All parties upload documents, AI analyzes them instantly, and the deal coordinator sees everything in one place.</p>
+        </div>
+        <p style="color:#bbb;font-size:11px;margin-top:24px">You received this because ${senderName} added your email. If this is a mistake, ignore this email.</p>
+      </div>`,
+    });
+
+    logEvent(invite.property_id, 'invite_email_sent', 'owner', senderName, `Invite email sent to ${to} for role ${roleLabel}`, { role: invite.role_key });
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('[send-invite-email]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.post('/api/public/deal-room/:propertyId/advance', async (req, res) => {
   const { propertyId } = req.params;
   const { stage } = req.body || {};
   try {
     const { data: room, error: fetchError } = await supabase
       .from('deal_rooms')
-      .select('workflow_pack_id')
+      .select('workflow_pack_id, deal_stage')
       .eq('property_id', propertyId)
       .single();
     if (fetchError) throw fetchError;
     const packId = room?.workflow_pack_id || DEFAULT_PACK_ID;
     const VALID = getPackStageKeys(packId);
     if (!VALID.includes(stage)) return res.status(400).json({ error: 'invalid stage' });
+
+    const currentStage = room?.deal_stage;
+    const stageChanging = currentStage !== stage;
+
     const { error } = await supabase.from('deal_rooms').update({ deal_stage: stage }).eq('property_id', propertyId);
     if (error) throw error;
     logEvent(propertyId, 'stage_advanced', 'owner', null, `Deal advanced to ${getPackStageLabel(packId, stage)}`, { stage });
-    res.json({ ok: true, stage });
+    res.json({ ok: true, stage, unchanged: !stageChanging });
+
+    // Only fire notifications when the stage actually changes — prevents duplicate
+    // emails if the advance endpoint is called twice with the same stage.
+    if (!stageChanging) return;
+
     notifyStageAdvance(propertyId, stage).catch(() => {});
-    // When a deal funds — seal the immutable closing record
-    if (stage === 'funded') sealClosingRecord(propertyId).catch(() => {});
+    // When a deal reaches closing or funded — generate + persist the VAP and notify the owner.
+    // generateAndStoreVAP returns null on failure (it swallows errors internally), so we
+    // gate all downstream actions on a truthy return value to avoid sending a "ready" email
+    // when the package actually failed to build.
+    if (stage === 'closing') {
+      generateAndStoreVAP(propertyId, { seal: false })
+        .then(pkg => { if (pkg) return notifyVAPReady(propertyId, stage); })
+        .catch(() => {});
+    }
+    if (stage === 'funded') {
+      generateAndStoreVAP(propertyId, { seal: true })
+        .then(pkg => {
+          if (!pkg) return;
+          return Promise.all([
+            sealClosingRecord(propertyId),
+            notifyVAPReady(propertyId, stage),
+          ]);
+        })
+        .catch(() => {});
+    }
   } catch (err) {
     console.error('[advance]', err.message);
     res.status(500).json({ error: err.message });
+  }
+});
+
+// ── Notification log — owner can see what emails were sent ──────────────────
+app.get('/api/public/deal-room/:propertyId/notifications', async (req, res) => {
+  const { propertyId } = req.params;
+  try {
+    const { data, error } = await supabase
+      .from('deal_notifications')
+      .select('id, type, to_email, subject, sent_at')
+      .eq('property_id', propertyId)
+      .order('sent_at', { ascending: false })
+      .limit(100);
+    if (error) throw error;
+    res.json({ notifications: data || [] });
+  } catch (err) {
+    // Graceful fallback — table may not exist yet (migration pending)
+    res.json({ notifications: [] });
   }
 });
 

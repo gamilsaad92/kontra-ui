@@ -23,7 +23,7 @@ function StatusBadge({ status }) {
   );
 }
 
-export default function DealCoordinationPanel({ propertyId, role, packId = DEFAULT_PACK_ID }) {
+export default function DealCoordinationPanel({ propertyId, role, packId = DEFAULT_PACK_ID, propertyType }) {
   const workflowPack = getWorkflowPack(packId);
   const STAGES = workflowPack.stages;
   const NEXT_STAGE = workflowPack.nextStage;
@@ -134,6 +134,18 @@ export default function DealCoordinationPanel({ propertyId, role, packId = DEFAU
   const myDocCount = docsByRole[role] || 0;
   const myMeta = ROLE_META[role];
 
+  // Context-aware Signal Ready subtext: does this role have assigned documents?
+  const documentSchema = workflowPack.getDocumentSchema?.(propertyType) || [];
+  const myAssignedDocs = documentSchema.filter(d => (d.assignedTo || []).includes(role));
+
+  // Per-party upload progress — "X/Y docs" in each party card
+  const assignedCountByRole = {};
+  for (const doc of documentSchema) {
+    for (const r of (doc.assignedTo || [])) {
+      assignedCountByRole[r] = (assignedCountByRole[r] || 0) + 1;
+    }
+  }
+
   return (
     <div className="mb-6 rounded-2xl border border-gray-200 bg-white overflow-hidden">
       {/* Stage tracker header */}
@@ -167,7 +179,7 @@ export default function DealCoordinationPanel({ propertyId, role, packId = DEFAU
           )}
         </div>
 
-        {/* Step bar */}
+        {/* Step bar — pack stages + synthetic "Verified Asset Package" final step */}
         <div className="flex items-center gap-0">
           {STAGES.map((s, i) => {
             const done = i < stageIdx;
@@ -184,12 +196,22 @@ export default function DealCoordinationPanel({ propertyId, role, packId = DEFAU
                     {s.label}
                   </p>
                 </div>
-                {i < STAGES.length - 1 && (
-                  <div className={`h-0.5 flex-1 mx-1 mb-3 rounded ${i < stageIdx ? 'bg-[#800020]' : 'bg-gray-200'}`} />
-                )}
+                {/* connector — always show one after last pack stage to link to VAP step */}
+                <div className={`h-0.5 flex-1 mx-1 mb-3 rounded ${i < stageIdx ? 'bg-[#800020]' : 'bg-gray-200'}`} />
               </div>
             );
           })}
+          {/* Verified Asset Package — synthetic final step after all pack stages */}
+          <div className="flex flex-col items-center flex-1">
+            <div className={`w-7 h-7 rounded-full flex items-center justify-center text-sm font-bold mb-1 transition-all
+              ${isFunded ? 'bg-[#800020] text-white' : 'bg-gray-100 text-gray-400'}`}>
+              {isFunded ? '✓' : '📦'}
+            </div>
+            <p className={`text-[9px] font-semibold text-center leading-tight
+              ${isFunded ? 'text-gray-500' : 'text-gray-300'}`}>
+              Verified ✓
+            </p>
+          </div>
         </div>
       </div>
 
@@ -221,7 +243,23 @@ export default function DealCoordinationPanel({ propertyId, role, packId = DEFAU
                   {isSubmitted ? (
                     <>
                       <StatusBadge status={subStatus} />
-                      {docs > 0 && <span className="text-[9px] text-gray-400">{docs} doc{docs !== 1 ? 's' : ''}</span>}
+                      {(() => {
+                        const total = assignedCountByRole[roleKey] || 0;
+                        if (docs > 0 || total > 0) {
+                          const pct = total > 0 ? Math.round((docs / total) * 100) : 100;
+                          return (
+                            <div>
+                              <span className="text-[9px] text-gray-400">{docs}{total > 0 ? `/${total}` : ''} doc{total !== 1 ? 's' : ''}</span>
+                              {total > 0 && (
+                                <div className="mt-0.5 h-1 w-full rounded-full bg-gray-200 overflow-hidden">
+                                  <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, background: docs >= total ? '#16a34a' : '#d97706' }} />
+                                </div>
+                              )}
+                            </div>
+                          );
+                        }
+                        return null;
+                      })()}
                       {/* Owner/lender approval controls */}
                       {canSetStatus && !isMe && (
                         <div className="mt-1">
@@ -265,11 +303,27 @@ export default function DealCoordinationPanel({ propertyId, role, packId = DEFAU
                         <p className="text-[8px] text-gray-400 italic">"{sub.status_note}"</p>
                       )}
                     </>
-                  ) : (
-                    <span className={`text-[9px] font-semibold ${meta.required ? 'text-amber-500' : 'text-gray-400'}`}>
-                      {docs > 0 ? `${docs} doc${docs !== 1 ? 's' : ''} · pending` : 'Awaiting'}
-                    </span>
-                  )}
+                  ) : (() => {
+                    const total = assignedCountByRole[roleKey] || 0;
+                    if (total > 0) {
+                      const pct = total > 0 ? Math.round((docs / total) * 100) : 0;
+                      return (
+                        <div>
+                          <span className={`text-[9px] font-semibold ${meta.required ? 'text-amber-500' : 'text-gray-400'}`}>
+                            {docs}/{total} docs · pending
+                          </span>
+                          <div className="mt-0.5 h-1 w-full rounded-full bg-gray-200 overflow-hidden">
+                            <div className="h-full rounded-full bg-amber-400" style={{ width: `${pct}%` }} />
+                          </div>
+                        </div>
+                      );
+                    }
+                    return (
+                      <span className={`text-[9px] font-semibold ${meta.required ? 'text-amber-500' : 'text-gray-400'}`}>
+                        Awaiting
+                      </span>
+                    );
+                  })()}
                 </div>
               </div>
             );
@@ -311,20 +365,18 @@ export default function DealCoordinationPanel({ propertyId, role, packId = DEFAU
           ) : (
             <div className="flex items-center justify-between gap-4">
               <div>
-                <p className="text-sm font-semibold text-gray-800">Done uploading your documents?</p>
+                <p className="text-sm font-semibold text-gray-800">Ready to proceed?</p>
                 <p className="text-xs text-gray-400">
-                  {myDocCount > 0
-                    ? `${myDocCount} document${myDocCount !== 1 ? 's' : ''} uploaded — signal the team you're ready for review`
-                    : myMeta?.needsDocs
-                      ? 'Upload your documents above, then signal the team when you\'re done'
-                      : 'Signal the team when you\'re ready to proceed'}
+                  {myAssignedDocs.length > 0
+                    ? myDocCount > 0
+                      ? `${myDocCount} document${myDocCount !== 1 ? 's' : ''} uploaded — signal the team you're ready for review`
+                      : 'Upload your documents above, then signal the team when done'
+                    : 'Signal the team when you\'ve reviewed the deal documents'}
                 </p>
               </div>
               <button
                 onClick={() => setShowNamePrompt(true)}
-                disabled={myMeta?.needsDocs && myDocCount === 0}
-                title={myMeta?.needsDocs && myDocCount === 0 ? 'Upload your documents above first' : ''}
-                className="shrink-0 px-4 py-2 rounded-xl text-xs font-bold text-white bg-[#800020] hover:opacity-90 transition disabled:opacity-40 disabled:cursor-not-allowed"
+                className="shrink-0 px-4 py-2 rounded-xl text-xs font-bold text-white bg-[#800020] hover:opacity-90 transition"
               >
                 Signal Ready →
               </button>

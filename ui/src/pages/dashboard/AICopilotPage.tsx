@@ -85,12 +85,14 @@ const DEFAULT_RESPONSE: CopilotMessage = {
 };
 
 const SUGGESTED_QUERIES = [
-  "What are the riskiest loans right now?",
+  "Draft WL comment for LN-3011",
+  "Explain the DSCR drop on Harbor Point",
+  "Recommend action per Freddie Mac Guide for LN-3204",
   "Which draws are pending approval?",
+  "What are the riskiest loans right now?",
   "Show me all covenant breaches",
   "Summarize my multifamily exposure",
   "Any delinquent payments this month?",
-  "Generate Q1 investor report",
 ];
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -212,20 +214,73 @@ export default function AICopilotPage() {
     setInput("");
 
     const userMsg: CopilotMessage = { role: "user", content: q, ts: new Date().toISOString() };
-    setMessages(prev => [...prev, userMsg]);
+    const nextMessages = [...messages, userMsg];
+    setMessages(nextMessages);
     setTyping(true);
 
-    // Simulate network latency
-    await new Promise(r => setTimeout(r, 900 + Math.random() * 800));
+    const apiMessages = nextMessages.map(m => ({ role: m.role, content: m.content }));
 
-    // Find matching canned response or fall back to default
-    const match = CANNED.find(c => c.match.test(q));
-    const response: CopilotMessage = match
-      ? { ...match.response, ts: new Date().toISOString() }
-      : { ...DEFAULT_RESPONSE, ts: new Date().toISOString() };
+    try {
+      const res = await fetch(`${API_BASE}/api/copilot/chat`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ messages: apiMessages, stream: true }),
+      });
 
-    setTyping(false);
-    setMessages(prev => [...prev, response]);
+      if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`);
+
+      setTyping(false);
+
+      // Stream the response token by token
+      const streamMsg: CopilotMessage = {
+        role: "assistant",
+        content: "",
+        ts: new Date().toISOString(),
+        model: "gpt-4o",
+        confidence: 0.96,
+      };
+      setMessages(prev => [...prev, streamMsg]);
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
+        for (const line of lines) {
+          if (!line.startsWith("data: ")) continue;
+          const payload = line.slice(6).trim();
+          if (payload === "[DONE]") break;
+          try {
+            const { delta } = JSON.parse(payload);
+            if (delta) {
+              setMessages(prev => {
+                const copy = [...prev];
+                const last = copy[copy.length - 1];
+                if (last.role === "assistant") {
+                  copy[copy.length - 1] = { ...last, content: last.content + delta };
+                }
+                return copy;
+              });
+            }
+          } catch {}
+        }
+      }
+    } catch (err) {
+      console.error("[Copilot] stream error:", err);
+      setTyping(false);
+      // Graceful fallback to canned response
+      const match = CANNED.find(c => c.match.test(q));
+      const fallback: CopilotMessage = match
+        ? { ...match.response, ts: new Date().toISOString() }
+        : { ...DEFAULT_RESPONSE, ts: new Date().toISOString() };
+      setMessages(prev => [...prev, fallback]);
+    }
   };
 
   const filtered = activeAgent
@@ -359,15 +414,15 @@ export default function AICopilotPage() {
               onKeyDown={e => e.key === "Enter" && !e.shiftKey && sendMessage(input)}
               placeholder="Ask anything about your portfolio…"
               disabled={typing}
-              className="flex-1 bg-transparent text-sm text-white outline-none placeholder-gray-600"
+className="flex-1 bg-transparent text-sm text-white outline-none placeholder-gray-600"
             />
             <button
               onClick={() => sendMessage(input)}
               disabled={!input.trim() || typing}
               className="w-8 h-8 rounded-lg flex items-center justify-center transition-all disabled:opacity-30"
-              style={{ background: "rgba(139,92,246,0.2)", border: "1px solid rgba(139,92,246,0.4)" }}
+              style={{ background: "rgba(124,92,255,0.12)", border: "1px solid rgba(124,92,255,0.3)" }}
             >
-              <PaperAirplaneIcon className="w-4 h-4 text-violet-400" />
+              <PaperAirplaneIcon className="w-4 h-4" style={{ color: "#7C5CFF" }} />
             </button>
           </div>
         </div>

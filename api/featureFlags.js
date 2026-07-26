@@ -1,4 +1,4 @@
-const DEFAULT_FLAGS = ['trading', 'sso'];
+const DEFAULT_FLAGS = ['trading', 'sso', 'assets', 'compliance', 'hospitality'];
 
 const flags = new Set(
   DEFAULT_FLAGS.concat(

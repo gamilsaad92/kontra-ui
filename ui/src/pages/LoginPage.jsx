@@ -122,12 +122,12 @@ export default function LoginPage() {
         {/* Hero copy */}
         <div>
           <p className="mb-2 text-xs font-bold uppercase tracking-widest" style={{ color: "#800020" }}>
-            Transaction Workspace Infrastructure
+            CRE Deal Room Infrastructure
           </p>
           <h2 className="mb-4 text-3xl font-black leading-tight text-white" style={{ letterSpacing: "-0.03em" }}>
             {contextMessage
               ? <>One more step<br />to continue</>
-              : <>Your workspace<br />starts here.</>}
+              : <>Your CRE workspace<br />starts here.</>}
           </h2>
           {contextMessage ? (
             <div className="rounded-xl px-4 py-3 mb-4" style={{ background: "rgba(128,0,32,0.12)", border: "1px solid rgba(128,0,32,0.2)" }}>
@@ -197,20 +197,6 @@ export default function LoginPage() {
               <div className="h-px flex-1" style={{ background: "rgba(255,255,255,0.08)" }} />
             </div>
 
-            {/* Live deal room demo — primary CTA */}
-            <Link
-              to="/deal-room/kontra-demo"
-              className="flex items-center justify-between w-full rounded-xl px-4 py-3 mb-3 transition-all hover:opacity-90 group"
-              style={{ background: "linear-gradient(90deg, #4a0010 0%, #800020 100%)", border: "1px solid rgba(128,0,32,0.4)" }}
-            >
-              <div>
-                <p className="text-xs font-bold text-white mb-0.5">Try a Live Deal Room</p>
-                <p className="text-[10px] text-white/60">550 Madison Ave · AI Operations Manager active</p>
-              </div>
-              <span className="text-white/80 text-sm group-hover:translate-x-0.5 transition-transform">→</span>
-            </Link>
-
-            {/* Dashboard portal demos */}
             <div className="grid grid-cols-2 gap-2">
               {DEMO_PORTALS.map((portal) => (
                 <button
@@ -242,7 +228,7 @@ export default function LoginPage() {
             </div>
 
             <p className="mt-3 text-center text-[10px]" style={{ color: "#334155" }}>
-              No login required · No account needed
+              No login required · Read-only demo data · No account needed
             </p>
           </div>
         </div>

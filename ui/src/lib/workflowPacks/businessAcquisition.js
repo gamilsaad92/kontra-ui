@@ -51,26 +51,8 @@ export const advanceLabel = {
 // Coordinator roles (canManage: true) see all docs grouped by party.
 // Non-coordinator parties see only their own docs ("Your Documents" view).
 const DOCUMENT_SCHEMA = [
-  { id: "loi",                 label: "Letter of Intent",           section: "loi",                 ai: true,  required: true,  assignedTo: ["buyer"],
-    aiExtraction: {
-      analystRole: "M&A transaction attorney reviewing a letter of intent or term sheet for a business acquisition",
-      docTypes: ["Letter of Intent", "Term Sheet", "Indication of Interest", "Other"],
-      metrics: {
-        purchase_price: "total purchase price or deal value in dollars",
-        earnest_money: "earnest money deposit or exclusivity fee in dollars",
-        due_diligence_period_days: "number of days in the due diligence period",
-      },
-    } },
-  { id: "purchase_agreement",  label: "Purchase Agreement",         section: "purchase_agreement",  ai: true,  required: true,  assignedTo: ["counsel"],
-    aiExtraction: {
-      analystRole: "M&A transaction attorney reviewing a purchase and sale agreement for a business acquisition",
-      docTypes: ["Purchase Agreement", "Asset Purchase Agreement", "Stock Purchase Agreement", "Other"],
-      metrics: {
-        purchase_price: "total purchase price or transaction value in dollars",
-        working_capital_target: "normalized working capital target in dollars if specified",
-        earnest_money: "earnest money or deposit amount in dollars",
-      },
-    } },
+  { id: "loi",                 label: "Letter of Intent",           section: "loi",                 ai: false, required: true,  assignedTo: ["buyer"] },
+  { id: "purchase_agreement",  label: "Purchase Agreement",         section: "purchase_agreement",  ai: false, required: true,  assignedTo: ["counsel"] },
   { id: "financials",          label: "Financial Statements (3-yr)",section: "financials",           ai: true,  required: true,  assignedTo: ["seller"],
     aiExtraction: {
       analystRole: "M&A financial analyst reviewing a small/mid-size business acquisition",
@@ -83,16 +65,7 @@ const DOCUMENT_SCHEMA = [
         yoy_growth: "year-over-year revenue growth as a percentage",
       },
     } },
-  { id: "tax_returns",         label: "Tax Returns (3-yr)",         section: "tax_returns",          ai: true,  required: true,  assignedTo: ["seller"],
-    aiExtraction: {
-      analystRole: "CPA reviewing business tax returns for an acquisition target",
-      docTypes: ["Federal Tax Return", "Form 1120", "Form 1120-S", "Form 1065", "Schedule C", "Other"],
-      metrics: {
-        gross_revenue: "total gross revenue or gross receipts reported on the tax return in dollars",
-        net_income: "net taxable income or adjusted gross income in dollars",
-        depreciation: "total depreciation and amortization deducted in dollars",
-      },
-    } },
+  { id: "tax_returns",         label: "Tax Returns (3-yr)",         section: "tax_returns",          ai: false, required: true,  assignedTo: ["seller"] },
   { id: "cap_table",           label: "Cap Table / Ownership",      section: "cap_table",            ai: false, required: true,  assignedTo: ["seller"] },
   { id: "qoe",                 label: "Quality of Earnings Report", section: "qoe",                  ai: true,  required: false, assignedTo: ["cpa"],
     aiExtraction: {

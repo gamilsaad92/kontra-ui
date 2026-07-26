@@ -122,7 +122,7 @@ async function buildGroundedContext(propertyId) {
   const [{ data: room }, tasks] = await Promise.all([
     supabase
       .from('deal_rooms')
-      .select('property_name, deal_stage, workflow_pack_id, closing_date, deal_type, deal_amount')
+      .select('property_name, deal_stage, closing_date, deal_type, deal_amount')
       .eq('property_id', propertyId)
       .maybeSingle(),
     listTasksForRoom(propertyId),

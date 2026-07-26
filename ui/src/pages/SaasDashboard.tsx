@@ -4,9 +4,7 @@ import { resolveApiBase } from "../lib/api";
 import useFeatureUsage from "../lib/useFeatureUsage";
 import { lenderNavRoutes } from "../routes";
 import { AuthContext } from "../lib/authContext";
-import { getAppRoleFromToken } from "../lib/usePortalRouter";
 import SaasDashboardHome from "../components/SaasDashboardHome";
-import NewDashboard from "./NewDashboard";
 import AiInsightsPage from "../features/ai-insights/page/AiInsightsPage";
 import OnchainDashboard from "../components/OnchainDashboard";
 import PortfolioLayout from "./dashboard/portfolio/PortfolioLayout";
@@ -74,22 +72,8 @@ import TasksPage from "./dashboard/TasksPage";
 
 type NavItem = (typeof lenderNavRoutes)[number];
 
-const LENDER_ROLES = new Set(["lender", "lender_admin", "servicer", "asset_manager", "platform_admin"]);
-
-const ROLE_BADGE_LABELS: Record<string, string> = {
-  platform_admin: "ADMIN",
-  lender_admin: "LENDER",
-  lender: "LENDER",
-  servicer: "SERVICER",
-  asset_manager: "ASSET MGR",
-  investor: "INVESTOR",
-  borrower: "BORROWER",
-  member: "WORKSPACE",
-};
-
-function DashboardOverview({ apiBase, role }: { apiBase: string; role: string }) {
-  if (LENDER_ROLES.has(role)) return <SaasDashboardHome apiBase={apiBase} />;
-  return <NewDashboard />;
+function DashboardOverview({ apiBase }: { apiBase: string }) {
+  return <SaasDashboardHome apiBase={apiBase} />;
 }
 
 function LegacyRedirect({ to }: { to: string }) {
@@ -113,10 +97,6 @@ export default function SaasDashboard() {
   const [signOutError, setSignOutError] = useState<string | null>(null);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
 
-  const role = getAppRoleFromToken(session?.access_token);
-  const isLenderRole = LENDER_ROLES.has(role);
-  const roleBadge = ROLE_BADGE_LABELS[role] ?? "WORKSPACE";
-
   const navItems = useMemo(() => lenderNavRoutes.filter((item) => !item.requiresAuth || session?.access_token), [session]);
 
   const activeItem = useMemo(
@@ -139,7 +119,7 @@ export default function SaasDashboard() {
   const NAV_SECTIONS: { label: string | null; paths: string[] }[] = [
     { label: null, paths: ["/dashboard"] },
     { label: "Workspace", paths: ["/my-properties", "/marketplace", "/providers", "/documents", "/inspection", "/governance", "/tasks", "/document-extraction", "/watchlist"] },
-    ...(isLenderRole ? [{ label: "Lender Tools", paths: ["/ai-copilot", "/portfolio", "/compliance-center", "/markets", "/onchain", "/analytics", "/reports", "/covenant-agent", "/command"] }] : [{ label: "Tools", paths: ["/ai-copilot", "/analytics", "/command"] }]),
+    { label: "Lender Tools", paths: ["/ai-copilot", "/portfolio", "/compliance-center", "/markets", "/onchain", "/analytics", "/reports", "/covenant-agent", "/command"] },
     { label: "Platform", paths: ["/workflow", "/integration", "/enterprise-api", "/agents", "/servicing-ops", "/hazard-recovery", "/cost-governance", "/policy-command", "/policy"] },
   ];
 
@@ -209,7 +189,7 @@ export default function SaasDashboard() {
    const content = (
     <Routes>
       <Route path="/" element={<Navigate to="/dashboard" replace />} />
-      <Route path="/dashboard" element={<DashboardOverview apiBase={apiBase} role={role} />} />
+      <Route path="/dashboard" element={<DashboardOverview apiBase={apiBase} />} />
       <Route path="/portfolio" element={<PortfolioLayout />}>
         <Route index element={<Navigate to="/portfolio/overview" replace />} />
         <Route path="overview" element={<PortfolioOverviewPage />} />
@@ -335,7 +315,7 @@ export default function SaasDashboard() {
             className="ml-auto text-[10px] font-semibold px-1.5 py-0.5 rounded"
             style={{ background: "rgba(229,72,77,0.15)", color: "#E5484D", letterSpacing: "0.05em" }}
           >
-            {roleBadge}
+            LENDER
           </span>
         </div>
 
@@ -420,7 +400,7 @@ export default function SaasDashboard() {
           <header className="px-6 py-5 border-b border-gray-200 bg-white">
             <h1 className="text-lg font-semibold tracking-tight text-gray-900">{activeLabel}</h1>
             <p className="text-sm text-gray-500 mt-0.5">
-              Your Kontra workspace — deal rooms, documents, and AI deal intelligence.
+              Structured loan data infrastructure for servicing, compliance, and capital markets.
             </p>
           </header>
         )}
