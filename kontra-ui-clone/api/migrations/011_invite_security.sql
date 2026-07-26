@@ -233,6 +233,7 @@ END;
 $$;
 
 -- ── 8. create_invite_session_for_email — after Supabase Auth OTP is verified ─
+--    Only valid for email_otp invites with a non-null invited_email.
 --    Caller must be authenticated (auth.email() returns invited email).
 CREATE OR REPLACE FUNCTION create_invite_session_for_email(p_invite_token TEXT)
 RETURNS JSON
@@ -258,9 +259,18 @@ BEGIN
   IF v_invite.status = 'revoked' THEN RETURN json_build_object('success', false, 'error', 'revoked'); END IF;
   IF v_invite.expires_at < now() THEN RETURN json_build_object('success', false, 'error', 'expired'); END IF;
 
-  -- Verify the authenticated user is the invited email
-  IF v_invite.invited_email IS NOT NULL
-     AND lower(v_invite.invited_email) != lower(v_user_email) THEN
+  -- Only email_otp invites may use this path; PIN invites must use verify_invite_credential.
+  IF v_invite.verification_method != 'email_otp' THEN
+    RETURN json_build_object('success', false, 'error', 'wrong_verification_method');
+  END IF;
+
+  -- invited_email is mandatory for email_otp invites.
+  IF v_invite.invited_email IS NULL THEN
+    RETURN json_build_object('success', false, 'error', 'invite_misconfigured');
+  END IF;
+
+  -- The authenticated user must be the exact invited email.
+  IF lower(v_invite.invited_email) != lower(v_user_email) THEN
     RETURN json_build_object('success', false, 'error', 'email_mismatch');
   END IF;
 
