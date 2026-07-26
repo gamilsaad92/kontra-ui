@@ -12,6 +12,7 @@ import DocumentsTabPanel from "./DocumentsTabPanel";
 import VerifiedAssetPackage from "./VerifiedAssetPackage";
 import NotificationsLog from "./NotificationsLog";
 import LegalReviewPanel from "./LegalReviewPanel";
+import DealRoomPinGate from "./DealRoomPinGate";
 import { getTemplate } from "./documentChecklistUtils";
 import { DEFAULT_PACK_ID, getWorkflowPack, ensureWorkflowPackLoaded, resolvePackId } from "../../lib/workflowPacks";
 
@@ -1040,6 +1041,7 @@ export default function DealRoomPage() {
   const [analysesRefreshKey, setAnalysesRefreshKey] = useState(0);
 
   const onAnalysisSaved = () => setAnalysesRefreshKey(k => k + 1);
+  const [pinUnlocked, setPinUnlocked] = useState(false);
 
   // Try to fetch custom deal room from API
   useEffect(() => {
@@ -1197,6 +1199,17 @@ export default function DealRoomPage() {
   );
 
   usePageTitle(property?.name || property?.property_name);
+
+  // PIN gate — non-owner participants on custom (non-demo) rooms must enter PIN if one is set
+  if (role !== 'owner' && !demoProperty && !isDemo && !pinUnlocked) {
+    return (
+      <DealRoomPinGate
+        propertyId={propertyId}
+        role={role}
+        onUnlocked={() => setPinUnlocked(true)}
+      />
+    );
+  }
 
   // Loading state
   if (loadingApi && isCustom) {
@@ -1576,3 +1589,4 @@ export default function DealRoomPage() {
     </PublicLayout>
   );
 }
+
