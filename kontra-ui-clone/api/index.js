@@ -2163,17 +2163,17 @@ app.post('/api/public/deal-room/send-invite-email', async (req, res) => {
       to,
       reply_to: 'support@kontraplatform.com',
       subject: `You've been invited to ${propName} — Kontra Deal Room`,
-      text: `${senderName} has invited you as ${roleLabel} to a deal room for ${propName} on Kontra.\n\nClick your personal invite link to verify your identity and access the deal room:\n${inviteUrl}\n\nThis link is unique to you — do not share it.\n\n---\nKontra is CRE deal room infrastructure. You received this because ${senderName} added your email. If this is a mistake, ignore this email.`,
+      text: `${senderName} has invited you as ${roleLabel} to a deal room for ${propName} on Kontra.\n\nClick your personal invite link below:\n${inviteUrl}\n\nYou will be asked for a 6-digit PIN when you arrive. ${senderName} will share it with you separately — it is not in this email.\n\nThis link is unique to you — do not forward it.\n\n---\nKontra is CRE deal room infrastructure. You received this because ${senderName} added your email. If this is a mistake, ignore this email.`,
       html: `<div style="font-family:sans-serif;max-width:560px;margin:auto;padding:32px 24px">
         <div style="margin-bottom:24px">
           <span style="display:inline-block;background:#800020;color:white;font-weight:800;font-size:15px;padding:6px 14px;border-radius:8px;letter-spacing:0.5px">Kontra</span>
         </div>
         <h2 style="color:#111;font-size:22px;font-weight:800;margin:0 0 8px">You've been invited</h2>
         <p style="color:#555;font-size:15px;margin:0 0 6px"><strong>${senderName}</strong> has invited you as <strong>${roleLabel}</strong> to the deal room for <strong>${propName}</strong>.</p>
-        <p style="color:#555;font-size:14px;margin:0 0 24px">Click your personal invite link below. You'll verify your identity with a one-time code before accessing the deal room.</p>
+        <p style="color:#555;font-size:14px;margin:0 0 24px">Click your personal invite link below. You will be asked for a 6-digit PIN — the deal coordinator will share it with you separately (by phone, text, or in person).</p>
         <a href="${inviteUrl}" style="display:inline-block;padding:14px 28px;background:#800020;color:white;border-radius:10px;text-decoration:none;font-weight:700;font-size:15px">Open my invite →</a>
         <div style="margin-top:20px;padding:12px 16px;background:#fef9f0;border-radius:10px;border:1px solid #fde68a">
-          <p style="color:#92400e;font-size:12px;margin:0">🔒 This link is unique to you — do not forward it to others. Each participant must receive their own personal invite.</p>
+          <p style="color:#92400e;font-size:12px;margin:0">🔒 This link is unique to you — do not forward it. Your PIN is delivered separately. Both are required to enter the deal room.</p>
         </div>
         <div style="margin-top:24px;padding:16px;background:#f9fafb;border-radius:10px;border:1px solid #eee">
           <p style="color:#888;font-size:12px;margin:0 0 4px">What is Kontra?</p>
