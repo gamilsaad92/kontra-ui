@@ -2350,6 +2350,11 @@ app.use('/api/public', operationsManagerRouter);
 // same as the public deal-room routes above.
 app.use('/api', workflowPacksRouter);
 
+// Participant security v2 — PUBLIC (has its own JWT auth inside each handler).
+// Must stay BEFORE requireOrgContext — these endpoints are called by
+// unauthenticated participants and owners who do not have an org JWT.
+app.use('/api/v2/deal-room', dealRoomSecurityV2Router);
+
 app.use('/api', requireOrgContext);
 app.use('/api/dashboard-layout', authenticate, dashboard);
 app.use('/api/portfolio', portfolioSliceRouter);
@@ -2387,8 +2392,6 @@ app.use('/api/loan-governance', loanGovernanceRouter);
 app.use('/api/onboarding', authenticate, onboardingRouter);
 app.use('/api/rules', authenticate, rulesRouter);
 app.use('/api/invites', invitesRouter);
-// Participant security v2 — feature-flagged, behind auth_v2_enabled per room
-app.use('/api/v2/deal-room', dealRoomSecurityV2Router);
 app.use('/api/analyze-financials', analyzeFinancialsRouter);
 app.use('/api/inspect-review', inspectReviewRouter);
 app.use('/api/document-review', documentReviewRouter);
