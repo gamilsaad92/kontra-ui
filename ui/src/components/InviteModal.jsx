@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { storePinForRole } from "../../lib/pinUtils";
 
 const PARTY_ROLES = [
   {
@@ -55,9 +56,38 @@ export default function InviteModal({ property, onClose }) {
   const [customNote, setCustomNote] = useState("");
   const [step, setStep] = useState("select"); // select | link
 
+  // PIN state: null | { status: 'loading'|'ready'|'error', pin?: string, error?: string }
+  const [pinState, setPinState] = useState(null);
+
+  const propertyId = property?.id;
+
   const inviteLink = selectedRole
-    ? `${BASE_URL}/deal-room/${property.id}?role=${selectedRole.role}&from=${encodeURIComponent(property.name)}`
+    ? `${BASE_URL}/deal-room/${propertyId}?role=${selectedRole.role}&from=${encodeURIComponent(property.name)}`
     : null;
+
+  async function generatePin(role) {
+    setPinState({ status: 'loading' });
+    try {
+      const pin = await storePinForRole(propertyId, role);
+      setPinState({ status: 'ready', pin });
+    } catch (err) {
+      setPinState({ status: 'error', error: err.message });
+    }
+  }
+
+  function handleSelectRole(r) {
+    setSelectedRole(r);
+    setPinState(null);
+    setStep("link");
+    // Auto-generate a PIN when a role is selected
+    generatePin(r.role);
+  }
+
+  function handleBack() {
+    setStep("select");
+    setSelectedRole(null);
+    setPinState(null);
+  }
 
   const handleCopy = () => {
     if (!inviteLink) return;
@@ -65,11 +95,6 @@ export default function InviteModal({ property, onClose }) {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     });
-  };
-
-  const handleSelectRole = (r) => {
-    setSelectedRole(r);
-    setStep("link");
   };
 
   return (
@@ -123,7 +148,7 @@ export default function InviteModal({ property, onClose }) {
         ) : (
           <div className="p-6">
             {/* Back */}
-            <button onClick={() => setStep("select")}
+            <button onClick={handleBack}
               className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-gray-700 transition mb-5">
               <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
@@ -159,7 +184,7 @@ export default function InviteModal({ property, onClose }) {
             </div>
 
             {/* The link */}
-            <div className="mb-2">
+            <div className="mb-3">
               <label className="text-xs font-medium text-gray-600 block mb-1.5">Invite link</label>
               <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5">
                 <code className="text-xs text-gray-600 flex-1 truncate">{inviteLink}</code>
@@ -172,9 +197,57 @@ export default function InviteModal({ property, onClose }) {
               </div>
             </div>
 
-            <p className="text-xs text-gray-400 mb-5">
-              Anyone with this link can view the deal room in <strong>{selectedRole.label}</strong> mode. They'll need to sign in to take actions.
-            </p>
+            {/* PIN box */}
+            {pinState?.status === 'loading' && (
+              <div className="mb-4 rounded-xl border border-amber-100 bg-amber-50 px-4 py-3 flex items-center gap-3">
+                <div className="w-4 h-4 border-2 border-amber-300 border-t-amber-600 rounded-full animate-spin shrink-0" />
+                <p className="text-xs text-amber-700">Generating access PIN…</p>
+              </div>
+            )}
+
+            {pinState?.status === 'ready' && (
+              <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-4">
+                <div className="flex items-start justify-between gap-3 mb-2">
+                  <div>
+                    <p className="text-xs font-bold text-amber-900 uppercase tracking-wide">Access PIN — share separately</p>
+                    <p className="text-[10px] text-amber-700 mt-0.5">
+                      Send the link by email, text the PIN. Never put both in the same message.
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => generatePin(selectedRole.role)}
+                    className="text-[10px] text-amber-600 hover:text-amber-800 underline shrink-0 transition mt-0.5">
+                    Regenerate
+                  </button>
+                </div>
+                <div className="flex items-center gap-3">
+                  <div className="flex-1 bg-white border border-amber-200 rounded-lg px-4 py-2.5 text-center">
+                    <span className="text-2xl font-black tracking-[0.3em] text-amber-900">
+                      {pinState.pin}
+                    </span>
+                  </div>
+                  <button
+                    onClick={() => navigator.clipboard.writeText(pinState.pin)}
+                    className="shrink-0 px-3 py-2 rounded-lg text-xs font-semibold border border-amber-200 text-amber-700 hover:bg-amber-100 transition">
+                    Copy PIN
+                  </button>
+                </div>
+                <p className="text-[10px] text-amber-600 mt-2">
+                  ⚠ This PIN appears once. Save it before closing.
+                </p>
+              </div>
+            )}
+
+            {pinState?.status === 'error' && (
+              <div className="mb-4 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3">
+                <p className="text-xs text-gray-500">
+                  Could not generate PIN — the link is unprotected.{' '}
+                  <button onClick={() => generatePin(selectedRole.role)} className="underline text-gray-700">
+                    Retry
+                  </button>
+                </p>
+              </div>
+            )}
 
             {/* Action buttons */}
             <div className="flex gap-2">
