@@ -1928,15 +1928,67 @@ app.post('/api/public/deal-room/:propertyId/track-document', upload.single('file
 });
 
 // ── Signed download URL for a stored document ─────────────────────────────────
+// ── Authenticated document download ──────────────────────────────────────────
+// Requires owner auth (Authorization: Bearer <supabase-jwt>) OR a valid
+// participant session (x-kontra-session: <token>).  Derives propertyId from
+// the storage path (first segment: {propertyId}/{filename}) and validates
+// access before issuing a short-lived signed URL.
 app.get('/api/public/document-url', async (req, res) => {
   const storagePath = (req.query.path || '').trim();
   if (!storagePath) return res.status(400).json({ error: 'path required' });
+
+  // Extract propertyId from path — must be first segment
+  const propertyId = storagePath.split('/')[0];
+  if (!propertyId) return res.status(400).json({ error: 'invalid storage path' });
+
+  const bearerJwt    = (req.headers.authorization || '').replace(/^Bearer /i, '').trim() || null;
+  const sessionToken = (req.headers['x-kontra-session'] || '').trim() || null;
+
+  if (!bearerJwt && !sessionToken) {
+    return res.status(401).json({ error: 'Authentication required to download documents' });
+  }
+
   try {
+    let authorized = false;
+
+    if (bearerJwt) {
+      // Owner path: verify JWT → check customer_email matches the deal room
+      const { data: { user }, error: authErr } = await supabase.auth.getUser(bearerJwt);
+      if (!authErr && user?.email) {
+        const { data: room } = await supabase
+          .from('deal_rooms')
+          .select('customer_email')
+          .eq('property_id', propertyId)
+          .single();
+        if (room && room.customer_email?.toLowerCase() === user.email.toLowerCase()) {
+          authorized = true;
+        }
+      }
+    }
+
+    if (!authorized && sessionToken) {
+      // Participant path: hash the token and query deal_room_access_sessions directly.
+      // (The validate_session_for_property RPC reads from request.headers, not a param,
+      //  so it cannot be called server-side with an arbitrary token.)
+      const tokenHash = crypto.createHash('sha256').update(sessionToken).digest('hex');
+      const { data: sess } = await supabase
+        .from('deal_room_access_sessions')
+        .select('id')
+        .eq('session_token_hash', tokenHash)
+        .eq('property_id', propertyId)
+        .gt('expires_at', new Date().toISOString())
+        .is('revoked_at', null)
+        .maybeSingle();
+      if (sess) authorized = true;
+    }
+
+    if (!authorized) return res.status(403).json({ error: 'Access denied' });
+
     const { data, error } = await supabase.storage
       .from('deal-documents')
       .createSignedUrl(storagePath, 3600);
     if (error || !data?.signedUrl) return res.status(404).json({ error: 'Document not found or expired' });
-    res.redirect(data.signedUrl);
+    res.json({ url: data.signedUrl });
   } catch (err) {
     console.error('[document-url]', err.message);
     res.status(500).json({ error: 'Failed to generate download link' });

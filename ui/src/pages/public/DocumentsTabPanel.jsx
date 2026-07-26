@@ -1,10 +1,41 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useContext } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { getWorkflowPack, DEFAULT_PACK_ID } from '../../lib/workflowPacks';
+import { DealRoomSessionContext } from './DealRoomPage';
+import { supabase } from '../../lib/supabaseClient';
 import DocumentChecklistPanel from './DocumentChecklistPanel';
 import VerificationPanel from './VerificationPanel';
 
 const API_BASE = (import.meta.env.VITE_API_BASE || '').replace(/\/+$/, '');
+
+/**
+ * Download a deal-room document.  Passes x-kontra-session (participant) or
+ * Authorization: Bearer (owner) depending on what is available.
+ * Falls back to the old direct-link behaviour if neither is present (demo/legacy).
+ */
+async function openDocumentUrl(storagePath, sessionToken, ownerToken) {
+  const headers = {};
+  if (sessionToken) headers['x-kontra-session'] = sessionToken;
+  else if (ownerToken) headers['Authorization'] = `Bearer ${ownerToken}`;
+
+  if (!sessionToken && !ownerToken) {
+    // Legacy / demo — open old redirect URL directly (no auth enforced)
+    window.open(`${API_BASE}/api/public/document-url?path=${encodeURIComponent(storagePath)}`, '_blank');
+    return;
+  }
+
+  try {
+    const res = await fetch(
+      `${API_BASE}/api/public/document-url?path=${encodeURIComponent(storagePath)}`,
+      { headers }
+    );
+    if (!res.ok) { console.error('[document-url]', res.status); return; }
+    const { url } = await res.json();
+    if (url) window.open(url, '_blank');
+  } catch (e) {
+    console.error('[document-url]', e.message);
+  }
+}
 
 function useDealAnalyses(propertyId, refreshKey) {
   const [analyses, setAnalyses] = useState([]);
@@ -27,6 +58,17 @@ function IntelligenceTab({ analyses, loading, packId, propertyId, onSwitchToChec
   const SECTIONS = pack.intelligenceSections || [];
   const getBadge = pack.getIntelligenceBadge || (() => null);
   const getHighlight = pack.getIntelligenceHighlight || (() => null);
+
+  // Session tokens for authenticated document downloads
+  const { sessionToken } = useContext(DealRoomSessionContext);
+  async function handleDownload(storagePath) {
+    let ownerToken = null;
+    if (!sessionToken) {
+      const { data: { session } } = await supabase.auth.getSession();
+      ownerToken = session?.access_token || null;
+    }
+    openDocumentUrl(storagePath, sessionToken, ownerToken);
+  }
 
   const bySection = {};
   for (const a of analyses) {
@@ -155,13 +197,12 @@ function IntelligenceTab({ analyses, loading, packId, propertyId, onSwitchToChec
                       <p className="text-xs font-bold text-gray-800">{label}</p>
                       <span className="text-[10px] text-gray-400 truncate hidden sm:block">{a.filename}</span>
                       {a.storage_path && (
-                        <a
-                          href={`${API_BASE}/api/public/document-url?path=${encodeURIComponent(a.storage_path)}`}
-                          target="_blank" rel="noopener noreferrer"
-                          className="text-[10px] font-semibold px-2 py-0.5 rounded-full border hidden sm:inline-flex items-center gap-1 hover:bg-gray-100 transition shrink-0"
+                        <button
+                          onClick={() => handleDownload(a.storage_path)}
+                          className="text-[10px] font-semibold px-2 py-0.5 rounded-full border hidden sm:inline-flex items-center gap-1 hover:bg-gray-100 transition shrink-0 cursor-pointer"
                           style={{ color: '#800020', borderColor: '#80002030' }}>
                           ↓ Original
-                        </a>
+                        </button>
                       )}
                     </div>
                     {badge && (
