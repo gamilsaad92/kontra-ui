@@ -60,6 +60,7 @@ export default function InviteModal({ property, onClose }) {
   const [pinState, setPinState] = useState(null);
 
   const propertyId = property?.id;
+  const linkToken = property?.link_token;
 
   const inviteLink = selectedRole
     ? `${BASE_URL}/deal-room/${propertyId}?role=${selectedRole.role}&from=${encodeURIComponent(property.name)}`
@@ -68,7 +69,7 @@ export default function InviteModal({ property, onClose }) {
   async function generatePin(role) {
     setPinState({ status: 'loading' });
     try {
-      const pin = await storePinForRole(propertyId, role);
+      const pin = await storePinForRole(propertyId, role, linkToken);
       setPinState({ status: 'ready', pin });
     } catch (err) {
       setPinState({ status: 'error', error: err.message });
@@ -79,7 +80,6 @@ export default function InviteModal({ property, onClose }) {
     setSelectedRole(r);
     setPinState(null);
     setStep("link");
-    // Auto-generate a PIN when a role is selected
     generatePin(r.role);
   }
 
@@ -241,7 +241,7 @@ export default function InviteModal({ property, onClose }) {
             {pinState?.status === 'error' && (
               <div className="mb-4 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3">
                 <p className="text-xs text-gray-500">
-                  Could not generate PIN — the link is unprotected.{' '}
+                  PIN generation unavailable — link is unprotected.{' '}
                   <button onClick={() => generatePin(selectedRole.role)} className="underline text-gray-700">
                     Retry
                   </button>
