@@ -1,0 +1,217 @@
+I understand why you disliked it. The developer solved the visible PIN screen, but the migration introduced a security architecture that is more complicated—and potentially less secure—than it appears.
+
+The biggest concern
+
+The PIN gate only protects the room if Supabase itself also blocks unauthorized document and deal-room queries.
+
+If the browser can directly query the room data using the invite URL, a technical user may bypass the React DealRoomPinGate, call Supabase directly, and retrieve the documents without entering the PIN.
+
+The critical question for the developer is:
+
+After PIN verification, what server-enforced credential or database permission changes? Or is the application merely setting sessionStorage and allowing the front end to render?
+
+If the only result is something like:
+
+sessionStorage.pinVerified = true
+
+then it is mostly a user-interface gate, not real document security.
+
+Specific problems with this implementation
+
+1. Client-side lockout is ineffective
+
+The five-attempt lockout is stored in localStorage. A user can bypass it by:
+
+* Clearing browser storage
+* Using incognito mode
+* Switching browsers or devices
+* Calling the Supabase RPC directly
+
+Rate limiting must occur server-side, ideally by invite, IP address, and time window.
+
+2. The verification design sounds confused
+
+The RPC reportedly accepts:
+
+p_property_id
+p_role_key
+p_pin_hash
+
+A participant enters a six-digit PIN, not a bcrypt hash. Something must hash or compare the PIN server-side.
+
+The description also says:
+
+The raw PIN never leaves the database.
+
+That is inaccurate. The raw PIN is generated, displayed to the owner, entered by the participant, and transmitted for verification. More accurately:
+
+The raw PIN is never stored in the database; only a password hash is stored.
+
+That distinction matters.
+
+3. Six-digit PINs have limited entropy
+
+A six-digit PIN has only one million possible combinations. That can be acceptable for temporary invite access, but only with genuine server-side rate limiting, expiration, revocation, and monitoring.
+
+Without those controls, bcrypt alone does not solve the problem.
+
+4. The PIN is attached to the role, not the individual invitation
+
+Using:
+
+property_id + role_key
+
+means every participant with the same role may share one PIN.
+
+For example, if two investors are invited, they could receive the same access credential. Revoking one investor could require changing the PIN for everyone in that role.
+
+Protection should usually be attached to a unique invitation:
+
+invite_id
+invite_token_hash
+pin_hash
+expires_at
+revoked_at
+attempt_count
+locked_until
+
+Each recipient should have independently revocable access.
+
+5. The invite link remains a bearer credential
+
+The system still depends on a shareable role URL. The PIN adds a second secret, but it does not establish who the participant is.
+
+For genuinely confidential rooms, the better flow is:
+
+1. Participant receives a unique invite.
+2. Participant opens the link.
+3. Kontra sends a one-time code to the invited email.
+4. Participant verifies the code.
+5. The backend issues a short-lived room-access session.
+6. Database and storage policies enforce that session.
+
+That provides actual recipient verification rather than “someone possesses the URL and PIN.”
+
+6. Using a sentinel hash to check whether a PIN exists is awkward
+
+Calling the verification RPC with a deliberately incorrect sentinel value to distinguish:
+
+* No PIN
+* PIN exists
+* PIN matches
+
+mixes two different operations.
+
+There should be separate functions:
+
+get_invite_access_status()
+verify_invite_pin()
+
+The status function should expose only safe metadata, such as pin_required: true, without exposing hashes or allowing unintended inference.
+
+7. SECURITY DEFINER requires extreme care
+
+A Supabase PostgreSQL SECURITY DEFINER function can bypass normal row-level permissions. It must:
+
+* Set a safe search_path
+* Validate every input
+* Be executable only by intended roles
+* Return minimal information
+* Avoid exposing arbitrary room or role existence
+* Prevent unauthorized writes
+* Be tested against cross-room access
+
+It is not automatically secure merely because the hash comparison occurs in the database.
+
+8. The owner flow is unnecessarily tangled
+
+The owner sends or copies a link, then the panel checks protection, then the owner authenticates by email OTP, then generates the PIN.
+
+The owner should already have an authenticated Kontra session. Generating or resetting a participant credential should be a normal protected owner action—not a separate Supabase authentication ceremony inside the Invite Panel.
+
+A better flow for Kontra
+
+I would recommend email verification as the primary protection, with an optional PIN only when the owner needs to provide access to someone whose email is not known.
+
+Recommended participant flow
+
+Owner enters participant name, role, and email
+        ↓
+Kontra creates a unique invite record
+        ↓
+Participant receives a unique, expiring link
+        ↓
+Participant opens the link
+        ↓
+One-time code is sent to the invited email
+        ↓
+Code is verified server-side
+        ↓
+Short-lived access session is issued
+        ↓
+Supabase RLS and Storage policies validate that session
+        ↓
+Only authorized role documents and actions are accessible
+
+Recommended invite record
+
+deal_room_invites
+- id
+- property_id
+- role_key
+- invited_email
+- token_hash
+- status
+- expires_at
+- accepted_at
+- revoked_at
+- created_by
+- created_at
+
+And an access-session table or signed backend token:
+
+deal_room_access_sessions
+- id
+- invite_id
+- session_token_hash
+- expires_at
+- revoked_at
+- last_used_at
+
+Optional PIN fallback
+
+When email verification is not appropriate:
+
+* Generate a unique PIN per invitation
+* Store only its bcrypt or Argon2 hash
+* Expire it after a limited period
+* Track failed attempts server-side
+* Lock the invitation server-side
+* Allow the owner to revoke or regenerate it
+* Issue a short-lived access token after successful verification
+* Enforce that token through RLS or a backend access layer
+
+What I would tell the developer
+
+I do not want the current PIN migration retained in its present form.
+
+My main concern is that verification appears to be enforced through the front end and sessionStorage. The PIN must not simply unlock the React interface; document access, room data, downloads, and role actions must be enforced server-side through Supabase RLS, Storage policies, or a short-lived signed access session issued after verification.
+
+Please revise the design around unique participant invitations rather than one PIN per property and role. Each invite should be independently expirable and revocable.
+
+Required changes:
+
+1. Use a unique invite_id for each participant instead of property_id + role_key as the security credential.
+2. Prefer email OTP verification sent to the invited participant’s email.
+3. If a PIN fallback is retained, store only the PIN hash and apply failed-attempt tracking and lockout server-side, not in localStorage.
+4. After successful verification, issue a short-lived server-verifiable access session.
+5. Enforce that access session on all database queries, document metadata, file previews, downloads, and upload actions.
+6. Add invite expiration, revocation, PIN regeneration, and an owner-visible access log.
+7. Remove the sentinel-hash approach and separate access-status checks from credential verification.
+8. Confirm that no room content or storage object can be retrieved by bypassing DealRoomPinGate and querying Supabase directly.
+9. Document and test the RLS and Storage policies covering participant access.
+10. Correct the security description: the raw PIN is not stored in the database; it is generated, displayed, transmitted, and verified, while only its hash is stored.
+
+The desired experience should remain simple: the owner invites a person by role and email, the participant verifies their email, and Kontra grants only the access assigned to that individual invitation.
+
+Your instinct is right: do not ship this merely because the screen looks protected. For Kontra, confidentiality has to be enforced at the data and storage layers, not at the page-rendering layer.
