@@ -1451,7 +1451,6 @@ export default function DealRoomPage() {
           <div id="invite-panel">
             <InvitePanel
               propertyId={pid}
-              linkToken={apiProperty?.link_token}
               senderName={property.first_name || property.property_name || undefined}
               packId={packId}
             />
