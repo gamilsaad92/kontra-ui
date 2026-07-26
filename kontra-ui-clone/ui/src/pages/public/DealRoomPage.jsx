@@ -1488,8 +1488,8 @@ export default function DealRoomPage() {
           />
         )}
 
-        {/* Invite panel — early in the flow so owner invites first */}
-        {property.isCustom && !isDemo && (
+        {/* Invite panel — owners only; participants see their own scoped view */}
+        {property.isCustom && !isDemo && role === 'owner' && (
           <div id="invite-panel">
             <InvitePanel
               propertyId={pid}
