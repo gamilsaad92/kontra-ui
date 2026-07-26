@@ -12,6 +12,7 @@ import DocumentsTabPanel from "./DocumentsTabPanel";
 import LegalReviewPanel from "./LegalReviewPanel";
 import VerifiedAssetPackage from "./VerifiedAssetPackage";
 import NotificationsLog from "./NotificationsLog";
+import DealRoomPinGate from "./DealRoomPinGate";
 
 // ── Error boundary — prevents a broken panel from crashing the whole page ────
 class PanelErrorBoundary extends React.Component {
@@ -1243,7 +1244,12 @@ export default function DealRoomPage() {
 
   const pid = propertyId || property.property_id || property.id;
 
-  return (
+  // Non-owner participants on real (non-demo) rooms must pass the PIN gate.
+  // The gate checks whether a PIN has been set; if not, it holds the door
+  // closed with a "contact the owner" message rather than passing through.
+  const needsGate = isCustom && !isDemo && role !== 'owner';
+
+  const roomContent = (
     <PublicLayout
       hideFooter
       dealRoomMode={!!(property.isCustom && !isDemo)}
@@ -1581,4 +1587,13 @@ export default function DealRoomPage() {
       </div>
     </PublicLayout>
   );
+
+  if (needsGate) {
+    return (
+      <DealRoomPinGate propertyId={propertyId} roleKey={role}>
+        {roomContent}
+      </DealRoomPinGate>
+    );
+  }
+  return roomContent;
 }
