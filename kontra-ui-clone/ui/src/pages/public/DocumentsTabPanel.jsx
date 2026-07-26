@@ -96,37 +96,64 @@ function IntelligenceTab({ analyses, loading, packId, propertyId, onSwitchToChec
 
   if (analyses.length === 0) {
     return (
-      <div className="px-5 pt-5 pb-6">
-        <div className="flex items-center gap-2 mb-4">
-          <span className="text-lg">🤖</span>
-          <div>
-            <p className="text-sm font-semibold text-gray-800">AI analysis will appear here</p>
-            <p className="text-xs text-gray-400">Upload documents to unlock insights for this deal</p>
-          </div>
-          {onSwitchToChecklist && (
-            <button
-              onClick={onSwitchToChecklist}
-              className="ml-auto inline-flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-semibold transition-all shrink-0"
-              style={{ background: '#800020', color: '#fff' }}
-            >
-              Upload →
-            </button>
-          )}
-        </div>
-        {SECTIONS.length > 0 && (
-          <div className="space-y-2">
-            {SECTIONS.map(s => (
-              <div key={s.key} className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-gray-50 border border-gray-100">
-                <span className="text-base opacity-40">{s.icon || '📋'}</span>
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs font-semibold text-gray-400">{s.label}</p>
-                  {s.description && (
-                    <p className="text-[10px] text-gray-300 truncate">{s.description}</p>
-                  )}
-                </div>
-                <span className="text-[10px] font-semibold text-gray-300 uppercase tracking-wide">Pending</span>
+      <div className="px-5 pt-5 pb-6 space-y-4">
+        {/* Hero callout */}
+        <div className="rounded-2xl overflow-hidden border border-[#80002015]"
+             style={{ background: 'linear-gradient(135deg, #80002008 0%, #fff 100%)' }}>
+          <div className="px-4 pt-4 pb-3">
+            <div className="flex items-start gap-3">
+              <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0 mt-0.5"
+                   style={{ background: '#80002012' }}>
+                <span className="text-lg">🤖</span>
               </div>
-            ))}
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-bold text-gray-900 mb-0.5">AI reads every document so you don't have to</p>
+                <p className="text-xs text-gray-500 leading-relaxed">
+                  Once documents are uploaded, Kontra extracts key facts, flags risks, and scores
+                  the deal — structured and ready for every party in the room.
+                </p>
+              </div>
+            </div>
+            {onSwitchToChecklist && (
+              <button
+                onClick={onSwitchToChecklist}
+                className="mt-3 w-full py-2 rounded-xl text-xs font-bold transition-all"
+                style={{ background: '#800020', color: '#fff' }}
+              >
+                Upload documents to unlock →
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Section previews */}
+        {SECTIONS.length > 0 && (
+          <div>
+            <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-2 px-1">
+              What AI will surface
+            </p>
+            <div className="space-y-2">
+              {SECTIONS.map(s => (
+                <div key={s.key}
+                     className="flex items-start gap-3 px-3 py-3 rounded-xl border border-dashed border-gray-200 bg-gray-50/60">
+                  <span className="text-base mt-0.5 opacity-30">{s.icon || '📋'}</span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-semibold text-gray-400">{s.label}</p>
+                    {s.description && (
+                      <p className="text-[10px] text-gray-300 mt-0.5 leading-snug">{s.description}</p>
+                    )}
+                    {/* Fake shimmer lines to suggest future content */}
+                    <div className="mt-2 space-y-1">
+                      <div className="h-1.5 w-3/4 rounded-full bg-gray-200/70" />
+                      <div className="h-1.5 w-1/2 rounded-full bg-gray-200/50" />
+                    </div>
+                  </div>
+                  <span className="text-[9px] font-bold text-gray-300 uppercase tracking-wide shrink-0 mt-0.5 border border-gray-200 rounded-full px-2 py-0.5">
+                    Awaiting docs
+                  </span>
+                </div>
+              ))}
+            </div>
           </div>
         )}
       </div>
