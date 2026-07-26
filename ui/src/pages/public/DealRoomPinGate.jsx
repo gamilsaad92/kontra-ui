@@ -1,202 +1,247 @@
-// DealRoomPinGate.jsx — shown to non-owner participants before deal room loads
-import React, { useState, useEffect, useCallback } from 'react';
-import { supabase } from '../../lib/supabaseClient';
-import { sha256Hex, computePinHash } from '../../lib/pinUtils';
+/**
+ * DealRoomPinGate — full-screen gate rendered before deal room content.
+ *
+ * Behavior:
+ *   • Probes verify_deal_room_pin RPC on mount with a sentinel hash.
+ *   • RPC returns null  → no PIN set yet  → "Access Pending" screen (contact owner)
+ *   • RPC returns false → PIN exists      → PIN entry form
+ *   • 5 wrong attempts  → 15-min lockout stored in localStorage
+ *   • Correct PIN       → session stored in sessionStorage → children render
+ */
+import { useState, useEffect, useCallback } from 'react';
+import { checkPinExists, verifyDealRoomPin } from '../../lib/pinUtils';
 
-const MAX_ATTEMPTS = 3;
-const LOCKOUT_DURATION_MS = 15 * 60 * 1000; // 15 min
+const sessionKey  = (p, r) => `kontra_pin_${p}_${r}`;
+const lockoutKey  = (p, r) => `kontra_lockout_${p}_${r}`;
+const MAX_ATTEMPTS = 5;
+const LOCKOUT_MS   = 15 * 60 * 1000;
 
-function lockoutKey(propertyId, role) {
-  return `kontra_pin_lockout_${propertyId}_${role}`;
-}
-
-function sessionKey(propertyId, role) {
-  return `kontra_pin_ok_${propertyId}_${role}`;
-}
-
-export default function DealRoomPinGate({ propertyId, role, onUnlocked }) {
-  // 'checking' | 'gate' | 'locked' | 'open'
-  const [state, setState] = useState('checking');
-  const [pin, setPin] = useState('');
-  const [error, setError] = useState('');
-  const [submitting, setSubmitting] = useState(false);
-  const [attemptsLeft, setAttemptsLeft] = useState(MAX_ATTEMPTS);
-
-  const sKey = sessionKey(propertyId, role);
-  const lKey = lockoutKey(propertyId, role);
-
-  const markUnlocked = useCallback(() => {
-    try { sessionStorage.setItem(sKey, '1'); } catch {}
-    onUnlocked();
-  }, [sKey, onUnlocked]);
+export default function DealRoomPinGate({ propertyId, roleKey, children }) {
+  // phase: 'checking' | 'no-pin' | 'entry' | 'locked-out' | 'unlocked'
+  const [phase,       setPhase]       = useState('checking');
+  const [pin,         setPin]         = useState('');
+  const [attempts,    setAttempts]    = useState(0);
+  const [error,       setError]       = useState('');
+  const [submitting,  setSubmitting]  = useState(false);
+  const [lockoutUntil, setLockoutUntil] = useState(null);
 
   useEffect(() => {
-    async function check() {
-      // 1. Already verified this browser session?
-      try {
-        if (sessionStorage.getItem(sKey)) { onUnlocked(); return; }
-      } catch {}
-
-      // 2. Locked out?
-      try {
-        const lo = JSON.parse(localStorage.getItem(lKey) || 'null');
-        if (lo && Date.now() < lo.until) {
-          setState('locked');
-          return;
-        } else if (lo) {
-          localStorage.removeItem(lKey);
-        }
-      } catch {}
-
-      // 3. Does a PIN exist for this room/role?
-      //    Send a dummy hash — RPC returns null if no PIN set (open access), false if PIN exists.
-      if (!supabase) { onUnlocked(); return; }
-      try {
-        const dummyHash = await sha256Hex('__probe__');
-        const { data, error: rpcErr } = await supabase.rpc('verify_deal_room_pin', {
-          p_property_id: propertyId,
-          p_role_key:    role,
-          p_pin_hash:    dummyHash,
-        });
-        if (rpcErr) { onUnlocked(); return; } // RPC not yet deployed → open
-        if (data === null) { onUnlocked(); return; } // No PIN set → legacy link
-        // PIN exists → show entry gate
-        try {
-          const attempts = parseInt(localStorage.getItem(lKey + '_attempts') || '0', 10);
-          setAttemptsLeft(Math.max(0, MAX_ATTEMPTS - attempts));
-        } catch { setAttemptsLeft(MAX_ATTEMPTS); }
-        setState('gate');
-      } catch {
-        onUnlocked(); // Network failure → open rather than block
-      }
+    // Already unlocked this session?
+    if (sessionStorage.getItem(sessionKey(propertyId, roleKey)) === 'unlocked') {
+      setPhase('unlocked');
+      return;
     }
-    check();
-  }, [propertyId, role, sKey, lKey, onUnlocked]);
 
-  async function handleSubmit(e) {
-    e.preventDefault();
-    if (pin.trim().length < 4 || submitting) return;
+    // Active lockout?
+    const raw = localStorage.getItem(lockoutKey(propertyId, roleKey));
+    if (raw) {
+      try {
+        const { until, attempts: a } = JSON.parse(raw);
+        if (Date.now() < until) {
+          setLockoutUntil(until);
+          setAttempts(a);
+          setPhase('locked-out');
+          return;
+        }
+        localStorage.removeItem(lockoutKey(propertyId, roleKey));
+      } catch { /* ignore corrupt data */ }
+    }
+
+    // Probe RPC: does a PIN exist?
+    checkPinExists(propertyId, roleKey).then(exists => {
+      if (exists === null) {
+        // Could not reach DB — fail closed: show entry form (user can try)
+        setPhase('entry');
+      } else if (exists === false) {
+        // No PIN set yet
+        setPhase('no-pin');
+      } else {
+        // PIN exists — show entry form
+        setPhase('entry');
+      }
+    });
+  }, [propertyId, roleKey]);
+
+  const handleSubmit = useCallback(async (e) => {
+    e?.preventDefault();
+    if (pin.length !== 6 || submitting) return;
     setSubmitting(true);
     setError('');
     try {
-      const hash = await computePinHash(propertyId, role, pin.trim());
-      const { data } = await supabase.rpc('verify_deal_room_pin', {
-        p_property_id: propertyId,
-        p_role_key:    role,
-        p_pin_hash:    hash,
-      });
-      if (data === true) {
-        // Correct PIN — clear lockout tracking and unlock
-        try { localStorage.removeItem(lKey + '_attempts'); } catch {}
-        markUnlocked();
+      const result = await verifyDealRoomPin(propertyId, roleKey, pin);
+      if (result === true) {
+        sessionStorage.setItem(sessionKey(propertyId, roleKey), 'unlocked');
+        setPhase('unlocked');
       } else {
-        // Wrong PIN — track attempts
-        let attempts = 0;
-        try { attempts = parseInt(localStorage.getItem(lKey + '_attempts') || '0', 10) + 1; } catch {}
-        try { localStorage.setItem(lKey + '_attempts', String(attempts)); } catch {}
-        const left = Math.max(0, MAX_ATTEMPTS - attempts);
-        setAttemptsLeft(left);
-        if (left <= 0) {
-          try { localStorage.setItem(lKey, JSON.stringify({ until: Date.now() + LOCKOUT_DURATION_MS })); } catch {}
-          try { localStorage.removeItem(lKey + '_attempts'); } catch {}
-          setState('locked');
+        const next = attempts + 1;
+        setAttempts(next);
+        if (next >= MAX_ATTEMPTS) {
+          const until = Date.now() + LOCKOUT_MS;
+          localStorage.setItem(lockoutKey(propertyId, roleKey), JSON.stringify({ until, attempts: next }));
+          setLockoutUntil(until);
+          setPhase('locked-out');
         } else {
-          setError(`Incorrect PIN — ${left} attempt${left === 1 ? '' : 's'} remaining`);
+          setError(`Incorrect PIN. ${MAX_ATTEMPTS - next} attempt${MAX_ATTEMPTS - next === 1 ? '' : 's'} remaining.`);
           setPin('');
         }
       }
     } catch {
-      setError('Unable to verify — please try again');
+      setError('Unable to verify — please try again.');
+    } finally {
+      setSubmitting(false);
     }
-    setSubmitting(false);
+  }, [pin, submitting, attempts, propertyId, roleKey]);
+
+  function handlePinInput(val) {
+    const digits = val.replace(/\D/g, '').slice(0, 6);
+    setPin(digits);
+    if (error) setError('');
+    if (digits.length === 6) {
+      // slight delay so the last digit renders before we grey out the field
+      setTimeout(() => handleSubmit(), 30);
+    }
   }
 
-  // ── Checking (brief spinner) ─────────────────────────────────────────────
-  if (state === 'checking') {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="w-6 h-6 border-2 border-gray-300 border-t-gray-700 rounded-full animate-spin" />
-      </div>
-    );
-  }
+  if (phase === 'unlocked') return <>{children}</>;
 
-  // ── Locked out ───────────────────────────────────────────────────────────
-  if (state === 'locked') {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-200 w-full max-w-sm p-8 text-center">
-          <div className="w-14 h-14 rounded-2xl bg-red-50 flex items-center justify-center text-2xl mx-auto mb-5">🔒</div>
-          <h1 className="text-base font-bold text-gray-900 mb-2">Access locked</h1>
-          <p className="text-sm text-gray-500 leading-relaxed">
-            Too many incorrect attempts. Ask the deal owner to confirm the correct PIN, or try again in 15 minutes.
-          </p>
-          <div className="mt-6 pt-4 border-t border-gray-100">
-            <p className="text-xs text-gray-400">Powered by <span className="font-semibold text-gray-600">Kontra</span></p>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // ── PIN entry gate ───────────────────────────────────────────────────────
   return (
-    <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl shadow-sm border border-gray-200 w-full max-w-sm p-8">
+    <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center px-4">
+      <div className="w-full max-w-sm">
 
         {/* Brand mark */}
-        <div className="flex items-center gap-2 mb-8">
-          <div className="w-8 h-8 rounded-lg bg-[#800020] flex items-center justify-center">
-            <span className="text-white font-black text-sm">K</span>
+        <div className="text-center mb-8">
+          <div className="inline-flex items-center gap-2 mb-1">
+            <div className="w-8 h-8 rounded-lg bg-[#800020] flex items-center justify-center">
+              <span className="text-white text-sm font-bold select-none">K</span>
+            </div>
+            <span className="text-lg font-bold text-gray-900">Kontra</span>
           </div>
-          <span className="font-bold text-gray-900 text-sm">Kontra</span>
+          <p className="text-[11px] text-gray-400">Secure Deal Room</p>
         </div>
 
-        <div className="w-12 h-12 rounded-xl bg-amber-50 border border-amber-100 flex items-center justify-center text-2xl mb-5">🔑</div>
-        <h1 className="text-lg font-bold text-gray-900 mb-1">Enter access PIN</h1>
-        <p className="text-sm text-gray-500 mb-6 leading-relaxed">
-          This deal room is PIN-protected. The owner sent the PIN separately from this link — check for a text or second email.
-        </p>
+        <div className="bg-white rounded-2xl border border-gray-200 shadow-sm px-8 py-8">
 
-        <form onSubmit={handleSubmit} className="space-y-3">
-          <input
-            type="text"
-            inputMode="numeric"
-            pattern="[0-9]*"
-            maxLength={6}
-            placeholder="——————"
-            value={pin}
-            onChange={e => { setPin(e.target.value.replace(/\D/g, '')); setError(''); }}
-            autoFocus
-            className="w-full text-center text-2xl font-bold tracking-[0.4em] px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#800020]/20 focus:border-[#800020]/50 transition placeholder:tracking-widest placeholder:text-gray-300 placeholder:text-xl"
-          />
-
-          {error && (
-            <div className="bg-red-50 border border-red-100 rounded-xl px-3 py-2 text-xs text-red-600 text-center">
-              {error}
+          {/* ── Checking ── */}
+          {phase === 'checking' && (
+            <div className="flex justify-center py-6">
+              <div className="w-7 h-7 border-2 border-[#800020]/20 border-t-[#800020] rounded-full animate-spin" />
             </div>
           )}
 
-          <button
-            type="submit"
-            disabled={pin.length < 4 || submitting}
-            className="w-full py-3 rounded-xl text-sm font-bold text-white bg-[#800020] hover:opacity-90 transition disabled:opacity-40 disabled:cursor-not-allowed"
-          >
-            {submitting ? 'Verifying…' : 'Access Deal Room →'}
-          </button>
-        </form>
+          {/* ── No PIN set ── */}
+          {phase === 'no-pin' && (
+            <>
+              <div className="text-center mb-5">
+                <div className="w-12 h-12 rounded-full bg-amber-50 border border-amber-100 flex items-center justify-center mx-auto mb-3">
+                  <span className="text-2xl">🔒</span>
+                </div>
+                <h2 className="text-base font-bold text-gray-900 mb-1">Access Pending</h2>
+                <p className="text-xs text-gray-500 leading-relaxed max-w-[220px] mx-auto">
+                  The owner hasn't enabled PIN protection for this link yet.
+                </p>
+              </div>
+              <div className="bg-amber-50 border border-amber-100 rounded-xl px-4 py-3 text-center space-y-0.5">
+                <p className="text-[11px] font-semibold text-amber-700">Contact the owner to get access</p>
+                <p className="text-[10px] text-amber-500">They'll generate a PIN from their deal room</p>
+              </div>
+            </>
+          )}
 
-        {attemptsLeft < MAX_ATTEMPTS && attemptsLeft > 0 && (
-          <p className="text-[11px] text-gray-400 text-center mt-3">
-            {attemptsLeft} attempt{attemptsLeft === 1 ? '' : 's'} remaining before lockout
-          </p>
-        )}
+          {/* ── PIN entry ── */}
+          {phase === 'entry' && (
+            <>
+              <div className="text-center mb-6">
+                <div className="w-12 h-12 rounded-full bg-[#800020]/5 border border-[#800020]/10 flex items-center justify-center mx-auto mb-3">
+                  <span className="text-2xl">🔑</span>
+                </div>
+                <h2 className="text-base font-bold text-gray-900 mb-1">Enter your PIN</h2>
+                <p className="text-xs text-gray-500 leading-relaxed max-w-[220px] mx-auto">
+                  This link is protected. Enter the 6-digit PIN provided by the deal owner.
+                </p>
+              </div>
+              <form onSubmit={handleSubmit} className="space-y-3">
+                <input
+                  type="tel"
+                  inputMode="numeric"
+                  autoFocus
+                  pattern="[0-9]*"
+                  maxLength={6}
+                  value={pin}
+                  onChange={e => handlePinInput(e.target.value)}
+                  placeholder="• • • • • •"
+                  disabled={submitting}
+                  className="w-full text-center text-2xl font-bold tracking-[0.5em] px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#800020]/20 focus:border-[#800020]/40 placeholder-gray-200 disabled:opacity-50 transition"
+                />
+                {error && (
+                  <p className="text-[11px] text-red-500 text-center">{error}</p>
+                )}
+                <button
+                  type="submit"
+                  disabled={pin.length !== 6 || submitting}
+                  className="w-full py-2.5 rounded-xl text-sm font-bold text-white bg-[#800020] hover:opacity-90 transition disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  {submitting ? 'Verifying…' : 'Enter Deal Room →'}
+                </button>
+              </form>
+            </>
+          )}
 
-        <div className="mt-6 pt-4 border-t border-gray-100 text-center">
-          <p className="text-xs text-gray-400">
-            Don't have the PIN? Contact the person who sent you this link.
-          </p>
+          {/* ── Locked out ── */}
+          {phase === 'locked-out' && (
+            <>
+              <div className="text-center mb-5">
+                <div className="w-12 h-12 rounded-full bg-red-50 border border-red-100 flex items-center justify-center mx-auto mb-3">
+                  <span className="text-2xl">🚫</span>
+                </div>
+                <h2 className="text-base font-bold text-gray-900 mb-1">Too many attempts</h2>
+                <p className="text-xs text-gray-500 leading-relaxed max-w-[220px] mx-auto">
+                  Access is temporarily locked. Contact the deal owner if you need help.
+                </p>
+              </div>
+              {lockoutUntil && (
+                <LockoutTimer
+                  until={lockoutUntil}
+                  onExpire={() => {
+                    localStorage.removeItem(lockoutKey(propertyId, roleKey));
+                    setAttempts(0);
+                    setPin('');
+                    setPhase('entry');
+                  }}
+                />
+              )}
+            </>
+          )}
         </div>
+
+        <p className="text-center text-[10px] text-gray-300 mt-5">
+          Powered by Kontra · Confidential deal room
+        </p>
       </div>
+    </div>
+  );
+}
+
+// ── Countdown timer shown during lockout ──────────────────────────────────────
+function LockoutTimer({ until, onExpire }) {
+  const [remaining, setRemaining] = useState(() => Math.max(0, until - Date.now()));
+
+  useEffect(() => {
+    const id = setInterval(() => {
+      const r = Math.max(0, until - Date.now());
+      setRemaining(r);
+      if (r === 0) { clearInterval(id); onExpire(); }
+    }, 1_000);
+    return () => clearInterval(id);
+  }, [until, onExpire]);
+
+  const mins = Math.floor(remaining / 60_000);
+  const secs = Math.floor((remaining % 60_000) / 1_000);
+
+  return (
+    <div className="bg-red-50 border border-red-100 rounded-xl px-4 py-3 text-center">
+      <p className="text-[11px] font-semibold text-red-600">
+        Try again in {mins}:{String(secs).padStart(2, '0')}
+      </p>
     </div>
   );
 }
