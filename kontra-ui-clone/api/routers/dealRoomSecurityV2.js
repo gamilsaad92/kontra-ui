@@ -76,6 +76,20 @@ function getClientIp(req) {
 }
 
 /**
+ * Non-fatal audit log helper.
+ * Audit logging must never block or fail a user-facing operation.
+ * If SUPABASE_DB_URL is misconfigured, log the error but let the
+ * request succeed.
+ */
+async function logAuditSafe(...args) {
+  try {
+    await callPrivate('log_audit_event', args);
+  } catch (err) {
+    console.error('[audit-log] non-fatal write failure:', err.message);
+  }
+}
+
+/**
  * Validate a Bearer JWT with Supabase Auth server.
  * Returns the verified user or throws.
  * Never decodes or trusts JWT claims directly.
@@ -160,14 +174,14 @@ router.post('/invite/create', async (req, res) => {
       return res.status(500).json({ error: 'Failed to create invite' });
     }
 
-    // Audit
-    await callPrivate('log_audit_event', [
+    // Audit (non-fatal — invite is already created)
+    await logAuditSafe(
       roomId, 'security', 'invite_created',
       user.id, user.email.toLowerCase().trim(),
       null, normalizedEmail,
       invite.id, null, getClientIp(req),
       JSON.stringify({ role_key: roleKey }),
-    ]);
+    );
 
     // Send invite link email (link only — no OTP in this email)
     const inviteUrl = `${BASE_URL}/deal-room/${roomId}?invite=${rawToken}`;
@@ -225,12 +239,12 @@ router.post('/invite/create', async (req, res) => {
     } catch (emailErr) {
       console.error('[invite/create] email send failed:', emailErr.message);
       // Don't fail the request — invite was created; log the email failure
-      await callPrivate('log_audit_event', [
+      await logAuditSafe(
         roomId, 'security', 'invite_created',
         user.id, user.email.toLowerCase(),
         null, normalizedEmail, invite.id, null, getClientIp(req),
         JSON.stringify({ email_error: emailErr.message }),
-      ]);
+      );
     }
 
     res.json({ ok: true, invite_id: invite.id });
@@ -266,12 +280,12 @@ router.post('/invite/resolve', async (req, res) => {
 
     if (!result) return res.status(404).json({ valid: false, reason: 'not_found' });
 
-    await callPrivate('log_audit_event', [
+    await logAuditSafe(
       result.room_id, 'authorization',
       result.valid ? 'token_resolved' : 'token_invalid',
       null, null, null, null, result.invite_id || null,
       null, getClientIp(req), null,
-    ]);
+    );
 
     // Return only safe fields — never invite_id or room_id to anonymous caller
     if (!result.valid) {
@@ -326,12 +340,12 @@ router.post('/invite/request-otp', async (req, res) => {
 
     if (!rateCheck?.allowed) {
       // Log rate limit hit but return generic response
-      await callPrivate('log_audit_event', [
+      await logAuditSafe(
         invite.room_id, 'authorization', 'otp_rate_limited',
         null, null, null, invite.invited_email,
         invite.invite_id, null, getClientIp(req),
         JSON.stringify({ reason: rateCheck?.reason }),
-      ]);
+      );
       return res.json({ ok: true }); // generic
     }
 
@@ -375,11 +389,11 @@ router.post('/invite/request-otp', async (req, res) => {
 </div>`,
     });
 
-    await callPrivate('log_audit_event', [
+    await logAuditSafe(
       invite.room_id, 'authorization', 'otp_sent',
       null, null, null, invite.invited_email,
       invite.invite_id, null, getClientIp(req), null,
-    ]);
+    );
 
     res.json({ ok: true });
   } catch (err) {
@@ -425,12 +439,12 @@ router.post('/invite/accept', async (req, res) => {
       return res.status(status).json({ error: result?.error || 'acceptance_failed' });
     }
 
-    await callPrivate('log_audit_event', [
+    await logAuditSafe(
       result.room_id, 'authorization', 'otp_verified',
       user.id, user.email.toLowerCase(), null, null,
       null, null, getClientIp(req),
       JSON.stringify({ role_key: result.role_key }),
-    ]);
+    );
 
     res.json({
       ok:             true,
@@ -673,12 +687,12 @@ router.get('/document-url', async (req, res) => {
     }
 
     // Log signed_url_issued (not "downloaded" — see architecture notes on revocation timing)
-    await callPrivate('log_audit_event', [
+    await logAuditSafe(
       roomId, 'document_activity', 'signed_url_issued',
       user.id, userEmail, null, null, null, documentId,
       getClientIp(req),
       JSON.stringify({ storage_path: doc.storage_path, ttl_seconds: 60 }),
-    ]).catch(() => {}); // non-blocking
+    );
 
     res.json({ ok: true, signed_url: urlData.signedUrl, expires_in: 60 });
   } catch (err) {
