@@ -184,7 +184,9 @@ router.post('/invite/create', async (req, res) => {
     );
 
     // Send invite link email (link only — no OTP in this email)
-    const inviteUrl = `${BASE_URL}/deal-room/${roomId}?invite=${rawToken}`;
+    // ?role= must be in the URL so DealRoomPage knows to show the participant
+    // gate rather than defaulting to the owner bypass.
+    const inviteUrl = `${BASE_URL}/deal-room/${roomId}?invite=${rawToken}&role=${encodeURIComponent(roleKey)}`;
     const roleName  = roleKey.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
     const roomName  = room.property_name || roomId;
     const senderName = room.first_name || 'The deal coordinator';
@@ -531,7 +533,7 @@ router.post('/invite/reissue', async (req, res) => {
       .single();
 
     if (newInvite) {
-      const inviteUrl = `${BASE_URL}/deal-room/${roomId}?invite=${newRawToken}`;
+      const inviteUrl = `${BASE_URL}/deal-room/${roomId}?invite=${newRawToken}&role=${encodeURIComponent(newInvite.role_key)}`;
       const roleName  = newInvite.role_key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
 
       await sendResendEmail({
