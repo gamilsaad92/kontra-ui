@@ -1283,6 +1283,37 @@ export default function DealRoomPage() {
         </div>
       );
     }
+    // Owner arrived without an active session — show a sign-in prompt instead
+    // of routing them through the participant OTP gate.
+    if (role === 'owner' && ownerSessionChecked && !ownerSession && !v2Unlocked && !pinUnlocked) {
+      return (
+        <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50 px-4">
+          <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-8 max-w-sm w-full text-center">
+            <div className="w-14 h-14 rounded-full flex items-center justify-center mx-auto mb-4"
+              style={{ background: "#fff5f5" }}>
+              <svg className="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="#800020" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round"
+                  d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+              </svg>
+            </div>
+            <h2 className="text-lg font-bold text-gray-900 mb-1">Sign in to access your room</h2>
+            <p className="text-sm text-gray-500 mb-6">
+              Deal room owners must be signed in to view and manage their room.
+            </p>
+            <a href="/login"
+              className="block w-full py-2.5 rounded-xl text-sm font-bold text-white text-center transition hover:opacity-90 mb-3"
+              style={{ background: "#800020" }}>
+              Sign in
+            </a>
+            <a href="/my-deal-rooms"
+              className="block w-full py-2.5 rounded-xl text-sm font-semibold text-gray-600 bg-gray-100 text-center hover:bg-gray-200 transition">
+              My Deal Rooms
+            </a>
+          </div>
+          <p className="text-xs text-gray-400 mt-6">Powered by Kontra · Confidential deal room</p>
+        </div>
+      );
+    }
     if (!isVerifiedOwner && !v2Unlocked && !pinUnlocked) {
       const useV2 = property?.auth_v2_enabled === true;
       if (useV2) {
