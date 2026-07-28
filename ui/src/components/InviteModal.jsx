@@ -8,7 +8,6 @@
  * No PIN generation or pinUtils imports. Uses inviteUtils for owner auth.
  */
 import React, { useState } from "react";
-import { requestOwnerOtp, verifyOwnerOtp, getOwnerSession, createInvite, generatePin } from "../lib/inviteUtils";
 
 const BASE_URL = typeof window !== "undefined" ? window.location.origin : "https://kontraplatform.com";
 
