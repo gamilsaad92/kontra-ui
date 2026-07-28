@@ -377,20 +377,18 @@ function AuditLog({ roomId, ownerToken }) {
 
 // ── Main panel ────────────────────────────────────────────────────────────────
 
-export default function InvitePanelV2({ roomId, packId = DEFAULT_PACK_ID, ownerToken }) {
+export default function InvitePanelV2({ roomId, packId = DEFAULT_PACK_ID }) {
   const [tab,     setTab]     = useState('invite'); // invite | manage | audit
   const [refresh, setRefresh] = useState(0);
-
-  if (!ownerToken) {
-    return (
-      <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
-        <p className="text-xs font-semibold text-amber-800">Owner authentication required</p>
-        <p className="text-[10px] text-amber-600 mt-0.5">
-          Sign in as the deal room owner to manage invites.
-        </p>
-      </div>
-    );
-  }
+  // Get owner token from Supabase session dynamically — no prop needed
+  const [ownerToken, setOwnerToken] = useState(null);
+  useEffect(() => {
+    import('../../lib/supabaseClient').then(({ supabase }) => {
+      supabase.auth.getSession().then(({ data: { session } }) => {
+        setOwnerToken(session?.access_token || null);
+      });
+    });
+  }, []);
 
   return (
     <div className="space-y-3">

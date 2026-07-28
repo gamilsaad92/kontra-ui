@@ -22,9 +22,6 @@ import {
   generatePin,
   getRoomInvites,
   revokeInvite,
-  requestOwnerOtp,
-  verifyOwnerOtp,
-  getOwnerSession,
 } from '../../lib/inviteUtils';
 import { supabase } from '../../lib/supabaseClient';
 
@@ -34,90 +31,6 @@ function getInvitableRoles(packId) {
   return getWorkflowPack(packId).roles
     .filter(r => r.invitable)
     .map(r => ({ role: r.key, icon: r.icon, label: r.shortLabel || r.label }));
-}
-
-// ── Owner OTP auth gate ───────────────────────────────────────────────────────
-
-function OwnerAuthGate({ onAuthenticated }) {
-  const [phase, setPhase]   = useState('email');
-  const [email, setEmail]   = useState('');
-  const [otp, setOtp]       = useState('');
-  const [err, setErr]       = useState('');
-  const [loading, setLoading] = useState(false);
-
-  async function handleSendOtp(e) {
-    e.preventDefault();
-    if (!email.trim() || !email.includes('@')) { setErr('Enter your email address'); return; }
-    setLoading(true); setErr('');
-    try {
-      await requestOwnerOtp(email.trim());
-      setPhase('otp_sent');
-    } catch (ex) {
-      setErr(ex.message || 'Could not send verification code');
-    } finally { setLoading(false); }
-  }
-
-  async function handleVerifyOtp(e) {
-    e.preventDefault();
-    if (otp.length < 6) { setErr('Enter the 6-digit code'); return; }
-    setLoading(true); setErr('');
-    try {
-      const session = await verifyOwnerOtp(email.trim(), otp.trim());
-      onAuthenticated(session);
-    } catch (ex) {
-      setErr(ex.message || 'Invalid code — try again');
-      setLoading(false);
-    }
-  }
-
-  return (
-    <div className="bg-gray-50 rounded-2xl border border-gray-200 px-6 py-5">
-      <div className="mb-4">
-        <p className="text-sm font-bold text-gray-900">Invite participants</p>
-        <p className="text-xs text-gray-400 mt-0.5">
-          Verify your identity to create secure, per-person invite links.
-        </p>
-      </div>
-
-      {phase === 'email' && (
-        <form onSubmit={handleSendOtp} className="space-y-2 max-w-xs">
-          <input
-            autoFocus type="email" placeholder="your@email.com"
-            value={email} onChange={e => { setEmail(e.target.value); setErr(''); }}
-            className="w-full text-xs px-3 py-2 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#800020]/20 focus:border-[#800020]/40 placeholder-gray-300"
-          />
-          {err && <p className="text-[10px] text-red-500">{err}</p>}
-          <button type="submit" disabled={loading || !email.trim()}
-            className="px-4 py-2 rounded-xl text-xs font-bold text-white bg-[#800020] hover:opacity-90 transition disabled:opacity-40">
-            {loading ? 'Sending…' : 'Send verification code →'}
-          </button>
-        </form>
-      )}
-
-      {phase === 'otp_sent' && (
-        <form onSubmit={handleVerifyOtp} className="space-y-2 max-w-xs">
-          <p className="text-xs text-gray-500 mb-1">Enter the code sent to <strong>{email}</strong></p>
-          <input
-            autoFocus type="text" inputMode="numeric" maxLength={6}
-            placeholder="6-digit code"
-            value={otp} onChange={e => { setOtp(e.target.value.replace(/\D/g, '').slice(0, 6)); setErr(''); }}
-            className="w-full text-xs px-3 py-2 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#800020]/20 focus:border-[#800020]/40 placeholder-gray-300 tracking-widest font-mono"
-          />
-          {err && <p className="text-[10px] text-red-500">{err}</p>}
-          <div className="flex gap-2">
-            <button type="submit" disabled={loading || otp.length < 6}
-              className="flex-1 py-2 rounded-xl text-xs font-bold text-white bg-[#800020] hover:opacity-90 transition disabled:opacity-40">
-              {loading ? 'Verifying…' : 'Verify →'}
-            </button>
-            <button type="button" onClick={() => { setPhase('email'); setOtp(''); setErr(''); }}
-              className="px-3 py-2 rounded-xl text-xs text-gray-400 border border-gray-200 hover:text-gray-600 transition">
-              ← Back
-            </button>
-          </div>
-        </form>
-      )}
-    </div>
-  );
 }
 
 // ── Created-invite card ───────────────────────────────────────────────────────
@@ -201,7 +114,7 @@ function CreatedInviteCard({ inviteUrl, pin, email, emailSent, emailErr, onDismi
 
 // ── Role invite card ──────────────────────────────────────────────────────────
 
-function RoleCard({ r, propertyId, ownerSession, onRemove }) {
+function RoleCard({ r, propertyId, onRemove }) {
   const [email, setEmail]           = useState('');
   const [status, setStatus]         = useState('idle'); // idle | loading | created | error
   const [errMsg, setErrMsg]         = useState('');
@@ -233,25 +146,22 @@ function RoleCard({ r, propertyId, ownerSession, onRemove }) {
 
     const inviteUrl = `${window.location.origin}/deal-room/${propertyId}?invite=${result.invite_token}&role=${r.role}`;
 
-    // Auto-send Kontra invite email (link only — PIN never in email)
+    // Auto-send Kontra invite email — try with Supabase session if available
     let emailSent = false;
     let emailErr  = '';
-    if (ownerSession?.access_token) {
-      try {
-        const res = await fetch(`${API_BASE}/api/public/deal-room/send-invite-email`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${ownerSession.access_token}`,
-          },
-          body: JSON.stringify({ inviteToken: result.invite_token }),
-        });
-        const data = await res.json();
-        emailSent = res.ok && !data.error;
-        if (!res.ok) emailErr = data.error || 'Email failed';
-      } catch (ex) {
-        emailErr = ex.message;
-      }
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const headers = { 'Content-Type': 'application/json' };
+      if (session?.access_token) headers['Authorization'] = `Bearer ${session.access_token}`;
+      const res = await fetch(`${API_BASE}/api/public/deal-room/send-invite-email`, {
+        method: 'POST', headers,
+        body: JSON.stringify({ inviteToken: result.invite_token }),
+      });
+      const data = await res.json();
+      emailSent = res.ok && !data.error;
+      if (!res.ok) emailErr = data.error || 'Email failed';
+    } catch (ex) {
+      emailErr = ex.message;
     }
 
     setCreatedData({ inviteUrl, pin, email: email.trim(), emailSent, emailErr });
@@ -313,7 +223,7 @@ function RoleCard({ r, propertyId, ownerSession, onRemove }) {
 
 // ── Custom party card ─────────────────────────────────────────────────────────
 
-function CustomPartyCard({ propertyId, ownerSession }) {
+function CustomPartyCard({ propertyId }) {
   const [open, setOpen]               = useState(false);
   const [label, setLabel]             = useState('');
   const [email, setEmail]             = useState('');
@@ -353,22 +263,19 @@ function CustomPartyCard({ propertyId, ownerSession }) {
 
     let emailSent = false;
     let emailErr  = '';
-    if (ownerSession?.access_token) {
-      try {
-        const res = await fetch(`${API_BASE}/api/public/deal-room/send-invite-email`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${ownerSession.access_token}`,
-          },
-          body: JSON.stringify({ inviteToken: result.invite_token }),
-        });
-        const data = await res.json();
-        emailSent = res.ok && !data.error;
-        if (!res.ok) emailErr = data.error || 'Email failed';
-      } catch (ex) {
-        emailErr = ex.message;
-      }
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const headers = { 'Content-Type': 'application/json' };
+      if (session?.access_token) headers['Authorization'] = `Bearer ${session.access_token}`;
+      const res = await fetch(`${API_BASE}/api/public/deal-room/send-invite-email`, {
+        method: 'POST', headers,
+        body: JSON.stringify({ inviteToken: result.invite_token }),
+      });
+      const data = await res.json();
+      emailSent = res.ok && !data.error;
+      if (!res.ok) emailErr = data.error || 'Email failed';
+    } catch (ex) {
+      emailErr = ex.message;
     }
 
     setCreatedData({ inviteUrl, pin, email: email.trim(), emailSent, emailErr });
@@ -552,20 +459,10 @@ function InviteManagementTable({ propertyId, packId }) {
 // ── Main panel ────────────────────────────────────────────────────────────────
 
 export default function InvitePanel({ propertyId, packId = DEFAULT_PACK_ID }) {
-  const [ownerSession, setOwnerSession] = useState(null);
-  const [tab, setTab]                   = useState('invite'); // 'invite' | 'manage'
-  const [hiddenRoles, setHiddenRoles]   = useState([]);
-
-  // Check if owner is already authenticated
-  useEffect(() => {
-    getOwnerSession().then(s => { if (s) setOwnerSession(s); });
-  }, []);
+  const [tab, setTab]                 = useState('invite'); // 'invite' | 'manage'
+  const [hiddenRoles, setHiddenRoles] = useState([]);
 
   const roles = getInvitableRoles(packId).filter(r => !hiddenRoles.includes(r.role));
-
-  if (!ownerSession) {
-    return <OwnerAuthGate onAuthenticated={setOwnerSession} />;
-  }
 
   return (
     <div className="space-y-3">
@@ -600,11 +497,10 @@ export default function InvitePanel({ propertyId, packId = DEFAULT_PACK_ID }) {
               key={r.role}
               r={r}
               propertyId={propertyId}
-              ownerSession={ownerSession}
               onRemove={() => setHiddenRoles(h => [...h, r.role])}
             />
           ))}
-          <CustomPartyCard propertyId={propertyId} ownerSession={ownerSession} />
+          <CustomPartyCard propertyId={propertyId} />
         </div>
       )}
 
