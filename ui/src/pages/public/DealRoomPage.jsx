@@ -1,13 +1,4 @@
-import React, { useState, useEffect, useRef, createContext, useContext } from "react";
-import { getInviteSession, touchSession, createSessionClient } from "../../lib/inviteUtils";
-
-/**
- * SessionContext — provides the participant's verified session token and a
- * pre-configured Supabase client that injects x-kontra-session on every query.
- * Components that query Supabase directly after gate verification should
- * consume this context: const { sessionClient } = useContext(DealRoomSessionContext).
- */
-export const DealRoomSessionContext = createContext({ sessionToken: null, sessionClient: null });
+import React, { useState, useEffect, useRef } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import PublicLayout from "./PublicLayout";
 import DealCoordinationPanel from "./DealCoordinationPanel";
@@ -18,12 +9,10 @@ import TasksPanel from "./TasksPanel";
 import AIBriefingPanel from "./AIBriefingPanel";
 import InvitePanel from "./InvitePanel";
 import InvitePanelV2 from "./InvitePanelV2";
-import DealRoomGateV2 from "./DealRoomGateV2";
 import DocumentsTabPanel from "./DocumentsTabPanel";
 import VerifiedAssetPackage from "./VerifiedAssetPackage";
 import NotificationsLog from "./NotificationsLog";
 import LegalReviewPanel from "./LegalReviewPanel";
-import DealRoomPinGate from "./DealRoomPinGate";
 import { getTemplate } from "./documentChecklistUtils";
 import { DEFAULT_PACK_ID, getWorkflowPack, ensureWorkflowPackLoaded, resolvePackId } from "../../lib/workflowPacks";
 
@@ -1054,55 +1043,6 @@ export default function DealRoomPage() {
   const [analysesRefreshKey, setAnalysesRefreshKey] = useState(0);
 
   const onAnalysisSaved = () => setAnalysesRefreshKey(k => k + 1);
-  // sessionToken: null = not yet verified, string = verified participant session (v1 PIN flow)
-  const [sessionToken, setSessionToken] = useState(null);
-  const pinUnlocked = sessionToken !== null;
-
-  // v2 participant state — set after DealRoomGateV2 OTP verification
-  const [v2Session, setV2Session]   = useState(null);
-  const [v2RoleKey, setV2RoleKey]   = useState(null);
-  const v2Unlocked = v2Session !== null;
-
-  // Owner Supabase session — used by InvitePanelV2 to authenticate API calls.
-  // ownerSessionChecked becomes true once the initial getSession() resolves,
-  // so the gate doesn't flash while the async check is in-flight.
-  const [ownerSession, setOwnerSession] = useState(null);
-  const [ownerSessionChecked, setOwnerSessionChecked] = useState(false);
-  useEffect(() => {
-    import('../../lib/supabaseClient').then(({ supabase }) => {
-      supabase.auth.getSession().then(({ data: { session } }) => {
-        setOwnerSession(session ?? null);
-        setOwnerSessionChecked(true);
-      });
-      const { data: { subscription } } = supabase.auth.onAuthStateChange((_e, s) => {
-        setOwnerSession(s);
-      });
-      return () => subscription.unsubscribe();
-    });
-  }, []);
-
-  // On mount: restore an existing participant session from localStorage so
-  // returning visitors (role !== owner) don't have to re-verify their invite.
-  // createSessionClient(token) creates a Supabase client with the
-  // x-kontra-session header pre-set for any direct DB queries post-unlock.
-  useEffect(() => {
-    if (role === 'owner') return;
-    const stored = getInviteSession(propertyId);
-    if (stored?.token) {
-      setSessionToken(stored.token);
-      // Keep the server-side session alive in the background
-      touchSession(stored.token).catch(() => {});
-    }
-  }, [propertyId, role]);
-
-  // Periodically refresh the session while the participant is active (every 10 min)
-  useEffect(() => {
-    if (!sessionToken || role === 'owner') return;
-    const interval = setInterval(() => {
-      touchSession(sessionToken).catch(() => {});
-    }, 10 * 60 * 1000);
-    return () => clearInterval(interval);
-  }, [sessionToken, role]);
 
   // Try to fetch custom deal room from API
   useEffect(() => {
@@ -1225,13 +1165,6 @@ export default function DealRoomPage() {
   const pack = getWorkflowPack(packId);
   const isCREPack = packId === DEFAULT_PACK_ID;
 
-  // activeRole: after OTP verification v2RoleKey is the verified server-side role;
-  // fall back to the URL ?role= param before verification (used for gate triggering).
-  // All panel visibility and role config uses activeRole — not the raw URL param —
-  // so that (a) post-verification the correct role is shown and (b) URL spoofing
-  // (?role=owner) only affects the URL param; verified identity overrides it.
-  const activeRole = v2RoleKey || role;
-
   // Role metadata (label/icon/color/headline/subtext/sections) is looked up
   // scoped to this pack — never from a flat cross-pack dict — since a role
   // key like "lender" can mean something different in another pack.
@@ -1239,8 +1172,8 @@ export default function DealRoomPage() {
   // not yet deployed), show a neutral "invited" message rather than the primary
   // owner's private "full view of all parties" copy.
   const _genericFallback = {
-    key: activeRole,
-    label: activeRole.charAt(0).toUpperCase() + activeRole.slice(1),
+    key: role,
+    label: role.charAt(0).toUpperCase() + role.slice(1),
     icon: "👤",
     color: pack.roles[0]?.color || "#800020",
     needsDocs: false,
@@ -1249,10 +1182,10 @@ export default function DealRoomPage() {
     sections: [],
     invitable: true,
   };
-  const baseRoleConfig = pack.getRole(activeRole) || _genericFallback;
+  const baseRoleConfig = pack.getRole(role) || _genericFallback;
   const isHotel = (property?.property_type || "").toLowerCase().includes("hotel") ||
                   (property?.property_type || "").toLowerCase().includes("hospitality");
-  const roleConfig = isHotel && ['owner', 'broker', 'borrower'].includes(activeRole)
+  const roleConfig = isHotel && ['owner', 'broker', 'borrower'].includes(role)
     ? { ...baseRoleConfig, sections: ['brand-standards', ...(baseRoleConfig.sections || [])] }
     : baseRoleConfig;
 
@@ -1267,77 +1200,6 @@ export default function DealRoomPage() {
   );
 
   usePageTitle(property?.name || property?.property_name);
-
-  // Invite gate — all non-demo rooms require either:
-  //   (a) a verified Supabase owner session  →  bypass (real owner)
-  //   (b) completed OTP flow                →  bypass (verified participant)
-  // Unverified visitors claiming role=owner via URL get the gate too.
-  // ownerSessionChecked prevents a flash while the async session check is in-flight.
-  if (!demoProperty && !isDemo) {
-    const isVerifiedOwner = role === 'owner' && ownerSession;
-    // Wait briefly while the owner session check is in-flight before deciding
-    if (role === 'owner' && !ownerSessionChecked && !v2Unlocked && !pinUnlocked) {
-      return (
-        <div className="min-h-screen flex items-center justify-center">
-          <div className="w-6 h-6 border-2 border-gray-200 border-t-[#800020] rounded-full animate-spin" />
-        </div>
-      );
-    }
-    // Owner arrived without an active session — show a sign-in prompt instead
-    // of routing them through the participant OTP gate.
-    if (role === 'owner' && ownerSessionChecked && !ownerSession && !v2Unlocked && !pinUnlocked) {
-      return (
-        <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50 px-4">
-          <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-8 max-w-sm w-full text-center">
-            <div className="w-14 h-14 rounded-full flex items-center justify-center mx-auto mb-4"
-              style={{ background: "#fff5f5" }}>
-              <svg className="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="#800020" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round"
-                  d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-              </svg>
-            </div>
-            <h2 className="text-lg font-bold text-gray-900 mb-1">Sign in to access your room</h2>
-            <p className="text-sm text-gray-500 mb-6">
-              Deal room owners must be signed in to view and manage their room.
-            </p>
-            <a href="/login"
-              className="block w-full py-2.5 rounded-xl text-sm font-bold text-white text-center transition hover:opacity-90 mb-3"
-              style={{ background: "#800020" }}>
-              Sign in
-            </a>
-            <a href="/my-deal-rooms"
-              className="block w-full py-2.5 rounded-xl text-sm font-semibold text-gray-600 bg-gray-100 text-center hover:bg-gray-200 transition">
-              My Deal Rooms
-            </a>
-          </div>
-          <p className="text-xs text-gray-400 mt-6">Powered by Kontra · Confidential deal room</p>
-        </div>
-      );
-    }
-    if (!isVerifiedOwner && !v2Unlocked && !pinUnlocked) {
-      const useV2 = property?.auth_v2_enabled === true;
-      if (useV2) {
-        return (
-          <DealRoomGateV2
-            roomId={propertyId}
-            inviteToken={inviteToken}
-            onVerified={(session, roleKey) => {
-              setV2Session(session);
-              setV2RoleKey(roleKey);
-            }}
-          />
-        );
-      }
-      return (
-        <DealRoomPinGate
-          propertyId={propertyId}
-          role={role}
-          inviteToken={inviteToken}
-          onUnlocked={(token) => setSessionToken(token)}
-        />
-      );
-    }
-  }
 
   // Loading state
   if (loadingApi && isCustom) {
@@ -1383,10 +1245,8 @@ export default function DealRoomPage() {
 
   const pid = propertyId || property.property_id || property.id;
 
-  const sessionClient = sessionToken ? createSessionClient(sessionToken) : null;
-
   return (
-    <DealRoomSessionContext.Provider value={{ sessionToken, sessionClient }}>
+    <>
     <PublicLayout
       hideFooter
       dealRoomMode={!!(property.isCustom && !isDemo)}
@@ -1512,7 +1372,7 @@ export default function DealRoomPage() {
         {/* Tasks / Today's Actions — AI-generated action items requiring attention */}
         {property.isCustom && (
           <div id="tasks-panel">
-            <TasksPanel propertyId={pid} role={activeRole} />
+            <TasksPanel propertyId={pid} role={role} />
           </div>
         )}
 
@@ -1559,7 +1419,7 @@ export default function DealRoomPage() {
             <DocumentsTabPanel
               propertyId={pid}
               propertyType={property.property_type || property.type}
-              role={activeRole}
+              role={role}
               isDemo={isDemo}
               packId={packId}
               onAnalysisSaved={onAnalysisSaved}
@@ -1578,13 +1438,12 @@ export default function DealRoomPage() {
         )}
 
         {/* Invite panel — owners only; v2 when room has auth_v2_enabled, otherwise v1 */}
-        {property.isCustom && !isDemo && activeRole === 'owner' && (
+        {property.isCustom && !isDemo && role === 'owner' && (
           <div id="invite-panel">
             {property.auth_v2_enabled ? (
               <InvitePanelV2
                 roomId={pid}
                 packId={packId}
-                ownerToken={ownerSession?.access_token || null}
               />
             ) : (
               <InvitePanel
@@ -1605,7 +1464,7 @@ export default function DealRoomPage() {
         {property.isCustom && (
           <DealCoordinationPanel
             propertyId={pid}
-            role={activeRole}
+            role={role}
             packId={packId}
             propertyType={property.property_type || property.type}
           />
@@ -1619,7 +1478,7 @@ export default function DealRoomPage() {
         )}
 
         {/* Notification log — owner-only audit trail of sent emails */}
-        {property.isCustom && !isDemo && activeRole === 'owner' && (
+        {property.isCustom && !isDemo && role === 'owner' && (
           <NotificationsLog propertyId={pid} />
         )}
 
@@ -1726,7 +1585,7 @@ export default function DealRoomPage() {
 
       </div>
     </PublicLayout>
-    </DealRoomSessionContext.Provider>
+    </>
   );
 }
 
