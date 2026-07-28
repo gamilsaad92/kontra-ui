@@ -1,0 +1,110 @@
+17:27:32.731 Running build in Washington, D.C., USA (East) – iad1
+17:27:32.732 Build machine configuration: 2 cores, 8 GB
+17:27:33.155 Cloning github.com/gamilsaad92/kontra-ui (Branch: main, Commit: 4140554)
+17:27:38.401 Warning: Failed to fetch one or more git submodules
+17:27:38.402 Cloning completed: 5.246s
+17:27:38.762 Restored build cache from previous deployment (Ht7C2XHs3dWHYCiJmQqq2qBo1MQ7)
+17:27:39.049 Running "vercel build"
+17:27:39.069 Vercel CLI 56.5.0
+17:27:39.617 Installing dependencies...
+17:28:43.341 
+17:28:43.342 up to date in 1m
+17:28:43.343 
+17:28:43.343 220 packages are looking for funding
+17:28:43.343   run `npm fund` for details
+17:28:43.538 
+17:28:43.539 > kontra-ui@1.0.0 build
+17:28:43.539 > vite build
+17:28:43.539 
+17:28:43.809 The CJS build of Vite's Node API is deprecated. See https://vite.dev/guide/troubleshooting.html#vite-cjs-node-api-deprecated for more details.
+17:28:43.899 vite v5.4.21 building for production...
+17:28:43.974 transforming...
+17:28:52.987 node_modules/@coinbase/wallet-sdk/node_modules/ox/_esm/core/Address.js (6:21): A comment
+17:28:52.988 
+17:28:52.988 "/*#__PURE__*/"
+17:28:52.989 
+17:28:52.989 in "node_modules/@coinbase/wallet-sdk/node_modules/ox/_esm/core/Address.js" contains an annotation that Rollup cannot interpret due to the position of the comment. The comment will be removed to avoid issues.
+17:28:52.992 node_modules/@coinbase/wallet-sdk/node_modules/ox/_esm/core/Base64.js (6:27): A comment
+17:28:52.992 
+17:28:52.992 "/*#__PURE__*/"
+17:28:52.992 
+17:28:52.992 in "node_modules/@coinbase/wallet-sdk/node_modules/ox/_esm/core/Base64.js" contains an annotation that Rollup cannot interpret due to the position of the comment. The comment will be removed to avoid issues.
+17:28:53.337 node_modules/@wagmi/connectors/node_modules/ox/_esm/core/Base64.js (6:27): A comment
+17:28:53.338 
+17:28:53.338 "/*#__PURE__*/"
+17:28:53.341 
+17:28:53.343 in "node_modules/@wagmi/connectors/node_modules/ox/_esm/core/Base64.js" contains an annotation that Rollup cannot interpret due to the position of the comment. The comment will be removed to avoid issues.
+17:28:53.347 node_modules/@base-org/account/node_modules/ox/_esm/core/Address.js (6:21): A comment
+17:28:53.347 
+17:28:53.348 "/*#__PURE__*/"
+17:28:53.348 
+17:28:53.348 in "node_modules/@base-org/account/node_modules/ox/_esm/core/Address.js" contains an annotation that Rollup cannot interpret due to the position of the comment. The comment will be removed to avoid issues.
+17:28:53.349 node_modules/@base-org/account/node_modules/ox/_esm/core/Base64.js (6:27): A comment
+17:28:53.349 
+17:28:53.349 "/*#__PURE__*/"
+17:28:53.349 
+17:28:53.349 in "node_modules/@base-org/account/node_modules/ox/_esm/core/Base64.js" contains an annotation that Rollup cannot interpret due to the position of the comment. The comment will be removed to avoid issues.
+17:28:53.942 node_modules/@coinbase/wallet-sdk/node_modules/ox/_esm/core/internal/cursor.js (2:21): A comment
+17:28:53.943 
+17:28:53.943 "/*#__PURE__*/"
+17:28:53.944 
+17:28:53.944 in "node_modules/@coinbase/wallet-sdk/node_modules/ox/_esm/core/internal/cursor.js" contains an annotation that Rollup cannot interpret due to the position of the comment. The comment will be removed to avoid issues.
+17:28:54.278 node_modules/@base-org/account/node_modules/ox/_esm/core/internal/cursor.js (2:21): A comment
+17:28:54.278 
+17:28:54.279 "/*#__PURE__*/"
+17:28:54.279 
+17:28:54.279 in "node_modules/@base-org/account/node_modules/ox/_esm/core/internal/cursor.js" contains an annotation that Rollup cannot interpret due to the position of the comment. The comment will be removed to avoid issues.
+17:28:57.958 node_modules/@walletconnect/utils/node_modules/ox/_esm/core/Address.js (6:21): A comment
+17:28:57.959 
+17:28:57.960 "/*#__PURE__*/"
+17:28:57.960 
+17:28:57.960 in "node_modules/@walletconnect/utils/node_modules/ox/_esm/core/Address.js" contains an annotation that Rollup cannot interpret due to the position of the comment. The comment will be removed to avoid issues.
+17:28:57.981 node_modules/@walletconnect/utils/node_modules/ox/_esm/core/internal/cursor.js (2:21): A comment
+17:28:57.982 
+17:28:57.982 "/*#__PURE__*/"
+17:28:57.982 
+17:28:57.982 in "node_modules/@walletconnect/utils/node_modules/ox/_esm/core/internal/cursor.js" contains an annotation that Rollup cannot interpret due to the position of the comment. The comment will be removed to avoid issues.
+17:28:59.339 node_modules/@reown/appkit/node_modules/ox/_esm/core/Address.js (6:21): A comment
+17:28:59.339 
+17:28:59.339 "/*#__PURE__*/"
+17:28:59.339 
+17:28:59.339 in "node_modules/@reown/appkit/node_modules/ox/_esm/core/Address.js" contains an annotation that Rollup cannot interpret due to the position of the comment. The comment will be removed to avoid issues.
+17:28:59.344 node_modules/@reown/appkit/node_modules/ox/_esm/core/internal/cursor.js (2:21): A comment
+17:28:59.344 
+17:28:59.345 "/*#__PURE__*/"
+17:28:59.346 
+17:28:59.346 in "node_modules/@reown/appkit/node_modules/ox/_esm/core/internal/cursor.js" contains an annotation that Rollup cannot interpret due to the position of the comment. The comment will be removed to avoid issues.
+17:28:59.396 node_modules/@reown/appkit-controllers/node_modules/ox/_esm/core/Address.js (6:21): A comment
+17:28:59.396 
+17:28:59.397 "/*#__PURE__*/"
+17:28:59.397 
+17:28:59.397 in "node_modules/@reown/appkit-controllers/node_modules/ox/_esm/core/Address.js" contains an annotation that Rollup cannot interpret due to the position of the comment. The comment will be removed to avoid issues.
+17:28:59.398 node_modules/@reown/appkit-controllers/node_modules/ox/_esm/core/internal/cursor.js (2:21): A comment
+17:28:59.398 
+17:28:59.398 "/*#__PURE__*/"
+17:28:59.398 
+17:28:59.398 in "node_modules/@reown/appkit-controllers/node_modules/ox/_esm/core/internal/cursor.js" contains an annotation that Rollup cannot interpret due to the position of the comment. The comment will be removed to avoid issues.
+17:28:59.891 ✓ 6588 modules transformed.
+17:28:59.893 x Build failed in 15.96s
+17:28:59.895 error during build:
+17:28:59.895 src/pages/public/DocumentsTabPanel.jsx (4:9): "DealRoomSessionContext" is not exported by "src/pages/public/DealRoomPage.jsx", imported by "src/pages/public/DocumentsTabPanel.jsx".
+17:28:59.897 file: /vercel/path0/ui/src/pages/public/DocumentsTabPanel.jsx:4:9
+17:28:59.897 
+17:28:59.897 2: import { useSearchParams } from 'react-router-dom';
+17:28:59.897 3: import { getWorkflowPack, DEFAULT_PACK_ID } from '../../lib/workflowPacks';
+17:28:59.897 4: import { DealRoomSessionContext } from './DealRoomPage';
+17:28:59.897             ^
+17:28:59.897 5: import { supabase } from '../../lib/supabaseClient';
+17:28:59.897 6: import DocumentChecklistPanel from './DocumentChecklistPanel';
+17:28:59.897 
+17:28:59.897     at getRollupError (file:///vercel/path0/ui/node_modules/rollup/dist/es/shared/parseAst.js:317:41)
+17:28:59.897     at error (file:///vercel/path0/ui/node_modules/rollup/dist/es/shared/parseAst.js:313:42)
+17:28:59.897     at Module.error (file:///vercel/path0/ui/node_modules/rollup/dist/es/shared/node-entry.js:17156:16)
+17:28:59.897     at Module.traceVariable (file:///vercel/path0/ui/node_modules/rollup/dist/es/shared/node-entry.js:17589:29)
+17:28:59.897     at ModuleScope.findVariable (file:///vercel/path0/ui/node_modules/rollup/dist/es/shared/node-entry.js:15179:39)
+17:28:59.897     at FunctionScope.findVariable (file:///vercel/path0/ui/node_modules/rollup/dist/es/shared/node-entry.js:5399:38)
+17:28:59.897     at FunctionBodyScope.findVariable (file:///vercel/path0/ui/node_modules/rollup/dist/es/shared/node-entry.js:5399:38)
+17:28:59.898     at Identifier.bind (file:///vercel/path0/ui/node_modules/rollup/dist/es/shared/node-entry.js:5166:40)
+17:28:59.898     at CallExpression.bind (file:///vercel/path0/ui/node_modules/rollup/dist/es/shared/node-entry.js:2544:28)
+17:28:59.898     at CallExpression.bind (file:///vercel/path0/ui/node_modules/rollup/dist/es/shared/node-entry.js:12288:15)
+17:28:59.979 Error: Command "npm run build" exited with 1
