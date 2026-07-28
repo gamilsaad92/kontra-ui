@@ -1,7 +1,6 @@
-import { useState, useEffect, useRef, useContext } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { getWorkflowPack, DEFAULT_PACK_ID } from '../../lib/workflowPacks';
-import { DealRoomSessionContext } from './DealRoomPage';
 import { supabase } from '../../lib/supabaseClient';
 import DocumentChecklistPanel from './DocumentChecklistPanel';
 import VerificationPanel from './VerificationPanel';
@@ -59,15 +58,11 @@ function IntelligenceTab({ analyses, loading, packId, propertyId, onSwitchToChec
   const getBadge = pack.getIntelligenceBadge || (() => null);
   const getHighlight = pack.getIntelligenceHighlight || (() => null);
 
-  // Session tokens for authenticated document downloads
-  const { sessionToken } = useContext(DealRoomSessionContext);
+  // No gate — use owner Supabase session for authenticated downloads
   async function handleDownload(storagePath) {
-    let ownerToken = null;
-    if (!sessionToken) {
-      const { data: { session } } = await supabase.auth.getSession();
-      ownerToken = session?.access_token || null;
-    }
-    openDocumentUrl(storagePath, sessionToken, ownerToken);
+    const { data: { session } } = await supabase.auth.getSession();
+    const ownerToken = session?.access_token || null;
+    openDocumentUrl(storagePath, null, ownerToken);
   }
 
   const bySection = {};
