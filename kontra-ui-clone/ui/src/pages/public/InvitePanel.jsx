@@ -146,23 +146,9 @@ function RoleCard({ r, propertyId, onRemove }) {
 
     const inviteUrl = `${window.location.origin}/deal-room/${propertyId}?invite=${result.invite_token}&role=${r.role}`;
 
-    // Auto-send Kontra invite email — try with Supabase session if available
-    let emailSent = false;
-    let emailErr  = '';
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const headers = { 'Content-Type': 'application/json' };
-      if (session?.access_token) headers['Authorization'] = `Bearer ${session.access_token}`;
-      const res = await fetch(`${API_BASE}/api/public/deal-room/send-invite-email`, {
-        method: 'POST', headers,
-        body: JSON.stringify({ inviteToken: result.invite_token }),
-      });
-      const data = await res.json();
-      emailSent = res.ok && !data.error;
-      if (!res.ok) emailErr = data.error || 'Email failed';
-    } catch (ex) {
-      emailErr = ex.message;
-    }
+    // Email is sent by the create-invite endpoint — use its response
+    const emailSent = result.emailSent ?? false;
+    const emailErr  = emailSent ? '' : (invitedEmail ? 'Email may not have sent' : '');
 
     setCreatedData({ inviteUrl, pin, email: email.trim(), emailSent, emailErr });
     setStatus('created');
@@ -261,22 +247,8 @@ function CustomPartyCard({ propertyId }) {
 
     const inviteUrl = `${window.location.origin}/deal-room/${propertyId}?invite=${result.invite_token}&role=${roleKey}`;
 
-    let emailSent = false;
-    let emailErr  = '';
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const headers = { 'Content-Type': 'application/json' };
-      if (session?.access_token) headers['Authorization'] = `Bearer ${session.access_token}`;
-      const res = await fetch(`${API_BASE}/api/public/deal-room/send-invite-email`, {
-        method: 'POST', headers,
-        body: JSON.stringify({ inviteToken: result.invite_token }),
-      });
-      const data = await res.json();
-      emailSent = res.ok && !data.error;
-      if (!res.ok) emailErr = data.error || 'Email failed';
-    } catch (ex) {
-      emailErr = ex.message;
-    }
+    const emailSent = result.emailSent ?? false;
+    const emailErr  = emailSent ? '' : (email.trim() ? 'Email may not have sent' : '');
 
     setCreatedData({ inviteUrl, pin, email: email.trim(), emailSent, emailErr });
     setStatus('created');

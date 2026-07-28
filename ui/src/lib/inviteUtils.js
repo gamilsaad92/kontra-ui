@@ -177,22 +177,20 @@ export async function createInvite({
   propertyId,
   roleKey,
   invitedEmail,
-  verificationMethod, // 'email_otp' | 'pin'
-  pin,                // raw PIN; only for pin method
+  verificationMethod = 'pin',
+  pin,
 }) {
-  if (!supabase) return { success: false, error: 'not_configured' };
   const token = generateInviteToken();
+  const API_BASE = (import.meta.env.VITE_API_BASE || '').replace(/\/+$/, '');
   try {
-    const { data, error } = await supabase.rpc('create_deal_room_invite', {
-      p_invite_token:        token,
-      p_property_id:         propertyId,
-      p_role_key:            roleKey,
-      p_invited_email:       invitedEmail || null,
-      p_verification_method: verificationMethod,
-      p_pin:                 pin || null,
+    const res = await fetch(`${API_BASE}/api/public/deal-room/${propertyId}/create-invite`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ roleKey, invitedEmail, inviteToken: token, pin, verificationMethod }),
     });
-    if (error) return { success: false, error: error.message };
-    return { ...(data || {}), invite_token: token };
+    const data = await res.json();
+    if (!res.ok) return { success: false, error: data.error || `Server error ${res.status}` };
+    return { success: true, invite_token: token, emailSent: data.emailSent };
   } catch (e) {
     return { success: false, error: e.message };
   }

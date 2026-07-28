@@ -2100,6 +2100,73 @@ app.post('/api/public/deal-room/:propertyId/invite', async (req, res) => {
   }
 });
 
+// ── Create a v1 invite record server-side (bypasses RLS) ─────────────────────
+// The Supabase RPC create_deal_room_invite requires auth.email() from a
+// Supabase session, which owners don't always have. This endpoint uses the
+// service-role client to insert directly and then sends the invite email.
+app.post('/api/public/deal-room/:propertyId/create-invite', async (req, res) => {
+  const { propertyId } = req.params;
+  const { roleKey, invitedEmail, inviteToken, pin, verificationMethod = 'pin' } = req.body || {};
+  if (!roleKey || !inviteToken) return res.status(400).json({ error: 'roleKey and inviteToken required' });
+
+  const tokenHash = crypto.createHash('sha256').update(inviteToken.trim()).digest('hex');
+  const pinHash   = pin ? crypto.createHash('sha256').update(pin.trim()).digest('hex') : null;
+
+  try {
+    const { error: insertErr } = await supabase.from('deal_room_invites').insert({
+      property_id:         propertyId,
+      role_key:            roleKey,
+      invited_email:       invitedEmail || null,
+      invite_token_hash:   tokenHash,
+      verification_method: verificationMethod,
+      pin_hash:            pinHash,
+    });
+    if (insertErr) {
+      if (insertErr.code === '23505') return res.status(409).json({ error: 'token_conflict' });
+      return res.status(500).json({ error: insertErr.message });
+    }
+
+    // Auto-send email if recipient provided and Resend is configured
+    let emailSent = false;
+    if (invitedEmail && process.env.RESEND_API_KEY) {
+      try {
+        const { data: room } = await supabase.from('deal_rooms')
+          .select('property_name, first_name, workflow_pack_id').eq('property_id', propertyId).single();
+        const propName  = room?.property_name || propertyId;
+        const fromName  = room?.first_name || 'The deal coordinator';
+        const packId    = room?.workflow_pack_id || DEFAULT_PACK_ID;
+        const roleConf  = getPackRoleConfig(packId).roles.find(r => r.key === roleKey);
+        const roleLabel = roleConf?.label || roleKey;
+        const inviteUrl = `https://kontraplatform.com/deal-room/${propertyId}?invite=${inviteToken}&role=${roleKey}`;
+        await sendResendEmail(process.env.RESEND_API_KEY, {
+          from: 'Kontra <notifications@kontraplatform.com>',
+          to: invitedEmail,
+          reply_to: 'support@kontraplatform.com',
+          subject: `You've been invited to a deal room — ${propName}`,
+          text: `${fromName} has added you as ${roleLabel} to their deal room for ${propName}.\n\nOpen your deal room:\n${inviteUrl}`,
+          html: `<div style="font-family:sans-serif;max-width:560px;margin:auto;padding:32px 24px">
+            <div style="margin-bottom:20px"><span style="background:#800020;color:#fff;font-weight:800;font-size:15px;padding:6px 14px;border-radius:8px;display:inline-block">Kontra</span></div>
+            <h2 style="color:#111;font-size:22px;font-weight:800;margin:0 0 8px">You've been invited</h2>
+            <p style="color:#555;font-size:15px;margin:0 0 6px"><strong>${fromName}</strong> has added you as <strong>${roleLabel}</strong> to their deal room for <strong>${propName}</strong>.</p>
+            <p style="color:#555;font-size:14px;margin:0 0 24px">Click below to access your role-scoped view. No account required.</p>
+            <a href="${inviteUrl}" style="display:inline-block;padding:14px 28px;background:#800020;color:#fff;border-radius:10px;text-decoration:none;font-weight:700;font-size:15px">Open Deal Room →</a>
+            <p style="color:#bbb;font-size:11px;margin-top:24px">You received this because ${fromName} added your email. If this is a mistake, ignore it.</p>
+          </div>`,
+        });
+        emailSent = true;
+      } catch (emailErr) {
+        console.error('[create-invite] email send failed:', emailErr.message);
+      }
+    }
+
+    logEvent(propertyId, 'invite_created', 'owner', null, `${roleKey} invited: ${invitedEmail || 'PIN-only'}`, { roleKey, invitedEmail });
+    res.json({ success: true, emailSent });
+  } catch (err) {
+    console.error('[create-invite]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ── Send an invite-link email (used by the per-invitation invite panel) ───────
 // This endpoint does NOT create the invite record — the client does that via
 // Supabase RPC. It only sends the email after the record is created.
