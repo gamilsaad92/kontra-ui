@@ -239,7 +239,7 @@ function ExportActions({ pkg, propertyId }) {
           <p className="text-xs font-bold text-gray-800 mb-1">Share with lenders & investors</p>
           <p className="text-xs text-gray-500 leading-relaxed mb-3">
             Generate a read-only link valid for 30 days. Recipients see all four sections of this
-            package but cannot access the deal room or make any changes.
+            package but cannot access the workspace or make any changes.
           </p>
 
           {shareResult ? (
