@@ -1,0 +1,50 @@
+2026-07-29T07:19:02.988185722Z up to date, audited 690 packages in 915ms
+2026-07-29T07:19:02.988187359Z 
+2026-07-29T07:19:02.9881928Z 96 packages are looking for funding
+2026-07-29T07:19:02.988194248Z   run `npm fund` for details
+2026-07-29T07:19:03.041913381Z 
+2026-07-29T07:19:03.041926498Z 45 vulnerabilities (4 low, 22 moderate, 17 high, 2 critical)
+2026-07-29T07:19:03.041927786Z 
+2026-07-29T07:19:03.041928713Z To address issues that do not require attention, run:
+2026-07-29T07:19:03.041929592Z   npm audit fix
+2026-07-29T07:19:03.041930364Z 
+2026-07-29T07:19:03.041931463Z To address all issues possible (including breaking changes), run:
+2026-07-29T07:19:03.04193248Z   npm audit fix --force
+2026-07-29T07:19:03.041933453Z 
+2026-07-29T07:19:03.041934233Z Some issues need review, and may require choosing
+2026-07-29T07:19:03.041935035Z a different dependency.
+2026-07-29T07:19:03.041935744Z 
+2026-07-29T07:19:03.04193687Z Run `npm audit` for details.
+2026-07-29T07:19:03.926187019Z ==> Uploading build...
+2026-07-29T07:19:12.887404393Z ==> Uploaded in 6.7s. Compression took 2.2s
+2026-07-29T07:19:12.90363836Z ==> Build successful 🎉
+2026-07-29T07:19:15.902022071Z ==> Deploying...
+2026-07-29T07:19:34.560790171Z ==> Running 'node index.js'
+2026-07-29T07:19:38.463461623Z [db] Connected to Supabase: https://jfhojgtnmcfqretrrxam.supabase.co
+2026-07-29T07:19:39.251975144Z REDIS_URL not set, using in-memory cache only
+2026-07-29T07:19:39.26264061Z [WARN] Optional env var not set: SENTRY_DSN — related features disabled
+2026-07-29T07:19:39.262652721Z [WARN] Optional env var not set: ENCRYPTION_KEY — related features disabled
+2026-07-29T07:19:39.262663792Z [WARN] Optional env var not set: PII_ENCRYPTION_KEY — related features disabled
+2026-07-29T07:19:42.858536388Z [localAuth] JWT_SECRET is not set — auth will fail. Set JWT_SECRET in environment.
+2026-07-29T07:19:44.954781203Z node:internal/crypto/hash:115
+2026-07-29T07:19:44.954798524Z     throw new ERR_INVALID_ARG_TYPE(
+2026-07-29T07:19:44.954802575Z     ^
+2026-07-29T07:19:44.954805575Z 
+2026-07-29T07:19:44.954809495Z TypeError [ERR_INVALID_ARG_TYPE]: The "data" argument must be of type string or an instance of Buffer, TypedArray, or DataView. Received undefined
+2026-07-29T07:19:44.954813195Z     at Hash.update (node:internal/crypto/hash:115:11)
+2026-07-29T07:19:44.954815845Z     at Object.<anonymous> (/opt/render/project/src/api/routers/applications.js:54:45)
+2026-07-29T07:19:44.954818816Z     at Module._compile (node:internal/modules/cjs/loader:1554:14)
+2026-07-29T07:19:44.954820696Z     at Object..js (node:internal/modules/cjs/loader:1706:10)
+2026-07-29T07:19:44.954822586Z     at Module.load (node:internal/modules/cjs/loader:1289:32)
+2026-07-29T07:19:44.954824446Z     at Function._load (node:internal/modules/cjs/loader:1108:12)
+2026-07-29T07:19:44.954826486Z     at TracingChannel.traceSync (node:diagnostics_channel:322:14)
+2026-07-29T07:19:44.954828426Z     at wrapModuleLoad (node:internal/modules/cjs/loader:220:24)
+2026-07-29T07:19:44.954830717Z     at Module.require (node:internal/modules/cjs/loader:1311:12)
+2026-07-29T07:19:44.954832666Z     at require (node:internal/modules/helpers:136:16) {
+2026-07-29T07:19:44.954834597Z   code: 'ERR_INVALID_ARG_TYPE'
+2026-07-29T07:19:44.954836527Z }
+2026-07-29T07:19:44.954838327Z 
+2026-07-29T07:19:44.954840947Z Node.js v22.14.0
+2026-07-29T07:19:51.714986819Z ==> Exited with status 1
+2026-07-29T07:19:51.717577063Z ==> Common ways to troubleshoot your deploy: https://render.com/docs/troubleshooting-deploys
+2026-07-29T07:19:56.669069757Z ==> Running 'node index.js'
