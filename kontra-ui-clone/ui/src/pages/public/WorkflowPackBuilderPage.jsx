@@ -99,11 +99,11 @@ export default function WorkflowPackBuilderPage() {
             <div className="w-14 h-14 rounded-full bg-green-50 text-green-600 flex items-center justify-center text-2xl mx-auto mb-4">✓</div>
             <h1 className="text-xl font-bold text-gray-900 mb-2">"{saved.name}" is ready</h1>
             <p className="text-sm text-gray-500 mb-6">
-              This workflow pack is live — it now shows up as an option when creating a new deal room, with your roles, stages, and document checklist wired in automatically.
+              This workflow pack is live — it now shows up as an option when creating a new workspace, with your roles, stages, and document checklist wired in automatically.
             </p>
             <div className="flex flex-col gap-2">
               <button onClick={() => navigate("/create-deal-room")} className="w-full py-2.5 rounded-lg text-white font-semibold text-sm" style={{ background: "#800020" }}>
-                Create a deal room with it →
+                Create a workspace with it →
               </button>
               <button onClick={() => { setSaved(null); setName(""); setDescription(""); setRoles([newRole(0), newRole(1)]); setStages([{ key: "uploading", label: "Uploading Documents" }, { key: "under_review", label: "Under Review" }, { key: "approved", label: "Approved" }]); setDocuments([newDocument()]); }}
                 className="w-full py-2.5 rounded-lg border border-gray-200 text-gray-700 font-semibold text-sm hover:bg-gray-50">
@@ -127,7 +127,7 @@ export default function WorkflowPackBuilderPage() {
             </div>
             <h1 className="text-2xl font-bold text-gray-900 mb-2">Workflow Pack Builder</h1>
             <p className="text-gray-500 text-sm max-w-xl">
-              Assemble a brand-new deal room type — its roles, stages, and required documents — and it's immediately available to use, no engineering work needed.
+              Assemble a brand-new workspace type — its roles, stages, and required documents — and it's immediately available to use, no engineering work needed.
             </p>
           </div>
 

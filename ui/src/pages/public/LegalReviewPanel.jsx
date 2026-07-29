@@ -229,7 +229,7 @@ export default function LegalReviewPanel({ propertyId, pack, isDemo }) {
         {/* Legal Documents Found */}
         <section>
           <h3 className="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-2">
-            Legal Documents in This Deal Room
+            Legal Documents in This Workspace
           </h3>
           {loading ? (
             <div className="space-y-2">
@@ -311,7 +311,7 @@ export default function LegalReviewPanel({ propertyId, pack, isDemo }) {
             {[
               {
                 icon: "📁",
-                text: "Parties upload legal documents into the Kontra deal room through their role-specific link.",
+                text: "Parties upload legal documents into the Kontra workspace through their role-specific link.",
               },
               {
                 icon: "⚖️",

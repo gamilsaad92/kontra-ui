@@ -71,7 +71,7 @@ export default function ActivityTimeline({ propertyId }) {
     <div className="rounded-2xl border border-gray-200 bg-white overflow-hidden">
       <div className="px-5 pt-5 pb-3 border-b border-gray-100">
         <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">Activity Timeline</p>
-        <p className="text-[11px] text-gray-400 mt-0.5">Full audit trail for this deal room</p>
+        <p className="text-[11px] text-gray-400 mt-0.5">Full audit trail for this workspace</p>
       </div>
       <div className="px-5 py-4 space-y-6 max-h-[480px] overflow-y-auto">
         {groups.map(([day, dayEvents]) => (

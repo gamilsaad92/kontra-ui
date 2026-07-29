@@ -7,7 +7,7 @@ export default function CheckoutSuccessPage() {
   const property  = searchParams.get("property") || "";
   const plan      = searchParams.get("plan") || "deal";
 
-  const planLabel     = plan === "pro_annual" ? "Pro Annual" : plan === "pro_monthly" ? "Pro Monthly" : "Deal Room";
+  const planLabel     = plan === "pro_annual" ? "Pro Annual" : plan === "pro_monthly" ? "Pro Monthly" : "Workspace";
   const propertyLabel = property
     ? property.replace(/-/g, " ").replace(/\b\w/g, c => c.toUpperCase())
     : "";
@@ -25,7 +25,7 @@ export default function CheckoutSuccessPage() {
                 <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
               </svg>
             </div>
-            <h1 className="text-2xl font-bold text-gray-900 mb-1">Deal Room Activated!</h1>
+            <h1 className="text-2xl font-bold text-gray-900 mb-1">Workspace Activated!</h1>
             <p className="text-gray-500 text-sm">
               {propertyLabel && <><strong>{propertyLabel}</strong> · </>}
               {planLabel} · A receipt has been sent to your email
@@ -42,7 +42,7 @@ export default function CheckoutSuccessPage() {
               <div>
                 <p className="text-sm font-bold text-gray-900">Invite each party from inside your room</p>
                 <p className="text-xs text-gray-500 mt-1 leading-relaxed">
-                  Open your deal room and use the <strong>Invite</strong> panel to send each party
+                  Open your workspace and use the <strong>Invite</strong> panel to send each party
                   a secure, personalized link. Each person verifies their identity before they can
                   enter — no shared passwords or forwarded links.
                 </p>
@@ -83,7 +83,7 @@ export default function CheckoutSuccessPage() {
               <Link to={`/deal-room/${property}?role=owner`}
                 className="flex-1 inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl text-sm font-bold text-white transition hover:opacity-90"
                 style={{ background: "#800020" }}>
-                Open My Deal Room →
+                Open My Workspace →
               </Link>
             )}
             <a href="mailto:hello@kontraplatform.com"

@@ -389,7 +389,7 @@ export default function DealSharePage() {
           <Link to="/create-deal-room"
             className="shrink-0 px-5 py-2.5 rounded-xl text-sm font-bold text-white hover:opacity-90 transition"
             style={{ background: "#800020" }}>
-            Create Your Deal Room · $499 →
+            Create Your Workspace · $499 →
           </Link>
         </div>
       </div>

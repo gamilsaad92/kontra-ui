@@ -143,7 +143,7 @@ export default function ServiceProvidersPage() {
               <Link to="/create-deal-room"
                 className="block text-center w-full px-3 py-2 rounded-lg border text-sm font-medium transition hover:shadow-sm"
                 style={{ borderColor: "#800020", color: "#800020" }}>
-                Add to Deal Room →
+                Add to Workspace →
               </Link>
             </div>
           ))}

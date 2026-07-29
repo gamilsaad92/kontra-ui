@@ -36,7 +36,7 @@ const STEPS = [
       "Owner sees everyone's status in real time",
     ],
     visual: [
-      { icon: "⚖️", text: "Attorney · Deal Room Link sent", status: "Opened", color: "#16a34a" },
+      { icon: "⚖️", text: "Attorney · Workspace Link sent", status: "Opened", color: "#16a34a" },
       { icon: "🏦", text: "Lender · Financials requested", status: "Uploading", color: "#f59e0b" },
       { icon: "🔍", text: "CPA · Q3 Statements needed", status: "Pending", color: "#9ca3af" },
       { icon: "📋", text: "Broker · NDA uploaded", status: "Verified ✓", color: "#16a34a" },
