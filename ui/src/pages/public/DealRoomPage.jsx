@@ -1208,7 +1208,7 @@ export default function DealRoomPage() {
         <div className="min-h-[60vh] flex items-center justify-center">
           <div className="text-center">
             <div className="w-8 h-8 border-2 border-gray-300 border-t-red-800 rounded-full animate-spin mx-auto mb-3" />
-            <p className="text-sm text-gray-500">Loading deal room…</p>
+            <p className="text-sm text-gray-500">Loading workspace…</p>
           </div>
         </div>
       </PublicLayout>
@@ -1221,7 +1221,7 @@ export default function DealRoomPage() {
       <PublicLayout>
         <div className="max-w-xl mx-auto px-6 py-24 text-center">
           <div className="text-5xl mb-4">🏢</div>
-          <h1 className="text-xl font-bold text-gray-900 mb-2">Deal room not found</h1>
+          <h1 className="text-xl font-bold text-gray-900 mb-2">Workspace not found</h1>
           <p className="text-gray-500 text-sm mb-6">This link may have expired or the property ID is incorrect.</p>
           <Link to="/" className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold text-white"
             style={{ background: "#800020" }}>Back to Kontra</Link>
@@ -1281,7 +1281,7 @@ export default function DealRoomPage() {
                 🔑
               </div>
               <div>
-                <p className="text-xs font-semibold text-green-900">Deal room active — upload documents below</p>
+                <p className="text-xs font-semibold text-green-900">Workspace active — upload documents below</p>
                 <p className="text-[10px] text-green-600">No sign-in required · AI analyzes each file as it's uploaded</p>
               </div>
             </div>
@@ -1305,7 +1305,7 @@ export default function DealRoomPage() {
                 <p className="text-xs font-semibold text-gray-800">
                   {from ? `${decodeURIComponent(from)} invited you` : "You've been invited"} · <span style={{ color: roleConfig.color }}>{roleConfig.label} view</span>
                 </p>
-                <p className="text-[10px] text-gray-400">Role-scoped deal room · Demo mode</p>
+                <p className="text-[10px] text-gray-400">Role-scoped workspace · Demo mode</p>
               </div>
             </div>
             <Link to="/create-deal-room"

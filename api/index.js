@@ -1150,6 +1150,11 @@ app.post('/api/checkout/demo', async (req, res) => {
       if (savedId) demoPackId = savedId;
     }
 
+    // Seed stages_config from the pack's default stages (or custom config if provided).
+    // Icon/desc are frontend-only; backend stores key+label only.
+    const demoInitialStages = (meta.customConfig?.stages || getPackStageConfig(demoPackId).stages)
+      .map(({ key, label }) => ({ key, label }));
+
     const dealRoomRecord = {
       stripe_session_id: fakeSessionId,
       plan,
@@ -1169,6 +1174,7 @@ app.post('/api/checkout/demo', async (req, res) => {
       first_name: meta.firstName || '',
       last_name: meta.lastName || '',
       workflow_pack_id: demoPackId,
+      stages_config: demoInitialStages,
     };
 
     try {
@@ -1176,14 +1182,14 @@ app.post('/api/checkout/demo', async (req, res) => {
       if (upsertErr) {
         // 42703 = raw Postgres "column does not exist"; PGRST204 = PostgREST
         // schema-cache miss for the column (what Supabase actually returns).
-        // Either way workflow_pack_id isn't migrated yet — retry without it.
+        // Either way workflow_pack_id/stages_config isn't migrated yet — retry without those columns.
         const isMissingColumn = upsertErr.code === '42703' || upsertErr.code === 'PGRST204' ||
-          /column .*workflow_pack_id.* schema cache/i.test(upsertErr.message || '');
+          /column .*(workflow_pack_id|stages_config).* (does not exist|schema cache)/i.test(upsertErr.message || '');
         if (isMissingColumn) {
-          const { workflow_pack_id: _drop, ...baseRecord } = dealRoomRecord;
+          const { workflow_pack_id: _drop, stages_config: _sc, ...baseRecord } = dealRoomRecord;
           const { error: retryErr } = await supabase.from('deal_rooms').upsert(baseRecord, { onConflict: 'property_id' });
           if (retryErr) throw retryErr;
-          console.log(`[demo] ✅ Deal room created (no workflow_pack_id col yet) — ${pid}`);
+          console.log(`[demo] ✅ Deal room created (no workflow_pack_id/stages_config col yet) — ${pid}`);
         } else {
           throw upsertErr;
         }
@@ -1247,6 +1253,10 @@ app.post('/api/webhook/stripe',
       const pending = pendingDealRooms.get(session.id) || {};
       pendingDealRooms.delete(session.id);
 
+      const stripePackId = pending.workflow_pack_id || DEAL_TYPE_TO_PACK_INDEX[pending.deal_type] || 'cre_acquisition';
+      // Seed stages_config from the pack's default stages so the owner can start editing immediately.
+      const stripeInitialStages = getPackStageConfig(stripePackId).stages.map(({ key, label }) => ({ key, label }));
+
       const dealRoomRecord = {
         stripe_session_id: session.id,
         plan,
@@ -1265,7 +1275,8 @@ app.post('/api/webhook/stripe',
         closing_date: pending.closing_date || '',
         first_name: pending.first_name || '',
         last_name: pending.last_name || '',
-        workflow_pack_id: pending.workflow_pack_id || DEAL_TYPE_TO_PACK_INDEX[pending.deal_type] || 'cre_acquisition',
+        workflow_pack_id: stripePackId,
+        stages_config: stripeInitialStages,
       };
 
       try {
@@ -1273,14 +1284,14 @@ app.post('/api/webhook/stripe',
         if (wErr) {
           // 42703 = raw Postgres "column does not exist"; PGRST204 = PostgREST
           // schema-cache miss for the column (what Supabase actually returns).
-          // Either way workflow_pack_id isn't migrated yet — retry without it.
+          // Either way workflow_pack_id/stages_config isn't migrated yet — retry without those columns.
           const isMissingColumn = wErr.code === '42703' || wErr.code === 'PGRST204' ||
-            /column .*workflow_pack_id.* schema cache/i.test(wErr.message || '');
+            /column .*(workflow_pack_id|stages_config).* (does not exist|schema cache)/i.test(wErr.message || '');
           if (isMissingColumn) {
-            const { workflow_pack_id: _drop, ...baseRecord } = dealRoomRecord;
+            const { workflow_pack_id: _drop, stages_config: _sc, ...baseRecord } = dealRoomRecord;
             const { error: retryErr } = await supabase.from('deal_rooms').upsert(baseRecord, { onConflict: 'property_id' });
             if (retryErr) throw retryErr;
-            console.log(`[webhook] ✅ Deal room saved (no workflow_pack_id col yet) — ${dealRoomRecord.property_id}`);
+            console.log(`[webhook] ✅ Deal room saved (no workflow_pack_id/stages_config col yet) — ${dealRoomRecord.property_id}`);
           } else {
             throw wErr;
           }
@@ -2494,37 +2505,57 @@ app.post('/api/public/deal-room/:propertyId/advance', async (req, res) => {
   try {
     const { data: room, error: fetchError } = await supabase
       .from('deal_rooms')
-      .select('workflow_pack_id, deal_stage')
+      .select('workflow_pack_id, deal_stage, stages_config')
       .eq('property_id', propertyId)
       .single();
     if (fetchError) throw fetchError;
     const packId = room?.workflow_pack_id || DEFAULT_PACK_ID;
-    const VALID = getPackStageKeys(packId);
+
+    // Derive the effective ordered stage list from custom config or pack defaults.
+    // This is the single source of truth for both validation and milestone detection.
+    const effectiveStages = Array.isArray(room?.stages_config) && room.stages_config.length >= 2
+      ? room.stages_config
+      : getPackStageConfig(packId).stages;
+    const VALID = effectiveStages.map(s => s.key);
     if (!VALID.includes(stage)) return res.status(400).json({ error: 'invalid stage' });
+
+    // Resolve the display label for the incoming stage key.
+    // Custom stages may have owner-supplied labels; pack stages use the JSON label.
+    const incomingStageObj = effectiveStages.find(s => s.key === stage);
+    const stageLabel = incomingStageObj?.label || stage;
+
+    // Position-based milestone detection — independent of fixed key names.
+    // last stage = "funded equivalent" (seal + VAP + close record)
+    // second-to-last stage = "closing equivalent" (preview VAP, no seal)
+    const lastStageKey        = effectiveStages[effectiveStages.length - 1].key;
+    const secondToLastStageKey = effectiveStages.length >= 2
+      ? effectiveStages[effectiveStages.length - 2].key
+      : null;
 
     const currentStage = room?.deal_stage;
     const stageChanging = currentStage !== stage;
 
     const { error } = await supabase.from('deal_rooms').update({ deal_stage: stage }).eq('property_id', propertyId);
     if (error) throw error;
-    logEvent(propertyId, 'stage_advanced', 'owner', null, `Deal advanced to ${getPackStageLabel(packId, stage)}`, { stage });
+    logEvent(propertyId, 'stage_advanced', 'owner', null, `Deal advanced to ${stageLabel}`, { stage, stageLabel });
     res.json({ ok: true, stage, unchanged: !stageChanging });
 
     // Only fire notifications when the stage actually changes — prevents duplicate
     // emails if the advance endpoint is called twice with the same stage.
     if (!stageChanging) return;
 
-    notifyStageAdvance(propertyId, stage).catch(() => {});
-    // When a deal reaches closing or funded — generate + persist the VAP and notify the owner.
-    // generateAndStoreVAP returns null on failure (it swallows errors internally), so we
+    notifyStageAdvance(propertyId, stage, stageLabel).catch(() => {});
+
+    // Position-based VAP triggers — fire on the last two stages regardless of key name.
+    // generateAndStoreVAP returns null on failure (swallows errors internally), so we
     // gate all downstream actions on a truthy return value to avoid sending a "ready" email
     // when the package actually failed to build.
-    if (stage === 'closing') {
+    if (stage === secondToLastStageKey) {
       generateAndStoreVAP(propertyId, { seal: false })
         .then(pkg => { if (pkg) return notifyVAPReady(propertyId, stage); })
         .catch(() => {});
     }
-    if (stage === 'funded') {
+    if (stage === lastStageKey) {
       generateAndStoreVAP(propertyId, { seal: true })
         .then(pkg => {
           if (!pkg) return;
@@ -2537,6 +2568,95 @@ app.post('/api/public/deal-room/:propertyId/advance', async (req, res) => {
     }
   } catch (err) {
     console.error('[advance]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── Custom stage configuration ───────────────────────────────────────────────
+// GET  /api/public/deal-room/:propertyId/stages
+//   Returns the room's custom stages_config (or null if using pack defaults).
+// PATCH /api/public/deal-room/:propertyId/stages
+//   Updates the ordered stage list.  Requires owner_write_token in body.
+//   Validates: ≥2 stages, each has a non-empty key and label, keys are unique.
+// ----------------------------------------------------------------------------
+
+app.get('/api/public/deal-room/:propertyId/stages', async (req, res) => {
+  const { propertyId } = req.params;
+  try {
+    const { data, error } = await supabase
+      .from('deal_rooms')
+      .select('stages_config, workflow_pack_id, deal_stage')
+      .eq('property_id', propertyId)
+      .maybeSingle();
+    if (error) throw error;
+    if (!data) return res.status(404).json({ error: 'room not found' });
+    res.json({
+      stages: data.stages_config || null,
+      currentStage: data.deal_stage || 'uploading',
+      packId: data.workflow_pack_id || DEFAULT_PACK_ID,
+    });
+  } catch (err) {
+    console.error('[stages GET]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.patch('/api/public/deal-room/:propertyId/stages', async (req, res) => {
+  const { propertyId } = req.params;
+  const { stages, ownerWriteToken } = req.body || {};
+
+  // Auth: require owner_write_token
+  if (!ownerWriteToken) return res.status(403).json({ error: 'owner_write_token required' });
+  const { data: room, error: authErr } = await supabase
+    .from('deal_rooms')
+    .select('owner_write_token, deal_stage')
+    .eq('property_id', propertyId)
+    .maybeSingle();
+  if (authErr) return res.status(500).json({ error: authErr.message });
+  if (!room) return res.status(404).json({ error: 'room not found' });
+  if (!room.owner_write_token || room.owner_write_token !== ownerWriteToken) {
+    return res.status(403).json({ error: 'invalid owner_write_token' });
+  }
+
+  // Validate stages array
+  if (!Array.isArray(stages) || stages.length < 2) {
+    return res.status(400).json({ error: 'stages must be an array with at least 2 items' });
+  }
+  for (const s of stages) {
+    if (!s.key || typeof s.key !== 'string' || !s.key.trim()) {
+      return res.status(400).json({ error: 'each stage must have a non-empty key' });
+    }
+    if (!s.label || typeof s.label !== 'string' || !s.label.trim()) {
+      return res.status(400).json({ error: 'each stage must have a non-empty label' });
+    }
+  }
+  const keys = stages.map(s => s.key);
+  if (new Set(keys).size !== keys.length) {
+    return res.status(400).json({ error: 'stage keys must be unique' });
+  }
+
+  // Sanitize: only persist key, label, icon, desc — no extra fields
+  const sanitized = stages.map(s => ({
+    key: s.key.trim(),
+    label: s.label.trim(),
+    ...(s.icon ? { icon: s.icon } : {}),
+    ...(s.desc ? { desc: s.desc.trim() } : {}),
+  }));
+
+  try {
+    const { error: updateErr } = await supabase
+      .from('deal_rooms')
+      .update({ stages_config: sanitized })
+      .eq('property_id', propertyId);
+    if (updateErr) throw updateErr;
+
+    logEvent(propertyId, 'stages_updated', 'owner', null, `Stage list updated (${sanitized.length} stages)`, {
+      stageKeys: sanitized.map(s => s.key),
+    });
+
+    res.json({ ok: true, stages: sanitized });
+  } catch (err) {
+    console.error('[stages PATCH]', err.message);
     res.status(500).json({ error: err.message });
   }
 });
@@ -4375,8 +4495,11 @@ async function ensureWorkflowPackIdColumn() {
     await pool.query(
       `ALTER TABLE deal_rooms ADD COLUMN IF NOT EXISTS owner_write_token TEXT`
     );
+    await pool.query(
+      `ALTER TABLE deal_rooms ADD COLUMN IF NOT EXISTS stages_config JSONB`
+    );
     await pool.end();
-    console.log('[startup] deal_rooms schema columns ready (workflow_pack_id, stated_revenue, stated_ebitda, checklist_items, owner_write_token)');
+    console.log('[startup] deal_rooms schema columns ready (workflow_pack_id, stated_revenue, stated_ebitda, checklist_items, owner_write_token, stages_config)');
   } catch (err) {
     // Non-fatal: Supabase service role may not allow DDL via pooler — fall back gracefully
     console.warn('[startup] workflow_pack_id column ensure skipped:', err.message);

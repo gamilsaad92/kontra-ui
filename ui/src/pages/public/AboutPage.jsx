@@ -69,7 +69,7 @@ export default function AboutPage() {
             <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-4">What a Kontra workspace does</p>
             <div className="space-y-3">
               {[
-                "One workspace per property — all parties, all documents",
+                "One workspace per transaction — all parties, all documents",
                 "Role-scoped access — each party sees only what's relevant",
                 "AI analyzes every document the moment it's uploaded",
                 "Investment Readiness Report generated automatically",

@@ -65,34 +65,6 @@ function Row({ label, value, mono }) {
   );
 }
 
-function TokenizationChecklist({ checks, score }) {
-  const color = score >= 75 ? "#16a34a" : score >= 50 ? "#d97706" : "#dc2626";
-  return (
-    <div className="mt-3 rounded-xl border border-gray-100 overflow-hidden">
-      <div className="flex items-center gap-3 px-4 py-3 bg-gray-50 border-b border-gray-100">
-        <ScoreRing score={score} size={44} />
-        <div>
-          <p className="text-xs font-bold text-gray-800">Tokenization Readiness</p>
-          <p className="text-[10px] text-gray-400">How prepared this asset is for future tokenization</p>
-        </div>
-        <span className="ml-auto text-sm font-black" style={{ color }}>{score}%</span>
-      </div>
-      <div className="divide-y divide-gray-50">
-        {checks.map((c, i) => (
-          <div key={i} className="flex items-start gap-2.5 px-4 py-2.5">
-            <span className="text-xs shrink-0 mt-0.5" style={{ color: c.pass ? "#16a34a" : "#d97706" }}>
-              {c.pass ? "✓" : "○"}
-            </span>
-            <div className="flex-1 min-w-0">
-              <p className="text-xs font-medium text-gray-700">{c.label}</p>
-              {!c.pass && c.note && <p className="text-[10px] text-gray-400 mt-0.5">{c.note}</p>}
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
 
 function formatTimestamp(ts) {
   if (!ts) return "—";
@@ -127,7 +99,6 @@ function AuditRow({ event }) {
 
 function ExportActions({ pkg, propertyId }) {
   const [exporting, setExporting] = useState(null);
-  const [showTokenPrep, setShowTokenPrep] = useState(false);
   const [showShare, setShowShare] = useState(false);
   const [shareEmail, setShareEmail] = useState("");
   const [shareRecipient, setShareRecipient] = useState("");
@@ -224,13 +195,6 @@ function ExportActions({ pkg, propertyId }) {
             : { background: "white", borderColor: "#e5e7eb", color: "#374151" }}>
           🔗 Share Package
         </button>
-        <button onClick={() => setShowTokenPrep(t => !t)}
-          className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold border transition"
-          style={showTokenPrep
-            ? { background: ACCENT + "10", borderColor: ACCENT + "40", color: ACCENT }
-            : { background: "white", borderColor: "#e5e7eb", color: "#374151" }}>
-          ⬡ Prepare for Tokenization
-        </button>
       </div>
 
       {/* ── Share Panel ──────────────────────────────────────────────────── */}
@@ -321,39 +285,6 @@ function ExportActions({ pkg, propertyId }) {
       )}
 
       {/* ── Tokenization Prep Panel ──────────────────────────────────────── */}
-      {showTokenPrep && (
-        <div className="rounded-xl border border-gray-200 p-4 bg-gray-50">
-          <p className="text-xs font-bold text-gray-800 mb-2">What tokenization readiness means for this asset</p>
-          <p className="text-xs text-gray-500 leading-relaxed mb-3">
-            When this asset is ready to be tokenized, the Verified Asset Package provides the structured
-            data that tokenization platforms (SPV administrators, transfer agents, or blockchain issuers)
-            need to represent fractional ownership on-chain.
-          </p>
-          <div className="space-y-1.5">
-            {[
-              { step: "1", label: "Identity & ownership structure", done: true },
-              { step: "2", label: "Legal entity documentation", done: pkg.structured_data?.tokenization_readiness?.checks?.[1]?.pass },
-              { step: "3", label: "Verified financial data", done: pkg.structured_data?.tokenization_readiness?.checks?.[2]?.pass },
-              { step: "4", label: "Transaction audit trail", done: (pkg.transaction_record?.audit_trail?.length || 0) > 0 },
-              { step: "5", label: "SPV / cap table creation", done: false, note: "Next step — engage an attorney" },
-              { step: "6", label: "Token issuance (on-chain)", done: false, note: "Requires tokenization platform" },
-            ].map(item => (
-              <div key={item.step} className="flex items-center gap-2.5 text-xs">
-                <span className="w-4 h-4 rounded-full flex items-center justify-center text-[9px] font-bold shrink-0"
-                  style={{ background: item.done ? "#16a34a" : "#e5e7eb", color: item.done ? "white" : "#9ca3af" }}>
-                  {item.done ? "✓" : item.step}
-                </span>
-                <span className={item.done ? "text-gray-700" : "text-gray-400"}>{item.label}</span>
-                {item.note && <span className="text-[10px] text-gray-400 italic">— {item.note}</span>}
-              </div>
-            ))}
-          </div>
-          <p className="text-[10px] text-gray-400 mt-3 pt-2 border-t border-gray-100">
-            Kontra does not issue tokens or provide tokenization infrastructure. This checklist shows
-            which preparation steps are complete and what remains before engaging a tokenization platform.
-          </p>
-        </div>
-      )}
     </div>
   );
 }
@@ -368,7 +299,7 @@ function PrintContent({ pkg }) {
 
   return (
     <div id="vap-print-content" style={{ display: "none" }}>
-      <h1>Verified Asset Package</h1>
+      <h1>Verified Transaction Package</h1>
       <div className="meta">
         {id.asset_name} · {id.asset_type} · {id.address}<br />
         Deal Amount: {id.deal_amount || "Not specified"} · Generated: {new Date().toLocaleDateString()}
@@ -491,14 +422,13 @@ export default function VerifiedAssetPackage({ propertyId }) {
   // ── Stage is not closing/funded — show a teaser ──────────────────────────
   if (!loading && pkg && !["closing", "funded"].includes(pkg.identity?.deal_stage)) {
     const completeness = pkg.verification?.completeness_score ?? 0;
-    const tokenScore = pkg.structured_data?.tokenization_readiness?.score ?? 0;
     return (
       <div className="mb-6 rounded-2xl border border-gray-200 bg-white overflow-hidden">
         <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
           <div className="flex items-center gap-2.5">
             <div className="w-8 h-8 rounded-lg flex items-center justify-center text-base" style={{ background: ACCENT + "12" }}>📦</div>
             <div>
-              <p className="text-sm font-bold text-gray-900">Verified Asset Package</p>
+              <p className="text-sm font-bold text-gray-900">Verified Transaction Package</p>
               <p className="text-[10px] text-gray-400">Generated at closing · Your deal's structured digital record</p>
             </div>
           </div>
@@ -507,11 +437,10 @@ export default function VerifiedAssetPackage({ propertyId }) {
           </span>
         </div>
         <div className="px-5 py-4">
-          <div className="grid grid-cols-3 gap-3 mb-3">
+          <div className="grid grid-cols-2 gap-3 mb-3">
             {[
               { label: "Document Completeness", value: `${completeness}%`, color: completeness >= 80 ? "#16a34a" : "#d97706" },
               { label: "Parties", value: `${pkg.identity?.ownership_structure?.length || 0}`, color: "#374151" },
-              { label: "Token Readiness", value: `${tokenScore}%`, color: tokenScore >= 75 ? "#16a34a" : "#d97706" },
             ].map(m => (
               <div key={m.label} className="bg-gray-50 rounded-xl p-3 text-center">
                 <p className="text-base font-black" style={{ color: m.color }}>{m.value}</p>
@@ -520,9 +449,9 @@ export default function VerifiedAssetPackage({ propertyId }) {
             ))}
           </div>
           <p className="text-xs text-gray-400">
-            When the deal reaches Closing, this panel generates your full Verified Asset Package —
-            including an AI verification summary, audit trail, structured data export, and tokenization
-            readiness score. It's available to download as a Closing Binder or JSON.
+            When the deal reaches Closing, this panel generates your full Verified Transaction Package —
+            including an AI verification summary, audit trail, structured data export, and party approvals.
+            It's available to download as a Closing Binder or JSON.
           </p>
         </div>
       </div>
@@ -551,7 +480,7 @@ export default function VerifiedAssetPackage({ propertyId }) {
       <div className="mb-6 rounded-2xl border border-gray-200 bg-white p-5">
         <div className="flex items-center gap-2.5 mb-2">
           <span className="text-lg">📦</span>
-          <p className="text-sm font-bold text-gray-900">Verified Asset Package</p>
+          <p className="text-sm font-bold text-gray-900">Verified Transaction Package</p>
         </div>
         <p className="text-xs text-red-500 mb-3">{error || "Could not load package"}</p>
         <button onClick={() => fetchPackage(true)}
@@ -578,7 +507,7 @@ export default function VerifiedAssetPackage({ propertyId }) {
             </div>
             <div>
               <div className="flex items-center gap-2 flex-wrap">
-                <p className="text-base font-bold text-gray-900">Verified Asset Package</p>
+                <p className="text-base font-bold text-gray-900">Verified Transaction Package</p>
                 <StatusBadge status={v.status} />
               </div>
               <p className="text-xs text-gray-500 mt-0.5">{v.headline}</p>
@@ -713,12 +642,6 @@ export default function VerifiedAssetPackage({ propertyId }) {
                   value={Array.isArray(v) ? v.join(", ") : String(v)} />
               ))}
             </div>
-          )}
-          {sd.tokenization_readiness && (
-            <TokenizationChecklist
-              score={sd.tokenization_readiness.score}
-              checks={sd.tokenization_readiness.checks || []}
-            />
           )}
         </Section>
 

@@ -64,34 +64,6 @@ function Row({ label, value, mono }) {
   );
 }
 
-function TokenizationChecklist({ checks, score }) {
-  const color = score >= 75 ? "#16a34a" : score >= 50 ? "#d97706" : "#dc2626";
-  return (
-    <div className="mt-3 rounded-xl border border-gray-100 overflow-hidden">
-      <div className="flex items-center gap-3 px-4 py-3 bg-gray-50 border-b border-gray-100">
-        <ScoreRing score={score} size={44} />
-        <div>
-          <p className="text-xs font-bold text-gray-800">Tokenization Readiness</p>
-          <p className="text-[10px] text-gray-400">How prepared this asset is for future tokenization</p>
-        </div>
-        <span className="ml-auto text-sm font-black" style={{ color }}>{score}%</span>
-      </div>
-      <div className="divide-y divide-gray-50">
-        {checks.map((c, i) => (
-          <div key={i} className="flex items-start gap-2.5 px-4 py-2.5">
-            <span className="text-xs shrink-0 mt-0.5" style={{ color: c.pass ? "#16a34a" : "#d97706" }}>
-              {c.pass ? "✓" : "○"}
-            </span>
-            <div className="flex-1 min-w-0">
-              <p className="text-xs font-medium text-gray-700">{c.label}</p>
-              {!c.pass && c.note && <p className="text-[10px] text-gray-400 mt-0.5">{c.note}</p>}
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
 
 function formatTimestamp(ts) {
   if (!ts) return "—";
@@ -150,7 +122,7 @@ export default function SharedVAPPage() {
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="flex flex-col items-center gap-3">
           <div className="w-10 h-10 rounded-xl bg-gray-100 animate-pulse flex items-center justify-center text-xl">📦</div>
-          <p className="text-sm text-gray-400">Loading Verified Asset Package…</p>
+          <p className="text-sm text-gray-400">Loading Verified Transaction Package…</p>
         </div>
       </div>
     );
@@ -163,7 +135,7 @@ export default function SharedVAPPage() {
           <p className="text-3xl mb-3">🔒</p>
           <p className="text-base font-bold text-gray-900 mb-2">Link Unavailable</p>
           <p className="text-sm text-gray-500 mb-1">{error || "This link is invalid or has expired."}</p>
-          <p className="text-xs text-gray-400">Verified Asset Package links are valid for 30 days. Contact the deal owner for a new link.</p>
+          <p className="text-xs text-gray-400">Verified Transaction Package links are valid for 30 days. Contact the deal owner for a new link.</p>
         </div>
       </div>
     );
@@ -199,7 +171,7 @@ export default function SharedVAPPage() {
                   style={{ background: ACCENT + "15" }}>📦</div>
                 <div>
                   <div className="flex items-center gap-2 flex-wrap">
-                    <p className="text-base font-bold text-gray-900">Verified Asset Package</p>
+                    <p className="text-base font-bold text-gray-900">Verified Transaction Package</p>
                     <StatusBadge status={v.status} />
                   </div>
                   <p className="text-xs text-gray-500 mt-0.5">{v.headline}</p>
@@ -335,12 +307,6 @@ export default function SharedVAPPage() {
                   ))}
                 </div>
               )}
-              {sd.tokenization_readiness && (
-                <TokenizationChecklist
-                  score={sd.tokenization_readiness.score}
-                  checks={sd.tokenization_readiness.checks || []}
-                />
-              )}
             </Section>
 
             <p className="text-[10px] text-gray-400 mt-4 pb-2 border-t border-gray-100 pt-2">
@@ -359,7 +325,7 @@ export default function SharedVAPPage() {
             Powered by Kontra
           </a>
           <p className="text-[11px] text-gray-400 text-center max-w-xs">
-            Kontra is a deal management platform for commercial real estate and business acquisitions.
+            Kontra is a transaction workspace platform for private transactions of all types.
             This package was generated and verified using Kontra AI.
           </p>
           <a href="https://kontraplatform.com" target="_blank" rel="noopener noreferrer"

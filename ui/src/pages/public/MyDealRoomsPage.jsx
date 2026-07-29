@@ -241,7 +241,7 @@ function AccessLayout({ children }) {
         <Link to="/create-deal-room"
           className="text-xs font-semibold px-3.5 py-2 rounded-lg text-white hover:opacity-90 transition"
           style={{ background: "#800020" }}>
-          Create Deal Room →
+          Create Workspace →
         </Link>
       </header>
       <div className="flex flex-1 overflow-hidden">
@@ -250,10 +250,10 @@ function AccessLayout({ children }) {
           style={{ background: "#0f172a" }}>
           <div>
             <p className="text-xs font-bold uppercase tracking-widest mb-8" style={{ color: "#800020" }}>
-              Deal Room Infrastructure
+              Transaction Workspace
             </p>
             <h2 className="text-3xl font-bold text-white leading-snug mb-6">
-              One deal room.<br />Every party.<br />No email chains.
+              One workspace.<br />Every party.<br />No email chains.
             </h2>
             <div className="space-y-3">
               {[
@@ -274,7 +274,7 @@ function AccessLayout({ children }) {
               ))}
             </div>
           </div>
-          <p className="text-xs text-gray-600">Encrypted · No password required · $499 per deal room</p>
+          <p className="text-xs text-gray-600">Encrypted · No password required · $499 per workspace</p>
         </div>
 
         {/* Right panel — form */}
@@ -390,7 +390,7 @@ export default function MyDealRoomsPage() {
     <AccessLayout>
       <div className="w-full max-w-sm">
         <div className="mb-8">
-          <h1 className="text-2xl font-extrabold text-gray-900 mb-2">Access Your Deal Rooms</h1>
+          <h1 className="text-2xl font-extrabold text-gray-900 mb-2">Access Your Workspaces</h1>
           <p className="text-sm text-gray-500 leading-relaxed">
             Enter your email address — we'll send a 6-digit code to verify it's you.
             No password. No account creation.
@@ -412,7 +412,7 @@ export default function MyDealRoomsPage() {
 
         <div className="mt-6 pt-6 border-t border-gray-100">
           <p className="text-xs text-center text-gray-400">
-            Don't have a deal room yet?{" "}
+            Don't have a workspace yet?{" "}
             <Link to="/create-deal-room" className="font-semibold" style={{ color: "#800020" }}>
               Create one for $499 →
             </Link>
@@ -604,7 +604,7 @@ export default function MyDealRoomsPage() {
             </button>
             <Link to="/create-deal-room"
               className="text-xs font-medium text-gray-500 hover:text-gray-700 transition">
-              + New Deal Room
+              + New Workspace
             </Link>
           </div>
           <p className="text-[10px] text-gray-400">

@@ -51,7 +51,8 @@ const FALLBACK_LOAN_APPLICATIONS = [
 ];
 
 const piiSecret = process.env.PII_ENCRYPTION_KEY;
-const PII_KEY = crypto.createHash('sha256').update(piiSecret).digest();
+// Guard: only derive the key when the secret is present; callers check PII_KEY before use
+const PII_KEY = piiSecret ? crypto.createHash('sha256').update(piiSecret).digest() : null;
 
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
 const ALLOWED_DOC_TYPES = [
@@ -156,6 +157,7 @@ function computeAiScorecard(baseScore, credit, fraud, amount, autoFields = {}) {
 }
 
 function encrypt(text) {
+  if (!PII_KEY) throw new Error('PII_ENCRYPTION_KEY is not set — encryption unavailable');
   const iv = crypto.randomBytes(16);
   const cipher = crypto.createCipheriv('aes-256-cbc', PII_KEY, iv);
   const encrypted = Buffer.concat([cipher.update(text, 'utf8'), cipher.final()]);
