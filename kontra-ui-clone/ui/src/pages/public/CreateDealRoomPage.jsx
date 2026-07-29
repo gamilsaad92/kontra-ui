@@ -15,7 +15,7 @@ function slugKey(s) {
 function configFromPack(pack) {
   if (!pack) return { roles: [], documents: [], stages: [] };
   return {
-    roles: (pack.roles || []).map(r => ({
+    roles: (pack.roles || []).map((r, i) => ({
       key: r.key || slugKey(r.label),
       label: r.label || "",
       icon: r.icon || "👤",
@@ -23,12 +23,15 @@ function configFromPack(pack) {
       required: !!r.required,
       needsDocs: !!r.needsDocs,
       invitable: r.invitable !== false,
+      // Preserve existing canManage; if none set, first role is coordinator
+      canManage: r.canManage !== undefined ? !!r.canManage : i === 0,
     })),
     documents: (pack.documentSchema || pack.documents || []).map(d => ({
       id: d.id || slugKey(d.label),
       label: d.label || "",
       required: !!d.required,
       ai: !!d.ai,
+      // Store as assignedRole (UI field); backend normalises to assignedTo on save
       assignedRole: Array.isArray(d.assignedTo) ? d.assignedTo[0] : (d.assignedRole || ""),
     })),
     stages: (pack.stages || []).map(s => ({
@@ -244,14 +247,16 @@ export default function CreateDealRoomPage() {
         // Pre-fill workspace name from AI suggestion
         if (data.name && !form.workspaceName) set("workspaceName", data.name);
         setCustomConfig({
-          roles: (data.roles || []).map(r => ({
+          roles: (data.roles || []).map((r, i) => ({
             key: r.key || slugKey(r.label),
             label: r.label || "",
-            icon: r.icon || ICON_CHOICES[0],
-            color: r.color || COLOR_CHOICES[0],
+            icon: r.icon || ICON_CHOICES[i % ICON_CHOICES.length],
+            color: r.color || COLOR_CHOICES[i % COLOR_CHOICES.length],
             required: !!r.required,
             needsDocs: r.needsDocs !== false,
             invitable: r.invitable !== false,
+            // First role is always the workspace coordinator
+            canManage: i === 0 ? true : !!r.canManage,
           })),
           documents: (data.documents || []).map(d => ({
             id: d.id || slugKey(d.label),

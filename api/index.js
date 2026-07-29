@@ -996,9 +996,20 @@ async function saveCustomPackForWorkspace(propertyId, propertyName, customConfig
 
   // For blank workspaces the config arrays are empty — supply minimal defaults
   // so the room renders with a real (if sparse) pack instead of CRE defaults.
-  const roles = Array.isArray(customConfig.roles) && customConfig.roles.length > 0
+  const rawRoles = Array.isArray(customConfig.roles) && customConfig.roles.length > 0
     ? customConfig.roles
-    : [{ key: 'owner', label: 'Workspace Owner', required: true, needsDocs: false, invitable: false, icon: '🔑', color: '#800020', canManage: true }];
+    : [];
+
+  // Normalise roles: preserve canManage where present; ensure first role is always
+  // the coordinator (canManage: true) so stage advancement / checklist management works.
+  const hasCoordinator = rawRoles.some(r => r.canManage);
+  const roles = rawRoles.length > 0
+    ? rawRoles.map((r, i) => ({
+        ...r,
+        canManage: r.canManage !== undefined ? !!r.canManage : (!hasCoordinator && i === 0),
+      }))
+    : [{ key: 'owner', label: 'Workspace Owner', required: true, needsDocs: false,
+         invitable: false, icon: '🔑', color: '#800020', canManage: true }];
 
   const stages = Array.isArray(customConfig.stages) && customConfig.stages.length >= 2
     ? customConfig.stages
@@ -1008,7 +1019,16 @@ async function saveCustomPackForWorkspace(propertyId, propertyName, customConfig
         { key: 'complete', label: 'Complete' },
       ];
 
-  const documents = Array.isArray(customConfig.documents) ? customConfig.documents : [];
+  // Normalise documents: convert frontend's `assignedRole` string → `assignedTo` array
+  // expected by runtime checklist/coordination panels.
+  const documents = (Array.isArray(customConfig.documents) ? customConfig.documents : []).map(d => {
+    const { assignedRole, ...rest } = d;
+    return {
+      ...rest,
+      assignedTo: Array.isArray(d.assignedTo) ? d.assignedTo
+        : (assignedRole ? [assignedRole] : []),
+    };
+  });
 
   try {
     const { error } = await supabase.from('custom_workflow_packs').insert({
