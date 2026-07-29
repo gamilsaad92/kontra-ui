@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { getWorkflowPack, DEFAULT_PACK_ID } from '../../lib/workflowPacks';
 
 const API_BASE = import.meta.env.VITE_API_BASE || '';
@@ -23,12 +23,247 @@ function StatusBadge({ status }) {
   );
 }
 
+// Default icon/desc for known stage keys (cosmetic only)
+const STAGE_META_DEFAULTS = {
+  uploading:    { icon: '📤', desc: 'Parties submitting documents' },
+  under_review: { icon: '🔍', desc: 'Reviewing submissions' },
+  approved:     { icon: '✅', desc: 'Deal approved' },
+  closing:      { icon: '✍️', desc: 'Signing & funding in process' },
+  funded:       { icon: '🏦', desc: 'Deal closed' },
+};
+const DEFAULT_STAGE_ICON = '📌';
+
+function enrichStage(s) {
+  const meta = STAGE_META_DEFAULTS[s.key] || {};
+  return {
+    icon: s.icon || meta.icon || DEFAULT_STAGE_ICON,
+    desc: s.desc || meta.desc || s.label,
+    ...s,
+  };
+}
+
+// Suggested icons for stage picker in ManageStagesPanel
+const STAGE_ICONS = ['📤','🔍','✅','✍️','🏦','📌','📋','🤝','💬','📝','🔒','⏳','🚀','🎯','💰','🔑'];
+
+// ── Manage Stages Panel ───────────────────────────────────────────────────────
+function ManageStagesPanel({ stages, currentStageKey, propertyId, onSave, onCancel }) {
+  const [items, setItems] = useState(() => stages.map((s, i) => ({ ...enrichStage(s), _id: String(i) })));
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const [editingIdx, setEditingIdx] = useState(null);
+  const [showIconPickerFor, setShowIconPickerFor] = useState(null);
+  const dragIdx = useRef(null);
+  const dragOverIdx = useRef(null);
+
+  function handleRename(idx, label) {
+    setItems(prev => prev.map((s, i) => i === idx ? { ...s, label } : s));
+  }
+
+  function handleIconChange(idx, icon) {
+    setItems(prev => prev.map((s, i) => i === idx ? { ...s, icon } : s));
+    setShowIconPickerFor(null);
+  }
+
+  function handleDelete(idx) {
+    if (items.length <= 2) {
+      setError('A workspace needs at least 2 stages.');
+      return;
+    }
+    const toDelete = items[idx];
+    if (toDelete.key === currentStageKey) {
+      setError(`"${toDelete.label}" is the active stage — advance the workspace first.`);
+      return;
+    }
+    setError('');
+    setItems(prev => prev.filter((_, i) => i !== idx));
+  }
+
+  function handleAdd() {
+    const ts = Date.now();
+    setItems(prev => [...prev, {
+      key: `stage_${ts}`,
+      label: 'New Stage',
+      icon: DEFAULT_STAGE_ICON,
+      desc: '',
+      _id: String(ts),
+    }]);
+    // Auto-focus the new item's label field after render
+    setTimeout(() => setEditingIdx(items.length), 0);
+  }
+
+  // ── HTML5 drag-and-drop ───────────────────────────────────────────────────
+  function handleDragStart(e, idx) {
+    dragIdx.current = idx;
+    e.dataTransfer.effectAllowed = 'move';
+    e.currentTarget.style.opacity = '0.5';
+  }
+
+  function handleDragEnd(e) {
+    e.currentTarget.style.opacity = '1';
+    dragIdx.current = null;
+    dragOverIdx.current = null;
+  }
+
+  function handleDragOver(e, idx) {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    if (dragIdx.current === null || dragIdx.current === idx) return;
+    if (dragOverIdx.current === idx) return;
+    dragOverIdx.current = idx;
+    setItems(prev => {
+      const next = [...prev];
+      const [moved] = next.splice(dragIdx.current, 1);
+      next.splice(idx, 0, moved);
+      dragIdx.current = idx;
+      return next;
+    });
+  }
+
+  function handleDrop(e) {
+    e.preventDefault();
+  }
+
+  async function handleSave() {
+    const trimmed = items.map(s => ({ ...s, label: s.label.trim() }));
+    const bad = trimmed.find(s => !s.label);
+    if (bad) { setError('All stage names must be non-empty.'); return; }
+    if (trimmed.length < 2) { setError('At least 2 stages are required.'); return; }
+    setError('');
+    setSaving(true);
+    let ownerToken = '';
+    try { ownerToken = localStorage.getItem(`kontra_owner_token_${propertyId}`) || ''; } catch {}
+    try {
+      const res = await fetch(`${API_BASE}/api/public/deal-room/${propertyId}/stages`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ stages: trimmed, ownerWriteToken: ownerToken }),
+      });
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        throw new Error(j.error || `Save failed (${res.status})`);
+      }
+      const { stages: saved } = await res.json();
+      onSave(saved);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="border-t border-gray-100 bg-gray-50 px-6 py-4">
+      <div className="flex items-center justify-between mb-3">
+        <p className="text-xs font-bold text-gray-800">Manage Stages</p>
+        <div className="flex gap-2">
+          <button onClick={onCancel}
+            className="px-3 py-1.5 rounded-lg text-xs text-gray-500 hover:text-gray-700 transition border border-gray-200 bg-white">
+            Cancel
+          </button>
+          <button onClick={handleSave} disabled={saving}
+            className="px-3 py-1.5 rounded-lg text-xs font-bold text-white bg-[#800020] hover:opacity-90 transition disabled:opacity-50">
+            {saving ? 'Saving…' : 'Save Stages'}
+          </button>
+        </div>
+      </div>
+
+      {error && (
+        <p className="text-[10px] text-red-500 bg-red-50 border border-red-100 rounded-lg px-3 py-1.5 mb-3">{error}</p>
+      )}
+
+      <div className="space-y-1.5 mb-3">
+        {items.map((stage, idx) => {
+          const isActive = stage.key === currentStageKey;
+          return (
+            <div
+              key={stage._id}
+              draggable
+              onDragStart={e => handleDragStart(e, idx)}
+              onDragEnd={handleDragEnd}
+              onDragOver={e => handleDragOver(e, idx)}
+              onDrop={handleDrop}
+              className={`flex items-center gap-2 bg-white rounded-xl border px-3 py-2 group transition cursor-grab active:cursor-grabbing
+                ${isActive ? 'border-[#800020]/30 bg-[#800020]/5' : 'border-gray-200 hover:border-gray-300'}`}
+            >
+              {/* Drag handle */}
+              <span className="text-gray-300 group-hover:text-gray-500 transition text-sm select-none shrink-0 cursor-grab">⠿</span>
+
+              {/* Icon picker */}
+              <div className="relative shrink-0">
+                <button
+                  onClick={() => setShowIconPickerFor(showIconPickerFor === idx ? null : idx)}
+                  className="text-base hover:scale-110 transition w-6 h-6 flex items-center justify-center rounded focus:outline-none"
+                  title="Change icon"
+                >
+                  {stage.icon}
+                </button>
+                {showIconPickerFor === idx && (
+                  <div className="absolute left-0 top-8 z-10 bg-white border border-gray-200 rounded-xl shadow-lg p-2 w-40 grid grid-cols-8 gap-1">
+                    {STAGE_ICONS.map(ic => (
+                      <button key={ic} onClick={() => handleIconChange(idx, ic)}
+                        className={`text-base hover:scale-110 transition rounded ${stage.icon === ic ? 'bg-[#800020]/10' : ''}`}>
+                        {ic}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Label */}
+              <div className="flex-1 min-w-0">
+                {editingIdx === idx ? (
+                  <input
+                    autoFocus
+                    value={stage.label}
+                    onChange={e => handleRename(idx, e.target.value)}
+                    onBlur={() => setEditingIdx(null)}
+                    onKeyDown={e => { if (e.key === 'Enter') setEditingIdx(null); }}
+                    className="w-full text-xs font-medium text-gray-800 bg-transparent border-b border-[#800020]/40 focus:outline-none py-0.5"
+                  />
+                ) : (
+                  <button
+                    onClick={() => setEditingIdx(idx)}
+                    className="text-xs font-medium text-gray-800 hover:text-[#800020] transition text-left w-full truncate"
+                    title="Click to rename"
+                  >
+                    {stage.label}
+                    {isActive && <span className="ml-1.5 text-[9px] font-bold text-[#800020] bg-[#800020]/10 px-1 rounded">active</span>}
+                  </button>
+                )}
+              </div>
+
+              {/* Delete */}
+              <button
+                onClick={() => handleDelete(idx)}
+                disabled={items.length <= 2 || isActive}
+                className="text-gray-300 hover:text-red-500 transition text-sm shrink-0 disabled:opacity-30 disabled:cursor-not-allowed"
+                title={isActive ? 'Active stage — cannot delete' : items.length <= 2 ? 'Need at least 2 stages' : 'Delete stage'}
+              >
+                ×
+              </button>
+            </div>
+          );
+        })}
+      </div>
+
+      <button
+        onClick={handleAdd}
+        className="w-full py-2 rounded-xl border-2 border-dashed border-gray-200 text-xs text-gray-400 hover:text-gray-600 hover:border-gray-300 transition"
+      >
+        + Add Stage
+      </button>
+
+      <p className="text-[9px] text-gray-400 mt-2">Drag to reorder · Click label to rename · Click icon to change</p>
+    </div>
+  );
+}
+
+// ── Main DealCoordinationPanel ────────────────────────────────────────────────
 export default function DealCoordinationPanel({ propertyId, role, packId = DEFAULT_PACK_ID, propertyType }) {
   const workflowPack = getWorkflowPack(packId);
-  const STAGES = workflowPack.stages;
-  const NEXT_STAGE = workflowPack.nextStage;
-  const ADVANCE_LABEL = workflowPack.advanceLabel;
+  const PACK_STAGES = workflowPack.stages;
   const ROLE_META = Object.fromEntries(workflowPack.roles.map(r => [r.key, r]));
+
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -40,6 +275,9 @@ export default function DealCoordinationPanel({ propertyId, role, packId = DEFAU
   const [updatingStatus, setUpdatingStatus] = useState(null);
   const [statusNote, setStatusNote] = useState('');
   const [showStatusFor, setShowStatusFor] = useState(null);
+  // Custom stages state
+  const [customStages, setCustomStages] = useState(null); // null = use pack default
+  const [showManage, setShowManage] = useState(false);
 
   const fetchCoordination = useCallback(async () => {
     try {
@@ -58,11 +296,36 @@ export default function DealCoordinationPanel({ propertyId, role, packId = DEFAU
     }
   }, [propertyId, role]);
 
+  const fetchStages = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/public/deal-room/${propertyId}/stages`);
+      if (!res.ok) return;
+      const json = await res.json();
+      if (Array.isArray(json.stages) && json.stages.length >= 2) {
+        setCustomStages(json.stages.map(enrichStage));
+      }
+    } catch {
+      // silent — fall back to pack stages
+    }
+  }, [propertyId]);
+
   useEffect(() => {
     fetchCoordination();
+    fetchStages();
     const interval = setInterval(fetchCoordination, 20000);
     return () => clearInterval(interval);
-  }, [fetchCoordination]);
+  }, [fetchCoordination, fetchStages]);
+
+  // Effective stages: custom (if saved) or pack default
+  const effectiveStages = customStages || PACK_STAGES;
+
+  // Build nextStage and advanceLabel dynamically from the ordered stage list
+  const effectiveNextStage = Object.fromEntries(
+    effectiveStages.slice(0, -1).map((s, i) => [s.key, effectiveStages[i + 1].key])
+  );
+  const effectiveAdvanceLabel = Object.fromEntries(
+    effectiveStages.slice(0, -1).map((s, i) => [s.key, `Move to ${effectiveStages[i + 1].label}`])
+  );
 
   async function handleSubmit() {
     setSubmitting(true);
@@ -83,7 +346,7 @@ export default function DealCoordinationPanel({ propertyId, role, packId = DEFAU
   }
 
   async function handleAdvance() {
-    const nextStage = NEXT_STAGE[data?.stage];
+    const nextStage = effectiveNextStage[data?.stage];
     if (!nextStage) return;
     setAdvancing(true);
     try {
@@ -120,12 +383,13 @@ export default function DealCoordinationPanel({ propertyId, role, packId = DEFAU
   if (!data) return null;
 
   const stage = data.stage || 'uploading';
-  const stageIdx = STAGES.findIndex(s => s.key === stage);
+  const stageIdx = effectiveStages.findIndex(s => s.key === stage);
   const submissions = data.submissions || [];
   const docsByRole = data.docsByRole || {};
-  const isFunded = stage === 'funded';
+  // The last stage in the effective list acts as "funded" (deal complete)
+  const isLastStage = stageIdx === effectiveStages.length - 1 && stageIdx >= 0;
   const canManage = !!ROLE_META[role]?.canManage;
-  const canAdvance = canManage && !isFunded;
+  const canAdvance = canManage && !isLastStage;
   const canSetStatus = canManage;
   const submittedRoles = new Set(submissions.map(s => s.role));
   const requiredRoles = Object.entries(ROLE_META).filter(([, m]) => m.required).map(([k]) => k);
@@ -146,42 +410,62 @@ export default function DealCoordinationPanel({ propertyId, role, packId = DEFAU
     }
   }
 
+  const currentStageData = stageIdx >= 0 ? effectiveStages[stageIdx] : effectiveStages[0];
+
   return (
     <div className="mb-6 rounded-2xl border border-gray-200 bg-white overflow-hidden">
       {/* Stage tracker header */}
       <div className="px-6 pt-5 pb-4 border-b border-gray-100">
         <div className="flex items-center justify-between mb-4">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-0.5">{packId === 'cre_acquisition' ? 'Deal Progress' : 'Transaction Progress'}</p>
+            <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-0.5">
+              {packId === 'cre_acquisition' ? 'Deal Progress' : 'Transaction Progress'}
+            </p>
             <h3 className="text-base font-bold text-gray-900">
-              {STAGES[stageIdx]?.icon} {STAGES[stageIdx]?.label}
-              <span className="ml-2 text-sm font-normal text-gray-400">— {STAGES[stageIdx]?.desc}</span>
+              {currentStageData?.icon} {currentStageData?.label}
+              <span className="ml-2 text-sm font-normal text-gray-400">— {currentStageData?.desc}</span>
             </h3>
           </div>
-          {canAdvance && !isFunded && (
-            <div className="flex flex-col items-end gap-1">
+          <div className="flex items-center gap-2">
+            {/* Manage stages gear — visible to coordinators only */}
+            {canManage && (
               <button
-                onClick={handleAdvance}
-                disabled={advancing}
-                className="px-4 py-2 rounded-xl text-xs font-bold text-white bg-[#800020] transition hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed"
+                onClick={() => setShowManage(prev => !prev)}
+                title="Manage stages"
+                className={`w-7 h-7 rounded-lg flex items-center justify-center text-sm transition
+                  ${showManage ? 'bg-[#800020]/10 text-[#800020]' : 'bg-gray-100 text-gray-400 hover:bg-gray-200 hover:text-gray-600'}`}
               >
-                {advancing ? 'Updating…' : ADVANCE_LABEL[stage] + ' →'}
+                ⚙
               </button>
-              {stage === 'uploading' && !allRequiredIn && (
-                <p className="text-[9px] text-amber-500 font-medium text-right">
-                  ⚠ {requiredRoles.filter(r => !submittedRoles.has(r)).length} required {requiredRoles.filter(r => !submittedRoles.has(r)).length === 1 ? 'party' : 'parties'} pending
-                </p>
-              )}
-            </div>
-          )}
-          {isFunded && (
-            <span className="px-3 py-1.5 rounded-xl text-xs font-bold text-green-700 bg-green-100">🏦 Deal Funded</span>
-          )}
+            )}
+            {canAdvance && !isLastStage && (
+              <div className="flex flex-col items-end gap-1">
+                <button
+                  onClick={handleAdvance}
+                  disabled={advancing}
+                  className="px-4 py-2 rounded-xl text-xs font-bold text-white bg-[#800020] transition hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  {advancing ? 'Updating…' : (effectiveAdvanceLabel[stage] || 'Advance') + ' →'}
+                </button>
+                {stage === effectiveStages[0]?.key && !allRequiredIn && (
+                  <p className="text-[9px] text-amber-500 font-medium text-right">
+                    ⚠ {requiredRoles.filter(r => !submittedRoles.has(r)).length} required{' '}
+                    {requiredRoles.filter(r => !submittedRoles.has(r)).length === 1 ? 'party' : 'parties'} pending
+                  </p>
+                )}
+              </div>
+            )}
+            {isLastStage && (
+              <span className="px-3 py-1.5 rounded-xl text-xs font-bold text-green-700 bg-green-100">
+                🏦 {currentStageData?.label}
+              </span>
+            )}
+          </div>
         </div>
 
-        {/* Step bar — pack stages + synthetic "Verified Transaction Package" final step */}
+        {/* Step bar — effective stages + synthetic "Verified ✓" final step */}
         <div className="flex items-center gap-0">
-          {STAGES.map((s, i) => {
+          {effectiveStages.map((s, i) => {
             const done = i < stageIdx;
             const active = i === stageIdx;
             return (
@@ -204,16 +488,31 @@ export default function DealCoordinationPanel({ propertyId, role, packId = DEFAU
           {/* Verified Transaction Package — synthetic final step after all pack stages */}
           <div className="flex flex-col items-center flex-1">
             <div className={`w-7 h-7 rounded-full flex items-center justify-center text-sm font-bold mb-1 transition-all
-              ${isFunded ? 'bg-[#800020] text-white' : 'bg-gray-100 text-gray-400'}`}>
-              {isFunded ? '✓' : '📦'}
+              ${isLastStage ? 'bg-[#800020] text-white' : 'bg-gray-100 text-gray-400'}`}>
+              {isLastStage ? '✓' : '📦'}
             </div>
             <p className={`text-[9px] font-semibold text-center leading-tight
-              ${isFunded ? 'text-gray-500' : 'text-gray-300'}`}>
+              ${isLastStage ? 'text-gray-500' : 'text-gray-300'}`}>
               Verified ✓
             </p>
           </div>
         </div>
       </div>
+
+      {/* Manage Stages panel (inline, coordinator only) */}
+      {showManage && canManage && (
+        <ManageStagesPanel
+          stages={effectiveStages}
+          currentStageKey={stage}
+          propertyId={propertyId}
+          onSave={saved => {
+            const enriched = saved.map(enrichStage);
+            setCustomStages(enriched);
+            setShowManage(false);
+          }}
+          onCancel={() => setShowManage(false)}
+        />
+      )}
 
       {/* Party status grid */}
       <div className="px-6 py-4">
@@ -332,7 +631,7 @@ export default function DealCoordinationPanel({ propertyId, role, packId = DEFAU
       </div>
 
       {/* Submit CTA */}
-      {!submitted && stage !== 'funded' && (
+      {!submitted && !isLastStage && (
         <div className="px-6 py-4 border-t border-gray-100 bg-gray-50">
           {showNamePrompt ? (
             <div className="flex flex-col gap-2.5 max-w-sm">

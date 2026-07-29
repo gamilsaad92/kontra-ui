@@ -293,18 +293,24 @@ async function notifyLender(propertyId, uploaderRole, section, summary) {
 }
 
 // ── Stage advance email — all submitted parties + owner ──────────────────────
-async function notifyStageAdvance(propertyId, stage) {
+// resolvedLabel is optional — pass it when the caller already knows the custom
+// stage label so we avoid a second DB lookup for stages_config here.
+async function notifyStageAdvance(propertyId, stage, resolvedLabel) {
   const RESEND_KEY = process.env.RESEND_API_KEY;
   if (!RESEND_KEY) return;
   try {
     const [roomRes, subsRes] = await Promise.all([
-      supabase.from('deal_rooms').select('customer_email, property_name, first_name, workflow_pack_id').eq('property_id', propertyId).single(),
+      supabase.from('deal_rooms').select('customer_email, property_name, first_name, workflow_pack_id, stages_config').eq('property_id', propertyId).single(),
       supabase.from('party_submissions').select('email, name, role').eq('property_id', propertyId),
     ]);
     const room = roomRes.data;
     const propName = room?.property_name || propertyId;
     const packId = room?.workflow_pack_id || DEFAULT_PACK_ID;
-    const stageLabel = getPackStageLabel(packId, stage);
+    // Prefer caller-supplied label, then custom stages_config lookup, then pack default
+    const customMatch = Array.isArray(room?.stages_config)
+      ? room.stages_config.find(s => s.key === stage)
+      : null;
+    const stageLabel = resolvedLabel || customMatch?.label || getPackStageLabel(packId, stage);
     const makeHtml = (toName, toRole) => `<div style="font-family:sans-serif;max-width:520px;margin:auto;padding:24px">
       <h2 style="color:#800020;margin-bottom:4px">Deal stage updated</h2>
       <p style="color:#555">Hi ${toName || 'there'},</p>
