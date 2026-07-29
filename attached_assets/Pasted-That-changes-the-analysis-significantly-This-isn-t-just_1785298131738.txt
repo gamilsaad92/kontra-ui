@@ -1,0 +1,93 @@
+That changes the analysis significantly.
+
+This isn't just a branding decision—it's a **conflict-of-interest and go-to-market** decision.
+
+If your concern is:
+
+> "I don't want Kontra to look like it competes directly with Regions while I'm still employed there,"
+
+then **narrowing Kontra to CRE acquisitions may actually increase that risk**, not decrease it.
+
+A platform marketed as:
+
+> "AI transaction workspace for commercial real estate acquisitions"
+
+overlaps much more obviously with the ecosystem your employer operates in than a broader platform that serves many kinds of private transactions.
+
+So there are two separate questions:
+
+### While you're at Regions
+
+Your goal isn't to maximize market size. Your goal is to reduce the appearance that you're building a competing business while validating the product.
+
+A broader positioning like:
+
+> "AI transaction workspace for private transactions"
+
+or
+
+> "AI workspace for complex multi-party transactions"
+
+could actually make Kontra appear less tied to commercial real estate specifically.
+
+You could then emphasize:
+
+* Business acquisitions
+* Private company investments
+* Franchise purchases
+* Partnership transactions
+
+and simply have CRE as **one** supported workflow instead of **the** product.
+
+### After you leave
+
+Once you're no longer constrained by that employment relationship, you can decide where the strongest demand is. If CRE turns out to be your best market, you can invest more heavily there. If another segment grows faster, you can follow that instead.
+
+---
+
+### The tradeoff
+
+The only thing I'd caution against is becoming so broad that people don't know what Kontra is.
+
+For example:
+
+> "Platform for everything."
+
+is weak.
+
+But:
+
+> "AI transaction workspace for private transactions."
+
+still describes a specific job:
+
+* multiple parties
+* sensitive documents
+* approvals
+* AI review
+* audit trail
+* closing
+
+That's a coherent category.
+
+---
+
+### One more thought
+
+From our previous conversations, I know one of your long-term goals is for Kontra to become infrastructure that can eventually support tokenization across many types of private assets, not just commercial real estate.
+
+Interestingly, that vision aligns more naturally with a broader transaction platform than with a CRE-specific product.
+
+So if your motivations are:
+
+1. Reduce potential conflict while you're at Regions.
+2. Build something applicable to many private asset classes.
+3. Preserve the long-term tokenization path.
+
+Then broadening the **positioning**—while keeping the product centered on complex private transactions—has a coherent strategic rationale.
+
+The remaining question I'd ask is practical rather than philosophical:
+
+**Who would you actually try to sign as your first 10 customers under this broader positioning?**
+
+If you can answer that clearly, then the broader strategy has a strong foundation. If you can't, then the positioning may still be too broad even if the architecture supports it.
