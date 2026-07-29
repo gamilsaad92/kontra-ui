@@ -484,7 +484,7 @@ export default function HomePage() {
             ))}
           </div>
           <p className="text-center text-xs text-gray-400 mt-6">
-            All templates are fully customizable. Add roles, swap documents, adjust checklist stages — or start from zero with the <a href="/workflow-pack-builder" className="underline text-gray-600 hover:text-gray-900">Workflow Builder</a>.
+            All templates are fully customizable. Add roles, swap documents, adjust checklist stages — or <a href="/create-deal-room" className="underline text-gray-600 hover:text-gray-900">describe your transaction to AI</a> and let it suggest a starting point.
           </p>
         </div>
       </section>
