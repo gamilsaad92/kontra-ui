@@ -1,37 +1,12 @@
 // ── Custom Workflow Packs ────────────────────────────────────────────────────
 //
-// Backing store for packs assembled through the Workflow Pack Builder UI —
-// the "no hand-coded .js file" path for Sprint 6. A custom pack is pure JSON
-// (roles/stages/documents) that the frontend turns into a working pack at
-// runtime via genericPackFactory.createGenericPack(config). This router is
-// deliberately pack-agnostic: it doesn't validate domain semantics, only
-// shape (id/name/roles/stages/documents present).
+// Backing store for packs assembled through the Workflow Pack Builder UI.
+// Uses the shared Supabase client so it works in both local dev (pgAdapter)
+// and production (Render + Supabase) without needing a separate DATABASE_URL.
+//
 const express = require('express');
-const router = express.Router();
-
-let _pg = null;
-function getPg() {
-  if (!_pg && process.env.DATABASE_URL) {
-    try {
-      const { Pool } = require('pg');
-      _pg = new Pool({ connectionString: process.env.DATABASE_URL });
-      _pg.query(`
-        CREATE TABLE IF NOT EXISTS custom_workflow_packs (
-          id          TEXT PRIMARY KEY,
-          name        TEXT NOT NULL,
-          description TEXT,
-          config      JSONB NOT NULL,
-          created_at  TIMESTAMPTZ DEFAULT NOW(),
-          updated_at  TIMESTAMPTZ DEFAULT NOW()
-        )
-      `).then(() => console.log('[workflow-packs] table ready'))
-        .catch(e => console.warn('[workflow-packs] table init:', e.message));
-    } catch (e) {
-      console.warn('[workflow-packs] pg unavailable:', e.message);
-    }
-  }
-  return _pg;
-}
+const router  = express.Router();
+const { supabase } = require('../db');
 
 function slugify(str) {
   return String(str || '')
@@ -66,40 +41,42 @@ function validateConfig(config) {
   return errors;
 }
 
+// GET /api/workflow-packs — list all custom packs
 router.get('/workflow-packs', async (req, res) => {
-  const pg = getPg();
-  if (!pg) return res.json({ packs: [] });
   try {
-    const { rows } = await pg.query(
-      'SELECT id, name, description, config, created_at, updated_at FROM custom_workflow_packs ORDER BY created_at DESC'
-    );
-    return res.json({ packs: rows });
+    const { data, error } = await supabase
+      .from('custom_workflow_packs')
+      .select('id, name, description, config, created_at, updated_at')
+      .order('created_at', { ascending: false });
+    if (error) {
+      console.warn('[workflow-packs] list error:', error.message);
+      return res.status(500).json({ error: 'Failed to list workflow packs' });
+    }
+    return res.json({ packs: data || [] });
   } catch (e) {
     console.warn('[workflow-packs] list error:', e.message);
     return res.status(500).json({ error: 'Failed to list workflow packs' });
   }
 });
 
+// GET /api/workflow-packs/:id — fetch a single pack
 router.get('/workflow-packs/:id', async (req, res) => {
-  const pg = getPg();
-  if (!pg) return res.status(404).json({ error: 'Not found' });
   try {
-    const { rows } = await pg.query(
-      'SELECT id, name, description, config, created_at, updated_at FROM custom_workflow_packs WHERE id = $1',
-      [req.params.id]
-    );
-    if (!rows[0]) return res.status(404).json({ error: 'Workflow pack not found' });
-    return res.json({ pack: rows[0] });
+    const { data, error } = await supabase
+      .from('custom_workflow_packs')
+      .select('id, name, description, config, created_at, updated_at')
+      .eq('id', req.params.id)
+      .single();
+    if (error || !data) return res.status(404).json({ error: 'Workflow pack not found' });
+    return res.json({ pack: data });
   } catch (e) {
     console.warn('[workflow-packs] get error:', e.message);
     return res.status(500).json({ error: 'Failed to fetch workflow pack' });
   }
 });
 
+// POST /api/workflow-packs — create a new custom pack
 router.post('/workflow-packs', async (req, res) => {
-  const pg = getPg();
-  if (!pg) return res.status(503).json({ error: 'Database unavailable' });
-
   const { name, description = '', roles, stages, documents } = req.body || {};
   const config = { name, description, roles, stages, documents };
   const errors = validateConfig(config);
@@ -109,22 +86,31 @@ router.post('/workflow-packs', async (req, res) => {
   if (!id) return res.status(400).json({ error: 'Could not derive a valid id from the pack name' });
 
   try {
-    const { rows: existing } = await pg.query('SELECT id FROM custom_workflow_packs WHERE id = $1', [id]);
-    if (existing[0]) {
+    // Ensure uniqueness
+    const { data: existing } = await supabase
+      .from('custom_workflow_packs')
+      .select('id')
+      .eq('id', id)
+      .maybeSingle();
+    if (existing) {
       id = `${id}_${Date.now().toString(36)}`;
     }
-    const { rows } = await pg.query(
-      `INSERT INTO custom_workflow_packs (id, name, description, config)
-       VALUES ($1, $2, $3, $4)
-       RETURNING id, name, description, config, created_at, updated_at`,
-      [id, name, description, JSON.stringify(config)]
-    );
-    return res.status(201).json({ pack: rows[0] });
+
+    const { data, error } = await supabase
+      .from('custom_workflow_packs')
+      .insert({ id, name, description, config })
+      .select('id, name, description, config, created_at, updated_at')
+      .single();
+
+    if (error) {
+      console.warn('[workflow-packs] create error:', error.message);
+      return res.status(500).json({ error: 'Failed to create workflow pack' });
+    }
+    return res.status(201).json({ pack: data });
   } catch (e) {
     console.warn('[workflow-packs] create error:', e.message);
     return res.status(500).json({ error: 'Failed to create workflow pack' });
   }
 });
 
-getPg();
 module.exports = { router };
