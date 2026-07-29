@@ -1913,34 +1913,28 @@ app.get('/api/public/deal-room/:propertyId/checklist', async (req, res) => {
 
 app.put('/api/public/deal-room/:propertyId/checklist', async (req, res) => {
   const { propertyId } = req.params;
-  const { items, role } = req.body || {};
+  const { items, ownerWriteToken } = req.body || {};
 
-  // Role claim is required — without it we cannot enforce coordinator-only access
-  if (!role) return res.status(403).json({ error: 'role required' });
   if (!Array.isArray(items)) return res.status(400).json({ error: 'items must be an array' });
 
+  // Authorization: require the owner_write_token generated at checkout time.
+  // This is a 256-bit server-generated credential delivered only through the
+  // verified checkout success redirect — never user-controlled, never exposed
+  // in any public GET response.  Any missing or mismatched token is a hard deny.
+  if (!ownerWriteToken) {
+    return res.status(403).json({ error: 'owner_write_token required' });
+  }
+
   try {
-    // Load room to resolve pack ID and retrieve the stored write token
     const { data: room, error: roomErr } = await supabase
       .from('deal_rooms')
-      .select('workflow_pack_id, owner_write_token')
+      .select('owner_write_token')
       .eq('property_id', propertyId)
       .maybeSingle();
     if (roomErr) throw roomErr;
     if (!room) return res.status(404).json({ error: 'Workspace not found' });
 
-    const packId = room.workflow_pack_id || DEFAULT_PACK_ID;
-
-    // Verify caller identity using the owner_write_token — a 256-bit random
-    // credential generated server-side at checkout and delivered only through
-    // the verified checkout success redirect.  The token is never user-controlled
-    // and cannot be guessed or derived from the room URL alone.
-    const { ownerWriteToken } = req.body || {};
-    if (!ownerWriteToken) {
-      return res.status(403).json({ error: 'owner_write_token required' });
-    }
-
-    // Compare against the token stored in the DB at checkout time
+    // Constant-time-equivalent string comparison (both sides must be present and equal)
     if (!room.owner_write_token || room.owner_write_token !== ownerWriteToken) {
       return res.status(403).json({ error: 'Invalid owner token — checklist edit not authorized' });
     }
