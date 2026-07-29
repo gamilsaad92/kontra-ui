@@ -455,23 +455,26 @@ export default function DocumentChecklistPanel({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [propertyId]);
 
-  // ── Persist items (debounced) — sends role for server-side authz check ──
+  // ── Persist items (debounced) ──────────────────────────────────────────────
+  // Reads the owner_write_token stored in localStorage by CheckoutSuccessPage.
+  // The token is validated server-side; requests without a valid token receive 403.
   const persistItems = useCallback((newItems) => {
     if (!propertyId || isDemo) return;
     clearTimeout(saveTimerRef.current);
     saveTimerRef.current = setTimeout(async () => {
       setSavingChecklist(true);
       try {
+        let ownerToken = "";
+        try { ownerToken = localStorage.getItem(`kontra_owner_token_${propertyId}`) || ""; } catch { /* storage unavailable */ }
         await fetch(`${API_BASE}/api/public/deal-room/${propertyId}/checklist`, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
-          // role is required by the PUT endpoint for coordinator verification
-          body: JSON.stringify({ items: newItems, role }),
+          body: JSON.stringify({ items: newItems, ownerWriteToken: ownerToken }),
         });
       } catch { /* silent */ }
       setSavingChecklist(false);
     }, 600);
-  }, [propertyId, isDemo, role]);
+  }, [propertyId, isDemo]);
 
   // ── Mutations ─────────────────────────────────────────────────────────────
   function updateItems(fn) {
@@ -736,15 +739,22 @@ export default function DocumentChecklistPanel({
 
           {/* Actions */}
           <div className="shrink-0 flex items-center gap-1">
-            {/* Reorder (coordinator only, on hover) */}
-            {isCoordinator && !isDemo && (
-              <div className="opacity-0 group-hover/item:opacity-100 transition flex flex-col gap-0.5">
-                <button disabled={idx === 0} onClick={() => handleMoveUp(item.id)}
-                  title="Move up" className="block text-gray-200 hover:text-gray-500 disabled:opacity-20 leading-none text-[10px] transition">▲</button>
-                <button disabled={idx === totalInGroup - 1} onClick={() => handleMoveDown(item.id)}
-                  title="Move down" className="block text-gray-200 hover:text-gray-500 disabled:opacity-20 leading-none text-[10px] transition">▼</button>
-              </div>
-            )}
+            {/* Reorder (coordinator only, on hover).
+                Disabled state uses the global array index so it matches what
+                handleMoveUp/Down actually does — prevents false-disabled on the
+                first item of a non-first role group, and prevents cross-group
+                swaps being silently blocked. */}
+            {isCoordinator && !isDemo && (() => {
+              const globalIdx = allItems.findIndex(i => i.id === item.id);
+              return (
+                <div className="opacity-0 group-hover/item:opacity-100 transition flex flex-col gap-0.5">
+                  <button disabled={globalIdx <= 0} onClick={() => handleMoveUp(item.id)}
+                    title="Move up" className="block text-gray-200 hover:text-gray-500 disabled:opacity-20 leading-none text-[10px] transition">▲</button>
+                  <button disabled={globalIdx < 0 || globalIdx >= allItems.length - 1} onClick={() => handleMoveDown(item.id)}
+                    title="Move down" className="block text-gray-200 hover:text-gray-500 disabled:opacity-20 leading-none text-[10px] transition">▼</button>
+                </div>
+              );
+            })()}
 
             {/* Edit (coordinator, on hover) */}
             {isCoordinator && !isDemo && (

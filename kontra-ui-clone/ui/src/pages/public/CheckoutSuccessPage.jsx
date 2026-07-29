@@ -1,11 +1,24 @@
-import React from "react";
+import React, { useEffect } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import PublicLayout from "./PublicLayout";
 
 export default function CheckoutSuccessPage() {
   const [searchParams] = useSearchParams();
-  const property  = searchParams.get("property") || "";
-  const plan      = searchParams.get("plan") || "deal";
+  const property   = searchParams.get("property") || "";
+  const plan       = searchParams.get("plan") || "deal";
+  const ownerToken = searchParams.get("owner_token") || "";
+
+  // Persist the owner write token in localStorage so the workspace's checklist
+  // panel can send it when authorising server-side mutations.  This is the only
+  // channel through which the token is delivered — it is never exposed in any
+  // public GET response.
+  useEffect(() => {
+    if (property && ownerToken) {
+      try {
+        localStorage.setItem(`kontra_owner_token_${property}`, ownerToken);
+      } catch { /* storage unavailable */ }
+    }
+  }, [property, ownerToken]);
 
   const planLabel     = plan === "pro_annual" ? "Pro Annual" : plan === "pro_monthly" ? "Pro Monthly" : "Workspace";
   const propertyLabel = property

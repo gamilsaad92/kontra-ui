@@ -1081,11 +1081,16 @@ app.post('/api/checkout/guest', async (req, res) => {
       },
     };
 
+    // Generate an unforgeable owner write token for this workspace. It is
+    // embedded in the success URL so the coordinator can store it client-side
+    // and use it to authorize server-side checklist mutations later.
+    const ownerWriteToken = crypto.randomBytes(32).toString('hex');
+
     const sessionParams = {
       mode: cfg.mode,
       payment_method_types: ['card'],
       line_items: [lineItem],
-      success_url: `${origin}/checkout/success?plan=${plan}${propertyId ? `&property=${propertyId}` : ''}&session_id={CHECKOUT_SESSION_ID}`,
+      success_url: `${origin}/checkout/success?plan=${plan}${propertyId ? `&property=${propertyId}` : ''}&session_id={CHECKOUT_SESSION_ID}&owner_token=${ownerWriteToken}`,
       cancel_url: `${origin}/checkout/cancel?plan=${plan}${propertyId ? `&property=${propertyId}` : ''}&role=${role}`,
       metadata: { plan, propertyId: propertyId || '', propertyName: propertyName || '', role },
     };
@@ -1116,6 +1121,7 @@ app.post('/api/checkout/guest', async (req, res) => {
         first_name: meta.firstName || '',
         last_name: meta.lastName || '',
         workflow_pack_id: finalPackId,
+        owner_write_token: ownerWriteToken,
         created_at: new Date().toISOString(),
       });
     }
@@ -1191,7 +1197,15 @@ app.post('/api/checkout/demo', async (req, res) => {
       console.warn('[demo] deal_rooms upsert failed:', dbErr.message);
     }
 
-    const successUrl = `${origin}/checkout/success?plan=${plan}&property=${pid}&session_id=${fakeSessionId}&demo=true`;
+    // Generate owner write token and persist it — included in the redirect URL
+    // so CheckoutSuccessPage can store it in localStorage for checklist authz.
+    const demoOwnerToken = crypto.randomBytes(32).toString('hex');
+    supabase.from('deal_rooms')
+      .update({ owner_write_token: demoOwnerToken })
+      .eq('property_id', pid)
+      .then(() => {}).catch(() => {});
+
+    const successUrl = `${origin}/checkout/success?plan=${plan}&property=${pid}&session_id=${fakeSessionId}&demo=true&owner_token=${demoOwnerToken}`;
     res.json({ url: successUrl });
   } catch (err) {
     console.error('[checkout/demo]', err.message);
@@ -1276,6 +1290,13 @@ app.post('/api/webhook/stripe',
         // Set link_token separately (graceful — skipped if column not yet migrated)
         supabase.from('deal_rooms').update({ link_token: crypto.randomBytes(16).toString('hex') })
           .eq('property_id', dealRoomRecord.property_id).is('link_token', null).then(() => {}).catch(() => {});
+        // Persist owner_write_token from the pending record (generated at Stripe session creation)
+        if (pending.owner_write_token) {
+          supabase.from('deal_rooms')
+            .update({ owner_write_token: pending.owner_write_token })
+            .eq('property_id', dealRoomRecord.property_id)
+            .then(() => {}).catch(() => {});
+        }
       } catch (dbErr) {
         console.warn('[webhook] deal_rooms upsert skipped:', dbErr.message);
       }
@@ -1470,8 +1491,10 @@ app.get('/api/public/deal-room/:propertyId', async (req, res) => {
       .eq('status', 'active')
       .single();
     if (error || !data) return res.status(404).json({ error: 'Deal room not found' });
-    // Strip sensitive fields before returning
-    const { customer_email, first_name, last_name, stripe_session_id, ...safe } = data;
+    // Strip sensitive fields before returning — owner_write_token is a write
+    // credential delivered only through the checkout redirect; never expose it
+    // in a public GET response or any participant could forge checklist edits.
+    const { customer_email, first_name, last_name, stripe_session_id, owner_write_token: _owt, ...safe } = data;
     res.json(safe);
   } catch (err) {
     console.error('[deal-room-public]', err.message);
@@ -1897,10 +1920,10 @@ app.put('/api/public/deal-room/:propertyId/checklist', async (req, res) => {
   if (!Array.isArray(items)) return res.status(400).json({ error: 'items must be an array' });
 
   try {
-    // Load room to resolve pack ID
+    // Load room to resolve pack ID and retrieve the stored write token
     const { data: room, error: roomErr } = await supabase
       .from('deal_rooms')
-      .select('workflow_pack_id')
+      .select('workflow_pack_id, owner_write_token')
       .eq('property_id', propertyId)
       .maybeSingle();
     if (roomErr) throw roomErr;
@@ -1908,40 +1931,18 @@ app.put('/api/public/deal-room/:propertyId/checklist', async (req, res) => {
 
     const packId = room.workflow_pack_id || DEFAULT_PACK_ID;
 
-    // Verify the caller has coordinator (canManage) rights for this pack.
-    // ALL branches fail closed — unknown role, missing pack config, or any
-    // lookup error results in a 403 rather than a write grant.
-    let coordinatorGranted = false;
-    try {
-      const builtInRoles = getPackRoleConfig(packId)?.roles || [];
-      const builtInConf = builtInRoles.find(r => r.key === role);
-      if (builtInConf) {
-        // Role is in a built-in pack — canManage must be explicitly true
-        coordinatorGranted = !!builtInConf.canManage;
-      } else {
-        // Not in built-in pack — check custom_workflow_packs
-        const { data: customPack, error: cpErr } = await supabase
-          .from('custom_workflow_packs')
-          .select('config')
-          .eq('id', packId)
-          .maybeSingle();
-        if (cpErr) throw cpErr; // escalate — will be caught and return 403
-        if (customPack?.config?.roles) {
-          const customConf = customPack.config.roles.find(r => r.key === role);
-          // Role not found in custom pack → deny; found but canManage not true → deny
-          coordinatorGranted = !!customConf?.canManage;
-        }
-        // else: no custom pack found for this packId → coordinatorGranted stays false → 403
-      }
-    } catch (authErr) {
-      // Any error during role resolution (DB error, malformed config, etc.)
-      // is treated as a denial, not a grant.
-      console.warn('[checklist PUT] role-check error:', authErr.message);
-      return res.status(403).json({ error: 'Unable to verify coordinator access — please try again' });
+    // Verify caller identity using the owner_write_token — a 256-bit random
+    // credential generated server-side at checkout and delivered only through
+    // the verified checkout success redirect.  The token is never user-controlled
+    // and cannot be guessed or derived from the room URL alone.
+    const { ownerWriteToken } = req.body || {};
+    if (!ownerWriteToken) {
+      return res.status(403).json({ error: 'owner_write_token required' });
     }
 
-    if (!coordinatorGranted) {
-      return res.status(403).json({ error: 'Only workspace coordinators can edit the checklist' });
+    // Compare against the token stored in the DB at checkout time
+    if (!room.owner_write_token || room.owner_write_token !== ownerWriteToken) {
+      return res.status(403).json({ error: 'Invalid owner token — checklist edit not authorized' });
     }
 
     // Light sanitisation — strip anything that isn't a plain object
@@ -4377,8 +4378,11 @@ async function ensureWorkflowPackIdColumn() {
     await pool.query(
       `ALTER TABLE deal_rooms ADD COLUMN IF NOT EXISTS checklist_items JSONB`
     );
+    await pool.query(
+      `ALTER TABLE deal_rooms ADD COLUMN IF NOT EXISTS owner_write_token TEXT`
+    );
     await pool.end();
-    console.log('[startup] deal_rooms schema columns ready (workflow_pack_id, stated_revenue, stated_ebitda, checklist_items)');
+    console.log('[startup] deal_rooms schema columns ready (workflow_pack_id, stated_revenue, stated_ebitda, checklist_items, owner_write_token)');
   } catch (err) {
     // Non-fatal: Supabase service role may not allow DDL via pooler — fall back gracefully
     console.warn('[startup] workflow_pack_id column ensure skipped:', err.message);
