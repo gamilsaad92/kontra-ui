@@ -1890,11 +1890,56 @@ app.get('/api/public/deal-room/:propertyId/checklist', async (req, res) => {
 
 app.put('/api/public/deal-room/:propertyId/checklist', async (req, res) => {
   const { propertyId } = req.params;
-  const { items } = req.body || {};
+  const { items, role } = req.body || {};
+
+  // Role claim is required — without it we cannot enforce coordinator-only access
+  if (!role) return res.status(403).json({ error: 'role required' });
   if (!Array.isArray(items)) return res.status(400).json({ error: 'items must be an array' });
-  // Light sanitisation — strip anything that isn't a plain object
-  const clean = items.filter(i => i && typeof i === 'object' && !Array.isArray(i));
+
   try {
+    // Load room to resolve pack ID
+    const { data: room, error: roomErr } = await supabase
+      .from('deal_rooms')
+      .select('workflow_pack_id')
+      .eq('property_id', propertyId)
+      .maybeSingle();
+    if (roomErr) throw roomErr;
+    if (!room) return res.status(404).json({ error: 'Workspace not found' });
+
+    const packId = room.workflow_pack_id || DEFAULT_PACK_ID;
+
+    // Verify the caller has coordinator (canManage) rights for this pack
+    let coordinatorGranted = false;
+    try {
+      const builtInRoles = getPackRoleConfig(packId)?.roles || [];
+      const builtInConf = builtInRoles.find(r => r.key === role);
+      if (builtInConf) {
+        coordinatorGranted = !!builtInConf.canManage;
+      } else {
+        // Custom pack — check config stored in custom_workflow_packs
+        const { data: customPack } = await supabase
+          .from('custom_workflow_packs')
+          .select('config')
+          .eq('id', packId)
+          .maybeSingle();
+        if (customPack?.config?.roles) {
+          const customConf = customPack.config.roles.find(r => r.key === role);
+          coordinatorGranted = !!customConf?.canManage;
+        } else {
+          // Unknown/legacy pack — fail open so existing workspaces aren't broken
+          coordinatorGranted = true;
+        }
+      }
+    } catch {
+      coordinatorGranted = true; // pack-check failure: fail open
+    }
+
+    if (!coordinatorGranted) {
+      return res.status(403).json({ error: 'Only workspace coordinators can edit the checklist' });
+    }
+
+    // Light sanitisation — strip anything that isn't a plain object
+    const clean = items.filter(i => i && typeof i === 'object' && !Array.isArray(i));
     const { error } = await supabase
       .from('deal_rooms')
       .update({ checklist_items: clean })

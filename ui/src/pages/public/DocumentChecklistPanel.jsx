@@ -76,10 +76,13 @@ function SuggestionDrawer({ open, onClose, onAdd, existingIds }) {
   }
 
   function handleAdd() {
-    const items = allSuggestions
+    const newItems = allSuggestions
       .filter(s => selected.has(s.id))
       .map(s => ({
         id: uid(),
+        // Track which suggestion this came from so the drawer can reliably
+        // detect "already added" across sessions without comparing generated ids.
+        sourceSuggestionId: s.id,
         section: `${s.id}_${Date.now().toString(36)}`,
         label: s.label,
         required: false,
@@ -90,7 +93,7 @@ function SuggestionDrawer({ open, onClose, onAdd, existingIds }) {
         sortOrder: 9999,
         aiExtraction: null,
       }));
-    if (items.length) onAdd(items);
+    if (newItems.length) onAdd(newItems);
     onClose();
   }
 
@@ -452,7 +455,7 @@ export default function DocumentChecklistPanel({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [propertyId]);
 
-  // ── Persist items (debounced) ─────────────────────────────────────────────
+  // ── Persist items (debounced) — sends role for server-side authz check ──
   const persistItems = useCallback((newItems) => {
     if (!propertyId || isDemo) return;
     clearTimeout(saveTimerRef.current);
@@ -462,12 +465,13 @@ export default function DocumentChecklistPanel({
         await fetch(`${API_BASE}/api/public/deal-room/${propertyId}/checklist`, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ items: newItems }),
+          // role is required by the PUT endpoint for coordinator verification
+          body: JSON.stringify({ items: newItems, role }),
         });
       } catch { /* silent */ }
       setSavingChecklist(false);
     }, 600);
-  }, [propertyId, isDemo]);
+  }, [propertyId, isDemo, role]);
 
   // ── Mutations ─────────────────────────────────────────────────────────────
   function updateItems(fn) {
@@ -520,6 +524,7 @@ export default function DocumentChecklistPanel({
 
   function handleAddSuggestions(newItems) {
     updateItems(prev => [...prev, ...newItems]);
+    setDrawerOpen(false);
   }
 
   function handleAddInline() {
@@ -607,8 +612,17 @@ export default function DocumentChecklistPanel({
     ? "Your Documents"
     : (workflowPack.checklistTitle || "Due Diligence Checklist");
 
-  // IDs already in the checklist (for suggestion drawer "already added" state)
-  const existingBaseIds = new Set(allItems.map(i => i.id.replace(/^ci_.*/, "").replace(/_copy_.*/, "")));
+  // Track which suggestion library IDs are already in the checklist.
+  // Items added from the drawer carry sourceSuggestionId; items seeded from
+  // the pack use their original id directly.  Using this canonical ID (not the
+  // generated checklist-item uuid) ensures the drawer reliably flags previously
+  // added suggestions even after the page is reloaded.
+  const existingBaseIds = new Set(
+    allItems.flatMap(i => [
+      i.sourceSuggestionId,        // set by drawer on add
+      i.id,                        // pack-seeded items use their pack id directly
+    ].filter(Boolean))
+  );
 
   // ── Item renderer ─────────────────────────────────────────────────────────
   function renderItem(item, idx, totalInGroup) {
