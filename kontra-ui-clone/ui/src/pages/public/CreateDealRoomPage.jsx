@@ -137,9 +137,9 @@ export default function CreateDealRoomPage() {
           <div className="text-center mb-8">
             <div className="inline-flex items-center gap-2 bg-white border border-gray-200 rounded-full px-4 py-1.5 text-xs font-semibold text-gray-500 mb-4">
               <span className="w-2 h-2 rounded-full bg-green-400 inline-block"></span>
-              Deal room live in minutes
+              Workspace live in minutes
             </div>
-            <h1 className="text-2xl font-bold text-gray-900 mb-2">Create Your Deal Room</h1>
+            <h1 className="text-2xl font-bold text-gray-900 mb-2">Create Your Transaction Workspace</h1>
             <p className="text-gray-500 text-sm">
               $499 one-time · All parties included · No subscription required
             </p>
@@ -167,7 +167,7 @@ export default function CreateDealRoomPage() {
             {/* Step 0 — Workspace + Property/Business Info */}
             {step === 0 && (
               <div className="space-y-4">
-                <h2 className="font-semibold text-gray-900 mb-1">What kind of deal are you closing?</h2>
+                <h2 className="font-semibold text-gray-900 mb-1">Choose your transaction type</h2>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-2">
                   {workflowPacks.map(p => (
                     <button key={p.id} onClick={() => setPack(p.id)}
@@ -360,7 +360,7 @@ export default function CreateDealRoomPage() {
 
                 <div className="bg-gray-50 rounded-xl border border-gray-200 p-4 mb-4">
                   <div className="flex items-center justify-between mb-2">
-                    <span className="text-sm font-semibold text-gray-700">Deal Room Access</span>
+                    <span className="text-sm font-semibold text-gray-700">Workspace Access</span>
                     <span className="text-lg font-bold text-gray-900">$499</span>
                   </div>
                   <ul className="text-xs text-gray-500 space-y-1">
@@ -401,7 +401,8 @@ export default function CreateDealRoomPage() {
                   {loading ? (
                     <><svg className="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg> Launching…</>
                   ) : (
-                    <>🔐 Pay $499 & Launch Deal Room</>
+                    <>🔐 Pay $499 & Launch Workspace</>
+
                   )}
                 </button>
                 <button onClick={() => handleLaunch(true)} disabled={loading}

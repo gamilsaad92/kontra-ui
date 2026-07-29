@@ -72,8 +72,8 @@ const HOW_IT_WORKS = [
   {
     step: "01",
     icon: "🗂️",
-    title: "Deal principal creates the deal room",
-    desc: "Choose your workflow pack — CRE Acquisition, Business Acquisition, or Fundraising. Upload documents and Kontra structures everything automatically.",
+    title: "Create your transaction workspace",
+    desc: "Choose your workflow — Business Acquisition, CRE, Fundraising, or Custom. Upload documents and Kontra structures everything automatically.",
     color: "#800020",
   },
   {
@@ -166,7 +166,7 @@ const FREE_TOOLS = [
 ];
 
 const STATS = [
-  { value: "2 min",       label: "Average deal room setup" },
+  { value: "2 min",       label: "Average workspace setup" },
   { value: "18 sec",      label: "Average AI review" },
   { value: "Unlimited",   label: "Participants supported" },
   { value: "Unlimited",   label: "Documents per deal" },
@@ -197,7 +197,7 @@ function EmailCapture() {
     <section className="border-y border-gray-100 bg-gray-50 py-12">
       <div className="max-w-xl mx-auto px-6 text-center">
         <p className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: "#800020" }}>Stay in the loop</p>
-        <h3 className="text-lg font-bold text-gray-900 mb-1">Not ready to start a deal room yet?</h3>
+        <h3 className="text-lg font-bold text-gray-900 mb-1">Not ready to start a transaction yet?</h3>
         <p className="text-sm text-gray-500 mb-6">Get notified when we add new AI tools, party roles, and platform updates.</p>
         {status === "done" ? (
           <div className="flex items-center justify-center gap-2 text-sm font-medium text-green-700 bg-green-50 border border-green-200 px-5 py-3 rounded-xl">
@@ -254,7 +254,7 @@ export default function HomePage() {
             <Link to="/create-deal-room"
               className="px-7 py-3.5 rounded-xl text-sm font-semibold text-white transition hover:opacity-90"
               style={{ background: "#800020" }}>
-              Create Your Deal Room — $499
+              Create Your Workspace — $499
             </Link>
             <LiveDemoButton />
           </div>
@@ -327,7 +327,7 @@ export default function HomePage() {
       <section className="bg-gray-950 py-20">
         <div className="max-w-7xl mx-auto px-6">
           <div className="text-center mb-10">
-            <p className="text-xs font-semibold uppercase tracking-wider mb-2 text-red-400">The deal room</p>
+            <p className="text-xs font-semibold uppercase tracking-wider mb-2 text-red-400">The workspace</p>
             <h2 className="text-2xl font-bold text-white mb-3">Every party. One property. Zero email chains.</h2>
             <p className="text-gray-400 text-sm max-w-xl mx-auto">
               Each party gets a role-scoped view of the same underlying data — and the same AI Operations Manager chasing them for what's overdue. No one has to send a follow-up email.
@@ -346,7 +346,7 @@ export default function HomePage() {
                 </div>
                 <div className="ml-auto flex items-center gap-2">
                   <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-amber-900/50 text-amber-400">At Risk</span>
-                  <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-blue-900/50 text-blue-300">Deal Room Active</span>
+                  <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-blue-900/50 text-blue-300">Workspace Active</span>
                 </div>
               </div>
 
@@ -425,7 +425,7 @@ export default function HomePage() {
                 </div>
                 <div>
                   <h3 className="font-bold text-gray-900">{p.role}</h3>
-                  <p className="text-xs text-gray-400">What you get in the deal room</p>
+                  <p className="text-xs text-gray-400">What you get in the workspace</p>
                 </div>
               </div>
               <ul className="space-y-2">
@@ -460,7 +460,7 @@ export default function HomePage() {
             </div>
             <h2 className="text-2xl font-bold text-gray-900 mb-3">Try the AI tools — free, right now</h2>
             <p className="text-gray-500 text-sm max-w-xl mx-auto leading-relaxed">
-              Upload a document and get structured AI analysis in seconds. These are the same tools inside every deal room.
+              Upload a document and get structured AI analysis in seconds. These are the same tools inside every transaction workspace.
             </p>
           </div>
 
@@ -550,7 +550,7 @@ export default function HomePage() {
               <Link to="/create-deal-room"
                 className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold text-white transition hover:opacity-90"
                 style={{ background: "#800020" }}>
-                Create your deal room — $499 →
+                Create your workspace — $499 →
               </Link>
             </div>
           </div>
@@ -593,7 +593,7 @@ export default function HomePage() {
             <Link to="/create-deal-room"
               className="px-8 py-3.5 rounded-xl text-sm font-semibold text-white transition hover:opacity-90"
               style={{ background: "#800020" }}>
-              Create Your Deal Room →
+              Create Your Workspace →
             </Link>
             <Link to="/properties"
               className="px-8 py-3.5 rounded-xl text-sm font-semibold border border-white/20 text-white hover:bg-white/10 transition">

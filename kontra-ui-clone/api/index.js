@@ -2076,7 +2076,7 @@ app.post('/api/public/deal-room/:propertyId/invite', async (req, res) => {
       to: email,
       reply_to: 'support@kontraplatform.com',
       subject: `You've been invited to a deal room — ${propName}`,
-      text: `You've been invited to a deal room on Kontra\n\n${fromName} has added you as ${roleLabel} to their deal room for ${propName}.\n\nYour role: ${roleAction}. No account required.\n\nOpen your deal room:\n${inviteUrl}\n\n---\nKontra is CRE deal room infrastructure. All parties upload documents, AI analyzes them instantly, and the deal coordinator sees everything in one place.\n\nYou received this because ${fromName} added your email to this deal room. If this is a mistake, you can safely ignore it.`,
+      text: `You've been invited to a deal room on Kontra\n\n${fromName} has added you as ${roleLabel} to their deal room for ${propName}.\n\nYour role: ${roleAction}. No account required.\n\nOpen your deal room:\n${inviteUrl}\n\n---\nKontra is a transaction workspace platform. All parties upload documents, AI analyzes them instantly, and the deal coordinator sees everything in one place.\n\nYou received this because ${fromName} added your email to this workspace. If this is a mistake, you can safely ignore it.`,
       html: `<div style="font-family:sans-serif;max-width:560px;margin:auto;padding:32px 24px">
         <div style="margin-bottom:24px">
           <span style="display:inline-block;background:#800020;color:white;font-weight:800;font-size:15px;padding:6px 14px;border-radius:8px;letter-spacing:0.5px">Kontra</span>
@@ -2087,7 +2087,7 @@ app.post('/api/public/deal-room/:propertyId/invite', async (req, res) => {
         <a href="${inviteUrl}" style="display:inline-block;padding:14px 28px;background:#800020;color:white;border-radius:10px;text-decoration:none;font-weight:700;font-size:15px">Open Deal Room →</a>
         <div style="margin-top:28px;padding:16px;background:#f9fafb;border-radius:10px;border:1px solid #eee">
           <p style="color:#888;font-size:12px;margin:0 0 4px">What is Kontra?</p>
-          <p style="color:#555;font-size:13px;margin:0">Kontra is CRE deal room infrastructure. All parties upload their documents, AI analyzes them instantly, and the deal coordinator sees everything in one place. No email chains required.</p>
+          <p style="color:#555;font-size:13px;margin:0">Kontra is a transaction workspace platform. All parties upload their documents, AI analyzes them instantly, and the deal coordinator sees everything in one place. No email chains required.</p>
         </div>
         <p style="color:#bbb;font-size:11px;margin-top:24px">You received this because ${fromName} added your email to this deal room. If this is a mistake, you can safely ignore it.</p>
       </div>`,
@@ -2231,7 +2231,7 @@ app.post('/api/public/deal-room/send-invite-email', async (req, res) => {
       to,
       reply_to: 'support@kontraplatform.com',
       subject: `You've been invited to ${propName} — Kontra Deal Room`,
-      text: `${senderName} has invited you as ${roleLabel} to a deal room for ${propName} on Kontra.\n\nClick your personal invite link below:\n${inviteUrl}\n\nYou will be asked for a 6-digit PIN when you arrive. ${senderName} will share it with you separately — it is not in this email.\n\nThis link is unique to you — do not forward it.\n\n---\nKontra is CRE deal room infrastructure. You received this because ${senderName} added your email. If this is a mistake, ignore this email.`,
+      text: `${senderName} has invited you as ${roleLabel} to a deal room for ${propName} on Kontra.\n\nClick your personal invite link below:\n${inviteUrl}\n\nThis link is unique to you — do not forward it.\n\n---\nKontra is a transaction workspace platform. You received this because ${senderName} added your email. If this is a mistake, ignore this email.`,
       html: `<div style="font-family:sans-serif;max-width:560px;margin:auto;padding:32px 24px">
         <div style="margin-bottom:24px">
           <span style="display:inline-block;background:#800020;color:white;font-weight:800;font-size:15px;padding:6px 14px;border-radius:8px;letter-spacing:0.5px">Kontra</span>

@@ -20,8 +20,8 @@ import { createGenericPack } from "./genericPackFactory";
 export const DEFAULT_PACK_ID = "cre_acquisition";
 
 export const PACKS = {
-  cre_acquisition: creAcquisitionPack,
   business_acquisition: businessAcquisitionPack,
+  cre_acquisition: creAcquisitionPack,
   fundraising: fundraisingPack,
 };
 

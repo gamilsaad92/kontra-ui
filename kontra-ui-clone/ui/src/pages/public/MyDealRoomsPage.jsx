@@ -486,14 +486,14 @@ export default function MyDealRoomsPage() {
               <span className="font-semibold text-gray-900 text-sm">Kontra</span>
             </Link>
             <span className="text-gray-200 select-none">/</span>
-            <span className="text-sm font-medium text-gray-500">Deal Rooms</span>
+            <span className="text-sm font-medium text-gray-500">Workspaces</span>
           </div>
           <div className="flex items-center gap-2">
             <span className="text-xs text-gray-400 hidden sm:block">{email}</span>
             <Link to="/create-deal-room"
               className="px-3.5 py-1.5 rounded-lg text-xs font-bold text-white hover:opacity-90 transition"
               style={{ background: "#800020" }}>
-              + New Room
+              + New Workspace
             </Link>
             <button onClick={signOut}
               className="px-3 py-1.5 rounded-lg text-xs font-medium text-gray-500 border border-gray-200 hover:bg-gray-50 transition">
@@ -508,10 +508,10 @@ export default function MyDealRoomsPage() {
         {/* Page header */}
         <div className="mb-8">
           <h1 className="text-xl font-extrabold text-gray-900">
-            {ownerName ? `Welcome back, ${ownerName.split(" ")[0]}` : "Your Deal Rooms"}
+            {ownerName ? `Welcome back, ${ownerName.split(" ")[0]}` : "Your Workspaces"}
           </h1>
           <p className="text-sm text-gray-400 mt-0.5">
-            Owner dashboard · {activeRooms.length} active {activeRooms.length === 1 ? "room" : "rooms"}
+            Owner dashboard · {activeRooms.length} active {activeRooms.length === 1 ? "workspace" : "workspaces"}
           </p>
         </div>
 
@@ -519,7 +519,7 @@ export default function MyDealRoomsPage() {
         {analytics && (
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-8">
             {[
-              { label: "Deal Rooms", value: analytics.totalDeals, icon: "🏢", alert: false },
+              { label: "Workspaces", value: analytics.totalDeals, icon: "🏢", alert: false },
               { label: "Waiting on Borrower", value: analytics.waitingOnBorrower, icon: "⏳", alert: analytics.waitingOnBorrower > 0 },
               { label: "Waiting on Inspector", value: analytics.waitingOnInspector, icon: "🔍", alert: analytics.waitingOnInspector > 0 },
               { label: "Avg Days Active", value: analytics.avgDaysActive != null ? `${analytics.avgDaysActive}d` : "—", icon: "📅", alert: false },
@@ -543,15 +543,15 @@ export default function MyDealRoomsPage() {
         {rooms.length === 0 ? (
           <div className="text-center py-20 border border-dashed border-gray-200 rounded-2xl bg-white">
             <div className="text-5xl mb-4">📭</div>
-            <h3 className="text-gray-700 font-bold text-lg mb-2">No deal rooms found</h3>
+            <h3 className="text-gray-700 font-bold text-lg mb-2">No workspaces found</h3>
             <p className="text-gray-400 text-sm mb-6 max-w-xs mx-auto">
-              We couldn't find any deal rooms for <strong>{email}</strong>.
+              We couldn't find any workspaces for <strong>{email}</strong>.
               Make sure you're using the same email from your Stripe receipt.
             </p>
             <Link to="/create-deal-room"
               className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold text-white hover:opacity-90 transition"
               style={{ background: "#800020" }}>
-              Create Your First Deal Room →
+              Create Your First Workspace →
             </Link>
           </div>
         ) : (

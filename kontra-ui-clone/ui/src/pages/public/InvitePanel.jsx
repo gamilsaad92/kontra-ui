@@ -195,7 +195,7 @@ function RoleCard({ r, propertyId, onRemove }) {
           className="w-full text-xs px-2.5 py-1.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#800020]/20 focus:border-[#800020]/40 placeholder-gray-300"
         />
         <p className="text-[9px] text-gray-400 leading-snug">
-          Kontra will email the invite link. You share the PIN separately.
+          Kontra will email the invite link directly to the participant.
         </p>
         {errMsg && <p className="text-[9px] text-red-500">{errMsg}</p>}
         <button type="submit" disabled={status === 'loading'}
@@ -296,7 +296,7 @@ function CustomPartyCard({ propertyId }) {
           className="w-full text-xs px-2.5 py-1.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#800020]/20 focus:border-[#800020]/40 placeholder-gray-300"
         />
         <p className="text-[9px] text-gray-400 leading-snug">
-          Kontra emails the invite link. You share the PIN separately.
+          Kontra emails the invite link directly to the participant.
         </p>
         {errMsg && <p className="text-[9px] text-red-500">{errMsg}</p>}
         <button type="submit" disabled={status === 'loading'}
@@ -439,12 +439,12 @@ export default function InvitePanel({ propertyId, packId = DEFAULT_PACK_ID }) {
   return (
     <div className="space-y-3">
 
-      {/* Two-channel security callout */}
+      {/* Invite callout */}
       <div className="bg-blue-50 border border-blue-100 rounded-xl px-4 py-3">
-        <p className="text-[11px] font-semibold text-blue-800 mb-1">🔐 Two-channel security</p>
+        <p className="text-[11px] font-semibold text-blue-800 mb-1">🔗 Secure per-participant invitations</p>
         <p className="text-[10px] text-blue-600 leading-relaxed">
-          Kontra emails the <strong>invite link</strong>. You share the <strong>PIN separately</strong> (call, text, in person).
-          Both are required to enter — neither alone is enough.
+          Each participant gets their own unique link scoped to their role.
+          Kontra emails it directly — no manual sharing required.
         </p>
       </div>
 
