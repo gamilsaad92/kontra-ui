@@ -8,7 +8,7 @@ const DEAL_FEATURES = [
   "Unlimited participants",
   "Unlimited document uploads",
   "AI review — inspection, insurance, financials, legal",
-  "Deal Health Score (0–100 risk ring)",
+  "Transaction Health Score (0–100 risk ring)",
   "Automated email notifications on every upload",
   "File versioning — v1, v2, latest tracked automatically",
   "Lender-facing share page",

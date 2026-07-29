@@ -251,7 +251,7 @@ async function notifyPartySubmitted(propertyId, role, name) {
           <h2 style="color:#800020;margin-bottom:4px">Party documents submitted</h2>
           <p style="color:#555">Hi ${ownerName},</p>
           <p style="color:#555">The <strong>${roleLabel}</strong> for <strong>${propName}</strong> has submitted their documents and signaled they are ready for review.</p>
-          <a href="https://kontraplatform.com/deal-room/${propertyId}?role=owner" style="display:inline-block;margin-top:16px;padding:12px 20px;background:#800020;color:white;border-radius:8px;text-decoration:none;font-weight:bold">View Deal Room →</a>
+          <a href="https://kontraplatform.com/deal-room/${propertyId}?role=owner" style="display:inline-block;margin-top:16px;padding:12px 20px;background:#800020;color:white;border-radius:8px;text-decoration:none;font-weight:bold">View Workspace →</a>
           <p style="color:#aaa;font-size:12px;margin-top:24px">Kontra · Transaction Intelligence</p>
         </div>`,
       }),
@@ -283,7 +283,7 @@ async function notifyLender(propertyId, uploaderRole, section, summary) {
         from: 'Kontra <notifications@kontraplatform.com>',
         to: lenderRes.data.email,
         subject: `New document ready for review: ${SECTION_LABELS[section] || section} — ${propName}`,
-        html: `<div style="font-family:sans-serif;max-width:520px;margin:auto;padding:24px"><h2 style="color:#800020;margin-bottom:4px">Document ready for review</h2><p style="color:#555">Hi ${lenderRes.data.name || 'there'},</p><p style="color:#555">The <strong>${uploaderLabel}</strong> uploaded a <strong>${SECTION_LABELS[section] || section}</strong> to <strong>${propName}</strong>. AI has analyzed it and it is ready for your review.</p>${summary ? `<p style="background:#f9fafb;border-radius:8px;padding:12px;color:#374151;font-size:14px">${summary}</p>` : ''}<a href="https://kontraplatform.com/deal-room/${propertyId}?role=lender" style="display:inline-block;margin-top:16px;padding:12px 20px;background:#800020;color:white;border-radius:8px;text-decoration:none;font-weight:bold">Review Deal Room →</a><p style="color:#aaa;font-size:12px;margin-top:24px">Kontra · Transaction Intelligence</p></div>`,
+        html: `<div style="font-family:sans-serif;max-width:520px;margin:auto;padding:24px"><h2 style="color:#800020;margin-bottom:4px">Document ready for review</h2><p style="color:#555">Hi ${lenderRes.data.name || 'there'},</p><p style="color:#555">The <strong>${uploaderLabel}</strong> uploaded a <strong>${SECTION_LABELS[section] || section}</strong> to <strong>${propName}</strong>. AI has analyzed it and it is ready for your review.</p>${summary ? `<p style="background:#f9fafb;border-radius:8px;padding:12px;color:#374151;font-size:14px">${summary}</p>` : ''}<a href="https://kontraplatform.com/deal-room/${propertyId}?role=lender" style="display:inline-block;margin-top:16px;padding:12px 20px;background:#800020;color:white;border-radius:8px;text-decoration:none;font-weight:bold">Review Workspace →</a><p style="color:#aaa;font-size:12px;margin-top:24px">Kontra · Transaction Intelligence</p></div>`,
       }),
     });
     const lenderSubject = `New document ready for review: ${SECTION_LABELS[section] || section} — ${propName}`;
@@ -309,7 +309,7 @@ async function notifyStageAdvance(propertyId, stage) {
       <h2 style="color:#800020;margin-bottom:4px">Deal stage updated</h2>
       <p style="color:#555">Hi ${toName || 'there'},</p>
       <p style="color:#555">The deal for <strong>${propName}</strong> has advanced to <strong>${stageLabel}</strong>.</p>
-      <a href="https://kontraplatform.com/deal-room/${propertyId}?role=${toRole}" style="display:inline-block;margin-top:16px;padding:12px 20px;background:#800020;color:white;border-radius:8px;text-decoration:none;font-weight:bold">View Deal Room →</a>
+      <a href="https://kontraplatform.com/deal-room/${propertyId}?role=${toRole}" style="display:inline-block;margin-top:16px;padding:12px 20px;background:#800020;color:white;border-radius:8px;text-decoration:none;font-weight:bold">View Workspace →</a>
       <p style="color:#aaa;font-size:12px;margin-top:24px">Kontra · Transaction Intelligence</p>
     </div>`;
 
@@ -368,7 +368,7 @@ async function notifyStatusChange(propertyId, subRole, status, statusNote, updat
           <p style="color:#555">Hi ${room.first_name || 'there'},</p>
           <p style="color:#555">The <strong>${partyLabel}</strong> submission for <strong>${propName}</strong> has been marked <strong style="color:${color}">${statusLabel}</strong> by the ${updaterLabel}.</p>
           ${noteHtml}
-          <a href="https://kontraplatform.com/deal-room/${propertyId}?role=owner" style="display:inline-block;margin-top:16px;padding:12px 20px;background:#800020;color:white;border-radius:8px;text-decoration:none;font-weight:bold">View Deal Room →</a>
+          <a href="https://kontraplatform.com/deal-room/${propertyId}?role=owner" style="display:inline-block;margin-top:16px;padding:12px 20px;background:#800020;color:white;border-radius:8px;text-decoration:none;font-weight:bold">View Workspace →</a>
           <p style="color:#aaa;font-size:12px;margin-top:24px">Kontra · Transaction Intelligence</p>
         </div>`,
       }),
@@ -392,15 +392,15 @@ async function notifyVAPReady(propertyId, stage) {
     const ownerName = room.first_name || 'there';
     const propName = room.property_name || propertyId;
     const stageLabel = stage === 'funded' ? 'Funded' : 'Closing';
-    const vapSubject = `Your Verified Asset Package is ready — ${propName}`;
+    const vapSubject = `Your Verified Transaction Package is ready — ${propName}`;
     await sendResendEmail(RESEND_KEY, {
       from: 'Kontra <notifications@kontraplatform.com>',
       to: room.customer_email,
       subject: vapSubject,
       html: `<div style="font-family:sans-serif;max-width:560px;margin:auto;padding:24px">
-        <h2 style="color:#800020;margin-bottom:4px">Your Verified Asset Package is ready</h2>
+        <h2 style="color:#800020;margin-bottom:4px">Your Verified Transaction Package is ready</h2>
         <p style="color:#555">Hi ${ownerName},</p>
-        <p style="color:#555">Your deal for <strong>${propName}</strong> has reached the <strong>${stageLabel}</strong> stage. Kontra has assembled a Verified Asset Package — a permanent, structured record of this transaction that you can share with lenders, investors, and advisors.</p>
+        <p style="color:#555">Your deal for <strong>${propName}</strong> has reached the <strong>${stageLabel}</strong> stage. Kontra has assembled a Verified Transaction Package — a permanent, structured record of this transaction that you can share with lenders, investors, and advisors.</p>
         <p style="color:#555"><strong>What's inside:</strong></p>
         <ul style="color:#555;padding-left:20px;line-height:1.8">
           <li>Verification score and AI-generated verification summary</li>
@@ -409,7 +409,7 @@ async function notifyVAPReady(propertyId, stage) {
           <li>Structured financial metrics and key legal terms</li>
           <li>JSON export for integration with your systems</li>
         </ul>
-        <a href="https://kontraplatform.com/deal-room/${propertyId}?role=owner" style="display:inline-block;margin-top:16px;padding:12px 20px;background:#800020;color:white;border-radius:8px;text-decoration:none;font-weight:bold">View Verified Asset Package →</a>
+        <a href="https://kontraplatform.com/deal-room/${propertyId}?role=owner" style="display:inline-block;margin-top:16px;padding:12px 20px;background:#800020;color:white;border-radius:8px;text-decoration:none;font-weight:bold">View Verified Transaction Package →</a>
         <p style="color:#aaa;font-size:12px;margin-top:24px">Kontra · Transaction Intelligence</p>
       </div>`,
     });
@@ -445,9 +445,9 @@ async function notifyOwner(propertyId, section, summary) {
         html: `<div style="font-family:sans-serif;max-width:520px;margin:auto;padding:24px">
           <h2 style="color:#800020;margin-bottom:4px">New document analyzed</h2>
           <p style="color:#555">Hi ${name},</p>
-          <p style="color:#555">A <strong>${sectionLabel}</strong> was just uploaded to your deal room for <strong>${propName}</strong> and analyzed by AI.</p>
+          <p style="color:#555">A <strong>${sectionLabel}</strong> was just uploaded to the workspace for <strong>${propName}</strong> and analyzed by AI.</p>
           ${summary ? `<p style="background:#f9fafb;border-radius:8px;padding:12px;color:#374151;font-size:14px">${summary}</p>` : ''}
-          <a href="https://kontraplatform.com/deal-room/${propertyId}?role=owner" style="display:inline-block;margin-top:16px;padding:12px 20px;background:#800020;color:white;border-radius:8px;text-decoration:none;font-weight:bold">View Deal Room →</a>
+          <a href="https://kontraplatform.com/deal-room/${propertyId}?role=owner" style="display:inline-block;margin-top:16px;padding:12px 20px;background:#800020;color:white;border-radius:8px;text-decoration:none;font-weight:bold">View Workspace →</a>
           <p style="color:#aaa;font-size:12px;margin-top:24px">Kontra · Transaction Intelligence</p>
         </div>`
       })

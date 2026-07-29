@@ -152,7 +152,7 @@ export default function DealCoordinationPanel({ propertyId, role, packId = DEFAU
       <div className="px-6 pt-5 pb-4 border-b border-gray-100">
         <div className="flex items-center justify-between mb-4">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-0.5">Deal Progress</p>
+            <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-0.5">{packId === 'cre_acquisition' ? 'Deal Progress' : 'Transaction Progress'}</p>
             <h3 className="text-base font-bold text-gray-900">
               {STAGES[stageIdx]?.icon} {STAGES[stageIdx]?.label}
               <span className="ml-2 text-sm font-normal text-gray-400">— {STAGES[stageIdx]?.desc}</span>
@@ -179,7 +179,7 @@ export default function DealCoordinationPanel({ propertyId, role, packId = DEFAU
           )}
         </div>
 
-        {/* Step bar — pack stages + synthetic "Verified Asset Package" final step */}
+        {/* Step bar — pack stages + synthetic "Verified Transaction Package" final step */}
         <div className="flex items-center gap-0">
           {STAGES.map((s, i) => {
             const done = i < stageIdx;
@@ -201,7 +201,7 @@ export default function DealCoordinationPanel({ propertyId, role, packId = DEFAU
               </div>
             );
           })}
-          {/* Verified Asset Package — synthetic final step after all pack stages */}
+          {/* Verified Transaction Package — synthetic final step after all pack stages */}
           <div className="flex flex-col items-center flex-1">
             <div className={`w-7 h-7 rounded-full flex items-center justify-center text-sm font-bold mb-1 transition-all
               ${isFunded ? 'bg-[#800020] text-white' : 'bg-gray-100 text-gray-400'}`}>

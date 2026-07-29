@@ -516,13 +516,13 @@ export default function CreateDealRoomPage() {
                 </div>
 
                 <div>
-                  <label className={labelCls}>Workspace Name *</label>
-                  <input className={inputCls} placeholder="e.g. Acme Manufacturing Acquisition"
+                  <label className={labelCls}>{form.packId === 'cre_acquisition' ? 'Property Name' : 'Workspace Name'} *</label>
+                  <input className={inputCls} placeholder={form.packId === 'cre_acquisition' ? 'e.g. 550 Madison Avenue' : 'e.g. Acme Manufacturing Acquisition'}
                     value={form.workspaceName} onChange={e => set("workspaceName", e.target.value)} />
                 </div>
                 <div>
-                  <label className={labelCls}>Location / Address</label>
-                  <input className={inputCls} placeholder="City, State or full address"
+                  <label className={labelCls}>{form.packId === 'cre_acquisition' ? 'Property Address' : 'Location / Address'}</label>
+                  <input className={inputCls} placeholder={form.packId === 'cre_acquisition' ? 'Full property address' : 'City, State or full address'}
                     value={form.workspaceLocation} onChange={e => set("workspaceLocation", e.target.value)} />
                 </div>
                 <div className="grid grid-cols-2 gap-3">
