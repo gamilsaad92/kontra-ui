@@ -310,21 +310,27 @@ export default function CreateDealRoomPage() {
         customConfig.roles.every(r => r.label.trim()) &&
         customConfig.stages.every(s => s.label.trim());
     }
-    if (phase === 2) return !!(form.firstName && form.lastName && form.email && form.agree);
+    if (phase === 2) return !!(form.workspaceName && form.firstName && form.lastName && form.email && form.agree);
     return true;
   }
 
   // ── Payload ───────────────────────────────────────────────────────────────
   function buildPayload() {
-    const raw = form.workspaceName.trim();
-    const propertyId = raw.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "workspace";
-    const workflowPackId = creationMode === "blank" ? "blank" : form.packId;
-    const hasCustom = creationMode !== "blank" && (
-      customConfig.roles.length > 0 || customConfig.documents.length > 0 || customConfig.stages.length >= 2
-    );
+    const raw = (form.workspaceName || "").trim();
+    // Require a non-empty, collision-safe workspace slug
+    const propertyId = raw
+      ? raw.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 60) + "-" + Date.now().toString(36).slice(-4)
+      : "ws-" + Date.now().toString(36);
+    const isBlank = creationMode === "blank";
+    const workflowPackId = isBlank ? "blank" : form.packId;
+    // Always send customConfig for blank (even empty — backend will assign minimal defaults)
+    // and for template/AI when the user has actually built a config.
+    const configToSend = isBlank
+      ? { roles: [], documents: [], stages: [] }
+      : (customConfig.roles.length > 0 || customConfig.stages.length >= 2 ? customConfig : null);
     return {
       propertyId,
-      propertyName: form.workspaceName,
+      propertyName: raw || "Workspace",
       plan: "deal",
       email: form.email,
       role: form.role,
@@ -335,7 +341,7 @@ export default function CreateDealRoomPage() {
         firstName: form.firstName,
         lastName: form.lastName,
         workflowPackId,
-        customConfig: hasCustom ? customConfig : null,
+        customConfig: configToSend,
         creationMode,
       },
     };
@@ -584,6 +590,17 @@ export default function CreateDealRoomPage() {
             {phase === 2 && (
               <div className="space-y-4">
                 <h2 className="font-semibold text-gray-900 mb-4">Your contact info</h2>
+
+                {/* For AI mode, workspace name may have been auto-filled but allow editing */}
+                {creationMode === "ai" && (
+                  <div>
+                    <label className={labelCls}>Workspace Name *</label>
+                    <input className={inputCls}
+                      placeholder="e.g. Acme Manufacturing Acquisition"
+                      value={form.workspaceName}
+                      onChange={e => set("workspaceName", e.target.value)} />
+                  </div>
+                )}
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className={labelCls}>First Name *</label>

@@ -935,7 +935,7 @@ app.get('/api/copilot/tokenization-eligibility', (req, res) => {
 // ── Workspace AI Generation ───────────────────────────────────────────────────
 // Given a plain-language description of a transaction, returns a structured
 // workspace config (roles, documents, stages) as a starting point.
-app.post('/api/workspace/generate', async (req, res) => {
+app.post('/api/workspace/generate', aiRateLimit, async (req, res) => {
   const { description } = req.body || {};
   if (!description || !description.trim()) {
     return res.status(400).json({ error: 'Description is required' });
@@ -944,6 +944,7 @@ app.post('/api/workspace/generate', async (req, res) => {
     const completion = await openai.chat.completions.create({
       model: 'gpt-4o-mini',
       response_format: { type: 'json_object' },
+      max_tokens: 1500,
       messages: [
         {
           role: 'system',
@@ -986,22 +987,35 @@ IMPORTANT: You are suggesting a starting point only. Do NOT claim completeness. 
 });
 
 // ── Helper: auto-save a custom pack and return its ID ────────────────────────
+// Always creates a pack — for blank workspaces, fills in minimal usable defaults
+// so the workspace never falls back to CRE acquisition pack.
 async function saveCustomPackForWorkspace(propertyId, propertyName, customConfig) {
-  if (!customConfig || !Array.isArray(customConfig.roles) || customConfig.roles.length === 0) return null;
+  if (!customConfig) return null;
   const customPackId = `ws_${(propertyId || 'w').replace(/[^a-z0-9]/g, '_').slice(0, 30)}_${Date.now().toString(36)}`;
   const packName = propertyName || 'Custom Workspace';
+
+  // For blank workspaces the config arrays are empty — supply minimal defaults
+  // so the room renders with a real (if sparse) pack instead of CRE defaults.
+  const roles = Array.isArray(customConfig.roles) && customConfig.roles.length > 0
+    ? customConfig.roles
+    : [{ key: 'owner', label: 'Workspace Owner', required: true, needsDocs: false, invitable: false, icon: '🔑', color: '#800020', canManage: true }];
+
+  const stages = Array.isArray(customConfig.stages) && customConfig.stages.length >= 2
+    ? customConfig.stages
+    : [
+        { key: 'setup',    label: 'Setup' },
+        { key: 'active',   label: 'Active' },
+        { key: 'complete', label: 'Complete' },
+      ];
+
+  const documents = Array.isArray(customConfig.documents) ? customConfig.documents : [];
+
   try {
     const { error } = await supabase.from('custom_workflow_packs').insert({
       id: customPackId,
       name: packName,
       description: '',
-      config: {
-        name: packName,
-        description: '',
-        roles: customConfig.roles,
-        stages: customConfig.stages || [],
-        documents: customConfig.documents || [],
-      },
+      config: { name: packName, description: '', roles, stages, documents },
     });
     if (error) { console.warn('[custom-pack] insert error:', error.message); return null; }
     return customPackId;
