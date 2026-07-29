@@ -271,6 +271,9 @@ export default function CreateDealRoomPage() {
           })),
         });
         setIsAiGenerated(true);
+        // Sync creator role to first coordinator role from AI suggestions
+        const firstAiRole = (data.roles || [])[0];
+        if (firstAiRole?.key) set("role", firstAiRole.key);
         setPhase(1);
       } catch (e) {
         setAiError(e.message);
@@ -283,8 +286,12 @@ export default function CreateDealRoomPage() {
     if (phase === 0 && creationMode === "template") {
       // Pre-populate config from selected pack
       const pack = getWorkflowPack(form.packId);
-      setCustomConfig(configFromPack(pack));
+      const config = configFromPack(pack);
+      setCustomConfig(config);
       setIsAiGenerated(false);
+      // Sync creator role to first coordinator role of this pack
+      const coord = config.roles.find(r => r.canManage) || config.roles[0];
+      if (coord) set("role", coord.key);
       setPhase(1);
       return;
     }
@@ -328,17 +335,29 @@ export default function CreateDealRoomPage() {
       : "ws-" + Date.now().toString(36);
     const isBlank = creationMode === "blank";
     const workflowPackId = isBlank ? "blank" : form.packId;
-    // Always send customConfig for blank (even empty — backend will assign minimal defaults)
-    // and for template/AI when the user has actually built a config.
+    // Always send customConfig for blank (even empty — backend assigns minimal defaults)
+    // and for template/AI when the user has built a config.
     const configToSend = isBlank
       ? { roles: [], documents: [], stages: [] }
       : (customConfig.roles.length > 0 || customConfig.stages.length >= 2 ? customConfig : null);
+
+    // Ensure the submitted role key actually exists in the custom config (prevents
+    // stale "owner" default from being sent when the pack uses a different coordinator key)
+    const resolvedRole = (() => {
+      if (isBlank || customConfig.roles.length === 0) return form.role || "owner";
+      const match = customConfig.roles.find(r => r.key === form.role);
+      if (match) return match.key;
+      // Fall back to first coordinator role, then first role
+      const coord = customConfig.roles.find(r => r.canManage) || customConfig.roles[0];
+      return coord?.key || form.role || "owner";
+    })();
+
     return {
       propertyId,
       propertyName: raw || "Workspace",
       plan: "deal",
       email: form.email,
-      role: form.role,
+      role: resolvedRole,
       meta: {
         address: form.workspaceLocation,
         dealAmount: form.dealAmount,
