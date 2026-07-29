@@ -7,14 +7,14 @@ const STEPS = [
     step: "01",
     icon: "⚙️",
     color: "#800020",
-    title: "Choose your workflow and create the workspace",
+    title: "Configure your workflow for any private transaction",
     who: "Deal Owner",
-    desc: "Select your transaction type — Business Acquisition, Fundraising, or CRE Acquisition. Add deal details and parties. Kontra generates a custom task checklist, document requirements, and role assignments specific to that transaction type.",
+    desc: "Define the roles, documents, and checklist that fit your deal — or start from a built-in template. Kontra structures the workspace around your workflow, not a fixed transaction type. Any private deal, any industry.",
     actions: [
-      "Select workflow pack: Business Acquisition, Fundraising, or CRE Acquisition",
-      "Name the deal and set basic parameters",
-      "Kontra builds a custom checklist for your transaction type",
-      "Deal room is live in under 60 seconds",
+      "Start from a template (M&A, CRE, Fundraising) or build your own",
+      "Name the transaction and set parameters",
+      "Kontra generates a custom checklist and role assignments",
+      "Workspace is live in under 60 seconds",
     ],
     visual: [
       { icon: "🏢", text: "CRE Acquisition · 124 Oak St", status: "Workspace created", color: "#16a34a" },
@@ -230,9 +230,9 @@ export default function HowItWorksPage() {
       <section className="bg-gray-50 py-20">
         <div className="max-w-7xl mx-auto px-6">
           <div className="text-center mb-12">
-            <p className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: "#800020" }}>Workflow Packs</p>
-            <h2 className="text-2xl font-bold text-gray-900">Who's in the workspace?</h2>
-            <p className="text-gray-500 text-sm mt-2">Each workflow pack configures the right roles, checklist, and tasks for your transaction type.</p>
+            <p className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: "#800020" }}>Starting Templates</p>
+            <h2 className="text-2xl font-bold text-gray-900">Pick a template or build your own</h2>
+            <p className="text-gray-500 text-sm mt-2">Each template is pre-configured with roles, a document checklist, and task stages — fully customizable, or start from scratch with the <a href="/workflow-pack-builder" className="underline">Workflow Builder</a>.</p>
           </div>
 
           {/* Pack selector */}
@@ -316,9 +316,9 @@ export default function HowItWorksPage() {
       {/* CTA */}
       <section className="bg-gray-950 py-20">
         <div className="max-w-2xl mx-auto px-6 text-center">
-          <h2 className="text-3xl font-bold text-white mb-4">Ready to run your first deal?</h2>
+          <h2 className="text-3xl font-bold text-white mb-4">Ready to run your first transaction?</h2>
           <p className="text-gray-400 text-sm mb-8 leading-relaxed">
-            Create a workspace for $499. Choose your workflow pack. Invite your parties. The AI Operations Manager handles the rest — no accounts needed for any participant.
+            Create a workspace for $499. Configure your workflow — any transaction type. Invite your parties. The AI Operations Manager handles the rest — no accounts needed for any participant.
           </p>
           <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
             <Link to="/create-deal-room"

@@ -167,15 +167,29 @@ export default function CreateDealRoomPage() {
             {/* Step 0 — Workspace + Property/Business Info */}
             {step === 0 && (
               <div className="space-y-4">
-                <h2 className="font-semibold text-gray-900 mb-1">Choose your transaction type</h2>
+                <div>
+                  <h2 className="font-semibold text-gray-900 mb-0.5">Start from a template, or build your own</h2>
+                  <p className="text-xs text-gray-400 mb-3">All templates are fully customizable. Not sure? Use Business Acquisition as a starting point — you can adjust roles and documents after creation.</p>
+                </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-2">
                   {workflowPacks.map(p => (
                     <button key={p.id} onClick={() => setPack(p.id)}
                       className={`border rounded-xl p-3.5 text-left transition-all ${form.packId === p.id ? "border-red-800 bg-red-50" : "border-gray-200 hover:border-gray-300"}`}>
-                      <p className={`text-sm font-semibold ${form.packId === p.id ? "text-red-800" : "text-gray-800"}`}>{p.label}</p>
+                      <div className="flex items-center justify-between mb-0.5">
+                        <p className={`text-sm font-semibold ${form.packId === p.id ? "text-red-800" : "text-gray-800"}`}>{p.label}</p>
+                        <span className="text-[10px] font-bold text-white px-1.5 py-0.5 rounded-full" style={{ background: "#800020" }}>Template</span>
+                      </div>
                       <p className="text-xs text-gray-500 mt-0.5">{p.description}</p>
                     </button>
                   ))}
+                  <a href="/workflow-pack-builder"
+                    className="border-2 border-dashed border-gray-300 rounded-xl p-3.5 text-left hover:border-gray-400 hover:bg-gray-50 transition-all block">
+                    <div className="flex items-center justify-between mb-0.5">
+                      <p className="text-sm font-semibold text-gray-700">⚙️ Build Your Own</p>
+                      <span className="text-[10px] font-bold bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded-full">Custom</span>
+                    </div>
+                    <p className="text-xs text-gray-400 mt-0.5">Define your own roles, documents, and checklist for any transaction type</p>
+                  </a>
                 </div>
 
                 <div className="pt-2">

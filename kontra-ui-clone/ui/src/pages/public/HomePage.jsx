@@ -34,7 +34,7 @@ function LiveDemoButton() {
 
       {open && (
         <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 w-72 rounded-2xl bg-gray-900 border border-white/10 shadow-2xl z-50 overflow-hidden">
-          <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-500 px-4 pt-3.5 pb-1">Choose a live demo</p>
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-500 px-4 pt-3.5 pb-1">Example workspaces</p>
           {DEMOS.map(d => (
             <button
               key={d.slug}
@@ -72,8 +72,8 @@ const HOW_IT_WORKS = [
   {
     step: "01",
     icon: "🗂️",
-    title: "Create your transaction workspace",
-    desc: "Choose your workflow — Business Acquisition, CRE, Fundraising, or Custom. Upload documents and Kontra structures everything automatically.",
+    title: "Configure any transaction workflow",
+    desc: "Define your roles, documents, and checklist — or start from a built-in template. Kontra structures everything around your workflow, not the other way around.",
     color: "#800020",
   },
   {
@@ -244,10 +244,13 @@ export default function HomePage() {
           <h1 className="text-4xl md:text-6xl font-bold leading-tight tracking-tight mb-6 max-w-4xl mx-auto">
             Every transaction gets its own Operations Manager.
           </h1>
-          <p className="text-lg text-gray-400 max-w-2xl mx-auto mb-10 leading-relaxed">
+          <p className="text-lg text-gray-400 max-w-2xl mx-auto mb-6 leading-relaxed">
             AI that keeps transactions moving — not just documents organized. Kontra follows up with the right
-            people, surfaces what's blocking closing, and coordinates every party in a deal from a single workspace.
-            Your real competition isn't Datasite — it's the 700-email transaction.
+            people, surfaces what's blocking closing, and coordinates every party from a single workspace.
+            Works for any private transaction. Your workflow, your rules.
+          </p>
+          <p className="text-sm text-gray-500 max-w-xl mx-auto mb-10">
+            M&amp;A · CRE · Fundraising · Licensing · Joint Ventures · Private Equity · Any deal you configure
           </p>
 
           <div className="flex flex-col sm:flex-row items-center justify-center gap-3 mb-14">
@@ -449,6 +452,41 @@ export default function HomePage() {
             </div>
           )
         ))}
+      </section>
+
+      {/* ── Any transaction callout ────────────────────────────── */}
+      <section className="bg-gray-50 border-y border-gray-100 py-14">
+        <div className="max-w-5xl mx-auto px-6">
+          <div className="text-center mb-10">
+            <p className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: "#800020" }}>Built for any private transaction</p>
+            <h2 className="text-2xl font-bold text-gray-900 mb-3">Your deal type. Your roles. Your rules.</h2>
+            <p className="text-gray-500 text-sm max-w-xl mx-auto leading-relaxed">
+              Kontra isn't a fixed CRE tool or an M&amp;A-only platform. You define the workflow — roles, required documents, checklist stages — and Kontra runs it. Start from a template or build from scratch.
+            </p>
+          </div>
+          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            {[
+              { icon: "💼", label: "Business Acquisition", desc: "M&A diligence, QoE, LOI, legal review", tag: "Template" },
+              { icon: "🏢", label: "CRE Acquisition",      desc: "Inspection, financing, title, compliance", tag: "Template" },
+              { icon: "📈", label: "Fundraising",          desc: "Cap table, term sheet, investor diligence", tag: "Template" },
+              { icon: "⚙️", label: "Build Your Own",       desc: "Any transaction — your roles, your docs, your checklist", tag: "Custom", custom: true },
+            ].map(item => (
+              <div key={item.label}
+                className={`rounded-2xl p-5 border-2 ${item.custom ? "border-dashed border-gray-300 bg-white" : "border-gray-100 bg-white"}`}>
+                <div className="flex items-start justify-between mb-3">
+                  <span className="text-2xl">{item.icon}</span>
+                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${item.custom ? "bg-gray-100 text-gray-500" : "text-white"}`}
+                    style={item.custom ? {} : { background: "#800020" }}>{item.tag}</span>
+                </div>
+                <p className="text-sm font-semibold text-gray-900 mb-1">{item.label}</p>
+                <p className="text-xs text-gray-400 leading-relaxed">{item.desc}</p>
+              </div>
+            ))}
+          </div>
+          <p className="text-center text-xs text-gray-400 mt-6">
+            All templates are fully customizable. Add roles, swap documents, adjust checklist stages — or start from zero with the <a href="/workflow-pack-builder" className="underline text-gray-600 hover:text-gray-900">Workflow Builder</a>.
+          </p>
+        </div>
       </section>
 
       {/* ── Free AI Tools ──────────────────────────────────────── */}
