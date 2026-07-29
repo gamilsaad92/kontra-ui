@@ -100,7 +100,7 @@ export default function DealHealthPanel({ propertyId, packId = DEFAULT_PACK_ID }
 
         <div className="flex-1 min-w-0">
           <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-0.5 flex items-center gap-1.5">
-            Deal Health Score
+            Transaction Health Score
             {aiPowered && (
               <span className="text-[9px] font-bold text-indigo-500 bg-indigo-50 px-1.5 py-0.5 rounded-full normal-case tracking-normal">✨ AI-reasoned</span>
             )}

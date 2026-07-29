@@ -210,7 +210,7 @@ export default function HowItWorksPage() {
               </div>
 
               <div className="bg-gray-950 rounded-2xl p-6">
-                <p className="text-xs text-gray-500 uppercase tracking-wider font-medium mb-4">Live in the deal room</p>
+                <p className="text-xs text-gray-500 uppercase tracking-wider font-medium mb-4">Live in the workspace</p>
                 <div className="space-y-2">
                   {s.visual.map((v) => (
                     <div key={v.text} className="flex items-center gap-3 px-3 py-2.5 rounded-lg bg-white/5">
@@ -231,7 +231,7 @@ export default function HowItWorksPage() {
         <div className="max-w-7xl mx-auto px-6">
           <div className="text-center mb-12">
             <p className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: "#800020" }}>Workflow Packs</p>
-            <h2 className="text-2xl font-bold text-gray-900">Who's in the deal room?</h2>
+            <h2 className="text-2xl font-bold text-gray-900">Who's in the workspace?</h2>
             <p className="text-gray-500 text-sm mt-2">Each workflow pack configures the right roles, checklist, and tasks for your transaction type.</p>
           </div>
 
@@ -280,7 +280,7 @@ export default function HowItWorksPage() {
                   <Link to={p.demoSlug}
                     className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold text-white transition hover:opacity-90"
                     style={{ background: p.color }}>
-                    See a live {p.title} deal room →
+                    See a live {p.title} workspace →
                   </Link>
                 </div>
               </div>
@@ -293,7 +293,7 @@ export default function HowItWorksPage() {
       <section className="max-w-7xl mx-auto px-6 py-20">
         <div className="rounded-3xl bg-gray-950 p-10 md:p-14 text-white text-center">
           <p className="text-xs font-semibold uppercase tracking-wider mb-3 text-red-400">The difference</p>
-          <h2 className="text-3xl font-bold mb-4">Most deal rooms store documents.<br />Kontra coordinates every step to closing.</h2>
+          <h2 className="text-3xl font-bold mb-4">Most platforms store documents.<br />Kontra coordinates every step to closing.</h2>
           <p className="text-gray-400 text-base max-w-2xl mx-auto mb-10 leading-relaxed">
             The AI Operations Manager tracks every open task, surfaces what's blocking closing, and coordinates each party — so deals don't stall in inboxes. You get a Morning Briefing and Daily Standup every day telling you exactly where the deal stands.
           </p>

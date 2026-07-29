@@ -17,8 +17,8 @@ const DEAL_FEATURES = [
 ];
 
 const ENTERPRISE_FEATURES = [
-  "Everything in Deal Room",
-  "Multiple deal rooms under one account",
+  "Everything in Workspace",
+  "Multiple workspaces under one account",
   "Lender & underwriter dashboard",
   "Volume pricing available",
   "White-label options",
@@ -29,12 +29,12 @@ const ENTERPRISE_FEATURES = [
 
 const FAQS = [
   {
-    q: "What counts as a deal room?",
-    a: "One deal room = one property. Each room holds all parties, all documents, and all AI analysis for that transaction. Pay once, use it for the life of the deal.",
+    q: "What counts as a workspace?",
+    a: "One workspace = one transaction. Each workspace holds all parties, all documents, and all AI analysis for that deal. Pay once, use it for the life of the transaction.",
   },
   {
-    q: "Who can access the deal room?",
-    a: "Anyone you invite. Owner, lender, inspector, insurer, attorney, underwriter — each gets a role-scoped link to the same workspace. No account creation required for invited parties.",
+    q: "Who can access the workspace?",
+    a: "Anyone you invite. Owner, counterparty, advisor, lender, attorney, underwriter — each gets a role-scoped link to the same workspace. No account creation required for invited parties.",
   },
   {
     q: "What documents does AI analyze?",
@@ -42,11 +42,11 @@ const FAQS = [
   },
   {
     q: "What is file versioning?",
-    a: "When someone re-uploads a document (e.g. Inspection_v2.pdf), Kontra tracks it as Version 2. The deal room always shows the latest analysis and keeps the full history. No more 'which PDF is current?'",
+    a: "When someone re-uploads a document (e.g. Inspection_v2.pdf), Kontra tracks it as Version 2. The workspace always shows the latest analysis and keeps the full history. No more 'which PDF is current?'",
   },
   {
     q: "Is there a subscription?",
-    a: "No. You pay $499 once per deal room. No monthly fees, no seat charges, no surprises. For multiple active deals, contact us for volume pricing.",
+    a: "No. You pay $499 once per workspace. No monthly fees, no seat charges, no surprises. For multiple active deals, contact us for volume pricing.",
   },
   {
     q: "Is my data secure?",
@@ -90,14 +90,14 @@ export default function PricingPage() {
           </h1>
           <p className="text-gray-500 text-base max-w-md mx-auto leading-relaxed">
             Complex transactions shouldn't require 700 emails.
-            Open a deal room and coordinate every step to closing.
+            Open a workspace and coordinate every step to closing.
           </p>
         </div>
 
         {/* Main card */}
         <div className="grid md:grid-cols-2 gap-8 mb-16">
 
-          {/* Deal Room card */}
+          {/* Workspace card */}
           <div className="bg-white rounded-2xl border-2 p-8 relative shadow-lg" style={{ borderColor: "#800020" }}>
             <div className="absolute -top-3.5 left-8">
               <span className="px-4 py-1 rounded-full text-xs font-bold text-white" style={{ background: "#800020" }}>
@@ -105,7 +105,7 @@ export default function PricingPage() {
               </span>
             </div>
             <div className="mb-2">
-              <h2 className="text-xl font-bold text-gray-900">Open a Deal Room</h2>
+              <h2 className="text-xl font-bold text-gray-900">Open a Workspace</h2>
               <p className="text-sm text-gray-500 mt-1">Pay once. No subscription. No seat fees.</p>
             </div>
             <div className="my-6 pb-6 border-b border-gray-100">
@@ -129,7 +129,7 @@ export default function PricingPage() {
               to="/create-deal-room"
               className="w-full block text-center py-3.5 rounded-xl text-sm font-bold text-white transition hover:opacity-90"
               style={{ background: "#800020" }}>
-              Open a Deal Room →
+              Open a Workspace →
             </Link>
           </div>
 
@@ -143,7 +143,7 @@ export default function PricingPage() {
               <div className="flex items-baseline gap-1">
                 <span className="text-4xl font-bold text-gray-900">Custom</span>
               </div>
-              <p className="text-xs text-gray-400 mt-2">Multiple deal rooms · Volume discounts · White-label</p>
+              <p className="text-xs text-gray-400 mt-2">Multiple workspaces · Volume discounts · White-label</p>
             </div>
             <ul className="space-y-3 mb-8 flex-1">
               {ENTERPRISE_FEATURES.map((f) => (

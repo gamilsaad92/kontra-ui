@@ -77,36 +77,8 @@ function CreatedInviteCard({ inviteUrl, pin, email, emailSent, emailErr, onDismi
           </button>
         </div>
         <p className="text-[9px] text-green-600">
-          The participant uses this link to reach the PIN entry screen.
+          The participant clicks this link to access the workspace — no account required.
         </p>
-      </div>
-
-      {/* Channel 2 — PIN (owner shares separately, never in same message) */}
-      <div className="rounded-xl border border-[#800020]/20 bg-[#800020]/5 px-4 py-3 space-y-2">
-        <div className="flex items-center gap-2">
-          <span className="text-[#800020] text-sm">🔑</span>
-          <p className="text-xs font-bold text-[#800020]">Access PIN — share separately</p>
-        </div>
-
-        <div className="bg-white border border-[#800020]/20 rounded-lg px-3 py-3 flex items-center gap-3">
-          <p className="text-2xl font-bold text-gray-900 tracking-[0.35em] font-mono flex-1">{pin}</p>
-          <button onClick={copyPin}
-            className="shrink-0 text-[10px] font-bold px-2 py-1 rounded-lg transition"
-            style={pinCopied ? { background: '#800020', color: 'white' } : { background: '#f3f4f6', color: '#374151' }}>
-            {pinCopied ? '✓ Copied' : 'Copy'}
-          </button>
-        </div>
-
-        <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
-          <p className="text-[10px] font-semibold text-amber-800">
-            ⚠ Do NOT send this PIN in the same message as the invite link.
-          </p>
-          <p className="text-[9px] text-amber-600 mt-0.5 leading-relaxed">
-            Call them, text it separately, or hand it in person. Both are required to enter — that's the security.
-          </p>
-        </div>
-
-        <p className="text-[9px] text-gray-400">Shown once — not stored anywhere you can retrieve it later.</p>
       </div>
     </div>
   );

@@ -277,7 +277,7 @@ export default function DealSummaryPage() {
             </div>
           </div>
           <div>
-            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wide mb-0.5">Deal Health Score</p>
+            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wide mb-0.5">Transaction Health Score</p>
             <p className="text-lg font-black" style={{ color: scoreCfg.color }}>{scoreCfg.label}</p>
             <p className="text-xs text-gray-500 mt-0.5">
               Based on {orderedAnalyses.length} AI-analyzed section{orderedAnalyses.length !== 1 ? "s" : ""} ·{" "}

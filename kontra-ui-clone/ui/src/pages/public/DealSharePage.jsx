@@ -247,7 +247,7 @@ export default function DealSharePage() {
                   <span className="text-xl font-black" style={{ color: scoreCfg.color }}>{score}</span>
                 </div>
               </div>
-              <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wide mb-0.5">Deal Health</p>
+              <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wide mb-0.5">Transaction Health</p>
               <p className="text-sm font-extrabold" style={{ color: scoreCfg.color }}>{scoreCfg.label}</p>
             </div>
           </div>
