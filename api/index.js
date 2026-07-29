@@ -1908,30 +1908,36 @@ app.put('/api/public/deal-room/:propertyId/checklist', async (req, res) => {
 
     const packId = room.workflow_pack_id || DEFAULT_PACK_ID;
 
-    // Verify the caller has coordinator (canManage) rights for this pack
+    // Verify the caller has coordinator (canManage) rights for this pack.
+    // ALL branches fail closed — unknown role, missing pack config, or any
+    // lookup error results in a 403 rather than a write grant.
     let coordinatorGranted = false;
     try {
       const builtInRoles = getPackRoleConfig(packId)?.roles || [];
       const builtInConf = builtInRoles.find(r => r.key === role);
       if (builtInConf) {
+        // Role is in a built-in pack — canManage must be explicitly true
         coordinatorGranted = !!builtInConf.canManage;
       } else {
-        // Custom pack — check config stored in custom_workflow_packs
-        const { data: customPack } = await supabase
+        // Not in built-in pack — check custom_workflow_packs
+        const { data: customPack, error: cpErr } = await supabase
           .from('custom_workflow_packs')
           .select('config')
           .eq('id', packId)
           .maybeSingle();
+        if (cpErr) throw cpErr; // escalate — will be caught and return 403
         if (customPack?.config?.roles) {
           const customConf = customPack.config.roles.find(r => r.key === role);
+          // Role not found in custom pack → deny; found but canManage not true → deny
           coordinatorGranted = !!customConf?.canManage;
-        } else {
-          // Unknown/legacy pack — fail open so existing workspaces aren't broken
-          coordinatorGranted = true;
         }
+        // else: no custom pack found for this packId → coordinatorGranted stays false → 403
       }
-    } catch {
-      coordinatorGranted = true; // pack-check failure: fail open
+    } catch (authErr) {
+      // Any error during role resolution (DB error, malformed config, etc.)
+      // is treated as a denial, not a grant.
+      console.warn('[checklist PUT] role-check error:', authErr.message);
+      return res.status(403).json({ error: 'Unable to verify coordinator access — please try again' });
     }
 
     if (!coordinatorGranted) {
