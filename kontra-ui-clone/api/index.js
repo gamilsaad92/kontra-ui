@@ -1863,6 +1863,61 @@ Estoppel certificate:\n${text}`,
   },
 };
 
+// ── Checklist CRUD ────────────────────────────────────────────────────────────
+// GET  /api/public/deal-room/:propertyId/checklist  → items array
+// PUT  /api/public/deal-room/:propertyId/checklist  → replace full array
+//
+// On first GET for a room that has no saved checklist (checklist_items IS NULL),
+// we fall back to the empty array — the UI seeds from the pack client-side and
+// calls PUT to persist.  This keeps the API pack-agnostic.
+
+app.get('/api/public/deal-room/:propertyId/checklist', async (req, res) => {
+  const { propertyId } = req.params;
+  try {
+    const { data, error } = await supabase
+      .from('deal_rooms')
+      .select('checklist_items')
+      .eq('property_id', propertyId)
+      .maybeSingle();
+    if (error) throw error;
+    if (!data) return res.status(404).json({ error: 'Workspace not found' });
+    return res.json({ items: data.checklist_items || null });
+  } catch (e) {
+    console.error('[checklist GET]', e.message);
+    return res.status(500).json({ error: 'Failed to load checklist' });
+  }
+});
+
+app.put('/api/public/deal-room/:propertyId/checklist', async (req, res) => {
+  const { propertyId } = req.params;
+  const { items } = req.body || {};
+  if (!Array.isArray(items)) return res.status(400).json({ error: 'items must be an array' });
+  // Light sanitisation — strip anything that isn't a plain object
+  const clean = items.filter(i => i && typeof i === 'object' && !Array.isArray(i));
+  try {
+    const { error } = await supabase
+      .from('deal_rooms')
+      .update({ checklist_items: clean })
+      .eq('property_id', propertyId);
+    if (error) throw error;
+    return res.json({ ok: true, count: clean.length });
+  } catch (e) {
+    console.error('[checklist PUT]', e.message);
+    return res.status(500).json({ error: 'Failed to save checklist' });
+  }
+});
+
+// ── Suggestion library ─────────────────────────────────────────────────────────
+// Returns the static curated list of commonly-requested due-diligence documents.
+// Items are labelled "suggested" or "commonly_requested" — never "required by Kontra".
+const SUGGESTIONS = (() => {
+  try { return require('./data/suggestions.json'); } catch { return []; }
+})();
+
+app.get('/api/suggestions', (_req, res) => {
+  res.json({ suggestions: SUGGESTIONS });
+});
+
 app.post('/api/public/deal-room/:propertyId/track-document', upload.single('file'), async (req, res) => {
   const { propertyId } = req.params;
   const { section, role } = req.body || {};
@@ -4268,8 +4323,11 @@ async function ensureWorkflowPackIdColumn() {
     await pool.query(
       `ALTER TABLE deal_rooms ADD COLUMN IF NOT EXISTS stated_ebitda NUMERIC`
     );
+    await pool.query(
+      `ALTER TABLE deal_rooms ADD COLUMN IF NOT EXISTS checklist_items JSONB`
+    );
     await pool.end();
-    console.log('[startup] deal_rooms.workflow_pack_id + stated_revenue + stated_ebitda columns ready');
+    console.log('[startup] deal_rooms schema columns ready (workflow_pack_id, stated_revenue, stated_ebitda, checklist_items)');
   } catch (err) {
     // Non-fatal: Supabase service role may not allow DDL via pooler — fall back gracefully
     console.warn('[startup] workflow_pack_id column ensure skipped:', err.message);

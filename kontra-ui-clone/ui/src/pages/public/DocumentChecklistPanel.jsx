@@ -1,12 +1,390 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { getWorkflowPack, DEFAULT_PACK_ID } from "../../lib/workflowPacks";
 
 const API_BASE = (import.meta.env.VITE_API_BASE || "").replace(/\/+$/, "");
 
-export default function DocumentChecklistPanel({ propertyId, propertyType, role, isDemo = false, packId = DEFAULT_PACK_ID, onAnalysisSaved }) {
+// ── helpers ──────────────────────────────────────────────────────────────────
+function slugify(s) {
+  return s.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
+}
+function uid() {
+  return `ci_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
+}
+
+// Seed the checklist from the pack's document schema when the workspace has no
+// persisted items yet.
+function seedFromPack(pack, propertyType) {
+  const schema = pack.getDocumentSchema?.(propertyType) || [];
+  return schema.map((d, i) => ({
+    id: d.id || d.section || uid(),
+    section: d.section || d.id,
+    label: d.label || "",
+    required: !!d.required,
+    ai: !!d.ai,
+    assignedTo: Array.isArray(d.assignedTo) ? d.assignedTo : [],
+    category: d.category || "General",
+    isCustom: false,
+    sortOrder: i,
+    aiExtraction: d.aiExtraction || null,
+  }));
+}
+
+// ── SuggestionDrawer ─────────────────────────────────────────────────────────
+const CATEGORY_ORDER = [
+  "Corporate & Ownership", "Financial", "Legal", "Tax", "Operations",
+  "Employees", "Insurance", "Intellectual Property", "Regulatory",
+  "Environmental", "Real Estate", "Financing", "Closing",
+];
+
+function SuggestionDrawer({ open, onClose, onAdd, existingIds }) {
+  const [allSuggestions, setAllSuggestions] = useState([]);
+  const [query, setQuery] = useState("");
+  const [activeCategory, setActiveCategory] = useState("All");
+  const [selected, setSelected] = useState(new Set());
+  const [loading, setLoading] = useState(false);
+  const [customName, setCustomName] = useState("");
+  const [showCustom, setShowCustom] = useState(false);
+  const inputRef = useRef(null);
+
+  useEffect(() => {
+    if (!open) { setSelected(new Set()); setQuery(""); setCustomName(""); setShowCustom(false); return; }
+    setLoading(true);
+    fetch(`${API_BASE}/api/suggestions`)
+      .then(r => r.ok ? r.json() : { suggestions: [] })
+      .then(d => setAllSuggestions(d.suggestions || []))
+      .catch(() => {})
+      .finally(() => { setLoading(false); setTimeout(() => inputRef.current?.focus(), 50); });
+  }, [open]);
+
+  const categories = ["All", ...CATEGORY_ORDER.filter(c => allSuggestions.some(s => s.category === c))];
+
+  const filtered = allSuggestions.filter(s => {
+    const matchesCat = activeCategory === "All" || s.category === activeCategory;
+    const matchesQ = !query.trim() || s.label.toLowerCase().includes(query.toLowerCase());
+    return matchesCat && matchesQ;
+  });
+
+  const alreadyAdded = id => existingIds.has(id);
+
+  function toggle(id) {
+    if (alreadyAdded(id)) return;
+    setSelected(prev => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  }
+
+  function handleAdd() {
+    const items = allSuggestions
+      .filter(s => selected.has(s.id))
+      .map(s => ({
+        id: uid(),
+        section: `${s.id}_${Date.now().toString(36)}`,
+        label: s.label,
+        required: false,
+        ai: !!s.ai,
+        assignedTo: [],
+        category: s.category,
+        isCustom: true,
+        sortOrder: 9999,
+        aiExtraction: null,
+      }));
+    if (items.length) onAdd(items);
+    onClose();
+  }
+
+  function handleAddCustom() {
+    if (!customName.trim()) return;
+    onAdd([{
+      id: uid(),
+      section: `custom_${slugify(customName)}_${Date.now().toString(36)}`,
+      label: customName.trim(),
+      required: false,
+      ai: false,
+      assignedTo: [],
+      category: "General",
+      isCustom: true,
+      sortOrder: 9999,
+      aiExtraction: null,
+    }]);
+    setCustomName("");
+    setShowCustom(false);
+    onClose();
+  }
+
+  if (!open) return null;
+
+  // Group filtered items by category for display
+  const grouped = {};
+  for (const s of filtered) {
+    if (!grouped[s.category]) grouped[s.category] = [];
+    grouped[s.category].push(s);
+  }
+  const groupKeys = CATEGORY_ORDER.filter(c => grouped[c]);
+
+  return (
+    <div className="fixed inset-0 z-50 flex">
+      {/* Backdrop */}
+      <div className="absolute inset-0 bg-black/30" onClick={onClose} />
+
+      {/* Drawer */}
+      <div className="relative ml-auto w-full max-w-md bg-white h-full flex flex-col shadow-2xl">
+        {/* Header */}
+        <div className="px-5 pt-5 pb-3 border-b border-gray-100 shrink-0">
+          <div className="flex items-center justify-between mb-3">
+            <div>
+              <h3 className="font-bold text-gray-900 text-base">Browse Suggested Items</h3>
+              <p className="text-xs text-gray-400 mt-0.5">Items are suggestions only — you decide what's relevant.</p>
+            </div>
+            <button onClick={onClose} className="text-gray-400 hover:text-gray-600 transition p-1">
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+
+          {/* Search */}
+          <input
+            ref={inputRef}
+            type="text"
+            placeholder="Search documents…"
+            value={query}
+            onChange={e => setQuery(e.target.value)}
+            className="w-full text-sm px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#800020]/20 focus:border-[#800020]/40 placeholder-gray-300"
+          />
+
+          {/* Category pills */}
+          <div className="flex gap-1.5 overflow-x-auto py-2 mt-1 hide-scrollbar">
+            {categories.map(c => (
+              <button
+                key={c}
+                onClick={() => setActiveCategory(c)}
+                className={`shrink-0 px-2.5 py-1 rounded-full text-[11px] font-semibold transition ${
+                  activeCategory === c
+                    ? "text-white"
+                    : "bg-gray-100 text-gray-500 hover:bg-gray-200"
+                }`}
+                style={activeCategory === c ? { background: "#800020" } : {}}>
+                {c}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Item list */}
+        <div className="flex-1 overflow-y-auto px-5 py-3">
+          {loading ? (
+            <p className="text-sm text-gray-400 text-center py-8">Loading suggestions…</p>
+          ) : filtered.length === 0 ? (
+            <p className="text-sm text-gray-400 text-center py-8">No items match your search.</p>
+          ) : (
+            <div className="space-y-5">
+              {groupKeys.map(cat => (
+                <div key={cat}>
+                  <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">{cat}</p>
+                  <div className="space-y-1">
+                    {grouped[cat].map(s => {
+                      const isAdded = alreadyAdded(s.id);
+                      const isChecked = selected.has(s.id);
+                      return (
+                        <button
+                          key={s.id}
+                          onClick={() => toggle(s.id)}
+                          disabled={isAdded}
+                          className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left transition ${
+                            isAdded
+                              ? "opacity-40 cursor-default"
+                              : isChecked
+                                ? "bg-[#800020]/8 border border-[#800020]/20"
+                                : "hover:bg-gray-50 border border-transparent"
+                          }`}>
+                          {/* Checkbox */}
+                          <span className={`shrink-0 w-4 h-4 rounded border-2 flex items-center justify-center transition ${
+                            isChecked ? "border-[#800020] bg-[#800020]" : "border-gray-300"
+                          }`}>
+                            {isChecked && (
+                              <svg className="w-2.5 h-2.5 text-white" fill="currentColor" viewBox="0 0 20 20">
+                                <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                              </svg>
+                            )}
+                          </span>
+                          <span className="flex-1 min-w-0">
+                            <span className="text-sm text-gray-800">{s.label}</span>
+                          </span>
+                          <span className={`shrink-0 text-[10px] px-1.5 py-0.5 rounded font-medium ${
+                            s.tag === "commonly_requested"
+                              ? "bg-amber-50 text-amber-600"
+                              : "bg-gray-100 text-gray-400"
+                          }`}>
+                            {s.tag === "commonly_requested" ? "common" : "suggested"}
+                          </span>
+                          {s.ai && (
+                            <span className="shrink-0 text-[10px] px-1.5 py-0.5 rounded bg-blue-50 text-blue-500 font-medium">AI</span>
+                          )}
+                          {isAdded && <span className="shrink-0 text-[10px] text-gray-400">added</span>}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Create custom item shortcut */}
+          <div className="mt-4 pt-4 border-t border-gray-100">
+            {showCustom ? (
+              <div className="flex items-center gap-2">
+                <input
+                  autoFocus
+                  type="text"
+                  placeholder="Document name…"
+                  value={customName}
+                  onChange={e => setCustomName(e.target.value)}
+                  onKeyDown={e => {
+                    if (e.key === "Enter") handleAddCustom();
+                    if (e.key === "Escape") { setShowCustom(false); setCustomName(""); }
+                  }}
+                  className="flex-1 text-xs px-2.5 py-1.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#800020]/20"
+                />
+                <button onClick={handleAddCustom} disabled={!customName.trim()}
+                  className="px-3 py-1.5 rounded-lg text-[11px] font-bold text-white disabled:opacity-40 transition"
+                  style={{ background: "#800020" }}>Add</button>
+                <button onClick={() => { setShowCustom(false); setCustomName(""); }}
+                  className="px-2 py-1.5 rounded-lg text-[11px] text-gray-400 hover:text-gray-600 border border-gray-200 transition">Cancel</button>
+              </div>
+            ) : (
+              <button onClick={() => setShowCustom(true)}
+                className="flex items-center gap-2 text-xs text-gray-400 hover:text-gray-600 transition group">
+                <span className="w-4 h-4 rounded-full border-2 border-dashed border-gray-300 group-hover:border-gray-400 flex items-center justify-center text-[10px]">+</span>
+                Create a custom item instead
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Footer */}
+        {selected.size > 0 && (
+          <div className="px-5 py-4 border-t border-gray-100 bg-gray-50 shrink-0">
+            <button
+              onClick={handleAdd}
+              className="w-full py-2.5 rounded-xl text-sm font-bold text-white transition"
+              style={{ background: "#800020" }}>
+              Add {selected.size} item{selected.size !== 1 ? "s" : ""} to checklist
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── ItemEditor (inline edit form) ─────────────────────────────────────────────
+function ItemEditor({ item, roles, onSave, onCancel }) {
+  const [label, setLabel] = useState(item.label);
+  const [required, setRequired] = useState(item.required);
+  const [ai, setAi] = useState(item.ai);
+  const [assignedRole, setAssignedRole] = useState((item.assignedTo || [])[0] || "");
+
+  function handleSave() {
+    if (!label.trim()) return;
+    onSave({
+      ...item,
+      label: label.trim(),
+      required,
+      ai,
+      assignedTo: assignedRole ? [assignedRole] : [],
+    });
+  }
+
+  const inputCls = "text-xs px-2.5 py-1.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#800020]/20 focus:border-[#800020]/40";
+  const toggleCls = (on) =>
+    `relative inline-flex h-4 w-7 items-center rounded-full transition-colors ${on ? "" : "bg-gray-200"}`;
+
+  return (
+    <div className="mt-2 ml-8 p-3 bg-gray-50 rounded-xl border border-gray-200 space-y-2.5">
+      {/* Name */}
+      <div>
+        <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-1 block">Name</label>
+        <input
+          autoFocus
+          className={`w-full ${inputCls}`}
+          value={label}
+          onChange={e => setLabel(e.target.value)}
+          onKeyDown={e => { if (e.key === "Enter") handleSave(); if (e.key === "Escape") onCancel(); }}
+          placeholder="Document name"
+        />
+      </div>
+
+      {/* Toggles row */}
+      <div className="flex items-center gap-4 flex-wrap">
+        {/* Required toggle */}
+        <label className="flex items-center gap-2 cursor-pointer select-none">
+          <button
+            type="button"
+            onClick={() => setRequired(v => !v)}
+            className={toggleCls(required)}
+            style={required ? { background: "#800020" } : {}}>
+            <span className={`inline-block h-3 w-3 rounded-full bg-white shadow transition-transform ${required ? "translate-x-3.5" : "translate-x-0.5"}`} />
+          </button>
+          <span className="text-xs text-gray-600">Required</span>
+        </label>
+
+        {/* AI analysis toggle */}
+        <label className="flex items-center gap-2 cursor-pointer select-none">
+          <button
+            type="button"
+            onClick={() => setAi(v => !v)}
+            className={toggleCls(ai)}
+            style={ai ? { background: "#3b82f6" } : {}}>
+            <span className={`inline-block h-3 w-3 rounded-full bg-white shadow transition-transform ${ai ? "translate-x-3.5" : "translate-x-0.5"}`} />
+          </button>
+          <span className="text-xs text-gray-600">AI analysis</span>
+        </label>
+      </div>
+
+      {/* Role assignment */}
+      {roles.length > 0 && (
+        <div>
+          <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-1 block">Assigned to</label>
+          <select
+            className={`w-full ${inputCls} bg-white`}
+            value={assignedRole}
+            onChange={e => setAssignedRole(e.target.value)}>
+            <option value="">— unassigned —</option>
+            {roles.map(r => <option key={r.key} value={r.key}>{r.label}</option>)}
+          </select>
+        </div>
+      )}
+
+      {/* Actions */}
+      <div className="flex items-center gap-2 pt-1">
+        <button
+          onClick={handleSave}
+          disabled={!label.trim()}
+          className="px-3 py-1.5 rounded-lg text-[11px] font-bold text-white disabled:opacity-40 transition"
+          style={{ background: "#800020" }}>
+          Save
+        </button>
+        <button onClick={onCancel}
+          className="px-2.5 py-1.5 rounded-lg text-[11px] text-gray-400 hover:text-gray-600 border border-gray-200 transition">
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ── Main component ────────────────────────────────────────────────────────────
+export default function DocumentChecklistPanel({
+  propertyId, propertyType, role, isDemo = false,
+  packId = DEFAULT_PACK_ID, onAnalysisSaved,
+}) {
   const workflowPack = getWorkflowPack(packId);
   const { getInlineFacts, getCompletenessIssues, factColors: FACT_COLORS, aiUploadEndpoints: AI_UPLOAD_ENDPOINTS } = workflowPack;
 
+  // ── Analyses (uploaded docs + AI results) ────────────────────────────────
   const [analyses, setAnalyses] = useState([]);
   const [loading, setLoading] = useState(true);
   const [uploadingSection, setUploadingSection] = useState(null);
@@ -16,62 +394,34 @@ export default function DocumentChecklistPanel({ propertyId, propertyType, role,
   const [expandedItems, setExpandedItems] = useState({});
   const fileRefs = useRef({});
 
-  // ── Per-deal customisation (localStorage, coordinator only) ─────────────────
-  const CUSTOM_KEY  = propertyId ? `kontra_custom_docs_${propertyId}`   : null;
-  const REMOVED_KEY = propertyId ? `kontra_removed_docs_${propertyId}`  : null;
+  // ── Checklist items (persisted) ──────────────────────────────────────────
+  const [items, setItems] = useState(null); // null = not loaded yet
+  const [savingChecklist, setSavingChecklist] = useState(false);
+  const saveTimerRef = useRef(null);
 
-  const [customDocs, setCustomDocs] = useState(() => {
-    if (!CUSTOM_KEY) return [];
-    try { return JSON.parse(localStorage.getItem(CUSTOM_KEY) || "[]"); } catch { return []; }
-  });
-  const [removedSections, setRemovedSections] = useState(() => {
-    if (!REMOVED_KEY) return new Set();
-    try { return new Set(JSON.parse(localStorage.getItem(REMOVED_KEY) || "[]")); } catch { return new Set(); }
-  });
-
+  // ── Edit / reorder / suggestion drawer state ────────────────────────────
+  const [editingId, setEditingId] = useState(null);
+  const [drawerOpen, setDrawerOpen] = useState(false);
   const [addDocOpen, setAddDocOpen] = useState(false);
   const [addDocLabel, setAddDocLabel] = useState("");
 
-  function saveRemovedSections(next) {
-    setRemovedSections(next);
-    if (REMOVED_KEY) localStorage.setItem(REMOVED_KEY, JSON.stringify([...next]));
-  }
+  // ── Role + coordinator check ─────────────────────────────────────────────
+  const roleConfig = workflowPack.getRole?.(role);
+  const isCoordinator = !!roleConfig?.canManage;
+  const packRoles = workflowPack.roles || [];
 
-  function handleRemovePackItem(section) {
-    saveRemovedSections(new Set([...removedSections, section]));
-  }
-
-  function handleAddDoc() {
-    if (!addDocLabel.trim()) return;
-    const section = `custom_${Date.now()}`;
-    const newDoc = { id: section, label: addDocLabel.trim(), section, required: false, isCustom: true, ai: false };
-    const updated = [...customDocs, newDoc];
-    setCustomDocs(updated);
-    if (CUSTOM_KEY) localStorage.setItem(CUSTOM_KEY, JSON.stringify(updated));
-    setAddDocLabel("");
-    setAddDocOpen(false);
-  }
-
-  function handleRemoveCustomDoc(section) {
-    const updated = customDocs.filter(d => d.section !== section);
-    setCustomDocs(updated);
-    if (CUSTOM_KEY) localStorage.setItem(CUSTOM_KEY, JSON.stringify(updated));
-  }
-
-  function handleRestoreDefaults() {
-    saveRemovedSections(new Set());
-  }
-
+  // ── Load analyses ─────────────────────────────────────────────────────────
   useEffect(() => {
     if (!propertyId) return;
     setLoading(true);
-    const roleParam = role ? `?role=${encodeURIComponent(role)}` : '';
+    const roleParam = role ? `?role=${encodeURIComponent(role)}` : "";
     fetch(`${API_BASE}/api/public/deal-room/${propertyId}/analyses${roleParam}`)
       .then(r => r.json())
       .then(d => { setAnalyses(d.analyses || []); setLoading(false); })
       .catch(() => setLoading(false));
   }, [propertyId, refreshKey]);
 
+  // Auto-refresh if any analysis is pending
   useEffect(() => {
     const hasPending = analyses.some(a => a.analysis?.pending);
     if (!hasPending) return;
@@ -79,50 +429,119 @@ export default function DocumentChecklistPanel({ propertyId, propertyType, role,
     return () => clearTimeout(t);
   }, [analyses]);
 
-  const packTemplate = workflowPack.getDocumentSchema(propertyType);
+  // ── Load checklist items ──────────────────────────────────────────────────
+  useEffect(() => {
+    if (!propertyId) return;
+    fetch(`${API_BASE}/api/public/deal-room/${propertyId}/checklist`)
+      .then(r => r.ok ? r.json() : { items: null })
+      .then(d => {
+        if (d.items && Array.isArray(d.items) && d.items.length > 0) {
+          // Re-number sortOrder for consistency
+          setItems(d.items.map((i, idx) => ({ ...i, sortOrder: idx })));
+        } else {
+          // First visit: seed from pack, then immediately persist
+          const seeded = seedFromPack(workflowPack, propertyType);
+          setItems(seeded);
+          if (seeded.length > 0) persistItems(seeded);
+        }
+      })
+      .catch(() => {
+        // Offline fallback: seed from pack without persisting
+        setItems(seedFromPack(workflowPack, propertyType));
+      });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [propertyId]);
 
-  // ── Role scoping ────────────────────────────────────────────────────────────
-  // Coordinator (canManage: true): sees ALL docs, grouped by responsible party.
-  // Non-coordinator: sees only docs where assignedTo includes their role key.
-  // If no docs are assigned to this role, show a neutral "nothing required" state.
-  const roleConfig = workflowPack.getRole?.(role);
-  const isCoordinator = !!roleConfig?.canManage;
+  // ── Persist items (debounced) ─────────────────────────────────────────────
+  const persistItems = useCallback((newItems) => {
+    if (!propertyId || isDemo) return;
+    clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = setTimeout(async () => {
+      setSavingChecklist(true);
+      try {
+        await fetch(`${API_BASE}/api/public/deal-room/${propertyId}/checklist`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ items: newItems }),
+        });
+      } catch { /* silent */ }
+      setSavingChecklist(false);
+    }, 600);
+  }, [propertyId, isDemo]);
 
-  // All pack items minus any the coordinator hid
-  const visiblePackItems = packTemplate.filter(i => !removedSections.has(i.section));
+  // ── Mutations ─────────────────────────────────────────────────────────────
+  function updateItems(fn) {
+    setItems(prev => {
+      const next = fn(prev || []).map((i, idx) => ({ ...i, sortOrder: idx }));
+      persistItems(next);
+      return next;
+    });
+  }
 
-  // Party-scoped: items where this role is listed as responsible
-  const myAssignedItems = packTemplate.filter(i => (i.assignedTo || []).includes(role));
+  function handleSaveEdit(updated) {
+    updateItems(prev => prev.map(i => i.id === updated.id ? updated : i));
+    setEditingId(null);
+  }
 
-  // The "template" drives progress counts, status badge, and the item render loop.
-  // Coordinator: all items + custom docs, shown grouped by responsible party.
-  // Party with assigned docs: just their items ("Your Documents" view, can upload).
-  // Reviewer role with NO assigned docs (e.g. lender, investor, broker): show all items
-  //   so they can see what's been uploaded — hiding the checklist breaks their review flow.
-  const template = isCoordinator
-    ? [...visiblePackItems, ...customDocs]
-    : myAssignedItems.length > 0
-      ? myAssignedItems
-      : [...visiblePackItems, ...customDocs];
+  function handleDelete(id) {
+    updateItems(prev => prev.filter(i => i.id !== id));
+    if (editingId === id) setEditingId(null);
+  }
 
-  const checklistTitle = (!isCoordinator && myAssignedItems.length > 0)
-    ? "Your Documents"
-    : (workflowPack.checklistTitle || "Due Diligence Checklist");
+  function handleDuplicate(item) {
+    const clone = { ...item, id: uid(), section: `${item.section}_copy_${Date.now().toString(36)}`, isCustom: true };
+    updateItems(prev => {
+      const idx = prev.findIndex(i => i.id === item.id);
+      const next = [...prev];
+      next.splice(idx + 1, 0, clone);
+      return next;
+    });
+  }
 
-  const uploadedSections = new Set(analyses.map(a => a.section));
-  const analysisBySection = Object.fromEntries(analyses.map(a => [a.section, a.analysis]));
+  function handleMoveUp(id) {
+    updateItems(prev => {
+      const idx = prev.findIndex(i => i.id === id);
+      if (idx <= 0) return prev;
+      const next = [...prev];
+      [next[idx - 1], next[idx]] = [next[idx], next[idx - 1]];
+      return next;
+    });
+  }
 
-  const requiredItems = template.filter(i => i.required);
-  const doneCount = template.filter(i => uploadedSections.has(i.section)).length;
-  const requiredDone = requiredItems.filter(i => uploadedSections.has(i.section)).length;
-  const pct = template.length > 0 ? Math.round((doneCount / template.length) * 100) : 0;
-  const allRequiredDone = requiredDone === requiredItems.length && requiredItems.length > 0;
+  function handleMoveDown(id) {
+    updateItems(prev => {
+      const idx = prev.findIndex(i => i.id === id);
+      if (idx < 0 || idx >= prev.length - 1) return prev;
+      const next = [...prev];
+      [next[idx], next[idx + 1]] = [next[idx + 1], next[idx]];
+      return next;
+    });
+  }
 
-  const allIssues = analyses.flatMap(a =>
-    getCompletenessIssues(a.analysis, a.section).map(issue => ({ ...issue, section: a.section, filename: a.filename }))
-  );
-  const criticalIssues = allIssues.filter(i => i.sev === "Critical");
+  function handleAddSuggestions(newItems) {
+    updateItems(prev => [...prev, ...newItems]);
+  }
 
+  function handleAddInline() {
+    if (!addDocLabel.trim()) return;
+    const newItem = {
+      id: uid(),
+      section: `custom_${slugify(addDocLabel)}_${Date.now().toString(36)}`,
+      label: addDocLabel.trim(),
+      required: false,
+      ai: false,
+      assignedTo: [],
+      category: "General",
+      isCustom: true,
+      sortOrder: 9999,
+      aiExtraction: null,
+    };
+    updateItems(prev => [...prev, newItem]);
+    setAddDocLabel("");
+    setAddDocOpen(false);
+  }
+
+  // ── Upload ────────────────────────────────────────────────────────────────
   async function handleUpload(section, file, isAiEndpoint) {
     if (!file) return;
     setUploadingSection(section);
@@ -132,7 +551,7 @@ export default function DocumentChecklistPanel({ propertyId, propertyType, role,
     form.append("property_id", propertyId);
     form.append("section", section);
     form.append("role", role || "owner");
-    const docEntry = template.find(t => t.section === section) || packTemplate.find(t => t.section === section);
+    const docEntry = (items || []).find(t => t.section === section);
     if (docEntry?.aiExtraction) {
       if (docEntry.aiExtraction.analystRole) form.append("analystRole", docEntry.aiExtraction.analystRole);
       if (docEntry.aiExtraction.docTypes) form.append("docTypes", JSON.stringify(docEntry.aiExtraction.docTypes));
@@ -153,11 +572,46 @@ export default function DocumentChecklistPanel({ propertyId, propertyType, role,
     }
   }
 
-  const statusColor = allRequiredDone ? "#16a34a" : pct > 50 ? "#d97706" : "#800020";
-  const statusLabel = allRequiredDone ? "Complete" : template.length === 0 ? "Empty" : `${doneCount} of ${template.length} uploaded`;
+  // ── Derived state ─────────────────────────────────────────────────────────
+  const uploadedSections = new Set(analyses.map(a => a.section));
+  const analysisBySection = Object.fromEntries(analyses.map(a => [a.section, a.analysis]));
 
-  // ── Item renderer (used in both flat and grouped views) ─────────────────────
-  function renderItem(item) {
+  // Build the template this role should see
+  const allItems = items || [];
+  const myItems = allItems.filter(i => (i.assignedTo || []).includes(role));
+  const template = isCoordinator
+    ? allItems
+    : myItems.length > 0
+      ? myItems
+      : allItems; // reviewer with no assigned docs: show all (read-only view)
+
+  const requiredItems = template.filter(i => i.required);
+  const doneCount = template.filter(i => uploadedSections.has(i.section)).length;
+  const requiredDone = requiredItems.filter(i => uploadedSections.has(i.section)).length;
+  const pct = template.length > 0 ? Math.round((doneCount / template.length) * 100) : 0;
+  const allRequiredDone = requiredDone === requiredItems.length && requiredItems.length > 0;
+
+  const allIssues = analyses.flatMap(a =>
+    getCompletenessIssues(a.analysis, a.section).map(issue => ({ ...issue, section: a.section, filename: a.filename }))
+  );
+  const criticalIssues = allIssues.filter(i => i.sev === "Critical");
+
+  const statusColor = allRequiredDone ? "#16a34a" : pct > 50 ? "#d97706" : "#800020";
+  const statusLabel = allRequiredDone
+    ? "Complete"
+    : template.length === 0
+      ? "Empty"
+      : `${doneCount} of ${template.length} uploaded`;
+
+  const checklistTitle = (!isCoordinator && myItems.length > 0)
+    ? "Your Documents"
+    : (workflowPack.checklistTitle || "Due Diligence Checklist");
+
+  // IDs already in the checklist (for suggestion drawer "already added" state)
+  const existingBaseIds = new Set(allItems.map(i => i.id.replace(/^ci_.*/, "").replace(/_copy_.*/, "")));
+
+  // ── Item renderer ─────────────────────────────────────────────────────────
+  function renderItem(item, idx, totalInGroup) {
     const done = uploadedSections.has(item.section);
     const isUploading = uploadingSection === item.section;
     const analysis = analysisBySection[item.section];
@@ -166,10 +620,14 @@ export default function DocumentChecklistPanel({ propertyId, propertyType, role,
     const facts = done && !isPending ? getInlineFacts(analysis, item.section) : [];
     const hasIssues = issues.length > 0;
     const isItemExpanded = expandedItems[item.section];
-    const isAiEndpoint = !!AI_UPLOAD_ENDPOINTS[item.section];
+    const isAiSection = item.ai && AI_UPLOAD_ENDPOINTS?.[item.section];
+    const isEditing = editingId === item.id;
+
+    // Role label for non-coordinator views to show who should upload
+    const assignedRoleMeta = packRoles.find(r => item.assignedTo?.includes(r.key));
 
     return (
-      <div key={item.id} className="py-3 group/item">
+      <div key={item.id} className="py-2.5 group/item">
         <div className="flex items-start gap-3">
           {/* Status icon */}
           <div className="shrink-0 mt-0.5">
@@ -198,14 +656,25 @@ export default function DocumentChecklistPanel({ propertyId, propertyType, role,
               <span className={`text-sm ${done ? "text-gray-900 font-medium" : "text-gray-600"}`}>
                 {item.label}
               </span>
-              {!item.required && !item.isCustom && (
+              {item.required ? (
+                <span className="text-[10px] px-1.5 py-0.5 rounded bg-red-50 text-red-400 font-medium">required</span>
+              ) : (
                 <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-400 font-medium">optional</span>
               )}
               {item.isCustom && (
                 <span className="text-[10px] px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-400 font-medium">custom</span>
               )}
+              {item.ai && (
+                <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-50 text-blue-400 font-medium">AI</span>
+              )}
               {isPending && (
                 <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-50 text-blue-500 font-medium animate-pulse">AI analyzing…</span>
+              )}
+              {isCoordinator && assignedRoleMeta && (
+                <span className="text-[10px] px-1.5 py-0.5 rounded font-medium"
+                  style={{ background: (assignedRoleMeta.color || "#e5e7eb") + "22", color: assignedRoleMeta.color || "#6b7280" }}>
+                  {assignedRoleMeta.icon || ""} {assignedRoleMeta.label}
+                </span>
               )}
             </div>
 
@@ -245,26 +714,58 @@ export default function DocumentChecklistPanel({ propertyId, propertyType, role,
                   </div>
                 ))}
                 {analysis?.summary && (
-                  <p className="text-xs text-gray-500 leading-relaxed mt-1 italic">
-                    {analysis.summary}
-                  </p>
+                  <p className="text-xs text-gray-500 leading-relaxed mt-1 italic">{analysis.summary}</p>
                 )}
               </div>
             )}
           </div>
 
           {/* Actions */}
-          <div className="shrink-0 flex items-center gap-1.5">
+          <div className="shrink-0 flex items-center gap-1">
+            {/* Reorder (coordinator only, on hover) */}
+            {isCoordinator && !isDemo && (
+              <div className="opacity-0 group-hover/item:opacity-100 transition flex flex-col gap-0.5">
+                <button disabled={idx === 0} onClick={() => handleMoveUp(item.id)}
+                  title="Move up" className="block text-gray-200 hover:text-gray-500 disabled:opacity-20 leading-none text-[10px] transition">▲</button>
+                <button disabled={idx === totalInGroup - 1} onClick={() => handleMoveDown(item.id)}
+                  title="Move down" className="block text-gray-200 hover:text-gray-500 disabled:opacity-20 leading-none text-[10px] transition">▼</button>
+              </div>
+            )}
+
+            {/* Edit (coordinator, on hover) */}
+            {isCoordinator && !isDemo && (
+              <button onClick={() => setEditingId(isEditing ? null : item.id)}
+                title="Edit item"
+                className="opacity-0 group-hover/item:opacity-100 transition text-gray-300 hover:text-gray-600 text-xs px-1 leading-none">
+                ✏
+              </button>
+            )}
+
+            {/* Duplicate (coordinator, on hover) */}
+            {isCoordinator && !isDemo && (
+              <button onClick={() => handleDuplicate(item)}
+                title="Duplicate"
+                className="opacity-0 group-hover/item:opacity-100 transition text-gray-300 hover:text-gray-600 text-xs px-1 leading-none">
+                ⧉
+              </button>
+            )}
+
+            {/* Delete (coordinator, on hover) */}
+            {isCoordinator && !isDemo && (
+              <button onClick={() => handleDelete(item.id)}
+                title="Remove from checklist"
+                className="opacity-0 group-hover/item:opacity-100 transition text-gray-200 hover:text-red-400 text-xs px-1 leading-none">
+                ✕
+              </button>
+            )}
+
+            {/* Upload */}
             {!done && !isDemo && (
               <>
                 <input type="file" className="hidden"
                   ref={el => { fileRefs.current[item.section] = el; }}
                   accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.csv"
-                  onChange={e => {
-                    const f = e.target.files?.[0];
-                    if (f) handleUpload(item.section, f, isAiEndpoint);
-                    e.target.value = "";
-                  }}
+                  onChange={e => { const f = e.target.files?.[0]; if (f) handleUpload(item.section, f, !!isAiSection); e.target.value = ""; }}
                 />
                 <button disabled={isUploading}
                   onClick={() => fileRefs.current[item.section]?.click()}
@@ -278,11 +779,7 @@ export default function DocumentChecklistPanel({ propertyId, propertyType, role,
                 <input type="file" className="hidden"
                   ref={el => { fileRefs.current[`re_${item.section}`] = el; }}
                   accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.csv"
-                  onChange={e => {
-                    const f = e.target.files?.[0];
-                    if (f) handleUpload(item.section, f, isAiEndpoint);
-                    e.target.value = "";
-                  }}
+                  onChange={e => { const f = e.target.files?.[0]; if (f) handleUpload(item.section, f, !!isAiSection); e.target.value = ""; }}
                 />
                 <button disabled={isUploading || isPending}
                   onClick={() => fileRefs.current[`re_${item.section}`]?.click()}
@@ -291,198 +788,209 @@ export default function DocumentChecklistPanel({ propertyId, propertyType, role,
                 </button>
               </>
             )}
-            {/* Remove — visible on hover for coordinator only */}
-            {isCoordinator && !isDemo && (
-              <button
-                onClick={() => item.isCustom ? handleRemoveCustomDoc(item.section) : handleRemovePackItem(item.section)}
-                title="Remove from checklist"
-                className="opacity-0 group-hover/item:opacity-100 text-gray-200 hover:text-red-400 transition text-xs px-1 leading-none">
-                ✕
-              </button>
-            )}
           </div>
         </div>
+
+        {/* Inline editor */}
+        {isEditing && (
+          <ItemEditor
+            item={item}
+            roles={packRoles}
+            onSave={handleSaveEdit}
+            onCancel={() => setEditingId(null)}
+          />
+        )}
       </div>
     );
   }
 
-  // ── Build party groups for coordinator view ──────────────────────────────────
+  // ── Build party groups for coordinator view ───────────────────────────────
   function buildPartyGroups() {
     const groupMap = new Map();
-    for (const item of visiblePackItems) {
-      const partyKey = item.assignedTo?.[0] || '_general';
+    for (const item of allItems) {
+      const partyKey = (item.assignedTo || [])[0] || "_general";
       if (!groupMap.has(partyKey)) {
-        const roleMeta = workflowPack.getRole?.(partyKey);
+        const roleMeta = packRoles.find(r => r.key === partyKey);
         groupMap.set(partyKey, {
           key: partyKey,
-          label: roleMeta?.label || 'General',
-          icon: roleMeta?.icon || '📄',
-          color: roleMeta?.color || '#e5e7eb',
+          label: roleMeta?.label || "General",
+          icon: roleMeta?.icon || "📄",
+          color: roleMeta?.color || "#e5e7eb",
           items: [],
         });
       }
       groupMap.get(partyKey).items.push(item);
     }
-    if (customDocs.length > 0) {
-      groupMap.set('_custom', { key: '_custom', label: 'Custom Documents', icon: '📋', color: '#6366f1', items: customDocs });
-    }
-    return [...groupMap.values()];
+    return [...groupMap.values()].filter(g => g.items.length > 0);
   }
 
+  // ── Render ────────────────────────────────────────────────────────────────
+  const isLoadingChecklist = items === null;
+
   return (
-    <div className="bg-white rounded-2xl border border-gray-200 mb-6 overflow-hidden">
-      {/* Header */}
-      <button
-        onClick={() => setExpanded(e => !e)}
-        className="w-full flex items-center justify-between px-5 py-4 hover:bg-gray-50 transition text-left">
-        <div className="flex items-center gap-3 flex-wrap">
-          <div className="text-base font-bold text-gray-900">{checklistTitle}</div>
-          {!loading && template.length > 0 && (
-            <span className="px-2.5 py-0.5 rounded-full text-xs font-bold text-white"
-              style={{ background: statusColor }}>
-              {statusLabel}
-            </span>
-          )}
-          {criticalIssues.length > 0 && (
-            <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-red-100 text-red-700">
-              ⚠ {criticalIssues.length} issue{criticalIssues.length > 1 ? "s" : ""}
-            </span>
-          )}
-          {removedSections.size > 0 && isCoordinator && !isDemo && (
-            <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-gray-100 text-gray-400">
-              {removedSections.size} hidden
-            </span>
-          )}
-        </div>
-        <svg className={`w-4 h-4 text-gray-400 transition-transform shrink-0 ${expanded ? "rotate-180" : ""}`}
-          fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
-        </svg>
-      </button>
-
-      {/* Progress bar */}
-      {!loading && template.length > 0 && (
-        <div className="px-5 pb-1">
-          <div className="w-full h-1.5 bg-gray-100 rounded-full overflow-hidden">
-            <div className="h-full rounded-full transition-all duration-700"
-              style={{ width: `${pct}%`, background: statusColor }} />
+    <>
+      <div className="bg-white rounded-2xl border border-gray-200 mb-6 overflow-hidden">
+        {/* Header */}
+        <button
+          onClick={() => setExpanded(e => !e)}
+          className="w-full flex items-center justify-between px-5 py-4 hover:bg-gray-50 transition text-left">
+          <div className="flex items-center gap-3 flex-wrap">
+            <div className="text-base font-bold text-gray-900">{checklistTitle}</div>
+            {!isLoadingChecklist && template.length > 0 && (
+              <span className="px-2.5 py-0.5 rounded-full text-xs font-bold text-white"
+                style={{ background: statusColor }}>
+                {statusLabel}
+              </span>
+            )}
+            {criticalIssues.length > 0 && (
+              <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-red-100 text-red-700">
+                ⚠ {criticalIssues.length} issue{criticalIssues.length > 1 ? "s" : ""}
+              </span>
+            )}
+            {savingChecklist && isCoordinator && (
+              <span className="text-[10px] text-gray-400 font-medium">saving…</span>
+            )}
           </div>
-        </div>
-      )}
+          <svg className={`w-4 h-4 text-gray-400 transition-transform shrink-0 ${expanded ? "rotate-180" : ""}`}
+            fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+          </svg>
+        </button>
 
-      {expanded && (
-        <div className="px-5 pt-3 pb-4">
-          {loading ? (
-            <div className="text-center py-6 text-sm text-gray-400">Loading checklist…</div>
-          ) : (
-            <>
-              {template.length === 0 ? (
-                <p className="text-sm text-gray-400 py-3 text-center">No documents in checklist — add one below.</p>
-              ) : isCoordinator ? (
-                /* ── Coordinator: grouped by responsible party ──────────── */
-                <div className="space-y-5">
-                  {buildPartyGroups().map(group => {
-                    const groupDone = group.items.filter(i => uploadedSections.has(i.section)).length;
-                    return (
-                      <div key={group.key}>
-                        <div className="flex items-center gap-2 mb-1">
-                          <span className="text-sm">{group.icon}</span>
-                          <span className="text-xs font-bold text-gray-600 uppercase tracking-wider">{group.label}</span>
-                          <span className="text-[10px] text-gray-400 font-medium">
-                            {groupDone}/{group.items.length} uploaded
-                          </span>
-                        </div>
-                        <div className="divide-y divide-gray-50 pl-3 border-l-2"
-                          style={{ borderColor: group.color + "60" }}>
-                          {group.items.map(item => renderItem(item))}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              ) : (
-                /* ── Party with assigned docs: "Your Documents" filtered view ──
-                   Reviewer with no assigned docs: full checklist (read mode) ── */
-                <div className="divide-y divide-gray-50">
-                  {template.map(item => renderItem(item))}
-                </div>
-              )}
+        {/* Progress bar */}
+        {!isLoadingChecklist && template.length > 0 && (
+          <div className="px-5 pb-1">
+            <div className="w-full h-1.5 bg-gray-100 rounded-full overflow-hidden">
+              <div className="h-full rounded-full transition-all duration-700"
+                style={{ width: `${pct}%`, background: statusColor }} />
+            </div>
+          </div>
+        )}
 
-              {/* Footer: add doc + restore (coordinator only) */}
-              {!isDemo && isCoordinator && (
-                <div className="pt-3 mt-1 border-t border-gray-100 flex items-center justify-between gap-4">
-                  {addDocOpen ? (
-                    <div className="flex items-center gap-2 flex-1">
-                      <input
-                        autoFocus
-                        type="text"
-                        placeholder="Document name (e.g. Environmental Indemnity)"
-                        value={addDocLabel}
-                        onChange={e => setAddDocLabel(e.target.value)}
-                        onKeyDown={e => {
-                          if (e.key === "Enter") handleAddDoc();
-                          if (e.key === "Escape") { setAddDocOpen(false); setAddDocLabel(""); }
-                        }}
-                        className="flex-1 text-xs px-2.5 py-1.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#800020]/20 focus:border-[#800020]/40 placeholder-gray-300"
-                      />
-                      <button onClick={handleAddDoc} disabled={!addDocLabel.trim()}
-                        className="px-3 py-1.5 rounded-lg text-[11px] font-bold text-white transition disabled:opacity-40"
-                        style={{ background: "#800020" }}>
-                        Add
-                      </button>
-                      <button onClick={() => { setAddDocOpen(false); setAddDocLabel(""); }}
-                        className="px-2.5 py-1.5 rounded-lg text-[11px] text-gray-400 hover:text-gray-600 border border-gray-200 transition">
-                        Cancel
-                      </button>
-                    </div>
-                  ) : (
-                    <button onClick={() => setAddDocOpen(true)}
-                      className="flex items-center gap-2 text-xs text-gray-400 hover:text-gray-600 transition group">
-                      <span className="w-4 h-4 rounded-full border-2 border-dashed border-gray-300 group-hover:border-gray-400 flex items-center justify-center text-[10px] leading-none">+</span>
-                      Add a document
-                    </button>
-                  )}
-                  {removedSections.size > 0 && !addDocOpen && (
-                    <button onClick={handleRestoreDefaults}
-                      className="text-[10px] text-gray-400 hover:text-gray-600 underline transition shrink-0">
-                      Restore {removedSections.size} hidden
-                    </button>
-                  )}
-                </div>
-              )}
-
-              {uploadError && <p className="text-xs text-red-600 mt-2">{uploadError}</p>}
-
-              {criticalIssues.length > 0 && (
-                <div className="mt-4 p-3 bg-red-50 border border-red-100 rounded-xl">
-                  <p className="text-xs font-bold text-red-700 mb-2">
-                    ⚠ AI flagged {criticalIssues.length} critical item{criticalIssues.length > 1 ? "s" : ""} across uploaded documents
+        {expanded && (
+          <div className="px-5 pt-3 pb-4">
+            {isLoadingChecklist ? (
+              <div className="text-center py-6 text-sm text-gray-400">Loading checklist…</div>
+            ) : (
+              <>
+                {template.length === 0 ? (
+                  <p className="text-sm text-gray-400 py-3 text-center">
+                    No documents in checklist yet.{isCoordinator ? " Add one below or browse suggestions." : ""}
                   </p>
-                  <ul className="space-y-1">
-                    {criticalIssues.slice(0, 5).map((issue, i) => (
-                      <li key={i} className="text-xs text-red-600 flex items-start gap-1.5">
-                        <span className="shrink-0 mt-px">•</span>
-                        <span>{issue.text}</span>
-                      </li>
-                    ))}
-                    {criticalIssues.length > 5 && <li className="text-xs text-red-400">+{criticalIssues.length - 5} more…</li>}
-                  </ul>
-                </div>
-              )}
-
-              {allRequiredDone && criticalIssues.length === 0 && template.length > 0 && (
-                <div className="mt-4 p-3 bg-green-50 border border-green-100 rounded-xl flex items-center gap-2">
-                  <span className="text-lg">✅</span>
-                  <div>
-                    <p className="text-xs font-bold text-green-700">All required documents uploaded</p>
-                    <p className="text-xs text-green-600">No critical issues flagged by AI. This deal is ready for final review.</p>
+                ) : isCoordinator ? (
+                  /* ── Coordinator: grouped by responsible party ───────── */
+                  <div className="space-y-5">
+                    {buildPartyGroups().map(group => {
+                      const groupDone = group.items.filter(i => uploadedSections.has(i.section)).length;
+                      return (
+                        <div key={group.key}>
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className="text-sm">{group.icon}</span>
+                            <span className="text-xs font-bold text-gray-600 uppercase tracking-wider">{group.label}</span>
+                            <span className="text-[10px] text-gray-400 font-medium">
+                              {groupDone}/{group.items.length} uploaded
+                            </span>
+                          </div>
+                          <div className="divide-y divide-gray-50 pl-3 border-l-2"
+                            style={{ borderColor: group.color + "60" }}>
+                            {group.items.map((item, idx) => renderItem(item, idx, group.items.length))}
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
-                </div>
-              )}
-            </>
-          )}
-        </div>
-      )}
-    </div>
+                ) : (
+                  /* ── Party or reviewer view ───────────────────────────── */
+                  <div className="divide-y divide-gray-50">
+                    {template.map((item, idx) => renderItem(item, idx, template.length))}
+                  </div>
+                )}
+
+                {/* ── Footer: coordinator controls ──────────────────────── */}
+                {!isDemo && isCoordinator && (
+                  <div className="pt-3 mt-1 border-t border-gray-100 space-y-2">
+                    {addDocOpen ? (
+                      <div className="flex items-center gap-2">
+                        <input
+                          autoFocus
+                          type="text"
+                          placeholder="Document name (e.g. Environmental Indemnity)"
+                          value={addDocLabel}
+                          onChange={e => setAddDocLabel(e.target.value)}
+                          onKeyDown={e => {
+                            if (e.key === "Enter") handleAddInline();
+                            if (e.key === "Escape") { setAddDocOpen(false); setAddDocLabel(""); }
+                          }}
+                          className="flex-1 text-xs px-2.5 py-1.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#800020]/20 focus:border-[#800020]/40 placeholder-gray-300"
+                        />
+                        <button onClick={handleAddInline} disabled={!addDocLabel.trim()}
+                          className="px-3 py-1.5 rounded-lg text-[11px] font-bold text-white transition disabled:opacity-40"
+                          style={{ background: "#800020" }}>
+                          Add
+                        </button>
+                        <button onClick={() => { setAddDocOpen(false); setAddDocLabel(""); }}
+                          className="px-2.5 py-1.5 rounded-lg text-[11px] text-gray-400 hover:text-gray-600 border border-gray-200 transition">
+                          Cancel
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-4 flex-wrap">
+                        <button onClick={() => setAddDocOpen(true)}
+                          className="flex items-center gap-2 text-xs text-gray-400 hover:text-gray-600 transition group">
+                          <span className="w-4 h-4 rounded-full border-2 border-dashed border-gray-300 group-hover:border-gray-400 flex items-center justify-center text-[10px] leading-none">+</span>
+                          Add a document
+                        </button>
+                        <button onClick={() => setDrawerOpen(true)}
+                          className="flex items-center gap-2 text-xs text-[#800020]/70 hover:text-[#800020] transition group font-medium">
+                          <span className="text-sm">📚</span>
+                          Browse suggested items
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {uploadError && <p className="text-xs text-red-600 mt-2">{uploadError}</p>}
+
+                {criticalIssues.length > 0 && (
+                  <div className="mt-4 p-3 bg-red-50 border border-red-100 rounded-xl">
+                    <p className="text-xs font-bold text-red-700 mb-2">
+                      ⚠ AI flagged {criticalIssues.length} critical item{criticalIssues.length > 1 ? "s" : ""} across uploaded documents
+                    </p>
+                    <ul className="space-y-1">
+                      {criticalIssues.slice(0, 5).map((issue, i) => (
+                        <li key={i} className="text-xs text-red-600 flex items-start gap-1.5">
+                          <span className="shrink-0 mt-px">•</span>
+                          <span>{issue.text}</span>
+                        </li>
+                      ))}
+                      {criticalIssues.length > 5 && <li className="text-xs text-red-400">+{criticalIssues.length - 5} more…</li>}
+                    </ul>
+                  </div>
+                )}
+
+                {allRequiredDone && criticalIssues.length === 0 && template.length > 0 && (
+                  <div className="mt-4 p-3 bg-green-50 border border-green-100 rounded-xl flex items-center gap-2">
+                    <span className="text-lg">✅</span>
+                    <div>
+                      <p className="text-xs font-bold text-green-700">All required documents uploaded</p>
+                      <p className="text-xs text-green-600">No critical issues flagged by AI. This workspace is ready for final review.</p>
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Suggestion drawer (portal-free, fixed-position overlay) */}
+      <SuggestionDrawer
+        open={drawerOpen}
+        onClose={() => setDrawerOpen(false)}
+        onAdd={handleAddSuggestions}
+        existingIds={existingBaseIds}
+      />
+    </>
   );
 }
