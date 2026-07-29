@@ -932,6 +932,85 @@ app.get('/api/copilot/tokenization-eligibility', (req, res) => {
   });
 });
 
+// ── Workspace AI Generation ───────────────────────────────────────────────────
+// Given a plain-language description of a transaction, returns a structured
+// workspace config (roles, documents, stages) as a starting point.
+app.post('/api/workspace/generate', async (req, res) => {
+  const { description } = req.body || {};
+  if (!description || !description.trim()) {
+    return res.status(400).json({ error: 'Description is required' });
+  }
+  try {
+    const completion = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      response_format: { type: 'json_object' },
+      messages: [
+        {
+          role: 'system',
+          content: `You are a transaction workspace configurator. Given a description of a private transaction, generate a workspace configuration as a JSON object.
+
+Return exactly this shape:
+{
+  "name": "string — workspace name (e.g. Acme Manufacturing Acquisition)",
+  "roles": [{ "key": "snake_case_key", "label": "Display Name", "required": bool, "needsDocs": bool, "icon": "emoji", "color": "#hex" }],
+  "documents": [{ "id": "snake_case_id", "label": "Document Name", "required": bool, "ai": bool, "assignedRole": "role_key" }],
+  "stages": [{ "key": "snake_case_key", "label": "Stage Name" }]
+}
+
+Guidelines:
+- 3–6 roles; first role is the workspace owner / coordinator (canManage=true implied)
+- 6–14 documents covering the key due-diligence areas for this transaction type
+- 3–6 stages reflecting the actual lifecycle (e.g. NDA → LOI → Due Diligence → Closing)
+- Mark key legal/financial docs required:true; mark docs where AI extraction adds value ai:true
+- Use professional labels; avoid jargon unique to a single industry unless the description uses it
+- Keep stage labels short (1–4 words)
+
+IMPORTANT: You are suggesting a starting point only. Do NOT claim completeness. The workspace owner must review with qualified professional advisers.`,
+        },
+        { role: 'user', content: description.trim() },
+      ],
+    });
+
+    let raw = {};
+    try { raw = JSON.parse(completion.choices[0].message.content); } catch (_) {}
+    return res.json({
+      name: raw.name || '',
+      roles: Array.isArray(raw.roles) ? raw.roles : [],
+      documents: Array.isArray(raw.documents) ? raw.documents : [],
+      stages: Array.isArray(raw.stages) ? raw.stages : [],
+    });
+  } catch (e) {
+    console.error('[workspace/generate]', e.message);
+    return res.status(500).json({ error: 'Failed to generate workspace config. Please try again.' });
+  }
+});
+
+// ── Helper: auto-save a custom pack and return its ID ────────────────────────
+async function saveCustomPackForWorkspace(propertyId, propertyName, customConfig) {
+  if (!customConfig || !Array.isArray(customConfig.roles) || customConfig.roles.length === 0) return null;
+  const customPackId = `ws_${(propertyId || 'w').replace(/[^a-z0-9]/g, '_').slice(0, 30)}_${Date.now().toString(36)}`;
+  const packName = propertyName || 'Custom Workspace';
+  try {
+    const { error } = await supabase.from('custom_workflow_packs').insert({
+      id: customPackId,
+      name: packName,
+      description: '',
+      config: {
+        name: packName,
+        description: '',
+        roles: customConfig.roles,
+        stages: customConfig.stages || [],
+        documents: customConfig.documents || [],
+      },
+    });
+    if (error) { console.warn('[custom-pack] insert error:', error.message); return null; }
+    return customPackId;
+  } catch (e) {
+    console.warn('[custom-pack] save failed:', e.message);
+    return null;
+  }
+}
+
 // ── Stripe Guest Checkout — PUBLIC, must stay BEFORE requireOrgContext ──────
 // In-memory store for pending deal rooms (checkout → webhook bridge)
 const pendingDealRooms = new Map();
@@ -982,6 +1061,13 @@ app.post('/api/checkout/guest', async (req, res) => {
 
     // Store deal room data in memory (webhook picks it up within seconds)
     if (propertyId) {
+      // If the owner customized the config, persist it as a custom pack now so
+      // the webhook can reference it by ID when the payment completes.
+      let finalPackId = workflowPackId;
+      if (meta.customConfig) {
+        const savedId = await saveCustomPackForWorkspace(propertyId, propertyName, meta.customConfig);
+        if (savedId) finalPackId = savedId;
+      }
       pendingDealRooms.set(session.id, {
         property_id: propertyId,
         property_name: propertyName || propertyId,
@@ -995,7 +1081,7 @@ app.post('/api/checkout/guest', async (req, res) => {
         closing_date: meta.closingDate || '',
         first_name: meta.firstName || '',
         last_name: meta.lastName || '',
-        workflow_pack_id: workflowPackId,
+        workflow_pack_id: finalPackId,
         created_at: new Date().toISOString(),
       });
     }
@@ -1016,6 +1102,14 @@ app.post('/api/checkout/demo', async (req, res) => {
     const fakeSessionId = 'demo_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
     const pid = propertyId || (propertyName || 'demo').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 
+    // If the owner customized the config, persist it as a custom pack so the
+    // workspace loads with the owner's roles/documents/stages.
+    let demoPackId = meta.workflowPackId || DEAL_TYPE_TO_PACK_INDEX[meta.dealType] || 'cre_acquisition';
+    if (meta.customConfig) {
+      const savedId = await saveCustomPackForWorkspace(pid, propertyName, meta.customConfig);
+      if (savedId) demoPackId = savedId;
+    }
+
     const dealRoomRecord = {
       stripe_session_id: fakeSessionId,
       plan,
@@ -1034,7 +1128,7 @@ app.post('/api/checkout/demo', async (req, res) => {
       closing_date: meta.closingDate || '',
       first_name: meta.firstName || '',
       last_name: meta.lastName || '',
-      workflow_pack_id: meta.workflowPackId || DEAL_TYPE_TO_PACK_INDEX[meta.dealType] || 'cre_acquisition',
+      workflow_pack_id: demoPackId,
     };
 
     try {
