@@ -57,12 +57,19 @@ function getPackRoleLabel(packId, roleKey) {
 }
 async function getRoomPackId(propertyId) {
   // Select both columns; workflow_pack_id may silently return null if PostgREST
-  // schema cache is stale, so we always prefer deal_type inference first.
+  // schema cache is stale, so we always prefer deal_type inference for standard packs.
   const { data } = await supabase.from('deal_rooms')
     .select('workflow_pack_id, deal_type')
     .eq('property_id', propertyId).maybeSingle();
   if (!data) return DEFAULT_PACK_ID;
-  // deal_type inference wins — mirrors frontend resolvePackId in workflowPacks/index.js
+  // Custom workspace packs (ws_* IDs) always win — mirrors frontend resolvePackId in
+  // workflowPacks/index.js. These packs were explicitly built for this workspace and
+  // contain the actual roles/docs/stages chosen at creation; deal_type is only a fallback
+  // for rooms created before the pack system existed.
+  if (data.workflow_pack_id && data.workflow_pack_id.startsWith('ws_')) {
+    return data.workflow_pack_id;
+  }
+  // deal_type inference for standard (non-ws_*) packs
   const inferred = data.deal_type ? (DEAL_TYPE_TO_PACK[data.deal_type] ?? null) : null;
   if (inferred) return inferred;
   return data.workflow_pack_id || DEFAULT_PACK_ID;

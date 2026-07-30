@@ -128,6 +128,14 @@ const DEAL_TYPE_TO_PACK = {
 
 export function resolvePackId(room) {
   if (!room) return DEFAULT_PACK_ID;
+  // Custom workspace packs (ws_* IDs) always win — they were explicitly assembled
+  // for this specific workspace by the AI generator or Pack Builder and contain the
+  // actual roles, documents, and stages chosen at creation time. deal_type inference
+  // is a best-effort fallback only for rooms created before the pack system existed;
+  // it must never override an explicitly saved custom pack.
+  if (room.workflow_pack_id && room.workflow_pack_id.startsWith('ws_')) {
+    return room.workflow_pack_id;
+  }
   const inferred = room.deal_type ? (DEAL_TYPE_TO_PACK[room.deal_type] ?? null) : null;
   // If deal_type inference points to the CRE default but workflow_pack_id explicitly
   // names a non-default pack, trust workflow_pack_id — the creation form stores it correctly

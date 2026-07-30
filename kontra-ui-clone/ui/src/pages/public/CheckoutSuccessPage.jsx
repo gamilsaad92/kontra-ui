@@ -69,8 +69,9 @@ export default function CheckoutSuccessPage() {
               <div>
                 <p className="text-sm font-bold text-gray-900">Upload your documents</p>
                 <p className="text-xs text-gray-500 mt-1 leading-relaxed">
-                  Drop in your financials, rent roll, purchase agreement, and inspection report.
-                  AI analyzes each one automatically and flags risks for every party.
+                  Upload the documents configured for your workspace — financials, agreements,
+                  due diligence materials, and more. AI analyzes each one automatically and
+                  flags risks for every party.
                 </p>
               </div>
             </div>
