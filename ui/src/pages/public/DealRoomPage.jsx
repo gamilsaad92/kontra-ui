@@ -13,7 +13,6 @@ import DocumentsTabPanel from "./DocumentsTabPanel";
 import VerifiedAssetPackage from "./VerifiedAssetPackage";
 import NotificationsLog from "./NotificationsLog";
 import LegalReviewPanel from "./LegalReviewPanel";
-import { getTemplate } from "./documentChecklistUtils";
 import { DEFAULT_PACK_ID, getWorkflowPack, ensureWorkflowPackLoaded, resolvePackId } from "../../lib/workflowPacks";
 
 class PanelErrorBoundary extends React.Component {
@@ -762,14 +761,16 @@ function AutoRiskSignals({ propertyId, refreshKey }) {
 // specific and don't apply to business acquisitions, fundraising rounds, etc.).
 // The required document list comes from `pack.getDocumentSchema()` so it is
 // always correct for the active pack — never hardcoded CRE document names.
-function ComplianceStatusPanel({ propertyId, pack, refreshKey }) {
+function ComplianceStatusPanel({ propertyId, pack, propertyType, refreshKey }) {
   const { analyses, loading } = useDealAnalyses(propertyId, refreshKey);
 
   const bySection = {};
   for (const a of analyses) if (!bySection[a.section]) bySection[a.section] = a;
 
-  // Required documents come from the active pack — not a static CRE template
-  const allDocs = pack ? pack.getDocumentSchema() : [];
+  // Required documents come from the active pack, passing propertyType so CRE
+  // subtype-specific schemas (Office, Industrial, Hotel, etc.) resolve correctly.
+  // Non-CRE packs ignore the argument; it is safe to pass for all pack types.
+  const allDocs = pack ? pack.getDocumentSchema(propertyType) : [];
   const requiredItems = allDocs.filter(d => d.required);
   const missingRequired = requiredItems.filter(i => !bySection[i.section]);
   const requiredDone = requiredItems.length - missingRequired.length;
@@ -1176,7 +1177,7 @@ function buildPendingSectionMap(property, role, onAnalysisSaved, urlPropertyId, 
   const pid = urlPropertyId || property?.property_id || property?.id;
   return {
     risk:       () => <RiskUploadPanel property={property} propertyId={pid} refreshKey={refreshKey} />,
-    compliance: () => <ComplianceStatusPanel propertyId={pid} pack={pack} refreshKey={refreshKey} />,
+    compliance: () => <ComplianceStatusPanel propertyId={pid} pack={pack} propertyType={property?.property_type || property?.type} refreshKey={refreshKey} />,
     readiness:  () => <PendingPanel title="Investment Readiness" icon="🏅" description="All 5 readiness pillars will be tracked as parties submit their documentation." />,
     property:   () => <PendingPropertyPanel property={property} />,
     metadata:   () => <TransactionDetailsPanel property={property} propertyId={pid} pack={pack} />,
