@@ -407,6 +407,7 @@ export default function DocumentChecklistPanel({
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [addDocOpen, setAddDocOpen] = useState(false);
   const [addDocLabel, setAddDocLabel] = useState("");
+  const [confirmReset, setConfirmReset] = useState(false);
 
   // ── Role + coordinator check ─────────────────────────────────────────────
   const roleConfig = workflowPack.getRole?.(role);
@@ -528,6 +529,12 @@ export default function DocumentChecklistPanel({
   function handleAddSuggestions(newItems) {
     updateItems(prev => [...prev, ...newItems]);
     setDrawerOpen(false);
+  }
+
+  function handleResetToDefaults() {
+    const seeded = seedFromPack(workflowPack, propertyType);
+    updateItems(() => seeded);
+    setConfirmReset(false);
   }
 
   function handleAddInline() {
@@ -957,6 +964,26 @@ export default function DocumentChecklistPanel({
                           Cancel
                         </button>
                       </div>
+                    ) : confirmReset ? (
+                      <div className="flex flex-col gap-2 p-3 bg-amber-50 border border-amber-200 rounded-xl">
+                        <p className="text-xs font-semibold text-amber-800">
+                          Replace current checklist with the default items for this transaction type?
+                        </p>
+                        <p className="text-[11px] text-amber-600">
+                          Any custom items you've added will be removed. Uploaded documents are not affected.
+                        </p>
+                        <div className="flex gap-2">
+                          <button onClick={handleResetToDefaults}
+                            className="px-3 py-1.5 rounded-lg text-[11px] font-bold text-white transition"
+                            style={{ background: "#800020" }}>
+                            Yes, reset checklist
+                          </button>
+                          <button onClick={() => setConfirmReset(false)}
+                            className="px-3 py-1.5 rounded-lg text-[11px] text-gray-500 hover:text-gray-700 border border-gray-200 transition">
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
                     ) : (
                       <div className="flex items-center gap-4 flex-wrap">
                         <button onClick={() => setAddDocOpen(true)}
@@ -968,6 +995,11 @@ export default function DocumentChecklistPanel({
                           className="flex items-center gap-2 text-xs text-[#800020]/70 hover:text-[#800020] transition group font-medium">
                           <span className="text-sm">📚</span>
                           Browse suggested items
+                        </button>
+                        <button onClick={() => setConfirmReset(true)}
+                          className="flex items-center gap-2 text-xs text-gray-300 hover:text-gray-500 transition group ml-auto">
+                          <span className="text-sm">↺</span>
+                          Reset to defaults
                         </button>
                       </div>
                     )}
