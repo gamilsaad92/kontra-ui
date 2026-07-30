@@ -2552,7 +2552,7 @@ app.post('/api/public/deal-room/:propertyId/advance', async (req, res) => {
     // when the package actually failed to build.
     if (stage === secondToLastStageKey) {
       generateAndStoreVAP(propertyId, { seal: false })
-        .then(pkg => { if (pkg) return notifyVAPReady(propertyId, stage); })
+        .then(pkg => { if (pkg) return notifyVAPReady(propertyId, stage, stageLabel); })
         .catch(() => {});
     }
     if (stage === lastStageKey) {
@@ -2561,7 +2561,7 @@ app.post('/api/public/deal-room/:propertyId/advance', async (req, res) => {
           if (!pkg) return;
           return Promise.all([
             sealClosingRecord(propertyId),
-            notifyVAPReady(propertyId, stage),
+            notifyVAPReady(propertyId, stage, stageLabel),
           ]);
         })
         .catch(() => {});

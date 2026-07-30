@@ -385,7 +385,7 @@ async function notifyStatusChange(propertyId, subRole, status, statusNote, updat
 }
 
 // ── VAP-ready notification — sent once when stage advances to closing/funded ──
-async function notifyVAPReady(propertyId, stage) {
+async function notifyVAPReady(propertyId, stage, resolvedLabel) {
   const RESEND_KEY = process.env.RESEND_API_KEY;
   if (!RESEND_KEY) return;
   try {
@@ -397,7 +397,8 @@ async function notifyVAPReady(propertyId, stage) {
     if (!room?.customer_email) return;
     const ownerName = room.first_name || 'there';
     const propName = room.property_name || propertyId;
-    const stageLabel = stage === 'funded' ? 'Funded' : 'Closing';
+    // Prefer a caller-supplied label (e.g. owner's custom stage name) over the hardcoded default
+    const stageLabel = resolvedLabel || (stage === 'funded' ? 'Funded' : 'Closing');
     const vapSubject = `Your Verified Transaction Package is ready — ${propName}`;
     await sendResendEmail(RESEND_KEY, {
       from: 'Kontra <notifications@kontraplatform.com>',
