@@ -196,7 +196,7 @@ export const fundraisingPack = createGenericPack({
   getSnapshotFlag,
   metadataFields: METADATA_FIELDS,
   metadataLabel: "Round Details",
-  outstandingItemsSections: ["metadata"],
+  outstandingItemsSections: ["metadata", "compliance"],
 });
 
 export const {

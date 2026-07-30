@@ -215,18 +215,19 @@ function RiskPanel({ property }) {
 function CompliancePanel({ property }) {
   return (
     <div className="bg-white rounded-2xl border border-gray-200 p-5">
-      <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-4">Compliance Status</p>
+      <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-4">Requirement Status</p>
       <div className="flex items-center gap-3 mb-4">
         <div className="text-2xl font-black" style={{ color: property.compliancePassed === property.complianceItems ? "#16a34a" : "#d97706" }}>
           {property.compliancePassed}/{property.complianceItems}
         </div>
         <div>
-          <p className="text-sm font-bold text-gray-900">Items Verified</p>
+          <p className="text-sm font-bold text-gray-900">Requirements Complete</p>
           <div className="mt-1 h-2 w-32 rounded-full bg-gray-100 overflow-hidden">
             <div className="h-full rounded-full" style={{ width: `${(property.compliancePassed / property.complianceItems) * 100}%`, background: "#16a34a" }} />
           </div>
         </div>
       </div>
+      <p className="text-[10px] text-gray-400">Based on the requirements configured for this workspace.</p>
     </div>
   );
 }
@@ -266,7 +267,7 @@ function ReadinessPanel({ property }) {
     { icon: "🔍", label: "Physical Condition", done: property.score >= 70 },
     { icon: "🛡️", label: "Insurance Coverage", done: true },
     { icon: "💰", label: "Financial Review", done: true },
-    { icon: "✅", label: "Compliance Checklist", done: property.compliancePassed === property.complianceItems },
+    { icon: "✅", label: "Requirement Checklist", done: property.compliancePassed === property.complianceItems },
     { icon: "📜", label: "Legal Structure", done: property.score >= 85 },
   ];
   const done = pillars.filter((p) => p.done).length;
@@ -345,7 +346,7 @@ function ReadinessSummaryBar({ property }) {
     { icon: "🔍", label: "Physical", done: property.score >= 70 },
     { icon: "🛡️", label: "Insurance", done: true },
     { icon: "💰", label: "Financial", done: true },
-    { icon: "✅", label: "Compliance", done: property.compliancePassed === property.complianceItems },
+    { icon: "✅", label: "Requirements", done: property.compliancePassed === property.complianceItems },
     { icon: "📜", label: "Legal", done: property.score >= 85 },
   ];
   const done = pillars.filter((p) => p.done).length;
@@ -755,33 +756,40 @@ function AutoRiskSignals({ propertyId, refreshKey }) {
   );
 }
 
-// ── Compliance Status — derived from documents already uploaded/analyzed ──
-// Names exactly which required documents are still missing (instead of a vague
-// "Awaiting Upload"), plus which uploaded documents have open compliance issues.
-function ComplianceStatusPanel({ propertyId, propertyType, refreshKey }) {
+// ── Requirement Status — derived from pack document schema + uploaded analyses ──
+// Shows which of the workspace's configured required documents are still missing,
+// plus document-level quality checks (CRE pack only — those checks are CRE-
+// specific and don't apply to business acquisitions, fundraising rounds, etc.).
+// The required document list comes from `pack.getDocumentSchema()` so it is
+// always correct for the active pack — never hardcoded CRE document names.
+function ComplianceStatusPanel({ propertyId, pack, refreshKey }) {
   const { analyses, loading } = useDealAnalyses(propertyId, refreshKey);
 
   const bySection = {};
   for (const a of analyses) if (!bySection[a.section]) bySection[a.section] = a;
 
-  const template = getTemplate(propertyType);
-  const requiredItems = template.filter(i => i.required);
+  // Required documents come from the active pack — not a static CRE template
+  const allDocs = pack ? pack.getDocumentSchema() : [];
+  const requiredItems = allDocs.filter(d => d.required);
   const missingRequired = requiredItems.filter(i => !bySection[i.section]);
   const requiredDone = requiredItems.length - missingRequired.length;
 
-  const CHECKS = [
-    { key: "insurance", label: "Insurance Coverage", check: (a) => a.analysis?.complianceStatus === "Compliant" },
-    { key: "legal", label: "Legal / Title Review", check: (a) => a.analysis?.complianceStatus && a.analysis.complianceStatus !== "Issues Found" },
-    { key: "title", label: "Title Commitment Clear", check: (a) => a.analysis?.clearToClose === true || (a.analysis?.scheduleBExceptions?.length ?? 1) === 0 },
-    { key: "financials", label: "Financial Covenants", check: (a) => a.analysis?.covenantStatus === "Compliant" },
-    { key: "inspection", label: "Inspection — Life Safety", check: (a) => !(a.analysis?.lifeSafetyFindings?.length > 0) },
-    { key: "brand-standards", label: "Brand Standards", check: (a) => a.analysis?.complianceStatus === "Compliant" },
-  ].filter(c => bySection[c.key]);
+  // Quality checks are CRE-specific (covenant status, title clearance, life-safety
+  // findings). They are only shown for the CRE Acquisition pack — they don't
+  // apply to a business acquisition or fundraising round.
+  const isCREPack = pack?.id === 'cre_acquisition';
+  const CHECKS = isCREPack ? [
+    { key: "insurance",       label: "Insurance Coverage",     check: (a) => a.analysis?.complianceStatus === "Compliant" },
+    { key: "legal",           label: "Legal / Title Review",   check: (a) => a.analysis?.complianceStatus && a.analysis.complianceStatus !== "Issues Found" },
+    { key: "title",           label: "Title Commitment Clear", check: (a) => a.analysis?.clearToClose === true || (a.analysis?.scheduleBExceptions?.length ?? 1) === 0 },
+    { key: "financials",      label: "Financial Covenants",    check: (a) => a.analysis?.covenantStatus === "Compliant" },
+    { key: "inspection",      label: "Inspection — Life Safety", check: (a) => !(a.analysis?.lifeSafetyFindings?.length > 0) },
+    { key: "brand-standards", label: "Brand Standards",        check: (a) => a.analysis?.complianceStatus === "Compliant" },
+  ].filter(c => bySection[c.key]) : [];
 
   const passed = CHECKS.filter(c => c.check(bySection[c.key])).length;
-  const total = CHECKS.length;
   const anyUploaded = Object.keys(bySection).length > 0;
-  const allGood = missingRequired.length === 0 && passed === total;
+  const allGood = missingRequired.length === 0 && passed === CHECKS.length;
 
   if (loading) return (
     <div className="bg-white rounded-2xl border border-gray-200 p-5 animate-pulse">
@@ -792,12 +800,20 @@ function ComplianceStatusPanel({ propertyId, propertyType, refreshKey }) {
 
   return (
     <div className="bg-white rounded-2xl border border-gray-200 p-5">
-      <div className="flex items-center justify-between mb-4">
-        <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">Compliance Status</p>
+      <div className="flex items-center justify-between mb-1">
+        <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">Requirement Status</p>
         <div className="text-lg font-black" style={{ color: allGood ? "#16a34a" : "#d97706" }}>
           {requiredDone}/{requiredItems.length}
         </div>
       </div>
+
+      <p className="text-[10px] text-gray-500 mb-3">
+        {requiredDone} of {requiredItems.length} configured requirement{requiredItems.length !== 1 ? "s" : ""} complete
+      </p>
+
+      {requiredItems.length === 0 && (
+        <p className="text-xs text-gray-400 mb-3">No required documents have been configured for this workspace yet.</p>
+      )}
 
       {missingRequired.length > 0 && (
         <div className="mb-3">
@@ -828,15 +844,15 @@ function ComplianceStatusPanel({ propertyId, propertyType, refreshKey }) {
         </div>
       )}
 
-      {missingRequired.length === 0 && CHECKS.length === 0 && !allGood && (
-        <p className="text-xs text-gray-400">All required documents are uploaded — no compliance-relevant AI checks apply yet.</p>
+      {missingRequired.length === 0 && CHECKS.length === 0 && anyUploaded && !allGood && (
+        <p className="text-xs text-gray-400">All required documents are uploaded — quality checks will appear once documents are analyzed.</p>
       )}
 
-      {allGood && (
-        <p className="text-xs text-green-600 font-semibold">✓ All required documents uploaded and passing compliance checks.</p>
+      {allGood && requiredItems.length > 0 && (
+        <p className="text-xs text-green-600 font-semibold">✓ All configured requirements complete.</p>
       )}
 
-      <p className="text-[10px] text-gray-400 mt-3">Based on the Due Diligence Checklist above — upload the missing items there to close these gaps.</p>
+      <p className="text-[10px] text-gray-400 mt-3">Based on the requirements configured for this workspace.</p>
     </div>
   );
 }
@@ -1160,7 +1176,7 @@ function buildPendingSectionMap(property, role, onAnalysisSaved, urlPropertyId, 
   const pid = urlPropertyId || property?.property_id || property?.id;
   return {
     risk:       () => <RiskUploadPanel property={property} propertyId={pid} refreshKey={refreshKey} />,
-    compliance: () => <ComplianceStatusPanel propertyId={pid} propertyType={property?.property_type || property?.type} refreshKey={refreshKey} />,
+    compliance: () => <ComplianceStatusPanel propertyId={pid} pack={pack} refreshKey={refreshKey} />,
     readiness:  () => <PendingPanel title="Investment Readiness" icon="🏅" description="All 5 readiness pillars will be tracked as parties submit their documentation." />,
     property:   () => <PendingPropertyPanel property={property} />,
     metadata:   () => <TransactionDetailsPanel property={property} propertyId={pid} pack={pack} />,

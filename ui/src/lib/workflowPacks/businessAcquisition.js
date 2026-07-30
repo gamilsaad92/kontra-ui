@@ -203,7 +203,7 @@ export const businessAcquisitionPack = createGenericPack({
   getSnapshotFlag,
   metadataFields: METADATA_FIELDS,
   metadataLabel: "Transaction Details",
-  outstandingItemsSections: ["metadata"],
+  outstandingItemsSections: ["metadata", "compliance"],
 });
 
 export const {
