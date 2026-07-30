@@ -376,7 +376,7 @@ router.get('/api/public/deal-room/:propertyId/verified-asset-package', async (re
     return res.json(pkg);
   } catch (e) {
     console.error('[vap]', e.message);
-    return res.status(500).json({ error: 'Failed to generate Verified Asset Package' });
+    return res.status(500).json({ error: 'Failed to generate Verified Transaction Package' });
   }
 });
 
@@ -397,7 +397,7 @@ router.post('/api/public/deal-room/:propertyId/verified-asset-package/regenerate
 
     if (stored?.sealed && !force) {
       return res.status(403).json({
-        error: 'This Verified Asset Package has been sealed at funding and cannot be regenerated. Pass ?force=true to override.',
+        error: 'This Verified Transaction Package has been sealed at funding and cannot be regenerated. Pass ?force=true to override.',
       });
     }
 
@@ -416,7 +416,7 @@ router.post('/api/public/deal-room/:propertyId/verified-asset-package/regenerate
     return res.json({ ok: true, regenerated_at: pkg.generated_at, sealed: seal, package: pkg });
   } catch (e) {
     console.error('[vap] regenerate', e.message);
-    return res.status(500).json({ error: 'Failed to regenerate Verified Asset Package' });
+    return res.status(500).json({ error: 'Failed to regenerate Verified Transaction Package' });
   }
 });
 
@@ -450,8 +450,8 @@ router.post('/api/public/deal-room/:propertyId/verified-asset-package/share', as
         actor_role: 'owner',
         actor_name: room.first_name || 'Owner',
         description: email
-          ? `Verified Asset Package shared with ${email}`
-          : 'Verified Asset Package share link generated',
+          ? `Verified Transaction Package shared with ${email}`
+          : 'Verified Transaction Package share link generated',
         metadata: JSON.stringify({ email: email || null, expires_at: expiresAt }),
         created_at: new Date().toISOString(),
       });
@@ -476,7 +476,7 @@ router.post('/api/public/deal-room/:propertyId/verified-asset-package/share', as
             body: JSON.stringify({
               from: 'Kontra Platform <notifications@kontraplatform.com>',
               to: [email],
-              subject: `Verified Asset Package — ${assetName}`,
+              subject: `Verified Transaction Package — ${assetName}`,
               html: `
                 <div style="font-family:-apple-system,sans-serif;max-width:560px;margin:0 auto;padding:32px 24px;color:#111827">
                   <div style="margin-bottom:24px">
@@ -484,7 +484,7 @@ router.post('/api/public/deal-room/:propertyId/verified-asset-package/share', as
                   </div>
                   <p style="margin:0 0 16px;font-size:15px;line-height:1.6">${greeting}</p>
                   <p style="margin:0 0 16px;font-size:15px;line-height:1.6">
-                    ${senderName} has shared a <strong>Verified Asset Package</strong> for
+                    ${senderName} has shared a <strong>Verified Transaction Package</strong> for
                     <strong>${assetName}</strong> with you.
                   </p>
                   <p style="margin:0 0 24px;font-size:14px;color:#6b7280;line-height:1.6">
@@ -494,7 +494,7 @@ router.post('/api/public/deal-room/:propertyId/verified-asset-package/share', as
                   <a href="${shareUrl}"
                     style="display:inline-block;background:#800020;color:#fff;font-size:14px;font-weight:700;
                            text-decoration:none;padding:12px 24px;border-radius:10px">
-                    View Verified Asset Package →
+                    View Verified Transaction Package →
                   </a>
                   <p style="margin:24px 0 0;font-size:12px;color:#9ca3af">
                     This link expires in 30 days. It is read-only and does not grant access to the
@@ -548,7 +548,7 @@ router.get('/api/public/verify/:token', async (req, res) => {
     return res.json({ ...pkg, _shared: true, _expires_at: new Date(expiresAt).toISOString() });
   } catch (e) {
     console.error('[vap/verify]', e.message);
-    return res.status(500).json({ error: 'Failed to load Verified Asset Package' });
+    return res.status(500).json({ error: 'Failed to load Verified Transaction Package' });
   }
 });
 

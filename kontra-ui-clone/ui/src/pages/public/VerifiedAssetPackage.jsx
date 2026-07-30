@@ -325,7 +325,7 @@ function PrintContent({ pkg }) {
           <tr><td>Asset Type</td><td>{id.asset_type}</td></tr>
           <tr><td>Address</td><td>{id.address || "—"}</td></tr>
           <tr><td>Deal Amount</td><td>{id.deal_amount || "—"}</td></tr>
-          <tr><td>Deal Stage</td><td>{id.deal_stage}</td></tr>
+          <tr><td>Transaction Stage</td><td>{id.deal_stage}</td></tr>
         </tbody>
       </table>
 

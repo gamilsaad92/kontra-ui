@@ -641,7 +641,7 @@ function OnboardingProgress({ propertyId, accentColor, totalInvitable, pack }) {
         const invitableLabels = (pack?.roles || []).filter(r => r.invitable).map(r => r.label);
         const roleList = invitableLabels.length > 0
           ? invitableLabels.slice(0, 4).join(", ")
-          : "lender, inspector, insurer, and attorney";
+          : "the parties configured for this workspace";
         return totalInvitable
           ? `${state.invitedRoles}/${totalInvitable} invited — send role-specific links to your ${roleList}`
           : `Send role-specific links to your ${roleList}`;
@@ -660,8 +660,8 @@ function OnboardingProgress({ propertyId, accentColor, totalInvitable, pack }) {
     {
       label: "AI takes over",
       detail: state.taskCount > 0
-        ? `${state.taskCount} task${state.taskCount === 1 ? "" : "s"} identified — approvals, compliance, and deal stage tracked automatically`
-        : "Once documents arrive, AI tracks approvals, compliance, and deal stage automatically",
+        ? `${state.taskCount} task${state.taskCount === 1 ? "" : "s"} identified — approvals, requirements, and transaction stage tracked automatically`
+        : "Once documents arrive, AI tracks approvals, requirements, and transaction stage automatically",
       done: state.taskCount > 0,
       href: "#tasks-panel",
     },
@@ -1550,7 +1550,7 @@ export default function DealRoomPage() {
                   {[
                     `Invite parties — send role-specific links to ${(pack.roles || []).filter(r => r.invitable).slice(0, 3).map(r => r.label).join(", ") || "every stakeholder"}`,
                     "Upload documents — AI reviews each file as it arrives and surfaces key findings",
-                    "Track approvals — monitor deal stage, party status, and action items in real time",
+                    "Track approvals — monitor transaction stage, party status, and action items in real time",
                   ].map((text, i) => (
                     <li key={i} className="flex items-start gap-2.5 text-sm text-gray-600">
                       <span className="shrink-0 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold text-white mt-0.5"
