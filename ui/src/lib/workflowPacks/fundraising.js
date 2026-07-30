@@ -163,6 +163,19 @@ export const onboardingSteps = [
   { icon: "📝", title: "Add the term sheet & cap table", desc: "AI tracks ownership changes and flags terms investors should review" },
 ];
 
+// ── Round Details metadata fields ─────────────────────────────────────────────
+// These fields are shown in the "Round Details" panel inside the live deal room.
+export const METADATA_FIELDS = [
+  { id: "company_name",   label: "Company Name",          fieldType: "text",     fullWidth: true, placeholder: "e.g. Quantum Labs Inc." },
+  { id: "industry",       label: "Industry / Sector",     fieldType: "text",     placeholder: "e.g. Deep Tech / Hardware" },
+  { id: "round_type",     label: "Round Type",            fieldType: "select",   options: ["Pre-Seed", "Seed", "Series A", "Series B", "Series C", "Debt", "Other"] },
+  { id: "raise_amount",   label: "Raise Amount ($)",      fieldType: "currency", placeholder: "e.g. 5000000" },
+  { id: "current_arr",    label: "Current ARR ($)",       fieldType: "currency", placeholder: "e.g. 1200000" },
+  { id: "monthly_burn",   label: "Monthly Burn ($)",      fieldType: "currency", placeholder: "e.g. 180000" },
+  { id: "runway_months",  label: "Runway (months)",       fieldType: "number",   placeholder: "e.g. 14" },
+  { id: "target_close_date", label: "Target Close Date",  fieldType: "date" },
+];
+
 export const fundraisingPack = createGenericPack({
   id: "fundraising",
   name: "Fundraising",
@@ -181,6 +194,9 @@ export const fundraisingPack = createGenericPack({
   getIntelligenceHighlight,
   getSnapshotStats,
   getSnapshotFlag,
+  metadataFields: METADATA_FIELDS,
+  metadataLabel: "Round Details",
+  outstandingItemsSections: ["metadata"],
 });
 
 export const {

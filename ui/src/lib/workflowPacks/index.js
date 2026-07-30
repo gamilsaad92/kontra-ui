@@ -51,14 +51,29 @@ function withRoleCopyDefaults(role, isPrimary) {
 }
 
 export function registerCustomPack(config) {
+  // Custom ws_* packs always show a "Transaction Details" metadata section with
+  // generic universal fields. Ensure the primary (first) role has "metadata" in
+  // its sections so the panel is visible to the workspace owner.
+  const rolesWithDefaults = (config.roles || []).map((r, i) => {
+    const role = withRoleCopyDefaults(r, i === 0);
+    if (i === 0 && !role.sections?.length) {
+      return { ...role, sections: ["metadata"] };
+    }
+    return role;
+  });
+
   const pack = createGenericPack({
     id: config.id,
     name: config.name,
     description: config.description,
-    roles: (config.roles || []).map((r, i) => withRoleCopyDefaults(r, i === 0)),
+    roles: rolesWithDefaults,
     stages: config.stages,
     documentSchema: (config.documents || []).map(d => ({ ...d, section: d.section || d.id })),
     onboardingSteps: config.onboardingSteps,
+    // Always include the metadata section so every custom workspace shows the
+    // Transaction Details panel with generic fields.
+    outstandingItemsSections: ["metadata"],
+    metadataLabel: "Transaction Details",
   });
   PACKS[config.id] = pack;
   return pack;

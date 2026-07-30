@@ -1017,14 +1017,153 @@ function useDealAnalyses(propertyId, refreshKey) {
   return { analyses, loading };
 }
 
+// ── Transaction Details panel — schema-driven per Workflow Pack ───────────────
+// Reads `pack.metadataFields` (set in businessAcquisition.js / fundraising.js)
+// and renders them as a saveable key/value form. Falls back to a small set of
+// universal fields when the pack provides none (e.g. custom ws_* workspaces).
+// Saves to `metadata_values` JSONB column via PATCH …/:propertyId/metadata.
+// Auth: owner write token read from localStorage (same pattern as stages PATCH).
+function TransactionDetailsPanel({ property, propertyId, pack }) {
+  const fields = (pack?.metadataFields && pack.metadataFields.length > 0)
+    ? pack.metadataFields
+    : [
+        { id: "workspace_name",    label: "Workspace Name",       fieldType: "text",     fullWidth: true, placeholder: property?.property_name || "" },
+        { id: "transaction_value", label: "Transaction Value ($)", fieldType: "currency", placeholder: "e.g. 1000000" },
+        { id: "target_close_date", label: "Target Closing Date",  fieldType: "date" },
+        { id: "notes",             label: "Notes",                fieldType: "text",     fullWidth: true, placeholder: "Any additional context for this workspace…" },
+      ];
+
+  const sectionTitle = pack?.metadataLabel || "Transaction Details";
+
+  // Seed initial form values from saved metadata_values; backfill legacy
+  // stated_revenue / stated_ebitda columns for rooms created before this feature.
+  const [form, setForm] = useState(() => {
+    const saved = property?.metadata_values || {};
+    const legacyMap = {
+      annual_revenue: property?.stated_revenue != null ? String(property.stated_revenue) : "",
+      ebitda:         property?.stated_ebitda  != null ? String(property.stated_ebitda)  : "",
+    };
+    return Object.fromEntries(
+      fields.map(f => [f.id, saved[f.id] != null ? String(saved[f.id]) : (legacyMap[f.id] || "")])
+    );
+  });
+
+  const [saving, setSaving]   = useState(false);
+  const [saveOk,  setSaveOk]  = useState(false);
+  const [saveErr, setSaveErr] = useState("");
+  const [ownerToken, setOwnerToken] = useState("");
+
+  useEffect(() => {
+    try { setOwnerToken(localStorage.getItem(`kontra_owner_token_${propertyId}`) || ""); } catch {}
+  }, [propertyId]);
+
+  const isEditable = Boolean(ownerToken);
+
+  async function handleSave() {
+    setSaving(true); setSaveErr(""); setSaveOk(false);
+    try {
+      const res = await fetch(`${API_BASE}/api/public/deal-room/${propertyId}/metadata`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ values: form, ownerWriteToken: ownerToken }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || `Server error ${res.status}`);
+      setSaveOk(true);
+      setTimeout(() => setSaveOk(false), 2500);
+    } catch (err) {
+      setSaveErr(err.message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function renderField(field) {
+    const val = form[field.id] ?? "";
+    const inputClass = "w-full text-xs border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:border-red-800";
+
+    if (!isEditable) {
+      return (
+        <div key={field.id} className={`py-2 border-t border-gray-100 first:border-t-0 ${field.fullWidth ? "col-span-2" : ""}`}>
+          <span className="text-xs text-gray-400 block mb-0.5">{field.label}</span>
+          <span className="text-xs font-medium text-gray-800">{val || "—"}</span>
+        </div>
+      );
+    }
+
+    if (field.fieldType === "select" && field.options) {
+      return (
+        <div key={field.id} className={field.fullWidth ? "col-span-2" : ""}>
+          <label className="text-xs text-gray-400 mb-1 block">{field.label}</label>
+          <select value={val} onChange={e => setForm(f => ({ ...f, [field.id]: e.target.value }))}
+            className={`${inputClass} bg-white`}>
+            <option value="">Select…</option>
+            {(field.options || []).map(o => <option key={o}>{o}</option>)}
+          </select>
+        </div>
+      );
+    }
+
+    if (field.fieldType === "date") {
+      return (
+        <div key={field.id} className={field.fullWidth ? "col-span-2" : ""}>
+          <label className="text-xs text-gray-400 mb-1 block">{field.label}</label>
+          <input type="date" value={val}
+            onChange={e => setForm(f => ({ ...f, [field.id]: e.target.value }))}
+            className={inputClass} />
+        </div>
+      );
+    }
+
+    return (
+      <div key={field.id} className={field.fullWidth ? "col-span-2" : ""}>
+        <label className="text-xs text-gray-400 mb-1 block">{field.label}</label>
+        <input
+          type={field.fieldType === "number" || field.fieldType === "currency" ? "number" : "text"}
+          value={val}
+          onChange={e => setForm(f => ({ ...f, [field.id]: e.target.value }))}
+          className={inputClass}
+          placeholder={field.placeholder || ""}
+          min={field.fieldType === "number" || field.fieldType === "currency" ? "0" : undefined}
+        />
+      </div>
+    );
+  }
+
+  return (
+    <div className="bg-white rounded-2xl border border-gray-200 p-5">
+      <div className="flex items-center justify-between mb-4">
+        <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">{sectionTitle}</p>
+        {saveOk && <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-green-50 text-green-700">✓ Saved</span>}
+      </div>
+
+      <div className={`grid gap-2 ${isEditable ? "grid-cols-2" : ""}`}>
+        {fields.map(f => renderField(f))}
+      </div>
+
+      {isEditable && (
+        <div className="mt-3">
+          {saveErr && <p className="text-xs text-red-500 mb-2">{saveErr}</p>}
+          <button onClick={handleSave} disabled={saving}
+            className="w-full py-2 rounded-xl text-xs font-bold text-white transition hover:opacity-90 disabled:opacity-40"
+            style={{ background: "#800020" }}>
+            {saving ? "Saving…" : "Save Details"}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // Build pending section map based on role
-function buildPendingSectionMap(property, role, onAnalysisSaved, urlPropertyId, refreshKey) {
+function buildPendingSectionMap(property, role, onAnalysisSaved, urlPropertyId, refreshKey, pack) {
   const pid = urlPropertyId || property?.property_id || property?.id;
   return {
     risk:       () => <RiskUploadPanel property={property} propertyId={pid} refreshKey={refreshKey} />,
     compliance: () => <ComplianceStatusPanel propertyId={pid} propertyType={property?.property_type || property?.type} refreshKey={refreshKey} />,
     readiness:  () => <PendingPanel title="Investment Readiness" icon="🏅" description="All 5 readiness pillars will be tracked as parties submit their documentation." />,
     property:   () => <PendingPropertyPanel property={property} />,
+    metadata:   () => <TransactionDetailsPanel property={property} propertyId={pid} pack={pack} />,
   };
 }
 
@@ -1231,7 +1370,7 @@ export default function DealRoomPage() {
   }
 
   const SECTION_MAP = property.isCustom
-    ? buildPendingSectionMap(property, role, onAnalysisSaved, propertyId, analysesRefreshKey)
+    ? buildPendingSectionMap(property, role, onAnalysisSaved, propertyId, analysesRefreshKey, pack)
     : {
         financials: () => <FinancialsPanel property={property} />,
         risk:       () => <RiskPanel property={property} />,

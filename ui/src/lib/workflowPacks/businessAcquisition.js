@@ -167,6 +167,22 @@ export const onboardingSteps = [
   { icon: "⚖️", title: "Add the purchase agreement", desc: "AI reviews terms and flags disclosure gaps for legal counsel" },
 ];
 
+// ── Transaction Details metadata fields ──────────────────────────────────────
+// These fields are shown in the "Transaction Details" panel inside the live
+// deal room (owner dashboard). They are schema-driven so the panel renders
+// the right inputs for this transaction type instead of CRE property fields.
+export const METADATA_FIELDS = [
+  { id: "business_name",    label: "Business Name",          fieldType: "text",     fullWidth: true, placeholder: "e.g. Acme HVAC Services" },
+  { id: "industry",         label: "Industry",               fieldType: "text",     placeholder: "e.g. HVAC / Mechanical Services" },
+  { id: "transaction_value",label: "Transaction Value ($)",  fieldType: "currency", placeholder: "e.g. 2500000" },
+  { id: "annual_revenue",   label: "Annual Revenue ($)",     fieldType: "currency", placeholder: "e.g. 1800000" },
+  { id: "ebitda",           label: "EBITDA ($)",             fieldType: "currency", placeholder: "e.g. 420000" },
+  { id: "employee_count",   label: "Employee Count",         fieldType: "number",   placeholder: "e.g. 24" },
+  { id: "location_count",   label: "Number of Locations",   fieldType: "number",   placeholder: "e.g. 3" },
+  { id: "financing_type",   label: "Financing Type",         fieldType: "select",   options: ["Cash", "SBA Loan", "Seller Financing", "Equity Raise", "Mixed", "Other"] },
+  { id: "target_close_date",label: "Target Closing Date",   fieldType: "date" },
+];
+
 export const businessAcquisitionPack = createGenericPack({
   id: "business_acquisition",
   name: "Business Acquisition",
@@ -185,6 +201,9 @@ export const businessAcquisitionPack = createGenericPack({
   getIntelligenceHighlight,
   getSnapshotStats,
   getSnapshotFlag,
+  metadataFields: METADATA_FIELDS,
+  metadataLabel: "Transaction Details",
+  outstandingItemsSections: ["metadata"],
 });
 
 export const {

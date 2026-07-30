@@ -2661,6 +2661,58 @@ app.patch('/api/public/deal-room/:propertyId/stages', async (req, res) => {
   }
 });
 
+// ── Transaction metadata (pack-driven Transaction Details panel) ─────────────
+// PATCH saves the key/value form from the TransactionDetailsPanel to the
+// `metadata_values` JSONB column. Auth: owner_write_token (same pattern as
+// the stages PATCH above).
+app.patch('/api/public/deal-room/:propertyId/metadata', async (req, res) => {
+  const { propertyId } = req.params;
+  const { values, ownerWriteToken } = req.body || {};
+
+  if (!ownerWriteToken) return res.status(403).json({ error: 'owner_write_token required' });
+
+  const { data: room, error: authErr } = await supabase
+    .from('deal_rooms')
+    .select('owner_write_token')
+    .eq('property_id', propertyId)
+    .maybeSingle();
+  if (authErr) return res.status(500).json({ error: authErr.message });
+  if (!room) return res.status(404).json({ error: 'room not found' });
+  if (!room.owner_write_token || room.owner_write_token !== ownerWriteToken) {
+    return res.status(403).json({ error: 'invalid owner_write_token' });
+  }
+
+  // Sanitize values: only allow string/number/null, max 64 keys, max 500 chars per value
+  if (typeof values !== 'object' || values === null || Array.isArray(values)) {
+    return res.status(400).json({ error: 'values must be an object' });
+  }
+  const sanitized = {};
+  for (const [k, v] of Object.entries(values)) {
+    if (Object.keys(sanitized).length >= 64) break;
+    if (typeof k !== 'string' || k.length > 80) continue;
+    if (v === null || v === undefined || v === '') continue;
+    const strVal = String(v).slice(0, 500);
+    sanitized[k] = strVal;
+  }
+
+  try {
+    const { error: updateErr } = await supabase
+      .from('deal_rooms')
+      .update({ metadata_values: sanitized })
+      .eq('property_id', propertyId);
+    if (updateErr) throw updateErr;
+
+    logEvent(propertyId, 'metadata_updated', 'owner', null, 'Transaction details updated', {
+      fieldCount: Object.keys(sanitized).length,
+    });
+
+    res.json({ ok: true, metadata_values: sanitized });
+  } catch (err) {
+    console.error('[metadata PATCH]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ── Notification log — owner can see what emails were sent ──────────────────
 app.get('/api/public/deal-room/:propertyId/notifications', async (req, res) => {
   const { propertyId } = req.params;
@@ -4498,8 +4550,11 @@ async function ensureWorkflowPackIdColumn() {
     await pool.query(
       `ALTER TABLE deal_rooms ADD COLUMN IF NOT EXISTS stages_config JSONB`
     );
+    await pool.query(
+      `ALTER TABLE deal_rooms ADD COLUMN IF NOT EXISTS metadata_values JSONB`
+    );
     await pool.end();
-    console.log('[startup] deal_rooms schema columns ready (workflow_pack_id, stated_revenue, stated_ebitda, checklist_items, owner_write_token, stages_config)');
+    console.log('[startup] deal_rooms schema columns ready (workflow_pack_id, stated_revenue, stated_ebitda, checklist_items, owner_write_token, stages_config, metadata_values)');
   } catch (err) {
     // Non-fatal: Supabase service role may not allow DDL via pooler — fall back gracefully
     console.warn('[startup] workflow_pack_id column ensure skipped:', err.message);
