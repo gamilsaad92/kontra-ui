@@ -17,7 +17,7 @@ const express = require('express');
 const router = express.Router();
 const crypto = require('crypto');
 const { supabase } = require('../db');
-const { getRoomPackId } = require('../lib/dealRoomHelpers');
+const { getRoomPackId, getPackStageConfig } = require('../lib/dealRoomHelpers');
 const OpenAI = require('openai');
 const cache = require('../cache');
 
@@ -79,7 +79,7 @@ function computeCompletenessScore(uploadedSections, requiredSections) {
   return Math.round((present / requiredSections.length) * 100);
 }
 
-function computeTokenizationReadiness(room, analyses, submissions) {
+function computeTokenizationReadiness(room, analyses, submissions, packId) {
   const checks = [];
 
   const ownershipPass = submissions.length >= 2;
@@ -94,9 +94,11 @@ function computeTokenizationReadiness(room, analyses, submissions) {
   checks.push({ label: 'Financial data verified', pass: finPass,
     note: finPass ? null : 'Upload financial statements or rent roll' });
 
-  const stagePass = ['closing', 'funded'].includes(room.deal_stage);
+  // Use position-based terminal keys so custom-staged workspaces pass this check correctly
+  const { lastKey, secondToLastKey } = getTerminalStageKeys(room, packId);
+  const stagePass = [lastKey, secondToLastKey].includes(room.deal_stage);
   checks.push({ label: 'Transaction at verified stage', pass: stagePass,
-    note: stagePass ? null : 'Advance the deal to Closing or beyond' });
+    note: stagePass ? null : 'Advance the deal to the closing or final stage' });
 
   const score = checks.filter(c => c.pass).length * 25;
   return { score, checks };
@@ -113,12 +115,26 @@ function buildFallbackSummary(completenessScore, uploadedSections, missingSectio
   };
 }
 
+// ── Derive terminal stage keys from custom config or pack defaults ────────────
+// last stage  = "funded equivalent"  (seal + close record)
+// second-to-last = "closing equivalent" (preview VAP, no seal)
+function getTerminalStageKeys(room, packId) {
+  const stages = Array.isArray(room?.stages_config) && room.stages_config.length >= 2
+    ? room.stages_config
+    : (getPackStageConfig(packId)?.stages || []);
+  if (stages.length < 2) return { lastKey: 'funded', secondToLastKey: 'closing' };
+  return {
+    lastKey: stages[stages.length - 1].key,
+    secondToLastKey: stages[stages.length - 2].key,
+  };
+}
+
 // ── Core package builder ─────────────────────────────────────────────────────
 // Exported so sealClosingRecord can call it without re-fetching everything.
 async function buildVAP(propertyId) {
   const [roomRes, analysesRes, eventsRes, submissionsRes] = await Promise.all([
     supabase.from('deal_rooms')
-      .select('property_name, property_type, deal_amount, address, customer_email, first_name, activated_at, deal_stage, workflow_pack_id, deal_type')
+      .select('property_name, property_type, deal_amount, address, customer_email, first_name, activated_at, deal_stage, workflow_pack_id, deal_type, stages_config')
       .eq('property_id', propertyId).maybeSingle(),
     supabase.from('deal_analyses')
       .select('section, filename, uploaded_by_role, created_at, analysis')
@@ -173,7 +189,7 @@ async function buildVAP(propertyId) {
   if (paAn.earnestMoney) legalTerms.earnestMoney = paAn.earnestMoney;
   if (paAn.dueDiligencePeriod) legalTerms.dueDiligencePeriod = paAn.dueDiligencePeriod;
 
-  const tokenizationReadiness = computeTokenizationReadiness(room, analyses, submissions);
+  const tokenizationReadiness = computeTokenizationReadiness(room, analyses, submissions, packId);
 
   // AI verification summary — cached per deal room (keyed by uploaded sections)
   const aiCacheKey = `vap-ai:${propertyId}:${uploadedSections.sort().join(',')}`;
@@ -343,10 +359,16 @@ router.get('/api/public/deal-room/:propertyId/verified-asset-package', async (re
     // 2. No stored package — generate fresh
     const pkg = await buildVAP(propertyId);
 
-    // 3. Persist when funded; store (unsealed) at closing too so subsequent reads are cheap
+    // 3. Persist at last two stages (position-based, works for custom-staged workspaces).
+    // Fetch stages_config here so we can derive terminal keys without changing the public
+    // pkg shape.
     const stage = pkg.identity?.deal_stage;
-    const shouldStore = ['closing', 'funded'].includes(stage);
-    const seal = stage === 'funded';
+    const packId = pkg.identity?.workflow_pack;
+    const { data: roomForStages } = await supabase
+      .from('deal_rooms').select('stages_config').eq('property_id', propertyId).maybeSingle();
+    const { lastKey, secondToLastKey } = getTerminalStageKeys(roomForStages, packId);
+    const shouldStore = [lastKey, secondToLastKey].includes(stage);
+    const seal = stage === lastKey;
     if (shouldStore) {
       storeVAP(propertyId, pkg, seal).catch(() => {});
     }
