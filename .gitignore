@@ -8,6 +8,13 @@ node_modules/
 # build output
 dist/
 
+# Large binary/asset files — not needed in the deployment repo
+attached_assets/
+*.enc
+*.xlsm
+*.xlsx
+*.xls
+
 # environment files
 .env
 *.env
