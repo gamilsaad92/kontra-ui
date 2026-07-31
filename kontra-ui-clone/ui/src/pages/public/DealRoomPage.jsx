@@ -1309,12 +1309,12 @@ export default function DealRoomPage() {
     };
   }
 
-  const isDemo = propertyId === 'kontra-demo';
+  const isDemo = ['kontra-demo', 'kontra-demo-biz', 'kontra-demo-fundraising'].includes(propertyId);
 
-  // For the demo room — override with a great hero image
-  if (isDemo && property) {
+  // For the CRE demo room — override with a great hero image
+  if (propertyId === 'kontra-demo' && property) {
     property.image = "https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?w=1200&q=80";
-    property.market = "Austin, TX";
+    property.market = "Miami, FL";
     property.deal_amount = property.deal_amount || "14,000,000";
   }
 
@@ -1425,8 +1425,8 @@ export default function DealRoomPage() {
                 LIVE DEMO
               </span>
               <div>
-                <p className="text-xs font-semibold text-white">550 Madison Avenue — $28.5M Acquisition · Closing at risk</p>
-                <p className="text-[10px] text-white/50">Explore a real Kontra deal room · All AI features active · No signup required</p>
+                <p className="text-xs font-semibold text-white">{property?.name || property?.property_name || 'Kontra Demo'} · AI features active</p>
+                <p className="text-[10px] text-white/50">Shared demo room · Explore all panels · No signup required</p>
               </div>
             </div>
             <Link to="/create-deal-room"

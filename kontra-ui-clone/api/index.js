@@ -1330,7 +1330,7 @@ app.post('/api/webhook/stripe',
 // All /api/public/deal-room/kontra-demo/* routes are intercepted here before
 // the real handlers so the demo always works regardless of DB state.
 ;(() => {
-  const { PROPERTY, TASKS, BRIEFING, DEMO_QA_CONTEXT } = require('./lib/demoData');
+  const { PROPERTY, TASKS, BRIEFING, ANALYSES, DEMO_QA_CONTEXT } = require('./lib/demoData');
   const openai = new OpenAI();
   const DEMO_ID = 'kontra-demo';
 
@@ -1391,14 +1391,14 @@ app.post('/api/webhook/stripe',
       { role: 'insurer',   label: 'Insurance Broker',  status: 'invited',   name: 'Priya Nair' },
     ]}));
 
-  app.get(`/api/public/deal-room/${DEMO_ID}/analyses`, (_req, res) => res.json({ analyses: [] }));
+  app.get(`/api/public/deal-room/${DEMO_ID}/analyses`, (_req, res) => res.json({ analyses: ANALYSES }));
   app.get(`/api/public/deal-room/${DEMO_ID}/events`, (_req, res) => res.json({ events: [] }));
   app.get(`/api/public/deal-room/${DEMO_ID}/comments`, (_req, res) => res.json({ comments: [] }));
 })();
 
 // ── Business Acquisition demo — kontra-demo-biz ───────────────────────────────
 ;(() => {
-  const { PROPERTY, TASKS, BRIEFING, DEMO_QA_CONTEXT } = require('./lib/demoDataBiz');
+  const { PROPERTY, TASKS, BRIEFING, ANALYSES, DEMO_QA_CONTEXT } = require('./lib/demoDataBiz');
   const openai = new OpenAI();
   const BIZ_ID = 'kontra-demo-biz';
 
@@ -1438,14 +1438,14 @@ app.post('/api/webhook/stripe',
       { role: 'broker',   label: 'M&A Broker',        status: 'submitted', name: 'Meridian Advisors' },
     ]}));
 
-  app.get(`/api/public/deal-room/${BIZ_ID}/analyses`, (_req, res) => res.json({ analyses: [] }));
+  app.get(`/api/public/deal-room/${BIZ_ID}/analyses`, (_req, res) => res.json({ analyses: ANALYSES }));
   app.get(`/api/public/deal-room/${BIZ_ID}/events`, (_req, res) => res.json({ events: [] }));
   app.get(`/api/public/deal-room/${BIZ_ID}/comments`, (_req, res) => res.json({ comments: [] }));
 })();
 
 // ── Fundraising demo — kontra-demo-fundraising ────────────────────────────────
 ;(() => {
-  const { PROPERTY, TASKS, BRIEFING, DEMO_QA_CONTEXT } = require('./lib/demoDataFundraising');
+  const { PROPERTY, TASKS, BRIEFING, ANALYSES, DEMO_QA_CONTEXT } = require('./lib/demoDataFundraising');
   const openai = new OpenAI();
   const FUND_ID = 'kontra-demo-fundraising';
 
@@ -1486,7 +1486,7 @@ app.post('/api/webhook/stripe',
       { role: 'advisor',            label: 'Financial Advisor',           status: 'submitted', name: 'Atlas Partners' },
     ]}));
 
-  app.get(`/api/public/deal-room/${FUND_ID}/analyses`, (_req, res) => res.json({ analyses: [] }));
+  app.get(`/api/public/deal-room/${FUND_ID}/analyses`, (_req, res) => res.json({ analyses: ANALYSES }));
   app.get(`/api/public/deal-room/${FUND_ID}/events`, (_req, res) => res.json({ events: [] }));
   app.get(`/api/public/deal-room/${FUND_ID}/comments`, (_req, res) => res.json({ comments: [] }));
 })();
