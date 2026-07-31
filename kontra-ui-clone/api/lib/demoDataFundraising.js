@@ -11,7 +11,7 @@ const PROPERTY = {
   deal_amount: '50000000',
   first_name: 'Demo',
   customer_email: 'demo@kontraplatform.com',
-  workflow_pack_id: 'cre_acquisition',
+  workflow_pack_id: 'fundraising',
   deal_stage: 'subscription',
   activated_at: '2025-03-01T10:00:00.000Z',
 };
