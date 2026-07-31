@@ -122,6 +122,16 @@ export function getWorkflowPack(packId) {
   return PACKS[packId] || PACKS[DEFAULT_PACK_ID];
 }
 
+export async function deleteCustomPack(packId) {
+  const res = await fetch(`${API_BASE}/api/workflow-packs/${packId}`, { method: 'DELETE' });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.error || 'Failed to delete pack');
+  }
+  delete PACKS[packId];
+  return true;
+}
+
 // deal_type -> pack id. Priority: deal_type inference wins over the stored
 // workflow_pack_id column, because (a) that column may not exist yet on
 // older/production Supabase schemas (returns undefined), and (b) even where

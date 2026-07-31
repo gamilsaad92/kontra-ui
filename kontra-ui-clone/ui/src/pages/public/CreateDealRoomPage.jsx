@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import PublicLayout from "./PublicLayout";
-import { listWorkflowPacks, fetchCustomPacks, getWorkflowPack } from "../../lib/workflowPacks";
+import { listWorkflowPacks, fetchCustomPacks, getWorkflowPack, deleteCustomPack } from "../../lib/workflowPacks";
 
 const API_BASE = (import.meta.env.VITE_API_BASE || "").replace(/\/+$/, "");
 
@@ -179,7 +179,23 @@ export default function CreateDealRoomPage() {
 
   // Packs
   const [workflowPacks, setWorkflowPacks] = useState(() => listWorkflowPacks());
+  const [deletingPackId, setDeletingPackId] = useState(null);
   useEffect(() => { fetchCustomPacks().then(() => setWorkflowPacks(listWorkflowPacks())); }, []);
+
+  async function handleDeletePack(e, packId) {
+    e.stopPropagation();
+    if (!window.confirm('Remove this saved template? This cannot be undone.')) return;
+    setDeletingPackId(packId);
+    try {
+      await deleteCustomPack(packId);
+      setWorkflowPacks(listWorkflowPacks());
+      if (form.packId === packId) set("packId", "business_acquisition");
+    } catch (err) {
+      alert(err.message || 'Failed to delete pack');
+    } finally {
+      setDeletingPackId(null);
+    }
+  }
 
   // Form state
   const [form, setForm] = useState({
@@ -505,12 +521,21 @@ export default function CreateDealRoomPage() {
                   {/* Any custom packs from DB */}
                   {workflowPacks.filter(p => !["business_acquisition","cre_acquisition","fundraising"].includes(p.id)).map(p => (
                     <button key={p.id} type="button" onClick={() => set("packId", p.id)}
-                      className={`border rounded-xl p-3.5 text-left transition-all ${form.packId === p.id ? "border-red-800 bg-red-50" : "border-gray-200 hover:border-gray-300"}`}>
+                      className={`relative border rounded-xl p-3.5 text-left transition-all group ${form.packId === p.id ? "border-red-800 bg-red-50" : "border-gray-200 hover:border-gray-300"}`}>
                       <div className="flex items-center justify-between mb-0.5">
-                        <p className={`text-sm font-semibold ${form.packId === p.id ? "text-red-800" : "text-gray-800"}`}>{p.label}</p>
+                        <p className={`text-sm font-semibold pr-6 ${form.packId === p.id ? "text-red-800" : "text-gray-800"}`}>{p.label}</p>
                         <span className="text-[10px] font-bold bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded-full shrink-0">Saved</span>
                       </div>
                       <p className="text-xs text-gray-500 mt-0.5">{p.description}</p>
+                      <span
+                        role="button"
+                        onClick={e => handleDeletePack(e, p.id)}
+                        title="Delete this saved template"
+                        className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity text-gray-300 hover:text-red-500 text-sm leading-none px-1"
+                        aria-label="Delete template"
+                      >
+                        {deletingPackId === p.id ? '…' : '×'}
+                      </span>
                     </button>
                   ))}
                 </div>

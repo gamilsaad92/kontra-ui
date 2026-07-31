@@ -113,4 +113,28 @@ router.post('/workflow-packs', async (req, res) => {
   }
 });
 
+// DELETE /api/workflow-packs/:id — remove a custom pack
+router.delete('/workflow-packs/:id', async (req, res) => {
+  const { id } = req.params;
+  // Guard: never allow deleting the built-in packs
+  const BUILTIN = ['cre_acquisition', 'business_acquisition', 'fundraising'];
+  if (BUILTIN.includes(id)) {
+    return res.status(403).json({ error: 'Built-in packs cannot be deleted' });
+  }
+  try {
+    const { error } = await supabase
+      .from('custom_workflow_packs')
+      .delete()
+      .eq('id', id);
+    if (error) {
+      console.warn('[workflow-packs] delete error:', error.message);
+      return res.status(500).json({ error: 'Failed to delete workflow pack' });
+    }
+    return res.json({ ok: true });
+  } catch (e) {
+    console.warn('[workflow-packs] delete error:', e.message);
+    return res.status(500).json({ error: 'Failed to delete workflow pack' });
+  }
+});
+
 module.exports = { router };
