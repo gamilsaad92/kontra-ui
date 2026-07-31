@@ -300,6 +300,7 @@ export default function DocumentsTabPanel({
   role,
   isDemo,
   packId = DEFAULT_PACK_ID,
+  packReady = true,
   onAnalysisSaved,
   refreshKey,
 }) {
@@ -436,6 +437,7 @@ export default function DocumentsTabPanel({
             role={role}
             isDemo={isDemo}
             packId={packId}
+            packReady={packReady}
             onAnalysisSaved={handleAnalysisSaved}
           />
           <VerificationPanel propertyId={propertyId} />

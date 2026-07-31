@@ -1196,6 +1196,10 @@ export default function DealRoomPage() {
   const [checkoutError, setCheckoutError] = useState("");
   const [apiProperty, setApiProperty] = useState(null);
   const [loadingApi, setLoadingApi] = useState(true);
+  // packReady: true once the custom pack for this room is registered in the
+  // client-side PACKS registry. Demo rooms always use a built-in pack so it
+  // starts true; live rooms wait for ensureWorkflowPackLoaded to resolve.
+  const [packReady, setPackReady] = useState(!!DEMO_PROPERTIES[propertyId]);
   const [analysesRefreshKey, setAnalysesRefreshKey] = useState(0);
 
   const onAnalysisSaved = () => setAnalysesRefreshKey(k => k + 1);
@@ -1211,10 +1215,13 @@ export default function DealRoomPage() {
       .then(r => r.ok ? r.json() : null)
       .then(async data => {
         if (data?.workflow_pack_id) await ensureWorkflowPackLoaded(data.workflow_pack_id);
+        // Mark pack ready BEFORE setApiProperty so DocumentChecklistPanel
+        // receives a resolved workflowPack on its first seed attempt.
+        setPackReady(true);
         setApiProperty(data);
         setLoadingApi(false);
       })
-      .catch(() => setLoadingApi(false));
+      .catch(() => { setPackReady(true); setLoadingApi(false); });
   }, [propertyId]);
 
   async function handleActivate() {
@@ -1578,6 +1585,7 @@ export default function DealRoomPage() {
               role={role}
               isDemo={isDemo}
               packId={packId}
+              packReady={packReady}
               onAnalysisSaved={onAnalysisSaved}
               refreshKey={analysesRefreshKey}
             />

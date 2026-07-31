@@ -382,7 +382,7 @@ function ItemEditor({ item, roles, onSave, onCancel }) {
 // ── Main component ────────────────────────────────────────────────────────────
 export default function DocumentChecklistPanel({
   propertyId, propertyType, role, isDemo = false,
-  packId = DEFAULT_PACK_ID, onAnalysisSaved,
+  packId = DEFAULT_PACK_ID, packReady = true, onAnalysisSaved,
 }) {
   const workflowPack = getWorkflowPack(packId);
   const { getInlineFacts, getCompletenessIssues, factColors: FACT_COLORS, aiUploadEndpoints: AI_UPLOAD_ENDPOINTS } = workflowPack;
@@ -434,8 +434,11 @@ export default function DocumentChecklistPanel({
   }, [analyses]);
 
   // ── Load checklist items ──────────────────────────────────────────────────
+  // packReady guards against seeding from the CRE fallback pack before the
+  // room's actual custom pack has been fetched and registered client-side.
+  // For built-in packs (CRE / BA / Fundraising) packReady is always true.
   useEffect(() => {
-    if (!propertyId) return;
+    if (!propertyId || !packReady) return;
     fetch(`${API_BASE}/api/public/deal-room/${propertyId}/checklist`)
       .then(r => r.ok ? r.json() : { items: null })
       .then(d => {
@@ -443,7 +446,7 @@ export default function DocumentChecklistPanel({
           // Re-number sortOrder for consistency
           setItems(d.items.map((i, idx) => ({ ...i, sortOrder: idx })));
         } else {
-          // First visit: seed from pack, then immediately persist
+          // First visit: seed from the NOW-CORRECT pack, then immediately persist
           const seeded = seedFromPack(workflowPack, propertyType);
           setItems(seeded);
           if (seeded.length > 0) persistItems(seeded);
@@ -454,7 +457,7 @@ export default function DocumentChecklistPanel({
         setItems(seedFromPack(workflowPack, propertyType));
       });
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [propertyId]);
+  }, [propertyId, packReady]);
 
   // ── Persist items (debounced) ──────────────────────────────────────────────
   // Reads the owner_write_token stored in localStorage by CheckoutSuccessPage.
