@@ -151,6 +151,26 @@ const DEAL_TYPE_TO_PACK = {
   fundraising: "fundraising",
 };
 
+// Keywords in the workspace name that indicate a non-CRE pack.
+// Used as a last-resort fallback when both deal_type and workflow_pack_id are absent.
+const NAME_PACK_HINTS = [
+  { pack: 'fundraising',          words: ['fundrais', 'capital raise', 'investment round', 'seed round',
+                                          'series a', 'series b', 'series c', 'venture', 'vc ', ' vc',
+                                          'term sheet', 'safe note', 'convertible', 'raise'] },
+  { pack: 'business_acquisition', words: ['acquisition', 'acquir', 'business purchase', 'buy a business',
+                                          'selling a business', 'asset purchase', 'merger', ' m&a', 'm&a ',
+                                          'management buyout', 'mbo', 'recapitalization'] },
+];
+
+function inferPackFromName(name) {
+  if (!name) return null;
+  const lower = name.toLowerCase();
+  for (const { pack, words } of NAME_PACK_HINTS) {
+    if (words.some(w => lower.includes(w))) return pack;
+  }
+  return null;
+}
+
 export function resolvePackId(room) {
   if (!room) return DEFAULT_PACK_ID;
   // Custom workspace packs (ws_* IDs) always win — they were explicitly assembled
@@ -167,6 +187,12 @@ export function resolvePackId(room) {
   // even when deal_type wasn't backfilled on older rooms.
   if ((!inferred || inferred === DEFAULT_PACK_ID) && room.workflow_pack_id && room.workflow_pack_id !== DEFAULT_PACK_ID) {
     return room.workflow_pack_id;
+  }
+  // Last resort: infer from property name when both deal_type and workflow_pack_id are absent.
+  // Prevents AI-generated workspaces from silently falling back to CRE when the pack link failed.
+  if (!inferred && !room.workflow_pack_id) {
+    const nameInferred = inferPackFromName(room.property_name || room.name);
+    if (nameInferred) return nameInferred;
   }
   return inferred ?? room.workflow_pack_id ?? DEFAULT_PACK_ID;
 }
