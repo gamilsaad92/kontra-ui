@@ -1311,11 +1311,21 @@ export default function DealRoomPage() {
 
   const isDemo = ['kontra-demo', 'kontra-demo-biz', 'kontra-demo-fundraising'].includes(propertyId);
 
-  // For the CRE demo room — override with a great hero image
+  // Per-demo hero image overrides — each room gets a visually appropriate photo
   if (propertyId === 'kontra-demo' && property) {
     property.image = "https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?w=1200&q=80";
     property.market = "Miami, FL";
     property.deal_amount = property.deal_amount || "14,000,000";
+  }
+  if (propertyId === 'kontra-demo-biz' && property) {
+    property.image = "https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?w=1200&q=80";
+    property.market = "Austin, TX";
+    property.deal_amount = property.deal_amount || "8,500,000";
+  }
+  if (propertyId === 'kontra-demo-fundraising' && property) {
+    property.image = "https://images.unsplash.com/photo-1497366216548-37526070297c?w=1200&q=80";
+    property.market = "San Francisco, CA";
+    property.deal_amount = property.deal_amount || "42,000,000";
   }
 
   // Which Workflow Pack powers this deal room. Demo properties are always
