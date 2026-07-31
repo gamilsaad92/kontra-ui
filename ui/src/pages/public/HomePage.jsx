@@ -3,9 +3,9 @@ import { Link, useNavigate } from "react-router-dom";
 import PublicLayout from "./PublicLayout";
 
 const DEMOS = [
-  { icon: "💼", label: "Business Acquisition", sub: "M&A, business purchases & diligence",             slug: "/deal-room/kontra-demo-biz",         color: "#1e40af" },
-  { icon: "📈", label: "Fundraising",          sub: "Capital raises for founders & fund managers",     slug: "/deal-room/kontra-demo-fundraising", color: "#065f46" },
-  { icon: "🏢", label: "CRE Acquisition",      sub: "Commercial real estate acquisitions & financing", slug: "/deal-room/kontra-demo",             color: "#800020" },
+  { icon: "💼", label: "Business Acquisition", sub: "M&A, business purchases & diligence",             slug: "/demo?pack=acquisition", color: "#1e40af" },
+  { icon: "📈", label: "Fundraising",          sub: "Capital raises for founders & fund managers",     slug: "/demo?pack=fundraising", color: "#065f46" },
+  { icon: "🏢", label: "CRE Acquisition",      sub: "Commercial real estate acquisitions & financing", slug: "/demo?pack=cre",         color: "#800020" },
 ];
 
 function LiveDemoButton() {

@@ -37,6 +37,7 @@ import PrivacyPage from "./pages/public/PrivacyPage";
 import TermsPage from "./pages/public/TermsPage";
 import SecurityPage from "./pages/public/SecurityPage";
 import AboutPage from "./pages/public/AboutPage";
+import DemoPage from "./pages/public/DemoPage";
 
 // Unified workspace — any authenticated user
 import NewDashboard from "./pages/NewDashboard";
@@ -85,6 +86,7 @@ function AuthedApp() {
         <Route path="/terms" element={<TermsPage />} />
         <Route path="/security" element={<SecurityPage />} />
         <Route path="/about" element={<AboutPage />} />
+        <Route path="/demo" element={<DemoPage />} />
         <Route path="/waitlist" element={<WaitlistPage />} />
         <Route path="/login" element={<LoginPage />} />
         <Route path="/admin" element={<AdminVisitorsPage />} />
