@@ -5,7 +5,7 @@ const { isFeatureEnabled } = require('./featureFlags');
 const { getLegalConfiguration, enforceTransferControls } = require('./legalConfiguration');
 require('dotenv').config();
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY || 'sk-not-configured' });
 
 const supabase = createClient(
   process.env.SUPABASE_URL,

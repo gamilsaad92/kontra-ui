@@ -39,7 +39,7 @@ const upload = multer({
   },
 });
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY || 'sk-not-configured' });
 
 // Convert PDF to images using pdftoppm, then OCR via GPT-4o Vision
 async function extractPdfViaVision(buffer) {

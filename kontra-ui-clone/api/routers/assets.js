@@ -5,7 +5,7 @@ const OpenAI = require('openai');
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage() });
 const { supabase } = require('../db');
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY || 'sk-not-configured' });
 
 async function summarizeAssetBuffer(buffer, purpose = 'report') {
   const text = buffer.toString('utf8');

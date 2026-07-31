@@ -16,7 +16,7 @@ const { supabase } = require('../db');
 const { TOOL_DEFINITIONS, executeTool } = require('./agentToolRegistry');
 const { getAgent } = require('./agentDefinitions');
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY || 'sk-not-configured' });
 
 const CONFIDENCE_THRESHOLDS = {
   AUTO_APPROVE: 0.95,

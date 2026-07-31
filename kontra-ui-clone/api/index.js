@@ -218,7 +218,7 @@ const upload = multer({
 
 // ── OpenAI Client (v4+ SDK) ────────────────────────────────────────────────
 const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
+  apiKey: process.env.OPENAI_API_KEY || 'sk-not-configured',
 });
 const {
   parseDocumentBuffer,

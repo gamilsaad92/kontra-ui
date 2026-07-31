@@ -44,7 +44,7 @@ function verifyShareToken(token) {
   return { propertyId, expiresAt };
 }
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY || 'sk-not-configured' });
 
 // ── Required document sections per pack + property type ──────────────────────
 const REQUIRED_SECTIONS = {

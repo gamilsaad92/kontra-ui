@@ -6,7 +6,7 @@ const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage() });
 
 const { supabase } = require('../db');
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY || 'sk-not-configured' });
 
 router.post('/process', upload.single('file'), async (req, res) => {
   const { doc_type } = req.body;
