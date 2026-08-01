@@ -1555,8 +1555,10 @@ export default function DealRoomPage() {
           <ReadinessSummaryBar property={property} />
         )}
 
-        {/* Role context card — participants see this first, before the AI briefing */}
-        {property.isCustom && !isCoordinator && (
+        {/* Role context card — participants see this first, before the AI briefing.
+            Shown in demo and paid rooms alike so the participant experience is
+            visible regardless of whether isCustom is set. */}
+        {!isCoordinator && (
           <div className="bg-white rounded-2xl border border-gray-200 p-5 mb-6"
             style={{ borderLeftWidth: 4, borderLeftColor: roleConfig.color }}>
             <h2 className="text-base font-bold text-gray-900 mb-1">{roleConfig.headline}</h2>
