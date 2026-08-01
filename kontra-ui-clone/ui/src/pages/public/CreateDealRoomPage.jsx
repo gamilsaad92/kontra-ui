@@ -1,12 +1,14 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import PublicLayout from "./PublicLayout";
-import { listWorkflowPacks, fetchCustomPacks, getWorkflowPack, deleteCustomPack } from "../../lib/workflowPacks";
+import { listWorkflowPacks, fetchCustomPacks, getWorkflowPack, deleteCustomPack, registerCustomPack } from "../../lib/workflowPacks";
 
 const API_BASE = (import.meta.env.VITE_API_BASE || "").replace(/\/+$/, "");
 
 const ICON_CHOICES = ["📄","🏢","💼","🏦","🔍","🛡️","⚖️","📊","⚙️","🏗️","🧾","📋","🤝","🏭","👤","🔑","✍️","📝","🌐","🏛️"];
 const COLOR_CHOICES = ["#800020","#1d4ed8","#16a34a","#d97706","#6d28d9","#0369a1","#374151","#dc2626","#0891b2","#7c3aed"];
+
+const SYSTEM_PACK_IDS = ["business_acquisition", "cre_acquisition", "fundraising"];
 
 function slugKey(s) {
   return String(s || "").toLowerCase().trim().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 40);
@@ -23,7 +25,6 @@ function configFromPack(pack) {
       required: !!r.required,
       needsDocs: !!r.needsDocs,
       invitable: r.invitable !== false,
-      // Preserve existing canManage; if none set, first role is coordinator
       canManage: r.canManage !== undefined ? !!r.canManage : i === 0,
     })),
     documents: (pack.documentSchema || pack.documents || []).map(d => ({
@@ -31,7 +32,6 @@ function configFromPack(pack) {
       label: d.label || "",
       required: !!d.required,
       ai: !!d.ai,
-      // Store as assignedRole (UI field); backend normalises to assignedTo on save
       assignedRole: Array.isArray(d.assignedTo) ? d.assignedTo[0] : (d.assignedRole || ""),
     })),
     stages: (pack.stages || []).map(s => ({
@@ -54,28 +54,41 @@ function InlineEdit({ value, onChange, placeholder, className }) {
   );
 }
 
-// ── CustomizationEditor ───────────────────────────────────────────────────────
-function CustomizationEditor({ config, onChange, isAiGenerated }) {
-  const { roles, documents, stages } = config;
+// ── Collapsible section for preview step ─────────────────────────────────────
+function CollapsedSection({ title, count, icon, children }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="border border-gray-200 rounded-xl overflow-hidden">
+      <button
+        type="button"
+        onClick={() => setOpen(o => !o)}
+        className="w-full flex items-center justify-between px-4 py-3.5 bg-white hover:bg-gray-50 transition text-left"
+      >
+        <div className="flex items-center gap-2.5">
+          <span className="text-base">{icon}</span>
+          <span className="text-sm font-semibold text-gray-900">{title}</span>
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">{count}</span>
+          <svg className={`w-4 h-4 text-gray-400 transition-transform ${open ? "rotate-180" : ""}`} fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+          </svg>
+        </div>
+      </button>
+      {open && (
+        <div className="px-4 pb-4 pt-2 border-t border-gray-100">
+          {children}
+        </div>
+      )}
+    </div>
+  );
+}
 
-  const updateRole = (i, patch) => onChange({ ...config, roles: roles.map((r, idx) => idx === i ? { ...r, ...patch } : r) });
-  const addRole = () => onChange({ ...config, roles: [...roles, { key: "", label: "New Role", required: false, needsDocs: true, invitable: true, icon: ICON_CHOICES[roles.length % ICON_CHOICES.length], color: COLOR_CHOICES[roles.length % COLOR_CHOICES.length] }] });
-  const removeRole = i => onChange({ ...config, roles: roles.filter((_, idx) => idx !== i) });
-
-  const updateDoc = (i, patch) => onChange({ ...config, documents: documents.map((d, idx) => idx === i ? { ...d, ...patch } : d) });
-  const addDoc = () => onChange({ ...config, documents: [...documents, { id: "", label: "New Document", required: false, ai: false, assignedRole: "" }] });
-  const removeDoc = i => onChange({ ...config, documents: documents.filter((_, idx) => idx !== i) });
-
-  const updateStage = (i, patch) => onChange({ ...config, stages: stages.map((s, idx) => idx === i ? { ...s, ...patch } : s) });
-  const addStage = () => onChange({ ...config, stages: [...stages, { key: "", label: "New Stage" }] });
-  const removeStage = i => onChange({ ...config, stages: stages.filter((_, idx) => idx !== i) });
-  const moveStage = (i, dir) => {
-    const j = i + dir;
-    if (j < 0 || j >= stages.length) return;
-    const arr = [...stages];
-    [arr[i], arr[j]] = [arr[j], arr[i]];
-    onChange({ ...config, stages: arr });
-  };
+// ── Inline role/doc/stage editors (shared with preview accordions) ────────────
+function RolesEditor({ roles, onChange }) {
+  const addRole = () => onChange([...roles, { key: "", label: "New Role", required: false, needsDocs: true, invitable: true, icon: ICON_CHOICES[roles.length % ICON_CHOICES.length], color: COLOR_CHOICES[roles.length % COLOR_CHOICES.length] }]);
+  const updateRole = (i, patch) => onChange(roles.map((r, idx) => idx === i ? { ...r, ...patch } : r));
+  const removeRole = i => onChange(roles.filter((_, idx) => idx !== i));
 
   const Badge = ({ on, onToggle, label }) => (
     <button type="button" onClick={onToggle}
@@ -85,85 +98,91 @@ function CustomizationEditor({ config, onChange, isAiGenerated }) {
     </button>
   );
 
-  const RemoveBtn = ({ onClick }) => (
-    <button type="button" onClick={onClick}
-      className="shrink-0 text-gray-300 hover:text-red-500 transition-colors text-xs ml-1 opacity-0 group-hover:opacity-100">✕</button>
+  return (
+    <div className="space-y-0">
+      {roles.length === 0 && <p className="text-xs text-gray-400 italic py-2">No participants yet. Add a role to get started.</p>}
+      {roles.map((r, i) => (
+        <div key={i} className="flex items-center gap-2 py-2 border-b border-gray-100 last:border-0 group">
+          <span className="text-base w-5 shrink-0 text-center">{r.icon}</span>
+          <InlineEdit value={r.label} onChange={v => updateRole(i, { label: v, key: slugKey(v) })} placeholder="Role name" className="flex-1 min-w-0" />
+          <Badge on={r.required} onToggle={() => updateRole(i, { required: !r.required })} label="Required" />
+          <Badge on={r.needsDocs} onToggle={() => updateRole(i, { needsDocs: !r.needsDocs })} label="Uploads" />
+          {roles.length > 1 && (
+            <button type="button" onClick={() => removeRole(i)} className="shrink-0 text-gray-300 hover:text-red-500 transition-colors text-xs ml-1 opacity-0 group-hover:opacity-100">✕</button>
+          )}
+        </div>
+      ))}
+      <button type="button" onClick={addRole} className="mt-2 text-xs font-semibold text-red-800 hover:underline">+ Add role</button>
+    </div>
+  );
+}
+
+function DocumentsEditor({ documents, roles, onChange }) {
+  const addDoc = () => onChange([...documents, { id: "", label: "New Document", required: false, ai: false, assignedRole: "" }]);
+  const updateDoc = (i, patch) => onChange(documents.map((d, idx) => idx === i ? { ...d, ...patch } : d));
+  const removeDoc = i => onChange(documents.filter((_, idx) => idx !== i));
+
+  const Badge = ({ on, onToggle, label }) => (
+    <button type="button" onClick={onToggle}
+      className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold transition-colors select-none ${on ? "text-white" : "bg-gray-100 text-gray-400 hover:bg-gray-200"}`}
+      style={on ? { background: "#800020" } : {}}>
+      {label}
+    </button>
   );
 
   return (
-    <div className="space-y-5">
-      {isAiGenerated && (
-        <div className="bg-amber-50 border border-amber-200 rounded-xl px-3.5 py-3 text-xs text-amber-800 leading-relaxed">
-          <strong>AI-generated suggestions — review before launching.</strong> These suggestions may not include every document, approval, participant, or legal requirement. Review the workspace with qualified advisers before use.
+    <div className="space-y-0">
+      {documents.length === 0 && <p className="text-xs text-gray-400 italic py-2">No documents yet.</p>}
+      {documents.map((d, i) => (
+        <div key={i} className="flex items-center gap-2 py-2 border-b border-gray-100 last:border-0 group">
+          <span className="text-sm shrink-0 text-gray-400">📄</span>
+          <InlineEdit value={d.label} onChange={v => updateDoc(i, { label: v, id: slugKey(v) })} placeholder="Document name" className="flex-1 min-w-0" />
+          {roles.length > 0 && (
+            <select value={d.assignedRole || ""} onChange={e => updateDoc(i, { assignedRole: e.target.value })}
+              className="text-[10px] border border-gray-200 rounded px-1 py-0.5 bg-white text-gray-500 shrink-0 max-w-[80px]">
+              <option value="">Any</option>
+              {roles.filter(r => r.label).map((r, ri) => <option key={ri} value={r.key}>{r.label}</option>)}
+            </select>
+          )}
+          <Badge on={d.required} onToggle={() => updateDoc(i, { required: !d.required })} label="Required" />
+          <Badge on={d.ai} onToggle={() => updateDoc(i, { ai: !d.ai })} label="AI" />
+          <button type="button" onClick={() => removeDoc(i)} className="shrink-0 text-gray-300 hover:text-red-500 transition-colors text-xs ml-1 opacity-0 group-hover:opacity-100">✕</button>
         </div>
-      )}
+      ))}
+      <button type="button" onClick={addDoc} className="mt-2 text-xs font-semibold text-red-800 hover:underline">+ Add document</button>
+    </div>
+  );
+}
 
-      {/* Roles */}
-      <div>
-        <div className="flex items-center justify-between mb-1.5">
-          <span className="text-[11px] font-bold text-gray-400 uppercase tracking-wide">Roles</span>
-          <button type="button" onClick={addRole} className="text-xs font-semibold text-red-800 hover:underline">+ Add role</button>
-        </div>
-        {roles.length === 0 && <p className="text-xs text-gray-400 italic py-1">No roles yet.</p>}
-        {roles.map((r, i) => (
-          <div key={i} className="flex items-center gap-2 py-1.5 border-b border-gray-100 last:border-0 group">
-            <span className="text-base w-5 shrink-0 text-center">{r.icon}</span>
-            <InlineEdit value={r.label} onChange={v => updateRole(i, { label: v, key: slugKey(v) })} placeholder="Role name" className="flex-1 min-w-0" />
-            <Badge on={r.required} onToggle={() => updateRole(i, { required: !r.required })} label="Required" />
-            <Badge on={r.needsDocs} onToggle={() => updateRole(i, { needsDocs: !r.needsDocs })} label="Uploads" />
-            {roles.length > 1 && <RemoveBtn onClick={() => removeRole(i)} />}
+function StagesEditor({ stages, onChange }) {
+  const addStage = () => onChange([...stages, { key: "", label: "New Stage" }]);
+  const updateStage = (i, patch) => onChange(stages.map((s, idx) => idx === i ? { ...s, ...patch } : s));
+  const removeStage = i => onChange(stages.filter((_, idx) => idx !== i));
+  const moveStage = (i, dir) => {
+    const j = i + dir;
+    if (j < 0 || j >= stages.length) return;
+    const arr = [...stages];
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+    onChange(arr);
+  };
+
+  return (
+    <div className="space-y-0">
+      {stages.length < 2 && <p className="text-xs text-amber-600 italic mb-2">At least 2 stages are required.</p>}
+      {stages.map((s, i) => (
+        <div key={i} className="flex items-center gap-2 py-2 border-b border-gray-100 last:border-0 group">
+          <span className="text-xs text-gray-400 w-4 shrink-0 font-mono text-center">{i + 1}</span>
+          <InlineEdit value={s.label} onChange={v => updateStage(i, { label: v, key: slugKey(v) })} placeholder="Stage name" className="flex-1 min-w-0" />
+          <div className="flex gap-0.5 shrink-0">
+            <button type="button" onClick={() => moveStage(i, -1)} disabled={i === 0} className="text-gray-300 hover:text-gray-600 disabled:opacity-20 text-xs px-1 leading-none">↑</button>
+            <button type="button" onClick={() => moveStage(i, 1)} disabled={i === stages.length - 1} className="text-gray-300 hover:text-gray-600 disabled:opacity-20 text-xs px-1 leading-none">↓</button>
           </div>
-        ))}
-      </div>
-
-      {/* Documents */}
-      <div>
-        <div className="flex items-center justify-between mb-1.5">
-          <span className="text-[11px] font-bold text-gray-400 uppercase tracking-wide">Documents</span>
-          <button type="button" onClick={addDoc} className="text-xs font-semibold text-red-800 hover:underline">+ Add document</button>
+          {stages.length > 2 && (
+            <button type="button" onClick={() => removeStage(i)} className="shrink-0 text-gray-300 hover:text-red-500 transition-colors text-xs ml-1 opacity-0 group-hover:opacity-100">✕</button>
+          )}
         </div>
-        {documents.length === 0 && <p className="text-xs text-gray-400 italic py-1">No documents yet.</p>}
-        {documents.map((d, i) => (
-          <div key={i} className="flex items-center gap-2 py-1.5 border-b border-gray-100 last:border-0 group">
-            <span className="text-sm shrink-0 text-gray-400">📄</span>
-            <InlineEdit value={d.label} onChange={v => updateDoc(i, { label: v, id: slugKey(v) })} placeholder="Document name" className="flex-1 min-w-0" />
-            {roles.length > 0 && (
-              <select value={d.assignedRole || ""} onChange={e => updateDoc(i, { assignedRole: e.target.value })}
-                className="text-[10px] border border-gray-200 rounded px-1 py-0.5 bg-white text-gray-500 shrink-0 max-w-[80px]">
-                <option value="">Any</option>
-                {roles.filter(r => r.label).map((r, ri) => <option key={ri} value={r.key}>{r.label}</option>)}
-              </select>
-            )}
-            <Badge on={d.required} onToggle={() => updateDoc(i, { required: !d.required })} label="Required" />
-            <Badge on={d.ai} onToggle={() => updateDoc(i, { ai: !d.ai })} label="AI" />
-            <RemoveBtn onClick={() => removeDoc(i)} />
-          </div>
-        ))}
-      </div>
-
-      {/* Stages */}
-      <div>
-        <div className="flex items-center justify-between mb-1.5">
-          <span className="text-[11px] font-bold text-gray-400 uppercase tracking-wide">Stages</span>
-          <button type="button" onClick={addStage} className="text-xs font-semibold text-red-800 hover:underline">+ Add stage</button>
-        </div>
-        {stages.length < 2 && <p className="text-xs text-amber-600 italic mb-1">At least 2 stages required.</p>}
-        {stages.map((s, i) => (
-          <div key={i} className="flex items-center gap-2 py-1.5 border-b border-gray-100 last:border-0 group">
-            <span className="text-xs text-gray-400 w-4 shrink-0 font-mono text-center">{i + 1}</span>
-            <InlineEdit value={s.label} onChange={v => updateStage(i, { label: v, key: slugKey(v) })} placeholder="Stage name" className="flex-1 min-w-0" />
-            <div className="flex gap-0.5 shrink-0">
-              <button type="button" onClick={() => moveStage(i, -1)} disabled={i === 0} className="text-gray-300 hover:text-gray-600 disabled:opacity-20 text-xs px-1 leading-none">↑</button>
-              <button type="button" onClick={() => moveStage(i, 1)} disabled={i === stages.length - 1} className="text-gray-300 hover:text-gray-600 disabled:opacity-20 text-xs px-1 leading-none">↓</button>
-            </div>
-            {stages.length > 2 && <RemoveBtn onClick={() => removeStage(i)} />}
-          </div>
-        ))}
-      </div>
-
-      <div className="bg-gray-50 border border-gray-100 rounded-xl px-3.5 py-3 text-xs text-gray-500 leading-relaxed">
-        Templates are suggested starting points. Review and customize this workspace with your legal, financial, and transaction advisers.
-      </div>
+      ))}
+      <button type="button" onClick={addStage} className="mt-2 text-xs font-semibold text-red-800 hover:underline">+ Add stage</button>
     </div>
   );
 }
@@ -172,10 +191,12 @@ function CustomizationEditor({ config, onChange, isAiGenerated }) {
 export default function CreateDealRoomPage() {
   const navigate = useNavigate();
 
-  // Creation path
-  const [creationMode, setCreationMode] = useState(null); // null | 'template' | 'ai' | 'blank'
-  // -1 = mode selector, 0 = setup, 1 = customize, 2 = your info, 3 = launch
-  const [phase, setPhase] = useState(-1);
+  // 0 = describe, 1 = preview, 2 = your info, 3 = activate
+  const [phase, setPhase] = useState(0);
+  // 'ai' | 'template' | 'blank'
+  const [creationMode, setCreationMode] = useState("ai");
+  // When true inside phase 0, show the template picker instead of the description input
+  const [showTemplatePicker, setShowTemplatePicker] = useState(false);
 
   // Packs
   const [workflowPacks, setWorkflowPacks] = useState(() => listWorkflowPacks());
@@ -184,17 +205,45 @@ export default function CreateDealRoomPage() {
 
   async function handleDeletePack(e, packId) {
     e.stopPropagation();
-    if (!window.confirm('Remove this saved template? This cannot be undone.')) return;
+    if (!window.confirm("Remove this saved template? This cannot be undone.")) return;
     setDeletingPackId(packId);
     try {
       await deleteCustomPack(packId);
       setWorkflowPacks(listWorkflowPacks());
       if (form.packId === packId) set("packId", "business_acquisition");
     } catch (err) {
-      alert(err.message || 'Failed to delete pack');
+      alert(err.message || "Failed to delete pack");
     } finally {
       setDeletingPackId(null);
     }
+  }
+
+  function handleRenamePack(e, pack) {
+    e.stopPropagation();
+    const newName = window.prompt("Rename this template:", pack.label);
+    if (!newName || newName.trim() === pack.label) return;
+    // Update the pack name in local registry
+    const updated = { ...pack, name: newName.trim(), label: newName.trim() };
+    registerCustomPack({ id: pack.id, ...updated, name: newName.trim() });
+    setWorkflowPacks(listWorkflowPacks());
+  }
+
+  function handleDuplicatePack(e, pack) {
+    e.stopPropagation();
+    const newId = pack.id + "_copy_" + Date.now().toString(36).slice(-4);
+    const newName = (pack.label || pack.name || "Template") + " (copy)";
+    const basePack = getWorkflowPack(pack.id);
+    const config = configFromPack(basePack);
+    registerCustomPack({
+      id: newId,
+      name: newName,
+      description: pack.description || "",
+      roles: config.roles,
+      stages: config.stages,
+      documents: config.documents,
+    });
+    setWorkflowPacks(listWorkflowPacks());
+    set("packId", newId);
   }
 
   // Form state
@@ -212,11 +261,18 @@ export default function CreateDealRoomPage() {
   });
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
+  // AI description fields
+  const [aiDescription, setAiDescription] = useState("");
+  const [aiTransactionType, setAiTransactionType] = useState("");
+  const [aiCurrentStage, setAiCurrentStage] = useState("");
+
   // Customization config (roles/docs/stages)
   const [customConfig, setCustomConfig] = useState({ roles: [], documents: [], stages: [] });
+  const setRoles = roles => setCustomConfig(c => ({ ...c, roles }));
+  const setDocuments = documents => setCustomConfig(c => ({ ...c, documents }));
+  const setStages = stages => setCustomConfig(c => ({ ...c, stages }));
 
   // AI generation
-  const [aiDescription, setAiDescription] = useState("");
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState("");
   const [isAiGenerated, setIsAiGenerated] = useState(false);
@@ -227,40 +283,64 @@ export default function CreateDealRoomPage() {
 
   // ── Derived ───────────────────────────────────────────────────────────────
   const activePack = workflowPacks.find(p => p.id === form.packId) || workflowPacks[0];
+  const systemPacks = workflowPacks.filter(p => SYSTEM_PACK_IDS.includes(p.id));
+  const savedPacks = workflowPacks.filter(p => !SYSTEM_PACK_IDS.includes(p.id));
 
-  const STEP_LABELS = {
-    template: ["Setup", "Customize", "Your Info", "Launch"],
-    ai:       ["Describe", "Customize", "Your Info", "Launch"],
-    blank:    ["Setup", "Your Info", "Launch"],
-  };
-  const steps = creationMode ? STEP_LABELS[creationMode] : [];
+  // Step labels depend on mode — blank skips preview
+  const steps = creationMode === "blank"
+    ? ["Describe", "Your Info", "Activate"]
+    : ["Describe", "Preview", "Your Info", "Activate"];
 
-  function phaseToStepIndex(p) {
-    if (creationMode === "blank") return p === 0 ? 0 : p === 2 ? 1 : 2;
-    return p; // 0→0, 1→1, 2→2, 3→3
+  // Map phase (0-3) to step index for the indicator
+  function phaseToStepIdx(p) {
+    if (creationMode === "blank") {
+      // phase 0 → step 0, phase 2 → step 1, phase 3 → step 2
+      if (p === 0) return 0;
+      if (p === 2) return 1;
+      return 2;
+    }
+    return p; // phase 0→0, 1→1, 2→2, 3→3
   }
 
   // ── Navigation ────────────────────────────────────────────────────────────
   async function goNext() {
-    if (phase === -1) {
-      // Mode selected — move to setup
-      if (creationMode) setPhase(0);
-      return;
-    }
+    setError("");
 
-    if (phase === 0 && creationMode === "ai") {
-      // Trigger AI generation before moving to customize
+    // Phase 0: generate or advance
+    if (phase === 0) {
+      if (creationMode === "blank") {
+        setPhase(2); // skip preview for blank
+        return;
+      }
+
+      if (showTemplatePicker) {
+        // Load template config and advance to preview
+        const pack = getWorkflowPack(form.packId);
+        const config = configFromPack(pack);
+        setCustomConfig(config);
+        setIsAiGenerated(false);
+        const coord = config.roles.find(r => r.canManage) || config.roles[0];
+        if (coord) set("role", coord.key);
+        setShowTemplatePicker(false);
+        setPhase(1);
+        return;
+      }
+
+      // AI mode — trigger generation
+      if (!aiDescription.trim() || aiDescription.trim().length <= 10) return;
       setAiLoading(true);
       setAiError("");
       try {
+        const body = { description: aiDescription };
+        if (aiTransactionType) body.transactionType = aiTransactionType;
+        if (aiCurrentStage) body.currentStage = aiCurrentStage;
         const res = await fetch(`${API_BASE}/api/workspace/generate`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ description: aiDescription }),
+          body: JSON.stringify(body),
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || "AI generation failed");
-        // Pre-fill workspace name from AI suggestion
         if (data.name && !form.workspaceName) set("workspaceName", data.name);
         setCustomConfig({
           roles: (data.roles || []).map((r, i) => ({
@@ -271,7 +351,6 @@ export default function CreateDealRoomPage() {
             required: !!r.required,
             needsDocs: r.needsDocs !== false,
             invitable: r.invitable !== false,
-            // First role is always the workspace coordinator
             canManage: i === 0 ? true : !!r.canManage,
           })),
           documents: (data.documents || []).map(d => ({
@@ -287,7 +366,6 @@ export default function CreateDealRoomPage() {
           })),
         });
         setIsAiGenerated(true);
-        // Sync creator role to first coordinator role from AI suggestions
         const firstAiRole = (data.roles || [])[0];
         if (firstAiRole?.key) set("role", firstAiRole.key);
         setPhase(1);
@@ -299,38 +377,43 @@ export default function CreateDealRoomPage() {
       return;
     }
 
-    if (phase === 0 && creationMode === "template") {
-      // Pre-populate config from selected pack
-      const pack = getWorkflowPack(form.packId);
-      const config = configFromPack(pack);
-      setCustomConfig(config);
-      setIsAiGenerated(false);
-      // Sync creator role to first coordinator role of this pack
-      const coord = config.roles.find(r => r.canManage) || config.roles[0];
-      if (coord) set("role", coord.key);
-      setPhase(1);
-      return;
-    }
+    // Phase 1 → Phase 2
+    if (phase === 1) { setPhase(2); return; }
 
-    // Blank: skip phase 1 (customize)
-    if (creationMode === "blank" && phase === 0) { setPhase(2); return; }
-    if (creationMode === "blank" && phase === 2) { setPhase(3); return; }
-
-    setPhase(p => p + 1);
+    // Phase 2 → Phase 3
+    if (phase === 2) { setPhase(3); return; }
   }
 
   function goBack() {
-    if (phase === 0) { setPhase(-1); return; }
-    if (creationMode === "blank" && phase === 2) { setPhase(0); return; }
-    setPhase(p => p - 1);
+    setError("");
+    if (phase === 0) {
+      if (showTemplatePicker) {
+        setShowTemplatePicker(false);
+        setCreationMode("ai");
+        return;
+      }
+      navigate(-1);
+      return;
+    }
+    if (phase === 1) { setPhase(0); return; }
+    if (phase === 2 && creationMode === "blank") { setPhase(0); return; }
+    if (phase === 2) { setPhase(1); return; }
+    if (phase === 3) { setPhase(2); return; }
+  }
+
+  async function handleRegenerate() {
+    // Go back to phase 0 and re-trigger AI generation
+    setPhase(0);
+    setCustomConfig({ roles: [], documents: [], stages: [] });
+    setIsAiGenerated(false);
   }
 
   // ── Validation ────────────────────────────────────────────────────────────
   function canContinue() {
-    if (phase === -1) return !!creationMode;
     if (phase === 0) {
-      if (creationMode === "ai") return aiDescription.trim().length > 10;
-      return !!form.workspaceName.trim();
+      if (creationMode === "blank") return true;
+      if (showTemplatePicker) return !!form.packId;
+      return aiDescription.trim().length > 10;
     }
     if (phase === 1) {
       return customConfig.roles.length > 0 &&
@@ -345,25 +428,19 @@ export default function CreateDealRoomPage() {
   // ── Payload ───────────────────────────────────────────────────────────────
   function buildPayload() {
     const raw = (form.workspaceName || "").trim();
-    // Require a non-empty, collision-safe workspace slug
     const propertyId = raw
       ? raw.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 60) + "-" + Date.now().toString(36).slice(-4)
       : "ws-" + Date.now().toString(36);
     const isBlank = creationMode === "blank";
     const workflowPackId = isBlank ? "blank" : form.packId;
-    // Always send customConfig for blank (even empty — backend assigns minimal defaults)
-    // and for template/AI when the user has built a config.
     const configToSend = isBlank
       ? { roles: [], documents: [], stages: [] }
       : (customConfig.roles.length > 0 || customConfig.stages.length >= 2 ? customConfig : null);
 
-    // Ensure the submitted role key actually exists in the custom config (prevents
-    // stale "owner" default from being sent when the pack uses a different coordinator key)
     const resolvedRole = (() => {
       if (isBlank || customConfig.roles.length === 0) return form.role || "owner";
       const match = customConfig.roles.find(r => r.key === form.role);
       if (match) return match.key;
-      // Fall back to first coordinator role, then first role
       const coord = customConfig.roles.find(r => r.canManage) || customConfig.roles[0];
       return coord?.key || form.role || "owner";
     })();
@@ -410,7 +487,7 @@ export default function CreateDealRoomPage() {
     }
   }
 
-  // ── Render ────────────────────────────────────────────────────────────────
+  // ── Shared styles ─────────────────────────────────────────────────────────
   const inputCls = "w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-red-800/20 focus:border-red-800";
   const labelCls = "block text-xs font-semibold text-gray-500 mb-1";
 
@@ -426,247 +503,266 @@ export default function CreateDealRoomPage() {
               Workspace live in minutes
             </div>
             <h1 className="text-2xl font-bold text-gray-900 mb-2">Create Your Transaction Workspace</h1>
-            <p className="text-gray-500 text-sm">$499 one-time · All parties included · No subscription required</p>
+            <p className="text-gray-500 text-sm">$499 one-time · All parties included · No subscription</p>
           </div>
 
-          {/* Step indicator (hidden on mode selector) */}
-          {phase >= 0 && creationMode && (
-            <div className="flex items-center justify-center gap-2 mb-8">
-              {steps.map((label, i) => {
-                const active = phaseToStepIndex(phase);
-                return (
-                  <React.Fragment key={label}>
-                    <div className="flex items-center gap-1.5">
-                      <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold transition-all ${i <= active ? "text-white" : "bg-gray-200 text-gray-400"}`}
-                        style={i <= active ? { background: "#800020" } : {}}>
-                        {i < active ? "✓" : i + 1}
-                      </div>
-                      <span className={`text-xs font-medium hidden sm:block ${i === active ? "text-gray-900" : "text-gray-400"}`}>{label}</span>
+          {/* Step indicator */}
+          <div className="flex items-center justify-center gap-2 mb-8">
+            {steps.map((label, i) => {
+              const active = phaseToStepIdx(phase);
+              return (
+                <React.Fragment key={label}>
+                  <div className="flex items-center gap-1.5">
+                    <div
+                      className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold transition-all ${i <= active ? "text-white" : "bg-gray-200 text-gray-400"}`}
+                      style={i <= active ? { background: "#800020" } : {}}
+                    >
+                      {i < active ? "✓" : i + 1}
                     </div>
-                    {i < steps.length - 1 && <div className={`flex-1 h-px max-w-8 ${i < active ? "bg-red-800" : "bg-gray-200"}`} />}
-                  </React.Fragment>
-                );
-              })}
-            </div>
-          )}
+                    <span className={`text-xs font-medium hidden sm:block ${i === active ? "text-gray-900" : "text-gray-400"}`}>{label}</span>
+                  </div>
+                  {i < steps.length - 1 && (
+                    <div className={`flex-1 h-px max-w-8 ${i < active ? "bg-red-800" : "bg-gray-200"}`} />
+                  )}
+                </React.Fragment>
+              );
+            })}
+          </div>
 
           <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6 mb-4">
 
-            {/* ── Phase -1: Mode selector ─────────────────────────────── */}
-            {phase === -1 && (
-              <div className="space-y-4">
+            {/* ── Phase 0: Describe ─────────────────────────────────────── */}
+            {phase === 0 && !showTemplatePicker && creationMode !== "blank" && (
+              <div className="space-y-5">
                 <div>
-                  <h2 className="font-semibold text-gray-900 mb-1">How do you want to set up your workspace?</h2>
-                  <p className="text-xs text-gray-400 mb-4">Choose a starting point. You can customize everything before and after launch.</p>
+                  <h2 className="font-semibold text-gray-900 mb-1">What transaction are you coordinating?</h2>
+                  <p className="text-xs text-gray-400">Be specific — company type, parties involved, current stage, any special requirements.</p>
                 </div>
 
-                {[
-                  {
-                    mode: "template",
-                    icon: "📋",
-                    title: "Start from a template",
-                    desc: "Pick Business Acquisition, CRE, or Fundraising — then edit the roles, documents, and stages to fit your deal.",
-                    badge: "Most common",
-                  },
-                  {
-                    mode: "ai",
-                    icon: "✨",
-                    title: "Build with AI",
-                    desc: "Describe your transaction in plain language. AI will suggest a complete workspace — you review and adjust before launching.",
-                    badge: "Fastest",
-                  },
-                  {
-                    mode: "blank",
-                    icon: "⬜",
-                    title: "Start blank",
-                    desc: "Create an empty workspace and define everything yourself — roles, checklist, and stages — inside the workspace after launch.",
-                    badge: null,
-                  },
-                ].map(({ mode, icon, title, desc, badge }) => (
-                  <button key={mode} type="button" onClick={() => setCreationMode(mode)}
-                    className={`w-full border rounded-xl p-4 text-left transition-all ${creationMode === mode ? "border-red-800 bg-red-50" : "border-gray-200 hover:border-gray-300"}`}>
-                    <div className="flex items-start gap-3">
-                      <span className="text-2xl shrink-0 mt-0.5">{icon}</span>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 mb-0.5">
-                          <span className={`text-sm font-semibold ${creationMode === mode ? "text-red-800" : "text-gray-800"}`}>{title}</span>
-                          {badge && <span className="text-[10px] font-bold text-white px-1.5 py-0.5 rounded-full shrink-0" style={{ background: "#800020" }}>{badge}</span>}
-                        </div>
-                        <p className="text-xs text-gray-500 leading-relaxed">{desc}</p>
-                      </div>
-                    </div>
-                  </button>
-                ))}
-              </div>
-            )}
+                <textarea
+                  className={`${inputCls} h-32 resize-none`}
+                  placeholder="e.g. I am acquiring a 15-location HVAC company in the Southeast. The seller is an individual owner. We have an LOI and are moving into due diligence."
+                  value={aiDescription}
+                  onChange={e => setAiDescription(e.target.value)}
+                  autoFocus
+                />
 
-            {/* ── Phase 0: Setup ──────────────────────────────────────── */}
-            {phase === 0 && creationMode === "template" && (
-              <div className="space-y-4">
-                <div>
-                  <h2 className="font-semibold text-gray-900 mb-0.5">Choose a starting template</h2>
-                  <p className="text-xs text-gray-400 mb-3">You'll edit the roles, documents, and stages in the next step before launching.</p>
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-2">
-                  {workflowPacks.filter(p => ["business_acquisition","cre_acquisition","fundraising"].includes(p.id)).map(p => (
-                    <button key={p.id} type="button" onClick={() => set("packId", p.id)}
-                      className={`border rounded-xl p-3.5 text-left transition-all ${form.packId === p.id ? "border-red-800 bg-red-50" : "border-gray-200 hover:border-gray-300"}`}>
-                      <div className="flex items-center justify-between mb-0.5">
-                        <p className={`text-sm font-semibold ${form.packId === p.id ? "text-red-800" : "text-gray-800"}`}>{p.label}</p>
-                        <span className="text-[10px] font-bold text-white px-1.5 py-0.5 rounded-full shrink-0" style={{ background: "#800020" }}>Template</span>
-                      </div>
-                      <p className="text-xs text-gray-500 mt-0.5">{p.description}</p>
-                    </button>
-                  ))}
-                  {/* Any custom packs from DB */}
-                  {workflowPacks.filter(p => !["business_acquisition","cre_acquisition","fundraising"].includes(p.id)).map(p => (
-                    <button key={p.id} type="button" onClick={() => set("packId", p.id)}
-                      className={`relative border rounded-xl p-3.5 text-left transition-all group ${form.packId === p.id ? "border-red-800 bg-red-50" : "border-gray-200 hover:border-gray-300"}`}>
-                      <div className="flex items-center justify-between mb-0.5">
-                        <p className={`text-sm font-semibold pr-6 ${form.packId === p.id ? "text-red-800" : "text-gray-800"}`}>{p.label}</p>
-                        <span className="text-[10px] font-bold bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded-full shrink-0">Saved</span>
-                      </div>
-                      <p className="text-xs text-gray-500 mt-0.5">{p.description}</p>
-                      <span
-                        role="button"
-                        onClick={e => handleDeletePack(e, p.id)}
-                        title="Delete this saved template"
-                        className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity text-gray-300 hover:text-red-500 text-sm leading-none px-1"
-                        aria-label="Delete template"
-                      >
-                        {deletingPackId === p.id ? '…' : '×'}
-                      </span>
-                    </button>
-                  ))}
-                </div>
-
-                <div>
-                  <label className={labelCls}>{form.packId === 'cre_acquisition' ? 'Property Name' : 'Workspace Name'} *</label>
-                  <input className={inputCls} placeholder={form.packId === 'cre_acquisition' ? 'e.g. 550 Madison Avenue' : 'e.g. Acme Manufacturing Acquisition'}
-                    value={form.workspaceName} onChange={e => set("workspaceName", e.target.value)} />
-                </div>
-                <div>
-                  <label className={labelCls}>{form.packId === 'cre_acquisition' ? 'Property Address' : 'Location / Address'}</label>
-                  <input className={inputCls} placeholder={form.packId === 'cre_acquisition' ? 'Full property address' : 'City, State or full address'}
-                    value={form.workspaceLocation} onChange={e => set("workspaceLocation", e.target.value)} />
-                </div>
+                {/* Optional structured fields */}
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className={labelCls}>Transaction Size</label>
-                    <input className={inputCls} placeholder="e.g. $8,500,000"
-                      value={form.dealAmount} onChange={e => set("dealAmount", e.target.value)} />
+                    <label className={labelCls}>Transaction type <span className="font-normal text-gray-400">(optional)</span></label>
+                    <select className={`${inputCls} bg-white`} value={aiTransactionType} onChange={e => setAiTransactionType(e.target.value)}>
+                      <option value="">Select type…</option>
+                      <option value="business_acquisition">Business Acquisition</option>
+                      <option value="cre_acquisition">CRE Acquisition</option>
+                      <option value="fundraising">Fundraising</option>
+                      <option value="lending">Lending / Finance</option>
+                      <option value="licensing">Licensing</option>
+                      <option value="joint_venture">Joint Venture</option>
+                      <option value="other">Other</option>
+                    </select>
                   </div>
                   <div>
-                    <label className={labelCls}>Target Close Date</label>
-                    <input type="date" className={inputCls}
-                      value={form.closingDate} onChange={e => set("closingDate", e.target.value)} />
+                    <label className={labelCls}>Current stage <span className="font-normal text-gray-400">(optional)</span></label>
+                    <select className={`${inputCls} bg-white`} value={aiCurrentStage} onChange={e => setAiCurrentStage(e.target.value)}>
+                      <option value="">Select stage…</option>
+                      <option value="loi">LOI / Term Sheet</option>
+                      <option value="due_diligence">Due Diligence</option>
+                      <option value="financing">Financing</option>
+                      <option value="closing">Closing</option>
+                      <option value="pre_loi">Pre-LOI</option>
+                    </select>
                   </div>
                 </div>
-              </div>
-            )}
 
-            {phase === 0 && creationMode === "ai" && (
-              <div className="space-y-4">
+                {/* Target closing date */}
                 <div>
-                  <h2 className="font-semibold text-gray-900 mb-1">Describe the transaction you're coordinating</h2>
-                  <p className="text-xs text-gray-400 mb-3">
-                    AI will suggest roles, a document checklist, and transaction stages. You'll review and edit everything before launching.
-                  </p>
+                  <label className={labelCls}>Target closing date <span className="font-normal text-gray-400">(optional)</span></label>
+                  <input type="date" className={inputCls}
+                    value={form.closingDate} onChange={e => set("closingDate", e.target.value)} />
                 </div>
-                <div>
-                  <textarea
-                    className={`${inputCls} h-32 resize-none`}
-                    placeholder="e.g. I am acquiring a 15-location HVAC company in the Southeast. The seller is an individual owner. We have an LOI and are moving into due diligence."
-                    value={aiDescription}
-                    onChange={e => setAiDescription(e.target.value)}
-                  />
-                  <p className="text-xs text-gray-400 mt-1">Be specific — company type, parties involved, current stage, any special requirements.</p>
-                </div>
+
                 {aiError && (
                   <div className="bg-red-50 border border-red-200 text-red-700 text-xs rounded-xl px-3.5 py-2.5">{aiError}</div>
                 )}
-                <div className="bg-blue-50 border border-blue-100 rounded-xl px-3.5 py-3 text-xs text-blue-700 leading-relaxed">
-                  <strong>Notice:</strong> AI-generated suggestions may not include every document, approval, participant, or legal requirement. Review the workspace with your legal, financial, and transaction advisers before use.
+
+                {/* Secondary paths */}
+                <div className="flex items-center gap-4 text-xs text-gray-400 pt-1">
+                  <button type="button"
+                    onClick={() => { setShowTemplatePicker(true); setCreationMode("template"); setAiError(""); }}
+                    className="underline hover:text-gray-700 transition">
+                    Or start from a template
+                  </button>
+                  <span>·</span>
+                  <button type="button"
+                    onClick={() => { setCreationMode("blank"); setAiError(""); }}
+                    className="underline hover:text-gray-700 transition">
+                    Or start with a blank workspace
+                  </button>
                 </div>
               </div>
             )}
 
-            {phase === 0 && creationMode === "blank" && (
+            {/* ── Phase 0: Blank confirmation ──────────────────────────── */}
+            {phase === 0 && creationMode === "blank" && !showTemplatePicker && (
               <div className="space-y-4">
                 <div>
-                  <h2 className="font-semibold text-gray-900 mb-1">Name your workspace</h2>
+                  <h2 className="font-semibold text-gray-900 mb-1">Start with a blank workspace</h2>
                   <p className="text-xs text-gray-400 mb-3">You'll add roles, documents, and stages directly inside the workspace after launch.</p>
                 </div>
-                <div>
-                  <label className={labelCls}>Workspace Name *</label>
-                  <input className={inputCls} placeholder="e.g. Riverstone Capital Deal Room"
-                    value={form.workspaceName} onChange={e => set("workspaceName", e.target.value)} />
-                </div>
-                <div>
-                  <label className={labelCls}>Location / Address</label>
-                  <input className={inputCls} placeholder="City, State or full address (optional)"
-                    value={form.workspaceLocation} onChange={e => set("workspaceLocation", e.target.value)} />
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className={labelCls}>Transaction Size</label>
-                    <input className={inputCls} placeholder="e.g. $8,500,000"
-                      value={form.dealAmount} onChange={e => set("dealAmount", e.target.value)} />
-                  </div>
-                  <div>
-                    <label className={labelCls}>Target Close Date</label>
-                    <input type="date" className={inputCls}
-                      value={form.closingDate} onChange={e => set("closingDate", e.target.value)} />
-                  </div>
-                </div>
                 <div className="bg-gray-50 border border-gray-100 rounded-xl px-3.5 py-3 text-xs text-gray-500 leading-relaxed">
-                  Kontra provides workflow tools, suggested templates, and AI-assisted document coordination. Suggestions are not legal, financial, tax, underwriting, or compliance advice. The workspace owner is responsible for reviewing and configuring the workspace with appropriate professional advisers.
+                  After launch, use the workspace settings to define your participants, upload documents, and configure transaction stages.
                 </div>
+                <button type="button"
+                  onClick={() => { setCreationMode("ai"); }}
+                  className="text-xs text-gray-400 underline hover:text-gray-700 transition">
+                  ← Back to AI description
+                </button>
               </div>
             )}
 
-            {/* ── Phase 1: Customize ──────────────────────────────────── */}
-            {phase === 1 && (
-              <div>
-                <h2 className="font-semibold text-gray-900 mb-4">
-                  {creationMode === "ai" ? "Review AI suggestions" : `Customize your workspace`}
-                </h2>
-                <CustomizationEditor config={customConfig} onChange={setCustomConfig} isAiGenerated={isAiGenerated} />
-              </div>
-            )}
+            {/* ── Phase 0: Template picker ─────────────────────────────── */}
+            {phase === 0 && showTemplatePicker && (
+              <div className="space-y-5">
+                <div>
+                  <h2 className="font-semibold text-gray-900 mb-1">Choose a starting template</h2>
+                  <p className="text-xs text-gray-400">You'll review and edit participants, documents, and stages before activating.</p>
+                </div>
 
-            {/* ── Phase 2: Your Info ──────────────────────────────────── */}
-            {phase === 2 && (
-              <div className="space-y-4">
-                <h2 className="font-semibold text-gray-900 mb-4">Your contact info</h2>
+                {/* System templates */}
+                <div>
+                  <p className="text-[11px] font-bold uppercase tracking-wider text-gray-400 mb-2">Templates</p>
+                  <div className="grid grid-cols-1 gap-2">
+                    {systemPacks.map(p => (
+                      <button key={p.id} type="button" onClick={() => set("packId", p.id)}
+                        className={`border rounded-xl p-3.5 text-left transition-all ${form.packId === p.id ? "border-red-800 bg-red-50" : "border-gray-200 hover:border-gray-300"}`}>
+                        <div className="flex items-center justify-between mb-0.5">
+                          <p className={`text-sm font-semibold ${form.packId === p.id ? "text-red-800" : "text-gray-800"}`}>{p.label}</p>
+                          <span className="text-[10px] font-bold text-white px-1.5 py-0.5 rounded-full shrink-0" style={{ background: "#800020" }}>Template</span>
+                        </div>
+                        <p className="text-xs text-gray-500 mt-0.5">{p.description}</p>
+                      </button>
+                    ))}
+                  </div>
+                </div>
 
-                {/* For AI mode, workspace name may have been auto-filled but allow editing */}
-                {creationMode === "ai" && (
+                {/* Saved user templates */}
+                {savedPacks.length > 0 && (
                   <div>
-                    <label className={labelCls}>Workspace Name *</label>
-                    <input className={inputCls}
-                      placeholder="e.g. Acme Manufacturing Acquisition"
-                      value={form.workspaceName}
-                      onChange={e => set("workspaceName", e.target.value)} />
+                    <p className="text-[11px] font-bold uppercase tracking-wider text-gray-400 mb-2">Your saved templates</p>
+                    <div className="grid grid-cols-1 gap-2">
+                      {savedPacks.map(p => (
+                        <div key={p.id}
+                          className={`relative border rounded-xl p-3.5 transition-all cursor-pointer ${form.packId === p.id ? "border-red-800 bg-red-50" : "border-gray-200 hover:border-gray-300"}`}
+                          onClick={() => set("packId", p.id)}>
+                          <div className="flex items-center justify-between mb-0.5">
+                            <p className={`text-sm font-semibold ${form.packId === p.id ? "text-red-800" : "text-gray-800"}`}>{p.label}</p>
+                            <span className="text-[10px] font-bold bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded-full shrink-0">Saved</span>
+                          </div>
+                          <p className="text-xs text-gray-500 mt-0.5">{p.description}</p>
+                          {/* Management actions */}
+                          <div className="flex items-center gap-3 mt-2.5">
+                            <button type="button" onClick={e => handleRenamePack(e, p)}
+                              className="text-[11px] font-medium text-gray-400 hover:text-gray-700 transition">
+                              Rename
+                            </button>
+                            <button type="button" onClick={e => handleDuplicatePack(e, p)}
+                              className="text-[11px] font-medium text-gray-400 hover:text-gray-700 transition">
+                              Duplicate
+                            </button>
+                            <button type="button" onClick={e => handleDeletePack(e, p.id)}
+                              className="text-[11px] font-medium text-gray-400 hover:text-red-500 transition">
+                              {deletingPackId === p.id ? "Deleting…" : "Delete"}
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 )}
+              </div>
+            )}
+
+            {/* ── Phase 1: Preview ─────────────────────────────────────── */}
+            {phase === 1 && (
+              <div className="space-y-4">
+                <div>
+                  <h2 className="font-semibold text-gray-900 mb-1">
+                    {isAiGenerated ? "AI-generated workspace — review before continuing" : "Review your workspace"}
+                  </h2>
+                  <p className="text-xs text-gray-400">Expand each section to view or edit. Changes take effect after you activate.</p>
+                </div>
+
+                {/* Single disclaimer */}
+                <div className="bg-amber-50 border border-amber-200 rounded-xl px-3.5 py-3 text-xs text-amber-800 leading-relaxed">
+                  Kontra provides suggested transaction structures. Review the workspace with your legal, financial, and transaction advisers before relying on it.
+                </div>
+
+                {/* Collapsed sections */}
+                <div className="space-y-2">
+                  <CollapsedSection
+                    title="Participants"
+                    count={customConfig.roles.length}
+                    icon="👥"
+                  >
+                    <RolesEditor roles={customConfig.roles} onChange={setRoles} />
+                  </CollapsedSection>
+
+                  <CollapsedSection
+                    title="Documents"
+                    count={customConfig.documents.length}
+                    icon="📄"
+                  >
+                    <DocumentsEditor
+                      documents={customConfig.documents}
+                      roles={customConfig.roles}
+                      onChange={setDocuments}
+                    />
+                  </CollapsedSection>
+
+                  <CollapsedSection
+                    title="Stages"
+                    count={customConfig.stages.length}
+                    icon="🗂️"
+                  >
+                    <StagesEditor stages={customConfig.stages} onChange={setStages} />
+                  </CollapsedSection>
+                </div>
+              </div>
+            )}
+
+            {/* ── Phase 2: Your Info ───────────────────────────────────── */}
+            {phase === 2 && (
+              <div className="space-y-4">
+                <h2 className="font-semibold text-gray-900 mb-1">Your info</h2>
+
+                <div>
+                  <label className={labelCls}>Workspace name *</label>
+                  <input className={inputCls}
+                    placeholder="e.g. Acme Manufacturing Acquisition"
+                    value={form.workspaceName}
+                    onChange={e => set("workspaceName", e.target.value)} />
+                </div>
+
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className={labelCls}>First Name *</label>
+                    <label className={labelCls}>First name *</label>
                     <input className={inputCls} value={form.firstName} onChange={e => set("firstName", e.target.value)} />
                   </div>
                   <div>
-                    <label className={labelCls}>Last Name *</label>
+                    <label className={labelCls}>Last name *</label>
                     <input className={inputCls} value={form.lastName} onChange={e => set("lastName", e.target.value)} />
                   </div>
                 </div>
+
                 <div>
                   <label className={labelCls}>Email *</label>
                   <input type="email" className={inputCls} placeholder="you@company.com"
                     value={form.email} onChange={e => set("email", e.target.value)} />
                 </div>
+
                 <div>
-                  <label className={labelCls}>Your Role in this Transaction</label>
+                  <label className={labelCls}>Your role in this transaction</label>
                   {creationMode !== "blank" && customConfig.roles.length > 0 ? (
                     <select className={`${inputCls} bg-white`} value={form.role} onChange={e => set("role", e.target.value)}>
                       {customConfig.roles.filter(r => r.label.trim()).map(r => (
@@ -679,6 +775,7 @@ export default function CreateDealRoomPage() {
                       onChange={e => set("role", e.target.value || "owner")} />
                   )}
                 </div>
+
                 <label className="flex items-start gap-2.5 cursor-pointer pt-1">
                   <input type="checkbox" checked={form.agree} onChange={e => set("agree", e.target.checked)}
                     className="mt-0.5 accent-red-800 w-4 h-4 shrink-0" />
@@ -687,90 +784,108 @@ export default function CreateDealRoomPage() {
                     <a href="/terms" className="underline text-gray-700" target="_blank" rel="noreferrer">Terms of Service</a>{" "}
                     and{" "}
                     <a href="/privacy" className="underline text-gray-700" target="_blank" rel="noreferrer">Privacy Policy</a>.
-                    I understand Kontra provides transaction workspace infrastructure only and does not act as a broker, lender, or financial adviser.
+                    I understand Kontra provides transaction workspace infrastructure and does not act as a broker, lender, or financial adviser.
                   </span>
                 </label>
               </div>
             )}
 
-            {/* ── Phase 3: Review & Launch ────────────────────────────── */}
+            {/* ── Phase 3: Review & Activate ───────────────────────────── */}
             {phase === 3 && (
-              <div>
-                <h2 className="font-semibold text-gray-900 mb-4">Review & Launch</h2>
-                <div className="space-y-0 mb-5">
+              <div className="space-y-4">
+                <h2 className="font-semibold text-gray-900 mb-1">Review & activate</h2>
+
+                {/* Summary card */}
+                <div className="bg-gray-50 border border-gray-200 rounded-xl divide-y divide-gray-200 overflow-hidden">
                   {[
-                    { label: "Workspace", value: form.workspaceName },
-                    form.workspaceLocation && { label: "Location", value: form.workspaceLocation },
-                    form.dealAmount && { label: "Size", value: form.dealAmount },
-                    creationMode !== "blank" && { label: "Template", value: activePack?.label || "Custom" },
-                    creationMode !== "blank" && customConfig.roles.length > 0 && { label: "Roles", value: customConfig.roles.map(r => r.label).filter(Boolean).join(", ") },
-                    creationMode !== "blank" && customConfig.stages.length > 0 && { label: "Stages", value: customConfig.stages.map(s => s.label).filter(Boolean).join(" → ") },
-                    creationMode !== "blank" && customConfig.documents.length > 0 && { label: "Documents", value: `${customConfig.documents.length} items` },
+                    { label: "Workspace", value: form.workspaceName || "—" },
+                    creationMode !== "blank" && { label: "Type", value: activePack?.label || "Custom" },
+                    creationMode !== "blank" && customConfig.roles.length > 0 && { label: "Participants", value: `${customConfig.roles.length} role${customConfig.roles.length !== 1 ? "s" : ""}` },
+                    creationMode !== "blank" && customConfig.documents.length > 0 && { label: "Documents", value: `${customConfig.documents.length} item${customConfig.documents.length !== 1 ? "s" : ""}` },
+                    creationMode !== "blank" && customConfig.stages.length > 0 && { label: "Stages", value: `${customConfig.stages.length} stage${customConfig.stages.length !== 1 ? "s" : ""}` },
                     { label: "Contact", value: `${form.firstName} ${form.lastName} · ${form.email}` },
+                    { label: "Price", value: "$499 one-time" },
+                    { label: "Access", value: "90-day access after closing" },
                   ].filter(Boolean).map(r => (
-                    <div key={r.label} className="flex justify-between items-start gap-4 py-2.5 border-b border-gray-100 last:border-0">
-                      <span className="text-xs font-semibold text-gray-400 shrink-0 w-20">{r.label}</span>
+                    <div key={r.label} className="flex justify-between items-start gap-4 px-4 py-3">
+                      <span className="text-xs font-semibold text-gray-400 shrink-0 w-24">{r.label}</span>
                       <span className="text-sm text-gray-800 text-right break-words">{r.value}</span>
                     </div>
                   ))}
                 </div>
 
-                <div className="bg-gray-50 rounded-xl border border-gray-200 p-4 mb-4">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-sm font-semibold text-gray-700">Workspace Access</span>
-                    <span className="text-lg font-bold text-gray-900">$499</span>
-                  </div>
-                  <ul className="text-xs text-gray-500 space-y-1">
-                    {["All party portals — role-scoped access for every stakeholder", "AI document analysis", "Transaction health & risk tracking", "Role-scoped invite links", "90-day access after close"].map(f => (
-                      <li key={f} className="flex items-center gap-1.5"><span className="text-green-500">✓</span>{f}</li>
-                    ))}
-                  </ul>
-                </div>
-
                 {error && (
-                  <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-xl px-4 py-3 mb-4">{error}</div>
+                  <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-xl px-4 py-3">{error}</div>
                 )}
               </div>
             )}
           </div>
 
-          {/* Navigation */}
-          <div className="flex gap-3">
-            {phase > -1 && (
+          {/* ── Navigation buttons ──────────────────────────────────────── */}
+          {phase === 3 ? (
+            /* Activate step: primary + text link */
+            <div className="space-y-3">
+              <button type="button" onClick={() => handleLaunch(false)} disabled={loading}
+                className="w-full py-3.5 rounded-xl text-sm font-bold text-white transition disabled:opacity-70 hover:opacity-90 flex items-center justify-center gap-2"
+                style={{ background: "#800020" }}>
+                {loading ? (
+                  <><svg className="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg> Processing…</>
+                ) : "🔐 Pay $499 and Activate Workspace"}
+              </button>
+              <div className="flex items-center gap-3">
+                <button type="button" onClick={goBack}
+                  className="flex-1 py-3 rounded-xl border border-gray-200 text-sm font-semibold text-gray-600 hover:bg-gray-50 transition">
+                  ← Back
+                </button>
+                <button type="button" onClick={() => handleLaunch(true)} disabled={loading}
+                  className="flex-1 py-3 text-sm font-medium text-gray-500 hover:text-gray-800 transition disabled:opacity-50 underline">
+                  Continue in demo mode
+                </button>
+              </div>
+            </div>
+          ) : phase === 1 ? (
+            /* Preview step: Continue + Regenerate */
+            <div className="flex gap-3">
               <button type="button" onClick={goBack}
-                className="flex-1 py-3 rounded-xl border border-gray-200 text-sm font-semibold text-gray-600 hover:bg-gray-50 transition">
+                className="py-3 px-5 rounded-xl border border-gray-200 text-sm font-semibold text-gray-600 hover:bg-gray-50 transition">
                 ← Back
               </button>
-            )}
-
-            {phase < 3 ? (
+              {isAiGenerated && (
+                <button type="button" onClick={handleRegenerate}
+                  className="py-3 px-5 rounded-xl border border-gray-200 text-sm font-semibold text-gray-600 hover:bg-gray-50 transition">
+                  ↺ Regenerate
+                </button>
+              )}
+              <button type="button" onClick={goNext} disabled={!canContinue()}
+                className="flex-1 py-3 rounded-xl text-sm font-bold text-white transition disabled:opacity-40 disabled:cursor-not-allowed hover:opacity-90"
+                style={{ background: "#800020" }}>
+                Continue →
+              </button>
+            </div>
+          ) : (
+            /* Phase 0 and 2: standard back/next */
+            <div className="flex gap-3">
+              <button type="button" onClick={goBack}
+                className="py-3 px-5 rounded-xl border border-gray-200 text-sm font-semibold text-gray-600 hover:bg-gray-50 transition">
+                ← Back
+              </button>
               <button type="button" onClick={goNext} disabled={!canContinue() || aiLoading}
                 className="flex-1 py-3 rounded-xl text-sm font-bold text-white transition disabled:opacity-40 disabled:cursor-not-allowed hover:opacity-90 flex items-center justify-center gap-2"
                 style={{ background: "#800020" }}>
                 {aiLoading ? (
                   <><svg className="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg> Generating…</>
-                ) : phase === 0 && creationMode === "ai" ? "Generate Workspace →" : "Continue →"}
+                ) : phase === 0 && creationMode === "ai" ? "Generate Workspace →"
+                  : phase === 0 && creationMode === "blank" ? "Continue to Your Info →"
+                  : phase === 0 && showTemplatePicker ? "Use this template →"
+                  : "Continue →"}
               </button>
-            ) : (
-              <div className="flex-1 flex flex-col gap-2">
-                <button type="button" onClick={() => handleLaunch(false)} disabled={loading}
-                  className="w-full py-3 rounded-xl text-sm font-bold text-white transition disabled:opacity-70 hover:opacity-90 flex items-center justify-center gap-2"
-                  style={{ background: "#800020" }}>
-                  {loading ? (
-                    <><svg className="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg> Launching…</>
-                  ) : "🔐 Pay $499 & Launch Workspace"}
-                </button>
-                <button type="button" onClick={() => handleLaunch(true)} disabled={loading}
-                  className="w-full py-2.5 rounded-xl text-sm font-semibold text-gray-600 border border-gray-200 bg-white hover:bg-gray-50 transition disabled:opacity-50 flex items-center justify-center gap-2">
-                  🧪 Try Demo (skip payment)
-                </button>
-              </div>
-            )}
-          </div>
+            </div>
+          )}
 
           <p className="text-center text-xs text-gray-400 mt-4">
             Secured by Stripe · No subscription · Workspace live within minutes of payment
           </p>
+
         </div>
       </div>
     </PublicLayout>
