@@ -180,7 +180,11 @@ function CheckRow({ check, isLast }) {
   );
 }
 
-export default function VerificationPanel({ propertyId }) {
+export default function VerificationPanel({
+  propertyId,
+  title = "Verification Log",
+  emptyStateMessage = "Upload documents to trigger automatic cross-document verification.",
+}) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [open, setOpen] = useState(true);
@@ -334,12 +338,12 @@ export default function VerificationPanel({ propertyId }) {
           </div>
           <div style={{ textAlign: "left" }}>
             <p style={{ margin: 0, fontSize: 12, fontWeight: 700, color: "#111827" }}>
-              Verification Log
+              {title}
             </p>
             <p style={{ margin: 0, fontSize: 10, color: "#9ca3af" }}>
               {hasAny
                 ? `${summary.verified} verified · ${summary.discrepancies} discrepanc${summary.discrepancies === 1 ? "y" : "ies"} · ${summary.pending} pending`
-                : "No checks run yet — upload documents to start"}
+                : "No checks run yet"}
             </p>
           </div>
         </div>
@@ -369,10 +373,10 @@ export default function VerificationPanel({ propertyId }) {
             <div style={{ textAlign: "center", padding: "20px 0" }}>
               <p style={{ fontSize: 28, margin: "0 0 8px" }}>🔎</p>
               <p style={{ fontSize: 13, fontWeight: 600, color: "#374151", margin: "0 0 4px" }}>
-                No verification checks yet
+                No checks run yet
               </p>
               <p style={{ fontSize: 12, color: "#6b7280", margin: 0 }}>
-                Upload documents to trigger automatic cross-document verification.
+                {emptyStateMessage}
               </p>
             </div>
           ) : (

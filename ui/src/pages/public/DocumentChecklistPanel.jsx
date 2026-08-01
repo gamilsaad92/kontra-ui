@@ -11,6 +11,40 @@ function uid() {
   return `ci_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
 }
 
+// ── Category grouping ─────────────────────────────────────────────────────────
+// Maps known section keys → display category.  Items that already carry a
+// category field (from the pack schema or a previously-saved checklist) use
+// that value directly; unknown sections fall back to "General".
+const SECTION_TO_CATEGORY = {
+  // Financial
+  financials: "Financial", audited_financials: "Financial",
+  tax_returns: "Financial", qoe: "Financial",
+  rent_roll: "Financial", cap_table: "Financial",
+  // Legal
+  legal: "Legal", title: "Legal", loi: "Legal",
+  purchase_agreement: "Legal", spa: "Legal",
+  disclosure_schedule: "Legal", estoppel: "Legal",
+  contracts: "Legal", term_sheet: "Legal",
+  // Operational
+  environmental: "Operational",
+  // Property / Asset
+  inspection: "Property / Asset", survey: "Property / Asset",
+  // Insurance
+  insurance: "Insurance",
+  // Closing
+  "brand-standards": "Closing",
+};
+
+const CATEGORY_DISPLAY_ORDER = [
+  "Financial", "Legal", "Operational",
+  "Property / Asset", "Insurance", "Closing", "General",
+];
+
+function getItemCategory(item) {
+  if (item.category && item.category !== "General") return item.category;
+  return SECTION_TO_CATEGORY[item.section] || "General";
+}
+
 // Seed the checklist from the pack's document schema when the workspace has no
 // persisted items yet.
 function seedFromPack(pack, propertyType) {
@@ -408,6 +442,7 @@ export default function DocumentChecklistPanel({
   const [addDocOpen, setAddDocOpen] = useState(false);
   const [addDocLabel, setAddDocLabel] = useState("");
   const [confirmReset, setConfirmReset] = useState(false);
+  const [openMenuId, setOpenMenuId] = useState(null);
 
   // ── Role + coordinator check ─────────────────────────────────────────────
   const roleConfig = workflowPack.getRole?.(role);
@@ -507,6 +542,11 @@ export default function DocumentChecklistPanel({
       next.splice(idx + 1, 0, clone);
       return next;
     });
+  }
+
+  function handleMarkNotApplicable(id) {
+    updateItems(prev => prev.map(i => i.id === id ? { ...i, notApplicable: !i.notApplicable } : i));
+    setOpenMenuId(null);
   }
 
   function handleMoveUp(id) {
@@ -649,16 +689,38 @@ export default function DocumentChecklistPanel({
     const isItemExpanded = expandedItems[item.section];
     const isAiSection = item.ai && AI_UPLOAD_ENDPOINTS?.[item.section];
     const isEditing = editingId === item.id;
+    const notApplicable = !!item.notApplicable;
 
-    // Role label for non-coordinator views to show who should upload
+    // ── Status vocabulary ────────────────────────────────────────────────
+    const itemStatus = notApplicable ? "Not Applicable"
+      : done ? (isPending ? "Under Review" : hasIssues ? "Needs Attention" : "Uploaded")
+      : "Missing";
+    const statusStyle = notApplicable
+      ? { bg: "#f9fafb", color: "#9ca3af", border: "#e5e7eb" }
+      : done
+        ? isPending
+          ? { bg: "#eff6ff", color: "#3b82f6", border: "#bfdbfe" }
+          : hasIssues
+            ? { bg: "#fffbeb", color: "#d97706", border: "#fde68a" }
+            : { bg: "#f0fdf4", color: "#16a34a", border: "#bbf7d0" }
+        : { bg: "#f9fafb", color: "#9ca3af", border: "#e5e7eb" };
+
+    // Responsible party (coordinator view)
     const assignedRoleMeta = packRoles.find(r => item.assignedTo?.includes(r.key));
+
+    // Can the row expand?
+    const canExpand = done && !isPending && (issues.length > 0 || analysis?.summary || facts.length > 0);
 
     return (
       <div key={item.id} className="py-2.5 group/item">
         <div className="flex items-start gap-3">
           {/* Status icon */}
-          <div className="shrink-0 mt-0.5">
-            {done ? (
+          <div className="shrink-0 mt-1">
+            {notApplicable ? (
+              <div className="w-5 h-5 rounded-full bg-gray-100 flex items-center justify-center">
+                <span className="text-[10px] text-gray-400 font-bold leading-none">—</span>
+              </div>
+            ) : done ? (
               isPending ? (
                 <div className="w-5 h-5 rounded-full border-2 border-blue-300 bg-blue-50 flex items-center justify-center">
                   <div className="w-2 h-2 rounded-full bg-blue-400 animate-pulse" />
@@ -677,10 +739,10 @@ export default function DocumentChecklistPanel({
             )}
           </div>
 
-          {/* Label + facts */}
+          {/* Label + badges + status */}
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
-              <span className={`text-sm ${done ? "text-gray-900 font-medium" : "text-gray-600"}`}>
+              <span className={`text-sm ${notApplicable ? "text-gray-400 line-through" : done ? "text-gray-900 font-medium" : "text-gray-700"}`}>
                 {item.label}
               </span>
               {item.required ? (
@@ -688,15 +750,18 @@ export default function DocumentChecklistPanel({
               ) : (
                 <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-400 font-medium">optional</span>
               )}
-              {item.isCustom && (
-                <span className="text-[10px] px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-400 font-medium">custom</span>
-              )}
-              {item.ai && (
+              {/* Status badge */}
+              <span className="text-[10px] px-1.5 py-0.5 rounded font-semibold"
+                style={{ background: statusStyle.bg, color: statusStyle.color, border: `1px solid ${statusStyle.border}` }}>
+                {itemStatus}
+              </span>
+              {item.ai && !isPending && (
                 <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-50 text-blue-400 font-medium">AI</span>
               )}
               {isPending && (
                 <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-50 text-blue-500 font-medium animate-pulse">AI analyzing…</span>
               )}
+              {/* Responsible party */}
               {isCoordinator && assignedRoleMeta && (
                 <span className="text-[10px] px-1.5 py-0.5 rounded font-medium"
                   style={{ background: (assignedRoleMeta.color || "#e5e7eb") + "22", color: assignedRoleMeta.color || "#6b7280" }}>
@@ -705,9 +770,10 @@ export default function DocumentChecklistPanel({
               )}
             </div>
 
-            {facts.length > 0 && (
+            {/* Key facts (collapsed preview — first 3) */}
+            {facts.length > 0 && !isItemExpanded && (
               <div className="flex flex-wrap gap-1.5 mt-1.5">
-                {facts.map((f, i) => {
+                {facts.slice(0, 3).map((f, i) => {
                   const c = FACT_COLORS[f.type] || FACT_COLORS.neutral;
                   return (
                     <span key={i} className="text-[11px] px-1.5 py-0.5 rounded font-medium"
@@ -719,29 +785,75 @@ export default function DocumentChecklistPanel({
               </div>
             )}
 
-            {done && !isPending && (issues.length > 0 || analysis?.summary) && (
+            {/* Expand toggle */}
+            {canExpand && (
               <button
                 onClick={() => setExpandedItems(s => ({ ...s, [item.section]: !s[item.section] }))}
                 className="text-[11px] text-gray-400 hover:text-gray-600 mt-1 flex items-center gap-0.5 transition">
-                {isItemExpanded ? "▲ Hide details" : `▼ ${issues.length > 0 ? `${issues.length} flag${issues.length > 1 ? "s" : ""} · ` : ""}AI summary`}
+                {isItemExpanded
+                  ? "▲ Hide findings"
+                  : `▼ ${hasIssues ? `${issues.length} flag${issues.length > 1 ? "s" : ""} · ` : ""}View AI findings`}
               </button>
             )}
 
+            {/* Expanded inline findings panel */}
             {isItemExpanded && (
-              <div className="mt-2 space-y-1">
-                {issues.map((issue, i) => (
-                  <div key={i} className="flex items-start gap-1">
-                    <span className="text-xs shrink-0" style={{ color: issue.sev === "Critical" ? "#dc2626" : "#d97706" }}>
-                      {issue.sev === "Critical" ? "⚠" : "⬥"}
-                    </span>
-                    <span className="text-xs leading-tight"
-                      style={{ color: issue.sev === "Critical" ? "#dc2626" : "#d97706" }}>
-                      {issue.text}
-                    </span>
-                  </div>
-                ))}
+              <div className="mt-2 p-3 bg-gray-50 rounded-xl border border-gray-100 space-y-3">
+                {/* Summary */}
                 {analysis?.summary && (
-                  <p className="text-xs text-gray-500 leading-relaxed mt-1 italic">{analysis.summary}</p>
+                  <div>
+                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">Summary</p>
+                    <p className="text-xs text-gray-600 leading-relaxed">{analysis.summary}</p>
+                  </div>
+                )}
+
+                {/* Key information */}
+                {facts.length > 0 && (
+                  <div>
+                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">Key information</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {facts.map((f, i) => {
+                        const c = FACT_COLORS[f.type] || FACT_COLORS.neutral;
+                        return (
+                          <span key={i} className="text-[11px] px-1.5 py-0.5 rounded font-medium"
+                            style={{ background: c.bg, color: c.text, border: `1px solid ${c.border}` }}>
+                            {f.label}: {f.value}
+                          </span>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* Issues / flags */}
+                {issues.length > 0 && (
+                  <div>
+                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">Issues</p>
+                    <div className="space-y-1">
+                      {issues.map((issue, i) => (
+                        <div key={i} className="flex items-start gap-1.5">
+                          <span className="text-xs shrink-0 mt-px"
+                            style={{ color: issue.sev === "Critical" ? "#dc2626" : "#d97706" }}>
+                            {issue.sev === "Critical" ? "⚠" : "⬥"}
+                          </span>
+                          <span className="text-xs leading-tight"
+                            style={{ color: issue.sev === "Critical" ? "#dc2626" : "#d97706" }}>
+                            {issue.text}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Recommended next action */}
+                {(analysis?.recommendedNextAction || analysis?.recommended_next_action) && (
+                  <div>
+                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">Recommended next action</p>
+                    <p className="text-xs text-gray-700 leading-relaxed">
+                      {analysis.recommendedNextAction || analysis.recommended_next_action}
+                    </p>
+                  </div>
                 )}
               </div>
             )}
@@ -749,11 +861,7 @@ export default function DocumentChecklistPanel({
 
           {/* Actions */}
           <div className="shrink-0 flex items-center gap-1">
-            {/* Reorder (coordinator only, on hover).
-                Disabled state uses the global array index so it matches what
-                handleMoveUp/Down actually does — prevents false-disabled on the
-                first item of a non-first role group, and prevents cross-group
-                swaps being silently blocked. */}
+            {/* Reorder arrows — coordinator, on hover */}
             {isCoordinator && !isDemo && (() => {
               const globalIdx = allItems.findIndex(i => i.id === item.id);
               return (
@@ -766,35 +874,8 @@ export default function DocumentChecklistPanel({
               );
             })()}
 
-            {/* Edit (coordinator, on hover) */}
-            {isCoordinator && !isDemo && (
-              <button onClick={() => setEditingId(isEditing ? null : item.id)}
-                title="Edit item"
-                className="opacity-0 group-hover/item:opacity-100 transition text-gray-300 hover:text-gray-600 text-xs px-1 leading-none">
-                ✏
-              </button>
-            )}
-
-            {/* Duplicate (coordinator, on hover) */}
-            {isCoordinator && !isDemo && (
-              <button onClick={() => handleDuplicate(item)}
-                title="Duplicate"
-                className="opacity-0 group-hover/item:opacity-100 transition text-gray-300 hover:text-gray-600 text-xs px-1 leading-none">
-                ⧉
-              </button>
-            )}
-
-            {/* Delete (coordinator, on hover) */}
-            {isCoordinator && !isDemo && (
-              <button onClick={() => handleDelete(item.id)}
-                title="Remove from checklist"
-                className="opacity-0 group-hover/item:opacity-100 transition text-gray-200 hover:text-red-400 text-xs px-1 leading-none">
-                ✕
-              </button>
-            )}
-
-            {/* Upload */}
-            {!done && !isDemo && (
+            {/* Upload button */}
+            {!done && !isDemo && !notApplicable && (
               <>
                 <input type="file" className="hidden"
                   ref={el => { fileRefs.current[item.section] = el; }}
@@ -822,6 +903,42 @@ export default function DocumentChecklistPanel({
                 </button>
               </>
             )}
+
+            {/* Coordinator action menu (⋮) */}
+            {isCoordinator && !isDemo && (
+              <div className="relative shrink-0">
+                <button
+                  onClick={e => { e.stopPropagation(); setOpenMenuId(openMenuId === item.id ? null : item.id); }}
+                  className="opacity-0 group-hover/item:opacity-100 p-1 rounded text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition leading-none">
+                  ⋮
+                </button>
+                {openMenuId === item.id && (
+                  <>
+                    <div className="fixed inset-0 z-10" onClick={() => setOpenMenuId(null)} />
+                    <div className="absolute right-0 top-full mt-1 z-20 bg-white rounded-xl shadow-lg border border-gray-100 py-1 min-w-[170px]">
+                      <button onClick={() => { setEditingId(item.id); setOpenMenuId(null); }}
+                        className="w-full text-left px-3 py-1.5 text-xs text-gray-700 hover:bg-gray-50 transition flex items-center gap-2">
+                        <span>✏</span> Edit
+                      </button>
+                      <button onClick={() => { handleDuplicate(item); setOpenMenuId(null); }}
+                        className="w-full text-left px-3 py-1.5 text-xs text-gray-700 hover:bg-gray-50 transition flex items-center gap-2">
+                        <span>⧉</span> Duplicate
+                      </button>
+                      <button onClick={() => handleMarkNotApplicable(item.id)}
+                        className="w-full text-left px-3 py-1.5 text-xs text-gray-700 hover:bg-gray-50 transition flex items-center gap-2">
+                        <span>—</span> {item.notApplicable ? "Mark required" : "Mark not applicable"}
+                      </button>
+                      <div className="border-t border-gray-100 mt-1 pt-1">
+                        <button onClick={() => { handleDelete(item.id); setOpenMenuId(null); }}
+                          className="w-full text-left px-3 py-1.5 text-xs text-red-500 hover:bg-red-50 transition flex items-center gap-2">
+                          <span>✕</span> Remove
+                        </button>
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
           </div>
         </div>
 
@@ -838,24 +955,23 @@ export default function DocumentChecklistPanel({
     );
   }
 
-  // ── Build party groups for coordinator view ───────────────────────────────
-  function buildPartyGroups() {
-    const groupMap = new Map();
+  // ── Build category groups ────────────────────────────────────────────────
+  function buildCategoryGroups() {
+    const map = new Map();
     for (const item of allItems) {
-      const partyKey = (item.assignedTo || [])[0] || "_general";
-      if (!groupMap.has(partyKey)) {
-        const roleMeta = packRoles.find(r => r.key === partyKey);
-        groupMap.set(partyKey, {
-          key: partyKey,
-          label: roleMeta?.label || "General",
-          icon: roleMeta?.icon || "📄",
-          color: roleMeta?.color || "#e5e7eb",
-          items: [],
-        });
-      }
-      groupMap.get(partyKey).items.push(item);
+      const cat = getItemCategory(item);
+      if (!map.has(cat)) map.set(cat, []);
+      map.get(cat).push(item);
     }
-    return [...groupMap.values()].filter(g => g.items.length > 0);
+    const result = [];
+    for (const cat of CATEGORY_DISPLAY_ORDER) {
+      if (map.has(cat)) result.push({ key: cat, label: cat, items: map.get(cat) });
+    }
+    // Any categories not in the predefined order
+    for (const [cat, items] of map) {
+      if (!CATEGORY_DISPLAY_ORDER.includes(cat)) result.push({ key: cat, label: cat, items });
+    }
+    return result.filter(g => g.items.length > 0);
   }
 
   // ── Render ────────────────────────────────────────────────────────────────
@@ -908,25 +1024,29 @@ export default function DocumentChecklistPanel({
             ) : (
               <>
                 {template.length === 0 ? (
-                  <p className="text-sm text-gray-400 py-3 text-center">
-                    No documents in checklist yet.{isCoordinator ? " Add one below or browse suggestions." : ""}
-                  </p>
+                  <div className="text-center py-8">
+                    <p className="text-sm font-semibold text-gray-500 mb-1">No documents yet</p>
+                    <p className="text-xs text-gray-400">
+                      Upload documents and invite participants to begin tracking your transaction.
+                    </p>
+                  </div>
                 ) : isCoordinator ? (
-                  /* ── Coordinator: grouped by responsible party ───────── */
+                  /* ── Coordinator: grouped by category ─────────────────── */
                   <div className="space-y-5">
-                    {buildPartyGroups().map(group => {
+                    {buildCategoryGroups().map(group => {
                       const groupDone = group.items.filter(i => uploadedSections.has(i.section)).length;
+                      const groupNA = group.items.filter(i => i.notApplicable).length;
+                      const groupTotal = group.items.length - groupNA;
                       return (
                         <div key={group.key}>
-                          <div className="flex items-center gap-2 mb-1">
-                            <span className="text-sm">{group.icon}</span>
-                            <span className="text-xs font-bold text-gray-600 uppercase tracking-wider">{group.label}</span>
+                          <div className="flex items-center gap-2 mb-2">
+                            <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">{group.label}</span>
                             <span className="text-[10px] text-gray-400 font-medium">
-                              {groupDone}/{group.items.length} uploaded
+                              {groupDone}/{groupTotal} uploaded
+                              {groupNA > 0 ? ` · ${groupNA} N/A` : ""}
                             </span>
                           </div>
-                          <div className="divide-y divide-gray-50 pl-3 border-l-2"
-                            style={{ borderColor: group.color + "60" }}>
+                          <div className="divide-y divide-gray-50">
                             {group.items.map((item, idx) => renderItem(item, idx, group.items.length))}
                           </div>
                         </div>
