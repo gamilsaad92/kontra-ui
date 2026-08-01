@@ -3,10 +3,10 @@ import { Link, useLocation } from "react-router-dom";
 import { AuthContext } from "../../lib/authContext";
 
 const PUBLIC_NAV = [
-  { label: "How It Works", href: "/how-it-works" },
-  { label: "AI Tools",     href: "/ai-tools" },
-  { label: "Pricing",      href: "/pricing" },
-  { label: "About",        href: "/about" },
+  { label: "Product",       href: "/ai-tools" },
+  { label: "How It Works",  href: "/how-it-works" },
+  { label: "Pricing",       href: "/pricing" },
+  { label: "Demo",          href: "/deal-room/kontra-demo" },
   { label: "My Workspaces", href: "/my-deal-rooms" },
 ];
 
@@ -102,10 +102,6 @@ export default function PublicLayout({ children, hideFooter = false }) {
               </>
             ) : (
               <>
-                <Link to="/my-deal-rooms"
-                  className="text-sm font-medium text-gray-600 hover:text-gray-900 px-4 py-2 rounded-lg hover:bg-gray-50 transition">
-                  My Workspaces
-                </Link>
                 <Link to="/create-deal-room"
                   className="text-sm font-semibold px-4 py-2 rounded-lg text-white transition hover:opacity-90"
                   style={{ background: "#800020" }}>
@@ -154,10 +150,6 @@ export default function PublicLayout({ children, hideFooter = false }) {
                 </>
               ) : (
                 <>
-                  <Link to="/my-deal-rooms" onClick={() => setMenuOpen(false)}
-                    className="block text-center px-4 py-2.5 rounded-lg border border-gray-200 text-sm font-medium text-gray-700">
-                    My Workspaces
-                  </Link>
                   <Link to="/create-deal-room" onClick={() => setMenuOpen(false)}
                     className="block text-center px-4 py-2.5 rounded-lg text-sm font-semibold text-white"
                     style={{ background: "#800020" }}>

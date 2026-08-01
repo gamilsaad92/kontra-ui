@@ -8,7 +8,7 @@ const DEMOS = [
   { icon: "🏢", label: "CRE Acquisition",      sub: "Commercial real estate acquisitions & financing", slug: "/deal-room/kontra-demo",             color: "#800020" },
 ];
 
-function LiveDemoButton() {
+function ViewDemoButton() {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
   const navigate = useNavigate();
@@ -26,7 +26,7 @@ function LiveDemoButton() {
         onClick={() => setOpen(o => !o)}
         className="px-7 py-3.5 rounded-xl text-sm font-semibold border border-white/30 text-white hover:bg-white/10 transition flex items-center gap-2">
         <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse shrink-0" />
-        View Live Demo
+        View Demo
         <svg className={`w-3.5 h-3.5 transition-transform ${open ? "rotate-180" : ""}`} fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
         </svg>
@@ -71,31 +71,45 @@ const PARTIES = [
 const HOW_IT_WORKS = [
   {
     step: "01",
-    icon: "🗂️",
-    title: "Configure any transaction workflow",
-    desc: "Define your roles, documents, and checklist — or start from a built-in template. Kontra structures everything around your workflow, not the other way around.",
+    icon: "✍️",
+    title: "Describe your transaction",
+    desc: "Tell Kontra what you're coordinating. AI generates a workspace with the right participants, document checklist, and stages — or start from a template.",
     color: "#800020",
   },
   {
     step: "02",
     icon: "🔗",
-    title: "Invite every party with one link",
-    desc: "Send each advisor, counterparty, and reviewer a role-scoped link. Each sees only what's relevant to them — no email chains, no forwarded PDFs.",
+    title: "Invite participants and upload documents",
+    desc: "Send each party a role-scoped link. Each person sees exactly what they're responsible for. No email chains, no forwarded PDFs.",
     color: "#1e40af",
   },
   {
     step: "03",
     icon: "🤖",
-    title: "Your AI Operations Manager coordinates from day one",
-    desc: "It follows up with the right people, surfaces what's blocking progress, and drafts the reminders before you have to ask.",
+    title: "Kontra coordinates the transaction",
+    desc: "The AI Operations Manager follows up with the right people, surfaces blockers, and tells you exactly what needs attention next.",
     color: "#065f46",
   },
+];
+
+const THREE_OUTCOMES = [
   {
-    step: "04",
-    icon: "🏅",
-    title: "Deal reaches closing-ready",
-    desc: "Every document reviewed, every party current. Your AI Operations Manager tells you the moment you're ready to close.",
-    color: "#6d28d9",
+    icon: "🔍",
+    title: "Know what is blocking the transaction",
+    desc: "Kontra identifies missing documents, overdue responsibilities, unresolved issues, and stalled participants.",
+    color: "#800020",
+  },
+  {
+    icon: "🤝",
+    title: "Keep every party coordinated",
+    desc: "Each participant receives a role-specific view and knows exactly what they are responsible for.",
+    color: "#1e40af",
+  },
+  {
+    icon: "⚡",
+    title: "Move the transaction forward",
+    desc: "The AI Operations Manager recommends the next action and drafts follow-ups for your approval.",
+    color: "#065f46",
   },
 ];
 
@@ -244,85 +258,39 @@ export default function HomePage() {
           <h1 className="text-4xl md:text-6xl font-bold leading-tight tracking-tight mb-6 max-w-4xl mx-auto">
             Every transaction gets its own Operations Manager.
           </h1>
-          <p className="text-lg text-gray-400 max-w-2xl mx-auto mb-6 leading-relaxed">
-            AI that keeps transactions moving — not just documents organized. Kontra follows up with the right
-            people, surfaces what's blocking closing, and coordinates every party from a single workspace.
-            Works for any private transaction. Your workflow, your rules.
+          <p className="text-lg text-gray-400 max-w-2xl mx-auto mb-5 leading-relaxed">
+            Kontra coordinates documents, participants, deadlines, and approvals across private transactions.
+            It identifies what is missing, follows up with the right people, and shows you what needs attention next.
           </p>
           <p className="text-sm text-gray-500 max-w-xl mx-auto mb-10">
-            M&amp;A · CRE · Fundraising · Licensing · Joint Ventures · Private Equity · Any deal you configure
+            Built for acquisitions, fundraising, real estate, lending, licensing, and other private transactions.
           </p>
 
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-3 mb-14">
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-3 mb-4">
             <Link to="/create-deal-room"
               className="px-7 py-3.5 rounded-xl text-sm font-semibold text-white transition hover:opacity-90"
               style={{ background: "#800020" }}>
-              Create Your Workspace — $499
+              Create Workspace
             </Link>
-            <LiveDemoButton />
+            <ViewDemoButton />
           </div>
-
-          {/* Party strip */}
-          <div className="flex flex-wrap items-center justify-center gap-3 max-w-3xl mx-auto">
-            {PARTIES.map((p) => (
-              <div key={p.label}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/8 border border-white/10 text-xs font-medium text-gray-300">
-                <span>{p.icon}</span>
-                {p.label}
-              </div>
-            ))}
-          </div>
+          <p className="text-xs text-gray-600">$499 · One-time · All parties included</p>
         </div>
       </section>
 
-      {/* ── Stats ──────────────────────────────────────────────── */}
-      <section className="border-b border-gray-100 bg-white">
-        <div className="max-w-5xl mx-auto px-6 py-10 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-px bg-gray-100 rounded-2xl overflow-hidden shadow-sm">
-          {STATS.map((s, i) => (
-            <div key={s.label}
-              className="flex flex-col items-center justify-center text-center bg-white px-5 py-6"
-              style={{ borderRadius: i === 0 ? "1rem 0 0 1rem" : i === STATS.length - 1 ? "0 1rem 1rem 0" : "0" }}>
-              <div className="text-3xl font-extrabold text-gray-900 tracking-tight leading-none">
-                {s.value}
+      {/* ── Three outcomes ─────────────────────────────────────── */}
+      <section className="max-w-7xl mx-auto px-6 py-16">
+        <div className="grid md:grid-cols-3 gap-6">
+          {THREE_OUTCOMES.map((item) => (
+            <div key={item.title} className="bg-white rounded-2xl border border-gray-100 p-7 shadow-sm">
+              <div className="w-11 h-11 rounded-xl flex items-center justify-center text-2xl mb-4"
+                style={{ background: item.color + "12" }}>
+                {item.icon}
               </div>
-              <div className="text-[11px] font-medium text-gray-400 mt-2 leading-snug max-w-[90px]">
-                {s.label}
-              </div>
+              <h3 className="text-sm font-bold text-gray-900 mb-2 leading-snug">{item.title}</h3>
+              <p className="text-sm text-gray-500 leading-relaxed">{item.desc}</p>
             </div>
           ))}
-        </div>
-      </section>
-
-      {/* ── How it works ───────────────────────────────────────── */}
-      <section id="how-it-works" className="max-w-7xl mx-auto px-6 py-20">
-        <div className="text-center mb-12">
-          <p className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: "#800020" }}>How it works</p>
-          <h2 className="text-3xl font-bold text-gray-900 mb-3">One deal. Every party. One workspace.</h2>
-          <p className="text-gray-500 text-sm max-w-xl mx-auto leading-relaxed">
-            From first document upload to financing-ready — every step happens in one place, shared across all parties in real time.
-          </p>
-        </div>
-
-        <div className="grid md:grid-cols-4 gap-6 relative">
-          {/* connecting line on desktop */}
-          <div className="hidden md:block absolute top-10 left-[12.5%] right-[12.5%] h-px bg-gray-200" />
-          {HOW_IT_WORKS.map((step) => (
-            <div key={step.step} className="relative text-center">
-              <div className="w-20 h-20 rounded-2xl mx-auto mb-4 flex items-center justify-center text-3xl relative z-10 bg-white border-2 border-gray-200 shadow-sm">
-                {step.icon}
-              </div>
-              <div className="text-xs font-bold uppercase tracking-widest mb-1" style={{ color: step.color }}>{step.step}</div>
-              <h3 className="text-sm font-bold text-gray-900 mb-2 leading-snug">{step.title}</h3>
-              <p className="text-xs text-gray-500 leading-relaxed">{step.desc}</p>
-            </div>
-          ))}
-        </div>
-
-        <div className="text-center mt-10">
-          <Link to="/how-it-works"
-            className="inline-flex items-center gap-2 text-sm font-medium px-5 py-2.5 rounded-xl border border-gray-200 text-gray-700 hover:bg-gray-50 transition">
-            See the full walkthrough →
-          </Link>
         </div>
       </section>
 
@@ -392,6 +360,137 @@ export default function HomePage() {
         </div>
       </section>
 
+      {/* ── How it works ───────────────────────────────────────── */}
+      <section id="how-it-works" className="max-w-7xl mx-auto px-6 py-20">
+        <div className="text-center mb-12">
+          <p className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: "#800020" }}>How it works</p>
+          <h2 className="text-3xl font-bold text-gray-900 mb-3">Up and running in minutes.</h2>
+          <p className="text-gray-500 text-sm max-w-xl mx-auto leading-relaxed">
+            Describe your transaction, invite your parties, and let Kontra coordinate everything from there.
+          </p>
+        </div>
+
+        <div className="grid md:grid-cols-3 gap-8 relative">
+          <div className="hidden md:block absolute top-10 left-[16.5%] right-[16.5%] h-px bg-gray-200" />
+          {HOW_IT_WORKS.map((step) => (
+            <div key={step.step} className="relative text-center">
+              <div className="w-20 h-20 rounded-2xl mx-auto mb-4 flex items-center justify-center text-3xl relative z-10 bg-white border-2 border-gray-200 shadow-sm">
+                {step.icon}
+              </div>
+              <div className="text-xs font-bold uppercase tracking-widest mb-1" style={{ color: step.color }}>{step.step}</div>
+              <h3 className="text-sm font-bold text-gray-900 mb-2 leading-snug">{step.title}</h3>
+              <p className="text-xs text-gray-500 leading-relaxed">{step.desc}</p>
+            </div>
+          ))}
+        </div>
+
+        <div className="text-center mt-10">
+          <Link to="/how-it-works"
+            className="inline-flex items-center gap-2 text-sm font-medium px-5 py-2.5 rounded-xl border border-gray-200 text-gray-700 hover:bg-gray-50 transition">
+            See the full walkthrough →
+          </Link>
+        </div>
+      </section>
+
+      {/* ── Transaction types ──────────────────────────────────── */}
+      <section className="bg-gray-50 border-y border-gray-100 py-14">
+        <div className="max-w-5xl mx-auto px-6">
+          <div className="text-center mb-10">
+            <p className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: "#800020" }}>Built for any private transaction</p>
+            <h2 className="text-2xl font-bold text-gray-900 mb-3">Your deal type. Your roles. Your rules.</h2>
+            <p className="text-gray-500 text-sm max-w-xl mx-auto leading-relaxed">
+              Kontra isn't a fixed CRE tool or an M&amp;A-only platform. You define the workflow — roles, required documents, checklist stages — and Kontra runs it. Start from a template or describe your transaction to AI.
+            </p>
+          </div>
+          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            {[
+              { icon: "💼", label: "Business Acquisition", desc: "M&A diligence, QoE, LOI, legal review", tag: "Template" },
+              { icon: "🏢", label: "CRE Acquisition",      desc: "Inspection, financing, title, compliance", tag: "Template" },
+              { icon: "📈", label: "Fundraising",          desc: "Cap table, term sheet, investor diligence", tag: "Template" },
+              { icon: "⚙️", label: "Build Your Own",       desc: "Any transaction — your roles, your docs, your checklist", tag: "Custom", custom: true },
+            ].map(item => (
+              <div key={item.label}
+                className={`rounded-2xl p-5 border-2 ${item.custom ? "border-dashed border-gray-300 bg-white" : "border-gray-100 bg-white"}`}>
+                <div className="flex items-start justify-between mb-3">
+                  <span className="text-2xl">{item.icon}</span>
+                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${item.custom ? "bg-gray-100 text-gray-500" : "text-white"}`}
+                    style={item.custom ? {} : { background: "#800020" }}>{item.tag}</span>
+                </div>
+                <p className="text-sm font-semibold text-gray-900 mb-1">{item.label}</p>
+                <p className="text-xs text-gray-400 leading-relaxed">{item.desc}</p>
+              </div>
+            ))}
+          </div>
+          <p className="text-center text-xs text-gray-400 mt-6">
+            All templates are fully customizable. Add roles, swap documents, adjust checklist stages — or <Link to="/create-deal-room" className="underline text-gray-600 hover:text-gray-900">describe your transaction to AI</Link> and let it suggest a starting point.
+          </p>
+        </div>
+      </section>
+
+      {/* ── Pricing ────────────────────────────────────────────── */}
+      <section id="pricing" className="max-w-4xl mx-auto px-6 py-20">
+        <div className="text-center mb-10">
+          <p className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: "#800020" }}>Pricing</p>
+          <h2 className="text-3xl font-bold text-gray-900 mb-3">One workspace. One price.</h2>
+          <p className="text-gray-500 text-sm max-w-lg mx-auto leading-relaxed">
+            No per-seat fees, no subscriptions. One workspace covers your entire transaction from start to close.
+          </p>
+        </div>
+        <div className="max-w-sm mx-auto bg-white rounded-2xl border-2 border-gray-900 p-8 shadow-lg text-center">
+          <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-3">Transaction Workspace</p>
+          <div className="flex items-baseline justify-center gap-1 mb-1">
+            <span className="text-5xl font-extrabold text-gray-900 tracking-tight">$499</span>
+          </div>
+          <p className="text-sm text-gray-500 mb-6">One-time payment · 90-day access</p>
+          <ul className="text-sm text-gray-700 space-y-2.5 mb-8 text-left">
+            {[
+              "Unlimited participants — all roles included",
+              "Unlimited document uploads",
+              "AI Operations Manager",
+              "Document analysis and cross-checks",
+              "Automated follow-ups and reminders",
+              "Verified Transaction Package at closing",
+            ].map((item) => (
+              <li key={item} className="flex items-start gap-2.5">
+                <svg className="w-4 h-4 mt-0.5 shrink-0" fill="currentColor" viewBox="0 0 20 20" style={{ color: "#800020" }}>
+                  <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                </svg>
+                {item}
+              </li>
+            ))}
+          </ul>
+          <Link to="/create-deal-room"
+            className="block w-full py-3.5 rounded-xl text-sm font-semibold text-white transition hover:opacity-90"
+            style={{ background: "#800020" }}>
+            Create your transaction workspace
+          </Link>
+          <p className="text-xs text-gray-400 mt-3">No subscription · No per-seat fees · All parties included</p>
+        </div>
+      </section>
+
+      {/* ── Final CTA ──────────────────────────────────────────── */}
+      <section className="bg-gray-950 py-20">
+        <div className="max-w-3xl mx-auto px-6 text-center">
+          <h2 className="text-3xl font-bold text-white mb-4 leading-tight">
+            Create your transaction workspace.
+          </h2>
+          <p className="text-gray-400 text-sm mb-8 max-w-xl mx-auto leading-relaxed">
+            Describe your transaction, invite every party, and let Kontra coordinate from day one. Ready in minutes.
+          </p>
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
+            <Link to="/create-deal-room"
+              className="px-8 py-3.5 rounded-xl text-sm font-semibold text-white transition hover:opacity-90"
+              style={{ background: "#800020" }}>
+              Create Workspace
+            </Link>
+            <ViewDemoButton />
+          </div>
+          <p className="text-xs text-gray-600 mt-5">
+            $499 · One-time payment · No subscription · All parties included
+          </p>
+        </div>
+      </section>
+
       {/* ── Built for every party ──────────────────────────────── */}
       <section className="max-w-7xl mx-auto px-6 py-20">
         <div className="text-center mb-10">
@@ -452,41 +551,6 @@ export default function HomePage() {
             </div>
           )
         ))}
-      </section>
-
-      {/* ── Any transaction callout ────────────────────────────── */}
-      <section className="bg-gray-50 border-y border-gray-100 py-14">
-        <div className="max-w-5xl mx-auto px-6">
-          <div className="text-center mb-10">
-            <p className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: "#800020" }}>Built for any private transaction</p>
-            <h2 className="text-2xl font-bold text-gray-900 mb-3">Your deal type. Your roles. Your rules.</h2>
-            <p className="text-gray-500 text-sm max-w-xl mx-auto leading-relaxed">
-              Kontra isn't a fixed CRE tool or an M&amp;A-only platform. You define the workflow — roles, required documents, checklist stages — and Kontra runs it. Start from a template or build from scratch.
-            </p>
-          </div>
-          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            {[
-              { icon: "💼", label: "Business Acquisition", desc: "M&A diligence, QoE, LOI, legal review", tag: "Template" },
-              { icon: "🏢", label: "CRE Acquisition",      desc: "Inspection, financing, title, compliance", tag: "Template" },
-              { icon: "📈", label: "Fundraising",          desc: "Cap table, term sheet, investor diligence", tag: "Template" },
-              { icon: "⚙️", label: "Build Your Own",       desc: "Any transaction — your roles, your docs, your checklist", tag: "Custom", custom: true },
-            ].map(item => (
-              <div key={item.label}
-                className={`rounded-2xl p-5 border-2 ${item.custom ? "border-dashed border-gray-300 bg-white" : "border-gray-100 bg-white"}`}>
-                <div className="flex items-start justify-between mb-3">
-                  <span className="text-2xl">{item.icon}</span>
-                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${item.custom ? "bg-gray-100 text-gray-500" : "text-white"}`}
-                    style={item.custom ? {} : { background: "#800020" }}>{item.tag}</span>
-                </div>
-                <p className="text-sm font-semibold text-gray-900 mb-1">{item.label}</p>
-                <p className="text-xs text-gray-400 leading-relaxed">{item.desc}</p>
-              </div>
-            ))}
-          </div>
-          <p className="text-center text-xs text-gray-400 mt-6">
-            All templates are fully customizable. Add roles, swap documents, adjust checklist stages — or <a href="/create-deal-room" className="underline text-gray-600 hover:text-gray-900">describe your transaction to AI</a> and let it suggest a starting point.
-          </p>
-        </div>
       </section>
 
       {/* ── Free AI Tools ──────────────────────────────────────── */}
@@ -558,91 +622,8 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* ── Why Kontra ─────────────────────────────────────────── */}
-      <section className="max-w-7xl mx-auto px-6 py-20">
-        <div className="grid lg:grid-cols-2 gap-12 items-center">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: "#800020" }}>Built for how complex transactions actually work</p>
-            <h2 className="text-2xl font-bold text-gray-900 mb-4">
-              Every party gets exactly what they need — nothing more
-            </h2>
-            <p className="text-gray-500 leading-relaxed mb-6">
-              Deals stall not because people can't find documents — they stall because no one is chasing the next step. Kontra's AI Operations Manager follows up with the right people automatically, and tells you exactly what's blocking closing. No more 700-email transactions. No more "who has the latest version?"
-            </p>
-            <div className="space-y-2.5">
-              {[
-                "AI follows up with the right people, automatically",
-                "AI tells you what's blocking closing, and why",
-                "AI drafts the reminders and approvals before you ask",
-                "Every party gets a role-scoped view of the same live deal",
-                "Owner tracks everything from one AI-run dashboard",
-              ].map((point, i) => (
-                <div key={i} className="flex items-start gap-2.5">
-                  <div className="w-5 h-5 rounded-full flex items-center justify-center text-white text-[10px] font-bold shrink-0 mt-0.5"
-                    style={{ background: "#800020" }}>{i + 1}</div>
-                  <span className="text-sm text-gray-700">{point}</span>
-                </div>
-              ))}
-            </div>
-            <div className="mt-6">
-              <Link to="/create-deal-room"
-                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold text-white transition hover:opacity-90"
-                style={{ background: "#800020" }}>
-                Create your workspace — $499 →
-              </Link>
-            </div>
-          </div>
-          <div className="bg-gray-950 rounded-2xl p-6 text-white">
-            <p className="text-xs text-gray-400 uppercase tracking-wider font-medium mb-4">Investment Readiness Report</p>
-            {[
-              { icon: "🔍", label: "Physical Condition",   status: "Verified",   color: "#16a34a" },
-              { icon: "🛡️", label: "Insurance Coverage",  status: "Verified",   color: "#16a34a" },
-              { icon: "💰", label: "Financial Review",     status: "Verified",   color: "#16a34a" },
-              { icon: "✅", label: "Compliance Checklist", status: "Verified",   color: "#16a34a" },
-              { icon: "📜", label: "Legal Structure",      status: "In Review",  color: "#f59e0b" },
-            ].map((item) => (
-              <div key={item.label} className="flex items-center gap-3 px-3 py-2.5 rounded-lg bg-white/5 mb-2">
-                <span className="text-base w-6">{item.icon}</span>
-                <span className="text-xs text-gray-300 flex-1">{item.label}</span>
-                <span className="text-xs font-semibold" style={{ color: item.color }}>{item.status}</span>
-              </div>
-            ))}
-            <div className="mt-4 px-3 py-3 rounded-xl" style={{ background: "#800020" + "20", border: "1px solid " + "#800020" + "40" }}>
-              <p className="text-xs font-semibold" style={{ color: "#e8a0a0" }}>4/5 pillars complete · Ready for financing submission</p>
-            </div>
-          </div>
-        </div>
-      </section>
-
       {/* ── Email capture ──────────────────────────────────────── */}
       <EmailCapture />
-
-      {/* ── Final CTA ──────────────────────────────────────────── */}
-      <section className="bg-gray-950 py-20">
-        <div className="max-w-3xl mx-auto px-6 text-center">
-          <h2 className="text-3xl font-bold text-white mb-4 leading-tight">
-            Your AI Operations Manager is ready in minutes.<br />
-            <span style={{ color: "#e8a0a0" }}>$499. One property. Every party included.</span>
-          </h2>
-          <p className="text-gray-400 text-sm mb-8 max-w-xl mx-auto leading-relaxed">
-            Enter your property, invite your lender, inspector, and insurer — then let Kontra chase, remind, and flag what's blocking closing so you don't have to.
-          </p>
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
-            <Link to="/create-deal-room"
-              className="px-8 py-3.5 rounded-xl text-sm font-semibold text-white transition hover:opacity-90"
-              style={{ background: "#800020" }}>
-              Create Your Workspace →
-            </Link>
-            <Link to="/properties"
-              className="px-8 py-3.5 rounded-xl text-sm font-semibold border border-white/20 text-white hover:bg-white/10 transition">
-              See a Live Demo
-            </Link>
-          </div>
-          <p className="text-xs text-gray-600 mt-5">
-            One-time payment · No subscription · All parties included
-          </p>
-        </div>
-      </section>
 
     </PublicLayout>
   );

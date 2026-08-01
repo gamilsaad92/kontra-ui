@@ -152,14 +152,24 @@ const DEAL_TYPE_TO_PACK = {
 };
 
 // Keywords in the workspace name that indicate a non-CRE pack.
-// Used as a last-resort fallback when both deal_type and workflow_pack_id are absent.
+// Used as a last-resort fallback when both deal_type and workflow_pack_id are absent
+// AND the server-side AI classification was not available (e.g. old rooms, offline).
+//
+// IMPORTANT: 'acquir' and 'acquisition' are intentionally excluded — they match
+// real estate deals (hotel acquisition, property acquisition) and would silently
+// route CRE rooms to the M&A pack. Only use phrases that unambiguously signal
+// a business sale or capital raise context.
 const NAME_PACK_HINTS = [
   { pack: 'fundraising',          words: ['fundrais', 'capital raise', 'investment round', 'seed round',
                                           'series a', 'series b', 'series c', 'venture', 'vc ', ' vc',
                                           'term sheet', 'safe note', 'convertible', 'raise'] },
-  { pack: 'business_acquisition', words: ['acquisition', 'acquir', 'business purchase', 'buy a business',
-                                          'selling a business', 'asset purchase', 'merger', ' m&a', 'm&a ',
-                                          'management buyout', 'mbo', 'recapitalization'] },
+  { pack: 'business_acquisition', words: [
+      'business acquisition', 'company acquisition', 'corporate acquisition',
+      'business purchase', 'buy a business', 'selling a business',
+      'asset purchase', 'merger', ' m&a', 'm&a ',
+      'management buyout', 'mbo', 'recapitalization',
+    ]
+  },
 ];
 
 function inferPackFromName(name) {

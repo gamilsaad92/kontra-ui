@@ -52,6 +52,58 @@ const DEAL_TYPE_TO_PACK_INDEX = {
   equity_raise:        'fundraising',
   fundraising:         'fundraising',
 };
+
+// ── AI-powered pack classification ────────────────────────────────────────────
+// Uses GPT-4o-mini to select the right workflow pack from a room's name, deal
+// type, and address. Falls back to 'cre_acquisition' (the safe default) if AI
+// is unavailable or returns an unknown value.
+// Only called when neither an explicit workflowPackId nor a mapped deal_type is
+// available — i.e. as a last resort before defaulting to CRE.
+async function classifyTransactionPack(name, dealType, address) {
+  // Explicit deal_type wins if it maps to a specific non-default pack
+  if (dealType && DEAL_TYPE_TO_PACK_INDEX[dealType]) {
+    return DEAL_TYPE_TO_PACK_INDEX[dealType];
+  }
+  if (!name) return 'cre_acquisition';
+  try {
+    const context = [
+      name     && `Transaction name: ${name}`,
+      dealType && `Deal type: ${dealType}`,
+      address  && `Location: ${address}`,
+    ].filter(Boolean).join('\n');
+
+    const completion = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      response_format: { type: 'json_object' },
+      max_tokens: 60,
+      messages: [
+        {
+          role: 'system',
+          content: `Classify this transaction into exactly one workflow pack. Return JSON: { "pack": "cre_acquisition" | "business_acquisition" | "fundraising" }
+
+Definitions:
+- cre_acquisition: ANY real estate transaction — buying, selling, or financing property: hotels, apartments, office, retail, industrial, land, hospitality, mixed-use, senior housing. Hotel acquisitions and property acquisitions are ALWAYS cre_acquisition.
+- business_acquisition: Buying or selling a company — M&A, management buyout, stock purchase (of a business, not real estate), merger.
+- fundraising: Raising capital — seed, Series A/B/C, VC, convertible notes, SAFE, debt raise, equity raise.
+
+When in doubt between CRE and business, default to cre_acquisition.`,
+        },
+        { role: 'user', content: context },
+      ],
+    });
+
+    let result = {};
+    try { result = JSON.parse(completion.choices[0].message.content); } catch (_) {}
+    const valid = ['cre_acquisition', 'business_acquisition', 'fundraising'];
+    if (valid.includes(result.pack)) {
+      console.log(`[pack-classify] "${name}" → ${result.pack}`);
+      return result.pack;
+    }
+  } catch (e) {
+    console.warn('[pack-classify] AI unavailable, using CRE default:', e.message);
+  }
+  return 'cre_acquisition';
+}
 const OpenAI = require('openai');          // ← v4+ default export
 const cache = require('./cache');
 const { addJob } = require('./jobQueue');
@@ -986,6 +1038,71 @@ IMPORTANT: You are suggesting a starting point only. Do NOT claim completeness. 
   }
 });
 
+// ── Public: classify a transaction into a workflow pack ───────────────────────
+// Lightweight endpoint used by the deal room page on first open to detect
+// when a stored pack doesn't match what the transaction actually is.
+app.post('/api/public/classify-pack', async (req, res) => {
+  const { name, dealType, address } = req.body || {};
+  try {
+    const packId = await classifyTransactionPack(name, dealType, address);
+    res.json({ packId });
+  } catch (e) {
+    console.error('[classify-pack]', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ── Public: update a deal room's workflow pack ────────────────────────────────
+// Called when the coordinator accepts an AI-suggested pack correction.
+// Requires owner_write_token (same auth contract as checklist PUT).
+// Resets checklist_items to null so the next GET reseeds it from the new pack.
+app.post('/api/public/deal-room/:propertyId/repack', async (req, res) => {
+  const { propertyId } = req.params;
+  const { packId, ownerWriteToken } = req.body || {};
+
+  // Validate pack choice
+  const validPacks = ['cre_acquisition', 'business_acquisition', 'fundraising'];
+  if (!validPacks.includes(packId)) {
+    return res.status(400).json({ error: `Invalid packId: ${packId}` });
+  }
+
+  // Authorization — identical contract to the checklist PUT endpoint
+  if (!ownerWriteToken) {
+    return res.status(403).json({ error: 'owner_write_token required' });
+  }
+
+  try {
+    // Fetch room to verify token
+    const { data: room, error: roomErr } = await supabase
+      .from('deal_rooms')
+      .select('owner_write_token')
+      .eq('property_id', propertyId)
+      .maybeSingle();
+    if (roomErr) throw roomErr;
+    if (!room) return res.status(404).json({ error: 'Workspace not found' });
+    if (!room.owner_write_token || room.owner_write_token !== ownerWriteToken) {
+      return res.status(403).json({ error: 'Invalid owner token — pack change not authorized' });
+    }
+
+    // Re-seed stages from the new pack
+    const newStages = getPackStageConfig(packId).stages.map(({ key, label }) => ({ key, label }));
+
+    // Reset checklist_items to null — the next GET will reseed from the new pack's schema.
+    // Checklist state lives in deal_rooms.checklist_items (JSONB), not a separate table.
+    const { error } = await supabase
+      .from('deal_rooms')
+      .update({ workflow_pack_id: packId, stages_config: newStages, checklist_items: null })
+      .eq('property_id', propertyId);
+    if (error) throw error;
+
+    console.log(`[repack] ${propertyId} → ${packId}`);
+    res.json({ ok: true, packId });
+  } catch (e) {
+    console.error('[repack]', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // ── Helper: auto-save a custom pack and return its ID ────────────────────────
 // Always creates a pack — for blank workspaces, fills in minimal usable defaults
 // so the workspace never falls back to CRE acquisition pack.
@@ -1060,7 +1177,9 @@ app.post('/api/checkout/guest', async (req, res) => {
     }
     const stripe = require('stripe')(stripeKey);
     const { propertyId, propertyName, plan = 'deal', email, role = 'lender', meta = {} } = req.body;
-    const workflowPackId = meta.workflowPackId || 'cre_acquisition';
+    const workflowPackId = meta.workflowPackId
+      || DEAL_TYPE_TO_PACK_INDEX[meta.dealType]
+      || await classifyTransactionPack(propertyName, meta.dealType, meta.address);
     const origin = req.headers.origin || 'https://kontraplatform.com';
 
     const PLANS = {
@@ -1144,7 +1263,8 @@ app.post('/api/checkout/demo', async (req, res) => {
 
     // If the owner customized the config, persist it as a custom pack so the
     // workspace loads with the owner's roles/documents/stages.
-    let demoPackId = meta.workflowPackId || DEAL_TYPE_TO_PACK_INDEX[meta.dealType] || 'cre_acquisition';
+    let demoPackId = meta.workflowPackId || DEAL_TYPE_TO_PACK_INDEX[meta.dealType]
+      || await classifyTransactionPack(propertyName, meta.dealType, meta.address);
     if (meta.customConfig) {
       const savedId = await saveCustomPackForWorkspace(pid, propertyName, meta.customConfig);
       if (savedId) demoPackId = savedId;
@@ -1253,7 +1373,8 @@ app.post('/api/webhook/stripe',
       const pending = pendingDealRooms.get(session.id) || {};
       pendingDealRooms.delete(session.id);
 
-      const stripePackId = pending.workflow_pack_id || DEAL_TYPE_TO_PACK_INDEX[pending.deal_type] || 'cre_acquisition';
+      const stripePackId = pending.workflow_pack_id || DEAL_TYPE_TO_PACK_INDEX[pending.deal_type]
+        || await classifyTransactionPack(pending.property_name || propertyName, pending.deal_type, pending.address);
       // Seed stages_config from the pack's default stages so the owner can start editing immediately.
       const stripeInitialStages = getPackStageConfig(stripePackId).stages.map(({ key, label }) => ({ key, label }));
 
