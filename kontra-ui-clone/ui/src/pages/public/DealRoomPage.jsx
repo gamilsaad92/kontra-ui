@@ -1184,6 +1184,12 @@ function buildPendingSectionMap(property, role, onAnalysisSaved, urlPropertyId, 
   };
 }
 
+const PACK_LABELS = {
+  cre_acquisition:     'CRE Acquisition',
+  business_acquisition:'Business Acquisition',
+  fundraising:         'Fundraising',
+};
+
 export default function DealRoomPage() {
   const { propertyId } = useParams();
   const [searchParams] = useSearchParams();
@@ -1201,6 +1207,9 @@ export default function DealRoomPage() {
   // starts true; live rooms wait for ensureWorkflowPackLoaded to resolve.
   const [packReady, setPackReady] = useState(!!DEMO_PROPERTIES[propertyId]);
   const [analysesRefreshKey, setAnalysesRefreshKey] = useState(0);
+  // Pack correction: set when AI thinks the stored pack is wrong for this room
+  const [packSuggestion, setPackSuggestion] = useState(null); // { suggestedPack, currentPack }
+  const [repackLoading, setRepackLoading] = useState(false);
 
   const onAnalysisSaved = () => setAnalysesRefreshKey(k => k + 1);
 
@@ -1223,6 +1232,56 @@ export default function DealRoomPage() {
       })
       .catch(() => { setPackReady(true); setLoadingApi(false); });
   }, [propertyId]);
+
+  // After a room loads, ask AI whether the stored pack matches the transaction.
+  // Only runs for coordinator view of live (non-demo) rooms with a standard built-in pack.
+  // Custom ws_* packs are always intentional — never suggest a change for those.
+  useEffect(() => {
+    if (!apiProperty || DEMO_PROPERTIES[propertyId]) return;
+    const stored = apiProperty.workflow_pack_id;
+    if (!stored || stored.startsWith('ws_')) return;
+    fetch(`${API_BASE}/api/public/classify-pack`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: apiProperty.property_name,
+        dealType: apiProperty.deal_type,
+        address: apiProperty.address,
+      }),
+    })
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
+        if (data?.packId && data.packId !== stored) {
+          setPackSuggestion({ suggestedPack: data.packId, currentPack: stored });
+        }
+      })
+      .catch(() => {});
+  }, [apiProperty?.property_id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function handleRepack(acceptedPackId) {
+    setRepackLoading(true);
+    setPackSuggestion(null);
+    try {
+      // Read the owner token stored at checkout — same credential used by the checklist PUT
+      let ownerWriteToken = '';
+      try { ownerWriteToken = localStorage.getItem(`kontra_owner_token_${propertyId}`) || ''; } catch {}
+
+      const res = await fetch(`${API_BASE}/api/public/deal-room/${propertyId}/repack`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ packId: acceptedPackId, ownerWriteToken }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        console.error('[repack]', data.error);
+        setRepackLoading(false);
+        return;
+      }
+      window.location.reload();
+    } catch {
+      setRepackLoading(false);
+    }
+  }
 
   async function handleActivate() {
     setCheckoutLoading(true);
@@ -1432,6 +1491,39 @@ export default function DealRoomPage() {
       dealRoomMode={!!(property.isCustom && !isDemo)}
       dealRoomTitle={property.name || property.property_name || ""}
     >
+      {/* Pack correction banner — shown to coordinators when AI detects a wrong workflow pack */}
+      {packSuggestion && isCoordinator && !isDemo && (
+        <div className="border-b border-amber-200 bg-amber-50 px-6 py-3">
+          <div className="max-w-5xl mx-auto flex items-center justify-between gap-4">
+            <div className="flex items-center gap-2.5">
+              <span className="text-lg shrink-0">🔍</span>
+              <div>
+                <p className="text-xs font-semibold text-amber-900">
+                  This looks like a {PACK_LABELS[packSuggestion.suggestedPack] || packSuggestion.suggestedPack} workspace
+                </p>
+                <p className="text-[10px] text-amber-700">
+                  Currently using {PACK_LABELS[packSuggestion.currentPack] || packSuggestion.currentPack} template — switching loads the right document checklist, roles, and stages
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                onClick={() => handleRepack(packSuggestion.suggestedPack)}
+                disabled={repackLoading}
+                className="px-3 py-1.5 rounded-xl text-xs font-bold text-white transition hover:opacity-90 disabled:opacity-50"
+                style={{ background: '#d97706' }}>
+                {repackLoading ? 'Switching…' : `Switch to ${PACK_LABELS[packSuggestion.suggestedPack]} →`}
+              </button>
+              <button
+                onClick={() => setPackSuggestion(null)}
+                className="text-xs text-amber-600 hover:text-amber-900 transition px-2">
+                Keep current
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Top bar — demo banner | owner bar | invite bar */}
       {isDemo ? (
         <div className="border-b px-6 py-3" style={{ background: "linear-gradient(90deg, #4a0010 0%, #800020 100%)", borderColor: "rgba(255,255,255,0.08)" }}>
