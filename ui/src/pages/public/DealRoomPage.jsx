@@ -1362,10 +1362,12 @@ export default function DealRoomPage() {
     ? { ...baseRoleConfig, sections: ['brand-standards', ...(baseRoleConfig.sections || [])] }
     : baseRoleConfig;
 
-  // isCoordinator: true for the managing/primary role in any pack
-  // (owner in CRE, buyer in Business Acquisition, founder in Fundraising, lender in CRE).
-  // Use this instead of role === 'owner' so non-CRE pack primary roles get correct UI.
-  const isCoordinator = !!roleConfig?.canManage;
+  // isCoordinator: true for the managing/primary role in any pack.
+  // canManage covers pack-native roles (owner/CRE, buyer/M&A, founder/Fundraising, lender/CRE).
+  // role === 'owner' is the legacy default URL param used by checkout and invite flows for
+  // every pack — keep it as a coordinator fallback for backward compatibility so existing
+  // deal-room links (?role=owner) continue to grant management access in non-CRE packs.
+  const isCoordinator = !!roleConfig?.canManage || role === 'owner';
 
   // The "Outstanding Items" grid (risk/compliance/property panels) still
   // hardcodes CRE concepts (NOI, DSCR, occupancy) inside the panels
