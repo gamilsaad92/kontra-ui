@@ -52,7 +52,7 @@ function useDealAnalyses(propertyId, refreshKey) {
   return { analyses, loading };
 }
 
-function IntelligenceTab({ analyses, loading, packId, propertyId, onSwitchToChecklist }) {
+function IntelligenceTab({ analyses, loading, packId, propertyId, role, onSwitchToChecklist }) {
   const pack = getWorkflowPack(packId);
   const SECTIONS = pack.intelligenceSections || [];
   const getBadge = pack.getIntelligenceBadge || (() => null);
@@ -109,7 +109,7 @@ function IntelligenceTab({ analyses, loading, packId, propertyId, onSwitchToChec
                 </p>
               </div>
             </div>
-            {onSwitchToChecklist && (
+            {onSwitchToChecklist && (role === 'owner' || !role) ? (
               <button
                 onClick={onSwitchToChecklist}
                 className="mt-3 w-full py-2 rounded-xl text-xs font-bold transition-all"
@@ -117,7 +117,11 @@ function IntelligenceTab({ analyses, loading, packId, propertyId, onSwitchToChec
               >
                 Upload documents to unlock →
               </button>
-            )}
+            ) : onSwitchToChecklist ? (
+              <p className="mt-3 text-[11px] text-gray-400 text-center">
+                AI analysis will appear here once documents are uploaded to this deal room
+              </p>
+            ) : null}
           </div>
         </div>
 
@@ -449,6 +453,7 @@ export default function DocumentsTabPanel({
             loading={loading}
             packId={packId}
             propertyId={propertyId}
+            role={role}
             onSwitchToChecklist={() => handleTabClick('checklist')}
           />
         </div>

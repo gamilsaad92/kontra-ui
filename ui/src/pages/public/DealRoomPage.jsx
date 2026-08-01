@@ -1446,7 +1446,7 @@ export default function DealRoomPage() {
             </Link>
           </div>
         </div>
-      ) : property.isCustom ? (
+      ) : property.isCustom && role === 'owner' ? (
         <div className="border-b border-green-100 bg-green-50 px-6 py-3">
           <div className="max-w-5xl mx-auto flex items-center justify-between gap-4">
             <div className="flex items-center gap-2.5">
@@ -1454,7 +1454,7 @@ export default function DealRoomPage() {
                 🔑
               </div>
               <div>
-                <p className="text-xs font-semibold text-green-900">Workspace active — upload documents below</p>
+                <p className="text-xs font-semibold text-green-900">Workspace active — add documents and invite parties below</p>
                 <p className="text-[10px] text-green-600">No sign-in required · AI analyzes each file as it's uploaded</p>
               </div>
             </div>
@@ -1464,6 +1464,28 @@ export default function DealRoomPage() {
                 ✓ Paid & Active
               </span>
             </div>
+          </div>
+        </div>
+      ) : property.isCustom ? (
+        <div className="border-b px-6 py-3" style={{ borderColor: roleConfig.color + '20', background: roleConfig.color + '06' }}>
+          <div className="max-w-5xl mx-auto flex items-center justify-between gap-4">
+            <div className="flex items-center gap-2.5">
+              <div className="w-7 h-7 rounded-lg flex items-center justify-center text-base shrink-0"
+                style={{ background: roleConfig.color + '15' }}>
+                {roleConfig.icon}
+              </div>
+              <div>
+                <p className="text-xs font-semibold text-gray-800">
+                  {from ? `${decodeURIComponent(from)} invited you` : "You've been invited"} · <span style={{ color: roleConfig.color }}>{roleConfig.label}</span>
+                </p>
+                <p className="text-[10px] text-gray-400">Review the documents assigned to your role below · No sign-in required</p>
+              </div>
+            </div>
+            <Link to="/create-deal-room"
+              className="shrink-0 px-4 py-2 rounded-xl text-xs font-bold text-white transition hover:opacity-90"
+              style={{ background: roleConfig.color }}>
+              Create Your Room →
+            </Link>
           </div>
         </div>
       ) : (
@@ -1526,6 +1548,15 @@ export default function DealRoomPage() {
           <ReadinessSummaryBar property={property} />
         )}
 
+        {/* Role context card — participants see this first, before the AI briefing */}
+        {property.isCustom && role !== 'owner' && (
+          <div className="bg-white rounded-2xl border border-gray-200 p-5 mb-6"
+            style={{ borderLeftWidth: 4, borderLeftColor: roleConfig.color }}>
+            <h2 className="text-base font-bold text-gray-900 mb-1">{roleConfig.headline}</h2>
+            <p className="text-sm text-gray-500 leading-relaxed">{roleConfig.subtext}</p>
+          </div>
+        )}
+
         {/* AI Briefing Panel — unified morning/afternoon advisor view.
             Adapts content by time of day: morning briefing + next actions
             before noon; standup-style summary (what moved, what's open,
@@ -1549,42 +1580,35 @@ export default function DealRoomPage() {
           </div>
         )}
 
-        {/* Role headline — owner gets concise Next Steps; others get role description */}
-        <div className="bg-white rounded-2xl border border-gray-200 p-5 mb-6"
-          style={{ borderLeftWidth: 4, borderLeftColor: roleConfig.color }}>
-          {property.isCustom && role === "owner" ? (
-            <>
-              <h2 className="text-base font-bold text-gray-900 mb-3">Setup Checklist</h2>
-              {!isDemo ? (
-                <OnboardingProgress
-                  propertyId={pid}
-                  accentColor={roleConfig.color}
-                  totalInvitable={(pack.roles || []).filter(r => r.invitable).length}
-                  pack={pack}
-                />
-              ) : (
-                <ol className="space-y-2.5">
-                  {[
-                    `Invite parties — send role-specific links to ${(pack.roles || []).filter(r => r.invitable).slice(0, 3).map(r => r.label).join(", ") || "every stakeholder"}`,
-                    "Upload documents — AI reviews each file as it arrives and surfaces key findings",
-                    "Track approvals — monitor transaction stage, party status, and action items in real time",
-                  ].map((text, i) => (
-                    <li key={i} className="flex items-start gap-2.5 text-sm text-gray-600">
-                      <span className="shrink-0 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold text-white mt-0.5"
-                        style={{ background: roleConfig.color }}>{i + 1}</span>
-                      {text}
-                    </li>
-                  ))}
-                </ol>
-              )}
-            </>
-          ) : (
-            <>
-              <h2 className="text-base font-bold text-gray-900 mb-1">{roleConfig.headline}</h2>
-              <p className="text-sm text-gray-500 leading-relaxed">{roleConfig.subtext}</p>
-            </>
-          )}
-        </div>
+        {/* Owner setup checklist — shown only to the deal owner */}
+        {property.isCustom && role === 'owner' && (
+          <div className="bg-white rounded-2xl border border-gray-200 p-5 mb-6"
+            style={{ borderLeftWidth: 4, borderLeftColor: roleConfig.color }}>
+            <h2 className="text-base font-bold text-gray-900 mb-3">Setup Checklist</h2>
+            {!isDemo ? (
+              <OnboardingProgress
+                propertyId={pid}
+                accentColor={roleConfig.color}
+                totalInvitable={(pack.roles || []).filter(r => r.invitable).length}
+                pack={pack}
+              />
+            ) : (
+              <ol className="space-y-2.5">
+                {[
+                  `Invite parties — send role-specific links to ${(pack.roles || []).filter(r => r.invitable).slice(0, 3).map(r => r.label).join(", ") || "every stakeholder"}`,
+                  "Upload documents — AI reviews each file as it arrives and surfaces key findings",
+                  "Track approvals — monitor transaction stage, party status, and action items in real time",
+                ].map((text, i) => (
+                  <li key={i} className="flex items-start gap-2.5 text-sm text-gray-600">
+                    <span className="shrink-0 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold text-white mt-0.5"
+                      style={{ background: roleConfig.color }}>{i + 1}</span>
+                    {text}
+                  </li>
+                ))}
+              </ol>
+            )}
+          </div>
+        )}
 
         {/* Documents panel — Checklist + Intelligence tabs */}
         {property.isCustom && (
@@ -1602,8 +1626,8 @@ export default function DealRoomPage() {
           </div>
         )}
 
-        {/* Legal Intelligence — provider-agnostic legal AI interface (attorney role) */}
-        {property.isCustom && (
+        {/* Legal Intelligence — attorney and counsel roles only */}
+        {property.isCustom && (role === 'owner' || role === 'attorney' || role === 'counsel') && (
           <LegalReviewPanel
             propertyId={pid}
             pack={pack}
@@ -1629,8 +1653,8 @@ export default function DealRoomPage() {
           </div>
         )}
 
-        {/* Transaction Risk — replaces numeric Deal Health score */}
-        {property.isCustom && (
+        {/* Transaction Risk — owner only */}
+        {property.isCustom && role === 'owner' && (
           <TransactionRiskPanel propertyId={pid} />
         )}
 
@@ -1644,8 +1668,8 @@ export default function DealRoomPage() {
           />
         )}
 
-        {/* Verified Asset Package — structured digital closing record */}
-        {property.isCustom && !isDemo && (
+        {/* Verified Asset Package — owner only */}
+        {property.isCustom && !isDemo && role === 'owner' && (
           <PanelErrorBoundary>
             <VerifiedAssetPackage propertyId={pid} />
           </PanelErrorBoundary>
