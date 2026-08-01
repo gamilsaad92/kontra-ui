@@ -210,19 +210,11 @@ export default function LegalReviewPanel({ propertyId, pack, isDemo }) {
       <div className="px-5 pt-5 pb-4 border-b border-gray-100">
         <div className="flex items-center gap-2 mb-1">
           <span className="text-lg">⚖️</span>
-          <h2 className="text-base font-bold text-gray-900">Legal Intelligence</h2>
+          <h2 className="text-base font-bold text-gray-900">Legal Review Tools</h2>
         </div>
         <p className="text-sm text-gray-500 leading-relaxed">
-          Send your legal documents for AI review by your preferred provider.
+          Your attorney can open documents using their preferred legal review platform. Documents are not sent automatically, and each provider requires a separate account.
         </p>
-        <div className="mt-3 flex items-start gap-2 bg-blue-50 border border-blue-100 rounded-lg px-3 py-2">
-          <svg className="w-3.5 h-3.5 text-blue-500 mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-          </svg>
-          <p className="text-xs text-blue-700 leading-relaxed">
-            Attorneys retain full control — Kontra routes documents to the provider of your choice.
-          </p>
-        </div>
       </div>
 
       <div className="px-5 py-4 space-y-6">
@@ -280,11 +272,9 @@ export default function LegalReviewPanel({ propertyId, pack, isDemo }) {
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <ProviderCard
               name="Harvey"
-              featured
-              tagline="Enterprise legal AI used by the world's top law firms."
+              tagline="Enterprise legal AI used by the world's top law firms. Requires a separate Harvey account."
               buttonLabel="Open in Harvey"
               href="https://www.harvey.ai"
-              badge="Referral — use your own Harvey account"
             />
             <ProviderCard
               name="Spellbook"

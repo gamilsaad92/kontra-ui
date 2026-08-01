@@ -7,8 +7,7 @@ import CommentsPanel from "./CommentsPanel";
 import TransactionRiskPanel from "./TransactionRiskPanel";
 import TasksPanel from "./TasksPanel";
 import AIBriefingPanel from "./AIBriefingPanel";
-import InvitePanel from "./InvitePanel";
-import InvitePanelV2 from "./InvitePanelV2";
+import ParticipantsPanel from "./ParticipantsPanel";
 import DocumentsTabPanel from "./DocumentsTabPanel";
 import VerifiedAssetPackage from "./VerifiedAssetPackage";
 import NotificationsLog from "./NotificationsLog";
@@ -2094,23 +2093,16 @@ export default function DealRoomPage() {
                     refreshKey={analysesRefreshKey}
                   />
                 </div>
-                <LegalReviewPanel propertyId={pid} pack={pack} isDemo={false} />
               </>
             )}
 
             {activeTab === 'participants' && (
               <>
-                <div id="invite-panel" className="mb-6">
-                  {property.auth_v2_enabled ? (
-                    <InvitePanelV2 roomId={pid} packId={packId} />
-                  ) : (
-                    <InvitePanel
-                      propertyId={pid}
-                      senderName={property.first_name || property.property_name || undefined}
-                      packId={packId}
-                    />
-                  )}
-                </div>
+                <ParticipantsPanel
+                  roomId={pid}
+                  packId={packId}
+                  isV2={!!property.auth_v2_enabled}
+                />
                 <DealCoordinationPanel
                   propertyId={pid}
                   role={role}
@@ -2149,6 +2141,7 @@ export default function DealRoomPage() {
                     })}
                   </div>
                 )}
+                <LegalReviewPanel propertyId={pid} pack={pack} isDemo={false} />
               </>
             )}
           </>
@@ -2268,21 +2261,6 @@ export default function DealRoomPage() {
             {/* Legal Intelligence */}
             {property.isCustom && (isCoordinator || role === 'attorney' || role === 'counsel') && (
               <LegalReviewPanel propertyId={pid} pack={pack} isDemo={isDemo} />
-            )}
-
-            {/* Invite panel — coordinators only */}
-            {property.isCustom && !isDemo && isCoordinator && (
-              <div id="invite-panel">
-                {property.auth_v2_enabled ? (
-                  <InvitePanelV2 roomId={pid} packId={packId} />
-                ) : (
-                  <InvitePanel
-                    propertyId={pid}
-                    senderName={property.first_name || property.property_name || undefined}
-                    packId={packId}
-                  />
-                )}
-              </div>
             )}
 
             {/* Transaction Risk — coordinator only */}
