@@ -57,6 +57,8 @@ function IntelligenceTab({ analyses, loading, packId, propertyId, role, onSwitch
   const SECTIONS = pack.intelligenceSections || [];
   const getBadge = pack.getIntelligenceBadge || (() => null);
   const getHighlight = pack.getIntelligenceHighlight || (() => null);
+  // Pack-aware coordinator check: owner/buyer/founder can upload; invited parties cannot
+  const isCoordinator = !!(pack.getRole?.(role)?.canManage);
 
   // No gate — use owner Supabase session for authenticated downloads
   async function handleDownload(storagePath) {
@@ -109,7 +111,7 @@ function IntelligenceTab({ analyses, loading, packId, propertyId, role, onSwitch
                 </p>
               </div>
             </div>
-            {onSwitchToChecklist && (role === 'owner' || !role) ? (
+            {onSwitchToChecklist && (isCoordinator || !role) ? (
               <button
                 onClick={onSwitchToChecklist}
                 className="mt-3 w-full py-2 rounded-xl text-xs font-bold transition-all"

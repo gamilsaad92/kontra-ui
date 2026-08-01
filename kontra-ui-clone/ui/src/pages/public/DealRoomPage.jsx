@@ -1362,6 +1362,11 @@ export default function DealRoomPage() {
     ? { ...baseRoleConfig, sections: ['brand-standards', ...(baseRoleConfig.sections || [])] }
     : baseRoleConfig;
 
+  // isCoordinator: true for the managing/primary role in any pack
+  // (owner in CRE, buyer in Business Acquisition, founder in Fundraising, lender in CRE).
+  // Use this instead of role === 'owner' so non-CRE pack primary roles get correct UI.
+  const isCoordinator = !!roleConfig?.canManage;
+
   // The "Outstanding Items" grid (risk/compliance/property panels) still
   // hardcodes CRE concepts (NOI, DSCR, occupancy) inside the panels
   // themselves, but *which* panels a pack supports is now pack-driven:
@@ -1446,7 +1451,7 @@ export default function DealRoomPage() {
             </Link>
           </div>
         </div>
-      ) : property.isCustom && role === 'owner' ? (
+      ) : property.isCustom && isCoordinator ? (
         <div className="border-b border-green-100 bg-green-50 px-6 py-3">
           <div className="max-w-5xl mx-auto flex items-center justify-between gap-4">
             <div className="flex items-center gap-2.5">
@@ -1549,7 +1554,7 @@ export default function DealRoomPage() {
         )}
 
         {/* Role context card — participants see this first, before the AI briefing */}
-        {property.isCustom && role !== 'owner' && (
+        {property.isCustom && !isCoordinator && (
           <div className="bg-white rounded-2xl border border-gray-200 p-5 mb-6"
             style={{ borderLeftWidth: 4, borderLeftColor: roleConfig.color }}>
             <h2 className="text-base font-bold text-gray-900 mb-1">{roleConfig.headline}</h2>
@@ -1580,8 +1585,8 @@ export default function DealRoomPage() {
           </div>
         )}
 
-        {/* Owner setup checklist — shown only to the deal owner */}
-        {property.isCustom && role === 'owner' && (
+        {/* Setup checklist — shown only to the managing/primary role */}
+        {property.isCustom && isCoordinator && (
           <div className="bg-white rounded-2xl border border-gray-200 p-5 mb-6"
             style={{ borderLeftWidth: 4, borderLeftColor: roleConfig.color }}>
             <h2 className="text-base font-bold text-gray-900 mb-3">Setup Checklist</h2>
@@ -1626,8 +1631,8 @@ export default function DealRoomPage() {
           </div>
         )}
 
-        {/* Legal Intelligence — attorney and counsel roles only */}
-        {property.isCustom && (role === 'owner' || role === 'attorney' || role === 'counsel') && (
+        {/* Legal Intelligence — coordinators + attorney / counsel roles */}
+        {property.isCustom && (isCoordinator || role === 'attorney' || role === 'counsel') && (
           <LegalReviewPanel
             propertyId={pid}
             pack={pack}
@@ -1635,8 +1640,8 @@ export default function DealRoomPage() {
           />
         )}
 
-        {/* Invite panel — owners only; v2 when room has auth_v2_enabled, otherwise v1 */}
-        {property.isCustom && !isDemo && role === 'owner' && (
+        {/* Invite panel — coordinators only; v2 when room has auth_v2_enabled, otherwise v1 */}
+        {property.isCustom && !isDemo && isCoordinator && (
           <div id="invite-panel">
             {property.auth_v2_enabled ? (
               <InvitePanelV2
@@ -1653,8 +1658,8 @@ export default function DealRoomPage() {
           </div>
         )}
 
-        {/* Transaction Risk — owner only */}
-        {property.isCustom && role === 'owner' && (
+        {/* Transaction Risk — coordinator only */}
+        {property.isCustom && isCoordinator && (
           <TransactionRiskPanel propertyId={pid} />
         )}
 
@@ -1668,15 +1673,15 @@ export default function DealRoomPage() {
           />
         )}
 
-        {/* Verified Asset Package — owner only */}
-        {property.isCustom && !isDemo && role === 'owner' && (
+        {/* Verified Asset Package — coordinator only */}
+        {property.isCustom && !isDemo && isCoordinator && (
           <PanelErrorBoundary>
             <VerifiedAssetPackage propertyId={pid} />
           </PanelErrorBoundary>
         )}
 
-        {/* Notification log — owner-only audit trail of sent emails */}
-        {property.isCustom && !isDemo && role === 'owner' && (
+        {/* Notification log — coordinator-only audit trail of sent emails */}
+        {property.isCustom && !isDemo && isCoordinator && (
           <NotificationsLog propertyId={pid} />
         )}
 
