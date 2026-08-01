@@ -1190,6 +1190,453 @@ const PACK_LABELS = {
   fundraising:         'Fundraising',
 };
 
+// ── WorkspaceTabNav ───────────────────────────────────────────────────────────
+function WorkspaceTabNav({ activeTab, onChange }) {
+  const TABS = [
+    { key: 'overview',     label: 'Overview'     },
+    { key: 'documents',    label: 'Documents'    },
+    { key: 'participants', label: 'Participants' },
+    { key: 'tasks',        label: 'Tasks'        },
+    { key: 'activity',     label: 'Activity'     },
+    { key: 'settings',     label: 'Settings'     },
+  ];
+  return (
+    <div className="border-b border-gray-200 bg-white">
+      <div className="max-w-5xl mx-auto px-6">
+        <div className="flex items-center gap-0 -mb-px overflow-x-auto hide-scrollbar">
+          {TABS.map(t => (
+            <button
+              key={t.key}
+              onClick={() => onChange(t.key)}
+              className={`shrink-0 px-4 py-3.5 text-sm font-semibold border-b-2 transition whitespace-nowrap ${
+                activeTab === t.key
+                  ? 'border-[#800020] text-[#800020]'
+                  : 'border-transparent text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── OperationsManagerView ─────────────────────────────────────────────────────
+// Five-area coordinator home screen replacing the old stacked morning-brief layout.
+//   Area 1 — Transaction header (name · type · stage · target close · status)
+//   Area 2 — Operations Manager (AI-driven action cards)
+//   Area 3 — Transaction progress (stage tracker + 4 metrics)
+//   Area 4 — Participant status (compact table)
+//   Area 5 — Recent activity (last 5 events)
+function OperationsManagerView({ propertyId, property, pack, role, onTabChange }) {
+  const [briefing,     setBriefing]     = useState(null);
+  const [briefLoading, setBriefLoading] = useState(true);
+  const [coordination, setCoordination] = useState(null);
+  const [stages,       setStages]       = useState([]);
+  const [events,       setEvents]       = useState([]);
+  const [dataLoading,  setDataLoading]  = useState(true);
+
+  useEffect(() => {
+    if (!propertyId) return;
+    const fb = fetch(`${API_BASE}/api/public/deal-room/${propertyId}/brain/briefing`)
+      .then(r => r.ok ? r.json() : null).catch(() => null);
+    const fc = fetch(`${API_BASE}/api/public/deal-room/${propertyId}/coordination`)
+      .then(r => r.ok ? r.json() : null).catch(() => null);
+    const fs = fetch(`${API_BASE}/api/public/deal-room/${propertyId}/stages`)
+      .then(r => r.ok ? r.json() : null).catch(() => null);
+    const fe = fetch(`${API_BASE}/api/public/deal-room/${propertyId}/events`)
+      .then(r => r.ok ? r.json() : { events: [] }).catch(() => ({ events: [] }));
+
+    Promise.all([fb, fc, fs, fe]).then(([b, coord, stageData, evData]) => {
+      setBriefing(b);
+      setBriefLoading(false);
+      setCoordination(coord);
+      setStages(
+        Array.isArray(stageData?.stages) && stageData.stages.length >= 2
+          ? stageData.stages
+          : (pack.stages || [])
+      );
+      setEvents(evData?.events || []);
+      setDataLoading(false);
+    });
+  }, [propertyId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Derived data ───────────────────────────────────────────────────────────
+  const ROLE_META_OM = Object.fromEntries((pack.roles || []).map(r => [r.key, r]));
+  const docCount        = Object.values(coordination?.docsByRole || {}).reduce((a, b) => a + b, 0);
+  const submittedRoles  = new Set((coordination?.submissions || []).map(s => s.role));
+  const requiredRoles   = Object.entries(ROLE_META_OM).filter(([, m]) => m.required).map(([k]) => k);
+  const inviteSentCount = events.filter(e => e.event_type === 'invite_sent').length;
+
+  const currentStageKey = coordination?.stage || stages[0]?.key;
+  const currentStageIdx = Math.max(0, stages.findIndex(s => s.key === currentStageKey));
+  const currentStageData = stages[currentStageIdx];
+
+  const docSchema       = pack.getDocumentSchema?.(property?.property_type || property?.type) || [];
+  const requiredDocCount = docSchema.filter(d => d.required).length;
+  const openBlockers    = (briefing?.risks || briefing?.open_items || []).length;
+  const closingDate     = property?.closing_date || property?.target_close_date || property?.close_date || '';
+  const daysToClose     = closingDate
+    ? Math.ceil((new Date(closingDate) - new Date()) / (1000 * 60 * 60 * 24))
+    : null;
+
+  // ── Overall status ─────────────────────────────────────────────────────────
+  const STATUS_CFG = {
+    not_enough_info: { label: 'Not Enough Information', color: '#6b7280', bg: '#f9fafb', border: '#e5e7eb' },
+    on_track:        { label: 'On Track',               color: '#16a34a', bg: '#f0fdf4', border: '#bbf7d0' },
+    needs_attention: { label: 'Needs Attention',        color: '#d97706', bg: '#fffbeb', border: '#fde68a' },
+    at_risk:         { label: 'At Risk',                color: '#dc2626', bg: '#fef2f2', border: '#fecaca' },
+    blocked:         { label: 'Blocked',                color: '#7c3aed', bg: '#f5f3ff', border: '#ddd6fe' },
+  };
+  function computeStatus() {
+    if (docCount === 0 && inviteSentCount === 0) return 'not_enough_info';
+    const risks   = briefing?.risks   || briefing?.open_items   || [];
+    const actions = briefing?.actions || briefing?.next_actions || [];
+    const hasBlocker = actions.some(a => {
+      const t = (typeof a === 'string' ? a : (a.text || '')).toLowerCase();
+      return t.includes('block') || t.includes('urgent') || t.includes('critical') || t.includes('immediately');
+    });
+    if (hasBlocker) return 'blocked';
+    const pendingRequired = requiredRoles.filter(r => !submittedRoles.has(r)).length;
+    if (risks.length > 2 || pendingRequired > 1) return 'at_risk';
+    if (risks.length > 0 || pendingRequired > 0) return 'needs_attention';
+    return 'on_track';
+  }
+  const statusKey = computeStatus();
+  const statusCfg = STATUS_CFG[statusKey];
+
+  // ── Action cards ───────────────────────────────────────────────────────────
+  const rawActions  = briefing?.actions || briefing?.next_actions || [];
+  const actionCards = rawActions.slice(0, 5).map((a, i) => ({
+    text:        typeof a === 'string' ? a : (a.text || a.action || ''),
+    severity:    typeof a === 'object' ? (a.severity || (i === 0 ? 'high' : 'medium')) : (i === 0 ? 'high' : 'medium'),
+    responsible: typeof a === 'object' ? (a.party || a.responsible || a.role || '') : '',
+    dueDate:     typeof a === 'object' ? (a.due_date || a.dueDate || '') : '',
+    source:      typeof a === 'object' ? (a.source || a.from || '') : '',
+  }));
+  const SEVERITY_CFG = {
+    high:     { bg: '#fef2f2', text: '#dc2626', border: '#fecaca', label: 'High'     },
+    critical: { bg: '#fef2f2', text: '#dc2626', border: '#fecaca', label: 'Critical' },
+    medium:   { bg: '#fffbeb', text: '#d97706', border: '#fde68a', label: 'Medium'   },
+    low:      { bg: '#f0fdf4', text: '#16a34a', border: '#bbf7d0', label: 'Low'      },
+  };
+
+  // ── Participant rows ────────────────────────────────────────────────────────
+  const invitableRoles = (pack.roles || []).filter(r => r.invitable !== false);
+  const participantRows = invitableRoles.map(r => {
+    const sub     = (coordination?.submissions || []).find(s => s.role === r.key);
+    const invited = events.some(e => e.event_type === 'invite_sent' && e.metadata?.role === r.key);
+    const lastEv  = [...events].reverse().find(e =>
+      (e.metadata?.role === r.key || e.actor_role === r.key) && e.created_at
+    );
+    const lastActivity = lastEv
+      ? new Date(lastEv.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+      : '—';
+    let status = 'Not invited';
+    if (invited && !sub)                         status = 'Invited';
+    if (sub?.status === 'approved')              status = 'Approved';
+    else if (sub?.status === 'needs_revision')   status = 'Needs Revision';
+    else if (sub)                                status = 'Submitted';
+    const statusStyle =
+      status === 'Approved'       ? { color: '#16a34a', bg: '#f0fdf4' }
+      : status === 'Submitted'    ? { color: '#1e40af', bg: '#eff6ff' }
+      : status === 'Needs Revision'? { color: '#d97706', bg: '#fffbeb' }
+      : status === 'Invited'      ? { color: '#6b7280', bg: '#f9fafb' }
+      :                             { color: '#9ca3af', bg: '#f9fafb' };
+    return { ...r, status, lastActivity, statusStyle, invited, submitted: !!sub };
+  });
+
+  // ── Recent events ──────────────────────────────────────────────────────────
+  const EVENT_ICON = {
+    invite_sent: '📧', doc_uploaded: '📄', party_submitted: '✅',
+    stage_advance: '⏩', analysis_complete: '🤖', status_change: '🔄',
+    lender_doc_ready: '📦', vap_ready: '✅',
+  };
+  const EVENT_LABEL = {
+    invite_sent: 'Invite sent', doc_uploaded: 'Document uploaded',
+    party_submitted: 'Party submitted', stage_advance: 'Stage advanced',
+    status_change: 'Status changed', lender_doc_ready: 'Lender document ready',
+    vap_ready: 'Verified package ready', analysis_complete: 'AI analysis complete',
+  };
+  const recentActivity = [...events].reverse().slice(0, 5).map(e => ({
+    id: e.id, type: e.event_type,
+    label: EVENT_LABEL[e.event_type] || (e.event_type || '').replace(/_/g, ' '),
+    description: e.description || '',
+    time: e.created_at
+      ? new Date(e.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+      : '',
+  }));
+
+  return (
+    <div className="space-y-5">
+
+      {/* ── Area 1: Transaction header ──────────────────────────────────── */}
+      <div className="bg-white rounded-2xl border border-gray-200 px-6 py-5">
+        <div className="flex items-start justify-between gap-4 flex-wrap">
+          <div>
+            <h1 className="text-xl font-bold text-gray-900 mb-1.5 leading-tight">
+              {property?.name || property?.property_name}
+            </h1>
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+              {pack.name && <span className="text-sm text-gray-500">{pack.name}</span>}
+              {currentStageData && (
+                <span className="text-sm text-gray-500 flex items-center gap-1">
+                  <span className="text-gray-300 text-xs">·</span>
+                  {currentStageData.icon} {currentStageData.label}
+                </span>
+              )}
+              {closingDate && (
+                <span className="text-sm text-gray-500 flex items-center gap-1">
+                  <span className="text-gray-300 text-xs">·</span>
+                  Target close: {new Date(closingDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                </span>
+              )}
+            </div>
+          </div>
+          <div className="px-3 py-1.5 rounded-xl text-sm font-bold border shrink-0"
+            style={{ background: statusCfg.bg, color: statusCfg.color, borderColor: statusCfg.border }}>
+            {statusCfg.label}
+          </div>
+        </div>
+        {statusKey === 'not_enough_info' && (
+          <p className="text-xs text-gray-400 mt-3 pt-3 border-t border-gray-100">
+            Upload documents and invite participants before Kontra can assess transaction risk.
+          </p>
+        )}
+      </div>
+
+      {/* ── Area 2: Operations Manager ──────────────────────────────────── */}
+      <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
+        <div className="px-6 py-4 border-b border-gray-100">
+          <p className="text-xs font-semibold uppercase tracking-wider mb-0.5" style={{ color: '#800020' }}>
+            Operations Manager
+          </p>
+          <p className="text-base font-bold text-gray-900">Here is what needs attention next.</p>
+        </div>
+        <div className="p-5">
+          {briefLoading ? (
+            <div className="space-y-3">
+              {[1, 2, 3].map(i => <div key={i} className="h-14 bg-gray-50 rounded-xl animate-pulse" />)}
+            </div>
+          ) : actionCards.length === 0 ? (
+            <div className="text-center py-10">
+              <div className="text-3xl mb-2">🤖</div>
+              <p className="text-sm font-semibold text-gray-500 mb-1">No actions identified yet</p>
+              <p className="text-xs text-gray-400 max-w-xs mx-auto">
+                Upload documents and invite participants — Kontra will surface prioritized actions here.
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {actionCards.map((card, i) => {
+                const sev = SEVERITY_CFG[card.severity] || SEVERITY_CFG.medium;
+                return (
+                  <div key={i} className="rounded-xl border px-4 py-3 flex items-start gap-3"
+                    style={{ borderColor: i === 0 ? sev.border : '#e5e7eb', background: i === 0 ? sev.bg : '#fafafa' }}>
+                    <span className="shrink-0 text-[10px] font-bold px-2 py-0.5 rounded-full border mt-0.5"
+                      style={{ background: sev.bg, color: sev.text, borderColor: sev.border }}>
+                      {sev.label}
+                    </span>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm text-gray-800 leading-relaxed">{card.text}</p>
+                      {(card.responsible || card.dueDate || card.source) && (
+                        <div className="flex flex-wrap items-center gap-3 mt-1.5">
+                          {card.responsible && <span className="text-[11px] text-gray-400">👤 {card.responsible}</span>}
+                          {card.dueDate     && <span className="text-[11px] text-gray-400">📅 {card.dueDate}</span>}
+                          {card.source      && <span className="text-[11px] text-gray-400">📎 {card.source}</span>}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+          {!briefLoading && (briefing?.risks || briefing?.open_items || []).length > 0 && (
+            <div className="mt-4 pt-4 border-t border-gray-100">
+              <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-2">Open items</p>
+              <div className="space-y-1.5">
+                {(briefing?.risks || briefing?.open_items).slice(0, 3).map((r, i) => (
+                  <div key={i} className="flex items-start gap-2 rounded-lg bg-amber-50 border border-amber-100 px-3 py-2">
+                    <span className="text-amber-500 shrink-0 mt-0.5 text-xs">⚠</span>
+                    <span className="text-xs text-amber-800">
+                      {typeof r === 'string' ? r : (r.text || r.risk || '')}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* ── Area 3: Transaction progress ────────────────────────────────── */}
+      <div className="bg-white rounded-2xl border border-gray-200 p-5">
+        <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-4">Transaction Progress</p>
+        {stages.length > 0 && (
+          <div className="flex items-center gap-0 mb-5">
+            {stages.map((s, i) => {
+              const done   = i < currentStageIdx;
+              const active = i === currentStageIdx;
+              return (
+                <div key={s.key} className="flex items-center flex-1">
+                  <div className="flex flex-col items-center flex-1">
+                    <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold mb-1 transition-all
+                      ${done ? 'bg-[#800020] text-white' : active ? 'bg-[#800020]/10 border-2 border-[#800020] text-[#800020]' : 'bg-gray-100 text-gray-400'}`}>
+                      {done ? '✓' : (s.icon || '·')}
+                    </div>
+                    <p className={`text-[9px] font-semibold text-center leading-tight
+                      ${active ? 'text-[#800020]' : done ? 'text-gray-500' : 'text-gray-300'}`}>
+                      {s.label}
+                    </p>
+                  </div>
+                  {i < stages.length - 1 && (
+                    <div className={`h-0.5 flex-1 mx-1 mb-3 rounded ${i < currentStageIdx ? 'bg-[#800020]' : 'bg-gray-200'}`} />
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          {[
+            {
+              label: 'Required documents',
+              value: requiredDocCount > 0 ? `${docCount} / ${requiredDocCount}` : `${docCount} uploaded`,
+              ok: docCount > 0,
+            },
+            {
+              label: 'Participants current',
+              value: submittedRoles.size > 0 ? `${submittedRoles.size} submitted` : `${inviteSentCount} invited`,
+              ok: submittedRoles.size > 0,
+            },
+            {
+              label: 'Open blockers',
+              value: openBlockers > 0 ? String(openBlockers) : 'None',
+              ok: openBlockers === 0,
+            },
+            {
+              label: 'Days to close',
+              value: daysToClose != null ? `${daysToClose}d` : '—',
+              ok: daysToClose == null || daysToClose > 14,
+            },
+          ].map(m => (
+            <div key={m.label} className="bg-gray-50 rounded-xl px-3 py-3 text-center">
+              <p className={`text-lg font-black mb-0.5 ${m.ok ? 'text-gray-900' : 'text-amber-600'}`}>{m.value}</p>
+              <p className="text-[10px] text-gray-400 leading-tight">{m.label}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* ── Area 4: Participant status ───────────────────────────────────── */}
+      <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
+        <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+          <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">Participant Status</p>
+          <button onClick={() => onTabChange?.('participants')}
+            className="text-[11px] font-semibold text-[#800020] hover:opacity-80 transition">
+            Manage →
+          </button>
+        </div>
+        {dataLoading ? (
+          <div className="p-5 space-y-2">
+            {[1, 2, 3].map(i => <div key={i} className="h-10 bg-gray-50 rounded-xl animate-pulse" />)}
+          </div>
+        ) : participantRows.length === 0 ? (
+          <p className="px-5 py-6 text-sm text-gray-400 text-center">No roles configured for this workspace.</p>
+        ) : (
+          <div>
+            <div className="hidden sm:grid grid-cols-[2fr_2fr_1fr_auto] gap-4 px-5 py-2 bg-gray-50 border-b border-gray-100">
+              {['Participant / Role', 'Responsibility', 'Status', 'Action'].map(h => (
+                <p key={h} className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">{h}</p>
+              ))}
+            </div>
+            <div className="divide-y divide-gray-100">
+              {participantRows.map(p => (
+                <div key={p.key} className="grid sm:grid-cols-[2fr_2fr_1fr_auto] gap-4 items-center px-5 py-3">
+                  <div className="flex items-center gap-2.5 col-span-full sm:col-span-1">
+                    <div className="w-7 h-7 rounded-lg flex items-center justify-center text-base shrink-0"
+                      style={{ background: (p.color || '#800020') + '15' }}>
+                      {p.icon}
+                    </div>
+                    <span className="text-sm font-semibold text-gray-800">{p.label}</span>
+                  </div>
+                  <p className="hidden sm:block text-xs text-gray-400 truncate">{p.headline || p.subtext || p.label}</p>
+                  <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full w-fit"
+                    style={{ background: p.statusStyle.bg, color: p.statusStyle.color }}>
+                    {p.status}
+                  </span>
+                  <div className="flex items-center gap-2 sm:justify-end">
+                    {p.status === 'Not invited' && (
+                      <button onClick={() => onTabChange?.('participants')}
+                        className="text-[11px] font-semibold text-[#800020] hover:underline transition shrink-0">
+                        Invite →
+                      </button>
+                    )}
+                    {p.status === 'Invited' && (
+                      <button onClick={() => onTabChange?.('participants')}
+                        className="text-[11px] font-semibold text-gray-400 hover:text-gray-600 transition shrink-0">
+                        Send reminder
+                      </button>
+                    )}
+                    {p.status === 'Needs Revision' && (
+                      <button onClick={() => onTabChange?.('participants')}
+                        className="text-[11px] font-semibold text-amber-600 hover:underline transition shrink-0">
+                        Notify →
+                      </button>
+                    )}
+                    {(p.status === 'Submitted' || p.status === 'Approved') && (
+                      <span className="text-[11px] text-gray-300">{p.lastActivity}</span>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* ── Area 5: Recent activity ──────────────────────────────────────── */}
+      <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
+        <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+          <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">Recent Activity</p>
+          <button onClick={() => onTabChange?.('activity')}
+            className="text-[11px] font-semibold text-[#800020] hover:opacity-80 transition">
+            View all activity →
+          </button>
+        </div>
+        {recentActivity.length === 0 ? (
+          <div className="px-5 py-8 text-center">
+            <p className="text-sm text-gray-400 max-w-xs mx-auto">
+              Activity will appear here after participants are invited or documents are uploaded.
+            </p>
+          </div>
+        ) : (
+          <div className="divide-y divide-gray-100">
+            {recentActivity.map((e, i) => (
+              <div key={e.id || i} className="px-5 py-3 flex items-start gap-3">
+                <div className="w-7 h-7 rounded-lg flex items-center justify-center text-sm shrink-0 bg-gray-50 mt-0.5">
+                  {EVENT_ICON[e.type] || '📌'}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-semibold text-gray-700">{e.label}</p>
+                  {e.description && (
+                    <p className="text-[11px] text-gray-400 truncate mt-0.5">{e.description}</p>
+                  )}
+                </div>
+                <span className="text-[10px] text-gray-400 shrink-0 mt-0.5 whitespace-nowrap">{e.time}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+    </div>
+  );
+}
+
 export default function DealRoomPage() {
   const { propertyId } = useParams();
   const [searchParams] = useSearchParams();
@@ -1207,6 +1654,7 @@ export default function DealRoomPage() {
   // starts true; live rooms wait for ensureWorkflowPackLoaded to resolve.
   const [packReady, setPackReady] = useState(!!DEMO_PROPERTIES[propertyId]);
   const [analysesRefreshKey, setAnalysesRefreshKey] = useState(0);
+  const [activeTab, setActiveTab] = useState('overview');
   // Pack correction: set when AI thinks the stored pack is wrong for this room
   const [packSuggestion, setPackSuggestion] = useState(null); // { suggestedPack, currentPack }
   const [repackLoading, setRepackLoading] = useState(false);
@@ -1611,275 +2059,354 @@ export default function DealRoomPage() {
         </div>
       )}
 
+      {/* Workspace tab nav — coordinator view of live paid rooms only */}
+      {property.isCustom && isCoordinator && !isDemo && (
+        <WorkspaceTabNav activeTab={activeTab} onChange={setActiveTab} />
+      )}
+
       <div className="max-w-5xl mx-auto px-6 py-8">
 
-        {/* Property header */}
-        <div className="relative rounded-2xl overflow-hidden mb-6 h-40">
-          <img src={property.image} alt={property.name} className="w-full h-full object-cover" />
-          <div className="absolute inset-0 bg-gradient-to-r from-black/70 to-black/30 flex items-end p-5">
-            <div className="flex-1">
-              <p className="text-xs text-white/60 mb-0.5">
-                {isCREPack
-                  ? [property.type, property.market].filter(Boolean).join(" · ")
-                  : [pack.name, property.market || property.address].filter(Boolean).join(" · ")}
-                {property.isCustom && !isDemo && <span className="ml-2 px-1.5 py-0.5 rounded bg-amber-500/30 text-amber-200 text-[10px] font-semibold">Awaiting Documents</span>}
-              {isDemo && <span className="ml-2 px-1.5 py-0.5 rounded text-[10px] font-semibold" style={{ background: "rgba(99,102,241,0.4)", color: "#c7d2fe" }}>Under Review</span>}
-              </p>
-              <h1 className="text-xl font-bold text-white">{property.name}</h1>
-              <p className="text-xs text-white/70">{property.address}</p>
-            </div>
-            <div className="text-right">
-              <div className="px-3 py-1.5 rounded-xl text-xs font-bold text-white mb-1" style={{ background: roleConfig.color }}>
-                {roleConfig.icon} {roleConfig.label}
-              </div>
-              {!property.isCustom && (
-                <div className="px-2 py-1 rounded-lg text-xs font-bold"
-                  style={{ background: property.riskColor + "22", color: property.riskColor }}>
-                  {property.risk} Risk · {property.score}/100
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
+        {property.isCustom && isCoordinator && !isDemo ? (
 
-        {/* Investment Readiness summary bar — demo rooms only */}
-        {!property.isCustom && (
-          <ReadinessSummaryBar property={property} />
-        )}
-
-        {/* Role context card — participants see this first, before the AI briefing.
-            Shown in demo and paid rooms alike so the participant experience is
-            visible regardless of whether isCustom is set. */}
-        {!isCoordinator && (
-          <div className="bg-white rounded-2xl border border-gray-200 p-5 mb-6"
-            style={{ borderLeftWidth: 4, borderLeftColor: roleConfig.color }}>
-            <h2 className="text-base font-bold text-gray-900 mb-1">{roleConfig.headline}</h2>
-            <p className="text-sm text-gray-500 leading-relaxed">{roleConfig.subtext}</p>
-          </div>
-        )}
-
-        {/* AI Briefing Panel — unified morning/afternoon advisor view.
-            Adapts content by time of day: morning briefing + next actions
-            before noon; standup-style summary (what moved, what's open,
-            tomorrow's plan) from noon onwards. Both endpoints are fetched
-            in parallel so switching between them is instant. */}
-        {property.isCustom && (
-          <AIBriefingPanel propertyId={pid} ownerName={property.first_name} dealName={property.name || property.property_name} />
-        )}
-
-        {/* Activity Timeline — right below briefing so "what changed?" is answered immediately */}
-        {property.isCustom && (
-          <div className="mb-6">
-            <ActivityTimeline propertyId={pid} />
-          </div>
-        )}
-
-        {/* Tasks / Today's Actions — AI-generated action items requiring attention */}
-        {property.isCustom && (
-          <div id="tasks-panel">
-            <TasksPanel propertyId={pid} role={role} />
-          </div>
-        )}
-
-        {/* Setup checklist — shown only to the managing/primary role */}
-        {property.isCustom && isCoordinator && (
-          <div className="bg-white rounded-2xl border border-gray-200 p-5 mb-6"
-            style={{ borderLeftWidth: 4, borderLeftColor: roleConfig.color }}>
-            <h2 className="text-base font-bold text-gray-900 mb-3">Setup Checklist</h2>
-            {!isDemo ? (
-              <OnboardingProgress
+          /* ── Coordinator tabbed layout ────────────────────────────────── */
+          <>
+            {activeTab === 'overview' && (
+              <OperationsManagerView
                 propertyId={pid}
-                accentColor={roleConfig.color}
-                totalInvitable={(pack.roles || []).filter(r => r.invitable).length}
+                property={property}
                 pack={pack}
+                role={role}
+                onTabChange={setActiveTab}
               />
-            ) : (
-              <ol className="space-y-2.5">
-                {[
-                  `Invite parties — send role-specific links to ${(pack.roles || []).filter(r => r.invitable).slice(0, 3).map(r => r.label).join(", ") || "every stakeholder"}`,
-                  "Upload documents — AI reviews each file as it arrives and surfaces key findings",
-                  "Track approvals — monitor transaction stage, party status, and action items in real time",
-                ].map((text, i) => (
-                  <li key={i} className="flex items-start gap-2.5 text-sm text-gray-600">
-                    <span className="shrink-0 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold text-white mt-0.5"
-                      style={{ background: roleConfig.color }}>{i + 1}</span>
-                    {text}
-                  </li>
-                ))}
-              </ol>
             )}
-          </div>
-        )}
 
-        {/* Documents panel — Checklist + Intelligence tabs */}
-        {property.isCustom && (
-          <div id="documents-panel">
-            <DocumentsTabPanel
-              propertyId={pid}
-              propertyType={property.property_type || property.type}
-              role={role}
-              isDemo={isDemo}
-              packId={packId}
-              packReady={packReady}
-              onAnalysisSaved={onAnalysisSaved}
-              refreshKey={analysesRefreshKey}
-            />
-          </div>
-        )}
+            {activeTab === 'documents' && (
+              <>
+                <div id="documents-panel">
+                  <DocumentsTabPanel
+                    propertyId={pid}
+                    propertyType={property.property_type || property.type}
+                    role={role}
+                    isDemo={false}
+                    packId={packId}
+                    packReady={packReady}
+                    onAnalysisSaved={onAnalysisSaved}
+                    refreshKey={analysesRefreshKey}
+                  />
+                </div>
+                <LegalReviewPanel propertyId={pid} pack={pack} isDemo={false} />
+              </>
+            )}
 
-        {/* Legal Intelligence — coordinators + attorney / counsel roles */}
-        {property.isCustom && (isCoordinator || role === 'attorney' || role === 'counsel') && (
-          <LegalReviewPanel
-            propertyId={pid}
-            pack={pack}
-            isDemo={isDemo}
-          />
-        )}
+            {activeTab === 'participants' && (
+              <>
+                <div id="invite-panel" className="mb-6">
+                  {property.auth_v2_enabled ? (
+                    <InvitePanelV2 roomId={pid} packId={packId} />
+                  ) : (
+                    <InvitePanel
+                      propertyId={pid}
+                      senderName={property.first_name || property.property_name || undefined}
+                      packId={packId}
+                    />
+                  )}
+                </div>
+                <DealCoordinationPanel
+                  propertyId={pid}
+                  role={role}
+                  packId={packId}
+                  propertyType={property.property_type || property.type}
+                />
+              </>
+            )}
 
-        {/* Invite panel — coordinators only; v2 when room has auth_v2_enabled, otherwise v1 */}
-        {property.isCustom && !isDemo && isCoordinator && (
-          <div id="invite-panel">
-            {property.auth_v2_enabled ? (
-              <InvitePanelV2
-                roomId={pid}
-                packId={packId}
-              />
-            ) : (
-              <InvitePanel
+            {activeTab === 'tasks' && (
+              <div id="tasks-panel">
+                <TasksPanel propertyId={pid} role={role} />
+              </div>
+            )}
+
+            {activeTab === 'activity' && (
+              <>
+                <div className="mb-6">
+                  <ActivityTimeline propertyId={pid} />
+                </div>
+                <NotificationsLog propertyId={pid} />
+              </>
+            )}
+
+            {activeTab === 'settings' && (
+              <>
+                <TransactionRiskPanel propertyId={pid} />
+                <PanelErrorBoundary>
+                  <VerifiedAssetPackage propertyId={pid} />
+                </PanelErrorBoundary>
+                {visibleOutstandingSections.length > 0 && (
+                  <div className="grid md:grid-cols-2 gap-5 mb-6">
+                    {visibleOutstandingSections.map((sectionKey) => {
+                      const Panel = SECTION_MAP[sectionKey];
+                      return Panel ? <Panel key={sectionKey} /> : null;
+                    })}
+                  </div>
+                )}
+              </>
+            )}
+          </>
+
+        ) : (
+
+          /* ── Non-coordinator / demo / participant stacked layout ─────── */
+          <>
+            {/* Property header */}
+            <div className="relative rounded-2xl overflow-hidden mb-6 h-40">
+              <img src={property.image} alt={property.name} className="w-full h-full object-cover" />
+              <div className="absolute inset-0 bg-gradient-to-r from-black/70 to-black/30 flex items-end p-5">
+                <div className="flex-1">
+                  <p className="text-xs text-white/60 mb-0.5">
+                    {isCREPack
+                      ? [property.type, property.market].filter(Boolean).join(" · ")
+                      : [pack.name, property.market || property.address].filter(Boolean).join(" · ")}
+                    {property.isCustom && !isDemo && <span className="ml-2 px-1.5 py-0.5 rounded bg-amber-500/30 text-amber-200 text-[10px] font-semibold">Awaiting Documents</span>}
+                    {isDemo && <span className="ml-2 px-1.5 py-0.5 rounded text-[10px] font-semibold" style={{ background: "rgba(99,102,241,0.4)", color: "#c7d2fe" }}>Under Review</span>}
+                  </p>
+                  <h1 className="text-xl font-bold text-white">{property.name}</h1>
+                  <p className="text-xs text-white/70">{property.address}</p>
+                </div>
+                <div className="text-right">
+                  <div className="px-3 py-1.5 rounded-xl text-xs font-bold text-white mb-1" style={{ background: roleConfig.color }}>
+                    {roleConfig.icon} {roleConfig.label}
+                  </div>
+                  {!property.isCustom && (
+                    <div className="px-2 py-1 rounded-lg text-xs font-bold"
+                      style={{ background: property.riskColor + "22", color: property.riskColor }}>
+                      {property.risk} Risk · {property.score}/100
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Investment Readiness summary bar — demo rooms only */}
+            {!property.isCustom && (
+              <ReadinessSummaryBar property={property} />
+            )}
+
+            {/* Role context card */}
+            {!isCoordinator && (
+              <div className="bg-white rounded-2xl border border-gray-200 p-5 mb-6"
+                style={{ borderLeftWidth: 4, borderLeftColor: roleConfig.color }}>
+                <h2 className="text-base font-bold text-gray-900 mb-1">{roleConfig.headline}</h2>
+                <p className="text-sm text-gray-500 leading-relaxed">{roleConfig.subtext}</p>
+              </div>
+            )}
+
+            {/* AI Briefing Panel */}
+            {property.isCustom && (
+              <AIBriefingPanel propertyId={pid} ownerName={property.first_name} dealName={property.name || property.property_name} />
+            )}
+
+            {/* Activity Timeline */}
+            {property.isCustom && (
+              <div className="mb-6">
+                <ActivityTimeline propertyId={pid} />
+              </div>
+            )}
+
+            {/* Tasks / Today's Actions */}
+            {property.isCustom && (
+              <div id="tasks-panel">
+                <TasksPanel propertyId={pid} role={role} />
+              </div>
+            )}
+
+            {/* Setup checklist — shown only to the managing/primary role */}
+            {property.isCustom && isCoordinator && (
+              <div className="bg-white rounded-2xl border border-gray-200 p-5 mb-6"
+                style={{ borderLeftWidth: 4, borderLeftColor: roleConfig.color }}>
+                <h2 className="text-base font-bold text-gray-900 mb-3">Setup Checklist</h2>
+                {!isDemo ? (
+                  <OnboardingProgress
+                    propertyId={pid}
+                    accentColor={roleConfig.color}
+                    totalInvitable={(pack.roles || []).filter(r => r.invitable).length}
+                    pack={pack}
+                  />
+                ) : (
+                  <ol className="space-y-2.5">
+                    {[
+                      `Invite parties — send role-specific links to ${(pack.roles || []).filter(r => r.invitable).slice(0, 3).map(r => r.label).join(", ") || "every stakeholder"}`,
+                      "Upload documents — AI reviews each file as it arrives and surfaces key findings",
+                      "Track approvals — monitor transaction stage, party status, and action items in real time",
+                    ].map((text, i) => (
+                      <li key={i} className="flex items-start gap-2.5 text-sm text-gray-600">
+                        <span className="shrink-0 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold text-white mt-0.5"
+                          style={{ background: roleConfig.color }}>{i + 1}</span>
+                        {text}
+                      </li>
+                    ))}
+                  </ol>
+                )}
+              </div>
+            )}
+
+            {/* Documents panel */}
+            {property.isCustom && (
+              <div id="documents-panel">
+                <DocumentsTabPanel
+                  propertyId={pid}
+                  propertyType={property.property_type || property.type}
+                  role={role}
+                  isDemo={isDemo}
+                  packId={packId}
+                  packReady={packReady}
+                  onAnalysisSaved={onAnalysisSaved}
+                  refreshKey={analysesRefreshKey}
+                />
+              </div>
+            )}
+
+            {/* Legal Intelligence */}
+            {property.isCustom && (isCoordinator || role === 'attorney' || role === 'counsel') && (
+              <LegalReviewPanel propertyId={pid} pack={pack} isDemo={isDemo} />
+            )}
+
+            {/* Invite panel — coordinators only */}
+            {property.isCustom && !isDemo && isCoordinator && (
+              <div id="invite-panel">
+                {property.auth_v2_enabled ? (
+                  <InvitePanelV2 roomId={pid} packId={packId} />
+                ) : (
+                  <InvitePanel
+                    propertyId={pid}
+                    senderName={property.first_name || property.property_name || undefined}
+                    packId={packId}
+                  />
+                )}
+              </div>
+            )}
+
+            {/* Transaction Risk — coordinator only */}
+            {property.isCustom && isCoordinator && (
+              <TransactionRiskPanel propertyId={pid} />
+            )}
+
+            {/* Deal Coordination Panel */}
+            {property.isCustom && (
+              <DealCoordinationPanel
                 propertyId={pid}
-                senderName={property.first_name || property.property_name || undefined}
+                role={role}
                 packId={packId}
+                propertyType={property.property_type || property.type}
               />
             )}
-          </div>
-        )}
 
-        {/* Transaction Risk — coordinator only */}
-        {property.isCustom && isCoordinator && (
-          <TransactionRiskPanel propertyId={pid} />
-        )}
+            {/* Verified Asset Package */}
+            {property.isCustom && !isDemo && isCoordinator && (
+              <PanelErrorBoundary>
+                <VerifiedAssetPackage propertyId={pid} />
+              </PanelErrorBoundary>
+            )}
 
-        {/* Deal Coordination Panel — party status + lifecycle stage */}
-        {property.isCustom && (
-          <DealCoordinationPanel
-            propertyId={pid}
-            role={role}
-            packId={packId}
-            propertyType={property.property_type || property.type}
-          />
-        )}
+            {/* Notification log */}
+            {property.isCustom && !isDemo && isCoordinator && (
+              <NotificationsLog propertyId={pid} />
+            )}
 
-        {/* Verified Asset Package — coordinator only */}
-        {property.isCustom && !isDemo && isCoordinator && (
-          <PanelErrorBoundary>
-            <VerifiedAssetPackage propertyId={pid} />
-          </PanelErrorBoundary>
-        )}
-
-        {/* Notification log — coordinator-only audit trail of sent emails */}
-        {property.isCustom && !isDemo && isCoordinator && (
-          <NotificationsLog propertyId={pid} />
-        )}
-
-        {/* Outstanding Items — role-scoped sections (risk/compliance/property).
-            Which of these panels a pack supports comes from
-            pack.outstandingItemsSections; roleConfig.sections only says which
-            sections a role *wants* to see, the pack says which ones it
-            actually *has*. Business Acquisition declares none yet, so this
-            grid renders nothing for that pack without any packId check here. */}
-        {visibleOutstandingSections.length > 0 && (
-          <div className="grid md:grid-cols-2 gap-5 mb-6">
-            {visibleOutstandingSections.map((sectionKey) => {
-              const Panel = SECTION_MAP[sectionKey];
-              return Panel ? <Panel key={sectionKey} /> : null;
-            })}
-          </div>
-        )}
-
-
-        {/* Activity feed — demo rooms only */}
-        {!property.isCustom && (
-          <div className="mb-8">
-            <ActivityFeedPanel property={property} />
-          </div>
-        )}
-
-        {/* Activate CTA (only for demo rooms) */}
-        {!property.isCustom && (
-          <div className="rounded-2xl overflow-hidden border border-gray-200">
-            <div className="px-8 py-8 text-center"
-              style={{ background: `linear-gradient(135deg, ${roleConfig.color} 0%, ${roleConfig.color}dd 100%)` }}>
-              <p className="text-xs font-semibold uppercase tracking-wider text-white/60 mb-2">One-time deal fee</p>
-              <div className="text-4xl font-black text-white mb-1">$499</div>
-              <p className="text-sm text-white/80 mb-5">Activates the full deal room for all parties on this property</p>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 max-w-xl mx-auto mb-6">
-                {["All-party deal room", "AI document analysis", "Role-scoped access", "Compliance tracking"].map((f) => (
-                  <div key={f} className="bg-white/10 rounded-xl px-3 py-2 text-xs text-white/90 font-medium">{f}</div>
-                ))}
+            {/* Outstanding Items */}
+            {visibleOutstandingSections.length > 0 && (
+              <div className="grid md:grid-cols-2 gap-5 mb-6">
+                {visibleOutstandingSections.map((sectionKey) => {
+                  const Panel = SECTION_MAP[sectionKey];
+                  return Panel ? <Panel key={sectionKey} /> : null;
+                })}
               </div>
-              <button onClick={handleActivate} disabled={checkoutLoading}
-                className="inline-flex items-center gap-2 px-8 py-3 rounded-xl text-sm font-bold bg-white transition hover:opacity-90 disabled:opacity-60"
-                style={{ color: roleConfig.color }}>
-                {checkoutLoading ? (
-                  <><svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>Preparing…</>
-                ) : "Activate Deal Room — $499 →"}
-              </button>
-              {import.meta.env.DEV && (
-                <button onClick={handleDemoActivate} disabled={checkoutLoading}
-                  className="mt-3 inline-flex items-center gap-1.5 px-5 py-2 rounded-lg text-xs font-semibold bg-white/10 text-white/70 border border-white/20 hover:bg-white/20 transition disabled:opacity-40">
-                  ⚡ Dev: Skip Payment
-                </button>
-              )}
-              {checkoutError && <p className="text-xs text-red-200 mt-3">{checkoutError}</p>}
-              <p className="text-xs text-white/40 mt-3">Secure checkout via Stripe · One-time fee</p>
-            </div>
-            <div className="bg-gray-50 px-8 py-5 flex flex-col sm:flex-row items-center justify-between gap-4 border-t border-gray-100">
-              <div>
-                <p className="text-sm font-semibold text-gray-800">Are you the owner of this deal room?</p>
-                <p className="text-xs text-gray-400">Access your dashboard to manage this room</p>
-              </div>
-              <Link to="/my-deal-rooms"
-                className="px-5 py-2 rounded-xl text-sm font-semibold text-white transition hover:opacity-90"
-                style={{ background: roleConfig.color }}>
-                My Deal Rooms →
-              </Link>
-            </div>
-          </div>
-        )}
+            )}
 
-        {/* Demo bottom CTA */}
-        {isDemo && (
-          <div className="rounded-2xl overflow-hidden border border-indigo-100 mt-2">
-            <div className="px-8 py-8 text-center" style={{ background: "linear-gradient(135deg, #1e1b4b 0%, #4338ca 100%)" }}>
-              <p className="text-xs font-semibold uppercase tracking-wider text-white/50 mb-2">
-                You just experienced Kontra
-              </p>
-              <h2 className="text-2xl font-extrabold text-white mb-2">
-                Ready to coordinate your deal to closing?
-              </h2>
-              <p className="text-sm text-white/60 mb-6 max-w-md mx-auto">
-                Set up a deal room for your property in under 2 minutes. AI analyzes every document as it's uploaded. Every party gets their own view.
-              </p>
-              <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
-                <Link to="/create-deal-room"
-                  className="px-8 py-3 rounded-xl text-sm font-bold bg-white text-indigo-900 hover:opacity-90 transition">
-                  Create Your Workspace — $499 →
-                </Link>
-                <Link to="/pricing"
-                  className="px-6 py-3 rounded-xl text-sm font-semibold border border-white/20 text-white/80 hover:bg-white/10 transition">
-                  See Pricing
-                </Link>
+            {/* Activity feed — demo rooms only */}
+            {!property.isCustom && (
+              <div className="mb-8">
+                <ActivityFeedPanel property={property} />
               </div>
-              <p className="text-[10px] text-white/30 mt-4">One-time fee · No subscription · 90-day access included</p>
-            </div>
-            <div className="bg-gray-50 px-8 py-4 flex flex-wrap items-center justify-center gap-x-6 gap-y-2 border-t border-gray-100">
-              {["2 min setup", "18 sec AI review", "Unlimited participants", "Unlimited documents"].map(f => (
-                <span key={f} className="text-xs text-gray-500 flex items-center gap-1.5">
-                  <span className="text-green-500">✓</span> {f}
-                </span>
-              ))}
-            </div>
-          </div>
+            )}
+
+            {/* Activate CTA (only for demo rooms) */}
+            {!property.isCustom && (
+              <div className="rounded-2xl overflow-hidden border border-gray-200">
+                <div className="px-8 py-8 text-center"
+                  style={{ background: `linear-gradient(135deg, ${roleConfig.color} 0%, ${roleConfig.color}dd 100%)` }}>
+                  <p className="text-xs font-semibold uppercase tracking-wider text-white/60 mb-2">One-time deal fee</p>
+                  <div className="text-4xl font-black text-white mb-1">$499</div>
+                  <p className="text-sm text-white/80 mb-5">Activates the full deal room for all parties on this property</p>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 max-w-xl mx-auto mb-6">
+                    {["All-party deal room", "AI document analysis", "Role-scoped access", "Compliance tracking"].map((f) => (
+                      <div key={f} className="bg-white/10 rounded-xl px-3 py-2 text-xs text-white/90 font-medium">{f}</div>
+                    ))}
+                  </div>
+                  <button onClick={handleActivate} disabled={checkoutLoading}
+                    className="inline-flex items-center gap-2 px-8 py-3 rounded-xl text-sm font-bold bg-white transition hover:opacity-90 disabled:opacity-60"
+                    style={{ color: roleConfig.color }}>
+                    {checkoutLoading ? (
+                      <><svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>Preparing…</>
+                    ) : "Activate Deal Room — $499 →"}
+                  </button>
+                  {import.meta.env.DEV && (
+                    <button onClick={handleDemoActivate} disabled={checkoutLoading}
+                      className="mt-3 inline-flex items-center gap-1.5 px-5 py-2 rounded-lg text-xs font-semibold bg-white/10 text-white/70 border border-white/20 hover:bg-white/20 transition disabled:opacity-40">
+                      ⚡ Dev: Skip Payment
+                    </button>
+                  )}
+                  {checkoutError && <p className="text-xs text-red-200 mt-3">{checkoutError}</p>}
+                  <p className="text-xs text-white/40 mt-3">Secure checkout via Stripe · One-time fee</p>
+                </div>
+                <div className="bg-gray-50 px-8 py-5 flex flex-col sm:flex-row items-center justify-between gap-4 border-t border-gray-100">
+                  <div>
+                    <p className="text-sm font-semibold text-gray-800">Are you the owner of this deal room?</p>
+                    <p className="text-xs text-gray-400">Access your dashboard to manage this room</p>
+                  </div>
+                  <Link to="/my-deal-rooms"
+                    className="px-5 py-2 rounded-xl text-sm font-semibold text-white transition hover:opacity-90"
+                    style={{ background: roleConfig.color }}>
+                    My Deal Rooms →
+                  </Link>
+                </div>
+              </div>
+            )}
+
+            {/* Demo bottom CTA */}
+            {isDemo && (
+              <div className="rounded-2xl overflow-hidden border border-indigo-100 mt-2">
+                <div className="px-8 py-8 text-center" style={{ background: "linear-gradient(135deg, #1e1b4b 0%, #4338ca 100%)" }}>
+                  <p className="text-xs font-semibold uppercase tracking-wider text-white/50 mb-2">
+                    You just experienced Kontra
+                  </p>
+                  <h2 className="text-2xl font-extrabold text-white mb-2">
+                    Ready to coordinate your deal to closing?
+                  </h2>
+                  <p className="text-sm text-white/60 mb-6 max-w-md mx-auto">
+                    Set up a deal room for your property in under 2 minutes. AI analyzes every document as it's uploaded. Every party gets their own view.
+                  </p>
+                  <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
+                    <Link to="/create-deal-room"
+                      className="px-8 py-3 rounded-xl text-sm font-bold bg-white text-indigo-900 hover:opacity-90 transition">
+                      Create Your Workspace — $499 →
+                    </Link>
+                    <Link to="/pricing"
+                      className="px-6 py-3 rounded-xl text-sm font-semibold border border-white/20 text-white/80 hover:bg-white/10 transition">
+                      See Pricing
+                    </Link>
+                  </div>
+                  <p className="text-[10px] text-white/30 mt-4">One-time fee · No subscription · 90-day access included</p>
+                </div>
+                <div className="bg-gray-50 px-8 py-4 flex flex-wrap items-center justify-center gap-x-6 gap-y-2 border-t border-gray-100">
+                  {["2 min setup", "18 sec AI review", "Unlimited participants", "Unlimited documents"].map(f => (
+                    <span key={f} className="text-xs text-gray-500 flex items-center gap-1.5">
+                      <span className="text-green-500">✓</span> {f}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+          </>
         )}
 
       </div>
