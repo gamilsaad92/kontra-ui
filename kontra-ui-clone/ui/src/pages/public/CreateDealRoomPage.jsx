@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import PublicLayout from "./PublicLayout";
 import { trackEvent } from "../../lib/analytics";
 import { listWorkflowPacks, fetchCustomPacks, getWorkflowPack, deleteCustomPack, registerCustomPack } from "../../lib/workflowPacks";
@@ -201,6 +201,7 @@ function StagesEditor({ stages, onChange }) {
 // ── Main page ─────────────────────────────────────────────────────────────────
 export default function CreateDealRoomPage() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
 
   // 0 = describe, 1 = preview, 2 = your info, 3 = activate
   const [phase, setPhase] = useState(0);
@@ -213,6 +214,18 @@ export default function CreateDealRoomPage() {
   const [workflowPacks, setWorkflowPacks] = useState(() => listWorkflowPacks());
   const [deletingPackId, setDeletingPackId] = useState(null);
   useEffect(() => { fetchCustomPacks().then(() => setWorkflowPacks(listWorkflowPacks())); }, []);
+
+  // Pre-select a template when the page is opened with ?template=<packId>
+  // (e.g. from /for/business-brokers CTA → /create-deal-room?template=business_acquisition)
+  useEffect(() => {
+    const templateParam = searchParams.get("template");
+    const validPacks = ["business_acquisition", "cre_acquisition", "fundraising"];
+    if (templateParam && validPacks.includes(templateParam)) {
+      setCreationMode("template");
+      setShowTemplatePicker(true);
+      set("packId", templateParam);
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function handleDeletePack(e, packId) {
     e.stopPropagation();

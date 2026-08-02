@@ -417,9 +417,15 @@ export default function HomePage() {
               </div>
             ))}
           </div>
-          <p className="text-center text-xs text-gray-400 mt-6">
-            All templates are fully customizable. Add roles, swap documents, adjust checklist stages — or <Link to="/create-deal-room" className="underline text-gray-600 hover:text-gray-900">describe your transaction to AI</Link> and let it suggest a starting point.
-          </p>
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 mt-6">
+            <p className="text-xs text-gray-400">
+              All templates are fully customizable. Add roles, swap documents, adjust checklist stages — or <Link to="/create-deal-room" className="underline text-gray-600 hover:text-gray-900">describe your transaction to AI</Link> and let it suggest a starting point.
+            </p>
+            <Link to="/for/business-brokers"
+              className="shrink-0 text-xs font-semibold text-blue-700 hover:text-blue-900 underline underline-offset-2 transition whitespace-nowrap">
+              For business brokers →
+            </Link>
+          </div>
         </div>
       </section>
 
