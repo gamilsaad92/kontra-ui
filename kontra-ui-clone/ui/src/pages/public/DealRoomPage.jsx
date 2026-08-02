@@ -1243,7 +1243,7 @@ function TransactionDetailsPanel({ property, propertyId, pack }) {
   }
 
   return (
-    <div className="bg-white rounded-2xl border border-gray-200 p-5">
+    <div id="issuance-details" className="bg-white rounded-2xl border border-gray-200 p-5">
       <div className="flex items-center justify-between mb-4">
         <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">{sectionTitle}</p>
         {saveOk && <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-green-50 text-green-700">✓ Saved</span>}
@@ -1402,6 +1402,25 @@ function OperationsManagerView({ propertyId, property, pack, role, onTabChange }
   const statusKey = computeStatus();
   const statusCfg = STATUS_CFG[statusKey];
 
+  // ── Tokenization-specific derived state ────────────────────────────────────
+  const isTokenization = pack.id === 'tokenization';
+  const metaValues = property?.metadata_values || {};
+
+  // KYC progress — read from briefing snapshot if available
+  const kycMetrics   = briefing?.snapshot?.kyc_aml?.metrics || briefing?.bySection?.kyc_aml?.metrics || {};
+  const kycVerified  = kycMetrics.investors_verified  != null ? Number(kycMetrics.investors_verified)  : null;
+  const kycPending   = kycMetrics.investors_pending   != null ? Number(kycMetrics.investors_pending)   : null;
+  const kycTotal     = kycVerified != null && kycPending != null ? kycVerified + kycPending : null;
+  const kycPct       = kycTotal > 0 ? Math.round((kycVerified / kycTotal) * 100) : null;
+
+  // Tokenization 4-step setup guide completion signals
+  const step1Done = !!(metaValues.raise_amount || metaValues.asset_type || metaValues.token_price);
+  const step2Done = docCount > 0;
+  const step3Done = events.some(e =>
+    e.event_type === 'invite_sent' && ['counsel', 'compliance'].includes(e.metadata?.role)
+  );
+  const step4Done = currentStageIdx >= 2; // subscription or later
+
   // ── Action cards ───────────────────────────────────────────────────────────
   const rawActions  = briefing?.actions || briefing?.next_actions || [];
   const actionCards = rawActions.slice(0, 5).map((a, i) => ({
@@ -1511,18 +1530,70 @@ function OperationsManagerView({ propertyId, property, pack, role, onTabChange }
         )}
       </div>
 
+      {/* ── Token offering KPI strip (tokenization only) ───────────────── */}
+      {isTokenization && (() => {
+        function fmtCurrency(raw) {
+          const n = Number(raw);
+          if (!raw || isNaN(n)) return null;
+          if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(n % 1_000_000 === 0 ? 0 : 1)}M`;
+          if (n >= 1_000)     return `$${n.toLocaleString()}`;
+          return `$${n}`;
+        }
+        const kpis = [
+          { label: 'Raise Target',    value: fmtCurrency(metaValues.raise_amount),  field: 'raise_amount'   },
+          { label: 'Token Price',     value: fmtCurrency(metaValues.token_price),   field: 'token_price'    },
+          { label: 'Min Investment',  value: fmtCurrency(metaValues.min_investment),field: 'min_investment' },
+          { label: 'Asset Type',      value: metaValues.asset_type || null,          field: 'asset_type'     },
+        ];
+        return (
+          <div className="bg-white rounded-2xl border border-gray-200 px-5 py-4">
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">Token Offering</p>
+              <button
+                onClick={() => { onTabChange?.('settings'); setTimeout(() => document.getElementById('issuance-details')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 150); }}
+                className="text-[11px] font-semibold hover:opacity-80 transition" style={{ color: '#800020' }}>
+                Edit details →
+              </button>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              {kpis.map(kpi => (
+                <div key={kpi.field} className="bg-gray-50 rounded-xl px-3 py-3 text-center">
+                  {kpi.value ? (
+                    <>
+                      <p className="text-base font-black text-gray-900 mb-0.5 truncate">{kpi.value}</p>
+                      <p className="text-[10px] text-gray-400 leading-tight">{kpi.label}</p>
+                    </>
+                  ) : (
+                    <>
+                      <button
+                        onClick={() => { onTabChange?.('settings'); setTimeout(() => document.getElementById('issuance-details')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 150); }}
+                        className="text-sm font-bold hover:opacity-70 transition" style={{ color: '#800020' }}>
+                        Set →
+                      </button>
+                      <p className="text-[10px] text-gray-400 leading-tight mt-0.5">{kpi.label}</p>
+                    </>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      })()}
+
       {/* ── Jurisdiction compliance card (shown when set) ───────────────── */}
       {property?.jurisdiction && JURISDICTION_INFO[property.jurisdiction] && (
         <JurisdictionComplianceCard jurisdiction={property.jurisdiction} />
       )}
 
-      {/* ── Area 2: Operations Manager ──────────────────────────────────── */}
+      {/* ── Area 2: Issuance Manager / Operations Manager ───────────────── */}
       <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
         <div className="px-6 py-4 border-b border-gray-100">
           <p className="text-xs font-semibold uppercase tracking-wider mb-0.5" style={{ color: '#800020' }}>
-            Operations Manager
+            {isTokenization ? 'Issuance Manager' : 'Operations Manager'}
           </p>
-          <p className="text-base font-bold text-gray-900">Here is what needs attention next.</p>
+          <p className="text-base font-bold text-gray-900">
+            {isTokenization ? 'Launch your token offering.' : 'Here is what needs attention next.'}
+          </p>
         </div>
         <div className="p-5">
           {briefLoading ? (
@@ -1530,6 +1601,66 @@ function OperationsManagerView({ propertyId, property, pack, role, onTabChange }
               {[1, 2, 3].map(i => <div key={i} className="h-14 bg-gray-50 rounded-xl animate-pulse" />)}
             </div>
           ) : actionCards.length === 0 ? (
+            isTokenization ? (
+              /* ── Tokenization 4-step setup guide ── */
+              <div>
+                <p className="text-sm font-semibold text-gray-800 mb-1">Get your issuance ready</p>
+                <p className="text-xs text-gray-400 mb-4">Complete these steps to open your subscription period.</p>
+                <div className="space-y-2.5">
+                  {[
+                    {
+                      done: step1Done,
+                      icon: '📋',
+                      title: 'Complete issuance details',
+                      sub:   'Set raise amount, token price, asset type, and minimum investment',
+                      action: () => { onTabChange?.('settings'); setTimeout(() => document.getElementById('issuance-details')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 150); },
+                      cta: 'Fill in →',
+                    },
+                    {
+                      done: step2Done,
+                      icon: '📄',
+                      title: 'Upload TOM & regulatory documents',
+                      sub:   'Token Offering Memorandum and any jurisdiction-required filings',
+                      action: () => onTabChange?.('documents'),
+                      cta: 'Upload →',
+                    },
+                    {
+                      done: step3Done,
+                      icon: '⚖️',
+                      title: 'Invite Counsel & Compliance Officer',
+                      sub:   'They will review documents and complete KYC/AML verification',
+                      action: () => onTabChange?.('participants'),
+                      cta: 'Invite →',
+                    },
+                    {
+                      done: step4Done,
+                      icon: '🏛️',
+                      title: 'Open subscription period',
+                      sub:   'Advance the workspace to Subscription stage and invite lead investors',
+                      action: () => onTabChange?.('participants'),
+                      cta: 'Advance →',
+                    },
+                  ].map((step, i) => (
+                    <div key={i}
+                      className={`flex items-start gap-3 px-4 py-3 rounded-xl border transition ${step.done ? 'bg-green-50 border-green-100' : 'bg-gray-50 border-gray-200'}`}>
+                      <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold shrink-0 mt-0.5 ${step.done ? 'bg-green-500 text-white' : 'bg-white border border-gray-300 text-gray-400'}`}>
+                        {step.done ? '✓' : i + 1}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className={`text-sm font-semibold ${step.done ? 'text-green-800 line-through decoration-green-400' : 'text-gray-800'}`}>{step.title}</p>
+                        <p className="text-xs text-gray-400 mt-0.5 leading-snug">{step.sub}</p>
+                      </div>
+                      {!step.done && (
+                        <button onClick={step.action}
+                          className="shrink-0 text-[11px] font-bold hover:opacity-80 transition mt-0.5" style={{ color: '#800020' }}>
+                          {step.cta}
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : (
             <div>
               <p className="text-sm font-semibold text-gray-800 mb-1">Get your workspace moving</p>
               <p className="text-xs text-gray-400 mb-4">Kontra will surface prioritized actions once participants and documents are added.</p>
@@ -1546,6 +1677,7 @@ function OperationsManagerView({ propertyId, property, pack, role, onTabChange }
                 </button>
               </div>
             </div>
+            )
           ) : (
             <div className="space-y-3">
               {actionCards.map((card, i) => {
@@ -1647,6 +1779,46 @@ function OperationsManagerView({ propertyId, property, pack, role, onTabChange }
             </div>
           ))}
         </div>
+
+        {/* ── KYC / Investor progress (tokenization only) ─────────────── */}
+        {isTokenization && (
+          <div className="mt-4 pt-4 border-t border-gray-100">
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">KYC / Investor Progress</p>
+              {kycTotal != null && kycTotal > 0 && (
+                <span className="text-[10px] font-semibold"
+                  style={{ color: kycPct >= 80 ? '#16a34a' : kycPct >= 40 ? '#d97706' : '#dc2626' }}>
+                  {kycPct}% verified
+                </span>
+              )}
+            </div>
+            {kycTotal != null && kycTotal > 0 ? (
+              <>
+                <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden mb-2">
+                  <div className="h-full rounded-full transition-all"
+                    style={{
+                      width: `${kycPct}%`,
+                      background: kycPct >= 80 ? '#16a34a' : kycPct >= 40 ? '#d97706' : '#dc2626',
+                    }} />
+                </div>
+                <div className="flex items-center gap-4">
+                  <span className="text-xs text-gray-500">
+                    <span className="font-bold text-gray-800">{kycVerified}</span> verified
+                  </span>
+                  {kycPending > 0 && (
+                    <span className="text-xs text-amber-600 font-semibold">
+                      {kycPending} pending KYC
+                    </span>
+                  )}
+                </div>
+              </>
+            ) : (
+              <p className="text-xs text-gray-400">
+                KYC progress will appear after the KYC/AML Certificate is uploaded and analyzed.
+              </p>
+            )}
+          </div>
+        )}
       </div>
 
       {/* ── Area 4: Participant status ───────────────────────────────────── */}
