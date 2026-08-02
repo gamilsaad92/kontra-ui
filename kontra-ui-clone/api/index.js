@@ -82,10 +82,11 @@ async function classifyTransactionPack(name, dealType, address) {
           content: `Classify this transaction into exactly one workflow pack. Return JSON: { "pack": "cre_acquisition" | "business_acquisition" | "fundraising" }
 
 Definitions:
-- cre_acquisition: ANY real estate transaction — buying, selling, or financing property: hotels, apartments, office, retail, industrial, land, hospitality, mixed-use, senior housing. Hotel acquisitions and property acquisitions are ALWAYS cre_acquisition.
-- business_acquisition: Buying or selling a company — M&A, management buyout, stock purchase (of a business, not real estate), merger.
-- fundraising: Raising capital — seed, Series A/B/C, VC, convertible notes, SAFE, debt raise, equity raise.
+- cre_acquisition: ANY real estate or property transaction — buying, selling, financing, refinancing, or recapitalizing property. Includes: hotels, apartments, office, retail, industrial, land, hospitality, mixed-use, senior housing, data centers, warehouses. Hotel acquisitions, hotel refinancings, property refinancings, commercial mortgages, construction loans, and bridge loans are ALL cre_acquisition.
+- business_acquisition: Buying or selling a company's operating business — M&A, management buyout, stock purchase (of a company, not a property-owning entity), merger, business sale. Must involve a company that is NOT primarily a real estate holding vehicle.
+- fundraising: Raising capital — seed, Series A/B/C, VC, convertible notes, SAFE, debt raise, equity raise, fund formation.
 
+Critical: any transaction involving a hotel, resort, property, or real estate asset is ALWAYS cre_acquisition, even if the word "acquisition" or "business" appears in the name.
 When in doubt between CRE and business, default to cre_acquisition.`,
         },
         { role: 'user', content: context },

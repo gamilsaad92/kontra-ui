@@ -1580,8 +1580,11 @@ function OperationsManagerView({ propertyId, property, pack, role, onTabChange }
         );
       })()}
 
-      {/* ── Jurisdiction compliance card (shown when set) ───────────────── */}
-      {property?.jurisdiction && JURISDICTION_INFO[property.jurisdiction] && (
+      {/* ── Jurisdiction compliance card (tokenization only) ───────────── */}
+      {/* Only shown for tokenization workspaces — the card contains token-issuance
+          specific regulatory content (FSRA licence, MiCA White Paper, etc.) that
+          is irrelevant and misleading on CRE or business acquisition deals. */}
+      {isTokenization && property?.jurisdiction && JURISDICTION_INFO[property.jurisdiction] && (
         <JurisdictionComplianceCard jurisdiction={property.jurisdiction} />
       )}
 

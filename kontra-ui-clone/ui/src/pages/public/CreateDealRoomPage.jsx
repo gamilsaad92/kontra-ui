@@ -494,9 +494,14 @@ export default function CreateDealRoomPage() {
   // ── Payload ───────────────────────────────────────────────────────────────
   function buildPayload() {
     const raw = (form.workspaceName || "").trim();
+    // Generate a short random hex suffix so the workspace URL slug is unique but
+    // clearly distinct from the workspace name. Using crypto-random bytes instead
+    // of a timestamp avoids the base-36 fragment that looks like a corrupted name
+    // suffix (e.g. "meridian-tower-m9k4" → "meridian-tower--a3f8c2d1").
+    const randomHex = () => Array.from(crypto.getRandomValues(new Uint8Array(4))).map(b => b.toString(16).padStart(2, '0')).join('');
     const propertyId = raw
-      ? raw.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 60) + "-" + Date.now().toString(36).slice(-4)
-      : "ws-" + Date.now().toString(36);
+      ? raw.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 50) + "--" + randomHex()
+      : "ws--" + randomHex();
     const isBlank = creationMode === "blank";
     // In AI mode, derive the workflowPackId from aiTransactionType so the server
     // receives the correct base pack regardless of which pack was last selected in

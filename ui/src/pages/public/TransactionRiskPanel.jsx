@@ -81,6 +81,27 @@ export default function TransactionRiskPanel({ propertyId }) {
 
   if (!briefing) return null;
 
+  // Guard: if the workspace has never generated any tasks (openTaskCount === 0
+  // AND reviewedCount === 0), there is not enough evidence to declare a risk
+  // level. Showing "Low Risk" for a brand-new empty workspace is misleading —
+  // zero blockers is not the same as low risk. Per the product brief (§14).
+  const hasMeaningfulData = briefing.reviewedCount > 0 || briefing.openTaskCount > 0;
+  if (!hasMeaningfulData) {
+    return (
+      <div className="mb-6 bg-white rounded-2xl border border-gray-200 overflow-hidden">
+        <div className="px-5 pt-4 pb-4">
+          <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-2">
+            Transaction Risk
+          </p>
+          <p className="text-sm font-semibold text-gray-500 mb-1">Not yet assessed</p>
+          <p className="text-xs text-gray-400 leading-snug">
+            Add documents and invite participants — Kontra will assess transaction risk once there is something to reason over.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   const status = briefing.status || 'on_track';
   const cfg    = RISK_CONFIG[status] || RISK_CONFIG.on_track;
   const criticalPath     = briefing.criticalPath || briefing.blocking || [];
