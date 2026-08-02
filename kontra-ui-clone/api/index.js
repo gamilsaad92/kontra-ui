@@ -35,7 +35,7 @@ const verificationRouter = require('./routers/verification');
 const { runVerification } = require('./lib/verificationEngine');
 const verifiedAssetPackageRouter = require('./routers/verifiedAssetPackage');
 const { generateAndStoreVAP } = require('./routers/verifiedAssetPackage');
-const { evaluateDealRoomForTasks } = require('./lib/taskEngine');
+const { evaluateDealRoomForTasks, evaluateReadinessTasks } = require('./lib/taskEngine');
 
 // Pack inference map — mirrors DEAL_TYPE_TO_PACK in dealRoomHelpers.js so that
 // room creation writes the correct workflow_pack_id from day one.
@@ -2535,6 +2535,7 @@ app.post('/api/public/deal-room/:propertyId/track-document', upload.single('file
           notifyOwner(propertyId, section, result.summary).catch(() => {});
           logEvent(propertyId, 'document_analyzed', role || 'owner', null, `${SECTION_LABELS[section]} analyzed by AI`, { section, filename }).catch(() => {});
           evaluateDealRoomForTasks(propertyId).catch(e => console.warn('[tasks] auto-evaluate on analysis failed:', e.message));
+          evaluateReadinessTasks(propertyId, []).catch(e => console.warn('[tasks] readiness evaluate on analysis failed:', e.message));
           getRoomPackId(propertyId).then(packId => runVerification(propertyId, packId)).catch(e => console.warn('[verification] trigger failed:', e.message));
           console.log(`[track-document] ✓ ${section} analyzed${needsVision ? ' (vision)' : ''} — confidence ${result.confidence}`);
         } catch (aiErr) {
@@ -2681,6 +2682,7 @@ app.post('/api/public/deal-room/:propertyId/submit', async (req, res) => {
     logEvent(propertyId, 'party_submitted', role, name || role, `${name || roleLabel} signaled ready`, { role });
     notifyPartySubmitted(propertyId, role, name).catch(() => {});
     evaluateDealRoomForTasks(propertyId).catch(e => console.warn('[tasks] auto-evaluate on submit failed:', e.message));
+    evaluateReadinessTasks(propertyId, []).catch(e => console.warn('[tasks] readiness evaluate on submit failed:', e.message));
     res.json({ ok: true });
   } catch (err) {
     console.error('[submit]', err.message);

@@ -249,6 +249,98 @@ async function evaluateDealRoomForTasks(propertyId) {
   return created;
 }
 
+// ── Readiness task generation (spec §7) ───────────────────────────────────────
+// Auto-generates tasks for missing Digital Asset readiness requirements.
+// Only fires for tokenization packs (or when digital_asset_enabled=true).
+// Idempotent — never creates a duplicate of an open task of the same type+sourceId.
+async function evaluateReadinessTasks(propertyId, existingTasks) {
+  const { data: room } = await supabase
+    .from('deal_rooms')
+    .select('workflow_pack_id, metadata_values, jurisdiction, checklist_items')
+    .eq('property_id', propertyId)
+    .maybeSingle();
+
+  if (!room) return [];
+
+  const isTokenization     = room.workflow_pack_id === 'tokenization';
+  const digitalAssetEnabled = !!(room.metadata_values?.digital_asset_enabled);
+  if (!isTokenization && !digitalAssetEnabled) return [];
+
+  const existing = existingTasks || [];
+  const hasOpenReadinessTask = (sourceId) => existing.some(t =>
+    t.source_id === sourceId && OPEN_STATUSES.includes(t.status));
+
+  const metaValues     = room.metadata_values || {};
+  const checklistItems = Array.isArray(room.checklist_items) ? room.checklist_items : [];
+  const created        = [];
+
+  // 1) Missing issuance details — each unfilled field becomes its own task
+  const ISSUANCE_FIELDS = [
+    { key: 'raise_amount',   label: 'Raise Target'   },
+    { key: 'token_price',    label: 'Token Price'    },
+    { key: 'asset_type',     label: 'Asset Type'     },
+    { key: 'min_investment', label: 'Minimum Investment' },
+  ];
+  for (const field of ISSUANCE_FIELDS) {
+    if (metaValues[field.key]) continue; // already set — no task needed
+    const sourceId = `readiness-issuance:${field.key}`;
+    if (hasOpenReadinessTask(sourceId)) continue;
+    const task = await createTask(propertyId, {
+      taskType: 'readiness_setup',
+      title: `Set ${field.label} in issuance details`,
+      description: `${field.label} is required for a complete token offering and contributes to the Digital Asset Readiness score. Add it in Settings → Issuance Details.`,
+      ownerType: 'ai',
+      ownerRole: 'owner',
+      evidence: [`metadata_values.${field.key} is empty`],
+      sourceType: 'readiness',
+      sourceId,
+    });
+    if (task) created.push(task);
+  }
+
+  // 2) Jurisdiction not set
+  if (!room.jurisdiction) {
+    const sourceId = 'readiness-jurisdiction:missing';
+    if (!hasOpenReadinessTask(sourceId)) {
+      const task = await createTask(propertyId, {
+        taskType: 'readiness_setup',
+        title: 'Select a jurisdiction for this token offering',
+        description: 'A jurisdiction is required to determine applicable regulatory requirements and compliance checklists. Set it in workspace Settings.',
+        ownerType: 'ai',
+        ownerRole: 'owner',
+        evidence: ['deal_rooms.jurisdiction is null'],
+        sourceType: 'readiness',
+        sourceId,
+      });
+      if (task) created.push(task);
+    }
+  } else {
+    // 3) Regulatory documents not yet uploaded
+    const UPLOADED = new Set(['uploaded', 'approved', 'ai_complete']);
+    const regItems  = checklistItems.filter(i =>
+      i.category === 'Regulatory' || (i.section || '').toLowerCase().includes('regulatory')
+    );
+    for (const item of regItems.filter(i => !UPLOADED.has(i.status)).slice(0, 3)) {
+      const itemKey  = item.id || item.section || item.label || 'doc';
+      const sourceId = `readiness-regulatory:${itemKey}`;
+      if (hasOpenReadinessTask(sourceId)) continue;
+      const task = await createTask(propertyId, {
+        taskType: 'readiness_document',
+        title: `Upload required regulatory document: ${item.label || item.section}`,
+        description: `"${item.label || item.section}" is required for ${room.jurisdiction} regulatory preparation. Upload it in the Documents tab.`,
+        ownerType: 'ai',
+        ownerRole: 'owner',
+        evidence: [`Regulatory checklist item "${item.label || item.section}" has status "${item.status || 'pending'}"`],
+        sourceType: 'readiness',
+        sourceId,
+      });
+      if (task) created.push(task);
+    }
+  }
+
+  return created;
+}
+
 module.exports = {
   listTasksForRoom,
   createTask,
@@ -256,4 +348,5 @@ module.exports = {
   approveTask,
   dismissTask,
   evaluateDealRoomForTasks,
+  evaluateReadinessTasks,
 };
