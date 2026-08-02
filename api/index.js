@@ -1339,6 +1339,159 @@ app.post('/api/checkout/demo', async (req, res) => {
   }
 });
 
+// ── Pilot Admin — password-protected, no Stripe, is_pilot=true ───────────────
+// Password is checked against the PILOT_ADMIN_PASSWORD env var on every request.
+function checkPilotPassword(req, res) {
+  const expected = process.env.PILOT_ADMIN_PASSWORD;
+  if (!expected) {
+    res.status(503).json({ error: 'PILOT_ADMIN_PASSWORD env var not set on server.' });
+    return false;
+  }
+  const provided = req.headers['x-pilot-password'] || '';
+  if (provided !== expected) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return false;
+  }
+  return true;
+}
+
+const PILOT_PACK_LABELS = {
+  cre_acquisition:      'CRE Acquisition',
+  business_acquisition: 'Business Acquisition',
+  fundraising:          'Fundraising Round',
+};
+
+app.post('/api/admin/create-pilot-workspace', async (req, res) => {
+  if (!checkPilotPassword(req, res)) return;
+  try {
+    const { workspaceName, packId = 'business_acquisition', pilotName, pilotEmail, closingDate } = req.body;
+    if (!workspaceName || !pilotName || !pilotEmail) {
+      return res.status(400).json({ error: 'workspaceName, pilotName, pilotEmail are required' });
+    }
+
+    const origin = req.headers.origin || 'https://kontraplatform.com';
+    const pid = workspaceName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 60)
+      + '-' + Date.now().toString(36).slice(-4);
+
+    const resolvedPackId = ['cre_acquisition', 'business_acquisition', 'fundraising'].includes(packId)
+      ? packId : 'business_acquisition';
+
+    const initialStages = getPackStageConfig(resolvedPackId).stages.map(({ key, label }) => ({ key, label }));
+    const ownerToken    = crypto.randomBytes(32).toString('hex');
+    const sessionId     = 'pilot_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
+
+    const record = {
+      stripe_session_id: sessionId,
+      plan:              'deal',
+      property_id:       pid,
+      property_name:     workspaceName,
+      role:              'owner',
+      customer_email:    pilotEmail,
+      amount_paid:       0,
+      activated_at:      new Date().toISOString(),
+      status:            'active',
+      first_name:        pilotName.split(' ')[0] || pilotName,
+      last_name:         pilotName.split(' ').slice(1).join(' ') || '',
+      closing_date:      closingDate || '',
+      workflow_pack_id:  resolvedPackId,
+      stages_config:     initialStages,
+      owner_write_token: ownerToken,
+      is_pilot:          true,
+    };
+
+    // Upsert with graceful column fallback (same pattern as demo endpoint)
+    try {
+      const { error: upsertErr } = await supabase.from('deal_rooms').upsert(record, { onConflict: 'property_id' });
+      if (upsertErr) {
+        const isMissingCol = upsertErr.code === '42703' || upsertErr.code === 'PGRST204' ||
+          /column .*(workflow_pack_id|stages_config|is_pilot).* (does not exist|schema cache)/i.test(upsertErr.message || '');
+        if (isMissingCol) {
+          const { workflow_pack_id: _wpid, stages_config: _sc, is_pilot: _ip, ...baseRecord } = record;
+          const { error: retryErr } = await supabase.from('deal_rooms').upsert(baseRecord, { onConflict: 'property_id' });
+          if (retryErr) throw retryErr;
+        } else {
+          throw upsertErr;
+        }
+      }
+    } catch (dbErr) {
+      console.error('[pilot] deal_rooms upsert failed:', dbErr.message);
+      throw dbErr;
+    }
+
+    // Gracefully set link_token
+    supabase.from('deal_rooms').update({ link_token: crypto.randomBytes(16).toString('hex') })
+      .eq('property_id', pid).is('link_token', null).then(() => {}).catch(() => {});
+
+    console.log(`[pilot] ✅ Pilot workspace created — ${pid} for ${pilotEmail}`);
+
+    // Access URL goes through PilotAccessPage which stores token and redirects
+    const accessUrl = `${origin}/pilot/access?property=${pid}&owner_token=${ownerToken}&name=${encodeURIComponent(workspaceName)}`;
+
+    res.json({
+      propertyId:    pid,
+      workspaceName,
+      packLabel:     PILOT_PACK_LABELS[resolvedPackId] || resolvedPackId,
+      pilotName,
+      pilotEmail,
+      accessUrl,
+    });
+  } catch (err) {
+    console.error('[pilot/create]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/admin/pilot-workspaces', async (req, res) => {
+  if (!checkPilotPassword(req, res)) return;
+  try {
+    // Fetch all pilot workspaces (is_pilot=true). Fall back to matching the
+    // stripe_session_id prefix if the column hasn't been migrated yet.
+    let rooms = [];
+    const { data: pilotData, error: pilotErr } = await supabase
+      .from('deal_rooms')
+      .select('property_id, property_name, customer_email, workflow_pack_id, activated_at, created_at, status')
+      .eq('is_pilot', true)
+      .order('activated_at', { ascending: false });
+
+    if (pilotErr && (pilotErr.code === '42703' || pilotErr.code === 'PGRST204' ||
+        /is_pilot.*(does not exist|schema cache)/i.test(pilotErr.message || ''))) {
+      // Column not yet created — fall back to stripe_session_id prefix
+      const { data: fallback } = await supabase
+        .from('deal_rooms')
+        .select('property_id, property_name, customer_email, workflow_pack_id, activated_at, created_at, status')
+        .like('stripe_session_id', 'pilot_%')
+        .order('activated_at', { ascending: false });
+      rooms = fallback || [];
+    } else if (pilotErr) {
+      throw pilotErr;
+    } else {
+      rooms = pilotData || [];
+    }
+
+    // For each workspace, fetch document count and last activity in parallel
+    const enriched = await Promise.all(rooms.map(async room => {
+      const pid = room.property_id;
+      const [docsRes, submissionsRes] = await Promise.all([
+        supabase.from('deal-documents').select('id', { count: 'exact', head: true }).eq('property_id', pid),
+        supabase.from('party_submissions').select('updated_at').eq('property_id', pid).order('updated_at', { ascending: false }).limit(1),
+      ]);
+      const docCount    = docsRes.count ?? 0;
+      const lastActivity = submissionsRes.data?.[0]?.updated_at || null;
+      return {
+        ...room,
+        pack_label:    PILOT_PACK_LABELS[room.workflow_pack_id] || room.workflow_pack_id,
+        doc_count:     docCount,
+        last_activity: lastActivity,
+      };
+    }));
+
+    res.json({ workspaces: enriched });
+  } catch (err) {
+    console.error('[pilot/list]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ── Stripe Webhook — PUBLIC, must stay BEFORE requireOrgContext ──────────────
 app.post('/api/webhook/stripe',
   express.raw({ type: 'application/json' }),
