@@ -59,9 +59,38 @@ export default function ActivityTimeline({ propertyId }) {
 
   if (loading) return null;
   if (!events.length) return (
-    <div className="rounded-2xl border border-gray-200 bg-white p-5">
-      <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-3">Activity Timeline</p>
-      <p className="text-sm text-gray-400">No activity yet — actions will appear here as the deal progresses.</p>
+    <div className="rounded-2xl border border-gray-200 bg-white overflow-hidden">
+      <div className="px-5 pt-5 pb-3 border-b border-gray-100">
+        <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">Activity Timeline</p>
+      </div>
+      <div className="px-5 py-4 space-y-3">
+        {/* Synthetic workspace-created event */}
+        <div className="flex gap-3">
+          <div className="shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-sm mt-0.5"
+            style={{ background: "#800020" + "18" }}>
+            🚀
+          </div>
+          <div>
+            <p className="text-[11px] font-bold text-gray-400 uppercase tracking-wider mb-0.5">Workspace Created</p>
+            <p className="text-sm text-gray-800 leading-snug">Transaction workspace activated and ready.</p>
+          </div>
+        </div>
+        {/* Next expected actions */}
+        <div className="mt-3 bg-gray-50 rounded-xl px-4 py-3">
+          <p className="text-xs font-semibold text-gray-500 mb-2">Next expected activity</p>
+          <ul className="space-y-1.5">
+            {[
+              "Invite participants via their role-specific links",
+              "Upload the first required document",
+            ].map(item => (
+              <li key={item} className="flex items-center gap-2 text-xs text-gray-400">
+                <span className="w-1.5 h-1.5 rounded-full bg-gray-300 shrink-0" />
+                {item}
+              </li>
+            ))}
+          </ul>
+        </div>
+      </div>
     </div>
   );
 

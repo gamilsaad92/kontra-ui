@@ -1484,7 +1484,7 @@ function OperationsManagerView({ propertyId, property, pack, role, onTabChange }
       <div className="bg-white rounded-2xl border border-gray-200 p-5">
         <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-4">Transaction Progress</p>
         {stages.length > 0 && (
-          <div className="flex items-center gap-0 mb-5">
+          <div className="flex items-center gap-1 mb-5">
             {stages.map((s, i) => {
               const done   = i < currentStageIdx;
               const active = i === currentStageIdx;
@@ -2002,10 +2002,10 @@ export default function DealRoomPage() {
           </div>
         </div>
       ) : property.isCustom && isCoordinator ? (
-        <div className="border-b border-green-100 bg-green-50 px-6 py-3">
+        <div className="border-b border-green-100 bg-green-50 px-6 py-2">
           <div className="max-w-5xl mx-auto flex items-center justify-between gap-4">
-            <div className="flex items-center gap-2.5">
-              <div className="w-7 h-7 rounded-lg flex items-center justify-center text-base shrink-0 bg-green-100">
+            <div className="flex items-center gap-2">
+              <div className="w-6 h-6 rounded-md flex items-center justify-center text-sm shrink-0 bg-green-100">
                 🔑
               </div>
               <div>

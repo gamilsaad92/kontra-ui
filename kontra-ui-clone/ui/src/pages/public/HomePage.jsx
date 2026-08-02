@@ -259,7 +259,7 @@ export default function HomePage() {
             It identifies what is missing, follows up with the right people, and shows you what needs attention next.
           </p>
           <p className="text-sm text-gray-500 max-w-xl mx-auto mb-10">
-            Built for acquisitions, fundraising, real estate, lending, licensing, and other private transactions.
+            Built for any private transaction.
           </p>
 
           <div className="flex flex-col sm:flex-row items-center justify-center gap-3 mb-4">

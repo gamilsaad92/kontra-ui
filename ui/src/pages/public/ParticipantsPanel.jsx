@@ -402,7 +402,7 @@ export default function ParticipantsPanel({ roomId, packId = DEFAULT_PACK_ID, is
 
               return (
                 <div key={role.key}
-                  className="grid px-5 py-3 items-center gap-2 sm:gap-3 group/row"
+                  className="grid px-5 py-2 items-center gap-2 sm:gap-3 group/row"
                   style={{ gridTemplateColumns: '1fr', '@media (min-width: 640px)': {} }}>
                   {/* Single-column on mobile */}
                   <div className="flex items-center justify-between sm:contents gap-3">

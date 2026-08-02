@@ -474,20 +474,29 @@ export default function VerifiedAssetPackage({ propertyId }) {
     );
   }
 
-  // ── Error ────────────────────────────────────────────────────────────────
+  // ── Error (show a quiet teaser — don't surface internal generation errors) ─
   if (error || !pkg) {
     return (
-      <div className="mb-6 rounded-2xl border border-gray-200 bg-white p-5">
-        <div className="flex items-center gap-2.5 mb-2">
-          <span className="text-lg">📦</span>
-          <p className="text-sm font-bold text-gray-900">Verified Transaction Package</p>
+      <div className="mb-6 rounded-2xl border border-gray-200 bg-white overflow-hidden">
+        <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-lg flex items-center justify-center text-base" style={{ background: ACCENT + "12" }}>📦</div>
+            <div>
+              <p className="text-sm font-bold text-gray-900">Verified Transaction Package</p>
+              <p className="text-[10px] text-gray-400">Generated at closing · Your deal's structured digital record</p>
+            </div>
+          </div>
+          <span className="text-[10px] font-bold px-2 py-1 rounded-lg bg-amber-50 text-amber-700 border border-amber-100">
+            Available at Closing
+          </span>
         </div>
-        <p className="text-xs text-red-500 mb-3">{error || "Could not load package"}</p>
-        <button onClick={() => fetchPackage(true)}
-          className="px-4 py-2 rounded-xl text-xs font-bold text-white hover:opacity-90 transition"
-          style={{ background: ACCENT }}>
-          Retry
-        </button>
+        <div className="px-5 py-4">
+          <p className="text-xs text-gray-400 leading-relaxed">
+            When the deal reaches Closing, this panel generates your full Verified Transaction Package —
+            including an AI verification summary, audit trail, structured data export, and party approvals.
+            It's available to download as a Closing Binder or JSON.
+          </p>
+        </div>
       </div>
     );
   }

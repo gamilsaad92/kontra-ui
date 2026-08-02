@@ -716,7 +716,31 @@ export default function CreateDealRoomPage() {
                   <p className="text-xs text-gray-400">Expand each section to view or edit. Changes take effect after you activate.</p>
                 </div>
 
-                {/* Single disclaimer */}
+                {/* AI classification notice */}
+                {isAiGenerated && aiTransactionType && (() => {
+                  const PACK_NAMES = {
+                    cre_acquisition:      "Commercial Real Estate Acquisition",
+                    business_acquisition: "Business Acquisition",
+                    fundraising:          "Fundraising Round",
+                  };
+                  const PACK_REASONS = {
+                    cre_acquisition:      "your description suggests a property, real estate, or hotel transaction.",
+                    business_acquisition: "your description suggests a company purchase, M&A, or business transfer.",
+                    fundraising:          "your description suggests an equity round, venture capital, or investor transaction.",
+                  };
+                  const name   = PACK_NAMES[aiTransactionType];
+                  const reason = PACK_REASONS[aiTransactionType];
+                  if (!name) return null;
+                  return (
+                    <div className="bg-blue-50 border border-blue-200 rounded-xl px-3.5 py-3 text-xs text-blue-800 leading-relaxed">
+                      <span className="font-semibold">AI classified this as a {name}</span>
+                      {reason ? ` — ${reason}` : "."}{" "}
+                      Edit any section below if this doesn't match your transaction.
+                    </div>
+                  );
+                })()}
+
+                {/* Legal disclaimer */}
                 <div className="bg-amber-50 border border-amber-200 rounded-xl px-3.5 py-3 text-xs text-amber-800 leading-relaxed">
                   Kontra provides suggested transaction structures. Review the workspace with your legal, financial, and transaction advisers before relying on it.
                 </div>
