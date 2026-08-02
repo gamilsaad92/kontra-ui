@@ -600,7 +600,9 @@ export default function CreateDealRoomPage() {
                 <div>
                   <label className={labelCls}>Target closing date <span className="font-normal text-gray-400">(optional)</span></label>
                   <input type="date" className={inputCls}
-                    value={form.closingDate} onChange={e => set("closingDate", e.target.value)} />
+                    value={form.closingDate}
+                    min={new Date().toISOString().split("T")[0]}
+                    onChange={e => set("closingDate", e.target.value)} />
                 </div>
 
                 {aiError && (

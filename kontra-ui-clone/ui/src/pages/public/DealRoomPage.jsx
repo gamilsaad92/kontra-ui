@@ -1420,12 +1420,21 @@ function OperationsManagerView({ propertyId, property, pack, role, onTabChange }
               {[1, 2, 3].map(i => <div key={i} className="h-14 bg-gray-50 rounded-xl animate-pulse" />)}
             </div>
           ) : actionCards.length === 0 ? (
-            <div className="text-center py-10">
-              <div className="text-3xl mb-2">🤖</div>
-              <p className="text-sm font-semibold text-gray-500 mb-1">No actions identified yet</p>
-              <p className="text-xs text-gray-400 max-w-xs mx-auto">
-                Upload documents and invite participants — Kontra will surface prioritized actions here.
-              </p>
+            <div>
+              <p className="text-sm font-semibold text-gray-800 mb-1">Get your workspace moving</p>
+              <p className="text-xs text-gray-400 mb-4">Kontra will surface prioritized actions once participants and documents are added.</p>
+              <div className="grid grid-cols-2 gap-2.5">
+                <button onClick={() => onTabChange?.('participants')}
+                  className="flex items-center gap-2.5 px-4 py-3 rounded-xl border border-gray-200 hover:bg-gray-50 transition text-left group">
+                  <span className="text-lg">👥</span>
+                  <span className="text-sm font-semibold text-gray-700 group-hover:text-gray-900">Invite Participants</span>
+                </button>
+                <button onClick={() => onTabChange?.('documents')}
+                  className="flex items-center gap-2.5 px-4 py-3 rounded-xl border border-gray-200 hover:bg-gray-50 transition text-left group">
+                  <span className="text-lg">📄</span>
+                  <span className="text-sm font-semibold text-gray-700 group-hover:text-gray-900">Upload Document</span>
+                </button>
+              </div>
             </div>
           ) : (
             <div className="space-y-3">
@@ -1513,8 +1522,8 @@ function OperationsManagerView({ propertyId, property, pack, role, onTabChange }
             },
             {
               label: 'Open blockers',
-              value: openBlockers > 0 ? String(openBlockers) : 'None',
-              ok: openBlockers === 0,
+              value: !briefing ? 'Not assessed' : openBlockers > 0 ? String(openBlockers) : 'None',
+              ok: !!briefing && openBlockers === 0,
             },
             {
               label: 'Days to close',
@@ -1856,7 +1865,7 @@ export default function DealRoomPage() {
     icon: "👤",
     color: pack.roles[0]?.color || "#800020",
     needsDocs: false,
-    headline: "You've been invited to this deal room",
+    headline: "Review the shared documents and transaction materials",
     subtext: "You can review the documents and status shared in this deal room.",
     sections: [],
     invitable: true,
@@ -2103,7 +2112,7 @@ export default function DealRoomPage() {
 
             {activeTab === 'tasks' && (
               <div id="tasks-panel">
-                <TasksPanel propertyId={pid} role={role} />
+                <TasksPanel propertyId={pid} role={role} onTabChange={setActiveTab} />
               </div>
             )}
 
@@ -2197,7 +2206,7 @@ export default function DealRoomPage() {
             {/* Tasks / Today's Actions */}
             {property.isCustom && (
               <div id="tasks-panel">
-                <TasksPanel propertyId={pid} role={role} />
+                <TasksPanel propertyId={pid} role={role} onTabChange={setActiveTab} />
               </div>
             )}
 

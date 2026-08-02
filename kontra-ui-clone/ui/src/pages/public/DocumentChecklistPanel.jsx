@@ -755,7 +755,7 @@ export default function DocumentChecklistPanel({
                 style={{ background: statusStyle.bg, color: statusStyle.color, border: `1px solid ${statusStyle.border}` }}>
                 {itemStatus}
               </span>
-              {item.ai && !isPending && (
+              {item.ai && done && !isPending && (
                 <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-50 text-blue-400 font-medium">AI</span>
               )}
               {isPending && (
@@ -1090,16 +1090,16 @@ export default function DocumentChecklistPanel({
                     ) : confirmReset ? (
                       <div className="flex flex-col gap-2 p-3 bg-amber-50 border border-amber-200 rounded-xl">
                         <p className="text-xs font-semibold text-amber-800">
-                          Replace current checklist with the default items for this transaction type?
+                          Restore the original template checklist for this transaction type?
                         </p>
                         <p className="text-[11px] text-amber-600">
-                          Any custom items you've added will be removed. Uploaded documents are not affected.
+                          Custom items you've added will be removed. Template items will be restored. Uploaded documents are not affected.
                         </p>
                         <div className="flex gap-2">
                           <button onClick={handleResetToDefaults}
                             className="px-3 py-1.5 rounded-lg text-[11px] font-bold text-white transition"
                             style={{ background: "#800020" }}>
-                            Yes, reset checklist
+                            Yes, restore template
                           </button>
                           <button onClick={() => setConfirmReset(false)}
                             className="px-3 py-1.5 rounded-lg text-[11px] text-gray-500 hover:text-gray-700 border border-gray-200 transition">
@@ -1122,7 +1122,7 @@ export default function DocumentChecklistPanel({
                         <button onClick={() => setConfirmReset(true)}
                           className="flex items-center gap-2 text-xs text-gray-300 hover:text-gray-500 transition group ml-auto">
                           <span className="text-sm">↺</span>
-                          Reset to defaults
+                          Restore template items
                         </button>
                       </div>
                     )}

@@ -38,6 +38,7 @@ export default function DocumentsTabPanel({
         propertyId={propertyId}
         title="Cross-document checks"
         emptyStateMessage="Cross-document checks begin after two or more related documents are uploaded."
+        defaultCollapsed={true}
       />
     </div>
   );

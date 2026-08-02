@@ -184,10 +184,11 @@ export default function VerificationPanel({
   propertyId,
   title = "Verification Log",
   emptyStateMessage = "Upload documents to trigger automatic cross-document verification.",
+  defaultCollapsed = false,
 }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [open, setOpen] = useState(true);
+  const [open, setOpen] = useState(!defaultCollapsed);
   const [triggering, setTriggering] = useState(false);
   const autoTriggered = React.useRef(false);
 

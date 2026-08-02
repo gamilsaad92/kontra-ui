@@ -1209,7 +1209,7 @@ app.post('/api/checkout/guest', async (req, res) => {
       mode: cfg.mode,
       payment_method_types: ['card'],
       line_items: [lineItem],
-      success_url: `${origin}/checkout/success?plan=${plan}${propertyId ? `&property=${propertyId}` : ''}&session_id={CHECKOUT_SESSION_ID}&owner_token=${ownerWriteToken}`,
+      success_url: `${origin}/checkout/success?plan=${plan}${propertyId ? `&property=${propertyId}` : ''}${propertyName ? `&name=${encodeURIComponent(propertyName)}` : ''}&session_id={CHECKOUT_SESSION_ID}&owner_token=${ownerWriteToken}`,
       cancel_url: `${origin}/checkout/cancel?plan=${plan}${propertyId ? `&property=${propertyId}` : ''}&role=${role}`,
       metadata: { plan, propertyId: propertyId || '', propertyName: propertyName || '', role },
     };
@@ -1331,7 +1331,7 @@ app.post('/api/checkout/demo', async (req, res) => {
       .eq('property_id', pid)
       .then(() => {}).catch(() => {});
 
-    const successUrl = `${origin}/checkout/success?plan=${plan}&property=${pid}&session_id=${fakeSessionId}&demo=true&owner_token=${demoOwnerToken}`;
+    const successUrl = `${origin}/checkout/success?plan=${plan}&property=${pid}${propertyName ? `&name=${encodeURIComponent(propertyName)}` : ''}&session_id=${fakeSessionId}&demo=true&owner_token=${demoOwnerToken}`;
     res.json({ url: successUrl });
   } catch (err) {
     console.error('[checkout/demo]', err.message);

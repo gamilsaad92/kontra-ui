@@ -251,10 +251,6 @@ export default function HomePage() {
       {/* ── Hero ───────────────────────────────────────────────── */}
       <section className="bg-gradient-to-b from-gray-950 to-gray-900 text-white">
         <div className="max-w-7xl mx-auto px-6 pt-20 pb-24 text-center">
-          <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-red-950/60 text-red-300 text-xs font-medium mb-8 border border-red-900/40">
-            <span className="w-1.5 h-1.5 rounded-full bg-red-400 animate-pulse" />
-            AI Operations Manager — Now Live
-          </div>
           <h1 className="text-4xl md:text-6xl font-bold leading-tight tracking-tight mb-6 max-w-4xl mx-auto">
             Every transaction gets its own Operations Manager.
           </h1>
@@ -279,7 +275,7 @@ export default function HomePage() {
       </section>
 
       {/* ── Three outcomes ─────────────────────────────────────── */}
-      <section className="max-w-7xl mx-auto px-6 py-16">
+      <section className="max-w-7xl mx-auto px-6 py-12">
         <div className="grid md:grid-cols-3 gap-6">
           {THREE_OUTCOMES.map((item) => (
             <div key={item.title} className="bg-white rounded-2xl border border-gray-100 p-7 shadow-sm">
@@ -295,7 +291,7 @@ export default function HomePage() {
       </section>
 
       {/* ── Deal room visualization ─────────────────────────────── */}
-      <section className="bg-gray-950 py-20">
+      <section className="bg-gray-950 py-14">
         <div className="max-w-7xl mx-auto px-6">
           <div className="text-center mb-10">
             <p className="text-xs font-semibold uppercase tracking-wider mb-2 text-red-400">The workspace</p>
@@ -308,12 +304,12 @@ export default function HomePage() {
           {/* Central property card + party orbits */}
           <div className="max-w-3xl mx-auto">
             {/* Center */}
-            <div className="bg-white/5 border border-white/10 rounded-2xl p-5 mb-4">
+            <div className="bg-gray-800 border border-gray-700 rounded-2xl p-5 mb-4 shadow-lg">
               <div className="flex items-center gap-3 mb-4">
-                <div className="w-10 h-10 rounded-xl bg-blue-900/50 flex items-center justify-center text-lg">💼</div>
+                <div className="w-10 h-10 rounded-xl bg-blue-900/70 flex items-center justify-center text-lg">💼</div>
                 <div>
                   <p className="text-sm font-semibold text-white">Brightline Services LLC</p>
-                  <p className="text-xs text-gray-400">San Francisco, CA · Business Acquisition · $6.2M</p>
+                  <p className="text-xs text-gray-300">San Francisco, CA · Business Acquisition · $6.2M</p>
                 </div>
                 <div className="ml-auto flex items-center gap-2">
                   <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-amber-900/50 text-amber-400">At Risk</span>
@@ -329,11 +325,11 @@ export default function HomePage() {
                   { icon: "⚖️", label: "Vance & Partners", role: "Legal Counsel", status: "Reviewing LOI", statusColor: "#f59e0b" },
                   { icon: "🤝", label: "Meridian Advisors", role: "M&A Broker", status: "CIM Submitted", statusColor: "#16a34a" },
                 ].map((party) => (
-                  <div key={party.label} className="flex items-center gap-2 px-3 py-2 rounded-xl bg-white/5 border border-white/10">
+                  <div key={party.label} className="flex items-center gap-2 px-3 py-2 rounded-xl bg-gray-700/60 border border-gray-600">
                     <span className="text-base">{party.icon}</span>
                     <div>
                       <p className="text-xs font-medium text-white">{party.label}</p>
-                      <p className="text-[10px] text-gray-500">{party.role} · <span style={{ color: party.statusColor }}>{party.status}</span></p>
+                      <p className="text-[10px] text-gray-400">{party.role} · <span style={{ color: party.statusColor }}>{party.status}</span></p>
                     </div>
                   </div>
                 ))}
@@ -346,10 +342,10 @@ export default function HomePage() {
                   { icon: "📄", text: "Letter of Intent analyzed — 2 open items flagged for Legal", time: "1h ago", color: "#f59e0b" },
                   { icon: "💰", text: "3-year financials reviewed — revenue trend and EBITDA margin extracted", time: "3h ago", color: "#16a34a" },
                 ].map((item, i) => (
-                  <div key={i} className="flex items-center gap-2.5 px-3 py-2 rounded-lg bg-white/3">
+                  <div key={i} className="flex items-center gap-2.5 px-3 py-2 rounded-lg bg-gray-700/40 border border-gray-700/60">
                     <span className="text-sm">{item.icon}</span>
-                    <span className="text-xs text-gray-400 flex-1">{item.text}</span>
-                    <span className="text-[10px] text-gray-600 shrink-0">{item.time}</span>
+                    <span className="text-xs text-gray-300 flex-1">{item.text}</span>
+                    <span className="text-[10px] text-gray-500 shrink-0">{item.time}</span>
                   </div>
                 ))}
               </div>
@@ -361,7 +357,7 @@ export default function HomePage() {
       </section>
 
       {/* ── How it works ───────────────────────────────────────── */}
-      <section id="how-it-works" className="max-w-7xl mx-auto px-6 py-20">
+      <section id="how-it-works" className="max-w-7xl mx-auto px-6 py-14">
         <div className="text-center mb-12">
           <p className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: "#800020" }}>How it works</p>
           <h2 className="text-3xl font-bold text-gray-900 mb-3">Up and running in minutes.</h2>
@@ -393,7 +389,7 @@ export default function HomePage() {
       </section>
 
       {/* ── Transaction types ──────────────────────────────────── */}
-      <section className="bg-gray-50 border-y border-gray-100 py-14">
+      <section className="bg-gray-50 border-y border-gray-100 py-10">
         <div className="max-w-5xl mx-auto px-6">
           <div className="text-center mb-10">
             <p className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: "#800020" }}>Built for any private transaction</p>
@@ -428,7 +424,7 @@ export default function HomePage() {
       </section>
 
       {/* ── Pricing ────────────────────────────────────────────── */}
-      <section id="pricing" className="max-w-4xl mx-auto px-6 py-20">
+      <section id="pricing" className="max-w-4xl mx-auto px-6 py-14">
         <div className="text-center mb-10">
           <p className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: "#800020" }}>Pricing</p>
           <h2 className="text-3xl font-bold text-gray-900 mb-3">One workspace. One price.</h2>
@@ -469,7 +465,7 @@ export default function HomePage() {
       </section>
 
       {/* ── Final CTA ──────────────────────────────────────────── */}
-      <section className="bg-gray-950 py-20">
+      <section className="bg-gray-950 py-14">
         <div className="max-w-3xl mx-auto px-6 text-center">
           <h2 className="text-3xl font-bold text-white mb-4 leading-tight">
             Create your transaction workspace.
@@ -492,7 +488,7 @@ export default function HomePage() {
       </section>
 
       {/* ── Built for every party ──────────────────────────────── */}
-      <section className="max-w-7xl mx-auto px-6 py-20">
+      <section className="max-w-7xl mx-auto px-6 py-14">
         <div className="text-center mb-10">
           <p className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: "#800020" }}>Every party in the deal</p>
           <h2 className="text-2xl font-bold text-gray-900">Built for whoever you are in the deal</h2>

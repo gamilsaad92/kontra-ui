@@ -7,6 +7,9 @@ export default function CheckoutSuccessPage() {
   const property   = searchParams.get("property") || "";
   const plan       = searchParams.get("plan") || "deal";
   const ownerToken = searchParams.get("owner_token") || "";
+  // `name` carries the clean workspace name the user entered; fall back to
+  // transforming the slug only when the param is absent (e.g. old links).
+  const nameParam  = searchParams.get("name") || "";
 
   // Persist the owner write token in localStorage so the workspace's checklist
   // panel can send it when authorising server-side mutations.  This is the only
@@ -21,9 +24,11 @@ export default function CheckoutSuccessPage() {
   }, [property, ownerToken]);
 
   const planLabel     = plan === "pro_annual" ? "Pro Annual" : plan === "pro_monthly" ? "Pro Monthly" : "Workspace";
-  const propertyLabel = property
-    ? property.replace(/-/g, " ").replace(/\b\w/g, c => c.toUpperCase())
-    : "";
+  const propertyLabel = nameParam
+    ? nameParam
+    : property
+      ? property.replace(/-/g, " ").replace(/\b\w/g, c => c.toUpperCase())
+      : "";
 
   return (
     <PublicLayout hideFooter>
