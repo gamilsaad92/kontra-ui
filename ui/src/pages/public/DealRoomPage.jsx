@@ -1335,6 +1335,8 @@ function OperationsManagerView({ propertyId, property, pack, role, onTabChange }
   // checklist items — used for accurate doc-to-requirement mapping in the
   // Digital Asset Readiness card. Fetched in parallel with the other data.
   const [checklistItems, setChecklistItems] = useState([]);
+  // Which readiness category row is expanded (shows explanation + full missing list)
+  const [expandedReadinessKey, setExpandedReadinessKey] = useState(null);
 
   useEffect(() => {
     if (!propertyId) return;
@@ -1673,12 +1675,44 @@ function OperationsManagerView({ propertyId, property, pack, role, onTabChange }
         const goToDocuments    = () => onTabChange?.('documents');
         const goToParticipants = () => onTabChange?.('participants');
 
+        // Each category carries an explanation (shown when expanded) so coordinators
+        // understand WHY the requirement exists — spec §2 requirement-level explanations.
         const CATEGORIES = [
-          { icon: '🏷️', label: 'Issuance Details',          pct: issuancePct,    missing: missingIssuance,    ctaLabel: 'Settings → Issuance Details',   onClick: goToSettings     },
-          { icon: '📄', label: 'Documents Uploaded',        pct: docPct,         missing: docMissing,          ctaLabel: 'Documents tab',                 onClick: goToDocuments    },
-          { icon: '🌍', label: 'Jurisdiction & Regulatory', pct: jurisdictionPct, missing: jurisdictionMissing, ctaLabel: !hasJurisdiction ? 'Settings → Jurisdiction' : 'Upload regulatory docs', onClick: goToSettings },
-          { icon: '👥', label: 'Participants Invited',       pct: participantPct, missing: participantMissing,  ctaLabel: 'Participants tab',               onClick: goToParticipants },
-          { icon: '✅', label: 'KYC & Verification',        pct: kycPctCapped,   missing: kycMissing,          ctaLabel: 'Upload KYC documents',           onClick: goToDocuments    },
+          {
+            key: 'issuance',
+            icon: '🏷️', label: 'Issuance Details', pct: issuancePct,
+            missing: missingIssuance,
+            ctaLabel: 'Settings → Issuance Details', onClick: goToSettings,
+            explanation: 'Raise Target, Token Price, Min Investment, and Asset Type are the four parameters that define your token offering. Investors and platform providers need these to evaluate whether participation is suitable for them.',
+          },
+          {
+            key: 'documents',
+            icon: '📄', label: 'Documents Uploaded', pct: docPct,
+            missing: docMissing,
+            ctaLabel: 'Documents tab', onClick: goToDocuments,
+            explanation: 'A token offering requires a verified document package: the Token Offering Memorandum, legal agreements, financial statements, and any other materials counterparties need to assess the offering. These form the foundation of the Verified Digital Asset Package.',
+          },
+          {
+            key: 'jurisdiction',
+            icon: '🌍', label: 'Jurisdiction & Regulatory', pct: jurisdictionPct,
+            missing: jurisdictionMissing,
+            ctaLabel: !hasJurisdiction ? 'Settings → Jurisdiction' : 'Upload regulatory docs', onClick: goToSettings,
+            explanation: 'Jurisdiction determines which regulatory framework governs your offering — ADGM, MiCA, Reg D, MAS, or FCA. Each framework has specific required filings, approvals, and disclosures. Selecting a jurisdiction loads the right preparation checklist.',
+          },
+          {
+            key: 'participants',
+            icon: '👥', label: 'Participants Invited', pct: participantPct,
+            missing: participantMissing,
+            ctaLabel: 'Participants tab', onClick: goToParticipants,
+            explanation: 'Legal Counsel, Compliance Officer, and KYC/AML Provider must be in the workspace before a token offering can proceed. Their reviews and approvals are required to complete the Verified Digital Asset Package.',
+          },
+          {
+            key: 'kyc',
+            icon: '✅', label: 'KYC & Verification', pct: kycPctCapped,
+            missing: kycMissing,
+            ctaLabel: 'Upload KYC documents', onClick: goToDocuments,
+            explanation: 'All investors must be KYC/AML-verified before subscription closes. Upload KYC documents (passports, proof of address, accreditation letters) so the AI can extract and track verification status across the investor pool.',
+          },
         ];
 
         return (
@@ -1703,33 +1737,61 @@ function OperationsManagerView({ propertyId, property, pack, role, onTabChange }
             </div>
             <div className="divide-y divide-gray-100">
               {CATEGORIES.map(cat => {
-                const done    = cat.pct >= 100;
-                const partial = cat.pct > 0 && cat.pct < 100;
-                const cc      = done ? '#16a34a' : partial ? '#d97706' : '#9ca3af';
+                const done     = cat.pct >= 100;
+                const partial  = cat.pct > 0 && cat.pct < 100;
+                const cc       = done ? '#16a34a' : partial ? '#d97706' : '#9ca3af';
+                const expanded = expandedReadinessKey === cat.key;
                 return (
-                  <div key={cat.label} className="px-5 py-2.5 flex items-center gap-3">
-                    <span className="text-sm shrink-0">{cat.icon}</span>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="text-xs font-medium text-gray-700">{cat.label}</span>
-                        <span className="text-[11px] font-bold shrink-0" style={{ color: cc }}>
-                          {done ? '✓ Complete' : `${cat.pct}%`}
-                        </span>
+                  <div key={cat.key}>
+                    {/* Row header — click to expand/collapse explanation */}
+                    <button
+                      className="w-full px-5 py-2.5 flex items-center gap-3 hover:bg-gray-50 transition text-left"
+                      onClick={() => setExpandedReadinessKey(expanded ? null : cat.key)}>
+                      <span className="text-sm shrink-0">{cat.icon}</span>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-xs font-medium text-gray-700">{cat.label}</span>
+                          <div className="flex items-center gap-2 shrink-0">
+                            <span className="text-[11px] font-bold" style={{ color: cc }}>
+                              {done ? '✓ Complete' : `${cat.pct}%`}
+                            </span>
+                            <span className="text-[10px] text-gray-300">{expanded ? '▲' : '▼'}</span>
+                          </div>
+                        </div>
+                        {!done && !expanded && cat.missing.length > 0 && (
+                          <p className="text-[10px] text-gray-400 mt-0.5 leading-snug truncate">
+                            {cat.missing[0]}{cat.missing.length > 1 && <span> +{cat.missing.length - 1} more</span>}
+                          </p>
+                        )}
                       </div>
-                      {!done && cat.missing.length > 0 && (
-                        <p className="text-[10px] text-gray-400 mt-0.5 leading-snug">
-                          {cat.missing[0]}{cat.missing.length > 1 && <span> +{cat.missing.length - 1} more</span>}
-                          {' · '}
-                          <button onClick={cat.onClick} className="font-semibold hover:opacity-70 transition" style={{ color: '#800020' }}>
-                            {cat.ctaLabel} →
-                          </button>
-                        </p>
-                      )}
-                    </div>
-                    <div className="w-14 h-1 rounded-full bg-gray-100 shrink-0 overflow-hidden">
-                      <div className="h-full rounded-full transition-all duration-500"
-                        style={{ width: `${cat.pct}%`, background: cc }} />
-                    </div>
+                      <div className="w-14 h-1 rounded-full bg-gray-100 shrink-0 overflow-hidden">
+                        <div className="h-full rounded-full transition-all duration-500"
+                          style={{ width: `${cat.pct}%`, background: cc }} />
+                      </div>
+                    </button>
+
+                    {/* Expanded explanation panel */}
+                    {expanded && (
+                      <div className="px-5 pb-3 pt-1 bg-gray-50 border-t border-gray-100">
+                        <p className="text-[11px] text-gray-500 leading-relaxed mb-2">{cat.explanation}</p>
+                        {!done && cat.missing.length > 0 && (
+                          <div className="mb-2">
+                            <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1">Missing</p>
+                            <ul className="space-y-0.5">
+                              {cat.missing.map((m, mi) => (
+                                <li key={mi} className="text-[11px] text-gray-600 flex items-center gap-1.5">
+                                  <span className="text-gray-300">·</span>{m}
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                        <button onClick={cat.onClick}
+                          className="text-[11px] font-bold hover:opacity-70 transition" style={{ color: '#800020' }}>
+                          {cat.ctaLabel} →
+                        </button>
+                      </div>
+                    )}
                   </div>
                 );
               })}
