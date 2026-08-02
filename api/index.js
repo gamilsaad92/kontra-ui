@@ -989,10 +989,40 @@ app.get('/api/copilot/tokenization-eligibility', (req, res) => {
 // Given a plain-language description of a transaction, returns a structured
 // workspace config (roles, documents, stages) as a starting point.
 app.post('/api/workspace/generate', aiRateLimit, async (req, res) => {
-  const { description } = req.body || {};
+  const { description, transactionType } = req.body || {};
   if (!description || !description.trim()) {
     return res.status(400).json({ error: 'Description is required' });
   }
+
+  // Build a transaction-type hint so the AI doesn't generate property/real-estate
+  // documents for a business acquisition or fundraising workspace.
+  const typeHint = transactionType
+    ? `\n\nTransaction type context: ${transactionType}.`
+    : '';
+
+  // Domain-specific document guidance injected per transaction category.
+  const DOMAIN_RULES = {
+    'Business Acquisition': `
+CRITICAL — Business Acquisition documents must NOT include property/real-estate documents unless the business explicitly owns property as a core asset. Good document examples: Financial Statements, Tax Returns, Quality of Earnings, Letter of Intent, Purchase Agreement, Cap Table, Disclosure Schedule, Material Contracts, Employee Agreements, Non-Compete Agreement.`,
+    'Hotel Acquisition': `
+This is a real-estate / hospitality transaction (NOT a business acquisition). Include both property and operating documents: Purchase & Sale Agreement, Title Commitment, Environmental Report, Property Inspection, Franchise Agreement, Management Agreement, Financial Statements, STR/Occupancy Data, Operating Agreements.`,
+    'Real Estate': `
+Real estate transaction. Include: Purchase & Sale Agreement, Title Commitment, Environmental Report, Property Inspection, Survey, Zoning, Financial Statements / Rent Roll, Loan Documents.`,
+    'Fundraising': `
+Capital raise. Include: Term Sheet, Investment Agreement, Cap Table, Financial Model, Investor Presentation / Pitch Deck, Due Diligence Questionnaire, Subscription Agreement, Legal Opinion.`,
+  };
+
+  // Pick the most relevant domain rule from the transaction type hint
+  let domainRule = '';
+  if (transactionType) {
+    for (const [key, rule] of Object.entries(DOMAIN_RULES)) {
+      if (transactionType.toLowerCase().includes(key.toLowerCase())) {
+        domainRule = rule;
+        break;
+      }
+    }
+  }
+
   try {
     const completion = await openai.chat.completions.create({
       model: 'gpt-4o-mini',
@@ -1017,11 +1047,11 @@ Guidelines:
 - 3–6 stages reflecting the actual lifecycle (e.g. NDA → LOI → Due Diligence → Closing)
 - Mark key legal/financial docs required:true; mark docs where AI extraction adds value ai:true
 - Use professional labels; avoid jargon unique to a single industry unless the description uses it
-- Keep stage labels short (1–4 words)
+- Keep stage labels short (1–4 words)${domainRule}
 
 IMPORTANT: You are suggesting a starting point only. Do NOT claim completeness. The workspace owner must review with qualified professional advisers.`,
         },
-        { role: 'user', content: description.trim() },
+        { role: 'user', content: description.trim() + typeHint },
       ],
     });
 
