@@ -1716,6 +1716,26 @@ function OperationsManagerView({ propertyId, property, pack, role, onTabChange }
     low:      { bg: '#f0fdf4', text: '#16a34a', border: '#bbf7d0', label: 'Low'      },
   };
 
+  // ── Task #145 — Missing required documents (Overview action cards) ──────────
+  // Cross-reference the pack's required document schema with the actual checklist
+  // state so missing docs surface as amber cards at the top of the action area.
+  // Uses live checklistItems (fetched in parallel on mount); falls back to the
+  // pack's document schema when the checklist hasn't been seeded yet.
+  const missingRequiredDocs = (() => {
+    if (checklistItems.length > 0) {
+      return checklistItems.filter(
+        item => item.required && item.status !== 'uploaded' && !item.uploaded
+      );
+    }
+    // Checklist not yet seeded: derive from pack schema; only show when the
+    // room already has some activity (at least one upload or invite) so we
+    // don't flood a brand-new empty room with placeholder warnings.
+    if (docCount === 0 && inviteSentCount === 0) return [];
+    return docSchema.filter(d => d.required).map(d => ({
+      label: d.label, section: d.section, required: true,
+    }));
+  })();
+
   // ── Participant rows ────────────────────────────────────────────────────────
   const invitableRoles = (pack.roles || []).filter(r => r.invitable !== false);
   const participantRows = invitableRoles.map(r => {
@@ -2088,6 +2108,51 @@ function OperationsManagerView({ propertyId, property, pack, role, onTabChange }
           </p>
         </div>
         <div className="p-5">
+          {/* Task #145 — Missing required document action cards on Overview tab.
+              Shown when there are outstanding required docs and brief has loaded,
+              so coordinators can act without switching to the Documents tab. */}
+          {!briefLoading && missingRequiredDocs.length > 0 && (
+            <div className="mb-4">
+              <div className="flex items-center gap-2 mb-2">
+                <span className="text-sm">📋</span>
+                <p className="text-xs font-bold text-amber-700">
+                  {missingRequiredDocs.length} required document{missingRequiredDocs.length !== 1 ? 's' : ''} still needed
+                </p>
+                <button
+                  onClick={() => onTabChange?.('documents')}
+                  className="ml-auto text-[11px] font-semibold text-[#800020] hover:underline transition"
+                >
+                  Go to Documents →
+                </button>
+              </div>
+              <div className="space-y-1.5">
+                {missingRequiredDocs.slice(0, 3).map((doc, i) => (
+                  <div key={i}
+                    className="flex items-center gap-2.5 px-3 py-2 rounded-xl border border-amber-200 bg-amber-50">
+                    <span className="text-amber-400 shrink-0">📄</span>
+                    <span className="text-xs font-medium text-amber-900 flex-1 truncate">
+                      {doc.label || doc.section || 'Required document'}
+                    </span>
+                    <button
+                      onClick={() => onTabChange?.('documents')}
+                      className="shrink-0 text-[11px] font-bold text-amber-700 hover:text-amber-900 transition"
+                    >
+                      Upload →
+                    </button>
+                  </div>
+                ))}
+                {missingRequiredDocs.length > 3 && (
+                  <button
+                    onClick={() => onTabChange?.('documents')}
+                    className="w-full text-[11px] text-amber-600 hover:text-amber-900 transition py-1 text-center rounded-lg hover:bg-amber-50"
+                  >
+                    + {missingRequiredDocs.length - 3} more missing → view all
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+
           {briefLoading ? (
             <div className="space-y-3">
               {[1, 2, 3].map(i => <div key={i} className="h-14 bg-gray-50 rounded-xl animate-pulse" />)}
@@ -2719,7 +2784,25 @@ export default function DealRoomPage() {
 
   usePageTitle(property?.name || property?.property_name);
 
-  // Loading state
+  // Task #187 — prevent participants from seeing room content before their session
+  // is confirmed on slow connections. When an invite token is present the page
+  // must NOT flash any room content while the API is still loading; show a
+  // dedicated "confirming access" spinner instead of the generic workspace spinner.
+  if (inviteToken && loadingApi) {
+    return (
+      <PublicLayout hideFooter>
+        <div className="min-h-screen flex items-center justify-center bg-gray-50">
+          <div className="text-center max-w-xs">
+            <div className="w-10 h-10 border-2 border-gray-200 border-t-[#800020] rounded-full animate-spin mx-auto mb-4" />
+            <p className="text-sm font-semibold text-gray-700">Confirming your access…</p>
+            <p className="text-xs text-gray-400 mt-1">Please wait while we verify your invitation.</p>
+          </div>
+        </div>
+      </PublicLayout>
+    );
+  }
+
+  // Generic loading state
   if (loadingApi && isCustom) {
     return (
       <PublicLayout hideFooter>
