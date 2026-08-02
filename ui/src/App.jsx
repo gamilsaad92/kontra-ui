@@ -34,6 +34,7 @@ import PilotAccessPage from "./pages/public/PilotAccessPage";
 import AnalyticsAdminPage from "./pages/public/AnalyticsAdminPage";
 import WorkflowPackBuilderPage from "./pages/public/WorkflowPackBuilderPage";
 import BusinessBrokersPage from "./pages/public/BusinessBrokersPage";
+import TokenIssuancePage from "./pages/public/TokenIssuancePage";
 import MyDealRoomsPage from "./pages/public/MyDealRoomsPage";
 import CheckoutSuccessPage from "./pages/public/CheckoutSuccessPage";
 import CheckoutCancelPage from "./pages/public/CheckoutCancelPage";
@@ -82,6 +83,7 @@ function AuthedApp() {
         <Route path="/verify/:token" element={<SharedVAPPage />} />
         <Route path="/create-deal-room" element={<CreateDealRoomPage />} />
         <Route path="/for/business-brokers" element={<BusinessBrokersPage />} />
+        <Route path="/for/tokenization" element={<TokenIssuancePage />} />
         <Route path="/workflow-pack-builder" element={<WorkflowPackBuilderPage />} />
         <Route path="/my-deal-rooms" element={<MyDealRoomsPage />} />
         <Route path="/checkout/success" element={<CheckoutSuccessPage />} />

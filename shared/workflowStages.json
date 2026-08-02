@@ -26,5 +26,14 @@
       { "key": "closing", "label": "Closing" },
       { "key": "funded", "label": "Funded" }
     ]
+  },
+  "tokenization": {
+    "stages": [
+      { "key": "structuring", "label": "Structuring" },
+      { "key": "onboarding", "label": "Investor Onboarding" },
+      { "key": "subscription", "label": "Subscription" },
+      { "key": "issuance", "label": "Token Issuance" },
+      { "key": "secondary", "label": "Secondary Market" }
+    ]
   }
 }

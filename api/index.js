@@ -1239,6 +1239,7 @@ app.post('/api/checkout/guest', async (req, res) => {
         closing_date: meta.closingDate || '',
         first_name: meta.firstName || '',
         last_name: meta.lastName || '',
+        jurisdiction: meta.jurisdiction || '',
         workflow_pack_id: finalPackId,
         owner_write_token: ownerWriteToken,
         created_at: new Date().toISOString(),
@@ -1293,6 +1294,7 @@ app.post('/api/checkout/demo', async (req, res) => {
       closing_date: meta.closingDate || '',
       first_name: meta.firstName || '',
       last_name: meta.lastName || '',
+      jurisdiction: meta.jurisdiction || '',
       workflow_pack_id: demoPackId,
       stages_config: demoInitialStages,
     };
@@ -1637,6 +1639,7 @@ app.post('/api/webhook/stripe',
         closing_date: pending.closing_date || '',
         first_name: pending.first_name || '',
         last_name: pending.last_name || '',
+        jurisdiction: pending.jurisdiction || '',
         workflow_pack_id: stripePackId,
         stages_config: stripeInitialStages,
       };
@@ -4915,6 +4918,9 @@ async function ensureWorkflowPackIdColumn() {
     await pool.query(
       `ALTER TABLE deal_rooms ADD COLUMN IF NOT EXISTS metadata_values JSONB`
     );
+    await pool.query(
+      `ALTER TABLE deal_rooms ADD COLUMN IF NOT EXISTS jurisdiction VARCHAR(64)`
+    );
     // analytics_events — created here so it's always present when first event arrives
     await pool.query(`
       CREATE TABLE IF NOT EXISTS analytics_events (
@@ -4929,7 +4935,7 @@ async function ensureWorkflowPackIdColumn() {
     await pool.query(`CREATE INDEX IF NOT EXISTS analytics_events_created_at_idx ON analytics_events (created_at DESC)`);
     await pool.query(`CREATE INDEX IF NOT EXISTS analytics_events_event_name_idx ON analytics_events (event_name)`);
     await pool.end();
-    console.log('[startup] deal_rooms schema columns ready (workflow_pack_id, stated_revenue, stated_ebitda, checklist_items, owner_write_token, stages_config, metadata_values)');
+    console.log('[startup] deal_rooms schema columns ready (workflow_pack_id, stated_revenue, stated_ebitda, checklist_items, owner_write_token, stages_config, metadata_values, jurisdiction)');
   } catch (err) {
     // Non-fatal: Supabase service role may not allow DDL via pooler — fall back gracefully
     console.warn('[startup] workflow_pack_id column ensure skipped:', err.message);
