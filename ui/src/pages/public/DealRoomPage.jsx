@@ -1332,6 +1332,9 @@ function OperationsManagerView({ propertyId, property, pack, role, onTabChange }
   const [stages,       setStages]       = useState([]);
   const [events,       setEvents]       = useState([]);
   const [dataLoading,  setDataLoading]  = useState(true);
+  // checklist items — used for accurate doc-to-requirement mapping in the
+  // Digital Asset Readiness card. Fetched in parallel with the other data.
+  const [checklistItems, setChecklistItems] = useState([]);
 
   useEffect(() => {
     if (!propertyId) return;
@@ -1343,8 +1346,10 @@ function OperationsManagerView({ propertyId, property, pack, role, onTabChange }
       .then(r => r.ok ? r.json() : null).catch(() => null);
     const fe = fetch(`${API_BASE}/api/public/deal-room/${propertyId}/events`)
       .then(r => r.ok ? r.json() : { events: [] }).catch(() => ({ events: [] }));
+    const fk = fetch(`${API_BASE}/api/public/deal-room/${propertyId}/checklist`)
+      .then(r => r.ok ? r.json() : { items: [] }).catch(() => ({ items: [] }));
 
-    Promise.all([fb, fc, fs, fe]).then(([b, coord, stageData, evData]) => {
+    Promise.all([fb, fc, fs, fe, fk]).then(([b, coord, stageData, evData, ckData]) => {
       setBriefing(b);
       setBriefLoading(false);
       setCoordination(coord);
@@ -1354,6 +1359,7 @@ function OperationsManagerView({ propertyId, property, pack, role, onTabChange }
           : (pack.stages || [])
       );
       setEvents(evData?.events || []);
+      setChecklistItems(Array.isArray(ckData?.items) ? ckData.items : []);
       setDataLoading(false);
     });
   }, [propertyId]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -1604,22 +1610,39 @@ function OperationsManagerView({ propertyId, property, pack, role, onTabChange }
         const missingIssuance = ISSUANCE_FIELDS.filter(f => !metaValues[f.key]).map(f => f.label);
         const issuancePct     = Math.round((filledIssuance.length / ISSUANCE_FIELDS.length) * 100);
 
-        // 2. Documentation — proxy from docCount (checklist not in this view)
+        // 2. Documentation — use real checklist when available; fall back to docCount heuristic
+        const reqItems         = checklistItems.filter(i => i.required);
+        const UPLOADED_STATUSES = new Set(['uploaded', 'approved', 'ai_complete']);
+        const uploadedReqItems = reqItems.filter(i => UPLOADED_STATUSES.has(i.status));
         const DOC_TARGET = 5;
-        const docPct     = Math.min(Math.round((Math.min(docCount, DOC_TARGET) / DOC_TARGET) * 100), 100);
-        const docMissing = docCount === 0
-          ? ['No documents uploaded yet']
-          : docCount < DOC_TARGET
-            ? [`${DOC_TARGET - docCount} more document${DOC_TARGET - docCount !== 1 ? 's' : ''} suggested`]
-            : [];
+        const docPct = reqItems.length > 0
+          ? Math.min(Math.round((uploadedReqItems.length / reqItems.length) * 100), 100)
+          : Math.min(Math.round((Math.min(docCount, DOC_TARGET) / DOC_TARGET) * 100), 100);
+        const docMissing = reqItems.length > 0
+          ? reqItems
+              .filter(i => !UPLOADED_STATUSES.has(i.status))
+              .slice(0, 2)
+              .map(i => i.label || i.section || 'Required document')
+          : docCount === 0
+            ? ['No documents uploaded yet']
+            : docCount < DOC_TARGET
+              ? [`${DOC_TARGET - docCount} more document${DOC_TARGET - docCount !== 1 ? 's' : ''} suggested`]
+              : [];
 
-        // 3. Jurisdiction & regulatory — jurisdiction set + some docs present
-        const hasJurisdiction     = !!property?.jurisdiction;
-        const jurisdictionFilled  = (hasJurisdiction ? 1 : 0) + (hasJurisdiction && docCount > 0 ? 1 : 0);
-        const jurisdictionPct     = Math.round((jurisdictionFilled / 2) * 100);
+        // 3. Jurisdiction & regulatory — use Regulatory checklist items when available
+        const hasJurisdiction = !!property?.jurisdiction;
+        const regItems        = checklistItems.filter(i =>
+          i.category === 'Regulatory' || (i.section || '').toLowerCase().includes('regulatory')
+        );
+        const uploadedRegItems = regItems.filter(i => UPLOADED_STATUSES.has(i.status));
+        const jurisdictionPct  = regItems.length > 0
+          ? Math.round(((hasJurisdiction ? 0.4 : 0) + 0.6 * (uploadedRegItems.length / regItems.length)) * 100)
+          : Math.round((((hasJurisdiction ? 1 : 0) + (hasJurisdiction && docCount > 0 ? 1 : 0)) / 2) * 100);
         const jurisdictionMissing = !hasJurisdiction
           ? ['Jurisdiction not selected']
-          : docCount === 0 ? ['Upload regulatory documents'] : [];
+          : regItems.length > 0
+            ? regItems.filter(i => !UPLOADED_STATUSES.has(i.status)).slice(0, 2).map(i => i.label || i.section)
+            : docCount === 0 ? ['Upload regulatory documents'] : [];
 
         // 4. Participants — non-coordinator roles invited or submitted
         const nonCoordRows      = participantRows.filter(r => !r.canManage);
