@@ -3111,6 +3111,59 @@ app.patch('/api/public/deal-room/:propertyId/metadata', async (req, res) => {
   }
 });
 
+// ── Jurisdiction update (task #167) ─────────────────────────────────────────
+// Coordinators can change the jurisdiction of an existing workspace without
+// recreating it. Triggers readiness task evaluation so any new regulatory
+// document tasks are seeded immediately.
+const VALID_JURISDICTIONS = ['uae_adgm', 'eu_mica', 'us_reg_d', 'sg_mas', 'uk_fca'];
+app.patch('/api/public/deal-room/:propertyId/jurisdiction', async (req, res) => {
+  const { propertyId } = req.params;
+  const { jurisdiction, ownerWriteToken } = req.body || {};
+
+  if (!ownerWriteToken) return res.status(403).json({ error: 'owner_write_token required' });
+  if (jurisdiction && !VALID_JURISDICTIONS.includes(jurisdiction)) {
+    return res.status(400).json({ error: `Invalid jurisdiction. Must be one of: ${VALID_JURISDICTIONS.join(', ')}` });
+  }
+
+  const { data: room, error: authErr } = await supabase
+    .from('deal_rooms')
+    .select('owner_write_token, jurisdiction')
+    .eq('property_id', propertyId)
+    .maybeSingle();
+  if (authErr) return res.status(500).json({ error: authErr.message });
+  if (!room) return res.status(404).json({ error: 'room not found' });
+  if (!room.owner_write_token || room.owner_write_token !== ownerWriteToken) {
+    return res.status(403).json({ error: 'invalid owner_write_token' });
+  }
+
+  try {
+    const { error: updateErr } = await supabase
+      .from('deal_rooms')
+      .update({ jurisdiction: jurisdiction || null })
+      .eq('property_id', propertyId);
+    if (updateErr) throw updateErr;
+
+    const prev = room.jurisdiction;
+    const label = {
+      uae_adgm: 'UAE — ADGM / DFSA', eu_mica: 'EU — MiCA', us_reg_d: 'US — Reg D',
+      sg_mas: 'Singapore — MAS', uk_fca: 'UK — FCA',
+    }[jurisdiction] || jurisdiction || '(cleared)';
+    logEvent(propertyId, 'jurisdiction_changed', 'owner', null,
+      jurisdiction ? `Jurisdiction ${prev ? 'updated' : 'selected'}: ${label}` : 'Jurisdiction cleared',
+      { from: prev || null, to: jurisdiction || null }
+    ).catch(() => {});
+
+    // Re-evaluate readiness tasks — jurisdiction change affects regulatory doc requirements
+    evaluateReadinessTasks(propertyId, []).catch(e =>
+      console.warn('[tasks] readiness evaluate on jurisdiction change failed:', e.message));
+
+    res.json({ ok: true, jurisdiction: jurisdiction || null });
+  } catch (err) {
+    console.error('[jurisdiction PATCH]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ── Notification log — owner can see what emails were sent ──────────────────
 app.get('/api/public/deal-room/:propertyId/notifications', async (req, res) => {
   const { propertyId } = req.params;

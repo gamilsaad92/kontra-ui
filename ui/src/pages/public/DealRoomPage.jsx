@@ -1267,6 +1267,147 @@ function TransactionDetailsPanel({ property, propertyId, pack }) {
   );
 }
 
+// ── JurisdictionSettingsPanel ────────────────────────────────────────────────
+// Task #167 — lets a workspace owner update the jurisdiction of an existing
+// room from the Settings tab without recreating the room. Jurisdiction change
+// also triggers a server-side readiness task evaluation.
+const JURISDICTION_OPTIONS = [
+  { value: 'uae_adgm', label: '🇦🇪  UAE — ADGM / DFSA'            },
+  { value: 'eu_mica',  label: '🇪🇺  EU — MiCA'                      },
+  { value: 'us_reg_d', label: '🇺🇸  US — Regulation D (SEC)'        },
+  { value: 'sg_mas',   label: '🇸🇬  Singapore — MAS'                },
+  { value: 'uk_fca',   label: '🇬🇧  UK — FCA'                       },
+];
+
+function JurisdictionSettingsPanel({ propertyId, property }) {
+  const [value,   setValue]   = useState(property?.jurisdiction || '');
+  const [saving,  setSaving]  = useState(false);
+  const [saveOk,  setSaveOk]  = useState(false);
+  const [saveErr, setSaveErr] = useState('');
+  const [ownerToken, setOwnerToken] = useState('');
+
+  useEffect(() => {
+    try { setOwnerToken(localStorage.getItem(`kontra_owner_token_${propertyId}`) || ''); } catch {}
+  }, [propertyId]);
+
+  const isEditable = Boolean(ownerToken);
+
+  async function handleSave() {
+    setSaving(true); setSaveErr(''); setSaveOk(false);
+    try {
+      const res = await fetch(`${API_BASE}/api/public/deal-room/${propertyId}/jurisdiction`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ jurisdiction: value || null, ownerWriteToken: ownerToken }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || `Server error ${res.status}`);
+      setSaveOk(true);
+      setTimeout(() => setSaveOk(false), 2500);
+    } catch (err) {
+      setSaveErr(err.message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="bg-white rounded-2xl border border-gray-200 p-5 mb-5">
+      <div className="flex items-center justify-between mb-4">
+        <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">Jurisdiction</p>
+        {saveOk && <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-green-50 text-green-700">✓ Saved</span>}
+      </div>
+
+      {isEditable ? (
+        <>
+          <p className="text-[11px] text-gray-400 mb-3 leading-snug">
+            Sets the regulatory framework that governs this workspace and loads the corresponding compliance preparation checklist.
+          </p>
+          <select
+            value={value}
+            onChange={e => setValue(e.target.value)}
+            className="w-full text-xs border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:border-red-800 bg-white mb-3">
+            <option value="">— No jurisdiction set —</option>
+            {JURISDICTION_OPTIONS.map(o => (
+              <option key={o.value} value={o.value}>{o.label}</option>
+            ))}
+          </select>
+          {saveErr && <p className="text-xs text-red-500 mb-2">{saveErr}</p>}
+          <button onClick={handleSave} disabled={saving}
+            className="w-full py-2 rounded-xl text-xs font-bold text-white transition hover:opacity-90 disabled:opacity-40"
+            style={{ background: '#800020' }}>
+            {saving ? 'Saving…' : 'Save Jurisdiction'}
+          </button>
+        </>
+      ) : (
+        <div className="flex items-center gap-2">
+          {value
+            ? (() => { const opt = JURISDICTION_OPTIONS.find(o => o.value === value); return <span className="text-xs font-medium text-gray-800">{opt?.label || value}</span>; })()
+            : <span className="text-xs text-gray-400 italic">No jurisdiction set</span>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── DigitalAssetConfigPanel ──────────────────────────────────────────────────
+// Spec §12 — shows the active configuration as a layered overlay display:
+//   Base Pack  +  [Jurisdiction Overlay]  +  [Digital Asset Preparation Layer]
+// Read-only summary; links to the relevant settings panels for editing.
+function DigitalAssetConfigPanel({ property, pack }) {
+  const packLabel = pack?.name || 'Custom Pack';
+  const packColor = pack?.color || '#800020';
+  const jurisdiction = property?.jurisdiction;
+  const jurInfo = JURISDICTION_INFO[jurisdiction];
+  const isTokenization = pack?.id === 'tokenization';
+  const digitalAssetEnabled = !!(property?.metadata_values?.digital_asset_enabled);
+  const showDigitalLayer = isTokenization || digitalAssetEnabled;
+
+  if (!jurisdiction && !showDigitalLayer) return null;
+
+  return (
+    <div className="bg-white rounded-2xl border border-gray-200 p-5 mb-5">
+      <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-3">Active Configuration</p>
+      <div className="flex flex-wrap items-center gap-2">
+        {/* Base pack */}
+        <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-bold text-white"
+          style={{ background: packColor }}>
+          {pack?.icon || '📋'} {packLabel}
+        </span>
+
+        {/* Jurisdiction overlay */}
+        {jurInfo && (
+          <>
+            <span className="text-gray-300 text-sm">+</span>
+            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-semibold border"
+              style={{ color: jurInfo.color, borderColor: jurInfo.border, background: jurInfo.bg }}>
+              {jurInfo.flag} {jurInfo.label} Overlay
+            </span>
+          </>
+        )}
+
+        {/* Digital Asset Preparation Layer */}
+        {showDigitalLayer && (
+          <>
+            <span className="text-gray-300 text-sm">+</span>
+            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-semibold border"
+              style={{ color: '#7c3aed', borderColor: '#ddd6fe', background: '#f5f3ff' }}>
+              🪙 Digital Asset Preparation Layer
+            </span>
+          </>
+        )}
+      </div>
+
+      {/* Contextual explanation */}
+      <p className="text-[10px] text-gray-400 mt-3 leading-relaxed">
+        {showDigitalLayer
+          ? 'This workspace is configured for digital asset (token) issuance preparation. All readiness tracking, regulatory compliance, and document requirements reflect this configuration.'
+          : 'Jurisdiction overlay loads the corresponding regulatory compliance checklist and readiness requirements for this workspace.'}
+      </p>
+    </div>
+  );
+}
+
 // Build pending section map based on role
 function buildPendingSectionMap(property, role, onAnalysisSaved, urlPropertyId, refreshKey, pack) {
   const pid = urlPropertyId || property?.property_id || property?.id;
@@ -2640,6 +2781,9 @@ export default function DealRoomPage() {
 
             {activeTab === 'settings' && (
               <>
+                {/* Active configuration overlay display (spec §12) */}
+                <DigitalAssetConfigPanel property={property} pack={pack} />
+
                 <TransactionRiskPanel propertyId={pid} />
                 <PanelErrorBoundary>
                   <VerifiedAssetPackage propertyId={pid} />
@@ -2652,6 +2796,8 @@ export default function DealRoomPage() {
                     })}
                   </div>
                 )}
+                {/* Jurisdiction editor — task #167 */}
+                <JurisdictionSettingsPanel propertyId={pid} property={property} />
                 <LegalReviewPanel propertyId={pid} pack={pack} isDemo={false} />
               </>
             )}
