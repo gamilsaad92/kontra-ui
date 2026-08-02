@@ -15,6 +15,101 @@ import NotificationsLog from "./NotificationsLog";
 import LegalReviewPanel from "./LegalReviewPanel";
 import { DEFAULT_PACK_ID, getWorkflowPack, ensureWorkflowPackLoaded, resolvePackId } from "../../lib/workflowPacks";
 
+// ── Jurisdiction compliance data ─────────────────────────────────────────────
+const JURISDICTION_INFO = {
+  uae_adgm: {
+    label: "UAE — ADGM / DFSA",
+    flag: "🇦🇪",
+    points: [
+      "FSRA Category 3C or 3D licence (or exemption) required to operate a digital asset business within ADGM.",
+      "Token issuances targeting UAE retail investors are subject to DFSA Financial Promotion rules — ensure marketing materials are approved by a licensed firm.",
+      "KYC / AML obligations follow FSRA Anti-Money Laundering, Countering Financing of Terrorism and Sanctions (AML) rules.",
+    ],
+    color: "#1d4ed8",
+    bg: "#eff6ff",
+    border: "#bfdbfe",
+  },
+  eu_mica: {
+    label: "EU — MiCA (Markets in Crypto-Assets)",
+    flag: "🇪🇺",
+    points: [
+      "MiCA White Paper mandatory for all crypto-asset offerings since 30 June 2024 — must be submitted to the competent national authority before publication.",
+      "Asset-Referenced Tokens (ARTs) and E-Money Tokens (EMTs) carry additional reserve, governance, and own-funds requirements.",
+      "Ongoing disclosure obligations apply: significant developments affecting the crypto-asset must be notified to investors promptly.",
+    ],
+    color: "#0369a1",
+    bg: "#f0f9ff",
+    border: "#bae6fd",
+  },
+  us_reg_d: {
+    label: "US — Regulation D (SEC)",
+    flag: "🇺🇸",
+    points: [
+      "Rule 506(b): up to 35 non-accredited sophisticated investors permitted; no general solicitation or advertising allowed.",
+      "Rule 506(c): unlimited accredited investors only; general solicitation permitted; must verify accredited status (income, net worth, or third-party letter).",
+      "Form D must be filed with the SEC within 15 days after the first sale of securities. Blue-sky filings may be required in individual states.",
+    ],
+    color: "#6b21a8",
+    bg: "#faf5ff",
+    border: "#e9d5ff",
+  },
+  sg_mas: {
+    label: "Singapore — MAS",
+    flag: "🇸🇬",
+    points: [
+      "Digital tokens that constitute capital markets products (securities, CIS units, derivatives) require a prospectus or fall under an exemption (e.g. small offers under S$5M / 12-month period, private placement to ≤50 persons).",
+      "MAS Payment Services Act licence required if the token issuance involves regulated payment services or DPT services.",
+      "Anti-Money Laundering requirements follow MAS Notice PSN02 / SFA Notice SFA04-N02 — rigorous CDD on all investors.",
+    ],
+    color: "#0f766e",
+    bg: "#f0fdfa",
+    border: "#99f6e4",
+  },
+  uk_fca: {
+    label: "UK — FCA",
+    flag: "🇬🇧",
+    points: [
+      "Financial promotions for qualifying cryptoassets must be approved by an FCA-authorised firm or the issuer must be registered under the Cryptoasset Financial Promotion regime.",
+      "Security tokens (qualifying as specified investments) require an FCA-approved prospectus or rely on an exemption (e.g. exempt under s86 FSMA for qualified investors / high-net-worth).",
+      "Cryptoasset businesses must be registered with the FCA for AML/CTF purposes under the Money Laundering Regulations 2017.",
+    ],
+    color: "#9a3412",
+    bg: "#fff7ed",
+    border: "#fed7aa",
+  },
+};
+
+function JurisdictionComplianceCard({ jurisdiction }) {
+  const info = JURISDICTION_INFO[jurisdiction];
+  if (!info) return null;
+  return (
+    <div
+      className="rounded-2xl border px-6 py-5"
+      style={{ background: info.bg, borderColor: info.border }}
+    >
+      <div className="flex items-center gap-2 mb-3">
+        <span className="text-base">{info.flag}</span>
+        <span className="text-sm font-bold" style={{ color: info.color }}>{info.label}</span>
+        <span className="ml-auto text-xs font-semibold px-2 py-0.5 rounded-full"
+          style={{ background: info.border, color: info.color }}>
+          Regulatory Checkpoints
+        </span>
+      </div>
+      <ul className="space-y-1.5 mb-3">
+        {info.points.map((p, i) => (
+          <li key={i} className="flex items-start gap-2 text-xs leading-relaxed text-gray-700">
+            <span className="mt-0.5 shrink-0" style={{ color: info.color }}>•</span>
+            {p}
+          </li>
+        ))}
+      </ul>
+      <p className="text-[11px] text-gray-400 border-t pt-2.5 mt-2.5" style={{ borderColor: info.border }}>
+        ⚠️ This is an informational summary only and does not constitute legal advice. Consult qualified legal counsel before making any regulatory decisions.
+      </p>
+    </div>
+  );
+}
+
 class PanelErrorBoundary extends React.Component {
   constructor(props) { super(props); this.state = { error: null }; }
   static getDerivedStateFromError(e) { return { error: e }; }
@@ -1393,6 +1488,15 @@ function OperationsManagerView({ propertyId, property, pack, role, onTabChange }
                   Target close: {new Date(closingDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
                 </span>
               )}
+              {property?.jurisdiction && JURISDICTION_INFO[property.jurisdiction] && (
+                <span className="text-sm flex items-center gap-1">
+                  <span className="text-gray-300 text-xs">·</span>
+                  <span>{JURISDICTION_INFO[property.jurisdiction].flag}</span>
+                  <span style={{ color: JURISDICTION_INFO[property.jurisdiction].color }}>
+                    {JURISDICTION_INFO[property.jurisdiction].label}
+                  </span>
+                </span>
+              )}
             </div>
           </div>
           <div className="px-3 py-1.5 rounded-xl text-sm font-bold border shrink-0"
@@ -1406,6 +1510,11 @@ function OperationsManagerView({ propertyId, property, pack, role, onTabChange }
           </p>
         )}
       </div>
+
+      {/* ── Jurisdiction compliance card (shown when set) ───────────────── */}
+      {property?.jurisdiction && JURISDICTION_INFO[property.jurisdiction] && (
+        <JurisdictionComplianceCard jurisdiction={property.jurisdiction} />
+      )}
 
       {/* ── Area 2: Operations Manager ──────────────────────────────────── */}
       <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">

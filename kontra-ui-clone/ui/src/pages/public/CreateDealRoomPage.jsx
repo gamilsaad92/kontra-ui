@@ -279,6 +279,7 @@ export default function CreateDealRoomPage() {
     workspaceLocation: "",
     dealAmount: "",
     closingDate: "",
+    jurisdiction: "",
     firstName: "",
     lastName: "",
     email: "",
@@ -526,6 +527,7 @@ export default function CreateDealRoomPage() {
         address: form.workspaceLocation,
         dealAmount: form.dealAmount,
         closingDate: form.closingDate,
+        jurisdiction: form.jurisdiction || '',
         firstName: form.firstName,
         lastName: form.lastName,
         workflowPackId,
@@ -627,6 +629,7 @@ export default function CreateDealRoomPage() {
                       <option value="business_acquisition">Business Acquisition</option>
                       <option value="cre_acquisition">CRE Acquisition</option>
                       <option value="fundraising">Fundraising</option>
+                      <option value="tokenization">Token Issuance / STO</option>
                       <option value="lending">Lending / Finance</option>
                       <option value="licensing">Licensing</option>
                       <option value="joint_venture">Joint Venture</option>
@@ -860,6 +863,20 @@ export default function CreateDealRoomPage() {
                 </div>
 
                 <div>
+                  <label className={labelCls}>Jurisdiction <span className="font-normal text-gray-400">(optional)</span></label>
+                  <select className={`${inputCls} bg-white`} value={form.jurisdiction} onChange={e => set("jurisdiction", e.target.value)}>
+                    <option value="">Not specified</option>
+                    <option value="uae_adgm">UAE — ADGM / DFSA</option>
+                    <option value="eu_mica">EU — MiCA</option>
+                    <option value="us_reg_d">US — Regulation D</option>
+                    <option value="sg_mas">Singapore — MAS</option>
+                    <option value="uk_fca">UK — FCA</option>
+                    <option value="other">Other / Not listed</option>
+                  </select>
+                  <p className="text-xs text-gray-400 mt-1">Used to surface relevant regulatory checkpoints inside your workspace.</p>
+                </div>
+
+                <div>
                   <label className={labelCls}>Your role in this transaction</label>
                   {creationMode !== "blank" && customConfig.roles.length > 0 ? (
                     <select className={`${inputCls} bg-white`} value={form.role} onChange={e => set("role", e.target.value)}>
@@ -897,6 +914,7 @@ export default function CreateDealRoomPage() {
                 <div className="bg-gray-50 border border-gray-200 rounded-xl divide-y divide-gray-200 overflow-hidden">
                   {[
                     { label: "Workspace", value: form.workspaceName || "—" },
+                    form.jurisdiction && { label: "Jurisdiction", value: { uae_adgm: "UAE — ADGM / DFSA", eu_mica: "EU — MiCA", us_reg_d: "US — Regulation D", sg_mas: "Singapore — MAS", uk_fca: "UK — FCA", other: "Other / Not listed" }[form.jurisdiction] || form.jurisdiction },
                     creationMode !== "blank" && { label: "Type", value: activePack?.label || "Custom" },
                     creationMode !== "blank" && customConfig.roles.length > 0 && { label: "Participants", value: `${customConfig.roles.length} role${customConfig.roles.length !== 1 ? "s" : ""}` },
                     creationMode !== "blank" && customConfig.documents.length > 0 && { label: "Documents", value: `${customConfig.documents.length} item${customConfig.documents.length !== 1 ? "s" : ""}` },
