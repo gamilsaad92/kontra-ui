@@ -10,6 +10,16 @@ const COLOR_CHOICES = ["#800020","#1d4ed8","#16a34a","#d97706","#6d28d9","#0369a
 
 const SYSTEM_PACK_IDS = ["business_acquisition", "cre_acquisition", "fundraising"];
 
+// Map the AI transaction-type hint to the matching system pack ID.
+// Used to keep the preview pack, the Review summary, and the activated workspace in sync.
+const AI_TYPE_TO_PACK = {
+  business_acquisition: "business_acquisition",
+  cre_acquisition:      "cre_acquisition",
+  fundraising:          "fundraising",
+  // All other types (lending, licensing, joint_venture, other) default to business_acquisition
+  // as the most generic structural starting point.
+};
+
 function slugKey(s) {
   return String(s || "").toLowerCase().trim().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 40);
 }
@@ -366,6 +376,10 @@ export default function CreateDealRoomPage() {
           })),
         });
         setIsAiGenerated(true);
+        // Keep form.packId in sync with the transaction type the AI used so the
+        // Review & Activate step shows the correct pack label and buildPayload()
+        // sends the right workflowPackId.
+        if (AI_TYPE_TO_PACK[aiTransactionType]) set("packId", AI_TYPE_TO_PACK[aiTransactionType]);
         const firstAiRole = (data.roles || [])[0];
         if (firstAiRole?.key) set("role", firstAiRole.key);
         setPhase(1);
@@ -432,7 +446,13 @@ export default function CreateDealRoomPage() {
       ? raw.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 60) + "-" + Date.now().toString(36).slice(-4)
       : "ws-" + Date.now().toString(36);
     const isBlank = creationMode === "blank";
-    const workflowPackId = isBlank ? "blank" : form.packId;
+    // In AI mode, derive the workflowPackId from aiTransactionType so the server
+    // receives the correct base pack regardless of which pack was last selected in
+    // the template picker.  Fall back to form.packId for template/blank modes.
+    const workflowPackId = isBlank ? "blank"
+      : (creationMode === "ai" && AI_TYPE_TO_PACK[aiTransactionType])
+        ? AI_TYPE_TO_PACK[aiTransactionType]
+        : form.packId;
     const configToSend = isBlank
       ? { roles: [], documents: [], stages: [] }
       : (customConfig.roles.length > 0 || customConfig.stages.length >= 2 ? customConfig : null);
@@ -566,11 +586,12 @@ export default function CreateDealRoomPage() {
                     <label className={labelCls}>Current stage <span className="font-normal text-gray-400">(optional)</span></label>
                     <select className={`${inputCls} bg-white`} value={aiCurrentStage} onChange={e => setAiCurrentStage(e.target.value)}>
                       <option value="">Select stage…</option>
+                      <option value="pre_loi">Pre-LOI</option>
                       <option value="loi">LOI / Term Sheet</option>
                       <option value="due_diligence">Due Diligence</option>
                       <option value="financing">Financing</option>
                       <option value="closing">Closing</option>
-                      <option value="pre_loi">Pre-LOI</option>
+                      <option value="closed">Closed</option>
                     </select>
                   </div>
                 </div>

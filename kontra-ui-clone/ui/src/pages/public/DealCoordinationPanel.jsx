@@ -480,22 +480,13 @@ export default function DealCoordinationPanel({ propertyId, role, packId = DEFAU
                     {s.label}
                   </p>
                 </div>
-                {/* connector — always show one after last pack stage to link to VAP step */}
-                <div className={`h-0.5 flex-1 mx-1 mb-3 rounded ${i < stageIdx ? 'bg-[#800020]' : 'bg-gray-200'}`} />
+                {/* connector between stages — not after the last one */}
+                {i < effectiveStages.length - 1 && (
+                  <div className={`h-0.5 flex-1 mx-1 mb-3 rounded ${i < stageIdx ? 'bg-[#800020]' : 'bg-gray-200'}`} />
+                )}
               </div>
             );
           })}
-          {/* Verified Transaction Package — synthetic final step after all pack stages */}
-          <div className="flex flex-col items-center flex-1">
-            <div className={`w-7 h-7 rounded-full flex items-center justify-center text-sm font-bold mb-1 transition-all
-              ${isLastStage ? 'bg-[#800020] text-white' : 'bg-gray-100 text-gray-400'}`}>
-              {isLastStage ? '✓' : '📦'}
-            </div>
-            <p className={`text-[9px] font-semibold text-center leading-tight
-              ${isLastStage ? 'text-gray-500' : 'text-gray-300'}`}>
-              Verified ✓
-            </p>
-          </div>
         </div>
       </div>
 

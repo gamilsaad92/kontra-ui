@@ -700,7 +700,7 @@ function ShareButton({ propertyId }) {
       style={state === "copied"
         ? { background: "#f0fdf4", color: "#15803d", borderColor: "#bbf7d0" }
         : { background: "white", color: "#800020", borderColor: "#80002030" }}>
-      {state === "copied" ? "✓ Link Copied!" : "↗ Share Deal"}
+      {state === "copied" ? "✓ Link Copied!" : "↗ Invite Participants"}
     </button>
   );
 }
@@ -2000,15 +2000,12 @@ export default function DealRoomPage() {
                 🔑
               </div>
               <div>
-                <p className="text-xs font-semibold text-green-900">Workspace active — add documents and invite parties below</p>
-                <p className="text-[10px] text-green-600">No sign-in required · AI analyzes each file as it's uploaded</p>
+                <p className="text-xs font-semibold text-green-900">Workspace active — invite participants and upload documents to begin</p>
+                <p className="text-[10px] text-green-600">Secure role-based access for every participant · AI analyzes each file as it's uploaded</p>
               </div>
             </div>
             <div className="flex items-center gap-2 shrink-0">
               <ShareButton propertyId={propertyId} />
-              <span className="px-3 py-1.5 rounded-xl text-xs font-bold text-green-700 bg-green-100">
-                ✓ Paid & Active
-              </span>
             </div>
           </div>
         </div>
@@ -2024,7 +2021,7 @@ export default function DealRoomPage() {
                 <p className="text-xs font-semibold text-gray-800">
                   {from ? `${decodeURIComponent(from)} invited you` : "You've been invited"} · <span style={{ color: roleConfig.color }}>{roleConfig.label}</span>
                 </p>
-                <p className="text-[10px] text-gray-400">Review the documents assigned to your role below · No sign-in required</p>
+                <p className="text-[10px] text-gray-400">Review the documents assigned to your role below · Access via secure invitation link</p>
               </div>
             </div>
             <Link to="/create-deal-room"
@@ -2097,19 +2094,11 @@ export default function DealRoomPage() {
             )}
 
             {activeTab === 'participants' && (
-              <>
-                <ParticipantsPanel
-                  roomId={pid}
-                  packId={packId}
-                  isV2={!!property.auth_v2_enabled}
-                />
-                <DealCoordinationPanel
-                  propertyId={pid}
-                  role={role}
-                  packId={packId}
-                  propertyType={property.property_type || property.type}
-                />
-              </>
+              <ParticipantsPanel
+                roomId={pid}
+                packId={packId}
+                isV2={!!property.auth_v2_enabled}
+              />
             )}
 
             {activeTab === 'tasks' && (
