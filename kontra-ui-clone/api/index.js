@@ -1339,6 +1339,94 @@ app.post('/api/checkout/demo', async (req, res) => {
   }
 });
 
+// ── Session analytics — public event ingestion, IP rate-limited ───────────────
+// Lightweight behaviour tracking (phase transitions, tab switches, page views).
+// No PII stored — only anonymous session IDs that the browser generates.
+const _analyticsIpBuckets = new Map();
+function _analyticsRateLimit(req, res, next) {
+  const ip = req.ip || 'unknown';
+  const now = Date.now();
+  let bucket = _analyticsIpBuckets.get(ip);
+  if (!bucket || now - bucket.start > 60000) {
+    bucket = { start: now, count: 0 };
+  }
+  bucket.count++;
+  _analyticsIpBuckets.set(ip, bucket);
+  if (bucket.count > 300) return res.status(429).end(); // 300 events/IP/min is plenty
+  next();
+}
+
+app.post('/api/track', _analyticsRateLimit, async (req, res) => {
+  // Always return 200 so analytics never break the user experience
+  try {
+    const { session_id, event_name, workspace_id, properties } = req.body || {};
+    if (!session_id || !event_name) return res.json({ ok: false });
+    await supabase.from('analytics_events').insert({
+      session_id:  String(session_id).slice(0, 64),
+      event_name:  String(event_name).slice(0, 80),
+      workspace_id: workspace_id ? String(workspace_id).slice(0, 80) : null,
+      properties:  properties || {},
+    });
+    res.json({ ok: true });
+  } catch {
+    res.json({ ok: false });
+  }
+});
+
+app.get('/api/admin/analytics', async (req, res) => {
+  if (!checkPilotPassword(req, res)) return;
+  try {
+    const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+    const { data: events, error } = await supabase
+      .from('analytics_events')
+      .select('session_id, event_name, workspace_id, properties, created_at')
+      .gte('created_at', since)
+      .order('created_at', { ascending: false })
+      .limit(10000);
+
+    if (error) throw error;
+
+    const phaseCounts = {};
+    const tabCounts   = {};
+    const workspaceViews = new Set();
+
+    for (const ev of events || []) {
+      if (ev.event_name === 'workspace_creation_phase') {
+        const p = ev.properties?.phase;
+        if (p !== undefined) phaseCounts[p] = (phaseCounts[p] || 0) + 1;
+      }
+      if (ev.event_name === 'workspace_tab_viewed') {
+        const t = ev.properties?.tab;
+        if (t) tabCounts[t] = (tabCounts[t] || 0) + 1;
+      }
+      if (ev.event_name === 'workspace_viewed' && ev.workspace_id) {
+        workspaceViews.add(ev.workspace_id);
+      }
+    }
+
+    res.json({
+      period_days: 7,
+      total_events: events?.length || 0,
+      funnel: [
+        { phase: 0, label: 'Describe',   sessions: phaseCounts[0] || 0 },
+        { phase: 1, label: 'Preview',    sessions: phaseCounts[1] || 0 },
+        { phase: 2, label: 'Your Info',  sessions: phaseCounts[2] || 0 },
+        { phase: 3, label: 'Activate',   sessions: phaseCounts[3] || 0 },
+      ],
+      tab_visits: Object.entries(tabCounts)
+        .sort((a, b) => b[1] - a[1])
+        .map(([tab, count]) => ({ tab, count })),
+      unique_workspaces_viewed: workspaceViews.size,
+    });
+  } catch (err) {
+    // Table doesn't exist yet — return empty payload
+    if (err.code === '42P01' || /analytics_events.*(does not exist|schema cache)/i.test(err.message || '')) {
+      return res.json({ period_days: 7, total_events: 0, funnel: [], tab_visits: [], unique_workspaces_viewed: 0, table_missing: true });
+    }
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ── Pilot Admin — password-protected, no Stripe, is_pilot=true ───────────────
 // Password is checked against the PILOT_ADMIN_PASSWORD env var on every request.
 function checkPilotPassword(req, res) {
@@ -4827,6 +4915,19 @@ async function ensureWorkflowPackIdColumn() {
     await pool.query(
       `ALTER TABLE deal_rooms ADD COLUMN IF NOT EXISTS metadata_values JSONB`
     );
+    // analytics_events — created here so it's always present when first event arrives
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS analytics_events (
+        id           BIGSERIAL PRIMARY KEY,
+        session_id   TEXT NOT NULL,
+        event_name   TEXT NOT NULL,
+        workspace_id TEXT,
+        properties   JSONB DEFAULT '{}',
+        created_at   TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS analytics_events_created_at_idx ON analytics_events (created_at DESC)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS analytics_events_event_name_idx ON analytics_events (event_name)`);
     await pool.end();
     console.log('[startup] deal_rooms schema columns ready (workflow_pack_id, stated_revenue, stated_ebitda, checklist_items, owner_write_token, stages_config, metadata_values)');
   } catch (err) {

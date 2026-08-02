@@ -1,5 +1,6 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
+import { trackEvent } from "../../lib/analytics";
 import PublicLayout from "./PublicLayout";
 import DealCoordinationPanel from "./DealCoordinationPanel";
 import ActivityTimeline from "./ActivityTimeline";
@@ -1662,12 +1663,22 @@ export default function DealRoomPage() {
   // starts true; live rooms wait for ensureWorkflowPackLoaded to resolve.
   const [packReady, setPackReady] = useState(!!DEMO_PROPERTIES[propertyId]);
   const [analysesRefreshKey, setAnalysesRefreshKey] = useState(0);
-  const [activeTab, setActiveTab] = useState('overview');
+  const [activeTab, setActiveTabRaw] = useState('overview');
+  // Wrap tab setter to emit analytics
+  const setActiveTab = useCallback((tab) => {
+    setActiveTabRaw(tab);
+    trackEvent('workspace_tab_viewed', { tab, workspace_id: propertyId });
+  }, [propertyId]);
   // Pack correction: set when AI thinks the stored pack is wrong for this room
   const [packSuggestion, setPackSuggestion] = useState(null); // { suggestedPack, currentPack }
   const [repackLoading, setRepackLoading] = useState(false);
 
   const onAnalysisSaved = () => setAnalysesRefreshKey(k => k + 1);
+
+  // Track workspace page view on load
+  useEffect(() => {
+    trackEvent('workspace_viewed', { workspace_id: propertyId });
+  }, [propertyId]);
 
   // Try to fetch custom deal room from API
   useEffect(() => {

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import PublicLayout from "./PublicLayout";
+import { trackEvent } from "../../lib/analytics";
 import { listWorkflowPacks, fetchCustomPacks, getWorkflowPack, deleteCustomPack, registerCustomPack } from "../../lib/workflowPacks";
 
 const API_BASE = (import.meta.env.VITE_API_BASE || "").replace(/\/+$/, "");
@@ -313,12 +314,36 @@ export default function CreateDealRoomPage() {
   }
 
   // ── Navigation ────────────────────────────────────────────────────────────
+  // ── Analytics ─────────────────────────────────────────────────────────────
+  // Track phase-0 on mount (creation page opened)
+  useEffect(() => {
+    trackEvent("workspace_creation_phase", { phase: 0, mode: creationMode });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Track abandonment: fire when the tab/window closes while still mid-flow
+  useEffect(() => {
+    function onUnload() {
+      if (phase < 3) {
+        // sendBeacon is more reliable than fetch on unload
+        const body = JSON.stringify({
+          session_id: (() => { try { return sessionStorage.getItem("kontra_session_id") || "anon"; } catch { return "anon"; } })(),
+          event_name: "workspace_creation_abandoned",
+          properties: { phase, mode: creationMode },
+        });
+        try { navigator.sendBeacon(`${API_BASE}/api/track`, new Blob([body], { type: "application/json" })); } catch { /* no-op */ }
+      }
+    }
+    window.addEventListener("beforeunload", onUnload);
+    return () => window.removeEventListener("beforeunload", onUnload);
+  }, [phase, creationMode]); // eslint-disable-line react-hooks/exhaustive-deps
+
   async function goNext() {
     setError("");
 
     // Phase 0: generate or advance
     if (phase === 0) {
       if (creationMode === "blank") {
+        trackEvent("workspace_creation_phase", { phase: 2, mode: "blank" });
         setPhase(2); // skip preview for blank
         return;
       }
@@ -332,6 +357,7 @@ export default function CreateDealRoomPage() {
         const coord = config.roles.find(r => r.canManage) || config.roles[0];
         if (coord) set("role", coord.key);
         setShowTemplatePicker(false);
+        trackEvent("workspace_creation_phase", { phase: 1, mode: "template", pack_id: form.packId });
         setPhase(1);
         return;
       }
@@ -340,6 +366,7 @@ export default function CreateDealRoomPage() {
       if (!aiDescription.trim() || aiDescription.trim().length <= 10) return;
       setAiLoading(true);
       setAiError("");
+      trackEvent("workspace_creation_ai_generate", { description_length: aiDescription.trim().length });
       try {
         const body = { description: aiDescription };
         if (aiTransactionType) body.transactionType = aiTransactionType;
@@ -382,6 +409,7 @@ export default function CreateDealRoomPage() {
         if (AI_TYPE_TO_PACK[aiTransactionType]) set("packId", AI_TYPE_TO_PACK[aiTransactionType]);
         const firstAiRole = (data.roles || [])[0];
         if (firstAiRole?.key) set("role", firstAiRole.key);
+        trackEvent("workspace_creation_phase", { phase: 1, mode: "ai" });
         setPhase(1);
       } catch (e) {
         setAiError(e.message);
@@ -392,10 +420,18 @@ export default function CreateDealRoomPage() {
     }
 
     // Phase 1 → Phase 2
-    if (phase === 1) { setPhase(2); return; }
+    if (phase === 1) {
+      trackEvent("workspace_creation_phase", { phase: 2, mode: creationMode });
+      setPhase(2);
+      return;
+    }
 
     // Phase 2 → Phase 3
-    if (phase === 2) { setPhase(3); return; }
+    if (phase === 2) {
+      trackEvent("workspace_creation_phase", { phase: 3, mode: creationMode });
+      setPhase(3);
+      return;
+    }
   }
 
   function goBack() {

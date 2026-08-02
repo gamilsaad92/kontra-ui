@@ -31,6 +31,7 @@ import SharedVAPPage from "./pages/public/SharedVAPPage";
 import CreateDealRoomPage from "./pages/public/CreateDealRoomPage";
 import PilotAdminPage from "./pages/public/PilotAdminPage";
 import PilotAccessPage from "./pages/public/PilotAccessPage";
+import AnalyticsAdminPage from "./pages/public/AnalyticsAdminPage";
 import WorkflowPackBuilderPage from "./pages/public/WorkflowPackBuilderPage";
 import MyDealRoomsPage from "./pages/public/MyDealRoomsPage";
 import CheckoutSuccessPage from "./pages/public/CheckoutSuccessPage";
@@ -91,6 +92,7 @@ function AuthedApp() {
         <Route path="/login" element={<LoginPage />} />
         <Route path="/admin" element={<AdminVisitorsPage />} />
         <Route path="/admin/pilot" element={<PilotAdminPage />} />
+        <Route path="/admin/analytics" element={<AnalyticsAdminPage />} />
         <Route path="/pilot/access" element={<PilotAccessPage />} />
 
         {/* ── Unified workspace ── any authenticated user ─────── */}
