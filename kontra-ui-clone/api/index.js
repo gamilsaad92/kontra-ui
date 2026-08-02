@@ -1548,6 +1548,51 @@ app.post('/api/admin/create-pilot-workspace', async (req, res) => {
     // Access URL goes through PilotAccessPage which stores token and redirects
     const accessUrl = `${origin}/pilot/access?property=${pid}&owner_token=${ownerToken}&name=${encodeURIComponent(workspaceName)}`;
 
+    // Task #157 — auto-send the link to the pilot user at creation time
+    let emailSent = false;
+    const RESEND_KEY = process.env.RESEND_API_KEY;
+    if (RESEND_KEY) {
+      try {
+        const firstName = pilotName.split(' ')[0] || pilotName;
+        const packLabel = PILOT_PACK_LABELS[resolvedPackId] || resolvedPackId;
+        await sendResendEmail(RESEND_KEY, {
+          from: 'Kontra <notifications@kontraplatform.com>',
+          to: pilotEmail,
+          subject: `Your Kontra workspace is ready: ${workspaceName}`,
+          html: `
+            <div style="font-family:sans-serif;max-width:520px;margin:0 auto;padding:32px 24px">
+              <div style="margin-bottom:24px">
+                <span style="font-size:28px">🏢</span>
+              </div>
+              <h1 style="font-size:20px;font-weight:800;color:#111;margin:0 0 8px">Your Kontra workspace is ready</h1>
+              <p style="color:#555;font-size:15px;margin:0 0 6px">Hi ${firstName},</p>
+              <p style="color:#555;font-size:14px;margin:0 0 24px">
+                <strong>${workspaceName}</strong> (${packLabel}) has been set up for you.
+                Click below to access your workspace — no login or payment needed.
+              </p>
+              <a href="${accessUrl}"
+                style="display:inline-block;padding:14px 28px;background:#800020;color:white;border-radius:10px;text-decoration:none;font-weight:700;font-size:15px">
+                Open my workspace →
+              </a>
+              <div style="margin-top:24px;padding:16px;background:#f9fafb;border-radius:10px;border:1px solid #eee">
+                <p style="color:#888;font-size:12px;margin:0 0 4px">What is Kontra?</p>
+                <p style="color:#555;font-size:13px;margin:0">
+                  Kontra is a deal room platform — all parties upload documents, AI analyzes them instantly,
+                  and you see everything in one place.
+                </p>
+              </div>
+              <p style="color:#bbb;font-size:11px;margin-top:24px">
+                This link is unique to your workspace session. Do not share it with others.
+              </p>
+            </div>`,
+        });
+        emailSent = true;
+        console.log(`[pilot] 📧 Welcome email sent to ${pilotEmail}`);
+      } catch (emailErr) {
+        console.warn('[pilot] Email send failed (non-fatal):', emailErr.message);
+      }
+    }
+
     res.json({
       propertyId:    pid,
       workspaceName,
@@ -1555,9 +1600,50 @@ app.post('/api/admin/create-pilot-workspace', async (req, res) => {
       pilotName,
       pilotEmail,
       accessUrl,
+      emailSent,
     });
   } catch (err) {
     console.error('[pilot/create]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Resend the pilot workspace link email (task #157 — resend from AccessLinkCard)
+app.post('/api/admin/send-pilot-link', async (req, res) => {
+  if (!checkPilotPassword(req, res)) return;
+  const { pilotEmail, pilotName, workspaceName, accessUrl, packLabel } = req.body || {};
+  if (!pilotEmail || !accessUrl) return res.status(400).json({ error: 'pilotEmail and accessUrl are required' });
+
+  const RESEND_KEY = process.env.RESEND_API_KEY;
+  if (!RESEND_KEY) return res.status(503).json({ error: 'RESEND_API_KEY not configured on the server' });
+
+  try {
+    const firstName = (pilotName || pilotEmail).split(' ')[0];
+    await sendResendEmail(RESEND_KEY, {
+      from: 'Kontra <notifications@kontraplatform.com>',
+      to: pilotEmail,
+      subject: `Your Kontra workspace is ready: ${workspaceName || 'your workspace'}`,
+      html: `
+        <div style="font-family:sans-serif;max-width:520px;margin:0 auto;padding:32px 24px">
+          <div style="margin-bottom:24px"><span style="font-size:28px">🏢</span></div>
+          <h1 style="font-size:20px;font-weight:800;color:#111;margin:0 0 8px">Your Kontra workspace is ready</h1>
+          <p style="color:#555;font-size:15px;margin:0 0 6px">Hi ${firstName},</p>
+          <p style="color:#555;font-size:14px;margin:0 0 24px">
+            <strong>${workspaceName || 'Your workspace'}</strong>${packLabel ? ` (${packLabel})` : ''} has been set up for you.
+            Click below to access it — no login or payment needed.
+          </p>
+          <a href="${accessUrl}"
+            style="display:inline-block;padding:14px 28px;background:#800020;color:white;border-radius:10px;text-decoration:none;font-weight:700;font-size:15px">
+            Open my workspace →
+          </a>
+          <p style="color:#bbb;font-size:11px;margin-top:24px">
+            This link is unique to your workspace session. Do not share it with others.
+          </p>
+        </div>`,
+    });
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('[pilot/send-link]', err.message);
     res.status(500).json({ error: err.message });
   }
 });

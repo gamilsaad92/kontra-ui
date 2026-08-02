@@ -190,14 +190,45 @@ function CreateForm({ password, onCreated }) {
 }
 
 // ── Access link card ──────────────────────────────────────────────────────────
-function AccessLinkCard({ result, onDismiss }) {
-  const [copied, setCopied] = useState(false);
+function AccessLinkCard({ result, password, onDismiss }) {
+  const [copied,    setCopied]    = useState(false);
+  const [resending, setResending] = useState(false);
+  const [resendOk,  setResendOk]  = useState(false);
+  const [resendErr, setResendErr] = useState("");
+  // Seed from creation-time response; toggles to true when resent manually
+  const [emailSent, setEmailSent] = useState(!!result.emailSent);
 
   function copy() {
     navigator.clipboard.writeText(result.accessUrl).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     });
+  }
+
+  async function handleResend() {
+    setResending(true); setResendErr(""); setResendOk(false);
+    try {
+      const r = await fetch(`${API_BASE}/api/admin/send-pilot-link`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-pilot-password": password },
+        body: JSON.stringify({
+          pilotEmail:    result.pilotEmail,
+          pilotName:     result.pilotName,
+          workspaceName: result.workspaceName,
+          accessUrl:     result.accessUrl,
+          packLabel:     result.packLabel,
+        }),
+      });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.error || "Send failed");
+      setResendOk(true);
+      setEmailSent(true);
+      setTimeout(() => setResendOk(false), 3000);
+    } catch (e) {
+      setResendErr(e.message);
+    } finally {
+      setResending(false);
+    }
   }
 
   return (
@@ -208,31 +239,49 @@ function AccessLinkCard({ result, onDismiss }) {
             <span className="text-lg">✅</span>
             <p className="text-sm font-bold text-green-900">Workspace created</p>
           </div>
-          <p className="text-xs text-green-700">
-            <strong>{result.workspaceName}</strong> · {result.packLabel} · pilot
-          </p>
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="text-xs text-green-700">
+              <strong>{result.workspaceName}</strong> · {result.packLabel} · pilot
+            </p>
+            {/* Email status badge */}
+            {emailSent ? (
+              <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-green-200 text-green-800">
+                📧 Sent to {result.pilotEmail}
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">
+                📧 Email not sent (RESEND_API_KEY not set)
+              </span>
+            )}
+          </div>
         </div>
         <button onClick={onDismiss} className="text-green-400 hover:text-green-600 transition text-lg leading-none">×</button>
       </div>
 
       <div className="bg-white rounded-xl border border-green-200 p-3 mb-3">
-        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">One-click access link — paste this into your email or DM</p>
+        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">One-click access link</p>
         <p className="text-xs text-gray-700 break-all font-mono leading-relaxed">{result.accessUrl}</p>
       </div>
 
-      <div className="flex gap-2">
+      <div className="flex gap-2 mb-2">
         <button onClick={copy}
           className="flex-1 py-2 rounded-xl text-xs font-bold text-white bg-green-700 hover:bg-green-800 transition">
           {copied ? "Copied!" : "Copy link"}
         </button>
+        <button onClick={handleResend} disabled={resending}
+          className="px-4 py-2 rounded-xl text-xs font-bold text-green-700 border border-green-300 hover:bg-green-100 disabled:opacity-40 transition">
+          {resending ? "Sending…" : resendOk ? "Sent ✓" : "Resend email"}
+        </button>
         <a href={result.accessUrl} target="_blank" rel="noreferrer"
           className="px-4 py-2 rounded-xl text-xs font-bold text-green-700 border border-green-300 hover:bg-green-100 transition">
-          Preview workspace →
+          Preview →
         </a>
       </div>
 
-      <p className="text-[10px] text-green-600 mt-2.5">
-        When {result.pilotName} clicks this link, they land directly in the active workspace as the coordinator — no payment or setup required.
+      {resendErr && <p className="text-xs text-red-500 mb-2">{resendErr}</p>}
+
+      <p className="text-[10px] text-green-600">
+        When {result.pilotName} clicks this link, they land directly in the active workspace as coordinator — no payment or setup required.
       </p>
     </div>
   );
@@ -360,7 +409,7 @@ export default function PilotAdminPage() {
       {/* Content */}
       <div className="max-w-4xl mx-auto px-6 py-8 space-y-6">
         {latestResult && (
-          <AccessLinkCard result={latestResult} onDismiss={() => setLatestResult(null)} />
+          <AccessLinkCard result={latestResult} password={password} onDismiss={() => setLatestResult(null)} />
         )}
 
         <CreateForm password={password} onCreated={handleCreated} />
