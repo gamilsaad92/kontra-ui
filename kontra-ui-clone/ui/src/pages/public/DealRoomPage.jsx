@@ -1478,6 +1478,32 @@ function OperationsManagerView({ propertyId, property, pack, role, onTabChange }
   const [checklistItems, setChecklistItems] = useState([]);
   // Which readiness category row is expanded (shows explanation + full missing list)
   const [expandedReadinessKey, setExpandedReadinessKey] = useState(null);
+  // Stage advance (task #100) — owner-only; reads token from localStorage
+  const [ownerToken,    setOwnerToken]    = useState('');
+  const [advancingStage, setAdvancingStage] = useState(false);
+
+  useEffect(() => {
+    try { setOwnerToken(localStorage.getItem(`kontra_owner_token_${propertyId}`) || ''); } catch {}
+  }, [propertyId]);
+
+  async function handleAdvanceStage(nextStageKey) {
+    if (!nextStageKey || advancingStage) return;
+    setAdvancingStage(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/public/deal-room/${propertyId}/advance`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ stage: nextStageKey }),
+      });
+      if (res.ok) {
+        // Refresh coordination so the stage indicator and progress bar update immediately
+        const coord = await fetch(`${API_BASE}/api/public/deal-room/${propertyId}/coordination`)
+          .then(r => r.ok ? r.json() : null).catch(() => null);
+        if (coord) setCoordination(coord);
+      }
+    } catch {}
+    setAdvancingStage(false);
+  }
 
   useEffect(() => {
     if (!propertyId) return;
@@ -2141,6 +2167,45 @@ function OperationsManagerView({ propertyId, property, pack, role, onTabChange }
             </div>
           ))}
         </div>
+
+        {/* ── Advance stage — visible to workspace owners on all pack types ─ */}
+        {/* Task #100: non-CRE packs had no way to move through lifecycle stages */}
+        {ownerToken && stages.length > 0 && currentStageIdx < stages.length - 1 && (
+          <div className="mt-4 pt-3 border-t border-gray-100 flex items-center justify-between gap-4">
+            <div className="min-w-0">
+              <p className="text-xs text-gray-500 leading-snug">
+                Next stage:{' '}
+                <span className="font-semibold text-gray-800">
+                  {stages[currentStageIdx + 1]?.icon && `${stages[currentStageIdx + 1].icon} `}
+                  {stages[currentStageIdx + 1]?.label}
+                </span>
+              </p>
+              {stages[currentStageIdx + 1]?.desc && (
+                <p className="text-[10px] text-gray-400 mt-0.5 leading-snug">
+                  {stages[currentStageIdx + 1].desc}
+                </p>
+              )}
+            </div>
+            <button
+              onClick={() => handleAdvanceStage(stages[currentStageIdx + 1]?.key)}
+              disabled={advancingStage}
+              className="shrink-0 px-4 py-2 rounded-xl text-xs font-bold text-white transition hover:opacity-90 disabled:opacity-40"
+              style={{ background: '#800020' }}>
+              {advancingStage
+                ? 'Advancing…'
+                : `Advance to ${stages[currentStageIdx + 1]?.label} →`}
+            </button>
+          </div>
+        )}
+        {/* Final stage — show completion badge */}
+        {ownerToken && stages.length > 0 && currentStageIdx === stages.length - 1 && (
+          <div className="mt-4 pt-3 border-t border-gray-100 flex items-center gap-2">
+            <span className="text-sm">🎉</span>
+            <p className="text-xs font-semibold text-green-700">
+              Transaction reached final stage: {stages[currentStageIdx]?.label}
+            </p>
+          </div>
+        )}
 
         {/* ── KYC / Investor progress (tokenization only) ─────────────── */}
         {isTokenization && (
