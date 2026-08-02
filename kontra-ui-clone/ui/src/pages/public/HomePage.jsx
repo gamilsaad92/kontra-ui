@@ -421,10 +421,17 @@ export default function HomePage() {
             <p className="text-xs text-gray-400">
               All templates are fully customizable. Add roles, swap documents, adjust checklist stages — or <Link to="/create-deal-room" className="underline text-gray-600 hover:text-gray-900">describe your transaction to AI</Link> and let it suggest a starting point.
             </p>
-            <Link to="/for/business-brokers"
-              className="shrink-0 text-xs font-semibold text-blue-700 hover:text-blue-900 underline underline-offset-2 transition whitespace-nowrap">
-              For business brokers →
-            </Link>
+            <div className="flex items-center gap-4 shrink-0">
+              <Link to="/for/business-brokers"
+                className="text-xs font-semibold text-blue-700 hover:text-blue-900 underline underline-offset-2 transition whitespace-nowrap">
+                For business brokers →
+              </Link>
+              <Link to="/for/tokenization"
+                className="text-xs font-semibold hover:opacity-80 underline underline-offset-2 transition whitespace-nowrap"
+                style={{ color: "#7c3aed" }}>
+                For token issuers →
+              </Link>
+            </div>
           </div>
         </div>
       </section>
