@@ -1267,6 +1267,110 @@ function TransactionDetailsPanel({ property, propertyId, pack }) {
   );
 }
 
+// ── WorkspaceTemplateSwitcherPanel ───────────────────────────────────────────
+// Task #130 — lets coordinators manually switch workspace template from the
+// Settings tab. Task #128 auth gate is enforced by the /repack endpoint
+// (owner_write_token required) and by only showing this panel to ownerToken
+// holders. A two-step confirmation prevents accidental switches.
+const SWITCH_PACK_OPTIONS = [
+  { id: 'cre_acquisition',      label: 'CRE Acquisition',      icon: '🏢', desc: 'Property, hotel, real estate transactions' },
+  { id: 'business_acquisition', label: 'Business Acquisition', icon: '💼', desc: 'M&A, company purchase, management buyout'   },
+  { id: 'fundraising',          label: 'Fundraising Round',    icon: '📈', desc: 'Seed, Series A/B, equity raise'              },
+  { id: 'tokenization',         label: 'Token Issuance',       icon: '🪙', desc: 'Digital asset preparation & token offering' },
+];
+
+function WorkspaceTemplateSwitcherPanel({ propertyId, pack }) {
+  const [ownerToken, setOwnerToken] = useState('');
+  const [selected,   setSelected]   = useState('');
+  const [confirming, setConfirming] = useState(false);
+  const [switching,  setSwitching]  = useState(false);
+  const [err,        setErr]        = useState('');
+
+  useEffect(() => {
+    try { setOwnerToken(localStorage.getItem(`kontra_owner_token_${propertyId}`) || ''); } catch {}
+  }, [propertyId]);
+
+  if (!ownerToken) return null; // hidden from non-owners
+
+  const currentPackId  = pack?.id || '';
+  const availablePacks = SWITCH_PACK_OPTIONS.filter(p => p.id !== currentPackId);
+  const selectedPack   = SWITCH_PACK_OPTIONS.find(p => p.id === selected);
+
+  async function handleSwitch() {
+    if (!selected || switching) return;
+    setSwitching(true); setErr('');
+    try {
+      const res = await fetch(`${API_BASE}/api/public/deal-room/${propertyId}/repack`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ packId: selected, ownerWriteToken: ownerToken }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Switch failed');
+      window.location.reload();
+    } catch (e) {
+      setErr(e.message);
+      setSwitching(false);
+    }
+  }
+
+  return (
+    <div className="bg-white rounded-2xl border border-gray-200 p-5 mb-5">
+      <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-4">Switch Workspace Template</p>
+
+      {!confirming ? (
+        <>
+          <p className="text-[11px] text-gray-400 mb-3 leading-snug">
+            Select a new template to load the correct document checklist, participant roles, and lifecycle stages.
+            Uploaded documents and participant submissions are preserved — only the template structure resets.
+          </p>
+          <div className="grid sm:grid-cols-2 gap-2 mb-3">
+            {availablePacks.map(p => (
+              <button key={p.id} type="button" onClick={() => setSelected(p.id)}
+                className={`text-left p-3 rounded-xl border-2 transition-all ${
+                  selected === p.id ? 'border-[#800020] bg-red-50' : 'border-gray-100 hover:border-gray-200'
+                }`}>
+                <span className="text-base block mb-1">{p.icon}</span>
+                <p className="text-xs font-bold text-gray-900">{p.label}</p>
+                <p className="text-[10px] text-gray-400 mt-0.5">{p.desc}</p>
+              </button>
+            ))}
+          </div>
+          {selected && (
+            <button onClick={() => setConfirming(true)}
+              className="w-full py-2 rounded-xl text-xs font-bold text-white transition hover:opacity-90"
+              style={{ background: '#800020' }}>
+              Switch to {selectedPack?.label} →
+            </button>
+          )}
+        </>
+      ) : (
+        <div className="space-y-3">
+          <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
+            <p className="text-xs font-bold text-amber-900 mb-1">⚠ This will reset the template structure</p>
+            <p className="text-[11px] text-amber-700 leading-snug">
+              Switching to <strong>{selectedPack?.label}</strong> resets the document checklist and stage tracker.
+              Your uploaded documents and participant submissions are not affected.
+            </p>
+          </div>
+          {err && <p className="text-xs text-red-500">{err}</p>}
+          <div className="flex gap-2">
+            <button onClick={handleSwitch} disabled={switching}
+              className="flex-1 py-2 rounded-xl text-xs font-bold text-white transition hover:opacity-90 disabled:opacity-40"
+              style={{ background: '#800020' }}>
+              {switching ? 'Switching…' : `Confirm — Switch to ${selectedPack?.label}`}
+            </button>
+            <button onClick={() => { setConfirming(false); setErr(''); }}
+              className="px-4 py-2 rounded-xl text-xs font-bold text-gray-600 border border-gray-200 hover:bg-gray-50 transition">
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── JurisdictionSettingsPanel ────────────────────────────────────────────────
 // Task #167 — lets a workspace owner update the jurisdiction of an existing
 // room from the Settings tab without recreating the room. Jurisdiction change
@@ -2863,6 +2967,8 @@ export default function DealRoomPage() {
                 )}
                 {/* Jurisdiction editor — task #167 */}
                 <JurisdictionSettingsPanel propertyId={pid} property={property} />
+                {/* Template switcher — task #130 */}
+                <WorkspaceTemplateSwitcherPanel propertyId={pid} pack={pack} />
                 <LegalReviewPanel propertyId={pid} pack={pack} isDemo={false} />
               </>
             )}

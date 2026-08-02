@@ -3268,6 +3268,69 @@ app.get('/api/public/deal-room/:propertyId/notifications', async (req, res) => {
   }
 });
 
+// ── Resend a notification email (task #88) ──────────────────────────────────
+// Owner-gated. Looks up the original notification by ID, sends a forwarding
+// email with "Resent from log" header to the same recipient, and logs an event.
+app.post('/api/public/deal-room/:propertyId/notifications/:notificationId/resend', async (req, res) => {
+  const { propertyId, notificationId } = req.params;
+  const { ownerWriteToken } = req.body || {};
+  if (!ownerWriteToken) return res.status(403).json({ error: 'owner_write_token required' });
+  const RESEND_KEY = process.env.RESEND_API_KEY;
+  if (!RESEND_KEY) return res.status(503).json({ error: 'Email not configured (RESEND_API_KEY not set)' });
+
+  try {
+    const [roomRes, notifRes] = await Promise.all([
+      supabase.from('deal_rooms').select('owner_write_token, property_name')
+        .eq('property_id', propertyId).maybeSingle(),
+      supabase.from('deal_notifications').select('id, type, to_email, subject, sent_at')
+        .eq('id', notificationId).eq('property_id', propertyId).maybeSingle(),
+    ]);
+    if (roomRes.error) throw roomRes.error;
+    if (!roomRes.data) return res.status(404).json({ error: 'room not found' });
+    if (!roomRes.data.owner_write_token || roomRes.data.owner_write_token !== ownerWriteToken) {
+      return res.status(403).json({ error: 'invalid owner_write_token' });
+    }
+    if (notifRes.error) throw notifRes.error;
+    if (!notifRes.data) return res.status(404).json({ error: 'notification not found' });
+
+    const notif = notifRes.data;
+    const room  = roomRes.data;
+    const workspaceUrl = `${req.headers.origin || 'https://kontraplatform.com'}/deal-room/${propertyId}`;
+
+    await sendResendEmail(RESEND_KEY, {
+      from: 'Kontra <notifications@kontraplatform.com>',
+      to: notif.to_email,
+      subject: `[Resent] ${notif.subject}`,
+      html: `
+        <div style="font-family:sans-serif;max-width:520px;margin:0 auto;padding:32px 24px">
+          <p style="color:#888;font-size:12px;margin:0 0 16px;padding:8px 12px;background:#f9fafb;border-radius:8px;border:1px solid #e5e7eb">
+            📬 Resent from the notification log — original sent ${new Date(notif.sent_at).toLocaleString()}
+          </p>
+          <h2 style="font-size:16px;font-weight:700;color:#111;margin:0 0 12px">${notif.subject}</h2>
+          <p style="color:#555;font-size:14px;margin:0 0 24px">
+            This email was resent at the request of the workspace coordinator. 
+            Click below to access the workspace.
+          </p>
+          <a href="${workspaceUrl}"
+            style="display:inline-block;padding:12px 24px;background:#800020;color:white;border-radius:10px;text-decoration:none;font-weight:700;font-size:14px">
+            Open workspace →
+          </a>
+          <p style="color:#bbb;font-size:11px;margin-top:24px">Kontra deal room · ${room.property_name || propertyId}</p>
+        </div>`,
+    });
+
+    logEvent(propertyId, 'notification_resent', 'owner', null,
+      `Notification resent to ${notif.to_email}: ${notif.subject}`,
+      { notificationId, type: notif.type }
+    ).catch(() => {});
+
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('[notification/resend]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ── Activity timeline ───────────────────────────────────────────────────────
 app.get('/api/public/deal-room/:propertyId/events', async (req, res) => {
   const { propertyId } = req.params;
