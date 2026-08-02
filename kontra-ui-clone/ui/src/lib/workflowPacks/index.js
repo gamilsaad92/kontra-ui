@@ -15,6 +15,7 @@
 import { creAcquisitionPack } from "./creAcquisition";
 import { businessAcquisitionPack } from "./businessAcquisition";
 import { fundraisingPack } from "./fundraising";
+import { tokenizationPack } from "./tokenization";
 import { createGenericPack } from "./genericPackFactory";
 
 export const DEFAULT_PACK_ID = "cre_acquisition";
@@ -23,6 +24,7 @@ export const PACKS = {
   business_acquisition: businessAcquisitionPack,
   cre_acquisition: creAcquisitionPack,
   fundraising: fundraisingPack,
+  tokenization: tokenizationPack,
 };
 
 // ── Custom packs (Workflow Pack Builder) ─────────────────────────────────────
@@ -149,6 +151,8 @@ const DEAL_TYPE_TO_PACK = {
   business_acquisition: "business_acquisition",
   seed: "fundraising", series_a: "fundraising", series_b_plus: "fundraising", bridge: "fundraising",
   fundraising: "fundraising",
+  tokenization: "tokenization", token_issuance: "tokenization", sto: "tokenization",
+  security_token: "tokenization", digital_asset: "tokenization",
 };
 
 // Keywords in the workspace name that indicate a non-CRE pack.
@@ -160,6 +164,10 @@ const DEAL_TYPE_TO_PACK = {
 // route CRE rooms to the M&A pack. Only use phrases that unambiguously signal
 // a business sale or capital raise context.
 const NAME_PACK_HINTS = [
+  { pack: 'tokenization',         words: ['tokeniz', 'token issuance', 'token offering', 'security token',
+                                          'digital asset', 'sto ', ' sto', 'rwa ', ' rwa',
+                                          'real world asset', 'adgm', 'mica ', ' mica', 'reg d token',
+                                          'fractionali'] },
   { pack: 'fundraising',          words: ['fundrais', 'capital raise', 'investment round', 'seed round',
                                           'series a', 'series b', 'series c', 'venture', 'vc ', ' vc',
                                           'term sheet', 'safe note', 'convertible', 'raise'] },
@@ -217,4 +225,4 @@ export function listWorkflowPacks() {
   }));
 }
 
-export { creAcquisitionPack, businessAcquisitionPack };
+export { creAcquisitionPack, businessAcquisitionPack, tokenizationPack };

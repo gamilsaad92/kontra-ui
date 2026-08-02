@@ -9,7 +9,7 @@ const API_BASE = (import.meta.env.VITE_API_BASE || "").replace(/\/+$/, "");
 const ICON_CHOICES = ["📄","🏢","💼","🏦","🔍","🛡️","⚖️","📊","⚙️","🏗️","🧾","📋","🤝","🏭","👤","🔑","✍️","📝","🌐","🏛️"];
 const COLOR_CHOICES = ["#800020","#1d4ed8","#16a34a","#d97706","#6d28d9","#0369a1","#374151","#dc2626","#0891b2","#7c3aed"];
 
-const SYSTEM_PACK_IDS = ["business_acquisition", "cre_acquisition", "fundraising"];
+const SYSTEM_PACK_IDS = ["business_acquisition", "cre_acquisition", "fundraising", "tokenization"];
 
 // Map the AI transaction-type hint to the matching system pack ID.
 // Used to keep the preview pack, the Review summary, and the activated workspace in sync.
@@ -17,6 +17,8 @@ const AI_TYPE_TO_PACK = {
   business_acquisition: "business_acquisition",
   cre_acquisition:      "cre_acquisition",
   fundraising:          "fundraising",
+  tokenization:         "tokenization",
+  token_issuance:       "tokenization",
   // All other types (lending, licensing, joint_venture, other) default to business_acquisition
   // as the most generic structural starting point.
 };
@@ -219,7 +221,7 @@ export default function CreateDealRoomPage() {
   // (e.g. from /for/business-brokers CTA → /create-deal-room?template=business_acquisition)
   useEffect(() => {
     const templateParam = searchParams.get("template");
-    const validPacks = ["business_acquisition", "cre_acquisition", "fundraising"];
+    const validPacks = ["business_acquisition", "cre_acquisition", "fundraising", "tokenization"];
     if (templateParam && validPacks.includes(templateParam)) {
       setCreationMode("template");
       setShowTemplatePicker(true);

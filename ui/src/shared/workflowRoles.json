@@ -87,5 +87,29 @@
         "subtext": "As the placement agent, you have visibility across all parties. Track document status and share role-scoped links with each party.",
         "sections": [] }
     ]
+  },
+  "tokenization": {
+    "roles": [
+      { "key": "issuer", "label": "Token Issuer", "shortLabel": "Issuer", "icon": "🏛️", "color": "#800020", "required": true, "needsDocs": false, "invitable": false, "canManage": true,
+        "headline": "Manage the token issuance and coordinate all parties",
+        "subtext": "As the token issuer, you have a full view of all parties, documents, and issuance progress. Share role-specific links below to invite your investors, legal counsel, compliance officer, and transfer agent.",
+        "sections": ["metadata", "compliance"] },
+      { "key": "lead_investor", "label": "Lead Investor", "shortLabel": "Lead Investor", "icon": "💎", "color": "#1d4ed8", "required": true, "needsDocs": true, "invitable": true, "inviteAction": "complete KYC and review the Token Offering Memorandum",
+        "headline": "Review the Token Offering Memorandum and complete investor onboarding",
+        "subtext": "As the lead investor, complete your KYC/AML verification and review the Token Offering Memorandum, subscription agreement, and cap table uploaded in the checklist above.",
+        "sections": [] },
+      { "key": "counsel", "label": "Legal Counsel", "icon": "⚖️", "color": "#374151", "required": true, "needsDocs": true, "invitable": true, "inviteAction": "review the offering documents and regulatory filing",
+        "headline": "Review offering documents, subscription agreements, and regulatory filings",
+        "subtext": "As legal counsel, review the Token Offering Memorandum, subscription agreements, and regulatory filing uploaded in the checklist above. Flag any structural or compliance issues.",
+        "sections": [] },
+      { "key": "compliance", "label": "Compliance Officer", "shortLabel": "Compliance", "icon": "🛡️", "color": "#065f46", "required": true, "needsDocs": true, "invitable": true, "inviteAction": "review KYC/AML documentation and regulatory filing",
+        "headline": "Review KYC/AML documentation and confirm regulatory compliance",
+        "subtext": "As the compliance officer, review all KYC/AML completion certificates, investor accreditation documents, and the regulatory filing to confirm the issuance meets the requirements of the governing jurisdiction.",
+        "sections": [] },
+      { "key": "transfer_agent", "label": "Transfer Agent", "shortLabel": "Transfer Agent", "icon": "⚙️", "color": "#0369a1", "required": false, "needsDocs": true, "invitable": true, "inviteAction": "review the capitalization table and token distribution schedule",
+        "headline": "Review the cap table and manage token distribution records",
+        "subtext": "As the transfer agent, review the capitalization table and token distribution schedule uploaded in the checklist above. Confirm investor registrations are complete before issuance.",
+        "sections": [] }
+    ]
   }
 }
