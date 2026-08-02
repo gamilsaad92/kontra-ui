@@ -21,6 +21,7 @@ export default function DocumentsTabPanel({
   packReady = true,
   onAnalysisSaved,
   refreshKey,
+  jurisdiction,
 }) {
   return (
     <div className="mb-6">
@@ -33,6 +34,7 @@ export default function DocumentsTabPanel({
         packReady={packReady}
         onAnalysisSaved={onAnalysisSaved}
         refreshKey={refreshKey}
+        jurisdiction={jurisdiction}
       />
       <VerificationPanel
         propertyId={propertyId}

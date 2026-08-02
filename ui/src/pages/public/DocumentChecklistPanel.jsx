@@ -33,11 +33,17 @@ const SECTION_TO_CATEGORY = {
   insurance: "Insurance",
   // Closing
   "brand-standards": "Closing",
+  // Regulatory (jurisdiction-specific tokenization docs)
+  fsra_licence: "Regulatory", dfsa_promotion_approval: "Regulatory",
+  mica_white_paper: "Regulatory", national_authority_receipt: "Regulatory",
+  form_d: "Regulatory", accredited_verification: "Regulatory",
+  mas_prospectus_or_exemption: "Regulatory", mas_ps_licence: "Regulatory",
+  fca_promotion_approval: "Regulatory", fca_aml_registration: "Regulatory",
 };
 
 const CATEGORY_DISPLAY_ORDER = [
   "Financial", "Legal", "Operational",
-  "Property / Asset", "Insurance", "Closing", "General",
+  "Property / Asset", "Insurance", "Regulatory", "Closing", "General",
 ];
 
 function getItemCategory(item) {
@@ -46,9 +52,10 @@ function getItemCategory(item) {
 }
 
 // Seed the checklist from the pack's document schema when the workspace has no
-// persisted items yet.
-function seedFromPack(pack, propertyType) {
-  const schema = pack.getDocumentSchema?.(propertyType) || [];
+// persisted items yet. Passes jurisdiction as second arg so tokenization packs
+// can merge in jurisdiction-specific required documents.
+function seedFromPack(pack, propertyType, jurisdiction) {
+  const schema = pack.getDocumentSchema?.(propertyType, jurisdiction) || [];
   return schema.map((d, i) => ({
     id: d.id || d.section || uid(),
     section: d.section || d.id,
@@ -417,6 +424,7 @@ function ItemEditor({ item, roles, onSave, onCancel }) {
 export default function DocumentChecklistPanel({
   propertyId, propertyType, role, isDemo = false,
   packId = DEFAULT_PACK_ID, packReady = true, onAnalysisSaved,
+  jurisdiction,
 }) {
   const workflowPack = getWorkflowPack(packId);
   const { getInlineFacts, getCompletenessIssues, factColors: FACT_COLORS, aiUploadEndpoints: AI_UPLOAD_ENDPOINTS } = workflowPack;
@@ -482,14 +490,14 @@ export default function DocumentChecklistPanel({
           setItems(d.items.map((i, idx) => ({ ...i, sortOrder: idx })));
         } else {
           // First visit: seed from the NOW-CORRECT pack, then immediately persist
-          const seeded = seedFromPack(workflowPack, propertyType);
+          const seeded = seedFromPack(workflowPack, propertyType, jurisdiction);
           setItems(seeded);
           if (seeded.length > 0) persistItems(seeded);
         }
       })
       .catch(() => {
         // Offline fallback: seed from pack without persisting
-        setItems(seedFromPack(workflowPack, propertyType));
+        setItems(seedFromPack(workflowPack, propertyType, jurisdiction));
       });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [propertyId, packReady]);

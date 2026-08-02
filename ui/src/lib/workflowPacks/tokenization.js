@@ -257,6 +257,131 @@ export const METADATA_FIELDS = [
   { id: "target_close_date", label: "Target Close Date",    fieldType: "date" },
 ];
 
+// ── Jurisdiction-specific required documents ──────────────────────────────────
+// Merged into the base schema when getDocumentSchema(_, jurisdiction) is called.
+// Each entry follows the same shape as DOCUMENT_SCHEMA items.
+const JURISDICTION_DOCS = {
+  uae_adgm: [
+    {
+      id: "fsra_licence",
+      label: "FSRA Category 3C/3D Licence or Exemption Letter",
+      section: "fsra_licence",
+      ai: false,
+      required: true,
+      assignedTo: ["issuer"],
+      category: "Regulatory",
+      jurisdictionNote: "UAE ADGM/DFSA — required before subscription opens",
+    },
+    {
+      id: "dfsa_promotion_approval",
+      label: "DFSA Financial Promotion Approval",
+      section: "dfsa_promotion_approval",
+      ai: false,
+      required: true,
+      assignedTo: ["counsel"],
+      category: "Regulatory",
+      jurisdictionNote: "UAE ADGM/DFSA — marketing materials must be approved by a licensed firm",
+    },
+  ],
+  eu_mica: [
+    {
+      id: "mica_white_paper",
+      label: "MiCA White Paper",
+      section: "mica_white_paper",
+      ai: true,
+      required: true,
+      assignedTo: ["issuer", "counsel"],
+      category: "Regulatory",
+      jurisdictionNote: "EU MiCA — mandatory for all crypto-asset offerings; must be filed with national authority before publication",
+      aiExtraction: {
+        analystRole: "EU securities lawyer reviewing a MiCA White Paper",
+        docTypes: ["MiCA White Paper", "Crypto-Asset White Paper", "Offering Document", "Other"],
+        metrics: {
+          asset_class:          "type of crypto-asset (e.g. ART, EMT, utility token)",
+          issuer_jurisdiction:  "EU member state of the issuer",
+          offer_size:           "total offer size in euros",
+        },
+      },
+    },
+    {
+      id: "national_authority_receipt",
+      label: "National Authority Submission Receipt",
+      section: "national_authority_receipt",
+      ai: false,
+      required: true,
+      assignedTo: ["counsel", "compliance"],
+      category: "Regulatory",
+      jurisdictionNote: "EU MiCA — proof of White Paper submission to the competent national authority",
+    },
+  ],
+  us_reg_d: [
+    {
+      id: "form_d",
+      label: "Form D (SEC Filing)",
+      section: "form_d",
+      ai: false,
+      required: true,
+      assignedTo: ["counsel"],
+      category: "Regulatory",
+      jurisdictionNote: "US Reg D — must be filed with the SEC within 15 days of the first sale",
+    },
+    {
+      id: "accredited_verification",
+      label: "Accredited Investor Verification Letters",
+      section: "accredited_verification",
+      ai: false,
+      required: true,
+      assignedTo: ["compliance"],
+      category: "Regulatory",
+      jurisdictionNote: "US Reg D 506(c) — independent verification of accredited status required for each investor",
+    },
+  ],
+  sg_mas: [
+    {
+      id: "mas_prospectus_or_exemption",
+      label: "MAS Prospectus or Exemption Certificate",
+      section: "mas_prospectus_or_exemption",
+      ai: false,
+      required: true,
+      assignedTo: ["counsel"],
+      category: "Regulatory",
+      jurisdictionNote: "Singapore MAS — prospectus or approved exemption (e.g. small offers < S$5M, private placement ≤ 50 persons)",
+    },
+    {
+      id: "mas_ps_licence",
+      label: "MAS Payment Services Act Licence (if applicable)",
+      section: "mas_ps_licence",
+      ai: false,
+      required: true,
+      assignedTo: ["issuer"],
+      category: "Regulatory",
+      jurisdictionNote: "Singapore MAS — required if the issuance involves regulated DPT or payment services",
+    },
+  ],
+  uk_fca: [
+    {
+      id: "fca_promotion_approval",
+      label: "FCA Financial Promotion Approval",
+      section: "fca_promotion_approval",
+      ai: false,
+      required: true,
+      assignedTo: ["counsel"],
+      category: "Regulatory",
+      jurisdictionNote: "UK FCA — qualifying cryptoasset promotions must be approved by an FCA-authorised firm",
+    },
+    {
+      id: "fca_aml_registration",
+      label: "FCA Cryptoasset AML Registration Certificate",
+      section: "fca_aml_registration",
+      ai: false,
+      required: true,
+      assignedTo: ["compliance"],
+      category: "Regulatory",
+      jurisdictionNote: "UK FCA — cryptoasset businesses must be registered for AML/CTF purposes under the MLRs 2017",
+    },
+  ],
+};
+
 export const tokenizationPack = createGenericPack({
   id: "tokenization",
   name: "Token Issuance",
@@ -279,6 +404,18 @@ export const tokenizationPack = createGenericPack({
   metadataLabel: "Issuance Details",
   outstandingItemsSections: ["metadata", "compliance"],
 });
+
+// Override getDocumentSchema to merge jurisdiction-specific docs on top of the
+// base schema. Called as getDocumentSchema(dealSubtype, jurisdiction).
+const _baseGetDocumentSchema = tokenizationPack.getDocumentSchema;
+tokenizationPack.getDocumentSchema = function getDocumentSchema(dealSubtype, jurisdiction) {
+  const base = _baseGetDocumentSchema(dealSubtype);
+  const extra = (jurisdiction && JURISDICTION_DOCS[jurisdiction]) || [];
+  if (extra.length === 0) return base;
+  // Avoid duplicates if the checklist is re-seeded
+  const existingIds = new Set(base.map(d => d.id));
+  return [...base, ...extra.filter(d => !existingIds.has(d.id))];
+};
 
 export const {
   nextStage,

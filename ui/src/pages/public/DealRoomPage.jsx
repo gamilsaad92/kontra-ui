@@ -2372,6 +2372,7 @@ export default function DealRoomPage() {
                   packReady={packReady}
                   onAnalysisSaved={onAnalysisSaved}
                   refreshKey={analysesRefreshKey}
+                  jurisdiction={property.jurisdiction || ""}
                 />
               </div>
             )}
