@@ -1,5 +1,5 @@
 import React, { useContext } from "react";
-import { Navigate, Route, Routes } from "react-router-dom";
+import { Navigate, Route, Routes, useParams } from "react-router-dom";
 import LoginPage from "./pages/LoginPage";
 import PortalSelectPage from "./pages/PortalSelectPage";
 import RequireAuth from "./app/guards/RequireAuth";
@@ -47,6 +47,14 @@ import AboutPage from "./pages/public/AboutPage";
 import NewDashboard from "./pages/NewDashboard";
 import AppWorkspace from "./pages/app/AppWorkspace";
 
+// Task #188 — redirect /deal-room/:propertyId/verify back to the room.
+// DealRoomGateV2 replaces the URL with /verify after resolving the invite token;
+// returning participants who bookmarked that URL land in the room itself.
+function VerifyRedirect() {
+  const { propertyId } = useParams();
+  return <Navigate to={`/deal-room/${propertyId}`} replace />;
+}
+
 function AuthedOrgProvider({ children }) {
   const { session } = useContext(AuthContext);
   const apiBase = import.meta.env.VITE_API_BASE?.replace(/\/+$/, "") || "";
@@ -80,6 +88,8 @@ function AuthedApp() {
         <Route path="/deal-room/:propertyId" element={<DealRoomPage />} />
         <Route path="/deal-room/:propertyId/summary" element={<DealSummaryPage />} />
         <Route path="/deal-room/:propertyId/share" element={<DealSharePage />} />
+        {/* Task #188 — redirect participants who bookmark /verify back to their deal room */}
+        <Route path="/deal-room/:propertyId/verify" element={<VerifyRedirect />} />
         <Route path="/verify/:token" element={<SharedVAPPage />} />
         <Route path="/create-deal-room" element={<CreateDealRoomPage />} />
         <Route path="/for/business-brokers" element={<BusinessBrokersPage />} />
