@@ -3331,6 +3331,97 @@ app.post('/api/public/deal-room/:propertyId/notifications/:notificationId/resend
   }
 });
 
+// ── Task #143: Request a specific document from an invited participant ────────
+// Coordinator-only (ownerWriteToken required). Looks up deal_room_invites for
+// any of the assignedTo roles, sends an email asking them to upload the named
+// document, and logs the event.
+app.post('/api/public/deal-room/:propertyId/request-document', async (req, res) => {
+  const { propertyId } = req.params;
+  const { ownerWriteToken, roles: assignedRoles = [], docLabel, docSection } = req.body || {};
+  if (!ownerWriteToken) return res.status(403).json({ error: 'owner_write_token required' });
+  if (!docLabel) return res.status(400).json({ error: 'docLabel required' });
+  const RESEND_KEY = process.env.RESEND_API_KEY;
+
+  try {
+    // Validate owner token
+    const { data: room, error: roomErr } = await supabase
+      .from('deal_rooms')
+      .select('owner_write_token, property_name, first_name')
+      .eq('property_id', propertyId)
+      .maybeSingle();
+    if (roomErr) throw roomErr;
+    if (!room) return res.status(404).json({ error: 'room not found' });
+    if (!room.owner_write_token || room.owner_write_token !== ownerWriteToken) {
+      return res.status(403).json({ error: 'invalid owner_write_token' });
+    }
+
+    const propName   = room.property_name || propertyId;
+    const senderName = room.first_name || 'The workspace coordinator';
+    const roomUrl    = `https://kontraplatform.com/deal-room/${propertyId}`;
+
+    // Find all invited participants for the assignedTo roles
+    let recipients = [];
+    if (assignedRoles.length > 0) {
+      const { data: invites } = await supabase
+        .from('deal_room_invites')
+        .select('invited_email, role_key')
+        .eq('property_id', propertyId)
+        .in('role_key', assignedRoles)
+        .not('invited_email', 'is', null);
+      if (invites?.length) {
+        recipients = invites.map(i => ({ email: i.invited_email, roleKey: i.role_key }));
+      }
+    }
+
+    if (!RESEND_KEY || recipients.length === 0) {
+      // Log the request even if no email can be sent
+      logEvent(propertyId, 'document_requested', 'owner', senderName,
+        `Document requested: ${docLabel} from ${assignedRoles.join(', ') || 'assigned participant'}`,
+        { docSection, docLabel, emailSent: false, reason: recipients.length === 0 ? 'no_participant_found' : 'no_resend_key' }
+      ).catch(() => {});
+      return res.json({ ok: true, emailSent: false, reason: recipients.length === 0 ? 'no_participant_found' : 'email_not_configured' });
+    }
+
+    // Send an email to each found participant
+    await Promise.all(recipients.map(({ email, roleKey }) =>
+      sendResendEmail(RESEND_KEY, {
+        from: 'Kontra <notifications@kontraplatform.com>',
+        to: email,
+        subject: `Action needed: please upload "${docLabel}" — ${propName}`,
+        text: `${senderName} is requesting that you upload "${docLabel}" to the deal room for ${propName} on Kontra.\n\nOpen your workspace to upload the document:\n${roomUrl}\n\n---\nKontra transaction workspace. If you believe this was sent in error, ignore this message.`,
+        html: `
+          <div style="font-family:sans-serif;max-width:520px;margin:0 auto;padding:32px 24px">
+            <h2 style="font-size:16px;font-weight:700;color:#111;margin:0 0 12px">Document requested</h2>
+            <p style="color:#555;font-size:15px;margin:0 0 8px">
+              <strong>${senderName}</strong> is requesting that you upload a document to the deal room for <strong>${propName}</strong>.
+            </p>
+            <div style="margin:16px 0;padding:12px 16px;background:#fff7ed;border:1px solid #fed7aa;border-radius:10px">
+              <p style="margin:0;font-size:14px;font-weight:700;color:#9a3412">📄 ${docLabel}</p>
+            </div>
+            <p style="color:#555;font-size:14px;margin:0 0 24px">
+              Please log into your workspace and upload this document at your earliest convenience.
+            </p>
+            <a href="${roomUrl}"
+              style="display:inline-block;padding:12px 24px;background:#800020;color:white;border-radius:10px;text-decoration:none;font-weight:700;font-size:14px">
+              Open workspace →
+            </a>
+            <p style="color:#bbb;font-size:11px;margin-top:24px">Kontra deal room · ${propName}</p>
+          </div>`,
+      })
+    ));
+
+    logEvent(propertyId, 'document_requested', 'owner', senderName,
+      `Document requested: ${docLabel} from ${recipients.map(r => r.email).join(', ')}`,
+      { docSection, docLabel, recipients: recipients.map(r => r.email) }
+    ).catch(() => {});
+
+    res.json({ ok: true, emailSent: true, recipients: recipients.map(r => r.email) });
+  } catch (err) {
+    console.error('[request-document]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ── Activity timeline ───────────────────────────────────────────────────────
 app.get('/api/public/deal-room/:propertyId/events', async (req, res) => {
   const { propertyId } = req.params;

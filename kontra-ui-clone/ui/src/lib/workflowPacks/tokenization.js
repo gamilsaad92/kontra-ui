@@ -67,6 +67,7 @@ const DOCUMENT_SCHEMA = [
     ai: true,
     required: true,
     assignedTo: ["issuer"],
+    category: "Legal",
     aiExtraction: {
       analystRole: "securities lawyer reviewing a Token Offering Memorandum for a regulated token issuance",
       docTypes: ["Token Offering Memorandum", "Private Placement Memorandum", "Offering Document", "Other"],
@@ -87,6 +88,7 @@ const DOCUMENT_SCHEMA = [
     ai: false,
     required: true,
     assignedTo: ["counsel"],
+    category: "Legal",
   },
   {
     id: "kyc_aml",
@@ -95,6 +97,7 @@ const DOCUMENT_SCHEMA = [
     ai: true,
     required: true,
     assignedTo: ["compliance"],
+    category: "Regulatory",
     aiExtraction: {
       analystRole: "AML compliance officer reviewing a KYC/AML completion certificate",
       docTypes: ["KYC Certificate", "AML Verification", "Identity Verification Report", "Other"],
@@ -112,6 +115,7 @@ const DOCUMENT_SCHEMA = [
     ai: false,
     required: true,
     assignedTo: ["counsel", "compliance"],
+    category: "Regulatory",
   },
   {
     id: "accreditation",
@@ -120,6 +124,7 @@ const DOCUMENT_SCHEMA = [
     ai: false,
     required: true,
     assignedTo: ["lead_investor"],
+    category: "Regulatory",
   },
   {
     id: "saft",
@@ -128,6 +133,7 @@ const DOCUMENT_SCHEMA = [
     ai: false,
     required: false,
     assignedTo: ["counsel"],
+    category: "Legal",
   },
   {
     id: "cap_table",
@@ -136,6 +142,7 @@ const DOCUMENT_SCHEMA = [
     ai: true,
     required: true,
     assignedTo: ["transfer_agent"],
+    category: "Financial",
     aiExtraction: {
       analystRole: "transfer agent reviewing a token capitalization table",
       docTypes: ["Cap Table", "Capitalization Table", "Token Distribution Schedule", "Other"],

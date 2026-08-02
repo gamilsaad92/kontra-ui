@@ -53,9 +53,9 @@ export const advanceLabel = {
 // auditor: audited financials
 // counsel: legal agreements
 const DOCUMENT_SCHEMA = [
-  { id: "term_sheet",         label: "Term Sheet",                section: "term_sheet",         ai: false, required: true,  assignedTo: ["founder"] },
-  { id: "cap_table",          label: "Cap Table / Ownership",      section: "cap_table",          ai: false, required: true,  assignedTo: ["founder"] },
-  { id: "financials",         label: "Financial Statements",       section: "financials",         ai: true,  required: true,  assignedTo: ["founder"],
+  { id: "term_sheet",         label: "Term Sheet",                section: "term_sheet",         ai: false, required: true,  assignedTo: ["founder"],  category: "Legal" },
+  { id: "cap_table",          label: "Cap Table / Ownership",      section: "cap_table",          ai: false, required: true,  assignedTo: ["founder"],  category: "Financial" },
+  { id: "financials",         label: "Financial Statements",       section: "financials",         ai: true,  required: true,  assignedTo: ["founder"],  category: "Financial",
     aiExtraction: {
       analystRole: "venture/growth investor's financial analyst reviewing a startup raising a round",
       docTypes: ["Income Statement", "Balance Sheet", "Cash Flow Statement", "Financial Statements", "Other"],
@@ -67,7 +67,7 @@ const DOCUMENT_SCHEMA = [
         yoy_growth: "year-over-year revenue growth as a percentage",
       },
     } },
-  { id: "audited_financials", label: "Audited Financials",         section: "audited_financials", ai: true,  required: false, assignedTo: ["auditor"],
+  { id: "audited_financials", label: "Audited Financials",         section: "audited_financials", ai: true,  required: false, assignedTo: ["auditor"],  category: "Financial",
     aiExtraction: {
       analystRole: "independent auditor reviewing audited financial statements for an investment round",
       docTypes: ["Audit Report", "Audited Financial Statements", "Other"],
@@ -77,8 +77,8 @@ const DOCUMENT_SCHEMA = [
         material_weaknesses: "number of material weaknesses or significant deficiencies identified",
       },
     } },
-  { id: "spa",                 label: "Stock Purchase Agreement / SAFE", section: "spa",                 ai: false, required: true,  assignedTo: ["counsel"] },
-  { id: "disclosure_schedule", label: "Disclosure Schedule",       section: "disclosure_schedule", ai: false, required: false, assignedTo: ["founder"] },
+  { id: "spa",                 label: "Stock Purchase Agreement / SAFE", section: "spa",                 ai: false, required: true,  assignedTo: ["counsel"],  category: "Legal" },
+  { id: "disclosure_schedule", label: "Disclosure Schedule",       section: "disclosure_schedule", ai: false, required: false, assignedTo: ["founder"],  category: "Legal" },
 ];
 
 function humanizeMetricKey(key) {

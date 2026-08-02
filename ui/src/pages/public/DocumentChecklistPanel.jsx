@@ -452,6 +452,12 @@ export default function DocumentChecklistPanel({
   const [confirmReset, setConfirmReset] = useState(false);
   const [openMenuId, setOpenMenuId] = useState(null);
 
+  // ── Task #143: document request state ───────────────────────────────────
+  // requestingDocSection: which doc is currently sending a request
+  // requestedDocSections: set of sections whose request was already sent this session
+  const [requestingDocSection, setRequestingDocSection] = useState(null);
+  const [requestedDocSections, setRequestedDocSections] = useState(new Set());
+
   // ── Role + coordinator check ─────────────────────────────────────────────
   const roleConfig = workflowPack.getRole?.(role);
   const isCoordinator = !!roleConfig?.canManage;
@@ -501,6 +507,28 @@ export default function DocumentChecklistPanel({
       });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [propertyId, packReady]);
+
+  // ── Task #143: Request a document from an invited participant ──────────────
+  async function handleRequestDoc(item) {
+    if (!propertyId || isDemo) return;
+    setRequestingDocSection(item.section);
+    let ownerToken = "";
+    try { ownerToken = localStorage.getItem(`kontra_owner_token_${propertyId}`) || ""; } catch { /* storage unavailable */ }
+    try {
+      await fetch(`${API_BASE}/api/public/deal-room/${propertyId}/request-document`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ownerWriteToken: ownerToken,
+          roles: item.assignedTo || [],
+          docLabel: item.label,
+          docSection: item.section,
+        }),
+      });
+    } catch { /* silent — optimistic UI */ }
+    setRequestingDocSection(null);
+    setRequestedDocSections(prev => { const next = new Set(prev); next.add(item.section); return next; });
+  }
 
   // ── Persist items (debounced) ──────────────────────────────────────────────
   // Reads the owner_write_token stored in localStorage by CheckoutSuccessPage.
@@ -895,6 +923,21 @@ export default function DocumentChecklistPanel({
                   className="px-2.5 py-1 rounded-lg text-[11px] font-semibold border border-gray-200 text-gray-500 hover:bg-gray-50 hover:border-gray-300 transition disabled:opacity-40">
                   {isUploading ? "Uploading…" : "↑ Upload"}
                 </button>
+                {/* Task #143 — Request from participant button.
+                    Shown when the doc has an assignedTo role (meaning it's
+                    expected from a specific party, not the coordinator). */}
+                {isCoordinator && !isDemo && (item.assignedTo?.length > 0) && (
+                  requestedDocSections.has(item.section) ? (
+                    <span className="text-[10px] text-green-600 font-medium px-1">✓ Requested</span>
+                  ) : (
+                    <button
+                      disabled={requestingDocSection === item.section}
+                      onClick={() => handleRequestDoc(item)}
+                      className="px-2 py-0.5 rounded text-[10px] font-semibold border border-amber-200 text-amber-600 hover:bg-amber-50 hover:border-amber-300 transition disabled:opacity-40">
+                      {requestingDocSection === item.section ? "…" : "Request →"}
+                    </button>
+                  )
+                )}
               </>
             )}
             {done && !isDemo && (
