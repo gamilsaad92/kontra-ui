@@ -1588,6 +1588,139 @@ function OperationsManagerView({ propertyId, property, pack, role, onTabChange }
         <JurisdictionComplianceCard jurisdiction={property.jurisdiction} />
       )}
 
+      {/* ── Digital Asset Readiness overview card (tokenization only) ────── */}
+      {/* Phase 2 of the Digital Asset Layer spec. A scored, categorised snapshot
+          of how prepared the workspace is for token issuance. Suggested preparation
+          only — not a legal or regulatory determination (spec §3). */}
+      {isTokenization && (() => {
+        // 1. Issuance setup — are the four key offering parameters filled?
+        const ISSUANCE_FIELDS = [
+          { key: 'raise_amount',   label: 'Raise Target'   },
+          { key: 'token_price',    label: 'Token Price'    },
+          { key: 'asset_type',     label: 'Asset Type'     },
+          { key: 'min_investment', label: 'Min Investment' },
+        ];
+        const filledIssuance  = ISSUANCE_FIELDS.filter(f => !!metaValues[f.key]);
+        const missingIssuance = ISSUANCE_FIELDS.filter(f => !metaValues[f.key]).map(f => f.label);
+        const issuancePct     = Math.round((filledIssuance.length / ISSUANCE_FIELDS.length) * 100);
+
+        // 2. Documentation — proxy from docCount (checklist not in this view)
+        const DOC_TARGET = 5;
+        const docPct     = Math.min(Math.round((Math.min(docCount, DOC_TARGET) / DOC_TARGET) * 100), 100);
+        const docMissing = docCount === 0
+          ? ['No documents uploaded yet']
+          : docCount < DOC_TARGET
+            ? [`${DOC_TARGET - docCount} more document${DOC_TARGET - docCount !== 1 ? 's' : ''} suggested`]
+            : [];
+
+        // 3. Jurisdiction & regulatory — jurisdiction set + some docs present
+        const hasJurisdiction     = !!property?.jurisdiction;
+        const jurisdictionFilled  = (hasJurisdiction ? 1 : 0) + (hasJurisdiction && docCount > 0 ? 1 : 0);
+        const jurisdictionPct     = Math.round((jurisdictionFilled / 2) * 100);
+        const jurisdictionMissing = !hasJurisdiction
+          ? ['Jurisdiction not selected']
+          : docCount === 0 ? ['Upload regulatory documents'] : [];
+
+        // 4. Participants — non-coordinator roles invited or submitted
+        const nonCoordRows      = participantRows.filter(r => !r.canManage);
+        const invitedCount      = nonCoordRows.filter(r => r.invited || r.submitted).length;
+        const participantTarget = Math.max(nonCoordRows.length, 1);
+        const participantPct    = nonCoordRows.length === 0 ? 0
+          : Math.min(Math.round((invitedCount / participantTarget) * 100), 100);
+        const uninvited          = nonCoordRows.filter(r => !r.invited && !r.submitted).map(r => r.label).slice(0, 2);
+        const participantMissing = uninvited.map(l => `${l} not yet invited`);
+
+        // 5. KYC & verification
+        const kycComputed  = kycPct != null ? kycPct : (step3Done ? 25 : 0);
+        const kycPctCapped = Math.min(kycComputed, 100);
+        const kycMissing   = kycComputed === 0
+          ? ['No KYC documents analyzed yet']
+          : kycPct != null && kycPct < 100
+            ? [`${100 - kycPct}% of investors pending verification`]
+            : [];
+
+        // Weighted overall score
+        const WEIGHTS = [0.20, 0.25, 0.20, 0.20, 0.15];
+        const PCTS    = [issuancePct, docPct, jurisdictionPct, participantPct, kycPctCapped];
+        const overall = Math.round(PCTS.reduce((acc, p, i) => acc + p * WEIGHTS[i], 0));
+        const overallColor  = overall >= 75 ? '#16a34a' : overall >= 40 ? '#d97706' : '#dc2626';
+        const overallStatus = overall >= 75 ? 'On Track' : overall >= 40 ? 'In Progress' : 'Getting Started';
+
+        const goToSettings     = () => { onTabChange?.('settings'); setTimeout(() => document.getElementById('issuance-details')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 150); };
+        const goToDocuments    = () => onTabChange?.('documents');
+        const goToParticipants = () => onTabChange?.('participants');
+
+        const CATEGORIES = [
+          { icon: '🏷️', label: 'Issuance Details',          pct: issuancePct,    missing: missingIssuance,    ctaLabel: 'Settings → Issuance Details',   onClick: goToSettings     },
+          { icon: '📄', label: 'Documents Uploaded',        pct: docPct,         missing: docMissing,          ctaLabel: 'Documents tab',                 onClick: goToDocuments    },
+          { icon: '🌍', label: 'Jurisdiction & Regulatory', pct: jurisdictionPct, missing: jurisdictionMissing, ctaLabel: !hasJurisdiction ? 'Settings → Jurisdiction' : 'Upload regulatory docs', onClick: goToSettings },
+          { icon: '👥', label: 'Participants Invited',       pct: participantPct, missing: participantMissing,  ctaLabel: 'Participants tab',               onClick: goToParticipants },
+          { icon: '✅', label: 'KYC & Verification',        pct: kycPctCapped,   missing: kycMissing,          ctaLabel: 'Upload KYC documents',           onClick: goToDocuments    },
+        ];
+
+        return (
+          <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
+            <div className="px-5 pt-4 pb-3">
+              <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-1.5">
+                Digital Asset Readiness
+              </p>
+              <div className="flex items-end justify-between gap-2 flex-wrap">
+                <div className="flex items-end gap-3">
+                  <span className="text-3xl font-black leading-none" style={{ color: overallColor }}>{overall}%</span>
+                  <span className="text-sm text-gray-500 mb-0.5 leading-tight">{overallStatus}</span>
+                </div>
+                <span className="text-[10px] text-gray-300 leading-snug text-right max-w-[180px]">
+                  Suggested preparation — not a regulatory determination
+                </span>
+              </div>
+              <div className="mt-3 h-1.5 w-full rounded-full bg-gray-100 overflow-hidden">
+                <div className="h-full rounded-full transition-all duration-700"
+                  style={{ width: `${overall}%`, background: overallColor }} />
+              </div>
+            </div>
+            <div className="divide-y divide-gray-100">
+              {CATEGORIES.map(cat => {
+                const done    = cat.pct >= 100;
+                const partial = cat.pct > 0 && cat.pct < 100;
+                const cc      = done ? '#16a34a' : partial ? '#d97706' : '#9ca3af';
+                return (
+                  <div key={cat.label} className="px-5 py-2.5 flex items-center gap-3">
+                    <span className="text-sm shrink-0">{cat.icon}</span>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-xs font-medium text-gray-700">{cat.label}</span>
+                        <span className="text-[11px] font-bold shrink-0" style={{ color: cc }}>
+                          {done ? '✓ Complete' : `${cat.pct}%`}
+                        </span>
+                      </div>
+                      {!done && cat.missing.length > 0 && (
+                        <p className="text-[10px] text-gray-400 mt-0.5 leading-snug">
+                          {cat.missing[0]}{cat.missing.length > 1 && <span> +{cat.missing.length - 1} more</span>}
+                          {' · '}
+                          <button onClick={cat.onClick} className="font-semibold hover:opacity-70 transition" style={{ color: '#800020' }}>
+                            {cat.ctaLabel} →
+                          </button>
+                        </p>
+                      )}
+                    </div>
+                    <div className="w-14 h-1 rounded-full bg-gray-100 shrink-0 overflow-hidden">
+                      <div className="h-full rounded-full transition-all duration-500"
+                        style={{ width: `${cat.pct}%`, background: cc }} />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            <div className="px-5 py-2.5 bg-gray-50 border-t border-gray-100">
+              <p className="text-[10px] text-gray-400 leading-snug">
+                Suggested preparation checklist only. Review all requirements with qualified legal, financial,
+                and regulatory advisers. Completion does not imply regulatory approval or eligibility to issue tokens.
+              </p>
+            </div>
+          </div>
+        );
+      })()}
+
       {/* ── Area 2: Issuance Manager / Operations Manager ───────────────── */}
       <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
         <div className="px-6 py-4 border-b border-gray-100">
