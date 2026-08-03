@@ -3751,7 +3751,8 @@ export default function DealRoomPage() {
   // invite links, etc.) agrees, instead of duplicating/drifting logic.
   const packId = demoProperty ? DEFAULT_PACK_ID : resolvePackId(apiProperty);
   const pack = getWorkflowPack(packId);
-  const isCREPack = packId === DEFAULT_PACK_ID;
+  const isCREPack       = packId === DEFAULT_PACK_ID;
+  const isTokenization  = packId === 'tokenization';
 
   // Role metadata (label/icon/color/headline/subtext/sections) is looked up
   // scoped to this pack — never from a flat cross-pack dict — since a role
