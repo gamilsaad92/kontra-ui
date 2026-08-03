@@ -1454,6 +1454,187 @@ function JurisdictionSettingsPanel({ propertyId, property }) {
   );
 }
 
+// ── DigitalAssetTogglePanel (#181) ───────────────────────────────────────────
+// Lets owners of non-tokenization workspaces opt the Digital Asset Preparation
+// Layer on or off without switching to the tokenization pack. Saves a single
+// flag into metadata_values via the non-destructive /metadata-merge endpoint.
+function DigitalAssetTogglePanel({ propertyId, property, pack }) {
+  const isTokenization = pack?.id === 'tokenization';
+  const [enabled,    setEnabled]    = useState(!!(property?.metadata_values?.digital_asset_enabled));
+  const [saving,     setSaving]     = useState(false);
+  const [saveOk,     setSaveOk]     = useState(false);
+  const [ownerToken, setOwnerToken] = useState('');
+
+  useEffect(() => {
+    try { setOwnerToken(localStorage.getItem(`kontra_owner_token_${propertyId}`) || ''); } catch {}
+  }, [propertyId]);
+
+  // Tokenization workspaces always have the layer on — no toggle needed.
+  // Non-owners can't change this setting.
+  if (isTokenization || !ownerToken) return null;
+
+  async function handleToggle() {
+    const next = !enabled;
+    setSaving(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/public/deal-room/${propertyId}/metadata-merge`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          values: { digital_asset_enabled: next ? 'true' : '' },
+          ownerWriteToken: ownerToken,
+        }),
+      });
+      if (!res.ok) throw new Error((await res.json()).error);
+      setEnabled(next);
+      setSaveOk(true);
+      setTimeout(() => setSaveOk(false), 2000);
+    } catch (err) {
+      console.error('[DAToggle]', err.message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="bg-white rounded-2xl border border-gray-200 p-5 mb-5">
+      <div className="flex items-start justify-between gap-4">
+        <div className="flex-1 min-w-0">
+          <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-1">Digital Asset Preparation</p>
+          <p className="text-[11px] text-gray-400 leading-snug">
+            Layers token-issuance preparation onto this workspace — enables the Digital Asset Readiness tracker,
+            jurisdiction compliance checklist, and KYC progress on the Overview tab.
+          </p>
+        </div>
+        <div className="flex items-center gap-2.5 shrink-0 mt-0.5">
+          {saveOk && <span className="text-[10px] font-bold text-green-700">✓ Saved</span>}
+          <button
+            onClick={handleToggle}
+            disabled={saving}
+            aria-label={enabled ? 'Disable Digital Asset Preparation' : 'Enable Digital Asset Preparation'}
+            className="relative w-11 h-6 rounded-full transition-colors duration-200 focus:outline-none disabled:opacity-40 shrink-0"
+            style={{ background: enabled ? '#7c3aed' : '#e5e7eb' }}>
+            <span
+              className="absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform duration-200"
+              style={{ transform: enabled ? 'translateX(20px)' : 'translateX(0px)' }} />
+          </button>
+        </div>
+      </div>
+      {enabled && (
+        <p className="text-[10px] font-medium mt-3 pt-3 border-t leading-relaxed"
+          style={{ color: '#7c3aed', borderColor: '#ede9fe' }}>
+          🪙 Digital Asset Preparation Layer active — the Overview tab now shows the full readiness tracker.
+          Reload to see updated progress.
+        </p>
+      )}
+    </div>
+  );
+}
+
+// ── OwnershipStructurePanel (#182) ───────────────────────────────────────────
+// Cap table and token economics — filled by the Token Issuer before the first
+// investor joins. Saves via /metadata-merge so issuance details are not lost.
+function OwnershipStructurePanel({ propertyId, property }) {
+  const init = property?.metadata_values || {};
+  const [vals, setVals] = useState({
+    total_token_supply: init.total_token_supply || '',
+    lead_investor:      init.lead_investor      || '',
+    investor_token_pct: init.investor_token_pct || '',
+    team_token_pct:     init.team_token_pct     || '',
+    reserve_token_pct:  init.reserve_token_pct  || '',
+    vesting_schedule:   init.vesting_schedule   || '',
+    governance_rights:  init.governance_rights  || '',
+  });
+  const [saving,     setSaving]     = useState(false);
+  const [saveOk,     setSaveOk]     = useState(false);
+  const [saveErr,    setSaveErr]    = useState('');
+  const [ownerToken, setOwnerToken] = useState('');
+
+  useEffect(() => {
+    try { setOwnerToken(localStorage.getItem(`kontra_owner_token_${propertyId}`) || ''); } catch {}
+  }, [propertyId]);
+
+  const FIELDS = [
+    { id: 'total_token_supply', label: 'Total Token Supply',     type: 'number', placeholder: 'e.g. 1000000',               half: true  },
+    { id: 'lead_investor',      label: 'Lead Investor / Anchor', type: 'text',   placeholder: 'e.g. Polymorphic Capital',    half: true  },
+    { id: 'investor_token_pct', label: 'Investor Allocation %',  type: 'number', placeholder: 'e.g. 60',                    half: true  },
+    { id: 'team_token_pct',     label: 'Team Allocation %',      type: 'number', placeholder: 'e.g. 20',                    half: true  },
+    { id: 'reserve_token_pct',  label: 'Reserve / Treasury %',   type: 'number', placeholder: 'e.g. 20',                    half: true  },
+    { id: 'vesting_schedule',   label: 'Vesting Schedule',       type: 'text',   placeholder: 'e.g. 4-year, 1-year cliff',  half: true  },
+    { id: 'governance_rights',  label: 'Token Holder Rights',    type: 'text',   placeholder: 'e.g. Pro-rata liquidation, voting rights', half: false },
+  ];
+
+  const hasData = Object.values(vals).some(Boolean);
+
+  async function handleSave() {
+    setSaving(true); setSaveErr(''); setSaveOk(false);
+    try {
+      const res = await fetch(`${API_BASE}/api/public/deal-room/${propertyId}/metadata-merge`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ values: vals, ownerWriteToken: ownerToken }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || 'Save failed');
+      setSaveOk(true);
+      setTimeout(() => setSaveOk(false), 2500);
+    } catch (err) {
+      setSaveErr(err.message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (!ownerToken) {
+    if (!hasData) return null;
+    return (
+      <div className="bg-white rounded-2xl border border-gray-200 p-5 mb-5" id="ownership-structure">
+        <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-3">Ownership & Token Structure</p>
+        <div className="grid grid-cols-2 gap-3">
+          {FIELDS.filter(f => vals[f.id]).map(f => (
+            <div key={f.id} className={f.half ? '' : 'col-span-2'}>
+              <p className="text-[10px] text-gray-400 uppercase tracking-wider mb-0.5">{f.label}</p>
+              <p className="text-sm font-medium text-gray-900">{vals[f.id]}{f.id.endsWith('_pct') ? '%' : ''}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="bg-white rounded-2xl border border-gray-200 p-5 mb-5" id="ownership-structure">
+      <div className="flex items-center justify-between mb-1">
+        <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">Ownership & Token Structure</p>
+        {saveOk && <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-green-50 text-green-700">✓ Saved</span>}
+      </div>
+      <p className="text-[11px] text-gray-400 mb-4 leading-snug">
+        Record cap table structure and token economics before the first investor joins.
+        This data feeds the Verified Digital Asset Package.
+      </p>
+      <div className="grid grid-cols-2 gap-3 mb-4">
+        {FIELDS.map(f => (
+          <div key={f.id} className={f.half ? '' : 'col-span-2'}>
+            <label className="text-[10px] font-semibold uppercase tracking-wider text-gray-500 mb-1 block">{f.label}</label>
+            <input
+              type={f.type === 'number' ? 'number' : 'text'}
+              value={vals[f.id]}
+              onChange={e => setVals(v => ({ ...v, [f.id]: e.target.value }))}
+              placeholder={f.placeholder}
+              className="w-full text-xs border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:border-red-800 bg-white" />
+          </div>
+        ))}
+      </div>
+      {saveErr && <p className="text-xs text-red-500 mb-2">{saveErr}</p>}
+      <button onClick={handleSave} disabled={saving}
+        className="w-full py-2 rounded-xl text-xs font-bold text-white transition hover:opacity-90 disabled:opacity-40"
+        style={{ background: '#800020' }}>
+        {saving ? 'Saving…' : 'Save Ownership Structure'}
+      </button>
+    </div>
+  );
+}
+
 // ── DigitalAssetConfigPanel ──────────────────────────────────────────────────
 // Spec §12 — shows the active configuration as a layered overlay display:
 //   Base Pack  +  [Jurisdiction Overlay]  +  [Digital Asset Preparation Layer]
@@ -1807,12 +1988,29 @@ function OperationsManagerView({ propertyId, property, pack, role, onTabChange }
                 </span>
               )}
               {property?.jurisdiction && JURISDICTION_INFO[property.jurisdiction] && (
-                <span className="text-sm flex items-center gap-1">
+                <span className="text-sm flex items-center gap-1.5">
                   <span className="text-gray-300 text-xs">·</span>
                   <span>{JURISDICTION_INFO[property.jurisdiction].flag}</span>
                   <span style={{ color: JURISDICTION_INFO[property.jurisdiction].color }}>
                     {JURISDICTION_INFO[property.jurisdiction].label}
                   </span>
+                  {/* #177 — regulatory compliance progress badge (tokenization workspaces only) */}
+                  {isTokenization && (() => {
+                    const DONE_SET = new Set(['uploaded', 'approved', 'ai_complete']);
+                    const regItems = checklistItems.filter(i =>
+                      i.category === 'Regulatory' || (i.section || '').toLowerCase().includes('regulatory')
+                    );
+                    if (regItems.length === 0) return null;
+                    const done  = regItems.filter(i => DONE_SET.has(i.status)).length;
+                    const total = regItems.length;
+                    const color = done === total ? '#16a34a' : done > 0 ? '#d97706' : '#dc2626';
+                    return (
+                      <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full"
+                        style={{ color, background: color + '18' }}>
+                        {done}/{total} regulatory
+                      </span>
+                    );
+                  })()}
                 </span>
               )}
             </div>
@@ -1875,6 +2073,47 @@ function OperationsManagerView({ propertyId, property, pack, role, onTabChange }
                 </div>
               ))}
             </div>
+          </div>
+        );
+      })()}
+
+      {/* ── Ownership & Token Structure KPI strip (#182) ────────────────── */}
+      {isTokenization && (() => {
+        const mv = metaValues;
+        const hasOwnership = mv.total_token_supply || mv.lead_investor || mv.investor_token_pct;
+        if (!hasOwnership) return null;
+        const ownershipKpis = [
+          { label: 'Total Supply',      value: mv.total_token_supply ? Number(mv.total_token_supply).toLocaleString() : null },
+          { label: 'Lead Investor',     value: mv.lead_investor || null },
+          { label: 'Investor Alloc.',   value: mv.investor_token_pct  ? `${mv.investor_token_pct}%`  : null },
+          { label: 'Team / Reserve',    value: (mv.team_token_pct || mv.reserve_token_pct)
+              ? `${mv.team_token_pct || 0}% / ${mv.reserve_token_pct || 0}%` : null },
+        ].filter(k => k.value);
+        if (ownershipKpis.length === 0) return null;
+        return (
+          <div className="bg-white rounded-2xl border border-gray-200 px-5 py-4">
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">Ownership & Token Structure</p>
+              <button
+                onClick={() => { onTabChange?.('settings'); setTimeout(() => document.getElementById('ownership-structure')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 150); }}
+                className="text-[11px] font-semibold hover:opacity-80 transition" style={{ color: '#800020' }}>
+                Edit →
+              </button>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              {ownershipKpis.map((kpi, i) => (
+                <div key={i} className="bg-gray-50 rounded-xl px-3 py-3 text-center">
+                  <p className="text-sm font-black text-gray-900 mb-0.5 truncate">{kpi.value}</p>
+                  <p className="text-[10px] text-gray-400 leading-tight">{kpi.label}</p>
+                </div>
+              ))}
+            </div>
+            {mv.vesting_schedule && (
+              <p className="text-[10px] text-gray-400 mt-3 pt-3 border-t border-gray-100">
+                <span className="font-semibold text-gray-500">Vesting:</span> {mv.vesting_schedule}
+                {mv.governance_rights && <> &nbsp;·&nbsp; <span className="font-semibold text-gray-500">Rights:</span> {mv.governance_rights}</>}
+              </p>
+            )}
           </div>
         );
       })()}
@@ -3036,6 +3275,12 @@ export default function DealRoomPage() {
                 {/* Active configuration overlay display (spec §12) */}
                 <DigitalAssetConfigPanel property={property} pack={pack} />
 
+                {/* Digital Asset toggle — non-tokenization workspaces (#181) */}
+                <DigitalAssetTogglePanel propertyId={pid} property={property} pack={pack} />
+
+                {/* Ownership & Token Structure — tokenization workspaces (#182) */}
+                {isTokenization && <OwnershipStructurePanel propertyId={pid} property={property} />}
+
                 <TransactionRiskPanel propertyId={pid} />
                 <PanelErrorBoundary>
                   <VerifiedAssetPackage propertyId={pid} />
@@ -3103,6 +3348,63 @@ export default function DealRoomPage() {
                 <p className="text-sm text-gray-500 leading-relaxed">{roleConfig.subtext}</p>
               </div>
             )}
+
+            {/* #180 — Tokenization: role-specific action items for participants */}
+            {property.isCustom && isTokenization && !isCoordinator && (() => {
+              const DONE_SET = new Set(['uploaded', 'approved', 'ai_complete']);
+              const myDocs = (docSchema || []).filter(d =>
+                Array.isArray(d.assignedTo) && d.assignedTo.includes(role) && d.required
+              );
+              if (myDocs.length === 0) return null;
+              const myItems = myDocs.map(d => {
+                const item = checklistItems.find(i => i.section === d.section || i.id === d.id);
+                return { ...d, done: item ? DONE_SET.has(item.status) : false };
+              });
+              const pending = myItems.filter(i => !i.done);
+              const done    = myItems.filter(i => i.done);
+              const allDone = pending.length === 0 && done.length > 0;
+              const accentColor = allDone ? '#16a34a' : '#d97706';
+              return (
+                <div className="rounded-2xl border p-5 mb-6"
+                  style={{
+                    borderLeftWidth: 4, borderLeftColor: accentColor,
+                    background: allDone ? '#f0fdf4' : '#fffbeb',
+                    borderColor: allDone ? '#bbf7d0' : '#fde68a',
+                  }}>
+                  <p className="text-[10px] font-bold uppercase tracking-widest mb-3"
+                    style={{ color: allDone ? '#15803d' : '#92400e' }}>
+                    {allDone ? '✓ Your action items — all complete' : 'Your action items'}
+                  </p>
+                  <div className="space-y-2.5">
+                    {pending.map((doc, i) => (
+                      <div key={i} className="flex items-start gap-2.5">
+                        <span className="text-amber-500 text-sm shrink-0 mt-0.5">○</span>
+                        <div>
+                          <p className="text-sm font-medium text-gray-900">{doc.label}</p>
+                          {doc.jurisdictionNote && (
+                            <p className="text-[11px] text-gray-500 mt-0.5 leading-snug">{doc.jurisdictionNote}</p>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                    {done.map((doc, i) => (
+                      <div key={i} className="flex items-center gap-2.5 opacity-50">
+                        <span className="text-green-600 text-sm shrink-0">✓</span>
+                        <p className="text-sm text-gray-600 line-through">{doc.label}</p>
+                      </div>
+                    ))}
+                  </div>
+                  {pending.length > 0 && (
+                    <button
+                      onClick={() => onTabChange?.('documents')}
+                      className="mt-3 text-[11px] font-bold hover:opacity-80 transition"
+                      style={{ color: '#92400e' }}>
+                      Go to Documents → upload your files
+                    </button>
+                  )}
+                </div>
+              );
+            })()}
 
             {/* AI Briefing Panel */}
             {property.isCustom && (

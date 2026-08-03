@@ -3197,6 +3197,60 @@ app.patch('/api/public/deal-room/:propertyId/metadata', async (req, res) => {
   }
 });
 
+// ── Metadata merge (non-destructive PATCH) ───────────────────────────────────
+// Merges individual key/value pairs into metadata_values without overwriting
+// unrelated keys. Used by DigitalAssetTogglePanel (#181) and
+// OwnershipStructurePanel (#182). Auth: owner_write_token.
+app.patch('/api/public/deal-room/:propertyId/metadata-merge', async (req, res) => {
+  const { propertyId } = req.params;
+  const { values, ownerWriteToken } = req.body || {};
+
+  if (!ownerWriteToken) return res.status(403).json({ error: 'owner_write_token required' });
+  if (typeof values !== 'object' || values === null || Array.isArray(values)) {
+    return res.status(400).json({ error: 'values must be an object' });
+  }
+
+  const { data: room, error: authErr } = await supabase
+    .from('deal_rooms')
+    .select('owner_write_token, metadata_values')
+    .eq('property_id', propertyId)
+    .maybeSingle();
+  if (authErr) return res.status(500).json({ error: authErr.message });
+  if (!room) return res.status(404).json({ error: 'room not found' });
+  if (!room.owner_write_token || room.owner_write_token !== ownerWriteToken) {
+    return res.status(403).json({ error: 'invalid owner_write_token' });
+  }
+
+  // Merge: start from existing values, apply incoming keys (empty string = delete)
+  const merged = { ...(room.metadata_values || {}) };
+  for (const [k, v] of Object.entries(values)) {
+    if (typeof k !== 'string' || k.length > 80) continue;
+    if (v === null || v === undefined || v === '') {
+      delete merged[k];
+    } else {
+      merged[k] = String(v).slice(0, 500);
+    }
+    if (Object.keys(merged).length > 64) break;
+  }
+
+  try {
+    const { error: updateErr } = await supabase
+      .from('deal_rooms')
+      .update({ metadata_values: merged })
+      .eq('property_id', propertyId);
+    if (updateErr) throw updateErr;
+
+    logEvent(propertyId, 'metadata_updated', 'owner', null, 'Workspace settings updated', {
+      keys: Object.keys(values).join(','),
+    });
+
+    res.json({ ok: true, metadata_values: merged });
+  } catch (err) {
+    console.error('[metadata-merge PATCH]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ── Jurisdiction update (task #167) ─────────────────────────────────────────
 // Coordinators can change the jurisdiction of an existing workspace without
 // recreating it. Triggers readiness task evaluation so any new regulatory

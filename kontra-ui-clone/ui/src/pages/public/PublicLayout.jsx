@@ -6,6 +6,7 @@ const PUBLIC_NAV = [
   { label: "Product",       href: "/ai-tools" },
   { label: "How It Works",  href: "/how-it-works" },
   { label: "Pricing",       href: "/pricing" },
+  { label: "Tokenization",  href: "/for/tokenization" },
   { label: "Demo",          href: "/deal-room/kontra-demo" },
   { label: "My Workspaces", href: "/my-deal-rooms" },
 ];

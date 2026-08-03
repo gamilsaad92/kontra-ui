@@ -264,6 +264,18 @@ export const METADATA_FIELDS = [
   { id: "target_close_date", label: "Target Close Date",    fieldType: "date" },
 ];
 
+// ── Ownership & Token Structure metadata fields ───────────────────────────────
+// Task #182 — cap table and token economics recorded before first investor joins.
+export const OWNERSHIP_FIELDS = [
+  { id: "total_token_supply", label: "Total Token Supply",     fieldType: "number", placeholder: "e.g. 1000000" },
+  { id: "lead_investor",      label: "Lead Investor / Anchor", fieldType: "text",   placeholder: "e.g. Polymorphic Capital" },
+  { id: "investor_token_pct", label: "Investor Allocation %",  fieldType: "number", placeholder: "e.g. 60" },
+  { id: "team_token_pct",     label: "Team Allocation %",      fieldType: "number", placeholder: "e.g. 20" },
+  { id: "reserve_token_pct",  label: "Reserve / Treasury %",   fieldType: "number", placeholder: "e.g. 20" },
+  { id: "vesting_schedule",   label: "Vesting Schedule",       fieldType: "text",   placeholder: "e.g. 4-year, 1-year cliff" },
+  { id: "governance_rights",  label: "Token Holder Rights",    fieldType: "text",   fullWidth: true, placeholder: "e.g. Pro-rata liquidation, board observer seat" },
+];
+
 // ── Jurisdiction-specific required documents ──────────────────────────────────
 // Merged into the base schema when getDocumentSchema(_, jurisdiction) is called.
 // Each entry follows the same shape as DOCUMENT_SCHEMA items.
