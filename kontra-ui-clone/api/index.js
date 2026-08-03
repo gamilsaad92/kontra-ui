@@ -3251,6 +3251,162 @@ app.patch('/api/public/deal-room/:propertyId/metadata-merge', async (req, res) =
   }
 });
 
+// ── Asset Passport — GET ─────────────────────────────────────────────────────
+// Returns the structured digital identity of an asset, auto-generated from
+// workspace data. Consumed by future tokenization platforms via API.
+app.get('/api/public/deal-room/:propertyId/asset-passport', async (req, res) => {
+  const { propertyId } = req.params;
+  const { data: room, error } = await supabase
+    .from('deal_rooms')
+    .select('property_id, property_name, workflow_pack_id, jurisdiction, metadata_values, created_at, first_name, last_name, entity_name')
+    .eq('property_id', propertyId)
+    .maybeSingle();
+  if (error) return res.status(500).json({ error: error.message });
+  if (!room) return res.status(404).json({ error: 'room not found' });
+
+  const [{ count: docCount }, { count: eventCount }] = await Promise.all([
+    supabase.from('deal_documents').select('id', { count: 'exact', head: true }).eq('property_id', propertyId),
+    supabase.from('deal_events').select('id', { count: 'exact', head: true }).eq('property_id', propertyId),
+  ]);
+
+  const meta = room.metadata_values || {};
+  const ownerName = [room.first_name, room.last_name].filter(Boolean).join(' ') || room.entity_name || meta.issuer_name || null;
+
+  res.json({
+    asset_id:             propertyId,
+    asset_name:           room.property_name,
+    asset_type:           meta.asset_type || room.workflow_pack_id || 'transaction',
+    jurisdiction:         room.jurisdiction || null,
+    pack:                 room.workflow_pack_id,
+    owner:                ownerName,
+    entity:               room.entity_name || null,
+    closing_date:         meta.target_close_date || null,
+    document_count:       docCount || 0,
+    event_count:          eventCount || 0,
+    verification_status:  docCount > 3 && eventCount > 5 ? 'Pending' : 'Incomplete',
+    created_at:           room.created_at,
+    kontra_version:       '2.0',
+    schema_version:       '1.0',
+    generated_at:         new Date().toISOString(),
+  });
+});
+
+// ── Asset Metadata — GET ─────────────────────────────────────────────────────
+// Structured data layer consumable by any tokenization platform or custodian.
+app.get('/api/public/deal-room/:propertyId/asset-metadata', async (req, res) => {
+  const { propertyId } = req.params;
+  const { data: room, error } = await supabase
+    .from('deal_rooms')
+    .select('property_id, property_name, workflow_pack_id, jurisdiction, metadata_values, created_at, first_name, last_name, entity_name')
+    .eq('property_id', propertyId)
+    .maybeSingle();
+  if (error) return res.status(500).json({ error: error.message });
+  if (!room) return res.status(404).json({ error: 'room not found' });
+
+  const { data: docs } = await supabase
+    .from('deal_documents')
+    .select('id, document_type, uploaded_at')
+    .eq('property_id', propertyId)
+    .limit(100);
+
+  const meta = room.metadata_values || {};
+  const ownerName = [room.first_name, room.last_name].filter(Boolean).join(' ') || room.entity_name || meta.issuer_name || null;
+
+  res.json({
+    asset_id:       propertyId,
+    asset_name:     room.property_name,
+    asset_type:     meta.asset_type || room.workflow_pack_id || 'transaction',
+    jurisdiction:   room.jurisdiction || null,
+    entity:         room.entity_name || null,
+    closing_date:   meta.target_close_date || null,
+    currency:       'USD',
+    ownership_structure: {
+      owner:              ownerName,
+      lead_investor:      meta.lead_investor      || null,
+      total_token_supply: meta.total_token_supply || null,
+      investor_pct:       meta.investor_token_pct || null,
+      team_pct:           meta.team_token_pct     || null,
+      reserve_pct:        meta.reserve_token_pct  || null,
+      vesting_schedule:   meta.vesting_schedule   || null,
+      governance_rights:  meta.governance_rights  || null,
+    },
+    valuation: {
+      raise_amount:   meta.raise_amount   || null,
+      token_price:    meta.token_price    || null,
+      min_investment: meta.min_investment || null,
+      total_tokens:   meta.total_tokens   || null,
+    },
+    supporting_documents: {
+      total_uploaded: docs?.length || 0,
+      types: [...new Set((docs || []).map(d => d.document_type).filter(Boolean))],
+    },
+    compatible_networks: ['XRPL', 'Ethereum', 'Polygon', 'Canton', 'Stellar'],
+    schema_version: '1.0',
+    generated_at:   new Date().toISOString(),
+  });
+});
+
+// ── Asset Readiness — GET ─────────────────────────────────────────────────────
+// 8-category tokenization readiness score computed from workspace data.
+// Public endpoint — future tokenization partners consume this directly.
+app.get('/api/public/deal-room/:propertyId/readiness', async (req, res) => {
+  const { propertyId } = req.params;
+  const { data: room, error } = await supabase
+    .from('deal_rooms')
+    .select('property_id, property_name, workflow_pack_id, jurisdiction, metadata_values, checklist_items, first_name, last_name, entity_name')
+    .eq('property_id', propertyId)
+    .maybeSingle();
+  if (error) return res.status(500).json({ error: error.message });
+  if (!room) return res.status(404).json({ error: 'room not found' });
+
+  const [{ count: docCount }, { count: eventCount }, { data: events }] = await Promise.all([
+    supabase.from('deal_documents').select('id', { count: 'exact', head: true }).eq('property_id', propertyId),
+    supabase.from('deal_events').select('id', { count: 'exact', head: true }).eq('property_id', propertyId),
+    supabase.from('deal_events').select('event_type, metadata').eq('property_id', propertyId).limit(200),
+  ]);
+
+  const meta     = room.metadata_values || {};
+  const checklist = Array.isArray(room.checklist_items) ? room.checklist_items : [];
+  const DONE     = new Set(['uploaded', 'approved', 'ai_complete']);
+
+  const legalItems  = checklist.filter(i => i.category === 'Legal');
+  const finItems    = checklist.filter(i => i.category === 'Financial');
+  const kycItems    = checklist.filter(i => i.category === 'KYC' || (i.section || '').toLowerCase().includes('kyc'));
+  const regItems    = checklist.filter(i => i.category === 'Regulatory');
+  const reqItems    = checklist.filter(i => i.required);
+
+  const hasOwnerName = !!(room.first_name || room.entity_name || meta.issuer_name);
+  const hasOwnerData = !!(meta.lead_investor || meta.investor_token_pct);
+  const capFields    = ['total_token_supply', 'investor_token_pct', 'team_token_pct', 'reserve_token_pct', 'lead_investor'];
+  const capFilled    = capFields.filter(f => !!meta[f]);
+
+  const categories = [
+    { name: 'Ownership Structure',    weight: 0.15, score: (hasOwnerName ? 50 : 0) + (hasOwnerData ? 50 : 0) },
+    { name: 'Legal Documentation',    weight: 0.15, score: legalItems.length > 0 ? Math.round((legalItems.filter(i => DONE.has(i.status)).length / legalItems.length) * 100) : docCount > 0 ? 40 : 0 },
+    { name: 'Financial Completeness', weight: 0.12, score: finItems.length > 0 ? Math.round((finItems.filter(i => DONE.has(i.status)).length / finItems.length) * 80 + (!!(meta.raise_amount || meta.token_price) ? 20 : 0)) : (!!(meta.raise_amount) ? 50 : docCount > 2 ? 25 : 0) },
+    { name: 'Identity Verification',  weight: 0.12, score: kycItems.length > 0 ? Math.round((kycItems.filter(i => DONE.has(i.status)).length / kycItems.length) * 100) : 0 },
+    { name: 'Cap Table',              weight: 0.12, score: Math.round((capFilled.length / capFields.length) * 100) },
+    { name: 'Audit Trail',            weight: 0.12, score: Math.min(Math.round(((eventCount || 0) / 10) * 100), 100) },
+    { name: 'Compliance',             weight: 0.12, score: regItems.length > 0 ? Math.round((room.jurisdiction ? 30 : 0) + 70 * (regItems.filter(i => DONE.has(i.status)).length / regItems.length)) : (room.jurisdiction ? 40 : 0) },
+    { name: 'Document Integrity',     weight: 0.10, score: reqItems.length > 0 ? Math.round((reqItems.filter(i => DONE.has(i.status)).length / reqItems.length) * 100) : Math.min(Math.round(((docCount || 0) / 5) * 100), 70) },
+  ];
+
+  const overall      = Math.round(categories.reduce((a, c) => a + c.score * c.weight, 0));
+  const overallLabel = overall >= 80 ? 'Tokenization Ready' : overall >= 55 ? 'Needs Review' : 'Not Eligible';
+
+  res.json({
+    asset_id:            propertyId,
+    overall_score:       overall,
+    status:              overallLabel,
+    tokenization_ready:  overall >= 80,
+    categories,
+    compatible_networks: ['XRPL', 'Ethereum', 'Polygon', 'Canton', 'Stellar'],
+    note:                'Suggested preparation score — not a regulatory determination.',
+    schema_version:      '1.0',
+    generated_at:        new Date().toISOString(),
+  });
+});
+
 // ── Jurisdiction update (task #167) ─────────────────────────────────────────
 // Coordinators can change the jurisdiction of an existing workspace without
 // recreating it. Triggers readiness task evaluation so any new regulatory

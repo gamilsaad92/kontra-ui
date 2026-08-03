@@ -1711,6 +1711,494 @@ const PACK_LABELS = {
   fundraising:         'Fundraising',
 };
 
+// ── AssetReadinessTab ─────────────────────────────────────────────────────────
+// Kontra Tokenization Architecture — advisor brief (Aug 2026):
+//   "Make every completed transaction automatically become Tokenization Ready."
+// No blockchain dependency. Everything generated from existing workflow data.
+// Exportable as JSON. API-first for future tokenization platform partners.
+// Applies to ALL workspace types — not just tokenization.
+function AssetReadinessTab({ propertyId, property, pack, onTabChange }) {
+  const [expandedCat,    setExpandedCat]    = React.useState(null);
+  const [showPassport,   setShowPassport]   = React.useState(false);
+  const [showMetadata,   setShowMetadata]   = React.useState(false);
+  const [checklistItems, setChecklistItems] = React.useState([]);
+  const [events,         setEvents]         = React.useState([]);
+  const [coordination,   setCoordination]   = React.useState(null);
+
+  React.useEffect(() => {
+    if (!propertyId) return;
+    Promise.all([
+      fetch(`${API_BASE}/api/public/deal-room/${propertyId}/checklist`).then(r => r.ok ? r.json() : { items: [] }).catch(() => ({ items: [] })),
+      fetch(`${API_BASE}/api/public/deal-room/${propertyId}/events`).then(r => r.ok ? r.json() : { events: [] }).catch(() => ({ events: [] })),
+      fetch(`${API_BASE}/api/public/deal-room/${propertyId}/coordination`).then(r => r.ok ? r.json() : null).catch(() => null),
+    ]).then(([ck, ev, coord]) => {
+      setChecklistItems(Array.isArray(ck?.items) ? ck.items : []);
+      setEvents(ev?.events || []);
+      setCoordination(coord);
+    });
+  }, [propertyId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const metaValues      = property?.metadata_values || {};
+  const docCount        = Object.values(coordination?.docsByRole || {}).reduce((a, b) => a + b, 0);
+  const invitableRoles  = (pack.roles || []).filter(r => r.invitable !== false && !r.isCoordinator);
+  const participantRows = invitableRoles.map(r => {
+    const sub     = (coordination?.submissions || []).find(s => s.role === r.key);
+    const invited = events.some(e => e.event_type === 'invite_sent' && e.metadata?.role === r.key);
+    return {
+      label: r.label, key: r.key, canManage: !!r.isCoordinator, invited, submitted: !!sub,
+      status: sub?.status === 'approved' ? 'Approved' : sub ? 'Submitted' : invited ? 'Invited' : 'Not invited',
+    };
+  });
+
+  const packName = pack?.name || 'Transaction';
+  const DONE    = new Set(['uploaded', 'approved', 'ai_complete']);
+
+  // ── Category scores ─────────────────────────────────────────────────────────
+  // 1. Ownership Structure
+  const hasOwnerName = !!(property?.first_name || property?.entity_name || metaValues?.issuer_name);
+  const hasOwnerData = !!(metaValues?.lead_investor || metaValues?.investor_token_pct || metaValues?.team_token_pct);
+  const ownershipPct  = (hasOwnerName ? 50 : 0) + (hasOwnerData ? 50 : 0);
+  const ownershipMiss = [
+    ...(!hasOwnerName ? ['Owner / entity name not recorded'] : []),
+    ...(!hasOwnerData ? ['Ownership structure not defined'] : []),
+  ];
+
+  // 2. Legal Documentation
+  const legalItems = checklistItems.filter(i => i.category === 'Legal' || (i.section || '').toLowerCase().includes('agreement'));
+  const legalDone  = legalItems.filter(i => DONE.has(i.status));
+  const legalPct   = legalItems.length > 0 ? Math.round((legalDone.length / legalItems.length) * 100) : docCount > 0 ? 40 : 0;
+  const legalMiss  = legalItems.filter(i => !DONE.has(i.status) && i.required).slice(0, 2).map(i => i.label);
+
+  // 3. Financial Completeness
+  const finItems  = checklistItems.filter(i => i.category === 'Financial' || (i.section || '').toLowerCase().includes('financial'));
+  const finDone   = finItems.filter(i => DONE.has(i.status));
+  const hasFinMeta = !!(metaValues?.raise_amount || metaValues?.stated_revenue || metaValues?.stated_ebitda || metaValues?.token_price);
+  const finPct    = finItems.length > 0
+    ? Math.min(Math.round((finDone.length / finItems.length) * 80 + (hasFinMeta ? 20 : 0)), 100)
+    : hasFinMeta ? 50 : docCount > 2 ? 25 : 0;
+  const finMiss   = [
+    ...finItems.filter(i => !DONE.has(i.status) && i.required).slice(0, 2).map(i => i.label),
+    ...(!hasFinMeta ? ['No financial figures recorded'] : []),
+  ];
+
+  // 4. Identity Verification
+  const kycItems  = checklistItems.filter(i => i.category === 'KYC' || (i.section || '').toLowerCase().includes('kyc'));
+  const submittedPtx = participantRows.filter(r => r.submitted || r.status === 'Approved').length;
+  const totalPtx     = Math.max(participantRows.filter(r => !r.canManage).length, 1);
+  const kycComputed  = kycItems.length > 0
+    ? Math.round((kycItems.filter(i => DONE.has(i.status)).length / kycItems.length) * 60 + (submittedPtx / totalPtx) * 40)
+    : Math.round((submittedPtx / totalPtx) * 50);
+  const identityPct  = Math.min(kycComputed, 100);
+  const identityMiss = kycItems.filter(i => !DONE.has(i.status) && i.required).slice(0, 2).map(i => i.label);
+
+  // 5. Cap Table
+  const capFields = ['total_token_supply', 'investor_token_pct', 'team_token_pct', 'reserve_token_pct', 'lead_investor'];
+  const capFilled = capFields.filter(f => !!metaValues?.[f]);
+  const capPct    = Math.round((capFilled.length / capFields.length) * 100);
+  const CAP_LABELS = { total_token_supply: 'Total supply', investor_token_pct: 'Investor %', team_token_pct: 'Team %', reserve_token_pct: 'Reserve %', lead_investor: 'Lead investor' };
+  const capMiss   = capFields.filter(f => !metaValues?.[f]).slice(0, 2).map(f => CAP_LABELS[f]);
+
+  // 6. Audit Trail
+  const auditPct  = Math.min(Math.round((events.length / 10) * 100), 100);
+  const auditMiss = events.length < 3 ? ['Fewer than 3 events — invite parties and upload documents to build trail'] : [];
+
+  // 7. Compliance
+  const regItems  = checklistItems.filter(i => i.category === 'Regulatory' || (i.section || '').toLowerCase().includes('regulatory'));
+  const regDone   = regItems.filter(i => DONE.has(i.status));
+  const hasJur    = !!property?.jurisdiction;
+  const compPct   = regItems.length > 0
+    ? Math.round((hasJur ? 30 : 0) + 70 * (regDone.length / regItems.length))
+    : hasJur ? 40 : 0;
+  const compMiss  = [...(!hasJur ? ['Governing jurisdiction not set'] : []), ...regItems.filter(i => !DONE.has(i.status) && i.required).slice(0, 1).map(i => i.label)];
+
+  // 8. Document Integrity
+  const reqItems = checklistItems.filter(i => i.required);
+  const reqDone  = reqItems.filter(i => DONE.has(i.status));
+  const docIntPct = reqItems.length > 0
+    ? Math.round((reqDone.length / reqItems.length) * 100)
+    : Math.min(Math.round((docCount / 5) * 100), 70);
+  const docIntMiss = reqItems.filter(i => !DONE.has(i.status)).slice(0, 2).map(i => i.label);
+
+  const CATEGORIES = [
+    { key: 'ownership',    icon: '🏛️', label: 'Ownership Structure',    pct: ownershipPct, weight: 0.15, missing: ownershipMiss, cta: 'Settings → Ownership',     onClick: () => { onTabChange?.('settings'); setTimeout(() => document.getElementById('ownership-structure')?.scrollIntoView({ behavior: 'smooth' }), 150); }, explanation: 'Records who owns the asset, the entity structure, and beneficial ownership information required for institutional transactions and regulatory filings.' },
+    { key: 'legal',        icon: '📋', label: 'Legal Documentation',    pct: legalPct,     weight: 0.15, missing: legalMiss,     cta: 'Upload legal docs',         onClick: () => onTabChange?.('documents'),    explanation: 'Executed agreements, title documents, and corporate authorizations that form the foundation of a verifiable transaction record.' },
+    { key: 'financial',    icon: '💰', label: 'Financial Completeness', pct: finPct,       weight: 0.12, missing: finMiss,       cta: 'Upload financial docs',     onClick: () => onTabChange?.('documents'),    explanation: 'Financial statements, valuations, and key figures that enable independent assessment of the asset\'s financial position.' },
+    { key: 'identity',     icon: '🪪', label: 'Identity Verification',  pct: identityPct,  weight: 0.12, missing: identityMiss,  cta: 'Documents → KYC',           onClick: () => onTabChange?.('documents'),    explanation: 'KYC/AML verification of all transaction parties. Required by all regulated issuance platforms and custodians before asset transfer or token issuance can proceed.' },
+    { key: 'cap_table',    icon: '📊', label: 'Cap Table',              pct: capPct,       weight: 0.12, missing: capMiss,       cta: 'Settings → Ownership',     onClick: () => { onTabChange?.('settings'); setTimeout(() => document.getElementById('ownership-structure')?.scrollIntoView({ behavior: 'smooth' }), 150); }, explanation: 'Token allocation breakdown — investor, team, and reserve percentages, vesting schedules, and lead investor details.' },
+    { key: 'audit',        icon: '🔍', label: 'Audit Trail',            pct: auditPct,     weight: 0.12, missing: auditMiss,     cta: 'Activity tab',              onClick: () => onTabChange?.('activity'),     explanation: 'Complete, timestamped log of every action taken in the workspace. Forms the immutable record required by institutional auditors and transfer agents.' },
+    { key: 'compliance',   icon: '✅', label: 'Compliance',             pct: compPct,      weight: 0.12, missing: compMiss,      cta: 'Settings → Jurisdiction',   onClick: () => onTabChange?.('settings'),     explanation: 'Regulatory framework compliance — jurisdiction set, required regulatory filings uploaded, and any jurisdiction-specific exemptions documented.' },
+    { key: 'doc_integrity',icon: '🔒', label: 'Document Integrity',     pct: docIntPct,    weight: 0.10, missing: docIntMiss,    cta: 'Documents tab',             onClick: () => onTabChange?.('documents'),    explanation: 'All required documents uploaded and AI-verified. Document integrity is the baseline requirement for the Digital Closing Package and any downstream export.' },
+  ];
+
+  const overall      = Math.round(CATEGORIES.reduce((a, c) => a + c.pct * c.weight, 0));
+  const overallLabel = overall >= 80 ? 'Tokenization Ready' : overall >= 55 ? 'Needs Review' : 'Not Eligible';
+  const overallColor = overall >= 80 ? '#16a34a' : overall >= 55 ? '#d97706' : '#dc2626';
+  const overallBg    = overall >= 80 ? '#f0fdf4' : overall >= 55 ? '#fffbeb' : '#fef2f2';
+
+  // ── Asset Passport ──────────────────────────────────────────────────────────
+  const ownerName  = [property?.first_name, property?.last_name].filter(Boolean).join(' ') || property?.entity_name || metaValues?.issuer_name || '—';
+  const closingDate = property?.target_close_date || metaValues?.target_close_date || null;
+  const passportData = {
+    asset_id:             propertyId,
+    asset_name:           property?.name || property?.property_name || '—',
+    asset_type:           metaValues?.asset_type || packName,
+    jurisdiction:         property?.jurisdiction || 'Not specified',
+    owner:                ownerName,
+    entity:               property?.entity_name || null,
+    closing_date:         closingDate,
+    pack:                 packName,
+    document_count:       docCount,
+    event_count:          events.length,
+    verification_status:  overall >= 80 ? 'Verified' : overall >= 55 ? 'Pending' : 'Incomplete',
+    tokenization_readiness: overall,
+    readiness_label:      overallLabel,
+    participants:         participantRows.map(r => ({ role: r.label, status: r.status || 'Not invited' })),
+    generated_at:         new Date().toISOString(),
+    kontra_version:       '2.0',
+  };
+
+  // ── Asset Metadata export object ────────────────────────────────────────────
+  const metadataExport = {
+    asset_id:       propertyId,
+    asset_name:     passportData.asset_name,
+    asset_type:     passportData.asset_type,
+    jurisdiction:   property?.jurisdiction || null,
+    entity:         property?.entity_name || null,
+    closing_date:   closingDate || null,
+    currency:       'USD',
+    participants:   passportData.participants,
+    ownership_structure: {
+      owner:              ownerName,
+      lead_investor:      metaValues?.lead_investor || null,
+      total_token_supply: metaValues?.total_token_supply || null,
+      investor_pct:       metaValues?.investor_token_pct || null,
+      team_pct:           metaValues?.team_token_pct || null,
+      reserve_pct:        metaValues?.reserve_token_pct || null,
+      vesting_schedule:   metaValues?.vesting_schedule || null,
+      governance_rights:  metaValues?.governance_rights || null,
+    },
+    valuation: {
+      raise_amount:   metaValues?.raise_amount   || null,
+      token_price:    metaValues?.token_price    || null,
+      min_investment: metaValues?.min_investment || null,
+      total_tokens:   metaValues?.total_tokens   || null,
+    },
+    supporting_documents: {
+      total_uploaded:    docCount,
+      required_complete: `${reqDone.length}/${reqItems.length || '?'}`,
+    },
+    risk_summary:    property?.risk ? `${property.risk} Risk · ${property.score}/100` : null,
+    verification_status: passportData.verification_status,
+    audit_trail_events:  events.length,
+    tokenization_readiness: {
+      overall_pct: overall,
+      status:      overallLabel,
+      categories:  CATEGORIES.map(c => ({ name: c.label, score: c.pct, weight: c.weight })),
+    },
+    compatible_networks: ['XRPL', 'Ethereum', 'Polygon', 'Canton', 'Stellar'],
+    schema_version: '1.0',
+    generated_at:   new Date().toISOString(),
+  };
+
+  function triggerDownload(obj, filename) {
+    const blob = new Blob([JSON.stringify(obj, null, 2)], { type: 'application/json' });
+    const url  = URL.createObjectURL(blob);
+    const a    = Object.assign(document.createElement('a'), { href: url, download: filename });
+    a.click(); URL.revokeObjectURL(url);
+  }
+
+  function downloadCSV() {
+    const rows = [
+      ['Field', 'Value'],
+      ['Asset ID', propertyId],
+      ['Asset Name', passportData.asset_name],
+      ['Asset Type', passportData.asset_type],
+      ['Jurisdiction', passportData.jurisdiction],
+      ['Owner', ownerName],
+      ['Pack', packName],
+      ['Documents Uploaded', docCount],
+      ['Events Recorded', events.length],
+      ['Tokenization Readiness %', overall],
+      ['Readiness Status', overallLabel],
+      ['Verification Status', passportData.verification_status],
+      ...CATEGORIES.map(c => [`Score — ${c.label}`, `${c.pct}%`]),
+    ];
+    const csv  = rows.map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url  = URL.createObjectURL(blob);
+    const a    = Object.assign(document.createElement('a'), { href: url, download: `${propertyId}-asset-readiness.csv` });
+    a.click(); URL.revokeObjectURL(url);
+  }
+
+  return (
+    <div className="space-y-5">
+
+      {/* ── Overall score ─────────────────────────────────────────────────── */}
+      <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
+        <div className="px-6 pt-6 pb-5" style={{ background: overallBg }}>
+          <div className="flex items-start justify-between gap-4 flex-wrap">
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-2">
+                Tokenization Readiness
+              </p>
+              <div className="flex items-end gap-3">
+                <span className="text-5xl font-black leading-none" style={{ color: overallColor }}>
+                  {overall}%
+                </span>
+                <div className="mb-1">
+                  <span className="text-sm font-bold block" style={{ color: overallColor }}>
+                    {overallLabel}
+                  </span>
+                  <span className="text-[11px] text-gray-400">
+                    Suggested preparation — not a regulatory determination
+                  </span>
+                </div>
+              </div>
+              <div className="mt-3 h-2 w-72 max-w-full rounded-full bg-white/60 overflow-hidden">
+                <div className="h-full rounded-full transition-all duration-700"
+                  style={{ width: `${overall}%`, background: overallColor }} />
+              </div>
+            </div>
+            <div className="text-right shrink-0">
+              <p className="text-[10px] text-gray-400 uppercase tracking-wider mb-2">Blockchain Neutral</p>
+              <div className="flex flex-wrap gap-1.5 justify-end">
+                {['XRPL', 'Ethereum', 'Polygon', 'Canton', 'Stellar'].map(n => (
+                  <span key={n} className="text-[10px] px-2 py-0.5 rounded-full border border-gray-200 text-gray-500 bg-white/80">
+                    {n}
+                  </span>
+                ))}
+              </div>
+              <p className="text-[9px] text-gray-300 mt-1.5">
+                Compatible with any issuance platform
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* 8-category breakdown */}
+        <div className="divide-y divide-gray-100">
+          {CATEGORIES.map(cat => {
+            const done     = cat.pct >= 100;
+            const partial  = cat.pct > 0 && cat.pct < 100;
+            const cc       = done ? '#16a34a' : partial ? '#d97706' : '#9ca3af';
+            const expanded = expandedCat === cat.key;
+            return (
+              <div key={cat.key}>
+                <button
+                  className="w-full px-6 py-3 flex items-center gap-3 hover:bg-gray-50 transition text-left"
+                  onClick={() => setExpandedCat(expanded ? null : cat.key)}>
+                  <span className="text-sm shrink-0">{cat.icon}</span>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-xs font-semibold text-gray-700">{cat.label}</span>
+                      <span className="text-[11px] font-bold shrink-0" style={{ color: cc }}>
+                        {done ? '✓ Complete' : `${cat.pct}%`}
+                      </span>
+                    </div>
+                    {!done && !expanded && cat.missing.length > 0 && (
+                      <p className="text-[10px] text-gray-400 mt-0.5 truncate">
+                        {cat.missing[0]}{cat.missing.length > 1 && ` +${cat.missing.length - 1} more`}
+                      </p>
+                    )}
+                  </div>
+                  <div className="w-16 h-1.5 rounded-full bg-gray-100 shrink-0 overflow-hidden">
+                    <div className="h-full rounded-full transition-all duration-500"
+                      style={{ width: `${cat.pct}%`, background: cc }} />
+                  </div>
+                  <span className="text-[10px] text-gray-300 shrink-0">{expanded ? '▲' : '▼'}</span>
+                </button>
+                {expanded && (
+                  <div className="px-6 pb-4 pt-2 bg-gray-50 border-t border-gray-100">
+                    <p className="text-[11px] text-gray-500 leading-relaxed mb-3">{cat.explanation}</p>
+                    {!done && cat.missing.length > 0 && (
+                      <div className="mb-3">
+                        <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1">Missing</p>
+                        <ul className="space-y-0.5">
+                          {cat.missing.map((m, i) => (
+                            <li key={i} className="text-[11px] text-gray-600 flex items-center gap-1.5">
+                              <span className="text-gray-300">·</span>{m}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                    {!done && (
+                      <button onClick={cat.onClick}
+                        className="text-[11px] font-bold hover:opacity-80 transition"
+                        style={{ color: '#800020' }}>
+                        {cat.cta} →
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* ── Asset Passport ────────────────────────────────────────────────── */}
+      <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
+        <button
+          className="w-full px-6 py-4 flex items-center justify-between hover:bg-gray-50 transition"
+          onClick={() => setShowPassport(v => !v)}>
+          <div className="flex items-center gap-3">
+            <span className="text-xl">🪪</span>
+            <div className="text-left">
+              <p className="text-sm font-bold text-gray-900">Asset Passport</p>
+              <p className="text-[10px] text-gray-400">
+                Permanent digital identity of this asset · auto-generated from workspace data
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2.5">
+            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full"
+              style={{ color: overallColor, background: overallColor + '18' }}>
+              {overallLabel}
+            </span>
+            <span className="text-gray-300 text-xs">{showPassport ? '▲' : '▼'}</span>
+          </div>
+        </button>
+        {showPassport && (
+          <div className="border-t border-gray-100 px-6 py-5">
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-6 gap-y-3 mb-5">
+              {[
+                { label: 'Asset ID',     value: propertyId },
+                { label: 'Asset Name',   value: passportData.asset_name },
+                { label: 'Asset Type',   value: passportData.asset_type },
+                { label: 'Pack',         value: passportData.pack },
+                { label: 'Jurisdiction', value: passportData.jurisdiction },
+                { label: 'Owner',        value: passportData.owner },
+                ...(passportData.entity ? [{ label: 'Entity', value: passportData.entity }] : []),
+                ...(closingDate ? [{ label: 'Closing Date', value: new Date(closingDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) }] : []),
+                { label: 'Documents',    value: `${docCount} uploaded` },
+                { label: 'Events',       value: `${events.length} recorded` },
+                { label: 'Verification', value: passportData.verification_status },
+                { label: 'Readiness',    value: `${overall}% · ${overallLabel}` },
+              ].map((row, i) => (
+                <div key={i}>
+                  <p className="text-[9px] font-bold uppercase tracking-wider text-gray-400">{row.label}</p>
+                  <p className="text-xs font-semibold text-gray-900 mt-0.5">{row.value}</p>
+                </div>
+              ))}
+            </div>
+            {passportData.participants.length > 0 && (
+              <div className="mb-4">
+                <p className="text-[9px] font-bold uppercase tracking-wider text-gray-400 mb-2">Participants</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {passportData.participants.map((p, i) => (
+                    <span key={i} className="text-[10px] px-2 py-0.5 rounded-full border border-gray-200 text-gray-600">
+                      {p.role} · {p.status}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+            <div className="flex items-center justify-between pt-3 border-t border-gray-100">
+              <p className="text-[9px] text-gray-300">
+                Generated {new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} · Kontra v2.0
+              </p>
+              <button
+                onClick={() => triggerDownload(passportData, `${propertyId}-asset-passport.json`)}
+                className="text-[10px] font-bold hover:opacity-80 transition" style={{ color: '#800020' }}>
+                Export Passport →
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* ── Asset Metadata ────────────────────────────────────────────────── */}
+      <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
+        <button
+          className="w-full px-6 py-4 flex items-center justify-between hover:bg-gray-50 transition"
+          onClick={() => setShowMetadata(v => !v)}>
+          <div className="flex items-center gap-3">
+            <span className="text-xl">📦</span>
+            <div className="text-left">
+              <p className="text-sm font-bold text-gray-900">Asset Metadata</p>
+              <p className="text-[10px] text-gray-400">
+                Structured data layer · consumable by any tokenization platform or custodian
+              </p>
+            </div>
+          </div>
+          <span className="text-gray-300 text-xs">{showMetadata ? '▲' : '▼'}</span>
+        </button>
+        {showMetadata && (
+          <div className="border-t border-gray-100">
+            <pre className="px-6 py-4 text-[10px] font-mono leading-relaxed text-gray-600 bg-gray-50 overflow-x-auto max-h-80">
+              {JSON.stringify(metadataExport, null, 2)}
+            </pre>
+          </div>
+        )}
+      </div>
+
+      {/* ── Export ────────────────────────────────────────────────────────── */}
+      <div className="bg-white rounded-2xl border border-gray-200 p-6">
+        <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-1">Export</p>
+        <p className="text-[11px] text-gray-400 mb-4 leading-snug">
+          Package everything already collected. No blockchain interaction required.
+          Future tokenization partners consume these exports directly via API or file.
+        </p>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
+          <button
+            onClick={() => triggerDownload(metadataExport, `${propertyId}-asset-metadata.json`)}
+            className="flex items-center justify-center gap-2 px-4 py-3 rounded-xl border-2 border-gray-200 hover:border-gray-400 transition text-xs font-bold text-gray-700">
+            &#123;&#125; Standard JSON
+          </button>
+          <button
+            onClick={downloadCSV}
+            className="flex items-center justify-center gap-2 px-4 py-3 rounded-xl border-2 border-gray-200 hover:border-gray-400 transition text-xs font-bold text-gray-700">
+            📄 CSV Export
+          </button>
+          <button
+            onClick={() => triggerDownload({ ...metadataExport, asset_passport: passportData, export_type: 'tokenization_package', tokenization_package_version: '1.0' }, `${propertyId}-tokenization-package.json`)}
+            className="flex items-center justify-center gap-2 px-4 py-3 rounded-xl border-2 text-xs font-bold text-white hover:opacity-90 transition"
+            style={{ background: '#7c3aed', borderColor: '#7c3aed' }}>
+            🪙 Tokenization Package
+          </button>
+        </div>
+        <p className="text-[9px] text-gray-300">
+          API: GET /api/public/deal-room/{propertyId}/asset-passport · /asset-metadata · /readiness
+        </p>
+      </div>
+
+      {/* ── Future Integrations ────────────────────────────────────────────── */}
+      <div className="bg-white rounded-2xl border border-gray-200 p-6">
+        <div className="flex items-center gap-2 mb-1">
+          <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">Future Integrations</p>
+          <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-gray-100 text-gray-400 uppercase">
+            Coming soon
+          </span>
+        </div>
+        <p className="text-[11px] text-gray-400 mb-4 leading-snug">
+          Kontra is blockchain-neutral. Connect any regulated issuance platform,
+          custodian, or transfer agent when you are ready. The asset passport and
+          metadata are already structured for seamless handoff.
+        </p>
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+          {[
+            { icon: '🏛️', label: 'Issue Asset Token'          },
+            { icon: '🏦', label: 'Connect Custodian'           },
+            { icon: '🔄', label: 'Connect Transfer Agent'      },
+            { icon: '🪪', label: 'Connect KYC Provider'        },
+            { icon: '⚖️', label: 'Connect Compliance Provider' },
+            { icon: '💼', label: 'Connect Settlement Network'  },
+          ].map(stub => (
+            <div key={stub.label}
+              title="Coming in a future release"
+              className="flex items-center gap-2 px-3 py-3 rounded-xl border border-dashed border-gray-200 opacity-40 cursor-not-allowed select-none">
+              <span className="text-base">{stub.icon}</span>
+              <span className="text-[11px] font-medium text-gray-500">{stub.label}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+    </div>
+  );
+}
+
 // ── WorkspaceTabNav ───────────────────────────────────────────────────────────
 function WorkspaceTabNav({ activeTab, onChange }) {
   const TABS = [
@@ -1720,6 +2208,7 @@ function WorkspaceTabNav({ activeTab, onChange }) {
     { key: 'tasks',        label: 'Tasks'        },
     { key: 'activity',     label: 'Activity'     },
     { key: 'settings',     label: 'Settings'     },
+    { key: 'readiness',    label: 'Asset Readiness' },
   ];
   return (
     <div className="border-b border-gray-200 bg-white">
@@ -3268,6 +3757,15 @@ export default function DealRoomPage() {
                 </div>
                 <NotificationsLog propertyId={pid} />
               </>
+            )}
+
+            {activeTab === 'readiness' && (
+              <AssetReadinessTab
+                propertyId={pid}
+                property={property}
+                pack={pack}
+                onTabChange={setActiveTab}
+              />
             )}
 
             {activeTab === 'settings' && (
