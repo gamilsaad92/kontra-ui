@@ -42,6 +42,7 @@ import PrivacyPage from "./pages/public/PrivacyPage";
 import TermsPage from "./pages/public/TermsPage";
 import SecurityPage from "./pages/public/SecurityPage";
 import AboutPage from "./pages/public/AboutPage";
+import ProductPage from "./pages/public/ProductPage";
 
 // Unified workspace — any authenticated user
 import NewDashboard from "./pages/NewDashboard";
@@ -85,6 +86,7 @@ function AuthedApp() {
         <Route path="/pricing" element={<PricingPage />} />
         <Route path="/tokenization" element={<TokenizationPage />} />
         <Route path="/how-it-works" element={<HowItWorksPage />} />
+        <Route path="/product" element={<ProductPage />} />
         <Route path="/deal-room/:propertyId" element={<DealRoomPage />} />
         <Route path="/deal-room/:propertyId/summary" element={<DealSummaryPage />} />
         <Route path="/deal-room/:propertyId/share" element={<DealSharePage />} />
