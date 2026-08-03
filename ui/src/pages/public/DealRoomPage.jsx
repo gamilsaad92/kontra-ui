@@ -2240,6 +2240,202 @@ function WorkspaceTabNav({ activeTab, onChange }) {
 //   Area 3 — Transaction progress (stage tracker + 4 metrics)
 //   Area 4 — Participant status (compact table)
 //   Area 5 — Recent activity (last 5 events)
+// ── Settlement Provider abstraction ──────────────────────────────────────────
+// Advisor brief: "Add a SettlementProvider abstraction — initially only Wire
+// and Escrow active, others behind feature flags." Kontra never holds funds;
+// it orchestrates the handoff to the chosen provider.
+const SETTLEMENT_PROVIDERS = [
+  {
+    id:     'wire',
+    label:  'Wire Transfer',
+    icon:   '🏦',
+    active: true,
+    desc:   'ACH · Fedwire · SWIFT — standard bank-to-bank settlement',
+    note:   'Add bank details or instructions in the notes below. Your attorney or escrow officer will coordinate the actual transfer.',
+  },
+  {
+    id:     'escrow',
+    label:  'Escrow',
+    icon:   '🔐',
+    active: true,
+    desc:   'Third-party holdback — funds released when conditions are met',
+    note:   'Name your escrow provider and any release conditions. Kontra will log this against the audit trail.',
+  },
+  {
+    id:     'stablecoin',
+    label:  'Stablecoin',
+    icon:   '💵',
+    active: false,
+    desc:   'Connect via Bridge · USDC · USDT — coming soon',
+    note:   '',
+  },
+  {
+    id:     'stripe',
+    label:  'Stripe',
+    icon:   '⚡',
+    active: false,
+    desc:   'Stripe Payment Links — coming soon',
+    note:   '',
+  },
+  {
+    id:     'cbdc',
+    label:  'CBDC',
+    icon:   '🏛️',
+    active: false,
+    desc:   'Central Bank Digital Currency — coming soon',
+    note:   '',
+  },
+  {
+    id:     'ramp_bridge',
+    label:  'Ramp / Bridge',
+    icon:   '🔄',
+    active: false,
+    desc:   'Ramp · Bridge · Circle · Ripple — coming soon',
+    note:   '',
+  },
+];
+
+// ── SettlementPanel ───────────────────────────────────────────────────────────
+// Shows after Close in the Overview tab. Lets the coordinator choose a
+// settlement method and record any notes. Saves to metadata_values via
+// the /metadata-merge endpoint. No funds held or processed by Kontra.
+function SettlementPanel({ propertyId, property, isAtFinalStage }) {
+  const meta              = property?.metadata_values || {};
+  const [selected, setSelected] = useState(meta.settlement_method || null);
+  const [details,  setDetails]  = useState(meta.settlement_details || '');
+  const [status,   setStatus]   = useState(meta.settlement_status  || 'pending'); // pending | confirmed | complete
+  const [saving,   setSaving]   = useState(false);
+  const [saved,    setSaved]    = useState(false);
+
+  const activeProvider = SETTLEMENT_PROVIDERS.find(p => p.id === selected && p.active);
+
+  async function save() {
+    if (!selected) return;
+    setSaving(true);
+    try {
+      await fetch(`${API_BASE}/api/public/deal-room/${propertyId}/metadata-merge`, {
+        method:  'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({
+          settlement_method:  selected,
+          settlement_details: details,
+          settlement_status:  'confirmed',
+          settlement_saved_at: new Date().toISOString(),
+        }),
+      });
+      setStatus('confirmed');
+      setSaved(true);
+      setTimeout(() => setSaved(false), 3000);
+    } catch {}
+    setSaving(false);
+  }
+
+  return (
+    <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
+      {/* Header */}
+      <div className="px-6 py-4 flex items-center justify-between border-b border-gray-100">
+        <div className="flex items-center gap-3">
+          <span className="text-lg">💸</span>
+          <div>
+            <p className="text-sm font-bold text-gray-900">Settlement</p>
+            <p className="text-[10px] text-gray-400">
+              {status === 'confirmed'
+                ? `Method confirmed · ${SETTLEMENT_PROVIDERS.find(p => p.id === selected)?.label || selected}`
+                : isAtFinalStage
+                  ? 'Choose how this transaction settles'
+                  : 'Available at closing — select a method in advance'}
+            </p>
+          </div>
+        </div>
+        {status === 'confirmed' && (
+          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-green-50 text-green-700">
+            ✓ Confirmed
+          </span>
+        )}
+      </div>
+
+      <div className="px-6 py-5">
+        {/* Provider grid */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 mb-5">
+          {SETTLEMENT_PROVIDERS.map(p => {
+            const isSelected = selected === p.id;
+            return (
+              <button
+                key={p.id}
+                disabled={!p.active}
+                onClick={() => p.active && setSelected(p.id === selected ? null : p.id)}
+                className={[
+                  'relative flex flex-col items-start gap-1 px-3 py-3 rounded-xl border-2 text-left transition',
+                  !p.active
+                    ? 'border-dashed border-gray-200 opacity-40 cursor-not-allowed'
+                    : isSelected
+                      ? 'border-[#800020] bg-[#80002008] cursor-pointer'
+                      : 'border-gray-200 hover:border-gray-400 cursor-pointer',
+                ].join(' ')}>
+                <div className="flex items-center justify-between w-full">
+                  <span className="text-base">{p.icon}</span>
+                  {!p.active && (
+                    <span className="text-[8px] font-bold text-gray-400 uppercase tracking-wider">Soon</span>
+                  )}
+                  {isSelected && p.active && (
+                    <span className="text-[10px] font-bold text-[#800020]">✓</span>
+                  )}
+                </div>
+                <p className="text-[11px] font-bold text-gray-800 leading-tight">{p.label}</p>
+                <p className="text-[9px] text-gray-400 leading-snug">{p.desc}</p>
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Detail fields — shown when an active provider is selected */}
+        {activeProvider && (
+          <div className="mb-4">
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 mb-1.5">
+              {activeProvider.label} — Notes & Instructions
+            </p>
+            <p className="text-[10px] text-gray-400 mb-2 leading-snug">{activeProvider.note}</p>
+            <textarea
+              value={details}
+              onChange={e => setDetails(e.target.value)}
+              placeholder={`Add any ${activeProvider.label.toLowerCase()} details, instructions, or provider information…`}
+              rows={3}
+              className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-xs text-gray-700 placeholder-gray-300 focus:outline-none focus:ring-2 resize-none"
+              style={{ '--tw-ring-color': '#800020' }}
+            />
+          </div>
+        )}
+
+        {/* Save / confirm row */}
+        {selected && activeProvider && (
+          <div className="flex items-center gap-3">
+            <button
+              onClick={save}
+              disabled={saving}
+              className="px-5 py-2.5 rounded-xl text-xs font-bold text-white transition hover:opacity-90 disabled:opacity-40"
+              style={{ background: '#800020' }}>
+              {saving ? 'Saving…' : saved ? '✓ Saved' : 'Confirm Settlement Method'}
+            </button>
+            {status === 'confirmed' && !saving && (
+              <button
+                onClick={() => setSelected(null)}
+                className="text-[11px] text-gray-400 hover:text-gray-600 transition">
+                Change
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* Future providers note */}
+        <p className="text-[9px] text-gray-300 mt-4 leading-snug">
+          Kontra does not hold or process funds. Settlement is handled by your chosen provider.
+          Future: Stripe · Bridge · Ramp · Circle · Ripple · CBDC
+        </p>
+      </div>
+    </div>
+  );
+}
+
 function OperationsManagerView({ propertyId, property, pack, role, onTabChange }) {
   const [briefing,     setBriefing]     = useState(null);
   const [briefLoading, setBriefLoading] = useState(true);
@@ -3144,6 +3340,13 @@ function OperationsManagerView({ propertyId, property, pack, role, onTabChange }
           </div>
         )}
       </div>
+
+      {/* ── Settlement Layer ─────────────────────────────────────────────── */}
+      <SettlementPanel
+        propertyId={propertyId}
+        property={property}
+        isAtFinalStage={stages.length > 0 && currentStageIdx >= stages.length - 1}
+      />
 
       {/* ── Area 4: Participant status ───────────────────────────────────── */}
       <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
