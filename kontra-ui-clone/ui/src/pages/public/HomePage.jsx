@@ -254,12 +254,9 @@ export default function HomePage() {
           <h1 className="text-4xl md:text-6xl font-bold leading-tight tracking-tight mb-6 max-w-4xl mx-auto">
             Every transaction gets its own Operations Manager.
           </h1>
-          <p className="text-lg text-gray-400 max-w-2xl mx-auto mb-5 leading-relaxed">
-            Kontra coordinates documents, participants, deadlines, and approvals across private transactions.
-            It identifies what is missing, follows up with the right people, and shows you what needs attention next.
-          </p>
-          <p className="text-sm text-gray-500 max-w-xl mx-auto mb-10">
-            Built for any private transaction.
+          <p className="text-lg text-gray-400 max-w-2xl mx-auto mb-10 leading-relaxed">
+            AI coordinates every participant, document, approval, deadline, and follow-up —
+            keeping private transactions moving from kickoff to completion.
           </p>
 
           <div className="flex flex-col sm:flex-row items-center justify-center gap-3 mb-4">
@@ -274,19 +271,51 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* ── Three outcomes ─────────────────────────────────────── */}
-      <section className="max-w-7xl mx-auto px-6 py-12">
-        <div className="grid md:grid-cols-3 gap-6">
-          {THREE_OUTCOMES.map((item) => (
-            <div key={item.title} className="bg-white rounded-2xl border border-gray-100 p-7 shadow-sm">
-              <div className="w-11 h-11 rounded-xl flex items-center justify-center text-2xl mb-4"
-                style={{ background: item.color + "12" }}>
-                {item.icon}
-              </div>
-              <h3 className="text-sm font-bold text-gray-900 mb-2 leading-snug">{item.title}</h3>
-              <p className="text-sm text-gray-500 leading-relaxed">{item.desc}</p>
+      {/* ── Why Kontra? comparison ─────────────────────────────── */}
+      <section className="bg-gray-50 border-b border-gray-100 py-14">
+        <div className="max-w-5xl mx-auto px-6">
+          <div className="text-center mb-10">
+            <p className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: "#800020" }}>Why Kontra</p>
+            <h2 className="text-2xl font-bold text-gray-900">Why traditional data rooms slow transactions</h2>
+          </div>
+          <div className="grid md:grid-cols-2 gap-6">
+            <div className="bg-white rounded-2xl border border-gray-200 p-7">
+              <p className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-5">Traditional tools provide</p>
+              <ul className="space-y-3">
+                {[
+                  "File storage only",
+                  "Folder permissions",
+                  "Email chains for coordination",
+                  "Manual follow-ups and reminders",
+                  "No ownership or status tracking",
+                  "No AI coordination or analysis",
+                ].map(item => (
+                  <li key={item} className="flex items-center gap-3 text-sm text-gray-500">
+                    <span className="text-base shrink-0">❌</span>
+                    {item}
+                  </li>
+                ))}
+              </ul>
             </div>
-          ))}
+            <div className="rounded-2xl border-2 p-7" style={{ borderColor: "#800020", background: "#80002008" }}>
+              <p className="text-xs font-bold uppercase tracking-widest mb-5" style={{ color: "#800020" }}>Kontra provides</p>
+              <ul className="space-y-3">
+                {[
+                  "AI Operations Manager per transaction",
+                  "Role-specific workspaces for every party",
+                  "Automated follow-ups and nudges",
+                  "Missing document detection",
+                  "Transaction health monitoring",
+                  "Complete verified audit trail",
+                ].map(item => (
+                  <li key={item} className="flex items-center gap-3 text-sm text-gray-800 font-medium">
+                    <span className="text-base shrink-0">✅</span>
+                    {item}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
         </div>
       </section>
 
@@ -353,6 +382,22 @@ export default function HomePage() {
 
             <p className="text-center text-xs text-gray-600">All parties see real-time updates. No one has to ask for a status update.</p>
           </div>
+        </div>
+      </section>
+
+      {/* ── Three outcomes ─────────────────────────────────────── */}
+      <section className="max-w-7xl mx-auto px-6 py-12">
+        <div className="grid md:grid-cols-3 gap-6">
+          {THREE_OUTCOMES.map((item) => (
+            <div key={item.title} className="bg-white rounded-2xl border border-gray-100 p-7 shadow-sm">
+              <div className="w-11 h-11 rounded-xl flex items-center justify-center text-2xl mb-4"
+                style={{ background: item.color + "12" }}>
+                {item.icon}
+              </div>
+              <h3 className="text-sm font-bold text-gray-900 mb-2 leading-snug">{item.title}</h3>
+              <p className="text-sm text-gray-500 leading-relaxed">{item.desc}</p>
+            </div>
+          ))}
         </div>
       </section>
 
@@ -610,11 +655,11 @@ export default function HomePage() {
                     ))}
                   </div>
                   <div className="mt-4">
-                    <Link to="/ai-tools"
+                    <Link to="/create-deal-room"
                       onClick={(e) => e.stopPropagation()}
                       className="flex items-center justify-center gap-2 w-full px-4 py-2.5 rounded-xl text-sm font-semibold text-white transition hover:opacity-90"
                       style={{ background: "#800020" }}>
-                      Try {tool.title} →
+                      Use in your workspace →
                     </Link>
                   </div>
                 </div>
@@ -623,10 +668,47 @@ export default function HomePage() {
           </div>
 
           <div className="text-center">
-            <Link to="/ai-tools"
+            <Link to="/create-deal-room"
               className="inline-flex items-center gap-2 px-6 py-3 rounded-xl border border-gray-200 text-sm font-medium text-gray-700 hover:bg-white hover:shadow-sm transition">
-              See all AI tools →
+              Get all AI tools inside your workspace →
             </Link>
+          </div>
+        </div>
+      </section>
+
+      {/* ── Enterprise Ready ───────────────────────────────────── */}
+      <section className="border-t border-gray-100 bg-gray-50 py-14">
+        <div className="max-w-5xl mx-auto px-6">
+          <div className="text-center mb-10">
+            <p className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: "#800020" }}>Enterprise Ready</p>
+            <h2 className="text-2xl font-bold text-gray-900 mb-3">Built for organizations that can't afford to get it wrong</h2>
+            <p className="text-gray-500 text-sm max-w-xl mx-auto">
+              Every feature is designed with security, compliance, and auditability in mind — from the first document upload to the final closing.
+            </p>
+          </div>
+          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            {[
+              { icon: "📋", title: "Complete Audit Trail", desc: "Every action, AI recommendation, and approval logged with timestamps." },
+              { icon: "🗂️", title: "Version History", desc: "Every document version tracked automatically — no more 'which PDF is current?'" },
+              { icon: "🔐", title: "Role-Based Permissions", desc: "Each participant sees only what is relevant to their role. Nothing leaks across parties." },
+              { icon: "🔒", title: "Encrypted Storage", desc: "All documents stored encrypted at rest and in transit. Signed-URL access only." },
+              { icon: "🤖", title: "AI Activity Logs", desc: "Every AI analysis, flag, and follow-up draft surfaced in the audit record." },
+              { icon: "🔔", title: "Automated Notifications", desc: "Every upload, approval, and deadline triggers the right party automatically." },
+              { icon: "📧", title: "Secure Invitations", desc: "Role-scoped invite links — no account creation required for any participant." },
+              { icon: "🏢", title: "Volume & White-Label", desc: "Multiple workspaces, dedicated support, SSO, and custom branding for teams." },
+            ].map(item => (
+              <div key={item.title} className="bg-white rounded-xl border border-gray-200 p-5">
+                <span className="text-2xl block mb-3">{item.icon}</span>
+                <p className="text-sm font-bold text-gray-900 mb-1">{item.title}</p>
+                <p className="text-xs text-gray-500 leading-relaxed">{item.desc}</p>
+              </div>
+            ))}
+          </div>
+          <div className="text-center mt-8">
+            <a href="mailto:hello@kontraplatform.com?subject=Kontra Enterprise"
+              className="inline-flex items-center gap-2 text-sm font-semibold px-5 py-2.5 rounded-xl border border-gray-200 text-gray-700 hover:bg-white hover:shadow-sm transition">
+              Talk to us about enterprise →
+            </a>
           </div>
         </div>
       </section>

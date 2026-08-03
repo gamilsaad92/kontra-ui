@@ -90,7 +90,7 @@ export default function PricingPage() {
           </h1>
           <p className="text-gray-500 text-base max-w-md mx-auto leading-relaxed">
             Complex transactions shouldn't require 700 emails.
-            Open a workspace and coordinate every step to closing.
+            Create a transaction workspace and coordinate every step to closing.
           </p>
         </div>
 
@@ -105,7 +105,7 @@ export default function PricingPage() {
               </span>
             </div>
             <div className="mb-2">
-              <h2 className="text-xl font-bold text-gray-900">Open a Workspace</h2>
+              <h2 className="text-xl font-bold text-gray-900">Create Transaction Workspace</h2>
               <p className="text-sm text-gray-500 mt-1">Pay once. No subscription. No seat fees.</p>
             </div>
             <div className="my-6 pb-6 border-b border-gray-100">
@@ -129,7 +129,7 @@ export default function PricingPage() {
               to="/create-deal-room"
               className="w-full block text-center py-3.5 rounded-xl text-sm font-bold text-white transition hover:opacity-90"
               style={{ background: "#800020" }}>
-              Open a Workspace →
+              Create Transaction Workspace →
             </Link>
           </div>
 

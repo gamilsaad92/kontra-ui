@@ -268,11 +268,11 @@ export default function TokenIssuancePage() {
 
           <div className="text-center max-w-4xl mx-auto mb-8">
             <h1 className="text-4xl md:text-6xl font-bold leading-tight tracking-tight mb-6">
-              Run your regulated token issuance{" "}
-              <span style={{ color: "#c084fc" }}>without the compliance chaos.</span>
+              Coordinate every stage of{" "}
+              <span style={{ color: "#c084fc" }}>a regulated token issuance.</span>
             </h1>
             <p className="text-lg text-gray-400 max-w-2xl mx-auto mb-5 leading-relaxed">
-              Kontra gives every token issuance its own coordinated workspace — Token Issuer, Legal Counsel, Compliance Officer, Transfer Agent, and investors all in one place. AI tracks every KYC submission, every regulatory filing, and every stage from structuring to secondary market.
+              Kontra coordinates every participant, document, regulatory filing, and approval across your issuance — Token Issuer, Legal Counsel, Compliance Officer, Transfer Agent, and investors, all working from the same verified workflow. KYC, compliance tracking, and audit trail included.
             </p>
             <p className="text-sm text-gray-500 mb-10">
               For real estate sponsors, fund managers, and issuers running regulated STOs — UAE ADGM, EU MiCA, Singapore MAS.

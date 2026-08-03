@@ -7,7 +7,7 @@ const STEPS = [
     step: "01",
     icon: "⚙️",
     color: "#800020",
-    title: "Configure your workflow for any private transaction",
+    title: "Create your workspace for any private transaction",
     who: "Deal Owner",
     desc: "Define the roles, documents, and checklist that fit your deal — or start from a built-in template. Kontra structures the workspace around your workflow, not a fixed transaction type. Any private deal, any industry.",
     actions: [
@@ -66,7 +66,7 @@ const STEPS = [
     step: "04",
     icon: "🏁",
     color: "#6d28d9",
-    title: "Close with confidence",
+    title: "Complete the transaction with confidence",
     who: "Owner + All parties",
     desc: "Every critical-path item tracked. Every party working from the same verified documents. The Operations Manager tells you each morning exactly where the deal stands and what needs to happen today to stay on schedule.",
     actions: [
@@ -87,20 +87,6 @@ const STEPS = [
 
 const WORKFLOW_PACKS = [
   {
-    icon: "🏢",
-    title: "CRE Acquisition",
-    color: "#800020",
-    demoSlug: "/deal-room/kontra-demo",
-    description: "Commercial real estate acquisitions, refinancing, and lending transactions.",
-    parties: [
-      { icon: "🏢", role: "Borrower / Owner", desc: "Creates workspace, uploads documents, tracks all parties" },
-      { icon: "🏦", role: "Lender / Underwriter", desc: "Reviews AI-analyzed financials, compliance status, risk score" },
-      { icon: "🔍", role: "Inspector", desc: "Submits inspection report; AI structures findings for lender" },
-      { icon: "🛡️", role: "Insurance Broker", desc: "Uploads cert; AI flags coverage gaps and expiration dates" },
-      { icon: "⚖️", role: "Attorney", desc: "Reviews title, legal structure, and closing documents" },
-    ],
-  },
-  {
     icon: "💼",
     title: "Business Acquisition",
     color: "#1e40af",
@@ -112,6 +98,20 @@ const WORKFLOW_PACKS = [
       { icon: "📊", role: "CPA / Accountant", desc: "Provides audited financials; AI extracts EBITDA and anomalies" },
       { icon: "⚖️", role: "Attorney", desc: "Reviews purchase agreement, reps & warranties, closing docs" },
       { icon: "📋", role: "M&A Broker / Advisor", desc: "Coordinates parties, tracks LOI and deal milestones" },
+    ],
+  },
+  {
+    icon: "🏢",
+    title: "CRE Acquisition",
+    color: "#800020",
+    demoSlug: "/deal-room/kontra-demo",
+    description: "Commercial real estate acquisitions, refinancing, and lending transactions.",
+    parties: [
+      { icon: "🏢", role: "Borrower / Owner", desc: "Creates workspace, uploads documents, tracks all parties" },
+      { icon: "🏦", role: "Lender / Underwriter", desc: "Reviews AI-analyzed financials, compliance status, risk score" },
+      { icon: "🔍", role: "Inspector", desc: "Submits inspection report; AI structures findings for lender" },
+      { icon: "🛡️", role: "Insurance Broker", desc: "Uploads cert; AI flags coverage gaps and expiration dates" },
+      { icon: "⚖️", role: "Attorney", desc: "Reviews title, legal structure, and closing documents" },
     ],
   },
   {
