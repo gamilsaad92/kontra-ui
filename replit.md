@@ -16,6 +16,14 @@ Key capabilities include:
 - A tokenization execution layer enabling the creation, management, and transfer of ERC-1400 tokens on the Base blockchain, complete with readiness assessment, investor whitelisting, payment reconciliation, and a secondary market.
 - Enterprise Command Centers providing specialized operational dashboards for servicing, inspections, hazard loss, compliance, tokenization, and administration.
 
+## Build Principle
+
+Every major feature must answer: **Does this make the transaction more structured, more verifiable, or more portable?**
+If yes, build it. If no, question whether it belongs.
+
+Kontra's role: transaction orchestration layer — not a bank, exchange, blockchain, or custodian.
+Architecture flow: Transaction → Verification → Closing → Asset Package → Settlement Adapter → External Infrastructure.
+
 ## User Preferences
 
 - I prefer clear, concise explanations focusing on functionality and impact rather than verbose technical details.

@@ -1853,6 +1853,10 @@ function AssetReadinessTab({ propertyId, property, pack, onTabChange }) {
     tokenization_readiness: overall,
     readiness_label:      overallLabel,
     participants:         participantRows.map(r => ({ role: r.label, status: r.status || 'Not invited' })),
+    settlement_method:    metaValues?.settlement_method || null,
+    settlement_provider:  SETTLEMENT_PROVIDERS.find(p => p.id === metaValues?.settlement_method)?.label || null,
+    settlement_status:    metaValues?.settlement_status || null,
+    settlement_confirmed_at: metaValues?.settlement_saved_at || null,
     generated_at:         new Date().toISOString(),
     kontra_version:       '2.0',
   };
@@ -2075,6 +2079,7 @@ function AssetReadinessTab({ propertyId, property, pack, onTabChange }) {
                 { label: 'Events',       value: `${events.length} recorded` },
                 { label: 'Verification', value: passportData.verification_status },
                 { label: 'Readiness',    value: `${overall}% · ${overallLabel}` },
+                ...(passportData.settlement_provider ? [{ label: 'Settlement', value: `${passportData.settlement_provider} · ${passportData.settlement_status || 'Pending'}` }] : []),
               ].map((row, i) => (
                 <div key={i}>
                   <p className="text-[9px] font-bold uppercase tracking-wider text-gray-400">{row.label}</p>
@@ -2163,33 +2168,109 @@ function AssetReadinessTab({ propertyId, property, pack, onTabChange }) {
         </p>
       </div>
 
-      {/* ── Future Integrations ────────────────────────────────────────────── */}
+      {/* ── Adapter Interfaces ─────────────────────────────────────────────── */}
+      {/* Architecture principle: Transaction → Verification → Closing →      */}
+      {/*   Asset Package → Settlement Adapter → External Infrastructure.      */}
+      {/* Kontra orchestrates — it never becomes the external system.          */}
+
+      {/* Settlement Adapter */}
       <div className="bg-white rounded-2xl border border-gray-200 p-6">
         <div className="flex items-center gap-2 mb-1">
-          <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">Future Integrations</p>
+          <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">Settlement Adapter</p>
+          <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded uppercase ${metaValues?.settlement_method ? 'bg-green-50 text-green-700' : 'bg-gray-100 text-gray-400'}`}>
+            {metaValues?.settlement_method ? 'Configured' : 'Not configured'}
+          </span>
+        </div>
+        <p className="text-[11px] text-gray-400 mb-4 leading-snug">
+          Wire and Escrow are active today. Stripe, Bridge, Stablecoin, and CBDC
+          connect when your customers need them — no rebuild required.
+        </p>
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+          {SETTLEMENT_PROVIDERS.map(p => (
+            <div key={p.id}
+              className={`flex items-center gap-2.5 px-3 py-2.5 rounded-xl border ${
+                p.active ? 'border-gray-200' : 'border-dashed border-gray-200 opacity-40'
+              }`}>
+              <span className="text-sm shrink-0">{p.icon}</span>
+              <div className="min-w-0">
+                <p className="text-[11px] font-semibold text-gray-700 leading-tight">{p.label}</p>
+                {p.active
+                  ? <p className="text-[9px] font-semibold text-green-600">Active</p>
+                  : <p className="text-[9px] text-gray-400">Coming soon</p>}
+              </div>
+            </div>
+          ))}
+        </div>
+        {!metaValues?.settlement_method && (
+          <button onClick={() => onTabChange?.('overview')}
+            className="mt-3 text-[11px] font-bold hover:opacity-80 transition"
+            style={{ color: '#800020' }}>
+            Configure in Overview →
+          </button>
+        )}
+      </div>
+
+      {/* Tokenization Adapter */}
+      <div className="bg-white rounded-2xl border border-gray-200 p-6">
+        <div className="flex items-center gap-2 mb-1">
+          <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">Tokenization Adapter</p>
           <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-gray-100 text-gray-400 uppercase">
             Coming soon
           </span>
         </div>
         <p className="text-[11px] text-gray-400 mb-4 leading-snug">
-          Kontra is blockchain-neutral. Connect any regulated issuance platform,
-          custodian, or transfer agent when you are ready. The asset passport and
-          metadata are already structured for seamless handoff.
+          The Asset Package and Passport are already structured for handoff to any
+          issuance network. Kontra prepares and exports — it never issues tokens.
         </p>
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
           {[
-            { icon: '🏛️', label: 'Issue Asset Token'          },
-            { icon: '🏦', label: 'Connect Custodian'           },
-            { icon: '🔄', label: 'Connect Transfer Agent'      },
-            { icon: '🪪', label: 'Connect KYC Provider'        },
-            { icon: '⚖️', label: 'Connect Compliance Provider' },
-            { icon: '💼', label: 'Connect Settlement Network'  },
-          ].map(stub => (
-            <div key={stub.label}
-              title="Coming in a future release"
-              className="flex items-center gap-2 px-3 py-3 rounded-xl border border-dashed border-gray-200 opacity-40 cursor-not-allowed select-none">
-              <span className="text-base">{stub.icon}</span>
-              <span className="text-[11px] font-medium text-gray-500">{stub.label}</span>
+            { icon: '🌊', label: 'XRPL',           desc: 'XRP Ledger'            },
+            { icon: '⬡',  label: 'Ethereum',        desc: 'ERC-3643 / ERC-20'    },
+            { icon: '⬡',  label: 'Polygon',         desc: 'Layer 2'              },
+            { icon: '🔷', label: 'Canton',           desc: 'DAML / Digital Asset' },
+            { icon: '✦',  label: 'Stellar',          desc: 'Stellar Network'      },
+            { icon: '+',  label: 'Future Network',   desc: 'Plug in any chain'    },
+          ].map(n => (
+            <div key={n.label}
+              className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl border border-dashed border-gray-200 opacity-40 cursor-not-allowed select-none">
+              <span className="text-sm shrink-0">{n.icon}</span>
+              <div className="min-w-0">
+                <p className="text-[11px] font-semibold text-gray-700 leading-tight">{n.label}</p>
+                <p className="text-[9px] text-gray-400">{n.desc}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Compliance Adapter */}
+      <div className="bg-white rounded-2xl border border-gray-200 p-6">
+        <div className="flex items-center gap-2 mb-1">
+          <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">Compliance Adapter</p>
+          <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-gray-100 text-gray-400 uppercase">
+            Coming soon
+          </span>
+        </div>
+        <p className="text-[11px] text-gray-400 mb-4 leading-snug">
+          KYC, AML, transfer agents, and custodians connect through this adapter.
+          Kontra coordinates the workflow — they execute the regulated activity.
+        </p>
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+          {[
+            { icon: '🪪', label: 'KYC Provider',       desc: 'Identity verification' },
+            { icon: '🔍', label: 'AML Screening',       desc: 'Anti-money laundering' },
+            { icon: '🔄', label: 'Transfer Agent',      desc: 'Ownership registry'    },
+            { icon: '🏦', label: 'Custodian',           desc: 'Asset custody'         },
+            { icon: '⚖️', label: 'Compliance Network',  desc: 'Regulatory framework'  },
+            { icon: '+',  label: 'Future Provider',     desc: 'Plug in any provider'  },
+          ].map(n => (
+            <div key={n.label}
+              className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl border border-dashed border-gray-200 opacity-40 cursor-not-allowed select-none">
+              <span className="text-sm shrink-0">{n.icon}</span>
+              <div className="min-w-0">
+                <p className="text-[11px] font-semibold text-gray-700 leading-tight">{n.label}</p>
+                <p className="text-[9px] text-gray-400">{n.desc}</p>
+              </div>
             </div>
           ))}
         </div>
