@@ -269,7 +269,7 @@ export default function ProductPage() {
             Tokenization Readiness
           </p>
           <h2 className="text-3xl font-black mb-4 leading-tight">
-            Every completed transaction is<br />automatically Tokenization Ready.
+            Every completed transaction produces<br />a tokenization-ready digital asset package.
           </h2>
           <p className="text-gray-300 text-sm max-w-xl mx-auto mb-10 leading-relaxed">
             Kontra scores every workspace across 8 categories at closing — Ownership Structure,

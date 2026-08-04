@@ -95,19 +95,19 @@ const HOW_IT_WORKS = [
 const THREE_OUTCOMES = [
   {
     icon: "🔍",
-    title: "Know what is blocking the transaction",
+    title: "Know the blockers",
     desc: "Kontra identifies missing documents, overdue responsibilities, unresolved issues, and stalled participants.",
     color: "#800020",
   },
   {
     icon: "🤝",
-    title: "Keep every party coordinated",
+    title: "Coordinate everyone",
     desc: "Each participant receives a role-specific view and knows exactly what they are responsible for.",
     color: "#1e40af",
   },
   {
     icon: "⚡",
-    title: "Move the transaction forward",
+    title: "Keep deals moving",
     desc: "The AI Operations Manager recommends the next action and drafts follow-ups for your approval.",
     color: "#065f46",
   },
@@ -187,6 +187,112 @@ const STATS = [
   { value: "Included",    label: "90-day access" },
 ];
 
+const FEED_EVENTS = [
+  { icon: "📊", text: "QoE report is 10 days overdue — follow-up drafted for your approval", label: "Action needed", color: "#ef4444" },
+  { icon: "📄", text: "Letter of Intent analyzed — 2 open items flagged for Legal", label: "Flagged", color: "#f59e0b" },
+  { icon: "💰", text: "3-year financials reviewed — revenue trend and EBITDA margin extracted", label: "Complete", color: "#16a34a" },
+  { icon: "🔍", text: "CPA submitting Quality of Earnings — AI review queued", label: "Incoming", color: "#6366f1" },
+  { icon: "⚖️", text: "Purchase Agreement uploaded by Legal — risk clauses extracted", label: "Reviewed", color: "#f59e0b" },
+  { icon: "✅", text: "NDA countersigned by Seller — moving to due diligence stage", label: "Stage advance", color: "#16a34a" },
+];
+
+function LiveWorkspacePreview() {
+  const [feedItems, setFeedItems] = useState(FEED_EVENTS.slice(0, 3));
+  const [nextIdx, setNextIdx] = useState(3);
+  const [highlight, setHighlight] = useState(null);
+
+  useEffect(() => {
+    const t = setInterval(() => {
+      setNextIdx(i => {
+        const idx = i % FEED_EVENTS.length;
+        const newItem = { ...FEED_EVENTS[idx], _key: Date.now() };
+        setFeedItems(prev => [newItem, ...prev.slice(0, 2)]);
+        setHighlight(newItem._key);
+        setTimeout(() => setHighlight(null), 1500);
+        return idx + 1;
+      });
+    }, 3800);
+    return () => clearInterval(t);
+  }, []);
+
+  return (
+    <section className="bg-gray-950 py-14">
+      <div className="max-w-7xl mx-auto px-6">
+        <div className="text-center mb-10">
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/5 border border-white/10 text-xs text-gray-400 mb-4">
+            <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse shrink-0" />
+            Live workspace — updating in real time
+          </div>
+          <h2 className="text-2xl font-bold text-white mb-3">Every party. One workspace. Zero email chains.</h2>
+          <p className="text-gray-400 text-sm max-w-xl mx-auto">
+            Each participant sees their role-specific view. The AI Operations Manager coordinates everyone and surfaces what needs attention next.
+          </p>
+        </div>
+
+        <div className="max-w-3xl mx-auto">
+          <div className="bg-gray-800 border border-gray-700 rounded-2xl p-5 shadow-lg">
+            {/* Header */}
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-xl bg-blue-900/70 flex items-center justify-center text-lg">💼</div>
+              <div>
+                <p className="text-sm font-semibold text-white">Brightline Services LLC</p>
+                <p className="text-xs text-gray-300">San Francisco, CA · Business Acquisition · $6.2M</p>
+              </div>
+              <div className="ml-auto flex items-center gap-2">
+                <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-amber-900/50 text-amber-400 flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse shrink-0" />
+                  At Risk
+                </span>
+                <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-green-900/50 text-green-400 flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse shrink-0" />
+                  Live
+                </span>
+              </div>
+            </div>
+
+            {/* Parties */}
+            <div className="flex flex-wrap gap-2 mb-4">
+              {[
+                { icon: "🏪", label: "Tom Briggs (Seller)", role: "Seller", status: "Docs Pending", statusColor: "#f59e0b" },
+                { icon: "🧮", label: "Davidson Advisory", role: "CPA", status: "QoE Overdue", statusColor: "#ef4444" },
+                { icon: "⚖️", label: "Vance & Partners", role: "Legal Counsel", status: "Reviewing LOI", statusColor: "#f59e0b" },
+                { icon: "🤝", label: "Meridian Advisors", role: "M&A Broker", status: "CIM Submitted", statusColor: "#16a34a" },
+              ].map(party => (
+                <div key={party.label} className="flex items-center gap-2 px-3 py-2 rounded-xl bg-gray-700/60 border border-gray-600">
+                  <span className="text-base">{party.icon}</span>
+                  <div>
+                    <p className="text-xs font-medium text-white">{party.label}</p>
+                    <p className="text-[10px] text-gray-400">{party.role} · <span style={{ color: party.statusColor }}>{party.status}</span></p>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Live activity feed */}
+            <div className="space-y-1.5">
+              {feedItems.map((item, i) => (
+                <div key={item._key ?? i}
+                  className={`flex items-center gap-2.5 px-3 py-2 rounded-lg border transition-all duration-500 ${
+                    highlight === item._key
+                      ? "bg-white/8 border-white/10"
+                      : "bg-gray-700/40 border-gray-700/60"
+                  }`}>
+                  <span className="text-sm shrink-0">{item.icon}</span>
+                  <span className="text-xs text-gray-300 flex-1">{item.text}</span>
+                  <span className="text-[10px] font-semibold shrink-0" style={{ color: item.color }}>{item.label}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+          <p className="text-center text-xs text-gray-600 mt-3">
+            All parties see real-time updates. No one needs to ask for a status update.
+          </p>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function EmailCapture() {
   const [email, setEmail] = useState("");
   const [status, setStatus] = useState("idle");
@@ -255,8 +361,7 @@ export default function HomePage() {
             Every transaction gets its own Operations Manager.
           </h1>
           <p className="text-lg text-gray-400 max-w-2xl mx-auto mb-10 leading-relaxed">
-            AI coordinates every participant, document, approval, deadline, and follow-up —
-            keeping private transactions moving from kickoff to completion.
+            Coordinate every participant, document, approval, and deadline from one intelligent workspace.
           </p>
 
           <div className="flex flex-col sm:flex-row items-center justify-center gap-3 mb-4">
@@ -271,12 +376,15 @@ export default function HomePage() {
         </div>
       </section>
 
+      {/* ── Live workspace preview ──────────────────────────────── */}
+      <LiveWorkspacePreview />
+
       {/* ── Why Kontra? comparison ─────────────────────────────── */}
       <section className="bg-gray-50 border-b border-gray-100 py-14">
         <div className="max-w-5xl mx-auto px-6">
           <div className="text-center mb-10">
             <p className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: "#800020" }}>Why Kontra</p>
-            <h2 className="text-2xl font-bold text-gray-900">Why traditional data rooms slow transactions</h2>
+            <h2 className="text-2xl font-bold text-gray-900">Why data rooms aren't enough.</h2>
           </div>
           <div className="grid md:grid-cols-2 gap-6">
             <div className="bg-white rounded-2xl border border-gray-200 p-7">
@@ -315,72 +423,6 @@ export default function HomePage() {
                 ))}
               </ul>
             </div>
-          </div>
-        </div>
-      </section>
-
-      {/* ── Deal room visualization ─────────────────────────────── */}
-      <section className="bg-gray-950 py-14">
-        <div className="max-w-7xl mx-auto px-6">
-          <div className="text-center mb-10">
-            <p className="text-xs font-semibold uppercase tracking-wider mb-2 text-red-400">The workspace</p>
-            <h2 className="text-2xl font-bold text-white mb-3">Every party. One property. Zero email chains.</h2>
-            <p className="text-gray-400 text-sm max-w-xl mx-auto">
-              Each party gets a role-scoped view of the same underlying data — and the same AI Operations Manager chasing them for what's overdue. No one has to send a follow-up email.
-            </p>
-          </div>
-
-          {/* Central property card + party orbits */}
-          <div className="max-w-3xl mx-auto">
-            {/* Center */}
-            <div className="bg-gray-800 border border-gray-700 rounded-2xl p-5 mb-4 shadow-lg">
-              <div className="flex items-center gap-3 mb-4">
-                <div className="w-10 h-10 rounded-xl bg-blue-900/70 flex items-center justify-center text-lg">💼</div>
-                <div>
-                  <p className="text-sm font-semibold text-white">Brightline Services LLC</p>
-                  <p className="text-xs text-gray-300">San Francisco, CA · Business Acquisition · $6.2M</p>
-                </div>
-                <div className="ml-auto flex items-center gap-2">
-                  <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-amber-900/50 text-amber-400">At Risk</span>
-                  <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-blue-900/50 text-blue-300">Workspace Active</span>
-                </div>
-              </div>
-
-              {/* Parties connected */}
-              <div className="flex flex-wrap gap-2 mb-4">
-                {[
-                  { icon: "🏪", label: "Tom Briggs (Seller)", role: "Seller", status: "Docs Pending", statusColor: "#f59e0b" },
-                  { icon: "🧮", label: "Davidson Advisory", role: "CPA", status: "QoE Overdue", statusColor: "#ef4444" },
-                  { icon: "⚖️", label: "Vance & Partners", role: "Legal Counsel", status: "Reviewing LOI", statusColor: "#f59e0b" },
-                  { icon: "🤝", label: "Meridian Advisors", role: "M&A Broker", status: "CIM Submitted", statusColor: "#16a34a" },
-                ].map((party) => (
-                  <div key={party.label} className="flex items-center gap-2 px-3 py-2 rounded-xl bg-gray-700/60 border border-gray-600">
-                    <span className="text-base">{party.icon}</span>
-                    <div>
-                      <p className="text-xs font-medium text-white">{party.label}</p>
-                      <p className="text-[10px] text-gray-400">{party.role} · <span style={{ color: party.statusColor }}>{party.status}</span></p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              {/* Document feed */}
-              <div className="space-y-1.5">
-                {[
-                  { icon: "📊", text: "QoE report is 10 days overdue — follow-up drafted for your approval", time: "2m ago", color: "#ef4444" },
-                  { icon: "📄", text: "Letter of Intent analyzed — 2 open items flagged for Legal", time: "1h ago", color: "#f59e0b" },
-                  { icon: "💰", text: "3-year financials reviewed — revenue trend and EBITDA margin extracted", time: "3h ago", color: "#16a34a" },
-                ].map((item, i) => (
-                  <div key={i} className="flex items-center gap-2.5 px-3 py-2 rounded-lg bg-gray-700/40 border border-gray-700/60">
-                    <span className="text-sm">{item.icon}</span>
-                    <span className="text-xs text-gray-300 flex-1">{item.text}</span>
-                    <span className="text-[10px] text-gray-500 shrink-0">{item.time}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <p className="text-center text-xs text-gray-600">All parties see real-time updates. No one has to ask for a status update.</p>
           </div>
         </div>
       </section>
@@ -443,25 +485,43 @@ export default function HomePage() {
               Kontra isn't a fixed CRE tool or an M&amp;A-only platform. You define the workflow — roles, required documents, checklist stages — and Kontra runs it. Start from a template or describe your transaction to AI.
             </p>
           </div>
-          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="grid sm:grid-cols-3 gap-4 mb-4">
             {[
               { icon: "💼", label: "Business Acquisition", desc: "M&A diligence, QoE, LOI, legal review", tag: "Template" },
               { icon: "🏢", label: "CRE Acquisition",      desc: "Inspection, financing, title, compliance", tag: "Template" },
               { icon: "📈", label: "Fundraising",          desc: "Cap table, term sheet, investor diligence", tag: "Template" },
-              { icon: "⚙️", label: "Build Your Own",       desc: "Any transaction — your roles, your docs, your checklist", tag: "Custom", custom: true },
             ].map(item => (
-              <div key={item.label}
-                className={`rounded-2xl p-5 border-2 ${item.custom ? "border-dashed border-gray-300 bg-white" : "border-gray-100 bg-white"}`}>
+              <div key={item.label} className="rounded-2xl p-5 border-2 border-gray-100 bg-white">
                 <div className="flex items-start justify-between mb-3">
                   <span className="text-2xl">{item.icon}</span>
-                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${item.custom ? "bg-gray-100 text-gray-500" : "text-white"}`}
-                    style={item.custom ? {} : { background: "#800020" }}>{item.tag}</span>
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full text-white" style={{ background: "#800020" }}>{item.tag}</span>
                 </div>
                 <p className="text-sm font-semibold text-gray-900 mb-1">{item.label}</p>
                 <p className="text-xs text-gray-400 leading-relaxed">{item.desc}</p>
               </div>
             ))}
           </div>
+          {/* Build Your Own — full-width, visually prominent */}
+          <Link to="/create-deal-room"
+            className="block rounded-2xl p-6 border-2 bg-white hover:shadow-md transition-shadow group"
+            style={{ borderColor: "#80002030" }}>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 rounded-xl flex items-center justify-center text-2xl shrink-0"
+                  style={{ background: "#80002010" }}>⚙️</div>
+                <div>
+                  <div className="flex items-center gap-2 mb-1">
+                    <p className="text-base font-bold text-gray-900">Build Your Own Workflow</p>
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full" style={{ background: "#800020", color: "#fff" }}>Platform</span>
+                  </div>
+                  <p className="text-sm text-gray-500">Any transaction type — define your own roles, document schema, checklist stages, and approval flow. This is what sets Kontra apart.</p>
+                </div>
+              </div>
+              <svg className="w-5 h-5 text-gray-300 group-hover:text-gray-500 transition shrink-0 ml-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+              </svg>
+            </div>
+          </Link>
           <div className="flex flex-col sm:flex-row items-center justify-between gap-3 mt-6">
             <p className="text-xs text-gray-400">
               All templates are fully customizable. Add roles, swap documents, adjust checklist stages — or <Link to="/create-deal-room" className="underline text-gray-600 hover:text-gray-900">describe your transaction to AI</Link> and let it suggest a starting point.
@@ -495,7 +555,8 @@ export default function HomePage() {
           <div className="flex items-baseline justify-center gap-1 mb-1">
             <span className="text-5xl font-extrabold text-gray-900 tracking-tight">$499</span>
           </div>
-          <p className="text-sm text-gray-500 mb-6">One-time payment · 90-day access</p>
+          <p className="text-sm text-gray-500 mb-1">One-time payment · 90-day access</p>
+          <p className="text-xs text-gray-400 mb-6">Includes every participant, unlimited documents, AI coordination, and audit trail.</p>
           <ul className="text-sm text-gray-700 space-y-2.5 mb-8 text-left">
             {[
               "Unlimited participants — all roles included",

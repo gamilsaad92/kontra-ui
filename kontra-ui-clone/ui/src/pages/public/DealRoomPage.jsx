@@ -3543,6 +3543,10 @@ export default function DealRoomPage() {
 
   const inviteToken = searchParams.get("invite") || null;
 
+  const [showDemoIntro, setShowDemoIntro] = useState(() => {
+    const demoIds = ['kontra-demo', 'kontra-demo-biz', 'kontra-demo-fundraising'];
+    return demoIds.includes(propertyId) && !sessionStorage.getItem('kontra-demo-intro-seen');
+  });
   const [checkoutLoading, setCheckoutLoading] = useState(false);
   const [checkoutError, setCheckoutError] = useState("");
   const [apiProperty, setApiProperty] = useState(null);
@@ -3861,6 +3865,49 @@ export default function DealRoomPage() {
 
   return (
     <>
+    {/* ── Demo intro overlay ───────────────────────────────────────────── */}
+    {showDemoIntro && (
+      <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-gray-950/95 backdrop-blur-sm px-6">
+        <div className="bg-gray-900 border border-gray-700 rounded-3xl p-10 max-w-md w-full text-center shadow-2xl">
+          <div className="w-16 h-16 rounded-2xl flex items-center justify-center text-3xl mx-auto mb-6"
+            style={{ background: "#80002015", border: "1px solid #80002040" }}>
+            {propertyId === 'kontra-demo-biz' ? '💼' : propertyId === 'kontra-demo-fundraising' ? '📈' : '🏢'}
+          </div>
+          <p className="text-xs font-bold uppercase tracking-widest mb-2" style={{ color: "#c0392b" }}>
+            Welcome to the Kontra Demo
+          </p>
+          <h2 className="text-2xl font-black text-white mb-4 leading-snug">
+            You're about to enter a live transaction workspace.
+          </h2>
+          <p className="text-sm text-gray-400 leading-relaxed mb-6">
+            Watch how Kontra's AI Operations Manager coordinates participants, tracks documents, identifies blockers, and keeps every party moving toward closing.
+          </p>
+          <ul className="text-left space-y-3 mb-8">
+            {[
+              "Coordinates all participants from one workspace",
+              "AI reviews every document and surfaces flags",
+              "Tracks what's missing and who needs to act",
+              "Generates a verified closing package at completion",
+            ].map(item => (
+              <li key={item} className="flex items-start gap-3 text-sm text-gray-300">
+                <span className="text-green-400 mt-0.5 shrink-0">✓</span>
+                {item}
+              </li>
+            ))}
+          </ul>
+          <button
+            onClick={() => {
+              sessionStorage.setItem('kontra-demo-intro-seen', '1');
+              setShowDemoIntro(false);
+            }}
+            className="w-full py-3.5 rounded-xl text-sm font-bold text-white transition hover:opacity-90"
+            style={{ background: "#800020" }}>
+            Enter Demo →
+          </button>
+          <p className="text-xs text-gray-600 mt-3">No account required</p>
+        </div>
+      </div>
+    )}
     <PublicLayout
       hideFooter
       dealRoomMode={!!(property.isCustom && !isDemo)}

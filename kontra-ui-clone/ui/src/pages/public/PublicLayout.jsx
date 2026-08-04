@@ -235,7 +235,7 @@ export default function PublicLayout({ children, hideFooter = false }) {
                   <span className="font-semibold text-gray-900">Kontra</span>
                 </div>
                 <p className="text-sm text-gray-500 leading-relaxed max-w-xs">
-                  The AI Operations Platform for Complex Transactions. Every document. Every party. Every decision. Coordinated by AI.
+                  AI transaction coordination for private markets.
                 </p>
               </div>
               {[
