@@ -23,6 +23,17 @@ const AI_TYPE_TO_PACK = {
   // as the most generic structural starting point.
 };
 
+const AI_TYPE_LABELS = {
+  business_acquisition: "Business Acquisition",
+  cre_acquisition: "Commercial Real Estate Acquisition",
+  fundraising: "Fundraising Round",
+  tokenization: "Token Issuance / STO",
+  lending: "Lending / Finance",
+  licensing: "Licensing Transaction",
+  joint_venture: "Joint Venture",
+  other: "Custom Transaction",
+};
+
 function slugKey(s) {
   return String(s || "").toLowerCase().trim().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 40);
 }
@@ -68,7 +79,7 @@ function InlineEdit({ value, onChange, placeholder, className }) {
 }
 
 // ── Collapsible section for preview step ─────────────────────────────────────
-function CollapsedSection({ title, count, icon, children }) {
+function CollapsedSection({ title, count, icon, description, children }) {
   const [open, setOpen] = useState(false);
   return (
     <div className="border border-gray-200 rounded-xl overflow-hidden">
@@ -79,7 +90,10 @@ function CollapsedSection({ title, count, icon, children }) {
       >
         <div className="flex items-center gap-2.5">
           <span className="text-base">{icon}</span>
-          <span className="text-sm font-semibold text-gray-900">{title}</span>
+          <div>
+            <span className="text-sm font-semibold text-gray-900">{title}</span>
+            {description && <p className="text-[11px] text-gray-400 mt-0.5">{description}</p>}
+          </div>
         </div>
         <div className="flex items-center gap-2 shrink-0">
           <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">{count}</span>
@@ -395,6 +409,8 @@ export default function CreateDealRoomPage() {
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || "AI generation failed");
         if (data.name && !form.workspaceName) set("workspaceName", data.name);
+        const resolvedTransactionType = data.transactionType || aiTransactionType || "other";
+        if (!aiTransactionType && resolvedTransactionType) setAiTransactionType(resolvedTransactionType);
         setCustomConfig({
           roles: (data.roles || []).map((r, i) => ({
             key: r.key || slugKey(r.label),
@@ -422,7 +438,8 @@ export default function CreateDealRoomPage() {
         // Keep form.packId in sync with the transaction type the AI used so the
         // Review & Activate step shows the correct pack label and buildPayload()
         // sends the right workflowPackId.
-        if (AI_TYPE_TO_PACK[aiTransactionType]) set("packId", AI_TYPE_TO_PACK[aiTransactionType]);
+        const generatedPackId = data.packId || AI_TYPE_TO_PACK[resolvedTransactionType];
+        if (generatedPackId) set("packId", generatedPackId);
         const firstAiRole = (data.roles || [])[0];
         if (firstAiRole?.key) set("role", firstAiRole.key);
         trackEvent("workspace_creation_phase", { phase: 1, mode: "ai" });
@@ -777,17 +794,17 @@ export default function CreateDealRoomPage() {
 
                 {/* AI classification notice */}
                 {isAiGenerated && aiTransactionType && (() => {
-                  const PACK_NAMES = {
-                    cre_acquisition:      "Commercial Real Estate Acquisition",
-                    business_acquisition: "Business Acquisition",
-                    fundraising:          "Fundraising Round",
-                  };
                   const PACK_REASONS = {
                     cre_acquisition:      "your description suggests a property, real estate, or hotel transaction.",
                     business_acquisition: "your description suggests a company purchase, M&A, or business transfer.",
                     fundraising:          "your description suggests an equity round, venture capital, or investor transaction.",
+                    tokenization:         "your description suggests issuing or preparing tokenized securities.",
+                    lending:              "your description suggests a lending or financing transaction.",
+                    licensing:            "your description suggests licensing rights, technology, or intellectual property.",
+                    joint_venture:        "your description suggests forming a joint venture between multiple parties.",
+                    other:                "your description needs a custom transaction structure.",
                   };
-                  const name   = PACK_NAMES[aiTransactionType];
+                  const name   = AI_TYPE_LABELS[aiTransactionType];
                   const reason = PACK_REASONS[aiTransactionType];
                   if (!name) return null;
                   return (
@@ -818,6 +835,7 @@ export default function CreateDealRoomPage() {
                     title="Documents"
                     count={customConfig.documents.length}
                     icon="📄"
+                    description="Suggested diligence documents for this transaction — edit or remove anything that does not apply."
                   >
                     <DocumentsEditor
                       documents={customConfig.documents}
@@ -995,7 +1013,7 @@ export default function CreateDealRoomPage() {
                 style={{ background: "#800020" }}>
                 {aiLoading ? (
                   <><svg className="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg> Generating…</>
-                ) : phase === 0 && creationMode === "ai" ? "Generate Workspace →"
+                ) : phase === 0 && creationMode === "ai" ? "Generate Deal Room →"
                   : phase === 0 && creationMode === "blank" ? "Continue to Your Info →"
                   : phase === 0 && showTemplatePicker ? "Use this template →"
                   : "Continue →"}
@@ -1004,7 +1022,7 @@ export default function CreateDealRoomPage() {
           )}
 
           <p className="text-center text-xs text-gray-400 mt-4">
-            Secured by Stripe · No subscription · Workspace live within minutes of payment
+            Secured by Stripe · No subscription · Deal room live within minutes of payment
           </p>
 
         </div>

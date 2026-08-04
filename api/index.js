@@ -989,39 +989,117 @@ app.get('/api/copilot/tokenization-eligibility', (req, res) => {
 // Given a plain-language description of a transaction, returns a structured
 // workspace config (roles, documents, stages) as a starting point.
 app.post('/api/workspace/generate', aiRateLimit, async (req, res) => {
-  const { description, transactionType } = req.body || {};
+  const { description, transactionType, currentStage } = req.body || {};
   if (!description || !description.trim()) {
     return res.status(400).json({ error: 'Description is required' });
   }
 
-  // Build a transaction-type hint so the AI doesn't generate property/real-estate
-  // documents for a business acquisition or fundraising workspace.
-  const typeHint = transactionType
-    ? `\n\nTransaction type context: ${transactionType}.`
-    : '';
-
-  // Domain-specific document guidance injected per transaction category.
-  const DOMAIN_RULES = {
-    'Business Acquisition': `
-CRITICAL — Business Acquisition documents must NOT include property/real-estate documents unless the business explicitly owns property as a core asset. Good document examples: Financial Statements, Tax Returns, Quality of Earnings, Letter of Intent, Purchase Agreement, Cap Table, Disclosure Schedule, Material Contracts, Employee Agreements, Non-Compete Agreement.`,
-    'Hotel Acquisition': `
-This is a real-estate / hospitality transaction (NOT a business acquisition). Include both property and operating documents: Purchase & Sale Agreement, Title Commitment, Environmental Report, Property Inspection, Franchise Agreement, Management Agreement, Financial Statements, STR/Occupancy Data, Operating Agreements.`,
-    'Real Estate': `
-Real estate transaction. Include: Purchase & Sale Agreement, Title Commitment, Environmental Report, Property Inspection, Survey, Zoning, Financial Statements / Rent Roll, Loan Documents.`,
-    'Fundraising': `
-Capital raise. Include: Term Sheet, Investment Agreement, Cap Table, Financial Model, Investor Presentation / Pitch Deck, Due Diligence Questionnaire, Subscription Agreement, Legal Opinion.`,
+  // The public form sends stable machine values. Convert them before building
+  // the prompt; otherwise "business_acquisition" does not match the old
+  // display-name rules and the model is left to infer the domain from scratch.
+  const TRANSACTION_PROFILES = {
+    business_acquisition: {
+      label: 'Business Acquisition',
+      packId: 'business_acquisition',
+      rules: `
+This is an operating-company acquisition, not a real-estate transaction.
+Use roles such as buyer/acquirer, seller, M&A or financial adviser, legal
+counsel, and quality-of-earnings accountant as appropriate. Prioritize
+financial statements, tax returns, quality of earnings, letter of intent,
+purchase agreement, material contracts, employee agreements, and disclosure
+schedules. Do not include title, rent roll, environmental, survey, zoning,
+property inspection, or other property documents unless the description
+explicitly says the property itself is the asset being acquired.`,
+    },
+    cre_acquisition: {
+      label: 'Commercial Real Estate Acquisition',
+      packId: 'cre_acquisition',
+      rules: `
+This is a property/real-estate transaction. Use roles such as property owner,
+buyer, lender or financial adviser, legal counsel, property manager, inspector,
+and insurer as appropriate. Prioritize purchase and sale agreement, title,
+survey, zoning, environmental, inspection, rent roll/operating statements,
+insurance, and financing documents.`,
+    },
+    fundraising: {
+      label: 'Fundraising Round',
+      packId: 'fundraising',
+      rules: `
+This is a capital-raising transaction, not an acquisition. Use roles such as
+founder/issuer, investor, securities counsel, financial adviser, and accountant
+as appropriate. Prioritize term sheet, cap table, financial statements/model,
+investor presentation, subscription or investment agreement, diligence
+questionnaire, and legal opinion. Do not include property diligence documents
+unless the description explicitly requires them.`,
+    },
+    tokenization: {
+      label: 'Token Issuance / STO',
+      packId: 'tokenization',
+      rules: `
+This is a token issuance or security-token offering. Use roles such as issuer,
+investor, legal counsel, compliance/KYC provider, tokenization platform, and
+custodian as appropriate. Prioritize token economics/ownership structure,
+offering memorandum, subscription agreement, KYC/AML, accreditation,
+regulatory filings, smart-contract/audit materials, and cap table. Do not use
+property-acquisition documents unless the description explicitly says the
+underlying asset is real estate.`,
+    },
+    lending: {
+      label: 'Lending / Finance',
+      packId: 'business_acquisition',
+      rules: `
+This is a lending or financing transaction, not automatically a property
+acquisition. Use roles such as borrower, lender, financial adviser, legal
+counsel, underwriter, and collateral/servicing provider as appropriate.
+Prioritize loan application, borrower financials, debt schedule, collateral
+documents, credit memo, term sheet, loan agreement, guarantees, and closing
+conditions. Use property documents only when the description identifies real
+estate collateral.`,
+    },
+    licensing: {
+      label: 'Licensing Transaction',
+      packId: 'business_acquisition',
+      rules: `
+This is a licensing transaction. Use roles such as licensor, licensee,
+commercial counsel, technical owner, and compliance reviewer as appropriate.
+Prioritize the license agreement, IP ownership evidence, technical
+specifications, usage/royalty schedule, compliance materials, data-security
+review, and implementation plan. Do not generate acquisition or property
+diligence documents.`,
+    },
+    joint_venture: {
+      label: 'Joint Venture',
+      packId: 'business_acquisition',
+      rules: `
+This is a joint venture formation. Use roles such as participating sponsors,
+investment committee, legal counsel, tax adviser, and operating manager as
+appropriate. Prioritize the term sheet, joint-venture agreement, capitalization
+table, contribution schedule, governance plan, budget, tax structure, and
+operating agreements. Do not generate property documents unless the
+description explicitly identifies a real-estate joint venture.`,
+    },
+    other: {
+      label: 'Custom Transaction',
+      packId: 'business_acquisition',
+      rules: `
+Treat this as a custom transaction. Infer the actual parties, documents, and
+stages from the description. Do not assume it is commercial real estate and do
+not introduce property documents unless the description explicitly requires
+them.`,
+    },
   };
-
-  // Pick the most relevant domain rule from the transaction type hint
-  let domainRule = '';
-  if (transactionType) {
-    for (const [key, rule] of Object.entries(DOMAIN_RULES)) {
-      if (transactionType.toLowerCase().includes(key.toLowerCase())) {
-        domainRule = rule;
-        break;
-      }
-    }
-  }
+  const profile = TRANSACTION_PROFILES[transactionType] || null;
+  const normalizedType = profile?.label || (transactionType ? String(transactionType).trim() : '');
+  const typeHint = normalizedType
+    ? `\n\nAUTHORITATIVE TRANSACTION TYPE: ${normalizedType}. The transaction type is selected by the user and must control the structure.`
+    : '';
+  const stageHint = currentStage
+    ? `\nCURRENT LIFECYCLE STAGE: ${currentStage}. Include that stage in the generated lifecycle and place it in the appropriate order.`
+    : '';
+  const domainRule = profile?.rules || `
+Infer the transaction domain from the description. If the description is
+ambiguous, ask the model to choose the least-assumptive structure rather than
+defaulting to commercial real estate.`;
 
   try {
     const completion = await openai.chat.completions.create({
@@ -1031,27 +1109,30 @@ Capital raise. Include: Term Sheet, Investment Agreement, Cap Table, Financial M
       messages: [
         {
           role: 'system',
-          content: `You are a transaction workspace configurator. Given a description of a private transaction, generate a workspace configuration as a JSON object.
+          content: `You are a transaction deal-room configurator. Given a description of a private transaction, generate a transaction-specific configuration as a JSON object.
 
 Return exactly this shape:
 {
-  "name": "string — workspace name (e.g. Acme Manufacturing Acquisition)",
+  "name": "string — deal room name (e.g. Acme Manufacturing Acquisition)",
+  "transactionType": "one of business_acquisition, cre_acquisition, fundraising, tokenization, lending, licensing, joint_venture, other",
   "roles": [{ "key": "snake_case_key", "label": "Display Name", "required": bool, "needsDocs": bool, "icon": "emoji", "color": "#hex" }],
   "documents": [{ "id": "snake_case_id", "label": "Document Name", "required": bool, "ai": bool, "assignedRole": "role_key" }],
   "stages": [{ "key": "snake_case_key", "label": "Stage Name" }]
 }
 
-Guidelines:
-- 3–6 roles; first role is the workspace owner / coordinator (canManage=true implied)
+Rules:
+- 3–6 roles; first role is the deal-room owner / coordinator (canManage=true implied)
 - 6–14 documents covering the key due-diligence areas for this transaction type
 - 3–6 stages reflecting the actual lifecycle (e.g. NDA → LOI → Due Diligence → Closing)
 - Mark key legal/financial docs required:true; mark docs where AI extraction adds value ai:true
 - Use professional labels; avoid jargon unique to a single industry unless the description uses it
-- Keep stage labels short (1–4 words)${domainRule}
+- Keep stage labels short (1–4 words)
+- When an authoritative transaction type is supplied, every role, document, and stage must fit that type. Never copy a default CRE checklist into another type.
+${domainRule}
 
-IMPORTANT: You are suggesting a starting point only. Do NOT claim completeness. The workspace owner must review with qualified professional advisers.`,
+IMPORTANT: You are suggesting a starting point only. Do NOT claim completeness. The deal-room owner must review with qualified professional advisers.`,
         },
-        { role: 'user', content: description.trim() + typeHint },
+        { role: 'user', content: description.trim() + typeHint + stageHint },
       ],
     });
 
@@ -1059,6 +1140,9 @@ IMPORTANT: You are suggesting a starting point only. Do NOT claim completeness. 
     try { raw = JSON.parse(completion.choices[0].message.content); } catch (_) {}
     return res.json({
       name: raw.name || '',
+      transactionType: profile?.packId || raw.transactionType || transactionType || 'other',
+      transactionTypeLabel: normalizedType || 'Custom Transaction',
+      packId: profile?.packId || null,
       roles: Array.isArray(raw.roles) ? raw.roles : [],
       documents: Array.isArray(raw.documents) ? raw.documents : [],
       stages: Array.isArray(raw.stages) ? raw.stages : [],
