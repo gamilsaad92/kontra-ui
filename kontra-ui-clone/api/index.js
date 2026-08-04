@@ -1193,6 +1193,45 @@ async function saveCustomPackForWorkspace(propertyId, propertyName, customConfig
   }
 }
 
+// ── Public: fetch all custom workflow packs ───────────────────────────────────
+// Called by fetchCustomPacks() on the client to preload known custom packs.
+app.get('/api/workflow-packs', async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('custom_workflow_packs')
+      .select('id, name, description, config')
+      .order('created_at', { ascending: false });
+    if (error) throw error;
+    res.json({ packs: data || [] });
+  } catch (e) {
+    console.error('[workflow-packs] list error:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ── Public: fetch a single custom workflow pack by ID ─────────────────────────
+// Called by ensureWorkflowPackLoaded() so DealRoomPage can register the pack
+// and render with the correct roles/stages/documents instead of falling back
+// to the CRE default.
+app.get('/api/workflow-packs/:packId', async (req, res) => {
+  const { packId } = req.params;
+  if (!packId || !packId.startsWith('ws_')) {
+    return res.status(400).json({ error: 'Invalid pack ID — only ws_* custom packs are served here' });
+  }
+  try {
+    const { data, error } = await supabase
+      .from('custom_workflow_packs')
+      .select('id, name, description, config')
+      .eq('id', packId)
+      .single();
+    if (error || !data) return res.status(404).json({ error: 'Pack not found' });
+    res.json({ pack: data });
+  } catch (e) {
+    console.error('[workflow-packs] fetch error:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // ── Stripe Guest Checkout — PUBLIC, must stay BEFORE requireOrgContext ──────
 // In-memory store for pending deal rooms (checkout → webhook bridge)
 const pendingDealRooms = new Map();
