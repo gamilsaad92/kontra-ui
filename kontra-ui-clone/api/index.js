@@ -1411,6 +1411,7 @@ app.post('/api/checkout/demo', async (req, res) => {
       stages_config: demoInitialStages,
     };
 
+    let roomCreated = false;
     try {
       const { error: upsertErr } = await supabase.from('deal_rooms').upsert(dealRoomRecord, { onConflict: 'property_id' });
       if (upsertErr) {
@@ -1428,18 +1429,31 @@ app.post('/api/checkout/demo', async (req, res) => {
           if (/workflow_pack_id/i.test(upsertErr.message || '')) delete baseRecord.workflow_pack_id;
           const { error: retryErr } = await supabase.from('deal_rooms').upsert(baseRecord, { onConflict: 'property_id' });
           if (retryErr) throw retryErr;
+          roomCreated = true;
           console.log(`[demo] ✅ Deal room created (no workflow_pack_id/stages_config col yet) — ${pid}`);
         } else {
           throw upsertErr;
         }
       } else {
+        roomCreated = true;
         console.log(`[demo] ✅ Deal room created — ${pid}`);
       }
       // Set link_token in a separate step (graceful — no-op if column not yet migrated)
       supabase.from('deal_rooms').update({ link_token: crypto.randomBytes(16).toString('hex') })
         .eq('property_id', pid).is('link_token', null).then(() => {}).catch(() => {});
     } catch (dbErr) {
-      console.warn('[demo] deal_rooms upsert failed:', dbErr.message);
+      console.error('[demo] deal_rooms upsert failed:', dbErr.message);
+      return res.status(503).json({
+        error: 'Workspace could not be created',
+        message: 'The workspace database is not ready. No room was created; please try again after the database is updated.',
+      });
+    }
+
+    if (!roomCreated) {
+      return res.status(503).json({
+        error: 'Workspace could not be created',
+        message: 'The workspace database did not confirm the room. No room was created.',
+      });
     }
 
     // Generate owner write token and persist it — included in the redirect URL
