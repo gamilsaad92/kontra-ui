@@ -4,57 +4,11 @@ import { AuthContext } from "../../lib/authContext";
 
 const PUBLIC_NAV = [
   { label: "Product",       href: "/product" },
-  { label: "Solutions",     solutions: true },
   { label: "How It Works",  href: "/how-it-works" },
   { label: "Pricing",       href: "/pricing" },
   { label: "My Workspaces", href: "/my-deal-rooms" },
 ];
 
-const SOLUTIONS = [
-  { icon: "💼", label: "Business Acquisition", href: "/deal-room/kontra-demo-biz",         desc: "M&A, business purchases & diligence" },
-  { icon: "🏢", label: "Commercial Real Estate", href: "/deal-room/kontra-demo",            desc: "Acquisitions, refinancing & lending" },
-  { icon: "📈", label: "Fundraising",             href: "/deal-room/kontra-demo-fundraising", desc: "Capital raises & fund management" },
-  { icon: "🪙", label: "Token Issuance",          href: "/for/tokenization",                  desc: "Regulated issuance coordination" },
-];
-
-function SolutionsDropdown() {
-  const [open, setOpen] = useState(false);
-  const ref = useRef(null);
-
-  useEffect(() => {
-    if (!open) return;
-    function handle(e) { if (ref.current && !ref.current.contains(e.target)) setOpen(false); }
-    document.addEventListener("mousedown", handle);
-    return () => document.removeEventListener("mousedown", handle);
-  }, [open]);
-
-  return (
-    <div className="relative" ref={ref}>
-      <button
-        onClick={() => setOpen(o => !o)}
-        className="flex items-center gap-1 px-3.5 py-2 rounded-lg text-sm font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-50 transition-colors">
-        Solutions
-        <svg className={`w-3 h-3 transition-transform ${open ? "rotate-180" : ""}`} fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
-        </svg>
-      </button>
-      {open && (
-        <div className="absolute top-full left-1/2 -translate-x-1/2 mt-1.5 w-64 bg-white rounded-2xl border border-gray-200 shadow-xl z-50 overflow-hidden py-1.5">
-          {SOLUTIONS.map(s => (
-            <Link key={s.href} to={s.href} onClick={() => setOpen(false)}
-              className="flex items-start gap-3 px-4 py-2.5 hover:bg-gray-50 transition group">
-              <span className="text-lg mt-0.5 shrink-0">{s.icon}</span>
-              <div>
-                <p className="text-sm font-semibold text-gray-900 leading-tight">{s.label}</p>
-                <p className="text-xs text-gray-400 mt-0.5">{s.desc}</p>
-              </div>
-            </Link>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
 
 const APP_NAV = [
   { label: "Dashboard", href: "/dashboard" },
@@ -92,9 +46,7 @@ export default function PublicLayout({ children, hideFooter = false }) {
 
           {/* Desktop nav */}
           <nav className="hidden md:flex items-center gap-0.5 flex-1 justify-center max-w-xl">
-            {navLinks.map((link) => link.solutions ? (
-              <SolutionsDropdown key="solutions" />
-            ) : (
+            {navLinks.map((link) => (
               <Link key={link.href} to={link.href}
                 className={`px-3.5 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap ${
                   location.pathname === link.href || location.pathname.startsWith(link.href + "/")
@@ -172,17 +124,10 @@ export default function PublicLayout({ children, hideFooter = false }) {
         {/* Mobile menu */}
         {menuOpen && (
           <div className="md:hidden border-t border-gray-100 bg-white px-6 pb-4 pt-2 space-y-1">
-            {navLinks.filter(l => !l.solutions).map((link) => (
+            {navLinks.map((link) => (
               <Link key={link.href} to={link.href} onClick={() => setMenuOpen(false)}
                 className="block px-3 py-2.5 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50">
                 {link.label}
-              </Link>
-            ))}
-            <p className="px-3 pt-2 pb-1 text-[10px] font-bold uppercase tracking-widest text-gray-400">Solutions</p>
-            {SOLUTIONS.map(s => (
-              <Link key={s.href} to={s.href} onClick={() => setMenuOpen(false)}
-                className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-50">
-                <span>{s.icon}</span>{s.label}
               </Link>
             ))}
             {isLoggedIn && (
