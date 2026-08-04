@@ -171,7 +171,7 @@ const PAINS = [
   },
   {
     pain: "The buyer is asking you for a status update you don't have yet",
-    fix:  "Every party's checklist status is visible in the workspace. No one has to ask.",
+    fix:  "Every party's checklist status is visible in the deal room. No one has to ask.",
   },
   {
     pain: "You're forwarding the purchase agreement to four people and tracking who reviewed it",
@@ -189,7 +189,7 @@ const STEPS = [
     step: "01",
     icon: "💼",
     title: "Describe your deal",
-    desc: "Enter the business name, deal size, and estimated closing date. Kontra generates your workspace with the right participants, document checklist, and deal stages already configured.",
+    desc: "Enter the business name, deal size, and estimated closing date. Kontra generates your deal room with the right participants, document checklist, and deal stages already configured.",
     color: "#800020",
   },
   {
@@ -414,7 +414,7 @@ export default function BusinessBrokersPage() {
             },
             {
               q: "I run 8–10 deals at once. Do I need a separate workspace for each?",
-              a: "Yes — each deal gets its own workspace. At $499 per deal, the workspace pays for itself the first time it prevents a deal from falling through because someone dropped a document.",
+              a: "Yes — each deal gets its own deal room. At $499 per deal, the deal room pays for itself the first time it prevents a deal from falling through because someone dropped a document.",
             },
             {
               q: "My clients aren't tech-savvy. Will they be able to use it?",

@@ -7,17 +7,17 @@ const STEPS = [
     step: "01",
     icon: "⚙️",
     color: "#800020",
-    title: "Create your workspace for any private transaction",
+    title: "Create your deal room for any private transaction",
     who: "Deal Owner",
-    desc: "Define the roles, documents, and checklist that fit your deal — or start from a built-in template. Kontra structures the workspace around your workflow, not a fixed transaction type. Any private deal, any industry.",
+    desc: "Define the roles, documents, and checklist that fit your deal — or start from a built-in template. Kontra structures the deal room around your workflow, not a fixed transaction type. Any private deal, any industry.",
     actions: [
       "Start from a template (M&A, CRE, Fundraising) or build your own",
       "Name the transaction and set parameters",
       "Kontra generates a custom checklist and role assignments",
-      "Workspace is live in under 60 seconds",
+      "Deal room is live in under 60 seconds",
     ],
     visual: [
-      { icon: "🏢", text: "CRE Acquisition · 124 Oak St", status: "Workspace created", color: "#16a34a" },
+      { icon: "🏢", text: "CRE Acquisition · 124 Oak St", status: "Deal room created", color: "#16a34a" },
       { icon: "💼", text: "Business Acquisition · Acme Corp", status: "Checklist ready", color: "#16a34a" },
       { icon: "📈", text: "Fundraising · Series A", status: "Roles configured", color: "#f59e0b" },
     ],
@@ -36,7 +36,7 @@ const STEPS = [
       "Owner sees everyone's status in real time",
     ],
     visual: [
-      { icon: "⚖️", text: "Attorney · Workspace Link sent", status: "Opened", color: "#16a34a" },
+      { icon: "⚖️", text: "Attorney · Deal Room Link sent", status: "Opened", color: "#16a34a" },
       { icon: "🏦", text: "Lender · Financials requested", status: "Uploading", color: "#f59e0b" },
       { icon: "🔍", text: "CPA · Q3 Statements needed", status: "Pending", color: "#9ca3af" },
       { icon: "📋", text: "Broker · NDA uploaded", status: "Verified ✓", color: "#16a34a" },
@@ -93,7 +93,7 @@ const WORKFLOW_PACKS = [
     demoSlug: "/deal-room/kontra-demo-biz",
     description: "M&A transactions, business purchases, and buy-side / sell-side diligence.",
     parties: [
-      { icon: "🤝", role: "Buyer", desc: "Creates workspace, drives diligence checklist, tracks all parties" },
+       { icon: "🤝", role: "Buyer", desc: "Creates deal room, drives diligence checklist, tracks all parties" },
       { icon: "🏢", role: "Seller", desc: "Uploads financials, contracts, and operating documents" },
       { icon: "📊", role: "CPA / Accountant", desc: "Provides audited financials; AI extracts EBITDA and anomalies" },
       { icon: "⚖️", role: "Attorney", desc: "Reviews purchase agreement, reps & warranties, closing docs" },
@@ -107,7 +107,7 @@ const WORKFLOW_PACKS = [
     demoSlug: "/deal-room/kontra-demo",
     description: "Commercial real estate acquisitions, refinancing, and lending transactions.",
     parties: [
-      { icon: "🏢", role: "Borrower / Owner", desc: "Creates workspace, uploads documents, tracks all parties" },
+       { icon: "🏢", role: "Borrower / Owner", desc: "Creates deal room, uploads documents, tracks all parties" },
       { icon: "🏦", role: "Lender / Underwriter", desc: "Reviews AI-analyzed financials, compliance status, risk score" },
       { icon: "🔍", role: "Inspector", desc: "Submits inspection report; AI structures findings for lender" },
       { icon: "🛡️", role: "Insurance Broker", desc: "Uploads cert; AI flags coverage gaps and expiration dates" },
@@ -121,7 +121,7 @@ const WORKFLOW_PACKS = [
     demoSlug: "/deal-room/kontra-demo-fundraising",
     description: "Capital raise processes for founders, fund managers, and deal sponsors.",
     parties: [
-      { icon: "🚀", role: "Deal Principal", desc: "Creates workspace, manages investor document requests" },
+       { icon: "🚀", role: "Deal Principal", desc: "Creates deal room, manages investor document requests" },
       { icon: "👥", role: "Investor Relations", desc: "Coordinates LP or investor onboarding and document delivery" },
       { icon: "⚖️", role: "Legal Counsel", desc: "Reviews subscription agreements, term sheets, and compliance docs" },
       { icon: "📊", role: "Financial Advisor", desc: "Prepares financial model, projections, and data room materials" },
@@ -210,7 +210,7 @@ export default function HowItWorksPage() {
               </div>
 
               <div className="bg-gray-950 rounded-2xl p-6">
-                <p className="text-xs text-gray-500 uppercase tracking-wider font-medium mb-4">Live in the workspace</p>
+                <p className="text-xs text-gray-500 uppercase tracking-wider font-medium mb-4">Live in the deal room</p>
                 <div className="space-y-2">
                   {s.visual.map((v) => (
                     <div key={v.text} className="flex items-center gap-3 px-3 py-2.5 rounded-lg bg-white/5">
@@ -280,7 +280,7 @@ export default function HowItWorksPage() {
                   <Link to={p.demoSlug}
                     className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold text-white transition hover:opacity-90"
                     style={{ background: p.color }}>
-                    See a live {p.title} workspace →
+                    See a live {p.title} deal room →
                   </Link>
                 </div>
               </div>
@@ -318,13 +318,13 @@ export default function HowItWorksPage() {
         <div className="max-w-2xl mx-auto px-6 text-center">
           <h2 className="text-3xl font-bold text-white mb-4">Ready to run your first transaction?</h2>
           <p className="text-gray-400 text-sm mb-8 leading-relaxed">
-            Create a workspace for $499. Configure your workflow — any transaction type. Invite your parties. The AI Operations Manager handles the rest — no accounts needed for any participant.
+                    Create a deal room for $499. Configure your workflow — any transaction type. Invite your parties. The AI Operations Manager handles the rest — no accounts needed for any participant.
           </p>
           <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
             <Link to="/create-deal-room"
               className="px-8 py-3.5 rounded-xl text-sm font-semibold text-white transition hover:opacity-90"
               style={{ background: "#800020" }}>
-              Create Your Workspace →
+            Create Your Deal Room →
             </Link>
             <Link to="/pricing"
               className="px-8 py-3.5 rounded-xl text-sm font-semibold border border-white/20 text-white hover:bg-white/10 transition">

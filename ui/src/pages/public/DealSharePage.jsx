@@ -382,14 +382,14 @@ export default function DealSharePage() {
               Kontra
             </span>
             <div>
-              <p className="text-sm font-bold text-gray-800">Transaction workspace infrastructure</p>
+              <p className="text-sm font-bold text-gray-800">Deal room infrastructure</p>
               <p className="text-xs text-gray-400">AI-analyzed documents · All parties in one place</p>
             </div>
           </div>
           <Link to="/create-deal-room"
             className="shrink-0 px-5 py-2.5 rounded-xl text-sm font-bold text-white hover:opacity-90 transition"
             style={{ background: "#800020" }}>
-            Create Your Workspace · $499 →
+            Create Your Deal Room · $499 →
           </Link>
         </div>
       </div>

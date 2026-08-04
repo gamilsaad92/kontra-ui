@@ -29,6 +29,7 @@ Architecture flow: Transaction → Verification → Closing → Asset Package �
 - I prefer clear, concise explanations focusing on functionality and impact rather than verbose technical details.
 - When proposing code changes, please outline the high-level approach first and ask for approval before implementing.
 - I value iterative development; break down larger tasks into smaller, manageable steps.
+- Use “deal room” as the customer-facing product term; keep “workspace” only for internal identifiers, routes, APIs, and implementation concepts.
 - Ensure all new features are accompanied by relevant API endpoints and UI components where applicable.
 - Do not make changes to the `artifacts/kontra-mobile` folder.
 - Do not make changes to the `artifacts/kontra-ui` folder.

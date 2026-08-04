@@ -22,7 +22,7 @@ const SETUP_TASKS = [
   {
     icon: '👥',
     title: 'Invite required participants',
-    desc: 'Share secure workspace links with each deal party — no account needed for any participant.',
+    desc: 'Share secure deal room links with each deal party — no account needed for any participant.',
     tab: 'participants',
   },
   {

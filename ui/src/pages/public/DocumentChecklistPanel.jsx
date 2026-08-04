@@ -1204,7 +1204,7 @@ export default function DocumentChecklistPanel({
                     <span className="text-lg">✅</span>
                     <div>
                       <p className="text-xs font-bold text-green-700">All required documents uploaded</p>
-                      <p className="text-xs text-green-600">No critical issues flagged by AI. This workspace is ready for final review.</p>
+                      <p className="text-xs text-green-600">No critical issues flagged by AI. This deal room is ready for final review.</p>
                     </div>
                   </div>
                 )}

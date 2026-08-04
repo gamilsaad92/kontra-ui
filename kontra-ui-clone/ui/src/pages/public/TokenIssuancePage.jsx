@@ -151,7 +151,7 @@ const OUTCOMES = [
   {
     icon: "🛡️",
     title: "Every investor's KYC in one place",
-    desc: "Compliance Officer collects, reviews, and certifies KYC/AML documentation in the workspace. No email attachments. Full audit trail.",
+    desc: "Compliance Officer collects, reviews, and certifies KYC/AML documentation in the deal room. No email attachments. Full audit trail.",
     color: "#7c3aed",
   },
   {
@@ -176,7 +176,7 @@ const PAINS = [
   },
   {
     pain: "Your compliance officer is working from a spreadsheet that's already out of date",
-    fix:  "Every document upload, approval, and rejection is reflected in the workspace instantly. The checklist is always current.",
+    fix:  "Every document upload, approval, and rejection is reflected in the deal room instantly. The checklist is always current.",
   },
   {
     pain: "Your transfer agent can't confirm the cap table until Legal says the filings are done",
@@ -184,7 +184,7 @@ const PAINS = [
   },
   {
     pain: "An investor dropped out and you're not sure which documents need to be re-collected",
-    fix:  "The workspace tracks each investor's document status individually. One departure doesn't collapse your entire process.",
+    fix:  "The deal room tracks each investor's document status individually. One departure doesn't collapse your entire process.",
   },
 ];
 
@@ -307,7 +307,7 @@ export default function TokenIssuancePage() {
             <p className="text-xs font-semibold uppercase tracking-wider mb-2 text-purple-400">Global from day one</p>
             <h2 className="text-2xl font-bold text-white mb-3">Already regulated in your market.</h2>
             <p className="text-gray-400 text-sm max-w-xl mx-auto leading-relaxed">
-              Kontra's tokenization workspace is pre-configured for the three most active regulated markets. Set your jurisdiction at creation and the workspace surfaces the relevant compliance checkpoints automatically.
+              Kontra's tokenization deal room is pre-configured for the three most active regulated markets. Set your jurisdiction at creation and the deal room surfaces the relevant compliance checkpoints automatically.
             </p>
           </div>
           <div className="grid md:grid-cols-3 gap-5">
@@ -484,7 +484,7 @@ export default function TokenIssuancePage() {
           {[
             {
               q: "Which jurisdictions do you support?",
-              a: "Kontra surfaces jurisdiction-specific compliance checkpoints for UAE (ADGM / DFSA), EU (MiCA), Singapore (MAS), US (Regulation D), and UK (FCA). You select your jurisdiction at workspace creation and Kontra automatically shows the relevant regulatory requirements — FSRA approval steps for UAE, the MiCA White Paper obligation for EU, MAS prospectus exemption thresholds for Singapore, Form D filing deadlines for the US, and FCA financial promotion rules for the UK. Other jurisdictions can be noted in the workspace; we're adding more checkpoint sets regularly.",
+              a: "Kontra surfaces jurisdiction-specific compliance checkpoints for UAE (ADGM / DFSA), EU (MiCA), Singapore (MAS), US (Regulation D), and UK (FCA). You select your jurisdiction when creating the deal room and Kontra automatically shows the relevant regulatory requirements — FSRA approval steps for UAE, the MiCA White Paper obligation for EU, MAS prospectus exemption thresholds for Singapore, Form D filing deadlines for the US, and FCA financial promotion rules for the UK. Other jurisdictions can be noted in the deal room; we're adding more checkpoint sets regularly.",
             },
             {
               q: "Is this a compliance tool or a coordination tool?",

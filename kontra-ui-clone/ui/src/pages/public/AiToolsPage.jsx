@@ -535,13 +535,13 @@ export default function AiToolsPage() {
         <div className="mt-14 rounded-2xl text-white px-8 py-12 text-center" style={{ background: "#800020" }}>
           <h2 className="text-xl font-bold mb-2">Ready to run AI on your deal?</h2>
           <p className="text-red-200 text-sm mb-6 max-w-md mx-auto leading-relaxed">
-            These tools are included in every workspace. Create your workspace, upload documents, and AI reviews them instantly — no account required for invited parties.
+            These tools are included in every deal room. Create your deal room, upload documents, and AI reviews them instantly — no account required for invited parties.
           </p>
           <div className="flex flex-col sm:flex-row gap-3 justify-center">
             <Link to="/create-deal-room"
               className="px-6 py-3 rounded-xl bg-white text-sm font-semibold transition hover:bg-gray-100"
               style={{ color: "#800020" }}>
-              Create Your Workspace — $499
+              Create Your Deal Room — $499
             </Link>
             <Link to="/deal-room/kontra-demo"
               className="px-6 py-3 rounded-xl border border-red-300/50 bg-white/10 text-sm font-semibold text-white hover:bg-white/20 transition">

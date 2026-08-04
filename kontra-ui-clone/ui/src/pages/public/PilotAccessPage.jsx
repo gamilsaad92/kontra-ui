@@ -15,7 +15,7 @@ export default function PilotAccessPage() {
 
   const property   = searchParams.get("property") || "";
   const ownerToken = searchParams.get("owner_token") || "";
-  const name       = searchParams.get("name") || "your workspace";
+  const name       = searchParams.get("name") || "your deal room";
 
   useEffect(() => {
     if (stored.current) return;
@@ -46,7 +46,7 @@ export default function PilotAccessPage() {
         <div className="w-14 h-14 rounded-2xl bg-gray-900 flex items-center justify-center mx-auto mb-5 text-2xl">
           🚀
         </div>
-        <h1 className="text-lg font-bold text-gray-900 mb-2">Setting up your workspace…</h1>
+        <h1 className="text-lg font-bold text-gray-900 mb-2">Setting up your deal room…</h1>
         <p className="text-sm text-gray-500 leading-relaxed">
           Preparing <strong>{name}</strong> — you'll be redirected automatically.
         </p>

@@ -325,7 +325,7 @@ export default function SharedVAPPage() {
             Powered by Kontra
           </a>
           <p className="text-[11px] text-gray-400 text-center max-w-xs">
-            Kontra is a transaction workspace platform for private transactions of all types.
+            Kontra is a deal room platform for private transactions of all types.
             This package was generated and verified using Kontra AI.
           </p>
           <a href="https://kontraplatform.com" target="_blank" rel="noopener noreferrer"

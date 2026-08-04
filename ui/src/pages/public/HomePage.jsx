@@ -34,7 +34,7 @@ function ViewDemoButton() {
 
       {open && (
         <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 w-72 rounded-2xl bg-gray-900 border border-white/10 shadow-2xl z-50 overflow-hidden">
-          <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-500 px-4 pt-3.5 pb-1">Example workspaces</p>
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-500 px-4 pt-3.5 pb-1">Example deal rooms</p>
           {DEMOS.map(d => (
             <button
               key={d.slug}
@@ -62,7 +62,7 @@ const HOW_IT_WORKS = [
     step: "01",
     icon: "✍️",
     title: "Describe your transaction",
-    desc: "Tell Kontra what you're coordinating. AI generates a workspace with the right participants, document checklist, and stages — or start from a template.",
+     desc: "Tell Kontra what you're coordinating. AI generates a deal room with the right participants, document checklist, and stages — or start from a template.",
     color: "#800020",
   },
   {
@@ -91,14 +91,14 @@ export default function HomePage() {
             Every transaction gets its own Operations Manager.
           </h1>
           <p className="text-lg text-gray-400 max-w-2xl mx-auto mb-10 leading-relaxed">
-            Coordinate every participant, document, approval, and deadline from one intelligent workspace.
+             Coordinate every participant, document, approval, and deadline from one intelligent deal room.
           </p>
 
           <div className="flex flex-col sm:flex-row items-center justify-center gap-3 mb-4">
             <Link to="/create-deal-room"
               className="px-7 py-3.5 rounded-xl text-sm font-semibold text-white transition hover:opacity-90"
               style={{ background: "#800020" }}>
-              Create Workspace
+               Create Deal Room
             </Link>
             <ViewDemoButton />
           </div>
@@ -138,7 +138,7 @@ export default function HomePage() {
             <p className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: "#800020" }}>Transaction types</p>
             <h2 className="text-2xl font-bold text-gray-900 mb-3">Your deal type. Your rules.</h2>
             <p className="text-gray-500 text-sm max-w-lg mx-auto leading-relaxed">
-              Start from a template or describe any transaction to AI — Kontra generates the roles, documents, and checklist.
+              Start from a template or describe any transaction to AI — Kontra generates the roles, documents, and checklist for your deal room.
             </p>
           </div>
 
@@ -191,7 +191,7 @@ export default function HomePage() {
             <Link to="/create-deal-room"
               className="px-8 py-3.5 rounded-xl text-sm font-semibold text-white transition hover:opacity-90"
               style={{ background: "#800020" }}>
-              Create Workspace
+               Create Deal Room
             </Link>
             <Link to="/product"
               className="px-8 py-3.5 rounded-xl text-sm font-semibold text-gray-400 border border-white/10 hover:bg-white/5 transition">

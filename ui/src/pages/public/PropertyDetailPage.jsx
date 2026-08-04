@@ -123,7 +123,7 @@ const DIGITAL_STATUS_CFG = {
   "Investment-Ready": { label: "Investment-Ready", color: "#92400e", bg: "#fffbeb", dot: "#f59e0b", desc: "Verified documents, compliance passed, and investment readiness confirmed." },
   "Verified":         { label: "Verified",         color: "#065f46", bg: "#f0fdf4", dot: "#16a34a", desc: "Documents and ownership claims verified by Kontra." },
   "Claimed":          { label: "Claimed",          color: "#1e3a8a", bg: "#eff6ff", dot: "#3b82f6", desc: "Property claimed by an owner and actively managed on Kontra." },
-  "Unclaimed":        { label: "Unclaimed",        color: "#6b7280", bg: "#f9fafb", dot: "#d1d5db", desc: "This property hasn't been claimed yet. Claim it to add it to your workspace." },
+  "Unclaimed":        { label: "Unclaimed",        color: "#6b7280", bg: "#f9fafb", dot: "#d1d5db", desc: "This property hasn't been claimed yet. Claim it to add it to your deal room." },
 };
 
 const TABS = ["Overview", "Inspections", "Documents", "Compliance", "AI Analysis"];
@@ -265,7 +265,7 @@ export default function PropertyDetailPage() {
             <div className="flex items-center gap-2 text-green-800">
               <span className="text-lg">✓</span>
               <span className="text-sm font-semibold">
-                {property.name} added to your workspace!
+                {property.name} added to your deal room!
               </span>
             </div>
             <Link to="/app/properties"

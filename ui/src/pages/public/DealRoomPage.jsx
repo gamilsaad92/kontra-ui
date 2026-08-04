@@ -322,7 +322,7 @@ function CompliancePanel({ property }) {
           </div>
         </div>
       </div>
-      <p className="text-[10px] text-gray-400">Based on the requirements configured for this workspace.</p>
+      <p className="text-[10px] text-gray-400">Based on the requirements configured for this deal room.</p>
     </div>
   );
 }
@@ -737,7 +737,7 @@ function OnboardingProgress({ propertyId, accentColor, totalInvitable, pack }) {
         const invitableLabels = (pack?.roles || []).filter(r => r.invitable).map(r => r.label);
         const roleList = invitableLabels.length > 0
           ? invitableLabels.slice(0, 4).join(", ")
-          : "the parties configured for this workspace";
+           : "the parties configured for this deal room";
         return totalInvitable
           ? `${state.invitedRoles}/${totalInvitable} invited — send role-specific links to your ${roleList}`
           : `Send role-specific links to your ${roleList}`;
@@ -909,7 +909,7 @@ function ComplianceStatusPanel({ propertyId, pack, propertyType, refreshKey }) {
       </p>
 
       {requiredItems.length === 0 && (
-        <p className="text-xs text-gray-400 mb-3">No required documents have been configured for this workspace yet.</p>
+        <p className="text-xs text-gray-400 mb-3">No required documents have been configured for this deal room yet.</p>
       )}
 
       {missingRequired.length > 0 && (
@@ -949,7 +949,7 @@ function ComplianceStatusPanel({ propertyId, pack, propertyType, refreshKey }) {
         <p className="text-xs text-green-600 font-semibold">✓ All configured requirements complete.</p>
       )}
 
-      <p className="text-[10px] text-gray-400 mt-3">Based on the requirements configured for this workspace.</p>
+      <p className="text-[10px] text-gray-400 mt-3">Based on the requirements configured for this deal room.</p>
     </div>
   );
 }
@@ -1140,10 +1140,10 @@ function TransactionDetailsPanel({ property, propertyId, pack }) {
   const fields = (pack?.metadataFields && pack.metadataFields.length > 0)
     ? pack.metadataFields
     : [
-        { id: "workspace_name",    label: "Workspace Name",       fieldType: "text",     fullWidth: true, placeholder: property?.property_name || "" },
+        { id: "workspace_name",    label: "Deal Room Name",        fieldType: "text",     fullWidth: true, placeholder: property?.property_name || "" },
         { id: "transaction_value", label: "Transaction Value ($)", fieldType: "currency", placeholder: "e.g. 1000000" },
         { id: "target_close_date", label: "Target Closing Date",  fieldType: "date" },
-        { id: "notes",             label: "Notes",                fieldType: "text",     fullWidth: true, placeholder: "Any additional context for this workspace…" },
+        { id: "notes",             label: "Notes",                fieldType: "text",     fullWidth: true, placeholder: "Any additional context for this deal room…" },
       ];
 
   const sectionTitle = pack?.metadataLabel || "Transaction Details";
@@ -1322,7 +1322,7 @@ function JurisdictionSettingsPanel({ propertyId, property }) {
       {isEditable ? (
         <>
           <p className="text-[11px] text-gray-400 mb-3 leading-snug">
-            Sets the regulatory framework that governs this workspace and loads the corresponding compliance preparation checklist.
+             Sets the regulatory framework that governs this deal room and loads the corresponding compliance preparation checklist.
           </p>
           <select
             value={value}
@@ -1399,7 +1399,7 @@ function DigitalAssetTogglePanel({ propertyId, property, pack }) {
         <div className="flex-1 min-w-0">
           <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-1">Digital Asset Preparation</p>
           <p className="text-[11px] text-gray-400 leading-snug">
-            Layers token-issuance preparation onto this workspace — enables the Digital Asset Readiness tracker,
+             Layers token-issuance preparation onto this deal room — enables the Digital Asset Readiness tracker,
             jurisdiction compliance checklist, and KYC progress on the Overview tab.
           </p>
         </div>
@@ -1583,8 +1583,8 @@ function DigitalAssetConfigPanel({ property, pack }) {
       {/* Contextual explanation */}
       <p className="text-[10px] text-gray-400 mt-3 leading-relaxed">
         {showDigitalLayer
-          ? 'This workspace is configured for digital asset (token) issuance preparation. All readiness tracking, regulatory compliance, and document requirements reflect this configuration.'
-          : 'Jurisdiction overlay loads the corresponding regulatory compliance checklist and readiness requirements for this workspace.'}
+           ? 'This deal room is configured for digital asset (token) issuance preparation. All readiness tracking, regulatory compliance, and document requirements reflect this configuration.'
+           : 'Jurisdiction overlay loads the corresponding regulatory compliance checklist and readiness requirements for this deal room.'}
       </p>
     </div>
   );
@@ -1737,7 +1737,7 @@ function AssetReadinessTab({ propertyId, property, pack, onTabChange }) {
         explanation: 'Token allocation breakdown — investor, team, and reserve percentages, vesting schedules, and lead investor details.' },
     ] : []),
     { key: 'audit',        icon: '🔍', label: 'Audit Trail',            pct: auditPct,     weight: 0.12, missing: auditMiss,     cta: 'Activity tab',            onClick: () => onTabChange?.('activity'),
-      explanation: 'Complete, timestamped log of every action taken in the workspace. Forms the immutable record required by institutional auditors and counterparties.' },
+       explanation: 'Complete, timestamped log of every action taken in the deal room. Forms the immutable record required by institutional auditors and counterparties.' },
     { key: 'compliance',   icon: '✅', label: isAssetPack ? 'Compliance' : 'Deal Compliance', pct: compPct, weight: 0.12, missing: compMiss, cta: 'Settings → Jurisdiction', onClick: () => onTabChange?.('settings'),
       explanation: isAssetPack
         ? 'Regulatory framework compliance — jurisdiction set, required regulatory filings uploaded, and any jurisdiction-specific exemptions documented.'
@@ -1977,7 +1977,7 @@ function AssetReadinessTab({ propertyId, property, pack, onTabChange }) {
             <div className="text-left">
               <p className="text-sm font-bold text-gray-900">Asset Passport</p>
               <p className="text-[10px] text-gray-400">
-                Permanent digital identity of this asset · auto-generated from workspace data
+                 Permanent digital identity of this asset · auto-generated from deal room data
               </p>
             </div>
           </div>
@@ -3129,7 +3129,7 @@ function OperationsManagerView({ propertyId, property, pack, role, onTabChange }
                       done: step4Done,
                       icon: '🏛️',
                       title: 'Open subscription period',
-                      sub:   'Advance the workspace to Subscription stage and invite lead investors',
+                       sub:   'Advance the deal room to Subscription stage and invite lead investors',
                       action: () => onTabChange?.('participants'),
                       cta: 'Advance →',
                     },
@@ -3155,7 +3155,7 @@ function OperationsManagerView({ propertyId, property, pack, role, onTabChange }
               </div>
             ) : (
             <div>
-              <p className="text-sm font-semibold text-gray-800 mb-1">Get your workspace moving</p>
+               <p className="text-sm font-semibold text-gray-800 mb-1">Get your deal room moving</p>
               <p className="text-xs text-gray-400 mb-4">Kontra will surface prioritized actions once participants and documents are added.</p>
               <div className="grid grid-cols-2 gap-2.5">
                 <button onClick={() => onTabChange?.('participants')}
@@ -3374,7 +3374,7 @@ function OperationsManagerView({ propertyId, property, pack, role, onTabChange }
             {[1, 2, 3].map(i => <div key={i} className="h-10 bg-gray-50 rounded-xl animate-pulse" />)}
           </div>
         ) : participantRows.length === 0 ? (
-          <p className="px-5 py-6 text-sm text-gray-400 text-center">No roles configured for this workspace.</p>
+           <p className="px-5 py-6 text-sm text-gray-400 text-center">No roles configured for this deal room.</p>
         ) : (
           <div>
             <div className="hidden sm:grid grid-cols-[2fr_2fr_1fr_auto] gap-4 px-5 py-2 bg-gray-50 border-b border-gray-100">
@@ -3768,7 +3768,7 @@ export default function DealRoomPage() {
         <div className="min-h-[60vh] flex items-center justify-center">
           <div className="text-center">
             <div className="w-8 h-8 border-2 border-gray-300 border-t-red-800 rounded-full animate-spin mx-auto mb-3" />
-            <p className="text-sm text-gray-500">Loading workspace…</p>
+            <p className="text-sm text-gray-500">Loading deal room…</p>
           </div>
         </div>
       </PublicLayout>
@@ -3781,9 +3781,9 @@ export default function DealRoomPage() {
         <div className="min-h-[60vh] flex items-center justify-center px-6">
           <div className="max-w-lg w-full rounded-2xl border border-red-200 bg-red-50 p-6 text-center">
             <div className="text-3xl mb-3">⚠️</div>
-            <h1 className="text-lg font-bold text-gray-900 mb-2">Workspace configuration unavailable</h1>
+            <h1 className="text-lg font-bold text-gray-900 mb-2">Deal room configuration unavailable</h1>
             <p className="text-sm text-gray-600">
-              This workspace could not load its transaction-specific configuration, so Kontra stopped instead of showing the wrong template.
+              This deal room could not load its transaction-specific configuration, so Kontra stopped instead of showing the wrong template.
             </p>
             <p className="mt-3 text-xs text-red-700 break-words">{packLoadError}</p>
             <button onClick={() => window.location.reload()}
@@ -3802,7 +3802,7 @@ export default function DealRoomPage() {
       <PublicLayout>
         <div className="max-w-xl mx-auto px-6 py-24 text-center">
           <div className="text-5xl mb-4">🏢</div>
-          <h1 className="text-xl font-bold text-gray-900 mb-2">Workspace not found</h1>
+          <h1 className="text-xl font-bold text-gray-900 mb-2">Deal room not found</h1>
           <p className="text-gray-500 text-sm mb-6">This link may have expired or the property ID is incorrect.</p>
           <Link to="/" className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold text-white"
             style={{ background: "#800020" }}>Back to Kontra</Link>
@@ -3840,14 +3840,14 @@ export default function DealRoomPage() {
             Welcome to the Kontra Demo
           </p>
           <h2 className="text-2xl font-black text-white mb-4 leading-snug">
-            You're about to enter a live transaction workspace.
+            You're about to enter a live deal room.
           </h2>
           <p className="text-sm text-gray-400 leading-relaxed mb-6">
             Watch how Kontra's AI Operations Manager coordinates participants, tracks documents, identifies blockers, and keeps every party moving toward closing.
           </p>
           <ul className="text-left space-y-3 mb-8">
             {[
-              "Coordinates all participants from one workspace",
+              "Coordinates all participants from one deal room",
               "AI reviews every document and surfaces flags",
               "Tracks what's missing and who needs to act",
               "Generates a verified closing package at completion",
@@ -3884,7 +3884,7 @@ export default function DealRoomPage() {
               <span className="text-lg shrink-0">🔍</span>
               <div>
                 <p className="text-xs font-semibold text-amber-900">
-                  This looks like a {PACK_LABELS[packSuggestion.suggestedPack] || packSuggestion.suggestedPack} workspace
+                  This looks like a {PACK_LABELS[packSuggestion.suggestedPack] || packSuggestion.suggestedPack} deal room
                 </p>
                 <p className="text-[10px] text-amber-700">
                   Currently using {PACK_LABELS[packSuggestion.currentPack] || packSuggestion.currentPack} template — switching loads the right document checklist, roles, and stages
@@ -3926,7 +3926,7 @@ export default function DealRoomPage() {
             <Link to="/create-deal-room"
               className="shrink-0 px-4 py-2 rounded-xl text-xs font-bold transition whitespace-nowrap"
               style={{ background: "rgba(255,255,255,0.15)", color: "#fff", border: "1px solid rgba(255,255,255,0.2)" }}>
-              Create Your Workspace →
+              Create Your Deal Room →
             </Link>
           </div>
         </div>
@@ -3938,7 +3938,7 @@ export default function DealRoomPage() {
                 🔑
               </div>
               <div>
-                <p className="text-xs font-semibold text-green-900">Workspace active — invite participants and upload documents to begin</p>
+                <p className="text-xs font-semibold text-green-900">Deal room active — invite participants and upload documents to begin</p>
                 <p className="text-[10px] text-green-600">Secure role-based access for every participant · AI analyzes each file as it's uploaded</p>
               </div>
             </div>
@@ -3981,7 +3981,7 @@ export default function DealRoomPage() {
                 <p className="text-xs font-semibold text-gray-800">
                   {from ? `${decodeURIComponent(from)} invited you` : "You've been invited"} · <span style={{ color: roleConfig.color }}>{roleConfig.label} view</span>
                 </p>
-                <p className="text-[10px] text-gray-400">Role-scoped workspace · Demo mode</p>
+                <p className="text-[10px] text-gray-400">Role-scoped deal room · Demo mode</p>
               </div>
             </div>
             <Link to="/create-deal-room"
@@ -4371,7 +4371,7 @@ export default function DealRoomPage() {
                   <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
                     <Link to="/create-deal-room"
                       className="px-8 py-3 rounded-xl text-sm font-bold bg-white text-indigo-900 hover:opacity-90 transition">
-                      Create Your Workspace — $499 →
+                      Create Your Deal Room — $499 →
                     </Link>
                     <Link to="/pricing"
                       className="px-6 py-3 rounded-xl text-sm font-semibold border border-white/20 text-white/80 hover:bg-white/10 transition">

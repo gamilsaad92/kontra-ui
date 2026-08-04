@@ -8,10 +8,10 @@ const SECTIONS = [
   {
     title: "Information We Collect",
     content: [
-      "**Workspace and transaction details**: When you create a workspace, we collect your name, email address, workspace name, transaction type, location, deal amount, and other details you provide during setup.",
-      "**Uploaded documents**: Financial statements, legal agreements, diligence materials, and other documents uploaded by workspace participants. These files are stored in encrypted cloud storage for the duration of the workspace — see Retention below.",
+      "**Deal room and transaction details**: When you create a deal room, we collect your name, email address, deal room name, transaction type, location, deal amount, and other details you provide during setup.",
+      "**Uploaded documents**: Financial statements, legal agreements, diligence materials, and other documents uploaded by deal room participants. These files are stored in encrypted cloud storage for the duration of the deal room — see Retention below.",
       "**Third-party information in documents**: Workspace owners and participants may upload documents containing personal information about individuals who are not direct Kontra users — such as employees, customers, tenants, guarantors, or counterparties. Those users are responsible for providing required notices and establishing a lawful basis for that disclosure.",
-      "**AI analysis results**: Structured data extracted from uploaded documents (e.g. financial metrics, condition assessments, coverage gaps) is stored in our database alongside the workspace record.",
+      "**AI analysis results**: Structured data extracted from uploaded documents (e.g. financial metrics, condition assessments, coverage gaps) is stored in our database alongside the deal room record.",
       "**Payment data**: When you purchase a workspace, Stripe processes your payment. We receive a payment confirmation and your email — we never see or store your card number.",
       "**Usage data**: Pages visited, features used, and actions taken within the platform, used to improve the product.",
       "**Device and technical data**: IP address, browser type, and access times — collected automatically.",
@@ -33,7 +33,7 @@ const SECTIONS = [
     content: [
       "Kontra may use one or more third-party AI providers to process document text and generate analysis. Current providers are listed below. We will update this section when providers change.",
       "**OpenAI**: Document text is currently sent to OpenAI's API (GPT-4o / GPT-4o-mini) for analysis. By default, OpenAI does not use API inputs or outputs to train its models. Depending on the API configuration and endpoint used, OpenAI may retain certain inputs and outputs for up to 30 days for abuse monitoring and legal compliance. Kontra will update this disclosure if it obtains approved Zero Data Retention status with OpenAI. See openai.com/policies.",
-      "We do not send documents to AI providers for any purpose other than the analysis you initiate within your workspace.",
+      "We do not send documents to AI providers for any purpose other than the analysis you initiate within your deal room.",
     ],
   },
   {
@@ -65,7 +65,7 @@ const SECTIONS = [
     content: [
       "**What is logged**: Material workspace actions — including AI-generated recommendations, task creation, task status changes, document uploads, AI analysis results, and approvals — are recorded in an application audit log with a timestamp and attributed party.",
       "**Purpose**: Audit logs allow workspace owners to review activity within their workspace and support compliance or legal inquiries.",
-      "**Retention**: Audit logs are retained for the duration of the workspace plus the 30-day post-termination window, or longer if required by applicable law or a written agreement.",
+      "**Retention**: Audit logs are retained for the duration of the deal room plus the 30-day post-termination window, or longer if required by applicable law or a written agreement.",
       "**Access**: Workspace owners may request an export of their workspace audit log by emailing privacy@kontraplatform.com.",
     ],
   },
@@ -84,13 +84,13 @@ const SECTIONS = [
   {
     title: "Your Rights",
     content: [
-      "**Access**: Request a copy of all data and documents we hold associated with your workspace.",
-      "**Correction**: Contact us to correct inaccurate workspace records.",
-      "**Deletion**: Request deletion of all documents and data associated with your workspace. Processed within 30 days, subject to legal holds or contractual retention agreements.",
-      "**Portability**: Request your workspace analysis data in JSON format.",
-      "**Audit log export**: Request an export of all logged actions in your workspace.",
+      "**Access**: Request a copy of all data and documents we hold associated with your deal room.",
+      "**Correction**: Contact us to correct inaccurate deal room records.",
+      "**Deletion**: Request deletion of all documents and data associated with your deal room. Processed within 30 days, subject to legal holds or contractual retention agreements.",
+      "**Portability**: Request your deal room analysis data in JSON format.",
+      "**Audit log export**: Request an export of all logged actions in your deal room.",
       "**Opt-out**: Unsubscribe from non-transactional emails at any time.",
-      "To exercise any of these rights, email privacy@kontraplatform.com with your workspace ID or workspace name and the email used at checkout.",
+      "To exercise any of these rights, email privacy@kontraplatform.com with your deal room ID or deal room name and the email used at checkout.",
     ],
   },
   {
@@ -105,21 +105,21 @@ const SECTIONS = [
     content: [
       "To the extent the CCPA/CPRA applies to Kontra, California residents may have the following rights.",
       "**Categories of personal information collected**: Identifiers (name, email, IP address); commercial information (transaction details, payment records); documents you upload; AI-extracted transaction data; usage and device data.",
-      "**Sources**: Directly from you when you create a workspace or upload documents; automatically from your device; from participants you invite to your workspace.",
+      "**Sources**: Directly from you when you create a deal room or upload documents; automatically from your device; from participants you invite to your deal room.",
       "**Business purposes**: To provide and improve the platform, process payments, send transactional communications, and comply with law.",
       "**Service providers**: We disclose data to the service providers listed above (OpenAI, Supabase, Stripe, Render, Resend) for the purposes of operating the platform.",
       "**Sale or sharing**: We do not sell personal information. We do not share personal information for cross-context behavioral advertising.",
-      "**Sensitive personal information**: Kontra does not intentionally request sensitive personal information (such as Social Security numbers, financial account numbers, or government ID numbers) as a standard workspace field. Sensitive information may nevertheless be contained in documents uploaded by users. Users should avoid uploading unnecessary sensitive information and must have authority and a lawful basis to provide it.",
+      "**Sensitive personal information**: Kontra does not intentionally request sensitive personal information (such as Social Security numbers, financial account numbers, or government ID numbers) as a standard deal room field. Sensitive information may nevertheless be contained in documents uploaded by users. Users should avoid uploading unnecessary sensitive information and must have authority and a lawful basis to provide it.",
       "**Your rights**: You have the right to know, access, correct, delete, and opt out of sale or sharing of your personal information. You also have the right to non-discrimination for exercising these rights.",
       "**Authorized agents**: An authorized agent may submit a request on your behalf by emailing privacy@kontraplatform.com with written authorization from you.",
-      "**Identity verification**: We will verify your identity before processing access or deletion requests — typically by confirming the email address associated with the workspace.",
+      "**Identity verification**: We will verify your identity before processing access or deletion requests — typically by confirming the email address associated with the deal room.",
       "To submit a CCPA request, email privacy@kontraplatform.com.",
     ],
   },
   {
     title: "Changes to This Policy",
     content: [
-      "We will notify workspace owners by email at least 14 days before material changes to this policy take effect.",
+      "We will notify deal room owners by email at least 14 days before material changes to this policy take effect.",
       "The effective date at the top of this page reflects the most recent update.",
     ],
   },
@@ -148,10 +148,10 @@ export default function PrivacyPage() {
           <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-2">Key facts</p>
           <div className="space-y-2">
             {[
-              "📄  Uploaded documents are stored encrypted in Supabase Storage (AWS) for the duration of your active workspace.",
+              "📄  Uploaded documents are stored encrypted in Supabase Storage (AWS) for the duration of your active deal room.",
               "🤖  Document text is sent to third-party AI providers at analysis time. Current provider: OpenAI. OpenAI does not train on API data by default; inputs may be retained up to 30 days for abuse monitoring.",
               "🔒  Document download links are signed and expire after 1 hour.",
-              "📋  Material AI recommendations, task actions, and approvals are recorded in a workspace audit log.",
+              "📋  Material AI recommendations, task actions, and approvals are recorded in a deal room audit log.",
               "🗑️  Following closure, data remains available for export for up to 30 days and is then scheduled for deletion, subject to backup rotation, legal holds, and written retention agreements.",
             ].map((fact, i) => (
               <p key={i} className="text-sm text-gray-600">{fact}</p>

@@ -77,7 +77,7 @@ function CreatedInviteCard({ inviteUrl, pin, email, emailSent, emailErr, onDismi
           </button>
         </div>
         <p className="text-[9px] text-green-600">
-          The participant clicks this link to access the workspace — no account required.
+           The participant clicks this link to access the deal room — no account required.
         </p>
       </div>
     </div>

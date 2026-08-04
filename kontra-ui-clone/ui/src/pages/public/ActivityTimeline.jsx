@@ -71,8 +71,8 @@ export default function ActivityTimeline({ propertyId }) {
             🚀
           </div>
           <div>
-            <p className="text-[11px] font-bold text-gray-400 uppercase tracking-wider mb-0.5">Workspace Created</p>
-            <p className="text-sm text-gray-800 leading-snug">Transaction workspace activated and ready.</p>
+            <p className="text-[11px] font-bold text-gray-400 uppercase tracking-wider mb-0.5">Deal Room Created</p>
+            <p className="text-sm text-gray-800 leading-snug">Deal room activated and ready.</p>
           </div>
         </div>
         {/* Next expected actions */}
@@ -100,7 +100,7 @@ export default function ActivityTimeline({ propertyId }) {
     <div className="rounded-2xl border border-gray-200 bg-white overflow-hidden">
       <div className="px-5 pt-5 pb-3 border-b border-gray-100">
         <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">Activity Timeline</p>
-        <p className="text-[11px] text-gray-400 mt-0.5">Full audit trail for this workspace</p>
+        <p className="text-[11px] text-gray-400 mt-0.5">Full audit trail for this deal room</p>
       </div>
       <div className="px-5 py-4 space-y-6 max-h-[480px] overflow-y-auto">
         {groups.map(([day, dayEvents]) => (

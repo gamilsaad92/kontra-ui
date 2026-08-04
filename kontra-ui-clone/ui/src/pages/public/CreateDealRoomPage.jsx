@@ -578,9 +578,9 @@ export default function CreateDealRoomPage() {
           <div className="text-center mb-8">
             <div className="inline-flex items-center gap-2 bg-white border border-gray-200 rounded-full px-4 py-1.5 text-xs font-semibold text-gray-500 mb-4">
               <span className="w-2 h-2 rounded-full bg-green-400 inline-block" />
-              Workspace live in minutes
+               Deal room live in minutes
             </div>
-            <h1 className="text-2xl font-bold text-gray-900 mb-2">Create Your Transaction Workspace</h1>
+             <h1 className="text-2xl font-bold text-gray-900 mb-2">Create Your Deal Room</h1>
             <p className="text-gray-500 text-sm">$499 one-time · All parties included · No subscription</p>
           </div>
 
@@ -679,7 +679,7 @@ export default function CreateDealRoomPage() {
                   <button type="button"
                     onClick={() => { setCreationMode("blank"); setAiError(""); }}
                     className="underline hover:text-gray-700 transition">
-                    Or start with a blank workspace
+                     Or start with a blank deal room
                   </button>
                 </div>
               </div>
@@ -689,11 +689,11 @@ export default function CreateDealRoomPage() {
             {phase === 0 && creationMode === "blank" && !showTemplatePicker && (
               <div className="space-y-4">
                 <div>
-                  <h2 className="font-semibold text-gray-900 mb-1">Start with a blank workspace</h2>
-                  <p className="text-xs text-gray-400 mb-3">You'll add roles, documents, and stages directly inside the workspace after launch.</p>
+                   <h2 className="font-semibold text-gray-900 mb-1">Start with a blank deal room</h2>
+                   <p className="text-xs text-gray-400 mb-3">You'll add roles, documents, and stages directly inside the deal room after launch.</p>
                 </div>
                 <div className="bg-gray-50 border border-gray-100 rounded-xl px-3.5 py-3 text-xs text-gray-500 leading-relaxed">
-                  After launch, use the workspace settings to define your participants, upload documents, and configure transaction stages.
+                   After launch, use the deal room settings to define your participants, upload documents, and configure transaction stages.
                 </div>
                 <button type="button"
                   onClick={() => { setCreationMode("ai"); }}
@@ -770,7 +770,7 @@ export default function CreateDealRoomPage() {
               <div className="space-y-4">
                 <div>
                   <h2 className="font-semibold text-gray-900 mb-1">
-                    {isAiGenerated ? "AI-generated workspace — review before continuing" : "Review your workspace"}
+                     {isAiGenerated ? "AI-generated deal room — review before continuing" : "Review your deal room"}
                   </h2>
                   <p className="text-xs text-gray-400">Expand each section to view or edit. Changes take effect after you activate.</p>
                 </div>
@@ -801,7 +801,7 @@ export default function CreateDealRoomPage() {
 
                 {/* Legal disclaimer */}
                 <div className="bg-amber-50 border border-amber-200 rounded-xl px-3.5 py-3 text-xs text-amber-800 leading-relaxed">
-                  Kontra provides suggested transaction structures. Review the workspace with your legal, financial, and transaction advisers before relying on it.
+                   Kontra provides suggested transaction structures. Review the deal room with your legal, financial, and transaction advisers before relying on it.
                 </div>
 
                 {/* Collapsed sections */}
@@ -843,7 +843,7 @@ export default function CreateDealRoomPage() {
                 <h2 className="font-semibold text-gray-900 mb-1">Your info</h2>
 
                 <div>
-                  <label className={labelCls}>Workspace name *</label>
+                   <label className={labelCls}>Deal room name *</label>
                   <input className={inputCls}
                     placeholder="e.g. Acme Manufacturing Acquisition"
                     value={form.workspaceName}
@@ -878,7 +878,7 @@ export default function CreateDealRoomPage() {
                     <option value="uk_fca">UK — FCA</option>
                     <option value="other">Other / Not listed</option>
                   </select>
-                  <p className="text-xs text-gray-400 mt-1">Used to surface relevant regulatory checkpoints inside your workspace.</p>
+                   <p className="text-xs text-gray-400 mt-1">Used to surface relevant regulatory checkpoints inside your deal room.</p>
                 </div>
 
                 <div>
@@ -904,7 +904,7 @@ export default function CreateDealRoomPage() {
                     <a href="/terms" className="underline text-gray-700" target="_blank" rel="noreferrer">Terms of Service</a>{" "}
                     and{" "}
                     <a href="/privacy" className="underline text-gray-700" target="_blank" rel="noreferrer">Privacy Policy</a>.
-                    I understand Kontra provides transaction workspace infrastructure and does not act as a broker, lender, or financial adviser.
+                     I understand Kontra provides deal room infrastructure and does not act as a broker, lender, or financial adviser.
                   </span>
                 </label>
               </div>

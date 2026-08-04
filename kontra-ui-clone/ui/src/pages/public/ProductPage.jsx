@@ -5,7 +5,7 @@ import PublicLayout from "./PublicLayout";
 const CAPABILITIES = [
   {
     icon: "🗂️",
-    title: "Transaction Workspaces",
+    title: "Deal Rooms",
     desc: "Every deal gets its own secure room — documents, participants, approvals, deadlines, and AI review in one coordinated flow. Works for any private transaction type.",
   },
   {
@@ -56,7 +56,7 @@ const ARCHITECTURE = [
   {
     step: "01",
     label: "Transaction",
-    desc: "Workspace created with the right roles, stages, and document schema for this transaction type.",
+    desc: "Deal room created with the right roles, stages, and document schema for this transaction type.",
   },
   {
     step: "02",
@@ -132,7 +132,7 @@ export default function ProductPage() {
             </Link>
             <Link to="/create-deal-room"
               className="px-6 py-3 rounded-xl text-sm font-bold text-white border border-white/20 hover:border-white/50 transition">
-              Create a workspace
+               Create a deal room
             </Link>
           </div>
         </div>
@@ -272,7 +272,7 @@ export default function ProductPage() {
             Every completed transaction produces<br />a tokenization-ready digital asset package.
           </h2>
           <p className="text-gray-300 text-sm max-w-xl mx-auto mb-10 leading-relaxed">
-            Kontra scores every workspace across 8 categories at closing — Ownership Structure,
+             Kontra scores every deal room across 8 categories at closing — Ownership Structure,
             Legal Documentation, Financial Completeness, Identity Verification, Cap Table,
             Audit Trail, Compliance, and Document Integrity. The Asset Passport and structured metadata
             are ready for any future issuance platform or transfer agent.

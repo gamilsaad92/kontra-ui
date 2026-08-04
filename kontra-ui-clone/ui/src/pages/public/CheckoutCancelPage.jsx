@@ -14,13 +14,13 @@ export default function CheckoutCancelPage() {
           <div className="text-5xl mb-4">↩️</div>
           <h1 className="text-xl font-bold text-gray-900 mb-2">Payment cancelled</h1>
           <p className="text-gray-500 mb-8 text-sm leading-relaxed">
-            No charge was made. Your workspace is still waiting — come back whenever you're ready.
+             No charge was made. Your deal room is still waiting — come back whenever you're ready.
           </p>
 
           <div className="bg-amber-50 border border-amber-100 rounded-2xl p-5 mb-8 text-left">
             <p className="text-sm font-semibold text-amber-800 mb-1">Still interested?</p>
             <p className="text-xs text-amber-700 leading-relaxed">
-              The $499 workspace fee covers all parties for one transaction. One payment, everyone in.
+               The $499 deal room fee covers all parties for one transaction. One payment, everyone in.
             </p>
           </div>
 
@@ -29,7 +29,7 @@ export default function CheckoutCancelPage() {
               <Link to={`/deal-room/${property}?role=${role}`}
                 className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl text-sm font-bold text-white transition hover:opacity-90"
                 style={{ background: "#800020" }}>
-                Back to Workspace
+                 Back to Deal Room
               </Link>
             )}
             <Link to="/pricing"

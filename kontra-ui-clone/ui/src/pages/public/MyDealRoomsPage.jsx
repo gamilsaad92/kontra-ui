@@ -241,7 +241,7 @@ function AccessLayout({ children }) {
         <Link to="/create-deal-room"
           className="text-xs font-semibold px-3.5 py-2 rounded-lg text-white hover:opacity-90 transition"
           style={{ background: "#800020" }}>
-          Create Workspace →
+           Create Deal Room →
         </Link>
       </header>
       <div className="flex flex-1 overflow-hidden">
@@ -250,10 +250,10 @@ function AccessLayout({ children }) {
           style={{ background: "#0f172a" }}>
           <div>
             <p className="text-xs font-bold uppercase tracking-widest mb-8" style={{ color: "#800020" }}>
-              Transaction Workspace
+             Deal Room
             </p>
             <h2 className="text-3xl font-bold text-white leading-snug mb-6">
-              One workspace.<br />Every party.<br />No email chains.
+             One deal room.<br />Every party.<br />No email chains.
             </h2>
             <div className="space-y-3">
               {[
@@ -274,7 +274,7 @@ function AccessLayout({ children }) {
               ))}
             </div>
           </div>
-          <p className="text-xs text-gray-600">Encrypted · No password required · $499 per workspace</p>
+           <p className="text-xs text-gray-600">Encrypted · No password required · $499 per deal room</p>
         </div>
 
         {/* Right panel — form */}
@@ -390,7 +390,7 @@ export default function MyDealRoomsPage() {
     <AccessLayout>
       <div className="w-full max-w-sm">
         <div className="mb-8">
-          <h1 className="text-2xl font-extrabold text-gray-900 mb-2">Access Your Workspaces</h1>
+          <h1 className="text-2xl font-extrabold text-gray-900 mb-2">Access Your Deal Rooms</h1>
           <p className="text-sm text-gray-500 leading-relaxed">
             Enter your email address — we'll send a 6-digit code to verify it's you.
             No password. No account creation.
@@ -412,7 +412,7 @@ export default function MyDealRoomsPage() {
 
         <div className="mt-6 pt-6 border-t border-gray-100">
           <p className="text-xs text-center text-gray-400">
-            Don't have a workspace yet?{" "}
+             Don't have a deal room yet?{" "}
             <Link to="/create-deal-room" className="font-semibold" style={{ color: "#800020" }}>
               Create one for $499 →
             </Link>
@@ -486,14 +486,14 @@ export default function MyDealRoomsPage() {
               <span className="font-semibold text-gray-900 text-sm">Kontra</span>
             </Link>
             <span className="text-gray-200 select-none">/</span>
-            <span className="text-sm font-medium text-gray-500">Workspaces</span>
+             <span className="text-sm font-medium text-gray-500">Deal Rooms</span>
           </div>
           <div className="flex items-center gap-2">
             <span className="text-xs text-gray-400 hidden sm:block">{email}</span>
             <Link to="/create-deal-room"
               className="px-3.5 py-1.5 rounded-lg text-xs font-bold text-white hover:opacity-90 transition"
               style={{ background: "#800020" }}>
-              + New Workspace
+               + New Deal Room
             </Link>
             <button onClick={signOut}
               className="px-3 py-1.5 rounded-lg text-xs font-medium text-gray-500 border border-gray-200 hover:bg-gray-50 transition">
@@ -508,10 +508,10 @@ export default function MyDealRoomsPage() {
         {/* Page header */}
         <div className="mb-8">
           <h1 className="text-xl font-extrabold text-gray-900">
-            {ownerName ? `Welcome back, ${ownerName.split(" ")[0]}` : "Your Workspaces"}
+             {ownerName ? `Welcome back, ${ownerName.split(" ")[0]}` : "Your Deal Rooms"}
           </h1>
           <p className="text-sm text-gray-400 mt-0.5">
-            Owner dashboard · {activeRooms.length} active {activeRooms.length === 1 ? "workspace" : "workspaces"}
+             Owner dashboard · {activeRooms.length} active {activeRooms.length === 1 ? "deal room" : "deal rooms"}
           </p>
         </div>
 
@@ -519,7 +519,7 @@ export default function MyDealRoomsPage() {
         {analytics && (
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-8">
             {[
-              { label: "Workspaces", value: analytics.totalDeals, icon: "🏢", alert: false },
+             { label: "Deal Rooms", value: analytics.totalDeals, icon: "🏢", alert: false },
               { label: "Waiting on Borrower", value: analytics.waitingOnBorrower, icon: "⏳", alert: analytics.waitingOnBorrower > 0 },
               { label: "Waiting on Inspector", value: analytics.waitingOnInspector, icon: "🔍", alert: analytics.waitingOnInspector > 0 },
               { label: "Avg Days Active", value: analytics.avgDaysActive != null ? `${analytics.avgDaysActive}d` : "—", icon: "📅", alert: false },
@@ -543,15 +543,15 @@ export default function MyDealRoomsPage() {
         {rooms.length === 0 ? (
           <div className="text-center py-20 border border-dashed border-gray-200 rounded-2xl bg-white">
             <div className="text-5xl mb-4">📭</div>
-            <h3 className="text-gray-700 font-bold text-lg mb-2">No workspaces found</h3>
+             <h3 className="text-gray-700 font-bold text-lg mb-2">No deal rooms found</h3>
             <p className="text-gray-400 text-sm mb-6 max-w-xs mx-auto">
-              We couldn't find any workspaces for <strong>{email}</strong>.
+               We couldn't find any deal rooms for <strong>{email}</strong>.
               Make sure you're using the same email from your Stripe receipt.
             </p>
             <Link to="/create-deal-room"
               className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold text-white hover:opacity-90 transition"
               style={{ background: "#800020" }}>
-              Create Your First Workspace →
+               Create Your First Deal Room →
             </Link>
           </div>
         ) : (
@@ -604,7 +604,7 @@ export default function MyDealRoomsPage() {
             </button>
             <Link to="/create-deal-room"
               className="text-xs font-medium text-gray-500 hover:text-gray-700 transition">
-              + New Workspace
+               + New Deal Room
             </Link>
           </div>
           <p className="text-[10px] text-gray-400">

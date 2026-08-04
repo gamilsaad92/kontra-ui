@@ -6,7 +6,7 @@ const PUBLIC_NAV = [
   { label: "Product",       href: "/product" },
   { label: "How It Works",  href: "/how-it-works" },
   { label: "Pricing",       href: "/pricing" },
-  { label: "My Workspaces", href: "/my-deal-rooms" },
+  { label: "My Deal Rooms", href: "/my-deal-rooms" },
 ];
 
 
@@ -105,7 +105,7 @@ export default function PublicLayout({ children, hideFooter = false }) {
                 <Link to="/create-deal-room"
                   className="text-sm font-semibold px-4 py-2 rounded-lg text-white transition hover:opacity-90"
                   style={{ background: "#800020" }}>
-                  Create Workspace
+                  Create Deal Room
                 </Link>
               </>
             )}
@@ -153,7 +153,7 @@ export default function PublicLayout({ children, hideFooter = false }) {
                   <Link to="/create-deal-room" onClick={() => setMenuOpen(false)}
                     className="block text-center px-4 py-2.5 rounded-lg text-sm font-semibold text-white"
                     style={{ background: "#800020" }}>
-                    Create Workspace
+                     Create Deal Room
                   </Link>
                 </>
               )}
@@ -183,7 +183,7 @@ export default function PublicLayout({ children, hideFooter = false }) {
                 </p>
               </div>
               {[
-                { title: "Workspace", links: [
+                { title: "Deal Room", links: [
                   { label: "How It Works", href: "/how-it-works" },
                   { label: "Product", href: "/product" },
                   { label: "Pricing", href: "/pricing" },
@@ -191,7 +191,7 @@ export default function PublicLayout({ children, hideFooter = false }) {
                 ]},
                 { title: "Platform", links: [
                   { label: "Dashboard", href: "/dashboard" },
-                  { label: "My Workspaces", href: "/my-deal-rooms" },
+                  { label: "My Deal Rooms", href: "/my-deal-rooms" },
                   { label: "Documents", href: "/app/documents" },
                 ]},
                 { title: "Company", links: [

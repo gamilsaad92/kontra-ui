@@ -60,7 +60,7 @@ export default function CheckoutSuccessPage() {
               <div>
                 <p className="text-sm font-bold text-gray-900">Invite each party from inside your room</p>
                 <p className="text-xs text-gray-500 mt-1 leading-relaxed">
-                  Open your workspace and use the <strong>Invite</strong> panel to send each party
+                   Open your deal room and use the <strong>Invite</strong> panel to send each party
                   a secure, personalized link. Each person verifies their identity before they can
                   enter — no shared passwords or forwarded links.
                 </p>
@@ -74,7 +74,7 @@ export default function CheckoutSuccessPage() {
               <div>
                 <p className="text-sm font-bold text-gray-900">Upload your documents</p>
                 <p className="text-xs text-gray-500 mt-1 leading-relaxed">
-                  Upload the documents configured for your workspace — financials, agreements,
+                   Upload the documents configured for your deal room — financials, agreements,
                   due diligence materials, and more. AI analyzes each one automatically and
                   flags risks for every party.
                 </p>
