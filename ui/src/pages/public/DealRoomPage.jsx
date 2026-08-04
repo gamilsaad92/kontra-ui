@@ -1647,8 +1647,9 @@ function AssetReadinessTab({ propertyId, property, pack, onTabChange }) {
     };
   });
 
-  const packName = pack?.name || 'Transaction';
-  const DONE    = new Set(['uploaded', 'approved', 'ai_complete']);
+  const packName      = pack?.name || 'Transaction';
+  const isAssetPack   = pack?.id === 'tokenization' || !!(property?.metadata_values?.digital_asset_enabled);
+  const DONE          = new Set(['uploaded', 'approved', 'ai_complete']);
 
   // ── Category scores ─────────────────────────────────────────────────────────
   // 1. Ownership Structure
@@ -1716,19 +1717,45 @@ function AssetReadinessTab({ propertyId, property, pack, onTabChange }) {
     : Math.min(Math.round((docCount / 5) * 100), 70);
   const docIntMiss = reqItems.filter(i => !DONE.has(i.status)).slice(0, 2).map(i => i.label);
 
-  const CATEGORIES = [
-    { key: 'ownership',    icon: '🏛️', label: 'Ownership Structure',    pct: ownershipPct, weight: 0.15, missing: ownershipMiss, cta: 'Settings → Ownership',     onClick: () => { onTabChange?.('settings'); setTimeout(() => document.getElementById('ownership-structure')?.scrollIntoView({ behavior: 'smooth' }), 150); }, explanation: 'Records who owns the asset, the entity structure, and beneficial ownership information required for institutional transactions and regulatory filings.' },
-    { key: 'legal',        icon: '📋', label: 'Legal Documentation',    pct: legalPct,     weight: 0.15, missing: legalMiss,     cta: 'Upload legal docs',         onClick: () => onTabChange?.('documents'),    explanation: 'Executed agreements, title documents, and corporate authorizations that form the foundation of a verifiable transaction record.' },
-    { key: 'financial',    icon: '💰', label: 'Financial Completeness', pct: finPct,       weight: 0.12, missing: finMiss,       cta: 'Upload financial docs',     onClick: () => onTabChange?.('documents'),    explanation: 'Financial statements, valuations, and key figures that enable independent assessment of the asset\'s financial position.' },
-    { key: 'identity',     icon: '🪪', label: 'Identity Verification',  pct: identityPct,  weight: 0.12, missing: identityMiss,  cta: 'Documents → KYC',           onClick: () => onTabChange?.('documents'),    explanation: 'KYC/AML verification of all transaction parties. Required by all regulated issuance platforms and custodians before asset transfer or token issuance can proceed.' },
-    { key: 'cap_table',    icon: '📊', label: 'Cap Table',              pct: capPct,       weight: 0.12, missing: capMiss,       cta: 'Settings → Ownership',     onClick: () => { onTabChange?.('settings'); setTimeout(() => document.getElementById('ownership-structure')?.scrollIntoView({ behavior: 'smooth' }), 150); }, explanation: 'Token allocation breakdown — investor, team, and reserve percentages, vesting schedules, and lead investor details.' },
-    { key: 'audit',        icon: '🔍', label: 'Audit Trail',            pct: auditPct,     weight: 0.12, missing: auditMiss,     cta: 'Activity tab',              onClick: () => onTabChange?.('activity'),     explanation: 'Complete, timestamped log of every action taken in the workspace. Forms the immutable record required by institutional auditors and transfer agents.' },
-    { key: 'compliance',   icon: '✅', label: 'Compliance',             pct: compPct,      weight: 0.12, missing: compMiss,      cta: 'Settings → Jurisdiction',   onClick: () => onTabChange?.('settings'),     explanation: 'Regulatory framework compliance — jurisdiction set, required regulatory filings uploaded, and any jurisdiction-specific exemptions documented.' },
-    { key: 'doc_integrity',icon: '🔒', label: 'Document Integrity',     pct: docIntPct,    weight: 0.10, missing: docIntMiss,    cta: 'Documents tab',             onClick: () => onTabChange?.('documents'),    explanation: 'All required documents uploaded and AI-verified. Document integrity is the baseline requirement for the Digital Closing Package and any downstream export.' },
+  const ALL_CATEGORIES = [
+    { key: 'ownership',    icon: '🏛️', label: 'Ownership Structure',    pct: ownershipPct, weight: 0.15, missing: ownershipMiss, cta: 'Settings → Ownership',   onClick: () => { onTabChange?.('settings'); setTimeout(() => document.getElementById('ownership-structure')?.scrollIntoView({ behavior: 'smooth' }), 150); },
+      explanation: isAssetPack
+        ? 'Records who owns the asset, the entity structure, and beneficial ownership information required for institutional transactions and regulatory filings.'
+        : 'Records who owns the asset and the entity structure — required for due diligence, title transfer, and closing documentation.' },
+    { key: 'legal',        icon: '📋', label: 'Legal Documentation',    pct: legalPct,     weight: 0.15, missing: legalMiss,     cta: 'Upload legal docs',       onClick: () => onTabChange?.('documents'),
+      explanation: 'Executed agreements, title documents, and corporate authorizations that form the foundation of a verifiable transaction record.' },
+    { key: 'financial',    icon: '💰', label: 'Financial Completeness', pct: finPct,       weight: 0.12, missing: finMiss,       cta: 'Upload financial docs',   onClick: () => onTabChange?.('documents'),
+      explanation: isAssetPack
+        ? 'Financial statements, valuations, raise amount, and token price that enable independent assessment of the asset\'s financial position.'
+        : 'Financial statements, valuations, and key figures that enable independent assessment of the asset\'s financial position.' },
+    { key: 'identity',     icon: '🪪', label: 'Identity Verification',  pct: identityPct,  weight: 0.12, missing: identityMiss,  cta: 'Documents → KYC',         onClick: () => onTabChange?.('documents'),
+      explanation: isAssetPack
+        ? 'KYC/AML verification of all transaction parties. Required by all regulated issuance platforms and custodians before asset transfer or token issuance can proceed.'
+        : 'Identity verification of all transaction parties. Required for closing, escrow release, and regulatory compliance.' },
+    ...(isAssetPack ? [
+      { key: 'cap_table',  icon: '📊', label: 'Cap Table',              pct: capPct,       weight: 0.12, missing: capMiss,       cta: 'Settings → Ownership',   onClick: () => { onTabChange?.('settings'); setTimeout(() => document.getElementById('ownership-structure')?.scrollIntoView({ behavior: 'smooth' }), 150); },
+        explanation: 'Token allocation breakdown — investor, team, and reserve percentages, vesting schedules, and lead investor details.' },
+    ] : []),
+    { key: 'audit',        icon: '🔍', label: 'Audit Trail',            pct: auditPct,     weight: 0.12, missing: auditMiss,     cta: 'Activity tab',            onClick: () => onTabChange?.('activity'),
+      explanation: 'Complete, timestamped log of every action taken in the workspace. Forms the immutable record required by institutional auditors and counterparties.' },
+    { key: 'compliance',   icon: '✅', label: isAssetPack ? 'Compliance' : 'Deal Compliance', pct: compPct, weight: 0.12, missing: compMiss, cta: 'Settings → Jurisdiction', onClick: () => onTabChange?.('settings'),
+      explanation: isAssetPack
+        ? 'Regulatory framework compliance — jurisdiction set, required regulatory filings uploaded, and any jurisdiction-specific exemptions documented.'
+        : 'Governing framework — jurisdiction set and any required regulatory or deal-specific filings uploaded.' },
+    { key: 'doc_integrity',icon: '🔒', label: 'Document Integrity',     pct: docIntPct,    weight: 0.10, missing: docIntMiss,    cta: 'Documents tab',           onClick: () => onTabChange?.('documents'),
+      explanation: 'All required documents uploaded and AI-verified. Document integrity is the baseline requirement for the closing package and any downstream export.' },
   ];
 
+  // Normalize weights to 1.0 after conditional cap_table exclusion
+  const rawWeightSum = ALL_CATEGORIES.reduce((a, c) => a + c.weight, 0);
+  const CATEGORIES   = ALL_CATEGORIES.map(c => ({ ...c, weight: c.weight / rawWeightSum }));
+
   const overall      = Math.round(CATEGORIES.reduce((a, c) => a + c.pct * c.weight, 0));
-  const overallLabel = overall >= 80 ? 'Tokenization Ready' : overall >= 55 ? 'Needs Review' : 'Not Eligible';
+  const readinessTitle = isAssetPack ? 'Tokenization Readiness' : 'Transaction Readiness';
+  const overallLabel = overall >= 80
+    ? (isAssetPack ? 'Tokenization Ready' : 'Closing Ready')
+    : overall >= 55 ? 'Needs Review'
+    : (isAssetPack ? 'Not Eligible' : 'Needs Attention');
   const overallColor = overall >= 80 ? '#16a34a' : overall >= 55 ? '#d97706' : '#dc2626';
   const overallBg    = overall >= 80 ? '#f0fdf4' : overall >= 55 ? '#fffbeb' : '#fef2f2';
 
@@ -1819,7 +1846,7 @@ function AssetReadinessTab({ propertyId, property, pack, onTabChange }) {
       ['Pack', packName],
       ['Documents Uploaded', docCount],
       ['Events Recorded', events.length],
-      ['Tokenization Readiness %', overall],
+      [`${readinessTitle} %`, overall],
       ['Readiness Status', overallLabel],
       ['Verification Status', passportData.verification_status],
       ...CATEGORIES.map(c => [`Score — ${c.label}`, `${c.pct}%`]),
@@ -1840,7 +1867,7 @@ function AssetReadinessTab({ propertyId, property, pack, onTabChange }) {
           <div className="flex items-start justify-between gap-4 flex-wrap">
             <div>
               <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-2">
-                Tokenization Readiness
+                {readinessTitle}
               </p>
               <div className="flex items-end gap-3">
                 <span className="text-5xl font-black leading-none" style={{ color: overallColor }}>
@@ -1860,19 +1887,21 @@ function AssetReadinessTab({ propertyId, property, pack, onTabChange }) {
                   style={{ width: `${overall}%`, background: overallColor }} />
               </div>
             </div>
-            <div className="text-right shrink-0">
-              <p className="text-[10px] text-gray-400 uppercase tracking-wider mb-2">Blockchain Neutral</p>
-              <div className="flex flex-wrap gap-1.5 justify-end">
-                {['XRPL', 'Ethereum', 'Polygon', 'Canton', 'Stellar'].map(n => (
-                  <span key={n} className="text-[10px] px-2 py-0.5 rounded-full border border-gray-200 text-gray-500 bg-white/80">
-                    {n}
-                  </span>
-                ))}
+            {isAssetPack && (
+              <div className="text-right shrink-0">
+                <p className="text-[10px] text-gray-400 uppercase tracking-wider mb-2">Blockchain Neutral</p>
+                <div className="flex flex-wrap gap-1.5 justify-end">
+                  {['XRPL', 'Ethereum', 'Polygon', 'Canton', 'Stellar'].map(n => (
+                    <span key={n} className="text-[10px] px-2 py-0.5 rounded-full border border-gray-200 text-gray-500 bg-white/80">
+                      {n}
+                    </span>
+                  ))}
+                </div>
+                <p className="text-[9px] text-gray-300 mt-1.5">
+                  Compatible with any issuance platform
+                </p>
               </div>
-              <p className="text-[9px] text-gray-300 mt-1.5">
-                Compatible with any issuance platform
-              </p>
-            </div>
+            )}
           </div>
         </div>
 
@@ -2020,7 +2049,9 @@ function AssetReadinessTab({ propertyId, property, pack, onTabChange }) {
             <div className="text-left">
               <p className="text-sm font-bold text-gray-900">Asset Metadata</p>
               <p className="text-[10px] text-gray-400">
-                Structured data layer · consumable by any tokenization platform or custodian
+                {isAssetPack
+                ? 'Structured data layer · consumable by any tokenization platform or custodian'
+                : 'Structured data layer · exportable for due diligence, closing, or downstream platforms'}
               </p>
             </div>
           </div>
@@ -2039,8 +2070,9 @@ function AssetReadinessTab({ propertyId, property, pack, onTabChange }) {
       <div className="bg-white rounded-2xl border border-gray-200 p-6">
         <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-1">Export</p>
         <p className="text-[11px] text-gray-400 mb-4 leading-snug">
-          Package everything already collected. No blockchain interaction required.
-          Future tokenization partners consume these exports directly via API or file.
+          {isAssetPack
+            ? 'Package everything already collected. No blockchain interaction required. Future tokenization partners consume these exports directly via API or file.'
+            : 'Package everything already collected into a portable, structured record — ready for closing, audit, or transfer to any downstream platform.'}
         </p>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
           <button
@@ -2053,12 +2085,14 @@ function AssetReadinessTab({ propertyId, property, pack, onTabChange }) {
             className="flex items-center justify-center gap-2 px-4 py-3 rounded-xl border-2 border-gray-200 hover:border-gray-400 transition text-xs font-bold text-gray-700">
             📄 CSV Export
           </button>
-          <button
-            onClick={() => triggerDownload({ ...metadataExport, asset_passport: passportData, export_type: 'tokenization_package', tokenization_package_version: '1.0' }, `${propertyId}-tokenization-package.json`)}
-            className="flex items-center justify-center gap-2 px-4 py-3 rounded-xl border-2 text-xs font-bold text-white hover:opacity-90 transition"
-            style={{ background: '#7c3aed', borderColor: '#7c3aed' }}>
-            🪙 Tokenization Package
-          </button>
+          {isAssetPack && (
+            <button
+              onClick={() => triggerDownload({ ...metadataExport, asset_passport: passportData, export_type: 'tokenization_package', tokenization_package_version: '1.0' }, `${propertyId}-tokenization-package.json`)}
+              className="flex items-center justify-center gap-2 px-4 py-3 rounded-xl border-2 text-xs font-bold text-white hover:opacity-90 transition"
+              style={{ background: '#7c3aed', borderColor: '#7c3aed' }}>
+              🪙 Tokenization Package
+            </button>
+          )}
         </div>
         <p className="text-[9px] text-gray-300">
           API: GET /api/public/deal-room/{propertyId}/asset-passport · /asset-metadata · /readiness
