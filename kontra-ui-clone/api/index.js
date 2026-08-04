@@ -1193,6 +1193,27 @@ async function saveCustomPackForWorkspace(propertyId, propertyName, customConfig
   }
 }
 
+// Built-in stage definitions live in the API registry, but AI-generated
+// workspace packs are stored as JSON in custom_workflow_packs. Never ask the
+// built-in registry for a ws_* ID — that silently returns the CRE stages.
+async function getInitialStagesForPack(packId, explicitStages = null) {
+  const sourceStages = Array.isArray(explicitStages) && explicitStages.length >= 2
+    ? explicitStages
+    : (packId && packId.startsWith('ws_')
+      ? (await supabase
+        .from('custom_workflow_packs')
+        .select('config')
+        .eq('id', packId)
+        .maybeSingle()).data?.config?.stages
+      : null);
+
+  const stages = Array.isArray(sourceStages) && sourceStages.length >= 2
+    ? sourceStages
+    : getPackStageConfig(packId).stages;
+
+  return stages.map(({ key, label }) => ({ key, label }));
+}
+
 // ── Public: fetch all custom workflow packs ───────────────────────────────────
 // Called by fetchCustomPacks() on the client to preload known custom packs.
 app.get('/api/workflow-packs', async (req, res) => {
@@ -1250,6 +1271,20 @@ app.post('/api/checkout/guest', async (req, res) => {
     const workflowPackId = meta.workflowPackId
       || DEAL_TYPE_TO_PACK_INDEX[meta.dealType]
       || await classifyTransactionPack(propertyName, meta.dealType, meta.address);
+    // Persist a generated workspace pack before creating the Stripe session.
+    // The webhook may run on a different Render instance, so its ID must not
+    // exist only in the in-memory pendingDealRooms map.
+    let finalPackId = workflowPackId;
+    if (meta.customConfig) {
+      const savedId = await saveCustomPackForWorkspace(propertyId, propertyName, meta.customConfig);
+      if (!savedId) {
+        return res.status(503).json({
+          error: 'Workspace configuration could not be saved',
+          message: 'The workspace configuration store is unavailable. Please try again shortly.',
+        });
+      }
+      finalPackId = savedId;
+    }
     const origin = req.headers.origin || 'https://kontraplatform.com';
 
     const PLANS = {
@@ -1281,7 +1316,22 @@ app.post('/api/checkout/guest', async (req, res) => {
       line_items: [lineItem],
       success_url: `${origin}/checkout/success?plan=${plan}${propertyId ? `&property=${propertyId}` : ''}${propertyName ? `&name=${encodeURIComponent(propertyName)}` : ''}&session_id={CHECKOUT_SESSION_ID}&owner_token=${ownerWriteToken}`,
       cancel_url: `${origin}/checkout/cancel?plan=${plan}${propertyId ? `&property=${propertyId}` : ''}&role=${role}`,
-      metadata: { plan, propertyId: propertyId || '', propertyName: propertyName || '', role },
+      metadata: {
+        plan,
+        propertyId: propertyId || '',
+        propertyName: propertyName || '',
+        role,
+        workflowPackId: finalPackId || '',
+        dealType: meta.dealType || '',
+        address: meta.address || '',
+        propertyType: meta.type || '',
+        propertySize: meta.size || '',
+        dealAmount: meta.dealAmount || '',
+        closingDate: meta.closingDate || '',
+        firstName: meta.firstName || '',
+        lastName: meta.lastName || '',
+        jurisdiction: meta.jurisdiction || '',
+      },
     };
     if (email) sessionParams.customer_email = email;
 
@@ -1289,13 +1339,6 @@ app.post('/api/checkout/guest', async (req, res) => {
 
     // Store deal room data in memory (webhook picks it up within seconds)
     if (propertyId) {
-      // If the owner customized the config, persist it as a custom pack now so
-      // the webhook can reference it by ID when the payment completes.
-      let finalPackId = workflowPackId;
-      if (meta.customConfig) {
-        const savedId = await saveCustomPackForWorkspace(propertyId, propertyName, meta.customConfig);
-        if (savedId) finalPackId = savedId;
-      }
       pendingDealRooms.set(session.id, {
         property_id: propertyId,
         property_name: propertyName || propertyId,
@@ -1310,7 +1353,7 @@ app.post('/api/checkout/guest', async (req, res) => {
         first_name: meta.firstName || '',
         last_name: meta.lastName || '',
         jurisdiction: meta.jurisdiction || '',
-        workflow_pack_id: finalPackId,
+         workflow_pack_id: finalPackId,
         owner_write_token: ownerWriteToken,
         created_at: new Date().toISOString(),
       });
@@ -1343,8 +1386,7 @@ app.post('/api/checkout/demo', async (req, res) => {
 
     // Seed stages_config from the pack's default stages (or custom config if provided).
     // Icon/desc are frontend-only; backend stores key+label only.
-    const demoInitialStages = (meta.customConfig?.stages || getPackStageConfig(demoPackId).stages)
-      .map(({ key, label }) => ({ key, label }));
+    const demoInitialStages = await getInitialStagesForPack(demoPackId, meta.customConfig?.stages);
 
     const dealRoomRecord = {
       stripe_session_id: fakeSessionId,
@@ -1762,7 +1804,22 @@ app.post('/api/webhook/stripe',
 
     if (event.type === 'checkout.session.completed') {
       const session = event.data.object;
-      const { plan, propertyId, propertyName, role } = session.metadata || {};
+      const {
+        plan,
+        propertyId,
+        propertyName,
+        role,
+        workflowPackId: metadataPackId,
+        dealType: metadataDealType,
+        address: metadataAddress,
+        propertyType: metadataPropertyType,
+        propertySize: metadataPropertySize,
+        dealAmount: metadataDealAmount,
+        closingDate: metadataClosingDate,
+        firstName: metadataFirstName,
+        lastName: metadataLastName,
+        jurisdiction: metadataJurisdiction,
+      } = session.metadata || {};
       const customerEmail = session.customer_details?.email || session.customer_email || '';
       const amountPaid = (session.amount_total / 100).toFixed(2);
 
@@ -1772,10 +1829,14 @@ app.post('/api/webhook/stripe',
       const pending = pendingDealRooms.get(session.id) || {};
       pendingDealRooms.delete(session.id);
 
-      const stripePackId = pending.workflow_pack_id || DEAL_TYPE_TO_PACK_INDEX[pending.deal_type]
-        || await classifyTransactionPack(pending.property_name || propertyName, pending.deal_type, pending.address);
+      const stripePackId = metadataPackId || pending.workflow_pack_id || DEAL_TYPE_TO_PACK_INDEX[metadataDealType || pending.deal_type]
+        || await classifyTransactionPack(
+          pending.property_name || propertyName,
+          metadataDealType || pending.deal_type,
+          metadataAddress || pending.address,
+        );
       // Seed stages_config from the pack's default stages so the owner can start editing immediately.
-      const stripeInitialStages = getPackStageConfig(stripePackId).stages.map(({ key, label }) => ({ key, label }));
+      const stripeInitialStages = await getInitialStagesForPack(stripePackId);
 
       const dealRoomRecord = {
         stripe_session_id: session.id,
@@ -1787,15 +1848,15 @@ app.post('/api/webhook/stripe',
         amount_paid: parseFloat(amountPaid),
         activated_at: new Date().toISOString(),
         status: 'active',
-        address: pending.address || '',
-        property_type: pending.property_type || '',
-        property_size: pending.property_size || '',
-        deal_type: pending.deal_type || '',
-        deal_amount: pending.deal_amount || '',
-        closing_date: pending.closing_date || '',
-        first_name: pending.first_name || '',
-        last_name: pending.last_name || '',
-        jurisdiction: pending.jurisdiction || '',
+        address: metadataAddress || pending.address || '',
+        property_type: metadataPropertyType || pending.property_type || '',
+        property_size: metadataPropertySize || pending.property_size || '',
+        deal_type: metadataDealType || pending.deal_type || '',
+        deal_amount: metadataDealAmount || pending.deal_amount || '',
+        closing_date: metadataClosingDate || pending.closing_date || '',
+        first_name: metadataFirstName || pending.first_name || '',
+        last_name: metadataLastName || pending.last_name || '',
+        jurisdiction: metadataJurisdiction || pending.jurisdiction || '',
         workflow_pack_id: stripePackId,
         stages_config: stripeInitialStages,
       };
