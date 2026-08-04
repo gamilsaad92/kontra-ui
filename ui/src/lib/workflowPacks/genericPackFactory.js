@@ -39,6 +39,7 @@ export function createGenericPack(config) {
     id,
     name,
     description,
+    transactionType,
     roles,
     stages,
     documentSchema,
@@ -251,11 +252,13 @@ export function createGenericPack(config) {
     outstandingItemsSections,
     metadataFields,
     metadataLabel,
+    transactionType,
     intelligenceSections,
     getIntelligenceBadge,
     getIntelligenceHighlight,
     getSnapshotStats,
     getSnapshotFlag,
+    transactionType,
   };
 }
 

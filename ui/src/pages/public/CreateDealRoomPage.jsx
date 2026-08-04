@@ -326,6 +326,9 @@ export default function CreateDealRoomPage() {
   const activePack = workflowPacks.find(p => p.id === form.packId) || workflowPacks[0];
   const systemPacks = workflowPacks.filter(p => SYSTEM_PACK_IDS.includes(p.id));
   const savedPacks = workflowPacks.filter(p => !SYSTEM_PACK_IDS.includes(p.id));
+  const jurisdictionRelevant = form.packId === "tokenization"
+    || activePack?.transactionType === "tokenization"
+    || aiTransactionType === "tokenization";
 
   // Step labels depend on mode — blank skips preview
   const steps = creationMode === "blank"
@@ -529,7 +532,9 @@ export default function CreateDealRoomPage() {
         : form.packId;
     const configToSend = isBlank
       ? { roles: [], documents: [], stages: [] }
-      : (customConfig.roles.length > 0 || customConfig.stages.length >= 2 ? customConfig : null);
+      : (customConfig.roles.length > 0 || customConfig.stages.length >= 2
+        ? { ...customConfig, transactionType: aiTransactionType || (form.packId === "tokenization" ? "tokenization" : "") }
+        : null);
 
     const resolvedRole = (() => {
       if (isBlank || customConfig.roles.length === 0) return form.role || "owner";
@@ -550,6 +555,7 @@ export default function CreateDealRoomPage() {
         dealAmount: form.dealAmount,
         closingDate: form.closingDate,
         jurisdiction: form.jurisdiction || '',
+        transactionType: aiTransactionType || (form.packId === "tokenization" ? "tokenization" : ""),
         firstName: form.firstName,
         lastName: form.lastName,
         workflowPackId,
@@ -885,7 +891,7 @@ export default function CreateDealRoomPage() {
                     value={form.email} onChange={e => set("email", e.target.value)} />
                 </div>
 
-                <div>
+                {jurisdictionRelevant && <div>
                   <label className={labelCls}>Jurisdiction <span className="font-normal text-gray-400">(optional)</span></label>
                   <select className={`${inputCls} bg-white`} value={form.jurisdiction} onChange={e => set("jurisdiction", e.target.value)}>
                     <option value="">Not specified</option>
@@ -897,7 +903,7 @@ export default function CreateDealRoomPage() {
                     <option value="other">Other / Not listed</option>
                   </select>
                    <p className="text-xs text-gray-400 mt-1">Used to surface relevant regulatory checkpoints inside your deal room.</p>
-                </div>
+                </div>}
 
                 <div>
                   <label className={labelCls}>Your role in this transaction</label>
@@ -937,7 +943,7 @@ export default function CreateDealRoomPage() {
                 <div className="bg-gray-50 border border-gray-200 rounded-xl divide-y divide-gray-200 overflow-hidden">
                   {[
                     { label: "Workspace", value: form.workspaceName || "—" },
-                    form.jurisdiction && { label: "Jurisdiction", value: { uae_adgm: "UAE — ADGM / DFSA", eu_mica: "EU — MiCA", us_reg_d: "US — Regulation D", sg_mas: "Singapore — MAS", uk_fca: "UK — FCA", other: "Other / Not listed" }[form.jurisdiction] || form.jurisdiction },
+                    jurisdictionRelevant && form.jurisdiction && { label: "Jurisdiction", value: { uae_adgm: "UAE — ADGM / DFSA", eu_mica: "EU — MiCA", us_reg_d: "US — Regulation D", sg_mas: "Singapore — MAS", uk_fca: "UK — FCA", other: "Other / Not listed" }[form.jurisdiction] || form.jurisdiction },
                     creationMode !== "blank" && { label: "Type", value: activePack?.label || "Custom" },
                     creationMode !== "blank" && customConfig.roles.length > 0 && { label: "Participants", value: `${customConfig.roles.length} role${customConfig.roles.length !== 1 ? "s" : ""}` },
                     creationMode !== "blank" && customConfig.documents.length > 0 && { label: "Documents", value: `${customConfig.documents.length} item${customConfig.documents.length !== 1 ? "s" : ""}` },

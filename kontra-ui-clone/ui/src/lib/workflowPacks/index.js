@@ -69,6 +69,7 @@ export function registerCustomPack(config) {
     id: config.id,
     name: config.name,
     description: config.description,
+    transactionType: config.transactionType,
     roles: rolesWithDefaults,
     stages: config.stages,
     documentSchema: (config.documents || []).map(d => ({ ...d, section: d.section || d.id })),

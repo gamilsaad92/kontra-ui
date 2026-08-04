@@ -2560,7 +2560,9 @@ function OperationsManagerView({ propertyId, property, pack, role, onTabChange }
   const statusCfg = STATUS_CFG[statusKey];
 
   // ── Tokenization-specific derived state ────────────────────────────────────
-  const isTokenization = pack.id === 'tokenization';
+  const isTokenization = pack.id === 'tokenization'
+    || pack.transactionType === 'tokenization'
+    || apiProperty?.deal_type === 'tokenization';
   const metaValues = property?.metadata_values || {};
 
   // KYC progress — read from briefing snapshot if available
@@ -2684,7 +2686,7 @@ function OperationsManagerView({ propertyId, property, pack, role, onTabChange }
                   Target close: {new Date(closingDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
                 </span>
               )}
-              {property?.jurisdiction && JURISDICTION_INFO[property.jurisdiction] && (
+              {isTokenization && property?.jurisdiction && JURISDICTION_INFO[property.jurisdiction] && (
                 <span className="text-sm flex items-center gap-1.5">
                   <span className="text-gray-300 text-xs">·</span>
                   <span>{JURISDICTION_INFO[property.jurisdiction].flag}</span>
@@ -4087,7 +4089,7 @@ export default function DealRoomPage() {
                   </div>
                 )}
                 {/* Jurisdiction editor — task #167 */}
-                <JurisdictionSettingsPanel propertyId={pid} property={property} />
+                {isTokenization && <JurisdictionSettingsPanel propertyId={pid} property={property} />}
                 <LegalReviewPanel propertyId={pid} pack={pack} isDemo={false} />
               </div>
             )}
@@ -4258,7 +4260,7 @@ export default function DealRoomPage() {
                   packReady={packReady}
                   onAnalysisSaved={onAnalysisSaved}
                   refreshKey={analysesRefreshKey}
-                  jurisdiction={property.jurisdiction || ""}
+                  jurisdiction={isTokenization ? (property.jurisdiction || "") : ""}
                 />
               </div>
             )}

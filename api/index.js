@@ -53,6 +53,32 @@ const DEAL_TYPE_TO_PACK_INDEX = {
   fundraising:         'fundraising',
 };
 
+function isTokenizationTransaction(packId, transactionType) {
+  return packId === 'tokenization'
+    || transactionType === 'tokenization'
+    || transactionType === 'token_issuance';
+}
+
+async function jurisdictionForTransaction(jurisdiction, packId, transactionType) {
+  if (isTokenizationTransaction(packId, transactionType)) return jurisdiction || '';
+  // Custom packs persist their transaction type in config. Resolve it here so
+  // a custom tokenization room keeps its jurisdiction while a custom hotel,
+  // business, or other room cannot surface a stale securities jurisdiction.
+  if (packId && packId.startsWith('ws_')) {
+    try {
+      const { data } = await supabase
+        .from('custom_workflow_packs')
+        .select('config')
+        .eq('id', packId)
+        .maybeSingle();
+      if (data?.config?.transactionType === 'tokenization') return jurisdiction || '';
+    } catch (e) {
+      console.warn('[jurisdiction] custom pack lookup failed:', e.message);
+    }
+  }
+  return '';
+}
+
 // ── AI-powered pack classification ────────────────────────────────────────────
 // Uses GPT-4o-mini to select the right workflow pack from a room's name, deal
 // type, and address. Falls back to 'cre_acquisition' (the safe default) if AI
@@ -1221,7 +1247,7 @@ app.post('/api/public/deal-room/:propertyId/repack', async (req, res) => {
 // ── Helper: auto-save a custom pack and return its ID ────────────────────────
 // Always creates a pack — for blank workspaces, fills in minimal usable defaults
 // so the workspace never falls back to CRE acquisition pack.
-async function saveCustomPackForWorkspace(propertyId, propertyName, customConfig) {
+async function saveCustomPackForWorkspace(propertyId, propertyName, customConfig, transactionType = '') {
   if (!customConfig) return null;
   const customPackId = `ws_${(propertyId || 'w').replace(/[^a-z0-9]/g, '_').slice(0, 30)}_${Date.now().toString(36)}`;
   const packName = propertyName || 'Custom Workspace';
@@ -1267,7 +1293,7 @@ async function saveCustomPackForWorkspace(propertyId, propertyName, customConfig
       id: customPackId,
       name: packName,
       description: '',
-      config: { name: packName, description: '', roles, stages, documents },
+      config: { name: packName, description: '', transactionType, roles, stages, documents },
     });
     if (error) { console.warn('[custom-pack] insert error:', error.message); return null; }
     return customPackId;
@@ -1360,7 +1386,7 @@ app.post('/api/checkout/guest', async (req, res) => {
     // exist only in the in-memory pendingDealRooms map.
     let finalPackId = workflowPackId;
     if (meta.customConfig) {
-      const savedId = await saveCustomPackForWorkspace(propertyId, propertyName, meta.customConfig);
+      const savedId = await saveCustomPackForWorkspace(propertyId, propertyName, meta.customConfig, meta.transactionType);
       if (!savedId) {
         return res.status(503).json({
           error: 'Workspace configuration could not be saved',
@@ -1369,6 +1395,11 @@ app.post('/api/checkout/guest', async (req, res) => {
       }
       finalPackId = savedId;
     }
+    const normalizedJurisdiction = await jurisdictionForTransaction(
+      meta.jurisdiction,
+      finalPackId,
+      meta.transactionType,
+    );
     const origin = req.headers.origin || 'https://kontraplatform.com';
 
     const PLANS = {
@@ -1414,7 +1445,8 @@ app.post('/api/checkout/guest', async (req, res) => {
         closingDate: meta.closingDate || '',
         firstName: meta.firstName || '',
         lastName: meta.lastName || '',
-        jurisdiction: meta.jurisdiction || '',
+        jurisdiction: normalizedJurisdiction,
+        transactionType: meta.transactionType || '',
       },
     };
     if (email) sessionParams.customer_email = email;
@@ -1436,7 +1468,8 @@ app.post('/api/checkout/guest', async (req, res) => {
         closing_date: meta.closingDate || '',
         first_name: meta.firstName || '',
         last_name: meta.lastName || '',
-        jurisdiction: meta.jurisdiction || '',
+        jurisdiction: normalizedJurisdiction,
+        transaction_type: meta.transactionType || '',
          workflow_pack_id: finalPackId,
         owner_write_token: ownerWriteToken,
         created_at: new Date().toISOString(),
@@ -1464,7 +1497,7 @@ app.post('/api/checkout/demo', async (req, res) => {
     let demoPackId = meta.workflowPackId || DEAL_TYPE_TO_PACK_INDEX[meta.dealType]
       || await classifyTransactionPack(propertyName, meta.dealType, meta.address);
     if (meta.customConfig) {
-      const savedId = await saveCustomPackForWorkspace(pid, propertyName, meta.customConfig);
+      const savedId = await saveCustomPackForWorkspace(pid, propertyName, meta.customConfig, meta.transactionType);
       if (savedId) demoPackId = savedId;
     }
 
@@ -1472,6 +1505,11 @@ app.post('/api/checkout/demo', async (req, res) => {
     // Icon/desc are frontend-only; backend stores key+label only.
     const demoInitialStages = await getInitialStagesForPack(demoPackId, meta.customConfig?.stages);
 
+    const normalizedJurisdiction = await jurisdictionForTransaction(
+      meta.jurisdiction,
+      demoPackId,
+      meta.transactionType,
+    );
     const dealRoomRecord = {
       stripe_session_id: fakeSessionId,
       plan,
@@ -1490,7 +1528,7 @@ app.post('/api/checkout/demo', async (req, res) => {
       closing_date: meta.closingDate || '',
       first_name: meta.firstName || '',
       last_name: meta.lastName || '',
-      jurisdiction: meta.jurisdiction || '',
+      jurisdiction: normalizedJurisdiction,
       workflow_pack_id: demoPackId,
       stages_config: demoInitialStages,
     };
@@ -1925,6 +1963,7 @@ app.post('/api/webhook/stripe',
         firstName: metadataFirstName,
         lastName: metadataLastName,
         jurisdiction: metadataJurisdiction,
+        transactionType: metadataTransactionType,
       } = session.metadata || {};
       const customerEmail = session.customer_details?.email || session.customer_email || '';
       const amountPaid = (session.amount_total / 100).toFixed(2);
@@ -1941,6 +1980,11 @@ app.post('/api/webhook/stripe',
           metadataDealType || pending.deal_type,
           metadataAddress || pending.address,
         );
+      const normalizedJurisdiction = await jurisdictionForTransaction(
+        metadataJurisdiction || pending.jurisdiction || '',
+        stripePackId,
+        metadataTransactionType || pending.transaction_type || metadataDealType || pending.deal_type || '',
+      );
       // Seed stages_config from the pack's default stages so the owner can start editing immediately.
       const stripeInitialStages = await getInitialStagesForPack(stripePackId);
 
@@ -1962,7 +2006,7 @@ app.post('/api/webhook/stripe',
         closing_date: metadataClosingDate || pending.closing_date || '',
         first_name: metadataFirstName || pending.first_name || '',
         last_name: metadataLastName || pending.last_name || '',
-        jurisdiction: metadataJurisdiction || pending.jurisdiction || '',
+        jurisdiction: normalizedJurisdiction,
         workflow_pack_id: stripePackId,
         stages_config: stripeInitialStages,
       };
@@ -2196,6 +2240,14 @@ app.get('/api/public/deal-room/:propertyId', async (req, res) => {
     // credential delivered only through the checkout redirect; never expose it
     // in a public GET response or any participant could forge checklist edits.
     const { customer_email, first_name, last_name, stripe_session_id, owner_write_token: _owt, ...safe } = data;
+    // Securities jurisdictions only apply to tokenization rooms. Older rooms
+    // could contain a stale Regulation D value from a generic creation default;
+    // do not expose that stale value as if it governs a normal acquisition.
+    safe.jurisdiction = await jurisdictionForTransaction(
+      safe.jurisdiction,
+      safe.workflow_pack_id,
+      safe.deal_type,
+    ) || null;
     res.json(safe);
   } catch (err) {
     console.error('[deal-room-public]', err.message);
