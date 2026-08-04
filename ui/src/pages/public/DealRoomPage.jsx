@@ -2562,7 +2562,7 @@ function OperationsManagerView({ propertyId, property, pack, role, onTabChange }
   // ── Tokenization-specific derived state ────────────────────────────────────
   const isTokenization = pack.id === 'tokenization'
     || pack.transactionType === 'tokenization'
-    || apiProperty?.deal_type === 'tokenization';
+    || property?.deal_type === 'tokenization';
   const metaValues = property?.metadata_values || {};
 
   // KYC progress — read from briefing snapshot if available
