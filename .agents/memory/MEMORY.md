@@ -8,3 +8,4 @@
 - [Kontra custom pack builder](kontra-custom-pack-builder.md) — builder-created packs only set structural role fields, not prose (headline/subtext/sections); always guard or default those in registerCustomPack, and test new panels against a custom pack
 - [Kontra checkout pack durability](kontra-checkout-pack-durability.md) — generated workspace packs must survive Stripe webhook handoff; never depend on in-memory checkout state or built-in stage registries for ws_* packs
 - [Kontra source mirror sync](kontra-source-mirror-sync.md) — commits run a hook that mirrors kontra-ui-clone/ui/src into ui/src; verify and push staged mirror changes too
+- [Kontra GitHub remote](kontra-github-remote.md) — the GitHub remote is named `github`, not `origin`; push directly to `github` when the helper cannot detect a remote
