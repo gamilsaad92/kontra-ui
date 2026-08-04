@@ -7,7 +7,6 @@ const PUBLIC_NAV = [
   { label: "Solutions",     solutions: true },
   { label: "How It Works",  href: "/how-it-works" },
   { label: "Pricing",       href: "/pricing" },
-  { label: "Demo",          href: "/deal-room/kontra-demo" },
   { label: "My Workspaces", href: "/my-deal-rooms" },
 ];
 
