@@ -6,3 +6,4 @@
 - [Kontra universal role metadata](kontra-workflow-roles.md) — role label/icon/color/copy lives in shared/workflowRoles.json scoped per pack; never a flat cross-pack dict
 - [Kontra stage-key limitation](kontra-stage-keys-limitation.md) — lifecycle stage keys are still hardcoded in several frontend files, not fully pack-driven like roles/docs are
 - [Kontra custom pack builder](kontra-custom-pack-builder.md) — builder-created packs only set structural role fields, not prose (headline/subtext/sections); always guard or default those in registerCustomPack, and test new panels against a custom pack
+- [Kontra checkout pack durability](kontra-checkout-pack-durability.md) — generated workspace packs must survive Stripe webhook handoff; never depend on in-memory checkout state or built-in stage registries for ws_* packs
