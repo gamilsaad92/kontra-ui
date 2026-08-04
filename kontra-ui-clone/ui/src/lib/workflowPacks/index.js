@@ -17,6 +17,7 @@ import { businessAcquisitionPack } from "./businessAcquisition";
 import { fundraisingPack } from "./fundraising";
 import { tokenizationPack } from "./tokenization";
 import { createGenericPack } from "./genericPackFactory";
+import { API_BASE as RESOLVED_API_BASE } from "../apiBase";
 
 export const DEFAULT_PACK_ID = "cre_acquisition";
 
@@ -32,7 +33,7 @@ export const PACKS = {
 // workflowPacks.js). It's turned into a working pack at runtime by handing
 // its config straight to the same generic factory the hand-written packs
 // build on — no per-pack code, no rebuild/deploy needed to add one.
-const API_BASE = import.meta.env.VITE_API_BASE || "";
+const API_BASE = RESOLVED_API_BASE;
 const pendingFetches = {};
 
 // The Builder UI only collects the fields that shape structure/logic (key,
@@ -87,22 +88,28 @@ export function hasPack(packId) {
 
 // Fetches + registers a custom pack if it isn't already known. Safe to call
 // repeatedly/concurrently for the same id (de-duped), and safe to call for
-// built-in ids (no-op). Falls back to the default pack silently on failure
-// so a bad/missing custom pack never breaks a deal room's render.
+// built-in ids (no-op). Custom pack failures are deliberately surfaced:
+// falling back to CRE makes a valid non-CRE room look like the wrong
+// transaction and hides the actual configuration problem.
 export async function ensureWorkflowPackLoaded(packId) {
   if (!packId || hasPack(packId)) return getWorkflowPack(packId);
   if (!pendingFetches[packId]) {
     pendingFetches[packId] = fetch(`${API_BASE}/api/workflow-packs/${packId}`)
-      .then(r => (r.ok ? r.json() : null))
-      .then(data => {
-        if (data?.pack?.config) {
-          registerCustomPack({ id: data.pack.id, ...data.pack.config });
-        }
+      .then(async r => {
+        const data = await r.json().catch(() => null);
+        if (!r.ok) throw new Error(data?.error || `Workflow pack request failed (${r.status})`);
+        return data;
       })
-      .catch(() => {})
+      .then(data => {
+        if (!data?.pack?.config) throw new Error("Workflow pack response was missing its configuration");
+        registerCustomPack({ id: data.pack.id, ...data.pack.config });
+      })
       .finally(() => { delete pendingFetches[packId]; });
   }
   await pendingFetches[packId];
+  if (packId.startsWith("ws_") && !hasPack(packId)) {
+    throw new Error(`Workflow pack ${packId} was not registered`);
+  }
   return getWorkflowPack(packId);
 }
 

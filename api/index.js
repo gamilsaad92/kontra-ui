@@ -1420,7 +1420,12 @@ app.post('/api/checkout/demo', async (req, res) => {
         const isMissingColumn = upsertErr.code === '42703' || upsertErr.code === 'PGRST204' ||
           /column .*(workflow_pack_id|stages_config).* (does not exist|schema cache)/i.test(upsertErr.message || '');
         if (isMissingColumn) {
-          const { workflow_pack_id: _drop, stages_config: _sc, ...baseRecord } = dealRoomRecord;
+          // Keep workflow_pack_id whenever that column is available. A missing
+          // stages_config column must not erase the custom ws_* pack link or
+          // the room will render as CRE on the next page load.
+          const baseRecord = { ...dealRoomRecord };
+          if (/stages_config/i.test(upsertErr.message || '')) delete baseRecord.stages_config;
+          if (/workflow_pack_id/i.test(upsertErr.message || '')) delete baseRecord.workflow_pack_id;
           const { error: retryErr } = await supabase.from('deal_rooms').upsert(baseRecord, { onConflict: 'property_id' });
           if (retryErr) throw retryErr;
           console.log(`[demo] ✅ Deal room created (no workflow_pack_id/stages_config col yet) — ${pid}`);
@@ -1608,7 +1613,10 @@ app.post('/api/admin/create-pilot-workspace', async (req, res) => {
         const isMissingCol = upsertErr.code === '42703' || upsertErr.code === 'PGRST204' ||
           /column .*(workflow_pack_id|stages_config|is_pilot).* (does not exist|schema cache)/i.test(upsertErr.message || '');
         if (isMissingCol) {
-          const { workflow_pack_id: _wpid, stages_config: _sc, is_pilot: _ip, ...baseRecord } = record;
+          const baseRecord = { ...record };
+          if (/stages_config/i.test(upsertErr.message || '')) delete baseRecord.stages_config;
+          if (/workflow_pack_id/i.test(upsertErr.message || '')) delete baseRecord.workflow_pack_id;
+          if (/is_pilot/i.test(upsertErr.message || '')) delete baseRecord.is_pilot;
           const { error: retryErr } = await supabase.from('deal_rooms').upsert(baseRecord, { onConflict: 'property_id' });
           if (retryErr) throw retryErr;
         } else {
@@ -1870,7 +1878,9 @@ app.post('/api/webhook/stripe',
           const isMissingColumn = wErr.code === '42703' || wErr.code === 'PGRST204' ||
             /column .*(workflow_pack_id|stages_config).* (does not exist|schema cache)/i.test(wErr.message || '');
           if (isMissingColumn) {
-            const { workflow_pack_id: _drop, stages_config: _sc, ...baseRecord } = dealRoomRecord;
+            const baseRecord = { ...dealRoomRecord };
+            if (/stages_config/i.test(wErr.message || '')) delete baseRecord.stages_config;
+            if (/workflow_pack_id/i.test(wErr.message || '')) delete baseRecord.workflow_pack_id;
             const { error: retryErr } = await supabase.from('deal_rooms').upsert(baseRecord, { onConflict: 'property_id' });
             if (retryErr) throw retryErr;
             console.log(`[webhook] ✅ Deal room saved (no workflow_pack_id/stages_config col yet) — ${dealRoomRecord.property_id}`);
@@ -3185,11 +3195,22 @@ app.post('/api/public/deal-room/:propertyId/advance', async (req, res) => {
 app.get('/api/public/deal-room/:propertyId/stages', async (req, res) => {
   const { propertyId } = req.params;
   try {
-    const { data, error } = await supabase
+    let { data, error } = await supabase
       .from('deal_rooms')
       .select('stages_config, workflow_pack_id, deal_stage')
       .eq('property_id', propertyId)
       .maybeSingle();
+    // Older Supabase schemas may not have stages_config yet. The room can
+    // still resolve its custom workflow pack, so return null stages and let the
+    // client use that pack's stages instead of failing the whole room.
+    if (error && /stages_config.*(does not exist|schema cache)|column .*stages_config/i.test(error.message || '')) {
+      ({ data, error } = await supabase
+        .from('deal_rooms')
+        .select('workflow_pack_id, deal_stage')
+        .eq('property_id', propertyId)
+        .maybeSingle());
+      if (!error && data) data.stages_config = null;
+    }
     if (error) throw error;
     if (!data) return res.status(404).json({ error: 'room not found' });
     res.json({

@@ -14,6 +14,7 @@ import VerifiedAssetPackage from "./VerifiedAssetPackage";
 import NotificationsLog from "./NotificationsLog";
 import LegalReviewPanel from "./LegalReviewPanel";
 import { DEFAULT_PACK_ID, getWorkflowPack, ensureWorkflowPackLoaded, resolvePackId } from "../../lib/workflowPacks";
+import { API_BASE as RESOLVED_API_BASE } from "../../lib/apiBase";
 
 // ── Jurisdiction compliance data ─────────────────────────────────────────────
 const JURISDICTION_INFO = {
@@ -133,7 +134,7 @@ function usePageTitle(title) {
   }, [title]);
 }
 
-const API_BASE = (import.meta.env.VITE_API_BASE || "").replace(/\/+$/, "");
+const API_BASE = RESOLVED_API_BASE;
 
 // ── Demo properties (hardcoded) ──────────────────────────────────────────────
 const DEMO_PROPERTIES = {
@@ -3551,6 +3552,7 @@ export default function DealRoomPage() {
   const [checkoutError, setCheckoutError] = useState("");
   const [apiProperty, setApiProperty] = useState(null);
   const [loadingApi, setLoadingApi] = useState(true);
+  const [packLoadError, setPackLoadError] = useState("");
   // packReady: true once the custom pack for this room is registered in the
   // client-side PACKS registry. Demo rooms always use a built-in pack so it
   // starts true; live rooms wait for ensureWorkflowPackLoaded to resolve.
@@ -3581,8 +3583,13 @@ export default function DealRoomPage() {
       return;
     }
     fetch(`${API_BASE}/api/public/deal-room/${propertyId}`)
-      .then(r => r.ok ? r.json() : null)
+      .then(async r => {
+        const data = await r.json().catch(() => null);
+        if (!r.ok) throw new Error(data?.error || `Workspace request failed (${r.status})`);
+        return data;
+      })
       .then(async data => {
+        setPackLoadError("");
         if (data?.workflow_pack_id) await ensureWorkflowPackLoaded(data.workflow_pack_id);
         // Mark pack ready BEFORE setApiProperty so DocumentChecklistPanel
         // receives a resolved workflowPack on its first seed attempt.
@@ -3590,7 +3597,12 @@ export default function DealRoomPage() {
         setApiProperty(data);
         setLoadingApi(false);
       })
-      .catch(() => { setPackReady(true); setLoadingApi(false); });
+      .catch((error) => {
+        console.error("[deal-room-load]", error);
+        setPackLoadError(error.message || "The workspace configuration could not be loaded.");
+        setPackReady(false);
+        setLoadingApi(false);
+      });
   }, [propertyId]);
 
   // After a room loads, ask AI whether the stored pack matches the transaction.
@@ -3827,6 +3839,27 @@ export default function DealRoomPage() {
           <div className="text-center">
             <div className="w-8 h-8 border-2 border-gray-300 border-t-red-800 rounded-full animate-spin mx-auto mb-3" />
             <p className="text-sm text-gray-500">Loading workspace…</p>
+          </div>
+        </div>
+      </PublicLayout>
+    );
+  }
+
+  if (packLoadError && isCustom) {
+    return (
+      <PublicLayout hideFooter>
+        <div className="min-h-[60vh] flex items-center justify-center px-6">
+          <div className="max-w-lg w-full rounded-2xl border border-red-200 bg-red-50 p-6 text-center">
+            <div className="text-3xl mb-3">⚠️</div>
+            <h1 className="text-lg font-bold text-gray-900 mb-2">Workspace configuration unavailable</h1>
+            <p className="text-sm text-gray-600">
+              This workspace could not load its transaction-specific configuration, so Kontra stopped instead of showing the wrong template.
+            </p>
+            <p className="mt-3 text-xs text-red-700 break-words">{packLoadError}</p>
+            <button onClick={() => window.location.reload()}
+              className="mt-5 px-4 py-2 rounded-xl bg-[#800020] text-white text-sm font-semibold">
+              Try again
+            </button>
           </div>
         </div>
       </PublicLayout>

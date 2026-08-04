@@ -17,6 +17,40 @@ const { Pool } = require('pg');
 
 let _pool = null;
 
+// node-postgres serializes JavaScript arrays as PostgreSQL arrays. That is
+// correct for text[] columns, but wrong for the JSONB columns used by Kontra
+// workflow configuration: stages_config: [{...}] becomes "{...}" and
+// PostgreSQL rejects it with "invalid input syntax for type json". Keep this
+// list explicit so ordinary array columns are not changed accidentally.
+const JSON_COLUMN_NAMES = new Set([
+  'config',
+  'checklist_items',
+  'metadata_values',
+  'stages_config',
+  'package',
+  'analysis',
+  'data',
+  'reasons',
+  'evidence',
+  'recommended_actions',
+  'proposed_updates',
+  'action_payload',
+  'payload',
+  'brand',
+  'access_policy',
+  'servicer_status_flags',
+  'report_json',
+  'part_i',
+  'follow_up',
+  'restoration',
+  'metadata',
+]);
+
+function toDatabaseValue(column, value) {
+  if (value == null || !JSON_COLUMN_NAMES.has(column)) return value;
+  return typeof value === 'string' ? value : JSON.stringify(value);
+}
+
 function getPool() {
   if (!_pool) {
     _pool = new Pool({
@@ -258,7 +292,7 @@ class QueryBuilder {
         const colsSql = allCols.map(c => `"${c}"`).join(', ');
         const insertedRows = [];
         for (const row of rows) {
-          const rowVals = allCols.map(c => row[c] !== undefined ? row[c] : null);
+          const rowVals = allCols.map(c => toDatabaseValue(c, row[c] !== undefined ? row[c] : null));
           const placeholders = rowVals.map((_, i) => `$${i + 1}`).join(', ');
           const sql = `INSERT INTO ${table} (${colsSql}) VALUES (${placeholders}) RETURNING *`;
           const { rows: r } = await pool.query(sql, rowVals);
@@ -272,7 +306,7 @@ class QueryBuilder {
         const data = this._updateData;
         const keys = Object.keys(data);
         const setClause = keys.map((k, i) => `"${k}" = $${i + 1}`).join(', ');
-        const paramVals = keys.map(k => data[k]);
+         const paramVals = keys.map(k => toDatabaseValue(k, data[k]));
         const whereVals = vals.map((v, i) => v);
         const whereClause = this._conditions.length
           ? `WHERE ${this._conditions.map((c, i) => c.replace(/\$(\d+)/g, (_, n) => `$${Number(n) + keys.length}`)).join(' AND ')}`
@@ -293,7 +327,7 @@ class QueryBuilder {
         const updateSet = allCols.filter(c => c !== 'id').map(c => `"${c}" = EXCLUDED."${c}"`).join(', ');
         const insertedRows = [];
         for (const row of rows) {
-          const rowVals = allCols.map(c => row[c] !== undefined ? row[c] : null);
+          const rowVals = allCols.map(c => toDatabaseValue(c, row[c] !== undefined ? row[c] : null));
           const placeholders = rowVals.map((_, i) => `$${i + 1}`).join(', ');
           const sql = `INSERT INTO ${table} (${colsSql}) VALUES (${placeholders}) ON CONFLICT ${conflict} DO UPDATE SET ${updateSet} RETURNING *`;
           const { rows: r } = await pool.query(sql, rowVals);
