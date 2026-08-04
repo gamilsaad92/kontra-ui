@@ -120,7 +120,7 @@ function RoleCard({ r, propertyId, onRemove }) {
 
     // Email is sent by the create-invite endpoint — use its response
     const emailSent = result.emailSent ?? false;
-    const emailErr  = emailSent ? '' : (invitedEmail ? 'Email may not have sent' : '');
+    const emailErr  = emailSent ? '' : (email.trim() ? 'Email could not be sent automatically — copy the link below and send it manually.' : '');
 
     setCreatedData({ inviteUrl, pin, email: email.trim(), emailSent, emailErr });
     setStatus('created');

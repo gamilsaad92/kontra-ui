@@ -2939,19 +2939,19 @@ app.post('/api/public/deal-room/:propertyId/create-invite', async (req, res) => 
 // owns the deal room, then derives all email content (recipient, role, property)
 // from the database.  The client is never trusted for to/url/labels.
 app.post('/api/public/deal-room/send-invite-email', async (req, res) => {
-  // 1. Require owner authentication
+  // 1. Accept either a Supabase Bearer JWT or a room-scoped owner_write_token.
+  //    This allows owners who are not signed in to Supabase to still trigger emails.
   const authHeader = req.headers.authorization || '';
   const bearerJwt = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : null;
-  if (!bearerJwt) return res.status(401).json({ error: 'Owner authentication required' });
-
-  const { data: { user }, error: authErr } = await supabase.auth.getUser(bearerJwt);
-  if (authErr || !user?.email) return res.status(401).json({ error: 'Invalid auth token' });
-  const ownerEmail = user.email.toLowerCase();
 
   // 2. Accept only the raw invite token from the client — nothing else is trusted
-  const { inviteToken } = req.body || {};
+  const { inviteToken, ownerWriteToken } = req.body || {};
   if (!inviteToken || typeof inviteToken !== 'string' || inviteToken.length < 32) {
     return res.status(400).json({ error: 'inviteToken required' });
+  }
+
+  if (!bearerJwt && !ownerWriteToken) {
+    return res.status(401).json({ error: 'Owner authentication required' });
   }
 
   const RESEND_KEY = process.env.RESEND_API_KEY;
@@ -2969,14 +2969,32 @@ app.post('/api/public/deal-room/send-invite-email', async (req, res) => {
     if (invite.status === 'revoked') return res.status(400).json({ error: 'Invite is revoked' });
     if (!invite.invited_email) return res.status(400).json({ error: 'This invite has no email recipient (PIN-only)' });
 
-    // 4. Verify caller is the deal room owner — must match deal_rooms.customer_email
+    // 4. Verify caller is the deal room owner.
+    //    Path A — Supabase JWT: caller email must match deal_rooms.customer_email.
+    //    Path B — owner_write_token: token must match deal_rooms.owner_write_token
+    //             (generated at checkout, never exposed in public GET responses).
     const { data: room, error: roomErr } = await supabase
       .from('deal_rooms')
-      .select('property_name, first_name, workflow_pack_id, customer_email')
+      .select('property_name, first_name, workflow_pack_id, customer_email, owner_write_token')
       .eq('property_id', invite.property_id)
       .single();
     if (roomErr || !room) return res.status(404).json({ error: 'Deal room not found' });
-    if ((room.customer_email || '').toLowerCase() !== ownerEmail) {
+
+    let authorized = false;
+
+    if (bearerJwt) {
+      const { data: { user }, error: authErr } = await supabase.auth.getUser(bearerJwt);
+      if (!authErr && user?.email) {
+        authorized = (room.customer_email || '').toLowerCase() === user.email.toLowerCase();
+      }
+    }
+
+    if (!authorized && ownerWriteToken) {
+      // Constant-time-equivalent comparison — both sides must be present and match
+      authorized = !!(room.owner_write_token && room.owner_write_token === ownerWriteToken);
+    }
+
+    if (!authorized) {
       return res.status(403).json({ error: 'Not authorized for this deal room' });
     }
 
