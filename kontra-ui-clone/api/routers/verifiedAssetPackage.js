@@ -210,7 +210,7 @@ Risk findings: ${riskFindings.slice(0, 3).join('; ') || 'none identified'}
 
 Write a concise verification summary. Respond with valid JSON only:
 {
-  "headline": "one sentence — verification status and key outcome",
+  "headline": "one sentence — verification status and key outcome, e.g. \"Verified — 7 document types reviewed\"",
   "status": "Verified" or "Conditionally Verified" or "Pending",
   "summary": "2-3 sentence paragraph — what was verified, parties involved, any notable findings",
   "keyFindings": ["finding 1", "finding 2"],
@@ -224,6 +224,10 @@ Write a concise verification summary. Respond with valid JSON only:
         max_tokens: 450,
       });
       aiSummary = JSON.parse(completion.choices[0].message.content);
+      // Guard against the model returning template placeholders literally (e.g. "${uploadedSections.length}")
+      if (typeof aiSummary.headline !== 'string' || aiSummary.headline.includes('${')) {
+        aiSummary.headline = buildFallbackSummary(completenessScore, uploadedSections, missingSections, riskFindings).headline;
+      }
       await cache.set(aiCacheKey, aiSummary, 600);
     } catch (e) {
       console.warn('[vap] AI summary failed:', e.message);
