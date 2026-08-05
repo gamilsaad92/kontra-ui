@@ -1476,18 +1476,22 @@ function DigitalAssetTogglePanel({ propertyId, property, pack, onEnabledChange }
 
 // ── OwnershipStructurePanel (#182) ───────────────────────────────────────────
 // Cap table and token economics — filled by the Token Issuer before the first
-// investor joins. Saves via /metadata-merge so issuance details are not lost.
+// investor joins. Uses PATCH /ownership so cap_table_rows is not truncated.
 function OwnershipStructurePanel({ propertyId, property }) {
   const init = property?.metadata_values || {};
+  const parseCap = (raw) => {
+    try { const r = JSON.parse(raw); return Array.isArray(r) ? r : []; } catch { return []; }
+  };
   const [vals, setVals] = useState({
-    total_token_supply: init.total_token_supply || '',
-    lead_investor:      init.lead_investor      || '',
-    investor_token_pct: init.investor_token_pct || '',
-    team_token_pct:     init.team_token_pct     || '',
-    reserve_token_pct:  init.reserve_token_pct  || '',
-    vesting_schedule:   init.vesting_schedule   || '',
-    governance_rights:  init.governance_rights  || '',
+    token_name:      init.token_name      || '',
+    token_symbol:    init.token_symbol    || '',
+    total_supply:    init.total_supply    || init.total_token_supply || '',
+    token_price:     init.token_price     || '',
+    raise_target:    init.raise_target    || init.raise_amount || '',
+    asset_valuation: init.asset_valuation || '',
+    pct_tokenized:   init.pct_tokenized   || '',
   });
+  const [capRows, setCapRows] = useState(() => parseCap(init.cap_table_rows));
   const [saving,     setSaving]     = useState(false);
   const [saveOk,     setSaveOk]     = useState(false);
   const [saveErr,    setSaveErr]    = useState('');
@@ -1497,25 +1501,29 @@ function OwnershipStructurePanel({ propertyId, property }) {
     try { setOwnerToken(localStorage.getItem(`kontra_owner_token_${propertyId}`) || ''); } catch {}
   }, [propertyId]);
 
-  const FIELDS = [
-    { id: 'total_token_supply', label: 'Total Token Supply',     type: 'number', placeholder: 'e.g. 1000000',               half: true  },
-    { id: 'lead_investor',      label: 'Lead Investor / Anchor', type: 'text',   placeholder: 'e.g. Polymorphic Capital',    half: true  },
-    { id: 'investor_token_pct', label: 'Investor Allocation %',  type: 'number', placeholder: 'e.g. 60',                    half: true  },
-    { id: 'team_token_pct',     label: 'Team Allocation %',      type: 'number', placeholder: 'e.g. 20',                    half: true  },
-    { id: 'reserve_token_pct',  label: 'Reserve / Treasury %',   type: 'number', placeholder: 'e.g. 20',                    half: true  },
-    { id: 'vesting_schedule',   label: 'Vesting Schedule',       type: 'text',   placeholder: 'e.g. 4-year, 1-year cliff',  half: true  },
-    { id: 'governance_rights',  label: 'Token Holder Rights',    type: 'text',   placeholder: 'e.g. Pro-rata liquidation, voting rights', half: false },
+  const SCALAR_FIELDS = [
+    { id: 'token_name',      label: 'Token Name',          type: 'text',   placeholder: 'e.g. Meridian Tower Token' },
+    { id: 'token_symbol',    label: 'Symbol / Ticker',     type: 'text',   placeholder: 'e.g. MTT'                  },
+    { id: 'total_supply',    label: 'Total Token Supply',  type: 'number', placeholder: 'e.g. 1000000'              },
+    { id: 'token_price',     label: 'Price per Token ($)', type: 'number', placeholder: 'e.g. 100'                  },
+    { id: 'raise_target',    label: 'Raise Target ($)',    type: 'number', placeholder: 'e.g. 25000000'             },
+    { id: 'asset_valuation', label: 'Asset Valuation ($)', type: 'number', placeholder: 'e.g. 80000000'             },
+    { id: 'pct_tokenized',   label: '% Being Tokenized',   type: 'number', placeholder: 'e.g. 30'                  },
   ];
 
-  const hasData = Object.values(vals).some(Boolean);
+  const hasData = Object.values(vals).some(Boolean) || capRows.length > 0;
+
+  function addCapRow()           { setCapRows(r => [...r, { name: '', role: '', pct: '' }]); }
+  function removeCapRow(i)       { setCapRows(r => r.filter((_, idx) => idx !== i)); }
+  function updateCapRow(i, k, v) { setCapRows(r => r.map((row, idx) => idx === i ? { ...row, [k]: v } : row)); }
 
   async function handleSave() {
     setSaving(true); setSaveErr(''); setSaveOk(false);
     try {
-      const res = await fetch(`${API_BASE}/api/public/deal-room/${propertyId}/metadata-merge`, {
+      const res = await fetch(`${API_BASE}/api/public/deal-room/${propertyId}/ownership`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ values: vals, ownerWriteToken: ownerToken }),
+        headers: getRoomAuthHeaders(propertyId, { 'Content-Type': 'application/json' }),
+        body: JSON.stringify({ ...vals, cap_table_rows: capRows, ownerWriteToken: ownerToken }),
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || 'Save failed');
@@ -1528,19 +1536,36 @@ function OwnershipStructurePanel({ propertyId, property }) {
     }
   }
 
+  // Read-only view for non-owners — only render if there's data to show
   if (!ownerToken) {
     if (!hasData) return null;
     return (
       <div className="bg-white rounded-2xl border border-gray-200 p-5 mb-5" id="ownership-structure">
         <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-3">Ownership & Token Structure</p>
-        <div className="grid grid-cols-2 gap-3">
-          {FIELDS.filter(f => vals[f.id]).map(f => (
-            <div key={f.id} className={f.half ? '' : 'col-span-2'}>
+        <div className="grid grid-cols-2 gap-3 mb-3">
+          {SCALAR_FIELDS.filter(f => vals[f.id]).map(f => (
+            <div key={f.id}>
               <p className="text-[10px] text-gray-400 uppercase tracking-wider mb-0.5">{f.label}</p>
-              <p className="text-sm font-medium text-gray-900">{vals[f.id]}{f.id.endsWith('_pct') ? '%' : ''}</p>
+              <p className="text-sm font-medium text-gray-900">
+                {vals[f.id]}{f.id === 'pct_tokenized' ? '%' : ''}
+              </p>
             </div>
           ))}
         </div>
+        {capRows.length > 0 && (
+          <div className="border-t border-gray-100 pt-3">
+            <p className="text-[10px] text-gray-400 uppercase tracking-wider mb-2">Cap Table</p>
+            <div className="space-y-1.5">
+              {capRows.map((r, i) => (
+                <div key={i} className="flex items-center gap-3 text-xs">
+                  <span className="font-medium text-gray-900 flex-1">{r.name}</span>
+                  <span className="text-gray-400">{r.role}</span>
+                  <span className="font-semibold text-gray-700 w-10 text-right">{r.pct}%</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     );
   }
@@ -1552,12 +1577,14 @@ function OwnershipStructurePanel({ propertyId, property }) {
         {saveOk && <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-green-50 text-green-700">✓ Saved</span>}
       </div>
       <p className="text-[11px] text-gray-400 mb-4 leading-snug">
-        Record cap table structure and token economics before the first investor joins.
-        This data feeds the Verified Digital Asset Package.
+        Record token economics and cap table before the first investor joins.
+        This data populates the Verified Digital Asset Package.
       </p>
-      <div className="grid grid-cols-2 gap-3 mb-4">
-        {FIELDS.map(f => (
-          <div key={f.id} className={f.half ? '' : 'col-span-2'}>
+
+      {/* Token economics fields */}
+      <div className="grid grid-cols-2 gap-3 mb-5">
+        {SCALAR_FIELDS.map(f => (
+          <div key={f.id}>
             <label className="text-[10px] font-semibold uppercase tracking-wider text-gray-500 mb-1 block">{f.label}</label>
             <input
               type={f.type === 'number' ? 'number' : 'text'}
@@ -1568,6 +1595,38 @@ function OwnershipStructurePanel({ propertyId, property }) {
           </div>
         ))}
       </div>
+
+      {/* Cap-table editor */}
+      <div className="border-t border-gray-100 pt-4 mb-4">
+        <div className="flex items-center justify-between mb-2">
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-500">Cap Table</p>
+          <button onClick={addCapRow}
+            className="text-[10px] font-bold px-2 py-1 rounded-lg border border-dashed border-gray-300 text-gray-500 hover:border-red-300 hover:text-red-700 transition">
+            + Add row
+          </button>
+        </div>
+        {capRows.length === 0 && (
+          <p className="text-[11px] text-gray-400 italic">No cap table entries yet. Click "+ Add row" to start.</p>
+        )}
+        <div className="space-y-2">
+          {capRows.map((r, i) => (
+            <div key={i} className="flex items-center gap-2">
+              <input value={r.name} onChange={e => updateCapRow(i, 'name', e.target.value)}
+                placeholder="Name / Entity"
+                className="flex-1 text-xs border border-gray-200 rounded-lg px-2 py-1.5 focus:outline-none focus:border-red-800 bg-white" />
+              <input value={r.role} onChange={e => updateCapRow(i, 'role', e.target.value)}
+                placeholder="Role"
+                className="w-28 text-xs border border-gray-200 rounded-lg px-2 py-1.5 focus:outline-none focus:border-red-800 bg-white" />
+              <input value={r.pct} onChange={e => updateCapRow(i, 'pct', e.target.value)}
+                placeholder="%" type="number"
+                className="w-16 text-xs border border-gray-200 rounded-lg px-2 py-1.5 focus:outline-none focus:border-red-800 bg-white" />
+              <button onClick={() => removeCapRow(i)}
+                className="text-gray-300 hover:text-red-500 transition text-base font-bold leading-none pb-0.5">×</button>
+            </div>
+          ))}
+        </div>
+      </div>
+
       {saveErr && <p className="text-xs text-red-500 mb-2">{saveErr}</p>}
       <button onClick={handleSave} disabled={saving}
         className="w-full py-2 rounded-xl text-xs font-bold text-white transition hover:opacity-90 disabled:opacity-40"
@@ -1795,11 +1854,13 @@ function AssetReadinessTab({ propertyId, property, pack, onTabChange }) {
   const CATEGORIES   = ALL_CATEGORIES.map(c => ({ ...c, weight: c.weight / rawWeightSum }));
 
   const overall      = Math.round(CATEGORIES.reduce((a, c) => a + c.pct * c.weight, 0));
-  const readinessTitle = isAssetPack ? 'Tokenization Readiness' : 'Transaction Readiness';
-  const overallLabel = overall >= 80
-    ? (isAssetPack ? 'Tokenization Ready' : 'Closing Ready')
+  // Every transaction has the same core outcome: a verified record that is
+  // ready for closing. Digital-asset preparation is an optional downstream
+  // layer, never the primary status of the transaction.
+  const readinessTitle = 'Transaction Readiness';
+  const overallLabel = overall >= 80 ? 'Closing Ready'
     : overall >= 55 ? 'Needs Review'
-    : (isAssetPack ? 'Not Eligible' : 'Needs Attention');
+    : 'Needs Attention';
   const overallColor = overall >= 80 ? '#16a34a' : overall >= 55 ? '#d97706' : '#dc2626';
   const overallBg    = overall >= 80 ? '#f0fdf4' : overall >= 55 ? '#fffbeb' : '#fef2f2';
 
@@ -1818,6 +1879,8 @@ function AssetReadinessTab({ propertyId, property, pack, onTabChange }) {
     document_count:       docCount,
     event_count:          events.length,
     verification_status:  overall >= 80 ? 'Verified' : overall >= 55 ? 'Pending' : 'Incomplete',
+    transaction_readiness: overall,
+    // Compatibility alias for existing downstream consumers.
     tokenization_readiness: overall,
     readiness_label:      overallLabel,
     participants:         participantRows.map(r => ({ role: r.label, status: r.status || 'Not invited' })),
@@ -1862,12 +1925,17 @@ function AssetReadinessTab({ propertyId, property, pack, onTabChange }) {
     risk_summary:    property?.risk ? `${property.risk} Risk · ${property.score}/100` : null,
     verification_status: passportData.verification_status,
     audit_trail_events:  events.length,
-    tokenization_readiness: {
+    transaction_readiness: {
       overall_pct: overall,
       status:      overallLabel,
       categories:  CATEGORIES.map(c => ({ name: c.label, score: c.pct, weight: c.weight })),
     },
-    compatible_networks: ['XRPL', 'Ethereum', 'Polygon', 'Canton', 'Stellar'],
+    ...(isAssetPack ? {
+      digital_asset_layer: {
+        enabled: true,
+        compatible_networks: ['XRPL', 'Ethereum', 'Polygon', 'Canton', 'Stellar'],
+      },
+    } : {}),
     schema_version: '1.0',
     generated_at:   new Date().toISOString(),
   };
@@ -2011,7 +2079,7 @@ function AssetReadinessTab({ propertyId, property, pack, onTabChange }) {
         </div>
       </div>
 
-      {/* ── Asset Passport ────────────────────────────────────────────────── */}
+      {/* ── Verified Transaction Record ───────────────────────────────────── */}
       <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
         <button
           className="w-full px-6 py-4 flex items-center justify-between hover:bg-gray-50 transition"
@@ -2019,9 +2087,9 @@ function AssetReadinessTab({ propertyId, property, pack, onTabChange }) {
           <div className="flex items-center gap-3">
             <span className="text-xl">🪪</span>
             <div className="text-left">
-              <p className="text-sm font-bold text-gray-900">Asset Passport</p>
+              <p className="text-sm font-bold text-gray-900">Verified Transaction Record</p>
               <p className="text-[10px] text-gray-400">
-                 Permanent digital identity of this asset · auto-generated from deal room data
+                 Structured, auditable record of this transaction · auto-generated from workspace data
               </p>
             </div>
           </div>
@@ -2074,16 +2142,16 @@ function AssetReadinessTab({ propertyId, property, pack, onTabChange }) {
                 Generated {new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} · Kontra v2.0
               </p>
               <button
-                onClick={() => triggerDownload(passportData, `${propertyId}-asset-passport.json`)}
+                onClick={() => triggerDownload(passportData, `${propertyId}-verified-transaction-record.json`)}
                 className="text-[10px] font-bold hover:opacity-80 transition" style={{ color: '#800020' }}>
-                Export Passport →
+                Export Record →
               </button>
             </div>
           </div>
         )}
       </div>
 
-      {/* ── Asset Metadata ────────────────────────────────────────────────── */}
+      {/* ── Transaction Metadata ──────────────────────────────────────────── */}
       <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
         <button
           className="w-full px-6 py-4 flex items-center justify-between hover:bg-gray-50 transition"
@@ -2091,11 +2159,11 @@ function AssetReadinessTab({ propertyId, property, pack, onTabChange }) {
           <div className="flex items-center gap-3">
             <span className="text-xl">📦</span>
             <div className="text-left">
-              <p className="text-sm font-bold text-gray-900">Asset Metadata</p>
+              <p className="text-sm font-bold text-gray-900">Transaction Metadata</p>
               <p className="text-[10px] text-gray-400">
                 {isAssetPack
-                ? 'Structured data layer · consumable by any tokenization platform or custodian'
-                : 'Structured data layer · exportable for due diligence, closing, or downstream platforms'}
+                ? 'Structured record for closing, audit, and optional digital-asset handoff'
+                : 'Structured record · exportable for due diligence, closing, or downstream platforms'}
               </p>
             </div>
           </div>
@@ -2110,31 +2178,31 @@ function AssetReadinessTab({ propertyId, property, pack, onTabChange }) {
         )}
       </div>
 
-      {/* ── Export ────────────────────────────────────────────────────────── */}
+      {/* ── Verified Transaction Package ──────────────────────────────────── */}
       <div className="bg-white rounded-2xl border border-gray-200 p-6">
-        <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-1">Export</p>
+        <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-1">Verified Transaction Package</p>
         <p className="text-[11px] text-gray-400 mb-4 leading-snug">
-          {isAssetPack
-            ? 'Package everything already collected. No blockchain interaction required. Future tokenization partners consume these exports directly via API or file.'
-            : 'Package everything already collected into a portable, structured record — ready for closing, audit, or transfer to any downstream platform.'}
+          Package everything already collected into a portable, structured record
+          ready for closing, audit, or transfer to a downstream provider.
+          {isAssetPack && ' Digital-asset preparation remains available as an optional adapter export.'}
         </p>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
           <button
             onClick={() => triggerDownload(metadataExport, `${propertyId}-asset-metadata.json`)}
             className="flex items-center justify-center gap-2 px-4 py-3 rounded-xl border-2 border-gray-200 hover:border-gray-400 transition text-xs font-bold text-gray-700">
-            &#123;&#125; Standard JSON
+            &#123;&#125; Transaction JSON
           </button>
           <button
             onClick={downloadCSV}
             className="flex items-center justify-center gap-2 px-4 py-3 rounded-xl border-2 border-gray-200 hover:border-gray-400 transition text-xs font-bold text-gray-700">
-            📄 CSV Export
+            📄 Closing CSV
           </button>
           {isAssetPack && (
             <button
-              onClick={() => triggerDownload({ ...metadataExport, asset_passport: passportData, export_type: 'tokenization_package', tokenization_package_version: '1.0' }, `${propertyId}-tokenization-package.json`)}
+              onClick={() => triggerDownload({ ...metadataExport, asset_passport: passportData, export_type: 'digital_asset_adapter', digital_asset_adapter_version: '1.0' }, `${propertyId}-digital-asset-adapter.json`)}
               className="flex items-center justify-center gap-2 px-4 py-3 rounded-xl border-2 text-xs font-bold text-white hover:opacity-90 transition"
               style={{ background: '#7c3aed', borderColor: '#7c3aed' }}>
-              🪙 Tokenization Package
+              🪙 Digital Asset Adapter
             </button>
           )}
         </div>
@@ -2143,22 +2211,22 @@ function AssetReadinessTab({ propertyId, property, pack, onTabChange }) {
         </p>
       </div>
 
-      {/* ── Adapter Interfaces ─────────────────────────────────────────────── */}
-      {/* Architecture principle: Transaction → Verification → Closing →      */}
-      {/*   Asset Package → Settlement Adapter → External Infrastructure.      */}
-      {/* Kontra orchestrates — it never becomes the external system.          */}
+      {/* ── External handoff adapters ──────────────────────────────────────── */}
+      {/* Kontra prepares and coordinates the transaction, then hands the
+          verified record to external providers. It does not become the
+          settlement or issuance system. */}
 
-      {/* Settlement Adapter */}
+      {/* Closing & Handoff */}
       <div className="bg-white rounded-2xl border border-gray-200 p-6">
         <div className="flex items-center gap-2 mb-1">
-          <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">Settlement Adapter</p>
+          <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">Closing & Handoff</p>
           <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded uppercase ${metaValues?.settlement_method ? 'bg-green-50 text-green-700' : 'bg-gray-100 text-gray-400'}`}>
             {metaValues?.settlement_method ? 'Configured' : 'Not configured'}
           </span>
         </div>
         <p className="text-[11px] text-gray-400 mb-4 leading-snug">
-          Wire and Escrow are active today. Stripe, Bridge, Stablecoin, and CBDC
-          connect when your customers need them — no rebuild required.
+          Record the closing method and hand the verified transaction package
+          to the provider your parties use. Kontra coordinates; providers execute.
         </p>
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
           {SETTLEMENT_PROVIDERS.map(p => (
@@ -2185,17 +2253,18 @@ function AssetReadinessTab({ propertyId, property, pack, onTabChange }) {
         )}
       </div>
 
-      {/* Tokenization Adapter */}
+      {/* Digital Asset Handoff */}
       <div className="bg-white rounded-2xl border border-gray-200 p-6">
         <div className="flex items-center gap-2 mb-1">
-          <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">Tokenization Adapter</p>
+          <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">Digital Asset Handoff</p>
           <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-gray-100 text-gray-400 uppercase">
             Coming soon
           </span>
         </div>
         <p className="text-[11px] text-gray-400 mb-4 leading-snug">
-          The Asset Package and Passport are already structured for handoff to any
-          issuance network. Kontra prepares and exports — it never issues tokens.
+          The verified transaction record is already structured for handoff to
+          future digital-asset providers. Kontra prepares and exports — it never
+          issues tokens.
         </p>
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
           {[
@@ -2256,7 +2325,7 @@ function AssetReadinessTab({ propertyId, property, pack, onTabChange }) {
 }
 
 // ── WorkspaceTabNav ───────────────────────────────────────────────────────────
-function WorkspaceTabNav({ activeTab, onChange, showDigitalAssetTab = false }) {
+function WorkspaceTabNav({ activeTab, onChange, showReadinessTab = false }) {
   const TABS = [
     { key: 'overview',     label: 'Overview'     },
     { key: 'documents',    label: 'Documents'    },
@@ -2264,7 +2333,7 @@ function WorkspaceTabNav({ activeTab, onChange, showDigitalAssetTab = false }) {
     { key: 'tasks',        label: 'Tasks'        },
     { key: 'activity',     label: 'Activity'     },
     { key: 'settings',     label: 'Settings'     },
-    ...(showDigitalAssetTab ? [{ key: 'readiness', label: 'Asset Readiness' }] : []),
+    ...(showReadinessTab ? [{ key: 'readiness', label: 'Transaction Readiness' }] : []),
   ];
   return (
     <div className="border-b border-gray-200 bg-white">
@@ -2735,6 +2804,18 @@ function OperationsManagerView({ propertyId, property, pack, role, onTabChange }
                   Target close: {new Date(closingDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
                 </span>
               )}
+              {/* Digital Asset Layer badge — non-native tokenization rooms where the
+                  owner enabled the DA layer via the Settings toggle. Native tokenization
+                  rooms are identified by their pack ID and don't need a separate badge. */}
+              {isTokenization && pack?.id !== 'tokenization' && pack?.transactionType !== 'tokenization' && (
+                <span className="flex items-center gap-1">
+                  <span className="text-gray-300 text-xs">·</span>
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full"
+                    style={{ color: '#7c3aed', background: '#f5f3ff' }}>
+                    🪙 Digital Asset Layer
+                  </span>
+                </span>
+              )}
               {isTokenization && property?.jurisdiction && JURISDICTION_INFO[property.jurisdiction] && (
                 <span className="text-sm flex items-center gap-1.5">
                   <span className="text-gray-300 text-xs">·</span>
@@ -2784,11 +2865,12 @@ function OperationsManagerView({ propertyId, property, pack, role, onTabChange }
           if (n >= 1_000)     return `$${n.toLocaleString()}`;
           return `$${n}`;
         }
+        // raise_target is the new structured field; raise_amount is the legacy METADATA_FIELDS key — support both
         const kpis = [
-          { label: 'Raise Target',    value: fmtCurrency(metaValues.raise_amount),  field: 'raise_amount'   },
-          { label: 'Token Price',     value: fmtCurrency(metaValues.token_price),   field: 'token_price'    },
-          { label: 'Min Investment',  value: fmtCurrency(metaValues.min_investment),field: 'min_investment' },
-          { label: 'Asset Type',      value: metaValues.asset_type || null,          field: 'asset_type'     },
+          { label: 'Raise Target',    value: fmtCurrency(metaValues.raise_target || metaValues.raise_amount),  field: 'raise_target'   },
+          { label: 'Token Price',     value: fmtCurrency(metaValues.token_price),                              field: 'token_price'    },
+          { label: 'Min Investment',  value: fmtCurrency(metaValues.min_investment),                           field: 'min_investment' },
+          { label: 'Asset Type',      value: metaValues.asset_type || null,                                    field: 'asset_type'     },
         ];
         return (
           <div className="bg-white rounded-2xl border border-gray-200 px-5 py-4">
@@ -2828,16 +2910,34 @@ function OperationsManagerView({ propertyId, property, pack, role, onTabChange }
       {/* ── Ownership & Token Structure KPI strip (#182) ────────────────── */}
       {isTokenization && (() => {
         const mv = metaValues;
-        const hasOwnership = mv.total_token_supply || mv.lead_investor || mv.investor_token_pct;
+        // Support both new structured fields (token_name, total_supply, raise_target) and
+        // legacy free-text fields (total_token_supply, raise_amount) for backward compat.
+        const totalSupply   = mv.total_supply    || mv.total_token_supply;
+        const raiseTarget   = mv.raise_target    || mv.raise_amount;
+        const hasOwnership  = mv.token_name || mv.token_symbol || totalSupply || mv.asset_valuation || mv.pct_tokenized;
         if (!hasOwnership) return null;
+
+        // Parse cap table rows (stored as JSON string)
+        let capRows = [];
+        try { const r = JSON.parse(mv.cap_table_rows); if (Array.isArray(r)) capRows = r; } catch {}
+
+        const fmtNum = (v) => v ? Number(v).toLocaleString() : null;
+        const fmtCur = (v) => {
+          const n = Number(v);
+          if (!v || isNaN(n)) return null;
+          if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(n % 1_000_000 === 0 ? 0 : 1)}M`;
+          return `$${n.toLocaleString()}`;
+        };
+
         const ownershipKpis = [
-          { label: 'Total Supply',      value: mv.total_token_supply ? Number(mv.total_token_supply).toLocaleString() : null },
-          { label: 'Lead Investor',     value: mv.lead_investor || null },
-          { label: 'Investor Alloc.',   value: mv.investor_token_pct  ? `${mv.investor_token_pct}%`  : null },
-          { label: 'Team / Reserve',    value: (mv.team_token_pct || mv.reserve_token_pct)
-              ? `${mv.team_token_pct || 0}% / ${mv.reserve_token_pct || 0}%` : null },
-        ].filter(k => k.value);
-        if (ownershipKpis.length === 0) return null;
+          mv.token_name   && { label: 'Token',          value: `${mv.token_name}${mv.token_symbol ? ` (${mv.token_symbol})` : ''}` },
+          totalSupply     && { label: 'Total Supply',   value: fmtNum(totalSupply) },
+          mv.asset_valuation && { label: 'Asset Value', value: fmtCur(mv.asset_valuation) },
+          mv.pct_tokenized   && { label: '% Tokenized', value: `${mv.pct_tokenized}%`     },
+          raiseTarget        && { label: 'Raise Target', value: fmtCur(raiseTarget)        },
+        ].filter(Boolean);
+
+        if (ownershipKpis.length === 0 && capRows.length === 0) return null;
         return (
           <div className="bg-white rounded-2xl border border-gray-200 px-5 py-4">
             <div className="flex items-center justify-between mb-3">
@@ -2848,19 +2948,29 @@ function OperationsManagerView({ propertyId, property, pack, role, onTabChange }
                 Edit →
               </button>
             </div>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              {ownershipKpis.map((kpi, i) => (
-                <div key={i} className="bg-gray-50 rounded-xl px-3 py-3 text-center">
-                  <p className="text-sm font-black text-gray-900 mb-0.5 truncate">{kpi.value}</p>
-                  <p className="text-[10px] text-gray-400 leading-tight">{kpi.label}</p>
+            {ownershipKpis.length > 0 && (
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-3">
+                {ownershipKpis.map((kpi, i) => (
+                  <div key={i} className="bg-gray-50 rounded-xl px-3 py-3 text-center">
+                    <p className="text-sm font-black text-gray-900 mb-0.5 truncate">{kpi.value}</p>
+                    <p className="text-[10px] text-gray-400 leading-tight">{kpi.label}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+            {capRows.length > 0 && (
+              <div className={ownershipKpis.length > 0 ? 'border-t border-gray-100 pt-3' : ''}>
+                <p className="text-[10px] text-gray-400 uppercase tracking-wider mb-2">Cap Table</p>
+                <div className="space-y-1.5">
+                  {capRows.map((r, i) => (
+                    <div key={i} className="flex items-center gap-3 text-xs">
+                      <span className="font-medium text-gray-900 flex-1">{r.name}</span>
+                      <span className="text-gray-400">{r.role}</span>
+                      <span className="font-semibold text-gray-700 w-10 text-right">{r.pct}%</span>
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
-            {mv.vesting_schedule && (
-              <p className="text-[10px] text-gray-400 mt-3 pt-3 border-t border-gray-100">
-                <span className="font-semibold text-gray-500">Vesting:</span> {mv.vesting_schedule}
-                {mv.governance_rights && <> &nbsp;·&nbsp; <span className="font-semibold text-gray-500">Rights:</span> {mv.governance_rights}</>}
-              </p>
+              </div>
             )}
           </div>
         );
@@ -4085,7 +4195,7 @@ export default function DealRoomPage() {
         <WorkspaceTabNav
           activeTab={activeTab}
           onChange={setActiveTab}
-          showDigitalAssetTab={isTokenization}
+          showReadinessTab={true}
         />
       )}
 

@@ -3999,9 +3999,74 @@ app.patch('/api/public/deal-room/:propertyId/metadata-merge', async (req, res) =
   }
 });
 
-// ── Asset Passport — GET ─────────────────────────────────────────────────────
-// Returns the structured digital identity of an asset, auto-generated from
-// workspace data. Consumed by future tokenization platforms via API.
+// ── Ownership data — PATCH ────────────────────────────────────────────────────
+// Stores structured token economics + cap-table rows into metadata_values.
+// Cap table is persisted as a JSON blob so row arrays are not truncated by the
+// 500-char scalar limit applied by /metadata-merge.
+// Auth: owner_write_token in request body.
+app.patch('/api/public/deal-room/:propertyId/ownership', async (req, res) => {
+  const { propertyId } = req.params;
+  const {
+    ownerWriteToken,
+    token_name, token_symbol, total_supply, token_price,
+    raise_target, asset_valuation, pct_tokenized,
+    cap_table_rows,
+  } = req.body || {};
+
+  if (!ownerWriteToken) return res.status(403).json({ error: 'owner_write_token required' });
+
+  const { data: room, error: authErr } = await supabase
+    .from('deal_rooms')
+    .select('owner_write_token, metadata_values')
+    .eq('property_id', propertyId)
+    .maybeSingle();
+  if (authErr) return res.status(500).json({ error: authErr.message });
+  if (!room) return res.status(404).json({ error: 'room not found' });
+  if (!room.owner_write_token || room.owner_write_token !== ownerWriteToken) {
+    return res.status(403).json({ error: 'invalid owner_write_token' });
+  }
+
+  const merged = { ...(room.metadata_values || {}) };
+  const scalars = { token_name, token_symbol, total_supply, token_price, raise_target, asset_valuation, pct_tokenized };
+  for (const [k, v] of Object.entries(scalars)) {
+    if (v === null || v === undefined || v === '') delete merged[k];
+    else merged[k] = String(v).slice(0, 200);
+  }
+  // Cap table stored as JSON — max 20 rows, each field capped
+  if (Array.isArray(cap_table_rows)) {
+    const safe = cap_table_rows
+      .slice(0, 20)
+      .map(r => ({
+        name: String(r.name || '').slice(0, 100),
+        role: String(r.role || '').slice(0, 80),
+        pct:  String(r.pct  || '').slice(0, 20),
+      }))
+      .filter(r => r.name);
+    if (safe.length > 0) merged.cap_table_rows = JSON.stringify(safe);
+    else delete merged.cap_table_rows;
+  }
+
+  try {
+    const { error: updateErr } = await supabase
+      .from('deal_rooms')
+      .update({ metadata_values: merged })
+      .eq('property_id', propertyId);
+    if (updateErr) throw updateErr;
+
+    logEvent(propertyId, 'metadata_updated', 'owner', null, 'Ownership structure updated', {
+      keys: 'ownership_data',
+    });
+
+    res.json({ ok: true, metadata_values: merged });
+  } catch (err) {
+    console.error('[ownership PATCH]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── Verified Transaction Record — GET ────────────────────────────────────────
+// Returns the structured, auditable identity of a transaction, auto-generated
+// from workspace data. The endpoint name remains stable for existing clients.
 app.get('/api/public/deal-room/:propertyId/asset-passport', async (req, res) => {
   const { propertyId } = req.params;
   const { data: room, error } = await supabase
@@ -4027,6 +4092,7 @@ app.get('/api/public/deal-room/:propertyId/asset-passport', async (req, res) => 
   const ownerName = [room.first_name, room.last_name].filter(Boolean).join(' ') || room.entity_name || meta.issuer_name || null;
 
   res.json({
+    record_type:          'verified_transaction',
     asset_id:             propertyId,
     asset_name:           room.property_name,
     asset_type:           meta.asset_type || room.workflow_pack_id || 'transaction',
@@ -4038,6 +4104,7 @@ app.get('/api/public/deal-room/:propertyId/asset-passport', async (req, res) => 
     document_count:       docCount || 0,
     event_count:          eventCount || 0,
     verification_status:  docCount > 3 && eventCount > 5 ? 'Pending' : 'Incomplete',
+    closing_ready:        docCount > 3 && eventCount > 5,
     created_at:           room.created_at,
     kontra_version:       '2.0',
     schema_version:       '1.0',
@@ -4045,8 +4112,8 @@ app.get('/api/public/deal-room/:propertyId/asset-passport', async (req, res) => 
   });
 });
 
-// ── Asset Metadata — GET ─────────────────────────────────────────────────────
-// Structured data layer consumable by any tokenization platform or custodian.
+// ── Transaction Metadata — GET ───────────────────────────────────────────────
+// Portable structured data for closing, audit, and downstream integrations.
 app.get('/api/public/deal-room/:propertyId/asset-metadata', async (req, res) => {
   const { propertyId } = req.params;
   const { data: room, error } = await supabase
@@ -4073,6 +4140,7 @@ app.get('/api/public/deal-room/:propertyId/asset-metadata', async (req, res) => 
   const ownerName = [room.first_name, room.last_name].filter(Boolean).join(' ') || room.entity_name || meta.issuer_name || null;
 
   res.json({
+    record_type:     'verified_transaction',
     asset_id:       propertyId,
     asset_name:     room.property_name,
     asset_type:     meta.asset_type || room.workflow_pack_id || 'transaction',
@@ -4106,9 +4174,9 @@ app.get('/api/public/deal-room/:propertyId/asset-metadata', async (req, res) => 
   });
 });
 
-// ── Asset Readiness — GET ─────────────────────────────────────────────────────
-// 8-category tokenization readiness score computed from workspace data.
-// Public endpoint — future tokenization partners consume this directly.
+// ── Transaction Readiness — GET ──────────────────────────────────────────────
+// Core closing/readiness score computed from workspace data. Digital-asset
+// compatibility remains an optional downstream flag in the response.
 app.get('/api/public/deal-room/:propertyId/readiness', async (req, res) => {
   const { propertyId } = req.params;
   const { data: room, error } = await supabase
@@ -4158,16 +4226,33 @@ app.get('/api/public/deal-room/:propertyId/readiness', async (req, res) => {
   ];
 
   const overall      = Math.round(categories.reduce((a, c) => a + c.score * c.weight, 0));
-  const overallLabel = overall >= 80 ? 'Tokenization Ready' : overall >= 55 ? 'Needs Review' : 'Not Eligible';
+  const overallLabel = overall >= 80 ? 'Closing Ready' : overall >= 55 ? 'Needs Review' : 'Needs Attention';
 
   res.json({
+    record_type:        'transaction_readiness',
     asset_id:            propertyId,
     overall_score:       overall,
     status:              overallLabel,
+    closing_ready:       overall >= 80,
+    transaction_ready:   overall >= 80,
     tokenization_ready:  overall >= 80,
-    categories,
-    compatible_networks: ['XRPL', 'Ethereum', 'Polygon', 'Canton', 'Stellar'],
-    note:                'Suggested preparation score — not a regulatory determination.',
+    transaction_readiness: {
+      overall_pct: overall,
+      status: overallLabel,
+      categories,
+    },
+    ...((room.workflow_pack_id === 'tokenization'
+      || room.deal_type === 'tokenization'
+      || meta.digital_asset_enabled === true
+      || meta.digital_asset_enabled === 'true')
+      ? {
+          digital_asset_layer: {
+            enabled: true,
+            compatible_networks: ['XRPL', 'Ethereum', 'Polygon', 'Canton', 'Stellar'],
+          },
+        }
+      : {}),
+    note:                'Suggested operational readiness score — not a legal, regulatory, or settlement determination.',
     schema_version:      '1.0',
     generated_at:        new Date().toISOString(),
   });
