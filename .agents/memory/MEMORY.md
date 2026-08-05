@@ -11,3 +11,4 @@
 - [Kontra GitHub remote](kontra-github-remote.md) — the GitHub remote is named `github`, not `origin`; push directly to `github` when the helper cannot detect a remote
 - [Kontra participant access](kontra-participant-access.md) — derive role from verified invite sessions and enforce the same boundary across every room API and UI request
 - [Kontra artifact build environment](kontra-artifact-build-env.md) — workspace Vite builds require explicit PORT and BASE_PATH values even in production mode
+- [Kontra custom pack normalization](kontra-custom-pack-normalization.md) — normalize generated role assignments and stage keys before rendering custom rooms
