@@ -1268,6 +1268,107 @@ app.post('/api/public/deal-room/:propertyId/repack', async (req, res) => {
   }
 });
 
+// ── Custom pack response normalization ───────────────────────────────────────
+// Older workspace packs may have been generated before role/stage validation
+// existed. Normalize them before exposing them to the public room UI so an
+// older frontend bundle cannot crash on malformed generated JSON.
+function normalizeCustomPackConfig(config, fallbackName = 'Custom Workspace') {
+  const source = config && typeof config === 'object' ? config : {};
+  const rawRoles = Array.isArray(source.roles) ? source.roles : [];
+  const roles = rawRoles.length > 0
+    ? rawRoles.map((r, i) => ({
+        ...r,
+        key: String(r?.key || `role_${i + 1}`).trim().replace(/\s+/g, '_'),
+        label: String(r?.label || r?.shortLabel || `Participant ${i + 1}`).trim(),
+        icon: r?.icon || '👤',
+        color: r?.color || '#800020',
+      }))
+    : [{
+        key: 'owner',
+        label: 'Workspace Owner',
+        required: true,
+        needsDocs: false,
+        invitable: false,
+        icon: '🔑',
+        color: '#800020',
+        canManage: true,
+      }];
+
+  const roleKeys = new Set(roles.map(r => r.key));
+  const rawDocuments = Array.isArray(source.documents) ? source.documents : [];
+  const referencedRoleKeys = new Set(rawDocuments.flatMap(d => {
+    const assigned = Array.isArray(d?.assignedTo)
+      ? d.assignedTo
+      : d?.assignedRole
+        ? [d.assignedRole]
+        : [];
+    return assigned
+      .map(role => String(role || '').trim().replace(/\s+/g, '_'))
+      .filter(Boolean);
+  }));
+  for (const roleKey of referencedRoleKeys) {
+    if (!roleKeys.has(roleKey)) {
+      roles.push({
+        key: roleKey,
+        label: roleKey.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()),
+        required: false,
+        needsDocs: true,
+        invitable: true,
+        icon: '👤',
+        color: '#6b7280',
+        canManage: false,
+      });
+      roleKeys.add(roleKey);
+    }
+  }
+
+  const rawStages = Array.isArray(source.stages) ? source.stages : [];
+  const stages = rawStages
+    .map((s, i) => ({
+      ...s,
+      key: String(s?.key || `stage_${i + 1}`).trim().replace(/\s+/g, '_'),
+      label: String(s?.label || `Stage ${i + 1}`).trim(),
+    }))
+    .filter((s, i, list) => s.key && list.findIndex(x => x.key === s.key) === i);
+  const safeStages = stages.length >= 2
+    ? stages
+    : [
+        { key: 'setup', label: 'Setup' },
+        { key: 'active', label: 'Active' },
+        { key: 'complete', label: 'Complete' },
+      ];
+
+  const documents = rawDocuments.map((d, i) => {
+    const { assignedRole, ...rest } = d || {};
+    const assigned = Array.isArray(d?.assignedTo)
+      ? d.assignedTo
+      : assignedRole
+        ? [assignedRole]
+        : [];
+    return {
+      ...rest,
+      id: d?.id || `document_${i + 1}`,
+      label: String(d?.label || d?.name || `Document ${i + 1}`).trim(),
+      section: d?.section || d?.id || `document_${i + 1}`,
+      assignedTo: [...new Set(
+        assigned
+          .map(role => String(role || '').trim().replace(/\s+/g, '_'))
+          .filter(role => roleKeys.has(role)),
+      )],
+    };
+  });
+
+  return {
+    ...source,
+    name: source.name || fallbackName,
+    description: source.description || '',
+    roles,
+    stages: safeStages,
+    documents,
+    onboardingSteps: Array.isArray(source.onboardingSteps) ? source.onboardingSteps : [],
+  };
+}
+
 // ── Helper: auto-save a custom pack and return its ID ────────────────────────
 // Always creates a pack — for blank workspaces, fills in minimal usable defaults
 // so the workspace never falls back to CRE acquisition pack.
@@ -2308,7 +2409,12 @@ app.get('/api/public/deal-room/:propertyId', async (req, res) => {
         .select('config')
         .eq('id', safe.workflow_pack_id)
         .maybeSingle();
-      if (customPack?.config) safe.workflow_pack_config = customPack.config;
+      if (customPack?.config) {
+        safe.workflow_pack_config = normalizeCustomPackConfig(
+          customPack.config,
+          safe.property_name || 'Custom Workspace',
+        );
+      }
     }
     // Securities jurisdictions only apply to tokenization rooms. Older rooms
     // could contain a stale Regulation D value from a generic creation default;
