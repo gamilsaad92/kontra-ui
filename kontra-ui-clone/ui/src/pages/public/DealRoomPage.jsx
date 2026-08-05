@@ -3590,6 +3590,14 @@ export default function DealRoomPage() {
         if (data?.access?.mode === 'participant' && data.access.role) {
           setAccessRole(data.access.role);
         }
+        // Owner: always grant coordinator access regardless of the checkout-selected role.
+        // The stored DB role may be 'buyer', 'lender', etc. when the owner chose a
+        // non-coordinator role during room creation. The API now returns safe.role =
+        // 'deal_coordinator' for owner-token requests, but setAccessRole here ensures
+        // isCoordinator resolves correctly even against a stale cached response.
+        if (data?.access?.mode === 'owner') {
+          setAccessRole('deal_coordinator');
+        }
         setLoadingApi(false);
       })
       .catch((error) => {
@@ -3805,7 +3813,10 @@ export default function DealRoomPage() {
   // role === 'owner' is the legacy default URL param used by checkout and invite flows for
   // every pack — keep it as a coordinator fallback for backward compatibility so existing
   // deal-room links (?role=owner) continue to grant management access in non-CRE packs.
-  const isCoordinator = !!roleConfig?.canManage || role === 'owner';
+  // property?.access?.mode === 'owner' is belt-and-suspenders: covers the initial render
+  // frame before setAccessRole has propagated, and custom packs where 'deal_coordinator'
+  // may not be a named role key with canManage set.
+  const isCoordinator = !!roleConfig?.canManage || role === 'owner' || property?.access?.mode === 'owner';
 
   // The "Outstanding Items" grid (risk/compliance/property panels) still
   // hardcodes CRE concepts (NOI, DSCR, occupancy) inside the panels

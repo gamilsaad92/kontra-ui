@@ -2437,6 +2437,14 @@ app.get('/api/public/deal-room/:propertyId', async (req, res) => {
         permissions: access.permissions,
       };
     }
+    if (access.mode === 'owner') {
+      // The room owner always has coordinator authority regardless of the role
+      // they selected at checkout. Override the stored role so the browser
+      // receives the correct identity for isCoordinator and tab-visibility
+      // checks. safe.access.mode lets the UI apply belt-and-suspenders guards.
+      safe.role = 'deal_coordinator';
+      safe.access = { mode: 'owner' };
+    }
     res.json(safe);
   } catch (err) {
     console.error('[deal-room-public]', err.message);
