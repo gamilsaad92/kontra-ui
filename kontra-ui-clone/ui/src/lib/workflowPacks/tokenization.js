@@ -17,8 +17,8 @@
 // dashboard judgement (KYC completion badge, subscription fill rate) layered
 // on top as overrides.
 
-import rolesConfig from "../../../../shared/workflowRoles.json";
-import stagesConfig from "../../../../shared/workflowStages.json";
+import rolesConfig from "../../shared/workflowRoles.json";
+import stagesConfig from "../../shared/workflowStages.json";
 import { createGenericPack } from "./genericPackFactory";
 
 export const roles = rolesConfig.tokenization.roles;

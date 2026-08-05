@@ -20,7 +20,7 @@
 // or the backend, and role keys can safely mean different things across
 // packs (e.g. "lender" here vs in businessAcquisition.js) since consumers
 // always look roles up scoped to the active pack, not from a flat dict.
-import rolesConfig from "../../../../shared/workflowRoles.json";
+import rolesConfig from "../../shared/workflowRoles.json";
 
 export const roles = rolesConfig.cre_acquisition.roles;
 
@@ -40,7 +40,7 @@ export function getRoleLabel(key, { short = false } = {}) {
 // UI-only metadata layered on top by key, so they can't drift the two ends
 // out of sync. Adding a pack with different stage keys only requires editing
 // that JSON file, not this file or the backend.
-import stagesConfig from "../../../../shared/workflowStages.json";
+import stagesConfig from "../../shared/workflowStages.json";
 
 const STAGE_META = {
   uploading:    { icon: "📤", desc: "Parties submitting documents" },

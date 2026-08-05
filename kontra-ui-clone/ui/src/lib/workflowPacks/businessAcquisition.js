@@ -11,8 +11,8 @@
 // dashboard judgement (margin badge, snapshot ordering) layered on top as
 // overrides.
 
-import rolesConfig from "../../../../shared/workflowRoles.json";
-import stagesConfig from "../../../../shared/workflowStages.json";
+import rolesConfig from "../../shared/workflowRoles.json";
+import stagesConfig from "../../shared/workflowStages.json";
 import { createGenericPack } from "./genericPackFactory";
 
 export const roles = rolesConfig.business_acquisition.roles;
