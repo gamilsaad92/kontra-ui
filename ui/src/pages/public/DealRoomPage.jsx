@@ -82,6 +82,15 @@ const JURISDICTION_INFO = {
   },
 };
 
+function isDigitalAssetLayerEnabled(property, pack) {
+  const metadataEnabled = property?.metadata_values?.digital_asset_enabled;
+  return pack?.id === 'tokenization'
+    || pack?.transactionType === 'tokenization'
+    || property?.deal_type === 'tokenization'
+    || metadataEnabled === true
+    || metadataEnabled === 'true';
+}
+
 function JurisdictionComplianceCard({ jurisdiction }) {
   const info = JURISDICTION_INFO[jurisdiction];
   if (!info) return null;
@@ -1363,8 +1372,10 @@ function JurisdictionSettingsPanel({ propertyId, property }) {
 // Lets owners of non-tokenization workspaces opt the Digital Asset Preparation
 // Layer on or off without switching to the tokenization pack. Saves a single
 // flag into metadata_values via the non-destructive /metadata-merge endpoint.
-function DigitalAssetTogglePanel({ propertyId, property, pack }) {
-  const isTokenization = pack?.id === 'tokenization';
+function DigitalAssetTogglePanel({ propertyId, property, pack, onEnabledChange }) {
+  const isTokenization = pack?.id === 'tokenization'
+    || pack?.transactionType === 'tokenization'
+    || property?.deal_type === 'tokenization';
   const [enabled,    setEnabled]    = useState(!!(property?.metadata_values?.digital_asset_enabled));
   const [saving,     setSaving]     = useState(false);
   const [saveOk,     setSaveOk]     = useState(false);
@@ -1392,6 +1403,7 @@ function DigitalAssetTogglePanel({ propertyId, property, pack }) {
       });
       if (!res.ok) throw new Error((await res.json()).error);
       setEnabled(next);
+      onEnabledChange?.(next);
       setSaveOk(true);
       setTimeout(() => setSaveOk(false), 2000);
     } catch (err) {
@@ -1549,9 +1561,7 @@ function DigitalAssetConfigPanel({ property, pack }) {
   const packColor = pack?.color || '#800020';
   const jurisdiction = property?.jurisdiction;
   const jurInfo = JURISDICTION_INFO[jurisdiction];
-  const isTokenization = pack?.id === 'tokenization';
-  const digitalAssetEnabled = !!(property?.metadata_values?.digital_asset_enabled);
-  const showDigitalLayer = isTokenization || digitalAssetEnabled;
+  const showDigitalLayer = isDigitalAssetLayerEnabled(property, pack);
 
   if (!jurisdiction && !showDigitalLayer) return null;
 
@@ -1656,7 +1666,7 @@ function AssetReadinessTab({ propertyId, property, pack, onTabChange }) {
   });
 
   const packName      = pack?.name || 'Transaction';
-  const isAssetPack   = pack?.id === 'tokenization' || !!(property?.metadata_values?.digital_asset_enabled);
+  const isAssetPack   = isDigitalAssetLayerEnabled(property, pack);
   const DONE          = new Set(['uploaded', 'approved', 'ai_complete']);
 
   // ── Category scores ─────────────────────────────────────────────────────────
@@ -2220,7 +2230,7 @@ function AssetReadinessTab({ propertyId, property, pack, onTabChange }) {
 }
 
 // ── WorkspaceTabNav ───────────────────────────────────────────────────────────
-function WorkspaceTabNav({ activeTab, onChange }) {
+function WorkspaceTabNav({ activeTab, onChange, showDigitalAssetTab = false }) {
   const TABS = [
     { key: 'overview',     label: 'Overview'     },
     { key: 'documents',    label: 'Documents'    },
@@ -2228,7 +2238,7 @@ function WorkspaceTabNav({ activeTab, onChange }) {
     { key: 'tasks',        label: 'Tasks'        },
     { key: 'activity',     label: 'Activity'     },
     { key: 'settings',     label: 'Settings'     },
-    { key: 'readiness',    label: 'Asset Readiness' },
+    ...(showDigitalAssetTab ? [{ key: 'readiness', label: 'Asset Readiness' }] : []),
   ];
   return (
     <div className="border-b border-gray-200 bg-white">
@@ -2575,9 +2585,7 @@ function OperationsManagerView({ propertyId, property, pack, role, onTabChange }
   const statusCfg = STATUS_CFG[statusKey];
 
   // ── Tokenization-specific derived state ────────────────────────────────────
-  const isTokenization = pack.id === 'tokenization'
-    || pack.transactionType === 'tokenization'
-    || property?.deal_type === 'tokenization';
+  const isTokenization = isDigitalAssetLayerEnabled(property, pack);
   const metaValues = property?.metadata_values || {};
 
   // KYC progress — read from briefing snapshot if available
@@ -3724,7 +3732,7 @@ export default function DealRoomPage() {
   const packId = demoProperty ? DEFAULT_PACK_ID : resolvePackId(apiProperty);
   const pack = getWorkflowPack(packId);
   const isCREPack       = packId === DEFAULT_PACK_ID;
-  const isTokenization  = packId === 'tokenization';
+  const isTokenization  = isDigitalAssetLayerEnabled(apiProperty, pack);
 
   if (inviteToken && !participantSession) {
     return (
@@ -4032,7 +4040,11 @@ export default function DealRoomPage() {
 
       {/* Workspace tab nav — coordinator view of live paid rooms only */}
       {property.isCustom && isCoordinator && !isDemo && (
-        <WorkspaceTabNav activeTab={activeTab} onChange={setActiveTab} />
+        <WorkspaceTabNav
+          activeTab={activeTab}
+          onChange={setActiveTab}
+          showDigitalAssetTab={isTokenization}
+        />
       )}
 
       <div className="max-w-5xl mx-auto px-6 py-8">
@@ -4106,7 +4118,23 @@ export default function DealRoomPage() {
                 <DigitalAssetConfigPanel property={property} pack={pack} />
 
                 {/* Digital Asset toggle — non-tokenization workspaces (#181) */}
-                <DigitalAssetTogglePanel propertyId={pid} property={property} pack={pack} />
+                <DigitalAssetTogglePanel
+                  propertyId={pid}
+                  property={property}
+                  pack={pack}
+                  onEnabledChange={(enabled) => {
+                    setApiProperty(prev => prev ? {
+                      ...prev,
+                      metadata_values: {
+                        ...(prev.metadata_values || {}),
+                        ...(enabled
+                          ? { digital_asset_enabled: 'true' }
+                          : { digital_asset_enabled: '' }),
+                      },
+                    } : prev);
+                    if (!enabled) setActiveTab('overview');
+                  }}
+                />
 
                 {/* Ownership & Token Structure — tokenization workspaces (#182) */}
                 {isTokenization && <OwnershipStructurePanel propertyId={pid} property={property} />}

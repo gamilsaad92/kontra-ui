@@ -53,14 +53,17 @@ const DEAL_TYPE_TO_PACK_INDEX = {
   fundraising:         'fundraising',
 };
 
-function isTokenizationTransaction(packId, transactionType) {
+function isTokenizationTransaction(packId, transactionType, metadataValues = null) {
+  const digitalAssetEnabled = metadataValues?.digital_asset_enabled === true
+    || metadataValues?.digital_asset_enabled === 'true';
   return packId === 'tokenization'
     || transactionType === 'tokenization'
-    || transactionType === 'token_issuance';
+    || transactionType === 'token_issuance'
+    || digitalAssetEnabled;
 }
 
-async function jurisdictionForTransaction(jurisdiction, packId, transactionType) {
-  if (isTokenizationTransaction(packId, transactionType)) return jurisdiction || '';
+async function jurisdictionForTransaction(jurisdiction, packId, transactionType, metadataValues = null) {
+  if (isTokenizationTransaction(packId, transactionType, metadataValues)) return jurisdiction || '';
   // Custom packs persist their transaction type in config. Resolve it here so
   // a custom tokenization room keeps its jurisdiction while a custom hotel,
   // business, or other room cannot surface a stale securities jurisdiction.
@@ -2272,6 +2275,7 @@ app.get('/api/public/deal-room/:propertyId', async (req, res) => {
       safe.jurisdiction,
       safe.workflow_pack_id,
       safe.deal_type,
+      safe.metadata_values,
     ) || null;
     if (access.mode === 'participant') {
       safe.access = {
@@ -3696,7 +3700,7 @@ app.patch('/api/public/deal-room/:propertyId/metadata-merge', async (req, res) =
 
   const { data: room, error: authErr } = await supabase
     .from('deal_rooms')
-    .select('owner_write_token, metadata_values')
+    .select('owner_write_token, metadata_values, jurisdiction')
     .eq('property_id', propertyId)
     .maybeSingle();
   if (authErr) return res.status(500).json({ error: authErr.message });
@@ -3718,9 +3722,15 @@ app.patch('/api/public/deal-room/:propertyId/metadata-merge', async (req, res) =
   }
 
   try {
+    const layerWasDisabled = room.metadata_values?.digital_asset_enabled === true
+      || room.metadata_values?.digital_asset_enabled === 'true';
+    const layerIsDisabled = !('digital_asset_enabled' in merged)
+      || (merged.digital_asset_enabled !== true && merged.digital_asset_enabled !== 'true');
+    const update = { metadata_values: merged };
+    if (layerWasDisabled && layerIsDisabled) update.jurisdiction = null;
     const { error: updateErr } = await supabase
       .from('deal_rooms')
-      .update({ metadata_values: merged })
+      .update(update)
       .eq('property_id', propertyId);
     if (updateErr) throw updateErr;
 
@@ -3742,7 +3752,7 @@ app.get('/api/public/deal-room/:propertyId/asset-passport', async (req, res) => 
   const { propertyId } = req.params;
   const { data: room, error } = await supabase
     .from('deal_rooms')
-    .select('property_id, property_name, workflow_pack_id, jurisdiction, metadata_values, created_at, first_name, last_name, entity_name')
+    .select('property_id, property_name, workflow_pack_id, deal_type, jurisdiction, metadata_values, created_at, first_name, last_name, entity_name')
     .eq('property_id', propertyId)
     .maybeSingle();
   if (error) return res.status(500).json({ error: error.message });
@@ -3754,13 +3764,19 @@ app.get('/api/public/deal-room/:propertyId/asset-passport', async (req, res) => 
   ]);
 
   const meta = room.metadata_values || {};
+  const normalizedJurisdiction = await jurisdictionForTransaction(
+    room.jurisdiction,
+    room.workflow_pack_id,
+    room.deal_type,
+    meta,
+  );
   const ownerName = [room.first_name, room.last_name].filter(Boolean).join(' ') || room.entity_name || meta.issuer_name || null;
 
   res.json({
     asset_id:             propertyId,
     asset_name:           room.property_name,
     asset_type:           meta.asset_type || room.workflow_pack_id || 'transaction',
-    jurisdiction:         room.jurisdiction || null,
+    jurisdiction:         normalizedJurisdiction || null,
     pack:                 room.workflow_pack_id,
     owner:                ownerName,
     entity:               room.entity_name || null,
@@ -3781,7 +3797,7 @@ app.get('/api/public/deal-room/:propertyId/asset-metadata', async (req, res) => 
   const { propertyId } = req.params;
   const { data: room, error } = await supabase
     .from('deal_rooms')
-    .select('property_id, property_name, workflow_pack_id, jurisdiction, metadata_values, created_at, first_name, last_name, entity_name')
+    .select('property_id, property_name, workflow_pack_id, deal_type, jurisdiction, metadata_values, created_at, first_name, last_name, entity_name')
     .eq('property_id', propertyId)
     .maybeSingle();
   if (error) return res.status(500).json({ error: error.message });
@@ -3794,13 +3810,19 @@ app.get('/api/public/deal-room/:propertyId/asset-metadata', async (req, res) => 
     .limit(100);
 
   const meta = room.metadata_values || {};
+  const normalizedJurisdiction = await jurisdictionForTransaction(
+    room.jurisdiction,
+    room.workflow_pack_id,
+    room.deal_type,
+    meta,
+  );
   const ownerName = [room.first_name, room.last_name].filter(Boolean).join(' ') || room.entity_name || meta.issuer_name || null;
 
   res.json({
     asset_id:       propertyId,
     asset_name:     room.property_name,
     asset_type:     meta.asset_type || room.workflow_pack_id || 'transaction',
-    jurisdiction:   room.jurisdiction || null,
+    jurisdiction:   normalizedJurisdiction || null,
     entity:         room.entity_name || null,
     closing_date:   meta.target_close_date || null,
     currency:       'USD',
@@ -3837,7 +3859,7 @@ app.get('/api/public/deal-room/:propertyId/readiness', async (req, res) => {
   const { propertyId } = req.params;
   const { data: room, error } = await supabase
     .from('deal_rooms')
-    .select('property_id, property_name, workflow_pack_id, jurisdiction, metadata_values, checklist_items, first_name, last_name, entity_name')
+    .select('property_id, property_name, workflow_pack_id, deal_type, jurisdiction, metadata_values, checklist_items, first_name, last_name, entity_name')
     .eq('property_id', propertyId)
     .maybeSingle();
   if (error) return res.status(500).json({ error: error.message });
@@ -3850,6 +3872,12 @@ app.get('/api/public/deal-room/:propertyId/readiness', async (req, res) => {
   ]);
 
   const meta     = room.metadata_values || {};
+  const normalizedJurisdiction = await jurisdictionForTransaction(
+    room.jurisdiction,
+    room.workflow_pack_id,
+    room.deal_type,
+    meta,
+  );
   const checklist = Array.isArray(room.checklist_items) ? room.checklist_items : [];
   const DONE     = new Set(['uploaded', 'approved', 'ai_complete']);
 
@@ -3871,7 +3899,7 @@ app.get('/api/public/deal-room/:propertyId/readiness', async (req, res) => {
     { name: 'Identity Verification',  weight: 0.12, score: kycItems.length > 0 ? Math.round((kycItems.filter(i => DONE.has(i.status)).length / kycItems.length) * 100) : 0 },
     { name: 'Cap Table',              weight: 0.12, score: Math.round((capFilled.length / capFields.length) * 100) },
     { name: 'Audit Trail',            weight: 0.12, score: Math.min(Math.round(((eventCount || 0) / 10) * 100), 100) },
-    { name: 'Compliance',             weight: 0.12, score: regItems.length > 0 ? Math.round((room.jurisdiction ? 30 : 0) + 70 * (regItems.filter(i => DONE.has(i.status)).length / regItems.length)) : (room.jurisdiction ? 40 : 0) },
+    { name: 'Compliance',             weight: 0.12, score: regItems.length > 0 ? Math.round((normalizedJurisdiction ? 30 : 0) + 70 * (regItems.filter(i => DONE.has(i.status)).length / regItems.length)) : (normalizedJurisdiction ? 40 : 0) },
     { name: 'Document Integrity',     weight: 0.10, score: reqItems.length > 0 ? Math.round((reqItems.filter(i => DONE.has(i.status)).length / reqItems.length) * 100) : Math.min(Math.round(((docCount || 0) / 5) * 100), 70) },
   ];
 
@@ -3907,13 +3935,24 @@ app.patch('/api/public/deal-room/:propertyId/jurisdiction', async (req, res) => 
 
   const { data: room, error: authErr } = await supabase
     .from('deal_rooms')
-    .select('owner_write_token, jurisdiction')
+    .select('owner_write_token, jurisdiction, workflow_pack_id, deal_type, metadata_values')
     .eq('property_id', propertyId)
     .maybeSingle();
   if (authErr) return res.status(500).json({ error: authErr.message });
   if (!room) return res.status(404).json({ error: 'room not found' });
   if (!room.owner_write_token || room.owner_write_token !== ownerWriteToken) {
     return res.status(403).json({ error: 'invalid owner_write_token' });
+  }
+  const normalizedJurisdiction = await jurisdictionForTransaction(
+    jurisdiction || room.jurisdiction || '',
+    room.workflow_pack_id,
+    room.deal_type,
+    room.metadata_values,
+  );
+  if (jurisdiction && !normalizedJurisdiction) {
+    return res.status(409).json({
+      error: 'Digital Asset Preparation must be enabled before setting a securities jurisdiction',
+    });
   }
 
   try {
