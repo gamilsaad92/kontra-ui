@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { getRoomAuthHeaders } from '../../lib/inviteUtils';
 
 const API_BASE = import.meta.env.VITE_API_BASE || '';
 
@@ -39,7 +40,7 @@ export default function ActivityTimeline({ propertyId }) {
   const fetchEvents = useCallback(async () => {
     try {
       const res = await fetch(`${API_BASE}/api/public/deal-room/${propertyId}/events`, {
-        headers: { 'Cache-Control': 'no-cache' },
+        headers: getRoomAuthHeaders(propertyId, { 'Cache-Control': 'no-cache' }),
       });
       if (!res.ok) return;
       const json = await res.json();

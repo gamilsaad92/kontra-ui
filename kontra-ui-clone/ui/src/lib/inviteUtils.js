@@ -44,6 +44,18 @@ export function getInviteSession(propertyId) {
   }
 }
 
+/** Build server authorization headers for a room request. */
+export function getRoomAuthHeaders(propertyId, extra = {}) {
+  const headers = { ...extra };
+  try {
+    const sessionToken = getInviteSession(propertyId);
+    if (sessionToken) headers['x-kontra-session'] = sessionToken;
+    const ownerToken = localStorage.getItem(`kontra_owner_token_${propertyId}`);
+    if (ownerToken) headers['x-owner-write-token'] = ownerToken;
+  } catch { /* storage unavailable */ }
+  return headers;
+}
+
 /** Clear a stored session (e.g. after revocation). */
 export function clearInviteSession(propertyId) {
   try { sessionStorage.removeItem(SESSION_KEY(propertyId)); } catch { /* ignore */ }
@@ -185,7 +197,7 @@ export async function createInvite({
   try {
     const res = await fetch(`${API_BASE}/api/public/deal-room/${propertyId}/create-invite`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: getRoomAuthHeaders(propertyId, { 'Content-Type': 'application/json' }),
       body: JSON.stringify({ roleKey, invitedEmail, inviteToken: token, pin, verificationMethod }),
     });
     const data = await res.json();

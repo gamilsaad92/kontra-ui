@@ -15,6 +15,8 @@ import NotificationsLog from "./NotificationsLog";
 import LegalReviewPanel from "./LegalReviewPanel";
 import { DEFAULT_PACK_ID, getWorkflowPack, ensureWorkflowPackLoaded, resolvePackId } from "../../lib/workflowPacks";
 import { API_BASE as RESOLVED_API_BASE } from "../../lib/apiBase";
+import DealRoomPinGate from "./DealRoomPinGate";
+import { getInviteSession, getRoomAuthHeaders } from "../../lib/inviteUtils";
 
 // ── Jurisdiction compliance data ─────────────────────────────────────────────
 const JURISDICTION_INFO = {
@@ -566,7 +568,11 @@ function UploadAnalyzePanel({ title, icon, endpoint, accept, uploadLabel, hint, 
       fd.append("file", file);
       if (propertyId) fd.append("property_id", propertyId);
       if (role) fd.append("role", role);
-      const res = await fetch(`${API_BASE}${endpoint}`, { method: "POST", body: fd });
+      const res = await fetch(`${API_BASE}${endpoint}`, {
+        method: "POST",
+        headers: getRoomAuthHeaders(propertyId),
+        body: fd,
+      });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || `Server error ${res.status}`);
       setResult(json.analysis);
@@ -711,9 +717,9 @@ function OnboardingProgress({ propertyId, accentColor, totalInvitable, pack }) {
   useEffect(() => {
     let cancelled = false;
     Promise.all([
-      fetch(`${API_BASE}/api/public/deal-room/${propertyId}/events`).then(r => r.ok ? r.json() : { events: [] }).catch(() => ({ events: [] })),
-      fetch(`${API_BASE}/api/public/deal-room/${propertyId}/coordination`).then(r => r.ok ? r.json() : {}).catch(() => ({})),
-      fetch(`${API_BASE}/api/public/deal-room/${propertyId}/tasks`).then(r => r.ok ? r.json() : { tasks: [] }).catch(() => ({ tasks: [] })),
+      fetch(`${API_BASE}/api/public/deal-room/${propertyId}/events`, { headers: getRoomAuthHeaders(propertyId) }).then(r => r.ok ? r.json() : { events: [] }).catch(() => ({ events: [] })),
+      fetch(`${API_BASE}/api/public/deal-room/${propertyId}/coordination`, { headers: getRoomAuthHeaders(propertyId) }).then(r => r.ok ? r.json() : {}).catch(() => ({})),
+      fetch(`${API_BASE}/api/public/deal-room/${propertyId}/tasks`, { headers: getRoomAuthHeaders(propertyId) }).then(r => r.ok ? r.json() : { tasks: [] }).catch(() => ({ tasks: [] })),
     ]).then(([evRes, coord, taskRes]) => {
       if (cancelled) return;
       const invitedRoles = new Set(
@@ -1121,7 +1127,9 @@ function useDealAnalyses(propertyId, refreshKey) {
   useEffect(() => {
     if (!propertyId) { setLoading(false); return; }
     setLoading(true);
-    fetch(`${API_BASE}/api/public/deal-room/${propertyId}/analyses`)
+    fetch(`${API_BASE}/api/public/deal-room/${propertyId}/analyses`, {
+      headers: getRoomAuthHeaders(propertyId),
+    })
       .then(r => r.ok ? r.json() : { analyses: [] })
       .then(d => { setAnalyses(d.analyses || []); setLoading(false); })
       .catch(() => setLoading(false));
@@ -1177,7 +1185,7 @@ function TransactionDetailsPanel({ property, propertyId, pack }) {
     try {
       const res = await fetch(`${API_BASE}/api/public/deal-room/${propertyId}/metadata`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
+        headers: getRoomAuthHeaders(propertyId, { "Content-Type": "application/json" }),
         body: JSON.stringify({ values: form, ownerWriteToken: ownerToken }),
       });
       const json = await res.json();
@@ -1298,7 +1306,7 @@ function JurisdictionSettingsPanel({ propertyId, property }) {
     try {
       const res = await fetch(`${API_BASE}/api/public/deal-room/${propertyId}/jurisdiction`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+         headers: getRoomAuthHeaders(propertyId, { 'Content-Type': 'application/json' }),
         body: JSON.stringify({ jurisdiction: value || null, ownerWriteToken: ownerToken }),
       });
       const json = await res.json();
@@ -1376,7 +1384,7 @@ function DigitalAssetTogglePanel({ propertyId, property, pack }) {
     try {
       const res = await fetch(`${API_BASE}/api/public/deal-room/${propertyId}/metadata-merge`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+         headers: getRoomAuthHeaders(propertyId, { 'Content-Type': 'application/json' }),
         body: JSON.stringify({
           values: { digital_asset_enabled: next ? 'true' : '' },
           ownerWriteToken: ownerToken,
@@ -1625,9 +1633,9 @@ function AssetReadinessTab({ propertyId, property, pack, onTabChange }) {
   React.useEffect(() => {
     if (!propertyId) return;
     Promise.all([
-      fetch(`${API_BASE}/api/public/deal-room/${propertyId}/checklist`).then(r => r.ok ? r.json() : { items: [] }).catch(() => ({ items: [] })),
-      fetch(`${API_BASE}/api/public/deal-room/${propertyId}/events`).then(r => r.ok ? r.json() : { events: [] }).catch(() => ({ events: [] })),
-      fetch(`${API_BASE}/api/public/deal-room/${propertyId}/coordination`).then(r => r.ok ? r.json() : null).catch(() => null),
+      fetch(`${API_BASE}/api/public/deal-room/${propertyId}/checklist`, { headers: getRoomAuthHeaders(propertyId) }).then(r => r.ok ? r.json() : { items: [] }).catch(() => ({ items: [] })),
+      fetch(`${API_BASE}/api/public/deal-room/${propertyId}/events`, { headers: getRoomAuthHeaders(propertyId) }).then(r => r.ok ? r.json() : { events: [] }).catch(() => ({ events: [] })),
+      fetch(`${API_BASE}/api/public/deal-room/${propertyId}/coordination`, { headers: getRoomAuthHeaders(propertyId) }).then(r => r.ok ? r.json() : null).catch(() => null),
     ]).then(([ck, ev, coord]) => {
       setChecklistItems(Array.isArray(ck?.items) ? ck.items : []);
       setEvents(ev?.events || []);
@@ -2327,12 +2335,17 @@ function SettlementPanel({ propertyId, property, isAtFinalStage }) {
     try {
       await fetch(`${API_BASE}/api/public/deal-room/${propertyId}/metadata-merge`, {
         method:  'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getRoomAuthHeaders(propertyId, { 'Content-Type': 'application/json' }),
         body:    JSON.stringify({
-          settlement_method:  selected,
-          settlement_details: details,
-          settlement_status:  'confirmed',
-          settlement_saved_at: new Date().toISOString(),
+          values: {
+            settlement_method: selected,
+            settlement_details: details,
+            settlement_status: 'confirmed',
+            settlement_saved_at: new Date().toISOString(),
+          },
+          ownerWriteToken: (() => {
+            try { return localStorage.getItem(`kontra_owner_token_${propertyId}`) || ''; } catch { return ''; }
+          })(),
         }),
       });
       setStatus('confirmed');
@@ -2474,12 +2487,14 @@ function OperationsManagerView({ propertyId, property, pack, role, onTabChange }
     try {
       const res = await fetch(`${API_BASE}/api/public/deal-room/${propertyId}/advance`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getRoomAuthHeaders(propertyId, { 'Content-Type': 'application/json' }),
         body: JSON.stringify({ stage: nextStageKey }),
       });
       if (res.ok) {
         // Refresh coordination so the stage indicator and progress bar update immediately
-        const coord = await fetch(`${API_BASE}/api/public/deal-room/${propertyId}/coordination`)
+        const coord = await fetch(`${API_BASE}/api/public/deal-room/${propertyId}/coordination`, {
+          headers: getRoomAuthHeaders(propertyId),
+        })
           .then(r => r.ok ? r.json() : null).catch(() => null);
         if (coord) setCoordination(coord);
       }
@@ -2491,13 +2506,13 @@ function OperationsManagerView({ propertyId, property, pack, role, onTabChange }
     if (!propertyId) return;
     const fb = fetch(`${API_BASE}/api/public/deal-room/${propertyId}/brain/briefing`)
       .then(r => r.ok ? r.json() : null).catch(() => null);
-    const fc = fetch(`${API_BASE}/api/public/deal-room/${propertyId}/coordination`)
+    const fc = fetch(`${API_BASE}/api/public/deal-room/${propertyId}/coordination`, { headers: getRoomAuthHeaders(propertyId) })
       .then(r => r.ok ? r.json() : null).catch(() => null);
-    const fs = fetch(`${API_BASE}/api/public/deal-room/${propertyId}/stages`)
+    const fs = fetch(`${API_BASE}/api/public/deal-room/${propertyId}/stages`, { headers: getRoomAuthHeaders(propertyId) })
       .then(r => r.ok ? r.json() : null).catch(() => null);
-    const fe = fetch(`${API_BASE}/api/public/deal-room/${propertyId}/events`)
+    const fe = fetch(`${API_BASE}/api/public/deal-room/${propertyId}/events`, { headers: getRoomAuthHeaders(propertyId) })
       .then(r => r.ok ? r.json() : { events: [] }).catch(() => ({ events: [] }));
-    const fk = fetch(`${API_BASE}/api/public/deal-room/${propertyId}/checklist`)
+    const fk = fetch(`${API_BASE}/api/public/deal-room/${propertyId}/checklist`, { headers: getRoomAuthHeaders(propertyId) })
       .then(r => r.ok ? r.json() : { items: [] }).catch(() => ({ items: [] }));
 
     Promise.all([fb, fc, fs, fe, fk]).then(([b, coord, stageData, evData, ckData]) => {
@@ -3471,10 +3486,13 @@ function OperationsManagerView({ propertyId, property, pack, role, onTabChange }
 export default function DealRoomPage() {
   const { propertyId } = useParams();
   const [searchParams] = useSearchParams();
-  const role = searchParams.get("role") || "owner";
+  const requestedRole = searchParams.get("role") || "owner";
   const from = searchParams.get("from") || "";
 
   const inviteToken = searchParams.get("invite") || null;
+  const [participantSession, setParticipantSession] = useState(() => getInviteSession(propertyId));
+  const [accessRole, setAccessRole] = useState(null);
+  const role = accessRole || (participantSession ? "guest" : requestedRole);
 
   const [showDemoIntro, setShowDemoIntro] = useState(() => {
     const demoIds = ['kontra-demo', 'kontra-demo-biz', 'kontra-demo-fundraising'];
@@ -3514,7 +3532,10 @@ export default function DealRoomPage() {
       setLoadingApi(false);
       return;
     }
-    fetch(`${API_BASE}/api/public/deal-room/${propertyId}`)
+    if (inviteToken && !participantSession) return;
+    fetch(`${API_BASE}/api/public/deal-room/${propertyId}`, {
+      headers: getRoomAuthHeaders(propertyId),
+    })
       .then(async r => {
         const data = await r.json().catch(() => null);
         if (!r.ok) throw new Error(data?.error || `Workspace request failed (${r.status})`);
@@ -3527,6 +3548,9 @@ export default function DealRoomPage() {
         // receives a resolved workflowPack on its first seed attempt.
         setPackReady(true);
         setApiProperty(data);
+        if (data?.access?.mode === 'participant' && data.access.role) {
+          setAccessRole(data.access.role);
+        }
         setLoadingApi(false);
       })
       .catch((error) => {
@@ -3535,7 +3559,7 @@ export default function DealRoomPage() {
         setPackReady(false);
         setLoadingApi(false);
       });
-  }, [propertyId]);
+  }, [propertyId, inviteToken, participantSession]);
 
   // After a room loads, ask AI whether the stored pack matches the transaction.
   // Only runs for coordinator view of live (non-demo) rooms with a standard built-in pack.
@@ -3701,6 +3725,17 @@ export default function DealRoomPage() {
   const pack = getWorkflowPack(packId);
   const isCREPack       = packId === DEFAULT_PACK_ID;
   const isTokenization  = packId === 'tokenization';
+
+  if (inviteToken && !participantSession) {
+    return (
+      <DealRoomPinGate
+        propertyId={propertyId}
+        role={requestedRole}
+        inviteToken={inviteToken}
+        onUnlocked={(sessionToken) => setParticipantSession(sessionToken)}
+      />
+    );
+  }
 
   // Role metadata (label/icon/color/headline/subtext/sections) is looked up
   // scoped to this pack — never from a flat cross-pack dict — since a role

@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { getWorkflowPack, DEFAULT_PACK_ID } from "../../lib/workflowPacks";
+import { getRoomAuthHeaders } from "../../lib/inviteUtils";
 
 const API_BASE = (import.meta.env.VITE_API_BASE || "").replace(/\/+$/, "");
 
@@ -468,7 +469,9 @@ export default function DocumentChecklistPanel({
     if (!propertyId) return;
     setLoading(true);
     const roleParam = role ? `?role=${encodeURIComponent(role)}` : "";
-    fetch(`${API_BASE}/api/public/deal-room/${propertyId}/analyses${roleParam}`)
+    fetch(`${API_BASE}/api/public/deal-room/${propertyId}/analyses${roleParam}`, {
+      headers: getRoomAuthHeaders(propertyId),
+    })
       .then(r => r.json())
       .then(d => { setAnalyses(d.analyses || []); setLoading(false); })
       .catch(() => setLoading(false));
@@ -488,7 +491,9 @@ export default function DocumentChecklistPanel({
   // For built-in packs (CRE / BA / Fundraising) packReady is always true.
   useEffect(() => {
     if (!propertyId || !packReady) return;
-    fetch(`${API_BASE}/api/public/deal-room/${propertyId}/checklist`)
+    fetch(`${API_BASE}/api/public/deal-room/${propertyId}/checklist`, {
+      headers: getRoomAuthHeaders(propertyId),
+    })
       .then(r => r.ok ? r.json() : { items: null })
       .then(d => {
         if (d.items && Array.isArray(d.items) && d.items.length > 0) {
@@ -515,9 +520,9 @@ export default function DocumentChecklistPanel({
     let ownerToken = "";
     try { ownerToken = localStorage.getItem(`kontra_owner_token_${propertyId}`) || ""; } catch { /* storage unavailable */ }
     try {
-      await fetch(`${API_BASE}/api/public/deal-room/${propertyId}/request-document`, {
+        await fetch(`${API_BASE}/api/public/deal-room/${propertyId}/request-document`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+          headers: getRoomAuthHeaders(propertyId, { "Content-Type": "application/json" }),
         body: JSON.stringify({
           ownerWriteToken: ownerToken,
           roles: item.assignedTo || [],
@@ -543,7 +548,7 @@ export default function DocumentChecklistPanel({
         try { ownerToken = localStorage.getItem(`kontra_owner_token_${propertyId}`) || ""; } catch { /* storage unavailable */ }
         await fetch(`${API_BASE}/api/public/deal-room/${propertyId}/checklist`, {
           method: "PUT",
-          headers: { "Content-Type": "application/json" },
+          headers: getRoomAuthHeaders(propertyId, { "Content-Type": "application/json" }),
           body: JSON.stringify({ items: newItems, ownerWriteToken: ownerToken }),
         });
       } catch { /* silent */ }
@@ -655,7 +660,11 @@ export default function DocumentChecklistPanel({
       const endpoint = isAiEndpoint
         ? `${API_BASE}${AI_UPLOAD_ENDPOINTS[section]}`
         : `${API_BASE}/api/public/deal-room/${propertyId}/track-document`;
-      const res = await fetch(endpoint, { method: "POST", body: form });
+      const res = await fetch(endpoint, {
+        method: "POST",
+        headers: getRoomAuthHeaders(propertyId),
+        body: form,
+      });
       if (!res.ok) throw new Error("Upload failed");
       setRefreshKey(k => k + 1);
       onAnalysisSaved?.();

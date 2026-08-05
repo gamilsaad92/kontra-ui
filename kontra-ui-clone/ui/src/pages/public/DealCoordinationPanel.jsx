@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { getWorkflowPack, DEFAULT_PACK_ID } from '../../lib/workflowPacks';
+import { getRoomAuthHeaders } from '../../lib/inviteUtils';
 
 const API_BASE = import.meta.env.VITE_API_BASE || '';
 
@@ -282,7 +283,7 @@ export default function DealCoordinationPanel({ propertyId, role, packId = DEFAU
   const fetchCoordination = useCallback(async () => {
     try {
       const res = await fetch(`${API_BASE}/api/public/deal-room/${propertyId}/coordination?t=${Date.now()}`, {
-        headers: { 'Cache-Control': 'no-cache' },
+        headers: getRoomAuthHeaders(propertyId, { 'Cache-Control': 'no-cache' }),
       });
       if (!res.ok) return;
       const json = await res.json();
@@ -298,7 +299,9 @@ export default function DealCoordinationPanel({ propertyId, role, packId = DEFAU
 
   const fetchStages = useCallback(async () => {
     try {
-      const res = await fetch(`${API_BASE}/api/public/deal-room/${propertyId}/stages`);
+      const res = await fetch(`${API_BASE}/api/public/deal-room/${propertyId}/stages`, {
+        headers: getRoomAuthHeaders(propertyId),
+      });
       if (!res.ok) return;
       const json = await res.json();
       if (Array.isArray(json.stages) && json.stages.length >= 2) {
@@ -332,7 +335,7 @@ export default function DealCoordinationPanel({ propertyId, role, packId = DEFAU
     try {
       const res = await fetch(`${API_BASE}/api/public/deal-room/${propertyId}/submit`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getRoomAuthHeaders(propertyId, { 'Content-Type': 'application/json' }),
         body: JSON.stringify({ role, name: submitterName || role, notes: submitterNotes }),
       });
       if (res.ok) {
@@ -352,7 +355,7 @@ export default function DealCoordinationPanel({ propertyId, role, packId = DEFAU
     try {
       const res = await fetch(`${API_BASE}/api/public/deal-room/${propertyId}/advance`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getRoomAuthHeaders(propertyId, { 'Content-Type': 'application/json' }),
         body: JSON.stringify({ stage: nextStage }),
       });
       if (res.ok) await fetchCoordination();
@@ -366,7 +369,7 @@ export default function DealCoordinationPanel({ propertyId, role, packId = DEFAU
     try {
       const res = await fetch(`${API_BASE}/api/public/deal-room/${propertyId}/submissions/${subRole}/status`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getRoomAuthHeaders(propertyId, { 'Content-Type': 'application/json' }),
         body: JSON.stringify({ status, status_note: statusNote || null, updater_role: role }),
       });
       if (res.ok) {

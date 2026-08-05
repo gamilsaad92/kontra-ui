@@ -12,6 +12,83 @@ const aiRateLimit = require('../middlewares/aiRateLimit');
 const { uploadToStorage, logEvent, getNextVersion, notifyOwner, notifyLender } = require('../lib/dealRoomHelpers');
 
 const router = express.Router();
+const DOC_ASSIGNMENTS = (() => {
+  try { return require('../../shared/document_assignments.json'); } catch { return {}; }
+})();
+
+function getSectionAssignments(packId, propertyType) {
+  const pack = DOC_ASSIGNMENTS[packId];
+  if (!pack) return null;
+  if (pack.sections) return pack.sections;
+  return pack.byPropertyType?.[propertyType] || pack.byPropertyType?.Multifamily || null;
+}
+
+async function authorizeDocumentUpload(req, res, section) {
+  const propertyId = String(req.body?.property_id || '').trim();
+  if (!propertyId) {
+    res.status(400).json({ error: 'property_id required' });
+    return null;
+  }
+
+  const sessionToken = String(req.headers['x-kontra-session'] || '').trim();
+  if (sessionToken) {
+    const tokenHash = crypto.createHash('sha256').update(sessionToken).digest('hex');
+    const { data: session } = await supabase
+      .from('deal_room_access_sessions')
+      .select('invite_id')
+      .eq('session_token_hash', tokenHash)
+      .gt('expires_at', new Date().toISOString())
+      .is('revoked_at', null)
+      .maybeSingle();
+    if (session?.invite_id) {
+      const { data: invite } = await supabase
+        .from('deal_room_invites')
+        .select('property_id, role_key, status')
+        .eq('id', session.invite_id)
+        .maybeSingle();
+      if (invite?.property_id === propertyId && !['revoked', 'expired'].includes(invite.status)) {
+        const { data: room } = await supabase
+          .from('deal_rooms')
+          .select('workflow_pack_id, property_type, checklist_items')
+          .eq('property_id', propertyId)
+          .maybeSingle();
+        const persisted = (Array.isArray(room?.checklist_items) ? room.checklist_items : [])
+          .filter(item => Array.isArray(item?.assignedTo) && item.assignedTo.includes(invite.role_key))
+          .map(item => item.section)
+          .filter(Boolean);
+        const normalizedSection = section === 'brand-standards' ? 'brand_standards' : section;
+        const assignments = getSectionAssignments(room?.workflow_pack_id || 'cre_acquisition', room?.property_type || 'Multifamily');
+        const assignedSections = persisted.length > 0
+          ? new Set(persisted)
+          : new Set(Object.entries(assignments || {})
+            .filter(([, roles]) => roles.includes(invite.role_key))
+            .map(([key]) => key));
+        if (!assignedSections.has(section) && !assignedSections.has(normalizedSection)) {
+          res.status(403).json({ error: 'Access denied', message: 'This document section is not assigned to your role' });
+          return null;
+        }
+        return { mode: 'participant', role: invite.role_key, propertyId };
+      }
+    }
+  }
+
+  const ownerToken = String(
+    req.headers['x-owner-write-token'] || req.body?.ownerWriteToken || '',
+  ).trim();
+  if (ownerToken) {
+    const { data: room } = await supabase
+      .from('deal_rooms')
+      .select('owner_write_token')
+      .eq('property_id', propertyId)
+      .maybeSingle();
+    if (room?.owner_write_token && room.owner_write_token === ownerToken) {
+      return { mode: 'owner', role: req.body?.role || 'owner', propertyId };
+    }
+  }
+
+  res.status(403).json({ error: 'Access denied', message: 'A verified deal-room invitation or owner access token is required' });
+  return null;
+}
 
 const ALLOWED_MIMETYPES = new Set([
   'application/pdf',
@@ -121,6 +198,9 @@ async function extractTextFromFile(buffer, mimetype = '', filename = '') {
 
 router.post('/analyze-inspection', aiRateLimit, upload.single('file'), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+  const uploadAccess = await authorizeDocumentUpload(req, res, 'inspection');
+  if (!uploadAccess) return;
+  req.body.role = uploadAccess.role;
   console.log('[analyze-inspection] file:', req.file.originalname, 'mime:', req.file.mimetype, 'size:', req.file.size);
   try {
     const text = await extractTextFromFile(req.file.buffer, req.file.mimetype, req.file.originalname);
@@ -284,6 +364,9 @@ ${submissionsBlock}`;
 
 router.post('/review-insurance', aiRateLimit, upload.single('file'), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+  const uploadAccess = await authorizeDocumentUpload(req, res, 'insurance');
+  if (!uploadAccess) return;
+  req.body.role = uploadAccess.role;
   console.log('[review-insurance] file:', req.file.originalname, 'mime:', req.file.mimetype);
   try {
     const text = await extractTextFromFile(req.file.buffer, req.file.mimetype, req.file.originalname);
@@ -336,6 +419,9 @@ Policy text:\n${text}` }
 
 router.post('/review-financials', aiRateLimit, upload.single('file'), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+  const uploadAccess = await authorizeDocumentUpload(req, res, 'financials');
+  if (!uploadAccess) return;
+  req.body.role = uploadAccess.role;
   console.log('[review-financials] file:', req.file.originalname, 'mime:', req.file.mimetype);
   try {
     const text = await extractTextFromFile(req.file.buffer, req.file.mimetype, req.file.originalname);
@@ -388,6 +474,9 @@ Financial document:\n${text}` }
 
 router.post('/review-legal', aiRateLimit, upload.single('file'), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+  const uploadAccess = await authorizeDocumentUpload(req, res, 'legal');
+  if (!uploadAccess) return;
+  req.body.role = uploadAccess.role;
   console.log('[review-legal] file:', req.file.originalname, 'mime:', req.file.mimetype);
   try {
     const text = await extractTextFromFile(req.file.buffer, req.file.mimetype, req.file.originalname);
@@ -438,6 +527,9 @@ Legal document:\n${text}` }
 
 router.post('/review-brand-standards', aiRateLimit, upload.single('file'), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+  const uploadAccess = await authorizeDocumentUpload(req, res, 'brand-standards');
+  if (!uploadAccess) return;
+  req.body.role = uploadAccess.role;
   console.log('[review-brand-standards] file:', req.file.originalname);
   try {
     const text = await extractTextFromFile(req.file.buffer, req.file.mimetype, req.file.originalname);
@@ -496,7 +588,10 @@ Document:\n${text}` }
 // Acquisition) use this one.
 router.post('/analyze-document', aiRateLimit, upload.single('file'), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
-  const { property_id, role, section } = req.body;
+  const { property_id, section } = req.body;
+  const uploadAccess = await authorizeDocumentUpload(req, res, section);
+  if (!uploadAccess) return;
+  const role = uploadAccess.role;
   console.log('[analyze-document] section:', section, 'file:', req.file.originalname);
   try {
     const text = await extractTextFromFile(req.file.buffer, req.file.mimetype, req.file.originalname);

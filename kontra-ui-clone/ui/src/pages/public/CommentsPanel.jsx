@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { DEFAULT_PACK_ID, getWorkflowPack } from '../../lib/workflowPacks';
+import { getRoomAuthHeaders } from '../../lib/inviteUtils';
 
 const API_BASE = import.meta.env.VITE_API_BASE || '';
 
@@ -23,7 +24,9 @@ export default function CommentsPanel({ propertyId, section, role, authorName, p
 
   const fetchComments = useCallback(async () => {
     try {
-      const res = await fetch(`${API_BASE}/api/public/deal-room/${propertyId}/comments?section=${encodeURIComponent(section)}`);
+      const res = await fetch(`${API_BASE}/api/public/deal-room/${propertyId}/comments?section=${encodeURIComponent(section)}`, {
+        headers: getRoomAuthHeaders(propertyId),
+      });
       if (!res.ok) return;
       const json = await res.json();
       setComments(json.comments || []);
@@ -45,7 +48,7 @@ export default function CommentsPanel({ propertyId, section, role, authorName, p
     try {
       const res = await fetch(`${API_BASE}/api/public/deal-room/${propertyId}/comments`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getRoomAuthHeaders(propertyId, { 'Content-Type': 'application/json' }),
         body: JSON.stringify({ section, role, author_name: authorName || role, content: content.trim() }),
       });
       if (res.ok) {
@@ -59,7 +62,10 @@ export default function CommentsPanel({ propertyId, section, role, authorName, p
 
   async function resolveComment(id) {
     try {
-      await fetch(`${API_BASE}/api/public/deal-room/${propertyId}/comments/${id}/resolve`, { method: 'PATCH' });
+      await fetch(`${API_BASE}/api/public/deal-room/${propertyId}/comments/${id}/resolve`, {
+        method: 'PATCH',
+        headers: getRoomAuthHeaders(propertyId, { 'Content-Type': 'application/json' }),
+      });
       await fetchComments();
     } catch { /* silent */ }
   }
