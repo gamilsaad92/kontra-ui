@@ -1288,13 +1288,23 @@ async function saveCustomPackForWorkspace(propertyId, propertyName, customConfig
   const roles = rawRoles.length > 0
     ? rawRoles.map((r, i) => ({
         ...r,
+        key: String(r.key || `role_${i + 1}`).trim().replace(/\s+/g, '_'),
+        label: String(r.label || r.shortLabel || `Participant ${i + 1}`).trim(),
+        icon: r.icon || '👤',
+        color: r.color || '#800020',
         canManage: r.canManage !== undefined ? !!r.canManage : (!hasCoordinator && i === 0),
       }))
     : [{ key: 'owner', label: 'Workspace Owner', required: true, needsDocs: false,
          invitable: false, icon: '🔑', color: '#800020', canManage: true }];
 
-  const stages = Array.isArray(customConfig.stages) && customConfig.stages.length >= 2
-    ? customConfig.stages
+  const rawStages = Array.isArray(customConfig.stages) ? customConfig.stages : [];
+  const normalizedStages = rawStages.map((s, i) => ({
+    ...s,
+    key: String(s.key || `stage_${i + 1}`).trim().replace(/\s+/g, '_'),
+    label: String(s.label || `Stage ${i + 1}`).trim(),
+  })).filter((s, i, list) => s.key && list.findIndex(x => x.key === s.key) === i);
+  const stages = normalizedStages.length >= 2
+    ? normalizedStages
     : [
         { key: 'setup',    label: 'Setup' },
         { key: 'active',   label: 'Active' },
@@ -1303,12 +1313,35 @@ async function saveCustomPackForWorkspace(propertyId, propertyName, customConfig
 
   // Normalise documents: convert frontend's `assignedRole` string → `assignedTo` array
   // expected by runtime checklist/coordination panels.
-  const documents = (Array.isArray(customConfig.documents) ? customConfig.documents : []).map(d => {
+  const rawDocuments = Array.isArray(customConfig.documents) ? customConfig.documents : [];
+  const referencedRoleKeys = new Set(rawDocuments.flatMap(d => {
+    const assigned = Array.isArray(d.assignedTo) ? d.assignedTo : d.assignedRole ? [d.assignedRole] : [];
+    return assigned.map(role => String(role || '').trim().replace(/\s+/g, '_')).filter(Boolean);
+  }));
+  const existingRoleKeys = new Set(roles.map(r => r.key));
+  for (const roleKey of referencedRoleKeys) {
+    if (!existingRoleKeys.has(roleKey)) {
+      roles.push({
+        key: roleKey,
+        label: roleKey.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()),
+        required: false,
+        needsDocs: true,
+        invitable: true,
+        icon: '👤',
+        color: '#6b7280',
+        canManage: false,
+      });
+    }
+  }
+  const documents = rawDocuments.map((d, i) => {
     const { assignedRole, ...rest } = d;
+    const assigned = Array.isArray(d.assignedTo) ? d.assignedTo : (assignedRole ? [assignedRole] : []);
     return {
       ...rest,
-      assignedTo: Array.isArray(d.assignedTo) ? d.assignedTo
-        : (assignedRole ? [assignedRole] : []),
+      id: d.id || `document_${i + 1}`,
+      label: String(d.label || d.name || `Document ${i + 1}`).trim(),
+      section: d.section || d.id || `document_${i + 1}`,
+      assignedTo: [...new Set(assigned.map(role => String(role || '').trim().replace(/\s+/g, '_')).filter(Boolean))],
     };
   });
 

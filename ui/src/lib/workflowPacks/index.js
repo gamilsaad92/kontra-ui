@@ -54,10 +54,47 @@ function withRoleCopyDefaults(role, isPrimary) {
 }
 
 export function registerCustomPack(config) {
+  const rawRoles = Array.isArray(config?.roles) ? config.roles : [];
+  const normalizedRoles = rawRoles.map((r, index) => ({
+    ...r,
+    key: String(r?.key || `role_${index + 1}`).trim().replace(/\s+/g, "_"),
+    label: String(r?.label || r?.shortLabel || `Participant ${index + 1}`).trim(),
+    icon: r?.icon || "👤",
+    color: r?.color || "#800020",
+  }));
+  const normalizedRoleKeys = new Set(normalizedRoles.map((r) => r.key));
+  const rawStages = Array.isArray(config?.stages) ? config.stages : [];
+  const normalizedStages = rawStages
+    .map((s, index) => ({
+      ...s,
+      key: String(s?.key || `stage_${index + 1}`).trim().replace(/\s+/g, "_"),
+      label: String(s?.label || `Stage ${index + 1}`).trim(),
+    }))
+    .filter((s, index, list) => s.key && list.findIndex((candidate) => candidate.key === s.key) === index);
+  const safeStages = normalizedStages.length >= 2
+    ? normalizedStages
+    : [{ key: "setup", label: "Setup" }, { key: "complete", label: "Complete" }];
+  const normalizedDocuments = (Array.isArray(config?.documents) ? config.documents : []).map((d, index) => {
+    const assignedTo = Array.isArray(d?.assignedTo)
+      ? d.assignedTo
+      : d?.assignedRole
+        ? [d.assignedRole]
+        : [];
+    return {
+      ...d,
+      id: d?.id || `document_${index + 1}`,
+      label: String(d?.label || d?.name || `Document ${index + 1}`).trim(),
+      section: d?.section || d?.id || `document_${index + 1}`,
+      assignedTo: assignedTo
+        .map((role) => String(role || "").trim().replace(/\s+/g, "_"))
+        .filter((role) => normalizedRoleKeys.has(role)),
+    };
+  });
+
   // Custom ws_* packs always show a "Transaction Details" metadata section with
   // generic universal fields. Ensure the primary (first) role has "metadata" in
   // its sections so the panel is visible to the workspace owner.
-  const rolesWithDefaults = (config.roles || []).map((r, i) => {
+  const rolesWithDefaults = normalizedRoles.map((r, i) => {
     const role = withRoleCopyDefaults(r, i === 0);
     if (i === 0 && !role.sections?.length) {
       return { ...role, sections: ["metadata"] };
@@ -71,8 +108,8 @@ export function registerCustomPack(config) {
     description: config.description,
     transactionType: config.transactionType,
     roles: rolesWithDefaults,
-    stages: config.stages,
-    documentSchema: (config.documents || []).map(d => ({ ...d, section: d.section || d.id })),
+    stages: safeStages,
+    documentSchema: normalizedDocuments,
     onboardingSteps: config.onboardingSteps,
     // Always include the metadata section so every custom workspace shows the
     // Transaction Details panel with generic fields.
