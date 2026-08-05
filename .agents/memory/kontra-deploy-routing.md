@@ -16,5 +16,6 @@ The GitHub repo gamilsaad92/kontra-ui has two API directories:
 - Trigger a Render deploy through the configured Render service control; do not store deploy-hook credentials in project memory.
 - UI (Vite app) lives at: `kontra-ui-clone/ui/src/` and is mirrored to `ui/src/`; the Vercel project builds top-level `ui/` and currently follows GitHub `master`, so keep `main` and `master` aligned before frontend deploys.
 - A local Replit preview can return 404 for production-only rooms even when the Render API returns 200; validate production rooms against `https://kontra-api.onrender.com`, not the local preview API.
+- Local API (`kontra-ui-clone/api`) reads **local Postgres**, not Supabase: `db.js` prefers `DATABASE_URL` (Replit Postgres via pgAdapter) whenever it is set, even if real Supabase creds exist. Production-created rooms (e.g. checkout/trial) never exist locally, so the local preview 404s them. To fix the preview, sync the room row + its `custom_workflow_packs` row from Supabase REST (service role) into local Postgres with jsonb columns stringified and `on conflict (property_id)`/`(id)` upserts.
 
 Note: Supabase production DB needs manual migrations applied in the SQL editor — run SQL from kontra-ui-clone/api/migrations/*.sql in Supabase dashboard.
