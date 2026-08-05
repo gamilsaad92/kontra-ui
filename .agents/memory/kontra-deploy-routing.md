@@ -13,7 +13,7 @@ The GitHub repo gamilsaad92/kontra-ui has two API directories:
 **How to apply:**
 - After editing `kontra-ui-clone/api/lib/pgAdapter.js`, run: `cp kontra-ui-clone/api/lib/pgAdapter.js api/lib/pgAdapter.js`
 - After editing `kontra-ui-clone/api/index.js`, run: `cp kontra-ui-clone/api/index.js api/index.js`
-- Trigger Render deploy: `curl -s -X POST "https://api.render.com/deploy/srv-cvugrsmuk2gs738c6dfg?key=Qy-Wr7bDjFU"`
+- Trigger a Render deploy through the configured Render service control; do not store deploy-hook credentials in project memory.
 - UI (Vite app) lives at: `kontra-ui-clone/ui/src/` — deployed to Vercel via GitHub actions on gamilsaad92/kontra-ui main branch
 
 Note: Supabase production DB needs manual migrations applied in the SQL editor — run SQL from kontra-ui-clone/api/migrations/*.sql in Supabase dashboard.
