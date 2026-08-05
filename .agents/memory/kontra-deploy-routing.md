@@ -1,6 +1,6 @@
 ---
 name: Kontra deploy routing
-description: Production API is api/ dir (Render); Vercel frontend follows the GitHub master branch and builds the top-level ui/ directory.
+description: Production API is api/ dir (Render); Vercel frontend follows the GitHub master branch and builds the top-level ui/ directory. Replit preview uses the local API/database.
 ---
 
 # Rule
@@ -15,5 +15,6 @@ The GitHub repo gamilsaad92/kontra-ui has two API directories:
 - After editing `kontra-ui-clone/api/index.js`, run: `cp kontra-ui-clone/api/index.js api/index.js`
 - Trigger a Render deploy through the configured Render service control; do not store deploy-hook credentials in project memory.
 - UI (Vite app) lives at: `kontra-ui-clone/ui/src/` and is mirrored to `ui/src/`; the Vercel project builds top-level `ui/` and currently follows GitHub `master`, so keep `main` and `master` aligned before frontend deploys.
+- A local Replit preview can return 404 for production-only rooms even when the Render API returns 200; validate production rooms against `https://kontra-api.onrender.com`, not the local preview API.
 
 Note: Supabase production DB needs manual migrations applied in the SQL editor — run SQL from kontra-ui-clone/api/migrations/*.sql in Supabase dashboard.
