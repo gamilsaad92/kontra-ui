@@ -238,6 +238,11 @@ const corsOptions = {
     'X-User-Id',
     'Accept',
     'Origin',
+    // Kontra room-auth headers sent by getRoomAuthHeaders() in every room request
+    'x-kontra-session',
+    'X-Kontra-Session',
+    'x-owner-write-token',
+    'X-Owner-Write-Token',
   ],
   methods: ['GET', 'HEAD', 'PUT', 'PATCH', 'POST', 'DELETE', 'OPTIONS'],
   optionsSuccessStatus: 204,
