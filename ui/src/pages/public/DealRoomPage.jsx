@@ -745,38 +745,50 @@ function OnboardingProgress({ propertyId, accentColor, totalInvitable, pack }) {
     return <div className="h-16 rounded-xl bg-gray-50 animate-pulse" />;
   }
 
-  const steps = [
-    {
-      label: "Invite parties",
-      detail: (() => {
-        const invitableLabels = (pack?.roles || []).filter(r => r.invitable).map(r => r.label);
-        const roleList = invitableLabels.length > 0
-          ? invitableLabels.slice(0, 4).join(", ")
-           : "the parties configured for this deal room";
-        return totalInvitable
-          ? `${state.invitedRoles}/${totalInvitable} invited — send role-specific links to your ${roleList}`
-          : `Send role-specific links to your ${roleList}`;
-      })(),
-      done: state.invitedRoles > 0,
-      href: "#invite-panel",
-    },
-    {
-      label: "Upload documents",
-      detail: state.docCount > 0
-        ? `${state.docCount} document${state.docCount === 1 ? "" : "s"} uploaded — AI reviews each file as it arrives`
-        : "AI reviews each file as it arrives and surfaces key findings",
-      done: state.docCount > 0,
-      href: "#documents-panel",
-    },
-    {
-      label: "AI takes over",
-      detail: state.taskCount > 0
-        ? `${state.taskCount} task${state.taskCount === 1 ? "" : "s"} identified — approvals, requirements, and transaction stage tracked automatically`
-        : "Once documents arrive, AI tracks approvals, requirements, and transaction stage automatically",
-      done: state.taskCount > 0,
-      href: "#tasks-panel",
-    },
-  ];
+  const invitableLabels = (pack?.roles || []).filter(r => r.invitable).map(r => r.label);
+  const roleList = invitableLabels.length > 0
+    ? invitableLabels.slice(0, 4).join(", ")
+    : "the parties configured for this deal room";
+  const configuredSteps = (pack?.onboardingSteps || []).slice(0, 3);
+  const steps = configuredSteps.length > 0
+    ? configuredSteps.map((step, i) => ({
+        label: step.title,
+        detail: i === 0 && state.docCount > 0
+          ? `${state.docCount} document${state.docCount === 1 ? "" : "s"} uploaded — ${step.desc}`
+          : i === 0
+            ? step.desc
+            : i === 1 && state.invitedRoles > 0
+              ? `${state.invitedRoles}/${totalInvitable || invitableLabels.length || "all"} parties invited — ${step.desc}`
+              : step.desc,
+        done: i === 0 ? state.docCount > 0 : i === 1 ? state.invitedRoles > 0 : state.taskCount > 0,
+        href: i === 0 ? "#documents-panel" : i === 1 ? "#invite-panel" : "#tasks-panel",
+      }))
+    : [
+        {
+          label: "Invite the transaction team",
+          detail: totalInvitable
+            ? `${state.invitedRoles}/${totalInvitable} invited — send role-specific links to your ${roleList}`
+            : `Send role-specific links to your ${roleList}`,
+          done: state.invitedRoles > 0,
+          href: "#invite-panel",
+        },
+        {
+          label: "Upload the first documents",
+          detail: state.docCount > 0
+            ? `${state.docCount} document${state.docCount === 1 ? "" : "s"} uploaded — AI reviews each file as it arrives`
+            : "Start with the documents your transaction needs most; AI reviews each file as it arrives",
+          done: state.docCount > 0,
+          href: "#documents-panel",
+        },
+        {
+          label: "Review the first actions",
+          detail: state.taskCount > 0
+            ? `${state.taskCount} task${state.taskCount === 1 ? "" : "s"} identified — approvals, requirements, and stage tracked automatically`
+            : "Once documents arrive, Kontra identifies approvals, requirements, and the next stage action",
+          done: state.taskCount > 0,
+          href: "#tasks-panel",
+        },
+      ];
 
   return (
     <ol className="space-y-2.5">
@@ -798,13 +810,27 @@ function OnboardingProgress({ propertyId, accentColor, totalInvitable, pack }) {
 }
 
 function ShareButton({ propertyId }) {
-  const [state, setState] = useState("idle"); // idle | copied
-  const shareUrl = `${window.location.origin}/deal-room/${propertyId}/share`;
-  function handleShare() {
-    navigator.clipboard?.writeText(shareUrl).then(() => {
+  const [state, setState] = useState("idle"); // idle | copied | loading | error
+  async function handleShare() {
+    setState("loading");
+    try {
+      const ownerWriteToken = localStorage.getItem(`kontra_owner_token_${propertyId}`) || "";
+      const res = await fetch(`${API_BASE}/api/public/deal-room/${propertyId}/preview-link`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...(ownerWriteToken ? { "x-owner-write-token": ownerWriteToken } : {}) },
+        body: JSON.stringify({ ownerWriteToken }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.token) throw new Error(data.error || "Preview link unavailable");
+      const shareUrl = `${window.location.origin}/deal-room/${propertyId}/share?preview=${encodeURIComponent(data.token)}`;
+      await navigator.clipboard?.writeText(shareUrl);
       setState("copied");
-      setTimeout(() => setState("idle"), 2500);
-    });
+      setTimeout(() => setState("idle"), 3000);
+    } catch (err) {
+      console.error("[preview-link]", err);
+      setState("error");
+      setTimeout(() => setState("idle"), 3000);
+    }
   }
   return (
     <button onClick={handleShare}
@@ -812,7 +838,7 @@ function ShareButton({ propertyId }) {
       style={state === "copied"
         ? { background: "#f0fdf4", color: "#15803d", borderColor: "#bbf7d0" }
         : { background: "white", color: "#800020", borderColor: "#80002030" }}>
-      {state === "copied" ? "✓ Link Copied!" : "↗ Invite Participants"}
+      {state === "loading" ? "Creating preview…" : state === "copied" ? "✓ Preview Link Copied!" : state === "error" ? "Preview unavailable" : "↗ Share Read-only Preview"}
     </button>
   );
 }
@@ -3551,7 +3577,12 @@ export default function DealRoomPage() {
       })
       .then(async data => {
         setPackLoadError("");
-        if (data?.workflow_pack_id) await ensureWorkflowPackLoaded(data.workflow_pack_id);
+        if (data?.workflow_pack_id) {
+          await ensureWorkflowPackLoaded(
+            data.workflow_pack_id,
+            data.workflow_pack_config || null,
+          );
+        }
         // Mark pack ready BEFORE setApiProperty so DocumentChecklistPanel
         // receives a resolved workflowPack on its first seed attempt.
         setPackReady(true);

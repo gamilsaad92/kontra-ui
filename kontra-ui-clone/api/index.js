@@ -1509,7 +1509,7 @@ app.post('/api/checkout/guest', async (req, res) => {
 });
 
 // ── Demo Checkout — bypasses Stripe for local/internal testing ──────────────
-app.post('/api/checkout/demo', async (req, res) => {
+app.post(['/api/checkout/demo', '/api/checkout/trial'], async (req, res) => {
   try {
     const { propertyId, propertyName, plan = 'deal', email, role = 'owner', meta = {} } = req.body;
     const origin = req.headers.origin || 'https://kontraplatform.com';
@@ -1610,7 +1610,8 @@ app.post('/api/checkout/demo', async (req, res) => {
       .eq('property_id', pid)
       .then(() => {}).catch(() => {});
 
-    const successUrl = `${origin}/checkout/success?plan=${plan}&property=${pid}${propertyName ? `&name=${encodeURIComponent(propertyName)}` : ''}&session_id=${fakeSessionId}&demo=true&owner_token=${demoOwnerToken}`;
+    const isTrial = req.path === '/api/checkout/trial';
+    const successUrl = `${origin}/checkout/success?plan=${plan}&property=${pid}${propertyName ? `&name=${encodeURIComponent(propertyName)}` : ''}&session_id=${fakeSessionId}&demo=true&trial=${isTrial ? 'true' : 'false'}&owner_token=${demoOwnerToken}`;
     res.json({ url: successUrl });
   } catch (err) {
     console.error('[checkout/demo]', err.message);
@@ -2268,6 +2269,14 @@ app.get('/api/public/deal-room/:propertyId', async (req, res) => {
     // credential delivered only through the checkout redirect; never expose it
     // in a public GET response or any participant could forge checklist edits.
     const { customer_email, first_name, last_name, stripe_session_id, owner_write_token: _owt, ...safe } = data;
+    if (safe.workflow_pack_id?.startsWith('ws_')) {
+      const { data: customPack } = await supabase
+        .from('custom_workflow_packs')
+        .select('config')
+        .eq('id', safe.workflow_pack_id)
+        .maybeSingle();
+      if (customPack?.config) safe.workflow_pack_config = customPack.config;
+    }
     // Securities jurisdictions only apply to tokenization rooms. Older rooms
     // could contain a stale Regulation D value from a generic creation default;
     // do not expose that stale value as if it governs a normal acquisition.
@@ -2622,6 +2631,98 @@ function accessDenied(res, message = 'A verified deal-room invitation or owner a
   return res.status(403).json({ error: 'Access denied', message });
 }
 
+const PREVIEW_TOKEN_TTL_SECONDS = 72 * 60 * 60;
+const PREVIEW_TOKEN_SECRET = process.env.SESSION_SECRET || process.env.SUPABASE_SERVICE_ROLE_KEY || 'development-preview-secret';
+
+function createPreviewToken(propertyId) {
+  const payload = Buffer.from(JSON.stringify({
+    propertyId,
+    exp: Math.floor(Date.now() / 1000) + PREVIEW_TOKEN_TTL_SECONDS,
+  })).toString('base64url');
+  const signature = crypto.createHmac('sha256', PREVIEW_TOKEN_SECRET).update(payload).digest('base64url');
+  return `${payload}.${signature}`;
+}
+
+function verifyPreviewToken(token, propertyId) {
+  try {
+    const [payload, signature] = String(token || '').split('.');
+    if (!payload || !signature) return false;
+    const expected = crypto.createHmac('sha256', PREVIEW_TOKEN_SECRET).update(payload).digest('base64url');
+    const given = Buffer.from(signature);
+    const expectedBuffer = Buffer.from(expected);
+    if (given.length !== expectedBuffer.length || !crypto.timingSafeEqual(given, expectedBuffer)) return false;
+    const parsed = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8'));
+    return parsed.propertyId === propertyId && Number(parsed.exp) > Math.floor(Date.now() / 1000);
+  } catch {
+    return false;
+  }
+}
+
+app.post('/api/public/deal-room/:propertyId/preview-link', async (req, res) => {
+  const { propertyId } = req.params;
+  const ownerWriteToken = String(req.body?.ownerWriteToken || req.headers['x-owner-write-token'] || '').trim();
+  try {
+    const { data: room, error } = await supabase
+      .from('deal_rooms')
+      .select('owner_write_token')
+      .eq('property_id', propertyId)
+      .maybeSingle();
+    if (error) throw error;
+    if (!room?.owner_write_token || room.owner_write_token !== ownerWriteToken) {
+      return accessDenied(res, 'Only the deal-room owner can create a preview link');
+    }
+    const token = createPreviewToken(propertyId);
+    res.json({
+      token,
+      expiresAt: new Date((Math.floor(Date.now() / 1000) + PREVIEW_TOKEN_TTL_SECONDS) * 1000).toISOString(),
+    });
+  } catch (err) {
+    console.error('[preview-link]', err.message);
+    res.status(500).json({ error: 'Could not create preview link' });
+  }
+});
+
+app.get('/api/public/deal-room/:propertyId/preview', async (req, res) => {
+  const { propertyId } = req.params;
+  if (!verifyPreviewToken(req.query.token, propertyId)) {
+    return res.status(401).json({ error: 'This preview link is invalid or has expired' });
+  }
+  try {
+    const [roomRes, analysesRes, partiesRes] = await Promise.all([
+      supabase.from('deal_rooms').select('*').eq('property_id', propertyId).eq('status', 'active').maybeSingle(),
+      supabase.from('deal_analyses').select('id, section, filename, analysis, uploaded_by_role, created_at').eq('property_id', propertyId).order('created_at', { ascending: true }),
+      supabase.from('party_submissions').select('role, name, status, doc_count, submitted_at, notes').eq('property_id', propertyId),
+    ]);
+    if (roomRes.error) throw roomRes.error;
+    if (!roomRes.data) return res.status(404).json({ error: 'Deal room not found' });
+    const { customer_email, first_name, last_name, stripe_session_id, owner_write_token: _owt, ...room } = roomRes.data;
+    if (room.workflow_pack_id?.startsWith('ws_')) {
+      const { data: customPack } = await supabase
+        .from('custom_workflow_packs')
+        .select('config')
+        .eq('id', room.workflow_pack_id)
+        .maybeSingle();
+      if (customPack?.config) room.workflow_pack_config = customPack.config;
+    }
+    room.jurisdiction = await jurisdictionForTransaction(
+      room.jurisdiction,
+      room.workflow_pack_id,
+      room.deal_type,
+      room.metadata_values,
+    ) || null;
+    res.set('Cache-Control', 'no-store');
+    res.json({
+      room,
+      analyses: analysesRes.data || [],
+      parties: partiesRes.data || [],
+      expiresAt: new Date((Math.floor(Date.now() / 1000) + PREVIEW_TOKEN_TTL_SECONDS) * 1000).toISOString(),
+    });
+  } catch (err) {
+    console.error('[preview]', err.message);
+    res.status(500).json({ error: 'Could not load preview' });
+  }
+});
+
 async function getAssignedSectionsForAccess(propertyId, packId, propertyType, access) {
   if (access.mode !== 'participant') return null;
 
@@ -2652,7 +2753,7 @@ app.get('/api/public/deal-room/:propertyId/analyses', async (req, res) => {
   try {
     const access = await getRoomAccessContext(req, propertyId);
     if (access.mode === 'anonymous') return accessDenied(res);
-    const role = access.mode === 'participant' ? access.role : (req.query.role || 'owner');
+    const role = access.mode === 'participant' ? access.role : access.mode === 'preview' ? null : (req.query.role || 'owner');
     // Resolve pack + property_type if role filtering is needed
     let packId = null;
     let propertyType = null;
@@ -3177,6 +3278,7 @@ app.get('/api/public/deal-room/:propertyId/coordination', async (req, res) => {
     const submissions = access.mode === 'participant'
       ? allSubmissions.filter(s => s.role === access.role)
       : allSubmissions;
+    const safeSubmissions = submissions.map(({ email, ...submission }) => submission);
     const docsByRole = {};
     (analysesRes.data || []).forEach(a => {
       if (a.uploaded_by_role && (access.mode !== 'participant' || a.uploaded_by_role === access.role)) {
@@ -3184,7 +3286,7 @@ app.get('/api/public/deal-room/:propertyId/coordination', async (req, res) => {
       }
     });
     res.set('Cache-Control', 'no-store');
-    res.json({ stage, submissions, docsByRole });
+    res.json({ stage, submissions: safeSubmissions, parties: safeSubmissions, docsByRole });
   } catch (err) {
     console.error('[coordination]', err.message);
     res.status(500).json({ error: err.message });

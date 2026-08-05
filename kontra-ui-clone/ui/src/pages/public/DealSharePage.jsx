@@ -1,8 +1,7 @@
 import { useState, useEffect } from "react";
-import { useParams, Link } from "react-router-dom";
+import { useParams, Link, useSearchParams } from "react-router-dom";
 import { getWorkflowPack, ensureWorkflowPackLoaded } from "../../lib/workflowPacks";
-
-const API_BASE = (import.meta.env.VITE_API_BASE || "").replace(/\/+$/, "");
+import { API_BASE } from "../../lib/apiBase";
 
 const TYPE_ICONS = {
   "Multifamily": "🏢", "Office": "🏛️", "Industrial": "🏭",
@@ -118,6 +117,8 @@ function extractMetrics(analyses) {
 
 export default function DealSharePage() {
   const { propertyId } = useParams();
+  const [searchParams] = useSearchParams();
+  const previewToken = searchParams.get("preview") || "";
   const [room, setRoom]       = useState(null);
   const [analyses, setAn]     = useState([]);
   const [parties, setParties] = useState([]);
@@ -126,20 +127,28 @@ export default function DealSharePage() {
   const [contactSent, setContactSent] = useState(false);
 
   useEffect(() => {
-    if (!propertyId) return;
-    Promise.all([
-      fetch(`${API_BASE}/api/public/deal-room/${propertyId}`).then(r => r.json()),
-      fetch(`${API_BASE}/api/public/deal-room/${propertyId}/analyses`).then(r => r.ok ? r.json() : { analyses: [] }),
-      fetch(`${API_BASE}/api/public/deal-room/${propertyId}/coordination`).then(r => r.ok ? r.json() : { parties: [] }),
-    ]).then(async ([roomData, anData, coordData]) => {
-      if (roomData.error) { setError(roomData.error); return; }
-      if (roomData.workflow_pack_id) await ensureWorkflowPackLoaded(roomData.workflow_pack_id);
-      setRoom(roomData);
-      setAn(anData.analyses || []);
-      setParties(coordData.parties || []);
-    }).catch(() => setError("Failed to load deal package."))
+    if (!propertyId || !previewToken) {
+      setError("This read-only preview link is missing or invalid.");
+      setLoading(false);
+      return;
+    }
+    fetch(`${API_BASE}/api/public/deal-room/${propertyId}/preview?token=${encodeURIComponent(previewToken)}`)
+      .then(async r => {
+        const data = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(data.error || "This preview link is invalid or has expired.");
+        return data;
+      })
+      .then(async data => {
+        const roomData = data.room || {};
+        if (roomData.workflow_pack_id) {
+          await ensureWorkflowPackLoaded(roomData.workflow_pack_id, roomData.workflow_pack_config || null);
+        }
+        setRoom(roomData);
+        setAn(data.analyses || []);
+        setParties(data.parties || []);
+      }).catch((err) => setError(err.message || "Failed to load read-only preview."))
       .finally(() => setLoading(false));
-  }, [propertyId]);
+  }, [propertyId, previewToken]);
 
   if (loading) return (
     <div className="min-h-screen flex items-center justify-center" style={{ background: "#fafafa" }}>

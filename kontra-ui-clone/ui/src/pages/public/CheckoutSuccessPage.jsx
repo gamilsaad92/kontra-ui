@@ -7,6 +7,7 @@ export default function CheckoutSuccessPage() {
   const property   = searchParams.get("property") || "";
   const plan       = searchParams.get("plan") || "deal";
   const ownerToken = searchParams.get("owner_token") || "";
+  const isTrial = searchParams.get("trial") === "true";
   // `name` carries the clean workspace name the user entered; fall back to
   // transforming the slug only when the param is absent (e.g. old links).
   const nameParam  = searchParams.get("name") || "";
@@ -43,10 +44,10 @@ export default function CheckoutSuccessPage() {
                 <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
               </svg>
             </div>
-            <h1 className="text-2xl font-bold text-gray-900 mb-1">Workspace Activated!</h1>
+            <h1 className="text-2xl font-bold text-gray-900 mb-1">{isTrial ? "Your free trial is ready!" : "Workspace Activated!"}</h1>
             <p className="text-gray-500 text-sm">
               {propertyLabel && <><strong>{propertyLabel}</strong> · </>}
-              {planLabel} · A receipt has been sent to your email
+              {isTrial ? "No card required · Invite your transaction team" : `${planLabel} · A receipt has been sent to your email`}
             </p>
           </div>
 

@@ -3,8 +3,7 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import PublicLayout from "./PublicLayout";
 import { trackEvent } from "../../lib/analytics";
 import { listWorkflowPacks, fetchCustomPacks, getWorkflowPack, deleteCustomPack, registerCustomPack } from "../../lib/workflowPacks";
-
-const API_BASE = (import.meta.env.VITE_API_BASE || "").replace(/\/+$/, "");
+import { API_BASE } from "../../lib/apiBase";
 
 const ICON_CHOICES = ["📄","🏢","💼","🏦","🔍","🛡️","⚖️","📊","⚙️","🏗️","🧾","📋","🤝","🏭","👤","🔑","✍️","📝","🌐","🏛️"];
 const COLOR_CHOICES = ["#800020","#1d4ed8","#16a34a","#d97706","#6d28d9","#0369a1","#374151","#dc2626","#0891b2","#7c3aed"];
@@ -569,7 +568,7 @@ export default function CreateDealRoomPage() {
     setLoading(true);
     setError("");
     try {
-      const endpoint = demo ? `${API_BASE}/api/checkout/demo` : `${API_BASE}/api/checkout/guest`;
+      const endpoint = demo ? `${API_BASE}/api/checkout/trial` : `${API_BASE}/api/checkout/guest`;
       const res = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -604,7 +603,7 @@ export default function CreateDealRoomPage() {
                Deal room live in minutes
             </div>
              <h1 className="text-2xl font-bold text-gray-900 mb-2">Create Your Deal Room</h1>
-            <p className="text-gray-500 text-sm">$499 one-time · All parties included · No subscription</p>
+            <p className="text-gray-500 text-sm">Start free · No card required · Invite your transaction team</p>
           </div>
 
           {/* Step indicator */}
@@ -984,7 +983,7 @@ export default function CreateDealRoomPage() {
                 </button>
                 <button type="button" onClick={() => handleLaunch(true)} disabled={loading}
                   className="flex-1 py-3 text-sm font-medium text-gray-500 hover:text-gray-800 transition disabled:opacity-50 underline">
-                  Continue in demo mode
+                  Start free trial — no payment
                 </button>
               </div>
             </div>

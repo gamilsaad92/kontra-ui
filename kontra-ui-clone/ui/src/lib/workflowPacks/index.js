@@ -92,8 +92,12 @@ export function hasPack(packId) {
 // built-in ids (no-op). Custom pack failures are deliberately surfaced:
 // falling back to CRE makes a valid non-CRE room look like the wrong
 // transaction and hides the actual configuration problem.
-export async function ensureWorkflowPackLoaded(packId) {
+export async function ensureWorkflowPackLoaded(packId, inlineConfig = null) {
   if (!packId || hasPack(packId)) return getWorkflowPack(packId);
+  if (inlineConfig) {
+    registerCustomPack({ id: packId, ...inlineConfig });
+    return getWorkflowPack(packId);
+  }
   if (!pendingFetches[packId]) {
     pendingFetches[packId] = fetch(`${API_BASE}/api/workflow-packs/${packId}`)
       .then(async r => {
