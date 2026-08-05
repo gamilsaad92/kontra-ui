@@ -14,7 +14,12 @@ function resolveFallbackBase() {
 }
 
 const fallback = resolveFallbackBase();
-const normalized = (configured && configured.length ? configured : fallback)
+const isLocalOrigin = /^(https?:\/\/)?(localhost|127\.0\.0\.1)(:\d+)?$/i.test(fallback);
+// Production previews must not silently target the Vercel origin. If a Vercel
+// project ignores its checked-in env block, same-origin /api requests can hit
+// the wrong project root and surface as a generic "Load failed" room error.
+const fallbackBase = isLocalOrigin ? fallback : "https://kontra-api.onrender.com";
+const normalized = (configured && configured.length ? configured : fallbackBase)
   .replace(/\/+$/, "")
   .replace(/\/api$/, "");
 
