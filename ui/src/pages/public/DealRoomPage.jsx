@@ -1445,8 +1445,7 @@ function DigitalAssetTogglePanel({ propertyId, property, pack, onEnabledChange }
         <div className="flex-1 min-w-0">
           <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-1">Digital Asset Preparation</p>
           <p className="text-[11px] text-gray-400 leading-snug">
-             Layers token-issuance preparation onto this deal room — enables the Digital Asset Readiness tracker,
-            jurisdiction compliance checklist, and KYC progress on the Overview tab.
+            Adds token-issuance preparation to this deal room, including the digital asset readiness tracker.
           </p>
         </div>
         <div className="flex items-center gap-2.5 shrink-0 mt-0.5">
@@ -3585,6 +3584,7 @@ export default function DealRoomPage() {
   const [packReady, setPackReady] = useState(!!DEMO_PROPERTIES[propertyId]);
   const [analysesRefreshKey, setAnalysesRefreshKey] = useState(0);
   const [activeTab, setActiveTabRaw] = useState('overview');
+  const [showAdvancedSettings, setShowAdvancedSettings] = useState(false);
   // Wrap tab setter to emit analytics
   const setActiveTab = useCallback((tab) => {
     setActiveTabRaw(tab);
@@ -4157,6 +4157,8 @@ export default function DealRoomPage() {
                 <PanelErrorBoundary>
                   <VerifiedAssetPackage propertyId={pid} />
                 </PanelErrorBoundary>
+                {/* Transaction Risk — overview-level health signal */}
+                <TransactionRiskPanel propertyId={pid} />
                 {/* Participants — single section, no duplication */}
                 <div id="participants-section" className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
                   <div className="px-5 py-4 border-b border-gray-100">
@@ -4208,72 +4210,60 @@ export default function DealRoomPage() {
               </>
             )}
 
-            {activeTab === 'settings' && (
-              <div>
-                {/* Active configuration overlay display (spec §12) */}
-                <DigitalAssetConfigPanel property={property} pack={pack} />
+            {activeTab === 'settings' && (() => {
+              const daEnabled = !!(property?.metadata_values?.digital_asset_enabled);
+              const isAdvancedOpen = showAdvancedSettings || isTokenization || daEnabled;
+              return (
+                <div className="space-y-4">
+                  {/* ── Workspace Settings ─────────────────────────────────── */}
+                  <TransactionDetailsPanel propertyId={pid} property={property} pack={pack} />
 
-                {/* Integrations — Harvey and Spellbook */}
-                <div className="bg-white rounded-2xl border border-gray-200 p-5 mb-5">
-                  <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-1">Integrations</p>
-                  <p className="text-[11px] text-gray-400 mb-4 leading-snug">
-                    Connect legal AI tools to accelerate document review in this workspace.
-                  </p>
-                  <div className="grid sm:grid-cols-2 gap-3">
-                    {[
-                      { name: 'Harvey', icon: '⚖️', description: 'AI-powered legal research and contract analysis.' },
-                      { name: 'Spellbook', icon: '📜', description: 'AI contract drafting and negotiation by Rally Legal.' },
-                    ].map(tool => (
-                      <div key={tool.name} className="flex items-start gap-3 p-4 rounded-xl border border-gray-200 bg-gray-50">
-                        <span className="text-2xl shrink-0">{tool.icon}</span>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center justify-between gap-2 mb-1">
-                            <p className="text-sm font-bold text-gray-900">{tool.name}</p>
-                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-gray-200 text-gray-500">Coming soon</span>
-                          </div>
-                          <p className="text-[11px] text-gray-400 leading-snug">{tool.description}</p>
-                        </div>
+                  {/* ── Advanced Features ──────────────────────────────────── */}
+                  <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
+                    <button
+                      onClick={() => setShowAdvancedSettings(s => !s)}
+                      className="w-full flex items-center justify-between px-5 py-4 text-left hover:bg-gray-50 transition">
+                      <div>
+                        <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">Advanced Features</p>
+                        {!isAdvancedOpen && (
+                          <p className="text-[11px] text-gray-400 mt-0.5">Digital Asset Preparation and tokenization settings</p>
+                        )}
                       </div>
-                    ))}
+                      <svg className={`w-4 h-4 text-gray-400 transition-transform shrink-0 ${isAdvancedOpen ? 'rotate-180' : ''}`}
+                        fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                      </svg>
+                    </button>
+
+                    {isAdvancedOpen && (
+                      <div className="border-t border-gray-100 p-5 space-y-4">
+                        {/* Active config status — only renders when jurisdiction or DA layer is active */}
+                        <DigitalAssetConfigPanel property={property} pack={pack} />
+                        <DigitalAssetTogglePanel
+                          propertyId={pid}
+                          property={property}
+                          pack={pack}
+                          onEnabledChange={(enabled) => {
+                            setApiProperty(prev => prev ? {
+                              ...prev,
+                              metadata_values: {
+                                ...(prev.metadata_values || {}),
+                                ...(enabled
+                                  ? { digital_asset_enabled: 'true' }
+                                  : { digital_asset_enabled: '' }),
+                              },
+                            } : prev);
+                            if (!enabled) setActiveTab('overview');
+                          }}
+                        />
+                        {isTokenization && <OwnershipStructurePanel propertyId={pid} property={property} />}
+                        {isTokenization && <JurisdictionSettingsPanel propertyId={pid} property={property} />}
+                      </div>
+                    )}
                   </div>
                 </div>
-
-                {/* Digital Asset Preparation — optional layer, off by default */}
-                <DigitalAssetTogglePanel
-                  propertyId={pid}
-                  property={property}
-                  pack={pack}
-                  onEnabledChange={(enabled) => {
-                    setApiProperty(prev => prev ? {
-                      ...prev,
-                      metadata_values: {
-                        ...(prev.metadata_values || {}),
-                        ...(enabled
-                          ? { digital_asset_enabled: 'true' }
-                          : { digital_asset_enabled: '' }),
-                      },
-                    } : prev);
-                    if (!enabled) setActiveTab('overview');
-                  }}
-                />
-
-                {/* Ownership & Token Structure — tokenization workspaces (#182) */}
-                {isTokenization && <OwnershipStructurePanel propertyId={pid} property={property} />}
-
-                <TransactionRiskPanel propertyId={pid} />
-                {visibleOutstandingSections.length > 0 && (
-                  <div className="grid md:grid-cols-2 gap-5 mb-6">
-                    {visibleOutstandingSections.map((sectionKey) => {
-                      const Panel = SECTION_MAP[sectionKey];
-                      return Panel ? <Panel key={sectionKey} /> : null;
-                    })}
-                  </div>
-                )}
-                {/* Jurisdiction editor — task #167 */}
-                {isTokenization && <JurisdictionSettingsPanel propertyId={pid} property={property} />}
-                <LegalReviewPanel propertyId={pid} pack={pack} isDemo={false} />
-              </div>
-            )}
+              );
+            })()}
           </>
 
         ) : (
