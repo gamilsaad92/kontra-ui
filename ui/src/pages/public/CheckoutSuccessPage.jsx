@@ -44,10 +44,10 @@ export default function CheckoutSuccessPage() {
                 <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
               </svg>
             </div>
-            <h1 className="text-2xl font-bold text-gray-900 mb-1">{isTrial ? "Your free trial is ready!" : "Workspace Activated!"}</h1>
+            <h1 className="text-2xl font-bold text-gray-900 mb-1">{isTrial ? "Early access activated!" : "Workspace Activated!"}</h1>
             <p className="text-gray-500 text-sm">
               {propertyLabel && <><strong>{propertyLabel}</strong> · </>}
-              {isTrial ? "No card required · Invite your transaction team" : `${planLabel} · A receipt has been sent to your email`}
+              {isTrial ? "No payment required · Invite your transaction team" : `${planLabel} · A receipt has been sent to your email`}
             </p>
           </div>
 

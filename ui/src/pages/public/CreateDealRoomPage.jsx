@@ -983,7 +983,7 @@ export default function CreateDealRoomPage() {
                 </button>
                 <button type="button" onClick={() => handleLaunch(true)} disabled={loading}
                   className="flex-1 py-3 text-sm font-medium text-gray-500 hover:text-gray-800 transition disabled:opacity-50 underline">
-                  Start free trial — no payment
+                  Start with early access
                 </button>
               </div>
             </div>

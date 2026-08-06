@@ -91,7 +91,7 @@ export default function HomePage() {
             Every transaction gets its own Operations Manager.
           </h1>
           <p className="text-lg text-gray-400 max-w-2xl mx-auto mb-10 leading-relaxed">
-             Coordinate every participant, document, approval, and deadline from one intelligent deal room.
+            The transaction coordination workspace — every participant, stage, and deadline in one deal room, from first contact to close.
           </p>
 
           <div className="flex flex-col sm:flex-row items-center justify-center gap-3 mb-4">

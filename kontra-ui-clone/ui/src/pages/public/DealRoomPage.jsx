@@ -3554,40 +3554,6 @@ function OperationsManagerView({ propertyId, property, pack, role, onTabChange }
         />
       )}
 
-      {/* ── Area 5: Recent activity ──────────────────────────────────────── */}
-      <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
-        <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
-          <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">Recent Activity</p>
-          <button onClick={() => onTabChange?.('activity')}
-            className="text-[11px] font-semibold text-[#800020] hover:opacity-80 transition">
-            View all activity →
-          </button>
-        </div>
-        {recentActivity.length === 0 ? (
-          <div className="px-5 py-8 text-center">
-            <p className="text-sm text-gray-400 max-w-xs mx-auto">
-              Activity will appear here after participants are invited or documents are uploaded.
-            </p>
-          </div>
-        ) : (
-          <div className="divide-y divide-gray-100">
-            {recentActivity.map((e, i) => (
-              <div key={e.id || i} className="px-5 py-3 flex items-start gap-3">
-                <div className="w-7 h-7 rounded-lg flex items-center justify-center text-sm shrink-0 bg-gray-50 mt-0.5">
-                  {EVENT_ICON[e.type] || '📌'}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs font-semibold text-gray-700">{e.label}</p>
-                  {e.description && (
-                    <p className="text-[11px] text-gray-400 truncate mt-0.5">{e.description}</p>
-                  )}
-                </div>
-                <span className="text-[10px] text-gray-400 shrink-0 mt-0.5 whitespace-nowrap">{e.time}</span>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
 
     </div>
   );
@@ -4006,7 +3972,7 @@ export default function DealRoomPage() {
             You're about to enter a live deal room.
           </h2>
           <p className="text-sm text-gray-400 leading-relaxed mb-6">
-            Watch how Kontra's AI Operations Manager coordinates participants, tracks documents, identifies blockers, and keeps every party moving toward closing.
+            One deal room coordinates every participant, stage, and deadline — from kickoff to close.
           </p>
           <ul className="text-left space-y-3 mb-8">
             {[
@@ -4201,6 +4167,17 @@ export default function DealRoomPage() {
                     packId={packId}
                     isV2={!!property.auth_v2_enabled}
                   />
+                </div>
+                {/* Recent Activity — below participants */}
+                <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
+                  <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+                    <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">Recent Activity</p>
+                    <button onClick={() => setActiveTab('activity')}
+                      className="text-[11px] font-semibold text-[#800020] hover:opacity-80 transition">
+                      View all →
+                    </button>
+                  </div>
+                  <ActivityTimeline propertyId={pid} />
                 </div>
               </div>
             )}
