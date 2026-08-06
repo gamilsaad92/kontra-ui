@@ -10,6 +10,12 @@ const COLOR_CHOICES = ["#800020","#1d4ed8","#16a34a","#d97706","#6d28d9","#0369a
 
 const SYSTEM_PACK_IDS = ["business_acquisition", "cre_acquisition", "fundraising", "tokenization"];
 
+// Transaction types where Digital Asset Preparation is contextually relevant.
+// For everything else it stays hidden unless the user explicitly enables it.
+const TOKENIZATION_RELEVANT_TYPES = new Set([
+  'tokenization', 'token_issuance', 'sto', 'security_token', 'digital_asset', 'rwa',
+]);
+
 // Map the AI transaction-type hint to the matching system pack ID.
 // Used to keep the preview pack, the Review summary, and the activated workspace in sync.
 const AI_TYPE_TO_PACK = {
@@ -798,6 +804,16 @@ export default function CreateDealRoomPage() {
                         <option value="joint_venture">Joint Venture</option>
                       </select>
                     )}
+                  </div>
+                )}
+
+                {/* Digital asset note — shown only when AI classified as tokenization-relevant */}
+                {isAiGenerated && TOKENIZATION_RELEVANT_TYPES.has(aiTransactionType) && (
+                  <div className="bg-blue-50 border border-blue-100 rounded-xl px-3.5 py-3 text-xs text-blue-800 leading-relaxed">
+                    <span className="font-semibold">Digital Asset Preparation is included.</span>{' '}
+                    Because this looks like a token issuance or STO, your deal room will have jurisdiction
+                    controls, cap table, and ownership structure available under Advanced Features in Settings.
+                    You can disable it at any time.
                   </div>
                 )}
 

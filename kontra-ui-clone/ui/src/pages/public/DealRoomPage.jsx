@@ -82,6 +82,13 @@ const JURISDICTION_INFO = {
   },
 };
 
+// Transaction types where digital asset preparation is contextually relevant.
+// For all other types (acquisition, lending, licensing, etc.) DA stays hidden
+// unless the user explicitly turns it on.
+const TOKENIZATION_RELEVANT_TYPES = new Set([
+  'tokenization', 'token_issuance', 'sto', 'security_token', 'digital_asset', 'rwa',
+]);
+
 function isDigitalAssetLayerEnabled(property, pack) {
   const metadataEnabled = property?.metadata_values?.digital_asset_enabled;
   return pack?.id === 'tokenization'
@@ -4212,7 +4219,15 @@ export default function DealRoomPage() {
 
             {activeTab === 'settings' && (() => {
               const daEnabled = !!(property?.metadata_values?.digital_asset_enabled);
-              const isAdvancedOpen = showAdvancedSettings || isTokenization || daEnabled;
+              // DA is contextually relevant only for token-related transaction types.
+              // For acquisitions, lending, licensing, etc. it stays hidden unless
+              // the user has already turned it on.
+              const isTokenizationRelevant = TOKENIZATION_RELEVANT_TYPES.has(property?.deal_type)
+                || pack?.id === 'tokenization'
+                || pack?.transactionType === 'tokenization';
+              // Auto-expand: always open when DA is on or the workspace is token-classified.
+              // Standard deals start collapsed — user must click to reveal the toggle.
+              const isAdvancedOpen = showAdvancedSettings || daEnabled || isTokenizationRelevant;
               return (
                 <div className="space-y-4">
                   {/* ── Workspace Settings ─────────────────────────────────── */}
@@ -4226,7 +4241,11 @@ export default function DealRoomPage() {
                       <div>
                         <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">Advanced Features</p>
                         {!isAdvancedOpen && (
-                          <p className="text-[11px] text-gray-400 mt-0.5">Digital Asset Preparation and tokenization settings</p>
+                          <p className="text-[11px] text-gray-400 mt-0.5">
+                            {isTokenizationRelevant
+                              ? 'Digital asset preparation is relevant for this transaction type'
+                              : 'Optional extensions — not needed for most transactions'}
+                          </p>
                         )}
                       </div>
                       <svg className={`w-4 h-4 text-gray-400 transition-transform shrink-0 ${isAdvancedOpen ? 'rotate-180' : ''}`}
@@ -4237,6 +4256,24 @@ export default function DealRoomPage() {
 
                     {isAdvancedOpen && (
                       <div className="border-t border-gray-100 p-5 space-y-4">
+                        {/* Plain-language explanation before any fields */}
+                        <div className="rounded-xl bg-gray-50 border border-gray-100 px-4 py-3">
+                          {isTokenizationRelevant ? (
+                            <p className="text-xs text-gray-600 leading-relaxed">
+                              This transaction involves digital asset issuance.{' '}
+                              <strong className="text-gray-800">Digital Asset Preparation</strong> adds token
+                              compliance tooling — jurisdiction controls, cap table, and ownership structure —
+                              on top of the standard deal room. The core workflow stays the same.
+                            </p>
+                          ) : (
+                            <p className="text-xs text-gray-600 leading-relaxed">
+                              <strong className="text-gray-800">Digital Asset Preparation</strong> is designed
+                              for token issuances, STOs, and digital securities. It is not typically needed
+                              for acquisitions, lending, or licensing — you can enable it here if your
+                              transaction requires it.
+                            </p>
+                          )}
+                        </div>
                         {/* Active config status — only renders when jurisdiction or DA layer is active */}
                         <DigitalAssetConfigPanel property={property} pack={pack} />
                         <DigitalAssetTogglePanel
