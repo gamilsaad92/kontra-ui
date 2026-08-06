@@ -2331,7 +2331,6 @@ function WorkspaceTabNav({ activeTab, onChange, showReadinessTab = false }) {
     { key: 'documents', label: 'Documents' },
     { key: 'activity',  label: 'Activity'  },
     { key: 'settings',  label: 'Settings'  },
-    ...(showReadinessTab ? [{ key: 'readiness', label: 'Transaction Readiness' }] : []),
   ];
   return (
     <div className="border-b border-gray-200 bg-white">
@@ -2579,7 +2578,6 @@ function OperationsManagerView({ propertyId, property, pack, role, onTabChange }
   // Stage advance (task #100) — owner-only; reads token from localStorage
   const [ownerToken,    setOwnerToken]    = useState('');
   const [advancingStage, setAdvancingStage] = useState(false);
-  const [showSettlement, setShowSettlement] = useState(false);
 
   useEffect(() => {
     try { setOwnerToken(localStorage.getItem(`kontra_owner_token_${propertyId}`) || ''); } catch {}
@@ -2778,6 +2776,23 @@ function OperationsManagerView({ propertyId, property, pack, role, onTabChange }
       ? new Date(e.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
       : '',
   }));
+
+  // ── Inline Transaction Readiness score ────────────────────────────────────
+  // Computed from data already in scope — drives the header badge in Area 3
+  // and controls whether the Settlement panel is shown (progressive disclosure).
+  const _rDocScore = requiredDocCount > 0
+    ? Math.min(100, Math.round((docCount / requiredDocCount) * 100))
+    : Math.min(70, docCount * 14);
+  const _rNonCoord = participantRows.filter(r => !r.canManage);
+  const _rSubmitted = _rNonCoord.filter(r => r.submitted || submittedRoles.has(r.key)).length;
+  const _rPartScore = _rNonCoord.length > 0 ? Math.round((_rSubmitted / _rNonCoord.length) * 100) : 0;
+  const _rBlockScore = briefing ? (openBlockers === 0 ? 100 : Math.max(0, 100 - openBlockers * 30)) : 0;
+  const overallReadiness = briefLoading ? null
+    : Math.round(_rDocScore * 0.45 + _rPartScore * 0.35 + _rBlockScore * 0.20);
+  // Progressive disclosure: show Settlement only when deal is approaching close
+  const showSettlementPanel = overallReadiness != null && (
+    overallReadiness >= 75 || (stages.length > 0 && currentStageIdx >= stages.length - 2)
+  );
 
   return (
     <div className="space-y-5">
@@ -3375,9 +3390,26 @@ function OperationsManagerView({ propertyId, property, pack, role, onTabChange }
         </div>
       </div>
 
-      {/* ── Area 3: Transaction progress ────────────────────────────────── */}
+      {/* ── Area 3: Transaction progress + live readiness score ─────────── */}
       <div className="bg-white rounded-2xl border border-gray-200 p-5">
-        <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-4">Transaction Progress</p>
+        <div className="flex items-center justify-between mb-4">
+          <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">Transaction Progress</p>
+          {overallReadiness != null && (
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] font-bold px-2 py-0.5 rounded-full"
+                style={{
+                  color:      overallReadiness >= 80 ? '#16a34a' : overallReadiness >= 55 ? '#d97706' : '#dc2626',
+                  background: overallReadiness >= 80 ? '#f0fdf4' : overallReadiness >= 55 ? '#fffbeb' : '#fef2f2',
+                }}>
+                {overallReadiness >= 80 ? 'Closing Ready' : overallReadiness >= 55 ? 'In Progress' : 'Needs Attention'}
+              </span>
+              <span className="text-base font-black"
+                style={{ color: overallReadiness >= 80 ? '#16a34a' : overallReadiness >= 55 ? '#d97706' : '#dc2626' }}>
+                {overallReadiness}%
+              </span>
+            </div>
+          )}
+        </div>
         {stages.length > 0 && (
           <div className="flex items-center gap-1 mb-5">
             {stages.map((s, i) => {
@@ -3513,102 +3545,14 @@ function OperationsManagerView({ propertyId, property, pack, role, onTabChange }
         )}
       </div>
 
-      {/* ── Closing & Handoff — collapsed by default; configure when nearing close ── */}
-      <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
-        <button
-          onClick={() => setShowSettlement(s => !s)}
-          className="w-full flex items-center justify-between px-6 py-4 hover:bg-gray-50 transition text-left"
-        >
-          <div className="flex items-center gap-3">
-            <span className="text-base">💸</span>
-            <div>
-              <p className="text-sm font-bold text-gray-900">Closing &amp; Handoff</p>
-              <p className="text-[10px] text-gray-400">
-                {property?.metadata_values?.settlement_method
-                  ? `Method confirmed · ${SETTLEMENT_PROVIDERS.find(p => p.id === property.metadata_values.settlement_method)?.label || property.metadata_values.settlement_method}`
-                  : 'Settlement method — configure when approaching close'}
-              </p>
-            </div>
-          </div>
-          <span className="text-[10px] text-gray-400 shrink-0">{showSettlement ? '▲ collapse' : '▼ expand'}</span>
-        </button>
-        {showSettlement && (
-          <div className="border-t border-gray-100">
-            <SettlementPanel
-              propertyId={propertyId}
-              property={property}
-              isAtFinalStage={stages.length > 0 && currentStageIdx >= stages.length - 1}
-            />
-          </div>
-        )}
-      </div>
-
-      {/* ── Area 4: Participant status ───────────────────────────────────── */}
-      <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
-        <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
-          <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">Participant Status</p>
-          <button onClick={() => onTabChange?.('participants')}
-            className="text-[11px] font-semibold text-[#800020] hover:opacity-80 transition">
-            Manage →
-          </button>
-        </div>
-        {dataLoading ? (
-          <div className="p-5 space-y-2">
-            {[1, 2, 3].map(i => <div key={i} className="h-10 bg-gray-50 rounded-xl animate-pulse" />)}
-          </div>
-        ) : participantRows.length === 0 ? (
-           <p className="px-5 py-6 text-sm text-gray-400 text-center">No roles configured for this deal room.</p>
-        ) : (
-          <div>
-            <div className="hidden sm:grid grid-cols-[2fr_2fr_1fr_auto] gap-4 px-5 py-2 bg-gray-50 border-b border-gray-100">
-              {['Participant / Role', 'Responsibility', 'Status', 'Action'].map(h => (
-                <p key={h} className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">{h}</p>
-              ))}
-            </div>
-            <div className="divide-y divide-gray-100">
-              {participantRows.map(p => (
-                <div key={p.key} className="grid sm:grid-cols-[2fr_2fr_1fr_auto] gap-4 items-center px-5 py-3">
-                  <div className="flex items-center gap-2.5 col-span-full sm:col-span-1">
-                    <div className="w-7 h-7 rounded-lg flex items-center justify-center text-base shrink-0"
-                      style={{ background: (p.color || '#800020') + '15' }}>
-                      {p.icon}
-                    </div>
-                    <span className="text-sm font-semibold text-gray-800">{p.label}</span>
-                  </div>
-                  <p className="hidden sm:block text-xs text-gray-400 truncate">{p.headline || p.subtext || p.label}</p>
-                  <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full w-fit"
-                    style={{ background: p.statusStyle.bg, color: p.statusStyle.color }}>
-                    {p.status}
-                  </span>
-                  <div className="flex items-center gap-2 sm:justify-end">
-                    {p.status === 'Not invited' && (
-                      <button onClick={() => onTabChange?.('participants')}
-                        className="text-[11px] font-semibold text-[#800020] hover:underline transition shrink-0">
-                        Invite →
-                      </button>
-                    )}
-                    {p.status === 'Invited' && (
-                      <button onClick={() => onTabChange?.('participants')}
-                        className="text-[11px] font-semibold text-gray-400 hover:text-gray-600 transition shrink-0">
-                        Send reminder
-                      </button>
-                    )}
-                    {p.status === 'Needs Revision' && (
-                      <button onClick={() => onTabChange?.('participants')}
-                        className="text-[11px] font-semibold text-amber-600 hover:underline transition shrink-0">
-                        Notify →
-                      </button>
-                    )}
-                    {(p.status === 'Submitted' || p.status === 'Approved') && (
-                      <span className="text-[11px] text-gray-300">{p.lastActivity}</span>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-      </div>
+      {/* ── Closing & Handoff — progressive disclosure (≥75% ready or final stages) ─ */}
+      {showSettlementPanel && (
+        <SettlementPanel
+          propertyId={propertyId}
+          property={property}
+          isAtFinalStage={stages.length > 0 && currentStageIdx >= stages.length - 1}
+        />
+      )}
 
       {/* ── Area 5: Recent activity ──────────────────────────────────────── */}
       <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
@@ -4229,6 +4173,7 @@ export default function DealRoomPage() {
           <>
             {activeTab === 'overview' && (
               <div className="space-y-5">
+                {/* Operations Manager — single action center */}
                 <OperationsManagerView
                   propertyId={pid}
                   property={property}
@@ -4236,18 +4181,17 @@ export default function DealRoomPage() {
                   role={role}
                   onTabChange={(tab) => {
                     if (tab === 'participants') {
-                      // Participants tab is merged into Overview — scroll down to it
                       setTimeout(() => document.getElementById('participants-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
                     } else {
                       setActiveTab(tab);
                     }
                   }}
                 />
-                {/* Tasks — merged from standalone tab into Overview */}
-                <div id="tasks-section">
-                  <TasksPanel propertyId={pid} role={role} onTabChange={setActiveTab} authHeaders={getRoomAuthHeaders(pid)} />
-                </div>
-                {/* Participants — merged from standalone tab into Overview */}
+                {/* Verified Transaction Package — core output, visible from day 1 */}
+                <PanelErrorBoundary>
+                  <VerifiedAssetPackage propertyId={pid} />
+                </PanelErrorBoundary>
+                {/* Participants — single section, no duplication */}
                 <div id="participants-section" className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
                   <div className="px-5 py-4 border-b border-gray-100">
                     <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">Participants</p>
@@ -4287,21 +4231,37 @@ export default function DealRoomPage() {
               </>
             )}
 
-            {activeTab === 'readiness' && (
-              <AssetReadinessTab
-                propertyId={pid}
-                property={property}
-                pack={pack}
-                onTabChange={setActiveTab}
-              />
-            )}
-
             {activeTab === 'settings' && (
               <div>
                 {/* Active configuration overlay display (spec §12) */}
                 <DigitalAssetConfigPanel property={property} pack={pack} />
 
-                {/* Digital Asset toggle — non-tokenization workspaces (#181) */}
+                {/* Integrations — Harvey and Spellbook */}
+                <div className="bg-white rounded-2xl border border-gray-200 p-5 mb-5">
+                  <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-1">Integrations</p>
+                  <p className="text-[11px] text-gray-400 mb-4 leading-snug">
+                    Connect legal AI tools to accelerate document review in this workspace.
+                  </p>
+                  <div className="grid sm:grid-cols-2 gap-3">
+                    {[
+                      { name: 'Harvey', icon: '⚖️', description: 'AI-powered legal research and contract analysis.' },
+                      { name: 'Spellbook', icon: '📜', description: 'AI contract drafting and negotiation by Rally Legal.' },
+                    ].map(tool => (
+                      <div key={tool.name} className="flex items-start gap-3 p-4 rounded-xl border border-gray-200 bg-gray-50">
+                        <span className="text-2xl shrink-0">{tool.icon}</span>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between gap-2 mb-1">
+                            <p className="text-sm font-bold text-gray-900">{tool.name}</p>
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-gray-200 text-gray-500">Coming soon</span>
+                          </div>
+                          <p className="text-[11px] text-gray-400 leading-snug">{tool.description}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Digital Asset Preparation — optional layer, off by default */}
                 <DigitalAssetTogglePanel
                   propertyId={pid}
                   property={property}
@@ -4324,9 +4284,6 @@ export default function DealRoomPage() {
                 {isTokenization && <OwnershipStructurePanel propertyId={pid} property={property} />}
 
                 <TransactionRiskPanel propertyId={pid} />
-                <PanelErrorBoundary>
-                  <VerifiedAssetPackage propertyId={pid} />
-                </PanelErrorBoundary>
                 {visibleOutstandingSections.length > 0 && (
                   <div className="grid md:grid-cols-2 gap-5 mb-6">
                     {visibleOutstandingSections.map((sectionKey) => {
