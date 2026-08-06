@@ -603,7 +603,7 @@ export default function CreateDealRoomPage() {
                Deal room live in minutes
             </div>
              <h1 className="text-2xl font-bold text-gray-900 mb-2">Create Your Deal Room</h1>
-            <p className="text-gray-500 text-sm">Start free · No card required · Invite your transaction team</p>
+            <p className="text-gray-500 text-sm">Your transaction coordination workspace — every party, stage, and deadline in one deal room.</p>
           </div>
 
           {/* Step indicator */}
@@ -647,34 +647,12 @@ export default function CreateDealRoomPage() {
                   autoFocus
                 />
 
-                {/* Optional structured fields */}
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className={labelCls}>Transaction type <span className="font-normal text-gray-400">(optional)</span></label>
-                    <select className={`${inputCls} bg-white`} value={aiTransactionType} onChange={e => setAiTransactionType(e.target.value)}>
-                      <option value="">Select type…</option>
-                      <option value="business_acquisition">Business Acquisition</option>
-                      <option value="cre_acquisition">CRE Acquisition</option>
-                      <option value="fundraising">Fundraising</option>
-                      <option value="tokenization">Token Issuance / STO</option>
-                      <option value="lending">Lending / Finance</option>
-                      <option value="licensing">Licensing</option>
-                      <option value="joint_venture">Joint Venture</option>
-                      <option value="other">Other</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className={labelCls}>Current stage <span className="font-normal text-gray-400">(optional)</span></label>
-                    <select className={`${inputCls} bg-white`} value={aiCurrentStage} onChange={e => setAiCurrentStage(e.target.value)}>
-                      <option value="">Select stage…</option>
-                      <option value="pre_loi">Pre-LOI</option>
-                      <option value="loi">LOI / Term Sheet</option>
-                      <option value="due_diligence">Due Diligence</option>
-                      <option value="financing">Financing</option>
-                      <option value="closing">Closing</option>
-                      <option value="closed">Closed</option>
-                    </select>
-                  </div>
+                {/* VTP outcome callout */}
+                <div className="flex items-start gap-2.5 bg-gray-50 border border-gray-100 rounded-xl px-3.5 py-3">
+                  <span className="text-base shrink-0 mt-0.5">📦</span>
+                  <p className="text-xs text-gray-500 leading-relaxed">
+                    Everything you do builds toward a <strong className="text-gray-700">verified transaction package</strong> at closing — a complete, auditable record of the deal.
+                  </p>
                 </div>
 
                 {/* Target closing date */}
@@ -737,7 +715,7 @@ export default function CreateDealRoomPage() {
                 <div>
                   <p className="text-[11px] font-bold uppercase tracking-wider text-gray-400 mb-2">Templates</p>
                   <div className="grid grid-cols-1 gap-2">
-                    {systemPacks.map(p => (
+                    {systemPacks.filter(p => p.id !== 'tokenization').map(p => (
                       <button key={p.id} type="button" onClick={() => set("packId", p.id)}
                         className={`border rounded-xl p-3.5 text-left transition-all ${form.packId === p.id ? "border-red-800 bg-red-50" : "border-gray-200 hover:border-gray-300"}`}>
                         <div className="flex items-center justify-between mb-0.5">
@@ -792,34 +770,36 @@ export default function CreateDealRoomPage() {
               <div className="space-y-4">
                 <div>
                   <h2 className="font-semibold text-gray-900 mb-1">
-                     {isAiGenerated ? "AI-generated deal room — review before continuing" : "Review your deal room"}
+                    {isAiGenerated ? "We set this up based on your description." : "Review your deal room"}
                   </h2>
-                  <p className="text-xs text-gray-400">Expand each section to view or edit. Changes take effect after you activate.</p>
+                  <p className="text-xs text-gray-400">Review and continue — expand any section to make changes before activating.</p>
                 </div>
 
-                {/* AI classification notice */}
-                {isAiGenerated && aiTransactionType && (() => {
-                  const PACK_REASONS = {
-                    cre_acquisition:      "your description suggests a property, real estate, or hotel transaction.",
-                    business_acquisition: "your description suggests a company purchase, M&A, or business transfer.",
-                    fundraising:          "your description suggests an equity round, venture capital, or investor transaction.",
-                    tokenization:         "your description suggests issuing or preparing tokenized securities.",
-                    lending:              "your description suggests a lending or financing transaction.",
-                    licensing:            "your description suggests licensing rights, technology, or intellectual property.",
-                    joint_venture:        "your description suggests forming a joint venture between multiple parties.",
-                    other:                "your description needs a custom transaction structure.",
-                  };
-                  const name   = AI_TYPE_LABELS[aiTransactionType];
-                  const reason = PACK_REASONS[aiTransactionType];
-                  if (!name) return null;
-                  return (
-                    <div className="bg-blue-50 border border-blue-200 rounded-xl px-3.5 py-3 text-xs text-blue-800 leading-relaxed">
-                      <span className="font-semibold">AI classified this as a {name}</span>
-                      {reason ? ` — ${reason}` : "."}{" "}
-                      Edit any section below if this doesn't match your transaction.
-                    </div>
-                  );
-                })()}
+                {/* AI classification notice — compact; type selector shown only when AI is low-confidence */}
+                {isAiGenerated && (
+                  <div className="flex items-center justify-between gap-3 bg-gray-50 border border-gray-100 rounded-xl px-3.5 py-2.5">
+                    <p className="text-xs text-gray-600">
+                      {aiTransactionType && aiTransactionType !== 'other'
+                        ? <><span className="font-semibold text-gray-800">{AI_TYPE_LABELS[aiTransactionType] || aiTransactionType}</span> · participants, documents, and stages pre-configured.</>
+                        : "Configured as a custom transaction — review the sections below."}
+                    </p>
+                    {/* Type correction — shown only when AI returned 'other' or no type */}
+                    {(!aiTransactionType || aiTransactionType === 'other') && (
+                      <select
+                        className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white focus:outline-none focus:ring-1 focus:ring-red-800/30 shrink-0"
+                        value={aiTransactionType}
+                        onChange={e => setAiTransactionType(e.target.value)}>
+                        <option value="other">Custom</option>
+                        <option value="business_acquisition">Business Acquisition</option>
+                        <option value="cre_acquisition">CRE Acquisition</option>
+                        <option value="fundraising">Fundraising</option>
+                        <option value="lending">Lending / Finance</option>
+                        <option value="licensing">Licensing</option>
+                        <option value="joint_venture">Joint Venture</option>
+                      </select>
+                    )}
+                  </div>
+                )}
 
                 {/* Legal disclaimer */}
                 <div className="bg-amber-50 border border-amber-200 rounded-xl px-3.5 py-3 text-xs text-amber-800 leading-relaxed">
