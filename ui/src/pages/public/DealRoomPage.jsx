@@ -4242,7 +4242,7 @@ export default function DealRoomPage() {
 
             {activeTab === 'tasks' && (
               <div id="tasks-panel">
-                <TasksPanel propertyId={pid} role={role} onTabChange={setActiveTab} />
+                <TasksPanel propertyId={pid} role={role} onTabChange={setActiveTab} authHeaders={getRoomAuthHeaders(pid)} />
               </div>
             )}
 
@@ -4429,7 +4429,7 @@ export default function DealRoomPage() {
             {/* Tasks / Today's Actions */}
             {property.isCustom && (
               <div id="tasks-panel">
-                <TasksPanel propertyId={pid} role={role} onTabChange={setActiveTab} />
+                <TasksPanel propertyId={pid} role={role} onTabChange={setActiveTab} authHeaders={getRoomAuthHeaders(pid)} />
               </div>
             )}
 

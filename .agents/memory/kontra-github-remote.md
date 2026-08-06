@@ -12,3 +12,11 @@ Gotchas: `git diff-tree -r --raw <sha>` prints the commit SHA as its first line 
 **How to apply:** To publish to GitHub, replay remote-friendly objects through the connector proxy as above instead of retrying the helpers. User constraint: never modify `master`; publish fixes to `main`.
 
 **Why:** Several reconnect attempts landed but the platform still does not expose a token to this workspace, so the helpers cannot work; the proxy path was verified end-to-end (main moved to `6c2116bc`, tree identical to local, master untouched).
+
+## Vercel deployment aliases
+
+Vercel can successfully deploy a new GitHub `main` commit while leaving an older deployment-specific `*.vercel.app` URL pointed at the previous build. A successful Vercel status on the commit includes the current deployment URL; verify that URL directly instead of assuming an older preview/deployment alias moved.
+
+**Why:** The production commit deployed successfully, but the previously shared deployment URL continued serving an older cached bundle with the old room labels.
+
+**How to apply:** After publishing through the GitHub connector, read the Vercel deployment status URL from the commit/deployment metadata and test that hostname. Treat an old deployment-specific hostname as immutable history, not the canonical production alias.

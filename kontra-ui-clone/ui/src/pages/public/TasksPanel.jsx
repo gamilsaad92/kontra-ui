@@ -57,30 +57,37 @@ function OwnerBadge({ ownerType, ownerRole }) {
   );
 }
 
-export default function TasksPanel({ propertyId, role, onTabChange }) {
+export default function TasksPanel({ propertyId, role, onTabChange, authHeaders }) {
   const [tasks, setTasks] = useState(null);
   const [busyId, setBusyId] = useState(null);
   const [error, setError] = useState(null);
 
   const load = useCallback(async () => {
     try {
-      const r = await fetch(`${API_BASE}/api/public/deal-room/${propertyId}/tasks`);
+      const r = await fetch(`${API_BASE}/api/public/deal-room/${propertyId}/tasks`, {
+        headers: authHeaders || {},
+      });
       if (!r.ok) throw new Error('Failed to load tasks');
       const data = await r.json();
       setTasks(data.tasks || []);
     } catch (e) {
       setError(e.message);
     }
-  }, [propertyId]);
+  }, [propertyId, authHeaders]);
 
   const refresh = useCallback(async () => {
     try {
-      await fetch(`${API_BASE}/api/public/deal-room/${propertyId}/tasks/refresh`, { method: 'POST' });
+      const ownerToken = (authHeaders || {})['x-owner-write-token'] || '';
+      await fetch(`${API_BASE}/api/public/deal-room/${propertyId}/tasks/refresh`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(authHeaders || {}) },
+        body: JSON.stringify({ ownerWriteToken: ownerToken }),
+      });
       await load();
     } catch (e) {
       setError(e.message);
     }
-  }, [propertyId, load]);
+  }, [propertyId, load, authHeaders]);
 
   useEffect(() => {
     load().then(refresh);
@@ -89,7 +96,12 @@ export default function TasksPanel({ propertyId, role, onTabChange }) {
   const act = async (taskId, action) => {
     setBusyId(taskId);
     try {
-      const r = await fetch(`${API_BASE}/api/public/tasks/${taskId}/${action}`, { method: 'POST' });
+      const ownerToken = (authHeaders || {})['x-owner-write-token'] || '';
+      const r = await fetch(`${API_BASE}/api/public/tasks/${taskId}/${action}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(authHeaders || {}) },
+        body: JSON.stringify({ ownerWriteToken: ownerToken }),
+      });
       if (!r.ok) throw new Error(`Failed to ${action} task`);
       await load();
     } catch (e) {
