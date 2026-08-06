@@ -2327,12 +2327,10 @@ function AssetReadinessTab({ propertyId, property, pack, onTabChange }) {
 // ── WorkspaceTabNav ───────────────────────────────────────────────────────────
 function WorkspaceTabNav({ activeTab, onChange, showReadinessTab = false }) {
   const TABS = [
-    { key: 'overview',     label: 'Overview'     },
-    { key: 'documents',    label: 'Documents'    },
-    { key: 'participants', label: 'Participants' },
-    { key: 'tasks',        label: 'Tasks'        },
-    { key: 'activity',     label: 'Activity'     },
-    { key: 'settings',     label: 'Settings'     },
+    { key: 'overview',  label: 'Overview'  },
+    { key: 'documents', label: 'Documents' },
+    { key: 'activity',  label: 'Activity'  },
+    { key: 'settings',  label: 'Settings'  },
     ...(showReadinessTab ? [{ key: 'readiness', label: 'Transaction Readiness' }] : []),
   ];
   return (
@@ -2581,6 +2579,7 @@ function OperationsManagerView({ propertyId, property, pack, role, onTabChange }
   // Stage advance (task #100) — owner-only; reads token from localStorage
   const [ownerToken,    setOwnerToken]    = useState('');
   const [advancingStage, setAdvancingStage] = useState(false);
+  const [showSettlement, setShowSettlement] = useState(false);
 
   useEffect(() => {
     try { setOwnerToken(localStorage.getItem(`kontra_owner_token_${propertyId}`) || ''); } catch {}
@@ -3514,12 +3513,35 @@ function OperationsManagerView({ propertyId, property, pack, role, onTabChange }
         )}
       </div>
 
-      {/* ── Settlement Layer ─────────────────────────────────────────────── */}
-      <SettlementPanel
-        propertyId={propertyId}
-        property={property}
-        isAtFinalStage={stages.length > 0 && currentStageIdx >= stages.length - 1}
-      />
+      {/* ── Closing & Handoff — collapsed by default; configure when nearing close ── */}
+      <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
+        <button
+          onClick={() => setShowSettlement(s => !s)}
+          className="w-full flex items-center justify-between px-6 py-4 hover:bg-gray-50 transition text-left"
+        >
+          <div className="flex items-center gap-3">
+            <span className="text-base">💸</span>
+            <div>
+              <p className="text-sm font-bold text-gray-900">Closing &amp; Handoff</p>
+              <p className="text-[10px] text-gray-400">
+                {property?.metadata_values?.settlement_method
+                  ? `Method confirmed · ${SETTLEMENT_PROVIDERS.find(p => p.id === property.metadata_values.settlement_method)?.label || property.metadata_values.settlement_method}`
+                  : 'Settlement method — configure when approaching close'}
+              </p>
+            </div>
+          </div>
+          <span className="text-[10px] text-gray-400 shrink-0">{showSettlement ? '▲ collapse' : '▼ expand'}</span>
+        </button>
+        {showSettlement && (
+          <div className="border-t border-gray-100">
+            <SettlementPanel
+              propertyId={propertyId}
+              property={property}
+              isAtFinalStage={stages.length > 0 && currentStageIdx >= stages.length - 1}
+            />
+          </div>
+        )}
+      </div>
 
       {/* ── Area 4: Participant status ───────────────────────────────────── */}
       <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
@@ -4206,13 +4228,37 @@ export default function DealRoomPage() {
           /* ── Coordinator tabbed layout ────────────────────────────────── */
           <>
             {activeTab === 'overview' && (
-              <OperationsManagerView
-                propertyId={pid}
-                property={property}
-                pack={pack}
-                role={role}
-                onTabChange={setActiveTab}
-              />
+              <div className="space-y-5">
+                <OperationsManagerView
+                  propertyId={pid}
+                  property={property}
+                  pack={pack}
+                  role={role}
+                  onTabChange={(tab) => {
+                    if (tab === 'participants') {
+                      // Participants tab is merged into Overview — scroll down to it
+                      setTimeout(() => document.getElementById('participants-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
+                    } else {
+                      setActiveTab(tab);
+                    }
+                  }}
+                />
+                {/* Tasks — merged from standalone tab into Overview */}
+                <div id="tasks-section">
+                  <TasksPanel propertyId={pid} role={role} onTabChange={setActiveTab} authHeaders={getRoomAuthHeaders(pid)} />
+                </div>
+                {/* Participants — merged from standalone tab into Overview */}
+                <div id="participants-section" className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
+                  <div className="px-5 py-4 border-b border-gray-100">
+                    <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">Participants</p>
+                  </div>
+                  <ParticipantsPanel
+                    roomId={pid}
+                    packId={packId}
+                    isV2={!!property.auth_v2_enabled}
+                  />
+                </div>
+              </div>
             )}
 
             {activeTab === 'documents' && (
@@ -4230,20 +4276,6 @@ export default function DealRoomPage() {
                   />
                 </div>
               </>
-            )}
-
-            {activeTab === 'participants' && (
-              <ParticipantsPanel
-                roomId={pid}
-                packId={packId}
-                isV2={!!property.auth_v2_enabled}
-              />
-            )}
-
-            {activeTab === 'tasks' && (
-              <div id="tasks-panel">
-                <TasksPanel propertyId={pid} role={role} onTabChange={setActiveTab} authHeaders={getRoomAuthHeaders(pid)} />
-              </div>
             )}
 
             {activeTab === 'activity' && (
