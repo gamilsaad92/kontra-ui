@@ -267,6 +267,63 @@ const GENERIC_SCHEMA = {
   ],
 };
 
+// Curated operational snapshot keys. Summary is intentionally narrower than
+// the authoritative Full Record schema: these are the concepts most useful
+// for understanding the transaction and deciding what needs attention next.
+const SUMMARY_KEYS_BY_SCHEMA = {
+  cre_acquisition: [
+    "transaction.type", "transaction.stage", "transaction.closing_date",
+    "transaction.jurisdiction", "transaction.purchase_price", "transaction.earnest_money",
+    "asset.name", "asset.address", "asset.type", "asset.ownership_entity",
+    "parties.buyer", "parties.seller", "parties.counsel", "parties.title_company",
+    "ownership.acquiring_entity", "ownership.liens",
+    "financial.noi", "financial.existing_debt", "financial.proposed_financing",
+    "financial.required_equity",
+    "legal.purchase_agreement", "legal.title_status", "legal.environmental",
+    "legal.material_litigation", "legal.encumbrances",
+  ],
+  business_acquisition: [
+    "transaction.type", "transaction.stage", "transaction.closing_date",
+    "transaction.jurisdiction", "transaction.purchase_price", "transaction.earnest_money",
+    "asset.legal_name", "asset.dba", "asset.industry", "asset.entity_type",
+    "parties.buyer", "parties.seller", "parties.counsel",
+    "ownership.existing_owners", "ownership.cap_table",
+    "financial.revenue", "financial.ebitda", "financial.multiple",
+    "legal.purchase_agreement", "legal.contingencies",
+    "approval.board", "approval.closing",
+  ],
+  fundraising: [
+    "transaction.type", "transaction.stage", "transaction.closing_date",
+    "transaction.jurisdiction", "transaction.target_close", "transaction.instrument_type",
+    "asset.issuer", "asset.entity_type", "asset.incorporation",
+    "parties.lead_investor", "parties.counsel",
+    "ownership.pre_money_cap_table", "ownership.founders",
+    "financial.target_raise", "financial.pre_money_val", "financial.post_money_val",
+    "financial.instrument", "legal.term_sheet", "legal.securities_exemption",
+    "approval.board", "approval.investor_commitments",
+  ],
+  tokenization: [
+    "transaction.type", "transaction.stage", "transaction.closing_date",
+    "transaction.jurisdiction", "transaction.target_raise", "transaction.instrument_type",
+    "asset.name", "asset.type", "asset.ownership_entity",
+    "parties.issuer", "parties.counsel",
+    "ownership.beneficial_owners", "ownership.cap_table",
+    "financial.asset_valuation", "financial.use_of_proceeds",
+    "legal.exemption", "legal.offering_docs", "legal.legal_opinion",
+    "approval.legal", "approval.compliance",
+  ],
+  generic: [
+    "transaction.type", "transaction.stage", "transaction.closing_date",
+    "transaction.jurisdiction", "transaction.value",
+    "asset.name", "asset.type",
+    "parties.primary", "parties.counterparty", "parties.counsel",
+    "ownership.owners", "ownership.structure",
+    "financial.deal_value", "financial.terms",
+    "legal.governing_docs", "legal.jurisdiction",
+    "approval.primary", "approval.counsel",
+  ],
+};
+
 // ── Schema pack resolution ─────────────────────────────────────────────────────
 //
 // Resolution order (first match wins):
@@ -374,6 +431,10 @@ export function getPackRecordSchema(schemaKey) {
   ].map(([category, fields]) => [category, fields.map(normalize)]));
 }
 
+export function getSummaryFieldKeys(schemaKey) {
+  return new Set(SUMMARY_KEYS_BY_SCHEMA[schemaKey] || SUMMARY_KEYS_BY_SCHEMA.generic);
+}
+
 /**
  * Build the display list for the Transaction Record before documents arrive.
  * Returns all schema fields with their seeded value (or null), plus
@@ -425,4 +486,4 @@ export function buildSeededFromSchema(schemaKey, workspaceMeta) {
   return result;
 }
 
-export { PACK_SCHEMAS, UNIVERSAL_TRANSACTION_FIELDS, GENERIC_SCHEMA };
+export { PACK_SCHEMAS, UNIVERSAL_TRANSACTION_FIELDS, GENERIC_SCHEMA, SUMMARY_KEYS_BY_SCHEMA };

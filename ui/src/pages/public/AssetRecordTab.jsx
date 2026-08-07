@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { API_BASE } from "../../lib/apiBase";
-import { buildSeededFromSchema, resolveSchemaKey } from "../../lib/workflowPacks/transactionRecordSchema";
+import { buildSeededFromSchema, getSummaryFieldKeys, resolveSchemaKey } from "../../lib/workflowPacks/transactionRecordSchema";
 
 const ACCENT = "#800020";
 
@@ -72,14 +72,111 @@ function dependencyIsInactive(field, dbFields, seededFields) {
   );
 }
 
-function dbFieldMatchesSchema(dbField, schemaField) {
+function dbFieldMatchesSchema(dbField, schemaField, allSchemaFields = []) {
   if (!schemaField) return false;
-  return dbField.field_key === schemaField.key || dbField.field_key === schemaField.canonicalKey;
+  const canonicalKey = schemaField.canonicalKey || schemaField.key;
+  return dbField.field_key === schemaField.key ||
+    dbField.field_key === canonicalKey ||
+    allSchemaFields.some(field =>
+      field.aliasOf === canonicalKey && field.key === dbField.field_key
+    );
 }
 
-function canonicalFieldValue(schemaField, dbFields) {
-  const match = dbFields.find(item => dbFieldMatchesSchema(item, schemaField));
+function canonicalFieldValue(schemaField, dbFields, allSchemaFields = []) {
+  const match = dbFields.find(item => dbFieldMatchesSchema(item, schemaField, allSchemaFields));
   return match?.value_text || match?.value_json || null;
+}
+
+const SUMMARY_EXCEPTION_STATUSES = new Set([
+  "conflicting", "source_changed", "rejected", "overdue", "blocked",
+]);
+
+function isSummaryException(field) {
+  if (!field) return false;
+  if (SUMMARY_EXCEPTION_STATUSES.has(String(field.status || "").toLowerCase())) return true;
+  if (SUMMARY_EXCEPTION_STATUSES.has(String(field.confirmation_status || "").toLowerCase())) return true;
+  if (SUMMARY_EXCEPTION_STATUSES.has(String(field.request_status || "").toLowerCase())) return true;
+  if (field.rejected || field.overdue || field.request_overdue || field.blocked || field.is_blocked) return true;
+  return Boolean((field.critical || field.is_critical || field.missing_critical) &&
+    !field.value_text && !field.value_json);
+}
+
+function isMaterialSummaryDbField(field, seededFields, summaryKeys) {
+  const schema = seededFields.find(item =>
+    dbFieldMatchesSchema(field, item, seededFields)
+  );
+  const canonicalKey = schema?.canonicalKey || field?.field_key;
+  const materialApproval = schema?.category === "approvals" &&
+    field?.status !== "not_applicable";
+  return summaryKeys.has(canonicalKey) || materialApproval || isSummaryException(field);
+}
+
+function canonicalRecordKey(field, seededFields) {
+  const schema = seededFields.find(item =>
+    dbFieldMatchesSchema(field, item, seededFields)
+  );
+  return schema?.canonicalKey || field?.field_key;
+}
+
+function uniqueCanonicalFields(fields, seededFields) {
+  const result = [];
+  const seen = new Set();
+  for (const field of fields) {
+    const key = field.key ? (field.canonicalKey || field.key) : canonicalRecordKey(field, seededFields);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    result.push(field);
+  }
+  return result;
+}
+
+function getRecordStats(
+  schemaFields,
+  dbFields,
+  seededFields,
+  includeDb = () => true,
+  isInactive = () => false,
+) {
+  const byKey = new Map();
+  uniqueCanonicalFields(schemaFields, seededFields).forEach(field => {
+    byKey.set(field.key ? (field.canonicalKey || field.key) : canonicalRecordKey(field, seededFields), {
+      seeded: field,
+      db: null,
+    });
+  });
+  uniqueCanonicalFields(dbFields, seededFields).filter(includeDb).forEach(field => {
+    const key = canonicalRecordKey(field, seededFields);
+    const existing = byKey.get(key);
+    if (existing) existing.db = field;
+    else byKey.set(key, { seeded: null, db: field });
+  });
+
+  let awaiting = 0;
+  let extracted = 0;
+  let confirmed = 0;
+  let notApplicable = 0;
+  for (const { seeded, db } of byKey.values()) {
+    if (isInactive(seeded, db)) {
+      notApplicable++;
+      continue;
+    }
+    if (db?.status === "not_applicable") {
+      notApplicable++;
+    } else if (db?.status === "verified") {
+      confirmed++;
+    } else if (db?.status === "extracted" || db?.status === "needs_review") {
+      extracted++;
+    } else if (db || !seeded?.value) {
+      awaiting++;
+    }
+  }
+  return {
+    total: byKey.size,
+    awaiting,
+    extracted,
+    confirmed,
+    notApplicable,
+  };
 }
 
 // ── DB-backed field row (has a real ID) ───────────────────────────────────────
@@ -374,24 +471,37 @@ function SeededFieldRow({ field, isCoordinator, propertyId, ownerToken, onUpdate
 }
 
 // ── Compute per-category chip for collapsed header ────────────────────────────
-function getCategoryChip(catKey, dbFields, seededFields) {
-  const dbCat   = dbFields.filter(f => f.field_category === catKey);
-  const seeded  = seededFields.filter(f => f.category === catKey);
+function getCategoryChip(catKey, dbFields, seededFields, viewMode = "full", summaryKeys = null) {
+  const isSummary = viewMode === "summary";
+  const isSummaryDbField = field => {
+    return !isSummary || isMaterialSummaryDbField(field, seededFields, summaryKeys);
+  };
+  const dbCat   = uniqueCanonicalFields(
+    dbFields.filter(f => f.field_category === catKey && isSummaryDbField(f)),
+    seededFields
+  );
+  const seeded  = uniqueCanonicalFields(seededFields.filter(f =>
+    f.category === catKey &&
+    (!isSummary || summaryKeys?.has(f.canonicalKey || f.key))
+  ), seededFields);
 
   const conflicts     = dbCat.filter(f => f.status === "conflicting" || f.status === "source_changed").length;
   const confirmed     = dbCat.filter(f => f.status === "verified").length;
   const awaitReview   = dbCat.filter(f => f.status === "extracted" || f.status === "needs_review").length;
   const reqMissing    = seeded.filter(f =>
-    f.workflowRequired &&
+    (isSummary ? true : f.workflowRequired) &&
     !f.value &&
     !dependencyIsInactive(f, dbFields, seededFields) &&
-    !dbCat.find(d => dbFieldMatchesSchema(d, f) && d.value_text)
+    !dbCat.find(d => dbFieldMatchesSchema(d, f, seededFields) && d.value_text)
   ).length;
   const seededPop     = seeded.filter(f => f.value).length;
 
   // Priority order for the chip
   if (conflicts > 0)        return { text: `${conflicts} conflict${conflicts > 1 ? "s" : ""}`,                color: "red"   };
-  if (reqMissing > 0)       return { text: `${reqMissing} workflow item${reqMissing > 1 ? "s" : ""} missing`, color: "amber" };
+  if (reqMissing > 0) {
+    const label = isSummary ? "key item" : "workflow item";
+    return { text: `${reqMissing} ${label}${reqMissing > 1 ? "s" : ""} missing`, color: "amber" };
+  }
   if (awaitReview > 0)      return { text: `${awaitReview} awaiting review`,                                   color: "blue"  };
   if (confirmed > 0 && dbCat.length > 0)
                             return { text: `${confirmed} of ${dbCat.length} confirmed`,                        color: "green" };
@@ -421,28 +531,34 @@ function CategoryChip({ chip }) {
 // ── Category section ──────────────────────────────────────────────────────────
 function CategorySection({
   category, dbFields, seededFields, isCoordinator, propertyId,
-  ownerToken, onUpdated, viewMode, onRequestUpload,
+  ownerToken, onUpdated, viewMode, onRequestUpload, summaryKeys,
 }) {
   // Auto-expand if category has conflicts or required missing fields
   const seededCat  = seededFields.filter(f => f.category === category.key);
   const presentKeys = new Set(dbFields.map(field => field.field_key));
   const dedupedDbFields = dbFields.filter(field => {
-    const schemaField = seededFields.find(schema => schema.key === field.field_key);
-    return !(schemaField?.aliasOf && presentKeys.has(schemaField.aliasOf));
+    const schemaField = seededFields.find(schema =>
+      schema.key === field.field_key || schema.canonicalKey === field.field_key
+    );
+    const canonicalPresent = schemaField?.aliasOf &&
+      presentKeys.has(schemaField.aliasOf);
+    return !(viewMode === "summary" && schemaField?.aliasOf && canonicalPresent);
   });
   const dbCat      = dedupedDbFields.filter(f => f.field_category === category.key);
   const seededWithDependencies = seededCat.map(field => ({
     ...field,
-    value: field.value || canonicalFieldValue(field, dbFields),
+    value: field.value || canonicalFieldValue(field, dbFields, seededFields),
     inactive: dependencyIsInactive(field, dbFields, seededFields),
   }));
-  const hasUrgent  = dbCat.some(f => f.status === "conflicting" || f.status === "source_changed")
-                  || seededWithDependencies.some(f =>
-                    f.workflowRequired &&
-                    !f.value &&
-                    !f.inactive &&
-                    !dbCat.find(d => dbFieldMatchesSchema(d, f) && d.value_text)
-                  );
+  const hasUrgent  = viewMode === "summary"
+    ? dbCat.some(isSummaryException)
+    : dbCat.some(f => f.status === "conflicting" || f.status === "source_changed")
+      || seededWithDependencies.some(f =>
+        f.workflowRequired &&
+        !f.value &&
+        !f.inactive &&
+        !dbCat.find(d => dbFieldMatchesSchema(d, f, seededFields) && d.value_text)
+      );
 
   const [open, setOpen] = useState(category.defaultOpen || hasUrgent);
 
@@ -451,29 +567,34 @@ function CategorySection({
     if (hasUrgent) setOpen(true);
   }, [hasUrgent]);
 
-  const chip = getCategoryChip(category.key, dbFields, seededFields);
+  const chip = getCategoryChip(category.key, dbFields, seededFields, viewMode, summaryKeys);
 
   // Summary view: show only actionable/populated fields
   function shouldShow(dbField) {
     if (viewMode === "full") return true;
     const val = dbField.value_text || dbField.value_json;
-    const urgent = dbField.status === "conflicting" || dbField.status === "source_changed";
-    const schema = seededWithDependencies.find(s => dbFieldMatchesSchema(dbField, s));
-    return !!val || urgent || (schema?.workflowRequired && !schema?.inactive);
+    const schema = seededWithDependencies.find(s => dbFieldMatchesSchema(dbField, s, seededFields));
+    const canonicalKey = schema?.canonicalKey || dbField.field_key;
+    const materialApproval = category.key === "approvals" && !!val;
+    return isMaterialSummaryDbField(dbField, seededFields, summaryKeys);
   }
 
   function shouldShowSeeded(s) {
     if (viewMode === "full") return true;
-    // Summary: show populated + required-but-empty (action needed)
-    return s.value || (s.workflowRequired && !s.inactive);
+    const hasCanonicalSeed = s.aliasOf &&
+      seededFields.some(field => field.key === s.aliasOf);
+    return summaryKeys.has(s.canonicalKey || s.key) && !hasCanonicalSeed;
   }
 
   const visibleDb     = dbCat.filter(shouldShow);
   const visibleSeeded = seededWithDependencies.filter(shouldShowSeeded);
+  const hasSummaryContent = viewMode === "full" || visibleDb.length > 0 || visibleSeeded.length > 0;
 
   // Progress bar (only when DB fields exist)
   const confirmed = dbCat.filter(f => f.status === "verified").length;
   const total     = dbCat.length;
+
+  if (!hasSummaryContent) return null;
 
   return (
     <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
@@ -514,7 +635,7 @@ function CategorySection({
                     <FieldRow key={f.id} field={f} isCoordinator={isCoordinator}
                       propertyId={propertyId} ownerToken={ownerToken} onUpdated={onUpdated}
                       dependencyInactive={dependencyIsInactive(
-                        seededWithDependencies.find(s => s.key === f.field_key),
+                        seededWithDependencies.find(s => dbFieldMatchesSchema(f, s, seededFields)),
                         dbFields,
                         seededFields
                       )} />
@@ -526,7 +647,7 @@ function CategorySection({
                 )
               }
               {/* Show seeded schema for fields not yet extracted */}
-              {visibleSeeded.filter(s => !dbCat.find(d => dbFieldMatchesSchema(d, s))).map(s => (
+              {visibleSeeded.filter(s => !dbCat.find(d => dbFieldMatchesSchema(d, s, seededFields))).map(s => (
                 <SeededFieldRow key={s.key} field={s} isCoordinator={isCoordinator}
                   propertyId={propertyId} ownerToken={ownerToken}
                   onUpdated={onUpdated} onRequestUpload={onRequestUpload}
@@ -621,14 +742,32 @@ export default function AssetRecordTab({
   //   3. workspace name inference ("hotel", "apartment", "series a", etc.)
   const schemaKey    = resolveSchemaKey(rawPackId || pack?.id, pack, workspaceMeta?.name);
   const seededFields = buildSeededFromSchema(schemaKey, workspaceMeta);
+  const summaryKeys = getSummaryFieldKeys(schemaKey);
+  const summarySchemaFields = seededFields.filter(field =>
+    summaryKeys.has(field.canonicalKey || field.key)
+  );
 
   // Header stats
-  const seededPopulated = seededFields.filter(s => s.value);
-  const seededAwaiting  = seededFields.filter(s => !s.value);
-  const totalDbFields   = dbFields.length;
-  const confirmedCount  = dbFields.filter(f => f.status === "verified").length;
-  const extractedCount  = dbFields.filter(f => f.status === "extracted" || f.status === "needs_review").length;
-  const pct = totalDbFields > 0 ? Math.round((confirmedCount / totalDbFields) * 100) : 0;
+  const isInactiveRecord = (seeded, db) =>
+    dependencyIsInactive(seeded, dbFields, seededFields);
+  const fullStats = getRecordStats(
+    seededFields,
+    dbFields,
+    seededFields,
+    () => true,
+    isInactiveRecord,
+  );
+  const summaryStats = getRecordStats(
+    summarySchemaFields,
+    dbFields,
+    seededFields,
+    field => summaryKeys.has(canonicalRecordKey(field, seededFields)) || isSummaryException(field),
+    isInactiveRecord,
+  );
+  const activeStats = viewMode === "summary" ? summaryStats : fullStats;
+  const pct = activeStats.total > 0
+    ? Math.round((activeStats.confirmed / activeStats.total) * 100)
+    : 0;
 
   const LEGAL_TOOLTIP = "Kontra organizes transaction information and participant confirmations; it does not provide legal certification or independent verification. \"Workflow required\" means this item is configured as necessary to complete this workspace workflow. It does not mean the item is legally, regulatorily, or contractually required.";
 
@@ -676,7 +815,7 @@ export default function AssetRecordTab({
                 Full Record
               </button>
             </div>
-            {isCoordinator && totalDbFields > 0 && (
+            {isCoordinator && dbFields.length > 0 && (
               <button onClick={triggerExtract} disabled={extracting}
                 className="text-[10px] font-semibold px-2.5 py-1.5 rounded-xl border border-gray-200 text-gray-600 hover:bg-gray-50 transition disabled:opacity-50">
                 {extracting ? "…" : "Re-extract"}
@@ -685,34 +824,25 @@ export default function AssetRecordTab({
           </div>
         </div>
 
-        {totalDbFields > 0 ? (
-          <>
-            <div className="flex items-center gap-4">
-              <div className="flex-1">
-                <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden">
-                  <div className="h-full rounded-full transition-all"
-                    style={{ width: `${pct}%`, background: pct === 100 ? "#22c55e" : ACCENT }} />
-                </div>
-              </div>
-              <p className="text-xs font-semibold text-gray-700 shrink-0">{confirmedCount}/{totalDbFields} confirmed</p>
+        <div className="flex items-center gap-4">
+          <div className="flex-1">
+            <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden">
+              <div className="h-full rounded-full transition-all"
+                style={{ width: `${pct}%`, background: pct === 100 ? "#22c55e" : ACCENT }} />
             </div>
-            <div className="flex flex-wrap gap-3 mt-2">
-              {confirmedCount > 0   && <span className="text-[10px] text-green-600">{confirmedCount} confirmed</span>}
-              {extractedCount > 0   && <span className="text-[10px] text-blue-600">{extractedCount} awaiting review</span>}
-              {(totalDbFields - confirmedCount - extractedCount) > 0 &&
-                <span className="text-[10px] text-gray-400">{totalDbFields - confirmedCount - extractedCount} missing</span>}
-            </div>
-          </>
-        ) : (
-          // Empty state — schema-seeded counts
-          <div className="flex flex-wrap gap-3 mt-1">
-            {seededPopulated.length > 0 &&
-              <span className="text-[10px] text-blue-600 font-medium">{seededPopulated.length} populated from workspace setup</span>}
-            {seededAwaiting.length > 0 &&
-              <span className="text-[10px] text-gray-400">{seededAwaiting.length} awaiting information</span>}
-            <span className="text-[10px] text-gray-400">0 extracted · 0 confirmed</span>
           </div>
-        )}
+          <p className="text-xs font-semibold text-gray-700 shrink-0">
+            {activeStats.awaiting} {viewMode === "summary" ? "key items" : "fields"} awaiting information
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-3 mt-2">
+          <span className="text-[10px] text-gray-400">
+            {activeStats.awaiting} awaiting information · {activeStats.extracted} extracted · {activeStats.confirmed} confirmed
+          </span>
+          {viewMode === "summary" && (
+            <span className="text-[10px] text-gray-400">{fullStats.total} fields in full record</span>
+          )}
+        </div>
       </div>
 
       {/* ── Category sections ── */}
@@ -727,6 +857,7 @@ export default function AssetRecordTab({
           ownerToken={ownerToken}
           onUpdated={() => setRefreshKey(k => k + 1)}
           viewMode={viewMode}
+          summaryKeys={summaryKeys}
           onRequestUpload={onNavigateToDocuments}
         />
       ))}
