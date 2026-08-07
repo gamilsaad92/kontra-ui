@@ -9,6 +9,7 @@
 //   label:    human label shown in the record UI
 //   workflowRequired: true → required by this workspace workflow; false → optional
 //   requirement: "workflow" | "suggested" | "expected" | "optional"
+//   summaryPriority: "key" | "supporting" → independent of workflowRequired
 //   setup:    (optional) workspaceMeta key that seeds an initial value at room creation
 //   sources:  (optional) expected source documents for this field
 //   role:     (optional) confirmation role expected for approvals fields
@@ -417,6 +418,8 @@ export function getPackRecordSchema(schemaKey) {
       ...field,
       workflowRequired,
       requirement: field.requirement || (workflowRequired ? "workflow" : "expected"),
+      summaryPriority: field.summaryPriority ||
+        (SUMMARY_KEYS_BY_SCHEMA[schemaKey]?.includes(field.key) ? "key" : "supporting"),
       canonicalKey: field.aliasOf || field.key,
     };
   };
@@ -470,6 +473,7 @@ export function buildSeededFromSchema(schemaKey, workspaceMeta) {
         label:    field.label,
         workflowRequired: field.workflowRequired,
         requirement: field.requirement,
+        summaryPriority: field.summaryPriority,
         aliasOf:   field.aliasOf || null,
         sources:  field.sources  || [],
         role:     field.role     || null,

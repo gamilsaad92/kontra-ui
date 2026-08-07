@@ -108,7 +108,15 @@ function isMaterialSummaryDbField(field, seededFields, summaryKeys) {
   const canonicalKey = schema?.canonicalKey || field?.field_key;
   const materialApproval = schema?.category === "approvals" &&
     field?.status !== "not_applicable";
-  return summaryKeys.has(canonicalKey) || materialApproval || isSummaryException(field);
+  return schema?.summaryPriority === "key" ||
+    summaryKeys.has(canonicalKey) ||
+    materialApproval ||
+    isSummaryException(field);
+}
+
+function isSummarySchemaField(field, summaryKeys) {
+  return field?.summaryPriority === "key" ||
+    summaryKeys?.has(field?.canonicalKey || field?.key);
 }
 
 function canonicalRecordKey(field, seededFields) {
@@ -136,6 +144,7 @@ function getRecordStats(
   seededFields,
   includeDb = () => true,
   isInactive = () => false,
+  includeUnknownDb = true,
 ) {
   const byKey = new Map();
   uniqueCanonicalFields(schemaFields, seededFields).forEach(field => {
@@ -148,12 +157,14 @@ function getRecordStats(
     const key = canonicalRecordKey(field, seededFields);
     const existing = byKey.get(key);
     if (existing) existing.db = field;
-    else byKey.set(key, { seeded: null, db: field });
+    else if (includeUnknownDb) byKey.set(key, { seeded: null, db: field });
   });
 
   let awaiting = 0;
   let extracted = 0;
   let confirmed = 0;
+  let manuallyEntered = 0;
+  let fromSetup = 0;
   let notApplicable = 0;
   for (const { seeded, db } of byKey.values()) {
     if (isInactive(seeded, db)) {
@@ -164,17 +175,28 @@ function getRecordStats(
       notApplicable++;
     } else if (db?.status === "verified") {
       confirmed++;
-    } else if (db?.status === "extracted" || db?.status === "needs_review") {
+    } else if (db?.extracted_by === "coordinator" && (db.value_text || db.value_json)) {
+      manuallyEntered++;
+    } else if ((db?.status === "extracted" || db?.status === "needs_review") &&
+      (db.value_text || db.value_json)) {
       extracted++;
+    } else if (seeded?.value && !db) {
+      fromSetup++;
     } else if (db || !seeded?.value) {
       awaiting++;
     }
   }
+  const fieldCount = byKey.size;
+  const total = Math.max(0, fieldCount - notApplicable);
   return {
-    total: byKey.size,
+    total,
+    fieldCount,
     awaiting,
     extracted,
     confirmed,
+    manuallyEntered,
+    fromSetup,
+    complete: confirmed + extracted + manuallyEntered + fromSetup,
     notApplicable,
   };
 }
@@ -482,7 +504,7 @@ function getCategoryChip(catKey, dbFields, seededFields, viewMode = "full", summ
   );
   const seeded  = uniqueCanonicalFields(seededFields.filter(f =>
     f.category === catKey &&
-    (!isSummary || summaryKeys?.has(f.canonicalKey || f.key))
+    (!isSummary || isSummarySchemaField(f, summaryKeys))
   ), seededFields);
 
   const conflicts     = dbCat.filter(f => f.status === "conflicting" || f.status === "source_changed").length;
@@ -583,7 +605,7 @@ function CategorySection({
     if (viewMode === "full") return true;
     const hasCanonicalSeed = s.aliasOf &&
       seededFields.some(field => field.key === s.aliasOf);
-    return summaryKeys.has(s.canonicalKey || s.key) && !hasCanonicalSeed;
+    return isSummarySchemaField(s, summaryKeys) && !hasCanonicalSeed;
   }
 
   const visibleDb     = dbCat.filter(shouldShow);
@@ -744,7 +766,7 @@ export default function AssetRecordTab({
   const seededFields = buildSeededFromSchema(schemaKey, workspaceMeta);
   const summaryKeys = getSummaryFieldKeys(schemaKey);
   const summarySchemaFields = seededFields.filter(field =>
-    summaryKeys.has(field.canonicalKey || field.key)
+    isSummarySchemaField(field, summaryKeys)
   );
 
   // Header stats
@@ -763,10 +785,11 @@ export default function AssetRecordTab({
     seededFields,
     field => summaryKeys.has(canonicalRecordKey(field, seededFields)) || isSummaryException(field),
     isInactiveRecord,
+    false,
   );
   const activeStats = viewMode === "summary" ? summaryStats : fullStats;
   const pct = activeStats.total > 0
-    ? Math.round((activeStats.confirmed / activeStats.total) * 100)
+    ? Math.round((activeStats.complete / activeStats.total) * 100)
     : 0;
 
   const LEGAL_TOOLTIP = "Kontra organizes transaction information and participant confirmations; it does not provide legal certification or independent verification. \"Workflow required\" means this item is configured as necessary to complete this workspace workflow. It does not mean the item is legally, regulatorily, or contractually required.";
@@ -832,15 +855,17 @@ export default function AssetRecordTab({
             </div>
           </div>
           <p className="text-xs font-semibold text-gray-700 shrink-0">
-            {activeStats.awaiting} {viewMode === "summary" ? "key items" : "fields"} awaiting information
+            {activeStats.complete} of {activeStats.total} {viewMode === "summary" ? "key items" : "fields"} complete · {pct}%
           </p>
         </div>
         <div className="flex flex-wrap gap-3 mt-2">
           <span className="text-[10px] text-gray-400">
-            {activeStats.awaiting} awaiting information · {activeStats.extracted} extracted · {activeStats.confirmed} confirmed
+            {activeStats.extracted} extracted · {activeStats.confirmed} confirmed · {activeStats.manuallyEntered} manually entered · {activeStats.awaiting} awaiting information
+            {activeStats.fromSetup > 0 ? ` · ${activeStats.fromSetup} from setup` : ""}
+            {activeStats.notApplicable > 0 ? ` · ${activeStats.notApplicable} N/A` : ""}
           </span>
           {viewMode === "summary" && (
-            <span className="text-[10px] text-gray-400">{fullStats.total} fields in full record</span>
+            <span className="text-[10px] text-gray-400">{fullStats.fieldCount} fields in full record</span>
           )}
         </div>
       </div>
