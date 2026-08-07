@@ -6462,6 +6462,55 @@ app.post('/api/public/deal-room/:propertyId/transaction-record/fields/:fieldId/v
   }
 });
 
+// Create or upsert a field manually (coordinator enters value before extraction)
+app.post('/api/public/deal-room/:propertyId/transaction-record/fields', async (req, res) => {
+  const { propertyId } = req.params;
+  const { field_key, display_label, field_category, value_text, notes, status, ownerWriteToken } = req.body || {};
+  if (!field_key || !field_category) return res.status(400).json({ error: 'field_key and field_category required' });
+  const access = await getRoomAccessContext(req, propertyId, ownerWriteToken);
+  if (access.mode !== 'owner') return accessDenied(res, 'Owner access required');
+  const ALLOWED_STATUSES = ['missing','extracted','needs_review','verified','not_applicable'];
+  const now = new Date().toISOString();
+  try {
+    // Try update first (in case a record already exists for this key)
+    const { data: existing } = await supabase
+      .from('transaction_record_fields')
+      .select('id')
+      .eq('property_id', propertyId)
+      .eq('field_key', field_key)
+      .maybeSingle();
+    if (existing?.id) {
+      const update = { updated_at: now };
+      if (value_text !== undefined) { update.value_text = String(value_text).slice(0, 2000); update.extracted_by = 'coordinator'; }
+      if (notes !== undefined)      update.notes = String(notes).slice(0, 500);
+      if (status && ALLOWED_STATUSES.includes(status)) update.status = status;
+      else if (value_text) update.status = 'needs_review';
+      const { error } = await supabase.from('transaction_record_fields').update(update).eq('id', existing.id);
+      if (error) throw error;
+      return res.json({ ok: true, action: 'updated', id: existing.id });
+    }
+    // Insert new
+    const insert = {
+      property_id:    propertyId,
+      field_key:      String(field_key).slice(0, 100),
+      display_label:  display_label ? String(display_label).slice(0, 200) : field_key,
+      field_category: String(field_category).slice(0, 100),
+      value_text:     value_text ? String(value_text).slice(0, 2000) : null,
+      notes:          notes ? String(notes).slice(0, 500) : null,
+      status:         (status && ALLOWED_STATUSES.includes(status)) ? status : (value_text ? 'needs_review' : 'missing'),
+      extracted_by:   'coordinator',
+      created_at:     now,
+      updated_at:     now,
+    };
+    const { data, error } = await supabase.from('transaction_record_fields').insert(insert).select('id').single();
+    if (error) throw error;
+    res.json({ ok: true, action: 'created', id: data?.id });
+  } catch (err) {
+    console.error('[transaction-record POST field]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.post('/api/public/deal-room/:propertyId/transaction-record/extract', async (req, res) => {
   const { propertyId } = req.params;
   const { ownerWriteToken } = req.body || {};
