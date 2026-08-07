@@ -14,3 +14,5 @@
 - [Kontra artifact build environment](kontra-artifact-build-env.md) — workspace Vite builds require explicit PORT and BASE_PATH values even in production mode
 - [Kontra custom pack normalization](kontra-custom-pack-normalization.md) — normalize generated role assignments and stage keys before rendering custom rooms
 - [Kontra strategic direction](kontra-strategic-direction.md) — own pre-settlement transaction operations; keep tokenization downstream and adapter-based
+- [Kontra product boundary](kontra-product-boundary.md) — coordinates/verifies/prepares only; never issues, sells, recommends, or settles; DA capability = "Digital Asset Readiness", not "Tokenization Engine"
+- [Kontra Transaction Record semantics](kontra-transaction-record-semantics.md) — use canonical field keys, distinguish workflow-required from suggested/expected, and make dependent fields non-applicable when their prerequisite is N/A

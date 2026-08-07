@@ -7,19 +7,22 @@
 // Field shape:
 //   key:      unique dot-prefixed key (category.field_name)
 //   label:    human label shown in the record UI
-//   required: true → flagged when missing; false → optional
+//   workflowRequired: true → required by this workspace workflow; false → optional
+//   requirement: "workflow" | "suggested" | "expected" | "optional"
 //   setup:    (optional) workspaceMeta key that seeds an initial value at room creation
 //   sources:  (optional) expected source documents for this field
 //   role:     (optional) confirmation role expected for approvals fields
 //   hint:     (optional) one-line description shown in the field tooltip
+//   aliasOf:  (optional) another field key that owns the canonical value
+//   dependsOn: (optional) confirmed fact that activates this field
 
 // ── Universal transaction fields (present for every pack) ─────────────────────
 const UNIVERSAL_TRANSACTION_FIELDS = [
-  { key: "transaction.type",         label: "Transaction type",        required: true,  setup: "deal_type"         },
-  { key: "transaction.stage",        label: "Current stage",           required: true,  setup: "stage"             },
-  { key: "transaction.closing_date", label: "Target closing date",     required: true,  setup: "closing_date"      },
-  { key: "transaction.value",        label: "Transaction value",       required: false, setup: "transaction_value" },
-  { key: "transaction.jurisdiction", label: "Jurisdiction",            required: true,  setup: "jurisdiction"      },
+  { key: "transaction.type",         label: "Transaction type",        workflowRequired: true,  setup: "deal_type"         },
+  { key: "transaction.stage",        label: "Current stage",           workflowRequired: true,  setup: "stage"             },
+  { key: "transaction.closing_date", label: "Target closing date",     workflowRequired: true,  setup: "closing_date"      },
+  { key: "transaction.value",        label: "Transaction value",       workflowRequired: false, setup: "transaction_value" },
+  { key: "transaction.jurisdiction", label: "Jurisdiction",            workflowRequired: true,  setup: "jurisdiction"      },
 ];
 
 // ── Per-pack schemas ──────────────────────────────────────────────────────────
@@ -34,10 +37,10 @@ const PACK_SCHEMAS = {
   // schema at pack-creation time with asset-type-specific fields.
   cre_acquisition: {
     transaction_extra: [
-      { key: "transaction.purchase_price",          label: "Purchase price",              required: true,  sources: ["Purchase Agreement", "LOI"] },
+      { key: "transaction.purchase_price",          label: "Purchase price",              workflowRequired: true,  sources: ["Purchase Agreement", "LOI"] },
       { key: "transaction.earnest_money",           label: "Earnest money deposit",       required: true,  sources: ["Purchase Agreement"] },
       { key: "transaction.dd_expiration",           label: "Due-diligence expiration",    required: true,  sources: ["Purchase Agreement"] },
-      { key: "transaction.financing_contingency",   label: "Financing contingency",       required: false, sources: ["Purchase Agreement"] },
+      { key: "transaction.financing_contingency",   label: "Financing contingency",       workflowRequired: false, sources: ["Purchase Agreement"] },
     ],
     asset_identity: [
       { key: "asset.name",                label: "Property name",               required: true,  setup: "name",   sources: ["Purchase Agreement", "Title Report"] },
@@ -57,7 +60,7 @@ const PACK_SCHEMAS = {
       { key: "parties.buyer_broker",   label: "Buyer's representative",    required: false, sources: ["Representation Agreement"] },
       { key: "parties.seller_broker",  label: "Seller's representative",   required: false, sources: ["Listing Agreement"] },
       { key: "parties.counsel",        label: "Legal counsel",             required: true,  sources: ["Engagement Letter"] },
-      { key: "parties.lender",         label: "Lender",                    required: false, sources: ["Term Sheet", "Loan Application"] },
+      { key: "parties.lender",         label: "Lender",                    workflowRequired: false, sources: ["Term Sheet", "Loan Application"], dependsOn: { field: "transaction.financing_contingency", inactiveWhen: ["n/a", "no", "none", "not applicable", "not needed"] } },
       { key: "parties.title_company",  label: "Title / escrow company",    required: true,  sources: ["Title Commitment"] },
       { key: "parties.inspector",      label: "Property inspector",        required: false, sources: ["Inspection Report"] },
     ],
@@ -69,15 +72,15 @@ const PACK_SCHEMAS = {
       { key: "ownership.liens",             label: "Existing liens / encumbrances", required: true, sources: ["Title Report"] },
     ],
     financial: [
-      { key: "financial.purchase_price",      label: "Purchase price",              required: true,  sources: ["Purchase Agreement"] },
+      { key: "financial.purchase_price",      label: "Purchase price",              aliasOf: "transaction.purchase_price", workflowRequired: true, sources: ["Purchase Agreement"] },
       { key: "financial.revenue",             label: "Historical revenue",          required: false, sources: ["Profit & Loss", "Offering Memorandum"] },
       { key: "financial.noi",                 label: "Net operating income (NOI)",  required: true,  sources: ["Profit & Loss", "Appraisal"] },
       { key: "financial.occupancy",           label: "Occupancy rate",              required: false, sources: ["STR Report", "Offering Memorandum"], hint: "Trailing 12 months %" },
       { key: "financial.adr",                 label: "ADR (Average Daily Rate)",    required: false, sources: ["STR Report", "Offering Memorandum"] },
       { key: "financial.revpar",              label: "RevPAR",                      required: false, sources: ["STR Report", "Offering Memorandum"] },
       { key: "financial.existing_debt",       label: "Existing debt",               required: false, sources: ["Loan Documents", "Title Report"] },
-      { key: "financial.proposed_financing",  label: "Proposed financing",          required: false, sources: ["Term Sheet", "Loan Application"] },
-      { key: "financial.required_equity",     label: "Required equity",             required: false, sources: ["Loan Application"] },
+      { key: "financial.proposed_financing",  label: "Proposed financing",          workflowRequired: false, sources: ["Term Sheet", "Loan Application"], dependsOn: { field: "transaction.financing_contingency", inactiveWhen: ["n/a", "no", "none", "not applicable", "not needed"] } },
+      { key: "financial.required_equity",     label: "Required equity",             workflowRequired: false, sources: ["Loan Application"], dependsOn: { field: "transaction.financing_contingency", inactiveWhen: ["n/a", "no", "none", "not applicable", "not needed"] } },
       { key: "financial.capex",               label: "CapEx obligations",           required: false, sources: ["Property Inspection", "PIP Report"] },
       { key: "financial.cap_rate",            label: "Cap rate",                    required: false, sources: ["Appraisal", "Offering Memorandum"] },
       { key: "financial.ltv",                 label: "LTV ratio",                   required: false, sources: ["Appraisal", "Term Sheet"] },
@@ -100,7 +103,7 @@ const PACK_SCHEMAS = {
       { key: "approval.buyer",     label: "Buyer approval",        required: true,  role: "Buyer" },
       { key: "approval.seller",    label: "Seller approval",       required: true,  role: "Seller" },
       { key: "approval.counsel",   label: "Counsel review",        required: true,  role: "Legal Counsel" },
-      { key: "approval.lender",    label: "Lender approval",       required: false, role: "Lender" },
+      { key: "approval.lender",    label: "Lender approval",       workflowRequired: false, role: "Lender", dependsOn: { field: "transaction.financing_contingency", inactiveWhen: ["n/a", "no", "none", "not applicable", "not needed"] } },
       { key: "approval.franchise", label: "Franchise / brand approval", required: false, role: "Franchisor" },
       { key: "approval.closing",   label: "Closing authorization", required: true,  role: "Deal Coordinator" },
     ],
@@ -134,7 +137,7 @@ const PACK_SCHEMAS = {
       { key: "ownership.structure",       label: "Ownership structure",   required: false, sources: ["Operating Agreement"] },
     ],
     financial: [
-      { key: "financial.purchase_price",    label: "Purchase price",                 required: true,  sources: ["Purchase Agreement"] },
+      { key: "financial.purchase_price",    label: "Purchase price",                 aliasOf: "transaction.purchase_price", workflowRequired: true, sources: ["Purchase Agreement"] },
       { key: "financial.revenue",           label: "Revenue (trailing 12 months)",   required: true,  sources: ["Profit & Loss", "Tax Return"] },
       { key: "financial.ebitda",            label: "EBITDA",                         required: true,  sources: ["Profit & Loss"] },
       { key: "financial.multiple",          label: "EV / EBITDA multiple",           required: false, sources: ["Purchase Agreement", "LOI"] },
@@ -237,13 +240,13 @@ const PACK_SCHEMAS = {
 const GENERIC_SCHEMA = {
   transaction_extra: [],
   asset_identity: [
-    { key: "asset.name",        label: "Entity / asset name", required: true,  setup: "name", sources: [] },
-    { key: "asset.type",        label: "Type",                required: true,                 sources: [] },
+    { key: "asset.name",        label: "Entity / asset name", workflowRequired: false, requirement: "expected", setup: "name", sources: [] },
+    { key: "asset.type",        label: "Type",                workflowRequired: false, requirement: "suggested",                 sources: [] },
     { key: "asset.jurisdiction",label: "Jurisdiction",        required: false, setup: "jurisdiction", sources: [] },
   ],
   parties: [
-    { key: "parties.primary",      label: "Primary party",  required: true,  sources: [] },
-    { key: "parties.counterparty", label: "Counterparty",   required: true,  sources: [] },
+    { key: "parties.primary",      label: "Primary party",  workflowRequired: false, requirement: "suggested",  sources: [] },
+    { key: "parties.counterparty", label: "Counterparty",   workflowRequired: false, requirement: "suggested",   sources: [] },
     { key: "parties.counsel",      label: "Legal counsel",  required: false, sources: [] },
   ],
   beneficial_ownership: [
@@ -251,7 +254,7 @@ const GENERIC_SCHEMA = {
     { key: "ownership.structure", label: "Ownership structure", required: false, sources: [] },
   ],
   financial: [
-    { key: "financial.deal_value", label: "Deal value",         required: true,  setup: "transaction_value", sources: [] },
+    { key: "financial.deal_value", label: "Deal value",         workflowRequired: false, requirement: "suggested",  setup: "transaction_value", sources: [] },
     { key: "financial.terms",      label: "Key financial terms", required: false,                            sources: [] },
   ],
   legal: [
@@ -259,7 +262,7 @@ const GENERIC_SCHEMA = {
     { key: "legal.jurisdiction",   label: "Governing jurisdiction",required: false, sources: [] },
   ],
   approvals: [
-    { key: "approval.primary", label: "Primary party approval", required: true,  role: "Primary Party" },
+    { key: "approval.primary", label: "Primary party approval", workflowRequired: false, requirement: "expected",  role: "Primary Party" },
     { key: "approval.counsel", label: "Counsel sign-off",       required: false, role: "Legal Counsel" },
   ],
 };
@@ -351,15 +354,24 @@ export function resolveSchemaKey(packId, pack, workspaceName) {
  */
 export function getPackRecordSchema(schemaKey) {
   const specific = PACK_SCHEMAS[schemaKey] || GENERIC_SCHEMA;
-  return {
-    transaction:          [...UNIVERSAL_TRANSACTION_FIELDS, ...(specific.transaction_extra || [])],
-    asset_identity:       specific.asset_identity        || [],
-    parties:              specific.parties               || [],
-    beneficial_ownership: specific.beneficial_ownership  || [],
-    financial:            specific.financial             || [],
-    legal:                specific.legal                 || [],
-    approvals:            specific.approvals             || [],
+  const normalize = (field) => {
+    const workflowRequired = field.workflowRequired ?? field.required ?? false;
+    return {
+      ...field,
+      workflowRequired,
+      requirement: field.requirement || (workflowRequired ? "workflow" : "expected"),
+      canonicalKey: field.aliasOf || field.key,
+    };
   };
+  return Object.fromEntries([
+    ["transaction",          [...UNIVERSAL_TRANSACTION_FIELDS, ...(specific.transaction_extra || [])]],
+    ["asset_identity",       specific.asset_identity        || []],
+    ["parties",              specific.parties               || []],
+    ["beneficial_ownership", specific.beneficial_ownership  || []],
+    ["financial",            specific.financial             || []],
+    ["legal",                specific.legal                 || []],
+    ["approvals",            specific.approvals             || []],
+  ].map(([category, fields]) => [category, fields.map(normalize)]));
 }
 
 /**
@@ -393,14 +405,22 @@ export function buildSeededFromSchema(schemaKey, workspaceMeta) {
       result.push({
         category,
         key:      field.key,
+        canonicalKey: field.canonicalKey,
         label:    field.label,
-        required: field.required ?? false,
+        workflowRequired: field.workflowRequired,
+        requirement: field.requirement,
+        aliasOf:   field.aliasOf || null,
         sources:  field.sources  || [],
         role:     field.role     || null,
         hint:     field.hint     || null,
+        dependsOn: field.dependsOn || null,
         value,
       });
     }
+  }
+  const valuesByKey = new Map(result.map(field => [field.key, field.value]));
+  for (const field of result) {
+    if (field.aliasOf && !field.value) field.value = valuesByKey.get(field.aliasOf) || null;
   }
   return result;
 }

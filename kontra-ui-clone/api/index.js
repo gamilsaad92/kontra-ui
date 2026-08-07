@@ -2993,6 +2993,15 @@ app.get('/api/public/deal-room/:propertyId/analyses', async (req, res) => {
 // Runs after document analysis. Extracts structured fields from document text
 // and merges them into transaction_record_fields. Existing 'verified' fields
 // are never overwritten. Conflicting extractions are flagged for coordinator review.
+const TRANSACTION_RECORD_CANONICAL_KEYS = {
+  'financial.purchase_price': 'transaction.purchase_price',
+  'financial.deal_value': 'transaction.value',
+};
+
+function canonicalTransactionRecordKey(fieldKey) {
+  return TRANSACTION_RECORD_CANONICAL_KEYS[fieldKey] || fieldKey;
+}
+
 async function extractTransactionFields(propertyId, docId, text, sectionLabel) {
   if (!text || text.trim().length < 50) return;
   try {
@@ -3001,7 +3010,7 @@ async function extractTransactionFields(propertyId, docId, text, sectionLabel) {
       messages: [
         {
           role: 'system',
-          content: `You are a transaction data extraction specialist. Given document text, extract key structured fields for a transaction record. Return a JSON array of field objects — only include fields explicitly present in the text. Each object must have: field_key (dotted string like "parties.buyer_entity"), field_category (one of: asset_identity, transaction, parties, beneficial_ownership, financial, legal, approvals), display_label (human-readable label), value_text (the extracted value as a plain string), confidence (0.0 to 1.0), source_page (integer if determinable, else null), source_excerpt (the exact clause the value was extracted from, max 120 chars).`,
+          content: `You are a transaction data extraction specialist. Given document text, extract key structured fields for a transaction record. Return a JSON array of field objects — only include fields explicitly present in the text. Each object must have: field_key (dotted string like "parties.buyer"), field_category (one of: asset_identity, transaction, parties, beneficial_ownership, financial, legal, approvals), display_label (human-readable label), value_text (the extracted value as a plain string), confidence (0.0 to 1.0), source_page (integer if determinable, else null), source_excerpt (the exact clause the value was extracted from, max 120 chars). Use canonical field keys when a concept has a canonical home: purchase price is "transaction.purchase_price" (never "financial.purchase_price"), and transaction value is "transaction.value" (never "financial.deal_value"). One document may populate multiple distinct fields, but do not emit duplicate keys for the same concept.`,
         },
         {
           role: 'user',
@@ -3018,11 +3027,12 @@ async function extractTransactionFields(propertyId, docId, text, sectionLabel) {
 
     for (const f of extracted) {
       if (!f.field_key || !f.field_category || !f.value_text) continue;
+      const canonicalKey = canonicalTransactionRecordKey(String(f.field_key));
       const { data: existing } = await supabase
         .from('transaction_record_fields')
         .select('id, status, value_text')
         .eq('property_id', propertyId)
-        .eq('field_key', f.field_key)
+        .eq('field_key', canonicalKey)
         .maybeSingle();
 
       if (existing?.status === 'verified') continue; // never overwrite verified
@@ -3032,9 +3042,9 @@ async function extractTransactionFields(propertyId, docId, text, sectionLabel) {
 
       await supabase.from('transaction_record_fields').upsert({
         property_id:    propertyId,
-        field_key:      f.field_key,
+        field_key:      canonicalKey,
         field_category: f.field_category,
-        display_label:  f.display_label || f.field_key,
+        display_label:  f.display_label || canonicalKey,
         value_text:     String(f.value_text).slice(0, 2000),
         status:         isConflict ? 'conflicting' : 'extracted',
         confidence:     f.confidence != null ? Math.min(1, Math.max(0, parseFloat(f.confidence))) : null,

@@ -56,8 +56,34 @@ function InfoTooltip({ text }) {
   );
 }
 
+function normalizedValue(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function dependencyIsInactive(field, dbFields, seededFields) {
+  const dependency = field?.dependsOn;
+  if (!dependency?.field) return false;
+  const dbDependency = dbFields.find(item => item.field_key === dependency.field);
+  const seededDependency = seededFields.find(item => item.key === dependency.field);
+  const value = dbDependency?.value_text || seededDependency?.value || "";
+  if (dbDependency?.status === "not_applicable") return true;
+  return (dependency.inactiveWhen || []).some(candidate =>
+    normalizedValue(value) === normalizedValue(candidate)
+  );
+}
+
+function dbFieldMatchesSchema(dbField, schemaField) {
+  if (!schemaField) return false;
+  return dbField.field_key === schemaField.key || dbField.field_key === schemaField.canonicalKey;
+}
+
+function canonicalFieldValue(schemaField, dbFields) {
+  const match = dbFields.find(item => dbFieldMatchesSchema(item, schemaField));
+  return match?.value_text || match?.value_json || null;
+}
+
 // ── DB-backed field row (has a real ID) ───────────────────────────────────────
-function FieldRow({ field, isCoordinator, propertyId, ownerToken, onUpdated }) {
+function FieldRow({ field, isCoordinator, propertyId, ownerToken, onUpdated, dependencyInactive = false }) {
   const [editing,   setEditing]   = useState(false);
   const [editVal,   setEditVal]   = useState(field.value_text || "");
   const [editNotes, setEditNotes] = useState(field.notes || "");
@@ -103,6 +129,7 @@ function FieldRow({ field, isCoordinator, propertyId, ownerToken, onUpdated }) {
   const isEmpty     = !field.value_text && !field.value_json;
   const isConfirmed = field.status === "verified";
   const isNA        = field.status === "not_applicable";
+  const isInactive  = dependencyInactive && !isConfirmed;
 
   function confirmedByLine() {
     if (!field.verified_at) return null;
@@ -113,18 +140,20 @@ function FieldRow({ field, isCoordinator, propertyId, ownerToken, onUpdated }) {
   }
 
   return (
-    <div className={`border-b border-gray-50 last:border-0 px-5 py-3.5 ${isNA ? "opacity-40" : ""}`}>
+    <div className={`border-b border-gray-50 last:border-0 px-5 py-3.5 ${isNA || isInactive ? "opacity-40" : ""}`}>
       {!editing ? (
         <div className="flex items-start gap-3">
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap mb-0.5">
               <p className="text-xs font-semibold text-gray-700 shrink-0">{field.display_label}</p>
-              <StatusBadge status={field.status} />
+              <StatusBadge status={isInactive ? "not_applicable" : field.status} />
               {field.confidence != null && field.status === "extracted" && (
                 <span className="text-[10px] text-gray-400">{Math.round(field.confidence * 100)}% confidence</span>
               )}
             </div>
-            {isEmpty ? (
+            {isInactive ? (
+              <p className="text-xs text-gray-400 italic">Not applicable — the related workflow item is not needed</p>
+            ) : isEmpty ? (
               <p className="text-xs text-gray-400 italic">Not yet collected</p>
             ) : (
               <p className="text-xs text-gray-800 leading-relaxed">{field.value_text}</p>
@@ -146,7 +175,7 @@ function FieldRow({ field, isCoordinator, propertyId, ownerToken, onUpdated }) {
               <p className="text-[10px] text-green-600 mt-0.5">{confirmedByLine()}</p>
             )}
           </div>
-          {isCoordinator && !isNA && (
+          {isCoordinator && !isNA && !isInactive && (
             <div className="flex items-center gap-1.5 shrink-0">
               {!isConfirmed && !isEmpty && (
                 <button onClick={verifyField} disabled={verifying}
@@ -193,7 +222,7 @@ function FieldRow({ field, isCoordinator, propertyId, ownerToken, onUpdated }) {
 
 // ── Schema field row (no DB record yet) ───────────────────────────────────────
 // Shown before documents arrive. Provides contextual actions for each field.
-function SeededFieldRow({ field, isCoordinator, propertyId, ownerToken, onUpdated, onRequestUpload }) {
+function SeededFieldRow({ field, isCoordinator, propertyId, ownerToken, onUpdated, onRequestUpload, dependencyInactive = false }) {
   const [entering,   setEntering]   = useState(false);
   const [enterVal,   setEnterVal]   = useState("");
   const [enterNotes, setEnterNotes] = useState("");
@@ -209,7 +238,7 @@ function SeededFieldRow({ field, isCoordinator, propertyId, ownerToken, onUpdate
         `${API_BASE}/api/public/deal-room/${propertyId}/transaction-record/fields`,
         { method: "POST", headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            field_key:      field.key,
+            field_key:      field.canonicalKey || field.key,
             display_label:  field.label,
             field_category: field.category,
             value_text:     enterVal.trim(),
@@ -229,7 +258,7 @@ function SeededFieldRow({ field, isCoordinator, propertyId, ownerToken, onUpdate
         `${API_BASE}/api/public/deal-room/${propertyId}/transaction-record/fields`,
         { method: "POST", headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            field_key:      field.key,
+            field_key:      field.canonicalKey || field.key,
             display_label:  field.label,
             field_category: field.category,
             value_text:     "",
@@ -242,18 +271,24 @@ function SeededFieldRow({ field, isCoordinator, propertyId, ownerToken, onUpdate
   }
 
   const hasValue = !!field.value;
+  const isInactive = dependencyInactive;
 
   return (
-    <div className="border-b border-gray-50 last:border-0 px-5 py-3">
+    <div className={`border-b border-gray-50 last:border-0 px-5 py-3 ${isInactive ? "opacity-40" : ""}`}>
       {!entering ? (
         <div>
           <div className="flex items-start gap-3">
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 flex-wrap mb-0.5">
                 <p className="text-xs font-semibold text-gray-700 shrink-0">{field.label}</p>
-                {field.required && !hasValue && (
+                {field.workflowRequired && !hasValue && !isInactive && (
                   <span className="inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded text-amber-700 bg-amber-50 border border-amber-100 shrink-0">
-                    Required
+                    Workflow required
+                  </span>
+                )}
+                {!field.workflowRequired && !hasValue && !isInactive && field.requirement === "suggested" && (
+                  <span className="inline-flex items-center text-[10px] font-medium px-1.5 py-0.5 rounded text-blue-600 bg-blue-50 border border-blue-100 shrink-0">
+                    Suggested
                   </span>
                 )}
                 {hasValue && (
@@ -263,7 +298,9 @@ function SeededFieldRow({ field, isCoordinator, propertyId, ownerToken, onUpdate
                   </span>
                 )}
               </div>
-              {hasValue ? (
+              {isInactive ? (
+                <p className="text-xs text-gray-400 italic">Not applicable — the related workflow item is not needed</p>
+              ) : hasValue ? (
                 <p className="text-xs text-gray-800">{field.value}</p>
               ) : (
                 <p className="text-xs text-gray-400">Not provided</p>
@@ -276,7 +313,7 @@ function SeededFieldRow({ field, isCoordinator, propertyId, ownerToken, onUpdate
             </div>
 
             {/* Contextual actions — only for empty fields the coordinator can act on */}
-            {isCoordinator && !hasValue && ownerToken && (
+            {isCoordinator && !hasValue && ownerToken && !isInactive && (
               <div className="flex items-center gap-1 shrink-0 flex-wrap justify-end">
                 {field.sources?.length > 0 && (
                   <button
@@ -344,12 +381,17 @@ function getCategoryChip(catKey, dbFields, seededFields) {
   const conflicts     = dbCat.filter(f => f.status === "conflicting" || f.status === "source_changed").length;
   const confirmed     = dbCat.filter(f => f.status === "verified").length;
   const awaitReview   = dbCat.filter(f => f.status === "extracted" || f.status === "needs_review").length;
-  const reqMissing    = seeded.filter(f => f.required && !f.value && !dbCat.find(d => d.field_key === f.key && d.value_text)).length;
+  const reqMissing    = seeded.filter(f =>
+    f.workflowRequired &&
+    !f.value &&
+    !dependencyIsInactive(f, dbFields, seededFields) &&
+    !dbCat.find(d => dbFieldMatchesSchema(d, f) && d.value_text)
+  ).length;
   const seededPop     = seeded.filter(f => f.value).length;
 
   // Priority order for the chip
   if (conflicts > 0)        return { text: `${conflicts} conflict${conflicts > 1 ? "s" : ""}`,                color: "red"   };
-  if (reqMissing > 0)       return { text: `${reqMissing} required field${reqMissing > 1 ? "s" : ""} missing`, color: "amber" };
+  if (reqMissing > 0)       return { text: `${reqMissing} workflow item${reqMissing > 1 ? "s" : ""} missing`, color: "amber" };
   if (awaitReview > 0)      return { text: `${awaitReview} awaiting review`,                                   color: "blue"  };
   if (confirmed > 0 && dbCat.length > 0)
                             return { text: `${confirmed} of ${dbCat.length} confirmed`,                        color: "green" };
@@ -382,10 +424,25 @@ function CategorySection({
   ownerToken, onUpdated, viewMode, onRequestUpload,
 }) {
   // Auto-expand if category has conflicts or required missing fields
-  const dbCat      = dbFields.filter(f => f.field_category === category.key);
   const seededCat  = seededFields.filter(f => f.category === category.key);
+  const presentKeys = new Set(dbFields.map(field => field.field_key));
+  const dedupedDbFields = dbFields.filter(field => {
+    const schemaField = seededFields.find(schema => schema.key === field.field_key);
+    return !(schemaField?.aliasOf && presentKeys.has(schemaField.aliasOf));
+  });
+  const dbCat      = dedupedDbFields.filter(f => f.field_category === category.key);
+  const seededWithDependencies = seededCat.map(field => ({
+    ...field,
+    value: field.value || canonicalFieldValue(field, dbFields),
+    inactive: dependencyIsInactive(field, dbFields, seededFields),
+  }));
   const hasUrgent  = dbCat.some(f => f.status === "conflicting" || f.status === "source_changed")
-                  || seededCat.some(f => f.required && !f.value && !dbCat.find(d => d.field_key === f.key && d.value_text));
+                  || seededWithDependencies.some(f =>
+                    f.workflowRequired &&
+                    !f.value &&
+                    !f.inactive &&
+                    !dbCat.find(d => dbFieldMatchesSchema(d, f) && d.value_text)
+                  );
 
   const [open, setOpen] = useState(category.defaultOpen || hasUrgent);
 
@@ -401,18 +458,18 @@ function CategorySection({
     if (viewMode === "full") return true;
     const val = dbField.value_text || dbField.value_json;
     const urgent = dbField.status === "conflicting" || dbField.status === "source_changed";
-    const schema = seededCat.find(s => s.key === dbField.field_key);
-    return !!val || urgent || (schema?.required);
+    const schema = seededWithDependencies.find(s => dbFieldMatchesSchema(dbField, s));
+    return !!val || urgent || (schema?.workflowRequired && !schema?.inactive);
   }
 
   function shouldShowSeeded(s) {
     if (viewMode === "full") return true;
     // Summary: show populated + required-but-empty (action needed)
-    return s.value || s.required;
+    return s.value || (s.workflowRequired && !s.inactive);
   }
 
   const visibleDb     = dbCat.filter(shouldShow);
-  const visibleSeeded = seededCat.filter(shouldShowSeeded);
+  const visibleSeeded = seededWithDependencies.filter(shouldShowSeeded);
 
   // Progress bar (only when DB fields exist)
   const confirmed = dbCat.filter(f => f.status === "verified").length;
@@ -455,7 +512,12 @@ function CategorySection({
               {visibleDb.length > 0
                 ? visibleDb.map(f => (
                     <FieldRow key={f.id} field={f} isCoordinator={isCoordinator}
-                      propertyId={propertyId} ownerToken={ownerToken} onUpdated={onUpdated} />
+                      propertyId={propertyId} ownerToken={ownerToken} onUpdated={onUpdated}
+                      dependencyInactive={dependencyIsInactive(
+                        seededWithDependencies.find(s => s.key === f.field_key),
+                        dbFields,
+                        seededFields
+                      )} />
                   ))
                 : (
                   <p className="px-5 py-3 text-[10px] text-gray-400 italic">
@@ -464,10 +526,11 @@ function CategorySection({
                 )
               }
               {/* Show seeded schema for fields not yet extracted */}
-              {visibleSeeded.filter(s => !dbCat.find(d => d.field_key === s.key)).map(s => (
+              {visibleSeeded.filter(s => !dbCat.find(d => dbFieldMatchesSchema(d, s))).map(s => (
                 <SeededFieldRow key={s.key} field={s} isCoordinator={isCoordinator}
                   propertyId={propertyId} ownerToken={ownerToken}
-                  onUpdated={onUpdated} onRequestUpload={onRequestUpload} />
+                  onUpdated={onUpdated} onRequestUpload={onRequestUpload}
+                  dependencyInactive={s.inactive} />
               ))}
               {viewMode === "summary" && (dbCat.length - visibleDb.length) > 0 && (
                 <p className="px-5 py-2 text-[10px] text-gray-400 border-t border-gray-50">
@@ -481,7 +544,8 @@ function CategorySection({
               {visibleSeeded.map(s => (
                 <SeededFieldRow key={s.key} field={s} isCoordinator={isCoordinator}
                   propertyId={propertyId} ownerToken={ownerToken}
-                  onUpdated={onUpdated} onRequestUpload={onRequestUpload} />
+                  onUpdated={onUpdated} onRequestUpload={onRequestUpload}
+                  dependencyInactive={s.inactive} />
               ))}
               <p className="px-5 py-2.5 text-[10px] text-gray-400 italic border-t border-gray-50">
                 Upload documents — Kontra will extract these fields automatically.
@@ -510,9 +574,9 @@ export default function AssetRecordTab({
   const [extracting, setExtracting] = useState(false);
   const [enablingDA, setEnablingDA] = useState(false);
 
-  // Summary = show only populated/actionable fields; Full = show everything
-  // Default to Full when no DB fields exist (so coordinator sees what to collect)
-  const [viewMode, setViewMode] = useState("full");
+  // Summary is the operational default; Full Record remains available for the
+  // complete pack schema, including expected-but-empty items.
+  const [viewMode, setViewMode] = useState("summary");
 
   useEffect(() => {
     try { setOwnerToken(localStorage.getItem(`kontra_owner_token_${propertyId}`) || ""); } catch {}
@@ -527,8 +591,6 @@ export default function AssetRecordTab({
         const data = await res.json();
         const fields = data.fields || [];
         setDbFields(fields);
-        // Flip to Summary once documents start populating fields
-        if (fields.length > 3) setViewMode(v => v === "full" && fields.length > 3 ? "summary" : v);
       }
     } finally { setLoading(false); }
   }, [propertyId, ownerToken]);
@@ -568,7 +630,7 @@ export default function AssetRecordTab({
   const extractedCount  = dbFields.filter(f => f.status === "extracted" || f.status === "needs_review").length;
   const pct = totalDbFields > 0 ? Math.round((confirmedCount / totalDbFields) * 100) : 0;
 
-  const LEGAL_TOOLTIP = "Kontra organizes transaction information and participant confirmations; it does not provide legal certification or independent verification. \"Required\" fields are required by this workspace checklist, not by any legal determination.";
+  const LEGAL_TOOLTIP = "Kontra organizes transaction information and participant confirmations; it does not provide legal certification or independent verification. \"Workflow required\" means this item is configured as necessary to complete this workspace workflow. It does not mean the item is legally, regulatorily, or contractually required.";
 
   if (loading) {
     return (
