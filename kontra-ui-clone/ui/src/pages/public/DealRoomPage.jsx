@@ -4247,12 +4247,14 @@ export default function DealRoomPage() {
             {activeTab === 'asset-record' && (
               <AssetRecordTab
                 propertyId={pid}
+                packId={packId}
                 pack={pack}
                 isCoordinator={isCoordinator}
                 isTokenizationRelevant={isTokenizationRelevant}
                 daReadinessEnabled={daReadinessEnabled}
                 onEnableDAReadiness={enableDAReadiness}
                 onOpenDAReadiness={daReadinessEnabled ? () => setActiveTab('da-readiness') : null}
+                onNavigateToDocuments={() => setActiveTab('documents')}
                 workspaceMeta={{
                   name:              apiProperty?.name,
                   deal_type:         apiProperty?.deal_type,

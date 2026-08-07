@@ -264,15 +264,93 @@ const GENERIC_SCHEMA = {
   ],
 };
 
+// ── Schema pack resolution ─────────────────────────────────────────────────────
+//
+// Resolution order (first match wins):
+//   1. Direct hit — packId is a known built-in key (cre_acquisition, etc.)
+//   2. Custom ws_* pack — use pack.transactionType to find the base schema
+//   3. Workspace name inference — detect asset class from the room name
+//   4. Fall through to GENERIC_SCHEMA
+//
+// This means the Transaction Record always shows CRE/hotel/M&A/fundraising
+// fields even when the workspace was created through the custom AI pack builder
+// (which stores its own ws_* ID and a transactionType pointing back to the base).
+
+// Keywords that map a workspace name to a base schema
+const NAME_TO_SCHEMA = [
+  {
+    schema: 'cre_acquisition',
+    words:  ['hotel', 'motel', 'resort', 'lodge', 'inn', 'hospitality', 'cre',
+             'real estate', 'property', 'apartment', 'multifamily', 'office',
+             'retail', 'industrial', 'warehouse', 'mall', 'commercial', 'ground lease',
+             'flag conversion', 'refinanc', 'construction loan', 'asset acquisition'],
+  },
+  {
+    schema: 'fundraising',
+    words:  ['fundrais', 'capital raise', 'investment round', 'seed round',
+             'series a', 'series b', 'series c', 'venture', 'term sheet',
+             'safe note', 'convertible note', 'raise capital'],
+  },
+  {
+    schema: 'business_acquisition',
+    words:  ['business acquisition', 'company acquisition', 'corporate acquisition',
+             'business purchase', 'buy a business', 'selling a business',
+             'asset purchase', 'merger', 'm&a', 'management buyout', 'mbo'],
+  },
+  {
+    schema: 'tokenization',
+    words:  ['tokeniz', 'token issuance', 'token offering', 'security token',
+             'digital asset', ' sto', 'rwa ', 'real world asset', 'fractionali'],
+  },
+];
+
+function inferSchemaFromName(name) {
+  if (!name) return null;
+  const lower = name.toLowerCase();
+  for (const { schema, words } of NAME_TO_SCHEMA) {
+    if (words.some(w => lower.includes(w))) return schema;
+  }
+  return null;
+}
+
+/**
+ * Resolve the schema key to use for a given packId + pack object + workspace name.
+ * Returns a key present in PACK_SCHEMAS, or null (→ GENERIC_SCHEMA).
+ *
+ * Usage: call this once in the component, then pass the result to getPackRecordSchema.
+ */
+export function resolveSchemaKey(packId, pack, workspaceName) {
+  // 1. Direct hit — built-in pack with its own schema
+  if (packId && PACK_SCHEMAS[packId]) return packId;
+
+  // 2. Custom ws_* pack — trust pack.transactionType (set by registerCustomPack)
+  if (pack?.transactionType && PACK_SCHEMAS[pack.transactionType]) {
+    return pack.transactionType;
+  }
+
+  // 3. Workspace name inference
+  const fromName = inferSchemaFromName(workspaceName);
+  if (fromName) return fromName;
+
+  // 4. Pack name inference (last resort for ws_* packs with descriptive names)
+  const fromPackName = inferSchemaFromName(pack?.name);
+  if (fromPackName) return fromPackName;
+
+  return null; // will use GENERIC_SCHEMA
+}
+
 // ── Public API ─────────────────────────────────────────────────────────────────
 
 /**
- * Return the full category → fields schema for a given packId.
+ * Return the full category → fields schema for a given resolved schema key.
  * Universal transaction fields are always present; transaction_extra from the
  * pack are merged in after them.
+ *
+ * Pass the result of resolveSchemaKey() as schemaKey, or a raw packId for
+ * built-in packs. Defaults to GENERIC_SCHEMA when the key is unrecognized.
  */
-export function getPackRecordSchema(packId) {
-  const specific = PACK_SCHEMAS[packId] || GENERIC_SCHEMA;
+export function getPackRecordSchema(schemaKey) {
+  const specific = PACK_SCHEMAS[schemaKey] || GENERIC_SCHEMA;
   return {
     transaction:          [...UNIVERSAL_TRANSACTION_FIELDS, ...(specific.transaction_extra || [])],
     asset_identity:       specific.asset_identity        || [],
@@ -288,9 +366,11 @@ export function getPackRecordSchema(packId) {
  * Build the display list for the Transaction Record before documents arrive.
  * Returns all schema fields with their seeded value (or null), plus
  * `required` and `sources` for contextual actions.
+ *
+ * schemaKey should be the result of resolveSchemaKey(); falls back to raw packId.
  */
-export function buildSeededFromSchema(packId, workspaceMeta) {
-  const schema = getPackRecordSchema(packId);
+export function buildSeededFromSchema(schemaKey, workspaceMeta) {
+  const schema = getPackRecordSchema(schemaKey);
   const m      = workspaceMeta || {};
   const result = [];
 

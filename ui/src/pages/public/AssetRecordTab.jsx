@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { API_BASE } from "../../lib/apiBase";
-import { buildSeededFromSchema } from "../../lib/workflowPacks/transactionRecordSchema";
+import { buildSeededFromSchema, resolveSchemaKey } from "../../lib/workflowPacks/transactionRecordSchema";
 
 const ACCENT = "#800020";
 
@@ -498,7 +498,7 @@ function CategorySection({
 
 // ── Main component ────────────────────────────────────────────────────────────
 export default function AssetRecordTab({
-  propertyId, pack, isCoordinator,
+  propertyId, packId: rawPackId, pack, isCoordinator,
   isTokenizationRelevant, daReadinessEnabled,
   onEnableDAReadiness, onOpenDAReadiness,
   workspaceMeta, onNavigateToDocuments,
@@ -553,9 +553,12 @@ export default function AssetRecordTab({
     try { await onEnableDAReadiness(); } finally { setEnablingDA(false); }
   }
 
-  // Build the pack-driven seeded field list (schema template)
-  const packId       = pack?.id || "cre_acquisition";
-  const seededFields = buildSeededFromSchema(packId, workspaceMeta);
+  // Resolve the schema key using three-layer fallback:
+  //   1. rawPackId (built-in pack like "cre_acquisition")
+  //   2. pack.transactionType (custom ws_* packs store their base type here)
+  //   3. workspace name inference ("hotel", "apartment", "series a", etc.)
+  const schemaKey    = resolveSchemaKey(rawPackId || pack?.id, pack, workspaceMeta?.name);
+  const seededFields = buildSeededFromSchema(schemaKey, workspaceMeta);
 
   // Header stats
   const seededPopulated = seededFields.filter(s => s.value);
@@ -565,7 +568,7 @@ export default function AssetRecordTab({
   const extractedCount  = dbFields.filter(f => f.status === "extracted" || f.status === "needs_review").length;
   const pct = totalDbFields > 0 ? Math.round((confirmedCount / totalDbFields) * 100) : 0;
 
-  const LEGAL_TOOLTIP = "Kontra organizes transaction information and participant confirmations; it does not provide legal certification or independent verification.";
+  const LEGAL_TOOLTIP = "Kontra organizes transaction information and participant confirmations; it does not provide legal certification or independent verification. \"Required\" fields are required by this workspace checklist, not by any legal determination.";
 
   if (loading) {
     return (
