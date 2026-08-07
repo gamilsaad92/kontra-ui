@@ -13,6 +13,8 @@ import DocumentsTabPanel from "./DocumentsTabPanel";
 import VerifiedAssetPackage from "./VerifiedAssetPackage";
 import NotificationsLog from "./NotificationsLog";
 import LegalReviewPanel from "./LegalReviewPanel";
+import AssetRecordTab from "./AssetRecordTab";
+import DigitalAssetReadinessWorkflow from "./DigitalAssetReadinessWorkflow";
 import { DEFAULT_PACK_ID, getWorkflowPack, ensureWorkflowPackLoaded, resolvePackId } from "../../lib/workflowPacks";
 import { API_BASE as RESOLVED_API_BASE } from "../../lib/apiBase";
 import DealRoomPinGate from "./DealRoomPinGate";
@@ -2331,12 +2333,14 @@ function AssetReadinessTab({ propertyId, property, pack, onTabChange }) {
 }
 
 // ── WorkspaceTabNav ───────────────────────────────────────────────────────────
-function WorkspaceTabNav({ activeTab, onChange, showReadinessTab = false }) {
+function WorkspaceTabNav({ activeTab, onChange, showDAReadiness = false }) {
   const TABS = [
-    { key: 'overview',  label: 'Overview'  },
-    { key: 'documents', label: 'Documents' },
-    { key: 'activity',  label: 'Activity'  },
-    { key: 'settings',  label: 'Settings'  },
+    { key: 'overview',      label: 'Overview'                 },
+    { key: 'documents',     label: 'Documents'                },
+    { key: 'asset-record',  label: 'Asset Record'             },
+    ...(showDAReadiness ? [{ key: 'da-readiness', label: 'Digital Asset Readiness' }] : []),
+    { key: 'activity',      label: 'Activity'                 },
+    { key: 'settings',      label: 'Settings'                 },
   ];
   return (
     <div className="border-b border-gray-200 bg-white">
@@ -3821,6 +3825,9 @@ export default function DealRoomPage() {
   const pack = getWorkflowPack(packId);
   const isCREPack       = packId === DEFAULT_PACK_ID;
   const isTokenization  = isDigitalAssetLayerEnabled(apiProperty, pack);
+  const isTokenizationRelevant = TOKENIZATION_RELEVANT_TYPES.has(apiProperty?.deal_type)
+    || pack?.id === 'tokenization'
+    || pack?.transactionType === 'tokenization';
 
   if (inviteToken && !participantSession) {
     return (
@@ -4134,7 +4141,7 @@ export default function DealRoomPage() {
         <WorkspaceTabNav
           activeTab={activeTab}
           onChange={setActiveTab}
-          showReadinessTab={true}
+          showDAReadiness={isTokenizationRelevant}
         />
       )}
 
@@ -4217,90 +4224,28 @@ export default function DealRoomPage() {
               </>
             )}
 
-            {activeTab === 'settings' && (() => {
-              const daEnabled = !!(property?.metadata_values?.digital_asset_enabled);
-              // DA is contextually relevant only for token-related transaction types.
-              // For acquisitions, lending, licensing, etc. it stays hidden unless
-              // the user has already turned it on.
-              const isTokenizationRelevant = TOKENIZATION_RELEVANT_TYPES.has(property?.deal_type)
-                || pack?.id === 'tokenization'
-                || pack?.transactionType === 'tokenization';
-              // Auto-expand: always open when DA is on or the workspace is token-classified.
-              // Standard deals start collapsed — user must click to reveal the toggle.
-              const isAdvancedOpen = showAdvancedSettings || daEnabled || isTokenizationRelevant;
-              return (
-                <div className="space-y-4">
-                  {/* ── Workspace Settings ─────────────────────────────────── */}
-                  <TransactionDetailsPanel propertyId={pid} property={property} pack={pack} />
+            {activeTab === 'asset-record' && (
+              <AssetRecordTab
+                propertyId={pid}
+                isCoordinator={isCoordinator}
+                isTokenizationRelevant={isTokenizationRelevant}
+                onOpenDAReadiness={isTokenizationRelevant ? () => setActiveTab('da-readiness') : null}
+              />
+            )}
 
-                  {/* ── Advanced Features ──────────────────────────────────── */}
-                  <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
-                    <button
-                      onClick={() => setShowAdvancedSettings(s => !s)}
-                      className="w-full flex items-center justify-between px-5 py-4 text-left hover:bg-gray-50 transition">
-                      <div>
-                        <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">Advanced Features</p>
-                        {!isAdvancedOpen && (
-                          <p className="text-[11px] text-gray-400 mt-0.5">
-                            {isTokenizationRelevant
-                              ? 'Digital asset preparation is relevant for this transaction type'
-                              : 'Optional extensions — not needed for most transactions'}
-                          </p>
-                        )}
-                      </div>
-                      <svg className={`w-4 h-4 text-gray-400 transition-transform shrink-0 ${isAdvancedOpen ? 'rotate-180' : ''}`}
-                        fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
-                      </svg>
-                    </button>
+            {activeTab === 'da-readiness' && (
+              <DigitalAssetReadinessWorkflow
+                propertyId={pid}
+                property={property}
+                onClose={() => setActiveTab('asset-record')}
+              />
+            )}
 
-                    {isAdvancedOpen && (
-                      <div className="border-t border-gray-100 p-5 space-y-4">
-                        {/* Plain-language explanation before any fields */}
-                        <div className="rounded-xl bg-gray-50 border border-gray-100 px-4 py-3">
-                          {isTokenizationRelevant ? (
-                            <p className="text-xs text-gray-600 leading-relaxed">
-                              This transaction involves digital asset issuance.{' '}
-                              <strong className="text-gray-800">Digital Asset Preparation</strong> adds token
-                              compliance tooling — jurisdiction controls, cap table, and ownership structure —
-                              on top of the standard deal room. The core workflow stays the same.
-                            </p>
-                          ) : (
-                            <p className="text-xs text-gray-600 leading-relaxed">
-                              <strong className="text-gray-800">Digital Asset Preparation</strong> is designed
-                              for token issuances, STOs, and digital securities. It is not typically needed
-                              for acquisitions, lending, or licensing — you can enable it here if your
-                              transaction requires it.
-                            </p>
-                          )}
-                        </div>
-                        {/* Active config status — only renders when jurisdiction or DA layer is active */}
-                        <DigitalAssetConfigPanel property={property} pack={pack} />
-                        <DigitalAssetTogglePanel
-                          propertyId={pid}
-                          property={property}
-                          pack={pack}
-                          onEnabledChange={(enabled) => {
-                            setApiProperty(prev => prev ? {
-                              ...prev,
-                              metadata_values: {
-                                ...(prev.metadata_values || {}),
-                                ...(enabled
-                                  ? { digital_asset_enabled: 'true' }
-                                  : { digital_asset_enabled: '' }),
-                              },
-                            } : prev);
-                            if (!enabled) setActiveTab('overview');
-                          }}
-                        />
-                        {isTokenization && <OwnershipStructurePanel propertyId={pid} property={property} />}
-                        {isTokenization && <JurisdictionSettingsPanel propertyId={pid} property={property} />}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              );
-            })()}
+            {activeTab === 'settings' && (
+              <div className="space-y-4">
+                <TransactionDetailsPanel propertyId={pid} property={property} pack={pack} />
+              </div>
+            )}
           </>
 
         ) : (

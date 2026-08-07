@@ -2989,6 +2989,68 @@ app.get('/api/public/deal-room/:propertyId/analyses', async (req, res) => {
 
 // ── Lightweight document tracking — no AI, just records upload in deal_analyses ─
 // ── AI prompts for lightweight sections ──────────────────────────────────────
+// ── Transaction Record field extraction ──────────────────────────────────────
+// Runs after document analysis. Extracts structured fields from document text
+// and merges them into transaction_record_fields. Existing 'verified' fields
+// are never overwritten. Conflicting extractions are flagged for coordinator review.
+async function extractTransactionFields(propertyId, docId, text, sectionLabel) {
+  if (!text || text.trim().length < 50) return;
+  try {
+    const completion = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages: [
+        {
+          role: 'system',
+          content: `You are a transaction data extraction specialist. Given document text, extract key structured fields for a transaction record. Return a JSON array of field objects — only include fields explicitly present in the text. Each object must have: field_key (dotted string like "parties.buyer_entity"), field_category (one of: asset_identity, transaction, parties, beneficial_ownership, financial, legal, approvals), display_label (human-readable label), value_text (the extracted value as a plain string), confidence (0.0 to 1.0), source_page (integer if determinable, else null), source_excerpt (the exact clause the value was extracted from, max 120 chars).`,
+        },
+        {
+          role: 'user',
+          content: `Extract transaction record fields from this document (section: ${sectionLabel}):\n\n${text.slice(0, 8000)}\n\nReturn JSON: { "fields": [ { "field_key": ..., "field_category": ..., "display_label": ..., "value_text": ..., "confidence": ..., "source_page": ..., "source_excerpt": ... } ] }`,
+        },
+      ],
+      response_format: { type: 'json_object' },
+      temperature: 0.1,
+    }, { timeout: 20000 });
+
+    const parsed = JSON.parse(completion.choices[0].message.content);
+    const extracted = parsed.fields || [];
+    if (!extracted.length) return;
+
+    for (const f of extracted) {
+      if (!f.field_key || !f.field_category || !f.value_text) continue;
+      const { data: existing } = await supabase
+        .from('transaction_record_fields')
+        .select('id, status, value_text')
+        .eq('property_id', propertyId)
+        .eq('field_key', f.field_key)
+        .maybeSingle();
+
+      if (existing?.status === 'verified') continue; // never overwrite verified
+
+      const isConflict = existing && existing.status === 'extracted'
+        && existing.value_text && existing.value_text !== f.value_text;
+
+      await supabase.from('transaction_record_fields').upsert({
+        property_id:    propertyId,
+        field_key:      f.field_key,
+        field_category: f.field_category,
+        display_label:  f.display_label || f.field_key,
+        value_text:     String(f.value_text).slice(0, 2000),
+        status:         isConflict ? 'conflicting' : 'extracted',
+        confidence:     f.confidence != null ? Math.min(1, Math.max(0, parseFloat(f.confidence))) : null,
+        source_doc_id:  docId || null,
+        source_page:    f.source_page || null,
+        source_excerpt: f.source_excerpt ? String(f.source_excerpt).slice(0, 200) : null,
+        extracted_by:   'ai',
+        updated_at:     new Date().toISOString(),
+      }, { onConflict: 'property_id,field_key', ignoreDuplicates: false });
+    }
+    console.log(`[tx-record] extracted ${extracted.length} fields for ${propertyId} (${sectionLabel})`);
+  } catch (err) {
+    console.warn('[tx-record extraction]', err.message);
+  }
+}
+
 const LIGHTWEIGHT_AI_PROMPTS = {
   purchase_agreement: {
     system: 'You are a CRE transaction analyst. Extract key terms from purchase agreements and PSAs. Return JSON only.',
@@ -3313,6 +3375,8 @@ app.post('/api/public/deal-room/:propertyId/track-document', upload.single('file
           const result = JSON.parse(completion.choices[0].message.content);
           await clearPending(result);
           notifyOwner(propertyId, section, result.summary).catch(() => {});
+          // Extract structured transaction record fields from the same document text
+          extractTransactionFields(propertyId, recordId, text, SECTION_LABELS[section] || section).catch(() => {});
           logEvent(propertyId, 'document_analyzed', effectiveRole, null, `${SECTION_LABELS[section]} analyzed by AI`, { section, filename }).catch(() => {});
           evaluateDealRoomForTasks(propertyId).catch(e => console.warn('[tasks] auto-evaluate on analysis failed:', e.message));
           evaluateReadinessTasks(propertyId, []).catch(e => console.warn('[tasks] readiness evaluate on analysis failed:', e.message));
@@ -6323,6 +6387,127 @@ app.post('/api/public/deal-room/:propertyId/regenerate-links', async (req, res) 
 });
 
 // ── Upload / Multer error handler ─────────────────────────────────────────────
+// ── Transaction Record ────────────────────────────────────────────────────────
+// Architecture: Transaction → Verification → Verified Record → DA Readiness
+// These routes power the Asset Record tab — field-level structured data,
+// source-linked from uploaded documents.
+
+app.get('/api/public/deal-room/:propertyId/transaction-record', async (req, res) => {
+  const { propertyId } = req.params;
+  try {
+    const access = await getRoomAccessContext(req, propertyId);
+    if (access.mode === 'anonymous') return accessDenied(res);
+    const { data, error } = await supabase
+      .from('transaction_record_fields')
+      .select('*')
+      .eq('property_id', propertyId)
+      .order('field_category', { ascending: true })
+      .order('display_label', { ascending: true });
+    if (error) throw error;
+    res.json({ fields: data || [] });
+  } catch (err) {
+    console.error('[transaction-record GET]', err.message);
+    res.json({ fields: [] });
+  }
+});
+
+app.patch('/api/public/deal-room/:propertyId/transaction-record/fields/:fieldId', async (req, res) => {
+  const { propertyId, fieldId } = req.params;
+  const { value_text, notes, status, ownerWriteToken } = req.body || {};
+  const access = await getRoomAccessContext(req, propertyId, ownerWriteToken);
+  if (access.mode !== 'owner') return accessDenied(res, 'Owner access required');
+  const ALLOWED_STATUSES = ['missing','extracted','needs_review','verified','conflicting','not_applicable'];
+  const update = { updated_at: new Date().toISOString() };
+  if (value_text !== undefined) { update.value_text = String(value_text).slice(0, 2000); update.extracted_by = 'coordinator'; }
+  if (notes !== undefined)      update.notes = String(notes).slice(0, 500);
+  if (status && ALLOWED_STATUSES.includes(status)) update.status = status;
+  try {
+    const { error } = await supabase
+      .from('transaction_record_fields')
+      .update(update)
+      .eq('id', fieldId)
+      .eq('property_id', propertyId);
+    if (error) throw error;
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('[transaction-record PATCH]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/public/deal-room/:propertyId/transaction-record/fields/:fieldId/verify', async (req, res) => {
+  const { propertyId, fieldId } = req.params;
+  const { ownerWriteToken, actorRole } = req.body || {};
+  const access = await getRoomAccessContext(req, propertyId, ownerWriteToken);
+  if (access.mode !== 'owner') return accessDenied(res, 'Owner access required');
+  try {
+    const { data: room } = await supabase.from('deal_rooms').select('customer_email').eq('property_id', propertyId).maybeSingle();
+    const email = room?.customer_email || 'coordinator';
+    const { error: fErr } = await supabase
+      .from('transaction_record_fields')
+      .select('id').eq('id', fieldId).eq('property_id', propertyId).maybeSingle();
+    if (fErr) throw fErr;
+    await supabase.from('transaction_record_fields').update({
+      status: 'verified', verified_by: email,
+      verified_at: new Date().toISOString(), updated_at: new Date().toISOString(),
+    }).eq('id', fieldId).eq('property_id', propertyId);
+    await supabase.from('transaction_record_approvals').insert({
+      field_id: fieldId, property_id: propertyId,
+      action: 'approved', actor_email: email, actor_role: actorRole || 'coordinator',
+    });
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('[transaction-record verify]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/public/deal-room/:propertyId/transaction-record/extract', async (req, res) => {
+  const { propertyId } = req.params;
+  const { ownerWriteToken } = req.body || {};
+  const access = await getRoomAccessContext(req, propertyId, ownerWriteToken);
+  if (access.mode !== 'owner') return accessDenied(res, 'Owner access required');
+  res.json({ ok: true, message: 'Re-extraction queued' });
+  // Background: re-extract from all stored documents
+  (async () => {
+    try {
+      const { data: analyses } = await supabase
+        .from('deal_analyses')
+        .select('id, section, filename, storage_path, analysis')
+        .eq('property_id', propertyId)
+        .not('storage_path', 'is', null);
+      if (!analyses?.length) return;
+      for (const doc of analyses) {
+        try {
+          const { data: urlData } = await supabase.storage
+            .from('deal-documents')
+            .createSignedUrl(doc.storage_path, 60);
+          if (!urlData?.signedUrl) continue;
+          const buf = Buffer.from(await (await fetch(urlData.signedUrl)).arrayBuffer());
+          let text = '';
+          try {
+            if (doc.filename?.match(/\.(pdf)$/i)) {
+              const { PDFParse } = require('pdf-parse');
+              const parser = new PDFParse({ data: buf });
+              const parsed = await parser.getText();
+              text = (parsed?.text || '').slice(0, 8000);
+            } else {
+              text = buf.toString('utf8', 0, 6000);
+            }
+          } catch { text = buf.toString('utf8', 0, 4000); }
+          if (text.trim().length > 50) {
+            await extractTransactionFields(propertyId, doc.id, text, doc.section);
+          }
+        } catch (docErr) {
+          console.warn('[tx-record re-extract]', doc.id, docErr.message);
+        }
+      }
+    } catch (err) {
+      console.warn('[tx-record re-extract outer]', err.message);
+    }
+  })();
+});
+
 app.use((err, req, res, next) => {
   if (err.code === 'LIMIT_FILE_SIZE') {
     return res.status(413).json({ error: 'File too large — maximum size is 20MB. Please compress the file and try again.' });
@@ -6368,6 +6553,50 @@ async function ensureWorkflowPackIdColumn() {
     await pool.query(
       `ALTER TABLE deal_rooms ADD COLUMN IF NOT EXISTS jurisdiction VARCHAR(64)`
     );
+    // transaction_record_fields — field-level verified transaction data
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS transaction_record_fields (
+        id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        property_id     TEXT NOT NULL,
+        field_key       TEXT NOT NULL,
+        field_category  TEXT NOT NULL,
+        display_label   TEXT NOT NULL,
+        value_text      TEXT,
+        value_json      JSONB,
+        status          TEXT NOT NULL DEFAULT 'missing',
+        confidence      NUMERIC(4,3),
+        source_doc_id   UUID,
+        source_page     INTEGER,
+        source_excerpt  TEXT,
+        extracted_by    TEXT,
+        verified_by     TEXT,
+        verified_at     TIMESTAMPTZ,
+        notes           TEXT,
+        created_at      TIMESTAMPTZ DEFAULT NOW(),
+        updated_at      TIMESTAMPTZ DEFAULT NOW(),
+        UNIQUE (property_id, field_key)
+      )
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_trf_property ON transaction_record_fields (property_id)`);
+    // transaction_record_approvals — audit history for field changes
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS transaction_record_approvals (
+        id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        field_id    UUID NOT NULL,
+        property_id TEXT NOT NULL,
+        action      TEXT NOT NULL,
+        actor_email TEXT NOT NULL,
+        actor_role  TEXT NOT NULL,
+        prior_value TEXT,
+        new_value   TEXT,
+        note        TEXT,
+        created_at  TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_tra_property ON transaction_record_approvals (property_id)`);
+    // extracted_fields column on deal_analyses
+    await pool.query(`ALTER TABLE deal_analyses ADD COLUMN IF NOT EXISTS extracted_fields JSONB`);
+    await pool.query(`ALTER TABLE deal_analyses ADD COLUMN IF NOT EXISTS extraction_version INTEGER DEFAULT 1`);
     // analytics_events — created here so it's always present when first event arrives
     await pool.query(`
       CREATE TABLE IF NOT EXISTS analytics_events (
