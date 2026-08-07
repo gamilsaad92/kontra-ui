@@ -4247,6 +4247,7 @@ export default function DealRoomPage() {
             {activeTab === 'asset-record' && (
               <AssetRecordTab
                 propertyId={pid}
+                pack={pack}
                 isCoordinator={isCoordinator}
                 isTokenizationRelevant={isTokenizationRelevant}
                 daReadinessEnabled={daReadinessEnabled}

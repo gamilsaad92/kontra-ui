@@ -1,16 +1,17 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { API_BASE } from "../../lib/apiBase";
+import { buildSeededFromSchema } from "../../lib/workflowPacks/transactionRecordSchema";
 
 const ACCENT = "#800020";
 
 const CATEGORIES = [
-  { key: "transaction",          label: "Transaction",              icon: "📋" },
-  { key: "asset_identity",       label: "Asset / Company",         icon: "🏢" },
-  { key: "parties",              label: "Parties",                 icon: "🤝" },
-  { key: "beneficial_ownership", label: "Ownership",               icon: "👤" },
-  { key: "financial",            label: "Financial",               icon: "📊" },
-  { key: "legal",                label: "Legal",                   icon: "⚖️"  },
-  { key: "approvals",            label: "Approvals",               icon: "✅" },
+  { key: "transaction",          label: "Transaction",          icon: "📋" },
+  { key: "asset_identity",       label: "Asset / Company",      icon: "🏢" },
+  { key: "parties",              label: "Parties",              icon: "🤝" },
+  { key: "beneficial_ownership", label: "Ownership",            icon: "👤" },
+  { key: "financial",            label: "Financial",            icon: "📊" },
+  { key: "legal",                label: "Legal",                icon: "⚖️"  },
+  { key: "approvals",            label: "Approvals",            icon: "✅" },
 ];
 
 const STATUS_CONFIG = {
@@ -34,11 +35,35 @@ function StatusBadge({ status }) {
   );
 }
 
+function InfoTooltip({ text }) {
+  const [show, setShow] = useState(false);
+  return (
+    <div className="relative inline-block">
+      <button
+        onMouseEnter={() => setShow(true)}
+        onMouseLeave={() => setShow(false)}
+        onFocus={() => setShow(true)}
+        onBlur={() => setShow(false)}
+        className="text-gray-300 hover:text-gray-500 transition ml-1"
+        aria-label="More information">
+        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+          <circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/>
+        </svg>
+      </button>
+      {show && (
+        <div className="absolute left-0 bottom-full mb-1.5 z-50 w-64 rounded-xl bg-gray-800 text-white text-[10px] leading-relaxed px-3 py-2 shadow-lg pointer-events-none">
+          {text}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function FieldRow({ field, isCoordinator, propertyId, ownerToken, onUpdated }) {
-  const [editing, setEditing]   = useState(false);
-  const [editVal, setEditVal]   = useState(field.value_text || "");
+  const [editing,   setEditing]   = useState(false);
+  const [editVal,   setEditVal]   = useState(field.value_text || "");
   const [editNotes, setEditNotes] = useState(field.notes || "");
-  const [saving, setSaving]     = useState(false);
+  const [saving,    setSaving]    = useState(false);
   const [verifying, setVerifying] = useState(false);
 
   async function saveField() {
@@ -95,12 +120,11 @@ function FieldRow({ field, isCoordinator, propertyId, ownerToken, onUpdated }) {
   const isConfirmed = field.status === "verified";
   const isNA        = field.status === "not_applicable";
 
-  // Build a human-readable "confirmed by" line showing role + actor
   function confirmedByLine() {
     if (!field.verified_at) return null;
-    const role  = field.verified_role || "Participant";
-    const by    = field.verified_by   || "";
-    const date  = new Date(field.verified_at).toLocaleDateString();
+    const role = field.verified_role || "Participant";
+    const by   = field.verified_by   || "";
+    const date = new Date(field.verified_at).toLocaleDateString();
     return `Confirmed by ${role}${by ? ` (${by})` : ""} · ${date}`;
   }
 
@@ -127,7 +151,7 @@ function FieldRow({ field, isCoordinator, propertyId, ownerToken, onUpdated }) {
               </p>
             )}
             {field.status === "source_changed" && (
-              <p className="text-[10px] text-purple-600 mt-0.5">
+              <p className="text-[10px] text-purple-600 mt-0.5 font-medium">
                 Previously confirmed — newer source document requires review
               </p>
             )}
@@ -192,14 +216,21 @@ function FieldRow({ field, isCoordinator, propertyId, ownerToken, onUpdated }) {
   );
 }
 
-function CategorySection({ category, fields, isCoordinator, propertyId, ownerToken, onUpdated, workspaceSeededFields }) {
-  const [open, setOpen] = useState(true);
-  const catFields       = fields.filter(f => f.field_category === category.key);
-  const confirmedCount  = catFields.filter(f => f.status === "verified").length;
-  const total           = catFields.length;
+function CategorySection({ category, fields, isCoordinator, propertyId, ownerToken, onUpdated, seededFields }) {
+  const [open, setOpen]      = useState(true);
+  const catFields            = fields.filter(f => f.field_category === category.key);
+  const confirmedCount       = catFields.filter(f => f.status === "verified").length;
+  const total                = catFields.length;
 
-  // Workspace-seeded preview items shown when no extracted fields exist for this category
-  const seeded = (workspaceSeededFields || []).filter(s => s.category === category.key);
+  // Seeded entries for this category — only those with an actual value are "populated"
+  const catSeeded            = (seededFields || []).filter(s => s.category === category.key);
+  const catSeededPopulated   = catSeeded.filter(s => s.value);
+
+  const subtitle = total > 0
+    ? `${confirmedCount}/${total} confirmed`
+    : catSeededPopulated.length > 0
+      ? `${catSeededPopulated.length} from workspace setup`
+      : null;
 
   return (
     <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
@@ -209,13 +240,8 @@ function CategorySection({ category, fields, isCoordinator, propertyId, ownerTok
           <span className="text-base">{category.icon}</span>
           <div>
             <p className="text-sm font-semibold text-gray-900">{category.label}</p>
-            {total > 0 && (
-              <p className="text-[10px] text-gray-400 mt-0.5">
-                {confirmedCount}/{total} confirmed
-              </p>
-            )}
-            {total === 0 && seeded.length > 0 && (
-              <p className="text-[10px] text-gray-400 mt-0.5">{seeded.length} from workspace setup</p>
+            {subtitle && (
+              <p className="text-[10px] text-gray-400 mt-0.5">{subtitle}</p>
             )}
           </div>
         </div>
@@ -232,27 +258,33 @@ function CategorySection({ category, fields, isCoordinator, propertyId, ownerTok
           </svg>
         </div>
       </button>
+
       {open && (
         <div className="border-t border-gray-100">
-          {catFields.length === 0 && seeded.length === 0 ? (
-            <p className="px-5 py-4 text-xs text-gray-400 italic">
-              No information collected yet. Upload documents to extract fields automatically.
-            </p>
-          ) : catFields.length === 0 && seeded.length > 0 ? (
-            // Show workspace-seeded fields as placeholder rows
+          {catFields.length > 0 ? (
+            // Extracted fields from the database
+            catFields.map(f => (
+              <FieldRow key={f.id} field={f} isCoordinator={isCoordinator}
+                propertyId={propertyId} ownerToken={ownerToken} onUpdated={onUpdated} />
+            ))
+          ) : catSeeded.length > 0 ? (
+            // Pack schema template — shown before documents arrive
             <div>
-              {seeded.map(s => (
-                <div key={s.label} className="border-b border-gray-50 last:border-0 px-5 py-3">
+              {catSeeded.map(s => (
+                <div key={s.key} className="border-b border-gray-50 last:border-0 px-5 py-3">
                   <div className="flex items-center gap-2 flex-wrap mb-0.5">
                     <p className="text-xs font-semibold text-gray-700 shrink-0">{s.label}</p>
-                    <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full shrink-0 bg-blue-50 text-blue-600">
-                      <span className="w-1.5 h-1.5 rounded-full shrink-0 bg-blue-400" />
-                      From setup
-                    </span>
+                    {s.value && (
+                      // Only populated fields get the "From setup" badge
+                      <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full shrink-0 bg-blue-50 text-blue-600">
+                        <span className="w-1.5 h-1.5 rounded-full shrink-0 bg-blue-400" />
+                        From setup
+                      </span>
+                    )}
                   </div>
                   {s.value
                     ? <p className="text-xs text-gray-800">{s.value}</p>
-                    : <p className="text-xs text-gray-400 italic">Missing</p>
+                    : <p className="text-xs text-gray-400">Not provided</p>
                   }
                 </div>
               ))}
@@ -261,10 +293,9 @@ function CategorySection({ category, fields, isCoordinator, propertyId, ownerTok
               </p>
             </div>
           ) : (
-            catFields.map(f => (
-              <FieldRow key={f.id} field={f} isCoordinator={isCoordinator}
-                propertyId={propertyId} ownerToken={ownerToken} onUpdated={onUpdated} />
-            ))
+            <p className="px-5 py-4 text-xs text-gray-400 italic">
+              No information collected yet.
+            </p>
           )}
         </div>
       )}
@@ -272,34 +303,18 @@ function CategorySection({ category, fields, isCoordinator, propertyId, ownerTok
   );
 }
 
-// Build workspace-seeded field list from setup metadata, shown before documents are uploaded
-function buildSeededFields(workspaceMeta) {
-  const m = workspaceMeta || {};
-  return [
-    // Transaction category
-    { category: "transaction", label: "Transaction type",  value: m.deal_type         ? String(m.deal_type).replace(/_/g, " ") : null },
-    { category: "transaction", label: "Current stage",     value: m.stage             ? String(m.stage).replace(/_/g, " ")     : null },
-    { category: "transaction", label: "Target closing date",value: m.closing_date     || null },
-    { category: "transaction", label: "Transaction value", value: m.transaction_value ? `$${Number(m.transaction_value).toLocaleString()}` : null },
-    { category: "transaction", label: "Workflow pack",     value: m.pack_name         || null },
-    // Asset / Company category
-    { category: "asset_identity", label: "Workspace name",  value: m.name             || null },
-    { category: "asset_identity", label: "Jurisdiction",    value: m.jurisdiction      || null },
-  ];
-}
-
 export default function AssetRecordTab({
-  propertyId, isCoordinator,
+  propertyId, pack, isCoordinator,
   isTokenizationRelevant, daReadinessEnabled,
   onEnableDAReadiness, onOpenDAReadiness,
   workspaceMeta,
 }) {
-  const [fields,      setFields]     = useState([]);
-  const [loading,     setLoading]    = useState(true);
-  const [ownerToken,  setOwnerToken] = useState("");
-  const [refreshKey,  setRefreshKey] = useState(0);
-  const [extracting,  setExtracting] = useState(false);
-  const [enablingDA,  setEnablingDA] = useState(false);
+  const [fields,     setFields]     = useState([]);
+  const [loading,    setLoading]    = useState(true);
+  const [ownerToken, setOwnerToken] = useState("");
+  const [refreshKey, setRefreshKey] = useState(0);
+  const [extracting, setExtracting] = useState(false);
+  const [enablingDA, setEnablingDA] = useState(false);
 
   useEffect(() => {
     try { setOwnerToken(localStorage.getItem(`kontra_owner_token_${propertyId}`) || ""); } catch {}
@@ -338,13 +353,21 @@ export default function AssetRecordTab({
     try { await onEnableDAReadiness(); } finally { setEnablingDA(false); }
   }
 
+  // Build the pack-driven seeded field list for the empty state
+  const packId      = pack?.id || "cre_acquisition";
+  const seededFields = buildSeededFromSchema(packId, workspaceMeta);
+
+  // Separate populated (have a value from workspace setup) from expected-but-empty
+  const seededPopulated = seededFields.filter(s => s.value);
+  const seededAwaiting  = seededFields.filter(s => !s.value);
+
+  // Counts from the database
   const totalFields    = fields.length;
   const confirmedCount = fields.filter(f => f.status === "verified").length;
   const extractedCount = fields.filter(f => f.status === "extracted" || f.status === "needs_review").length;
-  const missingCount   = fields.filter(f => f.status === "missing").length;
   const pct = totalFields > 0 ? Math.round((confirmedCount / totalFields) * 100) : 0;
 
-  const seededFields = buildSeededFields(workspaceMeta);
+  const LEGAL_TOOLTIP = "Kontra organizes transaction information and participant confirmations; it does not provide legal certification or independent verification.";
 
   if (loading) {
     return (
@@ -361,24 +384,28 @@ export default function AssetRecordTab({
 
   return (
     <div className="space-y-4">
-      {/* Header summary */}
+      {/* Header */}
       <div className="bg-white rounded-2xl border border-gray-200 px-5 py-4">
         <div className="flex items-center justify-between mb-3">
-          <div>
-            <p className="text-sm font-bold text-gray-900">Transaction Record</p>
-            <p className="text-xs text-gray-400 mt-0.5">
-              Structured information extracted from documents and confirmed by participants.
-              Kontra does not certify or legally verify any field.
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-1">
+              <p className="text-sm font-bold text-gray-900">Transaction Record</p>
+              <InfoTooltip text={LEGAL_TOOLTIP} />
+            </div>
+            <p className="text-xs text-gray-500 mt-0.5 leading-relaxed">
+              Structured information extracted from transaction documents and confirmed by participants.
+              Source references and confirmation history are preserved for each field.
             </p>
           </div>
           {isCoordinator && totalFields > 0 && (
             <button onClick={triggerExtract} disabled={extracting}
-              className="text-xs font-semibold px-3 py-1.5 rounded-xl border border-gray-200 text-gray-600 hover:bg-gray-50 transition disabled:opacity-50 shrink-0">
+              className="text-xs font-semibold px-3 py-1.5 rounded-xl border border-gray-200 text-gray-600 hover:bg-gray-50 transition disabled:opacity-50 shrink-0 ml-4">
               {extracting ? "Extracting…" : "Re-extract"}
             </button>
           )}
         </div>
-        {totalFields > 0 && (
+
+        {totalFields > 0 ? (
           <>
             <div className="flex items-center gap-4">
               <div className="flex-1">
@@ -389,25 +416,26 @@ export default function AssetRecordTab({
               </div>
               <p className="text-xs font-semibold text-gray-700 shrink-0">{confirmedCount}/{totalFields} confirmed</p>
             </div>
-            <div className="flex gap-3 mt-2">
+            <div className="flex flex-wrap gap-3 mt-2">
               {confirmedCount > 0 && <span className="text-[10px] text-green-600">{confirmedCount} confirmed</span>}
               {extractedCount > 0 && <span className="text-[10px] text-blue-600">{extractedCount} awaiting review</span>}
-              {missingCount   > 0 && <span className="text-[10px] text-gray-400">{missingCount} missing</span>}
+              {(totalFields - confirmedCount - extractedCount) > 0 &&
+                <span className="text-[10px] text-gray-400">{totalFields - confirmedCount - extractedCount} missing</span>}
             </div>
           </>
-        )}
-        {totalFields === 0 && (
-          <div className="mt-2 flex items-center gap-3 text-xs text-gray-400">
-            <span>{seededFields.filter(s => s.value).length} fields from workspace setup</span>
-            <span>·</span>
-            <span>0 extracted from documents</span>
-            <span>·</span>
-            <span>0 confirmed by participants</span>
+        ) : (
+          // Empty-state summary — distinguish populated vs awaiting
+          <div className="flex flex-wrap gap-3 mt-1">
+            {seededPopulated.length > 0 &&
+              <span className="text-[10px] text-blue-600 font-medium">{seededPopulated.length} populated from workspace setup</span>}
+            {seededAwaiting.length > 0 &&
+              <span className="text-[10px] text-gray-400">{seededAwaiting.length} awaiting information</span>}
+            <span className="text-[10px] text-gray-400">0 extracted · 0 confirmed</span>
           </div>
         )}
       </div>
 
-      {/* Category sections — always shown; seeded fields appear before documents arrive */}
+      {/* Category sections — always shown, pack-schema-aware */}
       {CATEGORIES.map(cat => (
         <CategorySection
           key={cat.key}
@@ -417,11 +445,11 @@ export default function AssetRecordTab({
           propertyId={propertyId}
           ownerToken={ownerToken}
           onUpdated={() => setRefreshKey(k => k + 1)}
-          workspaceSeededFields={seededFields}
+          seededFields={seededFields}
         />
       ))}
 
-      {/* Digital Asset Readiness entry */}
+      {/* Digital Asset Readiness — opt-in suggestion */}
       {isTokenizationRelevant && !daReadinessEnabled && isCoordinator && (
         <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
           <div className="px-5 py-4">
