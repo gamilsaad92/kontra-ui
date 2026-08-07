@@ -428,7 +428,7 @@ export default function VerifiedAssetPackage({ propertyId }) {
           <div className="flex items-center gap-2.5">
             <div className="w-8 h-8 rounded-lg flex items-center justify-center text-base" style={{ background: ACCENT + "12" }}>📦</div>
             <div>
-              <p className="text-sm font-bold text-gray-900">Verified Transaction Package</p>
+              <p className="text-sm font-bold text-gray-900">Transaction Record Package</p>
               <p className="text-[10px] text-gray-400">Generated at closing · Your deal's structured digital record</p>
             </div>
           </div>
@@ -450,7 +450,7 @@ export default function VerifiedAssetPackage({ propertyId }) {
           </div>
           <p className="text-xs text-gray-400">
             When the deal reaches Closing, this panel generates your full Verified Transaction Package —
-            including an AI verification summary, audit trail, structured data export, and party approvals.
+            including an AI-assisted review summary, audit trail, structured data export, and party approvals.
             It's available to download as a Closing Binder or JSON.
           </p>
         </div>
@@ -482,7 +482,7 @@ export default function VerifiedAssetPackage({ propertyId }) {
           <div className="flex items-center gap-2.5">
             <div className="w-8 h-8 rounded-lg flex items-center justify-center text-base" style={{ background: ACCENT + "12" }}>📦</div>
             <div>
-              <p className="text-sm font-bold text-gray-900">Verified Transaction Package</p>
+              <p className="text-sm font-bold text-gray-900">Transaction Record Package</p>
               <p className="text-[10px] text-gray-400">Generated at closing · Your deal's structured digital record</p>
             </div>
           </div>
@@ -492,8 +492,8 @@ export default function VerifiedAssetPackage({ propertyId }) {
         </div>
         <div className="px-5 py-4">
           <p className="text-xs text-gray-400 leading-relaxed">
-            When the deal reaches Closing, this panel generates your full Verified Transaction Package —
-            including an AI verification summary, audit trail, structured data export, and party approvals.
+            When the deal reaches Closing, this panel generates your full Transaction Record Package —
+            including an AI-assisted review summary, audit trail, structured data export, and party approvals.
             It's available to download as a Closing Binder or JSON.
           </p>
         </div>
@@ -516,7 +516,7 @@ export default function VerifiedAssetPackage({ propertyId }) {
             </div>
             <div>
               <div className="flex items-center gap-2 flex-wrap">
-                <p className="text-base font-bold text-gray-900">Verified Transaction Package</p>
+                <p className="text-base font-bold text-gray-900">Transaction Record Package</p>
                 <StatusBadge status={v.status} />
               </div>
               <p className="text-xs text-gray-500 mt-0.5">{v.headline}</p>

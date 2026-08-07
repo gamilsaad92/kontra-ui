@@ -2337,7 +2337,7 @@ function WorkspaceTabNav({ activeTab, onChange, showDAReadiness = false }) {
   const TABS = [
     { key: 'overview',      label: 'Overview'                 },
     { key: 'documents',     label: 'Documents'                },
-    { key: 'asset-record',  label: 'Asset Record'             },
+    { key: 'asset-record',  label: 'Transaction Record'       },
     ...(showDAReadiness ? [{ key: 'da-readiness', label: 'Digital Asset Readiness' }] : []),
     { key: 'activity',      label: 'Activity'                 },
     { key: 'settings',      label: 'Settings'                 },
@@ -3829,6 +3829,26 @@ export default function DealRoomPage() {
     || pack?.id === 'tokenization'
     || pack?.transactionType === 'tokenization';
 
+  // DA Readiness tab is shown only when the coordinator explicitly opts in.
+  // AI may suggest it (passed to AssetRecordTab) but must not auto-enable.
+  const daReadinessEnabled = apiProperty?.metadata_values?.da_readiness_enabled === 'true';
+
+  async function enableDAReadiness() {
+    const token = localStorage.getItem(`kontra_owner_token_${pid}`) || '';
+    if (!token) return;
+    const res = await fetch(`${API_BASE}/api/public/deal-room/${pid}/metadata-merge`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ values: { da_readiness_enabled: 'true' }, ownerWriteToken: token }),
+    });
+    if (res.ok) {
+      setApiProperty(prev => prev ? {
+        ...prev,
+        metadata_values: { ...(prev.metadata_values || {}), da_readiness_enabled: 'true' },
+      } : prev);
+    }
+  }
+
   if (inviteToken && !participantSession) {
     return (
       <DealRoomPinGate
@@ -4141,7 +4161,7 @@ export default function DealRoomPage() {
         <WorkspaceTabNav
           activeTab={activeTab}
           onChange={setActiveTab}
-          showDAReadiness={isTokenizationRelevant}
+          showDAReadiness={daReadinessEnabled}
         />
       )}
 
@@ -4229,7 +4249,18 @@ export default function DealRoomPage() {
                 propertyId={pid}
                 isCoordinator={isCoordinator}
                 isTokenizationRelevant={isTokenizationRelevant}
-                onOpenDAReadiness={isTokenizationRelevant ? () => setActiveTab('da-readiness') : null}
+                daReadinessEnabled={daReadinessEnabled}
+                onEnableDAReadiness={enableDAReadiness}
+                onOpenDAReadiness={daReadinessEnabled ? () => setActiveTab('da-readiness') : null}
+                workspaceMeta={{
+                  name:              apiProperty?.name,
+                  deal_type:         apiProperty?.deal_type,
+                  stage:             apiProperty?.stage,
+                  closing_date:      apiProperty?.metadata_values?.closing_date || apiProperty?.closing_date,
+                  transaction_value: apiProperty?.metadata_values?.transaction_value || apiProperty?.transaction_value,
+                  jurisdiction:      apiProperty?.metadata_values?.jurisdiction,
+                  pack_name:         pack?.name,
+                }}
               />
             )}
 

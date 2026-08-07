@@ -124,7 +124,9 @@ function SectionCard({ section, meta, isEditable, onMetaChange, sectionIndex, pr
   const fields = section.fields || [];
   const checkedCount = fields.filter(f => meta[f.key] === "true").length;
   const allChecked = checkedCount === fields.length && fields.length > 0;
-  const isLocked = sectionIndex > 0 && !priorSectionsComplete;
+  // Sections are always openable. Dependencies are shown as advisory notes,
+  // not hard locks — real preparation is non-sequential.
+  const hasPendingDependencies = sectionIndex > 0 && !priorSectionsComplete;
 
   const statusLabel = allChecked
     ? "Information collected"
@@ -133,22 +135,17 @@ function SectionCard({ section, meta, isEditable, onMetaChange, sectionIndex, pr
       : "Preparation incomplete";
 
   const statusColor = allChecked ? "#15803d" : "#92400e";
-  const statusBg    = allChecked ? "#f0fdf4" : "#fffbeb";
 
   return (
-    <div className={`bg-white rounded-2xl border overflow-hidden transition ${
-      isLocked ? "border-gray-100 opacity-60" : "border-gray-200"
-    }`}>
+    <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden transition">
       <button
-        onClick={() => !isLocked && setOpen(o => !o)}
-        disabled={isLocked}
-        className="w-full flex items-center justify-between px-5 py-4 text-left hover:bg-gray-50 transition disabled:pointer-events-none">
+        onClick={() => setOpen(o => !o)}
+        className="w-full flex items-center justify-between px-5 py-4 text-left hover:bg-gray-50 transition">
         <div className="flex items-center gap-3">
           <span className="text-base">{section.icon}</span>
           <div>
             <div className="flex items-center gap-2">
               <p className="text-sm font-semibold text-gray-900">{section.label}</p>
-              {isLocked && <span className="text-[10px] text-gray-400">Complete prior sections first</span>}
             </div>
             <p className="text-[10px] mt-0.5 font-medium" style={{ color: statusColor }}>
               {statusLabel} · {checkedCount}/{fields.length} items
@@ -162,18 +159,24 @@ function SectionCard({ section, meta, isEditable, onMetaChange, sectionIndex, pr
               ✓ Complete
             </span>
           )}
-          {!isLocked && (
-            <svg className={`w-4 h-4 text-gray-400 transition-transform ${open ? "rotate-180" : ""}`}
-              fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
-            </svg>
-          )}
+          <svg className={`w-4 h-4 text-gray-400 transition-transform ${open ? "rotate-180" : ""}`}
+            fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+          </svg>
         </div>
       </button>
 
-      {open && !isLocked && (
+      {open && (
         <div className="border-t border-gray-100 px-5 py-4 space-y-1">
           <p className="text-xs text-gray-500 leading-relaxed mb-3">{section.description}</p>
+          {hasPendingDependencies && (
+            <div className="mb-3 rounded-xl bg-amber-50 border border-amber-100 px-3 py-2">
+              <p className="text-[10px] text-amber-700 leading-relaxed">
+                <strong>Dependency note:</strong> Prior sections have incomplete items. External handoff readiness
+                requires all sections to be completed before the package is ready for provider review.
+              </p>
+            </div>
+          )}
           {fields.map(f => (
             <CheckItem
               key={f.key}
@@ -189,13 +192,13 @@ function SectionCard({ section, meta, isEditable, onMetaChange, sectionIndex, pr
               <p className="text-[10px] text-amber-700 leading-relaxed">{section.disclaimer}</p>
             </div>
           )}
-          {/* Draft token economics — gated behind all prior sections */}
+          {/* Draft Commercial Terms — owner-supplied, clearly advisory */}
           {section.draftFields && isEditable && (
             <div className="mt-4 pt-4 border-t border-gray-100">
               <div className="rounded-xl bg-gray-50 border border-gray-200 px-3 py-2 mb-3">
                 <p className="text-[10px] text-gray-500 leading-relaxed">{DRAFT_DISCLAIMER}</p>
               </div>
-              <p className="text-xs font-semibold text-gray-600 mb-2">Draft Token Economics</p>
+              <p className="text-xs font-semibold text-gray-600 mb-2">Draft Commercial Terms</p>
               <div className="space-y-2">
                 {section.draftFields.map(df => (
                   <div key={df.key}>
@@ -314,7 +317,7 @@ export default function DigitalAssetReadinessWorkflow({ propertyId, property, on
         <p className="text-[10px] text-gray-500 leading-relaxed">{DISCLOSURE}</p>
       </div>
 
-      {/* Sections */}
+      {/* Sections — all openable; dependencies shown as advisory notes */}
       {SECTIONS.map((section, idx) => (
         <SectionCard
           key={section.key}
@@ -335,6 +338,14 @@ export default function DigitalAssetReadinessWorkflow({ propertyId, property, on
             When preparation is complete, export this package to send to your external legal,
             compliance, or issuance provider.
           </p>
+          {!sectionComplete.every(Boolean) && (
+            <div className="mb-3 rounded-xl bg-amber-50 border border-amber-100 px-3 py-2">
+              <p className="text-[10px] text-amber-700 leading-relaxed">
+                Issuance Preparation can be reviewed now. External handoff readiness requires ownership,
+                legal, and compliance items to be completed before the package is export-ready.
+              </p>
+            </div>
+          )}
           <div className="flex gap-2">
             <button onClick={save} disabled={saving}
               className="text-xs font-bold px-4 py-2 rounded-xl text-white disabled:opacity-50 transition hover:opacity-90"

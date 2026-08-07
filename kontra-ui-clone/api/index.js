@@ -6553,50 +6553,10 @@ async function ensureWorkflowPackIdColumn() {
     await pool.query(
       `ALTER TABLE deal_rooms ADD COLUMN IF NOT EXISTS jurisdiction VARCHAR(64)`
     );
-    // transaction_record_fields — field-level verified transaction data
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS transaction_record_fields (
-        id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-        property_id     TEXT NOT NULL,
-        field_key       TEXT NOT NULL,
-        field_category  TEXT NOT NULL,
-        display_label   TEXT NOT NULL,
-        value_text      TEXT,
-        value_json      JSONB,
-        status          TEXT NOT NULL DEFAULT 'missing',
-        confidence      NUMERIC(4,3),
-        source_doc_id   UUID,
-        source_page     INTEGER,
-        source_excerpt  TEXT,
-        extracted_by    TEXT,
-        verified_by     TEXT,
-        verified_at     TIMESTAMPTZ,
-        notes           TEXT,
-        created_at      TIMESTAMPTZ DEFAULT NOW(),
-        updated_at      TIMESTAMPTZ DEFAULT NOW(),
-        UNIQUE (property_id, field_key)
-      )
-    `);
-    await pool.query(`CREATE INDEX IF NOT EXISTS idx_trf_property ON transaction_record_fields (property_id)`);
-    // transaction_record_approvals — audit history for field changes
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS transaction_record_approvals (
-        id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-        field_id    UUID NOT NULL,
-        property_id TEXT NOT NULL,
-        action      TEXT NOT NULL,
-        actor_email TEXT NOT NULL,
-        actor_role  TEXT NOT NULL,
-        prior_value TEXT,
-        new_value   TEXT,
-        note        TEXT,
-        created_at  TIMESTAMPTZ DEFAULT NOW()
-      )
-    `);
-    await pool.query(`CREATE INDEX IF NOT EXISTS idx_tra_property ON transaction_record_approvals (property_id)`);
-    // extracted_fields column on deal_analyses
-    await pool.query(`ALTER TABLE deal_analyses ADD COLUMN IF NOT EXISTS extracted_fields JSONB`);
-    await pool.query(`ALTER TABLE deal_analyses ADD COLUMN IF NOT EXISTS extraction_version INTEGER DEFAULT 1`);
+    // transaction_record_fields and transaction_record_approvals are NOT created
+    // here. They must be applied via the committed Supabase migration:
+    //   kontra-ui-clone/api/migrations/015_transaction_record.sql
+    // Startup checks are kept read-only beyond the deal_rooms column additions above.
     // analytics_events — created here so it's always present when first event arrives
     await pool.query(`
       CREATE TABLE IF NOT EXISTS analytics_events (

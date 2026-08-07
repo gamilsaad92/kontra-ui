@@ -4,22 +4,23 @@ import { API_BASE } from "../../lib/apiBase";
 const ACCENT = "#800020";
 
 const CATEGORIES = [
-  { key: "asset_identity",        label: "Asset / Company Identity",  icon: "🏢" },
-  { key: "transaction",           label: "Transaction",               icon: "📋" },
-  { key: "parties",               label: "Parties",                   icon: "🤝" },
-  { key: "beneficial_ownership",  label: "Beneficial Ownership",      icon: "👤" },
-  { key: "financial",             label: "Financial",                 icon: "📊" },
-  { key: "legal",                 label: "Legal",                     icon: "⚖️"  },
-  { key: "approvals",             label: "Approvals",                 icon: "✅" },
+  { key: "transaction",          label: "Transaction",              icon: "📋" },
+  { key: "asset_identity",       label: "Asset / Company",         icon: "🏢" },
+  { key: "parties",              label: "Parties",                 icon: "🤝" },
+  { key: "beneficial_ownership", label: "Ownership",               icon: "👤" },
+  { key: "financial",            label: "Financial",               icon: "📊" },
+  { key: "legal",                label: "Legal",                   icon: "⚖️"  },
+  { key: "approvals",            label: "Approvals",               icon: "✅" },
 ];
 
 const STATUS_CONFIG = {
-  missing:       { label: "Missing",        bg: "#f3f4f6", text: "#6b7280", dot: "#d1d5db" },
-  extracted:     { label: "Extracted",      bg: "#eff6ff", text: "#1d4ed8", dot: "#3b82f6" },
-  needs_review:  { label: "Needs Review",   bg: "#fffbeb", text: "#92400e", dot: "#f59e0b" },
-  verified:      { label: "Verified",       bg: "#f0fdf4", text: "#15803d", dot: "#22c55e" },
-  conflicting:   { label: "Conflicting",    bg: "#fef2f2", text: "#991b1b", dot: "#ef4444" },
-  not_applicable:{ label: "N/A",            bg: "#f9fafb", text: "#9ca3af", dot: "#e5e7eb" },
+  missing:        { label: "Missing",                bg: "#f3f4f6", text: "#6b7280", dot: "#d1d5db" },
+  extracted:      { label: "Extracted — review",     bg: "#eff6ff", text: "#1d4ed8", dot: "#3b82f6" },
+  needs_review:   { label: "Needs Review",           bg: "#fffbeb", text: "#92400e", dot: "#f59e0b" },
+  verified:       { label: "Confirmed",              bg: "#f0fdf4", text: "#15803d", dot: "#22c55e" },
+  conflicting:    { label: "Conflicting",            bg: "#fef2f2", text: "#991b1b", dot: "#ef4444" },
+  source_changed: { label: "Source Changed",         bg: "#fdf4ff", text: "#7e22ce", dot: "#a855f7" },
+  not_applicable: { label: "N/A",                    bg: "#f9fafb", text: "#9ca3af", dot: "#e5e7eb" },
 };
 
 function StatusBadge({ status }) {
@@ -34,10 +35,10 @@ function StatusBadge({ status }) {
 }
 
 function FieldRow({ field, isCoordinator, propertyId, ownerToken, onUpdated }) {
-  const [editing, setEditing] = useState(false);
-  const [editVal, setEditVal] = useState(field.value_text || "");
+  const [editing, setEditing]   = useState(false);
+  const [editVal, setEditVal]   = useState(field.value_text || "");
   const [editNotes, setEditNotes] = useState(field.notes || "");
-  const [saving, setSaving] = useState(false);
+  const [saving, setSaving]     = useState(false);
   const [verifying, setVerifying] = useState(false);
 
   async function saveField() {
@@ -70,7 +71,7 @@ function FieldRow({ field, isCoordinator, propertyId, ownerToken, onUpdated }) {
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ ownerWriteToken: ownerToken }),
+          body: JSON.stringify({ ownerWriteToken: ownerToken, actorRole: "Deal Coordinator" }),
         }
       );
       if (res.ok) onUpdated();
@@ -90,9 +91,18 @@ function FieldRow({ field, isCoordinator, propertyId, ownerToken, onUpdated }) {
     onUpdated();
   }
 
-  const isEmpty = !field.value_text && !field.value_json;
-  const isVerified = field.status === "verified";
-  const isNA = field.status === "not_applicable";
+  const isEmpty     = !field.value_text && !field.value_json;
+  const isConfirmed = field.status === "verified";
+  const isNA        = field.status === "not_applicable";
+
+  // Build a human-readable "confirmed by" line showing role + actor
+  function confirmedByLine() {
+    if (!field.verified_at) return null;
+    const role  = field.verified_role || "Participant";
+    const by    = field.verified_by   || "";
+    const date  = new Date(field.verified_at).toLocaleDateString();
+    return `Confirmed by ${role}${by ? ` (${by})` : ""} · ${date}`;
+  }
 
   return (
     <div className={`border-b border-gray-50 last:border-0 px-5 py-3.5 ${isNA ? "opacity-40" : ""}`}>
@@ -116,21 +126,24 @@ function FieldRow({ field, isCoordinator, propertyId, ownerToken, onUpdated }) {
                 Source: {field.source_excerpt ? `"${field.source_excerpt.slice(0, 60)}…"` : "Document"} — p.{field.source_page}
               </p>
             )}
+            {field.status === "source_changed" && (
+              <p className="text-[10px] text-purple-600 mt-0.5">
+                Previously confirmed — newer source document requires review
+              </p>
+            )}
             {field.notes && (
               <p className="text-[10px] text-gray-500 italic mt-0.5">Note: {field.notes}</p>
             )}
-            {field.verified_at && (
-              <p className="text-[10px] text-green-600 mt-0.5">
-                Verified {new Date(field.verified_at).toLocaleDateString()} by {field.verified_by}
-              </p>
+            {isConfirmed && confirmedByLine() && (
+              <p className="text-[10px] text-green-600 mt-0.5">{confirmedByLine()}</p>
             )}
           </div>
           {isCoordinator && !isNA && (
             <div className="flex items-center gap-1.5 shrink-0">
-              {!isVerified && !isEmpty && (
+              {!isConfirmed && !isEmpty && (
                 <button onClick={verifyField} disabled={verifying}
                   className="text-[10px] font-bold text-green-700 bg-green-50 border border-green-100 px-2 py-1 rounded-lg hover:bg-green-100 transition disabled:opacity-50">
-                  {verifying ? "…" : "Verify"}
+                  {verifying ? "…" : "Confirm"}
                 </button>
               )}
               <button onClick={() => { setEditVal(field.value_text || ""); setEditNotes(field.notes || ""); setEditing(true); }}
@@ -179,11 +192,14 @@ function FieldRow({ field, isCoordinator, propertyId, ownerToken, onUpdated }) {
   );
 }
 
-function CategorySection({ category, fields, isCoordinator, propertyId, ownerToken, onUpdated }) {
+function CategorySection({ category, fields, isCoordinator, propertyId, ownerToken, onUpdated, workspaceSeededFields }) {
   const [open, setOpen] = useState(true);
-  const catFields = fields.filter(f => f.field_category === category.key);
-  const verifiedCount = catFields.filter(f => f.status === "verified").length;
-  const total = catFields.length;
+  const catFields       = fields.filter(f => f.field_category === category.key);
+  const confirmedCount  = catFields.filter(f => f.status === "verified").length;
+  const total           = catFields.length;
+
+  // Workspace-seeded preview items shown when no extracted fields exist for this category
+  const seeded = (workspaceSeededFields || []).filter(s => s.category === category.key);
 
   return (
     <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
@@ -195,8 +211,11 @@ function CategorySection({ category, fields, isCoordinator, propertyId, ownerTok
             <p className="text-sm font-semibold text-gray-900">{category.label}</p>
             {total > 0 && (
               <p className="text-[10px] text-gray-400 mt-0.5">
-                {verifiedCount}/{total} verified
+                {confirmedCount}/{total} confirmed
               </p>
+            )}
+            {total === 0 && seeded.length > 0 && (
+              <p className="text-[10px] text-gray-400 mt-0.5">{seeded.length} from workspace setup</p>
             )}
           </div>
         </div>
@@ -204,7 +223,7 @@ function CategorySection({ category, fields, isCoordinator, propertyId, ownerTok
           {total > 0 && (
             <div className="w-16 h-1.5 rounded-full bg-gray-100 overflow-hidden">
               <div className="h-full rounded-full transition-all"
-                style={{ width: `${(verifiedCount / total) * 100}%`, background: verifiedCount === total ? "#22c55e" : ACCENT }} />
+                style={{ width: `${(confirmedCount / total) * 100}%`, background: confirmedCount === total ? "#22c55e" : ACCENT }} />
             </div>
           )}
           <svg className={`w-4 h-4 text-gray-400 transition-transform ${open ? "rotate-180" : ""}`}
@@ -215,10 +234,32 @@ function CategorySection({ category, fields, isCoordinator, propertyId, ownerTok
       </button>
       {open && (
         <div className="border-t border-gray-100">
-          {catFields.length === 0 ? (
+          {catFields.length === 0 && seeded.length === 0 ? (
             <p className="px-5 py-4 text-xs text-gray-400 italic">
-              No fields extracted yet. Upload documents in the Documents tab to begin.
+              No information collected yet. Upload documents to extract fields automatically.
             </p>
+          ) : catFields.length === 0 && seeded.length > 0 ? (
+            // Show workspace-seeded fields as placeholder rows
+            <div>
+              {seeded.map(s => (
+                <div key={s.label} className="border-b border-gray-50 last:border-0 px-5 py-3">
+                  <div className="flex items-center gap-2 flex-wrap mb-0.5">
+                    <p className="text-xs font-semibold text-gray-700 shrink-0">{s.label}</p>
+                    <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full shrink-0 bg-blue-50 text-blue-600">
+                      <span className="w-1.5 h-1.5 rounded-full shrink-0 bg-blue-400" />
+                      From setup
+                    </span>
+                  </div>
+                  {s.value
+                    ? <p className="text-xs text-gray-800">{s.value}</p>
+                    : <p className="text-xs text-gray-400 italic">Missing</p>
+                  }
+                </div>
+              ))}
+              <p className="px-5 py-2.5 text-[10px] text-gray-400 italic border-t border-gray-50">
+                Upload documents in the Documents tab — Kontra will extract additional fields automatically.
+              </p>
+            </div>
           ) : (
             catFields.map(f => (
               <FieldRow key={f.id} field={f} isCoordinator={isCoordinator}
@@ -231,12 +272,34 @@ function CategorySection({ category, fields, isCoordinator, propertyId, ownerTok
   );
 }
 
-export default function AssetRecordTab({ propertyId, isCoordinator, isTokenizationRelevant, onOpenDAReadiness }) {
-  const [fields, setFields] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [ownerToken, setOwnerToken] = useState("");
-  const [refreshKey, setRefreshKey] = useState(0);
-  const [extracting, setExtracting] = useState(false);
+// Build workspace-seeded field list from setup metadata, shown before documents are uploaded
+function buildSeededFields(workspaceMeta) {
+  const m = workspaceMeta || {};
+  return [
+    // Transaction category
+    { category: "transaction", label: "Transaction type",  value: m.deal_type         ? String(m.deal_type).replace(/_/g, " ") : null },
+    { category: "transaction", label: "Current stage",     value: m.stage             ? String(m.stage).replace(/_/g, " ")     : null },
+    { category: "transaction", label: "Target closing date",value: m.closing_date     || null },
+    { category: "transaction", label: "Transaction value", value: m.transaction_value ? `$${Number(m.transaction_value).toLocaleString()}` : null },
+    { category: "transaction", label: "Workflow pack",     value: m.pack_name         || null },
+    // Asset / Company category
+    { category: "asset_identity", label: "Workspace name",  value: m.name             || null },
+    { category: "asset_identity", label: "Jurisdiction",    value: m.jurisdiction      || null },
+  ];
+}
+
+export default function AssetRecordTab({
+  propertyId, isCoordinator,
+  isTokenizationRelevant, daReadinessEnabled,
+  onEnableDAReadiness, onOpenDAReadiness,
+  workspaceMeta,
+}) {
+  const [fields,      setFields]     = useState([]);
+  const [loading,     setLoading]    = useState(true);
+  const [ownerToken,  setOwnerToken] = useState("");
+  const [refreshKey,  setRefreshKey] = useState(0);
+  const [extracting,  setExtracting] = useState(false);
+  const [enablingDA,  setEnablingDA] = useState(false);
 
   useEffect(() => {
     try { setOwnerToken(localStorage.getItem(`kontra_owner_token_${propertyId}`) || ""); } catch {}
@@ -269,11 +332,19 @@ export default function AssetRecordTab({ propertyId, isCoordinator, isTokenizati
     } finally { setExtracting(false); }
   }
 
-  const totalFields   = fields.length;
-  const verifiedCount = fields.filter(f => f.status === "verified").length;
-  const extractedCount= fields.filter(f => f.status === "extracted" || f.status === "needs_review").length;
-  const missingCount  = fields.filter(f => f.status === "missing").length;
-  const pct = totalFields > 0 ? Math.round((verifiedCount / totalFields) * 100) : 0;
+  async function handleEnableDA() {
+    if (!onEnableDAReadiness) return;
+    setEnablingDA(true);
+    try { await onEnableDAReadiness(); } finally { setEnablingDA(false); }
+  }
+
+  const totalFields    = fields.length;
+  const confirmedCount = fields.filter(f => f.status === "verified").length;
+  const extractedCount = fields.filter(f => f.status === "extracted" || f.status === "needs_review").length;
+  const missingCount   = fields.filter(f => f.status === "missing").length;
+  const pct = totalFields > 0 ? Math.round((confirmedCount / totalFields) * 100) : 0;
+
+  const seededFields = buildSeededFields(workspaceMeta);
 
   if (loading) {
     return (
@@ -296,11 +367,11 @@ export default function AssetRecordTab({ propertyId, isCoordinator, isTokenizati
           <div>
             <p className="text-sm font-bold text-gray-900">Transaction Record</p>
             <p className="text-xs text-gray-400 mt-0.5">
-              Kontra extracts and structures information from uploaded documents.
-              Review and verify each field.
+              Structured information extracted from documents and confirmed by participants.
+              Kontra does not certify or legally verify any field.
             </p>
           </div>
-          {isCoordinator && (
+          {isCoordinator && totalFields > 0 && (
             <button onClick={triggerExtract} disabled={extracting}
               className="text-xs font-semibold px-3 py-1.5 rounded-xl border border-gray-200 text-gray-600 hover:bg-gray-50 transition disabled:opacity-50 shrink-0">
               {extracting ? "Extracting…" : "Re-extract"}
@@ -308,50 +379,84 @@ export default function AssetRecordTab({ propertyId, isCoordinator, isTokenizati
           )}
         </div>
         {totalFields > 0 && (
-          <div className="flex items-center gap-4">
-            <div className="flex-1">
-              <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden">
-                <div className="h-full rounded-full transition-all"
-                  style={{ width: `${pct}%`, background: pct === 100 ? "#22c55e" : ACCENT }} />
+          <>
+            <div className="flex items-center gap-4">
+              <div className="flex-1">
+                <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden">
+                  <div className="h-full rounded-full transition-all"
+                    style={{ width: `${pct}%`, background: pct === 100 ? "#22c55e" : ACCENT }} />
+                </div>
               </div>
+              <p className="text-xs font-semibold text-gray-700 shrink-0">{confirmedCount}/{totalFields} confirmed</p>
             </div>
-            <p className="text-xs font-semibold text-gray-700 shrink-0">{verifiedCount}/{totalFields} verified</p>
-          </div>
+            <div className="flex gap-3 mt-2">
+              {confirmedCount > 0 && <span className="text-[10px] text-green-600">{confirmedCount} confirmed</span>}
+              {extractedCount > 0 && <span className="text-[10px] text-blue-600">{extractedCount} awaiting review</span>}
+              {missingCount   > 0 && <span className="text-[10px] text-gray-400">{missingCount} missing</span>}
+            </div>
+          </>
         )}
-        {totalFields > 0 && (
-          <div className="flex gap-3 mt-2">
-            {verifiedCount > 0  && <span className="text-[10px] text-green-600">{verifiedCount} verified</span>}
-            {extractedCount > 0 && <span className="text-[10px] text-blue-600">{extractedCount} awaiting review</span>}
-            {missingCount > 0   && <span className="text-[10px] text-gray-400">{missingCount} missing</span>}
+        {totalFields === 0 && (
+          <div className="mt-2 flex items-center gap-3 text-xs text-gray-400">
+            <span>{seededFields.filter(s => s.value).length} fields from workspace setup</span>
+            <span>·</span>
+            <span>0 extracted from documents</span>
+            <span>·</span>
+            <span>0 confirmed by participants</span>
           </div>
         )}
       </div>
 
-      {/* Empty state for new rooms */}
-      {totalFields === 0 && (
-        <div className="bg-white rounded-2xl border border-gray-200 px-5 py-10 text-center">
-          <p className="text-2xl mb-3">📄</p>
-          <p className="text-sm font-semibold text-gray-700 mb-1">No fields extracted yet</p>
-          <p className="text-xs text-gray-400 leading-relaxed max-w-xs mx-auto">
-            Upload documents in the Documents tab and Kontra will extract key transaction fields —
-            parties, financial terms, legal provisions, and more — automatically.
-          </p>
+      {/* Category sections — always shown; seeded fields appear before documents arrive */}
+      {CATEGORIES.map(cat => (
+        <CategorySection
+          key={cat.key}
+          category={cat}
+          fields={fields}
+          isCoordinator={isCoordinator}
+          propertyId={propertyId}
+          ownerToken={ownerToken}
+          onUpdated={() => setRefreshKey(k => k + 1)}
+          workspaceSeededFields={seededFields}
+        />
+      ))}
+
+      {/* Digital Asset Readiness entry */}
+      {isTokenizationRelevant && !daReadinessEnabled && isCoordinator && (
+        <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
+          <div className="px-5 py-4">
+            <div className="flex items-start gap-3 mb-3">
+              <span className="text-base">🔷</span>
+              <div className="flex-1">
+                <p className="text-sm font-semibold text-gray-900">Optional: Digital Asset Readiness</p>
+                <p className="text-xs text-gray-500 mt-0.5 leading-relaxed">
+                  This transaction may benefit from a Digital Asset Readiness workflow —
+                  organizing information for potential review by external legal, compliance,
+                  issuance, custody, or settlement providers.
+                </p>
+                <p className="text-[10px] text-gray-400 mt-1 italic">
+                  AI suggestion only. You decide whether this applies.
+                </p>
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={handleEnableDA}
+                disabled={enablingDA}
+                className="text-xs font-bold px-3 py-1.5 rounded-xl text-white transition hover:opacity-90 disabled:opacity-50"
+                style={{ background: ACCENT }}>
+                {enablingDA ? "Enabling…" : "Add preparation workflow"}
+              </button>
+              <button
+                className="text-xs font-medium px-3 py-1.5 rounded-xl border border-gray-200 text-gray-500 hover:bg-gray-50 transition">
+                Not needed
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
-      {/* Category sections */}
-      {CATEGORIES.map(cat => {
-        const catFields = fields.filter(f => f.field_category === cat.key);
-        if (catFields.length === 0) return null;
-        return (
-          <CategorySection key={cat.key} category={cat} fields={fields}
-            isCoordinator={isCoordinator} propertyId={propertyId}
-            ownerToken={ownerToken} onUpdated={() => setRefreshKey(k => k + 1)} />
-        );
-      })}
-
-      {/* Digital Asset Readiness entry — only shown when relevant */}
-      {isTokenizationRelevant && (
+      {isTokenizationRelevant && daReadinessEnabled && (
         <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
           <div className="px-5 py-4 flex items-center justify-between">
             <div className="flex items-center gap-3">
@@ -359,7 +464,7 @@ export default function AssetRecordTab({ propertyId, isCoordinator, isTokenizati
               <div>
                 <p className="text-sm font-semibold text-gray-900">Digital Asset Readiness</p>
                 <p className="text-xs text-gray-400 mt-0.5">
-                  Prepare your transaction record for external digital issuance providers.
+                  Preparation workflow enabled · Organize for external provider review
                 </p>
               </div>
             </div>

@@ -91,11 +91,11 @@ export default function TransactionRiskPanel({ propertyId }) {
       <div className="mb-6 bg-white rounded-2xl border border-gray-200 overflow-hidden">
         <div className="px-5 pt-4 pb-4">
           <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-2">
-            Transaction Risk
+            Issues &amp; Exceptions
           </p>
           <p className="text-sm font-semibold text-gray-500 mb-1">Not yet assessed</p>
           <p className="text-xs text-gray-400 leading-snug">
-            Add documents and invite participants — Kontra will assess transaction risk once there is something to reason over.
+            Add documents and invite participants — Kontra will identify open issues and exceptions once there is something to reason over.
           </p>
         </div>
       </div>
@@ -112,7 +112,7 @@ export default function TransactionRiskPanel({ propertyId }) {
       {/* Header */}
       <div className="px-5 pt-4 pb-3">
         <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-1">
-          Transaction Risk
+          Issues &amp; Exceptions
         </p>
 
         {/* Risk level — large, confident */}
