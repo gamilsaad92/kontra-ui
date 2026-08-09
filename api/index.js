@@ -3209,13 +3209,112 @@ Estoppel certificate:\n${text}`,
   },
 };
 
+// ── Canonical server-side document schemas (mirrors frontend workflowPacks) ───
+// One source of truth on the server so any first-load seeds the SAME list.
+// Keyed by workflow_pack_id → property_type variant → array of items.
+// 'default' key is the fallback when property_type doesn't match a named variant.
+const PACK_DOCUMENT_SCHEMAS = {
+  cre_acquisition: {
+    default: [
+      { id: 'purchase_agreement', label: 'Purchase Agreement',             section: 'purchase_agreement', required: true,  ai: true,  category: 'Legal',           assignedTo: ['owner'] },
+      { id: 'rent_roll',          label: 'Rent Roll',                      section: 'rent_roll',          required: true,  ai: true,  category: 'Financial',       assignedTo: ['owner'] },
+      { id: 'financials',         label: 'T-12 Financial Statement',       section: 'financials',         required: true,  ai: true,  category: 'Financial',       assignedTo: ['owner'] },
+      { id: 'insurance',          label: 'Insurance Certificate',          section: 'insurance',          required: true,  ai: true,  category: 'Insurance',       assignedTo: ['insurer'] },
+      { id: 'inspection',         label: 'Property Inspection Report',     section: 'inspection',         required: true,  ai: true,  category: 'Property / Asset',assignedTo: ['inspector'] },
+      { id: 'estoppel',           label: 'Estoppel Certificates',          section: 'estoppel',           required: false, ai: true,  category: 'Legal',           assignedTo: ['owner'] },
+      { id: 'environmental',      label: 'Environmental Report (Phase I)', section: 'environmental',      required: true,  ai: true,  category: 'Operational',     assignedTo: ['inspector'] },
+      { id: 'survey',             label: 'Survey / ALTA',                  section: 'survey',             required: false, ai: true,  category: 'Property / Asset',assignedTo: ['owner'] },
+      { id: 'title',              label: 'Title Commitment',               section: 'title',              required: true,  ai: true,  category: 'Legal',           assignedTo: ['attorney'] },
+    ],
+    Hotel: [
+      { id: 'purchase_agreement', label: 'Purchase Agreement',             section: 'purchase_agreement', required: true,  ai: true,  category: 'Legal',           assignedTo: ['owner'] },
+      { id: 'brand_standards',    label: 'PIP / Brand Standards',          section: 'brand-standards',    required: true,  ai: true,  category: 'Closing',         assignedTo: ['owner'] },
+      { id: 'legal',              label: 'Franchise Agreement',            section: 'legal',              required: true,  ai: true,  category: 'Legal',           assignedTo: ['attorney'] },
+      { id: 'financials',         label: 'STR / P&L Statement',           section: 'financials',         required: true,  ai: true,  category: 'Financial',       assignedTo: ['owner'] },
+      { id: 'insurance',          label: 'Insurance Certificate',          section: 'insurance',          required: true,  ai: true,  category: 'Insurance',       assignedTo: ['insurer'] },
+      { id: 'inspection',         label: 'Property Inspection Report',     section: 'inspection',         required: true,  ai: true,  category: 'Property / Asset',assignedTo: ['inspector'] },
+      { id: 'environmental',      label: 'Environmental Report (Phase I)', section: 'environmental',      required: true,  ai: true,  category: 'Operational',     assignedTo: ['inspector'] },
+      { id: 'survey',             label: 'Survey / ALTA',                  section: 'survey',             required: false, ai: true,  category: 'Property / Asset',assignedTo: ['owner'] },
+      { id: 'title',              label: 'Title Commitment',               section: 'title',              required: true,  ai: true,  category: 'Legal',           assignedTo: ['attorney'] },
+    ],
+    Office: [
+      { id: 'purchase_agreement', label: 'Purchase Agreement',             section: 'purchase_agreement', required: true,  ai: true,  category: 'Legal',           assignedTo: ['owner'] },
+      { id: 'rent_roll',          label: 'Rent Roll',                      section: 'rent_roll',          required: true,  ai: true,  category: 'Financial',       assignedTo: ['owner'] },
+      { id: 'financials',         label: 'T-12 Financial Statement',       section: 'financials',         required: true,  ai: true,  category: 'Financial',       assignedTo: ['owner'] },
+      { id: 'insurance',          label: 'Insurance Certificate',          section: 'insurance',          required: true,  ai: true,  category: 'Insurance',       assignedTo: ['insurer'] },
+      { id: 'inspection',         label: 'Property Inspection Report',     section: 'inspection',         required: true,  ai: true,  category: 'Property / Asset',assignedTo: ['inspector'] },
+      { id: 'estoppel',           label: 'Estoppel / Lease Abstracts',     section: 'estoppel',           required: true,  ai: true,  category: 'Legal',           assignedTo: ['owner'] },
+      { id: 'environmental',      label: 'Environmental Report (Phase I)', section: 'environmental',      required: true,  ai: true,  category: 'Operational',     assignedTo: ['inspector'] },
+      { id: 'survey',             label: 'Survey / ALTA',                  section: 'survey',             required: false, ai: true,  category: 'Property / Asset',assignedTo: ['owner'] },
+      { id: 'title',              label: 'Title Commitment',               section: 'title',              required: true,  ai: true,  category: 'Legal',           assignedTo: ['attorney'] },
+      { id: 'legal',              label: 'Loan / Legal Documents',         section: 'legal',              required: false, ai: true,  category: 'Legal',           assignedTo: ['attorney'] },
+    ],
+    Industrial: [
+      { id: 'purchase_agreement', label: 'Purchase Agreement',             section: 'purchase_agreement', required: true,  ai: true,  category: 'Legal',           assignedTo: ['owner'] },
+      { id: 'financials',         label: 'Financial Statement',            section: 'financials',         required: true,  ai: true,  category: 'Financial',       assignedTo: ['owner'] },
+      { id: 'insurance',          label: 'Insurance Certificate',          section: 'insurance',          required: true,  ai: true,  category: 'Insurance',       assignedTo: ['insurer'] },
+      { id: 'inspection',         label: 'Property Inspection Report',     section: 'inspection',         required: true,  ai: true,  category: 'Property / Asset',assignedTo: ['inspector'] },
+      { id: 'environmental',      label: 'Environmental Report (Phase I)', section: 'environmental',      required: true,  ai: true,  category: 'Operational',     assignedTo: ['inspector'] },
+      { id: 'survey',             label: 'Survey / ALTA',                  section: 'survey',             required: false, ai: true,  category: 'Property / Asset',assignedTo: ['owner'] },
+      { id: 'title',              label: 'Title Commitment',               section: 'title',              required: true,  ai: true,  category: 'Legal',           assignedTo: ['attorney'] },
+      { id: 'legal',              label: 'Lease / Legal Documents',        section: 'legal',              required: false, ai: true,  category: 'Legal',           assignedTo: ['attorney'] },
+    ],
+    Retail: [
+      { id: 'purchase_agreement', label: 'Purchase Agreement',             section: 'purchase_agreement', required: true,  ai: true,  category: 'Legal',           assignedTo: ['owner'] },
+      { id: 'rent_roll',          label: 'Rent Roll',                      section: 'rent_roll',          required: true,  ai: true,  category: 'Financial',       assignedTo: ['owner'] },
+      { id: 'financials',         label: 'T-12 Financial Statement',       section: 'financials',         required: true,  ai: true,  category: 'Financial',       assignedTo: ['owner'] },
+      { id: 'insurance',          label: 'Insurance Certificate',          section: 'insurance',          required: true,  ai: true,  category: 'Insurance',       assignedTo: ['insurer'] },
+      { id: 'inspection',         label: 'Property Inspection Report',     section: 'inspection',         required: true,  ai: true,  category: 'Property / Asset',assignedTo: ['inspector'] },
+      { id: 'estoppel',           label: 'Estoppel / Lease Abstracts',     section: 'estoppel',           required: true,  ai: true,  category: 'Legal',           assignedTo: ['owner'] },
+      { id: 'environmental',      label: 'Environmental Report (Phase I)', section: 'environmental',      required: true,  ai: true,  category: 'Operational',     assignedTo: ['inspector'] },
+      { id: 'survey',             label: 'Survey / ALTA',                  section: 'survey',             required: false, ai: true,  category: 'Property / Asset',assignedTo: ['owner'] },
+      { id: 'title',              label: 'Title Commitment',               section: 'title',              required: true,  ai: true,  category: 'Legal',           assignedTo: ['attorney'] },
+    ],
+  },
+  business_acquisition: {
+    default: [
+      { id: 'loi',                 label: 'Letter of Intent',               section: 'loi',                required: true,  ai: false, category: 'Legal',     assignedTo: ['buyer'] },
+      { id: 'purchase_agreement',  label: 'Purchase Agreement',             section: 'purchase_agreement', required: true,  ai: false, category: 'Legal',     assignedTo: ['counsel'] },
+      { id: 'financials',          label: 'Financial Statements (3-yr)',    section: 'financials',         required: true,  ai: true,  category: 'Financial', assignedTo: ['seller'] },
+      { id: 'tax_returns',         label: 'Tax Returns (3-yr)',             section: 'tax_returns',        required: true,  ai: false, category: 'Financial', assignedTo: ['seller'] },
+      { id: 'cap_table',           label: 'Cap Table / Ownership',          section: 'cap_table',          required: true,  ai: false, category: 'Financial', assignedTo: ['seller'] },
+      { id: 'qoe',                 label: 'Quality of Earnings Report',     section: 'qoe',                required: false, ai: true,  category: 'Financial', assignedTo: ['cpa'] },
+      { id: 'contracts',           label: 'Material Contracts',             section: 'contracts',          required: false, ai: false, category: 'Legal',     assignedTo: ['seller'] },
+      { id: 'disclosure_schedule', label: 'Disclosure Schedule',            section: 'disclosure_schedule',required: false, ai: false, category: 'Legal',     assignedTo: ['seller'] },
+    ],
+  },
+  fundraising: {
+    default: [
+      { id: 'term_sheet',          label: 'Term Sheet',                     section: 'term_sheet',         required: true,  ai: false, category: 'Legal',     assignedTo: ['founder'] },
+      { id: 'financials',          label: 'Financial Statements',           section: 'financials',         required: true,  ai: true,  category: 'Financial', assignedTo: ['founder'] },
+      { id: 'cap_table',           label: 'Cap Table',                      section: 'cap_table',          required: true,  ai: false, category: 'Financial', assignedTo: ['founder'] },
+      { id: 'spa',                 label: 'Stock Purchase Agreement / SAFE',section: 'spa',                required: false, ai: false, category: 'Legal',     assignedTo: ['counsel'] },
+    ],
+  },
+};
+
+// Returns the canonical checklist items for a pack+property_type combination.
+// Property type is matched with a fuzzy check to handle slight label variations.
+function getCanonicalChecklist(packId, propertyType) {
+  const packSchemas = PACK_DOCUMENT_SCHEMAS[packId];
+  if (!packSchemas) return null;
+  const pt = String(propertyType || '').trim();
+  // Exact match first
+  if (packSchemas[pt]) return packSchemas[pt];
+  // Fuzzy match for CRE sub-types
+  if (/hotel|hospitality|motel/i.test(pt) && packSchemas.Hotel)      return packSchemas.Hotel;
+  if (/office/i.test(pt) && packSchemas.Office)                       return packSchemas.Office;
+  if (/industrial|warehouse/i.test(pt) && packSchemas.Industrial)     return packSchemas.Industrial;
+  if (/retail|strip|shopping/i.test(pt) && packSchemas.Retail)        return packSchemas.Retail;
+  return packSchemas.default || null;
+}
+
 // ── Checklist CRUD ────────────────────────────────────────────────────────────
 // GET  /api/public/deal-room/:propertyId/checklist  → items array
 // PUT  /api/public/deal-room/:propertyId/checklist  → replace full array
 //
-// On first GET for a room that has no saved checklist (checklist_items IS NULL),
-// we fall back to the empty array — the UI seeds from the pack client-side and
-// calls PUT to persist.  This keeps the API pack-agnostic.
+// On first GET the server seeds from the canonical pack schema and saves to DB
+// so every subsequent load (from any session/browser) gets the identical list.
 
 app.get('/api/public/deal-room/:propertyId/checklist', async (req, res) => {
   const { propertyId } = req.params;
@@ -3224,12 +3323,38 @@ app.get('/api/public/deal-room/:propertyId/checklist', async (req, res) => {
     if (access.mode === 'anonymous') return accessDenied(res);
     const { data, error } = await supabase
       .from('deal_rooms')
-      .select('checklist_items')
+      .select('checklist_items, workflow_pack_id, property_type')
       .eq('property_id', propertyId)
       .maybeSingle();
     if (error) throw error;
     if (!data) return res.status(404).json({ error: 'Workspace not found' });
-    return res.json({ items: data.checklist_items || null });
+
+    // Already saved — return as-is (deterministic after first seed)
+    if (Array.isArray(data.checklist_items) && data.checklist_items.length > 0) {
+      return res.json({ items: data.checklist_items });
+    }
+
+    // Auto-seed from canonical server-side schema so all sessions get the same list
+    const canonical = getCanonicalChecklist(data.workflow_pack_id, data.property_type);
+    if (canonical) {
+      const items = canonical.map((d, i) => ({
+        id:         d.id || d.section,
+        section:    d.section,
+        label:      d.label,
+        required:   !!d.required,
+        ai:         !!d.ai,
+        assignedTo: Array.isArray(d.assignedTo) ? d.assignedTo : [],
+        category:   d.category || 'General',
+        isCustom:   false,
+        sortOrder:  i,
+        status:     'missing',
+      }));
+      // Persist immediately so concurrent sessions all read the same items
+      supabase.from('deal_rooms').update({ checklist_items: items }).eq('property_id', propertyId).then(() => {}).catch(() => {});
+      return res.json({ items });
+    }
+
+    return res.json({ items: null });
   } catch (e) {
     console.error('[checklist GET]', e.message);
     return res.status(500).json({ error: 'Failed to load checklist' });
@@ -3376,6 +3501,51 @@ app.post('/api/public/deal-room/:propertyId/track-document', upload.single('file
 
     logEvent(propertyId, 'document_uploaded', effectiveRole, null, `${SECTION_LABELS[section]} uploaded`, { section, filename }).catch(() => {});
     res.json({ ok: true, section, filename, pending: hasAiPrompt });
+
+    // ── Background field extraction for non-AI-prompt sections ──────────────
+    // LOI, Tax Returns, Cap Table, Contracts, Disclosure Schedule, Term Sheet,
+    // and Stock Purchase Agreement do not have section-specific AI analysis
+    // prompts, so they would never populate transaction_record_fields without
+    // this secondary extraction pass. This is what makes the Overview, Snapshot,
+    // and Digital Asset Readiness update after a coordinator uploads an LOI.
+    if (buf && !LIGHTWEIGHT_AI_PROMPTS[section] && recordId) {
+      (async () => {
+        try {
+          let text = '';
+          const ext = (filename || '').split('.').pop().toLowerCase();
+          const isPdf = mime === 'application/pdf' || ext === 'pdf' || (buf.length > 4 && buf.slice(0, 4).toString() === '%PDF');
+          if (isPdf) {
+            try {
+              const { PDFParse } = require('pdf-parse');
+              const parser = new PDFParse({ data: buf });
+              const parsed = await parser.getText();
+              text = (parsed?.text || '').slice(0, 12000);
+            } catch {}
+          } else if (mime === 'text/csv' || ext === 'csv') {
+            text = buf.toString('utf8').slice(0, 12000);
+          } else if (['xlsx','xls'].includes(ext) || (mime || '').includes('spreadsheet') || (mime || '').includes('excel')) {
+            try {
+              const XLSX = require('xlsx');
+              const wb = XLSX.read(buf, { type: 'buffer' });
+              const rows = [];
+              for (const name of wb.SheetNames.slice(0, 6)) {
+                const csv = XLSX.utils.sheet_to_csv(wb.Sheets[name]);
+                if (csv.replace(/,/g,'').replace(/\n/g,'').trim().length > 10) rows.push(`[${name}]\n${csv}`);
+              }
+              text = rows.join('\n\n').slice(0, 12000);
+            } catch {}
+          } else {
+            text = buf.toString('utf8', 0, Math.min(buf.length, 10000)).replace(/[^\x20-\x7E\n\r\t]/g, ' ').replace(/\s{3,}/g, '\n').trim();
+          }
+          if (text && text.trim().length > 50) {
+            await extractTransactionFields(propertyId, recordId, text, SECTION_LABELS[section] || section);
+            console.log(`[track-document] ✓ transaction fields extracted from ${section} (non-AI-prompt path)`);
+          }
+        } catch (extractErr) {
+          console.warn(`[track-document] field extraction failed for ${section}:`, extractErr.message);
+        }
+      })().catch(() => {});
+    }
 
     // Background AI analysis — uses fast text-only extraction (no vision pipeline to avoid hangs)
     if (buf && LIGHTWEIGHT_AI_PROMPTS[section]) {

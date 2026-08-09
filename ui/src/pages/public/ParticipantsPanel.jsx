@@ -148,10 +148,11 @@ function InviteModal({ open, onClose, prefilledRoleKey, roles, isV2, onSend }) {
               <button type="button"
                 onClick={() => { setIsCustom(true); setErrMsg(''); }}
                 className="px-2.5 py-1 rounded-full text-[11px] font-semibold border transition"
+                title="Custom roles don't map to template-defined responsibilities — use only when no template role fits"
                 style={isCustom
                   ? { background: '#800020', color: '#fff', borderColor: '#800020' }
-                  : { background: '#fff', color: '#6b7280', borderColor: '#d1d5db', borderStyle: 'dashed' }}>
-                + Custom
+                  : { background: '#fff', color: '#9ca3af', borderColor: '#e5e7eb', borderStyle: 'dashed' }}>
+                + Other
               </button>
             </div>
             {isCustom && (
@@ -365,6 +366,7 @@ export default function ParticipantsPanel({ roomId, packId = DEFAULT_PACK_ID, is
           <h2 className="text-base font-bold text-gray-900">Participants</h2>
           <p className="text-xs text-gray-400 mt-0.5">
             {activeCount} of {invitableRoles.length} role{invitableRoles.length !== 1 ? 's' : ''} invited
+            {pack.name ? <span className="text-gray-300"> · {pack.name} template</span> : null}
           </p>
         </div>
         <button
@@ -411,6 +413,9 @@ export default function ParticipantsPanel({ roomId, packId = DEFAULT_PACK_ID, is
                     <div className="flex items-center gap-2 min-w-0">
                       <span className="text-base leading-none shrink-0">{role.icon}</span>
                       <span className="text-sm font-semibold text-gray-800 truncate">{role.label}</span>
+                      {rows.find(r => r.role.key === role.key)?.isCustomRole && (
+                        <span className="shrink-0 text-[9px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-400 font-medium leading-tight">custom</span>
+                      )}
                     </div>
 
                     {/* Participant email */}
