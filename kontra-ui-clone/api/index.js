@@ -4488,7 +4488,7 @@ app.get('/api/public/deal-room/:propertyId/asset-passport', async (req, res) => 
   const { propertyId } = req.params;
   const { data: room, error } = await supabase
     .from('deal_rooms')
-    .select('property_id, property_name, workflow_pack_id, deal_type, jurisdiction, metadata_values, created_at, first_name, last_name, entity_name')
+    .select('property_id, property_name, workflow_pack_id, deal_type, jurisdiction, metadata_values, created_at, first_name, last_name')
     .eq('property_id', propertyId)
     .maybeSingle();
   if (error) return res.status(500).json({ error: error.message });
@@ -4506,7 +4506,8 @@ app.get('/api/public/deal-room/:propertyId/asset-passport', async (req, res) => 
     room.deal_type,
     meta,
   );
-  const ownerName = [room.first_name, room.last_name].filter(Boolean).join(' ') || room.entity_name || meta.issuer_name || null;
+  const entityName = meta.entity_name || null;
+  const ownerName = [room.first_name, room.last_name].filter(Boolean).join(' ') || entityName || meta.issuer_name || null;
 
   res.json({
     record_type:          'verified_transaction',
@@ -4516,7 +4517,7 @@ app.get('/api/public/deal-room/:propertyId/asset-passport', async (req, res) => 
     jurisdiction:         normalizedJurisdiction || null,
     pack:                 room.workflow_pack_id,
     owner:                ownerName,
-    entity:               room.entity_name || null,
+    entity:               entityName,
     closing_date:         meta.target_close_date || null,
     document_count:       docCount || 0,
     event_count:          eventCount || 0,
@@ -4535,7 +4536,7 @@ app.get('/api/public/deal-room/:propertyId/asset-metadata', async (req, res) => 
   const { propertyId } = req.params;
   const { data: room, error } = await supabase
     .from('deal_rooms')
-    .select('property_id, property_name, workflow_pack_id, deal_type, jurisdiction, metadata_values, created_at, first_name, last_name, entity_name')
+    .select('property_id, property_name, workflow_pack_id, deal_type, jurisdiction, metadata_values, created_at, first_name, last_name')
     .eq('property_id', propertyId)
     .maybeSingle();
   if (error) return res.status(500).json({ error: error.message });
@@ -4554,7 +4555,7 @@ app.get('/api/public/deal-room/:propertyId/asset-metadata', async (req, res) => 
     room.deal_type,
     meta,
   );
-  const ownerName = [room.first_name, room.last_name].filter(Boolean).join(' ') || room.entity_name || meta.issuer_name || null;
+  const ownerName = [room.first_name, room.last_name].filter(Boolean).join(' ') || meta.entity_name || meta.issuer_name || null;
 
   res.json({
     record_type:     'verified_transaction',
@@ -4562,7 +4563,7 @@ app.get('/api/public/deal-room/:propertyId/asset-metadata', async (req, res) => 
     asset_name:     room.property_name,
     asset_type:     meta.asset_type || room.workflow_pack_id || 'transaction',
     jurisdiction:   normalizedJurisdiction || null,
-    entity:         room.entity_name || null,
+    entity:         meta.entity_name || null,
     closing_date:   meta.target_close_date || null,
     currency:       'USD',
     ownership_structure: {
@@ -4598,7 +4599,7 @@ app.get('/api/public/deal-room/:propertyId/readiness', async (req, res) => {
   const { propertyId } = req.params;
   const { data: room, error } = await supabase
     .from('deal_rooms')
-    .select('property_id, property_name, workflow_pack_id, deal_type, jurisdiction, metadata_values, checklist_items, first_name, last_name, entity_name')
+    .select('property_id, property_name, workflow_pack_id, deal_type, jurisdiction, metadata_values, checklist_items, first_name, last_name')
     .eq('property_id', propertyId)
     .maybeSingle();
   if (error) return res.status(500).json({ error: error.message });
@@ -4627,7 +4628,7 @@ app.get('/api/public/deal-room/:propertyId/readiness', async (req, res) => {
   const regItems    = checklist.filter(i => i.category === 'Regulatory');
   const reqItems    = checklist.filter(i => i.required);
 
-  const hasOwnerName = !!(room.first_name || room.entity_name || meta.issuer_name);
+  const hasOwnerName = !!(room.first_name || meta.entity_name || meta.issuer_name);
   const hasOwnerData = !!(meta.lead_investor || meta.investor_token_pct);
   const capFields    = ['total_token_supply', 'investor_token_pct', 'team_token_pct', 'reserve_token_pct', 'lead_investor'];
   const capFilled    = capFields.filter(f => !!meta[f]);
