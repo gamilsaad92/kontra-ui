@@ -2794,22 +2794,30 @@ function WhatNeedsAttention({ briefing, recordFields, loading, onTabChange, prop
         <div className="p-5 space-y-3">
           {[1, 2].map(n => <div key={n} className="h-14 animate-pulse rounded-xl bg-gray-50" />)}
         </div>
-      ) : items.length === 0 ? (
-        <div className="px-5 py-10 text-center">
-          <p className="text-sm font-semibold text-gray-700">Start building the transaction record</p>
-          <p className="mt-1.5 text-xs text-gray-400 max-w-xs mx-auto leading-relaxed">
-            Upload the first document or invite a participant. Kontra will organize the transaction as information enters the room.
-          </p>
-          <div className="mt-5 flex items-center justify-center gap-3 flex-wrap">
+      ) : items.length === 0 && !briefing && recordFields.length === 0 ? (
+        /* ── Genuinely empty room ─────────────────────────────────────── */
+        <div className="px-5 py-6 flex items-center justify-between gap-4 flex-wrap">
+          <div className="min-w-0">
+            <p className="text-sm font-semibold text-gray-800">Start with the transaction essentials</p>
+            <p className="mt-1 text-xs text-gray-400 leading-relaxed max-w-sm">
+              Upload the first meaningful document or invite a participant. Kontra will organize the transaction as information enters the room.
+            </p>
+          </div>
+          <div className="flex items-center gap-2 shrink-0 flex-wrap">
             <button onClick={() => onTabChange?.('documents')}
-              className="rounded-xl bg-[#800020] px-4 py-2.5 text-xs font-bold text-white transition hover:opacity-90">
+              className="rounded-xl bg-[#800020] px-4 py-2 text-xs font-bold text-white transition hover:opacity-90">
               Upload document
             </button>
             <button onClick={() => onTabChange?.('people')}
-              className="rounded-xl border border-gray-200 px-4 py-2.5 text-xs font-semibold text-gray-700 transition hover:bg-gray-50">
+              className="rounded-xl border border-gray-200 px-4 py-2 text-xs font-semibold text-gray-700 transition hover:bg-gray-50">
               Invite participant
             </button>
           </div>
+        </div>
+      ) : items.length === 0 ? (
+        /* ── Room has data but nothing urgent ─────────────────────────── */
+        <div className="px-5 py-5">
+          <p className="text-sm text-gray-500">Nothing needs your attention right now.</p>
         </div>
       ) : (
         <div className="divide-y divide-gray-100">
@@ -2843,8 +2851,8 @@ function WhatNeedsAttention({ briefing, recordFields, loading, onTabChange, prop
 
 // ── DigitalAssetReadinessSection ──────────────────────────────────────────────
 // Category-based readiness derived from structured transaction record fields.
-// Status updates automatically as facts are extracted and confirmed.
-// No bare percentage — uses Not started / In progress / Sufficient.
+// Communicates progressive preparation toward digital-asset use.
+// Overall state: Early → Building → Substantial → Preparation available.
 function DigitalAssetReadinessSection({ recordFields, readiness, onTabChange }) {
   function populated(keys) {
     return recordFields.filter(f => {
@@ -2859,11 +2867,11 @@ function DigitalAssetReadinessSection({ recordFields, readiness, onTabChange }) 
   }
 
   const categories = [
-    { key: 'parties',   label: 'Identity & Parties',     keys: ['parties.buyer','parties.seller','parties.primary','parties.secondary','parties.borrower','ownership.owner_name'] },
-    { key: 'asset',     label: 'Asset / Company',         keys: ['asset.name','asset.type','asset.address','asset.legal_name','asset.jurisdiction','asset.description'] },
-    { key: 'terms',     label: 'Transaction Terms',       keys: ['transaction.purchase_price','transaction.value','transaction.closing_date','transaction.type','transaction.structure'] },
-    { key: 'financial', label: 'Financial Information',   keys: ['financial.purchase_price','financial.deal_value','financial.revenue','financial.noi','financial.loan_amount','asset.noi','asset.revenue'] },
-    { key: 'legal',     label: 'Legal & Diligence',       keys: ['legal.*','ownership.cap_table','ownership.beneficial_owners','ownership.liens','ownership.encumbrances'] },
+    { key: 'parties',   label: 'Identity & Parties',   keys: ['parties.buyer','parties.seller','parties.primary','parties.secondary','parties.borrower','ownership.owner_name'] },
+    { key: 'asset',     label: 'Asset / Company',       keys: ['asset.name','asset.type','asset.address','asset.legal_name','asset.jurisdiction','asset.description'] },
+    { key: 'terms',     label: 'Transaction Terms',     keys: ['transaction.purchase_price','transaction.value','transaction.closing_date','transaction.type','transaction.structure'] },
+    { key: 'financial', label: 'Financial Information', keys: ['financial.purchase_price','financial.deal_value','financial.revenue','financial.noi','financial.loan_amount','asset.noi','asset.revenue'] },
+    { key: 'legal',     label: 'Legal & Diligence',     keys: ['legal.*','ownership.cap_table','ownership.beneficial_owners','ownership.liens','ownership.encumbrances'] },
   ].map(cat => {
     const count = populated(cat.keys);
     const total = cat.keys.length;
@@ -2871,40 +2879,78 @@ function DigitalAssetReadinessSection({ recordFields, readiness, onTabChange }) 
     return { ...cat, count, st };
   });
 
+  const sufficientCount  = categories.filter(c => c.st === 'sufficient').length;
+  const inProgressCount  = categories.filter(c => c.st === 'in_progress').length;
   const serverSufficient = readiness?.digital_asset_readiness?.sufficient;
-  const localSufficient  = categories.every(c => c.st === 'sufficient');
-  const anySufficient    = serverSufficient || localSufficient;
+  const allSufficient    = serverSufficient || sufficientCount === categories.length;
+
+  // Overall state label — no percentage
+  const overallState = allSufficient
+    ? { label: 'Preparation available', color: 'text-emerald-700', bg: 'bg-emerald-50', border: 'border-emerald-100' }
+    : sufficientCount >= 3
+      ? { label: 'Substantial',  color: 'text-indigo-700', bg: 'bg-indigo-50',   border: 'border-indigo-100' }
+      : sufficientCount >= 1 || inProgressCount >= 2
+        ? { label: 'Building',   color: 'text-amber-700',  bg: 'bg-amber-50',    border: 'border-amber-100' }
+        : { label: 'Early',      color: 'text-gray-500',   bg: 'bg-gray-50',     border: 'border-gray-200' };
 
   const stLabel = { not_started: 'Not started', in_progress: 'In progress', sufficient: 'Sufficient' };
-  const stStyle = {
-    not_started: 'text-gray-400 bg-gray-50 border-gray-100',
-    in_progress:  'text-amber-700 bg-amber-50 border-amber-100',
-    sufficient:   'text-emerald-700 bg-emerald-50 border-emerald-100',
-  };
+  const stDot   = { not_started: 'bg-gray-200', in_progress: 'bg-amber-400', sufficient: 'bg-emerald-400' };
 
   return (
     <section className="rounded-2xl border border-gray-200 bg-white overflow-hidden">
+      {/* Header */}
       <div className="px-5 py-4 border-b border-gray-100">
-        <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Digital asset readiness</p>
-        <p className="mt-1 text-sm font-bold text-gray-900">Building the transaction record</p>
-        <p className="mt-0.5 text-xs text-gray-400 leading-relaxed">
-          Kontra organizes transaction information as the deal progresses so it can support future digital-asset preparation.
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Digital asset readiness</p>
+            <p className="mt-1 text-sm font-bold text-gray-900">Building from your transaction activity</p>
+          </div>
+          <span className={`shrink-0 rounded-full border px-3 py-1 text-[11px] font-bold ${overallState.color} ${overallState.bg} ${overallState.border}`}>
+            {overallState.label}
+          </span>
+        </div>
+        <p className="mt-1.5 text-xs text-gray-400 leading-relaxed">
+          As documents are uploaded, participants respond, and facts are confirmed, Kontra organizes the information needed for future digital-asset preparation.
         </p>
+        {/* Visual step progress */}
+        <div className="mt-3 flex items-center gap-1">
+          {categories.map((cat, i) => (
+            <div key={cat.key} className="flex-1 flex items-center gap-1">
+              <div className={`h-1.5 w-full rounded-full transition-all duration-500 ${
+                cat.st === 'sufficient' ? 'bg-emerald-400' :
+                cat.st === 'in_progress' ? 'bg-amber-300' : 'bg-gray-100'
+              }`} />
+            </div>
+          ))}
+        </div>
       </div>
+
+      {/* Category rows */}
       <div className="divide-y divide-gray-100">
         {categories.map(cat => (
-          <div key={cat.key} className="flex items-center justify-between px-5 py-3 gap-4">
-            <p className="text-sm text-gray-700">{cat.label}</p>
-            <span className={`shrink-0 rounded-full border px-2.5 py-0.5 text-[10px] font-semibold ${stStyle[cat.st]}`}>
+          <div key={cat.key} className="flex items-center justify-between px-5 py-2.5 gap-4">
+            <div className="flex items-center gap-2 min-w-0">
+              <span className={`h-2 w-2 shrink-0 rounded-full ${stDot[cat.st]}`} />
+              <p className="text-sm text-gray-700 truncate">{cat.label}</p>
+            </div>
+            <span className={`shrink-0 text-[10px] font-semibold ${
+              cat.st === 'sufficient' ? 'text-emerald-600' :
+              cat.st === 'in_progress' ? 'text-amber-600' : 'text-gray-400'
+            }`}>
               {stLabel[cat.st]}
             </span>
           </div>
         ))}
       </div>
-      {anySufficient ? (
-        <div className="border-t border-indigo-100 bg-indigo-50/60 px-5 py-4">
+
+      {/* Footer */}
+      {allSufficient ? (
+        <div className="border-t border-emerald-100 bg-emerald-50/60 px-5 py-4">
           <p className="text-xs font-semibold text-gray-800">
-            Your transaction record contains enough information to begin preparing a digital-asset handoff package.
+            Digital Asset Preparation Available
+          </p>
+          <p className="mt-0.5 text-xs text-gray-500 leading-relaxed">
+            Your transaction record contains enough organized information to begin preparing a handoff package for external legal, compliance, or issuance providers.
           </p>
           <button onClick={() => onTabChange?.('documents')}
             className="mt-2 text-[11px] font-bold text-[#800020] hover:opacity-80 transition">

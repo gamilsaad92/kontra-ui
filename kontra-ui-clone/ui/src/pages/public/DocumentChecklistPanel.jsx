@@ -421,6 +421,111 @@ function ItemEditor({ item, roles, onSave, onCancel }) {
   );
 }
 
+// ── CoordinatorDocumentGroups ─────────────────────────────────────────────────
+// Splits the checklist into Core (required) and Additional (optional).
+// Additional documents are collapsed by default — the user reveals them on
+// demand once the room feels useful after the first meaningful upload.
+function CoordinatorDocumentGroups({ template, allItems, uploadedSections, buildCategoryGroups, renderItem }) {
+  const [showAdditional, setShowAdditional] = useState(false);
+
+  const coreItems       = template.filter(i => i.required && !i.notApplicable);
+  const additionalItems = template.filter(i => !i.required && !i.notApplicable);
+  const naItems         = template.filter(i => i.notApplicable);
+
+  const coreDone       = coreItems.filter(i => uploadedSections.has(i.section)).length;
+  const additionalDone = additionalItems.filter(i => uploadedSections.has(i.section)).length;
+
+  // Build category map so additional items still group by category
+  const allGroups = buildCategoryGroups();
+  function filterGroups(filterFn) {
+    return allGroups
+      .map(g => ({ ...g, items: g.items.filter(filterFn) }))
+      .filter(g => g.items.length > 0);
+  }
+
+  const coreGroups       = filterGroups(i => i.required && !i.notApplicable);
+  const additionalGroups = filterGroups(i => !i.required && !i.notApplicable);
+
+  function renderGroup(group) {
+    const groupDone  = group.items.filter(i => uploadedSections.has(i.section)).length;
+    const groupTotal = group.items.length;
+    return (
+      <div key={group.key}>
+        <div className="flex items-center gap-2 mb-2">
+          <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">{group.label}</span>
+          <span className="text-[10px] text-gray-400 font-medium">{groupDone}/{groupTotal} uploaded</span>
+        </div>
+        <div className="divide-y divide-gray-50">
+          {group.items.map((item, idx) => renderItem(item, idx, group.items.length))}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* ── Core documents ─────────────────────────────────────────────── */}
+      <div>
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-bold text-gray-800 uppercase tracking-wider">Core documents</span>
+            <span className="text-[10px] text-gray-400 font-medium">
+              {coreDone} of {coreItems.length} uploaded
+            </span>
+          </div>
+        </div>
+        {coreItems.length === 0 ? (
+          <p className="text-xs text-gray-400 py-2">No required documents defined for this transaction type.</p>
+        ) : (
+          <div className="space-y-4">
+            {coreGroups.map(renderGroup)}
+          </div>
+        )}
+      </div>
+
+      {/* ── Additional documents ───────────────────────────────────────── */}
+      {additionalItems.length > 0 && (
+        <div>
+          <button
+            type="button"
+            onClick={() => setShowAdditional(v => !v)}
+            className="flex items-center gap-2 w-full text-left group">
+            <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">
+              Additional documents
+            </span>
+            <span className="text-[10px] text-gray-400 font-medium">
+              {additionalDone} of {additionalItems.length} uploaded
+            </span>
+            <svg
+              className={`ml-auto w-3.5 h-3.5 text-gray-300 transition-transform ${showAdditional ? "rotate-180" : ""}`}
+              fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
+          {!showAdditional && (
+            <p className="mt-1 text-[11px] text-gray-400">
+              {additionalItems.length} optional document{additionalItems.length === 1 ? "" : "s"} — 
+              <button onClick={() => setShowAdditional(true)} className="ml-1 text-[#800020] font-semibold hover:opacity-80 transition">
+                Show
+              </button>
+            </p>
+          )}
+          {showAdditional && (
+            <div className="mt-3 space-y-4">
+              {additionalGroups.map(renderGroup)}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* N/A items — small footer note only */}
+      {naItems.length > 0 && (
+        <p className="text-[10px] text-gray-400">{naItems.length} document{naItems.length === 1 ? "" : "s"} marked not applicable.</p>
+      )}
+    </div>
+  );
+}
+
 // ── Main component ────────────────────────────────────────────────────────────
 export default function DocumentChecklistPanel({
   propertyId, propertyType, role, isDemo = false,
@@ -1091,28 +1196,14 @@ export default function DocumentChecklistPanel({
                     </p>
                   </div>
                 ) : isCoordinator ? (
-                  /* ── Coordinator: grouped by category ─────────────────── */
-                  <div className="space-y-5">
-                    {buildCategoryGroups().map(group => {
-                      const groupDone = group.items.filter(i => uploadedSections.has(i.section)).length;
-                      const groupNA = group.items.filter(i => i.notApplicable).length;
-                      const groupTotal = group.items.length - groupNA;
-                      return (
-                        <div key={group.key}>
-                          <div className="flex items-center gap-2 mb-2">
-                            <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">{group.label}</span>
-                            <span className="text-[10px] text-gray-400 font-medium">
-                              {groupDone}/{groupTotal} uploaded
-                              {groupNA > 0 ? ` · ${groupNA} N/A` : ""}
-                            </span>
-                          </div>
-                          <div className="divide-y divide-gray-50">
-                            {group.items.map((item, idx) => renderItem(item, idx, group.items.length))}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
+                  /* ── Coordinator: Core / Additional split ──────────────── */
+                  <CoordinatorDocumentGroups
+                    template={template}
+                    allItems={allItems}
+                    uploadedSections={uploadedSections}
+                    buildCategoryGroups={buildCategoryGroups}
+                    renderItem={renderItem}
+                  />
                 ) : (
                   /* ── Party or reviewer view ───────────────────────────── */
                   <div className="divide-y divide-gray-50">
