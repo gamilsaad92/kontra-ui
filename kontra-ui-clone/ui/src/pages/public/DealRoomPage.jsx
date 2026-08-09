@@ -2795,18 +2795,28 @@ function WhatNeedsAttention({ briefing, recordFields, loading, onTabChange, prop
           {[1, 2].map(n => <div key={n} className="h-14 animate-pulse rounded-xl bg-gray-50" />)}
         </div>
       ) : items.length === 0 && !briefing && recordFields.length === 0 ? (
-        /* ── Genuinely empty room ─────────────────────────────────────── */
-        <div className="px-5 py-6 flex items-center justify-between gap-4 flex-wrap">
-          <div className="min-w-0">
-            <p className="text-sm font-semibold text-gray-800">Start with the transaction essentials</p>
-            <p className="mt-1 text-xs text-gray-400 leading-relaxed max-w-sm">
-              Upload the first meaningful document or invite a participant. Kontra will organize the transaction as information enters the room.
-            </p>
-          </div>
-          <div className="flex items-center gap-2 shrink-0 flex-wrap">
+        /* ── STATE A: Genuinely empty room ────────────────────────────── */
+        <div className="px-5 py-6">
+          <p className="text-sm font-semibold text-gray-900">Start this transaction</p>
+          <p className="mt-1 text-xs text-gray-500 leading-relaxed max-w-md">
+            Add the first documents and participants so Kontra can begin building the transaction record.
+          </p>
+          <ul className="mt-3 space-y-1.5">
+            {[
+              'Upload core transaction documents',
+              'Invite the deal owner or relevant parties',
+              'Confirm basic transaction information',
+            ].map(task => (
+              <li key={task} className="flex items-center gap-2 text-xs text-gray-500">
+                <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-gray-300" />
+                {task}
+              </li>
+            ))}
+          </ul>
+          <div className="mt-4 flex items-center gap-2 flex-wrap">
             <button onClick={() => onTabChange?.('documents')}
               className="rounded-xl bg-[#800020] px-4 py-2 text-xs font-bold text-white transition hover:opacity-90">
-              Upload document
+              Upload first document
             </button>
             <button onClick={() => onTabChange?.('people')}
               className="rounded-xl border border-gray-200 px-4 py-2 text-xs font-semibold text-gray-700 transition hover:bg-gray-50">
@@ -2815,35 +2825,49 @@ function WhatNeedsAttention({ briefing, recordFields, loading, onTabChange, prop
           </div>
         </div>
       ) : items.length === 0 ? (
-        /* ── Room has data but nothing urgent ─────────────────────────── */
+        /* ── STATE B: Active but no blockers ──────────────────────────── */
         <div className="px-5 py-5">
-          <p className="text-sm text-gray-500">Nothing needs your attention right now.</p>
+          <p className="text-sm font-semibold text-gray-800">Nothing requires your attention right now.</p>
+          <p className="mt-1 text-xs text-gray-400 leading-relaxed">
+            Kontra is monitoring the transaction for missing information, inconsistencies, participant requests, and upcoming actions.
+          </p>
         </div>
       ) : (
-        <div className="divide-y divide-gray-100">
-          {items.map(item => (
-            <div key={item.id} className="flex items-start gap-3 px-5 py-4">
-              <span className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${urgencyDot[item.urgency]}`} />
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-semibold text-gray-900 leading-snug">{item.title}</p>
-                {item.reason ? <p className="mt-0.5 text-xs text-gray-500 leading-relaxed">{item.reason}</p> : null}
-                {item.excerpt ? <p className="mt-1 text-[11px] text-gray-400 italic leading-relaxed">{item.excerpt}</p> : null}
-                {item.actions.length > 0 && (
-                  <div className="mt-2.5 flex flex-wrap gap-2">
-                    {item.actions.map((a, ai) => (
-                      <button key={ai} onClick={a.onClick} disabled={a.disabled}
-                        className={`rounded-lg px-3 py-1.5 text-[11px] font-bold transition disabled:opacity-50 ${
-                          a.primary ? 'bg-[#800020] text-white hover:opacity-90' : 'border border-gray-200 text-gray-700 hover:bg-gray-50'
-                        }`}>
-                        {a.label}
-                      </button>
-                    ))}
-                  </div>
-                )}
+        /* ── STATE C/D: Items to address ──────────────────────────────── */
+        <>
+          <div className="divide-y divide-gray-100">
+            {items.slice(0, 5).map(item => (
+              <div key={item.id} className={`flex items-start gap-3 px-5 py-4 ${item.urgency === 'high' ? 'bg-red-50/40' : ''}`}>
+                <span className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${urgencyDot[item.urgency]}`} />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold text-gray-900 leading-snug">{item.title}</p>
+                  {item.reason ? <p className="mt-0.5 text-xs text-gray-500 leading-relaxed">{item.reason}</p> : null}
+                  {item.excerpt ? <p className="mt-1 text-[11px] text-gray-400 italic leading-relaxed">{item.excerpt}</p> : null}
+                  {item.actions.length > 0 && (
+                    <div className="mt-2.5 flex flex-wrap gap-2">
+                      {item.actions.map((a, ai) => (
+                        <button key={ai} onClick={a.onClick} disabled={a.disabled}
+                          className={`rounded-lg px-3 py-1.5 text-[11px] font-bold transition disabled:opacity-50 ${
+                            a.primary ? 'bg-[#800020] text-white hover:opacity-90' : 'border border-gray-200 text-gray-700 hover:bg-gray-50'
+                          }`}>
+                          {a.label}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
+            ))}
+          </div>
+          {items.length > 3 && (
+            <div className="border-t border-gray-100 px-5 py-3">
+              <button onClick={() => onTabChange?.('documents')}
+                className="text-[11px] font-semibold text-[#800020] hover:opacity-80 transition">
+                View all in Documents →
+              </button>
             </div>
-          ))}
-        </div>
+          )}
+        </>
       )}
     </section>
   );
@@ -2851,50 +2875,123 @@ function WhatNeedsAttention({ briefing, recordFields, loading, onTabChange, prop
 
 // ── DigitalAssetReadinessSection ──────────────────────────────────────────────
 // Category-based readiness derived from structured transaction record fields.
-// Communicates progressive preparation toward digital-asset use.
-// Overall state: Early → Building → Substantial → Preparation available.
+// Four states: Not started / Building / Needs information / Ready for review.
+// Rows are expandable — shows confirmed fields, missing fields, and sources.
 function DigitalAssetReadinessSection({ recordFields, readiness, onTabChange }) {
-  function populated(keys) {
-    return recordFields.filter(f => {
-      const val = String(f.value_text || '').trim().toLowerCase();
-      return keys.some(k => k.endsWith('*')
-        ? f.field_key?.startsWith(k.slice(0, -1))
-        : f.field_key === k)
-        && val
-        && !['n/a', 'na', 'not applicable', 'not_applicable', 'unknown'].includes(val)
-        && f.status !== 'not_applicable';
-    }).length;
+  const [expandedCat, setExpandedCat] = useState(null);
+
+  // Per-field definitions for each category — label used in expand panel
+  const CAT_FIELD_DEFS = {
+    parties: [
+      { key: 'parties.buyer',      label: 'Buyer / primary party' },
+      { key: 'parties.seller',     label: 'Seller / counterparty' },
+      { key: 'parties.primary',    label: 'Primary party' },
+      { key: 'parties.secondary',  label: 'Secondary party' },
+      { key: 'parties.borrower',   label: 'Borrower' },
+      { key: 'ownership.owner_name', label: 'Registered owner' },
+    ],
+    asset: [
+      { key: 'asset.name',         label: 'Asset name' },
+      { key: 'asset.type',         label: 'Asset type' },
+      { key: 'asset.address',      label: 'Property address' },
+      { key: 'asset.legal_name',   label: 'Legal entity name' },
+      { key: 'asset.jurisdiction', label: 'Jurisdiction' },
+      { key: 'asset.description',  label: 'Asset description' },
+    ],
+    terms: [
+      { key: 'transaction.purchase_price', label: 'Purchase price' },
+      { key: 'transaction.value',          label: 'Transaction value' },
+      { key: 'transaction.closing_date',   label: 'Closing date' },
+      { key: 'transaction.type',           label: 'Transaction type' },
+      { key: 'transaction.structure',      label: 'Transaction structure' },
+    ],
+    financial: [
+      { key: 'financial.purchase_price', label: 'Purchase price' },
+      { key: 'financial.deal_value',     label: 'Deal value' },
+      { key: 'financial.revenue',        label: 'Revenue' },
+      { key: 'financial.noi',            label: 'Net operating income' },
+      { key: 'financial.loan_amount',    label: 'Loan amount' },
+      { key: 'asset.noi',                label: 'Asset NOI' },
+      { key: 'asset.revenue',            label: 'Asset revenue' },
+    ],
+    legal: [
+      { key: 'ownership.cap_table',          label: 'Cap table / ownership' },
+      { key: 'ownership.beneficial_owners',  label: 'Beneficial owners' },
+      { key: 'ownership.liens',              label: 'Liens & encumbrances' },
+      { key: 'ownership.encumbrances',       label: 'Encumbrances' },
+      { key: 'legal.title_status',           label: 'Title status' },
+      { key: 'legal.regulatory_approvals',   label: 'Regulatory approvals' },
+    ],
+  };
+
+  // Returns field objects from recordFields that match a given key (supports * prefix)
+  function matchingFields(keyDef) {
+    return recordFields.filter(f =>
+      keyDef.endsWith('*')
+        ? f.field_key?.startsWith(keyDef.slice(0, -1))
+        : f.field_key === keyDef
+    );
   }
 
+  const SKIP_VALUES = new Set(['n/a', 'na', 'not applicable', 'not_applicable', 'unknown']);
+
+  function isPopulated(f) {
+    const val = String(f.value_text || '').trim().toLowerCase();
+    return val && !SKIP_VALUES.has(val) && f.status !== 'not_applicable';
+  }
+
+  // Build enhanced category objects
   const categories = [
-    { key: 'parties',   label: 'Identity & Parties',   keys: ['parties.buyer','parties.seller','parties.primary','parties.secondary','parties.borrower','ownership.owner_name'] },
-    { key: 'asset',     label: 'Asset / Company',       keys: ['asset.name','asset.type','asset.address','asset.legal_name','asset.jurisdiction','asset.description'] },
-    { key: 'terms',     label: 'Transaction Terms',     keys: ['transaction.purchase_price','transaction.value','transaction.closing_date','transaction.type','transaction.structure'] },
-    { key: 'financial', label: 'Financial Information', keys: ['financial.purchase_price','financial.deal_value','financial.revenue','financial.noi','financial.loan_amount','asset.noi','asset.revenue'] },
-    { key: 'legal',     label: 'Legal & Diligence',     keys: ['legal.*','ownership.cap_table','ownership.beneficial_owners','ownership.liens','ownership.encumbrances'] },
+    { key: 'parties',   label: 'Identity & Parties',   fieldDefs: CAT_FIELD_DEFS.parties },
+    { key: 'asset',     label: 'Asset / Company',       fieldDefs: CAT_FIELD_DEFS.asset },
+    { key: 'terms',     label: 'Transaction Terms',     fieldDefs: CAT_FIELD_DEFS.terms },
+    { key: 'financial', label: 'Financial Information', fieldDefs: CAT_FIELD_DEFS.financial },
+    { key: 'legal',     label: 'Legal & Diligence',     fieldDefs: CAT_FIELD_DEFS.legal },
   ].map(cat => {
-    const count = populated(cat.keys);
-    const total = cat.keys.length;
-    const st = count === 0 ? 'not_started' : count >= Math.ceil(total * 0.5) ? 'sufficient' : 'in_progress';
-    return { ...cat, count, st };
+    const enriched = cat.fieldDefs.map(def => {
+      const matched = matchingFields(def.key);
+      const populated = matched.find(f => isPopulated(f));
+      return { ...def, field: populated || null, allMatches: matched };
+    });
+    const confirmedDefs = enriched.filter(d => d.field);
+    const missingDefs   = enriched.filter(d => !d.field);
+    const count = confirmedDefs.length;
+    const total = enriched.length;
+    // Derive sources from populated fields
+    const sources = [...new Set(
+      confirmedDefs.flatMap(d => [d.field?.source_document, d.field?.source_file, d.field?.source_section].filter(Boolean))
+    )].slice(0, 3);
+
+    // Four-state status
+    const st = count === 0
+      ? 'not_started'
+      : count >= Math.ceil(total * 0.67)
+        ? 'ready'
+        : count >= Math.ceil(total * 0.34)
+          ? 'needs_info'
+          : 'building';
+
+    return { ...cat, enriched, confirmedDefs, missingDefs, count, total, sources, st };
   });
 
-  const sufficientCount  = categories.filter(c => c.st === 'sufficient').length;
-  const inProgressCount  = categories.filter(c => c.st === 'in_progress').length;
+  const readyCount   = categories.filter(c => c.st === 'ready').length;
+  const buildingCount = categories.filter(c => ['building','needs_info'].includes(c.st)).length;
   const serverSufficient = readiness?.digital_asset_readiness?.sufficient;
-  const allSufficient    = serverSufficient || sufficientCount === categories.length;
+  const allReady     = serverSufficient || readyCount === categories.length;
 
-  // Overall state label — no percentage
-  const overallState = allSufficient
+  // Overall state
+  const overallState = allReady
     ? { label: 'Preparation available', color: 'text-emerald-700', bg: 'bg-emerald-50', border: 'border-emerald-100' }
-    : sufficientCount >= 3
+    : readyCount >= 3
       ? { label: 'Substantial',  color: 'text-indigo-700', bg: 'bg-indigo-50',   border: 'border-indigo-100' }
-      : sufficientCount >= 1 || inProgressCount >= 2
+      : buildingCount >= 2
         ? { label: 'Building',   color: 'text-amber-700',  bg: 'bg-amber-50',    border: 'border-amber-100' }
         : { label: 'Early',      color: 'text-gray-500',   bg: 'bg-gray-50',     border: 'border-gray-200' };
 
-  const stLabel = { not_started: 'Not started', in_progress: 'In progress', sufficient: 'Sufficient' };
-  const stDot   = { not_started: 'bg-gray-200', in_progress: 'bg-amber-400', sufficient: 'bg-emerald-400' };
+  const stLabel = { not_started: 'Not started', building: 'Building', needs_info: 'Needs information', ready: 'Ready for review' };
+  const stColor = { not_started: 'text-gray-400', building: 'text-amber-600', needs_info: 'text-orange-600', ready: 'text-emerald-600' };
+  const stDot   = { not_started: 'bg-gray-200',   building: 'bg-amber-400',   needs_info: 'bg-orange-400',   ready: 'bg-emerald-400' };
+  const stBar   = { not_started: 'bg-gray-100',   building: 'bg-amber-300',   needs_info: 'bg-orange-300',   ready: 'bg-emerald-400' };
 
   return (
     <section className="rounded-2xl border border-gray-200 bg-white overflow-hidden">
@@ -2910,45 +3007,103 @@ function DigitalAssetReadinessSection({ recordFields, readiness, onTabChange }) 
           </span>
         </div>
         <p className="mt-1.5 text-xs text-gray-400 leading-relaxed">
-          As documents are uploaded, participants respond, and facts are confirmed, Kontra organizes the information needed for future digital-asset preparation.
+          Kontra organizes transaction information as documents are reviewed, participants respond, and facts are confirmed.
         </p>
         {/* Visual step progress */}
         <div className="mt-3 flex items-center gap-1">
-          {categories.map((cat, i) => (
-            <div key={cat.key} className="flex-1 flex items-center gap-1">
-              <div className={`h-1.5 w-full rounded-full transition-all duration-500 ${
-                cat.st === 'sufficient' ? 'bg-emerald-400' :
-                cat.st === 'in_progress' ? 'bg-amber-300' : 'bg-gray-100'
-              }`} />
-            </div>
+          {categories.map(cat => (
+            <div key={cat.key} className={`h-1.5 flex-1 rounded-full transition-all duration-500 ${stBar[cat.st]}`} />
           ))}
         </div>
       </div>
 
-      {/* Category rows */}
+      {/* Category rows — each expandable */}
       <div className="divide-y divide-gray-100">
-        {categories.map(cat => (
-          <div key={cat.key} className="flex items-center justify-between px-5 py-2.5 gap-4">
-            <div className="flex items-center gap-2 min-w-0">
-              <span className={`h-2 w-2 shrink-0 rounded-full ${stDot[cat.st]}`} />
-              <p className="text-sm text-gray-700 truncate">{cat.label}</p>
+        {categories.map(cat => {
+          const isExpanded = expandedCat === cat.key;
+          return (
+            <div key={cat.key}>
+              <button
+                type="button"
+                onClick={() => setExpandedCat(isExpanded ? null : cat.key)}
+                className="flex items-center justify-between w-full px-5 py-3 gap-4 text-left hover:bg-gray-50 transition">
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className={`h-2 w-2 shrink-0 rounded-full ${stDot[cat.st]}`} />
+                  <p className="text-sm text-gray-700 truncate">{cat.label}</p>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <span className={`text-[10px] font-semibold ${stColor[cat.st]}`}>
+                    {stLabel[cat.st]}
+                  </span>
+                  <svg className={`w-3 h-3 text-gray-300 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
+                    fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                  </svg>
+                </div>
+              </button>
+
+              {/* Expanded detail panel */}
+              {isExpanded && (
+                <div className="px-5 pb-4 pt-1 bg-gray-50/60 border-t border-gray-100">
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    {/* Confirmed */}
+                    <div>
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-1.5">Confirmed</p>
+                      {cat.confirmedDefs.length === 0 ? (
+                        <p className="text-xs text-gray-400 italic">Nothing confirmed yet.</p>
+                      ) : (
+                        <ul className="space-y-1">
+                          {cat.confirmedDefs.map(d => (
+                            <li key={d.key} className="flex items-start gap-1.5 text-xs text-gray-700">
+                              <span className="mt-0.5 text-emerald-500 shrink-0">✓</span>
+                              <span>{d.label}{d.field?.value_text ? <span className="text-gray-400"> — {d.field.value_text}</span> : ''}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                    {/* Missing */}
+                    <div>
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-1.5">Missing</p>
+                      {cat.missingDefs.length === 0 ? (
+                        <p className="text-xs text-emerald-600 font-medium">All key fields present.</p>
+                      ) : (
+                        <ul className="space-y-1">
+                          {cat.missingDefs.slice(0, 4).map(d => (
+                            <li key={d.key} className="flex items-start gap-1.5 text-xs text-gray-500">
+                              <span className="mt-0.5 text-gray-300 shrink-0">○</span>
+                              <span>{d.label}</span>
+                            </li>
+                          ))}
+                          {cat.missingDefs.length > 4 && (
+                            <li className="text-[10px] text-gray-400">+{cat.missingDefs.length - 4} more</li>
+                          )}
+                        </ul>
+                      )}
+                    </div>
+                  </div>
+                  {/* Sources */}
+                  {cat.sources.length > 0 && (
+                    <div className="mt-3 pt-3 border-t border-gray-100">
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-1">Sources</p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {cat.sources.map(src => (
+                          <span key={src} className="text-[11px] px-2 py-0.5 rounded bg-gray-100 text-gray-600">{src}</span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
-            <span className={`shrink-0 text-[10px] font-semibold ${
-              cat.st === 'sufficient' ? 'text-emerald-600' :
-              cat.st === 'in_progress' ? 'text-amber-600' : 'text-gray-400'
-            }`}>
-              {stLabel[cat.st]}
-            </span>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       {/* Footer */}
-      {allSufficient ? (
+      {allReady ? (
         <div className="border-t border-emerald-100 bg-emerald-50/60 px-5 py-4">
-          <p className="text-xs font-semibold text-gray-800">
-            Digital Asset Preparation Available
-          </p>
+          <p className="text-xs font-semibold text-gray-800">Digital Asset Preparation Available</p>
           <p className="mt-0.5 text-xs text-gray-500 leading-relaxed">
             Your transaction record contains enough organized information to begin preparing a handoff package for external legal, compliance, or issuance providers.
           </p>
@@ -2959,7 +3114,7 @@ function DigitalAssetReadinessSection({ recordFields, readiness, onTabChange }) 
         </div>
       ) : (
         <p className="border-t border-gray-100 px-5 py-3 text-[10px] text-gray-400">
-          Readiness reflects organized information only — not legal or regulatory approval for issuance or tokenization.
+          Readiness reflects the completeness and organization of transaction information. It does not represent legal or regulatory approval for issuance or tokenization.
         </p>
       )}
     </section>
@@ -2967,24 +3122,28 @@ function DigitalAssetReadinessSection({ recordFields, readiness, onTabChange }) 
 }
 
 // ── RoomCopilot — floating button + side drawer ───────────────────────────────
-// Persistent across all tabs. Removed from Overview; lives at page level.
+// Persistent across all tabs. Shows 4 quick questions initially.
 function RoomCopilot({ propertyId }) {
-  const [open, setOpen]       = useState(false);
-  const [question, setQuestion] = useState('');
-  const [answer, setAnswer]   = useState('');
-  const [loading, setLoading] = useState(false);
+  const [open, setOpen]           = useState(false);
+  const [question, setQuestion]   = useState('');
+  const [answer, setAnswer]       = useState('');
+  const [loading, setLoading]     = useState(false);
+  const [showAllQ, setShowAllQ]   = useState(false);
   const inputRef = useRef(null);
 
-  const quickQuestions = [
+  const QUICK_PRIMARY = [
     "What's happening with this transaction?",
     "What should I do next?",
-    "What are we waiting for?",
+    "What's blocking the transaction?",
     "What's missing?",
-    "Summarize this deal.",
-    "Who are we waiting on?",
-    "How close is this to digital-asset preparation?",
-    "What changed recently?",
   ];
+  const QUICK_SECONDARY = [
+    "Who are we waiting on?",
+    "What changed recently?",
+    "Summarize this deal.",
+    "How close is this to digital-asset preparation?",
+  ];
+  const quickQuestions = showAllQ ? [...QUICK_PRIMARY, ...QUICK_SECONDARY] : QUICK_PRIMARY;
 
   useEffect(() => {
     if (open) setTimeout(() => inputRef.current?.focus(), 100);
@@ -3057,6 +3216,12 @@ function RoomCopilot({ propertyId }) {
                         {prompt}
                       </button>
                     ))}
+                    {!showAllQ && (
+                      <button type="button" onClick={() => setShowAllQ(true)}
+                        className="rounded-full border border-dashed border-gray-200 bg-white px-3 py-1.5 text-[11px] font-medium text-gray-400 transition hover:border-gray-400 hover:text-gray-600">
+                        More →
+                      </button>
+                    )}
                   </div>
                 </div>
               )}
