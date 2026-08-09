@@ -21,7 +21,7 @@ router.get('/deal-room/:propertyId/brain/briefing', async (req, res) => {
 router.post('/deal-room/:propertyId/brain/ask', async (req, res) => {
   try {
     const { question } = req.body || {};
-    const result = await askQuestion(req.params.propertyId, question);
+    const result = await askQuestion(req.params.propertyId, String(question || '').slice(0, 2000));
     res.json(result);
   } catch (err) {
     console.error('[operationsManager] ask failed:', err.message);

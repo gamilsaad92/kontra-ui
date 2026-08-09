@@ -2604,7 +2604,7 @@ function TransactionFindingsPanel({ propertyId, onTabChange }) {
   );
 }
 
-function DigitalAssetPrepCard({ propertyId, recordFields = [] }) {
+function DigitalAssetPrepCard({ propertyId, recordFields = [], readiness = null }) {
   const [requested, setRequested] = useState(false);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null);
@@ -2635,9 +2635,10 @@ function DigitalAssetPrepCard({ propertyId, recordFields = [] }) {
     return value && !['n/a', 'na', 'not applicable', 'not_applicable', 'unknown'].includes(value)
       && field.status !== 'not_applicable';
   });
-  const hasEnoughInformation = populatedFacts.length >= 4
+  const localReadinessSufficient = populatedFacts.length >= 4
     && populatedFacts.some(field => field.field_key?.startsWith('transaction.'))
     && populatedFacts.some(field => field.field_key?.startsWith('asset.') || field.field_key?.startsWith('parties.'));
+  const hasEnoughInformation = readiness?.digital_asset_readiness?.sufficient ?? localReadinessSufficient;
 
   // Digital Asset Prep is intentionally progressive: it is a downstream
   // structured-package action, not a default destination for an empty room.
@@ -2656,24 +2657,24 @@ function DigitalAssetPrepCard({ propertyId, recordFields = [] }) {
           <div className="flex items-start justify-between gap-3">
             <div>
               <p className="text-[10px] font-bold uppercase tracking-wider text-indigo-500">Optional downstream step</p>
-              <p className="text-sm font-bold text-gray-900 mt-0.5">Prepare Digital Asset Package</p>
+              <p className="text-sm font-bold text-gray-900 mt-0.5">Generate Digital Asset Preparation Package</p>
             </div>
             {!requested && (
               <button
                 onClick={requestPrep}
                 disabled={loading}
                 className="shrink-0 rounded-lg bg-[#800020] px-3 py-1.5 text-[11px] font-bold text-white transition hover:opacity-90 disabled:opacity-50">
-                {loading ? 'Preparing…' : 'Prepare package'}
+                {loading ? 'Generating…' : 'Generate package'}
               </button>
             )}
           </div>
           <p className="text-xs text-gray-500 mt-1 leading-relaxed">
-            Organize the transaction facts already collected into a structured package for external review.
+            Organize the transaction facts already collected into an AI-prepared structured package for external review.
           </p>
           {requested && (
             <div className="mt-3 rounded-xl bg-gray-50 border border-gray-100 px-3 py-2.5">
               <p className="text-xs font-semibold text-gray-800">
-                {result?.status === 'prepared' ? 'Package preparation can begin.' : 'A few facts are still needed.'}
+                {result?.status === 'prepared' ? 'AI-prepared package generated.' : 'A few facts are still needed.'}
               </p>
               {result?.missing?.length > 0 && (
                 <p className="text-[11px] text-gray-500 mt-1">
@@ -2682,7 +2683,7 @@ function DigitalAssetPrepCard({ propertyId, recordFields = [] }) {
                 </p>
               )}
               <p className="text-[10px] text-gray-400 mt-1">
-                Structured preparation only. Kontra does not issue, sell, recommend, custody, or settle digital assets.
+                AI-prepared only. Kontra does not provide legal or regulatory verification, and does not issue, sell, recommend, custody, or settle digital assets.
               </p>
             </div>
           )}
@@ -2697,15 +2698,111 @@ function formatSnapshotValue(field) {
   return field.value_text;
 }
 
+function RoomCopilot({ propertyId, briefing = null }) {
+  const [question, setQuestion] = useState('');
+  const [answer, setAnswer] = useState('');
+  const [loading, setLoading] = useState(false);
+  const quickQuestions = [
+    "Give me today's brief",
+    "What is the next action that moves this transaction forward?",
+    "What is still missing?",
+    "Explain the latest AI finding",
+  ];
+
+  async function ask(nextQuestion = question) {
+    const prompt = String(nextQuestion || '').trim();
+    if (!prompt || loading) return;
+    setQuestion(prompt);
+    setLoading(true);
+    try {
+      const response = await fetch(`${API_BASE}/api/public/deal-room/${propertyId}/brain/ask`, {
+        method: 'POST',
+        headers: getRoomAuthHeaders(propertyId, { 'Content-Type': 'application/json' }),
+        body: JSON.stringify({ question: prompt }),
+      });
+      const data = response.ok ? await response.json() : null;
+      setAnswer(data?.answer || 'I could not answer from the current transaction record.');
+    } catch {
+      setAnswer('Kontra could not reach the transaction workspace. Try again in a moment.');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <section className="overflow-hidden rounded-2xl border border-[#e6d8dd] bg-[#fffafb]">
+      <div className="border-b border-[#f0e3e7] px-5 py-4">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-widest text-[#800020]">Kontra AI Copilot</p>
+            <p className="mt-1 text-sm font-bold text-gray-900">Your transaction-aware guidance layer</p>
+            <p className="mt-1 max-w-xl text-xs leading-relaxed text-gray-500">
+              Ask about this transaction, explain a finding, summarize what is missing, or get today’s brief.
+            </p>
+          </div>
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-[#800020] text-sm text-white" aria-hidden="true">✦</span>
+        </div>
+      </div>
+      <div className="space-y-3 p-5">
+        <div className="flex flex-wrap gap-2">
+          {quickQuestions.map(prompt => (
+            <button
+              key={prompt}
+              type="button"
+              onClick={() => ask(prompt)}
+              disabled={loading}
+              className="rounded-full border border-[#eadde1] bg-white px-3 py-1.5 text-[11px] font-semibold text-[#800020] transition hover:border-[#800020] disabled:opacity-50">
+              {prompt}
+            </button>
+          ))}
+        </div>
+        {briefing?.narrative && !answer && (
+          <div className="rounded-xl border border-[#f0e3e7] bg-white px-3.5 py-3">
+            <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Today’s brief</p>
+            <p className="mt-1 text-xs leading-relaxed text-gray-700">{briefing.narrative}</p>
+          </div>
+        )}
+        {answer && (
+          <div className="rounded-xl border border-[#eadde1] bg-white px-3.5 py-3">
+            <p className="text-[10px] font-bold uppercase tracking-wider text-[#800020]">Kontra AI Copilot</p>
+            <p className="mt-1 whitespace-pre-wrap text-sm leading-relaxed text-gray-700">{answer}</p>
+          </div>
+        )}
+        <form
+          onSubmit={event => {
+            event.preventDefault();
+            ask();
+          }}
+          className="flex gap-2">
+          <input
+            value={question}
+            onChange={event => setQuestion(event.target.value)}
+            placeholder="Ask about this transaction…"
+            aria-label="Ask Kontra AI Copilot about this transaction"
+            className="min-w-0 flex-1 rounded-xl border border-gray-200 bg-white px-3.5 py-2.5 text-sm text-gray-800 outline-none transition placeholder:text-gray-400 focus:border-[#800020]"
+          />
+          <button
+            type="submit"
+            disabled={loading || !question.trim()}
+            className="rounded-xl bg-[#800020] px-4 py-2.5 text-xs font-bold text-white transition hover:opacity-90 disabled:opacity-40">
+            {loading ? 'Thinking…' : 'Ask'}
+          </button>
+        </form>
+        <p className="text-[10px] leading-relaxed text-gray-400">
+          AI-prepared operational guidance only. Kontra does not provide legal or regulatory verification.
+        </p>
+      </div>
+    </section>
+  );
+}
+
 function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange }) {
   const [briefing, setBriefing] = useState(null);
   const [coordination, setCoordination] = useState(null);
   const [stages, setStages] = useState([]);
-  const [events, setEvents] = useState([]);
-  const [checklistItems, setChecklistItems] = useState([]);
   const [recordFields, setRecordFields] = useState([]);
+  const [readiness, setReadiness] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [showActivity, setShowActivity] = useState(false);
 
   const load = useCallback(async () => {
     if (!propertyId) return;
@@ -2713,20 +2810,18 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange }
     const get = (path, fallback) => fetch(`${API_BASE}${path}`, { headers })
       .then(response => response.ok ? response.json() : fallback)
       .catch(() => fallback);
-    const [brief, coord, stageData, eventData, checklist, record] = await Promise.all([
+    const [brief, coord, stageData, record, readinessData] = await Promise.all([
       get(`/api/public/deal-room/${propertyId}/brain/briefing`, null),
       get(`/api/public/deal-room/${propertyId}/coordination`, null),
       get(`/api/public/deal-room/${propertyId}/stages`, { stages: [] }),
-      get(`/api/public/deal-room/${propertyId}/events`, { events: [] }),
-      get(`/api/public/deal-room/${propertyId}/checklist`, { items: [] }),
       get(`/api/public/deal-room/${propertyId}/transaction-record`, { fields: [] }),
+      get(`/api/public/deal-room/${propertyId}/readiness`, null),
     ]);
     setBriefing(brief);
     setCoordination(coord);
     setStages(Array.isArray(stageData?.stages) && stageData.stages.length >= 2 ? stageData.stages : (pack.stages || []));
-    setEvents(Array.isArray(eventData?.events) ? eventData.events : []);
-    setChecklistItems(Array.isArray(checklist?.items) ? checklist.items : []);
     setRecordFields(Array.isArray(record?.fields) ? record.fields : []);
+    setReadiness(readinessData);
     setLoading(false);
   }, [propertyId, pack]);
 
@@ -2736,29 +2831,20 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange }
     return () => clearInterval(interval);
   }, [load]);
 
-  const roleMeta = Object.fromEntries((pack.roles || []).map(role => [role.key, role]));
   const currentStageKey = coordination?.stage || stages[0]?.key;
   const currentStageIndex = Math.max(0, stages.findIndex(stage => stage.key === currentStageKey));
   const currentStage = stages[currentStageIndex];
-  const requiredChecklist = checklistItems.filter(item => item.required);
-  const uploadedStatuses = new Set(['uploaded', 'approved', 'ai_complete']);
-  const uploadedRequired = requiredChecklist.filter(item => uploadedStatuses.has(item.status) || item.uploaded);
-  const uploadedDocuments = checklistItems.filter(item => uploadedStatuses.has(item.status) || item.uploaded);
-  const fallbackDocumentCount = Object.values(coordination?.docsByRole || {}).reduce((total, count) => total + count, 0);
-  const documentCount = uploadedDocuments.length || fallbackDocumentCount;
-  const submittedRoles = new Set((coordination?.submissions || []).map(item => item.role));
-  const invitedRoles = new Set(events
-    .filter(event => event.event_type === 'invite_sent' && event.metadata?.role)
-    .map(event => event.metadata.role));
-  const participantRoles = (pack.roles || []).filter(role => role.invitable !== false);
-  const participantsWithProgress = participantRoles.filter(role => invitedRoles.has(role.key) || submittedRoles.has(role.key));
-  const actionItems = (briefing?.actions || briefing?.next_actions || []).slice(0, 4).map((item, index) => ({
-    text: typeof item === 'string' ? item : (item.text || item.action || ''),
-    owner: typeof item === 'object' ? (item.party || item.responsible || item.role || '') : '',
-    due: typeof item === 'object' ? (item.due_date || item.dueDate || '') : '',
-    priority: typeof item === 'object' ? (item.severity || '') : (index === 0 ? 'Priority' : ''),
+  const actionItems = (briefing?.actions || briefing?.next_actions || briefing?.criticalPath || briefing?.blocking || []).slice(0, 4).map((item, index) => ({
+    text: typeof item === 'string' ? item : (item.text || item.action || item.item || item.title || ''),
+    owner: typeof item === 'object' ? (item.party || item.responsible || item.role || item.owner || '') : '',
+    due: typeof item === 'object' ? (item.due_date || item.dueDate || item.dueAt || '') : '',
+    priority: typeof item === 'object' ? (item.severity || item.priority || '') : (index === 0 ? 'Priority' : ''),
   })).filter(item => item.text);
-  const issues = briefing?.criticalPath || briefing?.blocking || briefing?.risks || briefing?.open_items || [];
+  const issues = briefing?.criticalPath?.length
+    ? briefing.criticalPath
+    : briefing?.blocking?.length
+      ? briefing.blocking
+      : briefing?.risks || briefing?.open_items || [];
   const reviewFindings = recordFields.filter(field => ['needs_review', 'conflicting', 'source_changed'].includes(field.status));
   const populatedFields = recordFields.filter(field => {
     const value = String(field.value_text || '').trim().toLowerCase();
@@ -2766,8 +2852,11 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange }
       && field.status !== 'not_applicable';
   });
   const snapshotField = (keys) => recordFields.find(field => keys.includes(field.field_key) && field.status !== 'not_applicable');
-  const recentEvents = [...events].sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0)).slice(0, 3);
   const closingDate = property?.closing_date || property?.target_close_date || property?.close_date;
+  const digitalAssetReadiness = readiness?.digital_asset_readiness;
+  const readinessColor = digitalAssetReadiness?.sufficient
+    ? 'text-emerald-700 bg-emerald-50 border-emerald-100'
+    : 'text-indigo-700 bg-indigo-50 border-indigo-100';
 
   return (
     <div className="space-y-5">
@@ -2786,18 +2875,27 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange }
             </span>
           )}
         </div>
-        <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-3">
           {[
             { label: 'Transaction value', value: formatSnapshotValue(snapshotField(['transaction.purchase_price', 'transaction.value', 'financial.purchase_price', 'financial.deal_value'])) },
             { label: 'Asset / company', value: formatSnapshotValue(snapshotField(['asset.name', 'asset.legal_name', 'asset.type'])) },
             { label: 'Buyer / primary party', value: formatSnapshotValue(snapshotField(['parties.buyer', 'parties.primary'])) },
-            { label: 'Facts captured', value: `${populatedFields.length} recorded` },
           ].map(item => (
             <div key={item.label} className="min-w-0 rounded-xl bg-gray-50 px-3 py-3">
               <p className="truncate text-sm font-bold text-gray-900">{item.value}</p>
               <p className="mt-1 text-[10px] leading-tight text-gray-400">{item.label}</p>
             </div>
           ))}
+          <div className={`col-span-2 flex min-w-0 items-center justify-between gap-3 rounded-xl border px-3 py-3 sm:col-span-3 ${readinessColor}`}>
+            <div className="min-w-0">
+              <p className="text-[10px] font-bold uppercase tracking-wider opacity-70">Digital asset readiness</p>
+              <p className="mt-1 truncate text-sm font-bold">{digitalAssetReadiness?.status || 'Building quietly'}</p>
+            </div>
+            <div className="shrink-0 text-right">
+              <p className="text-sm font-black">{digitalAssetReadiness?.percent ?? 0}%</p>
+              <p className="text-[10px] opacity-70">{digitalAssetReadiness?.captured_facts ?? populatedFields.length} facts</p>
+            </div>
+          </div>
         </div>
       </section>
 
@@ -2838,7 +2936,7 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange }
       </section>
 
       <TransactionFindingsPanel propertyId={propertyId} onTabChange={onTabChange} />
-      <DigitalAssetPrepCard propertyId={propertyId} recordFields={recordFields} />
+      <DigitalAssetPrepCard propertyId={propertyId} recordFields={recordFields} readiness={readiness} />
 
       <section className="rounded-2xl border border-gray-200 bg-white overflow-hidden">
         <div className="border-b border-gray-100 px-5 py-4">
@@ -2863,80 +2961,7 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange }
         )}
       </section>
 
-      <section className="rounded-2xl border border-gray-200 bg-white px-5 py-4">
-        <div className="mb-3 flex items-center justify-between">
-          <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Factual progress</p>
-          <button onClick={() => onTabChange('documents')} className="text-[11px] font-semibold text-[#800020] hover:opacity-80">View Documents →</button>
-        </div>
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          {[
-            { label: 'Required documents', value: requiredChecklist.length ? `${uploadedRequired.length} / ${requiredChecklist.length}` : `${documentCount} uploaded` },
-            { label: 'Participants invited', value: `${participantsWithProgress.length} / ${participantRoles.length}` },
-            { label: 'Record facts', value: `${populatedFields.length} captured` },
-            { label: 'AI findings', value: reviewFindings.length ? `${reviewFindings.length} to review` : 'None pending' },
-          ].map(item => (
-            <div key={item.label} className="rounded-xl bg-gray-50 px-3 py-3 text-center">
-              <p className="text-base font-black text-gray-900">{item.value}</p>
-              <p className="mt-1 text-[10px] leading-tight text-gray-400">{item.label}</p>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      <section className="rounded-2xl border border-gray-200 bg-white overflow-hidden">
-        <div className="flex items-center justify-between border-b border-gray-100 px-5 py-4">
-          <div>
-            <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">People</p>
-            <p className="mt-1 text-sm font-bold text-gray-900">Who is involved</p>
-          </div>
-          <button onClick={() => onTabChange('people')} className="text-[11px] font-semibold text-[#800020] hover:opacity-80">View all →</button>
-        </div>
-        <div className="divide-y divide-gray-100">
-          {participantRoles.slice(0, 5).map(role => {
-            const submitted = submittedRoles.has(role.key);
-            const invited = invitedRoles.has(role.key) || submitted;
-            return (
-              <div key={role.key} className="flex items-center gap-3 px-5 py-2.5">
-                <span className="text-base">{role.icon || '•'}</span>
-                <span className="flex-1 truncate text-xs font-semibold text-gray-700">{role.shortLabel || role.label}</span>
-                <span className={`text-[10px] font-semibold ${submitted ? 'text-green-600' : invited ? 'text-gray-500' : 'text-gray-400'}`}>
-                  {submitted ? 'Submitted' : invited ? 'Invited' : 'Not invited'}
-                </span>
-              </div>
-            );
-          })}
-          {!participantRoles.length && <p className="px-5 py-4 text-xs text-gray-400">No participant roles have been configured.</p>}
-        </div>
-      </section>
-
-      <section className="rounded-2xl border border-gray-200 bg-white overflow-hidden">
-        <div className="flex items-center justify-between border-b border-gray-100 px-5 py-4">
-          <div>
-            <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Recent activity</p>
-            <p className="mt-1 text-sm font-bold text-gray-900">Latest room updates</p>
-          </div>
-          <button onClick={() => setShowActivity(value => !value)} className="text-[11px] font-semibold text-[#800020] hover:opacity-80">
-            {showActivity ? 'Hide activity' : 'View all →'}
-          </button>
-        </div>
-        {!showActivity && (
-          <div className="divide-y divide-gray-100">
-            {recentEvents.length ? recentEvents.map(event => (
-              <div key={event.id || `${event.event_type}-${event.created_at}`} className="flex items-center gap-3 px-5 py-3">
-                <span className="h-2 w-2 shrink-0 rounded-full bg-[#800020]" />
-                <p className="flex-1 truncate text-xs text-gray-700">{event.description || (event.event_type || '').replace(/_/g, ' ')}</p>
-                <span className="shrink-0 text-[10px] text-gray-400">{event.created_at ? new Date(event.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : ''}</span>
-              </div>
-            )) : <p className="px-5 py-4 text-xs text-gray-400">Activity will appear as the room changes.</p>}
-          </div>
-        )}
-        {showActivity && (
-          <div className="space-y-4 p-4">
-            <ActivityTimeline propertyId={propertyId} />
-            <NotificationsLog propertyId={propertyId} />
-          </div>
-        )}
-      </section>
+      <RoomCopilot propertyId={propertyId} briefing={briefing} />
     </div>
   );
 }

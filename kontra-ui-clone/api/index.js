@@ -4352,10 +4352,11 @@ app.get('/api/public/deal-room/:propertyId/readiness', async (req, res) => {
   if (error) return res.status(500).json({ error: error.message });
   if (!room) return res.status(404).json({ error: 'room not found' });
 
-  const [{ count: docCount }, { count: eventCount }, { data: events }] = await Promise.all([
+  const [{ count: docCount }, { count: eventCount }, { data: events }, { data: recordFields }] = await Promise.all([
     supabase.from('deal_documents').select('id', { count: 'exact', head: true }).eq('property_id', propertyId),
     supabase.from('deal_events').select('id', { count: 'exact', head: true }).eq('property_id', propertyId),
     supabase.from('deal_events').select('event_type, metadata').eq('property_id', propertyId).limit(200),
+    supabase.from('transaction_record_fields').select('field_key, value_text, status').eq('property_id', propertyId),
   ]);
 
   const meta     = room.metadata_values || {};
@@ -4392,6 +4393,29 @@ app.get('/api/public/deal-room/:propertyId/readiness', async (req, res) => {
 
   const overall      = Math.round(categories.reduce((a, c) => a + c.score * c.weight, 0));
   const overallLabel = overall >= 80 ? 'Closing Ready' : overall >= 55 ? 'Needs Review' : 'Needs Attention';
+  const populatedRecordFields = (recordFields || []).filter(field => {
+    const value = String(field.value_text || '').trim().toLowerCase();
+    return value && !['n/a', 'na', 'not applicable', 'not_applicable', 'unknown'].includes(value)
+      && field.status !== 'not_applicable';
+  });
+  const hasTransactionFact = populatedRecordFields.some(field => field.field_key?.startsWith('transaction.'));
+  const hasAssetOrPartyFact = populatedRecordFields.some(field =>
+    field.field_key?.startsWith('asset.') || field.field_key?.startsWith('parties.')
+  );
+  const digitalAssetReadinessPercent = Math.min(
+    100,
+    Math.round((populatedRecordFields.length / 8) * 70)
+      + (hasTransactionFact ? 15 : 0)
+      + (hasAssetOrPartyFact ? 15 : 0),
+  );
+  const digitalAssetReadinessSufficient = populatedRecordFields.length >= 4
+    && hasTransactionFact
+    && hasAssetOrPartyFact;
+  const digitalAssetReadinessStatus = digitalAssetReadinessSufficient
+    ? 'Ready to prepare'
+    : populatedRecordFields.length > 0
+      ? 'Building quietly'
+      : 'Waiting for documents';
 
   res.json({
     record_type:        'transaction_readiness',
@@ -4405,6 +4429,13 @@ app.get('/api/public/deal-room/:propertyId/readiness', async (req, res) => {
       overall_pct: overall,
       status: overallLabel,
       categories,
+    },
+    digital_asset_readiness: {
+      status: digitalAssetReadinessStatus,
+      percent: digitalAssetReadinessPercent,
+      sufficient: digitalAssetReadinessSufficient,
+      captured_facts: populatedRecordFields.length,
+      note: 'AI-prepared only. Kontra does not provide legal or regulatory verification.',
     },
     ...((room.workflow_pack_id === 'tokenization'
       || room.deal_type === 'tokenization'
@@ -4786,6 +4817,20 @@ app.use('/api/public', verificationRouter);
 // AI Operations Manager — PUBLIC, must stay BEFORE requireOrgContext. Answer
 // engine grounded in the Task Engine above; read-only, no task mutation.
 // See lib/operationsManager.js and .agents/memory/kontra-task-architecture.md.
+// Live-room Copilot requests must use the same verified owner/participant
+// boundary as the rest of the deal-room APIs. Demo brain routes are registered
+// above this middleware and keep their existing demo behavior.
+app.use('/api/public/deal-room/:propertyId/brain', async (req, res, next) => {
+  try {
+    const access = await getRoomAccessContext(req, req.params.propertyId);
+    if (access.mode === 'anonymous') return accessDenied(res);
+    req.roomAccess = access;
+    return next();
+  } catch (err) {
+    console.error('[operationsManager access]', err.message);
+    return accessDenied(res);
+  }
+});
 app.use('/api/public', operationsManagerRouter);
 
 // Workflow Packs — PUBLIC, must stay BEFORE requireOrgContext. These power
@@ -6783,10 +6828,26 @@ app.post('/api/public/deal-room/:propertyId/digital-asset-prep', async (req, res
         label: field.display_label || field.field_key,
       }));
     const now = new Date().toISOString();
+    const preparedPackage = {
+      package_type: 'digital_asset_preparation',
+      preparation_status: missing.length > 0 ? 'needs_information' : 'prepared',
+      prepared_at: now,
+      facts: recordFields
+        .filter(field => field.status !== 'not_applicable' && String(field.value_text || '').trim())
+        .map(field => ({
+          field_key: field.field_key,
+          label: field.display_label || field.field_key,
+          value: field.value_text,
+          status: field.status || 'captured',
+        })),
+      missing,
+      disclaimer: 'AI-prepared only. Kontra does not provide legal or regulatory verification and does not issue, sell, recommend, custody, or settle digital assets.',
+    };
     const metadata = {
       ...(room.metadata_values || {}),
       digital_asset_prep_requested: true,
       digital_asset_prep_requested_at: now,
+      digital_asset_prep_package: preparedPackage,
     };
     const { error: updateErr } = await supabase
       .from('deal_rooms')
@@ -6803,6 +6864,7 @@ app.post('/api/public/deal-room/:propertyId/digital-asset-prep', async (req, res
       status: missing.length > 0 ? 'needs_information' : 'prepared',
       missing,
       prepared_field_count: recordFields.length - missing.length,
+      package: preparedPackage,
       requested_at: now,
     });
   } catch (err) {

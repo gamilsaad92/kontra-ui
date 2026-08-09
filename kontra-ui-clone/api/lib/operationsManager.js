@@ -119,13 +119,25 @@ function computeChainStatus(packId, tasks) {
 
 // ── Grounding context ─────────────────────────────────────────────────────────
 async function buildGroundedContext(propertyId) {
-  const [{ data: room }, tasks] = await Promise.all([
+  const [{ data: room }, tasks, { data: analyses }, { data: recordFields }] = await Promise.all([
     supabase
       .from('deal_rooms')
-      .select('property_name, deal_stage, closing_date, deal_type, deal_amount')
+      .select('property_name, deal_stage, closing_date, deal_type, deal_amount, workflow_pack_id, jurisdiction, metadata_values, checklist_items')
       .eq('property_id', propertyId)
       .maybeSingle(),
     listTasksForRoom(propertyId),
+    supabase
+      .from('deal_analyses')
+      .select('section, filename, analysis, created_at')
+      .eq('property_id', propertyId)
+      .order('created_at', { ascending: false })
+      .limit(30),
+    supabase
+      .from('transaction_record_fields')
+      .select('field_key, display_label, value_text, status, field_category, source_doc_id, updated_at')
+      .eq('property_id', propertyId)
+      .order('updated_at', { ascending: false })
+      .limit(150),
   ]);
 
   // Resolve packId: deal_type takes priority (same mapping as frontend resolvePackId),
@@ -164,6 +176,42 @@ async function buildGroundedContext(propertyId) {
   });
 
   const chainStatus = computeChainStatus(packId, tasks.map(t => ({ ...t, ownerRole: t.owner_role })));
+  const checklist = Array.isArray(room?.checklist_items) ? room.checklist_items : [];
+  const doneStatuses = new Set(['uploaded', 'approved', 'ai_complete']);
+  const missingDocuments = checklist
+    .filter(item => item.required && !doneStatuses.has(item.status) && !item.uploaded)
+    .slice(0, 30)
+    .map(item => ({
+      label: item.label || item.name || item.id || 'Required document',
+      section: item.section || item.category || null,
+    }));
+  const populatedRecordFields = (recordFields || [])
+    .filter(field => {
+      const value = String(field.value_text || '').trim().toLowerCase();
+      return value && !['n/a', 'na', 'not applicable', 'not_applicable', 'unknown'].includes(value)
+        && field.status !== 'not_applicable';
+    })
+    .slice(0, 100)
+    .map(field => ({
+      key: field.field_key,
+      label: field.display_label || field.field_key,
+      value: String(field.value_text).slice(0, 500),
+      status: field.status || null,
+      sourceDocId: field.source_doc_id || null,
+    }));
+  const documentFindings = (analyses || [])
+    .map(item => {
+      const analysis = item.analysis && typeof item.analysis === 'object' ? item.analysis : {};
+      return {
+        section: item.section || null,
+        filename: item.filename || null,
+        summary: String(analysis.summary || analysis.overview || analysis.text || '').slice(0, 1000),
+        confidence: analysis.confidence ?? null,
+        createdAt: item.created_at || null,
+      };
+    })
+    .filter(item => item.summary || item.filename)
+    .slice(0, 20);
 
   return {
     packId,
@@ -174,10 +222,14 @@ async function buildGroundedContext(propertyId) {
           dealType: room.deal_type,
           dealAmount: room.deal_amount,
           closingDate: room.closing_date,
+           jurisdiction: room.jurisdiction,
         }
       : null,
     openTasks: openTasks.map(describeTask),
     recentlyResolved: recentlyResolved.map(describeTask),
+    missingDocuments,
+    recordFacts: populatedRecordFields,
+    documentFindings,
     chainStatus,
   };
 }
@@ -198,18 +250,22 @@ function contextToPrompt(ctx) {
       closing_chain: chainSummary,
       open_tasks: ctx.openTasks,
       recently_resolved_tasks: ctx.recentlyResolved,
+      missing_documents: ctx.missingDocuments,
+      transaction_record_facts: ctx.recordFacts,
+      document_findings: ctx.documentFindings,
     },
     null,
     2
   );
 }
 
-const GROUNDING_RULES = `You are the Operations Manager for a transaction deal room (may be CRE acquisition, business acquisition, or fundraising — follow the deal context provided).
-You reason ONLY from the JSON context provided (closing_chain, open_tasks, recently_resolved_tasks, deal). Never invent
+const GROUNDING_RULES = `You are Kontra AI Copilot inside a specific transaction deal room (which may be CRE acquisition, business acquisition, or fundraising — follow the deal context provided).
+You reason ONLY from the JSON context provided (closing_chain, open_tasks, recently_resolved_tasks, deal, missing_documents, transaction_record_facts, document_findings). Never invent
 facts, people, dates, or documents not present in that context. If the context does not contain
 enough information to answer, say so plainly instead of guessing.
 
-Think like a senior deal professional: cite the specific task and evidence behind every claim.
+Answer as a quiet transaction-workspace guide: explain findings, summarize what is missing, identify the next action, and give concise daily briefs when asked. Cite the specific task, document finding, record fact, or checklist item behind every claim.
+This is AI-prepared operational guidance, not legal, regulatory, tax, investment, or settlement advice. Never claim that Kontra verified a legal or regulatory requirement.
 
 DEPENDENCY CHAIN REASONING: The closing_chain shows sequential steps where each step gates the next.
 The earliest step that is NOT "complete" is the ACTIVE BLOCKER — tasks in that step are on the critical path.
@@ -333,6 +389,9 @@ The closing_chain in context shows which step is active. Focus only on the EARLI
       })) || null,
       openTaskCount:  ctx.openTasks.length,
       reviewedCount:  ctx.openTasks.length + ctx.recentlyResolved.length,
+      missingDocuments: ctx.missingDocuments,
+      recordFactCount: ctx.recordFacts.length,
+      documentFindingCount: ctx.documentFindings.length,
     };
     setCache(propertyId, result);
     return result;
@@ -397,6 +456,9 @@ function buildFallbackBriefing(ctx) {
     })) || null,
     openTaskCount: ctx.openTasks.length,
     reviewedCount: ctx.openTasks.length + ctx.recentlyResolved.length,
+    missingDocuments: ctx.missingDocuments,
+    recordFactCount: ctx.recordFacts.length,
+    documentFindingCount: ctx.documentFindings.length,
   };
 }
 
