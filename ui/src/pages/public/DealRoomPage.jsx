@@ -2380,12 +2380,11 @@ function WorkspaceTabNav({ activeTab, onChange }) {
   const TABS = [
     { key: 'overview',      label: 'Overview'                 },
     { key: 'documents',     label: 'Documents'                },
-    { key: 'activity',      label: 'Activity'                 },
-    { key: 'settings',      label: 'Settings'                 },
+    { key: 'people',        label: 'People'                   },
   ];
   return (
     <div className="border-b border-gray-200 bg-white">
-      <div className="max-w-5xl mx-auto px-6">
+      <div className="max-w-5xl mx-auto px-6 flex items-center justify-between">
         <div className="flex items-center gap-0 -mb-px overflow-x-auto hide-scrollbar">
           {TABS.map(t => (
             <button
@@ -2401,6 +2400,22 @@ function WorkspaceTabNav({ activeTab, onChange }) {
             </button>
           ))}
         </div>
+        <button
+          type="button"
+          onClick={() => onChange('settings')}
+          aria-label="Open workspace settings"
+          title="Workspace settings"
+          className={`shrink-0 ml-3 mb-[-1px] w-9 h-9 rounded-lg flex items-center justify-center border-b-2 transition ${
+            activeTab === 'settings'
+              ? 'border-[#800020] text-[#800020] bg-[#80002008]'
+              : 'border-transparent text-gray-400 hover:text-gray-700 hover:bg-gray-50'
+          }`}
+        >
+          <svg viewBox="0 0 24 24" aria-hidden="true" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="1.8">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M10.3 2.8h3.4l.5 2.2a7.7 7.7 0 0 1 1.7 1l2.1-.8 1.7 2.9-1.6 1.5c.1.6.1 1.3 0 1.9l1.6 1.5-1.7 2.9-2.1-.8a7.7 7.7 0 0 1-1.7 1l-.5 2.2h-3.4l-.5-2.2a7.7 7.7 0 0 1-1.7-1L6 15.9l-1.7-2.9L6 11.5a7.7 7.7 0 0 1 0-1.9L4.3 8.1 6 5.2l2.1.8a7.7 7.7 0 0 1 1.7-1l.5-2.2Z" />
+            <circle cx="12" cy="10.5" r="2.7" />
+          </svg>
+        </button>
       </div>
     </div>
   );
@@ -2589,7 +2604,7 @@ function TransactionFindingsPanel({ propertyId, onTabChange }) {
   );
 }
 
-function DigitalAssetPrepCard({ propertyId }) {
+function DigitalAssetPrepCard({ propertyId, recordFields = [] }) {
   const [requested, setRequested] = useState(false);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null);
@@ -2615,24 +2630,47 @@ function DigitalAssetPrepCard({ propertyId }) {
     }
   }
 
+  const populatedFacts = recordFields.filter(field => {
+    const value = String(field.value_text || '').trim().toLowerCase();
+    return value && !['n/a', 'na', 'not applicable', 'not_applicable', 'unknown'].includes(value)
+      && field.status !== 'not_applicable';
+  });
+  const hasEnoughInformation = populatedFacts.length >= 4
+    && populatedFacts.some(field => field.field_key?.startsWith('transaction.'))
+    && populatedFacts.some(field => field.field_key?.startsWith('asset.') || field.field_key?.startsWith('parties.'));
+
+  // Digital Asset Prep is intentionally progressive: it is a downstream
+  // structured-package action, not a default destination for an empty room.
+  if (!hasEnoughInformation) return null;
+
   return (
-    <div className="bg-white rounded-2xl border border-gray-200 px-5 py-4">
+    <div className="rounded-xl border border-indigo-100 bg-indigo-50/60 px-4 py-3">
       <div className="flex items-start gap-3">
-        <span className="text-lg">🔷</span>
+        <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-indigo-100 text-indigo-700">
+          <svg viewBox="0 0 24 24" aria-hidden="true" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8">
+            <path strokeLinecap="round" strokeLinejoin="round" d="m12 3 8 4.5v9L12 21l-8-4.5v-9L12 3Z" />
+            <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 7.5 7.5 4.3 7.5-4.3M12 12v9" />
+          </svg>
+        </span>
         <div className="flex-1 min-w-0">
-          <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">Optional next step</p>
-          <p className="text-sm font-bold text-gray-900 mt-1">Prepare a digital asset handoff package</p>
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-wider text-indigo-500">Optional downstream step</p>
+              <p className="text-sm font-bold text-gray-900 mt-0.5">Prepare Digital Asset Package</p>
+            </div>
+            {!requested && (
+              <button
+                onClick={requestPrep}
+                disabled={loading}
+                className="shrink-0 rounded-lg bg-[#800020] px-3 py-1.5 text-[11px] font-bold text-white transition hover:opacity-90 disabled:opacity-50">
+                {loading ? 'Preparing…' : 'Prepare package'}
+              </button>
+            )}
+          </div>
           <p className="text-xs text-gray-500 mt-1 leading-relaxed">
-            Kontra can organize the transaction facts already collected and show only what is missing for review by an external legal, compliance, issuance, custody, or settlement provider.
+            Organize the transaction facts already collected into a structured package for external review.
           </p>
-          {!requested ? (
-            <button
-              onClick={requestPrep}
-              disabled={loading}
-              className="mt-3 text-xs font-bold px-3 py-2 rounded-xl text-white bg-[#800020] hover:opacity-90 disabled:opacity-50 transition">
-              {loading ? 'Preparing…' : 'Request digital asset prep'}
-            </button>
-          ) : (
+          {requested && (
             <div className="mt-3 rounded-xl bg-gray-50 border border-gray-100 px-3 py-2.5">
               <p className="text-xs font-semibold text-gray-800">
                 {result?.status === 'prepared' ? 'Package preparation can begin.' : 'A few facts are still needed.'}
@@ -2644,12 +2682,261 @@ function DigitalAssetPrepCard({ propertyId }) {
                 </p>
               )}
               <p className="text-[10px] text-gray-400 mt-1">
-                Prepared for external review only. Kontra does not issue, sell, recommend, custody, or settle digital assets.
+                Structured preparation only. Kontra does not issue, sell, recommend, custody, or settle digital assets.
               </p>
             </div>
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+function formatSnapshotValue(field) {
+  if (!field?.value_text) return 'Not recorded';
+  return field.value_text;
+}
+
+function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange }) {
+  const [briefing, setBriefing] = useState(null);
+  const [coordination, setCoordination] = useState(null);
+  const [stages, setStages] = useState([]);
+  const [events, setEvents] = useState([]);
+  const [checklistItems, setChecklistItems] = useState([]);
+  const [recordFields, setRecordFields] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [showActivity, setShowActivity] = useState(false);
+
+  const load = useCallback(async () => {
+    if (!propertyId) return;
+    const headers = getRoomAuthHeaders(propertyId);
+    const get = (path, fallback) => fetch(`${API_BASE}${path}`, { headers })
+      .then(response => response.ok ? response.json() : fallback)
+      .catch(() => fallback);
+    const [brief, coord, stageData, eventData, checklist, record] = await Promise.all([
+      get(`/api/public/deal-room/${propertyId}/brain/briefing`, null),
+      get(`/api/public/deal-room/${propertyId}/coordination`, null),
+      get(`/api/public/deal-room/${propertyId}/stages`, { stages: [] }),
+      get(`/api/public/deal-room/${propertyId}/events`, { events: [] }),
+      get(`/api/public/deal-room/${propertyId}/checklist`, { items: [] }),
+      get(`/api/public/deal-room/${propertyId}/transaction-record`, { fields: [] }),
+    ]);
+    setBriefing(brief);
+    setCoordination(coord);
+    setStages(Array.isArray(stageData?.stages) && stageData.stages.length >= 2 ? stageData.stages : (pack.stages || []));
+    setEvents(Array.isArray(eventData?.events) ? eventData.events : []);
+    setChecklistItems(Array.isArray(checklist?.items) ? checklist.items : []);
+    setRecordFields(Array.isArray(record?.fields) ? record.fields : []);
+    setLoading(false);
+  }, [propertyId, pack]);
+
+  useEffect(() => {
+    load();
+    const interval = setInterval(load, 30000);
+    return () => clearInterval(interval);
+  }, [load]);
+
+  const roleMeta = Object.fromEntries((pack.roles || []).map(role => [role.key, role]));
+  const currentStageKey = coordination?.stage || stages[0]?.key;
+  const currentStageIndex = Math.max(0, stages.findIndex(stage => stage.key === currentStageKey));
+  const currentStage = stages[currentStageIndex];
+  const requiredChecklist = checklistItems.filter(item => item.required);
+  const uploadedStatuses = new Set(['uploaded', 'approved', 'ai_complete']);
+  const uploadedRequired = requiredChecklist.filter(item => uploadedStatuses.has(item.status) || item.uploaded);
+  const uploadedDocuments = checklistItems.filter(item => uploadedStatuses.has(item.status) || item.uploaded);
+  const fallbackDocumentCount = Object.values(coordination?.docsByRole || {}).reduce((total, count) => total + count, 0);
+  const documentCount = uploadedDocuments.length || fallbackDocumentCount;
+  const submittedRoles = new Set((coordination?.submissions || []).map(item => item.role));
+  const invitedRoles = new Set(events
+    .filter(event => event.event_type === 'invite_sent' && event.metadata?.role)
+    .map(event => event.metadata.role));
+  const participantRoles = (pack.roles || []).filter(role => role.invitable !== false);
+  const participantsWithProgress = participantRoles.filter(role => invitedRoles.has(role.key) || submittedRoles.has(role.key));
+  const actionItems = (briefing?.actions || briefing?.next_actions || []).slice(0, 4).map((item, index) => ({
+    text: typeof item === 'string' ? item : (item.text || item.action || ''),
+    owner: typeof item === 'object' ? (item.party || item.responsible || item.role || '') : '',
+    due: typeof item === 'object' ? (item.due_date || item.dueDate || '') : '',
+    priority: typeof item === 'object' ? (item.severity || '') : (index === 0 ? 'Priority' : ''),
+  })).filter(item => item.text);
+  const issues = briefing?.criticalPath || briefing?.blocking || briefing?.risks || briefing?.open_items || [];
+  const reviewFindings = recordFields.filter(field => ['needs_review', 'conflicting', 'source_changed'].includes(field.status));
+  const populatedFields = recordFields.filter(field => {
+    const value = String(field.value_text || '').trim().toLowerCase();
+    return value && !['n/a', 'na', 'not applicable', 'not_applicable', 'unknown'].includes(value)
+      && field.status !== 'not_applicable';
+  });
+  const snapshotField = (keys) => recordFields.find(field => keys.includes(field.field_key) && field.status !== 'not_applicable');
+  const recentEvents = [...events].sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0)).slice(0, 3);
+  const closingDate = property?.closing_date || property?.target_close_date || property?.close_date;
+
+  return (
+    <div className="space-y-5">
+      <section className="rounded-2xl border border-gray-200 bg-white px-5 py-5">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Transaction snapshot</p>
+            <h1 className="mt-1 text-xl font-bold leading-tight text-gray-900">{property?.name || property?.property_name}</h1>
+            <p className="mt-1 text-sm text-gray-500">
+              {[pack.name, currentStage?.label, closingDate && `Target close ${new Date(closingDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`].filter(Boolean).join(' · ')}
+            </p>
+          </div>
+          {currentStage && (
+            <span className="shrink-0 rounded-full bg-gray-100 px-3 py-1 text-[11px] font-semibold text-gray-600">
+              Stage {currentStageIndex + 1} of {stages.length}
+            </span>
+          )}
+        </div>
+        <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
+          {[
+            { label: 'Transaction value', value: formatSnapshotValue(snapshotField(['transaction.purchase_price', 'transaction.value', 'financial.purchase_price', 'financial.deal_value'])) },
+            { label: 'Asset / company', value: formatSnapshotValue(snapshotField(['asset.name', 'asset.legal_name', 'asset.type'])) },
+            { label: 'Buyer / primary party', value: formatSnapshotValue(snapshotField(['parties.buyer', 'parties.primary'])) },
+            { label: 'Facts captured', value: `${populatedFields.length} recorded` },
+          ].map(item => (
+            <div key={item.label} className="min-w-0 rounded-xl bg-gray-50 px-3 py-3">
+              <p className="truncate text-sm font-bold text-gray-900">{item.value}</p>
+              <p className="mt-1 text-[10px] leading-tight text-gray-400">{item.label}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section className="rounded-2xl border border-gray-200 bg-white overflow-hidden">
+        <div className="flex items-center justify-between border-b border-gray-100 px-5 py-4">
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Next actions</p>
+            <p className="mt-1 text-sm font-bold text-gray-900">What moves this transaction forward?</p>
+          </div>
+          <button onClick={() => onTabChange('documents')} className="text-[11px] font-semibold text-[#800020] hover:opacity-80">
+            Open Documents →
+          </button>
+        </div>
+        <div className="p-5">
+          {loading ? (
+            <div className="space-y-2">{[1, 2].map(item => <div key={item} className="h-12 animate-pulse rounded-xl bg-gray-50" />)}</div>
+          ) : actionItems.length > 0 ? (
+            <div className="space-y-2">
+              {actionItems.map((item, index) => (
+                <div key={`${item.text}-${index}`} className={`flex items-start gap-3 rounded-xl border px-3.5 py-3 ${index === 0 ? 'border-amber-200 bg-amber-50' : 'border-gray-100 bg-gray-50'}`}>
+                  <span className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-bold ${index === 0 ? 'bg-amber-200 text-amber-800' : 'bg-white text-gray-400'}`}>{index + 1}</span>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm leading-snug text-gray-800">{item.text}</p>
+                    {(item.owner || item.due || item.priority) && (
+                      <p className="mt-1 text-[10px] text-gray-400">{[item.owner, item.due, item.priority].filter(Boolean).join(' · ')}</p>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="grid gap-2 sm:grid-cols-2">
+              <button onClick={() => onTabChange('documents')} className="rounded-xl border border-gray-200 px-4 py-3 text-left text-sm font-semibold text-gray-700 transition hover:bg-gray-50">Upload a document</button>
+              <button onClick={() => onTabChange('people')} className="rounded-xl border border-gray-200 px-4 py-3 text-left text-sm font-semibold text-gray-700 transition hover:bg-gray-50">Invite a participant</button>
+            </div>
+          )}
+        </div>
+      </section>
+
+      <TransactionFindingsPanel propertyId={propertyId} onTabChange={onTabChange} />
+      <DigitalAssetPrepCard propertyId={propertyId} recordFields={recordFields} />
+
+      <section className="rounded-2xl border border-gray-200 bg-white overflow-hidden">
+        <div className="border-b border-gray-100 px-5 py-4">
+          <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Issues &amp; exceptions</p>
+          <p className="mt-1 text-sm font-bold text-gray-900">
+            {issues.length || reviewFindings.length ? `${issues.length + reviewFindings.length} item${issues.length + reviewFindings.length === 1 ? '' : 's'} need attention` : 'No open issues reported'}
+          </p>
+        </div>
+        {issues.length || reviewFindings.length ? (
+          <div className="divide-y divide-gray-100">
+            {[...issues.slice(0, 3).map(item => typeof item === 'string' ? item : (item.item || item.text || item.risk || 'Open issue')),
+              ...reviewFindings.slice(0, 3).map(item => `${item.display_label || item.field_key} needs review`)]
+              .map((item, index) => (
+                <div key={`${item}-${index}`} className="flex items-start gap-2.5 px-5 py-3">
+                  <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-amber-500" />
+                  <p className="text-xs leading-relaxed text-gray-700">{item}</p>
+                </div>
+              ))}
+          </div>
+        ) : (
+          <p className="px-5 py-4 text-xs text-gray-400">Kontra will surface exceptions as documents and participant submissions are reviewed.</p>
+        )}
+      </section>
+
+      <section className="rounded-2xl border border-gray-200 bg-white px-5 py-4">
+        <div className="mb-3 flex items-center justify-between">
+          <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Factual progress</p>
+          <button onClick={() => onTabChange('documents')} className="text-[11px] font-semibold text-[#800020] hover:opacity-80">View Documents →</button>
+        </div>
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          {[
+            { label: 'Required documents', value: requiredChecklist.length ? `${uploadedRequired.length} / ${requiredChecklist.length}` : `${documentCount} uploaded` },
+            { label: 'Participants invited', value: `${participantsWithProgress.length} / ${participantRoles.length}` },
+            { label: 'Record facts', value: `${populatedFields.length} captured` },
+            { label: 'AI findings', value: reviewFindings.length ? `${reviewFindings.length} to review` : 'None pending' },
+          ].map(item => (
+            <div key={item.label} className="rounded-xl bg-gray-50 px-3 py-3 text-center">
+              <p className="text-base font-black text-gray-900">{item.value}</p>
+              <p className="mt-1 text-[10px] leading-tight text-gray-400">{item.label}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section className="rounded-2xl border border-gray-200 bg-white overflow-hidden">
+        <div className="flex items-center justify-between border-b border-gray-100 px-5 py-4">
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">People</p>
+            <p className="mt-1 text-sm font-bold text-gray-900">Who is involved</p>
+          </div>
+          <button onClick={() => onTabChange('people')} className="text-[11px] font-semibold text-[#800020] hover:opacity-80">View all →</button>
+        </div>
+        <div className="divide-y divide-gray-100">
+          {participantRoles.slice(0, 5).map(role => {
+            const submitted = submittedRoles.has(role.key);
+            const invited = invitedRoles.has(role.key) || submitted;
+            return (
+              <div key={role.key} className="flex items-center gap-3 px-5 py-2.5">
+                <span className="text-base">{role.icon || '•'}</span>
+                <span className="flex-1 truncate text-xs font-semibold text-gray-700">{role.shortLabel || role.label}</span>
+                <span className={`text-[10px] font-semibold ${submitted ? 'text-green-600' : invited ? 'text-gray-500' : 'text-gray-400'}`}>
+                  {submitted ? 'Submitted' : invited ? 'Invited' : 'Not invited'}
+                </span>
+              </div>
+            );
+          })}
+          {!participantRoles.length && <p className="px-5 py-4 text-xs text-gray-400">No participant roles have been configured.</p>}
+        </div>
+      </section>
+
+      <section className="rounded-2xl border border-gray-200 bg-white overflow-hidden">
+        <div className="flex items-center justify-between border-b border-gray-100 px-5 py-4">
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Recent activity</p>
+            <p className="mt-1 text-sm font-bold text-gray-900">Latest room updates</p>
+          </div>
+          <button onClick={() => setShowActivity(value => !value)} className="text-[11px] font-semibold text-[#800020] hover:opacity-80">
+            {showActivity ? 'Hide activity' : 'View all →'}
+          </button>
+        </div>
+        {!showActivity && (
+          <div className="divide-y divide-gray-100">
+            {recentEvents.length ? recentEvents.map(event => (
+              <div key={event.id || `${event.event_type}-${event.created_at}`} className="flex items-center gap-3 px-5 py-3">
+                <span className="h-2 w-2 shrink-0 rounded-full bg-[#800020]" />
+                <p className="flex-1 truncate text-xs text-gray-700">{event.description || (event.event_type || '').replace(/_/g, ' ')}</p>
+                <span className="shrink-0 text-[10px] text-gray-400">{event.created_at ? new Date(event.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : ''}</span>
+              </div>
+            )) : <p className="px-5 py-4 text-xs text-gray-400">Activity will appear as the room changes.</p>}
+          </div>
+        )}
+        {showActivity && (
+          <div className="space-y-4 p-4">
+            <ActivityTimeline propertyId={propertyId} />
+            <NotificationsLog propertyId={propertyId} />
+          </div>
+        )}
+      </section>
     </div>
   );
 }
@@ -4344,51 +4631,13 @@ export default function DealRoomPage() {
           /* ── Coordinator tabbed layout ────────────────────────────────── */
           <>
             {activeTab === 'overview' && (
-              <div className="space-y-5">
-                {/* Operations Manager — single action center */}
-                <OperationsManagerView
+              <CoordinatorOverview
                   propertyId={pid}
                   property={property}
                   pack={pack}
-                  role={role}
-                  onTabChange={(tab) => {
-                    if (tab === 'participants') {
-                      setTimeout(() => document.getElementById('participants-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
-                    } else {
-                      setActiveTab(tab);
-                    }
-                  }}
-                />
-                <TransactionFindingsPanel
-                  propertyId={pid}
+                  packId={packId}
                   onTabChange={setActiveTab}
                 />
-                <DigitalAssetPrepCard propertyId={pid} />
-                {/* Transaction Risk — overview-level health signal */}
-                <TransactionRiskPanel propertyId={pid} />
-                {/* Participants — single section, no duplication */}
-                <div id="participants-section" className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
-                  <div className="px-5 py-4 border-b border-gray-100">
-                    <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">Participants</p>
-                  </div>
-                  <ParticipantsPanel
-                    roomId={pid}
-                    packId={packId}
-                    isV2={!!property.auth_v2_enabled}
-                  />
-                </div>
-                {/* Recent Activity — below participants */}
-                <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
-                  <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
-                    <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">Recent Activity</p>
-                    <button onClick={() => setActiveTab('activity')}
-                      className="text-[11px] font-semibold text-[#800020] hover:opacity-80 transition">
-                      View all →
-                    </button>
-                  </div>
-                  <ActivityTimeline propertyId={pid} />
-                </div>
-              </div>
             )}
 
             {activeTab === 'documents' && (
@@ -4408,13 +4657,12 @@ export default function DealRoomPage() {
               </>
             )}
 
-            {activeTab === 'activity' && (
-              <>
-                <div className="mb-6">
-                  <ActivityTimeline propertyId={pid} />
-                </div>
-                <NotificationsLog propertyId={pid} />
-              </>
+            {activeTab === 'people' && (
+              <ParticipantsPanel
+                roomId={pid}
+                packId={packId}
+                isV2={!!property.auth_v2_enabled}
+              />
             )}
 
             {activeTab === 'settings' && (
