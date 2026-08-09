@@ -19,7 +19,6 @@ import { useState, useEffect, useCallback } from 'react';
 import { getWorkflowPack, DEFAULT_PACK_ID } from '../../lib/workflowPacks';
 import {
   createInvite,
-  generatePin,
   getRoomInvites,
   revokeInvite,
 } from '../../lib/inviteUtils';
@@ -97,13 +96,11 @@ function RoleCard({ r, propertyId, onRemove }) {
     if (!email.trim() || !email.includes('@')) { setErrMsg('Enter a valid email address'); return; }
     setStatus('loading'); setErrMsg('');
 
-    const pin = generatePin();
     const result = await createInvite({
       propertyId,
       roleKey: r.role,
       invitedEmail: email.trim(),
-      verificationMethod: 'pin',
-      pin,
+      verificationMethod: 'link',
     });
 
     if (!result.success) {
@@ -122,7 +119,7 @@ function RoleCard({ r, propertyId, onRemove }) {
     const emailSent = result.emailSent ?? false;
     const emailErr  = emailSent ? '' : (email.trim() ? 'Email could not be sent automatically — copy the link below and send it manually.' : '');
 
-    setCreatedData({ inviteUrl, pin, email: email.trim(), emailSent, emailErr });
+    setCreatedData({ inviteUrl, email: email.trim(), emailSent, emailErr });
     setStatus('created');
   }
 
@@ -202,13 +199,11 @@ function CustomPartyCard({ propertyId }) {
     setStatus('loading'); setErrMsg('');
 
     const roleKey = getRoleKey();
-    const pin = generatePin();
     const result = await createInvite({
       propertyId,
       roleKey,
       invitedEmail: email.trim(),
-      verificationMethod: 'pin',
-      pin,
+      verificationMethod: 'link',
     });
 
     if (!result.success) {
@@ -222,7 +217,7 @@ function CustomPartyCard({ propertyId }) {
     const emailSent = result.emailSent ?? false;
     const emailErr  = emailSent ? '' : (email.trim() ? 'Email may not have sent' : '');
 
-    setCreatedData({ inviteUrl, pin, email: email.trim(), emailSent, emailErr });
+    setCreatedData({ inviteUrl, email: email.trim(), emailSent, emailErr });
     setStatus('created');
   }
 

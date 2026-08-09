@@ -197,6 +197,12 @@ const allowedOrigins = Array.from(new Set([
   ...envOrigins,
 ]));
 
+// Canonical frontend base URL for building links in emails and notifications.
+// Set FRONTEND_URL on Render (or any host) to match your deployed domain.
+// Falls back to kontraplatform.com so existing emails continue working if
+// the env var is not yet configured.
+const FRONTEND_URL = (process.env.FRONTEND_URL || 'https://kontraplatform.com').replace(/\/$/, '');
+
 const allowedOriginMatchers = [
   ...allowedOrigins,
   /\.vercel\.app$/,
@@ -2577,7 +2583,7 @@ app.post('/api/public/billing-portal', async (req, res) => {
     const customer = customers.data[0];
     const returnUrl = process.env.SITE_URL
       ? `${process.env.SITE_URL}/my-deal-rooms`
-      : 'https://kontraplatform.com/my-deal-rooms';
+      : `${FRONTEND_URL}/my-deal-rooms`;
     const portalSession = await stripe.billingPortal.sessions.create({
       customer: customer.id,
       return_url: returnUrl,
@@ -3836,7 +3842,7 @@ app.post('/api/public/deal-room/:propertyId/invite', async (req, res) => {
     const roleConfig = getPackRoleConfig(packId).roles.find(r => r.key === role);
     const roleLabel = roleConfig?.label || role;
     const roleAction = roleConfig?.inviteAction || 'access the deal room';
-    const inviteUrl = `https://kontraplatform.com/deal-room/${propertyId}?role=${role}`;
+    const inviteUrl = `${FRONTEND_URL}/deal-room/${propertyId}?role=${role}`;
     await sendResendEmail(RESEND_KEY, {
       from: 'Kontra <notifications@kontraplatform.com>',
       to: email,
@@ -3906,7 +3912,7 @@ app.post('/api/public/deal-room/:propertyId/create-invite', async (req, res) => 
         const packId    = room?.workflow_pack_id || DEFAULT_PACK_ID;
         const roleConf  = getPackRoleConfig(packId).roles.find(r => r.key === roleKey);
         const roleLabel = roleConf?.label || roleKey;
-        const inviteUrl = `https://kontraplatform.com/deal-room/${propertyId}?invite=${inviteToken}&role=${roleKey}`;
+        const inviteUrl = `${FRONTEND_URL}/deal-room/${propertyId}?invite=${inviteToken}&role=${roleKey}`;
         await sendResendEmail(process.env.RESEND_API_KEY, {
           from: 'Kontra <notifications@kontraplatform.com>',
           to: invitedEmail,
@@ -4085,7 +4091,7 @@ app.post('/api/public/deal-room/send-invite-email', async (req, res) => {
     const roleLabel  = roleConfig?.label || invite.role_key;
     const propName   = room.property_name || invite.property_id;
     const senderName = room.first_name || 'The deal coordinator';
-    const inviteUrl  = `https://kontraplatform.com/deal-room/${invite.property_id}?invite=${inviteToken}&role=${invite.role_key}`;
+    const inviteUrl  = `${FRONTEND_URL}/deal-room/${invite.property_id}?invite=${inviteToken}&role=${invite.role_key}`;
     const to         = invite.invited_email;
 
     await sendResendEmail(RESEND_KEY, {
@@ -4873,7 +4879,7 @@ app.post('/api/public/deal-room/:propertyId/request-document', async (req, res) 
 
     const propName   = room.property_name || propertyId;
     const senderName = room.first_name || 'The workspace coordinator';
-    const roomUrl    = `https://kontraplatform.com/deal-room/${propertyId}`;
+    const roomUrl    = `${FRONTEND_URL}/deal-room/${propertyId}`;
 
     // Find all invited participants for the assignedTo roles
     let recipients = [];
