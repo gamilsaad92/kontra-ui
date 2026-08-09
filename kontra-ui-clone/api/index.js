@@ -6960,4 +6960,136 @@ if (require.main === module) {
   });
 }
 
+// ── Generic Deal Room — AI Assistant (/brain/ask) ────────────────────────────
+// Context-aware assistant that reasons from the actual room state.
+// Registered BEFORE the static demo overrides so dynamic rooms hit this route.
+app.post('/api/public/deal-room/:propertyId/brain/ask', async (req, res) => {
+  const { propertyId } = req.params;
+  const { question } = req.body || {};
+  if (!question) return res.status(400).json({ error: 'question required' });
+
+  try {
+    const [
+      { data: room },
+      { count: docCount },
+      { data: fields },
+      { data: invites },
+    ] = await Promise.all([
+      supabase.from('deal_rooms')
+        .select('property_name, workflow_pack_id, deal_type, deal_amount')
+        .eq('property_id', propertyId)
+        .maybeSingle(),
+      supabase.from('deal_documents')
+        .select('id', { count: 'exact', head: true })
+        .eq('property_id', propertyId),
+      supabase.from('transaction_record_fields')
+        .select('field_key, display_label, value_text, status, source_document, source_page')
+        .eq('property_id', propertyId),
+      supabase.from('deal_room_invites')
+        .select('role_key, status')
+        .eq('property_id', propertyId),
+    ]);
+
+    const populated = (fields || []).filter(f => {
+      const v = String(f.value_text || '').trim().toLowerCase();
+      return v && !['n/a', 'na', 'not applicable', 'not_applicable', 'unknown'].includes(v) && f.status !== 'not_applicable';
+    });
+    const conflicts = (fields || []).filter(f => ['conflicting', 'source_changed'].includes(f.status));
+    const needsReview = (fields || []).filter(f => ['needs_review', 'extracted'].includes(f.status) && f.value_text);
+    const inviteCount = (invites || []).length;
+
+    const CAT_PREFIXES = {
+      'Identity & Parties': ['parties.', 'ownership.owner_name'],
+      'Asset / Company': ['asset.'],
+      'Transaction Terms': ['transaction.'],
+      'Financial Information': ['financial.'],
+      'Legal & Diligence': ['legal.', 'ownership.cap_table', 'ownership.beneficial_owners', 'ownership.liens'],
+    };
+    const catStatus = Object.entries(CAT_PREFIXES).map(([label, prefixes]) => {
+      const count = populated.filter(f => prefixes.some(p => f.field_key?.startsWith(p) || f.field_key === p)).length;
+      return `${label}: ${count === 0 ? 'Not started' : count >= 2 ? 'Building' : 'Needs information'}`;
+    }).join('\n');
+
+    const systemPrompt = `You are Kontra AI, a transaction-aware assistant embedded in a deal room called Kontra. You reason specifically from the current room state below. Never give generic advice — always tie your answer to the specific room context.
+
+ROOM NAME: ${room?.property_name || 'Unnamed transaction'}
+TYPE: ${room?.deal_type || room?.workflow_pack_id || 'General transaction'}
+DOCUMENTS UPLOADED: ${docCount || 0}
+PARTICIPANTS INVITED: ${inviteCount}
+EXTRACTED FACTS: ${populated.length}
+CONFLICTING / CHANGED FIELDS: ${conflicts.length}
+NEEDS REVIEW: ${needsReview.length}
+
+DIGITAL ASSET READINESS BY CATEGORY:
+${catStatus}
+
+${populated.length > 0 ? `KNOWN FACTS (up to 20):\n${populated.slice(0, 20).map(f => `• ${f.display_label || f.field_key}: ${f.value_text}${f.source_document ? ` (from ${f.source_document}${f.source_page ? `, page ${f.source_page}` : ''})` : ''}`).join('\n')}` : '(No facts have been extracted yet — no documents have been uploaded or analyzed.)'}
+
+${conflicts.length > 0 ? `CONFLICTS TO RESOLVE:\n${conflicts.map(f => `• ${f.display_label || f.field_key}: conflicting sources — needs coordinator review`).join('\n')}` : ''}
+
+RULES:
+- If the room is empty (0 documents, 0 facts): clearly state this room has not started, recommend uploading the most relevant first document (e.g. Letter of Intent or Purchase Agreement), and explain what Kontra will extract from it.
+- If asked about digital-asset readiness or tokenization: describe which categories have facts vs. which are still empty. Never quote a percentage. Never say "eligible for tokenization", "approved", or "issuance ready".
+- If there are conflicts or needs-review fields: name them specifically.
+- Keep answers concise (3–6 sentences), factual, and actionable.
+- Do not provide legal, regulatory, or financial advice.
+- Kontra organizes and prepares transaction information — it does not issue, sell, recommend, custody, or settle digital assets.`;
+
+    const aiClient = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+    const completion = await aiClient.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: question },
+      ],
+      max_tokens: 450,
+      temperature: 0.3,
+    });
+
+    res.json({ answer: completion.choices[0]?.message?.content || 'I could not answer from the current transaction record.' });
+  } catch (err) {
+    console.error('[brain/ask]', err.message);
+    res.status(500).json({ error: 'AI assistant error', answer: 'Kontra could not reach the transaction workspace. Try again in a moment.' });
+  }
+});
+
+// ── Generic Deal Room — Computed Briefing (/brain/briefing) ──────────────────
+// Returns a lightweight computed briefing from live room data.
+// Static demo rooms register their own routes above and override this.
+app.get('/api/public/deal-room/:propertyId/brain/briefing', async (req, res) => {
+  const { propertyId } = req.params;
+  try {
+    const [{ data: fields }, { count: docCount }] = await Promise.all([
+      supabase.from('transaction_record_fields')
+        .select('field_key, display_label, value_text, status, source_document')
+        .eq('property_id', propertyId),
+      supabase.from('deal_documents')
+        .select('id', { count: 'exact', head: true })
+        .eq('property_id', propertyId),
+    ]);
+
+    const conflicts  = (fields || []).filter(f => ['conflicting', 'source_changed'].includes(f.status));
+    const needsReview = (fields || []).filter(f => ['needs_review', 'extracted'].includes(f.status) && f.value_text);
+
+    // Only return a non-null briefing when there is activity to report
+    if ((docCount || 0) === 0 && (fields || []).length === 0) {
+      return res.json(null);
+    }
+
+    const risks = conflicts.map(f => ({
+      text: `${f.display_label || f.field_key} has conflicting values from different sources`,
+      field_key: f.field_key,
+    }));
+    const actions = needsReview.slice(0, 4).map(f => ({
+      text: `Confirm "${f.display_label || f.field_key}" extracted as "${f.value_text}"`,
+      field_key: f.field_key,
+    }));
+
+    res.json({ actions, risks, open_items: [], snapshot: { document_count: docCount || 0, fact_count: (fields || []).length } });
+  } catch (err) {
+    console.error('[brain/briefing]', err.message);
+    res.json(null);
+  }
+});
+
 module.exports = app;

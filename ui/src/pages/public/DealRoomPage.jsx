@@ -2721,6 +2721,9 @@ function WhatNeedsAttention({ briefing, recordFields, loading, onTabChange, prop
     } finally { setConfirming(''); }
   }
 
+  // "Meaningful activity" = at least some facts have been extracted
+  const hasMeaningfulActivity = recordFields.length > 0;
+
   const items = [];
 
   // 1. Conflicting / source-changed — highest urgency
@@ -2783,10 +2786,12 @@ function WhatNeedsAttention({ briefing, recordFields, loading, onTabChange, prop
         <p className="mt-1 text-sm font-bold text-gray-900">
           {loading ? 'Loading…' : items.length > 0
             ? `${items.length} item${items.length === 1 ? '' : 's'} to address`
-            : 'Nothing urgent right now'}
+            : hasMeaningfulActivity ? 'Nothing urgent right now' : 'Start this transaction'}
         </p>
         <p className="mt-0.5 text-xs text-gray-400">
-          Kontra prioritizes the items currently moving or blocking this transaction.
+          {hasMeaningfulActivity
+            ? 'Kontra prioritizes the items currently moving or blocking this transaction.'
+            : 'Add the first transaction documents and participants so Kontra can begin organizing the deal.'}
         </p>
       </div>
 
@@ -2794,25 +2799,13 @@ function WhatNeedsAttention({ briefing, recordFields, loading, onTabChange, prop
         <div className="p-5 space-y-3">
           {[1, 2].map(n => <div key={n} className="h-14 animate-pulse rounded-xl bg-gray-50" />)}
         </div>
-      ) : items.length === 0 && !briefing && recordFields.length === 0 ? (
+      ) : items.length === 0 && !hasMeaningfulActivity ? (
         /* ── STATE A: Genuinely empty room ────────────────────────────── */
         <div className="px-5 py-6">
           <p className="text-sm font-semibold text-gray-900">Start this transaction</p>
           <p className="mt-1 text-xs text-gray-500 leading-relaxed max-w-md">
-            Add the first documents and participants so Kontra can begin building the transaction record.
+            Add the first transaction documents and participants so Kontra can begin organizing the deal.
           </p>
-          <ul className="mt-3 space-y-1.5">
-            {[
-              'Upload core transaction documents',
-              'Invite the deal owner or relevant parties',
-              'Confirm basic transaction information',
-            ].map(task => (
-              <li key={task} className="flex items-center gap-2 text-xs text-gray-500">
-                <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-gray-300" />
-                {task}
-              </li>
-            ))}
-          </ul>
           <div className="mt-4 flex items-center gap-2 flex-wrap">
             <button onClick={() => onTabChange?.('documents')}
               className="rounded-xl bg-[#800020] px-4 py-2 text-xs font-bold text-white transition hover:opacity-90">
@@ -2823,9 +2816,21 @@ function WhatNeedsAttention({ briefing, recordFields, loading, onTabChange, prop
               Invite participant
             </button>
           </div>
+          <ul className="mt-4 space-y-1.5">
+            {[
+              'Upload a core transaction document',
+              'Invite the primary transaction parties',
+              'Confirm the basic transaction information',
+            ].map(task => (
+              <li key={task} className="flex items-center gap-2 text-xs text-gray-500">
+                <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-gray-300" />
+                {task}
+              </li>
+            ))}
+          </ul>
         </div>
       ) : items.length === 0 ? (
-        /* ── STATE B: Active but no blockers ──────────────────────────── */
+        /* ── STATE B: Active but no blockers — only shown when meaningful activity exists ── */
         <div className="px-5 py-5">
           <p className="text-sm font-semibold text-gray-800">Nothing requires your attention right now.</p>
           <p className="mt-1 text-xs text-gray-400 leading-relaxed">
@@ -3107,9 +3112,21 @@ function DigitalAssetReadinessSection({ recordFields, readiness, onTabChange }) 
           <p className="mt-0.5 text-xs text-gray-500 leading-relaxed">
             Your transaction record contains enough organized information to begin preparing a handoff package for external legal, compliance, or issuance providers.
           </p>
-          <button onClick={() => onTabChange?.('documents')}
-            className="mt-2 text-[11px] font-bold text-[#800020] hover:opacity-80 transition">
-            Review readiness →
+          <button
+            onClick={async () => {
+              let ownerWriteToken = '';
+              try { ownerWriteToken = localStorage.getItem(`kontra_owner_token_${propertyId}`) || ''; } catch {}
+              try {
+                await fetch(`${API_BASE}/api/public/deal-room/${propertyId}/digital-asset-prep`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ ownerWriteToken }),
+                });
+              } catch {}
+              onTabChange?.('documents');
+            }}
+            className="mt-3 rounded-xl bg-[#800020] px-4 py-2 text-xs font-bold text-white transition hover:opacity-90">
+            Prepare digital asset package
           </button>
         </div>
       ) : (
@@ -3122,21 +3139,43 @@ function DigitalAssetReadinessSection({ recordFields, readiness, onTabChange }) 
 }
 
 // ── RoomCopilot — floating button + side drawer ───────────────────────────────
-// Persistent across all tabs. Shows 4 quick questions initially.
+// Persistent across all tabs. Self-fetches room state to pick context-appropriate chips.
 function RoomCopilot({ propertyId }) {
   const [open, setOpen]           = useState(false);
   const [question, setQuestion]   = useState('');
   const [answer, setAnswer]       = useState('');
   const [loading, setLoading]     = useState(false);
   const [showAllQ, setShowAllQ]   = useState(false);
+  const [isEmpty, setIsEmpty]     = useState(true);
   const inputRef = useRef(null);
 
-  const QUICK_PRIMARY = [
-    "What's happening with this transaction?",
-    "What should I do next?",
-    "What's blocking the transaction?",
-    "What's missing?",
-  ];
+  // Self-fetch a lightweight indicator of whether the room has any extracted facts
+  useEffect(() => {
+    if (!propertyId) return;
+    fetch(`${API_BASE}/api/public/deal-room/${propertyId}/transaction-record`,
+      { headers: getRoomAuthHeaders(propertyId) })
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
+        const fields = Array.isArray(data?.fields) ? data.fields : [];
+        setIsEmpty(fields.length === 0);
+      })
+      .catch(() => {});
+  }, [propertyId]);
+
+  // When the room is empty, surface action-oriented questions first
+  const QUICK_PRIMARY = isEmpty
+    ? [
+        "What should I upload first?",
+        "What will Kontra extract from an LOI?",
+        "What should I do to start this deal?",
+        "What's missing?",
+      ]
+    : [
+        "What's happening with this transaction?",
+        "What should I do next?",
+        "What's blocking the transaction?",
+        "What's missing?",
+      ];
   const QUICK_SECONDARY = [
     "Who are we waiting on?",
     "What changed recently?",
@@ -3314,12 +3353,39 @@ function CoordinatorOverview({ propertyId, property, pack, onTabChange }) {
   const currentStage      = stages[currentStageIndex];
   const closingDate       = property?.closing_date || property?.target_close_date || property?.close_date;
 
+  // Prefer a structured record field; fall back to workspace creation metadata
   const snapshotField = (keys) =>
     recordFields.find(f =>
       keys.includes(f.field_key) &&
       f.status !== 'not_applicable' &&
       String(f.value_text || '').trim()
     );
+
+  // Format a deal_amount number stored as a string or number
+  function formatDealAmount(val) {
+    const n = parseFloat(String(val || '').replace(/[^0-9.]/g, ''));
+    if (!n) return null;
+    if (n >= 1_000_000_000) return `$${(n / 1_000_000_000).toFixed(1)}B`;
+    if (n >= 1_000_000)     return `$${(n / 1_000_000).toFixed(1)}M`;
+    if (n >= 1_000)         return `$${(n / 1_000).toFixed(0)}K`;
+    return `$${n.toLocaleString()}`;
+  }
+
+  // Property-level fallbacks derived from workspace creation metadata
+  const meta = property?.metadata_values || {};
+  const propertyFallbacks = {
+    'transaction.value':        formatDealAmount(property?.deal_amount || meta.deal_amount || meta.raise_amount),
+    'asset.name':               meta.asset_name || null,
+    'parties.buyer':            meta.buyer_name || meta.primary_party || null,
+  };
+
+  function snapshotValue(keys, fallbackKey) {
+    const f = snapshotField(keys);
+    if (f) return { text: f.value_text, provenance: f.source_document ? `From ${f.source_document}` : 'Extracted' };
+    const fb = propertyFallbacks[fallbackKey];
+    if (fb) return { text: fb, provenance: 'From workspace setup' };
+    return null;
+  }
 
   return (
     <div className="space-y-5">
@@ -3348,17 +3414,20 @@ function CoordinatorOverview({ propertyId, property, pack, onTabChange }) {
         </div>
         <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-3">
           {[
-            { label: 'Transaction value',     keys: ['transaction.purchase_price','transaction.value','financial.purchase_price','financial.deal_value'] },
-            { label: 'Asset / company',       keys: ['asset.name','asset.legal_name','asset.type'] },
-            { label: 'Buyer / primary party', keys: ['parties.buyer','parties.primary','parties.borrower'] },
+            { label: 'Transaction value',     keys: ['transaction.purchase_price','transaction.value','financial.purchase_price','financial.deal_value'], fallback: 'transaction.value' },
+            { label: 'Asset / company',       keys: ['asset.name','asset.legal_name','asset.type'], fallback: 'asset.name' },
+            { label: 'Buyer / primary party', keys: ['parties.buyer','parties.primary','parties.borrower'], fallback: 'parties.buyer' },
           ].map(item => {
-            const f = snapshotField(item.keys);
+            const val = snapshotValue(item.keys, item.fallback);
             return (
               <div key={item.label} className="min-w-0 rounded-xl bg-gray-50 px-3.5 py-3">
-                <p className={`truncate text-sm font-bold ${f ? 'text-gray-900' : 'text-gray-300'}`}>
-                  {f ? f.value_text : 'Not recorded'}
+                <p className={`truncate text-sm font-bold ${val ? 'text-gray-900' : 'text-gray-300'}`}>
+                  {val ? val.text : 'Not recorded'}
                 </p>
                 <p className="mt-0.5 text-[10px] leading-tight text-gray-400">{item.label}</p>
+                {val?.provenance && (
+                  <p className="mt-0.5 text-[9px] text-gray-300">{val.provenance}</p>
+                )}
               </div>
             );
           })}
