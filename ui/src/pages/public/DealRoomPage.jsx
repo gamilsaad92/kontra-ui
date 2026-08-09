@@ -3313,7 +3313,7 @@ function RoomCopilot({ propertyId }) {
   );
 }
 
-function CoordinatorOverview({ propertyId, property, pack, onTabChange }) {
+function CoordinatorOverview({ propertyId, property, pack, onTabChange, refreshKey }) {
   const [briefing, setBriefing]         = useState(null);
   const [coordination, setCoordination] = useState(null);
   const [stages, setStages]             = useState([]);
@@ -3340,7 +3340,11 @@ function CoordinatorOverview({ propertyId, property, pack, onTabChange }) {
     setRecordFields(Array.isArray(record?.fields) ? record.fields : []);
     setReadiness(readinessData);
     setLoading(false);
-  }, [propertyId, pack]);
+  // refreshKey is intentionally included so any document upload (which bumps
+  // analysesRefreshKey in DealRoomPage) immediately triggers a re-fetch here,
+  // making the Snapshot and WhatNeedsAttention update without waiting 30s.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [propertyId, pack, refreshKey]);
 
   useEffect(() => {
     load();
@@ -5153,6 +5157,7 @@ export default function DealRoomPage() {
                   pack={pack}
                   packId={packId}
                   onTabChange={setActiveTab}
+                  refreshKey={analysesRefreshKey}
                 />
             )}
 

@@ -3888,6 +3888,7 @@ app.post('/api/public/deal-room/:propertyId/create-invite', async (req, res) => 
       invite_token_hash:   tokenHash,
       verification_method: verificationMethod,
       pin_hash:            pinHash,
+      status:              'pending',
     });
     if (insertErr) {
       if (insertErr.code === '23505') return res.status(409).json({ error: 'token_conflict' });
@@ -3932,6 +3933,81 @@ app.post('/api/public/deal-room/:propertyId/create-invite', async (req, res) => 
   } catch (err) {
     console.error('[create-invite]', err.message);
     res.status(500).json({ error: err.message });
+  }
+});
+
+// ── List invites for a room (owner auth via ownerWriteToken) ─────────────────
+app.get('/api/public/deal-room/:propertyId/invites', async (req, res) => {
+  const { propertyId } = req.params;
+  try {
+    const access = await getRoomAccessContext(req, propertyId);
+    if (access.mode !== 'owner') return accessDenied(res, 'Only the deal-room owner can list invitations');
+    const { data, error } = await supabase
+      .from('deal_room_invites')
+      .select('id, role_key, invited_email, status, verification_method, created_at, updated_at, last_used_at, expires_at, revoked_at')
+      .eq('property_id', propertyId)
+      .order('created_at', { ascending: false });
+    if (error) throw error;
+    return res.json({ invites: data || [] });
+  } catch (e) {
+    console.error('[invites GET]', e.message);
+    return res.status(500).json({ error: e.message });
+  }
+});
+
+// ── Token-only invite verification (link-auth flow) ───────────────────────────
+// For invites created with verification_method='link', the raw invite token in
+// the URL IS the credential. No PIN needed. This endpoint validates the token,
+// checks invite status, creates a short-lived access session, and returns the
+// session token. The session is then stored client-side and sent as
+// x-kontra-session on all subsequent requests.
+app.post('/api/public/deal-room/:propertyId/invite/verify-link', async (req, res) => {
+  const { propertyId } = req.params;
+  const { inviteToken } = req.body || {};
+  if (!inviteToken) return res.status(400).json({ error: 'inviteToken required' });
+
+  const tokenHash = crypto.createHash('sha256').update(inviteToken.trim()).digest('hex');
+  try {
+    const { data: invite, error: findErr } = await supabase
+      .from('deal_room_invites')
+      .select('id, property_id, role_key, status, verification_method, expires_at, locked_until')
+      .eq('invite_token_hash', tokenHash)
+      .maybeSingle();
+
+    if (findErr) throw findErr;
+    if (!invite)                                              return res.status(404).json({ error: 'not_found' });
+    if (invite.property_id !== propertyId)                   return res.status(403).json({ error: 'wrong_room' });
+    if (invite.status === 'revoked')                         return res.status(403).json({ error: 'revoked' });
+    if (invite.status === 'expired')                         return res.status(403).json({ error: 'expired' });
+    if (invite.expires_at && new Date(invite.expires_at) < new Date()) return res.status(403).json({ error: 'expired' });
+    if (invite.locked_until && new Date(invite.locked_until) > new Date()) return res.status(403).json({ error: 'locked', locked_until: invite.locked_until });
+
+    // Only allow token-only verification for link-auth invites.
+    // PIN-based invites must use the Supabase RPC verify_invite_credential.
+    if (invite.verification_method !== 'link') {
+      return res.status(400).json({ error: 'requires_pin', message: 'This invitation requires a PIN. Use the PIN verification flow.' });
+    }
+
+    // Create a 7-day access session
+    const sessionToken = crypto.randomBytes(32).toString('hex');
+    const sessionHash  = crypto.createHash('sha256').update(sessionToken).digest('hex');
+    const expiresAt    = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+
+    const { error: sessionErr } = await supabase.from('deal_room_access_sessions').insert({
+      invite_id:          invite.id,
+      session_token_hash: sessionHash,
+      expires_at:         expiresAt,
+    });
+    if (sessionErr) throw sessionErr;
+
+    // Mark invite as accepted so the People tab shows the right status
+    await supabase.from('deal_room_invites').update({ status: 'accepted', last_used_at: new Date().toISOString() }).eq('id', invite.id);
+
+    logEvent(propertyId, 'participant_authenticated', invite.role_key, null, `${invite.role_key} accessed via invite link`).catch(() => {});
+    return res.json({ success: true, session_token: sessionToken, expires_at: expiresAt, role_key: invite.role_key });
+  } catch (e) {
+    console.error('[verify-link]', e.message);
+    return res.status(500).json({ error: e.message });
   }
 });
 

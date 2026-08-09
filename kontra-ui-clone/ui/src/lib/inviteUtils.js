@@ -100,6 +100,32 @@ export async function getInviteStatus(inviteToken) {
   }
 }
 
+// ── Token-only (link-auth) invite verification ────────────────────────────────
+
+/**
+ * Verify an invite using only the URL token — no PIN required.
+ * Works for invites created with verificationMethod='link'.
+ *
+ * Returns:
+ *   { success: true, session_token, role_key, expires_at }
+ *   { success: false, error, requires_pin?, locked_until? }
+ */
+export async function verifyInviteLink(propertyId, inviteToken) {
+  const API_BASE = (import.meta.env.VITE_API_BASE || '').replace(/\/+$/, '');
+  try {
+    const res = await fetch(`${API_BASE}/api/public/deal-room/${propertyId}/invite/verify-link`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ inviteToken }),
+    });
+    const data = await res.json();
+    if (!res.ok) return { success: false, error: data.error || `Server error ${res.status}`, requires_pin: data.error === 'requires_pin', locked_until: data.locked_until };
+    return { success: true, ...data };
+  } catch (e) {
+    return { success: false, error: e.message };
+  }
+}
+
 // ── PIN verification ──────────────────────────────────────────────────────────
 
 /**

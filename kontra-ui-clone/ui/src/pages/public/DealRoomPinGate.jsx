@@ -1,17 +1,16 @@
 /**
- * DealRoomPinGate — participant PIN verification screen.
+ * DealRoomPinGate — unified participant authentication screen.
  *
- * Flow:
- *   1. Reads ?invite=TOKEN from URL.
- *   2. Calls get_invite_status() to validate the invite.
- *   3. Participant enters the PIN given to them by the deal owner (out-of-band).
- *   4. On success → calls onUnlocked(sessionToken).
+ * Supports two verification methods:
+ *   link — token in the URL IS the credential; auto-verifies on load (no PIN).
+ *   pin  — legacy flow: participant enters a 6-digit PIN shared by the owner.
  *
- * The invite email from Kontra contains the link only — no PIN.
- * The owner shares the PIN separately (phone, text, in person).
+ * On mount, always calls verify-link first. If the invite uses link auth it
+ * resolves immediately. If it requires a PIN, falls through to the PIN form.
+ * This means old PIN-based invites still work without any migration.
  */
 import { useState, useEffect } from 'react';
-import { getInviteStatus, verifyInvitePin, storeInviteSession, touchSession } from '../../lib/inviteUtils';
+import { getInviteStatus, verifyInvitePin, verifyInviteLink, storeInviteSession, touchSession } from '../../lib/inviteUtils';
 
 function Spinner({ label = 'Loading…' }) {
   return (
@@ -116,18 +115,38 @@ export default function DealRoomPinGate({ propertyId, role, inviteToken, onUnloc
 
   useEffect(() => {
     if (!inviteToken) return;
-    getInviteStatus(inviteToken).then(info => {
-      if (!info.invite_exists)                                       { setPhase('not_found'); return; }
-      if (info.status === 'revoked')                                 { setPhase('revoked');   return; }
-      if (info.status === 'expired')                                 { setPhase('expired');   return; }
-      if (info.locked_until && new Date(info.locked_until) > new Date()) {
-        setLockedUntil(info.locked_until);
-        setPhase('locked');
+    // Try token-only (link-auth) verification first. If this invite was created
+    // with verificationMethod='link', it auto-authenticates and we never show
+    // the PIN screen. If it requires a PIN, fall through to the PIN form.
+    verifyInviteLink(propertyId, inviteToken).then(result => {
+      if (result.success) {
+        storeInviteSession(propertyId, result.session_token, result.expires_at);
+        touchSession(result.session_token).catch(() => {});
+        onUnlocked(result.session_token);
         return;
       }
-      setPhase('pin_entry');
+      if (result.requires_pin) {
+        // PIN-based invite — validate status then show PIN form
+        return getInviteStatus(inviteToken).then(info => {
+          if (!info.invite_exists)                                       { setPhase('not_found'); return; }
+          if (info.status === 'revoked')                                 { setPhase('revoked');   return; }
+          if (info.status === 'expired')                                 { setPhase('expired');   return; }
+          if (info.locked_until && new Date(info.locked_until) > new Date()) {
+            setLockedUntil(info.locked_until);
+            setPhase('locked');
+            return;
+          }
+          setPhase('pin_entry');
+        });
+      }
+      // Network error / not found / revoked / expired from verify-link
+      if (result.error === 'not_found')  { setPhase('not_found'); return; }
+      if (result.error === 'revoked')    { setPhase('revoked');   return; }
+      if (result.error === 'expired')    { setPhase('expired');   return; }
+      if (result.error === 'locked')     { setLockedUntil(result.locked_until); setPhase('locked'); return; }
+      setPhase('error');
     }).catch(() => setPhase('error'));
-  }, [inviteToken]);
+  }, [inviteToken, propertyId, onUnlocked]);
 
   async function handleVerifyPin(e) {
     e.preventDefault();

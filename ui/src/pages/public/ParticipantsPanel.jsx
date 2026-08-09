@@ -237,7 +237,8 @@ export default function ParticipantsPanel({ roomId, packId = DEFAULT_PACK_ID, is
     });
   }, [isV2]);
 
-  // Load invites
+  // Load invites — v1 uses the REST endpoint (owner-write-token auth) so it
+  // always returns the current DB state without depending on Supabase JWT auth.
   const loadInvites = useCallback(async () => {
     setLoading(true);
     try {
@@ -245,8 +246,13 @@ export default function ParticipantsPanel({ roomId, packId = DEFAULT_PACK_ID, is
         const data = await v2Api('GET', `/api/v2/deal-room/invites/${roomId}`, null, ownerToken);
         setInvites(data.invites || []);
       } else {
-        const data = await getRoomInvites(roomId);
-        setInvites(Array.isArray(data) ? data : []);
+        const API_BASE = (import.meta.env.VITE_API_BASE || '').replace(/\/+$/, '');
+        const { getRoomAuthHeaders } = await import('../../lib/inviteUtils');
+        const res  = await fetch(`${API_BASE}/api/public/deal-room/${roomId}/invites`, {
+          headers: getRoomAuthHeaders(roomId),
+        });
+        const data = res.ok ? await res.json() : { invites: [] };
+        setInvites(Array.isArray(data.invites) ? data.invites : []);
       }
     } catch {
       setInvites([]);
@@ -264,15 +270,16 @@ export default function ParticipantsPanel({ roomId, packId = DEFAULT_PACK_ID, is
       }, ownerToken);
       if (!result.ok) throw new Error(result.error || 'Failed to send invitation');
     } else {
-      const pin    = generatePin();
+      // Use link-only auth — participant clicks the link in their email and
+      // the token IS the credential. No PIN is generated, stored, or distributed.
       const result = await createInvite({
         propertyId: roomId, roleKey, invitedEmail: email,
-        verificationMethod: 'pin', pin,
+        verificationMethod: 'link',
       });
       if (!result.success) throw new Error(result.error || 'Failed to send invitation');
     }
-    // Refresh in background; modal will show success state before closing
-    loadInvites().catch(() => {});
+    // Immediately refresh so the People tab reflects the new invite from the DB
+    await loadInvites().catch(() => {});
   }
 
   // ── Revoke ─────────────────────────────────────────────────────────────────
