@@ -2698,27 +2698,263 @@ function formatSnapshotValue(field) {
   return field.value_text;
 }
 
-function RoomCopilot({ propertyId, briefing = null }) {
+// ── WhatNeedsAttention ────────────────────────────────────────────────────────
+// Unified prioritized feed merging AI findings, next actions, and issues.
+// Replaces the old separate "Next Actions", "AI Findings", and "Issues" cards.
+function WhatNeedsAttention({ briefing, recordFields, loading, onTabChange, propertyId }) {
+  const [confirming, setConfirming] = useState('');
+
+  async function confirmField(field) {
+    let ownerWriteToken = '';
+    try { ownerWriteToken = localStorage.getItem(`kontra_owner_token_${propertyId}`) || ''; } catch {}
+    if (!ownerWriteToken || confirming) return;
+    setConfirming(field.id);
+    try {
+      await fetch(
+        `${API_BASE}/api/public/deal-room/${propertyId}/transaction-record/fields/${field.id}/verify`,
+        {
+          method: 'POST',
+          headers: getRoomAuthHeaders(propertyId, { 'Content-Type': 'application/json' }),
+          body: JSON.stringify({ ownerWriteToken, actorRole: 'coordinator' }),
+        },
+      );
+    } finally { setConfirming(''); }
+  }
+
+  const items = [];
+
+  // 1. Conflicting / source-changed — highest urgency
+  recordFields
+    .filter(f => ['conflicting', 'source_changed'].includes(f.status))
+    .slice(0, 3)
+    .forEach(f => items.push({
+      id: `conflict-${f.id}`,
+      urgency: 'high',
+      title: f.display_label || f.field_key,
+      reason: f.status === 'source_changed'
+        ? 'A new document provided a different value. Review and confirm the correct one.'
+        : 'Two sources provided conflicting values for this field.',
+      excerpt: f.source_excerpt || null,
+      actions: [{ label: 'Review', onClick: () => onTabChange?.('documents') }],
+    }));
+
+  // 2. Needs review / newly extracted
+  recordFields
+    .filter(f => ['needs_review', 'extracted'].includes(f.status) && f.value_text)
+    .slice(0, 4)
+    .forEach(f => items.push({
+      id: `review-${f.id}`,
+      urgency: 'medium',
+      title: f.display_label || f.field_key,
+      reason: `Kontra extracted "${f.value_text}" from an uploaded document. Confirm this is correct.`,
+      excerpt: f.source_excerpt ? `"${f.source_excerpt}"${f.source_page ? ` · page ${f.source_page}` : ''}` : null,
+      field: f,
+      actions: [{ label: confirming === f.id ? 'Confirming…' : 'Confirm', primary: true, disabled: !!confirming, onClick: () => confirmField(f) }],
+    }));
+
+  // 3. Briefing action items
+  const rawActions = briefing?.actions || briefing?.next_actions || briefing?.criticalPath || briefing?.blocking || [];
+  rawActions.slice(0, 4).forEach((item, i) => {
+    const text = typeof item === 'string' ? item : (item.text || item.action || item.item || item.title || '');
+    if (!text) return;
+    items.push({
+      id: `action-${i}`,
+      urgency: i === 0 ? 'medium' : 'low',
+      title: text,
+      reason: typeof item === 'object' ? (item.reason || item.why || '') : '',
+      actions: [],
+    });
+  });
+
+  // 4. Issues / risks (deduplicated with criticalPath already used above)
+  const rawIssues = briefing?.risks || briefing?.open_items || [];
+  rawIssues.slice(0, 2).forEach((item, i) => {
+    const text = typeof item === 'string' ? item : (item.text || item.risk || item.item || '');
+    if (!text) return;
+    items.push({ id: `issue-${i}`, urgency: 'high', title: text, reason: '', actions: [] });
+  });
+
+  const urgencyDot = { high: 'bg-red-400', medium: 'bg-amber-400', low: 'bg-gray-300' };
+
+  return (
+    <section className="rounded-2xl border border-gray-200 bg-white overflow-hidden">
+      <div className="px-5 py-4 border-b border-gray-100">
+        <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">What needs attention</p>
+        <p className="mt-1 text-sm font-bold text-gray-900">
+          {loading ? 'Loading…' : items.length > 0
+            ? `${items.length} item${items.length === 1 ? '' : 's'} to address`
+            : 'Nothing urgent right now'}
+        </p>
+        <p className="mt-0.5 text-xs text-gray-400">
+          Kontra prioritizes the items currently moving or blocking this transaction.
+        </p>
+      </div>
+
+      {loading ? (
+        <div className="p-5 space-y-3">
+          {[1, 2].map(n => <div key={n} className="h-14 animate-pulse rounded-xl bg-gray-50" />)}
+        </div>
+      ) : items.length === 0 ? (
+        <div className="px-5 py-10 text-center">
+          <p className="text-sm font-semibold text-gray-700">Start building the transaction record</p>
+          <p className="mt-1.5 text-xs text-gray-400 max-w-xs mx-auto leading-relaxed">
+            Upload the first document or invite a participant. Kontra will organize the transaction as information enters the room.
+          </p>
+          <div className="mt-5 flex items-center justify-center gap-3 flex-wrap">
+            <button onClick={() => onTabChange?.('documents')}
+              className="rounded-xl bg-[#800020] px-4 py-2.5 text-xs font-bold text-white transition hover:opacity-90">
+              Upload document
+            </button>
+            <button onClick={() => onTabChange?.('people')}
+              className="rounded-xl border border-gray-200 px-4 py-2.5 text-xs font-semibold text-gray-700 transition hover:bg-gray-50">
+              Invite participant
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="divide-y divide-gray-100">
+          {items.map(item => (
+            <div key={item.id} className="flex items-start gap-3 px-5 py-4">
+              <span className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${urgencyDot[item.urgency]}`} />
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold text-gray-900 leading-snug">{item.title}</p>
+                {item.reason ? <p className="mt-0.5 text-xs text-gray-500 leading-relaxed">{item.reason}</p> : null}
+                {item.excerpt ? <p className="mt-1 text-[11px] text-gray-400 italic leading-relaxed">{item.excerpt}</p> : null}
+                {item.actions.length > 0 && (
+                  <div className="mt-2.5 flex flex-wrap gap-2">
+                    {item.actions.map((a, ai) => (
+                      <button key={ai} onClick={a.onClick} disabled={a.disabled}
+                        className={`rounded-lg px-3 py-1.5 text-[11px] font-bold transition disabled:opacity-50 ${
+                          a.primary ? 'bg-[#800020] text-white hover:opacity-90' : 'border border-gray-200 text-gray-700 hover:bg-gray-50'
+                        }`}>
+                        {a.label}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+// ── DigitalAssetReadinessSection ──────────────────────────────────────────────
+// Category-based readiness derived from structured transaction record fields.
+// Status updates automatically as facts are extracted and confirmed.
+// No bare percentage — uses Not started / In progress / Sufficient.
+function DigitalAssetReadinessSection({ recordFields, readiness, onTabChange }) {
+  function populated(keys) {
+    return recordFields.filter(f => {
+      const val = String(f.value_text || '').trim().toLowerCase();
+      return keys.some(k => k.endsWith('*')
+        ? f.field_key?.startsWith(k.slice(0, -1))
+        : f.field_key === k)
+        && val
+        && !['n/a', 'na', 'not applicable', 'not_applicable', 'unknown'].includes(val)
+        && f.status !== 'not_applicable';
+    }).length;
+  }
+
+  const categories = [
+    { key: 'parties',   label: 'Identity & Parties',     keys: ['parties.buyer','parties.seller','parties.primary','parties.secondary','parties.borrower','ownership.owner_name'] },
+    { key: 'asset',     label: 'Asset / Company',         keys: ['asset.name','asset.type','asset.address','asset.legal_name','asset.jurisdiction','asset.description'] },
+    { key: 'terms',     label: 'Transaction Terms',       keys: ['transaction.purchase_price','transaction.value','transaction.closing_date','transaction.type','transaction.structure'] },
+    { key: 'financial', label: 'Financial Information',   keys: ['financial.purchase_price','financial.deal_value','financial.revenue','financial.noi','financial.loan_amount','asset.noi','asset.revenue'] },
+    { key: 'legal',     label: 'Legal & Diligence',       keys: ['legal.*','ownership.cap_table','ownership.beneficial_owners','ownership.liens','ownership.encumbrances'] },
+  ].map(cat => {
+    const count = populated(cat.keys);
+    const total = cat.keys.length;
+    const st = count === 0 ? 'not_started' : count >= Math.ceil(total * 0.5) ? 'sufficient' : 'in_progress';
+    return { ...cat, count, st };
+  });
+
+  const serverSufficient = readiness?.digital_asset_readiness?.sufficient;
+  const localSufficient  = categories.every(c => c.st === 'sufficient');
+  const anySufficient    = serverSufficient || localSufficient;
+
+  const stLabel = { not_started: 'Not started', in_progress: 'In progress', sufficient: 'Sufficient' };
+  const stStyle = {
+    not_started: 'text-gray-400 bg-gray-50 border-gray-100',
+    in_progress:  'text-amber-700 bg-amber-50 border-amber-100',
+    sufficient:   'text-emerald-700 bg-emerald-50 border-emerald-100',
+  };
+
+  return (
+    <section className="rounded-2xl border border-gray-200 bg-white overflow-hidden">
+      <div className="px-5 py-4 border-b border-gray-100">
+        <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Digital asset readiness</p>
+        <p className="mt-1 text-sm font-bold text-gray-900">Building the transaction record</p>
+        <p className="mt-0.5 text-xs text-gray-400 leading-relaxed">
+          Kontra organizes transaction information as the deal progresses so it can support future digital-asset preparation.
+        </p>
+      </div>
+      <div className="divide-y divide-gray-100">
+        {categories.map(cat => (
+          <div key={cat.key} className="flex items-center justify-between px-5 py-3 gap-4">
+            <p className="text-sm text-gray-700">{cat.label}</p>
+            <span className={`shrink-0 rounded-full border px-2.5 py-0.5 text-[10px] font-semibold ${stStyle[cat.st]}`}>
+              {stLabel[cat.st]}
+            </span>
+          </div>
+        ))}
+      </div>
+      {anySufficient ? (
+        <div className="border-t border-indigo-100 bg-indigo-50/60 px-5 py-4">
+          <p className="text-xs font-semibold text-gray-800">
+            Your transaction record contains enough information to begin preparing a digital-asset handoff package.
+          </p>
+          <button onClick={() => onTabChange?.('documents')}
+            className="mt-2 text-[11px] font-bold text-[#800020] hover:opacity-80 transition">
+            Review readiness →
+          </button>
+        </div>
+      ) : (
+        <p className="border-t border-gray-100 px-5 py-3 text-[10px] text-gray-400">
+          Readiness reflects organized information only — not legal or regulatory approval for issuance or tokenization.
+        </p>
+      )}
+    </section>
+  );
+}
+
+// ── RoomCopilot — floating button + side drawer ───────────────────────────────
+// Persistent across all tabs. Removed from Overview; lives at page level.
+function RoomCopilot({ propertyId }) {
+  const [open, setOpen]       = useState(false);
   const [question, setQuestion] = useState('');
-  const [answer, setAnswer] = useState('');
+  const [answer, setAnswer]   = useState('');
   const [loading, setLoading] = useState(false);
+  const inputRef = useRef(null);
+
   const quickQuestions = [
-    "Give me today's brief",
-    "What is the next action that moves this transaction forward?",
-    "What is still missing?",
-    "Explain the latest AI finding",
+    "What's happening with this transaction?",
+    "What should I do next?",
+    "What are we waiting for?",
+    "What's missing?",
+    "Summarize this deal.",
+    "Who are we waiting on?",
+    "How close is this to digital-asset preparation?",
+    "What changed recently?",
   ];
 
-  async function ask(nextQuestion = question) {
-    const prompt = String(nextQuestion || '').trim();
-    if (!prompt || loading) return;
-    setQuestion(prompt);
+  useEffect(() => {
+    if (open) setTimeout(() => inputRef.current?.focus(), 100);
+  }, [open]);
+
+  async function ask(prompt = question) {
+    const q = String(prompt || '').trim();
+    if (!q || loading) return;
+    setQuestion(q);
     setLoading(true);
+    setAnswer('');
     try {
       const response = await fetch(`${API_BASE}/api/public/deal-room/${propertyId}/brain/ask`, {
         method: 'POST',
         headers: getRoomAuthHeaders(propertyId, { 'Content-Type': 'application/json' }),
-        body: JSON.stringify({ question: prompt }),
+        body: JSON.stringify({ question: q }),
       });
       const data = response.ok ? await response.json() : null;
       setAnswer(data?.answer || 'I could not answer from the current transaction record.');
@@ -2730,85 +2966,116 @@ function RoomCopilot({ propertyId, briefing = null }) {
   }
 
   return (
-    <section className="overflow-hidden rounded-2xl border border-[#e6d8dd] bg-[#fffafb]">
-      <div className="border-b border-[#f0e3e7] px-5 py-4">
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <p className="text-[10px] font-bold uppercase tracking-widest text-[#800020]">Kontra AI Copilot</p>
-            <p className="mt-1 text-sm font-bold text-gray-900">Your transaction-aware guidance layer</p>
-            <p className="mt-1 max-w-xl text-xs leading-relaxed text-gray-500">
-              Ask about this transaction, explain a finding, summarize what is missing, or get today’s brief.
-            </p>
+    <>
+      {/* Floating trigger button */}
+      <button
+        onClick={() => setOpen(true)}
+        aria-label="Open Kontra AI"
+        className="fixed bottom-6 right-6 z-40 flex items-center gap-2 rounded-full bg-[#800020] py-3 pl-4 pr-5 text-white shadow-xl transition hover:opacity-90 hover:shadow-2xl">
+        <span className="text-sm" aria-hidden="true">✦</span>
+        <span className="text-sm font-semibold">Kontra AI</span>
+      </button>
+
+      {/* Side drawer */}
+      {open && (
+        <div className="fixed inset-0 z-50 flex justify-end" role="dialog" aria-modal="true" aria-label="Kontra AI">
+          <div className="absolute inset-0 bg-black/25" onClick={() => setOpen(false)} />
+          <div className="relative flex h-full w-full max-w-md flex-col bg-white shadow-2xl">
+
+            {/* Header */}
+            <div className="flex items-center justify-between border-b border-gray-100 px-5 py-4">
+              <div className="flex items-center gap-2.5">
+                <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-[#800020] text-sm text-white" aria-hidden="true">✦</span>
+                <div>
+                  <p className="text-sm font-bold text-gray-900">Kontra AI</p>
+                  <p className="text-[10px] text-gray-400">Transaction-aware guidance</p>
+                </div>
+              </div>
+              <button onClick={() => setOpen(false)} aria-label="Close"
+                className="flex h-8 w-8 items-center justify-center rounded-lg text-gray-400 transition hover:bg-gray-100 hover:text-gray-700">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-4 w-4">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            {/* Body */}
+            <div className="flex-1 overflow-y-auto p-5 space-y-4">
+              {!answer && !loading && (
+                <div>
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 mb-2">Suggested questions</p>
+                  <div className="flex flex-wrap gap-2">
+                    {quickQuestions.map(prompt => (
+                      <button key={prompt} type="button" onClick={() => ask(prompt)} disabled={loading}
+                        className="rounded-full border border-gray-200 bg-white px-3 py-1.5 text-[11px] font-medium text-gray-700 transition hover:border-[#800020] hover:text-[#800020] disabled:opacity-50">
+                        {prompt}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {loading && (
+                <div className="rounded-xl border border-gray-100 bg-gray-50 px-4 py-3">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-[#800020]">✦</span>
+                    <p className="text-xs text-gray-500">Thinking…</p>
+                  </div>
+                </div>
+              )}
+
+              {answer && !loading && (
+                <div className="rounded-xl border border-[#eadde1] bg-[#fffafb] px-4 py-3">
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-[#800020] mb-1.5">Kontra AI</p>
+                  <p className="whitespace-pre-wrap text-sm leading-relaxed text-gray-700">{answer}</p>
+                  <button onClick={() => { setAnswer(''); setQuestion(''); }}
+                    className="mt-3 text-[10px] font-semibold text-gray-400 transition hover:text-gray-600">
+                    Ask another question
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* Input */}
+            <div className="border-t border-gray-100 p-4 space-y-2">
+              <form onSubmit={e => { e.preventDefault(); ask(); }} className="flex gap-2">
+                <input
+                  ref={inputRef}
+                  value={question}
+                  onChange={e => setQuestion(e.target.value)}
+                  placeholder="Ask about this transaction…"
+                  className="min-w-0 flex-1 rounded-xl border border-gray-200 bg-white px-3.5 py-2.5 text-sm text-gray-800 outline-none transition placeholder:text-gray-400 focus:border-[#800020]"
+                />
+                <button type="submit" disabled={loading || !question.trim()}
+                  className="rounded-xl bg-[#800020] px-4 py-2.5 text-xs font-bold text-white transition hover:opacity-90 disabled:opacity-40">
+                  {loading ? '…' : 'Ask'}
+                </button>
+              </form>
+              <p className="text-[10px] text-gray-400">
+                Operational guidance only · Kontra does not provide legal or regulatory verification
+              </p>
+            </div>
+
           </div>
-          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-[#800020] text-sm text-white" aria-hidden="true">✦</span>
         </div>
-      </div>
-      <div className="space-y-3 p-5">
-        <div className="flex flex-wrap gap-2">
-          {quickQuestions.map(prompt => (
-            <button
-              key={prompt}
-              type="button"
-              onClick={() => ask(prompt)}
-              disabled={loading}
-              className="rounded-full border border-[#eadde1] bg-white px-3 py-1.5 text-[11px] font-semibold text-[#800020] transition hover:border-[#800020] disabled:opacity-50">
-              {prompt}
-            </button>
-          ))}
-        </div>
-        {briefing?.narrative && !answer && (
-          <div className="rounded-xl border border-[#f0e3e7] bg-white px-3.5 py-3">
-            <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Today’s brief</p>
-            <p className="mt-1 text-xs leading-relaxed text-gray-700">{briefing.narrative}</p>
-          </div>
-        )}
-        {answer && (
-          <div className="rounded-xl border border-[#eadde1] bg-white px-3.5 py-3">
-            <p className="text-[10px] font-bold uppercase tracking-wider text-[#800020]">Kontra AI Copilot</p>
-            <p className="mt-1 whitespace-pre-wrap text-sm leading-relaxed text-gray-700">{answer}</p>
-          </div>
-        )}
-        <form
-          onSubmit={event => {
-            event.preventDefault();
-            ask();
-          }}
-          className="flex gap-2">
-          <input
-            value={question}
-            onChange={event => setQuestion(event.target.value)}
-            placeholder="Ask about this transaction…"
-            aria-label="Ask Kontra AI Copilot about this transaction"
-            className="min-w-0 flex-1 rounded-xl border border-gray-200 bg-white px-3.5 py-2.5 text-sm text-gray-800 outline-none transition placeholder:text-gray-400 focus:border-[#800020]"
-          />
-          <button
-            type="submit"
-            disabled={loading || !question.trim()}
-            className="rounded-xl bg-[#800020] px-4 py-2.5 text-xs font-bold text-white transition hover:opacity-90 disabled:opacity-40">
-            {loading ? 'Thinking…' : 'Ask'}
-          </button>
-        </form>
-        <p className="text-[10px] leading-relaxed text-gray-400">
-          AI-prepared operational guidance only. Kontra does not provide legal or regulatory verification.
-        </p>
-      </div>
-    </section>
+      )}
+    </>
   );
 }
 
-function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange }) {
-  const [briefing, setBriefing] = useState(null);
+function CoordinatorOverview({ propertyId, property, pack, onTabChange }) {
+  const [briefing, setBriefing]         = useState(null);
   const [coordination, setCoordination] = useState(null);
-  const [stages, setStages] = useState([]);
+  const [stages, setStages]             = useState([]);
   const [recordFields, setRecordFields] = useState([]);
-  const [readiness, setReadiness] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [readiness, setReadiness]       = useState(null);
+  const [loading, setLoading]           = useState(true);
 
   const load = useCallback(async () => {
     if (!propertyId) return;
     const headers = getRoomAuthHeaders(propertyId);
     const get = (path, fallback) => fetch(`${API_BASE}${path}`, { headers })
-      .then(response => response.ok ? response.json() : fallback)
+      .then(r => r.ok ? r.json() : fallback)
       .catch(() => fallback);
     const [brief, coord, stageData, record, readinessData] = await Promise.all([
       get(`/api/public/deal-room/${propertyId}/brain/briefing`, null),
@@ -2831,42 +3098,35 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange }
     return () => clearInterval(interval);
   }, [load]);
 
-  const currentStageKey = coordination?.stage || stages[0]?.key;
-  const currentStageIndex = Math.max(0, stages.findIndex(stage => stage.key === currentStageKey));
-  const currentStage = stages[currentStageIndex];
-  const actionItems = (briefing?.actions || briefing?.next_actions || briefing?.criticalPath || briefing?.blocking || []).slice(0, 4).map((item, index) => ({
-    text: typeof item === 'string' ? item : (item.text || item.action || item.item || item.title || ''),
-    owner: typeof item === 'object' ? (item.party || item.responsible || item.role || item.owner || '') : '',
-    due: typeof item === 'object' ? (item.due_date || item.dueDate || item.dueAt || '') : '',
-    priority: typeof item === 'object' ? (item.severity || item.priority || '') : (index === 0 ? 'Priority' : ''),
-  })).filter(item => item.text);
-  const issues = briefing?.criticalPath?.length
-    ? briefing.criticalPath
-    : briefing?.blocking?.length
-      ? briefing.blocking
-      : briefing?.risks || briefing?.open_items || [];
-  const reviewFindings = recordFields.filter(field => ['needs_review', 'conflicting', 'source_changed'].includes(field.status));
-  const populatedFields = recordFields.filter(field => {
-    const value = String(field.value_text || '').trim().toLowerCase();
-    return value && !['n/a', 'na', 'not applicable', 'not_applicable', 'unknown'].includes(value)
-      && field.status !== 'not_applicable';
-  });
-  const snapshotField = (keys) => recordFields.find(field => keys.includes(field.field_key) && field.status !== 'not_applicable');
-  const closingDate = property?.closing_date || property?.target_close_date || property?.close_date;
-  const digitalAssetReadiness = readiness?.digital_asset_readiness;
-  const readinessColor = digitalAssetReadiness?.sufficient
-    ? 'text-emerald-700 bg-emerald-50 border-emerald-100'
-    : 'text-indigo-700 bg-indigo-50 border-indigo-100';
+  const currentStageKey   = coordination?.stage || stages[0]?.key;
+  const currentStageIndex = Math.max(0, stages.findIndex(s => s.key === currentStageKey));
+  const currentStage      = stages[currentStageIndex];
+  const closingDate       = property?.closing_date || property?.target_close_date || property?.close_date;
+
+  const snapshotField = (keys) =>
+    recordFields.find(f =>
+      keys.includes(f.field_key) &&
+      f.status !== 'not_applicable' &&
+      String(f.value_text || '').trim()
+    );
 
   return (
     <div className="space-y-5">
+
+      {/* ── 1. Transaction Snapshot ──────────────────────────────────────── */}
       <section className="rounded-2xl border border-gray-200 bg-white px-5 py-5">
         <div className="flex items-start justify-between gap-4">
           <div>
             <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Transaction snapshot</p>
-            <h1 className="mt-1 text-xl font-bold leading-tight text-gray-900">{property?.name || property?.property_name}</h1>
+            <h1 className="mt-1 text-xl font-bold leading-tight text-gray-900">
+              {property?.name || property?.property_name}
+            </h1>
             <p className="mt-1 text-sm text-gray-500">
-              {[pack.name, currentStage?.label, closingDate && `Target close ${new Date(closingDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`].filter(Boolean).join(' · ')}
+              {[
+                pack.name,
+                currentStage?.label,
+                closingDate && `Target close ${new Date(closingDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`,
+              ].filter(Boolean).join(' · ')}
             </p>
           </div>
           {currentStage && (
@@ -2875,93 +3135,41 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange }
             </span>
           )}
         </div>
-        <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-3">
+        <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-3">
           {[
-            { label: 'Transaction value', value: formatSnapshotValue(snapshotField(['transaction.purchase_price', 'transaction.value', 'financial.purchase_price', 'financial.deal_value'])) },
-            { label: 'Asset / company', value: formatSnapshotValue(snapshotField(['asset.name', 'asset.legal_name', 'asset.type'])) },
-            { label: 'Buyer / primary party', value: formatSnapshotValue(snapshotField(['parties.buyer', 'parties.primary'])) },
-          ].map(item => (
-            <div key={item.label} className="min-w-0 rounded-xl bg-gray-50 px-3 py-3">
-              <p className="truncate text-sm font-bold text-gray-900">{item.value}</p>
-              <p className="mt-1 text-[10px] leading-tight text-gray-400">{item.label}</p>
-            </div>
-          ))}
-          <div className={`col-span-2 flex min-w-0 items-center justify-between gap-3 rounded-xl border px-3 py-3 sm:col-span-3 ${readinessColor}`}>
-            <div className="min-w-0">
-              <p className="text-[10px] font-bold uppercase tracking-wider opacity-70">Digital asset readiness</p>
-              <p className="mt-1 truncate text-sm font-bold">{digitalAssetReadiness?.status || 'Building quietly'}</p>
-            </div>
-            <div className="shrink-0 text-right">
-              <p className="text-sm font-black">{digitalAssetReadiness?.percent ?? 0}%</p>
-              <p className="text-[10px] opacity-70">{digitalAssetReadiness?.captured_facts ?? populatedFields.length} facts</p>
-            </div>
-          </div>
+            { label: 'Transaction value',     keys: ['transaction.purchase_price','transaction.value','financial.purchase_price','financial.deal_value'] },
+            { label: 'Asset / company',       keys: ['asset.name','asset.legal_name','asset.type'] },
+            { label: 'Buyer / primary party', keys: ['parties.buyer','parties.primary','parties.borrower'] },
+          ].map(item => {
+            const f = snapshotField(item.keys);
+            return (
+              <div key={item.label} className="min-w-0 rounded-xl bg-gray-50 px-3.5 py-3">
+                <p className={`truncate text-sm font-bold ${f ? 'text-gray-900' : 'text-gray-300'}`}>
+                  {f ? f.value_text : 'Not recorded'}
+                </p>
+                <p className="mt-0.5 text-[10px] leading-tight text-gray-400">{item.label}</p>
+              </div>
+            );
+          })}
         </div>
       </section>
 
-      <section className="rounded-2xl border border-gray-200 bg-white overflow-hidden">
-        <div className="flex items-center justify-between border-b border-gray-100 px-5 py-4">
-          <div>
-            <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Next actions</p>
-            <p className="mt-1 text-sm font-bold text-gray-900">What moves this transaction forward?</p>
-          </div>
-          <button onClick={() => onTabChange('documents')} className="text-[11px] font-semibold text-[#800020] hover:opacity-80">
-            Open Documents →
-          </button>
-        </div>
-        <div className="p-5">
-          {loading ? (
-            <div className="space-y-2">{[1, 2].map(item => <div key={item} className="h-12 animate-pulse rounded-xl bg-gray-50" />)}</div>
-          ) : actionItems.length > 0 ? (
-            <div className="space-y-2">
-              {actionItems.map((item, index) => (
-                <div key={`${item.text}-${index}`} className={`flex items-start gap-3 rounded-xl border px-3.5 py-3 ${index === 0 ? 'border-amber-200 bg-amber-50' : 'border-gray-100 bg-gray-50'}`}>
-                  <span className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-bold ${index === 0 ? 'bg-amber-200 text-amber-800' : 'bg-white text-gray-400'}`}>{index + 1}</span>
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm leading-snug text-gray-800">{item.text}</p>
-                    {(item.owner || item.due || item.priority) && (
-                      <p className="mt-1 text-[10px] text-gray-400">{[item.owner, item.due, item.priority].filter(Boolean).join(' · ')}</p>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="grid gap-2 sm:grid-cols-2">
-              <button onClick={() => onTabChange('documents')} className="rounded-xl border border-gray-200 px-4 py-3 text-left text-sm font-semibold text-gray-700 transition hover:bg-gray-50">Upload a document</button>
-              <button onClick={() => onTabChange('people')} className="rounded-xl border border-gray-200 px-4 py-3 text-left text-sm font-semibold text-gray-700 transition hover:bg-gray-50">Invite a participant</button>
-            </div>
-          )}
-        </div>
-      </section>
+      {/* ── 2. What Needs Attention ──────────────────────────────────────── */}
+      <WhatNeedsAttention
+        briefing={briefing}
+        recordFields={recordFields}
+        loading={loading}
+        onTabChange={onTabChange}
+        propertyId={propertyId}
+      />
 
-      <TransactionFindingsPanel propertyId={propertyId} onTabChange={onTabChange} />
-      <DigitalAssetPrepCard propertyId={propertyId} recordFields={recordFields} readiness={readiness} />
+      {/* ── 3. Digital Asset Readiness ───────────────────────────────────── */}
+      <DigitalAssetReadinessSection
+        recordFields={recordFields}
+        readiness={readiness}
+        onTabChange={onTabChange}
+      />
 
-      <section className="rounded-2xl border border-gray-200 bg-white overflow-hidden">
-        <div className="border-b border-gray-100 px-5 py-4">
-          <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Issues &amp; exceptions</p>
-          <p className="mt-1 text-sm font-bold text-gray-900">
-            {issues.length || reviewFindings.length ? `${issues.length + reviewFindings.length} item${issues.length + reviewFindings.length === 1 ? '' : 's'} need attention` : 'No open issues reported'}
-          </p>
-        </div>
-        {issues.length || reviewFindings.length ? (
-          <div className="divide-y divide-gray-100">
-            {[...issues.slice(0, 3).map(item => typeof item === 'string' ? item : (item.item || item.text || item.risk || 'Open issue')),
-              ...reviewFindings.slice(0, 3).map(item => `${item.display_label || item.field_key} needs review`)]
-              .map((item, index) => (
-                <div key={`${item}-${index}`} className="flex items-start gap-2.5 px-5 py-3">
-                  <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-amber-500" />
-                  <p className="text-xs leading-relaxed text-gray-700">{item}</p>
-                </div>
-              ))}
-          </div>
-        ) : (
-          <p className="px-5 py-4 text-xs text-gray-400">Kontra will surface exceptions as documents and participant submissions are reviewed.</p>
-        )}
-      </section>
-
-      <RoomCopilot propertyId={propertyId} briefing={briefing} />
     </div>
   );
 }
@@ -4655,6 +4863,9 @@ export default function DealRoomPage() {
 
           /* ── Coordinator tabbed layout ────────────────────────────────── */
           <>
+            {/* Floating AI button — persists across all coordinator tabs */}
+            <RoomCopilot propertyId={pid} />
+
             {activeTab === 'overview' && (
               <CoordinatorOverview
                   propertyId={pid}
