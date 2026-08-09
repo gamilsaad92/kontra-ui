@@ -7254,7 +7254,7 @@ app.post('/api/public/deal-room/:propertyId/brain/ask', async (req, res) => {
         .select('id', { count: 'exact', head: true })
         .eq('property_id', propertyId),
       supabase.from('transaction_record_fields')
-        .select('field_key, display_label, value_text, status, source_document, source_page')
+        .select('field_key, display_label, value_text, status, source_doc_id, source_page')
         .eq('property_id', propertyId),
       supabase.from('deal_room_invites')
         .select('role_key, status')
@@ -7294,7 +7294,7 @@ NEEDS REVIEW: ${needsReview.length}
 DIGITAL ASSET READINESS BY CATEGORY:
 ${catStatus}
 
-${populated.length > 0 ? `KNOWN FACTS (up to 20):\n${populated.slice(0, 20).map(f => `• ${f.display_label || f.field_key}: ${f.value_text}${f.source_document ? ` (from ${f.source_document}${f.source_page ? `, page ${f.source_page}` : ''})` : ''}`).join('\n')}` : '(No facts have been extracted yet — no documents have been uploaded or analyzed.)'}
+${populated.length > 0 ? `KNOWN FACTS (up to 20):\n${populated.slice(0, 20).map(f => `• ${f.display_label || f.field_key}: ${f.value_text}${f.source_page ? ` (page ${f.source_page})` : ''}`).join('\n')}` : '(No facts have been extracted yet — no documents have been uploaded or analyzed.)'}
 
 ${conflicts.length > 0 ? `CONFLICTS TO RESOLVE:\n${conflicts.map(f => `• ${f.display_label || f.field_key}: conflicting sources — needs coordinator review`).join('\n')}` : ''}
 
@@ -7332,7 +7332,7 @@ app.get('/api/public/deal-room/:propertyId/brain/briefing', async (req, res) => 
   try {
     const [{ data: fields }, { count: docCount }] = await Promise.all([
       supabase.from('transaction_record_fields')
-        .select('field_key, display_label, value_text, status, source_document')
+        .select('field_key, display_label, value_text, status, source_doc_id')
         .eq('property_id', propertyId),
       supabase.from('deal_analyses')
         .select('id', { count: 'exact', head: true })
