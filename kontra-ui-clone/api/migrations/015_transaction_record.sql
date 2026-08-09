@@ -75,6 +75,40 @@ DO $$ BEGIN
   END IF;
 END $$;
 
+-- Field history for every extraction, edit, confirmation, conflict, and
+-- applicability decision. The current row remains the source of truth; this
+-- table preserves how it got there.
+CREATE TABLE IF NOT EXISTS transaction_record_history (
+  id                    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  field_id              UUID NOT NULL REFERENCES transaction_record_fields(id) ON DELETE CASCADE,
+  property_id           TEXT NOT NULL,
+  event_type            TEXT NOT NULL CHECK (event_type IN (
+    'extracted','manual_edit','confirmed','marked_not_applicable',
+    'conflict','source_changed'
+  )),
+  actor_email           TEXT,
+  actor_role            TEXT,
+  prior_value           TEXT,
+  new_value             TEXT,
+  prior_status          TEXT,
+  new_status            TEXT,
+  source_doc_id         UUID,
+  source_page           INTEGER,
+  source_excerpt        TEXT,
+  metadata              JSONB,
+  created_at            TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_trh_field     ON transaction_record_history (field_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_trh_property  ON transaction_record_history (property_id, created_at DESC);
+
+ALTER TABLE transaction_record_history ENABLE ROW LEVEL SECURITY;
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename='transaction_record_history' AND policyname='service_role_trh') THEN
+    CREATE POLICY "service_role_trh" ON transaction_record_history FOR ALL USING (true);
+  END IF;
+END $$;
+
 -- Add extraction columns to deal_analyses (additive — existing rows get NULL)
 ALTER TABLE deal_analyses ADD COLUMN IF NOT EXISTS extracted_fields JSONB;
 ALTER TABLE deal_analyses ADD COLUMN IF NOT EXISTS extraction_version INTEGER DEFAULT 1;

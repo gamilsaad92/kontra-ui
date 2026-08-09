@@ -35,6 +35,18 @@ function StatusBadge({ status }) {
   );
 }
 
+function formatHistoryEvent(event) {
+  const labels = {
+    extracted: "Extracted from document",
+    manual_edit: "Entered or edited manually",
+    confirmed: "Confirmed",
+    marked_not_applicable: "Marked not applicable",
+    conflict: "Conflicting source detected",
+    source_changed: "Source changed after confirmation",
+  };
+  return labels[event] || event;
+}
+
 function InfoTooltip({ text }) {
   const [show, setShow] = useState(false);
   return (
@@ -208,6 +220,28 @@ function FieldRow({ field, isCoordinator, propertyId, ownerToken, onUpdated, dep
   const [editNotes, setEditNotes] = useState(field.notes || "");
   const [saving,    setSaving]    = useState(false);
   const [verifying, setVerifying] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [history, setHistory] = useState([]);
+
+  async function loadHistory() {
+    if (historyOpen) {
+      setHistoryOpen(false);
+      return;
+    }
+    setHistoryOpen(true);
+    if (history.length > 0) return;
+    setHistoryLoading(true);
+    try {
+      const res = await fetch(
+        `${API_BASE}/api/public/deal-room/${propertyId}/transaction-record/fields/${field.id}/history`,
+        { headers: ownerToken ? { "x-owner-write-token": ownerToken } : {} }
+      );
+      if (res.ok) setHistory((await res.json()).history || []);
+    } finally {
+      setHistoryLoading(false);
+    }
+  }
 
   async function saveField() {
     if (!ownerToken) return;
@@ -273,7 +307,7 @@ function FieldRow({ field, isCoordinator, propertyId, ownerToken, onUpdated, dep
             {isInactive ? (
               <p className="text-xs text-gray-400 italic">Not applicable — the related workflow item is not needed</p>
             ) : isEmpty ? (
-              <p className="text-xs text-gray-400 italic">Not yet collected</p>
+              <p className="text-xs text-gray-400 italic">Missing — not yet collected</p>
             ) : (
               <p className="text-xs text-gray-800 leading-relaxed">{field.value_text}</p>
             )}
@@ -292,6 +326,36 @@ function FieldRow({ field, isCoordinator, propertyId, ownerToken, onUpdated, dep
             )}
             {isConfirmed && confirmedByLine() && (
               <p className="text-[10px] text-green-600 mt-0.5">{confirmedByLine()}</p>
+            )}
+            {historyOpen && (
+              <div className="mt-2 rounded-lg border border-gray-100 bg-gray-50 px-3 py-2">
+                {historyLoading ? (
+                  <p className="text-[10px] text-gray-400">Loading field history…</p>
+                ) : history.length === 0 ? (
+                  <p className="text-[10px] text-gray-400">No history recorded yet.</p>
+                ) : (
+                  <div className="space-y-2">
+                    {history.map(item => (
+                      <div key={item.id} className="text-[10px] text-gray-500">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="font-semibold text-gray-700">{formatHistoryEvent(item.event_type)}</span>
+                          <span>{item.created_at ? new Date(item.created_at).toLocaleString() : ""}</span>
+                        </div>
+                        {(item.prior_value || item.new_value) && (
+                          <p className="mt-0.5">
+                            {item.prior_value ? `"${item.prior_value}" → ` : ""}{item.new_value || "—"}
+                          </p>
+                        )}
+                        {(item.source_page || item.source_excerpt) && (
+                          <p className="text-gray-400">
+                            Source{item.source_page ? ` · p.${item.source_page}` : ""}{item.source_excerpt ? ` · "${item.source_excerpt.slice(0, 90)}"` : ""}
+                          </p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             )}
           </div>
           {isCoordinator && !isNA && !isInactive && (
@@ -312,7 +376,17 @@ function FieldRow({ field, isCoordinator, propertyId, ownerToken, onUpdated, dep
                   N/A
                 </button>
               )}
+              <button onClick={loadHistory}
+                className="text-[10px] font-medium text-gray-400 hover:text-gray-700 px-1 py-1 rounded-lg hover:bg-gray-100 transition">
+                {historyOpen ? "Hide history" : "History"}
+              </button>
             </div>
+          )}
+          {!isCoordinator && (
+            <button onClick={loadHistory}
+              className="text-[10px] font-medium text-gray-400 hover:text-gray-700 px-1 py-1 rounded-lg hover:bg-gray-100 transition shrink-0">
+              {historyOpen ? "Hide history" : "History"}
+            </button>
           )}
         </div>
       ) : (
@@ -422,7 +496,7 @@ function SeededFieldRow({ field, isCoordinator, propertyId, ownerToken, onUpdate
               ) : hasValue ? (
                 <p className="text-xs text-gray-800">{field.value}</p>
               ) : (
-                <p className="text-xs text-gray-400">Not provided</p>
+                <p className="text-xs text-gray-400">Missing — not yet collected</p>
               )}
               {!hasValue && field.sources?.length > 0 && (
                 <p className="text-[10px] text-gray-300 mt-0.5">
@@ -739,6 +813,10 @@ export default function AssetRecordTab({
   }, [propertyId, ownerToken]);
 
   useEffect(() => { load(); }, [load, refreshKey]);
+  useEffect(() => {
+    const interval = setInterval(() => load(), 10000);
+    return () => clearInterval(interval);
+  }, [load]);
 
   async function triggerExtract() {
     if (!ownerToken) return;

@@ -3002,6 +3002,74 @@ function canonicalTransactionRecordKey(fieldKey) {
   return TRANSACTION_RECORD_CANONICAL_KEYS[fieldKey] || fieldKey;
 }
 
+const TRANSACTION_RECORD_DEPENDENCIES = {
+  'transaction.financing_contingency': [
+    'parties.lender',
+    'financial.proposed_financing',
+    'financial.required_equity',
+    'approval.lender',
+  ],
+};
+
+async function recordTransactionFieldHistory({
+  fieldId, propertyId, eventType, actorEmail = null, actorRole = null,
+  priorValue = null, newValue = null, priorStatus = null, newStatus = null,
+  sourceDocId = null, sourcePage = null, sourceExcerpt = null, metadata = null,
+}) {
+  const { error } = await supabase.from('transaction_record_history').insert({
+    field_id: fieldId,
+    property_id: propertyId,
+    event_type: eventType,
+    actor_email: actorEmail,
+    actor_role: actorRole,
+    prior_value: priorValue,
+    new_value: newValue,
+    prior_status: priorStatus,
+    new_status: newStatus,
+    source_doc_id: sourceDocId,
+    source_page: sourcePage,
+    source_excerpt: sourceExcerpt,
+    metadata,
+  });
+  if (error) {
+    // The history table is additive and may not be present until migration 015
+    // is applied in an environment. Never let audit persistence interrupt the
+    // current Transaction Record write or document extraction.
+    console.warn('[transaction-record history]', error.message);
+    return false;
+  }
+  return true;
+}
+
+async function markDependentTransactionFieldsNotApplicable(propertyId, dependencyKey, actorEmail = 'coordinator', actorRole = 'Deal Coordinator') {
+  const dependentKeys = TRANSACTION_RECORD_DEPENDENCIES[dependencyKey] || [];
+  if (!dependentKeys.length) return;
+  const { data: dependents } = await supabase
+    .from('transaction_record_fields')
+    .select('id, field_key, value_text, status')
+    .eq('property_id', propertyId)
+    .in('field_key', dependentKeys);
+  for (const field of dependents || []) {
+    if (field.status === 'not_applicable') continue;
+    await supabase.from('transaction_record_fields').update({
+      status: 'not_applicable',
+      value_text: null,
+      updated_at: new Date().toISOString(),
+    }).eq('id', field.id).eq('property_id', propertyId);
+    await recordTransactionFieldHistory({
+      fieldId: field.id,
+      propertyId,
+      eventType: 'marked_not_applicable',
+      actorEmail,
+      actorRole,
+      priorValue: field.value_text,
+      priorStatus: field.status,
+      newStatus: 'not_applicable',
+      metadata: { reason: 'dependency_not_applicable', dependencyKey },
+    });
+  }
+}
+
 async function extractTransactionFields(propertyId, docId, text, sectionLabel) {
   if (!text || text.trim().length < 50) return;
   try {
@@ -3030,30 +3098,53 @@ async function extractTransactionFields(propertyId, docId, text, sectionLabel) {
       const canonicalKey = canonicalTransactionRecordKey(String(f.field_key));
       const { data: existing } = await supabase
         .from('transaction_record_fields')
-        .select('id, status, value_text')
+        .select('id, status, value_text, verified_by, verified_role')
         .eq('property_id', propertyId)
         .eq('field_key', canonicalKey)
         .maybeSingle();
 
-      if (existing?.status === 'verified') continue; // never overwrite verified
+      const priorValue = existing?.value_text || null;
+      const priorStatus = existing?.status || null;
+      const differs = existing?.value_text && existing.value_text !== f.value_text;
+      const eventType = existing?.status === 'verified' && differs
+        ? 'source_changed'
+        : differs ? 'conflict' : 'extracted';
+      const nextStatus = eventType === 'source_changed'
+        ? 'source_changed'
+        : eventType === 'conflict' ? 'conflicting' : 'extracted';
+      const nextValue = eventType === 'source_changed'
+        ? existing.value_text
+        : String(f.value_text).slice(0, 2000);
 
-      const isConflict = existing && existing.status === 'extracted'
-        && existing.value_text && existing.value_text !== f.value_text;
-
-      await supabase.from('transaction_record_fields').upsert({
+      const { data: savedField, error: saveError } = await supabase.from('transaction_record_fields').upsert({
         property_id:    propertyId,
         field_key:      canonicalKey,
         field_category: f.field_category,
         display_label:  f.display_label || canonicalKey,
-        value_text:     String(f.value_text).slice(0, 2000),
-        status:         isConflict ? 'conflicting' : 'extracted',
+        value_text:     nextValue,
+        status:         nextStatus,
         confidence:     f.confidence != null ? Math.min(1, Math.max(0, parseFloat(f.confidence))) : null,
         source_doc_id:  docId || null,
         source_page:    f.source_page || null,
         source_excerpt: f.source_excerpt ? String(f.source_excerpt).slice(0, 200) : null,
         extracted_by:   'ai',
+        extraction_timestamp: new Date().toISOString(),
         updated_at:     new Date().toISOString(),
-      }, { onConflict: 'property_id,field_key', ignoreDuplicates: false });
+      }, { onConflict: 'property_id,field_key', ignoreDuplicates: false }).select('id').single();
+      if (saveError) throw saveError;
+      await recordTransactionFieldHistory({
+        fieldId: savedField.id,
+        propertyId,
+        eventType,
+        priorValue,
+        newValue: String(f.value_text).slice(0, 2000),
+        priorStatus,
+        newStatus: nextStatus,
+        sourceDocId: docId || null,
+        sourcePage: f.source_page || null,
+        sourceExcerpt: f.source_excerpt ? String(f.source_excerpt).slice(0, 200) : null,
+        metadata: { sectionLabel },
+      });
     }
     console.log(`[tx-record] extracted ${extracted.length} fields for ${propertyId} (${sectionLabel})`);
   } catch (err) {
@@ -6421,6 +6512,25 @@ app.get('/api/public/deal-room/:propertyId/transaction-record', async (req, res)
   }
 });
 
+app.get('/api/public/deal-room/:propertyId/transaction-record/fields/:fieldId/history', async (req, res) => {
+  const { propertyId, fieldId } = req.params;
+  try {
+    const access = await getRoomAccessContext(req, propertyId);
+    if (access.mode === 'anonymous') return accessDenied(res);
+    const { data, error } = await supabase
+      .from('transaction_record_history')
+      .select('*')
+      .eq('property_id', propertyId)
+      .eq('field_id', fieldId)
+      .order('created_at', { ascending: false });
+    if (error) throw error;
+    res.json({ history: data || [] });
+  } catch (err) {
+    console.error('[transaction-record history GET]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.patch('/api/public/deal-room/:propertyId/transaction-record/fields/:fieldId', async (req, res) => {
   const { propertyId, fieldId } = req.params;
   const { value_text, notes, status, ownerWriteToken } = req.body || {};
@@ -6432,12 +6542,42 @@ app.patch('/api/public/deal-room/:propertyId/transaction-record/fields/:fieldId'
   if (notes !== undefined)      update.notes = String(notes).slice(0, 500);
   if (status && ALLOWED_STATUSES.includes(status)) update.status = status;
   try {
+    const { data: existing } = await supabase
+      .from('transaction_record_fields')
+      .select('id, field_key, value_text, status')
+      .eq('id', fieldId)
+      .eq('property_id', propertyId)
+      .maybeSingle();
+    if (!existing) return res.status(404).json({ error: 'Transaction Record field not found' });
     const { error } = await supabase
       .from('transaction_record_fields')
       .update(update)
       .eq('id', fieldId)
       .eq('property_id', propertyId);
     if (error) throw error;
+    const nextStatus = update.status || existing.status;
+    const nextValue = update.value_text !== undefined ? update.value_text : existing.value_text;
+    const eventType = nextStatus === 'not_applicable'
+      ? 'marked_not_applicable'
+      : nextStatus === 'conflicting'
+        ? 'conflict'
+        : nextValue !== existing.value_text ? 'manual_edit' : null;
+    if (eventType) {
+      await recordTransactionFieldHistory({
+        fieldId,
+        propertyId,
+        eventType,
+        actorEmail: access.email || 'coordinator',
+        actorRole: 'Deal Coordinator',
+        priorValue: existing.value_text,
+        newValue: nextValue,
+        priorStatus: existing.status,
+        newStatus: nextStatus,
+      });
+    }
+    if (nextStatus === 'not_applicable') {
+      await markDependentTransactionFieldsNotApplicable(propertyId, existing.field_key, access.email || 'coordinator');
+    }
     res.json({ ok: true });
   } catch (err) {
     console.error('[transaction-record PATCH]', err.message);
@@ -6457,10 +6597,21 @@ app.post('/api/public/deal-room/:propertyId/transaction-record/fields/:fieldId/v
       .from('transaction_record_fields')
       .select('id').eq('id', fieldId).eq('property_id', propertyId).maybeSingle();
     if (fErr) throw fErr;
+    const { data: existing } = await supabase.from('transaction_record_fields')
+      .select('id, value_text, status')
+      .eq('id', fieldId).eq('property_id', propertyId).maybeSingle();
+    if (!existing) return res.status(404).json({ error: 'Transaction Record field not found' });
+    const nextValue = existing.value_text;
     await supabase.from('transaction_record_fields').update({
       status: 'verified', verified_by: email,
       verified_at: new Date().toISOString(), updated_at: new Date().toISOString(),
     }).eq('id', fieldId).eq('property_id', propertyId);
+    await recordTransactionFieldHistory({
+      fieldId, propertyId, eventType: 'confirmed',
+      actorEmail: email, actorRole: actorRole || 'coordinator',
+      priorValue: existing.value_text, newValue: nextValue,
+      priorStatus: existing.status, newStatus: 'verified',
+    });
     await supabase.from('transaction_record_approvals').insert({
       field_id: fieldId, property_id: propertyId,
       action: 'approved', actor_email: email, actor_role: actorRole || 'coordinator',
@@ -6483,9 +6634,9 @@ app.post('/api/public/deal-room/:propertyId/transaction-record/fields', async (r
   const now = new Date().toISOString();
   try {
     // Try update first (in case a record already exists for this key)
-    const { data: existing } = await supabase
+      const { data: existing } = await supabase
       .from('transaction_record_fields')
-      .select('id')
+        .select('id, field_key, value_text, status')
       .eq('property_id', propertyId)
       .eq('field_key', field_key)
       .maybeSingle();
@@ -6497,6 +6648,27 @@ app.post('/api/public/deal-room/:propertyId/transaction-record/fields', async (r
       else if (value_text) update.status = 'needs_review';
       const { error } = await supabase.from('transaction_record_fields').update(update).eq('id', existing.id);
       if (error) throw error;
+        const nextStatus = update.status || (value_text ? 'needs_review' : existing.status);
+        const nextValue = value_text !== undefined ? String(value_text).slice(0, 2000) : existing.value_text;
+        const eventType = nextStatus === 'not_applicable'
+          ? 'marked_not_applicable'
+          : nextValue !== existing.value_text ? 'manual_edit' : null;
+        if (eventType) {
+          await recordTransactionFieldHistory({
+            fieldId: existing.id,
+            propertyId,
+            eventType,
+            actorEmail: access.email || 'coordinator',
+            actorRole: 'Deal Coordinator',
+            priorValue: existing.value_text,
+            newValue: nextValue,
+            priorStatus: existing.status,
+            newStatus: nextStatus,
+          });
+        }
+        if (nextStatus === 'not_applicable') {
+          await markDependentTransactionFieldsNotApplicable(propertyId, field_key, access.email || 'coordinator');
+        }
       return res.json({ ok: true, action: 'updated', id: existing.id });
     }
     // Insert new
@@ -6514,6 +6686,19 @@ app.post('/api/public/deal-room/:propertyId/transaction-record/fields', async (r
     };
     const { data, error } = await supabase.from('transaction_record_fields').insert(insert).select('id').single();
     if (error) throw error;
+    const eventType = insert.status === 'not_applicable' ? 'marked_not_applicable' : 'manual_edit';
+    await recordTransactionFieldHistory({
+      fieldId: data.id,
+      propertyId,
+      eventType,
+      actorEmail: access.email || 'coordinator',
+      actorRole: 'Deal Coordinator',
+      newValue: insert.value_text,
+      newStatus: insert.status,
+    });
+    if (insert.status === 'not_applicable') {
+      await markDependentTransactionFieldsNotApplicable(propertyId, field_key, access.email || 'coordinator');
+    }
     res.json({ ok: true, action: 'created', id: data?.id });
   } catch (err) {
     console.error('[transaction-record POST field]', err.message);
@@ -6565,6 +6750,65 @@ app.post('/api/public/deal-room/:propertyId/transaction-record/extract', async (
       console.warn('[tx-record re-extract outer]', err.message);
     }
   })();
+});
+
+// ── Optional digital-asset preparation request ────────────────────────────────
+// Uses the background transaction record without exposing token economics or a
+// tokenization workflow in the deal-room UI. The response intentionally reports
+// only missing facts that the owner can supply before an external handoff.
+app.post('/api/public/deal-room/:propertyId/digital-asset-prep', async (req, res) => {
+  const { propertyId } = req.params;
+  const { ownerWriteToken } = req.body || {};
+  const access = await getRoomAccessContext(req, propertyId, ownerWriteToken);
+  if (access.mode !== 'owner') return accessDenied(res, 'Owner access required');
+
+  try {
+    const [{ data: room, error: roomErr }, { data: fields, error: fieldsErr }] = await Promise.all([
+      supabase.from('deal_rooms').select('metadata_values').eq('property_id', propertyId).maybeSingle(),
+      supabase.from('transaction_record_fields')
+        .select('field_key, display_label, value_text, status')
+        .eq('property_id', propertyId)
+        .order('display_label', { ascending: true }),
+    ]);
+    if (roomErr) throw roomErr;
+    if (fieldsErr) throw fieldsErr;
+    if (!room) return res.status(404).json({ error: 'room not found' });
+
+    const recordFields = fields || [];
+    const missing = recordFields
+      .filter(field => field.status !== 'not_applicable' && !String(field.value_text || '').trim())
+      .slice(0, 12)
+      .map(field => ({
+        field_key: field.field_key,
+        label: field.display_label || field.field_key,
+      }));
+    const now = new Date().toISOString();
+    const metadata = {
+      ...(room.metadata_values || {}),
+      digital_asset_prep_requested: true,
+      digital_asset_prep_requested_at: now,
+    };
+    const { error: updateErr } = await supabase
+      .from('deal_rooms')
+      .update({ metadata_values: metadata })
+      .eq('property_id', propertyId);
+    if (updateErr) throw updateErr;
+
+    logEvent(propertyId, 'digital_asset_prep_requested', 'owner', null, 'Digital asset preparation requested', {
+      missing_count: missing.length,
+    });
+
+    res.json({
+      ok: true,
+      status: missing.length > 0 ? 'needs_information' : 'prepared',
+      missing,
+      prepared_field_count: recordFields.length - missing.length,
+      requested_at: now,
+    });
+  } catch (err) {
+    console.error('[digital-asset-prep]', err.message);
+    res.status(500).json({ error: err.message });
+  }
 });
 
 app.use((err, req, res, next) => {

@@ -16,3 +16,4 @@
 - [Kontra strategic direction](kontra-strategic-direction.md) — own pre-settlement transaction operations; keep tokenization downstream and adapter-based
 - [Kontra product boundary](kontra-product-boundary.md) — coordinates/verifies/prepares only; never issues, sells, recommends, or settles; DA capability = "Digital Asset Readiness", not "Tokenization Engine"
 - [Kontra Transaction Record semantics](kontra-transaction-record-semantics.md) — use canonical field keys, distinguish workflow-required from suggested/expected, and make dependent fields non-applicable when their prerequisite is N/A
+- [Kontra Supabase migrations](kontra-supabase-migrations.md) — use the management SQL endpoint when the attached Supabase REST connector returns an invalid-URL proxy error

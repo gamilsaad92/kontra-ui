@@ -122,7 +122,7 @@ export default function SharedVAPPage() {
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="flex flex-col items-center gap-3">
           <div className="w-10 h-10 rounded-xl bg-gray-100 animate-pulse flex items-center justify-center text-xl">📦</div>
-          <p className="text-sm text-gray-400">Loading Verified Transaction Package…</p>
+          <p className="text-sm text-gray-400">Loading AI-prepared transaction package…</p>
         </div>
       </div>
     );
@@ -135,7 +135,7 @@ export default function SharedVAPPage() {
           <p className="text-3xl mb-3">🔒</p>
           <p className="text-base font-bold text-gray-900 mb-2">Link Unavailable</p>
           <p className="text-sm text-gray-500 mb-1">{error || "This link is invalid or has expired."}</p>
-          <p className="text-xs text-gray-400">Verified Transaction Package links are valid for 30 days. Contact the deal owner for a new link.</p>
+          <p className="text-xs text-gray-400">AI-prepared package links are valid for 30 days. Contact the deal owner for a new link.</p>
         </div>
       </div>
     );
@@ -171,7 +171,7 @@ export default function SharedVAPPage() {
                   style={{ background: ACCENT + "15" }}>📦</div>
                 <div>
                   <div className="flex items-center gap-2 flex-wrap">
-                    <p className="text-base font-bold text-gray-900">Verified Transaction Package</p>
+                    <p className="text-base font-bold text-gray-900">AI-prepared transaction package</p>
                     <StatusBadge status={v.status} />
                   </div>
                   <p className="text-xs text-gray-500 mt-0.5">{v.headline}</p>
@@ -263,8 +263,8 @@ export default function SharedVAPPage() {
               )}
             </Section>
 
-            {/* 3 — Transaction Record */}
-            <Section title="Transaction Record" icon="📜">
+            {/* 3 — Structured transaction record */}
+            <Section title="Structured transaction record" icon="📜">
               <div className="grid grid-cols-3 gap-2 mb-4">
                 {[
                   { label: "Documents", value: tr.documents?.length || 0 },

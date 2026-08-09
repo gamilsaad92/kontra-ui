@@ -10,11 +10,8 @@ import TasksPanel from "./TasksPanel";
 import AIBriefingPanel from "./AIBriefingPanel";
 import ParticipantsPanel from "./ParticipantsPanel";
 import DocumentsTabPanel from "./DocumentsTabPanel";
-import VerifiedAssetPackage from "./VerifiedAssetPackage";
 import NotificationsLog from "./NotificationsLog";
 import LegalReviewPanel from "./LegalReviewPanel";
-import AssetRecordTab from "./AssetRecordTab";
-import DigitalAssetReadinessWorkflow from "./DigitalAssetReadinessWorkflow";
 import { DEFAULT_PACK_ID, getWorkflowPack, ensureWorkflowPackLoaded, resolvePackId } from "../../lib/workflowPacks";
 import { API_BASE as RESOLVED_API_BASE } from "../../lib/apiBase";
 import DealRoomPinGate from "./DealRoomPinGate";
@@ -1012,6 +1009,7 @@ function parseNumericField(val) {
 
 function RiskUploadPanel({ property, propertyId, refreshKey }) {
   const { analyses } = useDealAnalyses(propertyId, refreshKey);
+  const [recordFields, setRecordFields] = useState([]);
   const [status, setStatus] = useState("idle");
   const [result, setResult] = useState(null);
   const [errorMsg, setErrorMsg] = useState("");
@@ -1026,16 +1024,30 @@ function RiskUploadPanel({ property, propertyId, refreshKey }) {
   // Auto-fill from documents already uploaded and analyzed elsewhere in the deal
   // room — nobody should have to retype numbers the AI already extracted.
   useEffect(() => {
-    if (!analyses.length) return;
+    fetch(`${API_BASE}/api/public/deal-room/${propertyId}/transaction-record`, {
+      headers: getRoomAuthHeaders(propertyId),
+    })
+      .then(res => res.ok ? res.json() : { fields: [] })
+      .then(data => setRecordFields(data.fields || []))
+      .catch(() => setRecordFields([]));
+  }, [propertyId, refreshKey]);
+
+  useEffect(() => {
+    if (!analyses.length && !recordFields.length) return;
     const bySection = {};
     for (const a of analyses) if (!bySection[a.section]) bySection[a.section] = a.analysis;
     const fin = bySection.financials;
     const pa = bySection.purchase_agreement;
     const rr = bySection.rent_roll;
 
-    const derivedAskingPrice = parseNumericField(pa?.purchasePrice);
-    const derivedOccupancy = parseNumericField(fin?.occupancy) || parseNumericField(rr?.occupancyRate);
-    const derivedUnits = parseNumericField(rr?.totalUnits);
+    const recordValue = key => {
+      const field = recordFields.find(item => item.field_key === key && item.status !== "not_applicable");
+      return field?.value_text || "";
+    };
+    const derivedAskingPrice = parseNumericField(recordValue("transaction.purchase_price")) || parseNumericField(pa?.purchasePrice);
+    const derivedOccupancy = parseNumericField(recordValue("financial.occupancy")) ||
+      parseNumericField(fin?.occupancy) || parseNumericField(rr?.occupancyRate);
+    const derivedUnits = parseNumericField(recordValue("asset.room_count")) || parseNumericField(rr?.totalUnits);
 
     setForm(f => {
       const next = {
@@ -1047,7 +1059,7 @@ function RiskUploadPanel({ property, propertyId, refreshKey }) {
       if (derivedAskingPrice || derivedOccupancy) setAutoFilled(true);
       return next;
     });
-  }, [analyses]);
+  }, [analyses, recordFields]);
 
   const types = ["Multifamily", "Office", "Retail", "Industrial", "Mixed-Use", "Hospitality", "Self-Storage", "Other"];
 
@@ -1189,8 +1201,17 @@ function useDealAnalyses(propertyId, refreshKey) {
 // Saves to `metadata_values` JSONB column via PATCH …/:propertyId/metadata.
 // Auth: owner write token read from localStorage (same pattern as stages PATCH).
 function TransactionDetailsPanel({ property, propertyId, pack }) {
-  const fields = (pack?.metadataFields && pack.metadataFields.length > 0)
-    ? pack.metadataFields
+  const isLegacyTokenPack = pack?.id === 'tokenization' || pack?.transactionType === 'tokenization';
+  const hiddenLaunchFields = new Set([
+    'asset_type', 'raise_amount', 'raise_target', 'token_price',
+    'min_investment', 'token_name', 'token_symbol', 'total_supply',
+    'total_token_supply', 'asset_valuation', 'pct_tokenized', 'cap_table_rows',
+  ]);
+  const packFields = isLegacyTokenPack
+    ? (pack?.metadataFields || []).filter(field => !hiddenLaunchFields.has(field.id))
+    : (pack?.metadataFields || []);
+  const fields = (packFields.length > 0)
+    ? packFields
     : [
         { id: "workspace_name",    label: "Deal Room Name",        fieldType: "text",     fullWidth: true, placeholder: property?.property_name || "" },
         { id: "transaction_value", label: "Transaction Value ($)", fieldType: "currency", placeholder: "e.g. 1000000" },
@@ -1198,7 +1219,7 @@ function TransactionDetailsPanel({ property, propertyId, pack }) {
         { id: "notes",             label: "Notes",                fieldType: "text",     fullWidth: true, placeholder: "Any additional context for this deal room…" },
       ];
 
-  const sectionTitle = pack?.metadataLabel || "Transaction Details";
+  const sectionTitle = isLegacyTokenPack ? "Deal Room Details" : (pack?.metadataLabel || "Transaction Details");
 
   // Seed initial form values from saved metadata_values; backfill legacy
   // stated_revenue / stated_ebitda columns for rooms created before this feature.
@@ -1454,7 +1475,7 @@ function DigitalAssetTogglePanel({ propertyId, property, pack, onEnabledChange }
         <div className="flex-1 min-w-0">
           <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-1">Digital Asset Preparation</p>
           <p className="text-[11px] text-gray-400 leading-snug">
-            Adds token-issuance preparation to this deal room, including the digital asset readiness tracker.
+             Adds an optional preparation request to this deal room. Kontra will use the facts already collected and ask only for missing information.
           </p>
         </div>
         <div className="flex items-center gap-2.5 shrink-0 mt-0.5">
@@ -1732,6 +1753,7 @@ function AssetReadinessTab({ propertyId, property, pack, onTabChange }) {
   const [checklistItems, setChecklistItems] = React.useState([]);
   const [events,         setEvents]         = React.useState([]);
   const [coordination,   setCoordination]   = React.useState(null);
+  const [recordFields,   setRecordFields]   = React.useState([]);
 
   React.useEffect(() => {
     if (!propertyId) return;
@@ -1739,10 +1761,12 @@ function AssetReadinessTab({ propertyId, property, pack, onTabChange }) {
       fetch(`${API_BASE}/api/public/deal-room/${propertyId}/checklist`, { headers: getRoomAuthHeaders(propertyId) }).then(r => r.ok ? r.json() : { items: [] }).catch(() => ({ items: [] })),
       fetch(`${API_BASE}/api/public/deal-room/${propertyId}/events`, { headers: getRoomAuthHeaders(propertyId) }).then(r => r.ok ? r.json() : { events: [] }).catch(() => ({ events: [] })),
       fetch(`${API_BASE}/api/public/deal-room/${propertyId}/coordination`, { headers: getRoomAuthHeaders(propertyId) }).then(r => r.ok ? r.json() : null).catch(() => null),
-    ]).then(([ck, ev, coord]) => {
+      fetch(`${API_BASE}/api/public/deal-room/${propertyId}/transaction-record`, { headers: getRoomAuthHeaders(propertyId) }).then(r => r.ok ? r.json() : { fields: [] }).catch(() => ({ fields: [] })),
+    ]).then(([ck, ev, coord, record]) => {
       setChecklistItems(Array.isArray(ck?.items) ? ck.items : []);
       setEvents(ev?.events || []);
       setCoordination(coord);
+      setRecordFields(record?.fields || []);
     });
   }, [propertyId]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -1761,11 +1785,23 @@ function AssetReadinessTab({ propertyId, property, pack, onTabChange }) {
   const packName      = pack?.name || 'Transaction';
   const isAssetPack   = isDigitalAssetLayerEnabled(property, pack);
   const DONE          = new Set(['uploaded', 'approved', 'ai_complete']);
+  const recordValue = (...keys) => {
+    const field = recordFields.find(item =>
+      keys.includes(item.field_key) && item.status !== 'not_applicable'
+    );
+    return field?.value_text || '';
+  };
 
   // ── Category scores ─────────────────────────────────────────────────────────
   // 1. Ownership Structure
-  const hasOwnerName = !!(property?.first_name || property?.entity_name || metaValues?.issuer_name);
-  const hasOwnerData = !!(metaValues?.lead_investor || metaValues?.investor_token_pct || metaValues?.team_token_pct);
+  const hasOwnerName = !!(
+    recordValue('asset.ownership_entity', 'ownership.acquiring_entity', 'asset.issuer') ||
+    property?.first_name || property?.entity_name || metaValues?.issuer_name
+  );
+  const hasOwnerData = !!(
+    recordValue('ownership.cap_table', 'ownership.beneficial_owners') ||
+    metaValues?.lead_investor || metaValues?.investor_token_pct || metaValues?.team_token_pct
+  );
   const ownershipPct  = (hasOwnerName ? 50 : 0) + (hasOwnerData ? 50 : 0);
   const ownershipMiss = [
     ...(!hasOwnerName ? ['Owner / entity name not recorded'] : []),
@@ -1781,7 +1817,10 @@ function AssetReadinessTab({ propertyId, property, pack, onTabChange }) {
   // 3. Financial Completeness
   const finItems  = checklistItems.filter(i => i.category === 'Financial' || (i.section || '').toLowerCase().includes('financial'));
   const finDone   = finItems.filter(i => DONE.has(i.status));
-  const hasFinMeta = !!(metaValues?.raise_amount || metaValues?.stated_revenue || metaValues?.stated_ebitda || metaValues?.token_price);
+  const hasFinMeta = !!(
+    recordValue('financial.noi', 'financial.revenue', 'financial.ebitda', 'financial.target_raise') ||
+    metaValues?.raise_amount || metaValues?.stated_revenue || metaValues?.stated_ebitda || metaValues?.token_price
+  );
   const finPct    = finItems.length > 0
     ? Math.min(Math.round((finDone.length / finItems.length) * 80 + (hasFinMeta ? 20 : 0)), 100)
     : hasFinMeta ? 50 : docCount > 2 ? 25 : 0;
@@ -1814,7 +1853,7 @@ function AssetReadinessTab({ propertyId, property, pack, onTabChange }) {
   // 7. Compliance
   const regItems  = checklistItems.filter(i => i.category === 'Regulatory' || (i.section || '').toLowerCase().includes('regulatory'));
   const regDone   = regItems.filter(i => DONE.has(i.status));
-  const hasJur    = !!property?.jurisdiction;
+  const hasJur    = !!(recordValue('transaction.jurisdiction') || property?.jurisdiction);
   const compPct   = regItems.length > 0
     ? Math.round((hasJur ? 30 : 0) + 70 * (regDone.length / regItems.length))
     : hasJur ? 40 : 0;
@@ -1874,13 +1913,17 @@ function AssetReadinessTab({ propertyId, property, pack, onTabChange }) {
 
   // ── Asset Passport ──────────────────────────────────────────────────────────
   const ownerName  = [property?.first_name, property?.last_name].filter(Boolean).join(' ') || property?.entity_name || metaValues?.issuer_name || '—';
-  const closingDate = property?.target_close_date || metaValues?.target_close_date || null;
+  const closingDate = recordValue('transaction.closing_date') ||
+    property?.target_close_date || metaValues?.target_close_date || null;
+  const recordAssetName = recordValue('asset.name', 'asset.legal_name', 'asset.issuer');
+  const recordAssetType = recordValue('asset.type');
+  const recordOwner = recordValue('asset.ownership_entity', 'ownership.acquiring_entity', 'asset.issuer');
   const passportData = {
     asset_id:             propertyId,
-    asset_name:           property?.name || property?.property_name || '—',
-    asset_type:           metaValues?.asset_type || packName,
-    jurisdiction:         property?.jurisdiction || 'Not specified',
-    owner:                ownerName,
+    asset_name:           recordAssetName || property?.name || property?.property_name || '—',
+    asset_type:           recordAssetType || metaValues?.asset_type || packName,
+    jurisdiction:         recordValue('transaction.jurisdiction') || property?.jurisdiction || 'Not specified',
+    owner:                recordOwner || ownerName,
     entity:               property?.entity_name || null,
     closing_date:         closingDate,
     pack:                 packName,
@@ -2087,7 +2130,7 @@ function AssetReadinessTab({ propertyId, property, pack, onTabChange }) {
         </div>
       </div>
 
-      {/* ── Verified Transaction Record ───────────────────────────────────── */}
+      {/* ── Structured Transaction Record ─────────────────────────────────── */}
       <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
         <button
           className="w-full px-6 py-4 flex items-center justify-between hover:bg-gray-50 transition"
@@ -2095,7 +2138,7 @@ function AssetReadinessTab({ propertyId, property, pack, onTabChange }) {
           <div className="flex items-center gap-3">
             <span className="text-xl">🪪</span>
             <div className="text-left">
-              <p className="text-sm font-bold text-gray-900">Verified Transaction Record</p>
+              <p className="text-sm font-bold text-gray-900">Structured Transaction Record</p>
               <p className="text-[10px] text-gray-400">
                  Structured, auditable record of this transaction · auto-generated from workspace data
               </p>
@@ -2186,9 +2229,9 @@ function AssetReadinessTab({ propertyId, property, pack, onTabChange }) {
         )}
       </div>
 
-      {/* ── Verified Transaction Package ──────────────────────────────────── */}
+      {/* ── AI-prepared transaction package ───────────────────────────────── */}
       <div className="bg-white rounded-2xl border border-gray-200 p-6">
-        <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-1">Verified Transaction Package</p>
+        <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-1">AI-prepared transaction package</p>
         <p className="text-[11px] text-gray-400 mb-4 leading-snug">
           Package everything already collected into a portable, structured record
           ready for closing, audit, or transfer to a downstream provider.
@@ -2233,7 +2276,7 @@ function AssetReadinessTab({ propertyId, property, pack, onTabChange }) {
           </span>
         </div>
         <p className="text-[11px] text-gray-400 mb-4 leading-snug">
-          Record the closing method and hand the verified transaction package
+          Record the closing method and hand the prepared transaction package
           to the provider your parties use. Kontra coordinates; providers execute.
         </p>
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
@@ -2270,7 +2313,7 @@ function AssetReadinessTab({ propertyId, property, pack, onTabChange }) {
           </span>
         </div>
         <p className="text-[11px] text-gray-400 mb-4 leading-snug">
-          The verified transaction record is already structured for handoff to
+           The structured transaction record is already prepared for handoff to
           future digital-asset providers. Kontra prepares and exports — it never
           issues tokens.
         </p>
@@ -2333,12 +2376,10 @@ function AssetReadinessTab({ propertyId, property, pack, onTabChange }) {
 }
 
 // ── WorkspaceTabNav ───────────────────────────────────────────────────────────
-function WorkspaceTabNav({ activeTab, onChange, showDAReadiness = false }) {
+function WorkspaceTabNav({ activeTab, onChange }) {
   const TABS = [
     { key: 'overview',      label: 'Overview'                 },
     { key: 'documents',     label: 'Documents'                },
-    { key: 'asset-record',  label: 'Transaction Record'       },
-    ...(showDAReadiness ? [{ key: 'da-readiness', label: 'Digital Asset Readiness' }] : []),
     { key: 'activity',      label: 'Activity'                 },
     { key: 'settings',      label: 'Settings'                 },
   ];
@@ -2359,6 +2400,254 @@ function WorkspaceTabNav({ activeTab, onChange, showDAReadiness = false }) {
               {t.label}
             </button>
           ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── AI transaction findings ───────────────────────────────────────────────────
+// The structured transaction record remains the factual backend source of truth,
+// but coordinators act on its most useful findings here instead of opening a
+// record editor.
+function TransactionFindingsPanel({ propertyId, onTabChange }) {
+  const [fields, setFields] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [confirming, setConfirming] = useState('');
+  const [expanded, setExpanded] = useState('');
+  const [history, setHistory] = useState({});
+
+  const load = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/public/deal-room/${propertyId}/transaction-record`, {
+        headers: getRoomAuthHeaders(propertyId),
+      });
+      const data = res.ok ? await res.json() : { fields: [] };
+      setFields(Array.isArray(data?.fields) ? data.fields : []);
+    } catch {
+      setFields([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [propertyId]);
+
+  useEffect(() => {
+    load();
+    const interval = setInterval(load, 15000);
+    return () => clearInterval(interval);
+  }, [load]);
+
+  async function confirmField(field) {
+    let ownerWriteToken = '';
+    try { ownerWriteToken = localStorage.getItem(`kontra_owner_token_${propertyId}`) || ''; } catch {}
+    if (!ownerWriteToken || confirming) return;
+    setConfirming(field.id);
+    try {
+      const res = await fetch(
+        `${API_BASE}/api/public/deal-room/${propertyId}/transaction-record/fields/${field.id}/verify`,
+        {
+          method: 'POST',
+          headers: getRoomAuthHeaders(propertyId, { 'Content-Type': 'application/json' }),
+          body: JSON.stringify({ ownerWriteToken, actorRole: 'coordinator' }),
+        },
+      );
+      if (res.ok) await load();
+    } finally {
+      setConfirming('');
+    }
+  }
+
+  async function toggleHistory(field) {
+    if (expanded === field.id) {
+      setExpanded('');
+      return;
+    }
+    setExpanded(field.id);
+    if (history[field.id]) return;
+    const res = await fetch(
+      `${API_BASE}/api/public/deal-room/${propertyId}/transaction-record/fields/${field.id}/history`,
+      { headers: getRoomAuthHeaders(propertyId) },
+    );
+    const data = res.ok ? await res.json() : { history: [] };
+    setHistory(prev => ({ ...prev, [field.id]: Array.isArray(data?.history) ? data.history : [] }));
+  }
+
+  const findings = fields
+    .filter(field => ['extracted', 'needs_review', 'conflicting', 'source_changed'].includes(field.status))
+    .sort((a, b) => {
+      const priority = { source_changed: 0, conflicting: 1, needs_review: 2, extracted: 3 };
+      return (priority[a.status] ?? 9) - (priority[b.status] ?? 9);
+    })
+    .slice(0, 5);
+
+  if (loading) {
+    return (
+      <div className="bg-white rounded-2xl border border-gray-200 p-5">
+        <div className="h-3 w-32 bg-gray-100 rounded animate-pulse mb-2" />
+        <div className="h-3 w-64 bg-gray-50 rounded animate-pulse" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
+      <div className="px-5 py-4 border-b border-gray-100 flex items-start justify-between gap-4">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">AI findings</p>
+          <p className="text-sm font-bold text-gray-900 mt-1">Review what Kontra found</p>
+          <p className="text-[11px] text-gray-400 mt-0.5">
+            Confirm facts in context. Source excerpts and history stay attached.
+          </p>
+        </div>
+        <button
+          onClick={() => onTabChange?.('documents')}
+          className="text-[11px] font-semibold text-[#800020] hover:opacity-80 transition shrink-0">
+          Add documents →
+        </button>
+      </div>
+
+      {findings.length === 0 ? (
+        <div className="px-5 py-5">
+          <p className="text-sm font-medium text-gray-700">No new findings need your attention.</p>
+          <p className="text-xs text-gray-400 mt-1">
+            Upload a purchase agreement, financial statement, title commitment, or other transaction document to start the AI review.
+          </p>
+        </div>
+      ) : (
+        <div className="divide-y divide-gray-100">
+          {findings.map(field => {
+            const isConflict = field.status === 'conflicting' || field.status === 'source_changed';
+            const isExpanded = expanded === field.id;
+            return (
+              <div key={field.id} className="px-5 py-4">
+                <div className="flex items-start gap-3">
+                  <span className={`mt-1 w-2 h-2 rounded-full shrink-0 ${isConflict ? 'bg-red-500' : 'bg-blue-500'}`} />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="text-xs font-semibold text-gray-500">{field.display_label || field.field_key}</p>
+                        <p className="text-sm font-bold text-gray-900 mt-0.5 break-words">
+                          {field.value_text || 'Information still needed'}
+                        </p>
+                      </div>
+                      <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full shrink-0 ${
+                        isConflict ? 'bg-red-50 text-red-700' : 'bg-blue-50 text-blue-700'
+                      }`}>
+                        {field.status === 'source_changed' ? 'Source changed' :
+                          field.status === 'conflicting' ? 'Conflict' :
+                          field.status === 'needs_review' ? 'Needs review' : 'Confirm'}
+                      </span>
+                    </div>
+                    {field.source_excerpt && (
+                      <p className="text-[11px] text-gray-500 mt-2 leading-relaxed">
+                        “{field.source_excerpt}”
+                        {field.source_page ? ` · page ${field.source_page}` : ''}
+                      </p>
+                    )}
+                    <div className="flex flex-wrap items-center gap-3 mt-2">
+                      {!isConflict && field.value_text && (
+                        <button
+                          onClick={() => confirmField(field)}
+                          disabled={confirming === field.id}
+                          className="text-[11px] font-bold text-white px-3 py-1.5 rounded-lg bg-[#800020] hover:opacity-90 disabled:opacity-50 transition">
+                          {confirming === field.id ? 'Confirming…' : 'Confirm this finding'}
+                        </button>
+                      )}
+                      <button
+                        onClick={() => toggleHistory(field)}
+                        className="text-[11px] font-semibold text-gray-500 hover:text-gray-800 transition">
+                        {isExpanded ? 'Hide source history' : 'View source history'}
+                      </button>
+                    </div>
+                    {isExpanded && (
+                      <div className="mt-3 rounded-xl bg-gray-50 border border-gray-100 px-3 py-2.5">
+                        {(history[field.id] || []).length === 0 ? (
+                          <p className="text-[10px] text-gray-400">No history available yet.</p>
+                        ) : (
+                          <div className="space-y-2">
+                            {history[field.id].slice(0, 4).map((event, index) => (
+                              <div key={event.id || index} className="text-[10px] text-gray-500">
+                                <span className="font-semibold text-gray-700">
+                                  {(event.event_type || 'update').replace(/_/g, ' ')}
+                                </span>
+                                {event.created_at ? ` · ${new Date(event.created_at).toLocaleDateString()}` : ''}
+                                {event.source_excerpt ? ` · “${event.source_excerpt}”` : ''}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function DigitalAssetPrepCard({ propertyId }) {
+  const [requested, setRequested] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [result, setResult] = useState(null);
+
+  async function requestPrep() {
+    let ownerWriteToken = '';
+    try { ownerWriteToken = localStorage.getItem(`kontra_owner_token_${propertyId}`) || ''; } catch {}
+    if (!ownerWriteToken || loading) return;
+    setLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/public/deal-room/${propertyId}/digital-asset-prep`, {
+        method: 'POST',
+        headers: getRoomAuthHeaders(propertyId, { 'Content-Type': 'application/json' }),
+        body: JSON.stringify({ ownerWriteToken }),
+      });
+      const data = res.ok ? await res.json() : null;
+      if (data) {
+        setRequested(true);
+        setResult(data);
+      }
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div className="bg-white rounded-2xl border border-gray-200 px-5 py-4">
+      <div className="flex items-start gap-3">
+        <span className="text-lg">🔷</span>
+        <div className="flex-1 min-w-0">
+          <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">Optional next step</p>
+          <p className="text-sm font-bold text-gray-900 mt-1">Prepare a digital asset handoff package</p>
+          <p className="text-xs text-gray-500 mt-1 leading-relaxed">
+            Kontra can organize the transaction facts already collected and show only what is missing for review by an external legal, compliance, issuance, custody, or settlement provider.
+          </p>
+          {!requested ? (
+            <button
+              onClick={requestPrep}
+              disabled={loading}
+              className="mt-3 text-xs font-bold px-3 py-2 rounded-xl text-white bg-[#800020] hover:opacity-90 disabled:opacity-50 transition">
+              {loading ? 'Preparing…' : 'Request digital asset prep'}
+            </button>
+          ) : (
+            <div className="mt-3 rounded-xl bg-gray-50 border border-gray-100 px-3 py-2.5">
+              <p className="text-xs font-semibold text-gray-800">
+                {result?.status === 'prepared' ? 'Package preparation can begin.' : 'A few facts are still needed.'}
+              </p>
+              {result?.missing?.length > 0 && (
+                <p className="text-[11px] text-gray-500 mt-1">
+                  Missing: {result.missing.slice(0, 4).map(item => item.label).join(', ')}
+                  {result.missing.length > 4 ? ` +${result.missing.length - 4} more` : ''}
+                </p>
+              )}
+              <p className="text-[10px] text-gray-400 mt-1">
+                Prepared for external review only. Kontra does not issue, sell, recommend, custody, or settle digital assets.
+              </p>
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -2687,7 +2976,10 @@ function OperationsManagerView({ propertyId, property, pack, role, onTabChange }
   const statusCfg = STATUS_CFG[statusKey];
 
   // ── Tokenization-specific derived state ────────────────────────────────────
-  const isTokenization = isDigitalAssetLayerEnabled(property, pack);
+  // Digital-asset preparation is now a progressive Overview action. Keep the
+  // legacy data-derived flag for backend compatibility, but do not let it turn
+  // the coordinator home into a tokenization/settings workflow.
+  const isTokenization = false;
   const metaValues = property?.metadata_values || {};
 
   // KYC progress — read from briefing snapshot if available
@@ -2828,44 +3120,6 @@ function OperationsManagerView({ propertyId, property, pack, role, onTabChange }
                   Target close: {new Date(closingDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
                 </span>
               )}
-              {/* Digital Asset Layer badge — non-native tokenization rooms where the
-                  owner enabled the DA layer via the Settings toggle. Native tokenization
-                  rooms are identified by their pack ID and don't need a separate badge. */}
-              {isTokenization && pack?.id !== 'tokenization' && pack?.transactionType !== 'tokenization' && (
-                <span className="flex items-center gap-1">
-                  <span className="text-gray-300 text-xs">·</span>
-                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full"
-                    style={{ color: '#7c3aed', background: '#f5f3ff' }}>
-                    🪙 Digital Asset Layer
-                  </span>
-                </span>
-              )}
-              {isTokenization && property?.jurisdiction && JURISDICTION_INFO[property.jurisdiction] && (
-                <span className="text-sm flex items-center gap-1.5">
-                  <span className="text-gray-300 text-xs">·</span>
-                  <span>{JURISDICTION_INFO[property.jurisdiction].flag}</span>
-                  <span style={{ color: JURISDICTION_INFO[property.jurisdiction].color }}>
-                    {JURISDICTION_INFO[property.jurisdiction].label}
-                  </span>
-                  {/* #177 — regulatory compliance progress badge (tokenization workspaces only) */}
-                  {isTokenization && (() => {
-                    const DONE_SET = new Set(['uploaded', 'approved', 'ai_complete']);
-                    const regItems = checklistItems.filter(i =>
-                      i.category === 'Regulatory' || (i.section || '').toLowerCase().includes('regulatory')
-                    );
-                    if (regItems.length === 0) return null;
-                    const done  = regItems.filter(i => DONE_SET.has(i.status)).length;
-                    const total = regItems.length;
-                    const color = done === total ? '#16a34a' : done > 0 ? '#d97706' : '#dc2626';
-                    return (
-                      <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full"
-                        style={{ color, background: color + '18' }}>
-                        {done}/{total} regulatory
-                      </span>
-                    );
-                  })()}
-                </span>
-              )}
             </div>
           </div>
           <div className="px-3 py-1.5 rounded-xl text-sm font-bold border shrink-0"
@@ -2880,8 +3134,8 @@ function OperationsManagerView({ propertyId, property, pack, role, onTabChange }
         )}
       </div>
 
-      {/* ── Token offering KPI strip (tokenization only) ───────────────── */}
-      {isTokenization && (() => {
+      {/* Legacy token economics intentionally stays out of the launch Overview. */}
+      {false && isTokenization && (() => {
         function fmtCurrency(raw) {
           const n = Number(raw);
           if (!raw || isNaN(n)) return null;
@@ -2932,7 +3186,7 @@ function OperationsManagerView({ propertyId, property, pack, role, onTabChange }
       })()}
 
       {/* ── Ownership & Token Structure KPI strip (#182) ────────────────── */}
-      {isTokenization && (() => {
+      {false && isTokenization && (() => {
         const mv = metaValues;
         // Support both new structured fields (token_name, total_supply, raise_target) and
         // legacy free-text fields (total_token_supply, raise_amount) for backward compat.
@@ -3004,7 +3258,7 @@ function OperationsManagerView({ propertyId, property, pack, role, onTabChange }
       {/* Only shown for tokenization workspaces — the card contains token-issuance
           specific regulatory content (FSRA licence, MiCA White Paper, etc.) that
           is irrelevant and misleading on CRE or business acquisition deals. */}
-      {isTokenization && property?.jurisdiction && JURISDICTION_INFO[property.jurisdiction] && (
+      {false && isTokenization && property?.jurisdiction && JURISDICTION_INFO[property.jurisdiction] && (
         <JurisdictionComplianceCard jurisdiction={property.jurisdiction} />
       )}
 
@@ -3012,7 +3266,7 @@ function OperationsManagerView({ propertyId, property, pack, role, onTabChange }
       {/* Phase 2 of the Digital Asset Layer spec. A scored, categorised snapshot
           of how prepared the workspace is for token issuance. Suggested preparation
           only — not a legal or regulatory determination (spec §3). */}
-      {isTokenization && (() => {
+      {false && isTokenization && (() => {
         // 1. Issuance setup — are the four key offering parameters filled?
         const ISSUANCE_FIELDS = [
           { key: 'raise_amount',   label: 'Raise Target'   },
@@ -3222,10 +3476,10 @@ function OperationsManagerView({ propertyId, property, pack, role, onTabChange }
       <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
         <div className="px-6 py-4 border-b border-gray-100">
           <p className="text-xs font-semibold uppercase tracking-wider mb-0.5" style={{ color: '#800020' }}>
-            {isTokenization ? 'Issuance Manager' : 'Operations Manager'}
+            Operations Manager
           </p>
           <p className="text-base font-bold text-gray-900">
-            {isTokenization ? 'Launch your token offering.' : 'Here is what needs attention next.'}
+            Here is what needs attention next.
           </p>
         </div>
         <div className="p-5">
@@ -3279,66 +3533,6 @@ function OperationsManagerView({ propertyId, property, pack, role, onTabChange }
               {[1, 2, 3].map(i => <div key={i} className="h-14 bg-gray-50 rounded-xl animate-pulse" />)}
             </div>
           ) : actionCards.length === 0 ? (
-            isTokenization ? (
-              /* ── Tokenization 4-step setup guide ── */
-              <div>
-                <p className="text-sm font-semibold text-gray-800 mb-1">Get your issuance ready</p>
-                <p className="text-xs text-gray-400 mb-4">Complete these steps to open your subscription period.</p>
-                <div className="space-y-2.5">
-                  {[
-                    {
-                      done: step1Done,
-                      icon: '📋',
-                      title: 'Complete issuance details',
-                      sub:   'Set raise amount, token price, asset type, and minimum investment',
-                      action: () => { onTabChange?.('settings'); setTimeout(() => document.getElementById('issuance-details')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 150); },
-                      cta: 'Fill in →',
-                    },
-                    {
-                      done: step2Done,
-                      icon: '📄',
-                      title: 'Upload TOM & regulatory documents',
-                      sub:   'Token Offering Memorandum and any jurisdiction-required filings',
-                      action: () => onTabChange?.('documents'),
-                      cta: 'Upload →',
-                    },
-                    {
-                      done: step3Done,
-                      icon: '⚖️',
-                      title: 'Invite Counsel & Compliance Officer',
-                      sub:   'They will review documents and complete KYC/AML verification',
-                      action: () => onTabChange?.('participants'),
-                      cta: 'Invite →',
-                    },
-                    {
-                      done: step4Done,
-                      icon: '🏛️',
-                      title: 'Open subscription period',
-                       sub:   'Advance the deal room to Subscription stage and invite lead investors',
-                      action: () => onTabChange?.('participants'),
-                      cta: 'Advance →',
-                    },
-                  ].map((step, i) => (
-                    <div key={i}
-                      className={`flex items-start gap-3 px-4 py-3 rounded-xl border transition ${step.done ? 'bg-green-50 border-green-100' : 'bg-gray-50 border-gray-200'}`}>
-                      <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold shrink-0 mt-0.5 ${step.done ? 'bg-green-500 text-white' : 'bg-white border border-gray-300 text-gray-400'}`}>
-                        {step.done ? '✓' : i + 1}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className={`text-sm font-semibold ${step.done ? 'text-green-800 line-through decoration-green-400' : 'text-gray-800'}`}>{step.title}</p>
-                        <p className="text-xs text-gray-400 mt-0.5 leading-snug">{step.sub}</p>
-                      </div>
-                      {!step.done && (
-                        <button onClick={step.action}
-                          className="shrink-0 text-[11px] font-bold hover:opacity-80 transition mt-0.5" style={{ color: '#800020' }}>
-                          {step.cta}
-                        </button>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ) : (
             <div>
                <p className="text-sm font-semibold text-gray-800 mb-1">Get your deal room moving</p>
               <p className="text-xs text-gray-400 mb-4">Kontra will surface prioritized actions once participants and documents are added.</p>
@@ -3355,7 +3549,6 @@ function OperationsManagerView({ propertyId, property, pack, role, onTabChange }
                 </button>
               </div>
             </div>
-            )
           ) : (
             <div className="space-y-3">
               {actionCards.map((card, i) => {
@@ -3515,7 +3708,7 @@ function OperationsManagerView({ propertyId, property, pack, role, onTabChange }
         )}
 
         {/* ── KYC / Investor progress (tokenization only) ─────────────── */}
-        {isTokenization && (
+        {false && isTokenization && (
           <div className="mt-4 pt-4 border-t border-gray-100">
             <div className="flex items-center justify-between mb-2">
               <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">KYC / Investor Progress</p>
@@ -3829,26 +4022,6 @@ export default function DealRoomPage() {
     || pack?.id === 'tokenization'
     || pack?.transactionType === 'tokenization';
 
-  // DA Readiness tab is shown only when the coordinator explicitly opts in.
-  // AI may suggest it (passed to AssetRecordTab) but must not auto-enable.
-  const daReadinessEnabled = apiProperty?.metadata_values?.da_readiness_enabled === 'true';
-
-  async function enableDAReadiness() {
-    const token = localStorage.getItem(`kontra_owner_token_${pid}`) || '';
-    if (!token) return;
-    const res = await fetch(`${API_BASE}/api/public/deal-room/${pid}/metadata-merge`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ values: { da_readiness_enabled: 'true' }, ownerWriteToken: token }),
-    });
-    if (res.ok) {
-      setApiProperty(prev => prev ? {
-        ...prev,
-        metadata_values: { ...(prev.metadata_values || {}), da_readiness_enabled: 'true' },
-      } : prev);
-    }
-  }
-
   if (inviteToken && !participantSession) {
     return (
       <DealRoomPinGate
@@ -4013,7 +4186,7 @@ export default function DealRoomPage() {
               "Coordinates all participants from one deal room",
               "AI reviews every document and surfaces flags",
               "Tracks what's missing and who needs to act",
-              "Generates a verified closing package at completion",
+              "Prepares a clear package for external review",
             ].map(item => (
               <li key={item} className="flex items-start gap-3 text-sm text-gray-300">
                 <span className="text-green-400 mt-0.5 shrink-0">✓</span>
@@ -4161,7 +4334,6 @@ export default function DealRoomPage() {
         <WorkspaceTabNav
           activeTab={activeTab}
           onChange={setActiveTab}
-          showDAReadiness={daReadinessEnabled}
         />
       )}
 
@@ -4187,10 +4359,11 @@ export default function DealRoomPage() {
                     }
                   }}
                 />
-                {/* Verified Transaction Package — core output, visible from day 1 */}
-                <PanelErrorBoundary>
-                  <VerifiedAssetPackage propertyId={pid} />
-                </PanelErrorBoundary>
+                <TransactionFindingsPanel
+                  propertyId={pid}
+                  onTabChange={setActiveTab}
+                />
+                <DigitalAssetPrepCard propertyId={pid} />
                 {/* Transaction Risk — overview-level health signal */}
                 <TransactionRiskPanel propertyId={pid} />
                 {/* Participants — single section, no duplication */}
@@ -4242,37 +4415,6 @@ export default function DealRoomPage() {
                 </div>
                 <NotificationsLog propertyId={pid} />
               </>
-            )}
-
-            {activeTab === 'asset-record' && (
-              <AssetRecordTab
-                propertyId={pid}
-                packId={packId}
-                pack={pack}
-                isCoordinator={isCoordinator}
-                isTokenizationRelevant={isTokenizationRelevant}
-                daReadinessEnabled={daReadinessEnabled}
-                onEnableDAReadiness={enableDAReadiness}
-                onOpenDAReadiness={daReadinessEnabled ? () => setActiveTab('da-readiness') : null}
-                onNavigateToDocuments={() => setActiveTab('documents')}
-                workspaceMeta={{
-                  name:              apiProperty?.name,
-                  deal_type:         apiProperty?.deal_type,
-                  stage:             apiProperty?.stage,
-                  closing_date:      apiProperty?.metadata_values?.closing_date || apiProperty?.closing_date,
-                  transaction_value: apiProperty?.metadata_values?.transaction_value || apiProperty?.transaction_value,
-                  jurisdiction:      apiProperty?.metadata_values?.jurisdiction,
-                  pack_name:         pack?.name,
-                }}
-              />
-            )}
-
-            {activeTab === 'da-readiness' && (
-              <DigitalAssetReadinessWorkflow
-                propertyId={pid}
-                property={property}
-                onClose={() => setActiveTab('asset-record')}
-              />
             )}
 
             {activeTab === 'settings' && (
@@ -4330,7 +4472,7 @@ export default function DealRoomPage() {
             )}
 
             {/* #180 — Tokenization: role-specific action items for participants */}
-            {property.isCustom && isTokenization && !isCoordinator && (() => {
+            {false && property.isCustom && isTokenization && !isCoordinator && (() => {
               const DONE_SET = new Set(['uploaded', 'approved', 'ai_complete']);
               const myDocs = (docSchema || []).filter(d =>
                 Array.isArray(d.assignedTo) && d.assignedTo.includes(role) && d.required
@@ -4470,13 +4612,6 @@ export default function DealRoomPage() {
                 packId={packId}
                 propertyType={property.property_type || property.type}
               />
-            )}
-
-            {/* Verified Asset Package */}
-            {property.isCustom && !isDemo && isCoordinator && (
-              <PanelErrorBoundary>
-                <VerifiedAssetPackage propertyId={pid} />
-              </PanelErrorBoundary>
             )}
 
             {/* Notification log */}

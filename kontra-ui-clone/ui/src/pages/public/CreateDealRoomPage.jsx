@@ -657,7 +657,7 @@ export default function CreateDealRoomPage() {
                 <div className="flex items-start gap-2.5 bg-gray-50 border border-gray-100 rounded-xl px-3.5 py-3">
                   <span className="text-base shrink-0 mt-0.5">📦</span>
                   <p className="text-xs text-gray-500 leading-relaxed">
-                    Everything you do builds toward a <strong className="text-gray-700">verified transaction package</strong> at closing — a complete, auditable record of the deal.
+                    Everything you do builds toward an <strong className="text-gray-700">AI-prepared transaction package</strong> — organized facts, source context, and outstanding actions ready for external review.
                   </p>
                 </div>
 
