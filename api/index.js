@@ -3878,7 +3878,7 @@ app.post('/api/public/deal-room/:propertyId/invite', async (req, res) => {
 // service-role client to insert directly and then sends the invite email.
 app.post('/api/public/deal-room/:propertyId/create-invite', async (req, res) => {
   const { propertyId } = req.params;
-  const { roleKey, invitedEmail, inviteToken, pin, verificationMethod = 'pin' } = req.body || {};
+  const { roleKey, invitedEmail, inviteToken, pin, verificationMethod = 'link' } = req.body || {};
   if (!roleKey || !inviteToken) return res.status(400).json({ error: 'roleKey and inviteToken required' });
   const access = await getRoomAccessContext(req, propertyId);
   if (access.mode !== 'owner') return accessDenied(res, 'Only the deal-room owner can create invitations');
@@ -4495,7 +4495,7 @@ app.get('/api/public/deal-room/:propertyId/asset-passport', async (req, res) => 
   if (!room) return res.status(404).json({ error: 'room not found' });
 
   const [{ count: docCount }, { count: eventCount }] = await Promise.all([
-    supabase.from('deal_documents').select('id', { count: 'exact', head: true }).eq('property_id', propertyId),
+    supabase.from('deal_analyses').select('id', { count: 'exact', head: true }).eq('property_id', propertyId),
     supabase.from('deal_events').select('id', { count: 'exact', head: true }).eq('property_id', propertyId),
   ]);
 
@@ -4542,8 +4542,8 @@ app.get('/api/public/deal-room/:propertyId/asset-metadata', async (req, res) => 
   if (!room) return res.status(404).json({ error: 'room not found' });
 
   const { data: docs } = await supabase
-    .from('deal_documents')
-    .select('id, document_type, uploaded_at')
+    .from('deal_analyses')
+    .select('id, section, created_at')
     .eq('property_id', propertyId)
     .limit(100);
 
@@ -4583,7 +4583,7 @@ app.get('/api/public/deal-room/:propertyId/asset-metadata', async (req, res) => 
     },
     supporting_documents: {
       total_uploaded: docs?.length || 0,
-      types: [...new Set((docs || []).map(d => d.document_type).filter(Boolean))],
+      types: [...new Set((docs || []).map(d => d.section).filter(Boolean))],
     },
     compatible_networks: ['XRPL', 'Ethereum', 'Polygon', 'Canton', 'Stellar'],
     schema_version: '1.0',
@@ -4605,7 +4605,7 @@ app.get('/api/public/deal-room/:propertyId/readiness', async (req, res) => {
   if (!room) return res.status(404).json({ error: 'room not found' });
 
   const [{ count: docCount }, { count: eventCount }, { data: events }, { data: recordFields }] = await Promise.all([
-    supabase.from('deal_documents').select('id', { count: 'exact', head: true }).eq('property_id', propertyId),
+    supabase.from('deal_analyses').select('id', { count: 'exact', head: true }).eq('property_id', propertyId),
     supabase.from('deal_events').select('id', { count: 'exact', head: true }).eq('property_id', propertyId),
     supabase.from('deal_events').select('event_type, metadata').eq('property_id', propertyId).limit(200),
     supabase.from('transaction_record_fields').select('field_key, value_text, status').eq('property_id', propertyId),
@@ -7012,30 +7012,49 @@ app.post('/api/public/deal-room/:propertyId/transaction-record/extract', async (
   // Background: re-extract from all stored documents
   (async () => {
     try {
+      // Fetch ALL analyses — documents with storage_path use the file,
+      // documents without (e.g. LOI uploaded before storage was configured)
+      // fall back to their AI-analysis summary text so we still extract what we can.
       const { data: analyses } = await supabase
         .from('deal_analyses')
         .select('id, section, filename, storage_path, analysis')
-        .eq('property_id', propertyId)
-        .not('storage_path', 'is', null);
+        .eq('property_id', propertyId);
       if (!analyses?.length) return;
       for (const doc of analyses) {
         try {
-          const { data: urlData } = await supabase.storage
-            .from('deal-documents')
-            .createSignedUrl(doc.storage_path, 60);
-          if (!urlData?.signedUrl) continue;
-          const buf = Buffer.from(await (await fetch(urlData.signedUrl)).arrayBuffer());
           let text = '';
-          try {
-            if (doc.filename?.match(/\.(pdf)$/i)) {
-              const { PDFParse } = require('pdf-parse');
-              const parser = new PDFParse({ data: buf });
-              const parsed = await parser.getText();
-              text = (parsed?.text || '').slice(0, 8000);
-            } else {
-              text = buf.toString('utf8', 0, 6000);
+
+          if (doc.storage_path) {
+            // Primary path: re-download the stored file and extract text from it
+            const { data: urlData } = await supabase.storage
+              .from('deal-documents')
+              .createSignedUrl(doc.storage_path, 60);
+            if (urlData?.signedUrl) {
+              const buf = Buffer.from(await (await fetch(urlData.signedUrl)).arrayBuffer());
+              try {
+                if (doc.filename?.match(/\.(pdf)$/i)) {
+                  const { PDFParse } = require('pdf-parse');
+                  const parser = new PDFParse({ data: buf });
+                  const parsed = await parser.getText();
+                  text = (parsed?.text || '').slice(0, 8000);
+                } else {
+                  text = buf.toString('utf8', 0, 6000);
+                }
+              } catch { text = buf.toString('utf8', 0, 4000); }
             }
-          } catch { text = buf.toString('utf8', 0, 4000); }
+          }
+
+          // Fallback: if the file isn't in storage, use the AI analysis summary.
+          // It's shorter than the full document but better than nothing — it often
+          // contains the key extracted facts (buyer, price, asset) in sentence form.
+          if (!text || text.trim().length < 50) {
+            const summary = doc.analysis?.summary || '';
+            if (summary.length > 50) {
+              text = `Section: ${doc.section}\nFilename: ${doc.filename}\n\n${summary}`;
+              console.log(`[tx-record re-extract] using summary fallback for ${doc.section} (no storage path)`);
+            }
+          }
+
           if (text.trim().length > 50) {
             await extractTransactionFields(propertyId, doc.id, text, doc.section);
           }
@@ -7231,7 +7250,7 @@ app.post('/api/public/deal-room/:propertyId/brain/ask', async (req, res) => {
         .select('property_name, workflow_pack_id, deal_type, deal_amount')
         .eq('property_id', propertyId)
         .maybeSingle(),
-      supabase.from('deal_documents')
+      supabase.from('deal_analyses')
         .select('id', { count: 'exact', head: true })
         .eq('property_id', propertyId),
       supabase.from('transaction_record_fields')
@@ -7315,7 +7334,7 @@ app.get('/api/public/deal-room/:propertyId/brain/briefing', async (req, res) => 
       supabase.from('transaction_record_fields')
         .select('field_key, display_label, value_text, status, source_document')
         .eq('property_id', propertyId),
-      supabase.from('deal_documents')
+      supabase.from('deal_analyses')
         .select('id', { count: 'exact', head: true })
         .eq('property_id', propertyId),
     ]);
@@ -7327,6 +7346,7 @@ app.get('/api/public/deal-room/:propertyId/brain/briefing', async (req, res) => 
     if ((docCount || 0) === 0 && (fields || []).length === 0) {
       return res.json(null);
     }
+    // docCount is now from deal_analyses (the correct upload table)
 
     const risks = conflicts.map(f => ({
       text: `${f.display_label || f.field_key} has conflicting values from different sources`,
