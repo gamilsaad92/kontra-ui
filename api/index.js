@@ -4672,13 +4672,18 @@ async function computeSettlementReadiness(propertyId, mode) {
   };
 }
 
-// Helper: check if a room has settlement capability active
+// Helper: check if a room has settlement capability active.
+// A room is settlement-capable when any of the following is true:
+//   1. The coordinator explicitly enabled it via metadata_values.settlement_capability_enabled
+//   2. The coordinator set a settlement mode (implies capability was activated)
+//   3. The room uses the tokenization workflow pack
 function roomHasSettlementCapability(room) {
   const meta = room?.metadata_values || {};
-  return (
-    room?.workflow_pack_id === 'tokenization' ||
-    meta.settlement_capability_enabled === true  ||
-    meta.settlement_capability_enabled === 'true'
+  return !!(
+    !!room?.settlement_mode                             // mode set → capability active
+    || room?.workflow_pack_id === 'tokenization'
+    || meta.settlement_capability_enabled === true
+    || meta.settlement_capability_enabled === 'true'
   );
 }
 
