@@ -3505,6 +3505,7 @@ app.post('/api/public/deal-room/:propertyId/track-document', upload.single('file
     // Label: use the section map if known, otherwise humanize the raw section key.
     const sectionLabel = SECTION_LABELS[section]
       || section.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+    const filename = req.file?.originalname || `${section}.pdf`;
 
     // For sections with an AI prompt, start pending and analyze in background.
     // Post-completion and non-AI sections are marked complete immediately.
