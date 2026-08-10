@@ -20,6 +20,8 @@ const STATUS_CFG = {
   revoked:     { label: 'Revoked',          bg: '#fef2f2', color: '#dc2626', border: '#fecaca' },
   expired:     { label: 'Expired',          bg: '#f9fafb', color: '#6b7280', border: '#e5e7eb' },
   superseded:  { label: 'Reissued',         bg: '#f9fafb', color: '#6b7280', border: '#e5e7eb' },
+  // Coordinator/owner — part of the workspace by definition, not via invite
+  coordinator: { label: 'Owner',            bg: '#eff6ff', color: '#1d4ed8', border: '#bfdbfe' },
 };
 
 function timeAgo(dateStr) {
@@ -213,6 +215,14 @@ function InviteModal({ open, onClose, prefilledRoleKey, roles, isV2, onSend }) {
 
 export default function ParticipantsPanel({ roomId, packId = DEFAULT_PACK_ID, isV2 = false }) {
   const pack = getWorkflowPack(packId);
+
+  // Coordinator roles are shown with "Owner" status — they're part of the workspace
+  // by definition and do not need invitations. They are excluded from the invite count.
+  const coordinatorRoles = (pack.roles || [])
+    .filter(r => r.invitable === false)
+    .map(r => ({ key: r.key, icon: r.icon || '🏢', label: r.shortLabel || r.label, color: r.color }));
+
+  // External participant roles — the only ones that need invitations.
   const invitableRoles = (pack.roles || [])
     .filter(r => r.invitable !== false)
     .map(r => ({ key: r.key, icon: r.icon || '👤', label: r.shortLabel || r.label, color: r.color }));
@@ -330,22 +340,30 @@ export default function ParticipantsPanel({ roomId, packId = DEFAULT_PACK_ID, is
 
     const STATUS_ORDER = { accepted: 0, pending: 1, expired: 2, revoked: 3, superseded: 4 };
 
-    const packRoleKeys = new Set(invitableRoles.map(r => r.key));
+    // Coordinator rows at the top — shown with "Owner" badge, no invite flow
+    const allKnownRoleKeys = new Set([
+      ...invitableRoles.map(r => r.key),
+      ...coordinatorRoles.map(r => r.key),
+    ]);
+    const coordRows = coordinatorRoles.map(role => ({
+      role, invite: null, isCoordinator: true, isCustomRole: false,
+    }));
 
-    // Pack roles first
-    const rows = invitableRoles.map(role => {
+    // Invitable participant rows
+    const participantRows = invitableRoles.map(role => {
       const roleInvites = [...(byRole.get(role.key) || [])].sort(
         (a, b) => (STATUS_ORDER[a.status] ?? 5) - (STATUS_ORDER[b.status] ?? 5),
       );
-      return { role, invite: roleInvites[0] || null, isCustomRole: false };
+      return { role, invite: roleInvites[0] || null, isCoordinator: false, isCustomRole: false };
     });
 
     // Custom-role invites not in the pack
     const seen = new Set();
+    const customRows = [];
     for (const inv of invites) {
-      if (!packRoleKeys.has(inv.role_key) && !seen.has(inv.role_key)) {
+      if (!allKnownRoleKeys.has(inv.role_key) && !seen.has(inv.role_key)) {
         seen.add(inv.role_key);
-        rows.push({
+        customRows.push({
           role: {
             key:   inv.role_key,
             icon:  '👤',
@@ -353,16 +371,18 @@ export default function ParticipantsPanel({ roomId, packId = DEFAULT_PACK_ID, is
             color: '#6b7280',
           },
           invite: inv,
+          isCoordinator: false,
           isCustomRole: true,
         });
       }
     }
 
-    return rows;
+    return [...coordRows, ...participantRows, ...customRows];
   }
 
-  const rows         = buildRows();
-  const activeCount  = invites.filter(i => ['pending', 'accepted'].includes(i.status)).length;
+  const rows        = buildRows();
+  // Only count external participant invites (not the coordinator/owner row)
+  const activeCount = invites.filter(i => ['pending', 'accepted'].includes(i.status)).length;
 
   return (
     <div className="bg-white rounded-2xl border border-gray-200 mb-6 overflow-hidden">
@@ -372,7 +392,7 @@ export default function ParticipantsPanel({ roomId, packId = DEFAULT_PACK_ID, is
         <div>
           <h2 className="text-base font-bold text-gray-900">Participants</h2>
           <p className="text-xs text-gray-400 mt-0.5">
-            {activeCount} of {invitableRoles.length} role{invitableRoles.length !== 1 ? 's' : ''} invited
+            {activeCount} of {invitableRoles.length} participant{invitableRoles.length !== 1 ? 's' : ''} invited
             {pack.name ? <span className="text-gray-300"> · {pack.name} template</span> : null}
           </p>
         </div>
@@ -403,11 +423,38 @@ export default function ParticipantsPanel({ roomId, packId = DEFAULT_PACK_ID, is
 
           {/* Rows */}
           <div className="divide-y divide-gray-100">
-            {rows.map(({ role, invite }) => {
+            {rows.map(({ role, invite, isCoordinator, isCustomRole }) => {
+              // ── Coordinator/owner row — always "Owner", no invite flow ────────
+              if (isCoordinator) {
+                return (
+                  <div key={role.key}
+                    className="grid px-5 py-2 items-center gap-2 sm:gap-3"
+                    style={{ gridTemplateColumns: '1fr' }}>
+                    <div className="flex items-center justify-between sm:contents gap-3">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="text-base leading-none shrink-0">{role.icon}</span>
+                        <span className="text-sm font-semibold text-gray-800 truncate">{role.label}</span>
+                      </div>
+                      <div className="hidden sm:block min-w-0">
+                        <p className="text-xs text-gray-400 italic">Workspace coordinator</p>
+                      </div>
+                      <div className="shrink-0">
+                        <StatusBadge status="coordinator" />
+                      </div>
+                      <div className="hidden sm:block">
+                        <p className="text-xs text-gray-400">—</p>
+                      </div>
+                      <div style={{ width: 36 }} />
+                    </div>
+                  </div>
+                );
+              }
+
+              // ── External participant row ───────────────────────────────────────
               const status    = invite?.status || 'not_invited';
               const isActive  = ['pending', 'accepted'].includes(status);
               const isInactive = ['expired', 'superseded'].includes(status);
-              const lastSeen  = invite?.last_used_at || invite?.updated_at || null;
+              const lastSeen  = invite?.last_used_at || null;
 
               return (
                 <div key={role.key}
@@ -420,7 +467,7 @@ export default function ParticipantsPanel({ roomId, packId = DEFAULT_PACK_ID, is
                     <div className="flex items-center gap-2 min-w-0">
                       <span className="text-base leading-none shrink-0">{role.icon}</span>
                       <span className="text-sm font-semibold text-gray-800 truncate">{role.label}</span>
-                      {rows.find(r => r.role.key === role.key)?.isCustomRole && (
+                      {isCustomRole && (
                         <span className="shrink-0 text-[9px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-400 font-medium leading-tight">custom</span>
                       )}
                     </div>

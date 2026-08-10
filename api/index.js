@@ -2927,7 +2927,7 @@ app.get('/api/public/deal-room/:propertyId/analyses', async (req, res) => {
 
     const { data, error } = await supabase
       .from('deal_analyses')
-      .select('id, section, filename, analysis, uploaded_by_role, created_at, storage_path')
+      .select('id, section, filename, analysis, uploaded_by_role, created_at, storage_path, post_completion, post_completion_added_at')
       .eq('property_id', propertyId)
       .order('created_at', { ascending: true }); // oldest first → version = index+1
     if (error) throw error;
@@ -2986,7 +2986,14 @@ app.get('/api/public/deal-room/:propertyId/analyses', async (req, res) => {
       const assignedSections = await getAssignedSectionsForAccess(propertyId, packId, propertyType, access);
       filtered = filtered.filter(a => assignedSections.has(a.section));
     }
-    res.json({ analyses: filtered });
+
+    // Split post-completion records from regular analyses.
+    // post_completion=true means the upload happened after sealed_at.
+    // transaction_seal records are shown via GET /settlement/seal, not in the main doc list.
+    const postCompletionRecords = filtered.filter(a => a.post_completion === true);
+    const regularAnalyses       = filtered.filter(a => !a.post_completion);
+
+    res.json({ analyses: regularAnalyses, post_completion_records: postCompletionRecords });
   } catch (err) {
     console.error('[analyses-fetch]', err.message);
     res.json({ analyses: [] });
@@ -3458,11 +3465,6 @@ app.post('/api/public/deal-room/:propertyId/track-document', upload.single('file
     // Fundraising
     'term_sheet', 'spa',
   ];
-  if (!LIGHTWEIGHT_SECTIONS.includes(section)) {
-    return res.status(400).json({ error: `Section '${section}' requires AI analysis — use the AI upload endpoint instead` });
-  }
-
-  const filename = req.file?.originalname || `${section}.pdf`;
   const SECTION_LABELS = {
     // CRE Acquisition
     purchase_agreement: 'Purchase Agreement',
@@ -3487,19 +3489,29 @@ app.post('/api/public/deal-room/:propertyId/track-document', upload.single('file
     const mime = req.file?.mimetype;
     const hash = buf ? crypto.createHash('sha256').update(buf).digest('hex') : null;
 
-    // For sections with an AI prompt, start pending and analyze in background.
-    // For sections without an AI prompt (LOI, tax returns, cap table, etc.), mark complete immediately.
-    const hasAiPrompt = !!(buf && LIGHTWEIGHT_AI_PROMPTS[section]);
-    const initialAnalysis = hasAiPrompt
-      ? { summary: `${SECTION_LABELS[section]} uploaded — AI analysis in progress…`, documentType: SECTION_LABELS[section], confidence: 0, pending: true }
-      : { summary: `${SECTION_LABELS[section]} received and logged.`, documentType: SECTION_LABELS[section], confidence: 100, pending: false };
-
-    // Uploads after the workspace is sealed become post-completion records.
-    // They are flagged separately and shown in the Post-Completion Records section,
-    // keeping the sealed transaction record snapshot intact.
+    // Check seal status first — post-completion uploads bypass section validation.
+    // Uploads after sealed_at become post-completion records, shown separately from
+    // sealed documents. They do NOT modify or regenerate the Transaction Seal.
     const { data: sealCheckRoom } = await supabase
       .from('deal_rooms').select('sealed_at').eq('property_id', propertyId).maybeSingle();
     const isPostCompletion = !!(sealCheckRoom?.sealed_at);
+
+    // Section validation — only enforced for pre-completion uploads.
+    // Post-completion uploads accept any section label; they bypass AI analysis.
+    if (!isPostCompletion && !LIGHTWEIGHT_SECTIONS.includes(section)) {
+      return res.status(400).json({ error: `Section '${section}' requires AI analysis — use the AI upload endpoint instead` });
+    }
+
+    // Label: use the section map if known, otherwise humanize the raw section key.
+    const sectionLabel = SECTION_LABELS[section]
+      || section.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+
+    // For sections with an AI prompt, start pending and analyze in background.
+    // Post-completion and non-AI sections are marked complete immediately.
+    const hasAiPrompt = !isPostCompletion && !!(buf && LIGHTWEIGHT_AI_PROMPTS[section]);
+    const initialAnalysis = hasAiPrompt
+      ? { summary: `${sectionLabel} uploaded — AI analysis in progress…`, documentType: sectionLabel, confidence: 0, pending: true }
+      : { summary: `${sectionLabel} received and logged.`, documentType: sectionLabel, confidence: 100, pending: false };
 
     const [storagePath, insertRes] = await Promise.all([
       buf ? uploadToStorage(buf, mime, propertyId, section, filename).catch(() => null) : Promise.resolve(null),
@@ -3513,7 +3525,7 @@ app.post('/api/public/deal-room/:propertyId/track-document', upload.single('file
     if (insertRes.error) throw insertRes.error;
     const recordId = insertRes.data?.id;
 
-    logEvent(propertyId, 'document_uploaded', effectiveRole, null, `${SECTION_LABELS[section]} uploaded`, { section, filename }).catch(() => {});
+    logEvent(propertyId, 'document_uploaded', effectiveRole, null, `${sectionLabel} uploaded`, { section, filename, post_completion: isPostCompletion || undefined }).catch(() => {});
     res.json({ ok: true, section, filename, pending: hasAiPrompt });
 
     // ── Background field extraction for non-AI-prompt sections ──────────────
@@ -3958,7 +3970,7 @@ app.get('/api/public/deal-room/:propertyId/invites', async (req, res) => {
     if (access.mode !== 'owner') return accessDenied(res, 'Only the deal-room owner can list invitations');
     const { data, error } = await supabase
       .from('deal_room_invites')
-      .select('id, role_key, invited_email, status, verification_method, created_at, updated_at, last_used_at, expires_at, revoked_at')
+      .select('id, role_key, invited_email, status, verification_method, created_at, last_used_at, expires_at, revoked_at')
       .eq('property_id', propertyId)
       .order('created_at', { ascending: false });
     if (error) throw error;

@@ -133,6 +133,12 @@ function SealedView({ sealData, propertyId }) {
   const [seal, setSeal] = useState(sealData);
   const [loading, setLoading] = useState(!sealData);
 
+  // Post-completion records state
+  const [pcDocs,     setPcDocs]     = useState([]);
+  const [pcLoading,  setPcLoading]  = useState(true);
+  const [uploading,  setUploading]  = useState(false);
+  const [uploadMsg,  setUploadMsg]  = useState(null); // { type: 'ok'|'err', text }
+
   useEffect(() => {
     if (sealData) return;
     fetch(`${API_BASE}/api/public/deal-room/${propertyId}/settlement/seal`, {
@@ -143,6 +149,47 @@ function SealedView({ sealData, propertyId }) {
       .catch(() => {})
       .finally(() => setLoading(false));
   }, [propertyId, sealData]);
+
+  // Fetch post-completion records from the analyses endpoint
+  const fetchPcDocs = useCallback(() => {
+    setPcLoading(true);
+    fetch(`${API_BASE}/api/public/deal-room/${propertyId}/analyses`, {
+      headers: getRoomAuthHeaders(propertyId),
+    })
+      .then(r => r.ok ? r.json() : { post_completion_records: [] })
+      .then(d => setPcDocs(Array.isArray(d.post_completion_records) ? d.post_completion_records : []))
+      .catch(() => setPcDocs([]))
+      .finally(() => setPcLoading(false));
+  }, [propertyId]);
+
+  useEffect(() => { fetchPcDocs(); }, [fetchPcDocs]);
+
+  // Upload a post-completion document via track-document endpoint.
+  // The API stamps post_completion=true automatically when the room is sealed.
+  async function handlePcUpload(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = '';
+    setUploading(true); setUploadMsg(null);
+    try {
+      const form = new FormData();
+      form.append('file', file);
+      form.append('section', 'post_completion');
+      form.append('label', file.name);
+      const resp = await fetch(
+        `${API_BASE}/api/public/deal-room/${propertyId}/track-document`,
+        { method: 'POST', headers: getRoomAuthHeaders(propertyId), body: form }
+      );
+      const json = await resp.json();
+      if (!resp.ok || !json.ok) throw new Error(json.error || 'Upload failed');
+      setUploadMsg({ type: 'ok', text: `${file.name} added to Post-Completion Records.` });
+      await fetchPcDocs();
+    } catch (err) {
+      setUploadMsg({ type: 'err', text: err.message });
+    } finally {
+      setUploading(false);
+    }
+  }
 
   if (loading) {
     return (
@@ -199,10 +246,59 @@ function SealedView({ sealData, propertyId }) {
         </div>
       )}
 
-      <div className="rounded-xl bg-amber-50 border border-amber-100 px-4 py-3">
-        <p className="text-xs text-amber-700">
-          <strong>Post-Completion Documents:</strong> New documents uploaded to this workspace after sealing are recorded in the Post-Completion Records section and do not affect the sealed Transaction Record.
-        </p>
+      {/* ── Post-Completion Records ───────────────────────────────────────── */}
+      <div className="rounded-xl border border-gray-200 overflow-hidden">
+        <div className="px-4 py-3 bg-gray-50 border-b border-gray-100 flex items-center justify-between">
+          <div>
+            <p className="text-xs font-bold text-gray-700">Post-Completion Records</p>
+            <p className="text-[10px] text-gray-400 mt-0.5">
+              Documents added after sealing — not part of the original Transaction Seal.
+            </p>
+          </div>
+          <label className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-bold text-white cursor-pointer transition hover:opacity-90 ${uploading ? 'opacity-50 pointer-events-none' : ''}`}
+            style={{ background: '#800020' }}>
+            <input type="file" className="hidden" onChange={handlePcUpload} disabled={uploading} />
+            {uploading ? 'Uploading…' : '+ Add Document'}
+          </label>
+        </div>
+
+        {uploadMsg && (
+          <div className={`px-4 py-2 text-xs ${uploadMsg.type === 'ok' ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-600'}`}>
+            {uploadMsg.text}
+          </div>
+        )}
+
+        {pcLoading ? (
+          <div className="px-4 py-4 text-xs text-gray-400 text-center">Loading records…</div>
+        ) : pcDocs.length === 0 ? (
+          <div className="px-4 py-5 text-center">
+            <p className="text-xs text-gray-400">No post-completion documents yet.</p>
+            <p className="text-[10px] text-gray-300 mt-0.5">
+              Upload supporting documents such as wire confirmations or signed statements.
+            </p>
+          </div>
+        ) : (
+          <div className="divide-y divide-gray-100">
+            {pcDocs.map(doc => (
+              <div key={doc.id} className="px-4 py-2.5 flex items-center gap-3">
+                <span className="text-base leading-none">📄</span>
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs font-medium text-gray-800 truncate">
+                    {doc.filename || doc.section}
+                  </p>
+                  <p className="text-[10px] text-gray-400">
+                    Added {doc.post_completion_added_at
+                      ? new Date(doc.post_completion_added_at).toLocaleString()
+                      : new Date(doc.created_at).toLocaleString()}
+                  </p>
+                </div>
+                <span className="shrink-0 text-[9px] px-1.5 py-0.5 rounded bg-amber-50 text-amber-600 border border-amber-100 font-medium">
+                  post-completion
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       <button
