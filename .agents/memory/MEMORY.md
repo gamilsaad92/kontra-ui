@@ -21,3 +21,5 @@
 - [Kontra document upload table](kontra-document-upload-table.md) — uploads live in deal_analyses not deal_documents; source_doc_id not source_document; entity_name is in metadata_values
 - [Settlement Capability Layer](settlement-capability-layer.md) — provider-neutral settlement readiness layer; getCapabilities/getEffectiveStages; advance endpoint blocks 'complete' (use /settlement/complete); sealed_at makes transaction_record_fields immutable only; migration 017 still held pending deploy approval
 - [Settlement capability detection gap](settlement-capability-gap.md) — roomHasSettlementCapability must check settlement_mode; advance handler must select settlement_mode
+- [Kontra coordinator role detection](kontra-coordinator-role-detection.md) — standard packs use invitable:false; custom ws_* packs use canManage:true without invitable:false; isCoordinatorRole() must check both
+- [Kontra Overview UX architecture](kontra-overview-ux-architecture.md) — CoordinatorOverview has StageLifecycleBar, phase-conditional readiness panel; phase = transaction/closing/settlement/complete from stage key
