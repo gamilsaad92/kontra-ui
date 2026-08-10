@@ -550,4 +550,7 @@ module.exports = {
   placeOrder, getOrderBook,
   createProposal, castVote, listProposals,
   PARTITION_TYPES, INVESTOR_TYPES, PROPOSAL_TYPES,
+  // Production-guard flags — read by tokenizationApi.js middleware
+  IS_MOCK: true,
+  IS_PRODUCTION_DISABLED: IS_PRODUCTION,
 };

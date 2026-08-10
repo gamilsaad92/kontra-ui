@@ -7342,8 +7342,19 @@ app.post('/api/public/deal-room/:propertyId/transaction-record/fields/:fieldId/v
   const { ownerWriteToken, actorRole } = req.body || {};
   const access = await getRoomAccessContext(req, propertyId, ownerWriteToken);
   if (access.mode !== 'owner') return accessDenied(res, 'Owner access required');
+
+  // Sealed workspaces: transaction_record_fields and their approvals are immutable.
+  const { data: sealedRoom } = await supabase.from('deal_rooms').select('sealed_at, customer_email').eq('property_id', propertyId).maybeSingle();
+  if (sealedRoom?.sealed_at) {
+    return res.status(400).json({
+      error: 'WORKSPACE_SEALED',
+      message: 'Transaction record fields are immutable after the workspace is sealed. The Transaction Seal was created at ' + sealedRoom.sealed_at + '.',
+      sealed_at: sealedRoom.sealed_at,
+    });
+  }
+
   try {
-    const { data: room } = await supabase.from('deal_rooms').select('customer_email').eq('property_id', propertyId).maybeSingle();
+    const room = sealedRoom; // already fetched above
     const email = room?.customer_email || 'coordinator';
     const { error: fErr } = await supabase
       .from('transaction_record_fields')
@@ -7382,6 +7393,17 @@ app.post('/api/public/deal-room/:propertyId/transaction-record/fields', async (r
   if (!field_key || !field_category) return res.status(400).json({ error: 'field_key and field_category required' });
   const access = await getRoomAccessContext(req, propertyId, ownerWriteToken);
   if (access.mode !== 'owner') return accessDenied(res, 'Owner access required');
+
+  // Sealed workspaces: transaction_record_fields are immutable after the Transaction Seal is created.
+  const { data: sealedRoom } = await supabase.from('deal_rooms').select('sealed_at').eq('property_id', propertyId).maybeSingle();
+  if (sealedRoom?.sealed_at) {
+    return res.status(400).json({
+      error: 'WORKSPACE_SEALED',
+      message: 'Transaction record fields are immutable after the workspace is sealed. The Transaction Seal was created at ' + sealedRoom.sealed_at + '. New documents can still be added as post-completion records.',
+      sealed_at: sealedRoom.sealed_at,
+    });
+  }
+
   const ALLOWED_STATUSES = ['missing','extracted','needs_review','verified','not_applicable'];
   const now = new Date().toISOString();
   try {
