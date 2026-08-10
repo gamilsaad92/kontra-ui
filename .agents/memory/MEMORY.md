@@ -17,3 +17,5 @@
 - [Kontra product boundary](kontra-product-boundary.md) — coordinates/verifies/prepares only; never issues, sells, recommends, or settles; DA capability = "Digital Asset Readiness", not "Tokenization Engine"
 - [Kontra Transaction Record semantics](kontra-transaction-record-semantics.md) — use canonical field keys, distinguish workflow-required from suggested/expected, and make dependent fields non-applicable when their prerequisite is N/A
 - [Kontra Supabase migrations](kontra-supabase-migrations.md) — use the management SQL endpoint when the attached Supabase REST connector returns an invalid-URL proxy error
+- [Kontra public API middleware chain](kontra-public-api-middleware-chain.md) — five middleware layers block /api/public/ routes; each needs a dual-path bypass; 404 catch-all must stay at end of file
+- [Kontra document upload table](kontra-document-upload-table.md) — uploads live in deal_analyses not deal_documents; source_doc_id not source_document; entity_name is in metadata_values
