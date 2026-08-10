@@ -213,7 +213,13 @@ function InviteModal({ open, onClose, prefilledRoleKey, roles, isV2, onSend }) {
 
 // ── Main panel ────────────────────────────────────────────────────────────────
 
-export default function ParticipantsPanel({ roomId, packId = DEFAULT_PACK_ID, isV2 = false }) {
+export default function ParticipantsPanel({
+  roomId,
+  packId = DEFAULT_PACK_ID,
+  isV2 = false,
+  isCoordinator = false,
+  coordinatorRole = null,
+}) {
   const pack = getWorkflowPack(packId);
 
   // Coordinator roles are shown with "Owner" status — they're part of the workspace
@@ -226,13 +232,33 @@ export default function ParticipantsPanel({ roomId, packId = DEFAULT_PACK_ID, is
   const isCoordinatorRole = r =>
     r.invitable === false || (r.canManage === true && r.invitable !== true);
 
-  const coordinatorRoles = (pack.roles || [])
+  const metadataCoordinatorRoles = (pack.roles || [])
     .filter(isCoordinatorRole)
     .map(r => ({ key: r.key, icon: r.icon || '🏢', label: r.shortLabel || r.label, color: r.color }));
 
+  // Ownership/session semantics are authoritative. When the room was loaded
+  // with access.mode === "owner", render exactly one coordinator row even if a
+  // builder-generated pack omitted coordinator metadata entirely.
+  const metadataOwnerRole = (pack.roles || []).find(r => r.canManage === true);
+  const coordinatorRoles = isCoordinator
+    ? [coordinatorRole || metadataCoordinatorRoles[0] || (metadataOwnerRole && {
+        key: metadataOwnerRole.key,
+        icon: metadataOwnerRole.icon || '🏢',
+        label: metadataOwnerRole.shortLabel || metadataOwnerRole.label,
+        color: metadataOwnerRole.color,
+      }) || {
+        key: 'deal_coordinator',
+        icon: '🏢',
+        label: 'Deal Coordinator',
+        color: '#800020',
+      }]
+    : metadataCoordinatorRoles;
+
+  const coordinatorKeys = new Set(coordinatorRoles.map(r => r.key));
+
   // External participant roles — the only ones that need invitations.
   const invitableRoles = (pack.roles || [])
-    .filter(r => !isCoordinatorRole(r))
+    .filter(r => !coordinatorKeys.has(r.key) && !isCoordinatorRole(r))
     .map(r => ({ key: r.key, icon: r.icon || '👤', label: r.shortLabel || r.label, color: r.color }));
 
   const [invites,     setInvites]     = useState([]);
@@ -390,7 +416,9 @@ export default function ParticipantsPanel({ roomId, packId = DEFAULT_PACK_ID, is
 
   const rows        = buildRows();
   // Only count external participant invites (not the coordinator/owner row)
-  const activeCount = invites.filter(i => ['pending', 'accepted'].includes(i.status)).length;
+  const activeCount = invites.filter(i =>
+    ['pending', 'accepted'].includes(i.status) && !coordinatorKeys.has(i.role_key)
+  ).length;
 
   return (
     <div className="bg-white rounded-2xl border border-gray-200 mb-6 overflow-hidden">
@@ -444,7 +472,7 @@ export default function ParticipantsPanel({ roomId, packId = DEFAULT_PACK_ID, is
                         <span className="text-sm font-semibold text-gray-800 truncate">{role.label}</span>
                       </div>
                       <div className="hidden sm:block min-w-0">
-                        <p className="text-xs text-gray-400 italic">Workspace coordinator</p>
+                        <p className="text-xs text-gray-400 italic">Workspace coordinator · Active</p>
                       </div>
                       <div className="shrink-0">
                         <StatusBadge status="coordinator" />
