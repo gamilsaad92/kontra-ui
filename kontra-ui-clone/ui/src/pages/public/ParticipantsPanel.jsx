@@ -218,13 +218,21 @@ export default function ParticipantsPanel({ roomId, packId = DEFAULT_PACK_ID, is
 
   // Coordinator roles are shown with "Owner" status — they're part of the workspace
   // by definition and do not need invitations. They are excluded from the invite count.
+  //
+  // Detection covers two cases:
+  //   1. Standard packs: invitable === false (owner, buyer, founder, issuer, franchisor)
+  //   2. Custom ws_* packs: canManage === true but invitable not explicitly set to false
+  //      — the pack builder may not emit invitable:false for the coordinator role
+  const isCoordinatorRole = r =>
+    r.invitable === false || (r.canManage === true && r.invitable !== true);
+
   const coordinatorRoles = (pack.roles || [])
-    .filter(r => r.invitable === false)
+    .filter(isCoordinatorRole)
     .map(r => ({ key: r.key, icon: r.icon || '🏢', label: r.shortLabel || r.label, color: r.color }));
 
   // External participant roles — the only ones that need invitations.
   const invitableRoles = (pack.roles || [])
-    .filter(r => r.invitable !== false)
+    .filter(r => !isCoordinatorRole(r))
     .map(r => ({ key: r.key, icon: r.icon || '👤', label: r.shortLabel || r.label, color: r.color }));
 
   const [invites,     setInvites]     = useState([]);
