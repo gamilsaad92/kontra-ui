@@ -18,6 +18,7 @@ import { fundraisingPack } from "./fundraising";
 import { tokenizationPack } from "./tokenization";
 import { createGenericPack } from "./genericPackFactory";
 import { API_BASE as RESOLVED_API_BASE } from "../apiBase";
+import stagesConfig from "../../shared/workflowStages.json";
 
 export const DEFAULT_PACK_ID = "cre_acquisition";
 
@@ -262,6 +263,105 @@ export function resolvePackId(room) {
     if (nameInferred) return nameInferred;
   }
   return inferred ?? room.workflow_pack_id ?? DEFAULT_PACK_ID;
+}
+
+// ── Capability system ─────────────────────────────────────────────────────────
+//
+// Workspace capabilities extend any transaction type with optional behaviour.
+// Settlement and Tokenization are the two capabilities implemented here.
+//
+// getCapabilities(packId, room) — merges pack defaults with room metadata
+//   overrides set by the coordinator via workspace settings.
+//
+// getEffectiveStages(packId, room, baseStages) — injects `settlement` and
+//   `complete` stages after the pack's terminal stage when settlement is on.
+//
+// isInSettlementPhase(dealStage) — treats legacy `funded` rooms with
+//   settlement capability as being in the settlement phase (backward compat).
+
+const SETTLEMENT_STAGE_DEFS = (stagesConfig._settlement_stages?.stages || [
+  { key: 'settlement', label: 'Settlement' },
+  { key: 'complete',   label: 'Complete'   },
+]).map(s => ({
+  ...s,
+  icon: s.key === 'settlement' ? '⚖️' : '✅',
+  desc: s.key === 'settlement'
+    ? 'Settlement conditions verified and confirmed by all parties'
+    : 'Transaction sealed — permanent Transaction Seal created',
+}));
+
+// Default capability flags per built-in pack.
+// CRE/Business/Fundraising: settlement opt-in (coordinator enables via settings).
+// Tokenization pack: settlement always on, tokenization capability always on.
+// Custom packs (ws_*): settlement opt-in, tokenization via digital_asset_enabled.
+const PACK_CAPABILITY_DEFAULTS = {
+  cre_acquisition:      { settlement: false, settlementModes: ['traditional'],            tokenization: false },
+  business_acquisition: { settlement: false, settlementModes: ['traditional'],            tokenization: false },
+  fundraising:          { settlement: false, settlementModes: ['traditional', 'digital'], tokenization: false },
+  tokenization:         { settlement: true,  settlementModes: ['tokenized', 'digital'],   tokenization: true  },
+};
+
+/**
+ * Return the effective capabilities for a workspace, merging pack defaults
+ * with room metadata overrides set by the coordinator.
+ *
+ * settlement.enabled — true if the pack always has settlement, or if the
+ *   coordinator toggled it on via workspace settings.
+ * tokenization.enabled — mapped from existing digital_asset_enabled flag
+ *   for full backward compatibility.
+ */
+export function getCapabilities(packId, room) {
+  const defaults = PACK_CAPABILITY_DEFAULTS[packId] || {
+    settlement: false, settlementModes: ['traditional'], tokenization: false,
+  };
+  const meta = room?.metadata_values || {};
+  const settlementEnabled =
+    defaults.settlement ||
+    meta.settlement_capability_enabled === true ||
+    meta.settlement_capability_enabled === 'true';
+  const tokenizationEnabled =
+    defaults.tokenization ||
+    meta.digital_asset_enabled === true ||
+    meta.digital_asset_enabled === 'true';
+  return {
+    settlement: settlementEnabled,
+    settlementModes: defaults.settlementModes,
+    tokenization: tokenizationEnabled,
+  };
+}
+
+/**
+ * Return the full ordered stage list for a workspace, injecting `settlement`
+ * and `complete` stages after the terminal stage when settlement capability is on.
+ *
+ * @param {string} packId     - resolved pack id
+ * @param {object} room       - deal_rooms row (needs metadata_values)
+ * @param {Array}  baseStages - optional override (e.g. stages_config from API)
+ */
+export function getEffectiveStages(packId, room, baseStages) {
+  const caps = getCapabilities(packId, room);
+  const pack = getWorkflowPack(packId);
+  const stages = baseStages || pack?.stages || [];
+  if (!caps.settlement) return stages;
+  // Don't duplicate settlement/complete stages (custom pack may already have them).
+  const hasSettlement = stages.some(s => s.key === 'settlement' || s.key === 'complete');
+  if (hasSettlement) return stages;
+  // When settlement is enabled, 'funded' is a backward-compat milestone, not a
+  // lifecycle stage. New settlement-capable rooms advance: closing → settlement → complete.
+  // Remove 'funded' from the stage list and inject settlement → complete after closing.
+  // Rooms already at deal_stage='funded' remain backward-compatible via
+  // isInSettlementPhase(), which maps 'funded' → settlement phase for UI rendering.
+  const withoutFunded = stages.filter(s => s.key !== 'funded');
+  return [...withoutFunded, ...SETTLEMENT_STAGE_DEFS];
+}
+
+/**
+ * Whether a deal_stage value is in the settlement phase.
+ * Rooms in `funded` with settlement capability active are treated as being
+ * in the settlement stage — no DB migration required.
+ */
+export function isInSettlementPhase(dealStage) {
+  return dealStage === 'settlement' || dealStage === 'funded';
 }
 
 export function listWorkflowPacks() {
