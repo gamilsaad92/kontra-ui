@@ -6523,19 +6523,7 @@ app.post("/api/workflows/:id/run", async (req, res) => {
 app.post('/api/voice', express.urlencoded({ extended: false }), handleVoice);
 app.post('/api/voice/query', express.urlencoded({ extended: false }), handleVoiceQuery);
 
-app.use('/api', (req, res) => {
-  res.status(404).json({
-    code: 'NOT_FOUND',
-    message: `${req.method} ${req.originalUrl} not found`
-  });
-});
-if (Sentry.Handlers?.errorHandler) {
-  app.use(Sentry.Handlers.errorHandler());
-} else if (Sentry.errorHandler) {
-  app.use(Sentry.errorHandler());
-}
-
-app.use(errorHandler);
+// 404 and error handlers moved to end of file (after all route registrations).
 
 // ── Start Server ──────────────────────────────────────────────────────────
 
@@ -7381,5 +7369,22 @@ app.get('/api/public/deal-room/:propertyId/brain/facts', async (req, res) => {
     res.json(null);
   }
 });
+
+// ── 404 catch-all — MUST remain after all route registrations ─────────────────
+// Placed here so that routes registered later in this file (transaction-record,
+// brain/facts, extract, etc.) are not swallowed by the catch-all before they
+// can be matched. Express evaluates handlers in registration order.
+app.use('/api', (req, res) => {
+  res.status(404).json({
+    code: 'NOT_FOUND',
+    message: `${req.method} ${req.originalUrl} not found`
+  });
+});
+if (Sentry.Handlers?.errorHandler) {
+  app.use(Sentry.Handlers.errorHandler());
+} else if (Sentry.errorHandler) {
+  app.use(Sentry.errorHandler());
+}
+app.use(errorHandler);
 
 module.exports = app;
