@@ -19,6 +19,32 @@
 const { v4: uuidv4 } = require('uuid');
 const crypto = require('crypto');
 
+// ── Production guard ──────────────────────────────────────────────────────────
+//
+// tokenRegistry is an in-memory scaffold (Maps/arrays) used for local
+// development and demos. It resets on every server restart and generates
+// mock addresses, tx hashes, and block numbers. It MUST NOT be presented
+// as production functionality.
+//
+// In production, all tokenizationApi.js routes that call into this module
+// return 503 MOCK_DISABLED. Routes that do NOT use this module (/assess,
+// /contract/abi, /contract/preflight, /contract/encode-kyc-data,
+// /contract/assessment-history) remain fully available in production.
+//
+// For production tokenization readiness, use POST /api/tokenization/assess.
+
+const IS_PRODUCTION = process.env.NODE_ENV === 'production';
+if (IS_PRODUCTION) {
+  console.warn(
+    '[tokenRegistry] MOCK_DISABLED — in-memory token registry is not available in production. ' +
+    'Routes that depend on this module will return 503. ' +
+    'Use POST /api/tokenization/assess for production tokenization readiness.'
+  );
+}
+
+module.exports.IS_MOCK = true;
+module.exports.IS_PRODUCTION_DISABLED = IS_PRODUCTION;
+
 // ── In-memory stores ──────────────────────────────────────────────────────────
 
 const TOKEN_PACKAGES  = new Map();   // tokenId → TokenPackage

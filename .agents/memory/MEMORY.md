@@ -19,3 +19,4 @@
 - [Kontra Supabase migrations](kontra-supabase-migrations.md) — use the management SQL endpoint when the attached Supabase REST connector returns an invalid-URL proxy error
 - [Kontra public API middleware chain](kontra-public-api-middleware-chain.md) — five middleware layers block /api/public/ routes; each needs a dual-path bypass; 404 catch-all must stay at end of file
 - [Kontra document upload table](kontra-document-upload-table.md) — uploads live in deal_analyses not deal_documents; source_doc_id not source_document; entity_name is in metadata_values
+- [Settlement Capability Layer](settlement-capability-layer.md) — provider-neutral settlement readiness layer; getCapabilities/getEffectiveStages; advance endpoint blocks 'complete' (use /settlement/complete); sealed_at makes transaction_record_fields immutable only; migration 017 still held pending deploy approval

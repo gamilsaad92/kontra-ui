@@ -490,4 +490,219 @@ export function buildSeededFromSchema(schemaKey, workspaceMeta) {
   return result;
 }
 
+// ── Settlement Record Schema ──────────────────────────────────────────────────
+//
+// Provider-neutral settlement fields stored as settlement.* keys in
+// transaction_record_fields. These are NOT part of the main transaction
+// record schema — they are only shown/required when the workspace has the
+// settlement capability active.
+//
+// Three settlement modes share a common core and extend it:
+//   traditional — standard banking rails, escrow, wire
+//   digital     — provider-neutral interface for future stablecoin/digital rails
+//   tokenized   — leverages existing tokenization readiness capability
+//
+// Terminology is deliberately rail-agnostic. "Settlement Rail" accepts
+// "ACH", "SWIFT", "USDC on Polygon", "Institutional blockchain", etc.
+// No provider, network, or token name is hardcoded here.
+//
+// IMPORTANT: settlement_readiness_pct = 1.0 NEVER implies completion is
+// authorized. Completion requires every mandatory field status = 'verified'
+// AND every required approval action = 'approved', checked server-side.
+
+export const SETTLEMENT_RECORD_SCHEMA = {
+  // ── Fields present for all settlement modes ─────────────────────────────────
+  common: [
+    {
+      key:              'settlement.mode',
+      label:            'Settlement Mode',
+      category:         'settlement',
+      workflowRequired: true,
+      hint:             'traditional | digital | tokenized',
+      modes:            ['traditional', 'digital', 'tokenized'],
+    },
+    {
+      key:              'settlement.provider',
+      label:            'Settlement Provider',
+      category:         'settlement',
+      workflowRequired: true,
+      hint:             'Name of the settlement provider, agent, or counterparty. Free text — not validated against any provider list.',
+      modes:            ['traditional', 'digital', 'tokenized'],
+    },
+    {
+      key:              'settlement.rail',
+      label:            'Settlement Rail',
+      category:         'settlement',
+      workflowRequired: true,
+      hint:             'How value will be moved — e.g. "ACH", "SWIFT", "Fedwire", "Escrow", "USDC on Polygon", "Institutional blockchain". Never hardcoded.',
+      modes:            ['traditional', 'digital', 'tokenized'],
+    },
+    {
+      key:              'settlement.asset_currency',
+      label:            'Settlement Asset / Currency',
+      category:         'settlement',
+      workflowRequired: true,
+      hint:             'The currency or asset being settled — e.g. "USD", "EUR", "USDC", "Property title", "ERC-1400 token". Free text.',
+      modes:            ['traditional', 'digital', 'tokenized'],
+    },
+    {
+      key:              'settlement.destination_reference',
+      label:            'Destination Reference',
+      category:         'settlement',
+      workflowRequired: true,
+      hint:             'An opaque reference identifying where value is directed — escrow account ref, beneficiary ID, or wallet identifier. Stored masked; no raw credentials.',
+      modes:            ['traditional', 'digital', 'tokenized'],
+    },
+    {
+      key:              'settlement.settlement_reference',
+      label:            'Settlement Reference',
+      category:         'settlement',
+      workflowRequired: false,
+      hint:             'Confirmation reference provided by the settlement provider once settlement is initiated or complete — wire ref, SWIFT MT103, stablecoin tx ID, etc.',
+      modes:            ['traditional', 'digital', 'tokenized'],
+    },
+  ],
+
+  // ── Traditional-only fields ──────────────────────────────────────────────────
+  traditional: [
+    {
+      key:              'settlement.funding_confirmed',
+      label:            'Funding Confirmed',
+      category:         'settlement',
+      workflowRequired: true,
+      hint:             'Coordinator confirmation that funding has been received or irrevocably committed.',
+      modes:            ['traditional'],
+    },
+    {
+      key:              'settlement.settlement_date',
+      label:            'Settlement Date',
+      category:         'settlement',
+      workflowRequired: true,
+      hint:             'The agreed date on which settlement completes.',
+      modes:            ['traditional'],
+    },
+    {
+      key:              'settlement.evidence_doc_ref',
+      label:            'Settlement Evidence',
+      category:         'settlement',
+      workflowRequired: true,
+      hint:             'Reference to the uploaded settlement evidence document (wire confirmation, settlement statement, etc.).',
+      modes:            ['traditional'],
+    },
+  ],
+
+  // ── Digital-only fields (provider-neutral interface, Phase 1 = tracking only) ─
+  digital: [
+    {
+      key:              'settlement.expected_amount',
+      label:            'Expected Settlement Amount',
+      category:         'settlement',
+      workflowRequired: true,
+      hint:             'The amount expected to be settled via the configured rail and asset.',
+      modes:            ['digital'],
+    },
+    {
+      key:              'settlement.network_or_chain',
+      label:            'Network / Chain',
+      category:         'settlement',
+      workflowRequired: false,
+      hint:             'Optional: specify the chain or payment network if the rail is chain-specific. Free text.',
+      modes:            ['digital'],
+    },
+  ],
+
+  // ── Tokenized-only fields ────────────────────────────────────────────────────
+  tokenized: [
+    {
+      key:              'settlement.token_type',
+      label:            'Token Type',
+      category:         'settlement',
+      workflowRequired: true,
+      hint:             'The token standard or type — e.g. "ERC-1400", "ERC-20", "ERC-1155". Free text.',
+      modes:            ['tokenized'],
+    },
+    {
+      key:              'settlement.issuance_provider',
+      label:            'Issuance Provider',
+      category:         'settlement',
+      workflowRequired: true,
+      hint:             'External issuance provider or adapter name. Kontra coordinates readiness; the provider executes issuance.',
+      modes:            ['tokenized'],
+    },
+    {
+      key:              'settlement.whitelist_confirmed',
+      label:            'KYC / Whitelist Confirmed',
+      category:         'settlement',
+      workflowRequired: true,
+      hint:             'Coordinator confirmation that investor whitelist and KYC/AML requirements are complete.',
+      modes:            ['tokenized'],
+    },
+    {
+      key:              'settlement.legal_opinion_present',
+      label:            'Legal Opinion Uploaded',
+      category:         'settlement',
+      workflowRequired: true,
+      hint:             'A legal opinion document covering the token issuance has been uploaded and verified.',
+      modes:            ['tokenized'],
+    },
+  ],
+
+  // ── Approval fields (all modes, mode-specific set varies) ────────────────────
+  approvals: [
+    {
+      key:              'settlement.coordinator_approval',
+      label:            'Coordinator Approval',
+      category:         'settlement',
+      workflowRequired: true,
+      role:             'Deal Coordinator',
+      hint:             'Coordinator sign-off that all settlement conditions are verified and the transaction is ready to complete.',
+      modes:            ['traditional', 'digital', 'tokenized'],
+    },
+    {
+      key:              'settlement.legal_approval',
+      label:            'Legal Counsel Approval',
+      category:         'settlement',
+      workflowRequired: true,
+      role:             'Legal Counsel',
+      hint:             'Legal counsel confirmation that settlement documentation is complete and in order.',
+      modes:            ['traditional', 'tokenized'],
+    },
+    {
+      key:              'settlement.compliance_approval',
+      label:            'Compliance Approval',
+      category:         'settlement',
+      workflowRequired: true,
+      role:             'Compliance Officer',
+      hint:             'Compliance sign-off on settlement conditions.',
+      modes:            ['digital', 'tokenized'],
+    },
+  ],
+};
+
+/**
+ * Return the ordered list of required settlement conditions for a given mode.
+ * Each condition has: { key, label, type ('field'|'approval'), required, hint }
+ *
+ * NOTE: This is the schema definition only. The deterministic completion check
+ * is performed server-side in computeSettlementReadiness() — it queries
+ * transaction_record_fields and transaction_record_approvals directly.
+ * A score of 1.0 NEVER grants completion on its own.
+ */
+export function getSettlementConditions(mode) {
+  if (!mode) return [];
+  const schema = SETTLEMENT_RECORD_SCHEMA;
+  const fieldConditions = [
+    ...schema.common,
+    ...(schema[mode] || []),
+  ]
+    .filter(f => f.workflowRequired)
+    .map(f => ({ key: f.key, label: f.label, type: 'field', hint: f.hint }));
+
+  const approvalConditions = schema.approvals
+    .filter(a => a.modes.includes(mode) && a.workflowRequired)
+    .map(a => ({ key: a.key, label: a.label, type: 'approval', role: a.role, hint: a.hint }));
+
+  return [...fieldConditions, ...approvalConditions];
+}
+
 export { PACK_SCHEMAS, UNIVERSAL_TRANSACTION_FIELDS, GENERIC_SCHEMA, SUMMARY_KEYS_BY_SCHEMA };
