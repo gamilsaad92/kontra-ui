@@ -346,7 +346,13 @@ export function getEffectiveStages(packId, room, baseStages) {
   // Don't duplicate settlement/complete stages (custom pack may already have them).
   const hasSettlement = stages.some(s => s.key === 'settlement' || s.key === 'complete');
   if (hasSettlement) return stages;
-  return [...stages, ...SETTLEMENT_STAGE_DEFS];
+  // When settlement is enabled, 'funded' is a backward-compat milestone, not a
+  // lifecycle stage. New settlement-capable rooms advance: closing → settlement → complete.
+  // Remove 'funded' from the stage list and inject settlement → complete after closing.
+  // Rooms already at deal_stage='funded' remain backward-compatible via
+  // isInSettlementPhase(), which maps 'funded' → settlement phase for UI rendering.
+  const withoutFunded = stages.filter(s => s.key !== 'funded');
+  return [...withoutFunded, ...SETTLEMENT_STAGE_DEFS];
 }
 
 /**

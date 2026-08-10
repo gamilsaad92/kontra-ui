@@ -4158,14 +4158,24 @@ app.post('/api/public/deal-room/:propertyId/advance', async (req, res) => {
     // Extend valid stages with settlement/complete when settlement capability is on.
     const settlementCapableAdv = roomHasSettlementCapability(room);
     const alreadyHasSettlement = effectiveStages.some(s => s.key === 'settlement' || s.key === 'complete');
+
+    // When settlement is enabled, 'funded' is a backward-compat milestone, not a
+    // lifecycle stage. Remove it from the stage list so new rooms advance:
+    //   closing → settlement → complete   (not closing → funded → settlement → complete).
+    // A legacy room already at deal_stage='funded' can still advance to 'settlement'
+    // because that key is included in VALID below.
+    const stagesForValidation = (settlementCapableAdv && !alreadyHasSettlement)
+      ? effectiveStages.filter(s => s.key !== 'funded')
+      : effectiveStages;
+
     const VALID = [
-      ...effectiveStages.map(s => s.key),
+      ...stagesForValidation.map(s => s.key),
       ...(settlementCapableAdv && !alreadyHasSettlement ? ['settlement', 'complete'] : []),
     ];
 
     // Block direct advancement to 'complete' — must use POST /settlement/complete.
     // That endpoint validates all conditions, creates the Transaction Seal, and
-    // advances the stage atomically.
+    // advances the stage atomically via a PostgreSQL RPC transaction.
     if (stage === 'complete') {
       return res.status(400).json({
         error: 'COMPLETE_GATE',
@@ -4178,15 +4188,22 @@ app.post('/api/public/deal-room/:propertyId/advance', async (req, res) => {
 
     // Resolve the display label for the incoming stage key.
     // Custom stages may have owner-supplied labels; pack stages use the JSON label.
-    const incomingStageObj = effectiveStages.find(s => s.key === stage);
+    const allKnownStages = [...stagesForValidation, ...(settlementCapableAdv && !alreadyHasSettlement ? [{ key: 'settlement', label: 'Settlement' }, { key: 'complete', label: 'Complete' }] : [])];
+    const incomingStageObj = allKnownStages.find(s => s.key === stage);
     const stageLabel = incomingStageObj?.label || stage;
 
     // Position-based milestone detection — independent of fixed key names.
-    // last stage = "funded equivalent" (seal + VAP + close record)
-    // second-to-last stage = "closing equivalent" (preview VAP, no seal)
-    const lastStageKey        = effectiveStages[effectiveStages.length - 1].key;
-    const secondToLastStageKey = effectiveStages.length >= 2
-      ? effectiveStages[effectiveStages.length - 2].key
+    // Uses the full effective sequence (with settlement/complete when capable).
+    // last stage = "funded equivalent" → seal + VAP + close record
+    // second-to-last stage = "closing equivalent" → preview VAP, no seal
+    // Note: 'complete' is always blocked by COMPLETE_GATE above, so the
+    // lastStageKey milestone logic is effectively dead for settlement rooms,
+    // but milestone detection uses secondToLastStageKey (→ 'settlement') for
+    // the preview-VAP trigger.
+    const fullEffectiveStages = allKnownStages;
+    const lastStageKey        = fullEffectiveStages[fullEffectiveStages.length - 1].key;
+    const secondToLastStageKey = fullEffectiveStages.length >= 2
+      ? fullEffectiveStages[fullEffectiveStages.length - 2].key
       : null;
 
     const currentStage = room?.deal_stage;
@@ -4805,7 +4822,7 @@ app.post('/api/public/deal-room/:transactionId/settlement/complete', async (req,
       });
     }
 
-    // ── Create the Transaction Seal record ────────────────────────────────────
+    // ── Build the Transaction Seal payload ───────────────────────────────────
     const now = new Date().toISOString();
     const displayName = sealDisplayName || 'Transaction Seal';
     const verifiedConditions = readiness.conditions.filter(c => c.met).map(c => ({ key: c.key, label: c.label, type: c.type }));
@@ -4834,45 +4851,51 @@ app.post('/api/public/deal-room/:transactionId/settlement/complete', async (req,
       sealContent.note,
     ].join('\n');
 
-    const { data: sealRecord, error: sealError } = await supabase
-      .from('deal_analyses')
-      .insert({
-        property_id:   propertyId,
-        doc_type:      'transaction_seal',
-        status:        'ai_complete',
-        summary:       JSON.stringify(sealContent),
-        extracted_text: sealText,
-        post_completion: false,
-        source_doc_id: null,
-      })
-      .select('id')
-      .single();
-    if (sealError) throw sealError;
+    // ── Atomic seal via PostgreSQL RPC ────────────────────────────────────────
+    // The RPC runs inside a single DB transaction with a FOR UPDATE row lock.
+    // Unique index idx_deal_analyses_one_seal_per_room prevents duplicate seals
+    // even if a concurrent call races past the lock. If any step fails, the
+    // entire transaction rolls back — no partial state can persist.
+    const { data: rpcResult, error: rpcError } = await supabase.rpc(
+      'complete_settlement_transaction',
+      {
+        p_property_id:  propertyId,
+        p_seal_summary: JSON.stringify(sealContent),
+        p_seal_text:    sealText,
+        p_score:        readiness.score,
+        p_now:          now,
+      }
+    );
+    if (rpcError) throw rpcError;
 
-    // ── Seal the room and advance to 'complete' ───────────────────────────────
-    const { error: updateError } = await supabase
-      .from('deal_rooms')
-      .update({
-        sealed_at:              now,
-        completed_at:           now,
-        deal_stage:             'complete',
-        settlement_readiness_pct: readiness.score,
-      })
-      .eq('property_id', propertyId);
-    if (updateError) throw updateError;
+    // The RPC returns JSONB; Supabase unwraps it as a plain object.
+    const rpc = rpcResult || {};
+    if (rpc.error === 'ALREADY_SEALED') {
+      return res.status(400).json({
+        error:     'ALREADY_SEALED',
+        message:   'This workspace is already sealed.',
+        sealed_at: rpc.sealed_at,
+      });
+    }
+    if (rpc.error === 'ROOM_NOT_FOUND') {
+      return res.status(404).json({ error: 'room not found' });
+    }
+    if (!rpc.ok) {
+      throw new Error(`RPC complete_settlement_transaction failed: ${JSON.stringify(rpc)}`);
+    }
 
     logEvent(
       propertyId, 'transaction_sealed', 'owner', null,
       `Transaction sealed — ${displayName}. Settlement mode: ${room.settlement_mode}.`,
-      { seal_id: sealRecord.id, mode: room.settlement_mode, conditions_count: sealContent.conditions_count }
+      { seal_id: rpc.seal_id, mode: room.settlement_mode, conditions_count: sealContent.conditions_count }
     ).catch(() => {});
 
     res.json({
       ok:                  true,
-      seal_id:             sealRecord.id,
+      seal_id:             rpc.seal_id,
       seal_display_name:   displayName,
-      sealed_at:           now,
-      completed_at:        now,
+      sealed_at:           rpc.sealed_at || now,
+      completed_at:        rpc.sealed_at || now,
       deal_stage:          'complete',
       mode:                room.settlement_mode,
       conditions_verified: sealContent.verified_count,
