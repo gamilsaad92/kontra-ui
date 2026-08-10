@@ -2702,7 +2702,7 @@ function formatSnapshotValue(field) {
 // ── WhatNeedsAttention ────────────────────────────────────────────────────────
 // Unified prioritized feed merging AI findings, next actions, and issues.
 // Replaces the old separate "Next Actions", "AI Findings", and "Issues" cards.
-function WhatNeedsAttention({ briefing, recordFields, loading, onTabChange, propertyId }) {
+function WhatNeedsAttention({ briefing, recordFields, loading, onTabChange, propertyId, compact = false }) {
   const [confirming, setConfirming] = useState('');
 
   async function confirmField(field) {
@@ -2779,6 +2779,79 @@ function WhatNeedsAttention({ briefing, recordFields, loading, onTabChange, prop
   });
 
   const urgencyDot = { high: 'bg-red-400', medium: 'bg-amber-400', low: 'bg-gray-300' };
+
+  // The command center keeps the existing prioritization data, but every
+  // displayed action must lead somewhere useful. Do not create a second task
+  // system here — these are only routing affordances for the existing items.
+  function goToRecord(field) {
+    onTabChange?.('overview');
+    const category = String(field?.field_key || field?.field_category || '').split('.')[0];
+    window.setTimeout(() => {
+      const target = document.getElementById(`transaction-record-category-${category}`);
+      target?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 0);
+  }
+
+  function routeForText(text) {
+    const value = String(text || '').toLowerCase();
+    if (/(invite|participant|buyer|seller|party|counsel|lender|advisor)/.test(value)) {
+      return { label: 'Open People', onClick: () => onTabChange?.('people') };
+    }
+    if (/(document|upload|file|nda|loi|agreement|checklist)/.test(value)) {
+      return { label: 'Open Documents', onClick: () => onTabChange?.('documents') };
+    }
+    return { label: 'Review record', onClick: () => onTabChange?.('overview') };
+  }
+
+  if (compact) {
+    const compactItems = items.slice(0, 4);
+    return (
+      <div className="min-w-0">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Next actions</p>
+            <p className="mt-1 text-sm font-semibold text-gray-900">
+              {loading ? 'Loading…' : compactItems.length > 0
+                ? `${compactItems.length} priority item${compactItems.length === 1 ? '' : 's'}`
+                : hasMeaningfulActivity ? 'Nothing urgent right now' : 'Start this transaction'}
+            </p>
+          </div>
+        </div>
+        {loading ? (
+          <div className="mt-3 space-y-2">
+            {[1, 2].map(n => <div key={n} className="h-9 animate-pulse rounded-lg bg-gray-50" />)}
+          </div>
+        ) : compactItems.length === 0 ? (
+          <p className="mt-2 text-xs leading-relaxed text-gray-400">
+            {hasMeaningfulActivity
+              ? 'Kontra is monitoring the transaction for missing information and inconsistencies.'
+              : 'Upload a document or invite a participant to begin organizing the transaction.'}
+          </p>
+        ) : (
+          <div className="mt-2 divide-y divide-gray-100">
+            {compactItems.map(item => {
+              const action = item.field
+                ? { label: 'Review record', onClick: () => goToRecord(item.field) }
+                : item.actions[0] || routeForText(item.title);
+              return (
+                <div key={item.id} className="flex items-center gap-2.5 py-2.5">
+                  <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${urgencyDot[item.urgency]}`} />
+                  <p className="min-w-0 flex-1 truncate text-xs font-semibold text-gray-800">{item.title}</p>
+                  <button
+                    type="button"
+                    onClick={action.onClick}
+                    disabled={action.disabled}
+                    className="shrink-0 rounded-lg border border-gray-200 px-2.5 py-1 text-[10px] font-bold text-gray-600 transition hover:bg-gray-50 disabled:opacity-50">
+                    {action.label}
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    );
+  }
 
   return (
     <section className="rounded-2xl border border-gray-200 bg-white overflow-hidden">
@@ -2883,7 +2956,15 @@ function WhatNeedsAttention({ briefing, recordFields, loading, onTabChange, prop
 // Category-based readiness derived from structured transaction record fields.
 // Four states: Not started / Building / Needs information / Ready for review.
 // Rows are expandable — shows confirmed fields, missing fields, and sources.
-function DigitalAssetReadinessSection({ recordFields, readiness, onTabChange, readinessPhase = 'transaction', digitalAssetEnabled = false }) {
+function DigitalAssetReadinessSection({
+  propertyId,
+  recordFields,
+  readiness,
+  onTabChange,
+  readinessPhase = 'transaction',
+  digitalAssetEnabled = false,
+  embedded = false,
+}) {
   const [expandedCat, setExpandedCat] = useState(null);
 
   // Per-field definitions for each category — label used in expand panel
@@ -3000,35 +3081,43 @@ function DigitalAssetReadinessSection({ recordFields, readiness, onTabChange, re
   const stBar   = { not_started: 'bg-gray-100',   building: 'bg-amber-300',   needs_info: 'bg-orange-300',   ready: 'bg-emerald-400' };
 
   return (
-    <section className="rounded-2xl border border-gray-200 bg-white overflow-hidden">
+    <div className={embedded ? 'mt-6 border-t border-gray-100 pt-5' : 'rounded-2xl border border-gray-200 bg-white overflow-hidden'}>
       {/* Header */}
-      <div className="px-5 py-4 border-b border-gray-100">
+      <div className={embedded ? '' : 'px-5 py-4 border-b border-gray-100'}>
         <div className="flex items-center justify-between gap-3">
           <div>
             <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">
-              {readinessPhase === 'closing' ? 'Closing readiness' : 'Transaction readiness'}
+              {embedded ? 'Transaction record' : (readinessPhase === 'closing' ? 'Closing readiness' : 'Transaction readiness')}
             </p>
             <p className="mt-1 text-sm font-bold text-gray-900">
-              {readinessPhase === 'closing'
+              {embedded
+                ? 'Structured truth from documents, inputs, and verified facts'
+                : readinessPhase === 'closing'
                 ? 'Preparing for transaction close'
                 : 'Building your verified transaction record'}
             </p>
           </div>
-          <span className={`shrink-0 rounded-full border px-3 py-1 text-[11px] font-bold ${overallState.color} ${overallState.bg} ${overallState.border}`}>
-            {overallState.label}
-          </span>
+          {!embedded && (
+            <span className={`shrink-0 rounded-full border px-3 py-1 text-[11px] font-bold ${overallState.color} ${overallState.bg} ${overallState.border}`}>
+              {overallState.label}
+            </span>
+          )}
         </div>
-        <p className="mt-1.5 text-xs text-gray-400 leading-relaxed">
-          {readinessPhase === 'closing'
-            ? 'Verify all conditions are satisfied and parties are ready to close.'
-            : 'Kontra organizes transaction information as documents are reviewed, participants respond, and facts are confirmed.'}
-        </p>
-        {/* Visual step progress */}
-        <div className="mt-3 flex items-center gap-1">
-          {categories.map(cat => (
-            <div key={cat.key} className={`h-1.5 flex-1 rounded-full transition-all duration-500 ${stBar[cat.st]}`} />
-          ))}
-        </div>
+        {!embedded && (
+          <>
+            <p className="mt-1.5 text-xs text-gray-400 leading-relaxed">
+              {readinessPhase === 'closing'
+                ? 'Verify all conditions are satisfied and parties are ready to close.'
+                : 'Kontra organizes transaction information as documents are reviewed, participants respond, and facts are confirmed.'}
+            </p>
+            {/* Visual category state only; the authoritative overall score lives above. */}
+            <div className="mt-3 flex items-center gap-1">
+              {categories.map(cat => (
+                <div key={cat.key} className={`h-1.5 flex-1 rounded-full transition-all duration-500 ${stBar[cat.st]}`} />
+              ))}
+            </div>
+          </>
+        )}
       </div>
 
       {/* Category rows — each expandable */}
@@ -3036,7 +3125,7 @@ function DigitalAssetReadinessSection({ recordFields, readiness, onTabChange, re
         {categories.map(cat => {
           const isExpanded = expandedCat === cat.key;
           return (
-            <div key={cat.key}>
+            <div key={cat.key} id={`transaction-record-category-${cat.key}`}>
               <button
                 type="button"
                 onClick={() => setExpandedCat(isExpanded ? null : cat.key)}
@@ -3046,8 +3135,8 @@ function DigitalAssetReadinessSection({ recordFields, readiness, onTabChange, re
                   <p className="text-sm text-gray-700 truncate">{cat.label}</p>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
-                  <span className={`text-[10px] font-semibold ${stColor[cat.st]}`}>
-                    {stLabel[cat.st]}
+                  <span className={`text-[10px] font-semibold ${embedded ? 'text-gray-500' : stColor[cat.st]}`}>
+                    {cat.count} of {cat.total} confirmed
                   </span>
                   <svg className={`w-3 h-3 text-gray-300 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
                     fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
@@ -3151,7 +3240,7 @@ function DigitalAssetReadinessSection({ recordFields, readiness, onTabChange, re
           Transaction readiness reflects the completeness and organization of transaction information across all parties, documents, and verified facts.
         </p>
       )}
-    </section>
+    </div>
   );
 }
 
@@ -3334,32 +3423,35 @@ function RoomCopilot({ propertyId }) {
 // Adapated from the OperationsManagerView stage bar. Shows every effective stage
 // (including settlement when enabled) as a horizontal progression. The current
 // stage is highlighted; past stages show a checkmark; future stages are muted.
-function StageLifecycleBar({ stages = [], currentStageKey }) {
+function StageLifecycleBar({ stages = [], currentStageKey, compact = false }) {
   if (stages.length === 0) return null;
   const currentIdx = Math.max(0, stages.findIndex(s => s.key === currentStageKey));
   return (
-    <div className="mt-4 pt-4 border-t border-gray-100">
-      <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-3">Transaction lifecycle</p>
-      <div className="flex items-start gap-1">
+    <div className={`${compact ? 'mt-5 pt-4' : 'mt-4 pt-4'} border-t border-gray-100`}>
+      <div className="mb-2 flex items-center justify-between gap-3">
+        <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Transaction lifecycle</p>
+        {compact && <p className="text-[10px] text-gray-400">Operational position</p>}
+      </div>
+      <div className={`flex items-center ${compact ? 'gap-1' : 'items-start gap-1'}`}>
         {stages.map((s, i) => {
           const done   = i < currentIdx;
           const active = i === currentIdx;
           return (
             <React.Fragment key={s.key}>
-              <div className="flex flex-col items-center flex-1 min-w-0">
-                <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold mb-1 transition-all
+              <div className={`min-w-0 flex-1 ${compact ? 'flex items-center gap-1.5' : 'flex flex-col items-center'}`}>
+                <div className={`${compact ? 'h-2 w-2' : 'mb-1 h-6 w-6'} shrink-0 rounded-full flex items-center justify-center text-[10px] font-bold transition-all
                   ${done   ? 'bg-[#800020] text-white'
                   : active ? 'ring-2 ring-[#800020] bg-white text-[#800020]'
                            : 'bg-gray-100 text-gray-300'}`}>
-                  {done ? '✓' : (s.icon || '·')}
+                  {!compact && (done ? '✓' : (s.icon || '·'))}
                 </div>
-                <p className={`text-[9px] font-semibold text-center leading-tight truncate w-full px-0.5
+                <p className={`${compact ? 'text-[10px]' : 'w-full px-0.5 text-[9px] text-center'} font-semibold leading-tight truncate
                   ${active ? 'text-[#800020]' : done ? 'text-gray-500' : 'text-gray-300'}`}>
                   {s.label}
                 </p>
               </div>
               {i < stages.length - 1 && (
-                <div className={`h-0.5 shrink-0 w-4 mt-3 rounded ${done ? 'bg-[#800020]' : 'bg-gray-200'}`} />
+                <div className={`${compact ? 'h-px flex-1' : 'mt-3 h-0.5 w-4'} shrink-0 rounded ${done ? 'bg-[#800020]' : 'bg-gray-200'}`} />
               )}
             </React.Fragment>
           );
@@ -3500,57 +3592,29 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
     property?.metadata_values?.tokenization_enabled
   );
 
-  // Prefer a structured record field; fall back to workspace creation metadata
-  const snapshotField = (keys) =>
-    recordFields.find(f =>
-      keys.includes(f.field_key) &&
-      f.status !== 'not_applicable' &&
-      String(f.value_text || '').trim()
-    );
-
-  // Format a deal_amount number stored as a string or number
-  function formatDealAmount(val) {
-    const n = parseFloat(String(val || '').replace(/[^0-9.]/g, ''));
-    if (!n) return null;
-    if (n >= 1_000_000_000) return `$${(n / 1_000_000_000).toFixed(1)}B`;
-    if (n >= 1_000_000)     return `$${(n / 1_000_000).toFixed(1)}M`;
-    if (n >= 1_000)         return `$${(n / 1_000).toFixed(0)}K`;
-    return `$${n.toLocaleString()}`;
-  }
-
-  // Property-level fallbacks derived from workspace creation metadata
-  const meta = property?.metadata_values || {};
-  const propertyFallbacks = {
-    'transaction.value':        formatDealAmount(property?.deal_amount || meta.deal_amount || meta.raise_amount),
-    'asset.name':               meta.asset_name || null,
-    'parties.buyer':            meta.buyer_name || meta.primary_party || null,
-  };
-
-  function snapshotValue(keys, fallbackKey) {
-    const f = snapshotField(keys);
-    if (f) return { text: f.value_text, provenance: f.source_document ? `From ${f.source_document}` : 'Extracted' };
-    const fb = propertyFallbacks[fallbackKey];
-    if (fb) return { text: fb, provenance: 'From workspace setup' };
-    return null;
-  }
+  const readinessPct = readiness?.transaction_readiness?.overall_pct
+    ?? readiness?.overall_score
+    ?? null;
+  const readinessStatus = readiness?.transaction_readiness?.status
+    || readiness?.status
+    || 'Building';
 
   return (
     <div className="space-y-5">
-
-      {/* ── 1. Transaction Snapshot ──────────────────────────────────────── */}
-      <section className="rounded-2xl border border-gray-200 bg-white px-5 py-5">
+      {/* One decision layer: identity, authoritative readiness, next actions,
+          lifecycle, and the structured record all live in one command center. */}
+      <section className="rounded-2xl border border-gray-200 bg-white px-5 py-5 sm:px-7 sm:py-6">
         <div className="flex items-start justify-between gap-4">
-          <div>
-            <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Transaction snapshot</p>
-            <h1 className="mt-1 text-xl font-bold leading-tight text-gray-900">
+          <div className="min-w-0">
+            <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Overview</p>
+            <h1 className="mt-1 text-xl font-bold leading-tight text-gray-900 sm:text-2xl">
               {property?.name || property?.property_name}
             </h1>
             <p className="mt-1 text-sm text-gray-500">
               {[
-                pack.name,
                 currentStage?.label,
                 closingDate && `Target close ${new Date(closingDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`,
-              ].filter(Boolean).join(' · ')}
+              ].filter(Boolean).join(' · ') || pack.name}
             </p>
           </div>
           {currentStage && (
@@ -3559,68 +3623,63 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
             </span>
           )}
         </div>
-        <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-3">
-          {[
-            { label: 'Transaction value',     keys: ['transaction.purchase_price','transaction.value','financial.purchase_price','financial.deal_value'], fallback: 'transaction.value' },
-            { label: 'Asset / company',       keys: ['asset.name','asset.legal_name','asset.type'], fallback: 'asset.name' },
-            { label: 'Buyer / primary party', keys: ['parties.buyer','parties.primary','parties.borrower'], fallback: 'parties.buyer' },
-          ].map(item => {
-            const val = snapshotValue(item.keys, item.fallback);
-            return (
-              <div key={item.label} className="min-w-0 rounded-xl bg-gray-50 px-3.5 py-3">
-                <p className={`truncate text-sm font-bold ${val ? 'text-gray-900' : 'text-gray-300'}`}>
-                  {val ? val.text : 'Not recorded'}
-                </p>
-                <p className="mt-0.5 text-[10px] leading-tight text-gray-400">{item.label}</p>
-                {val?.provenance && (
-                  <p className="mt-0.5 text-[9px] text-gray-300">{val.provenance}</p>
-                )}
-              </div>
-            );
-          })}
+
+        <div className="mt-6 grid gap-6 border-t border-gray-100 pt-5 lg:grid-cols-[minmax(180px,0.7fr)_minmax(0,1.3fr)]">
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">
+              {readinessPhase === 'closing' ? 'Closing readiness' : readinessPhase === 'complete' ? 'Transaction complete' : 'Transaction readiness'}
+            </p>
+            <div className="mt-1 flex items-baseline gap-2">
+              <span className="text-4xl font-bold tracking-tight text-gray-900">
+                {readinessPct == null ? '—' : `${Math.round(readinessPct)}%`}
+              </span>
+              <span className="text-xs font-semibold text-gray-500">{readinessStatus}</span>
+            </div>
+            <p className="mt-1 max-w-xs text-xs leading-relaxed text-gray-400">
+              Completeness and confirmation of the structured transaction record.
+            </p>
+            {readiness?.transaction_readiness?.categories?.length > 0 && (
+              <p className="mt-2 text-[11px] text-gray-500">
+                {readiness.transaction_readiness.categories.filter(c => c.score >= 80).length} of {readiness.transaction_readiness.categories.length} readiness areas substantially complete
+              </p>
+            )}
+          </div>
+
+          <WhatNeedsAttention
+            briefing={briefing}
+            recordFields={recordFields}
+            loading={loading}
+            onTabChange={onTabChange}
+            propertyId={propertyId}
+            compact
+          />
         </div>
 
-        {/* ── Stage lifecycle bar — shows full journey from first stage to Complete */}
-        <StageLifecycleBar stages={effectiveStages} currentStageKey={currentStageKey} />
+        <StageLifecycleBar stages={effectiveStages} currentStageKey={currentStageKey} compact />
+
+        <div className="mt-6 border-t border-gray-100 pt-5">
+          {readinessPhase === 'settlement' && (
+            <SettlementReadinessPanel
+              propertyId={propertyId}
+              property={property}
+              ownerWriteToken={ownerToken}
+              isCoordinator
+            />
+          )}
+          {readinessPhase === 'complete' && (
+            <TransactionSealSummaryCard propertyId={propertyId} />
+          )}
+          <DigitalAssetReadinessSection
+            propertyId={propertyId}
+            recordFields={recordFields}
+            readiness={readiness}
+            onTabChange={onTabChange}
+            readinessPhase={readinessPhase}
+            digitalAssetEnabled={digitalAssetEnabled}
+            embedded
+          />
+        </div>
       </section>
-
-      {/* ── 2. What Needs Attention ──────────────────────────────────────── */}
-      <WhatNeedsAttention
-        briefing={briefing}
-        recordFields={recordFields}
-        loading={loading}
-        onTabChange={onTabChange}
-        propertyId={propertyId}
-      />
-
-      {/* ── 3. Phase-appropriate readiness panel ─────────────────────────── */}
-      {/*
-        complete   → Transaction Seal summary card (read-only seal record)
-        settlement → SettlementReadinessPanel (mode/locking/complete controls)
-        closing    → Transaction Readiness relabelled as "Closing Readiness"
-        transaction (default) → Transaction Readiness with normal labels
-      */}
-      {readinessPhase === 'complete' && (
-        <TransactionSealSummaryCard propertyId={propertyId} />
-      )}
-      {readinessPhase === 'settlement' && (
-        <SettlementReadinessPanel
-          propertyId={propertyId}
-          property={property}
-          ownerWriteToken={ownerToken}
-          isCoordinator={true}
-        />
-      )}
-      {(readinessPhase === 'transaction' || readinessPhase === 'closing') && (
-        <DigitalAssetReadinessSection
-          recordFields={recordFields}
-          readiness={readiness}
-          onTabChange={onTabChange}
-          readinessPhase={readinessPhase}
-          digitalAssetEnabled={digitalAssetEnabled}
-        />
-      )}
-
     </div>
   );
 }
@@ -4774,6 +4833,9 @@ export default function DealRoomPage() {
   const [checkoutError, setCheckoutError] = useState("");
   const [apiProperty, setApiProperty] = useState(null);
   const [loadingApi, setLoadingApi] = useState(true);
+  const [hasOwnerToken, setHasOwnerToken] = useState(() => {
+    try { return Boolean(localStorage.getItem(`kontra_owner_token_${propertyId}`)); } catch { return false; }
+  });
   const [packLoadError, setPackLoadError] = useState("");
   // packReady: true once the custom pack for this room is registered in the
   // client-side PACKS registry. Demo rooms always use a built-in pack so it
@@ -4846,6 +4908,14 @@ export default function DealRoomPage() {
         setLoadingApi(false);
       });
   }, [propertyId, inviteToken, participantSession]);
+
+  // Checkout success stores the owner credential before redirecting here. Keep
+  // the coordinator boundary tied to that credential, not to ?role=owner.
+  useEffect(() => {
+    try {
+      setHasOwnerToken(Boolean(localStorage.getItem(`kontra_owner_token_${propertyId}`)));
+    } catch {}
+  }, [propertyId]);
 
   // After a room loads, ask AI whether the stored pack matches the transaction.
   // Only runs for coordinator view of live (non-demo) rooms with a standard built-in pack.
@@ -5050,15 +5120,19 @@ export default function DealRoomPage() {
     ? { ...baseRoleConfig, sections: ['brand-standards', ...(baseRoleConfig.sections || [])] }
     : baseRoleConfig;
 
-  // isCoordinator: true for the managing/primary role in any pack.
-  // canManage covers pack-native roles (owner/CRE, buyer/M&A, founder/Fundraising, lender/CRE).
-  // role === 'owner' is the legacy default URL param used by checkout and invite flows for
-  // every pack — keep it as a coordinator fallback for backward compatibility so existing
-  // deal-room links (?role=owner) continue to grant management access in non-CRE packs.
-  // property?.access?.mode === 'owner' is belt-and-suspenders: covers the initial render
-  // frame before setAccessRole has propagated, and custom packs where 'deal_coordinator'
-  // may not be a named role key with canManage set.
-  const isCoordinator = !!roleConfig?.canManage || role === 'owner' || property?.access?.mode === 'owner';
+  // Ownership/session semantics are authoritative. Role metadata is only a
+  // fallback for legacy owner links and packs whose primary role is explicitly
+  // non-invitable; a canManage flag alone must not turn an external participant
+  // into the workspace owner.
+  const isOwnerAccess = property?.access?.mode === 'owner';
+  const isCoordinator = isOwnerAccess
+    || (hasOwnerToken && role === 'owner')
+    || (
+      property?.access?.mode !== 'participant'
+      && hasOwnerToken
+      && roleConfig?.canManage === true
+      && roleConfig?.invitable !== true
+    );
 
   // The "Outstanding Items" grid (risk/compliance/property panels) still
   // hardcodes CRE concepts (NOI, DSCR, occupancy) inside the panels
@@ -5372,6 +5446,15 @@ export default function DealRoomPage() {
                 roomId={pid}
                 packId={packId}
                 isV2={!!property.auth_v2_enabled}
+                isCoordinator={isCoordinator}
+                coordinatorRole={isCoordinator ? (
+                  pack.roles?.find(r => r.canManage === true) || {
+                    key: 'deal_coordinator',
+                    icon: '🏢',
+                    label: 'Deal Coordinator',
+                    color: '#800020',
+                  }
+                ) : null}
               />
             )}
 

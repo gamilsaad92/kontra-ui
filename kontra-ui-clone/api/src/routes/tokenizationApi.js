@@ -56,6 +56,54 @@ router.use((req, res, next) => {
   next();
 });
 
+// ── Production mock guard ─────────────────────────────────────────────────────
+//
+// Routes that depend on the in-memory tokenRegistry are DISABLED in production.
+// They return 503 MOCK_DISABLED with a clear message.
+//
+// Routes that do NOT use tokenRegistry remain fully active in production:
+//   POST /assess                   — uses tokenizationEngine + Supabase
+//   GET  /contract/abi             — static ERC-1400 ABI
+//   POST /contract/preflight       — uses tokenizationEngine
+//   POST /contract/encode-kyc-data — local ABI encoding
+//   GET  /contract/assessment-history — Supabase query
+//
+// For production tokenization readiness, use POST /api/tokenization/assess.
+
+const MOCK_DISABLED_RESPONSE = {
+  error: 'MOCK_DISABLED',
+  message:
+    'This endpoint uses in-memory mock data and is not available in production. ' +
+    'Use POST /api/tokenization/assess for production tokenization readiness.',
+  productionAlternatives: [
+    '/api/tokenization/assess',
+    '/api/tokenization/contract/abi',
+    '/api/tokenization/contract/preflight',
+    '/api/tokenization/contract/encode-kyc-data',
+    '/api/tokenization/contract/assessment-history',
+  ],
+};
+
+// Path prefixes and exact paths whose handlers depend on tokenRegistry.
+const MOCK_PATH_PREFIXES = [
+  '/packages', '/whitelist', '/transfers', '/payments',
+  '/secondary-market', '/governance', '/stats', '/erc1400-spec',
+  '/contract/deployment-config', '/contract/gas-estimate',
+];
+const MOCK_EXACT_PATHS = new Set(['/assess/demo']);
+
+router.use((req, res, next) => {
+  if (!registry.IS_PRODUCTION_DISABLED) return next();
+  const path = req.path;
+  if (MOCK_EXACT_PATHS.has(path)) {
+    return res.status(503).json(MOCK_DISABLED_RESPONSE);
+  }
+  if (MOCK_PATH_PREFIXES.some(p => path === p || path.startsWith(p + '/'))) {
+    return res.status(503).json(MOCK_DISABLED_RESPONSE);
+  }
+  next();
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 // READINESS ASSESSMENT
 // ─────────────────────────────────────────────────────────────────────────────

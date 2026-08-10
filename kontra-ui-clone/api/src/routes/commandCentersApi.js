@@ -15,6 +15,24 @@ const express = require('express');
 const router  = express.Router();
 const { v4: uuid } = require('uuid');
 
+// ── Fixture data notice ───────────────────────────────────────────────────────
+// ALL data returned by Command Center routes is fixture/demo data seeded at
+// module load. It resets on server restart, is not persisted to any database,
+// and must not be presented as live production data.
+// Every response carries X-Data-Source: fixture and _fixture: true.
+router.use((req, res, next) => {
+  res.set('X-Data-Source', 'fixture');
+  res.set('X-Fixture-Notice', 'Command Center data is demo/fixture only. Not persisted.');
+  const origJson = res.json.bind(res);
+  res.json = (body) => {
+    if (body && typeof body === 'object' && !Array.isArray(body)) {
+      return origJson({ ...body, _fixture: true });
+    }
+    return origJson(body);
+  };
+  next();
+});
+
 // ─── Seed helpers ─────────────────────────────────────────────────────────────
 
 const now   = () => new Date().toISOString();

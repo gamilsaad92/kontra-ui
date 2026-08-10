@@ -17,3 +17,9 @@
 - [Kontra product boundary](kontra-product-boundary.md) — coordinates/verifies/prepares only; never issues, sells, recommends, or settles; DA capability = "Digital Asset Readiness", not "Tokenization Engine"
 - [Kontra Transaction Record semantics](kontra-transaction-record-semantics.md) — use canonical field keys, distinguish workflow-required from suggested/expected, and make dependent fields non-applicable when their prerequisite is N/A
 - [Kontra Supabase migrations](kontra-supabase-migrations.md) — use the management SQL endpoint when the attached Supabase REST connector returns an invalid-URL proxy error
+- [Kontra public API middleware chain](kontra-public-api-middleware-chain.md) — five middleware layers block /api/public/ routes; each needs a dual-path bypass; 404 catch-all must stay at end of file
+- [Kontra document upload table](kontra-document-upload-table.md) — uploads live in deal_analyses not deal_documents; source_doc_id not source_document; entity_name is in metadata_values
+- [Settlement Capability Layer](settlement-capability-layer.md) — provider-neutral settlement readiness layer; getCapabilities/getEffectiveStages; advance endpoint blocks 'complete' (use /settlement/complete); sealed_at makes transaction_record_fields immutable only; migration 017 still held pending deploy approval
+- [Settlement capability detection gap](settlement-capability-gap.md) — roomHasSettlementCapability must check settlement_mode; advance handler must select settlement_mode
+- [Kontra coordinator role detection](kontra-coordinator-role-detection.md) — standard packs use invitable:false; custom ws_* packs use canManage:true without invitable:false; isCoordinatorRole() must check both
+- [Kontra Overview UX architecture](kontra-overview-ux-architecture.md) — CoordinatorOverview has StageLifecycleBar, phase-conditional readiness panel; phase = transaction/closing/settlement/complete from stage key
