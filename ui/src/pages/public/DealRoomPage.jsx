@@ -2883,7 +2883,7 @@ function WhatNeedsAttention({ briefing, recordFields, loading, onTabChange, prop
 // Category-based readiness derived from structured transaction record fields.
 // Four states: Not started / Building / Needs information / Ready for review.
 // Rows are expandable — shows confirmed fields, missing fields, and sources.
-function DigitalAssetReadinessSection({ recordFields, readiness, onTabChange }) {
+function DigitalAssetReadinessSection({ recordFields, readiness, onTabChange, readinessPhase = 'transaction', digitalAssetEnabled = false }) {
   const [expandedCat, setExpandedCat] = useState(null);
 
   // Per-field definitions for each category — label used in expand panel
@@ -3005,15 +3005,23 @@ function DigitalAssetReadinessSection({ recordFields, readiness, onTabChange }) 
       <div className="px-5 py-4 border-b border-gray-100">
         <div className="flex items-center justify-between gap-3">
           <div>
-            <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Digital asset readiness</p>
-            <p className="mt-1 text-sm font-bold text-gray-900">Building from your transaction activity</p>
+            <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">
+              {readinessPhase === 'closing' ? 'Closing readiness' : 'Transaction readiness'}
+            </p>
+            <p className="mt-1 text-sm font-bold text-gray-900">
+              {readinessPhase === 'closing'
+                ? 'Preparing for transaction close'
+                : 'Building your verified transaction record'}
+            </p>
           </div>
           <span className={`shrink-0 rounded-full border px-3 py-1 text-[11px] font-bold ${overallState.color} ${overallState.bg} ${overallState.border}`}>
             {overallState.label}
           </span>
         </div>
         <p className="mt-1.5 text-xs text-gray-400 leading-relaxed">
-          Kontra organizes transaction information as documents are reviewed, participants respond, and facts are confirmed.
+          {readinessPhase === 'closing'
+            ? 'Verify all conditions are satisfied and parties are ready to close.'
+            : 'Kontra organizes transaction information as documents are reviewed, participants respond, and facts are confirmed.'}
         </p>
         {/* Visual step progress */}
         <div className="mt-3 flex items-center gap-1">
@@ -3106,10 +3114,11 @@ function DigitalAssetReadinessSection({ recordFields, readiness, onTabChange }) 
         })}
       </div>
 
-      {/* Footer */}
-      {allReady ? (
+      {/* Footer — DA prep available (only when tokenization/DA is explicitly enabled) */}
+      {digitalAssetEnabled && allReady ? (
         <div className="border-t border-emerald-100 bg-emerald-50/60 px-5 py-4">
-          <p className="text-xs font-semibold text-gray-800">Digital Asset Preparation Available</p>
+          <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-600 mb-1">Digital Asset Readiness</p>
+          <p className="text-xs font-semibold text-gray-800">Preparation Available</p>
           <p className="mt-0.5 text-xs text-gray-500 leading-relaxed">
             Your transaction record contains enough organized information to begin preparing a handoff package for external legal, compliance, or issuance providers.
           </p>
@@ -3130,9 +3139,16 @@ function DigitalAssetReadinessSection({ recordFields, readiness, onTabChange }) 
             Prepare digital asset package
           </button>
         </div>
+      ) : digitalAssetEnabled ? (
+        <div className="border-t border-gray-100 bg-indigo-50/30 px-5 py-3">
+          <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-500 mb-0.5">Digital Asset Readiness</p>
+          <p className="text-[10px] text-gray-400">
+            Building your digital asset profile from transaction data. Complete more transaction readiness categories to unlock.
+          </p>
+        </div>
       ) : (
         <p className="border-t border-gray-100 px-5 py-3 text-[10px] text-gray-400">
-          Readiness reflects the completeness and organization of transaction information. It does not represent legal or regulatory approval for issuance or tokenization.
+          Transaction readiness reflects the completeness and organization of transaction information across all parties, documents, and verified facts.
         </p>
       )}
     </section>
@@ -3314,13 +3330,113 @@ function RoomCopilot({ propertyId }) {
   );
 }
 
-function CoordinatorOverview({ propertyId, property, pack, onTabChange, refreshKey }) {
+// ── Stage Lifecycle Bar ───────────────────────────────────────────────────────
+// Adapated from the OperationsManagerView stage bar. Shows every effective stage
+// (including settlement when enabled) as a horizontal progression. The current
+// stage is highlighted; past stages show a checkmark; future stages are muted.
+function StageLifecycleBar({ stages = [], currentStageKey }) {
+  if (stages.length === 0) return null;
+  const currentIdx = Math.max(0, stages.findIndex(s => s.key === currentStageKey));
+  return (
+    <div className="mt-4 pt-4 border-t border-gray-100">
+      <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-3">Transaction lifecycle</p>
+      <div className="flex items-start gap-1">
+        {stages.map((s, i) => {
+          const done   = i < currentIdx;
+          const active = i === currentIdx;
+          return (
+            <React.Fragment key={s.key}>
+              <div className="flex flex-col items-center flex-1 min-w-0">
+                <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold mb-1 transition-all
+                  ${done   ? 'bg-[#800020] text-white'
+                  : active ? 'ring-2 ring-[#800020] bg-white text-[#800020]'
+                           : 'bg-gray-100 text-gray-300'}`}>
+                  {done ? '✓' : (s.icon || '·')}
+                </div>
+                <p className={`text-[9px] font-semibold text-center leading-tight truncate w-full px-0.5
+                  ${active ? 'text-[#800020]' : done ? 'text-gray-500' : 'text-gray-300'}`}>
+                  {s.label}
+                </p>
+              </div>
+              {i < stages.length - 1 && (
+                <div className={`h-0.5 shrink-0 w-4 mt-3 rounded ${done ? 'bg-[#800020]' : 'bg-gray-200'}`} />
+              )}
+            </React.Fragment>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ── Transaction Seal Summary (complete phase) ─────────────────────────────────
+// Fetches the Transaction Seal record and displays a compact completed-state
+// card. Replaces the readiness panel once the workspace is sealed.
+function TransactionSealSummaryCard({ propertyId }) {
+  const [seal, setSeal] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetch(`${API_BASE}/api/public/deal-room/${propertyId}/settlement/seal`, {
+      headers: getRoomAuthHeaders(propertyId),
+    })
+      .then(r => r.ok ? r.json() : null)
+      .then(d => setSeal(d))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, [propertyId]);
+
+  if (loading) return (
+    <section className="rounded-2xl border border-gray-100 bg-gray-50 px-5 py-5 text-center text-xs text-gray-400 animate-pulse">
+      Loading seal record…
+    </section>
+  );
+
+  const completedDate = seal?.completed_at || seal?.sealed_at;
+
+  return (
+    <section className="rounded-2xl border border-emerald-200 bg-emerald-50 px-5 py-5 space-y-3">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <p className="text-[10px] font-bold uppercase tracking-widest text-emerald-600">Transaction Complete ✓</p>
+          <p className="mt-1 text-sm font-bold text-gray-900">Transaction Seal</p>
+          {completedDate && (
+            <p className="mt-0.5 text-xs text-gray-500">
+              Completed {new Date(completedDate).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
+              {seal?.readiness_pct != null ? ` · ${Math.round(seal.readiness_pct)}% conditions verified` : ''}
+            </p>
+          )}
+        </div>
+        <button
+          onClick={() => window.open(`${API_BASE}/api/public/deal-room/${propertyId}/settlement/seal`, '_blank')}
+          className="shrink-0 text-[11px] font-bold text-emerald-700 border border-emerald-200 bg-white rounded-lg px-3 py-1.5 hover:bg-emerald-50 transition whitespace-nowrap">
+          View Seal Record
+        </button>
+      </div>
+      {seal?.summary && (
+        <p className="text-xs text-gray-600 leading-relaxed border-t border-emerald-100 pt-3">
+          {seal.summary}
+        </p>
+      )}
+      {!completedDate && (
+        <p className="text-xs text-gray-500">Transaction has been completed.</p>
+      )}
+    </section>
+  );
+}
+
+function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, refreshKey }) {
   const [briefing, setBriefing]         = useState(null);
   const [coordination, setCoordination] = useState(null);
   const [stages, setStages]             = useState([]);
   const [recordFields, setRecordFields] = useState([]);
   const [readiness, setReadiness]       = useState(null);
   const [loading, setLoading]           = useState(true);
+  const [ownerToken, setOwnerToken]     = useState('');
+
+  useEffect(() => {
+    try { setOwnerToken(localStorage.getItem(`kontra_owner_token_${propertyId}`) || ''); } catch {}
+  }, [propertyId]);
 
   const load = useCallback(async () => {
     if (!propertyId) return;
@@ -3357,6 +3473,32 @@ function CoordinatorOverview({ propertyId, property, pack, onTabChange, refreshK
   const currentStageIndex = Math.max(0, stages.findIndex(s => s.key === currentStageKey));
   const currentStage      = stages[currentStageIndex];
   const closingDate       = property?.closing_date || property?.target_close_date || property?.close_date;
+
+  // Effective stages include settlement/complete when the room has settlement
+  // capability enabled — uses the same getEffectiveStages() as OperationsManagerView.
+  const effectiveStages = getEffectiveStages(
+    packId || pack.packId || pack.id || DEFAULT_PACK_ID,
+    property,
+    stages,
+  );
+
+  // Readiness phase drives which panel appears in position 3 of the Overview.
+  const readinessPhase = (() => {
+    const k = (currentStageKey || '').toLowerCase();
+    if (!k)                                          return 'transaction';
+    if (k.includes('complete') || k.includes('funded')) return 'complete';
+    if (k.includes('settlement'))                    return 'settlement';
+    if (k.includes('clos'))                          return 'closing';
+    return 'transaction';
+  })();
+
+  // Digital Asset Readiness sub-section only shown when tokenization/DA is
+  // explicitly enabled for this workspace.
+  const digitalAssetEnabled = !!(
+    property?.metadata_values?.digital_asset_enabled ||
+    property?.metadata_values?.digital_assets_enabled ||
+    property?.metadata_values?.tokenization_enabled
+  );
 
   // Prefer a structured record field; fall back to workspace creation metadata
   const snapshotField = (keys) =>
@@ -3437,6 +3579,9 @@ function CoordinatorOverview({ propertyId, property, pack, onTabChange, refreshK
             );
           })}
         </div>
+
+        {/* ── Stage lifecycle bar — shows full journey from first stage to Complete */}
+        <StageLifecycleBar stages={effectiveStages} currentStageKey={currentStageKey} />
       </section>
 
       {/* ── 2. What Needs Attention ──────────────────────────────────────── */}
@@ -3448,12 +3593,33 @@ function CoordinatorOverview({ propertyId, property, pack, onTabChange, refreshK
         propertyId={propertyId}
       />
 
-      {/* ── 3. Digital Asset Readiness ───────────────────────────────────── */}
-      <DigitalAssetReadinessSection
-        recordFields={recordFields}
-        readiness={readiness}
-        onTabChange={onTabChange}
-      />
+      {/* ── 3. Phase-appropriate readiness panel ─────────────────────────── */}
+      {/*
+        complete   → Transaction Seal summary card (read-only seal record)
+        settlement → SettlementReadinessPanel (mode/locking/complete controls)
+        closing    → Transaction Readiness relabelled as "Closing Readiness"
+        transaction (default) → Transaction Readiness with normal labels
+      */}
+      {readinessPhase === 'complete' && (
+        <TransactionSealSummaryCard propertyId={propertyId} />
+      )}
+      {readinessPhase === 'settlement' && (
+        <SettlementReadinessPanel
+          propertyId={propertyId}
+          property={property}
+          ownerWriteToken={ownerToken}
+          isCoordinator={true}
+        />
+      )}
+      {(readinessPhase === 'transaction' || readinessPhase === 'closing') && (
+        <DigitalAssetReadinessSection
+          recordFields={recordFields}
+          readiness={readiness}
+          onTabChange={onTabChange}
+          readinessPhase={readinessPhase}
+          digitalAssetEnabled={digitalAssetEnabled}
+        />
+      )}
 
     </div>
   );
