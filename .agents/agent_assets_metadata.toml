@@ -1,5 +1,4 @@
 uploads = []
-outputs = []
 
 [[generated]]
 id = "BTi577iIFQQnMYGK0J8_a"
@@ -36,3 +35,31 @@ id = "y2ZySnKgxz77bSmN5piwO"
 uri = "file://artifacts/kontra-video/public/images/bg-glass.png"
 type = "image"
 title = "Dark glass abstract architecture"
+
+[[outputs]]
+id = "Ps9-z0UibGWWQ-XZcVMfT"
+uri = "file://screenshots/overview-desktop.jpg"
+type = "image"
+title = "Overview — desktop verification"
+description = "Local preview capture; the requested Marriott room data was unavailable in the local API."
+
+[[outputs]]
+id = "Y-AOLX6xWamOMCpyg-TF7"
+uri = "file://screenshots/overview-mobile.jpg"
+type = "image"
+title = "Overview — mobile verification"
+description = "Local preview capture; the requested Marriott room data was unavailable in the local API."
+
+[[outputs]]
+id = "OY84PVOajtNrIqOkjAXNc"
+uri = "file://screenshots/people-desktop-reference.jpg"
+type = "image"
+title = "People — desktop reference capture"
+description = "The local demo route displayed its entry gate, so this is not the post-entry People tab."
+
+[[outputs]]
+id = "IRdA0YKLZ_-KuVvGBwe_z"
+uri = "file://screenshots/people-mobile-reference.jpg"
+type = "image"
+title = "People — mobile reference capture"
+description = "The local demo route displayed its entry gate, so this is not the post-entry People tab."
