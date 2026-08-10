@@ -4143,7 +4143,7 @@ app.post('/api/public/deal-room/:propertyId/advance', async (req, res) => {
     if (access.mode !== 'owner') return accessDenied(res, 'Only the deal-room owner can advance stages');
     const { data: room, error: fetchError } = await supabase
       .from('deal_rooms')
-      .select('workflow_pack_id, deal_stage, stages_config, metadata_values')
+      .select('workflow_pack_id, deal_stage, stages_config, metadata_values, settlement_mode')
       .eq('property_id', propertyId)
       .single();
     if (fetchError) throw fetchError;
