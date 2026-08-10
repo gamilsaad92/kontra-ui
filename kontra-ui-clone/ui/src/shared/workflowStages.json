@@ -35,12 +35,5 @@
       { "key": "issuance", "label": "Token Issuance" },
       { "key": "secondary", "label": "Secondary Market" }
     ]
-  },
-  "_settlement_stages": {
-    "_comment": "Shared settlement capability stages. Appended to a workspace's stage sequence by getEffectiveStages() when settlement capability is active. Not used directly by any pack — injected at runtime based on capability flags.",
-    "stages": [
-      { "key": "settlement", "label": "Settlement" },
-      { "key": "complete",   "label": "Complete" }
-    ]
   }
 }

@@ -12,10 +12,11 @@ import ParticipantsPanel from "./ParticipantsPanel";
 import DocumentsTabPanel from "./DocumentsTabPanel";
 import NotificationsLog from "./NotificationsLog";
 import LegalReviewPanel from "./LegalReviewPanel";
-import { DEFAULT_PACK_ID, getWorkflowPack, ensureWorkflowPackLoaded, resolvePackId } from "../../lib/workflowPacks";
+import { DEFAULT_PACK_ID, getWorkflowPack, ensureWorkflowPackLoaded, resolvePackId, getEffectiveStages, getCapabilities, isInSettlementPhase } from "../../lib/workflowPacks";
 import { API_BASE as RESOLVED_API_BASE } from "../../lib/apiBase";
 import DealRoomPinGate from "./DealRoomPinGate";
 import { getInviteSession, getRoomAuthHeaders } from "../../lib/inviteUtils";
+import SettlementReadinessPanel from "./SettlementReadinessPanel";
 
 // ── Jurisdiction compliance data ─────────────────────────────────────────────
 const JURISDICTION_INFO = {
@@ -3724,11 +3725,11 @@ function OperationsManagerView({ propertyId, property, pack, role, onTabChange }
       setBriefing(b);
       setBriefLoading(false);
       setCoordination(coord);
-      setStages(
-        Array.isArray(stageData?.stages) && stageData.stages.length >= 2
-          ? stageData.stages
-          : (pack.stages || [])
-      );
+      // Inject settlement/complete stages when settlement capability is active.
+      const rawStages = Array.isArray(stageData?.stages) && stageData.stages.length >= 2
+        ? stageData.stages
+        : (pack.stages || []);
+      setStages(getEffectiveStages(stageData?.packId || DEFAULT_PACK_ID, property, rawStages));
       setEvents(evData?.events || []);
       setChecklistItems(Array.isArray(ckData?.items) ? ckData.items : []);
       setDataLoading(false);
@@ -3895,8 +3896,17 @@ function OperationsManagerView({ propertyId, property, pack, role, onTabChange }
   const _rBlockScore = briefing ? (openBlockers === 0 ? 100 : Math.max(0, 100 - openBlockers * 30)) : 0;
   const overallReadiness = briefLoading ? null
     : Math.round(_rDocScore * 0.45 + _rPartScore * 0.35 + _rBlockScore * 0.20);
-  // Progressive disclosure: show Settlement only when deal is approaching close
-  const showSettlementPanel = overallReadiness != null && (
+  // Settlement capability: determine whether the full Settlement Readiness panel
+  // should be shown in place of the legacy Closing & Handoff panel.
+  // SettlementReadinessPanel takes over when the workspace is in the settlement
+  // or complete stage AND settlement capability is active.
+  const packIdForCaps = resolvePackId(property) || DEFAULT_PACK_ID;
+  const settlementCaps = getCapabilities(packIdForCaps, property);
+  const isInSettlement = isInSettlementPhase(currentStageKey) && settlementCaps.settlement;
+  const isComplete = currentStageKey === 'complete';
+  const showSettlementReadiness = settlementCaps.settlement && (isInSettlement || isComplete);
+  // Progressive disclosure: show legacy Closing & Handoff only when NOT already in settlement/complete stage
+  const showSettlementPanel = !showSettlementReadiness && overallReadiness != null && (
     overallReadiness >= 75 || (stages.length > 0 && currentStageIdx >= stages.length - 2)
   );
 
@@ -4062,7 +4072,7 @@ function OperationsManagerView({ propertyId, property, pack, role, onTabChange }
       {/* Only shown for tokenization workspaces — the card contains token-issuance
           specific regulatory content (FSRA licence, MiCA White Paper, etc.) that
           is irrelevant and misleading on CRE or business acquisition deals. */}
-      {false && isTokenization && property?.jurisdiction && JURISDICTION_INFO[property.jurisdiction] && (
+      {isTokenization && property?.jurisdiction && JURISDICTION_INFO[property.jurisdiction] && (
         <JurisdictionComplianceCard jurisdiction={property.jurisdiction} />
       )}
 
@@ -4552,7 +4562,20 @@ function OperationsManagerView({ propertyId, property, pack, role, onTabChange }
         )}
       </div>
 
+      {/* ── Settlement Readiness Panel — settlement/complete stage with capability active ─ */}
+      {/* Replaces the legacy Closing & Handoff panel when the coordinator has advanced
+          the workspace to the settlement stage and settlement capability is on. */}
+      {showSettlementReadiness && (
+        <SettlementReadinessPanel
+          propertyId={propertyId}
+          property={property}
+          isCoordinator={true}
+        />
+      )}
+
       {/* ── Closing & Handoff — progressive disclosure (≥75% ready or final stages) ─ */}
+      {/* Shown in closing/funded stages as pre-settlement preparation. Replaced by
+          SettlementReadinessPanel once the workspace enters the settlement stage. */}
       {showSettlementPanel && (
         <SettlementPanel
           propertyId={propertyId}

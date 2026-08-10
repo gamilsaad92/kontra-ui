@@ -310,13 +310,7 @@ function LenderServicerView({ apiBase }: { apiBase: string }) {
     ],
   });
 
-  const { data: pipeline } = useApi<Loan[]>(pipelineUrl, [
-    { id: "1", borrower: "West Lay Bank", status: "Pending KYC", stage: "Approved" },
-    { id: "2", borrower: "Apple Park Apts", status: "Appointed", stage: "Appraised" },
-    { id: "3", borrower: "Hanniton Storage", status: "Approved", stage: "A2S to Doc" },
-    { id: "4", borrower: "Port Stugton Park", status: "Submitted", stage: "Funded" },
-    { id: "5", borrower: "Mulberry Creek", status: "Funded", stage: "Funded" },
-  ]);
+  const { data: pipeline } = useApi<Loan[]>(pipelineUrl);
 
   const { data: drawRequests } = useApi<DrawRequest[]>(drawUrl, [
     { id: "d1", date: "2020-08-08", status: "Submitted" },
@@ -609,7 +603,7 @@ function BorrowerView({ apiBase }: { apiBase: string }) {
 
 function ContractorDeveloperView({ apiBase }: { apiBase: string }) {
   const { data: progress } = useApi<{ percent: number }>(`${apiBase}/projects/current/progress`, { percent: 76 });
-  const { data: schedule } = useApi<{ funded: number; total: number }>(`${apiBase}/projects/current/funding`, { funded: 8503, total: 46553 });
+  const { data: schedule } = useApi<{ funded: number; total: number }>(`${apiBase}/projects/current/funding`);
 
   return (
     <div className="grid grid-cols-12 gap-4">

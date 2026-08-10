@@ -4860,8 +4860,7 @@ app.post('/api/public/deal-room/:transactionId/settlement/complete', async (req,
       'complete_settlement_transaction',
       {
         p_property_id:  propertyId,
-        p_seal_summary: JSON.stringify(sealContent),
-        p_seal_text:    sealText,
+        p_seal_content: sealContent,  // JSONB — stored in deal_analyses.analysis
         p_score:        readiness.score,
         p_now:          now,
       }
@@ -4924,11 +4923,13 @@ app.get('/api/public/deal-room/:transactionId/settlement/seal', async (req, res)
       return res.status(404).json({ error: 'WORKSPACE_NOT_SEALED', message: 'This workspace has not been sealed.' });
     }
 
+    // deal_analyses uses `section` as the type discriminator and `analysis` (JSONB)
+    // as the content store — there is no doc_type, summary, or extracted_text column.
     const { data: sealRecord } = await supabase
       .from('deal_analyses')
-      .select('id, doc_type, status, summary, extracted_text, created_at')
+      .select('id, section, analysis, created_at')
       .eq('property_id', propertyId)
-      .eq('doc_type', 'transaction_seal')
+      .eq('section', 'transaction_seal')
       .order('created_at', { ascending: false })
       .limit(1)
       .maybeSingle();
@@ -4937,8 +4938,7 @@ app.get('/api/public/deal-room/:transactionId/settlement/seal', async (req, res)
       return res.status(404).json({ error: 'SEAL_NOT_FOUND', message: 'Seal record not found for sealed workspace.' });
     }
 
-    let sealContent = {};
-    try { sealContent = JSON.parse(sealRecord.summary || '{}'); } catch {}
+    const sealContent = sealRecord.analysis || {};
 
     res.json({
       seal_id:         sealRecord.id,
@@ -4947,10 +4947,7 @@ app.get('/api/public/deal-room/:transactionId/settlement/seal', async (req, res)
       completed_at:    room.completed_at,
       settlement_mode: room.settlement_mode,
       readiness_pct:   Math.round((room.settlement_readiness_pct || 0) * 100),
-      summary:         sealContent,
-      text:            sealRecord.extracted_text,
-      doc_type:        sealRecord.doc_type,
-      status:          sealRecord.status,
+      summary:         sealContent,  // key kept for SealedView frontend compatibility
     });
   } catch (err) {
     console.error('[settlement/seal GET]', err.message);

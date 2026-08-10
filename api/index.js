@@ -3494,12 +3494,20 @@ app.post('/api/public/deal-room/:propertyId/track-document', upload.single('file
       ? { summary: `${SECTION_LABELS[section]} uploaded — AI analysis in progress…`, documentType: SECTION_LABELS[section], confidence: 0, pending: true }
       : { summary: `${SECTION_LABELS[section]} received and logged.`, documentType: SECTION_LABELS[section], confidence: 100, pending: false };
 
+    // Uploads after the workspace is sealed become post-completion records.
+    // They are flagged separately and shown in the Post-Completion Records section,
+    // keeping the sealed transaction record snapshot intact.
+    const { data: sealCheckRoom } = await supabase
+      .from('deal_rooms').select('sealed_at').eq('property_id', propertyId).maybeSingle();
+    const isPostCompletion = !!(sealCheckRoom?.sealed_at);
+
     const [storagePath, insertRes] = await Promise.all([
       buf ? uploadToStorage(buf, mime, propertyId, section, filename).catch(() => null) : Promise.resolve(null),
       supabase.from('deal_analyses').insert({
         property_id: propertyId, section, filename,
         analysis: initialAnalysis,
         uploaded_by_role: effectiveRole,
+        ...(isPostCompletion ? { post_completion: true, post_completion_added_at: new Date().toISOString() } : {}),
       }).select('id').single(),
     ]);
     if (insertRes.error) throw insertRes.error;
@@ -4135,7 +4143,7 @@ app.post('/api/public/deal-room/:propertyId/advance', async (req, res) => {
     if (access.mode !== 'owner') return accessDenied(res, 'Only the deal-room owner can advance stages');
     const { data: room, error: fetchError } = await supabase
       .from('deal_rooms')
-      .select('workflow_pack_id, deal_stage, stages_config')
+      .select('workflow_pack_id, deal_stage, stages_config, metadata_values')
       .eq('property_id', propertyId)
       .single();
     if (fetchError) throw fetchError;
@@ -4146,20 +4154,56 @@ app.post('/api/public/deal-room/:propertyId/advance', async (req, res) => {
     const effectiveStages = Array.isArray(room?.stages_config) && room.stages_config.length >= 2
       ? room.stages_config
       : getPackStageConfig(packId).stages;
-    const VALID = effectiveStages.map(s => s.key);
+
+    // Extend valid stages with settlement/complete when settlement capability is on.
+    const settlementCapableAdv = roomHasSettlementCapability(room);
+    const alreadyHasSettlement = effectiveStages.some(s => s.key === 'settlement' || s.key === 'complete');
+
+    // When settlement is enabled, 'funded' is a backward-compat milestone, not a
+    // lifecycle stage. Remove it from the stage list so new rooms advance:
+    //   closing → settlement → complete   (not closing → funded → settlement → complete).
+    // A legacy room already at deal_stage='funded' can still advance to 'settlement'
+    // because that key is included in VALID below.
+    const stagesForValidation = (settlementCapableAdv && !alreadyHasSettlement)
+      ? effectiveStages.filter(s => s.key !== 'funded')
+      : effectiveStages;
+
+    const VALID = [
+      ...stagesForValidation.map(s => s.key),
+      ...(settlementCapableAdv && !alreadyHasSettlement ? ['settlement', 'complete'] : []),
+    ];
+
+    // Block direct advancement to 'complete' — must use POST /settlement/complete.
+    // That endpoint validates all conditions, creates the Transaction Seal, and
+    // advances the stage atomically via a PostgreSQL RPC transaction.
+    if (stage === 'complete') {
+      return res.status(400).json({
+        error: 'COMPLETE_GATE',
+        message: 'Cannot advance directly to "complete". Use POST /settlement/complete after all settlement conditions are verified. That endpoint creates the Transaction Seal and advances the stage atomically.',
+        advancementEndpoint: `/api/public/deal-room/${propertyId}/settlement/complete`,
+      });
+    }
+
     if (!VALID.includes(stage)) return res.status(400).json({ error: 'invalid stage' });
 
     // Resolve the display label for the incoming stage key.
     // Custom stages may have owner-supplied labels; pack stages use the JSON label.
-    const incomingStageObj = effectiveStages.find(s => s.key === stage);
+    const allKnownStages = [...stagesForValidation, ...(settlementCapableAdv && !alreadyHasSettlement ? [{ key: 'settlement', label: 'Settlement' }, { key: 'complete', label: 'Complete' }] : [])];
+    const incomingStageObj = allKnownStages.find(s => s.key === stage);
     const stageLabel = incomingStageObj?.label || stage;
 
     // Position-based milestone detection — independent of fixed key names.
-    // last stage = "funded equivalent" (seal + VAP + close record)
-    // second-to-last stage = "closing equivalent" (preview VAP, no seal)
-    const lastStageKey        = effectiveStages[effectiveStages.length - 1].key;
-    const secondToLastStageKey = effectiveStages.length >= 2
-      ? effectiveStages[effectiveStages.length - 2].key
+    // Uses the full effective sequence (with settlement/complete when capable).
+    // last stage = "funded equivalent" → seal + VAP + close record
+    // second-to-last stage = "closing equivalent" → preview VAP, no seal
+    // Note: 'complete' is always blocked by COMPLETE_GATE above, so the
+    // lastStageKey milestone logic is effectively dead for settlement rooms,
+    // but milestone detection uses secondToLastStageKey (→ 'settlement') for
+    // the preview-VAP trigger.
+    const fullEffectiveStages = allKnownStages;
+    const lastStageKey        = fullEffectiveStages[fullEffectiveStages.length - 1].key;
+    const secondToLastStageKey = fullEffectiveStages.length >= 2
+      ? fullEffectiveStages[fullEffectiveStages.length - 2].key
       : null;
 
     const currentStage = room?.deal_stage;
@@ -4477,6 +4521,436 @@ app.patch('/api/public/deal-room/:propertyId/ownership', async (req, res) => {
     res.json({ ok: true, metadata_values: merged });
   } catch (err) {
     console.error('[ownership PATCH]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ══════════════════════════════════════════════════════════════════════════════
+// SETTLEMENT CAPABILITY — Phase 1: Provider-Neutral Settlement Readiness
+// ══════════════════════════════════════════════════════════════════════════════
+//
+// Routes:
+//   GET   /api/public/deal-room/:transactionId/settlement/readiness
+//   PATCH /api/public/deal-room/:transactionId/settlement/mode
+//   PATCH /api/public/deal-room/:transactionId/settlement/mode/lock
+//   POST  /api/public/deal-room/:transactionId/settlement/complete
+//   GET   /api/public/deal-room/:transactionId/settlement/seal
+//
+// KEY INVARIANT: settlement_readiness_pct reaching 1.0 NEVER grants completion.
+// Completion is always a fresh deterministic server-side check — every
+// mandatory settlement.* field must have status='verified' AND every required
+// settlement approval must have action='approved'. This is evaluated in full
+// each time POST /settlement/complete is called.
+//
+// Terminology: params use "transactionId" per architecture; internally we map
+// `const propertyId = req.params.transactionId` for backward compat.
+//
+// Immutability scope: only transaction_record_fields, transaction_record_approvals,
+// and the seal record (deal_analyses doc_type='transaction_seal') become immutable
+// after sealing. The workspace itself (participants, documents) remains usable.
+// Post-sealing documents are flagged post_completion=true in deal_analyses.
+
+// ── Server-side settlement conditions ────────────────────────────────────────
+// Server-side equivalent of SETTLEMENT_RECORD_SCHEMA in transactionRecordSchema.js.
+// These MUST stay in sync with the frontend schema definition.
+
+function getSettlementConditionsServer(mode) {
+  if (!mode) return [];
+
+  const COMMON = [
+    { key: 'settlement.provider',             label: 'Settlement Provider',         type: 'field' },
+    { key: 'settlement.rail',                 label: 'Settlement Rail',             type: 'field' },
+    { key: 'settlement.asset_currency',       label: 'Settlement Asset / Currency', type: 'field' },
+    { key: 'settlement.destination_reference',label: 'Destination Reference',       type: 'field' },
+  ];
+
+  const MODE_FIELDS = {
+    traditional: [
+      { key: 'settlement.funding_confirmed', label: 'Funding Confirmed',      type: 'field' },
+      { key: 'settlement.settlement_date',   label: 'Settlement Date',        type: 'field' },
+      { key: 'settlement.evidence_doc_ref',  label: 'Settlement Evidence',    type: 'field' },
+    ],
+    digital: [
+      { key: 'settlement.expected_amount',   label: 'Expected Settlement Amount', type: 'field' },
+    ],
+    tokenized: [
+      { key: 'settlement.token_type',           label: 'Token Type',                     type: 'field' },
+      { key: 'settlement.issuance_provider',    label: 'Issuance Provider',              type: 'field' },
+      { key: 'settlement.whitelist_confirmed',  label: 'KYC / Whitelist Confirmed',      type: 'field' },
+      { key: 'settlement.legal_opinion_present',label: 'Legal Opinion Uploaded',         type: 'field' },
+    ],
+  };
+
+  const APPROVALS = {
+    traditional: [
+      { key: 'settlement.coordinator_approval', label: 'Coordinator Approval',    type: 'approval', role: 'Deal Coordinator' },
+      { key: 'settlement.legal_approval',       label: 'Legal Counsel Approval',  type: 'approval', role: 'Legal Counsel'    },
+    ],
+    digital: [
+      { key: 'settlement.coordinator_approval', label: 'Coordinator Approval', type: 'approval', role: 'Deal Coordinator'   },
+      { key: 'settlement.compliance_approval',  label: 'Compliance Approval',  type: 'approval', role: 'Compliance Officer' },
+    ],
+    tokenized: [
+      { key: 'settlement.coordinator_approval', label: 'Coordinator Approval',    type: 'approval', role: 'Deal Coordinator'   },
+      { key: 'settlement.legal_approval',       label: 'Legal Counsel Approval',  type: 'approval', role: 'Legal Counsel'      },
+      { key: 'settlement.compliance_approval',  label: 'Compliance Approval',     type: 'approval', role: 'Compliance Officer' },
+    ],
+  };
+
+  return [
+    ...COMMON,
+    ...(MODE_FIELDS[mode] || []),
+    ...(APPROVALS[mode]   || []),
+  ];
+}
+
+// Compute settlement readiness for a workspace.
+// Returns: { score, conditions, all_conditions_met, unmet, mode }
+// Scoring: verified=1.0, needs_review=0.5, missing/pending=0.
+// all_conditions_met: true only if EVERY condition (field + approval) is met.
+async function computeSettlementReadiness(propertyId, mode) {
+  if (!mode) {
+    return { score: 0, conditions: [], all_conditions_met: false, unmet: [], mode: null };
+  }
+  const conditions = getSettlementConditionsServer(mode);
+  const fieldKeys   = conditions.filter(c => c.type === 'field').map(c => c.key);
+  const approvalKeys = conditions.filter(c => c.type === 'approval').map(c => c.key);
+
+  const [{ data: fields }, { data: approvalFieldRows }] = await Promise.all([
+    fieldKeys.length
+      ? supabase.from('transaction_record_fields').select('field_key, status, value_text, id').eq('property_id', propertyId).in('field_key', fieldKeys)
+      : { data: [] },
+    approvalKeys.length
+      ? supabase.from('transaction_record_fields').select('id, field_key').eq('property_id', propertyId).in('field_key', approvalKeys)
+      : { data: [] },
+  ]);
+
+  const approvalFieldIds = (approvalFieldRows || []).map(f => f.id);
+  const { data: approvals } = approvalFieldIds.length
+    ? await supabase.from('transaction_record_approvals').select('field_id, action').eq('property_id', propertyId).in('field_id', approvalFieldIds)
+    : { data: [] };
+
+  const fieldsByKey       = new Map((fields || []).map(f => [f.field_key, f]));
+  const approvalFieldByKey = new Map((approvalFieldRows || []).map(f => [f.field_key, f]));
+  const approvedFieldIds  = new Set((approvals || []).filter(a => a.action === 'approved').map(a => a.field_id));
+
+  let total = 0;
+  let earned = 0;
+  const conditionResults = [];
+  const unmet = [];
+
+  for (const cond of conditions) {
+    total += 1;
+    let score = 0;
+    let met = false;
+    let status = 'missing';
+
+    if (cond.type === 'field') {
+      const field = fieldsByKey.get(cond.key);
+      status = field?.status || 'missing';
+      if (status === 'verified') { score = 1.0; met = true; }
+      else if (status === 'needs_review') { score = 0.5; }
+    } else {
+      const af = approvalFieldByKey.get(cond.key);
+      met = af ? approvedFieldIds.has(af.id) : false;
+      status = met ? 'approved' : 'pending';
+      score = met ? 1.0 : 0;
+    }
+
+    earned += score;
+    conditionResults.push({ ...cond, status, score, met });
+    if (!met) unmet.push({ key: cond.key, label: cond.label });
+  }
+
+  const readinessScore = total > 0 ? earned / total : 0;
+  return {
+    score: Math.round(readinessScore * 10000) / 10000,
+    conditions: conditionResults,
+    all_conditions_met: unmet.length === 0 && total > 0,
+    unmet,
+    mode,
+  };
+}
+
+// Helper: check if a room has settlement capability active
+function roomHasSettlementCapability(room) {
+  const meta = room?.metadata_values || {};
+  return (
+    room?.workflow_pack_id === 'tokenization' ||
+    meta.settlement_capability_enabled === true  ||
+    meta.settlement_capability_enabled === 'true'
+  );
+}
+
+// ── GET /settlement/readiness ─────────────────────────────────────────────────
+
+app.get('/api/public/deal-room/:transactionId/settlement/readiness', async (req, res) => {
+  const propertyId = req.params.transactionId;
+  try {
+    const access = await getRoomAccessContext(req, propertyId);
+    if (access.mode === 'anonymous') return accessDenied(res);
+
+    const { data: room, error } = await supabase
+      .from('deal_rooms')
+      .select('property_id, workflow_pack_id, deal_stage, metadata_values, settlement_mode, settlement_mode_locked_at, settlement_readiness_pct, sealed_at, completed_at')
+      .eq('property_id', propertyId)
+      .maybeSingle();
+    if (error) throw error;
+    if (!room) return res.status(404).json({ error: 'room not found' });
+
+    if (!roomHasSettlementCapability(room)) {
+      return res.json({
+        capability_enabled: false,
+        message: 'Settlement capability is not active. Enable it from workspace settings.',
+      });
+    }
+
+    const mode = room.settlement_mode || null;
+    const readiness = await computeSettlementReadiness(propertyId, mode);
+
+    // Cache the score if it changed by more than 0.1%
+    if (mode && Math.abs((readiness.score || 0) - (room.settlement_readiness_pct || 0)) > 0.001) {
+      supabase.from('deal_rooms').update({ settlement_readiness_pct: readiness.score }).eq('property_id', propertyId).then(() => {});
+    }
+
+    res.json({
+      capability_enabled: true,
+      mode,
+      mode_locked:    !!room.settlement_mode_locked_at,
+      mode_locked_at: room.settlement_mode_locked_at || null,
+      sealed_at:      room.sealed_at || null,
+      completed_at:   room.completed_at || null,
+      is_complete:    !!room.sealed_at,
+      readiness_pct:  Math.round((readiness.score || 0) * 100),
+      all_conditions_met: readiness.all_conditions_met,
+      conditions:     readiness.conditions,
+      unmet:          readiness.unmet,
+      deal_stage:     room.deal_stage,
+    });
+  } catch (err) {
+    console.error('[settlement/readiness GET]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── PATCH /settlement/mode ────────────────────────────────────────────────────
+
+app.patch('/api/public/deal-room/:transactionId/settlement/mode', async (req, res) => {
+  const propertyId = req.params.transactionId;
+  const { mode, ownerWriteToken } = req.body || {};
+  const VALID_MODES = ['traditional', 'digital', 'tokenized'];
+  try {
+    const access = await getRoomAccessContext(req, propertyId, ownerWriteToken);
+    if (access.mode !== 'owner') return accessDenied(res, 'Coordinator access required');
+    if (!VALID_MODES.includes(mode)) {
+      return res.status(400).json({ error: 'INVALID_MODE', message: `settlement.mode must be one of: ${VALID_MODES.join(', ')}` });
+    }
+    const { data: room } = await supabase.from('deal_rooms').select('settlement_mode, settlement_mode_locked_at, sealed_at').eq('property_id', propertyId).maybeSingle();
+    if (room?.sealed_at) return res.status(400).json({ error: 'WORKSPACE_SEALED', message: 'Settlement mode cannot be changed after sealing.' });
+    if (room?.settlement_mode_locked_at && room.settlement_mode !== mode) {
+      return res.status(400).json({ error: 'MODE_LOCKED', message: 'Settlement mode is locked. Contact support to unlock.', locked_at: room.settlement_mode_locked_at });
+    }
+    const { error } = await supabase.from('deal_rooms').update({ settlement_mode: mode }).eq('property_id', propertyId);
+    if (error) throw error;
+    logEvent(propertyId, 'settlement_mode_set', 'owner', null, `Settlement mode set to ${mode}`, { mode }).catch(() => {});
+    res.json({ ok: true, mode });
+  } catch (err) {
+    console.error('[settlement/mode PATCH]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── PATCH /settlement/mode/lock ───────────────────────────────────────────────
+
+app.patch('/api/public/deal-room/:transactionId/settlement/mode/lock', async (req, res) => {
+  const propertyId = req.params.transactionId;
+  const { ownerWriteToken } = req.body || {};
+  try {
+    const access = await getRoomAccessContext(req, propertyId, ownerWriteToken);
+    if (access.mode !== 'owner') return accessDenied(res, 'Coordinator access required');
+    const { data: room } = await supabase.from('deal_rooms').select('settlement_mode, settlement_mode_locked_at, sealed_at').eq('property_id', propertyId).maybeSingle();
+    if (!room?.settlement_mode) return res.status(400).json({ error: 'NO_MODE', message: 'Set a settlement mode before locking.' });
+    if (room?.sealed_at) return res.status(400).json({ error: 'WORKSPACE_SEALED', message: 'Workspace is already sealed.' });
+    const now = new Date().toISOString();
+    const { error } = await supabase.from('deal_rooms').update({ settlement_mode_locked_at: now }).eq('property_id', propertyId);
+    if (error) throw error;
+    logEvent(propertyId, 'settlement_mode_locked', 'owner', null, `Settlement mode locked: ${room.settlement_mode}`, { mode: room.settlement_mode }).catch(() => {});
+    res.json({ ok: true, locked_at: now, mode: room.settlement_mode });
+  } catch (err) {
+    console.error('[settlement/mode/lock PATCH]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── POST /settlement/complete ─────────────────────────────────────────────────
+// Deterministic completion gate: all mandatory conditions must be met.
+// Creates the Transaction Seal, marks workspace sealed, advances to 'complete'.
+
+app.post('/api/public/deal-room/:transactionId/settlement/complete', async (req, res) => {
+  const propertyId = req.params.transactionId;
+  const { ownerWriteToken, sealDisplayName } = req.body || {};
+  try {
+    const access = await getRoomAccessContext(req, propertyId, ownerWriteToken);
+    if (access.mode !== 'owner') return accessDenied(res, 'Coordinator access required');
+
+    const { data: room, error: fetchError } = await supabase
+      .from('deal_rooms')
+      .select('property_id, property_name, workflow_pack_id, deal_stage, metadata_values, settlement_mode, sealed_at')
+      .eq('property_id', propertyId)
+      .maybeSingle();
+    if (fetchError) throw fetchError;
+    if (!room) return res.status(404).json({ error: 'room not found' });
+
+    if (room.sealed_at) {
+      return res.status(400).json({ error: 'ALREADY_SEALED', message: 'This workspace is already sealed.', sealed_at: room.sealed_at });
+    }
+    if (!roomHasSettlementCapability(room)) {
+      return res.status(400).json({ error: 'CAPABILITY_NOT_ENABLED', message: 'Settlement capability is not active for this workspace.' });
+    }
+    if (!room.settlement_mode) {
+      return res.status(400).json({ error: 'NO_SETTLEMENT_MODE', message: 'Set a settlement mode first — use PATCH /settlement/mode.' });
+    }
+
+    // ── Deterministic gate: all required conditions must be met ───────────────
+    const readiness = await computeSettlementReadiness(propertyId, room.settlement_mode);
+    if (!readiness.all_conditions_met) {
+      return res.status(400).json({
+        error: 'CONDITIONS_NOT_MET',
+        message: 'Not all settlement conditions are verified. Every required field must be status=verified and every required approval must be action=approved.',
+        unmet: readiness.unmet,
+        readiness_pct: Math.round((readiness.score || 0) * 100),
+      });
+    }
+
+    // ── Build the Transaction Seal payload ───────────────────────────────────
+    const now = new Date().toISOString();
+    const displayName = sealDisplayName || 'Transaction Seal';
+    const verifiedConditions = readiness.conditions.filter(c => c.met).map(c => ({ key: c.key, label: c.label, type: c.type }));
+    const sealContent = {
+      seal_type:           'transaction_seal',
+      display_name:        displayName,
+      property_id:         propertyId,
+      workspace_name:      room.property_name || propertyId,
+      settlement_mode:     room.settlement_mode,
+      created_at:          now,
+      conditions_verified: verifiedConditions,
+      conditions_count:    readiness.conditions.length,
+      verified_count:      verifiedConditions.length,
+      note: 'This seal is a digital record of verified settlement conditions at the time of completion. It is not a legal instrument. Kontra is a coordination platform — it does not settle transactions or provide legal or financial advice.',
+    };
+    const sealText = [
+      `Transaction Seal — ${displayName}`,
+      `Workspace: ${room.property_name || propertyId}`,
+      `Settlement Mode: ${room.settlement_mode}`,
+      `Sealed At: ${now}`,
+      `Conditions Verified: ${sealContent.verified_count} / ${sealContent.conditions_count}`,
+      '',
+      'Verified Conditions:',
+      ...verifiedConditions.map(c => `  ✓ ${c.label} (${c.type})`),
+      '',
+      sealContent.note,
+    ].join('\n');
+
+    // ── Atomic seal via PostgreSQL RPC ────────────────────────────────────────
+    // The RPC runs inside a single DB transaction with a FOR UPDATE row lock.
+    // Unique index idx_deal_analyses_one_seal_per_room prevents duplicate seals
+    // even if a concurrent call races past the lock. If any step fails, the
+    // entire transaction rolls back — no partial state can persist.
+    const { data: rpcResult, error: rpcError } = await supabase.rpc(
+      'complete_settlement_transaction',
+      {
+        p_property_id:  propertyId,
+        p_seal_content: sealContent,  // JSONB — stored in deal_analyses.analysis
+        p_score:        readiness.score,
+        p_now:          now,
+      }
+    );
+    if (rpcError) throw rpcError;
+
+    // The RPC returns JSONB; Supabase unwraps it as a plain object.
+    const rpc = rpcResult || {};
+    if (rpc.error === 'ALREADY_SEALED') {
+      return res.status(400).json({
+        error:     'ALREADY_SEALED',
+        message:   'This workspace is already sealed.',
+        sealed_at: rpc.sealed_at,
+      });
+    }
+    if (rpc.error === 'ROOM_NOT_FOUND') {
+      return res.status(404).json({ error: 'room not found' });
+    }
+    if (!rpc.ok) {
+      throw new Error(`RPC complete_settlement_transaction failed: ${JSON.stringify(rpc)}`);
+    }
+
+    logEvent(
+      propertyId, 'transaction_sealed', 'owner', null,
+      `Transaction sealed — ${displayName}. Settlement mode: ${room.settlement_mode}.`,
+      { seal_id: rpc.seal_id, mode: room.settlement_mode, conditions_count: sealContent.conditions_count }
+    ).catch(() => {});
+
+    res.json({
+      ok:                  true,
+      seal_id:             rpc.seal_id,
+      seal_display_name:   displayName,
+      sealed_at:           rpc.sealed_at || now,
+      completed_at:        rpc.sealed_at || now,
+      deal_stage:          'complete',
+      mode:                room.settlement_mode,
+      conditions_verified: sealContent.verified_count,
+    });
+  } catch (err) {
+    console.error('[settlement/complete POST]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── GET /settlement/seal ──────────────────────────────────────────────────────
+
+app.get('/api/public/deal-room/:transactionId/settlement/seal', async (req, res) => {
+  const propertyId = req.params.transactionId;
+  try {
+    const access = await getRoomAccessContext(req, propertyId);
+    if (access.mode === 'anonymous') return accessDenied(res);
+
+    const { data: room } = await supabase
+      .from('deal_rooms')
+      .select('property_name, sealed_at, completed_at, settlement_mode, settlement_readiness_pct')
+      .eq('property_id', propertyId)
+      .maybeSingle();
+
+    if (!room?.sealed_at) {
+      return res.status(404).json({ error: 'WORKSPACE_NOT_SEALED', message: 'This workspace has not been sealed.' });
+    }
+
+    // deal_analyses uses `section` as the type discriminator and `analysis` (JSONB)
+    // as the content store — there is no doc_type, summary, or extracted_text column.
+    const { data: sealRecord } = await supabase
+      .from('deal_analyses')
+      .select('id, section, analysis, created_at')
+      .eq('property_id', propertyId)
+      .eq('section', 'transaction_seal')
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (!sealRecord) {
+      return res.status(404).json({ error: 'SEAL_NOT_FOUND', message: 'Seal record not found for sealed workspace.' });
+    }
+
+    const sealContent = sealRecord.analysis || {};
+
+    res.json({
+      seal_id:         sealRecord.id,
+      workspace_name:  room.property_name,
+      sealed_at:       room.sealed_at,
+      completed_at:    room.completed_at,
+      settlement_mode: room.settlement_mode,
+      readiness_pct:   Math.round((room.settlement_readiness_pct || 0) * 100),
+      summary:         sealContent,  // key kept for SealedView frontend compatibility
+    });
+  } catch (err) {
+    console.error('[settlement/seal GET]', err.message);
     res.status(500).json({ error: err.message });
   }
 });
@@ -6822,6 +7296,18 @@ app.patch('/api/public/deal-room/:propertyId/transaction-record/fields/:fieldId'
   const { value_text, notes, status, ownerWriteToken } = req.body || {};
   const access = await getRoomAccessContext(req, propertyId, ownerWriteToken);
   if (access.mode !== 'owner') return accessDenied(res, 'Owner access required');
+
+  // Sealed workspaces: transaction_record_fields are immutable after the Transaction Seal is created.
+  // Post-completion documents can still be uploaded (they are flagged post_completion=true).
+  const { data: sealedRoom } = await supabase.from('deal_rooms').select('sealed_at').eq('property_id', propertyId).maybeSingle();
+  if (sealedRoom?.sealed_at) {
+    return res.status(400).json({
+      error: 'WORKSPACE_SEALED',
+      message: 'Transaction record fields are immutable after the workspace is sealed. The Transaction Seal was created at ' + sealedRoom.sealed_at + '. New documents can still be added as post-completion records.',
+      sealed_at: sealedRoom.sealed_at,
+    });
+  }
+
   const ALLOWED_STATUSES = ['missing','extracted','needs_review','verified','conflicting','not_applicable'];
   const update = { updated_at: new Date().toISOString() };
   if (value_text !== undefined) { update.value_text = String(value_text).slice(0, 2000); update.extracted_by = 'coordinator'; }
@@ -6876,8 +7362,19 @@ app.post('/api/public/deal-room/:propertyId/transaction-record/fields/:fieldId/v
   const { ownerWriteToken, actorRole } = req.body || {};
   const access = await getRoomAccessContext(req, propertyId, ownerWriteToken);
   if (access.mode !== 'owner') return accessDenied(res, 'Owner access required');
+
+  // Sealed workspaces: transaction_record_fields and their approvals are immutable.
+  const { data: sealedRoom } = await supabase.from('deal_rooms').select('sealed_at, customer_email').eq('property_id', propertyId).maybeSingle();
+  if (sealedRoom?.sealed_at) {
+    return res.status(400).json({
+      error: 'WORKSPACE_SEALED',
+      message: 'Transaction record fields are immutable after the workspace is sealed. The Transaction Seal was created at ' + sealedRoom.sealed_at + '.',
+      sealed_at: sealedRoom.sealed_at,
+    });
+  }
+
   try {
-    const { data: room } = await supabase.from('deal_rooms').select('customer_email').eq('property_id', propertyId).maybeSingle();
+    const room = sealedRoom; // already fetched above
     const email = room?.customer_email || 'coordinator';
     const { error: fErr } = await supabase
       .from('transaction_record_fields')
@@ -6916,6 +7413,17 @@ app.post('/api/public/deal-room/:propertyId/transaction-record/fields', async (r
   if (!field_key || !field_category) return res.status(400).json({ error: 'field_key and field_category required' });
   const access = await getRoomAccessContext(req, propertyId, ownerWriteToken);
   if (access.mode !== 'owner') return accessDenied(res, 'Owner access required');
+
+  // Sealed workspaces: transaction_record_fields are immutable after the Transaction Seal is created.
+  const { data: sealedRoom } = await supabase.from('deal_rooms').select('sealed_at').eq('property_id', propertyId).maybeSingle();
+  if (sealedRoom?.sealed_at) {
+    return res.status(400).json({
+      error: 'WORKSPACE_SEALED',
+      message: 'Transaction record fields are immutable after the workspace is sealed. The Transaction Seal was created at ' + sealedRoom.sealed_at + '. New documents can still be added as post-completion records.',
+      sealed_at: sealedRoom.sealed_at,
+    });
+  }
+
   const ALLOWED_STATUSES = ['missing','extracted','needs_review','verified','not_applicable'];
   const now = new Date().toISOString();
   try {
