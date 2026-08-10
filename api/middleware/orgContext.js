@@ -1,4 +1,10 @@
 const orgContext = (req, res, next) => {
+  // Public deal-room routes use their own auth scheme — skip org requirement.
+  const fullUrl    = req.originalUrl || '';
+  const mountedUrl = req.url || '';
+  if (fullUrl.includes('/api/public/') || mountedUrl.startsWith('/public/')) {
+    return next();
+  }
   const headerOrg =
     req.headers['x-organization-id'] ||
     req.headers['x-org-id'] ||
