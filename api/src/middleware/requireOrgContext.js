@@ -14,20 +14,34 @@ function toOrgUuidStr(orgId) {
 }
 
 function requireOrgContext(req, res, next) {
-  const path = (req.originalUrl || '').split('?')[0];
+  // Use both req.originalUrl (full path) and req.url (may be mount-stripped by Express).
+  // When mounted as app.use('/api', requireOrgContext), Express sets req.url to the path
+  // AFTER the mount point, e.g. '/public/deal-room/...' instead of '/api/public/deal-room/...'.
+  // req.originalUrl always retains the full path, but we check both to be safe under proxies.
+  const originalPath = (req.originalUrl || '').split('?')[0];
+  const mountedPath  = (req.url || '').split('?')[0];
 
   // Always skip health, dev, public AI, guest checkout, and all /api/public/* routes
   if (
-    path === '/api/health' ||
-    path.startsWith('/api/dev/') ||
-    path.startsWith('/api/auth/') ||
-    path.startsWith('/api/copilot/') ||
-    path.startsWith('/api/checkout/guest') ||
-    path.startsWith('/api/public/') ||
-    path === '/api/waitlist'
+    originalPath === '/api/health' ||
+    mountedPath  === '/health' ||
+    originalPath.startsWith('/api/dev/') ||
+    mountedPath.startsWith('/dev/') ||
+    originalPath.startsWith('/api/auth/') ||
+    mountedPath.startsWith('/auth/') ||
+    originalPath.startsWith('/api/copilot/') ||
+    mountedPath.startsWith('/copilot/') ||
+    originalPath.startsWith('/api/checkout/guest') ||
+    mountedPath.startsWith('/checkout/guest') ||
+    originalPath.startsWith('/api/public/') ||
+    mountedPath.startsWith('/public/') ||
+    originalPath === '/api/waitlist' ||
+    mountedPath  === '/waitlist'
   ) {
     return next();
   }
+
+  const path = originalPath; // retained for legacy log messages below
 
   const orgHeader = req.get('X-Org-Id') || req.get('x-org-id') || req.get('x-organization-id');
 
