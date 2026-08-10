@@ -73,6 +73,17 @@ function applyUser(req, { id, email, role, portal, org_id }) {
 }
 
 module.exports = async function authenticate(req, res, next) {
+  // Public deal-room endpoints (/api/public/...) use their own auth scheme:
+  // owner write tokens and invite session tokens managed by getRoomAccessContext.
+  // The JWT bearer authenticate middleware must never intercept those routes so
+  // that unauthenticated participants (who have only an invite link) can reach
+  // the transaction-record, extract, and other public deal-room APIs.
+  // See comment at line ~825: "public GET/POST endpoints are never intercepted
+  // by authenticate.js".
+  if ((req.originalUrl || req.url || '').includes('/api/public/')) {
+    return next();
+  }
+
   // Reset
   req.user = null;
   req.role = 'member';

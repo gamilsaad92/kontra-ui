@@ -7325,11 +7325,18 @@ RULES:
   }
 });
 
-// ── Generic Deal Room — Computed Briefing (/brain/briefing) ──────────────────
+// ── Generic Deal Room — Transaction-Record Fact Summary (/brain/facts) ───────
+// Distinct from /brain/briefing (which is served by the operationsManager
+// router for deal health / chain status). This endpoint returns a machine-
+// readable summary of extracted transaction facts plus a document count so the
+// CoordinatorOverview can show "N documents uploaded" and known transaction
+// values without a separate /transaction-record fetch.
 // Returns a lightweight computed briefing from live room data.
 // Static demo rooms register their own routes above and override this.
-app.get('/api/public/deal-room/:propertyId/brain/briefing', async (req, res) => {
+app.get('/api/public/deal-room/:propertyId/brain/facts', async (req, res) => {
   const { propertyId } = req.params;
+  const access = await getRoomAccessContext(req, propertyId, req.body?.ownerWriteToken);
+  if (access.mode === 'anonymous') return accessDenied(res, 'A verified deal-room invitation or owner access token is required');
   try {
     const [{ data: fields }, { count: docCount }] = await Promise.all([
       supabase.from('transaction_record_fields')
@@ -7340,14 +7347,13 @@ app.get('/api/public/deal-room/:propertyId/brain/briefing', async (req, res) => 
         .eq('property_id', propertyId),
     ]);
 
-    const conflicts  = (fields || []).filter(f => ['conflicting', 'source_changed'].includes(f.status));
+    const conflicts   = (fields || []).filter(f => ['conflicting', 'source_changed'].includes(f.status));
     const needsReview = (fields || []).filter(f => ['needs_review', 'extracted'].includes(f.status) && f.value_text);
 
-    // Only return a non-null briefing when there is activity to report
+    // Return null only when truly nothing has been uploaded or extracted yet
     if ((docCount || 0) === 0 && (fields || []).length === 0) {
       return res.json(null);
     }
-    // docCount is now from deal_analyses (the correct upload table)
 
     const risks = conflicts.map(f => ({
       text: `${f.display_label || f.field_key} has conflicting values from different sources`,
@@ -7358,9 +7364,20 @@ app.get('/api/public/deal-room/:propertyId/brain/briefing', async (req, res) => 
       field_key: f.field_key,
     }));
 
-    res.json({ actions, risks, open_items: [], snapshot: { document_count: docCount || 0, fact_count: (fields || []).length } });
+    res.json({
+      actions,
+      risks,
+      open_items: [],
+      snapshot: { document_count: docCount || 0, fact_count: (fields || []).length },
+      // Surface the most important known values for the Overview snapshot row
+      known_values: Object.fromEntries(
+        (fields || [])
+          .filter(f => f.value_text && f.status !== 'not_applicable')
+          .map(f => [f.field_key, f.value_text])
+      ),
+    });
   } catch (err) {
-    console.error('[brain/briefing]', err.message);
+    console.error('[brain/facts]', err.message);
     res.json(null);
   }
 });
