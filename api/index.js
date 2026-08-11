@@ -5149,7 +5149,7 @@ app.get('/api/public/deal-room/:propertyId/readiness', async (req, res) => {
   const categories = [
     { name: 'Structured Transaction Record', weight: 1, score: overall },
   ];
-  const overallLabel = overall >= 80 ? 'Closing Ready' : overall >= 55 ? 'Needs Review' : 'Needs Attention';
+  const overallLabel = overall >= 80 ? 'Closing Ready' : overall >= 55 ? 'Needs Review' : overall === 0 ? 'Getting Started' : 'Needs Attention';
   const hasTransactionFact = populatedRecordFields.some(field => field.field_key?.startsWith('transaction.'));
   const hasAssetOrPartyFact = populatedRecordFields.some(field =>
     field.field_key?.startsWith('asset.') || field.field_key?.startsWith('parties.')
@@ -5176,7 +5176,9 @@ app.get('/api/public/deal-room/:propertyId/readiness', async (req, res) => {
     status:              overallLabel,
     closing_ready:       overall >= 80,
     transaction_ready:   overall >= 80,
-    tokenization_ready:  overall >= 80,
+    tokenization_ready: digitalAssetReadinessSufficient
+      && (meta.digital_asset_enabled === true || meta.digital_asset_enabled === 'true'
+        || room.workflow_pack_id === 'tokenization' || room.deal_type === 'tokenization'),
     transaction_readiness: {
       overall_pct: overall,
       status: overallLabel,

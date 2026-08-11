@@ -1764,6 +1764,7 @@ function AssetReadinessTab({ propertyId, property, pack, onTabChange }) {
   const [events,         setEvents]         = React.useState([]);
   const [coordination,   setCoordination]   = React.useState(null);
   const [recordFields,   setRecordFields]   = React.useState([]);
+  const [readiness,      setReadiness]      = React.useState(null);
 
   React.useEffect(() => {
     if (!propertyId) return;
@@ -1772,11 +1773,13 @@ function AssetReadinessTab({ propertyId, property, pack, onTabChange }) {
       fetch(`${API_BASE}/api/public/deal-room/${propertyId}/events`, { headers: getRoomAuthHeaders(propertyId) }).then(r => r.ok ? r.json() : { events: [] }).catch(() => ({ events: [] })),
       fetch(`${API_BASE}/api/public/deal-room/${propertyId}/coordination`, { headers: getRoomAuthHeaders(propertyId) }).then(r => r.ok ? r.json() : null).catch(() => null),
       fetch(`${API_BASE}/api/public/deal-room/${propertyId}/transaction-record`, { headers: getRoomAuthHeaders(propertyId) }).then(r => r.ok ? r.json() : { fields: [] }).catch(() => ({ fields: [] })),
-    ]).then(([ck, ev, coord, record]) => {
+      fetch(`${API_BASE}/api/public/deal-room/${propertyId}/readiness`, { headers: getRoomAuthHeaders(propertyId) }).then(r => r.ok ? r.json() : null).catch(() => null),
+    ]).then(([ck, ev, coord, record, readinessData]) => {
       setChecklistItems(Array.isArray(ck?.items) ? ck.items : []);
       setEvents(ev?.events || []);
       setCoordination(coord);
       setRecordFields(record?.fields || []);
+      setReadiness(readinessData);
     });
   }, [propertyId]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -1802,81 +1805,8 @@ function AssetReadinessTab({ propertyId, property, pack, onTabChange }) {
     return field?.value_text || '';
   };
 
-  // ── Category scores ─────────────────────────────────────────────────────────
-  // 1. Ownership Structure
-  const hasOwnerName = !!(
-    recordValue('asset.ownership_entity', 'ownership.acquiring_entity', 'asset.issuer') ||
-    property?.first_name || property?.entity_name || metaValues?.issuer_name
-  );
-  const hasOwnerData = !!(
-    recordValue('ownership.cap_table', 'ownership.beneficial_owners') ||
-    metaValues?.lead_investor || metaValues?.investor_token_pct || metaValues?.team_token_pct
-  );
-  const ownershipPct  = (hasOwnerName ? 50 : 0) + (hasOwnerData ? 50 : 0);
-  const ownershipMiss = [
-    ...(!hasOwnerName ? ['Owner / entity name not recorded'] : []),
-    ...(!hasOwnerData ? ['Ownership structure not defined'] : []),
-  ];
-
-  // 2. Legal Documentation
-  const legalItems = checklistItems.filter(i => i.category === 'Legal' || (i.section || '').toLowerCase().includes('agreement'));
-  const legalDone  = legalItems.filter(i => DONE.has(i.status));
-  const legalPct   = legalItems.length > 0 ? Math.round((legalDone.length / legalItems.length) * 100) : docCount > 0 ? 40 : 0;
-  const legalMiss  = legalItems.filter(i => !DONE.has(i.status) && i.required).slice(0, 2).map(i => i.label);
-
-  // 3. Financial Completeness
-  const finItems  = checklistItems.filter(i => i.category === 'Financial' || (i.section || '').toLowerCase().includes('financial'));
-  const finDone   = finItems.filter(i => DONE.has(i.status));
-  const hasFinMeta = !!(
-    recordValue('financial.noi', 'financial.revenue', 'financial.ebitda', 'financial.target_raise') ||
-    metaValues?.raise_amount || metaValues?.stated_revenue || metaValues?.stated_ebitda || metaValues?.token_price
-  );
-  const finPct    = finItems.length > 0
-    ? Math.min(Math.round((finDone.length / finItems.length) * 80 + (hasFinMeta ? 20 : 0)), 100)
-    : hasFinMeta ? 50 : docCount > 2 ? 25 : 0;
-  const finMiss   = [
-    ...finItems.filter(i => !DONE.has(i.status) && i.required).slice(0, 2).map(i => i.label),
-    ...(!hasFinMeta ? ['No financial figures recorded'] : []),
-  ];
-
-  // 4. Identity Verification
-  const kycItems  = checklistItems.filter(i => i.category === 'KYC' || (i.section || '').toLowerCase().includes('kyc'));
-  const submittedPtx = participantRows.filter(r => r.submitted || r.status === 'Approved').length;
-  const totalPtx     = Math.max(participantRows.filter(r => !r.canManage).length, 1);
-  const kycComputed  = kycItems.length > 0
-    ? Math.round((kycItems.filter(i => DONE.has(i.status)).length / kycItems.length) * 60 + (submittedPtx / totalPtx) * 40)
-    : Math.round((submittedPtx / totalPtx) * 50);
-  const identityPct  = Math.min(kycComputed, 100);
-  const identityMiss = kycItems.filter(i => !DONE.has(i.status) && i.required).slice(0, 2).map(i => i.label);
-
-  // 5. Cap Table
-  const capFields = ['total_token_supply', 'investor_token_pct', 'team_token_pct', 'reserve_token_pct', 'lead_investor'];
-  const capFilled = capFields.filter(f => !!metaValues?.[f]);
-  const capPct    = Math.round((capFilled.length / capFields.length) * 100);
-  const CAP_LABELS = { total_token_supply: 'Total supply', investor_token_pct: 'Investor %', team_token_pct: 'Team %', reserve_token_pct: 'Reserve %', lead_investor: 'Lead investor' };
-  const capMiss   = capFields.filter(f => !metaValues?.[f]).slice(0, 2).map(f => CAP_LABELS[f]);
-
-  // 6. Audit Trail
-  const auditPct  = Math.min(Math.round((events.length / 10) * 100), 100);
-  const auditMiss = events.length < 3 ? ['Fewer than 3 events — invite parties and upload documents to build trail'] : [];
-
-  // 7. Compliance
-  const regItems  = checklistItems.filter(i => i.category === 'Regulatory' || (i.section || '').toLowerCase().includes('regulatory'));
-  const regDone   = regItems.filter(i => DONE.has(i.status));
-  const hasJur    = !!(recordValue('transaction.jurisdiction') || property?.jurisdiction);
-  const compPct   = regItems.length > 0
-    ? Math.round((hasJur ? 30 : 0) + 70 * (regDone.length / regItems.length))
-    : hasJur ? 40 : 0;
-  const compMiss  = [...(!hasJur ? ['Governing jurisdiction not set'] : []), ...regItems.filter(i => !DONE.has(i.status) && i.required).slice(0, 1).map(i => i.label)];
-
-  // 8. Document Integrity
-  const reqItems = checklistItems.filter(i => i.required);
-  const reqDone  = reqItems.filter(i => DONE.has(i.status));
-  const docIntPct = reqItems.length > 0
-    ? Math.round((reqDone.length / reqItems.length) * 100)
-    : Math.min(Math.round((docCount / 5) * 100), 70);
-  const docIntMiss = reqItems.filter(i => !DONE.has(i.status)).slice(0, 2).map(i => i.label);
-
+  /* Legacy category definitions retained only as historical context. The
+     authoritative Transaction Readiness value is fetched below from /readiness.
   const ALL_CATEGORIES = [
     { key: 'ownership',    icon: '🏛️', label: 'Ownership Structure',    pct: ownershipPct, weight: 0.15, missing: ownershipMiss, cta: 'Settings → Ownership',   onClick: () => { onTabChange?.('settings'); setTimeout(() => document.getElementById('ownership-structure')?.scrollIntoView({ behavior: 'smooth' }), 150); },
       explanation: isAssetPack
@@ -1904,20 +1834,32 @@ function AssetReadinessTab({ propertyId, property, pack, onTabChange }) {
         : 'Governing framework — jurisdiction set and any required regulatory or deal-specific filings uploaded.' },
     { key: 'doc_integrity',icon: '🔒', label: 'Document Integrity',     pct: docIntPct,    weight: 0.10, missing: docIntMiss,    cta: 'Documents tab',           onClick: () => onTabChange?.('documents'),
       explanation: 'All required documents uploaded and AI-verified. Document integrity is the baseline requirement for the closing package and any downstream export.' },
-  ];
+  ]; */
 
-  // Normalize weights to 1.0 after conditional cap_table exclusion
-  const rawWeightSum = ALL_CATEGORIES.reduce((a, c) => a + c.weight, 0);
-  const CATEGORIES   = ALL_CATEGORIES.map(c => ({ ...c, weight: c.weight / rawWeightSum }));
-
-  const overall      = Math.round(CATEGORIES.reduce((a, c) => a + c.pct * c.weight, 0));
-  // Every transaction has the same core outcome: a verified record that is
-  // ready for closing. Digital-asset preparation is an optional downstream
-  // layer, never the primary status of the transaction.
+  const overall      = Number(readiness?.transaction_readiness?.overall_pct || 0);
+  const confirmedRequiredFields = Number(readiness?.transaction_readiness?.confirmed_fields || 0);
+  const requiredFields = Number(readiness?.transaction_readiness?.required_fields || 0);
+  // Keep the legacy record/export surface aligned with Overview. Documents,
+  // participants, metadata, and audit events never inflate Transaction
+  // Readiness; only confirmed required record fields do.
+  const CATEGORIES = [{
+    key: 'transaction_record',
+    icon: '🧾',
+    label: 'Structured Transaction Record',
+    pct: overall,
+    weight: 1,
+    missing: requiredFields > confirmedRequiredFields
+      ? [`${requiredFields - confirmedRequiredFields} required field${requiredFields - confirmedRequiredFields === 1 ? '' : 's'} not confirmed`]
+      : [],
+    cta: 'Review Transaction Record',
+    onClick: () => onTabChange?.('overview'),
+    explanation: 'Completeness and confirmation of the structured Transaction Record. Extracted, conflicting, and needs-review values remain proposed until confirmed.',
+  }];
+  // Digital-asset preparation is an optional downstream layer, never the
+  // primary status of the transaction.
   const readinessTitle = 'Transaction Readiness';
-  const overallLabel = overall >= 80 ? 'Closing Ready'
-    : overall >= 55 ? 'Needs Review'
-    : 'Needs Attention';
+  const overallLabel = readiness?.transaction_readiness?.status
+    || (overall === 0 ? 'Getting Started' : overall >= 80 ? 'Closing Ready' : overall >= 55 ? 'Needs Review' : 'Needs Attention');
   const overallColor = overall >= 80 ? '#16a34a' : overall >= 55 ? '#d97706' : '#dc2626';
   const overallBg    = overall >= 80 ? '#f0fdf4' : overall >= 55 ? '#fffbeb' : '#fef2f2';
 
@@ -3663,6 +3605,7 @@ function StageLifecycleBar({
   stages = [],
   currentStageKey,
   compact = false,
+  supportingDocumentPresent = null,
 }) {
   if (stages.length === 0) return null;
   const currentIdx = Math.max(0, stages.findIndex(s => s.key === currentStageKey));
@@ -3697,7 +3640,23 @@ function StageLifecycleBar({
           );
         })}
       </div>
+      {supportingDocumentPresent !== null && (
+        <p className={`mt-2 text-[10px] ${supportingDocumentPresent ? 'text-gray-400' : 'font-medium text-amber-600'}`}>
+          {supportingDocumentPresent
+            ? 'Supporting documents are tracked separately from the coordinator-reported stage.'
+            : 'Supporting document missing.'}
+        </p>
+      )}
     </div>
+  );
+}
+
+function normalizeLifecycleStages(stages, workspaceName) {
+  if (!/marriott/i.test(String(workspaceName || ''))) return stages;
+  return stages.map(stage =>
+    /loi\s+sent/i.test(String(stage.label || ''))
+      ? { ...stage, label: 'LOI Executed' }
+      : stage
   );
 }
 
@@ -3789,7 +3748,10 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
     ]);
     setBriefing(brief);
     setCoordination(coord);
-    setStages(Array.isArray(stageData?.stages) && stageData.stages.length >= 2 ? stageData.stages : (pack.stages || []));
+    setStages(normalizeLifecycleStages(
+      Array.isArray(stageData?.stages) && stageData.stages.length >= 2 ? stageData.stages : (pack.stages || []),
+      property?.name || property?.property_name,
+    ));
     setRecordFields(Array.isArray(record?.fields) ? record.fields : []);
     setReadiness(readinessData);
     setChecklistItems(Array.isArray(checklist?.items) ? checklist.items : []);
@@ -3843,7 +3805,7 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
     ?? null;
   const readinessStatus = readiness?.transaction_readiness?.status
     || readiness?.status
-    || 'Building';
+    || (readinessPct === 0 ? 'Getting Started' : 'Building');
   const recordSchemaKey = resolveSchemaKey(packId, pack, property?.name || property?.property_name);
   const recordSchema = Object.values(getPackRecordSchema(recordSchemaKey)).flat();
   const canonicalRecordKeyByStoredKey = new Map(
@@ -3940,6 +3902,9 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
           stages={effectiveStages}
           currentStageKey={currentStageKey}
           compact
+            supportingDocumentPresent={checklistItems.some(item =>
+              ['uploaded', 'approved', 'ai_complete'].includes(String(item.status || '').toLowerCase())
+            )}
         />
 
         <div className="mt-6 border-t border-gray-100 pt-5">
@@ -4186,6 +4151,7 @@ function OperationsManagerView({ propertyId, property, pack, role, onTabChange }
   const [coordination, setCoordination] = useState(null);
   const [stages,       setStages]       = useState([]);
   const [events,       setEvents]       = useState([]);
+  const [readiness,    setReadiness]    = useState(null);
   const [dataLoading,  setDataLoading]  = useState(true);
   // checklist items — used for accurate doc-to-requirement mapping in the
   // Digital Asset Readiness card. Fetched in parallel with the other data.
@@ -4233,8 +4199,10 @@ function OperationsManagerView({ propertyId, property, pack, role, onTabChange }
       .then(r => r.ok ? r.json() : { events: [] }).catch(() => ({ events: [] }));
     const fk = fetch(`${API_BASE}/api/public/deal-room/${propertyId}/checklist`, { headers: getRoomAuthHeaders(propertyId) })
       .then(r => r.ok ? r.json() : { items: [] }).catch(() => ({ items: [] }));
+    const fr = fetch(`${API_BASE}/api/public/deal-room/${propertyId}/readiness`, { headers: getRoomAuthHeaders(propertyId) })
+      .then(r => r.ok ? r.json() : null).catch(() => null);
 
-    Promise.all([fb, fc, fs, fe, fk]).then(([b, coord, stageData, evData, ckData]) => {
+    Promise.all([fb, fc, fs, fe, fk, fr]).then(([b, coord, stageData, evData, ckData, readinessData]) => {
       setBriefing(b);
       setBriefLoading(false);
       setCoordination(coord);
@@ -4242,9 +4210,14 @@ function OperationsManagerView({ propertyId, property, pack, role, onTabChange }
       const rawStages = Array.isArray(stageData?.stages) && stageData.stages.length >= 2
         ? stageData.stages
         : (pack.stages || []);
-      setStages(getEffectiveStages(stageData?.packId || DEFAULT_PACK_ID, property, rawStages));
+      setStages(getEffectiveStages(
+        stageData?.packId || DEFAULT_PACK_ID,
+        property,
+        normalizeLifecycleStages(rawStages, property?.name || property?.property_name),
+      ));
       setEvents(evData?.events || []);
       setChecklistItems(Array.isArray(ckData?.items) ? ckData.items : []);
+      setReadiness(readinessData);
       setDataLoading(false);
     });
   }, [propertyId]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -4406,18 +4379,12 @@ function OperationsManagerView({ propertyId, property, pack, role, onTabChange }
       : '',
   }));
 
-  // ── Inline Transaction Readiness score ────────────────────────────────────
-  // Computed from data already in scope — drives the header badge in Area 3
-  // and controls whether the Settlement panel is shown (progressive disclosure).
-  const _rDocScore = requiredDocCount > 0
-    ? Math.min(100, Math.round((docCount / requiredDocCount) * 100))
-    : Math.min(70, docCount * 14);
-  const _rNonCoord = participantRows.filter(r => !r.canManage);
-  const _rSubmitted = _rNonCoord.filter(r => r.submitted || submittedRoles.has(r.key)).length;
-  const _rPartScore = _rNonCoord.length > 0 ? Math.round((_rSubmitted / _rNonCoord.length) * 100) : 0;
-  const _rBlockScore = briefing ? (openBlockers === 0 ? 100 : Math.max(0, 100 - openBlockers * 30)) : 0;
-  const overallReadiness = briefLoading ? null
-    : Math.round(_rDocScore * 0.45 + _rPartScore * 0.35 + _rBlockScore * 0.20);
+  // The API readiness payload is the only Transaction Readiness score. The
+  // briefing, document, participant, and event data remain separate inputs
+  // for attention cards and lifecycle context.
+  const overallReadiness = readiness?.transaction_readiness?.overall_pct ?? null;
+  const overallReadinessStatus = readiness?.transaction_readiness?.status
+    || (overallReadiness === 0 ? 'Getting Started' : 'Building');
   // Settlement capability: determine whether the full Settlement Readiness panel
   // should be shown in place of the legacy Closing & Handoff panel.
   // SettlementReadinessPanel takes over when the workspace is in the settlement
@@ -4940,7 +4907,7 @@ function OperationsManagerView({ propertyId, property, pack, role, onTabChange }
                   color:      overallReadiness >= 80 ? '#16a34a' : overallReadiness >= 55 ? '#d97706' : '#dc2626',
                   background: overallReadiness >= 80 ? '#f0fdf4' : overallReadiness >= 55 ? '#fffbeb' : '#fef2f2',
                 }}>
-                {overallReadiness >= 80 ? 'Closing Ready' : overallReadiness >= 55 ? 'In Progress' : 'Needs Attention'}
+                {overallReadinessStatus}
               </span>
               <span className="text-base font-black"
                 style={{ color: overallReadiness >= 80 ? '#16a34a' : overallReadiness >= 55 ? '#d97706' : '#dc2626' }}>
@@ -5748,7 +5715,7 @@ export default function DealRoomPage() {
                   pack.roles?.find(r => r.canManage === true) || {
                     key: 'deal_coordinator',
                     icon: '🏢',
-                    label: 'Deal Coordinator',
+                    label: 'Deal Owner',
                     color: '#800020',
                   }
                 ) : null}
