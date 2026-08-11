@@ -2688,6 +2688,16 @@ const DOC_ASSIGNMENTS = (() => {
   } catch { return {}; }
 })();
 
+const TRANSACTION_RECORD_REQUIREMENTS = (() => {
+  try {
+    return require('../shared/transaction_record_requirements.json');
+  } catch { return {}; }
+})();
+
+const TRANSACTION_RECORD_ALIASES = {
+  'financial.purchase_price': 'transaction.purchase_price',
+};
+
 function getSectionAssignments(packId, propertyType) {
   const pack = DOC_ASSIGNMENTS[packId];
   if (!pack) return null;
@@ -5097,52 +5107,49 @@ app.get('/api/public/deal-room/:propertyId/readiness', async (req, res) => {
   if (error) return res.status(500).json({ error: error.message });
   if (!room) return res.status(404).json({ error: 'room not found' });
 
-  const [{ count: docCount }, { count: eventCount }, { data: events }, { data: recordFields }] = await Promise.all([
-    supabase.from('deal_analyses').select('id', { count: 'exact', head: true }).eq('property_id', propertyId),
-    supabase.from('deal_events').select('id', { count: 'exact', head: true }).eq('property_id', propertyId),
-    supabase.from('deal_events').select('event_type, metadata').eq('property_id', propertyId).limit(200),
-    supabase.from('transaction_record_fields').select('field_key, value_text, status').eq('property_id', propertyId),
-  ]);
+  const { data: recordFields } = await supabase
+    .from('transaction_record_fields')
+    .select('field_key, value_text, status')
+    .eq('property_id', propertyId);
 
-  const meta     = room.metadata_values || {};
-  const normalizedJurisdiction = await jurisdictionForTransaction(
-    room.jurisdiction,
-    room.workflow_pack_id,
-    room.deal_type,
-    meta,
-  );
-  const checklist = Array.isArray(room.checklist_items) ? room.checklist_items : [];
-  const DONE     = new Set(['uploaded', 'approved', 'ai_complete']);
+  const meta = room.metadata_values || {};
+  let recordSchemaKey = room.workflow_pack_id || 'generic';
+  if (!TRANSACTION_RECORD_REQUIREMENTS[recordSchemaKey] && recordSchemaKey.startsWith('ws_')) {
+    try {
+      const { data: customPack } = await supabase
+        .from('custom_workflow_packs')
+        .select('config')
+        .eq('id', recordSchemaKey)
+        .maybeSingle();
+      const transactionType = customPack?.config?.transactionType;
+      if (TRANSACTION_RECORD_REQUIREMENTS[transactionType]) recordSchemaKey = transactionType;
+    } catch (e) {
+      console.warn('[readiness] custom pack schema lookup failed:', e.message);
+    }
+  }
+  if (!TRANSACTION_RECORD_REQUIREMENTS[recordSchemaKey]) recordSchemaKey = 'generic';
 
-  const legalItems  = checklist.filter(i => i.category === 'Legal');
-  const finItems    = checklist.filter(i => i.category === 'Financial');
-  const kycItems    = checklist.filter(i => i.category === 'KYC' || (i.section || '').toLowerCase().includes('kyc'));
-  const regItems    = checklist.filter(i => i.category === 'Regulatory');
-  const reqItems    = checklist.filter(i => i.required);
-
-  const hasOwnerName = !!(room.first_name || meta.entity_name || meta.issuer_name);
-  const hasOwnerData = !!(meta.lead_investor || meta.investor_token_pct);
-  const capFields    = ['total_token_supply', 'investor_token_pct', 'team_token_pct', 'reserve_token_pct', 'lead_investor'];
-  const capFilled    = capFields.filter(f => !!meta[f]);
-
-  const categories = [
-    { name: 'Ownership Structure',    weight: 0.15, score: (hasOwnerName ? 50 : 0) + (hasOwnerData ? 50 : 0) },
-    { name: 'Legal Documentation',    weight: 0.15, score: legalItems.length > 0 ? Math.round((legalItems.filter(i => DONE.has(i.status)).length / legalItems.length) * 100) : docCount > 0 ? 40 : 0 },
-    { name: 'Financial Completeness', weight: 0.12, score: finItems.length > 0 ? Math.round((finItems.filter(i => DONE.has(i.status)).length / finItems.length) * 80 + (!!(meta.raise_amount || meta.token_price) ? 20 : 0)) : (!!(meta.raise_amount) ? 50 : docCount > 2 ? 25 : 0) },
-    { name: 'Identity Verification',  weight: 0.12, score: kycItems.length > 0 ? Math.round((kycItems.filter(i => DONE.has(i.status)).length / kycItems.length) * 100) : 0 },
-    { name: 'Cap Table',              weight: 0.12, score: Math.round((capFilled.length / capFields.length) * 100) },
-    { name: 'Audit Trail',            weight: 0.12, score: Math.min(Math.round(((eventCount || 0) / 10) * 100), 100) },
-    { name: 'Compliance',             weight: 0.12, score: regItems.length > 0 ? Math.round((normalizedJurisdiction ? 30 : 0) + 70 * (regItems.filter(i => DONE.has(i.status)).length / regItems.length)) : (normalizedJurisdiction ? 40 : 0) },
-    { name: 'Document Integrity',     weight: 0.10, score: reqItems.length > 0 ? Math.round((reqItems.filter(i => DONE.has(i.status)).length / reqItems.length) * 100) : Math.min(Math.round(((docCount || 0) / 5) * 100), 70) },
-  ];
-
-  const overall      = Math.round(categories.reduce((a, c) => a + c.score * c.weight, 0));
-  const overallLabel = overall >= 80 ? 'Closing Ready' : overall >= 55 ? 'Needs Review' : 'Needs Attention';
+  const requiredKeys = TRANSACTION_RECORD_REQUIREMENTS[recordSchemaKey] || [];
+  const canonicalKey = field => TRANSACTION_RECORD_ALIASES[field] || field;
   const populatedRecordFields = (recordFields || []).filter(field => {
     const value = String(field.value_text || '').trim().toLowerCase();
     return value && !['n/a', 'na', 'not applicable', 'not_applicable', 'unknown'].includes(value)
-      && field.status !== 'not_applicable';
+      && field.status === 'verified';
   });
+  const notApplicableKeys = new Set((recordFields || [])
+    .filter(field => field.status === 'not_applicable')
+    .map(field => canonicalKey(field.field_key)));
+  const activeRequiredKeys = requiredKeys.filter(key => !notApplicableKeys.has(key));
+  const confirmedRequiredKeys = new Set(populatedRecordFields.map(field => canonicalKey(field.field_key)));
+  const confirmedRequiredCount = activeRequiredKeys.filter(key => confirmedRequiredKeys.has(key)).length;
+  const requiredFieldCount = activeRequiredKeys.length;
+  const overall = requiredFieldCount > 0
+    ? Math.round((confirmedRequiredCount / requiredFieldCount) * 100)
+    : 0;
+  const categories = [
+    { name: 'Structured Transaction Record', weight: 1, score: overall },
+  ];
+  const overallLabel = overall >= 80 ? 'Closing Ready' : overall >= 55 ? 'Needs Review' : 'Needs Attention';
   const hasTransactionFact = populatedRecordFields.some(field => field.field_key?.startsWith('transaction.'));
   const hasAssetOrPartyFact = populatedRecordFields.some(field =>
     field.field_key?.startsWith('asset.') || field.field_key?.startsWith('parties.')
@@ -5174,6 +5181,8 @@ app.get('/api/public/deal-room/:propertyId/readiness', async (req, res) => {
       overall_pct: overall,
       status: overallLabel,
       categories,
+      confirmed_fields: confirmedRequiredCount,
+      required_fields: requiredFieldCount,
     },
     digital_asset_readiness: {
       status: digitalAssetReadinessStatus,
@@ -5193,7 +5202,7 @@ app.get('/api/public/deal-room/:propertyId/readiness', async (req, res) => {
           },
         }
       : {}),
-    note:                'Suggested operational readiness score — not a legal, regulatory, or settlement determination.',
+    note:                'Transaction Record completeness and confirmation only — not a legal, regulatory, or settlement determination.',
     schema_version:      '1.0',
     generated_at:        new Date().toISOString(),
   });

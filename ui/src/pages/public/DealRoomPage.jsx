@@ -17,7 +17,11 @@ import { API_BASE as RESOLVED_API_BASE } from "../../lib/apiBase";
 import DealRoomPinGate from "./DealRoomPinGate";
 import { getInviteSession, getRoomAuthHeaders } from "../../lib/inviteUtils";
 import SettlementReadinessPanel from "./SettlementReadinessPanel";
-import { getPackRecordSchema, resolveSchemaKey } from "../../lib/workflowPacks/transactionRecordSchema";
+import {
+  getPackRecordSchema,
+  getRequiredRecordFields,
+  resolveSchemaKey,
+} from "../../lib/workflowPacks/transactionRecordSchema";
 import {
   getExternalParticipantRoles,
   isRoleSatisfiedByWorkspaceOwner,
@@ -2753,37 +2757,48 @@ function WhatNeedsAttention({
   };
   const schemaKey = resolveSchemaKey(packId, pack, property?.name || property?.property_name);
   const recordSchema = Object.values(getPackRecordSchema(schemaKey)).flat();
-  const visibleRecordDefinitions = recordSchema.length > 0
-    ? recordSchema
-    : [
-        { key: 'parties.buyer', label: 'Buyer' },
-        { key: 'parties.seller', label: 'Seller' },
-        { key: 'asset.name', label: 'Asset name' },
-        { key: 'transaction.value', label: 'Transaction value' },
-        { key: 'transaction.purchase_price', label: 'Purchase price' },
-        { key: 'ownership.cap_table', label: 'Cap table / ownership' },
-      ];
-  const recordMissing = visibleRecordDefinitions
-    .filter(def => def.workflowRequired === true || def.required === true)
+  const requiredRecordDefinitions = getRequiredRecordFields(schemaKey);
+  const canonicalRecordKeyByStoredKey = new Map(
+    recordSchema.map(field => [field.key, field.canonicalKey || field.key])
+  );
+  const canonicalRecordKey = fieldKey =>
+    canonicalRecordKeyByStoredKey.get(fieldKey) || fieldKey;
+  const recordMissing = requiredRecordDefinitions
     .filter(def => {
-      const matches = recordFields.filter(field =>
-        field.field_key === def.key || field.field_key === def.aliasOf
+      const requiredKey = def.canonicalKey || def.key;
+      return !recordFields.some(field =>
+        canonicalRecordKey(field.field_key) === requiredKey && isRecordValue(field)
       );
-      return !matches.some(isRecordValue);
     });
-  const recordConfirmedCount = visibleRecordDefinitions.filter(def =>
+  const recordConfirmedCount = requiredRecordDefinitions.filter(def =>
     recordFields.some(field =>
-      (field.field_key === def.key || field.field_key === def.aliasOf) && isRecordValue(field)
+      canonicalRecordKey(field.field_key) === (def.canonicalKey || def.key) && isRecordValue(field)
     )
   ).length;
 
   const schemaDocuments = typeof pack?.getDocumentSchema === 'function'
     ? pack.getDocumentSchema(property?.property_type || property?.type)
     : (Array.isArray(pack?.documentSchema) ? pack.documentSchema : []);
+  const schemaDocumentByKey = new Map(
+    schemaDocuments.flatMap(document => [
+      [document.id, document],
+      [document.section, document],
+    ].filter(([key]) => key))
+  );
+  const normalizeDocumentItem = document => {
+    const configured = schemaDocumentByKey.get(document?.id) || schemaDocumentByKey.get(document?.section);
+    const assignedTo = Array.isArray(document?.assignedTo) && document.assignedTo.length > 0
+      ? document.assignedTo
+      : (configured?.assignedTo || []);
+    return configured
+      ? { ...configured, ...document, assignedTo }
+      : { ...document, assignedTo };
+  };
   const missingDocuments = (checklistItems.length > 0
     ? checklistItems
     : schemaDocuments
   )
+    .map(normalizeDocumentItem)
     .filter(item => item.required && !DONE_DOCUMENT_STATUSES.has(item.status) && !item.uploaded);
 
   const roleMeta = Object.fromEntries((pack?.roles || []).map(role => [role.key, role]));
@@ -2897,10 +2912,6 @@ function WhatNeedsAttention({
     ...(Array.isArray(briefing?.blocking) ? briefing.blocking : []),
     ...(Array.isArray(briefing?.actions) ? briefing.actions : []),
     ...(Array.isArray(briefing?.next_actions) ? briefing.next_actions : []),
-    ...(Array.isArray(briefing?.missingDocuments) ? briefing.missingDocuments.map(document => ({
-      title: `Upload ${typeof document === 'string' ? document : document.label || document.name || 'required document'}`,
-      document: true,
-    })) : []),
   ];
   const seenBriefingActions = new Set();
   derivedActions.forEach(item => items.push(item));
@@ -3156,6 +3167,9 @@ function DigitalAssetReadinessSection({
   propertyId,
   recordFields,
   readiness,
+  pack,
+  packId,
+  propertyName,
   onTabChange,
   readinessPhase = 'transaction',
   digitalAssetEnabled = false,
@@ -3163,47 +3177,33 @@ function DigitalAssetReadinessSection({
 }) {
   const [expandedCat, setExpandedCat] = useState(null);
 
-  // Per-field definitions for each category — label used in expand panel
+  function canonicalKey(field) {
+    return field?.canonicalKey || field?.key;
+  }
+
+  function uniquePackFields(fields, seen) {
+    return (fields || []).filter(field => {
+      const key = canonicalKey(field);
+      if (!key || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }
+
+  const seenPackFields = new Set();
+  // The active workflow pack owns the field labels. The overview must not
+  // invent generic party aliases underneath pack-specific concepts.
+  const schemaKey = resolveSchemaKey(packId, pack, propertyName);
+  const schema = getPackRecordSchema(schemaKey);
   const CAT_FIELD_DEFS = {
-    parties: [
-      { key: 'parties.buyer',      label: 'Buyer / primary party' },
-      { key: 'parties.seller',     label: 'Seller / counterparty' },
-      { key: 'parties.primary',    label: 'Primary party' },
-      { key: 'parties.secondary',  label: 'Secondary party' },
-      { key: 'parties.borrower',   label: 'Borrower' },
-      { key: 'ownership.owner_name', label: 'Registered owner' },
-    ],
-    asset: [
-      { key: 'asset.name',         label: 'Asset name' },
-      { key: 'asset.type',         label: 'Asset type' },
-      { key: 'asset.address',      label: 'Property address' },
-      { key: 'asset.legal_name',   label: 'Legal entity name' },
-      { key: 'asset.jurisdiction', label: 'Jurisdiction' },
-      { key: 'asset.description',  label: 'Asset description' },
-    ],
-    terms: [
-      { key: 'transaction.purchase_price', label: 'Purchase price' },
-      { key: 'transaction.value',          label: 'Transaction value' },
-      { key: 'transaction.closing_date',   label: 'Closing date' },
-      { key: 'transaction.type',           label: 'Transaction type' },
-      { key: 'transaction.structure',      label: 'Transaction structure' },
-    ],
-    financial: [
-      { key: 'financial.purchase_price', label: 'Purchase price' },
-      { key: 'financial.deal_value',     label: 'Deal value' },
-      { key: 'financial.revenue',        label: 'Revenue' },
-      { key: 'financial.noi',            label: 'Net operating income' },
-      { key: 'financial.loan_amount',    label: 'Loan amount' },
-      { key: 'asset.noi',                label: 'Asset NOI' },
-      { key: 'asset.revenue',            label: 'Asset revenue' },
-    ],
+    parties: uniquePackFields(schema.parties, seenPackFields),
+    asset: uniquePackFields(schema.asset_identity, seenPackFields),
+    terms: uniquePackFields(schema.transaction, seenPackFields),
+    financial: uniquePackFields(schema.financial, seenPackFields),
     legal: [
-      { key: 'ownership.cap_table',          label: 'Cap table / ownership' },
-      { key: 'ownership.beneficial_owners',  label: 'Beneficial owners' },
-      { key: 'ownership.liens',              label: 'Liens & encumbrances' },
-      { key: 'ownership.encumbrances',       label: 'Encumbrances' },
-      { key: 'legal.title_status',           label: 'Title status' },
-      { key: 'legal.regulatory_approvals',   label: 'Regulatory approvals' },
+      ...uniquePackFields(schema.beneficial_ownership, seenPackFields),
+      ...uniquePackFields(schema.legal, seenPackFields),
+      ...uniquePackFields(schema.approvals, seenPackFields),
     ],
   };
 
@@ -3223,6 +3223,15 @@ function DigitalAssetReadinessSection({
     return val && !SKIP_VALUES.has(val) && f.status !== 'not_applicable';
   }
 
+  function isConfirmed(f) {
+    return f?.status === 'verified' && !!isPopulated(f);
+  }
+
+  function isProposed(f) {
+    return ['extracted', 'needs_review', 'conflicting', 'source_changed'].includes(f?.status)
+      && !!isPopulated(f);
+  }
+
   // Build enhanced category objects
   const categories = [
     { key: 'parties',   label: 'Identity & Parties',   fieldDefs: CAT_FIELD_DEFS.parties },
@@ -3234,10 +3243,13 @@ function DigitalAssetReadinessSection({
     const enriched = cat.fieldDefs.map(def => {
       const matched = matchingFields(def.key);
       const populated = matched.find(f => isPopulated(f));
-      return { ...def, field: populated || null, allMatches: matched };
+      const confirmed = matched.find(f => isConfirmed(f));
+      const proposed = matched.find(f => isProposed(f));
+      return { ...def, field: confirmed || null, proposed: proposed || null, allMatches: matched };
     });
     const confirmedDefs = enriched.filter(d => d.field);
-    const missingDefs   = enriched.filter(d => !d.field);
+    const proposedDefs  = enriched.filter(d => !d.field && d.proposed);
+    const missingDefs   = enriched.filter(d => !d.field && !d.proposed);
     const count = confirmedDefs.length;
     const total = enriched.length;
     // Derive sources from populated fields
@@ -3264,7 +3276,7 @@ function DigitalAssetReadinessSection({
           ? 'Transaction value missing'
           : `${missingDefs[0].label} missing`;
 
-    return { ...cat, enriched, confirmedDefs, missingDefs, count, total, sources, st, summary };
+    return { ...cat, enriched, confirmedDefs, proposedDefs, missingDefs, count, total, sources, st, summary };
   });
 
   const readyCount   = categories.filter(c => c.st === 'ready').length;
@@ -3376,6 +3388,19 @@ function DigitalAssetReadinessSection({
                         </ul>
                       )}
                     </div>
+                    {cat.proposedDefs.length > 0 && (
+                      <div>
+                        <p className="text-[10px] font-bold uppercase tracking-wider text-blue-500 mb-1.5">Proposed / extracted</p>
+                        <ul className="space-y-1">
+                          {cat.proposedDefs.slice(0, 4).map(d => (
+                            <li key={d.key} className="flex items-start gap-1.5 text-xs text-gray-600">
+                              <span className="mt-0.5 text-blue-400 shrink-0">◌</span>
+                              <span>{d.label}{d.proposed?.value_text ? <span className="text-gray-400"> — {d.proposed.value_text}</span> : ''}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
                     {/* Missing */}
                     <div>
                       <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-1.5">Missing</p>
@@ -3656,7 +3681,7 @@ function StageLifecycleBar({ stages = [], currentStageKey, compact = false }) {
                            : 'bg-gray-100 text-gray-300'}`}>
                   {!compact && (done ? '✓' : (s.icon || '·'))}
                 </div>
-                <p className={`${compact ? 'text-[10px]' : 'w-full px-0.5 text-[9px] text-center'} font-semibold leading-tight truncate
+                   <p className={`${compact ? 'text-[10px]' : 'w-full px-0.5 text-[9px] text-center'} font-semibold leading-tight break-words
                   ${active ? 'text-[#800020]' : done ? 'text-gray-500' : 'text-gray-300'}`}>
                   {s.label}
                 </p>
@@ -3816,20 +3841,32 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
     || readiness?.status
     || 'Building';
   const recordSchemaKey = resolveSchemaKey(packId, pack, property?.name || property?.property_name);
-  const requiredRecordFields = Object.values(getPackRecordSchema(recordSchemaKey))
-    .flat()
-    .filter(field => field.workflowRequired);
+  const recordSchema = Object.values(getPackRecordSchema(recordSchemaKey)).flat();
+  const canonicalRecordKeyByStoredKey = new Map(
+    recordSchema.map(field => [field.key, field.canonicalKey || field.key])
+  );
+  const canonicalRecordKey = fieldKey =>
+    canonicalRecordKeyByStoredKey.get(fieldKey) || fieldKey;
+  const notApplicableRecordKeys = new Set(
+    recordFields
+      .filter(field => field.status === 'not_applicable')
+      .map(field => canonicalRecordKey(field.field_key))
+  );
+  const requiredRecordFields = getRequiredRecordFields(recordSchemaKey)
+    .filter(field => !notApplicableRecordKeys.has(field.canonicalKey || field.key));
   const confirmedRecordFieldKeys = new Set(
     recordFields
       .filter(field => {
         const value = String(field.value_text || '').trim().toLowerCase();
-        return value && !['n/a', 'na', 'not applicable', 'not_applicable', 'unknown'].includes(value)
+        return field.status === 'verified'
+          && value
+          && !['n/a', 'na', 'not applicable', 'not_applicable', 'unknown'].includes(value)
           && field.status !== 'not_applicable';
       })
-      .map(field => field.field_key),
+      .map(field => canonicalRecordKey(field.field_key)),
   );
   const confirmedRequiredCount = requiredRecordFields.filter(field =>
-    confirmedRecordFieldKeys.has(field.key) || confirmedRecordFieldKeys.has(field.aliasOf)
+    confirmedRecordFieldKeys.has(field.canonicalKey || field.key)
   ).length;
 
   return (
@@ -3869,11 +3906,11 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
               <span className="text-xs font-semibold text-gray-500">{readinessStatus}</span>
             </div>
             <p className="mt-1 max-w-xs text-xs leading-relaxed text-gray-400">
-              Operational readiness across documents, workspace facts, activity, and compliance signals.
+              Completeness and confirmation of the structured Transaction Record.
             </p>
             {requiredRecordFields.length > 0 && (
               <p className="mt-2 text-[11px] text-gray-500">
-                {confirmedRequiredCount} of {requiredRecordFields.length} required fields confirmed
+            {confirmedRequiredCount} of {requiredRecordFields.length} required fields confirmed
               </p>
             )}
           </div>
@@ -3913,6 +3950,9 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
             propertyId={propertyId}
             recordFields={recordFields}
             readiness={readiness}
+              pack={pack}
+              packId={packId}
+              propertyName={property?.name || property?.property_name}
             onTabChange={onTabChange}
             readinessPhase={readinessPhase}
             digitalAssetEnabled={digitalAssetEnabled}
