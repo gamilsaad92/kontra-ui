@@ -2698,6 +2698,150 @@ const TRANSACTION_RECORD_ALIASES = {
   'financial.purchase_price': 'transaction.purchase_price',
 };
 
+const TRANSACTION_RECORD_METADATA_FIELDS = {
+  target_close_date: {
+    fieldKey: 'transaction.closing_date',
+    fieldCategory: 'transaction',
+    displayLabel: 'Target closing date',
+  },
+};
+
+function metadataTransactionValueField(schemaKey) {
+  if (schemaKey === 'cre_acquisition' || schemaKey === 'business_acquisition') {
+    return {
+      fieldKey: 'transaction.purchase_price',
+      fieldCategory: 'transaction',
+      displayLabel: 'Transaction value',
+    };
+  }
+  if (schemaKey === 'fundraising') {
+    return {
+      fieldKey: 'financial.target_raise',
+      fieldCategory: 'financial',
+      displayLabel: 'Transaction value',
+    };
+  }
+  if (schemaKey === 'tokenization') {
+    return {
+      fieldKey: 'transaction.target_raise',
+      fieldCategory: 'transaction',
+      displayLabel: 'Transaction value',
+    };
+  }
+  return {
+    fieldKey: 'transaction.value',
+    fieldCategory: 'transaction',
+    displayLabel: 'Transaction value',
+  };
+}
+
+async function getTransactionRecordSchemaKey(room) {
+  let schemaKey = room?.workflow_pack_id
+    || DEAL_TYPE_TO_PACK_INDEX[room?.deal_type]
+    || 'generic';
+  if (!TRANSACTION_RECORD_REQUIREMENTS[schemaKey] && schemaKey.startsWith('ws_')) {
+    try {
+      const { data: customPack } = await supabase
+        .from('custom_workflow_packs')
+        .select('config')
+        .eq('id', schemaKey)
+        .maybeSingle();
+      const transactionType = customPack?.config?.transactionType;
+      if (TRANSACTION_RECORD_REQUIREMENTS[transactionType]) schemaKey = transactionType;
+    } catch (e) {
+      console.warn('[transaction-record] custom pack schema lookup failed:', e.message);
+    }
+  }
+  if (!TRANSACTION_RECORD_REQUIREMENTS[schemaKey]) schemaKey = 'generic';
+  return schemaKey;
+}
+
+function formatMetadataRecordValue(fieldId, value) {
+  if (fieldId !== 'transaction_value') return String(value).slice(0, 2000);
+  const numeric = Number(String(value).replace(/[$,\s]/g, ''));
+  return Number.isFinite(numeric) && numeric > 0
+    ? `$${numeric.toLocaleString('en-US')}`
+    : String(value).slice(0, 2000);
+}
+
+async function syncMetadataToTransactionRecord(propertyId, values, room, actorEmail) {
+  const schemaKey = await getTransactionRecordSchemaKey(room);
+  const mappings = {
+    transaction_value: metadataTransactionValueField(schemaKey),
+    target_close_date: TRANSACTION_RECORD_METADATA_FIELDS.target_close_date,
+  };
+
+  for (const [fieldId, mapping] of Object.entries(mappings)) {
+    if (!Object.prototype.hasOwnProperty.call(values || {}, fieldId)) continue;
+    const rawValue = values[fieldId];
+    const hasValue = rawValue !== null && rawValue !== undefined && String(rawValue).trim() !== '';
+    const now = new Date().toISOString();
+    const { data: existing, error: findError } = await supabase
+      .from('transaction_record_fields')
+      .select('id, value_text, status')
+      .eq('property_id', propertyId)
+      .eq('field_key', mapping.fieldKey)
+      .maybeSingle();
+    if (findError) throw findError;
+
+    const nextValue = hasValue ? formatMetadataRecordValue(fieldId, rawValue) : null;
+    const nextStatus = hasValue ? 'verified' : 'missing';
+    const update = {
+      field_category: mapping.fieldCategory,
+      display_label: mapping.displayLabel,
+      value_text: nextValue,
+      status: nextStatus,
+      confidence: null,
+      source_doc_id: null,
+      source_page: null,
+      source_excerpt: null,
+      extracted_by: hasValue ? 'deal_owner' : null,
+      verified_by: hasValue ? (actorEmail || 'Deal Owner') : null,
+      verified_role: hasValue ? 'Deal Owner' : null,
+      verified_at: hasValue ? now : null,
+      updated_at: now,
+    };
+
+    let fieldIdValue = existing?.id;
+    if (existing?.id) {
+      const { error } = await supabase
+        .from('transaction_record_fields')
+        .update(update)
+        .eq('id', existing.id)
+        .eq('property_id', propertyId);
+      if (error) throw error;
+    } else {
+      const { data: inserted, error } = await supabase
+        .from('transaction_record_fields')
+        .insert({
+          property_id: propertyId,
+          field_key: mapping.fieldKey,
+          created_at: now,
+          ...update,
+        })
+        .select('id')
+        .single();
+      if (error) throw error;
+      fieldIdValue = inserted?.id;
+    }
+
+    if (fieldIdValue && (existing?.value_text !== nextValue || existing?.status !== nextStatus)) {
+      await recordTransactionFieldHistory({
+        fieldId: fieldIdValue,
+        propertyId,
+        eventType: 'manual_edit',
+        actorEmail: actorEmail || 'Deal Owner',
+        actorRole: 'Deal Owner',
+        priorValue: existing?.value_text || null,
+        newValue: nextValue,
+        priorStatus: existing?.status || null,
+        newStatus: nextStatus,
+        metadata: { source: 'deal_owner_input', metadataField: fieldId },
+      });
+    }
+  }
+}
+
 function getSectionAssignments(packId, propertyType) {
   const pack = DOC_ASSIGNMENTS[packId];
   if (!pack) return null;
@@ -4383,7 +4527,7 @@ app.patch('/api/public/deal-room/:propertyId/metadata', async (req, res) => {
 
   const { data: room, error: authErr } = await supabase
     .from('deal_rooms')
-    .select('owner_write_token')
+    .select('owner_write_token, workflow_pack_id, deal_type')
     .eq('property_id', propertyId)
     .maybeSingle();
   if (authErr) return res.status(500).json({ error: authErr.message });
@@ -4400,9 +4544,11 @@ app.patch('/api/public/deal-room/:propertyId/metadata', async (req, res) => {
   for (const [k, v] of Object.entries(values)) {
     if (Object.keys(sanitized).length >= 64) break;
     if (typeof k !== 'string' || k.length > 80) continue;
-    if (v === null || v === undefined || v === '') continue;
-    const strVal = String(v).slice(0, 500);
-    sanitized[k] = strVal;
+    if ((v === null || v === undefined || v === '') &&
+        !['transaction_value', 'target_close_date'].includes(k)) continue;
+    sanitized[k] = (v === null || v === undefined || v === '')
+      ? null
+      : String(v).slice(0, 500);
   }
 
   try {
@@ -4411,6 +4557,12 @@ app.patch('/api/public/deal-room/:propertyId/metadata', async (req, res) => {
       .update({ metadata_values: sanitized })
       .eq('property_id', propertyId);
     if (updateErr) throw updateErr;
+    await syncMetadataToTransactionRecord(
+      propertyId,
+      sanitized,
+      room,
+      'Deal Owner',
+    );
 
     logEvent(propertyId, 'metadata_updated', 'owner', null, 'Transaction details updated', {
       fieldCount: Object.keys(sanitized).length,
@@ -4438,7 +4590,7 @@ app.patch('/api/public/deal-room/:propertyId/metadata-merge', async (req, res) =
 
   const { data: room, error: authErr } = await supabase
     .from('deal_rooms')
-    .select('owner_write_token, metadata_values, jurisdiction')
+    .select('owner_write_token, metadata_values, jurisdiction, workflow_pack_id, deal_type')
     .eq('property_id', propertyId)
     .maybeSingle();
   if (authErr) return res.status(500).json({ error: authErr.message });
@@ -4471,6 +4623,12 @@ app.patch('/api/public/deal-room/:propertyId/metadata-merge', async (req, res) =
       .update(update)
       .eq('property_id', propertyId);
     if (updateErr) throw updateErr;
+    await syncMetadataToTransactionRecord(
+      propertyId,
+      values,
+      room,
+      'Deal Owner',
+    );
 
     logEvent(propertyId, 'metadata_updated', 'owner', null, 'Workspace settings updated', {
       keys: Object.keys(values).join(','),

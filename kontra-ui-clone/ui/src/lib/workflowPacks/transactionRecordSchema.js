@@ -24,7 +24,9 @@ const UNIVERSAL_TRANSACTION_FIELDS = [
   { key: "transaction.type",         label: "Transaction type",        workflowRequired: true,  setup: "deal_type"         },
   { key: "transaction.stage",        label: "Current stage",           workflowRequired: true,  setup: "stage"             },
   { key: "transaction.closing_date", label: "Target closing date",     workflowRequired: true,  setup: "closing_date"      },
-  { key: "transaction.value",        label: "Transaction value",       workflowRequired: false, setup: "transaction_value" },
+  // Acquisition packs use transaction.purchase_price as the canonical fact.
+  // Keep this universal display field optional so aliases cannot count twice.
+  { key: "transaction.value",        label: "Transaction value",       workflowRequired: false, setup: "transaction_value", aliasOf: "transaction.purchase_price" },
   { key: "transaction.jurisdiction", label: "Jurisdiction",            workflowRequired: true,  setup: "jurisdiction"      },
 ];
 
