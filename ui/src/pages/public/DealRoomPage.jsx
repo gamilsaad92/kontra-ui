@@ -18,6 +18,10 @@ import DealRoomPinGate from "./DealRoomPinGate";
 import { getInviteSession, getRoomAuthHeaders } from "../../lib/inviteUtils";
 import SettlementReadinessPanel from "./SettlementReadinessPanel";
 import { getPackRecordSchema, resolveSchemaKey } from "../../lib/workflowPacks/transactionRecordSchema";
+import {
+  getExternalParticipantRoles,
+  isRoleSatisfiedByWorkspaceOwner,
+} from "../../lib/workflowRoles";
 
 // ── Jurisdiction compliance data ─────────────────────────────────────────────
 const JURISDICTION_INFO = {
@@ -1774,7 +1778,7 @@ function AssetReadinessTab({ propertyId, property, pack, onTabChange }) {
 
   const metaValues      = property?.metadata_values || {};
   const docCount        = Object.values(coordination?.docsByRole || {}).reduce((a, b) => a + b, 0);
-  const invitableRoles  = (pack.roles || []).filter(r => r.invitable !== false && !r.isCoordinator);
+  const invitableRoles  = getExternalParticipantRoles(pack);
   const participantRows = invitableRoles.map(r => {
     const sub     = (coordination?.submissions || []).find(s => s.role === r.key);
     const invited = events.some(e => e.event_type === 'invite_sent' && e.metadata?.role === r.key);
@@ -2715,6 +2719,7 @@ function WhatNeedsAttention({
   loading,
   onTabChange,
   propertyId,
+  isCoordinator = false,
   compact = false,
 }) {
   const [confirming, setConfirming] = useState('');
@@ -2786,9 +2791,10 @@ function WhatNeedsAttention({
     ? coordination.submissions
     : (Array.isArray(coordination?.parties) ? coordination.parties : []);
   const inviteEvents = events.filter(event => event.event_type === 'invite_sent');
-  const requiredParticipantRoles = (pack?.roles || [])
-    .filter(role => role.required && role.invitable !== false && !role.isCoordinator);
+  const requiredParticipantRoles = getExternalParticipantRoles(pack, { isCoordinator })
+    .filter(role => role.required);
   const missingParticipants = requiredParticipantRoles.filter(role => {
+    if (isRoleSatisfiedByWorkspaceOwner(role, { pack, isCoordinator })) return false;
     const party = partyRows.find(item => item.role === role.key);
     const partyStatus = String(party?.status || '').toLowerCase();
     const submitted = ['submitted', 'approved', 'complete', 'completed'].includes(partyStatus);
@@ -2848,7 +2854,13 @@ function WhatNeedsAttention({
   const documentActions = missingDocuments.map((document, index) => ({
     id: `missing-document-${document.id || document.section || index}`,
     urgency: isCurrentStageDocument(document) ? 'high' : 'medium',
-    title: `Upload ${document.label || document.name || 'required document'}`,
+    title: (() => {
+      const assignedRoles = document.assignedTo || document.assigned_to || [];
+      const coordinatorOwnsDocument = assignedRoles.some(roleKey =>
+        isRoleSatisfiedByWorkspaceOwner(roleMeta[roleKey], { pack, isCoordinator })
+      );
+      return `${coordinatorOwnsDocument ? 'Upload' : 'Request'} ${document.label || document.name || 'required document'}`;
+    })(),
     reason: document.assignedTo?.length || document.assigned_to?.length
       ? `Required · ${(document.assignedTo || document.assigned_to).map(role => roleMeta[role]?.label || role).join(' / ')}`
       : 'Required for the transaction record',
@@ -2968,8 +2980,10 @@ function WhatNeedsAttention({
     }
     if (item?.document || item?.documentId || item?.document_id) {
       const assignedRoles = item.assignedTo || item.assigned_to || [];
-      const needsRequest = assignedRoles.some(role => roleMeta[role]?.invitable !== false);
-      return { label: needsRequest ? 'Request' : 'Upload', onClick: () => onTabChange?.('documents') };
+      const coordinatorOwnsDocument = assignedRoles.some(role =>
+        isRoleSatisfiedByWorkspaceOwner(roleMeta[role], { pack, isCoordinator })
+      );
+      return { label: coordinatorOwnsDocument ? 'Upload' : 'Request', onClick: () => onTabChange?.('documents') };
     }
     return routeForText(item?.title || item?.item || item?.text || item?.action);
   }
@@ -3855,9 +3869,9 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
               <span className="text-xs font-semibold text-gray-500">{readinessStatus}</span>
             </div>
             <p className="mt-1 max-w-xs text-xs leading-relaxed text-gray-400">
-              Completeness and confirmation of the structured transaction record.
+              Operational readiness across documents, workspace facts, activity, and compliance signals.
             </p>
-            {readiness?.transaction_readiness?.categories?.length > 0 && (
+            {requiredRecordFields.length > 0 && (
               <p className="mt-2 text-[11px] text-gray-500">
                 {confirmedRequiredCount} of {requiredRecordFields.length} required fields confirmed
               </p>
@@ -3876,6 +3890,7 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
             loading={loading}
             onTabChange={onTabChange}
             propertyId={propertyId}
+            isCoordinator
             compact
           />
         </div>
@@ -4189,8 +4204,17 @@ function OperationsManagerView({ propertyId, property, pack, role, onTabChange }
   // ── Derived data ───────────────────────────────────────────────────────────
   const ROLE_META_OM = Object.fromEntries((pack.roles || []).map(r => [r.key, r]));
   const docCount        = Object.values(coordination?.docsByRole || {}).reduce((a, b) => a + b, 0);
-  const submittedRoles  = new Set((coordination?.submissions || []).map(s => s.role));
-  const requiredRoles   = Object.entries(ROLE_META_OM).filter(([, m]) => m.required).map(([k]) => k);
+  const partyRows       = Array.isArray(coordination?.submissions)
+    ? coordination.submissions
+    : (Array.isArray(coordination?.parties) ? coordination.parties : []);
+  const submittedRoles  = new Set(
+    partyRows
+      .filter(row => ['submitted', 'approved', 'complete', 'completed'].includes(String(row.status || '').toLowerCase()))
+      .map(row => row.role),
+  );
+  const requiredRoles   = getExternalParticipantRoles(pack, { isCoordinator: true })
+    .filter(roleMeta => roleMeta.required)
+    .map(roleMeta => roleMeta.key);
   const inviteSentCount = events.filter(e => e.event_type === 'invite_sent').length;
 
   const currentStageKey = coordination?.stage || stages[0]?.key;
@@ -4289,9 +4313,9 @@ function OperationsManagerView({ propertyId, property, pack, role, onTabChange }
   })();
 
   // ── Participant rows ────────────────────────────────────────────────────────
-  const invitableRoles = (pack.roles || []).filter(r => r.invitable !== false);
+  const invitableRoles = getExternalParticipantRoles(pack, { isCoordinator: true });
   const participantRows = invitableRoles.map(r => {
-    const sub     = (coordination?.submissions || []).find(s => s.role === r.key);
+    const sub     = partyRows.find(s => s.role === r.key);
     const invited = events.some(e => e.event_type === 'invite_sent' && e.metadata?.role === r.key);
     const lastEv  = [...events].reverse().find(e =>
       (e.metadata?.role === r.key || e.actor_role === r.key) && e.created_at

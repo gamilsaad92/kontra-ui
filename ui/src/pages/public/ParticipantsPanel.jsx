@@ -10,6 +10,12 @@
 import { useState, useEffect, useCallback } from 'react';
 import { getWorkflowPack, DEFAULT_PACK_ID } from '../../lib/workflowPacks';
 import { createInvite, generatePin, getRoomInvites, revokeInvite } from '../../lib/inviteUtils';
+import {
+  getCoordinatorRoleKeys,
+  getExternalParticipantRoles,
+  isCoordinatorRole,
+  resolveCoordinatorRole,
+} from '../../lib/workflowRoles';
 
 const API_BASE = (import.meta.env.VITE_API_BASE || '').replace(/\/+$/, '');
 
@@ -222,16 +228,6 @@ export default function ParticipantsPanel({
 }) {
   const pack = getWorkflowPack(packId);
 
-  // Coordinator roles are shown with "Owner" status — they're part of the workspace
-  // by definition and do not need invitations. They are excluded from the invite count.
-  //
-  // Detection covers two cases:
-  //   1. Standard packs: invitable === false (owner, buyer, founder, issuer, franchisor)
-  //   2. Custom ws_* packs: canManage === true but invitable not explicitly set to false
-  //      — the pack builder may not emit invitable:false for the coordinator role
-  const isCoordinatorRole = r =>
-    r.invitable === false || (r.canManage === true && r.invitable !== true);
-
   const metadataCoordinatorRoles = (pack.roles || [])
     .filter(isCoordinatorRole)
     .map(r => ({ key: r.key, icon: r.icon || '🏢', label: r.shortLabel || r.label, color: r.color }));
@@ -240,13 +236,9 @@ export default function ParticipantsPanel({
   // with access.mode === "owner", render exactly one coordinator row even if a
   // builder-generated pack omitted coordinator metadata entirely.
   const metadataOwnerRole = (pack.roles || []).find(r => r.canManage === true);
+  const resolvedCoordinatorRole = resolveCoordinatorRole(pack, { isCoordinator, coordinatorRole });
   const coordinatorRoles = isCoordinator
-    ? [coordinatorRole || metadataCoordinatorRoles[0] || (metadataOwnerRole && {
-        key: metadataOwnerRole.key,
-        icon: metadataOwnerRole.icon || '🏢',
-        label: metadataOwnerRole.shortLabel || metadataOwnerRole.label,
-        color: metadataOwnerRole.color,
-      }) || {
+    ? [resolvedCoordinatorRole || metadataOwnerRole || {
         key: 'deal_coordinator',
         icon: '🏢',
         label: 'Deal Coordinator',
@@ -254,11 +246,10 @@ export default function ParticipantsPanel({
       }]
     : metadataCoordinatorRoles;
 
-  const coordinatorKeys = new Set(coordinatorRoles.map(r => r.key));
+  const coordinatorKeys = getCoordinatorRoleKeys(pack, { isCoordinator, coordinatorRole });
 
   // External participant roles — the only ones that need invitations.
-  const invitableRoles = (pack.roles || [])
-    .filter(r => !coordinatorKeys.has(r.key) && !isCoordinatorRole(r))
+  const invitableRoles = getExternalParticipantRoles(pack, { isCoordinator, coordinatorRole })
     .map(r => ({ key: r.key, icon: r.icon || '👤', label: r.shortLabel || r.label, color: r.color }));
 
   const [invites,     setInvites]     = useState([]);
