@@ -17,6 +17,7 @@ import { API_BASE as RESOLVED_API_BASE } from "../../lib/apiBase";
 import DealRoomPinGate from "./DealRoomPinGate";
 import { getInviteSession, getRoomAuthHeaders } from "../../lib/inviteUtils";
 import SettlementReadinessPanel from "./SettlementReadinessPanel";
+import { getPackRecordSchema, resolveSchemaKey } from "../../lib/workflowPacks/transactionRecordSchema";
 
 // ── Jurisdiction compliance data ─────────────────────────────────────────────
 const JURISDICTION_INFO = {
@@ -2702,8 +2703,22 @@ function formatSnapshotValue(field) {
 // ── WhatNeedsAttention ────────────────────────────────────────────────────────
 // Unified prioritized feed merging AI findings, next actions, and issues.
 // Replaces the old separate "Next Actions", "AI Findings", and "Issues" cards.
-function WhatNeedsAttention({ briefing, recordFields, loading, onTabChange, propertyId, compact = false }) {
+function WhatNeedsAttention({
+  briefing,
+  recordFields,
+  checklistItems = [],
+  events = [],
+  coordination = null,
+  pack = null,
+  packId = DEFAULT_PACK_ID,
+  property,
+  loading,
+  onTabChange,
+  propertyId,
+  compact = false,
+}) {
   const [confirming, setConfirming] = useState('');
+  const [showAll, setShowAll] = useState(false);
 
   async function confirmField(field) {
     let ownerWriteToken = '';
@@ -2722,8 +2737,71 @@ function WhatNeedsAttention({ briefing, recordFields, loading, onTabChange, prop
     } finally { setConfirming(''); }
   }
 
-  // "Meaningful activity" = at least some facts have been extracted
-  const hasMeaningfulActivity = recordFields.length > 0;
+  // The command center derives these actions from the same state rendered in
+  // Documents, People, and Transaction Record. This is prioritization only —
+  // the existing tabs remain the source of truth and own the actual flows.
+  const DONE_DOCUMENT_STATUSES = new Set(['uploaded', 'approved', 'ai_complete']);
+  const isRecordValue = field => {
+    const value = String(field?.value_text || '').trim().toLowerCase();
+    return value && !['n/a', 'na', 'not applicable', 'not_applicable', 'unknown'].includes(value)
+      && field?.status !== 'not_applicable';
+  };
+  const schemaKey = resolveSchemaKey(packId, pack, property?.name || property?.property_name);
+  const recordSchema = Object.values(getPackRecordSchema(schemaKey)).flat();
+  const visibleRecordDefinitions = recordSchema.length > 0
+    ? recordSchema
+    : [
+        { key: 'parties.buyer', label: 'Buyer' },
+        { key: 'parties.seller', label: 'Seller' },
+        { key: 'asset.name', label: 'Asset name' },
+        { key: 'transaction.value', label: 'Transaction value' },
+        { key: 'transaction.purchase_price', label: 'Purchase price' },
+        { key: 'ownership.cap_table', label: 'Cap table / ownership' },
+      ];
+  const recordMissing = visibleRecordDefinitions
+    .filter(def => def.workflowRequired === true || def.required === true)
+    .filter(def => {
+      const matches = recordFields.filter(field =>
+        field.field_key === def.key || field.field_key === def.aliasOf
+      );
+      return !matches.some(isRecordValue);
+    });
+  const recordConfirmedCount = visibleRecordDefinitions.filter(def =>
+    recordFields.some(field =>
+      (field.field_key === def.key || field.field_key === def.aliasOf) && isRecordValue(field)
+    )
+  ).length;
+
+  const schemaDocuments = typeof pack?.getDocumentSchema === 'function'
+    ? pack.getDocumentSchema(property?.property_type || property?.type)
+    : (Array.isArray(pack?.documentSchema) ? pack.documentSchema : []);
+  const missingDocuments = (checklistItems.length > 0
+    ? checklistItems
+    : schemaDocuments
+  )
+    .filter(item => item.required && !DONE_DOCUMENT_STATUSES.has(item.status) && !item.uploaded);
+
+  const roleMeta = Object.fromEntries((pack?.roles || []).map(role => [role.key, role]));
+  const partyRows = Array.isArray(coordination?.submissions)
+    ? coordination.submissions
+    : (Array.isArray(coordination?.parties) ? coordination.parties : []);
+  const inviteEvents = events.filter(event => event.event_type === 'invite_sent');
+  const requiredParticipantRoles = (pack?.roles || [])
+    .filter(role => role.required && role.invitable !== false && !role.isCoordinator);
+  const missingParticipants = requiredParticipantRoles.filter(role => {
+    const party = partyRows.find(item => item.role === role.key);
+    const partyStatus = String(party?.status || '').toLowerCase();
+    const submitted = ['submitted', 'approved', 'complete', 'completed'].includes(partyStatus);
+    const invited = submitted
+      || ['invited', 'pending', 'accepted'].includes(partyStatus)
+      || inviteEvents.some(event => event.metadata?.role === role.key);
+    return !submitted && !invited;
+  });
+
+  const hasMeaningfulActivity = recordFields.some(isRecordValue)
+    || missingDocuments.length < schemaDocuments.filter(item => item.required).length
+    || partyRows.length > 0
+    || inviteEvents.length > 0;
 
   const items = [];
 
@@ -2756,9 +2834,52 @@ function WhatNeedsAttention({ briefing, recordFields, loading, onTabChange, prop
       actions: [{ label: confirming === f.id ? 'Confirming…' : 'Confirm', primary: true, disabled: !!confirming, onClick: () => confirmField(f) }],
     }));
 
-  // 3. Existing briefing/task-engine actions. Keep structured critical-path
-  // items ahead of prose actions, then fall back to missing documents. This
-  // makes the command center specific without introducing a second task model.
+  // 3. Specific actions derived from existing workflow state. Required
+  // documents blocking the current stage come first, followed by missing
+  // participants, then critical record fields, then other required documents.
+  const stageKey = String(coordination?.stage || '').toLowerCase();
+  const isCurrentStageDocument = item => {
+    const section = String(item.section || item.category || '').toLowerCase();
+    if (!stageKey) return false;
+    if (stageKey.includes('clos')) return /(legal|closing|title|purchase|agreement)/.test(section);
+    if (stageKey.includes('due') || stageKey.includes('diligence')) return /(financial|inspection|property|operational|legal)/.test(section);
+    return /(loi|term|purchase|agreement)/.test(section);
+  };
+  const documentActions = missingDocuments.map((document, index) => ({
+    id: `missing-document-${document.id || document.section || index}`,
+    urgency: isCurrentStageDocument(document) ? 'high' : 'medium',
+    title: `Upload ${document.label || document.name || 'required document'}`,
+    reason: document.assignedTo?.length || document.assigned_to?.length
+      ? `Required · ${(document.assignedTo || document.assigned_to).map(role => roleMeta[role]?.label || role).join(' / ')}`
+      : 'Required for the transaction record',
+    routeItem: { ...document, document: true },
+    actions: [],
+    sourcePriority: isCurrentStageDocument(document) ? 1 : 4,
+  }));
+  const participantActions = missingParticipants.map(role => ({
+    id: `missing-participant-${role.key}`,
+    urgency: 'high',
+    title: `Invite ${role.label}`,
+    reason: 'Needed to complete Identity & Parties',
+    routeItem: { participant: true, role: role.key },
+    actions: [],
+    sourcePriority: 2,
+  }));
+  const recordActions = recordMissing.slice(0, 6).map(field => ({
+    id: `missing-record-${field.key}`,
+    urgency: 'medium',
+    title: `Confirm ${field.label}`,
+    reason: `Missing from ${field.key.split('.')[0].replace(/^\w/, char => char.toUpperCase())}`,
+    routeItem: { field_key: field.key },
+    actions: [],
+    sourcePriority: 3,
+  }));
+
+  const derivedActions = [...documentActions, ...participantActions, ...recordActions]
+    .sort((a, b) => a.sourcePriority - b.sourcePriority);
+
+  // Existing briefing/task-engine actions remain useful after concrete state
+  // actions, and still provide the fallback for custom workflow packs.
   const briefingActions = [
     ...(Array.isArray(briefing?.criticalPath) ? briefing.criticalPath : []),
     ...(Array.isArray(briefing?.blocking) ? briefing.blocking : []),
@@ -2770,6 +2891,7 @@ function WhatNeedsAttention({ briefing, recordFields, loading, onTabChange, prop
     })) : []),
   ];
   const seenBriefingActions = new Set();
+  derivedActions.forEach(item => items.push(item));
   briefingActions.forEach((item, i) => {
     const text = typeof item === 'string'
       ? item
@@ -2838,17 +2960,22 @@ function WhatNeedsAttention({ briefing, recordFields, loading, onTabChange, prop
   }
 
   function routeForItem(item) {
+    if (item?.participant) {
+      return { label: 'Open People', onClick: () => onTabChange?.('people') };
+    }
     if (item?.field_key || item?.fieldKey) {
       return { label: 'Review record', onClick: () => goToRecord(item) };
     }
     if (item?.document || item?.documentId || item?.document_id) {
-      return { label: 'Open Documents', onClick: () => onTabChange?.('documents') };
+      const assignedRoles = item.assignedTo || item.assigned_to || [];
+      const needsRequest = assignedRoles.some(role => roleMeta[role]?.invitable !== false);
+      return { label: needsRequest ? 'Request' : 'Upload', onClick: () => onTabChange?.('documents') };
     }
     return routeForText(item?.title || item?.item || item?.text || item?.action);
   }
 
   if (compact) {
-    const compactItems = items.slice(0, 4);
+    const compactItems = showAll ? items : items.slice(0, 3);
     return (
       <div className="min-w-0">
         <div className="flex items-center justify-between gap-3">
@@ -2856,22 +2983,22 @@ function WhatNeedsAttention({ briefing, recordFields, loading, onTabChange, prop
             <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Next actions</p>
             <p className="mt-1 text-sm font-semibold text-gray-900">
               {loading ? 'Loading…' : compactItems.length > 0
-                ? `${compactItems.length} priority item${compactItems.length === 1 ? '' : 's'}`
+                ? 'Priority next actions'
                 : hasMeaningfulActivity ? 'Nothing urgent right now' : 'Start this transaction'}
             </p>
           </div>
         </div>
-        {loading ? (
+         {loading ? (
           <div className="mt-3 space-y-2">
             {[1, 2].map(n => <div key={n} className="h-9 animate-pulse rounded-lg bg-gray-50" />)}
           </div>
-        ) : compactItems.length === 0 ? (
+         ) : compactItems.length === 0 ? (
           <p className="mt-2 text-xs leading-relaxed text-gray-400">
             {hasMeaningfulActivity
               ? 'Kontra is monitoring the transaction for missing information and inconsistencies.'
               : 'Upload a document or invite a participant to begin organizing the transaction.'}
           </p>
-        ) : (
+         ) : (
           <div className="mt-2 divide-y divide-gray-100">
             {compactItems.map(item => {
               const action = item.field
@@ -2880,7 +3007,10 @@ function WhatNeedsAttention({ briefing, recordFields, loading, onTabChange, prop
               return (
                 <div key={item.id} className="flex items-center gap-2.5 py-2.5">
                   <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${urgencyDot[item.urgency]}`} />
-                  <p className="min-w-0 flex-1 truncate text-xs font-semibold text-gray-800">{item.title}</p>
+                   <div className="min-w-0 flex-1">
+                     <p className="truncate text-xs font-semibold text-gray-800">{item.title}</p>
+                     {item.reason && <p className="mt-0.5 truncate text-[10px] text-gray-400">{item.reason}</p>}
+                   </div>
                   <button
                     type="button"
                     onClick={action.onClick}
@@ -2893,6 +3023,14 @@ function WhatNeedsAttention({ briefing, recordFields, loading, onTabChange, prop
             })}
           </div>
         )}
+         {!loading && items.length > 3 && (
+           <button
+             type="button"
+             onClick={() => setShowAll(value => !value)}
+             className="mt-3 text-[11px] font-semibold text-[#800020] hover:opacity-80 transition">
+             {showAll ? 'Show top 3' : `View all ${items.length} actions`} →
+           </button>
+         )}
       </div>
     );
   }
@@ -2982,7 +3120,7 @@ function WhatNeedsAttention({ briefing, recordFields, loading, onTabChange, prop
               </div>
             ))}
           </div>
-          {items.length > 3 && (
+      {items.length > 3 && (
             <div className="border-t border-gray-100 px-5 py-3">
               <button onClick={() => onTabChange?.('documents')}
                 className="text-[11px] font-semibold text-[#800020] hover:opacity-80 transition">
@@ -3579,6 +3717,8 @@ function TransactionSealSummaryCard({ propertyId }) {
 function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, refreshKey }) {
   const [briefing, setBriefing]         = useState(null);
   const [coordination, setCoordination] = useState(null);
+  const [checklistItems, setChecklistItems] = useState([]);
+  const [events, setEvents]             = useState([]);
   const [stages, setStages]             = useState([]);
   const [recordFields, setRecordFields] = useState([]);
   const [readiness, setReadiness]       = useState(null);
@@ -3595,18 +3735,22 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
     const get = (path, fallback) => fetch(`${API_BASE}${path}`, { headers })
       .then(r => r.ok ? r.json() : fallback)
       .catch(() => fallback);
-    const [brief, coord, stageData, record, readinessData] = await Promise.all([
+    const [brief, coord, stageData, record, readinessData, checklist, eventData] = await Promise.all([
       get(`/api/public/deal-room/${propertyId}/brain/briefing`, null),
       get(`/api/public/deal-room/${propertyId}/coordination`, null),
       get(`/api/public/deal-room/${propertyId}/stages`, { stages: [] }),
       get(`/api/public/deal-room/${propertyId}/transaction-record`, { fields: [] }),
       get(`/api/public/deal-room/${propertyId}/readiness`, null),
+      get(`/api/public/deal-room/${propertyId}/checklist`, { items: [] }),
+      get(`/api/public/deal-room/${propertyId}/events`, { events: [] }),
     ]);
     setBriefing(brief);
     setCoordination(coord);
     setStages(Array.isArray(stageData?.stages) && stageData.stages.length >= 2 ? stageData.stages : (pack.stages || []));
     setRecordFields(Array.isArray(record?.fields) ? record.fields : []);
     setReadiness(readinessData);
+    setChecklistItems(Array.isArray(checklist?.items) ? checklist.items : []);
+    setEvents(Array.isArray(eventData?.events) ? eventData.events : []);
     setLoading(false);
   // refreshKey is intentionally included so any document upload (which bumps
   // analysesRefreshKey in DealRoomPage) immediately triggers a re-fetch here,
@@ -3657,6 +3801,22 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
   const readinessStatus = readiness?.transaction_readiness?.status
     || readiness?.status
     || 'Building';
+  const recordSchemaKey = resolveSchemaKey(packId, pack, property?.name || property?.property_name);
+  const requiredRecordFields = Object.values(getPackRecordSchema(recordSchemaKey))
+    .flat()
+    .filter(field => field.workflowRequired);
+  const confirmedRecordFieldKeys = new Set(
+    recordFields
+      .filter(field => {
+        const value = String(field.value_text || '').trim().toLowerCase();
+        return value && !['n/a', 'na', 'not applicable', 'not_applicable', 'unknown'].includes(value)
+          && field.status !== 'not_applicable';
+      })
+      .map(field => field.field_key),
+  );
+  const confirmedRequiredCount = requiredRecordFields.filter(field =>
+    confirmedRecordFieldKeys.has(field.key) || confirmedRecordFieldKeys.has(field.aliasOf)
+  ).length;
 
   return (
     <div className="space-y-5">
@@ -3699,7 +3859,7 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
             </p>
             {readiness?.transaction_readiness?.categories?.length > 0 && (
               <p className="mt-2 text-[11px] text-gray-500">
-                {readiness.transaction_readiness.categories.filter(c => c.score >= 80).length} of {readiness.transaction_readiness.categories.length} readiness areas substantially complete
+                {confirmedRequiredCount} of {requiredRecordFields.length} required fields confirmed
               </p>
             )}
           </div>
@@ -3707,6 +3867,12 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
           <WhatNeedsAttention
             briefing={briefing}
             recordFields={recordFields}
+            checklistItems={checklistItems}
+            events={events}
+            coordination={coordination}
+            pack={pack}
+            packId={packId}
+            property={property}
             loading={loading}
             onTabChange={onTabChange}
             propertyId={propertyId}
