@@ -2756,26 +2756,51 @@ function WhatNeedsAttention({ briefing, recordFields, loading, onTabChange, prop
       actions: [{ label: confirming === f.id ? 'Confirming…' : 'Confirm', primary: true, disabled: !!confirming, onClick: () => confirmField(f) }],
     }));
 
-  // 3. Briefing action items
-  const rawActions = briefing?.actions || briefing?.next_actions || briefing?.criticalPath || briefing?.blocking || [];
-  rawActions.slice(0, 4).forEach((item, i) => {
-    const text = typeof item === 'string' ? item : (item.text || item.action || item.item || item.title || '');
-    if (!text) return;
+  // 3. Existing briefing/task-engine actions. Keep structured critical-path
+  // items ahead of prose actions, then fall back to missing documents. This
+  // makes the command center specific without introducing a second task model.
+  const briefingActions = [
+    ...(Array.isArray(briefing?.criticalPath) ? briefing.criticalPath : []),
+    ...(Array.isArray(briefing?.blocking) ? briefing.blocking : []),
+    ...(Array.isArray(briefing?.actions) ? briefing.actions : []),
+    ...(Array.isArray(briefing?.next_actions) ? briefing.next_actions : []),
+    ...(Array.isArray(briefing?.missingDocuments) ? briefing.missingDocuments.map(document => ({
+      title: `Upload ${typeof document === 'string' ? document : document.label || document.name || 'required document'}`,
+      document: true,
+    })) : []),
+  ];
+  const seenBriefingActions = new Set();
+  briefingActions.forEach((item, i) => {
+    const text = typeof item === 'string'
+      ? item
+      : (item.text || item.action || item.item || item.title || '');
+    const normalizedText = String(text).trim();
+    const dedupeKey = normalizedText.toLowerCase();
+    if (!normalizedText || seenBriefingActions.has(dedupeKey)) return;
+    seenBriefingActions.add(dedupeKey);
+    const structuredField = item?.field_key || item?.fieldKey
+      ? { field_key: item.field_key || item.fieldKey }
+      : null;
+    const routeItem = structuredField || item;
+    const isCritical = item?.taskId || item?.chainStep || briefing?.criticalPath?.includes(item);
     items.push({
       id: `action-${i}`,
-      urgency: i === 0 ? 'medium' : 'low',
-      title: text,
-      reason: typeof item === 'object' ? (item.reason || item.why || '') : '',
+      urgency: isCritical ? 'high' : i === 0 ? 'medium' : 'low',
+      title: normalizedText,
+      reason: typeof item === 'object' ? (item.reason || item.note || item.why || '') : '',
+      routeItem,
       actions: [],
     });
   });
 
-  // 4. Issues / risks (deduplicated with criticalPath already used above)
-  const rawIssues = briefing?.risks || briefing?.open_items || [];
-  rawIssues.slice(0, 2).forEach((item, i) => {
-    const text = typeof item === 'string' ? item : (item.text || item.risk || item.item || '');
-    if (!text) return;
-    items.push({ id: `issue-${i}`, urgency: 'high', title: text, reason: '', actions: [] });
+  // 4. Issues / risks, deduplicated against the existing action feed.
+  const rawIssues = [...(briefing?.risks || []), ...(briefing?.open_items || [])];
+  rawIssues.slice(0, 3).forEach((item, i) => {
+    const text = typeof item === 'string' ? item : (item.text || item.risk || item.item || item.title || '');
+    const normalizedText = String(text).trim();
+    if (!normalizedText || seenBriefingActions.has(normalizedText.toLowerCase())) return;
+    seenBriefingActions.add(normalizedText.toLowerCase());
+    items.push({ id: `issue-${i}`, urgency: 'high', title: normalizedText, reason: '', routeItem: item, actions: [] });
   });
 
   const urgencyDot = { high: 'bg-red-400', medium: 'bg-amber-400', low: 'bg-gray-300' };
@@ -2794,13 +2819,32 @@ function WhatNeedsAttention({ briefing, recordFields, loading, onTabChange, prop
 
   function routeForText(text) {
     const value = String(text || '').toLowerCase();
+    if (/(document|upload|file|nda|loi|agreement|checklist|esa|report|certificate|binder|commitment|rent roll|inspection)/.test(value)) {
+      return { label: 'Open Documents', onClick: () => onTabChange?.('documents') };
+    }
     if (/(invite|participant|buyer|seller|party|counsel|lender|advisor)/.test(value)) {
       return { label: 'Open People', onClick: () => onTabChange?.('people') };
     }
-    if (/(document|upload|file|nda|loi|agreement|checklist)/.test(value)) {
-      return { label: 'Open Documents', onClick: () => onTabChange?.('documents') };
+    if (/(term|purchase price|transaction value|closing date|structure)/.test(value)) {
+      return { label: 'Review terms', onClick: () => goToRecord({ field_key: 'transaction.terms' }) };
+    }
+    if (/(financial|revenue|noi|ebitda|loan|deal value)/.test(value)) {
+      return { label: 'Review financials', onClick: () => goToRecord({ field_key: 'financial.deal_value' }) };
+    }
+    if (/(title|legal|liens|encumbrance|regulatory)/.test(value)) {
+      return { label: 'Review legal', onClick: () => goToRecord({ field_key: 'legal.title_status' }) };
     }
     return { label: 'Review record', onClick: () => onTabChange?.('overview') };
+  }
+
+  function routeForItem(item) {
+    if (item?.field_key || item?.fieldKey) {
+      return { label: 'Review record', onClick: () => goToRecord(item) };
+    }
+    if (item?.document || item?.documentId || item?.document_id) {
+      return { label: 'Open Documents', onClick: () => onTabChange?.('documents') };
+    }
+    return routeForText(item?.title || item?.item || item?.text || item?.action);
   }
 
   if (compact) {
@@ -2832,7 +2876,7 @@ function WhatNeedsAttention({ briefing, recordFields, loading, onTabChange, prop
             {compactItems.map(item => {
               const action = item.field
                 ? { label: 'Review record', onClick: () => goToRecord(item.field) }
-                : item.actions[0] || routeForText(item.title);
+                : item.actions[0] || routeForItem(item.routeItem || item);
               return (
                 <div key={item.id} className="flex items-center gap-2.5 py-2.5">
                   <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${urgencyDot[item.urgency]}`} />
@@ -3058,7 +3102,17 @@ function DigitalAssetReadinessSection({
           ? 'needs_info'
           : 'building';
 
-    return { ...cat, enriched, confirmedDefs, missingDefs, count, total, sources, st };
+    const missingLabels = missingDefs.map(d => d.label.toLowerCase());
+    const summary = missingDefs.length === 0
+      ? 'All key fields present'
+      : cat.key === 'parties' && missingLabels.some(label => label.includes('buyer'))
+        && missingLabels.some(label => label.includes('seller'))
+        ? 'Buyer and seller not identified'
+        : cat.key === 'terms' && missingLabels.some(label => label.includes('value') || label.includes('price'))
+          ? 'Transaction value missing'
+          : `${missingDefs[0].label} missing`;
+
+    return { ...cat, enriched, confirmedDefs, missingDefs, count, total, sources, st, summary };
   });
 
   const readyCount   = categories.filter(c => c.st === 'ready').length;
@@ -3130,9 +3184,14 @@ function DigitalAssetReadinessSection({
                 type="button"
                 onClick={() => setExpandedCat(isExpanded ? null : cat.key)}
                 className="flex items-center justify-between w-full px-5 py-3 gap-4 text-left hover:bg-gray-50 transition">
-                <div className="flex items-center gap-2 min-w-0">
-                  <span className={`h-2 w-2 shrink-0 rounded-full ${stDot[cat.st]}`} />
-                  <p className="text-sm text-gray-700 truncate">{cat.label}</p>
+                  <div className="min-w-0">
+                   <div className="flex items-center gap-2 min-w-0">
+                     <span className={`h-2 w-2 shrink-0 rounded-full ${stDot[cat.st]}`} />
+                     <p className="text-sm text-gray-700 truncate">{cat.label}</p>
+                   </div>
+                   {cat.summary && cat.missingDefs.length > 0 && (
+                     <p className="mt-0.5 pl-4 text-[11px] text-gray-400 truncate">{cat.summary}</p>
+                   )}
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
                   <span className={`text-[10px] font-semibold ${embedded ? 'text-gray-500' : stColor[cat.st]}`}>
