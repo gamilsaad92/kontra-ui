@@ -3659,14 +3659,18 @@ function RoomCopilot({ propertyId }) {
 // Adapated from the OperationsManagerView stage bar. Shows every effective stage
 // (including settlement when enabled) as a horizontal progression. The current
 // stage is highlighted; past stages show a checkmark; future stages are muted.
-function StageLifecycleBar({ stages = [], currentStageKey, compact = false }) {
+function StageLifecycleBar({
+  stages = [],
+  currentStageKey,
+  compact = false,
+}) {
   if (stages.length === 0) return null;
   const currentIdx = Math.max(0, stages.findIndex(s => s.key === currentStageKey));
   return (
     <div className={`${compact ? 'mt-5 pt-4' : 'mt-4 pt-4'} border-t border-gray-100`}>
       <div className="mb-2 flex items-center justify-between gap-3">
         <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Transaction lifecycle</p>
-        {compact && <p className="text-[10px] text-gray-400">Operational position</p>}
+        {compact && <p className="text-[10px] text-gray-400">Coordinator-reported · documents and confirmed facts are separate</p>}
       </div>
       <div className={`flex items-center ${compact ? 'gap-1' : 'items-start gap-1'}`}>
         {stages.map((s, i) => {
@@ -3932,7 +3936,11 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
           />
         </div>
 
-        <StageLifecycleBar stages={effectiveStages} currentStageKey={currentStageKey} compact />
+        <StageLifecycleBar
+          stages={effectiveStages}
+          currentStageKey={currentStageKey}
+          compact
+        />
 
         <div className="mt-6 border-t border-gray-100 pt-5">
           {readinessPhase === 'settlement' && (
