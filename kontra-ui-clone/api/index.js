@@ -36,6 +36,10 @@ const { runVerification } = require('./lib/verificationEngine');
 const verifiedAssetPackageRouter = require('./routers/verifiedAssetPackage');
 const { generateAndStoreVAP } = require('./routers/verifiedAssetPackage');
 const { evaluateDealRoomForTasks, evaluateReadinessTasks } = require('./lib/taskEngine');
+const {
+  canonicalizeTransactionRecordKey,
+  aliasKeysForCanonical,
+} = require('./lib/transactionRecordCanonicalization');
 
 // Pack inference map — mirrors DEAL_TYPE_TO_PACK in dealRoomHelpers.js so that
 // room creation writes the correct workflow_pack_id from day one.
@@ -2694,10 +2698,6 @@ const TRANSACTION_RECORD_REQUIREMENTS = (() => {
   } catch { return {}; }
 })();
 
-const TRANSACTION_RECORD_ALIASES = {
-  'financial.purchase_price': 'transaction.purchase_price',
-};
-
 const TRANSACTION_RECORD_METADATA_FIELDS = {
   target_close_date: {
     fieldKey: 'transaction.closing_date',
@@ -3163,15 +3163,6 @@ app.get('/api/public/deal-room/:propertyId/analyses', async (req, res) => {
 // Runs after document analysis. Extracts structured fields from document text
 // and merges them into transaction_record_fields. Existing 'verified' fields
 // are never overwritten. Conflicting extractions are flagged for coordinator review.
-const TRANSACTION_RECORD_CANONICAL_KEYS = {
-  'financial.purchase_price': 'transaction.purchase_price',
-  'financial.deal_value': 'transaction.value',
-};
-
-function canonicalTransactionRecordKey(fieldKey) {
-  return TRANSACTION_RECORD_CANONICAL_KEYS[fieldKey] || fieldKey;
-}
-
 const TRANSACTION_RECORD_DEPENDENCIES = {
   'transaction.financing_contingency': [
     'parties.lender',
@@ -3243,6 +3234,12 @@ async function markDependentTransactionFieldsNotApplicable(propertyId, dependenc
 async function extractTransactionFields(propertyId, docId, text, sectionLabel) {
   if (!text || text.trim().length < 50) return;
   try {
+    const { data: room } = await supabase
+      .from('deal_rooms')
+      .select('workflow_pack_id, deal_type')
+      .eq('property_id', propertyId)
+      .maybeSingle();
+    const schemaKey = await getTransactionRecordSchemaKey(room);
     const completion = await openai.chat.completions.create({
       model: 'gpt-4o-mini',
       messages: [
@@ -3265,13 +3262,45 @@ async function extractTransactionFields(propertyId, docId, text, sectionLabel) {
 
     for (const f of extracted) {
       if (!f.field_key || !f.field_category || !f.value_text) continue;
-      const canonicalKey = canonicalTransactionRecordKey(String(f.field_key));
-      const { data: existing } = await supabase
+      const canonicalKey = canonicalizeTransactionRecordKey(String(f.field_key), schemaKey);
+      const aliasKeys = aliasKeysForCanonical(canonicalKey, schemaKey);
+      const { data: existingRows } = await supabase
         .from('transaction_record_fields')
-        .select('id, status, value_text, verified_by, verified_role')
+        .select('id, field_key, status, value_text, source_doc_id, source_page, source_excerpt, verified_by, verified_role')
         .eq('property_id', propertyId)
-        .eq('field_key', canonicalKey)
-        .maybeSingle();
+        .in('field_key', aliasKeys);
+      let existing = (existingRows || []).find(row => row.field_key === canonicalKey)
+        || (existingRows || [])[0]
+        || null;
+      const aliasRows = (existingRows || []).filter(row => row.id !== existing?.id);
+
+      // Migrate a legacy alias row in place when no canonical row exists. If
+      // both exist, keep one canonical row and remove duplicate alias rows.
+      if (existing && existing.field_key !== canonicalKey) {
+        const { error: aliasMoveError } = await supabase
+          .from('transaction_record_fields')
+          .update({ field_key: canonicalKey })
+          .eq('id', existing.id)
+          .eq('property_id', propertyId);
+        if (aliasMoveError) throw aliasMoveError;
+        existing = { ...existing, field_key: canonicalKey };
+      }
+      if (aliasRows.length > 0 && existing) {
+        const aliasWithSource = aliasRows.find(row => row.source_doc_id);
+        if (!existing.source_doc_id && aliasWithSource?.source_doc_id) {
+          await supabase.from('transaction_record_fields').update({
+            source_doc_id: aliasWithSource.source_doc_id,
+            source_page: aliasWithSource.source_page || null,
+            source_excerpt: aliasWithSource.source_excerpt || null,
+          }).eq('id', existing.id).eq('property_id', propertyId);
+        }
+        const { error: duplicateDeleteError } = await supabase
+          .from('transaction_record_fields')
+          .delete()
+          .eq('property_id', propertyId)
+          .in('id', aliasRows.map(row => row.id));
+        if (duplicateDeleteError) throw duplicateDeleteError;
+      }
 
       const priorValue = existing?.value_text || null;
       const priorStatus = existing?.status || null;
@@ -3279,10 +3308,12 @@ async function extractTransactionFields(propertyId, docId, text, sectionLabel) {
       const eventType = existing?.status === 'verified' && differs
         ? 'source_changed'
         : differs ? 'conflict' : 'extracted';
-      const nextStatus = eventType === 'source_changed'
-        ? 'source_changed'
-        : eventType === 'conflict' ? 'conflicting' : 'extracted';
-      const nextValue = eventType === 'source_changed'
+      const nextStatus = existing?.status === 'verified'
+        ? 'verified'
+        : eventType === 'source_changed'
+          ? 'source_changed'
+          : eventType === 'conflict' ? 'conflicting' : 'extracted';
+      const nextValue = existing?.status === 'verified' || eventType === 'source_changed'
         ? existing.value_text
         : String(f.value_text).slice(0, 2000);
 
@@ -5291,7 +5322,7 @@ app.get('/api/public/deal-room/:propertyId/readiness', async (req, res) => {
   if (!TRANSACTION_RECORD_REQUIREMENTS[recordSchemaKey]) recordSchemaKey = 'generic';
 
   const requiredKeys = TRANSACTION_RECORD_REQUIREMENTS[recordSchemaKey] || [];
-  const canonicalKey = field => TRANSACTION_RECORD_ALIASES[field] || field;
+  const canonicalKey = field => canonicalizeTransactionRecordKey(field, recordSchemaKey);
   const populatedRecordFields = (recordFields || []).filter(field => {
     const value = String(field.value_text || '').trim().toLowerCase();
     return value && !['n/a', 'na', 'not applicable', 'not_applicable', 'unknown'].includes(value)
