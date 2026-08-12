@@ -3121,11 +3121,14 @@ app.get('/api/public/deal-room/:propertyId/analyses', async (req, res) => {
       return true;
     }).map(a => ({ ...a, versionHistory: history[a.section] || [] }));
 
-    // Role-scoped filtering: if caller provided ?role=, hide sections not assigned to them.
-    // Coordinator roles (canManage) always see everything.
+    // Role-scoped filtering applies to participants only. The owner access
+    // context is authenticated by the room's owner_write_token and carries
+    // viewAllDocuments=true, so owner visibility must not depend on a
+    // participant role name or the pack's assignment map.
     // Custom sections (not in the assignments map) are always visible to all.
     let filtered = deduped;
-    if (role && packId && !isCoordinatorRole(packId, role)) {
+    const canViewAllDocuments = access.permissions?.viewAllDocuments === true;
+    if (!canViewAllDocuments && role && packId && !isCoordinatorRole(packId, role)) {
       const assignments = getSectionAssignments(packId, propertyType);
       if (assignments) {
         filtered = deduped.filter(a => {
