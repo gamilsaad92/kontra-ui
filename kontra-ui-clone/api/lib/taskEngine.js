@@ -58,6 +58,8 @@ function getPg() {
 }
 getPg();
 
+const OPEN_STATUSES = ['pending', 'in_progress', 'escalated'];
+
 // ── CRUD ─────────────────────────────────────────────────────────────────
 async function listTasksForRoom(propertyId) {
   const { data, error } = await supabase
@@ -148,8 +150,8 @@ async function dismissTask(taskId) {
 // ── Evaluate a room: the "AI notices things" half of the engine ────────────
 // Deliberately conservative and evidence-driven — every AI-owned task must
 // carry concrete evidence strings, never a vague "something seems off". Only
-// creates a task if one with the same task_type+source has never existed, so
-// refreshing does not spam duplicates or resurrect completed work.
+// creates a task if an open one of the same task_type+source doesn't already
+// exist, so refreshing repeatedly doesn't spam duplicate tasks.
 async function evaluateDealRoomForTasks(propertyId) {
   const packId = await getRoomPackId(propertyId);
   const roleConfig = getPackRoleConfig(packId);
@@ -164,8 +166,8 @@ async function evaluateDealRoomForTasks(propertyId) {
   const submissions = submissionsRes.data || [];
   const analyses = analysesRes.data || [];
 
-  const hasExistingTask = (taskType, sourceId) => existing.some(t =>
-    t.task_type === taskType && t.source_id === sourceId);
+  const hasOpenTask = (taskType, sourceId) => existing.some(t =>
+    t.task_type === taskType && t.source_id === sourceId && OPEN_STATUSES.includes(t.status));
 
   const created = [];
 
@@ -175,7 +177,7 @@ async function evaluateDealRoomForTasks(propertyId) {
     const sub = submissions.find(s => s.role === role.key);
     if (sub) continue;
     const sourceId = `missing-role:${role.key}`;
-    if (hasExistingTask('missing_participant', sourceId)) continue;
+    if (hasOpenTask('missing_participant', sourceId)) continue;
     const roleLabel = getPackRoleLabel(packId, role.key);
     const task = await createTask(propertyId, {
       taskType: 'missing_participant',
@@ -195,7 +197,7 @@ async function evaluateDealRoomForTasks(propertyId) {
   for (const sub of submissions) {
     if (sub.status !== 'pending' && sub.status !== 'invited') continue;
     const sourceId = `pending-submission:${sub.role}`;
-    if (hasExistingTask('pending_submission', sourceId)) continue;
+    if (hasOpenTask('pending_submission', sourceId)) continue;
     const roleLabel = getPackRoleLabel(packId, sub.role);
     const task = await createTask(propertyId, {
       taskType: 'pending_submission',
@@ -223,7 +225,7 @@ async function evaluateDealRoomForTasks(propertyId) {
     const summary = doc.analysis?.summary || '';
     if (!summary) continue;
     const sourceId = `analysis:${doc.id}`;
-    if (hasExistingTask('document_flag', sourceId)) continue;
+    if (hasOpenTask('document_flag', sourceId)) continue;
     let flagReason = null;
     if (EXPIRY_HINT.test(summary)) flagReason = 'expiration';
     else if (MISSING_HINT.test(summary)) flagReason = 'missing_reference';
@@ -265,8 +267,8 @@ async function evaluateReadinessTasks(propertyId, existingTasks) {
   if (!isTokenization && !digitalAssetEnabled) return [];
 
   const existing = existingTasks || [];
-  const hasExistingReadinessTask = (sourceId) => existing.some(t =>
-    t.source_id === sourceId);
+  const hasOpenReadinessTask = (sourceId) => existing.some(t =>
+    t.source_id === sourceId && OPEN_STATUSES.includes(t.status));
 
   const metaValues     = room.metadata_values || {};
   const checklistItems = Array.isArray(room.checklist_items) ? room.checklist_items : [];
@@ -282,7 +284,7 @@ async function evaluateReadinessTasks(propertyId, existingTasks) {
   for (const field of ISSUANCE_FIELDS) {
     if (metaValues[field.key]) continue; // already set — no task needed
     const sourceId = `readiness-issuance:${field.key}`;
-    if (hasExistingReadinessTask(sourceId)) continue;
+    if (hasOpenReadinessTask(sourceId)) continue;
     const task = await createTask(propertyId, {
       taskType: 'readiness_setup',
       title: `Set ${field.label} in issuance details`,
@@ -299,7 +301,7 @@ async function evaluateReadinessTasks(propertyId, existingTasks) {
   // 2) Jurisdiction not set
   if (!room.jurisdiction) {
     const sourceId = 'readiness-jurisdiction:missing';
-    if (!hasExistingReadinessTask(sourceId)) {
+    if (!hasOpenReadinessTask(sourceId)) {
       const task = await createTask(propertyId, {
         taskType: 'readiness_setup',
         title: 'Select a jurisdiction for this token offering',
@@ -321,7 +323,7 @@ async function evaluateReadinessTasks(propertyId, existingTasks) {
     for (const item of regItems.filter(i => !UPLOADED.has(i.status)).slice(0, 3)) {
       const itemKey  = item.id || item.section || item.label || 'doc';
       const sourceId = `readiness-regulatory:${itemKey}`;
-      if (hasExistingReadinessTask(sourceId)) continue;
+      if (hasOpenReadinessTask(sourceId)) continue;
       const task = await createTask(propertyId, {
         taskType: 'readiness_document',
         title: `Upload required regulatory document: ${item.label || item.section}`,

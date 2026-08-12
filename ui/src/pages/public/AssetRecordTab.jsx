@@ -187,7 +187,7 @@ function getRecordStats(
       notApplicable++;
     } else if (db?.status === "verified") {
       confirmed++;
-    } else if (["coordinator", "deal_owner"].includes(db?.extracted_by) && (db.value_text || db.value_json)) {
+    } else if (db?.extracted_by === "coordinator" && (db.value_text || db.value_json)) {
       manuallyEntered++;
     } else if ((db?.status === "extracted" || db?.status === "needs_review") &&
       (db.value_text || db.value_json)) {

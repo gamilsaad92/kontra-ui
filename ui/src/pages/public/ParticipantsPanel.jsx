@@ -241,20 +241,10 @@ export default function ParticipantsPanel({
     ? [resolvedCoordinatorRole || metadataOwnerRole || {
         key: 'deal_coordinator',
         icon: '🏢',
-        label: 'Deal Owner',
+        label: 'Deal Coordinator',
         color: '#800020',
       }]
     : metadataCoordinatorRoles;
-
-  // The pack's managing role remains authoritative for permissions and
-  // transaction vocabulary, but the workspace-owner row has one universal
-  // display label. A configured Deal Coordinator remains a separate
-  // invitable participant role.
-  const displayedCoordinatorRoles = coordinatorRoles.map(role => ({
-    ...role,
-    label: 'Deal Owner',
-    shortLabel: 'Deal Owner',
-  }));
 
   const coordinatorKeys = getCoordinatorRoleKeys(pack, { isCoordinator, coordinatorRole });
 
@@ -380,7 +370,7 @@ export default function ParticipantsPanel({
       ...invitableRoles.map(r => r.key),
       ...coordinatorRoles.map(r => r.key),
     ]);
-    const coordRows = displayedCoordinatorRoles.map(role => ({
+    const coordRows = coordinatorRoles.map(role => ({
       role, invite: null, isCoordinator: true, isCustomRole: false,
     }));
 

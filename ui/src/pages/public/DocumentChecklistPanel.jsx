@@ -530,7 +530,7 @@ function CoordinatorDocumentGroups({ template, allItems, uploadedSections, build
 export default function DocumentChecklistPanel({
   propertyId, propertyType, role, isDemo = false,
   packId = DEFAULT_PACK_ID, packReady = true, onAnalysisSaved,
-  jurisdiction, onPeople,
+  jurisdiction,
 }) {
   const workflowPack = getWorkflowPack(packId);
   const { getInlineFacts, getCompletenessIssues, factColors: FACT_COLORS, aiUploadEndpoints: AI_UPLOAD_ENDPOINTS } = workflowPack;
@@ -563,7 +563,6 @@ export default function DocumentChecklistPanel({
   // requestedDocSections: set of sections whose request was already sent this session
   const [requestingDocSection, setRequestingDocSection] = useState(null);
   const [requestedDocSections, setRequestedDocSections] = useState(new Set());
-  const [requestError, setRequestError] = useState(null);
 
   // ── Role + coordinator check ─────────────────────────────────────────────
   const roleConfig = workflowPack.getRole?.(role);
@@ -623,13 +622,12 @@ export default function DocumentChecklistPanel({
   async function handleRequestDoc(item) {
     if (!propertyId || isDemo) return;
     setRequestingDocSection(item.section);
-    setRequestError(null);
     let ownerToken = "";
     try { ownerToken = localStorage.getItem(`kontra_owner_token_${propertyId}`) || ""; } catch { /* storage unavailable */ }
     try {
-      const response = await fetch(`${API_BASE}/api/public/deal-room/${propertyId}/request-document`, {
+        await fetch(`${API_BASE}/api/public/deal-room/${propertyId}/request-document`, {
         method: "POST",
-        headers: getRoomAuthHeaders(propertyId, { "Content-Type": "application/json" }),
+          headers: getRoomAuthHeaders(propertyId, { "Content-Type": "application/json" }),
         body: JSON.stringify({
           ownerWriteToken: ownerToken,
           roles: item.assignedTo || [],
@@ -637,36 +635,9 @@ export default function DocumentChecklistPanel({
           docSection: item.section,
         }),
       });
-      const result = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(result.error || "Request failed");
-      if (result.reason === "no_participant_found") {
-        setRequestError({
-          section: item.section,
-          message: "Invite the assigned participant before requesting this document.",
-          roles: item.assignedTo || [],
-        });
-        return false;
-      }
-      if (result.emailSent === false && result.reason !== "email_not_configured") {
-        setRequestError({
-          section: item.section,
-          message: "The request was logged, but no invited participant was found.",
-          roles: item.assignedTo || [],
-        });
-        return false;
-      }
-      setRequestedDocSections(prev => { const next = new Set(prev); next.add(item.section); return next; });
-      return true;
-    } catch (error) {
-      setRequestError({
-        section: item.section,
-        message: error?.message || "Request failed — try again.",
-        roles: item.assignedTo || [],
-      });
-      return false;
-    } finally {
-      setRequestingDocSection(null);
-    }
+    } catch { /* silent — optimistic UI */ }
+    setRequestingDocSection(null);
+    setRequestedDocSections(prev => { const next = new Set(prev); next.add(item.section); return next; });
   }
 
   // ── Persist items (debounced) ──────────────────────────────────────────────
@@ -814,23 +785,7 @@ export default function DocumentChecklistPanel({
   const analysisBySection = Object.fromEntries(analyses.map(a => [a.section, a.analysis]));
 
   // Build the template this role should see
-  const schemaItems = workflowPack.getDocumentSchema?.(propertyType, jurisdiction) || [];
-  const schemaItemByKey = new Map(
-    schemaItems.flatMap(item => [
-      [item.id, item],
-      [item.section, item],
-    ].filter(([key]) => key))
-  );
-  // Persisted checklists are authoritative for status/order, but older saved
-  // rows may predate document responsibility. Restore assignment metadata from
-  // the active workflow pack so responsibility and Request actions never vanish.
-  const allItems = (items || []).map(item => {
-    const configured = schemaItemByKey.get(item.id) || schemaItemByKey.get(item.section);
-    const assignedTo = Array.isArray(item.assignedTo) && item.assignedTo.length > 0
-      ? item.assignedTo
-      : (configured?.assignedTo || []);
-    return configured ? { ...configured, ...item, assignedTo } : { ...item, assignedTo };
-  });
+  const allItems = items || [];
   const myItems = allItems.filter(i => (i.assignedTo || []).includes(role));
   const template = isCoordinator
     ? allItems
@@ -901,7 +856,7 @@ export default function DocumentChecklistPanel({
         : { bg: "#f9fafb", color: "#9ca3af", border: "#e5e7eb" };
 
     // Responsible party (coordinator view)
-    const assignedRoleMetas = packRoles.filter(r => item.assignedTo?.includes(r.key));
+    const assignedRoleMeta = packRoles.find(r => item.assignedTo?.includes(r.key));
 
     // Can the row expand?
     const canExpand = done && !isPending && (issues.length > 0 || analysis?.summary || facts.length > 0);
@@ -957,12 +912,12 @@ export default function DocumentChecklistPanel({
                 <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-50 text-blue-500 font-medium animate-pulse">AI analyzing…</span>
               )}
               {/* Responsible party */}
-              {isCoordinator && assignedRoleMetas.map(assignedRoleMeta => (
-                <span key={assignedRoleMeta.key} className="text-[10px] px-1.5 py-0.5 rounded font-medium"
+              {isCoordinator && assignedRoleMeta && (
+                <span className="text-[10px] px-1.5 py-0.5 rounded font-medium"
                   style={{ background: (assignedRoleMeta.color || "#e5e7eb") + "22", color: assignedRoleMeta.color || "#6b7280" }}>
                   {assignedRoleMeta.icon || ""} {assignedRoleMeta.label}
                 </span>
-              ))}
+              )}
             </div>
 
             {/* Key facts (collapsed preview — first 3) */}
@@ -1096,19 +1051,6 @@ export default function DocumentChecklistPanel({
                       {requestingDocSection === item.section ? "…" : "Request →"}
                     </button>
                   )
-                )}
-                {requestError?.section === item.section && (
-                  <span className="flex items-center gap-1 text-[10px] text-amber-700">
-                    <span>{requestError.message}</span>
-                    {onPeople && (
-                      <button
-                        type="button"
-                        onClick={() => onPeople?.()}
-                        className="font-bold underline underline-offset-2">
-                        Open People
-                      </button>
-                    )}
-                  </span>
                 )}
               </>
             )}
