@@ -17,7 +17,11 @@ import { API_BASE as RESOLVED_API_BASE } from "../../lib/apiBase";
 import DealRoomPinGate from "./DealRoomPinGate";
 import { getInviteSession, getRoomAuthHeaders } from "../../lib/inviteUtils";
 import SettlementReadinessPanel from "./SettlementReadinessPanel";
-import { getPackRecordSchema, resolveSchemaKey } from "../../lib/workflowPacks/transactionRecordSchema";
+import {
+  getPackRecordSchema,
+  getRequiredRecordFields,
+  resolveSchemaKey,
+} from "../../lib/workflowPacks/transactionRecordSchema";
 import {
   getExternalParticipantRoles,
   isRoleSatisfiedByWorkspaceOwner,
@@ -1206,7 +1210,7 @@ function useDealAnalyses(propertyId, refreshKey) {
 // universal fields when the pack provides none (e.g. custom ws_* workspaces).
 // Saves to `metadata_values` JSONB column via PATCH …/:propertyId/metadata.
 // Auth: owner write token read from localStorage (same pattern as stages PATCH).
-function TransactionDetailsPanel({ property, propertyId, pack }) {
+function TransactionDetailsPanel({ property, propertyId, pack, onSaved }) {
   const isLegacyTokenPack = pack?.id === 'tokenization' || pack?.transactionType === 'tokenization';
   const hiddenLaunchFields = new Set([
     'asset_type', 'raise_amount', 'raise_target', 'token_price',
@@ -1261,6 +1265,7 @@ function TransactionDetailsPanel({ property, propertyId, pack }) {
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || `Server error ${res.status}`);
+      onSaved?.();
       setSaveOk(true);
       setTimeout(() => setSaveOk(false), 2500);
     } catch (err) {
@@ -1760,6 +1765,7 @@ function AssetReadinessTab({ propertyId, property, pack, onTabChange }) {
   const [events,         setEvents]         = React.useState([]);
   const [coordination,   setCoordination]   = React.useState(null);
   const [recordFields,   setRecordFields]   = React.useState([]);
+  const [readiness,      setReadiness]      = React.useState(null);
 
   React.useEffect(() => {
     if (!propertyId) return;
@@ -1768,11 +1774,13 @@ function AssetReadinessTab({ propertyId, property, pack, onTabChange }) {
       fetch(`${API_BASE}/api/public/deal-room/${propertyId}/events`, { headers: getRoomAuthHeaders(propertyId) }).then(r => r.ok ? r.json() : { events: [] }).catch(() => ({ events: [] })),
       fetch(`${API_BASE}/api/public/deal-room/${propertyId}/coordination`, { headers: getRoomAuthHeaders(propertyId) }).then(r => r.ok ? r.json() : null).catch(() => null),
       fetch(`${API_BASE}/api/public/deal-room/${propertyId}/transaction-record`, { headers: getRoomAuthHeaders(propertyId) }).then(r => r.ok ? r.json() : { fields: [] }).catch(() => ({ fields: [] })),
-    ]).then(([ck, ev, coord, record]) => {
+      fetch(`${API_BASE}/api/public/deal-room/${propertyId}/readiness`, { headers: getRoomAuthHeaders(propertyId) }).then(r => r.ok ? r.json() : null).catch(() => null),
+    ]).then(([ck, ev, coord, record, readinessData]) => {
       setChecklistItems(Array.isArray(ck?.items) ? ck.items : []);
       setEvents(ev?.events || []);
       setCoordination(coord);
       setRecordFields(record?.fields || []);
+      setReadiness(readinessData);
     });
   }, [propertyId]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -1906,14 +1914,14 @@ function AssetReadinessTab({ propertyId, property, pack, onTabChange }) {
   const rawWeightSum = ALL_CATEGORIES.reduce((a, c) => a + c.weight, 0);
   const CATEGORIES   = ALL_CATEGORIES.map(c => ({ ...c, weight: c.weight / rawWeightSum }));
 
-  const overall      = Math.round(CATEGORIES.reduce((a, c) => a + c.pct * c.weight, 0));
+  const locallyComputedOverall = Math.round(CATEGORIES.reduce((a, c) => a + c.pct * c.weight, 0));
+  const overall = Number(readiness?.transaction_readiness?.overall_pct ?? locallyComputedOverall);
   // Every transaction has the same core outcome: a verified record that is
   // ready for closing. Digital-asset preparation is an optional downstream
   // layer, never the primary status of the transaction.
   const readinessTitle = 'Transaction Readiness';
-  const overallLabel = overall >= 80 ? 'Closing Ready'
-    : overall >= 55 ? 'Needs Review'
-    : 'Needs Attention';
+  const overallLabel = readiness?.transaction_readiness?.status
+    || (overall === 0 ? 'Getting Started' : overall >= 80 ? 'Closing Ready' : overall >= 55 ? 'Needs Review' : 'Needs Attention');
   const overallColor = overall >= 80 ? '#16a34a' : overall >= 55 ? '#d97706' : '#dc2626';
   const overallBg    = overall >= 80 ? '#f0fdf4' : overall >= 55 ? '#fffbeb' : '#fef2f2';
 
@@ -3634,14 +3642,19 @@ function RoomCopilot({ propertyId }) {
 // Adapated from the OperationsManagerView stage bar. Shows every effective stage
 // (including settlement when enabled) as a horizontal progression. The current
 // stage is highlighted; past stages show a checkmark; future stages are muted.
-function StageLifecycleBar({ stages = [], currentStageKey, compact = false }) {
+function StageLifecycleBar({
+  stages = [],
+  currentStageKey,
+  compact = false,
+  supportingDocumentPresent = null,
+}) {
   if (stages.length === 0) return null;
   const currentIdx = Math.max(0, stages.findIndex(s => s.key === currentStageKey));
   return (
     <div className={`${compact ? 'mt-5 pt-4' : 'mt-4 pt-4'} border-t border-gray-100`}>
       <div className="mb-2 flex items-center justify-between gap-3">
         <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Transaction lifecycle</p>
-        {compact && <p className="text-[10px] text-gray-400">Operational position</p>}
+        {compact && <p className="text-[10px] text-gray-400">Coordinator-reported · documents and confirmed facts are separate</p>}
       </div>
       <div className={`flex items-center ${compact ? 'gap-1' : 'items-start gap-1'}`}>
         {stages.map((s, i) => {
@@ -3656,7 +3669,7 @@ function StageLifecycleBar({ stages = [], currentStageKey, compact = false }) {
                            : 'bg-gray-100 text-gray-300'}`}>
                   {!compact && (done ? '✓' : (s.icon || '·'))}
                 </div>
-                <p className={`${compact ? 'text-[10px]' : 'w-full px-0.5 text-[9px] text-center'} font-semibold leading-tight truncate
+                <p className={`${compact ? 'text-[10px]' : 'w-full px-0.5 text-[9px] text-center'} font-semibold leading-tight break-words
                   ${active ? 'text-[#800020]' : done ? 'text-gray-500' : 'text-gray-300'}`}>
                   {s.label}
                 </p>
@@ -3668,8 +3681,33 @@ function StageLifecycleBar({ stages = [], currentStageKey, compact = false }) {
           );
         })}
       </div>
+      {supportingDocumentPresent !== null && (
+        <p className={`mt-2 text-[10px] ${supportingDocumentPresent ? 'text-gray-400' : 'font-medium text-amber-600'}`}>
+          {supportingDocumentPresent
+            ? 'Supporting documents are tracked separately from the coordinator-reported stage.'
+            : 'Supporting document missing.'}
+        </p>
+      )}
     </div>
   );
+}
+
+function normalizeLifecycleStages(stages) {
+  return (stages || []).map(stage =>
+    /loi\s+(sent|submitted|signed)/i.test(String(stage.label || ''))
+      ? { ...stage, label: 'LOI Executed' }
+      : stage
+  );
+}
+
+function getLifecycleEvidenceSections(stage) {
+  if (!stage) return null;
+  const text = `${stage.key || ''} ${stage.label || ''}`.toLowerCase();
+  if (/\bnda\b|non[-\s]?disclosure/.test(text)) return ['nda', 'non_disclosure_agreement', 'non-disclosure_agreement'];
+  if (/\bloi\b|letter of intent/.test(text)) return ['loi', 'letter_of_intent'];
+  if (/purchase agreement|purchase_agreement|definitive agreement/.test(text)) return ['purchase_agreement', 'definitive_agreement'];
+  if (/closing|closed|funded|settlement|complete/.test(text)) return ['purchase_agreement', 'closing_statement', 'settlement_statement'];
+  return null;
 }
 
 // ── Transaction Seal Summary (complete phase) ─────────────────────────────────
@@ -3733,6 +3771,7 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
   const [coordination, setCoordination] = useState(null);
   const [checklistItems, setChecklistItems] = useState([]);
   const [events, setEvents]             = useState([]);
+  const [analyses, setAnalyses]         = useState([]);
   const [stages, setStages]             = useState([]);
   const [recordFields, setRecordFields] = useState([]);
   const [readiness, setReadiness]       = useState(null);
@@ -3749,7 +3788,7 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
     const get = (path, fallback) => fetch(`${API_BASE}${path}`, { headers })
       .then(r => r.ok ? r.json() : fallback)
       .catch(() => fallback);
-    const [brief, coord, stageData, record, readinessData, checklist, eventData] = await Promise.all([
+    const [brief, coord, stageData, record, readinessData, checklist, eventData, analysisData] = await Promise.all([
       get(`/api/public/deal-room/${propertyId}/brain/briefing`, null),
       get(`/api/public/deal-room/${propertyId}/coordination`, null),
       get(`/api/public/deal-room/${propertyId}/stages`, { stages: [] }),
@@ -3757,14 +3796,16 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
       get(`/api/public/deal-room/${propertyId}/readiness`, null),
       get(`/api/public/deal-room/${propertyId}/checklist`, { items: [] }),
       get(`/api/public/deal-room/${propertyId}/events`, { events: [] }),
+      get(`/api/public/deal-room/${propertyId}/analyses`, { analyses: [] }),
     ]);
     setBriefing(brief);
     setCoordination(coord);
-    setStages(Array.isArray(stageData?.stages) && stageData.stages.length >= 2 ? stageData.stages : (pack.stages || []));
+    setStages(normalizeLifecycleStages(Array.isArray(stageData?.stages) && stageData.stages.length >= 2 ? stageData.stages : (pack.stages || [])));
     setRecordFields(Array.isArray(record?.fields) ? record.fields : []);
     setReadiness(readinessData);
     setChecklistItems(Array.isArray(checklist?.items) ? checklist.items : []);
     setEvents(Array.isArray(eventData?.events) ? eventData.events : []);
+    setAnalyses(Array.isArray(analysisData?.analyses) ? analysisData.analyses : []);
     setLoading(false);
   // refreshKey is intentionally included so any document upload (which bumps
   // analysesRefreshKey in DealRoomPage) immediately triggers a re-fetch here,
@@ -3781,7 +3822,9 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
   const currentStageKey   = coordination?.stage || stages[0]?.key;
   const currentStageIndex = Math.max(0, stages.findIndex(s => s.key === currentStageKey));
   const currentStage      = stages[currentStageIndex];
-  const closingDate       = property?.closing_date || property?.target_close_date || property?.close_date;
+  const closingDate       = recordFields.find(field =>
+    field.field_key === 'transaction.closing_date' && field.status === 'verified'
+  )?.value_text || property?.closing_date || property?.target_close_date || property?.close_date;
 
   // Effective stages include settlement/complete when the room has settlement
   // capability enabled — uses the same getEffectiveStages() as OperationsManagerView.
@@ -3790,6 +3833,10 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
     property,
     stages,
   );
+  const milestoneEvidenceSections = getLifecycleEvidenceSections(currentStage);
+  const supportingDocumentPresent = milestoneEvidenceSections
+    ? analyses.some(analysis => milestoneEvidenceSections.includes(analysis.section))
+    : null;
 
   // Readiness phase drives which panel appears in position 3 of the Overview.
   const readinessPhase = (() => {
@@ -3809,27 +3856,22 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
     property?.metadata_values?.tokenization_enabled
   );
 
-  const readinessPct = readiness?.transaction_readiness?.overall_pct
-    ?? readiness?.overall_score
-    ?? null;
+  const readinessPct = readiness?.transaction_readiness?.overall_pct ?? null;
   const readinessStatus = readiness?.transaction_readiness?.status
-    || readiness?.status
-    || 'Building';
+    || (readinessPct === 0 ? 'Getting Started' : 'Building');
   const recordSchemaKey = resolveSchemaKey(packId, pack, property?.name || property?.property_name);
-  const requiredRecordFields = Object.values(getPackRecordSchema(recordSchemaKey))
-    .flat()
-    .filter(field => field.workflowRequired);
+  const requiredRecordFields = getRequiredRecordFields(recordSchemaKey);
   const confirmedRecordFieldKeys = new Set(
     recordFields
       .filter(field => {
         const value = String(field.value_text || '').trim().toLowerCase();
-        return value && !['n/a', 'na', 'not applicable', 'not_applicable', 'unknown'].includes(value)
-          && field.status !== 'not_applicable';
+        return field.status === 'verified'
+          && value && !['n/a', 'na', 'not applicable', 'not_applicable', 'unknown'].includes(value);
       })
       .map(field => field.field_key),
   );
   const confirmedRequiredCount = requiredRecordFields.filter(field =>
-    confirmedRecordFieldKeys.has(field.key) || confirmedRecordFieldKeys.has(field.aliasOf)
+    confirmedRecordFieldKeys.has(field.canonicalKey || field.key)
   ).length;
 
   return (
@@ -3869,7 +3911,7 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
               <span className="text-xs font-semibold text-gray-500">{readinessStatus}</span>
             </div>
             <p className="mt-1 max-w-xs text-xs leading-relaxed text-gray-400">
-              Operational readiness across documents, workspace facts, activity, and compliance signals.
+              Completeness and confirmation of the structured Transaction Record.
             </p>
             {requiredRecordFields.length > 0 && (
               <p className="mt-2 text-[11px] text-gray-500">
@@ -3895,7 +3937,18 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
           />
         </div>
 
-        <StageLifecycleBar stages={effectiveStages} currentStageKey={currentStageKey} compact />
+        <TransactionDetailsPanel
+          propertyId={propertyId}
+          property={property}
+          pack={pack}
+          onSaved={load}
+        />
+        <StageLifecycleBar
+          stages={effectiveStages}
+          currentStageKey={currentStageKey}
+          compact
+          supportingDocumentPresent={supportingDocumentPresent}
+        />
 
         <div className="mt-6 border-t border-gray-100 pt-5">
           {readinessPhase === 'settlement' && (
@@ -5685,6 +5738,7 @@ export default function DealRoomPage() {
                     packReady={packReady}
                     onAnalysisSaved={onAnalysisSaved}
                     refreshKey={analysesRefreshKey}
+                    onPeople={() => setActiveTab('people')}
                   />
                 </div>
               </>
@@ -5700,7 +5754,7 @@ export default function DealRoomPage() {
                   pack.roles?.find(r => r.canManage === true) || {
                     key: 'deal_coordinator',
                     icon: '🏢',
-                    label: 'Deal Coordinator',
+                    label: 'Deal Owner',
                     color: '#800020',
                   }
                 ) : null}

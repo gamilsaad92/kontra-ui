@@ -24,6 +24,11 @@ mkdir -p "$ROOT/ui/src/shared"
 cp -r "$ROOT/kontra-ui-clone/shared/." "$ROOT/ui/src/shared/"
 echo "✓   ui/src/shared/ updated"
 
+echo "🔄  Syncing kontra-ui-clone/shared → shared …"
+mkdir -p "$ROOT/shared"
+cp -r "$ROOT/kontra-ui-clone/shared/." "$ROOT/shared/"
+echo "✓   shared/ updated"
+
 echo "🔄  Syncing kontra-ui-clone/shared → kontra-ui-clone/ui/src/shared …"
 mkdir -p "$ROOT/kontra-ui-clone/ui/src/shared"
 cp -r "$ROOT/kontra-ui-clone/shared/." "$ROOT/kontra-ui-clone/ui/src/shared/"
@@ -44,6 +49,8 @@ if [ -d "$ROOT/kontra-ui-clone/api" ] && [ -d "$ROOT/api" ]; then
     done
   echo "✓   api/ updated"
 fi
+
+node "$ROOT/scripts/validate-transaction-record-requirements.mjs"
 
 echo ""
 echo "✅  Sync complete."

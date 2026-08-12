@@ -241,7 +241,7 @@ export default function ParticipantsPanel({
     ? [resolvedCoordinatorRole || metadataOwnerRole || {
         key: 'deal_coordinator',
         icon: '🏢',
-        label: 'Deal Coordinator',
+        label: 'Deal Owner',
         color: '#800020',
       }]
     : metadataCoordinatorRoles;

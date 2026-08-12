@@ -22,6 +22,7 @@ export default function DocumentsTabPanel({
   onAnalysisSaved,
   refreshKey,
   jurisdiction,
+  onPeople,
 }) {
   return (
     <div className="mb-6">
@@ -35,6 +36,7 @@ export default function DocumentsTabPanel({
         onAnalysisSaved={onAnalysisSaved}
         refreshKey={refreshKey}
         jurisdiction={jurisdiction}
+        onPeople={onPeople}
       />
       <VerificationPanel
         propertyId={propertyId}

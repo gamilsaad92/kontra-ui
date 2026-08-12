@@ -3,7 +3,8 @@
   "private": true,
   "scripts": {
     "build": "npm --prefix ui run build",
-    "test": "npm --prefix ui test"
+    "test": "npm --prefix ui test",
+    "validate:requirements": "node scripts/validate-transaction-record-requirements.mjs"
   },
   "dependencies": {
     "@clerk/nextjs": "^6.27.1",
