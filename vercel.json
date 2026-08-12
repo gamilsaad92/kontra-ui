@@ -5,7 +5,7 @@
   "rewrites": [
     {
       "source": "/api/(.*)",
-      "destination": "https://kontra-api.onrender.com/api/$1"
+      "destination": "https://kontra-api-launch-validation.onrender.com/api/$1"
     },
     {
       "source": "/((?!.*\\.).*)",
@@ -13,8 +13,8 @@
     }
   ],
   "env": {
-    "VITE_API_BASE_URL": "https://kontra-api.onrender.com",
-    "VITE_API_URL": "https://kontra-api.onrender.com",
+    "VITE_API_BASE_URL": "https://kontra-api-launch-validation.onrender.com",
+    "VITE_API_URL": "https://kontra-api-launch-validation.onrender.com",
     "VITE_SUPABASE_URL": "https://jfhojgtnmcfqretrrxam.supabase.co"
   },
   "headers": [
