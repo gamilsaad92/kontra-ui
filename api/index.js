@@ -36,6 +36,10 @@ const { runVerification } = require('./lib/verificationEngine');
 const verifiedAssetPackageRouter = require('./routers/verifiedAssetPackage');
 const { generateAndStoreVAP } = require('./routers/verifiedAssetPackage');
 const { evaluateDealRoomForTasks, evaluateReadinessTasks } = require('./lib/taskEngine');
+const {
+  canonicalizeTransactionRecordKey,
+  aliasKeysForCanonical,
+} = require('./lib/transactionRecordCanonicalization');
 
 // Pack inference map — mirrors DEAL_TYPE_TO_PACK in dealRoomHelpers.js so that
 // room creation writes the correct workflow_pack_id from day one.
@@ -2688,6 +2692,156 @@ const DOC_ASSIGNMENTS = (() => {
   } catch { return {}; }
 })();
 
+const TRANSACTION_RECORD_REQUIREMENTS = (() => {
+  try {
+    return require('../shared/transaction_record_requirements.json');
+  } catch { return {}; }
+})();
+
+const TRANSACTION_RECORD_METADATA_FIELDS = {
+  target_close_date: {
+    fieldKey: 'transaction.closing_date',
+    fieldCategory: 'transaction',
+    displayLabel: 'Target closing date',
+  },
+};
+
+function metadataTransactionValueField(schemaKey) {
+  if (schemaKey === 'cre_acquisition' || schemaKey === 'business_acquisition') {
+    return {
+      fieldKey: 'transaction.purchase_price',
+      fieldCategory: 'transaction',
+      displayLabel: 'Transaction value',
+    };
+  }
+  if (schemaKey === 'fundraising') {
+    return {
+      fieldKey: 'financial.target_raise',
+      fieldCategory: 'financial',
+      displayLabel: 'Transaction value',
+    };
+  }
+  if (schemaKey === 'tokenization') {
+    return {
+      fieldKey: 'transaction.target_raise',
+      fieldCategory: 'transaction',
+      displayLabel: 'Transaction value',
+    };
+  }
+  return {
+    fieldKey: 'transaction.value',
+    fieldCategory: 'transaction',
+    displayLabel: 'Transaction value',
+  };
+}
+
+async function getTransactionRecordSchemaKey(room) {
+  let schemaKey = room?.workflow_pack_id
+    || DEAL_TYPE_TO_PACK_INDEX[room?.deal_type]
+    || 'generic';
+  if (!TRANSACTION_RECORD_REQUIREMENTS[schemaKey] && schemaKey.startsWith('ws_')) {
+    try {
+      const { data: customPack } = await supabase
+        .from('custom_workflow_packs')
+        .select('config')
+        .eq('id', schemaKey)
+        .maybeSingle();
+      const transactionType = customPack?.config?.transactionType;
+      if (TRANSACTION_RECORD_REQUIREMENTS[transactionType]) schemaKey = transactionType;
+    } catch (e) {
+      console.warn('[transaction-record] custom pack schema lookup failed:', e.message);
+    }
+  }
+  if (!TRANSACTION_RECORD_REQUIREMENTS[schemaKey]) schemaKey = 'generic';
+  return schemaKey;
+}
+
+function formatMetadataRecordValue(fieldId, value) {
+  if (fieldId !== 'transaction_value') return String(value).slice(0, 2000);
+  const numeric = Number(String(value).replace(/[$,\s]/g, ''));
+  return Number.isFinite(numeric) && numeric > 0
+    ? `$${numeric.toLocaleString('en-US')}`
+    : String(value).slice(0, 2000);
+}
+
+async function syncMetadataToTransactionRecord(propertyId, values, room, actorEmail) {
+  const schemaKey = await getTransactionRecordSchemaKey(room);
+  const mappings = {
+    transaction_value: metadataTransactionValueField(schemaKey),
+    target_close_date: TRANSACTION_RECORD_METADATA_FIELDS.target_close_date,
+  };
+
+  for (const [fieldId, mapping] of Object.entries(mappings)) {
+    if (!Object.prototype.hasOwnProperty.call(values || {}, fieldId)) continue;
+    const rawValue = values[fieldId];
+    const hasValue = rawValue !== null && rawValue !== undefined && String(rawValue).trim() !== '';
+    const now = new Date().toISOString();
+    const { data: existing, error: findError } = await supabase
+      .from('transaction_record_fields')
+      .select('id, value_text, status')
+      .eq('property_id', propertyId)
+      .eq('field_key', mapping.fieldKey)
+      .maybeSingle();
+    if (findError) throw findError;
+
+    const nextValue = hasValue ? formatMetadataRecordValue(fieldId, rawValue) : null;
+    const nextStatus = hasValue ? 'verified' : 'missing';
+    const update = {
+      field_category: mapping.fieldCategory,
+      display_label: mapping.displayLabel,
+      value_text: nextValue,
+      status: nextStatus,
+      confidence: null,
+      source_doc_id: null,
+      source_page: null,
+      source_excerpt: null,
+      extracted_by: hasValue ? 'deal_owner' : null,
+      verified_by: hasValue ? (actorEmail || 'Deal Owner') : null,
+      verified_role: hasValue ? 'Deal Owner' : null,
+      verified_at: hasValue ? now : null,
+      updated_at: now,
+    };
+
+    let fieldIdValue = existing?.id;
+    if (existing?.id) {
+      const { error } = await supabase
+        .from('transaction_record_fields')
+        .update(update)
+        .eq('id', existing.id)
+        .eq('property_id', propertyId);
+      if (error) throw error;
+    } else {
+      const { data: inserted, error } = await supabase
+        .from('transaction_record_fields')
+        .insert({
+          property_id: propertyId,
+          field_key: mapping.fieldKey,
+          created_at: now,
+          ...update,
+        })
+        .select('id')
+        .single();
+      if (error) throw error;
+      fieldIdValue = inserted?.id;
+    }
+
+    if (fieldIdValue && (existing?.value_text !== nextValue || existing?.status !== nextStatus)) {
+      await recordTransactionFieldHistory({
+        fieldId: fieldIdValue,
+        propertyId,
+        eventType: 'manual_edit',
+        actorEmail: actorEmail || 'Deal Owner',
+        actorRole: 'Deal Owner',
+        priorValue: existing?.value_text || null,
+        newValue: nextValue,
+        priorStatus: existing?.status || null,
+        newStatus: nextStatus,
+        metadata: { source: 'deal_owner_input', metadataField: fieldId },
+      });
+    }
+  }
+}
+
 function getSectionAssignments(packId, propertyType) {
   const pack = DOC_ASSIGNMENTS[packId];
   if (!pack) return null;
@@ -2967,11 +3121,14 @@ app.get('/api/public/deal-room/:propertyId/analyses', async (req, res) => {
       return true;
     }).map(a => ({ ...a, versionHistory: history[a.section] || [] }));
 
-    // Role-scoped filtering: if caller provided ?role=, hide sections not assigned to them.
-    // Coordinator roles (canManage) always see everything.
+    // Role-scoped filtering applies to participants only. The owner access
+    // context is authenticated by the room's owner_write_token and carries
+    // viewAllDocuments=true, so owner visibility must not depend on a
+    // participant role name or the pack's assignment map.
     // Custom sections (not in the assignments map) are always visible to all.
     let filtered = deduped;
-    if (role && packId && !isCoordinatorRole(packId, role)) {
+    const canViewAllDocuments = access.permissions?.viewAllDocuments === true;
+    if (!canViewAllDocuments && role && packId && !isCoordinatorRole(packId, role)) {
       const assignments = getSectionAssignments(packId, propertyType);
       if (assignments) {
         filtered = deduped.filter(a => {
@@ -3006,15 +3163,6 @@ app.get('/api/public/deal-room/:propertyId/analyses', async (req, res) => {
 // Runs after document analysis. Extracts structured fields from document text
 // and merges them into transaction_record_fields. Existing 'verified' fields
 // are never overwritten. Conflicting extractions are flagged for coordinator review.
-const TRANSACTION_RECORD_CANONICAL_KEYS = {
-  'financial.purchase_price': 'transaction.purchase_price',
-  'financial.deal_value': 'transaction.value',
-};
-
-function canonicalTransactionRecordKey(fieldKey) {
-  return TRANSACTION_RECORD_CANONICAL_KEYS[fieldKey] || fieldKey;
-}
-
 const TRANSACTION_RECORD_DEPENDENCIES = {
   'transaction.financing_contingency': [
     'parties.lender',
@@ -3086,6 +3234,12 @@ async function markDependentTransactionFieldsNotApplicable(propertyId, dependenc
 async function extractTransactionFields(propertyId, docId, text, sectionLabel) {
   if (!text || text.trim().length < 50) return;
   try {
+    const { data: room } = await supabase
+      .from('deal_rooms')
+      .select('workflow_pack_id, deal_type')
+      .eq('property_id', propertyId)
+      .maybeSingle();
+    const schemaKey = await getTransactionRecordSchemaKey(room);
     const completion = await openai.chat.completions.create({
       model: 'gpt-4o-mini',
       messages: [
@@ -3108,13 +3262,45 @@ async function extractTransactionFields(propertyId, docId, text, sectionLabel) {
 
     for (const f of extracted) {
       if (!f.field_key || !f.field_category || !f.value_text) continue;
-      const canonicalKey = canonicalTransactionRecordKey(String(f.field_key));
-      const { data: existing } = await supabase
+      const canonicalKey = canonicalizeTransactionRecordKey(String(f.field_key), schemaKey);
+      const aliasKeys = aliasKeysForCanonical(canonicalKey, schemaKey);
+      const { data: existingRows } = await supabase
         .from('transaction_record_fields')
-        .select('id, status, value_text, verified_by, verified_role')
+        .select('id, field_key, status, value_text, source_doc_id, source_page, source_excerpt, verified_by, verified_role')
         .eq('property_id', propertyId)
-        .eq('field_key', canonicalKey)
-        .maybeSingle();
+        .in('field_key', aliasKeys);
+      let existing = (existingRows || []).find(row => row.field_key === canonicalKey)
+        || (existingRows || [])[0]
+        || null;
+      const aliasRows = (existingRows || []).filter(row => row.id !== existing?.id);
+
+      // Migrate a legacy alias row in place when no canonical row exists. If
+      // both exist, keep one canonical row and remove duplicate alias rows.
+      if (existing && existing.field_key !== canonicalKey) {
+        const { error: aliasMoveError } = await supabase
+          .from('transaction_record_fields')
+          .update({ field_key: canonicalKey })
+          .eq('id', existing.id)
+          .eq('property_id', propertyId);
+        if (aliasMoveError) throw aliasMoveError;
+        existing = { ...existing, field_key: canonicalKey };
+      }
+      if (aliasRows.length > 0 && existing) {
+        const aliasWithSource = aliasRows.find(row => row.source_doc_id);
+        if (!existing.source_doc_id && aliasWithSource?.source_doc_id) {
+          await supabase.from('transaction_record_fields').update({
+            source_doc_id: aliasWithSource.source_doc_id,
+            source_page: aliasWithSource.source_page || null,
+            source_excerpt: aliasWithSource.source_excerpt || null,
+          }).eq('id', existing.id).eq('property_id', propertyId);
+        }
+        const { error: duplicateDeleteError } = await supabase
+          .from('transaction_record_fields')
+          .delete()
+          .eq('property_id', propertyId)
+          .in('id', aliasRows.map(row => row.id));
+        if (duplicateDeleteError) throw duplicateDeleteError;
+      }
 
       const priorValue = existing?.value_text || null;
       const priorStatus = existing?.status || null;
@@ -3122,10 +3308,12 @@ async function extractTransactionFields(propertyId, docId, text, sectionLabel) {
       const eventType = existing?.status === 'verified' && differs
         ? 'source_changed'
         : differs ? 'conflict' : 'extracted';
-      const nextStatus = eventType === 'source_changed'
-        ? 'source_changed'
-        : eventType === 'conflict' ? 'conflicting' : 'extracted';
-      const nextValue = eventType === 'source_changed'
+      const nextStatus = existing?.status === 'verified'
+        ? 'verified'
+        : eventType === 'source_changed'
+          ? 'source_changed'
+          : eventType === 'conflict' ? 'conflicting' : 'extracted';
+      const nextValue = existing?.status === 'verified' || eventType === 'source_changed'
         ? existing.value_text
         : String(f.value_text).slice(0, 2000);
 
@@ -4373,7 +4561,7 @@ app.patch('/api/public/deal-room/:propertyId/metadata', async (req, res) => {
 
   const { data: room, error: authErr } = await supabase
     .from('deal_rooms')
-    .select('owner_write_token')
+    .select('owner_write_token, workflow_pack_id, deal_type')
     .eq('property_id', propertyId)
     .maybeSingle();
   if (authErr) return res.status(500).json({ error: authErr.message });
@@ -4390,9 +4578,11 @@ app.patch('/api/public/deal-room/:propertyId/metadata', async (req, res) => {
   for (const [k, v] of Object.entries(values)) {
     if (Object.keys(sanitized).length >= 64) break;
     if (typeof k !== 'string' || k.length > 80) continue;
-    if (v === null || v === undefined || v === '') continue;
-    const strVal = String(v).slice(0, 500);
-    sanitized[k] = strVal;
+    if ((v === null || v === undefined || v === '') &&
+        !['transaction_value', 'target_close_date'].includes(k)) continue;
+    sanitized[k] = (v === null || v === undefined || v === '')
+      ? null
+      : String(v).slice(0, 500);
   }
 
   try {
@@ -4401,6 +4591,12 @@ app.patch('/api/public/deal-room/:propertyId/metadata', async (req, res) => {
       .update({ metadata_values: sanitized })
       .eq('property_id', propertyId);
     if (updateErr) throw updateErr;
+    await syncMetadataToTransactionRecord(
+      propertyId,
+      sanitized,
+      room,
+      'Deal Owner',
+    );
 
     logEvent(propertyId, 'metadata_updated', 'owner', null, 'Transaction details updated', {
       fieldCount: Object.keys(sanitized).length,
@@ -4428,7 +4624,7 @@ app.patch('/api/public/deal-room/:propertyId/metadata-merge', async (req, res) =
 
   const { data: room, error: authErr } = await supabase
     .from('deal_rooms')
-    .select('owner_write_token, metadata_values, jurisdiction')
+    .select('owner_write_token, metadata_values, jurisdiction, workflow_pack_id, deal_type')
     .eq('property_id', propertyId)
     .maybeSingle();
   if (authErr) return res.status(500).json({ error: authErr.message });
@@ -4461,6 +4657,12 @@ app.patch('/api/public/deal-room/:propertyId/metadata-merge', async (req, res) =
       .update(update)
       .eq('property_id', propertyId);
     if (updateErr) throw updateErr;
+    await syncMetadataToTransactionRecord(
+      propertyId,
+      values,
+      room,
+      'Deal Owner',
+    );
 
     logEvent(propertyId, 'metadata_updated', 'owner', null, 'Workspace settings updated', {
       keys: Object.keys(values).join(','),
@@ -5097,52 +5299,49 @@ app.get('/api/public/deal-room/:propertyId/readiness', async (req, res) => {
   if (error) return res.status(500).json({ error: error.message });
   if (!room) return res.status(404).json({ error: 'room not found' });
 
-  const [{ count: docCount }, { count: eventCount }, { data: events }, { data: recordFields }] = await Promise.all([
-    supabase.from('deal_analyses').select('id', { count: 'exact', head: true }).eq('property_id', propertyId),
-    supabase.from('deal_events').select('id', { count: 'exact', head: true }).eq('property_id', propertyId),
-    supabase.from('deal_events').select('event_type, metadata').eq('property_id', propertyId).limit(200),
-    supabase.from('transaction_record_fields').select('field_key, value_text, status').eq('property_id', propertyId),
-  ]);
+  const { data: recordFields } = await supabase
+    .from('transaction_record_fields')
+    .select('field_key, value_text, status')
+    .eq('property_id', propertyId);
 
-  const meta     = room.metadata_values || {};
-  const normalizedJurisdiction = await jurisdictionForTransaction(
-    room.jurisdiction,
-    room.workflow_pack_id,
-    room.deal_type,
-    meta,
-  );
-  const checklist = Array.isArray(room.checklist_items) ? room.checklist_items : [];
-  const DONE     = new Set(['uploaded', 'approved', 'ai_complete']);
+  const meta = room.metadata_values || {};
+  let recordSchemaKey = room.workflow_pack_id || 'generic';
+  if (!TRANSACTION_RECORD_REQUIREMENTS[recordSchemaKey] && recordSchemaKey.startsWith('ws_')) {
+    try {
+      const { data: customPack } = await supabase
+        .from('custom_workflow_packs')
+        .select('config')
+        .eq('id', recordSchemaKey)
+        .maybeSingle();
+      const transactionType = customPack?.config?.transactionType;
+      if (TRANSACTION_RECORD_REQUIREMENTS[transactionType]) recordSchemaKey = transactionType;
+    } catch (e) {
+      console.warn('[readiness] custom pack schema lookup failed:', e.message);
+    }
+  }
+  if (!TRANSACTION_RECORD_REQUIREMENTS[recordSchemaKey]) recordSchemaKey = 'generic';
 
-  const legalItems  = checklist.filter(i => i.category === 'Legal');
-  const finItems    = checklist.filter(i => i.category === 'Financial');
-  const kycItems    = checklist.filter(i => i.category === 'KYC' || (i.section || '').toLowerCase().includes('kyc'));
-  const regItems    = checklist.filter(i => i.category === 'Regulatory');
-  const reqItems    = checklist.filter(i => i.required);
-
-  const hasOwnerName = !!(room.first_name || meta.entity_name || meta.issuer_name);
-  const hasOwnerData = !!(meta.lead_investor || meta.investor_token_pct);
-  const capFields    = ['total_token_supply', 'investor_token_pct', 'team_token_pct', 'reserve_token_pct', 'lead_investor'];
-  const capFilled    = capFields.filter(f => !!meta[f]);
-
-  const categories = [
-    { name: 'Ownership Structure',    weight: 0.15, score: (hasOwnerName ? 50 : 0) + (hasOwnerData ? 50 : 0) },
-    { name: 'Legal Documentation',    weight: 0.15, score: legalItems.length > 0 ? Math.round((legalItems.filter(i => DONE.has(i.status)).length / legalItems.length) * 100) : docCount > 0 ? 40 : 0 },
-    { name: 'Financial Completeness', weight: 0.12, score: finItems.length > 0 ? Math.round((finItems.filter(i => DONE.has(i.status)).length / finItems.length) * 80 + (!!(meta.raise_amount || meta.token_price) ? 20 : 0)) : (!!(meta.raise_amount) ? 50 : docCount > 2 ? 25 : 0) },
-    { name: 'Identity Verification',  weight: 0.12, score: kycItems.length > 0 ? Math.round((kycItems.filter(i => DONE.has(i.status)).length / kycItems.length) * 100) : 0 },
-    { name: 'Cap Table',              weight: 0.12, score: Math.round((capFilled.length / capFields.length) * 100) },
-    { name: 'Audit Trail',            weight: 0.12, score: Math.min(Math.round(((eventCount || 0) / 10) * 100), 100) },
-    { name: 'Compliance',             weight: 0.12, score: regItems.length > 0 ? Math.round((normalizedJurisdiction ? 30 : 0) + 70 * (regItems.filter(i => DONE.has(i.status)).length / regItems.length)) : (normalizedJurisdiction ? 40 : 0) },
-    { name: 'Document Integrity',     weight: 0.10, score: reqItems.length > 0 ? Math.round((reqItems.filter(i => DONE.has(i.status)).length / reqItems.length) * 100) : Math.min(Math.round(((docCount || 0) / 5) * 100), 70) },
-  ];
-
-  const overall      = Math.round(categories.reduce((a, c) => a + c.score * c.weight, 0));
-  const overallLabel = overall >= 80 ? 'Closing Ready' : overall >= 55 ? 'Needs Review' : 'Needs Attention';
+  const requiredKeys = TRANSACTION_RECORD_REQUIREMENTS[recordSchemaKey] || [];
+  const canonicalKey = field => canonicalizeTransactionRecordKey(field, recordSchemaKey);
   const populatedRecordFields = (recordFields || []).filter(field => {
     const value = String(field.value_text || '').trim().toLowerCase();
     return value && !['n/a', 'na', 'not applicable', 'not_applicable', 'unknown'].includes(value)
-      && field.status !== 'not_applicable';
+      && field.status === 'verified';
   });
+  const notApplicableKeys = new Set((recordFields || [])
+    .filter(field => field.status === 'not_applicable')
+    .map(field => canonicalKey(field.field_key)));
+  const activeRequiredKeys = requiredKeys.filter(key => !notApplicableKeys.has(key));
+  const confirmedRequiredKeys = new Set(populatedRecordFields.map(field => canonicalKey(field.field_key)));
+  const confirmedRequiredCount = activeRequiredKeys.filter(key => confirmedRequiredKeys.has(key)).length;
+  const requiredFieldCount = activeRequiredKeys.length;
+  const overall = requiredFieldCount > 0
+    ? Math.round((confirmedRequiredCount / requiredFieldCount) * 100)
+    : 0;
+  const categories = [
+    { name: 'Structured Transaction Record', weight: 1, score: overall },
+  ];
+  const overallLabel = overall >= 80 ? 'Closing Ready' : overall >= 55 ? 'Needs Review' : overall === 0 ? 'Getting Started' : 'Needs Attention';
   const hasTransactionFact = populatedRecordFields.some(field => field.field_key?.startsWith('transaction.'));
   const hasAssetOrPartyFact = populatedRecordFields.some(field =>
     field.field_key?.startsWith('asset.') || field.field_key?.startsWith('parties.')
@@ -5169,11 +5368,15 @@ app.get('/api/public/deal-room/:propertyId/readiness', async (req, res) => {
     status:              overallLabel,
     closing_ready:       overall >= 80,
     transaction_ready:   overall >= 80,
-    tokenization_ready:  overall >= 80,
+    tokenization_ready: digitalAssetReadinessSufficient
+      && (meta.digital_asset_enabled === true || meta.digital_asset_enabled === 'true'
+        || room.workflow_pack_id === 'tokenization' || room.deal_type === 'tokenization'),
     transaction_readiness: {
       overall_pct: overall,
       status: overallLabel,
       categories,
+      confirmed_fields: confirmedRequiredCount,
+      required_fields: requiredFieldCount,
     },
     digital_asset_readiness: {
       status: digitalAssetReadinessStatus,
@@ -5193,7 +5396,7 @@ app.get('/api/public/deal-room/:propertyId/readiness', async (req, res) => {
           },
         }
       : {}),
-    note:                'Suggested operational readiness score — not a legal, regulatory, or settlement determination.',
+    note:                'Transaction Record completeness and confirmation only — not a legal, regulatory, or settlement determination.',
     schema_version:      '1.0',
     generated_at:        new Date().toISOString(),
   });

@@ -1,3 +1,5 @@
+import REQUIRED_KEYS_BY_SCHEMA from "../../shared/transaction_record_requirements.json";
+
 // ── Transaction Record Schema ─────────────────────────────────────────────────
 //
 // Each workflow pack declares the structured fields Kontra expects to build
@@ -22,7 +24,9 @@ const UNIVERSAL_TRANSACTION_FIELDS = [
   { key: "transaction.type",         label: "Transaction type",        workflowRequired: true,  setup: "deal_type"         },
   { key: "transaction.stage",        label: "Current stage",           workflowRequired: true,  setup: "stage"             },
   { key: "transaction.closing_date", label: "Target closing date",     workflowRequired: true,  setup: "closing_date"      },
-  { key: "transaction.value",        label: "Transaction value",       workflowRequired: false, setup: "transaction_value" },
+  // Acquisition packs use transaction.purchase_price as the canonical fact.
+  // Keep this universal display field optional so aliases cannot count twice.
+  { key: "transaction.value",        label: "Transaction value",       workflowRequired: false, setup: "transaction_value", aliasOf: "transaction.purchase_price" },
   { key: "transaction.jurisdiction", label: "Jurisdiction",            workflowRequired: true,  setup: "jurisdiction"      },
 ];
 
@@ -436,6 +440,21 @@ export function getPackRecordSchema(schemaKey) {
 
 export function getSummaryFieldKeys(schemaKey) {
   return new Set(SUMMARY_KEYS_BY_SCHEMA[schemaKey] || SUMMARY_KEYS_BY_SCHEMA.generic);
+}
+
+export function getRequiredRecordFields(schemaKey) {
+  const schema = getPackRecordSchema(schemaKey);
+  const requiredKeys = new Set(
+    REQUIRED_KEYS_BY_SCHEMA[schemaKey] || REQUIRED_KEYS_BY_SCHEMA.generic
+  );
+  const fields = Object.values(schema).flat();
+  const seenCanonicalKeys = new Set();
+  return fields.filter(field => {
+    const key = field.canonicalKey || field.key;
+    if (!requiredKeys.has(key) || seenCanonicalKeys.has(key)) return false;
+    seenCanonicalKeys.add(key);
+    return true;
+  });
 }
 
 /**

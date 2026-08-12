@@ -17,7 +17,11 @@ import { API_BASE as RESOLVED_API_BASE } from "../../lib/apiBase";
 import DealRoomPinGate from "./DealRoomPinGate";
 import { getInviteSession, getRoomAuthHeaders } from "../../lib/inviteUtils";
 import SettlementReadinessPanel from "./SettlementReadinessPanel";
-import { getPackRecordSchema, resolveSchemaKey } from "../../lib/workflowPacks/transactionRecordSchema";
+import {
+  getPackRecordSchema,
+  getRequiredRecordFields,
+  resolveSchemaKey,
+} from "../../lib/workflowPacks/transactionRecordSchema";
 import {
   getExternalParticipantRoles,
   isRoleSatisfiedByWorkspaceOwner,
@@ -1206,7 +1210,7 @@ function useDealAnalyses(propertyId, refreshKey) {
 // universal fields when the pack provides none (e.g. custom ws_* workspaces).
 // Saves to `metadata_values` JSONB column via PATCH …/:propertyId/metadata.
 // Auth: owner write token read from localStorage (same pattern as stages PATCH).
-function TransactionDetailsPanel({ property, propertyId, pack }) {
+function TransactionDetailsPanel({ property, propertyId, pack, onSaved }) {
   const isLegacyTokenPack = pack?.id === 'tokenization' || pack?.transactionType === 'tokenization';
   const hiddenLaunchFields = new Set([
     'asset_type', 'raise_amount', 'raise_target', 'token_price',
@@ -1261,6 +1265,7 @@ function TransactionDetailsPanel({ property, propertyId, pack }) {
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || `Server error ${res.status}`);
+      onSaved?.();
       setSaveOk(true);
       setTimeout(() => setSaveOk(false), 2500);
     } catch (err) {
@@ -1760,6 +1765,7 @@ function AssetReadinessTab({ propertyId, property, pack, onTabChange }) {
   const [events,         setEvents]         = React.useState([]);
   const [coordination,   setCoordination]   = React.useState(null);
   const [recordFields,   setRecordFields]   = React.useState([]);
+  const [readiness,      setReadiness]      = React.useState(null);
 
   React.useEffect(() => {
     if (!propertyId) return;
@@ -1768,11 +1774,13 @@ function AssetReadinessTab({ propertyId, property, pack, onTabChange }) {
       fetch(`${API_BASE}/api/public/deal-room/${propertyId}/events`, { headers: getRoomAuthHeaders(propertyId) }).then(r => r.ok ? r.json() : { events: [] }).catch(() => ({ events: [] })),
       fetch(`${API_BASE}/api/public/deal-room/${propertyId}/coordination`, { headers: getRoomAuthHeaders(propertyId) }).then(r => r.ok ? r.json() : null).catch(() => null),
       fetch(`${API_BASE}/api/public/deal-room/${propertyId}/transaction-record`, { headers: getRoomAuthHeaders(propertyId) }).then(r => r.ok ? r.json() : { fields: [] }).catch(() => ({ fields: [] })),
-    ]).then(([ck, ev, coord, record]) => {
+      fetch(`${API_BASE}/api/public/deal-room/${propertyId}/readiness`, { headers: getRoomAuthHeaders(propertyId) }).then(r => r.ok ? r.json() : null).catch(() => null),
+    ]).then(([ck, ev, coord, record, readinessData]) => {
       setChecklistItems(Array.isArray(ck?.items) ? ck.items : []);
       setEvents(ev?.events || []);
       setCoordination(coord);
       setRecordFields(record?.fields || []);
+      setReadiness(readinessData);
     });
   }, [propertyId]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -1798,122 +1806,30 @@ function AssetReadinessTab({ propertyId, property, pack, onTabChange }) {
     return field?.value_text || '';
   };
 
-  // ── Category scores ─────────────────────────────────────────────────────────
-  // 1. Ownership Structure
-  const hasOwnerName = !!(
-    recordValue('asset.ownership_entity', 'ownership.acquiring_entity', 'asset.issuer') ||
-    property?.first_name || property?.entity_name || metaValues?.issuer_name
-  );
-  const hasOwnerData = !!(
-    recordValue('ownership.cap_table', 'ownership.beneficial_owners') ||
-    metaValues?.lead_investor || metaValues?.investor_token_pct || metaValues?.team_token_pct
-  );
-  const ownershipPct  = (hasOwnerName ? 50 : 0) + (hasOwnerData ? 50 : 0);
-  const ownershipMiss = [
-    ...(!hasOwnerName ? ['Owner / entity name not recorded'] : []),
-    ...(!hasOwnerData ? ['Ownership structure not defined'] : []),
-  ];
-
-  // 2. Legal Documentation
-  const legalItems = checklistItems.filter(i => i.category === 'Legal' || (i.section || '').toLowerCase().includes('agreement'));
-  const legalDone  = legalItems.filter(i => DONE.has(i.status));
-  const legalPct   = legalItems.length > 0 ? Math.round((legalDone.length / legalItems.length) * 100) : docCount > 0 ? 40 : 0;
-  const legalMiss  = legalItems.filter(i => !DONE.has(i.status) && i.required).slice(0, 2).map(i => i.label);
-
-  // 3. Financial Completeness
-  const finItems  = checklistItems.filter(i => i.category === 'Financial' || (i.section || '').toLowerCase().includes('financial'));
-  const finDone   = finItems.filter(i => DONE.has(i.status));
-  const hasFinMeta = !!(
-    recordValue('financial.noi', 'financial.revenue', 'financial.ebitda', 'financial.target_raise') ||
-    metaValues?.raise_amount || metaValues?.stated_revenue || metaValues?.stated_ebitda || metaValues?.token_price
-  );
-  const finPct    = finItems.length > 0
-    ? Math.min(Math.round((finDone.length / finItems.length) * 80 + (hasFinMeta ? 20 : 0)), 100)
-    : hasFinMeta ? 50 : docCount > 2 ? 25 : 0;
-  const finMiss   = [
-    ...finItems.filter(i => !DONE.has(i.status) && i.required).slice(0, 2).map(i => i.label),
-    ...(!hasFinMeta ? ['No financial figures recorded'] : []),
-  ];
-
-  // 4. Identity Verification
-  const kycItems  = checklistItems.filter(i => i.category === 'KYC' || (i.section || '').toLowerCase().includes('kyc'));
-  const submittedPtx = participantRows.filter(r => r.submitted || r.status === 'Approved').length;
-  const totalPtx     = Math.max(participantRows.filter(r => !r.canManage).length, 1);
-  const kycComputed  = kycItems.length > 0
-    ? Math.round((kycItems.filter(i => DONE.has(i.status)).length / kycItems.length) * 60 + (submittedPtx / totalPtx) * 40)
-    : Math.round((submittedPtx / totalPtx) * 50);
-  const identityPct  = Math.min(kycComputed, 100);
-  const identityMiss = kycItems.filter(i => !DONE.has(i.status) && i.required).slice(0, 2).map(i => i.label);
-
-  // 5. Cap Table
-  const capFields = ['total_token_supply', 'investor_token_pct', 'team_token_pct', 'reserve_token_pct', 'lead_investor'];
-  const capFilled = capFields.filter(f => !!metaValues?.[f]);
-  const capPct    = Math.round((capFilled.length / capFields.length) * 100);
-  const CAP_LABELS = { total_token_supply: 'Total supply', investor_token_pct: 'Investor %', team_token_pct: 'Team %', reserve_token_pct: 'Reserve %', lead_investor: 'Lead investor' };
-  const capMiss   = capFields.filter(f => !metaValues?.[f]).slice(0, 2).map(f => CAP_LABELS[f]);
-
-  // 6. Audit Trail
-  const auditPct  = Math.min(Math.round((events.length / 10) * 100), 100);
-  const auditMiss = events.length < 3 ? ['Fewer than 3 events — invite parties and upload documents to build trail'] : [];
-
-  // 7. Compliance
-  const regItems  = checklistItems.filter(i => i.category === 'Regulatory' || (i.section || '').toLowerCase().includes('regulatory'));
-  const regDone   = regItems.filter(i => DONE.has(i.status));
-  const hasJur    = !!(recordValue('transaction.jurisdiction') || property?.jurisdiction);
-  const compPct   = regItems.length > 0
-    ? Math.round((hasJur ? 30 : 0) + 70 * (regDone.length / regItems.length))
-    : hasJur ? 40 : 0;
-  const compMiss  = [...(!hasJur ? ['Governing jurisdiction not set'] : []), ...regItems.filter(i => !DONE.has(i.status) && i.required).slice(0, 1).map(i => i.label)];
-
-  // 8. Document Integrity
-  const reqItems = checklistItems.filter(i => i.required);
-  const reqDone  = reqItems.filter(i => DONE.has(i.status));
-  const docIntPct = reqItems.length > 0
-    ? Math.round((reqDone.length / reqItems.length) * 100)
-    : Math.min(Math.round((docCount / 5) * 100), 70);
-  const docIntMiss = reqItems.filter(i => !DONE.has(i.status)).slice(0, 2).map(i => i.label);
-
-  const ALL_CATEGORIES = [
-    { key: 'ownership',    icon: '🏛️', label: 'Ownership Structure',    pct: ownershipPct, weight: 0.15, missing: ownershipMiss, cta: 'Settings → Ownership',   onClick: () => { onTabChange?.('settings'); setTimeout(() => document.getElementById('ownership-structure')?.scrollIntoView({ behavior: 'smooth' }), 150); },
-      explanation: isAssetPack
-        ? 'Records who owns the asset, the entity structure, and beneficial ownership information required for institutional transactions and regulatory filings.'
-        : 'Records who owns the asset and the entity structure — required for due diligence, title transfer, and closing documentation.' },
-    { key: 'legal',        icon: '📋', label: 'Legal Documentation',    pct: legalPct,     weight: 0.15, missing: legalMiss,     cta: 'Upload legal docs',       onClick: () => onTabChange?.('documents'),
-      explanation: 'Executed agreements, title documents, and corporate authorizations that form the foundation of a verifiable transaction record.' },
-    { key: 'financial',    icon: '💰', label: 'Financial Completeness', pct: finPct,       weight: 0.12, missing: finMiss,       cta: 'Upload financial docs',   onClick: () => onTabChange?.('documents'),
-      explanation: isAssetPack
-        ? 'Financial statements, valuations, raise amount, and token price that enable independent assessment of the asset\'s financial position.'
-        : 'Financial statements, valuations, and key figures that enable independent assessment of the asset\'s financial position.' },
-    { key: 'identity',     icon: '🪪', label: 'Identity Verification',  pct: identityPct,  weight: 0.12, missing: identityMiss,  cta: 'Documents → KYC',         onClick: () => onTabChange?.('documents'),
-      explanation: isAssetPack
-        ? 'KYC/AML verification of all transaction parties. Required by all regulated issuance platforms and custodians before asset transfer or token issuance can proceed.'
-        : 'Identity verification of all transaction parties. Required for closing, escrow release, and regulatory compliance.' },
-    ...(isAssetPack ? [
-      { key: 'cap_table',  icon: '📊', label: 'Cap Table',              pct: capPct,       weight: 0.12, missing: capMiss,       cta: 'Settings → Ownership',   onClick: () => { onTabChange?.('settings'); setTimeout(() => document.getElementById('ownership-structure')?.scrollIntoView({ behavior: 'smooth' }), 150); },
-        explanation: 'Token allocation breakdown — investor, team, and reserve percentages, vesting schedules, and lead investor details.' },
-    ] : []),
-    { key: 'audit',        icon: '🔍', label: 'Audit Trail',            pct: auditPct,     weight: 0.12, missing: auditMiss,     cta: 'Activity tab',            onClick: () => onTabChange?.('activity'),
-       explanation: 'Complete, timestamped log of every action taken in the deal room. Forms the immutable record required by institutional auditors and counterparties.' },
-    { key: 'compliance',   icon: '✅', label: isAssetPack ? 'Compliance' : 'Deal Compliance', pct: compPct, weight: 0.12, missing: compMiss, cta: 'Settings → Jurisdiction', onClick: () => onTabChange?.('settings'),
-      explanation: isAssetPack
-        ? 'Regulatory framework compliance — jurisdiction set, required regulatory filings uploaded, and any jurisdiction-specific exemptions documented.'
-        : 'Governing framework — jurisdiction set and any required regulatory or deal-specific filings uploaded.' },
-    { key: 'doc_integrity',icon: '🔒', label: 'Document Integrity',     pct: docIntPct,    weight: 0.10, missing: docIntMiss,    cta: 'Documents tab',           onClick: () => onTabChange?.('documents'),
-      explanation: 'All required documents uploaded and AI-verified. Document integrity is the baseline requirement for the closing package and any downstream export.' },
-  ];
-
-  // Normalize weights to 1.0 after conditional cap_table exclusion
-  const rawWeightSum = ALL_CATEGORIES.reduce((a, c) => a + c.weight, 0);
-  const CATEGORIES   = ALL_CATEGORIES.map(c => ({ ...c, weight: c.weight / rawWeightSum }));
-
-  const overall      = Math.round(CATEGORIES.reduce((a, c) => a + c.pct * c.weight, 0));
-  // Every transaction has the same core outcome: a verified record that is
-  // ready for closing. Digital-asset preparation is an optional downstream
-  // layer, never the primary status of the transaction.
+  const overall      = Number(readiness?.transaction_readiness?.overall_pct || 0);
+  const confirmedRequiredFields = Number(readiness?.transaction_readiness?.confirmed_fields || 0);
+  const requiredFields = Number(readiness?.transaction_readiness?.required_fields || 0);
+  // Keep the legacy record/export surface aligned with Overview. Documents,
+  // participants, metadata, and audit events never inflate Transaction
+  // Readiness; only confirmed required record fields do.
+  const CATEGORIES = [{
+    key: 'transaction_record',
+    icon: '🧾',
+    label: 'Structured Transaction Record',
+    pct: overall,
+    weight: 1,
+    missing: requiredFields > confirmedRequiredFields
+      ? [`${requiredFields - confirmedRequiredFields} required field${requiredFields - confirmedRequiredFields === 1 ? '' : 's'} not confirmed`]
+      : [],
+    cta: 'Review Transaction Record',
+    onClick: () => onTabChange?.('overview'),
+    explanation: 'Completeness and confirmation of the structured Transaction Record. Extracted, conflicting, and needs-review values remain proposed until confirmed.',
+  }];
+  // Digital-asset preparation is an optional downstream layer, never the
+  // primary status of the transaction.
   const readinessTitle = 'Transaction Readiness';
-  const overallLabel = overall >= 80 ? 'Closing Ready'
-    : overall >= 55 ? 'Needs Review'
-    : 'Needs Attention';
+  const overallLabel = readiness?.transaction_readiness?.status
+    || (overall === 0 ? 'Getting Started' : overall >= 80 ? 'Closing Ready' : overall >= 55 ? 'Needs Review' : 'Needs Attention');
   const overallColor = overall >= 80 ? '#16a34a' : overall >= 55 ? '#d97706' : '#dc2626';
   const overallBg    = overall >= 80 ? '#f0fdf4' : overall >= 55 ? '#fffbeb' : '#fef2f2';
 
@@ -2406,6 +2322,7 @@ function WorkspaceTabNav({ activeTab, onChange }) {
             </button>
           ))}
         </div>
+        {/*
         <button
           type="button"
           onClick={() => onChange('settings')}
@@ -2422,6 +2339,7 @@ function WorkspaceTabNav({ activeTab, onChange }) {
             <circle cx="12" cy="10.5" r="2.7" />
           </svg>
         </button>
+        */}
       </div>
     </div>
   );
@@ -2753,37 +2671,48 @@ function WhatNeedsAttention({
   };
   const schemaKey = resolveSchemaKey(packId, pack, property?.name || property?.property_name);
   const recordSchema = Object.values(getPackRecordSchema(schemaKey)).flat();
-  const visibleRecordDefinitions = recordSchema.length > 0
-    ? recordSchema
-    : [
-        { key: 'parties.buyer', label: 'Buyer' },
-        { key: 'parties.seller', label: 'Seller' },
-        { key: 'asset.name', label: 'Asset name' },
-        { key: 'transaction.value', label: 'Transaction value' },
-        { key: 'transaction.purchase_price', label: 'Purchase price' },
-        { key: 'ownership.cap_table', label: 'Cap table / ownership' },
-      ];
-  const recordMissing = visibleRecordDefinitions
-    .filter(def => def.workflowRequired === true || def.required === true)
+  const requiredRecordDefinitions = getRequiredRecordFields(schemaKey);
+  const canonicalRecordKeyByStoredKey = new Map(
+    recordSchema.map(field => [field.key, field.canonicalKey || field.key])
+  );
+  const canonicalRecordKey = fieldKey =>
+    canonicalRecordKeyByStoredKey.get(fieldKey) || fieldKey;
+  const recordMissing = requiredRecordDefinitions
     .filter(def => {
-      const matches = recordFields.filter(field =>
-        field.field_key === def.key || field.field_key === def.aliasOf
+      const requiredKey = def.canonicalKey || def.key;
+      return !recordFields.some(field =>
+        canonicalRecordKey(field.field_key) === requiredKey && isRecordValue(field)
       );
-      return !matches.some(isRecordValue);
     });
-  const recordConfirmedCount = visibleRecordDefinitions.filter(def =>
+  const recordConfirmedCount = requiredRecordDefinitions.filter(def =>
     recordFields.some(field =>
-      (field.field_key === def.key || field.field_key === def.aliasOf) && isRecordValue(field)
+      canonicalRecordKey(field.field_key) === (def.canonicalKey || def.key) && isRecordValue(field)
     )
   ).length;
 
   const schemaDocuments = typeof pack?.getDocumentSchema === 'function'
     ? pack.getDocumentSchema(property?.property_type || property?.type)
     : (Array.isArray(pack?.documentSchema) ? pack.documentSchema : []);
+  const schemaDocumentByKey = new Map(
+    schemaDocuments.flatMap(document => [
+      [document.id, document],
+      [document.section, document],
+    ].filter(([key]) => key))
+  );
+  const normalizeDocumentItem = document => {
+    const configured = schemaDocumentByKey.get(document?.id) || schemaDocumentByKey.get(document?.section);
+    const assignedTo = Array.isArray(document?.assignedTo) && document.assignedTo.length > 0
+      ? document.assignedTo
+      : (configured?.assignedTo || []);
+    return configured
+      ? { ...configured, ...document, assignedTo }
+      : { ...document, assignedTo };
+  };
   const missingDocuments = (checklistItems.length > 0
     ? checklistItems
     : schemaDocuments
   )
+    .map(normalizeDocumentItem)
     .filter(item => item.required && !DONE_DOCUMENT_STATUSES.has(item.status) && !item.uploaded);
 
   const roleMeta = Object.fromEntries((pack?.roles || []).map(role => [role.key, role]));
@@ -2897,10 +2826,6 @@ function WhatNeedsAttention({
     ...(Array.isArray(briefing?.blocking) ? briefing.blocking : []),
     ...(Array.isArray(briefing?.actions) ? briefing.actions : []),
     ...(Array.isArray(briefing?.next_actions) ? briefing.next_actions : []),
-    ...(Array.isArray(briefing?.missingDocuments) ? briefing.missingDocuments.map(document => ({
-      title: `Upload ${typeof document === 'string' ? document : document.label || document.name || 'required document'}`,
-      document: true,
-    })) : []),
   ];
   const seenBriefingActions = new Set();
   derivedActions.forEach(item => items.push(item));
@@ -3156,6 +3081,9 @@ function DigitalAssetReadinessSection({
   propertyId,
   recordFields,
   readiness,
+  pack,
+  packId,
+  propertyName,
   onTabChange,
   readinessPhase = 'transaction',
   digitalAssetEnabled = false,
@@ -3163,47 +3091,33 @@ function DigitalAssetReadinessSection({
 }) {
   const [expandedCat, setExpandedCat] = useState(null);
 
-  // Per-field definitions for each category — label used in expand panel
+  function canonicalKey(field) {
+    return field?.canonicalKey || field?.key;
+  }
+
+  function uniquePackFields(fields, seen) {
+    return (fields || []).filter(field => {
+      const key = canonicalKey(field);
+      if (!key || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }
+
+  const seenPackFields = new Set();
+  // The active workflow pack owns the field labels. The overview must not
+  // invent generic party aliases underneath pack-specific concepts.
+  const schemaKey = resolveSchemaKey(packId, pack, propertyName);
+  const schema = getPackRecordSchema(schemaKey);
   const CAT_FIELD_DEFS = {
-    parties: [
-      { key: 'parties.buyer',      label: 'Buyer / primary party' },
-      { key: 'parties.seller',     label: 'Seller / counterparty' },
-      { key: 'parties.primary',    label: 'Primary party' },
-      { key: 'parties.secondary',  label: 'Secondary party' },
-      { key: 'parties.borrower',   label: 'Borrower' },
-      { key: 'ownership.owner_name', label: 'Registered owner' },
-    ],
-    asset: [
-      { key: 'asset.name',         label: 'Asset name' },
-      { key: 'asset.type',         label: 'Asset type' },
-      { key: 'asset.address',      label: 'Property address' },
-      { key: 'asset.legal_name',   label: 'Legal entity name' },
-      { key: 'asset.jurisdiction', label: 'Jurisdiction' },
-      { key: 'asset.description',  label: 'Asset description' },
-    ],
-    terms: [
-      { key: 'transaction.purchase_price', label: 'Purchase price' },
-      { key: 'transaction.value',          label: 'Transaction value' },
-      { key: 'transaction.closing_date',   label: 'Closing date' },
-      { key: 'transaction.type',           label: 'Transaction type' },
-      { key: 'transaction.structure',      label: 'Transaction structure' },
-    ],
-    financial: [
-      { key: 'financial.purchase_price', label: 'Purchase price' },
-      { key: 'financial.deal_value',     label: 'Deal value' },
-      { key: 'financial.revenue',        label: 'Revenue' },
-      { key: 'financial.noi',            label: 'Net operating income' },
-      { key: 'financial.loan_amount',    label: 'Loan amount' },
-      { key: 'asset.noi',                label: 'Asset NOI' },
-      { key: 'asset.revenue',            label: 'Asset revenue' },
-    ],
+    parties: uniquePackFields(schema.parties, seenPackFields),
+    asset: uniquePackFields(schema.asset_identity, seenPackFields),
+    terms: uniquePackFields(schema.transaction, seenPackFields),
+    financial: uniquePackFields(schema.financial, seenPackFields),
     legal: [
-      { key: 'ownership.cap_table',          label: 'Cap table / ownership' },
-      { key: 'ownership.beneficial_owners',  label: 'Beneficial owners' },
-      { key: 'ownership.liens',              label: 'Liens & encumbrances' },
-      { key: 'ownership.encumbrances',       label: 'Encumbrances' },
-      { key: 'legal.title_status',           label: 'Title status' },
-      { key: 'legal.regulatory_approvals',   label: 'Regulatory approvals' },
+      ...uniquePackFields(schema.beneficial_ownership, seenPackFields),
+      ...uniquePackFields(schema.legal, seenPackFields),
+      ...uniquePackFields(schema.approvals, seenPackFields),
     ],
   };
 
@@ -3223,6 +3137,15 @@ function DigitalAssetReadinessSection({
     return val && !SKIP_VALUES.has(val) && f.status !== 'not_applicable';
   }
 
+  function isConfirmed(f) {
+    return f?.status === 'verified' && !!isPopulated(f);
+  }
+
+  function isProposed(f) {
+    return ['extracted', 'needs_review', 'conflicting', 'source_changed'].includes(f?.status)
+      && !!isPopulated(f);
+  }
+
   // Build enhanced category objects
   const categories = [
     { key: 'parties',   label: 'Identity & Parties',   fieldDefs: CAT_FIELD_DEFS.parties },
@@ -3234,10 +3157,13 @@ function DigitalAssetReadinessSection({
     const enriched = cat.fieldDefs.map(def => {
       const matched = matchingFields(def.key);
       const populated = matched.find(f => isPopulated(f));
-      return { ...def, field: populated || null, allMatches: matched };
+      const confirmed = matched.find(f => isConfirmed(f));
+      const proposed = matched.find(f => isProposed(f));
+      return { ...def, field: confirmed || null, proposed: proposed || null, allMatches: matched };
     });
     const confirmedDefs = enriched.filter(d => d.field);
-    const missingDefs   = enriched.filter(d => !d.field);
+    const proposedDefs  = enriched.filter(d => !d.field && d.proposed);
+    const missingDefs   = enriched.filter(d => !d.field && !d.proposed);
     const count = confirmedDefs.length;
     const total = enriched.length;
     // Derive sources from populated fields
@@ -3264,7 +3190,7 @@ function DigitalAssetReadinessSection({
           ? 'Transaction value missing'
           : `${missingDefs[0].label} missing`;
 
-    return { ...cat, enriched, confirmedDefs, missingDefs, count, total, sources, st, summary };
+    return { ...cat, enriched, confirmedDefs, proposedDefs, missingDefs, count, total, sources, st, summary };
   });
 
   const readyCount   = categories.filter(c => c.st === 'ready').length;
@@ -3376,6 +3302,19 @@ function DigitalAssetReadinessSection({
                         </ul>
                       )}
                     </div>
+                    {cat.proposedDefs.length > 0 && (
+                      <div>
+                        <p className="text-[10px] font-bold uppercase tracking-wider text-blue-500 mb-1.5">Proposed / extracted</p>
+                        <ul className="space-y-1">
+                          {cat.proposedDefs.slice(0, 4).map(d => (
+                            <li key={d.key} className="flex items-start gap-1.5 text-xs text-gray-600">
+                              <span className="mt-0.5 text-blue-400 shrink-0">◌</span>
+                              <span>{d.label}{d.proposed?.value_text ? <span className="text-gray-400"> — {d.proposed.value_text}</span> : ''}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
                     {/* Missing */}
                     <div>
                       <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-1.5">Missing</p>
@@ -3634,14 +3573,19 @@ function RoomCopilot({ propertyId }) {
 // Adapated from the OperationsManagerView stage bar. Shows every effective stage
 // (including settlement when enabled) as a horizontal progression. The current
 // stage is highlighted; past stages show a checkmark; future stages are muted.
-function StageLifecycleBar({ stages = [], currentStageKey, compact = false }) {
+function StageLifecycleBar({
+  stages = [],
+  currentStageKey,
+  compact = false,
+  supportingDocumentPresent = null,
+}) {
   if (stages.length === 0) return null;
   const currentIdx = Math.max(0, stages.findIndex(s => s.key === currentStageKey));
   return (
     <div className={`${compact ? 'mt-5 pt-4' : 'mt-4 pt-4'} border-t border-gray-100`}>
       <div className="mb-2 flex items-center justify-between gap-3">
         <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Transaction lifecycle</p>
-        {compact && <p className="text-[10px] text-gray-400">Operational position</p>}
+        {compact && <p className="text-[10px] text-gray-400">Coordinator-reported · documents and confirmed facts are separate</p>}
       </div>
       <div className={`flex items-center ${compact ? 'gap-1' : 'items-start gap-1'}`}>
         {stages.map((s, i) => {
@@ -3656,7 +3600,7 @@ function StageLifecycleBar({ stages = [], currentStageKey, compact = false }) {
                            : 'bg-gray-100 text-gray-300'}`}>
                   {!compact && (done ? '✓' : (s.icon || '·'))}
                 </div>
-                <p className={`${compact ? 'text-[10px]' : 'w-full px-0.5 text-[9px] text-center'} font-semibold leading-tight truncate
+                   <p className={`${compact ? 'text-[10px]' : 'w-full px-0.5 text-[9px] text-center'} font-semibold leading-tight break-words
                   ${active ? 'text-[#800020]' : done ? 'text-gray-500' : 'text-gray-300'}`}>
                   {s.label}
                 </p>
@@ -3668,8 +3612,41 @@ function StageLifecycleBar({ stages = [], currentStageKey, compact = false }) {
           );
         })}
       </div>
+      {supportingDocumentPresent !== null && (
+        <p className={`mt-2 text-[10px] ${supportingDocumentPresent ? 'text-gray-400' : 'font-medium text-amber-600'}`}>
+          {supportingDocumentPresent
+            ? 'Supporting documents are tracked separately from the coordinator-reported stage.'
+            : 'Supporting document missing.'}
+        </p>
+      )}
     </div>
   );
+}
+
+function normalizeLifecycleStages(stages, workspaceName) {
+  return stages.map(stage =>
+    /loi\s+(sent|submitted|signed)/i.test(String(stage.label || ''))
+      ? { ...stage, label: 'LOI Executed' }
+      : stage
+  );
+}
+
+function getLifecycleEvidenceSections(stage) {
+  if (!stage) return null;
+  const text = `${stage.key || ''} ${stage.label || ''}`.toLowerCase();
+  if (/\bnda\b|non[-\s]?disclosure/.test(text)) {
+    return ['nda', 'non_disclosure_agreement', 'non-disclosure_agreement'];
+  }
+  if (/\bloi\b|letter of intent/.test(text)) {
+    return ['loi', 'letter_of_intent'];
+  }
+  if (/purchase agreement|purchase_agreement|definitive agreement/.test(text)) {
+    return ['purchase_agreement', 'definitive_agreement'];
+  }
+  if (/closing|closed|funded|settlement|complete/.test(text)) {
+    return ['purchase_agreement', 'closing_statement', 'settlement_statement'];
+  }
+  return null;
 }
 
 // ── Transaction Seal Summary (complete phase) ─────────────────────────────────
@@ -3733,6 +3710,7 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
   const [coordination, setCoordination] = useState(null);
   const [checklistItems, setChecklistItems] = useState([]);
   const [events, setEvents]             = useState([]);
+  const [analyses, setAnalyses]         = useState([]);
   const [stages, setStages]             = useState([]);
   const [recordFields, setRecordFields] = useState([]);
   const [readiness, setReadiness]       = useState(null);
@@ -3749,7 +3727,7 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
     const get = (path, fallback) => fetch(`${API_BASE}${path}`, { headers })
       .then(r => r.ok ? r.json() : fallback)
       .catch(() => fallback);
-    const [brief, coord, stageData, record, readinessData, checklist, eventData] = await Promise.all([
+    const [brief, coord, stageData, record, readinessData, checklist, eventData, analysisData] = await Promise.all([
       get(`/api/public/deal-room/${propertyId}/brain/briefing`, null),
       get(`/api/public/deal-room/${propertyId}/coordination`, null),
       get(`/api/public/deal-room/${propertyId}/stages`, { stages: [] }),
@@ -3757,14 +3735,19 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
       get(`/api/public/deal-room/${propertyId}/readiness`, null),
       get(`/api/public/deal-room/${propertyId}/checklist`, { items: [] }),
       get(`/api/public/deal-room/${propertyId}/events`, { events: [] }),
+      get(`/api/public/deal-room/${propertyId}/analyses`, { analyses: [] }),
     ]);
     setBriefing(brief);
     setCoordination(coord);
-    setStages(Array.isArray(stageData?.stages) && stageData.stages.length >= 2 ? stageData.stages : (pack.stages || []));
+    setStages(normalizeLifecycleStages(
+      Array.isArray(stageData?.stages) && stageData.stages.length >= 2 ? stageData.stages : (pack.stages || []),
+      property?.name || property?.property_name,
+    ));
     setRecordFields(Array.isArray(record?.fields) ? record.fields : []);
     setReadiness(readinessData);
     setChecklistItems(Array.isArray(checklist?.items) ? checklist.items : []);
     setEvents(Array.isArray(eventData?.events) ? eventData.events : []);
+    setAnalyses(Array.isArray(analysisData?.analyses) ? analysisData.analyses : []);
     setLoading(false);
   // refreshKey is intentionally included so any document upload (which bumps
   // analysesRefreshKey in DealRoomPage) immediately triggers a re-fetch here,
@@ -3781,7 +3764,13 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
   const currentStageKey   = coordination?.stage || stages[0]?.key;
   const currentStageIndex = Math.max(0, stages.findIndex(s => s.key === currentStageKey));
   const currentStage      = stages[currentStageIndex];
-  const closingDate       = property?.closing_date || property?.target_close_date || property?.close_date;
+  const recordFieldValue = (...keys) => recordFields.find(field =>
+    keys.includes(field.field_key) && field.status !== 'not_applicable'
+  )?.value_text || '';
+  const closingDate       = recordFieldValue('transaction.closing_date')
+    || property?.closing_date
+    || property?.target_close_date
+    || property?.close_date;
 
   // Effective stages include settlement/complete when the room has settlement
   // capability enabled — uses the same getEffectiveStages() as OperationsManagerView.
@@ -3790,6 +3779,10 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
     property,
     stages,
   );
+  const milestoneEvidenceSections = getLifecycleEvidenceSections(currentStage);
+  const supportingDocumentPresent = milestoneEvidenceSections
+    ? analyses.some(analysis => milestoneEvidenceSections.includes(analysis.section))
+    : null;
 
   // Readiness phase drives which panel appears in position 3 of the Overview.
   const readinessPhase = (() => {
@@ -3809,27 +3802,36 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
     property?.metadata_values?.tokenization_enabled
   );
 
-  const readinessPct = readiness?.transaction_readiness?.overall_pct
-    ?? readiness?.overall_score
-    ?? null;
+  const readinessPct = readiness?.transaction_readiness?.overall_pct ?? null;
   const readinessStatus = readiness?.transaction_readiness?.status
-    || readiness?.status
-    || 'Building';
+    || (readinessPct === 0 ? 'Getting Started' : 'Building');
   const recordSchemaKey = resolveSchemaKey(packId, pack, property?.name || property?.property_name);
-  const requiredRecordFields = Object.values(getPackRecordSchema(recordSchemaKey))
-    .flat()
-    .filter(field => field.workflowRequired);
+  const recordSchema = Object.values(getPackRecordSchema(recordSchemaKey)).flat();
+  const canonicalRecordKeyByStoredKey = new Map(
+    recordSchema.map(field => [field.key, field.canonicalKey || field.key])
+  );
+  const canonicalRecordKey = fieldKey =>
+    canonicalRecordKeyByStoredKey.get(fieldKey) || fieldKey;
+  const notApplicableRecordKeys = new Set(
+    recordFields
+      .filter(field => field.status === 'not_applicable')
+      .map(field => canonicalRecordKey(field.field_key))
+  );
+  const requiredRecordFields = getRequiredRecordFields(recordSchemaKey)
+    .filter(field => !notApplicableRecordKeys.has(field.canonicalKey || field.key));
   const confirmedRecordFieldKeys = new Set(
     recordFields
       .filter(field => {
         const value = String(field.value_text || '').trim().toLowerCase();
-        return value && !['n/a', 'na', 'not applicable', 'not_applicable', 'unknown'].includes(value)
+        return field.status === 'verified'
+          && value
+          && !['n/a', 'na', 'not applicable', 'not_applicable', 'unknown'].includes(value)
           && field.status !== 'not_applicable';
       })
-      .map(field => field.field_key),
+      .map(field => canonicalRecordKey(field.field_key)),
   );
   const confirmedRequiredCount = requiredRecordFields.filter(field =>
-    confirmedRecordFieldKeys.has(field.key) || confirmedRecordFieldKeys.has(field.aliasOf)
+    confirmedRecordFieldKeys.has(field.canonicalKey || field.key)
   ).length;
 
   return (
@@ -3869,11 +3871,11 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
               <span className="text-xs font-semibold text-gray-500">{readinessStatus}</span>
             </div>
             <p className="mt-1 max-w-xs text-xs leading-relaxed text-gray-400">
-              Operational readiness across documents, workspace facts, activity, and compliance signals.
+              Completeness and confirmation of the structured Transaction Record.
             </p>
             {requiredRecordFields.length > 0 && (
               <p className="mt-2 text-[11px] text-gray-500">
-                {confirmedRequiredCount} of {requiredRecordFields.length} required fields confirmed
+            {confirmedRequiredCount} of {requiredRecordFields.length} required fields confirmed
               </p>
             )}
           </div>
@@ -3895,7 +3897,19 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
           />
         </div>
 
-        <StageLifecycleBar stages={effectiveStages} currentStageKey={currentStageKey} compact />
+        <TransactionDetailsPanel
+          propertyId={propertyId}
+          property={property}
+          pack={pack}
+          onSaved={load}
+        />
+
+        <StageLifecycleBar
+          stages={effectiveStages}
+          currentStageKey={currentStageKey}
+          compact
+          supportingDocumentPresent={supportingDocumentPresent}
+        />
 
         <div className="mt-6 border-t border-gray-100 pt-5">
           {readinessPhase === 'settlement' && (
@@ -3913,6 +3927,9 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
             propertyId={propertyId}
             recordFields={recordFields}
             readiness={readiness}
+              pack={pack}
+              packId={packId}
+              propertyName={property?.name || property?.property_name}
             onTabChange={onTabChange}
             readinessPhase={readinessPhase}
             digitalAssetEnabled={digitalAssetEnabled}
@@ -4138,6 +4155,7 @@ function OperationsManagerView({ propertyId, property, pack, role, onTabChange }
   const [coordination, setCoordination] = useState(null);
   const [stages,       setStages]       = useState([]);
   const [events,       setEvents]       = useState([]);
+  const [readiness,    setReadiness]    = useState(null);
   const [dataLoading,  setDataLoading]  = useState(true);
   // checklist items — used for accurate doc-to-requirement mapping in the
   // Digital Asset Readiness card. Fetched in parallel with the other data.
@@ -4185,8 +4203,10 @@ function OperationsManagerView({ propertyId, property, pack, role, onTabChange }
       .then(r => r.ok ? r.json() : { events: [] }).catch(() => ({ events: [] }));
     const fk = fetch(`${API_BASE}/api/public/deal-room/${propertyId}/checklist`, { headers: getRoomAuthHeaders(propertyId) })
       .then(r => r.ok ? r.json() : { items: [] }).catch(() => ({ items: [] }));
+    const fr = fetch(`${API_BASE}/api/public/deal-room/${propertyId}/readiness`, { headers: getRoomAuthHeaders(propertyId) })
+      .then(r => r.ok ? r.json() : null).catch(() => null);
 
-    Promise.all([fb, fc, fs, fe, fk]).then(([b, coord, stageData, evData, ckData]) => {
+    Promise.all([fb, fc, fs, fe, fk, fr]).then(([b, coord, stageData, evData, ckData, readinessData]) => {
       setBriefing(b);
       setBriefLoading(false);
       setCoordination(coord);
@@ -4194,9 +4214,14 @@ function OperationsManagerView({ propertyId, property, pack, role, onTabChange }
       const rawStages = Array.isArray(stageData?.stages) && stageData.stages.length >= 2
         ? stageData.stages
         : (pack.stages || []);
-      setStages(getEffectiveStages(stageData?.packId || DEFAULT_PACK_ID, property, rawStages));
+      setStages(getEffectiveStages(
+        stageData?.packId || DEFAULT_PACK_ID,
+        property,
+        normalizeLifecycleStages(rawStages, property?.name || property?.property_name),
+      ));
       setEvents(evData?.events || []);
       setChecklistItems(Array.isArray(ckData?.items) ? ckData.items : []);
+      setReadiness(readinessData);
       setDataLoading(false);
     });
   }, [propertyId]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -4358,18 +4383,12 @@ function OperationsManagerView({ propertyId, property, pack, role, onTabChange }
       : '',
   }));
 
-  // ── Inline Transaction Readiness score ────────────────────────────────────
-  // Computed from data already in scope — drives the header badge in Area 3
-  // and controls whether the Settlement panel is shown (progressive disclosure).
-  const _rDocScore = requiredDocCount > 0
-    ? Math.min(100, Math.round((docCount / requiredDocCount) * 100))
-    : Math.min(70, docCount * 14);
-  const _rNonCoord = participantRows.filter(r => !r.canManage);
-  const _rSubmitted = _rNonCoord.filter(r => r.submitted || submittedRoles.has(r.key)).length;
-  const _rPartScore = _rNonCoord.length > 0 ? Math.round((_rSubmitted / _rNonCoord.length) * 100) : 0;
-  const _rBlockScore = briefing ? (openBlockers === 0 ? 100 : Math.max(0, 100 - openBlockers * 30)) : 0;
-  const overallReadiness = briefLoading ? null
-    : Math.round(_rDocScore * 0.45 + _rPartScore * 0.35 + _rBlockScore * 0.20);
+  // The API readiness payload is the only Transaction Readiness score. The
+  // briefing, document, participant, and event data remain separate inputs
+  // for attention cards and lifecycle context.
+  const overallReadiness = readiness?.transaction_readiness?.overall_pct ?? null;
+  const overallReadinessStatus = readiness?.transaction_readiness?.status
+    || (overallReadiness === 0 ? 'Getting Started' : 'Building');
   // Settlement capability: determine whether the full Settlement Readiness panel
   // should be shown in place of the legacy Closing & Handoff panel.
   // SettlementReadinessPanel takes over when the workspace is in the settlement
@@ -4892,7 +4911,7 @@ function OperationsManagerView({ propertyId, property, pack, role, onTabChange }
                   color:      overallReadiness >= 80 ? '#16a34a' : overallReadiness >= 55 ? '#d97706' : '#dc2626',
                   background: overallReadiness >= 80 ? '#f0fdf4' : overallReadiness >= 55 ? '#fffbeb' : '#fef2f2',
                 }}>
-                {overallReadiness >= 80 ? 'Closing Ready' : overallReadiness >= 55 ? 'In Progress' : 'Needs Attention'}
+                {overallReadinessStatus}
               </span>
               <span className="text-base font-black"
                 style={{ color: overallReadiness >= 80 ? '#16a34a' : overallReadiness >= 55 ? '#d97706' : '#dc2626' }}>
@@ -5095,8 +5114,11 @@ export default function DealRoomPage() {
   const [showAdvancedSettings, setShowAdvancedSettings] = useState(false);
   // Wrap tab setter to emit analytics
   const setActiveTab = useCallback((tab) => {
-    setActiveTabRaw(tab);
-    trackEvent('workspace_tab_viewed', { tab, workspace_id: propertyId });
+    // Transaction Details now lives in the coordinator Overview command center;
+    // keep legacy settings CTAs pointed there without creating a fourth tab.
+    const resolvedTab = tab === 'settings' ? 'overview' : tab;
+    setActiveTabRaw(resolvedTab);
+    trackEvent('workspace_tab_viewed', { tab: resolvedTab, workspace_id: propertyId });
   }, [propertyId]);
   // Pack correction: set when AI thinks the stored pack is wrong for this room
   const [packSuggestion, setPackSuggestion] = useState(null); // { suggestedPack, currentPack }
@@ -5700,18 +5722,13 @@ export default function DealRoomPage() {
                   pack.roles?.find(r => r.canManage === true) || {
                     key: 'deal_coordinator',
                     icon: '🏢',
-                    label: 'Deal Coordinator',
+                    label: 'Deal Owner',
                     color: '#800020',
                   }
                 ) : null}
               />
             )}
 
-            {activeTab === 'settings' && (
-              <div className="space-y-4">
-                <TransactionDetailsPanel propertyId={pid} property={property} pack={pack} />
-              </div>
-            )}
           </>
 
         ) : (

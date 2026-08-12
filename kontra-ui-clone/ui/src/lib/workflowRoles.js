@@ -34,8 +34,8 @@ export function resolveCoordinatorRole(pack, {
   if (isCoordinator) {
     return {
       key: 'deal_coordinator',
-      label: 'Deal Coordinator',
-      shortLabel: 'Deal Coordinator',
+      label: 'Deal Owner',
+      shortLabel: 'Deal Owner',
       icon: '🏢',
       color: '#800020',
       canManage: true,
