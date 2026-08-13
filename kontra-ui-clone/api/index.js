@@ -3239,7 +3239,9 @@ async function markDependentTransactionFieldsNotApplicable(propertyId, dependenc
 }
 
 async function extractTransactionFields(propertyId, docId, text, sectionLabel) {
-  if (!text || text.trim().length < 50) return;
+  if (!text || text.trim().length < 50) {
+    return { rawCount: 0, savedCount: 0, rawKeys: [], canonicalKeys: [] };
+  }
   try {
     const { data: room } = await supabase
       .from('deal_rooms')
@@ -3264,12 +3266,18 @@ async function extractTransactionFields(propertyId, docId, text, sectionLabel) {
     }, { timeout: 20000 });
 
     const parsed = JSON.parse(completion.choices[0].message.content);
-    const extracted = parsed.fields || [];
-    if (!extracted.length) return;
+    const extracted = Array.isArray(parsed.fields) ? parsed.fields : [];
+    const validExtracted = extracted.filter(f => f?.field_key && f?.field_category && f?.value_text);
+    const rawKeys = validExtracted.map(f => String(f.field_key));
+    console.log(`[tx-record] raw ${validExtracted.length} fields for ${propertyId} pack=${schemaKey} keys=${rawKeys.join(',') || 'none'}`);
+    if (!validExtracted.length) {
+      return { rawCount: 0, savedCount: 0, rawKeys, canonicalKeys: [] };
+    }
 
-    for (const f of extracted) {
-      if (!f.field_key || !f.field_category || !f.value_text) continue;
+    const canonicalKeys = [];
+    for (const f of validExtracted) {
       const canonicalKey = canonicalizeTransactionRecordKey(String(f.field_key), schemaKey);
+      canonicalKeys.push(canonicalKey);
       const aliasKeys = aliasKeysForCanonical(canonicalKey, schemaKey);
       const { data: existingRows } = await supabase
         .from('transaction_record_fields')
@@ -3340,6 +3348,7 @@ async function extractTransactionFields(propertyId, docId, text, sectionLabel) {
         updated_at:     new Date().toISOString(),
       }, { onConflict: 'property_id,field_key', ignoreDuplicates: false }).select('id').single();
       if (saveError) throw saveError;
+      console.log(`[tx-record] field ${propertyId} pack=${schemaKey} raw=${String(f.field_key)} canonical=${canonicalKey} status=${nextStatus} source_doc_id=${docId || 'none'}`);
       await recordTransactionFieldHistory({
         fieldId: savedField.id,
         propertyId,
@@ -3354,9 +3363,11 @@ async function extractTransactionFields(propertyId, docId, text, sectionLabel) {
         metadata: { sectionLabel },
       });
     }
-    console.log(`[tx-record] extracted ${extracted.length} fields for ${propertyId} (${sectionLabel})`);
+    console.log(`[tx-record] extracted ${canonicalKeys.length} fields for ${propertyId} (${sectionLabel})`);
+    return { rawCount: rawKeys.length, savedCount: canonicalKeys.length, rawKeys, canonicalKeys, schemaKey };
   } catch (err) {
     console.warn('[tx-record extraction]', err.message);
+    return { rawCount: 0, savedCount: 0, rawKeys: [], canonicalKeys: [], error: err.message };
   }
 }
 
@@ -3702,10 +3713,11 @@ app.post('/api/public/deal-room/:propertyId/track-document', upload.single('file
       || section.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
     const filename = req.file?.originalname || `${section}.pdf`;
 
-    // For sections with an AI prompt, start pending and analyze in background.
-    // Post-completion and non-AI sections are marked complete immediately.
+    // Keep the record pending until any document analysis and transaction-field
+    // extraction have both completed.
     const hasAiPrompt = !isPostCompletion && !!(buf && LIGHTWEIGHT_AI_PROMPTS[section]);
-    const initialAnalysis = hasAiPrompt
+    const needsTransactionExtraction = !isPostCompletion && !!buf;
+    const initialAnalysis = hasAiPrompt || needsTransactionExtraction
       ? { summary: `${sectionLabel} uploaded — AI analysis in progress…`, documentType: sectionLabel, confidence: 0, pending: true }
       : { summary: `${sectionLabel} received and logged.`, documentType: sectionLabel, confidence: 100, pending: false };
 
@@ -3732,6 +3744,7 @@ app.post('/api/public/deal-room/:propertyId/track-document', upload.single('file
     // and Digital Asset Readiness update after a coordinator uploads an LOI.
     if (buf && !LIGHTWEIGHT_AI_PROMPTS[section] && recordId) {
       (async () => {
+        let extractionResult = { savedCount: 0 };
         try {
           let text = '';
           const ext = (filename || '').split('.').pop().toLowerCase();
@@ -3760,12 +3773,20 @@ app.post('/api/public/deal-room/:propertyId/track-document', upload.single('file
             text = buf.toString('utf8', 0, Math.min(buf.length, 10000)).replace(/[^\x20-\x7E\n\r\t]/g, ' ').replace(/\s{3,}/g, '\n').trim();
           }
           if (text && text.trim().length > 50) {
-            await extractTransactionFields(propertyId, recordId, text, SECTION_LABELS[section] || section);
+            extractionResult = await extractTransactionFields(propertyId, recordId, text, SECTION_LABELS[section] || section);
             console.log(`[track-document] ✓ transaction fields extracted from ${section} (non-AI-prompt path)`);
           }
         } catch (extractErr) {
           console.warn(`[track-document] field extraction failed for ${section}:`, extractErr.message);
         }
+        const completedAnalysis = extractionResult.savedCount > 0
+          ? { summary: `${sectionLabel} received and transaction facts extracted.`, documentType: sectionLabel, confidence: 100, pending: false }
+          : { summary: `${sectionLabel} received and logged.`, documentType: sectionLabel, confidence: 100, pending: false };
+        const { error: completionError } = await supabase
+          .from('deal_analyses')
+          .update({ analysis: completedAnalysis })
+          .eq('id', recordId);
+        if (completionError) console.warn('[track-document] analysis completion update failed:', completionError.message);
       })().catch(() => {});
     }
 
@@ -3866,10 +3887,10 @@ app.post('/api/public/deal-room/:propertyId/track-document', upload.single('file
             }, { timeout: 30000 });
           }
           const result = JSON.parse(completion.choices[0].message.content);
+          await extractTransactionFields(propertyId, recordId, text, SECTION_LABELS[section] || section);
           await clearPending(result);
           notifyOwner(propertyId, section, result.summary).catch(() => {});
           // Extract structured transaction record fields from the same document text
-          extractTransactionFields(propertyId, recordId, text, SECTION_LABELS[section] || section).catch(() => {});
           logEvent(propertyId, 'document_analyzed', effectiveRole, null, `${SECTION_LABELS[section]} analyzed by AI`, { section, filename }).catch(() => {});
           evaluateDealRoomForTasks(propertyId).catch(e => console.warn('[tasks] auto-evaluate on analysis failed:', e.message));
           evaluateReadinessTasks(propertyId, []).catch(e => console.warn('[tasks] readiness evaluate on analysis failed:', e.message));
