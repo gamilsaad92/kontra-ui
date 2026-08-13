@@ -31,7 +31,7 @@
     "stages": [
       { "key": "structuring", "label": "Structuring" },
       { "key": "onboarding", "label": "Investor Onboarding" },
-      { "key": "subscription", "label": "Subscription" },
+      { "key": "subscription", "label": "Subscription Period" },
       { "key": "issuance", "label": "Token Issuance" },
       { "key": "secondary", "label": "Secondary Market" }
     ]
