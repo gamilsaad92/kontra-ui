@@ -2767,23 +2767,35 @@ function WhatNeedsAttention({
         { key: 'parties.buyer', label: 'Buyer' },
         { key: 'parties.seller', label: 'Seller' },
         { key: 'asset.name', label: 'Asset name' },
-        { key: 'transaction.value', label: 'Transaction value' },
+        { key: 'transaction.value', label: 'Transaction value', aliasOf: 'transaction.purchase_price' },
         { key: 'transaction.purchase_price', label: 'Purchase price' },
         { key: 'ownership.cap_table', label: 'Cap table / ownership' },
       ];
+  const canonicalRecordKey = definition => definition.aliasOf || definition.key;
+  const missingCanonicalKeys = new Set();
   const recordMissing = visibleRecordDefinitions
     .filter(def => def.workflowRequired === true || def.required === true)
     .filter(def => {
+      const canonicalKey = canonicalRecordKey(def);
+      if (missingCanonicalKeys.has(canonicalKey)) return false;
       const matches = recordFields.filter(field =>
         field.field_key === def.key || field.field_key === def.aliasOf
       );
-      return !matches.some(isRecordValue);
+      if (matches.some(isRecordValue)) return false;
+      missingCanonicalKeys.add(canonicalKey);
+      return true;
     });
-  const recordConfirmedCount = visibleRecordDefinitions.filter(def =>
-    recordFields.some(field =>
+  const confirmedCanonicalKeys = new Set();
+  const recordConfirmedCount = visibleRecordDefinitions.reduce((count, def) => {
+    const canonicalKey = canonicalRecordKey(def);
+    if (confirmedCanonicalKeys.has(canonicalKey)) return count;
+    const confirmed = recordFields.some(field =>
       (field.field_key === def.key || field.field_key === def.aliasOf) && isRecordValue(field)
-    )
-  ).length;
+    );
+    if (!confirmed) return count;
+    confirmedCanonicalKeys.add(canonicalKey);
+    return count + 1;
+  }, 0);
 
   const schemaDocuments = typeof pack?.getDocumentSchema === 'function'
     ? pack.getDocumentSchema(property?.property_type || property?.type)
@@ -3165,11 +3177,13 @@ function DigitalAssetReadinessSection({
   recordFields,
   readiness,
   onTabChange,
+  schemaKey = DEFAULT_PACK_ID,
   readinessPhase = 'transaction',
   digitalAssetEnabled = false,
   embedded = false,
 }) {
   const [expandedCat, setExpandedCat] = useState(null);
+  const isAcquisitionSchema = schemaKey === 'cre_acquisition' || schemaKey === 'business_acquisition';
 
   // Per-field definitions for each category — label used in expand panel
   const CAT_FIELD_DEFS = {
@@ -3190,15 +3204,23 @@ function DigitalAssetReadinessSection({
       { key: 'asset.description',  label: 'Asset description' },
     ],
     terms: [
-      { key: 'transaction.purchase_price', label: 'Purchase price' },
-      { key: 'transaction.value',          label: 'Transaction value' },
+      ...(isAcquisitionSchema
+        ? [{ key: 'transaction.purchase_price', label: 'Transaction value / purchase price' }]
+        : [
+            { key: 'transaction.purchase_price', label: 'Purchase price' },
+            { key: 'transaction.value',          label: 'Transaction value' },
+          ]),
       { key: 'transaction.closing_date',   label: 'Closing date' },
       { key: 'transaction.type',           label: 'Transaction type' },
       { key: 'transaction.structure',      label: 'Transaction structure' },
     ],
     financial: [
-      { key: 'financial.purchase_price', label: 'Purchase price' },
-      { key: 'financial.deal_value',     label: 'Deal value' },
+      ...(!isAcquisitionSchema
+        ? [
+            { key: 'financial.purchase_price', label: 'Purchase price' },
+            { key: 'financial.deal_value',     label: 'Deal value' },
+          ]
+        : []),
       { key: 'financial.revenue',        label: 'Revenue' },
       { key: 'financial.noi',            label: 'Net operating income' },
       { key: 'financial.loan_amount',    label: 'Loan amount' },
@@ -3217,10 +3239,11 @@ function DigitalAssetReadinessSection({
 
   // Returns field objects from recordFields that match a given key (supports * prefix)
   function matchingFields(keyDef) {
+    const keys = [keyDef.key, keyDef.aliasOf].filter(Boolean);
     return recordFields.filter(f =>
-      keyDef.endsWith('*')
-        ? f.field_key?.startsWith(keyDef.slice(0, -1))
-        : f.field_key === keyDef
+      keyDef.key.endsWith('*')
+        ? f.field_key?.startsWith(keyDef.key.slice(0, -1))
+        : keys.includes(f.field_key)
     );
   }
 
@@ -3240,7 +3263,7 @@ function DigitalAssetReadinessSection({
     { key: 'legal',     label: 'Legal & Diligence',     fieldDefs: CAT_FIELD_DEFS.legal },
   ].map(cat => {
     const enriched = cat.fieldDefs.map(def => {
-      const matched = matchingFields(def.key);
+      const matched = matchingFields(def);
       const populated = matched.find(f => isPopulated(f));
       return { ...def, field: populated || null, allMatches: matched };
     });
@@ -3967,6 +3990,7 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
             recordFields={recordFields}
             readiness={readiness}
             onTabChange={onTabChange}
+            schemaKey={recordSchemaKey}
             readinessPhase={readinessPhase}
             digitalAssetEnabled={digitalAssetEnabled}
             embedded
