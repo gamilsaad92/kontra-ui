@@ -84,6 +84,20 @@ function dependencyIsInactive(field, dbFields, seededFields) {
   );
 }
 
+function schemaFieldForDbField(dbField, allSchemaFields = []) {
+  // Prefer an exact schema key over an alias whose canonicalKey happens to
+  // match. Without this, transaction.purchase_price can be resolved as the
+  // earlier transaction.value alias and then hidden as if it were a duplicate.
+  return allSchemaFields.find(field => field.key === dbField?.field_key)
+    || allSchemaFields.find(field =>
+      !field.aliasOf && (field.canonicalKey || field.key) === dbField?.field_key
+    )
+    || allSchemaFields.find(field =>
+      (field.canonicalKey || field.key) === dbField?.field_key
+    )
+    || null;
+}
+
 function dbFieldMatchesSchema(dbField, schemaField, allSchemaFields = []) {
   if (!schemaField) return false;
   const canonicalKey = schemaField.canonicalKey || schemaField.key;
@@ -95,7 +109,16 @@ function dbFieldMatchesSchema(dbField, schemaField, allSchemaFields = []) {
 }
 
 function canonicalFieldValue(schemaField, dbFields, allSchemaFields = []) {
-  const match = dbFields.find(item => dbFieldMatchesSchema(item, schemaField, allSchemaFields));
+  const matches = dbFields
+    .filter(item => dbFieldMatchesSchema(item, schemaField, allSchemaFields))
+    .sort((a, b) => {
+      const aCanonical = a.field_key === schemaField?.canonicalKey || a.field_key === schemaField?.key;
+      const bCanonical = b.field_key === schemaField?.canonicalKey || b.field_key === schemaField?.key;
+      const aHasValue = Boolean(a.value_text || a.value_json);
+      const bHasValue = Boolean(b.value_text || b.value_json);
+      return Number(bCanonical) - Number(aCanonical) || Number(bHasValue) - Number(aHasValue);
+    });
+  const match = matches[0];
   return match?.value_text || match?.value_json || null;
 }
 
@@ -114,9 +137,7 @@ function isSummaryException(field) {
 }
 
 function isMaterialSummaryDbField(field, seededFields, summaryKeys) {
-  const schema = seededFields.find(item =>
-    dbFieldMatchesSchema(field, item, seededFields)
-  );
+  const schema = schemaFieldForDbField(field, seededFields);
   const canonicalKey = schema?.canonicalKey || field?.field_key;
   const materialApproval = schema?.category === "approvals" &&
     field?.status !== "not_applicable";
@@ -132,20 +153,30 @@ function isSummarySchemaField(field, summaryKeys) {
 }
 
 function canonicalRecordKey(field, seededFields) {
-  const schema = seededFields.find(item =>
-    dbFieldMatchesSchema(field, item, seededFields)
-  );
+  const schema = schemaFieldForDbField(field, seededFields);
   return schema?.canonicalKey || field?.field_key;
 }
 
 function uniqueCanonicalFields(fields, seededFields) {
   const result = [];
-  const seen = new Set();
+  const positions = new Map();
   for (const field of fields) {
     const key = field.key ? (field.canonicalKey || field.key) : canonicalRecordKey(field, seededFields);
-    if (!key || seen.has(key)) continue;
-    seen.add(key);
-    result.push(field);
+    if (!key) continue;
+    const existingIndex = positions.get(key);
+    if (existingIndex == null) {
+      positions.set(key, result.length);
+      result.push(field);
+      continue;
+    }
+    const existing = result[existingIndex];
+    const fieldIsCanonical = field.key
+      ? !field.aliasOf
+      : !schemaFieldForDbField(field, seededFields)?.aliasOf;
+    const existingIsCanonical = existing.key
+      ? !existing.aliasOf
+      : !schemaFieldForDbField(existing, seededFields)?.aliasOf;
+    if (fieldIsCanonical && !existingIsCanonical) result[existingIndex] = field;
   }
   return result;
 }
@@ -578,6 +609,7 @@ function getCategoryChip(catKey, dbFields, seededFields, viewMode = "full", summ
   );
   const seeded  = uniqueCanonicalFields(seededFields.filter(f =>
     f.category === catKey &&
+    f.renderable !== false &&
     (!isSummary || isSummarySchemaField(f, summaryKeys))
   ), seededFields);
 
@@ -630,15 +662,16 @@ function CategorySection({
   ownerToken, onUpdated, viewMode, onRequestUpload, summaryKeys,
 }) {
   // Auto-expand if category has conflicts or required missing fields
-  const seededCat  = seededFields.filter(f => f.category === category.key);
+  const seededCat  = seededFields.filter(f =>
+    f.category === category.key && f.renderable !== false
+  );
   const presentKeys = new Set(dbFields.map(field => field.field_key));
   const dedupedDbFields = dbFields.filter(field => {
-    const schemaField = seededFields.find(schema =>
-      schema.key === field.field_key || schema.canonicalKey === field.field_key
-    );
+    const schemaField = schemaFieldForDbField(field, seededFields);
     const canonicalPresent = schemaField?.aliasOf &&
-      presentKeys.has(schemaField.aliasOf);
-    return !(viewMode === "summary" && schemaField?.aliasOf && canonicalPresent);
+      field.field_key === schemaField.key &&
+      presentKeys.has(schemaField.canonicalKey);
+    return !(schemaField?.aliasOf && canonicalPresent);
   });
   const dbCat      = dedupedDbFields.filter(f => f.field_category === category.key);
   const seededWithDependencies = seededCat.map(field => ({

@@ -30,6 +30,8 @@ const UNIVERSAL_TRANSACTION_FIELDS = [
   { key: "transaction.jurisdiction", label: "Jurisdiction",            workflowRequired: true,  setup: "jurisdiction"      },
 ];
 
+const ACQUISITION_SCHEMA_KEYS = new Set(["cre_acquisition", "business_acquisition"]);
+
 // ── Per-pack schemas ──────────────────────────────────────────────────────────
 
 const PACK_SCHEMAS = {
@@ -425,6 +427,10 @@ export function getPackRecordSchema(schemaKey) {
       summaryPriority: field.summaryPriority ||
         (SUMMARY_KEYS_BY_SCHEMA[schemaKey]?.includes(field.key) ? "key" : "supporting"),
       canonicalKey: field.aliasOf || field.key,
+      // Acquisition packs have one economic fact: transaction.purchase_price.
+      // Keep aliases in the schema for canonical DB matching, but do not render
+      // them as separate Transaction Record rows.
+      renderable: !(ACQUISITION_SCHEMA_KEYS.has(schemaKey) && field.aliasOf),
     };
   };
   return Object.fromEntries([
@@ -444,17 +450,27 @@ export function getSummaryFieldKeys(schemaKey) {
 
 export function getRequiredRecordFields(schemaKey) {
   const schema = getPackRecordSchema(schemaKey);
+  const fields = Object.values(schema).flat();
   const requiredKeys = new Set(
     REQUIRED_KEYS_BY_SCHEMA[schemaKey] || REQUIRED_KEYS_BY_SCHEMA.generic
   );
-  const fields = Object.values(schema).flat();
-  const seenCanonicalKeys = new Set();
-  return fields.filter(field => {
+  const canonicalRequiredKeys = new Set(
+    [...requiredKeys].map(key =>
+      fields.find(field => field.key === key)?.canonicalKey || key
+    )
+  );
+  const representatives = new Map();
+  for (const field of fields) {
     const key = field.canonicalKey || field.key;
-    if (!requiredKeys.has(key) || seenCanonicalKeys.has(key)) return false;
-    seenCanonicalKeys.add(key);
-    return true;
-  });
+    if (!canonicalRequiredKeys.has(key)) continue;
+    const current = representatives.get(key);
+    // Prefer the canonical field definition over an alias so labels,
+    // actions, and counts all point to the same fact.
+    if (!current || (current.aliasOf && !field.aliasOf)) {
+      representatives.set(key, field);
+    }
+  }
+  return [...representatives.values()];
 }
 
 /**
@@ -494,6 +510,7 @@ export function buildSeededFromSchema(schemaKey, workspaceMeta) {
         requirement: field.requirement,
         summaryPriority: field.summaryPriority,
         aliasOf:   field.aliasOf || null,
+        renderable: field.renderable !== false,
         sources:  field.sources  || [],
         role:     field.role     || null,
         hint:     field.hint     || null,
