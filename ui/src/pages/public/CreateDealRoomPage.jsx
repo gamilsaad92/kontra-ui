@@ -310,6 +310,11 @@ export default function CreateDealRoomPage() {
   // AI description fields
   const [aiDescription, setAiDescription] = useState("");
   const [aiTransactionType, setAiTransactionType] = useState("");
+  const [aiTransactionTypeLabel, setAiTransactionTypeLabel] = useState("");
+  const [aiTransactionTypeSource, setAiTransactionTypeSource] = useState("ai");
+  const [aiTransactionStructure, setAiTransactionStructure] = useState("");
+  const [aiTransactionValue, setAiTransactionValue] = useState("");
+  const [aiTransactionValueConfidence, setAiTransactionValueConfidence] = useState("");
   const [aiCurrentStage, setAiCurrentStage] = useState("");
 
   // Customization config (roles/docs/stages)
@@ -418,7 +423,14 @@ export default function CreateDealRoomPage() {
         if (!res.ok) throw new Error(data.error || "AI generation failed");
         if (data.name && !form.workspaceName) set("workspaceName", data.name);
         const resolvedTransactionType = data.transactionType || aiTransactionType || "other";
-        if (!aiTransactionType && resolvedTransactionType) setAiTransactionType(resolvedTransactionType);
+        if (!aiTransactionType && resolvedTransactionType) {
+          setAiTransactionType(resolvedTransactionType);
+          setAiTransactionTypeSource("ai");
+        }
+        setAiTransactionTypeLabel(data.transactionTypeLabel || AI_TYPE_LABELS[resolvedTransactionType] || resolvedTransactionType);
+        setAiTransactionStructure(data.transactionStructure || "");
+        setAiTransactionValue(data.transactionValue != null ? String(data.transactionValue) : "");
+        setAiTransactionValueConfidence(data.transactionValueConfidence || "");
         setCustomConfig({
           roles: (data.roles || []).map((r, i) => ({
             key: r.key || slugKey(r.label),
@@ -560,7 +572,13 @@ export default function CreateDealRoomPage() {
         dealAmount: form.dealAmount,
         closingDate: form.closingDate,
         jurisdiction: form.jurisdiction || '',
-        transactionType: aiTransactionType || (form.packId === "tokenization" ? "tokenization" : ""),
+        transactionDescription: aiDescription.trim(),
+        transactionType: aiTransactionType || (form.packId === "tokenization" ? "tokenization" : form.packId),
+        transactionTypeLabel: aiTransactionTypeLabel || AI_TYPE_LABELS[aiTransactionType] || activePack?.label || form.packId,
+        transactionTypeSource: creationMode === "ai" ? aiTransactionTypeSource : "owner",
+        transactionStructure: aiTransactionStructure,
+        transactionValue: aiTransactionValue,
+        transactionValueConfidence: aiTransactionValueConfidence,
         firstName: form.firstName,
         lastName: form.lastName,
         workflowPackId,
@@ -794,7 +812,11 @@ export default function CreateDealRoomPage() {
                       <select
                         className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white focus:outline-none focus:ring-1 focus:ring-red-800/30 shrink-0"
                         value={aiTransactionType}
-                        onChange={e => setAiTransactionType(e.target.value)}>
+                        onChange={e => {
+                          setAiTransactionType(e.target.value);
+                          setAiTransactionTypeSource("owner");
+                          setAiTransactionTypeLabel(AI_TYPE_LABELS[e.target.value] || e.target.value);
+                        }}>
                         <option value="other">Custom</option>
                         <option value="business_acquisition">Business Acquisition</option>
                         <option value="cre_acquisition">CRE Acquisition</option>

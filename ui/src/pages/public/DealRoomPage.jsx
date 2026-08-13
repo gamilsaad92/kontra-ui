@@ -1220,27 +1220,32 @@ function TransactionDetailsPanel({ property, propertyId, pack, onSaved }) {
   const packFields = isLegacyTokenPack
     ? (pack?.metadataFields || []).filter(field => !hiddenLaunchFields.has(field.id))
     : (pack?.metadataFields || []);
-  const fields = (packFields.length > 0)
-    ? packFields
-    : [
-        { id: "workspace_name",    label: "Deal Room Name",        fieldType: "text",     fullWidth: true, placeholder: property?.property_name || "" },
-        { id: "transaction_value", label: "Transaction Value ($)", fieldType: "currency", placeholder: "e.g. 1000000" },
-        { id: "target_close_date", label: "Target Closing Date",  fieldType: "date" },
-        { id: "notes",             label: "Notes",                fieldType: "text",     fullWidth: true, placeholder: "Any additional context for this deal room…" },
-      ];
+  const creationFields = [
+    { id: "workspace_name",          label: "Deal Room Name",        fieldType: "text",     fullWidth: true, placeholder: property?.property_name || "" },
+    { id: "transaction_description", label: "Transaction Description", fieldType: "text", fullWidth: true },
+    { id: "transaction_type",        label: "Transaction Type",      fieldType: "text" },
+    { id: "transaction_structure",   label: "Transaction Structure", fieldType: "text" },
+    { id: "transaction_value",       label: "Transaction Value ($)", fieldType: "currency", placeholder: "e.g. 1000000" },
+    { id: "target_close_date",       label: "Target Closing Date",   fieldType: "date" },
+  ];
+  const fields = [
+    ...creationFields,
+    ...packFields.filter(field => !creationFields.some(creationField => creationField.id === field.id)),
+  ];
 
   const sectionTitle = isLegacyTokenPack ? "Deal Room Details" : (pack?.metadataLabel || "Transaction Details");
 
   // Seed initial form values from saved metadata_values; backfill legacy
   // stated_revenue / stated_ebitda columns for rooms created before this feature.
   const [form, setForm] = useState(() => {
-    const saved = property?.metadata_values || {};
+      const saved = property?.metadata_values || {};
+      const storedDate = saved.target_close_date || property?.closing_date || property?.target_close_date || property?.close_date || "";
     const legacyMap = {
       annual_revenue: property?.stated_revenue != null ? String(property.stated_revenue) : "",
       ebitda:         property?.stated_ebitda  != null ? String(property.stated_ebitda)  : "",
     };
     return Object.fromEntries(
-      fields.map(f => [f.id, saved[f.id] != null ? String(saved[f.id]) : (legacyMap[f.id] || "")])
+       fields.map(f => [f.id, saved[f.id] != null ? String(saved[f.id]) : (f.id === "target_close_date" ? String(storedDate).slice(0, 10) : (legacyMap[f.id] || ""))])
     );
   });
 
@@ -2177,7 +2182,7 @@ function AssetReadinessTab({ propertyId, property, pack, onTabChange }) {
                 { label: 'Jurisdiction', value: passportData.jurisdiction },
                 { label: 'Owner',        value: passportData.owner },
                 ...(passportData.entity ? [{ label: 'Entity', value: passportData.entity }] : []),
-                ...(closingDate ? [{ label: 'Closing Date', value: new Date(closingDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) }] : []),
+                ...(closingDate ? [{ label: 'Closing Date', value: formatDateOnlyLabel(closingDate) }] : []),
                 { label: 'Documents',    value: `${docCount} uploaded` },
                 { label: 'Events',       value: `${events.length} recorded` },
                 { label: 'Verification', value: passportData.verification_status },
@@ -3789,6 +3794,22 @@ function TransactionSealSummaryCard({ propertyId }) {
   );
 }
 
+function formatDateOnlyLabel(value) {
+  const match = String(value || '').trim().match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!match) return '';
+  const [, year, month, day] = match;
+  return `${['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][Number(month) - 1]} ${Number(day)}, ${year}`;
+}
+
+function daysUntilDateOnly(value) {
+  const match = String(value || '').trim().match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!match) return null;
+  const target = Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+  const today = new Date();
+  const todayUtc = Date.UTC(today.getFullYear(), today.getMonth(), today.getDate());
+  return Math.ceil((target - todayUtc) / (1000 * 60 * 60 * 24));
+}
+
 function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, refreshKey }) {
   const [briefing, setBriefing]         = useState(null);
   const [coordination, setCoordination] = useState(null);
@@ -3846,8 +3867,8 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
   const currentStageIndex = Math.max(0, stages.findIndex(s => s.key === currentStageKey));
   const currentStage      = stages[currentStageIndex];
   const closingDate       = recordFields.find(field =>
-    field.field_key === 'transaction.closing_date' && field.status === 'verified'
-  )?.value_text || property?.closing_date || property?.target_close_date || property?.close_date;
+    field.field_key === 'transaction.closing_date' && String(field.value_text || '').trim()
+  )?.value_text || property?.metadata_values?.target_close_date || property?.closing_date || property?.target_close_date || property?.close_date;
 
   // Effective stages include settlement/complete when the room has settlement
   // capability enabled — uses the same getEffectiveStages() as OperationsManagerView.
@@ -3911,7 +3932,7 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
             <p className="mt-1 text-sm text-gray-500">
               {[
                 currentStage?.label,
-                closingDate && `Target close ${new Date(closingDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`,
+                closingDate && `Target close ${formatDateOnlyLabel(closingDate)}`,
               ].filter(Boolean).join(' · ') || pack.name}
             </p>
           </div>
@@ -4301,10 +4322,8 @@ function OperationsManagerView({ propertyId, property, pack, role, onTabChange }
   const docSchema       = pack.getDocumentSchema?.(property?.property_type || property?.type) || [];
   const requiredDocCount = docSchema.filter(d => d.required).length;
   const openBlockers    = (briefing?.risks || briefing?.open_items || []).length;
-  const closingDate     = property?.closing_date || property?.target_close_date || property?.close_date || '';
-  const daysToClose     = closingDate
-    ? Math.ceil((new Date(closingDate) - new Date()) / (1000 * 60 * 60 * 24))
-    : null;
+  const closingDate     = property?.metadata_values?.target_close_date || property?.closing_date || property?.target_close_date || property?.close_date || '';
+  const daysToClose     = closingDate ? daysUntilDateOnly(closingDate) : null;
 
   // ── Overall status ─────────────────────────────────────────────────────────
   const STATUS_CFG = {
@@ -4482,7 +4501,7 @@ function OperationsManagerView({ propertyId, property, pack, role, onTabChange }
               {closingDate && (
                 <span className="text-sm text-gray-500 flex items-center gap-1">
                   <span className="text-gray-300 text-xs">·</span>
-                  Target close: {new Date(closingDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                  Target close: {formatDateOnlyLabel(closingDate)}
                 </span>
               )}
             </div>

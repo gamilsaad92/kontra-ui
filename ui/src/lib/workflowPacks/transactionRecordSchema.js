@@ -22,6 +22,7 @@ import REQUIRED_KEYS_BY_SCHEMA from "../../shared/transaction_record_requirement
 // ── Universal transaction fields (present for every pack) ─────────────────────
 const UNIVERSAL_TRANSACTION_FIELDS = [
   { key: "transaction.type",         label: "Transaction type",        workflowRequired: true,  setup: "deal_type"         },
+  { key: "transaction.structure",    label: "Transaction structure",   workflowRequired: false, setup: "transaction_structure" },
   { key: "transaction.stage",        label: "Current stage",           workflowRequired: true,  setup: "stage"             },
   { key: "transaction.closing_date", label: "Target closing date",     workflowRequired: true,  setup: "closing_date"      },
   // Acquisition packs use transaction.purchase_price as the canonical fact.

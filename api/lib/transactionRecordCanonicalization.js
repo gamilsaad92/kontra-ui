@@ -1,4 +1,10 @@
 // Canonical Transaction Record key mapping shared by extraction and readiness.
+//
+// AI output is allowed to use descriptive category names, but persistence must
+// use exactly one key for each real-world fact. Pack-specific aliases are kept
+// here so a custom/business room does not accidentally use a CRE or fundraising
+// field as its canonical destination.
+
 const UNIVERSAL_ALIASES = {
   'financial.purchase_price': 'transaction.purchase_price',
   'financial.deal_value': 'transaction.value',
@@ -8,6 +14,7 @@ const UNIVERSAL_ALIASES = {
   'financial.annual_revenue': 'financial.revenue',
   'financial.total_revenue': 'financial.revenue',
 };
+
 const PACK_ALIASES = {
   business_acquisition: {
     'asset_identity.legal_name': 'asset.legal_name',
@@ -32,19 +39,33 @@ const PACK_ALIASES = {
     'beneficial_ownership.owners': 'ownership.owners',
   },
 };
+
 function getPackAliases(packId = 'generic') {
-  return { ...PACK_ALIASES.generic, ...(PACK_ALIASES[packId] || {}) };
+  return {
+    ...PACK_ALIASES.generic,
+    ...(PACK_ALIASES[packId] || {}),
+  };
 }
+
 function canonicalizeTransactionRecordKey(fieldKey, packId = 'generic') {
   const key = String(fieldKey || '').trim();
   if (!key) return key;
-  return getPackAliases(packId)[key] || UNIVERSAL_ALIASES[key] || key;
+  const packAliases = getPackAliases(packId);
+  return packAliases[key] || UNIVERSAL_ALIASES[key] || key;
 }
+
 function aliasKeysForCanonical(canonicalKey, packId = 'generic') {
   const aliases = new Set([canonicalKey]);
-  for (const [alias, destination] of Object.entries({ ...UNIVERSAL_ALIASES, ...getPackAliases(packId) })) {
+  const packAliases = getPackAliases(packId);
+  for (const [alias, destination] of Object.entries({ ...UNIVERSAL_ALIASES, ...packAliases })) {
     if (destination === canonicalKey) aliases.add(alias);
   }
   return [...aliases];
 }
-module.exports = { UNIVERSAL_ALIASES, PACK_ALIASES, canonicalizeTransactionRecordKey, aliasKeysForCanonical };
+
+module.exports = {
+  UNIVERSAL_ALIASES,
+  PACK_ALIASES,
+  canonicalizeTransactionRecordKey,
+  aliasKeysForCanonical,
+};

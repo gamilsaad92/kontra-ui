@@ -1178,6 +1178,11 @@ Return exactly this shape:
 {
   "name": "string — deal room name (e.g. Acme Manufacturing Acquisition)",
   "transactionType": "one of business_acquisition, cre_acquisition, fundraising, tokenization, lending, licensing, joint_venture, other",
+  "transactionTypeLabel": "string — human-readable transaction type",
+  "transactionStructure": "string|null — short structure such as Asset Purchase, Stock Purchase, Equity Round; null when not confidently supported",
+  "transactionStructureConfidence": "high|low",
+  "transactionValue": "number|null — only when an amount is explicitly supplied or confidently extracted; otherwise null",
+  "transactionValueConfidence": "high|low",
   "roles": [{ "key": "snake_case_key", "label": "Display Name", "required": bool, "needsDocs": bool, "icon": "emoji", "color": "#hex" }],
   "documents": [{ "id": "snake_case_id", "label": "Document Name", "required": bool, "ai": bool, "assignedRole": "role_key" }],
   "stages": [{ "key": "snake_case_key", "label": "Stage Name" }]
@@ -1190,6 +1195,8 @@ Rules:
 - Mark key legal/financial docs required:true; mark docs where AI extraction adds value ai:true
 - Use professional labels; avoid jargon unique to a single industry unless the description uses it
 - Keep stage labels short (1–4 words)
+- Return transactionValue only when the description explicitly states an amount or the amount is unambiguous; never guess or calculate it from unrelated figures.
+- Return transactionStructure only when the description clearly supports it; otherwise return null with low confidence.
 - When an authoritative transaction type is supplied, every role, document, and stage must fit that type. Never copy a default CRE checklist into another type.
 ${domainRule}
 
@@ -1201,11 +1208,34 @@ IMPORTANT: You are suggesting a starting point only. Do NOT claim completeness. 
 
     let raw = {};
     try { raw = JSON.parse(completion.choices[0].message.content); } catch (_) {}
+    const resolvedTransactionType = profile?.packId || raw.transactionType || transactionType || 'other';
+    const transactionTypeLabels = {
+      business_acquisition: 'Business Acquisition',
+      cre_acquisition: 'Commercial Real Estate Acquisition',
+      fundraising: 'Fundraising Round',
+      tokenization: 'Token Issuance / STO',
+      lending: 'Lending / Finance',
+      licensing: 'Licensing Transaction',
+      joint_venture: 'Joint Venture',
+      other: 'Custom Transaction',
+    };
     return res.json({
       name: raw.name || '',
-      transactionType: profile?.packId || raw.transactionType || transactionType || 'other',
-      transactionTypeLabel: normalizedType || 'Custom Transaction',
-      packId: profile?.packId || null,
+      transactionType: resolvedTransactionType,
+      transactionTypeLabel: normalizedType || raw.transactionTypeLabel || transactionTypeLabels[resolvedTransactionType] || 'Custom Transaction',
+      transactionStructure: typeof raw.transactionStructure === 'string' && raw.transactionStructure.trim()
+        && String(raw.transactionStructureConfidence || '').toLowerCase() === 'high'
+        ? raw.transactionStructure.trim().slice(0, 120)
+        : null,
+      transactionStructureConfidence: String(raw.transactionStructureConfidence || '').toLowerCase() === 'high' ? 'high' : 'low',
+      transactionValue: String(raw.transactionValueConfidence || '').toLowerCase() === 'high'
+        && Number.isFinite(Number(raw.transactionValue)) && Number(raw.transactionValue) > 0
+        ? Number(raw.transactionValue)
+        : null,
+      transactionValueConfidence: String(raw.transactionValueConfidence || '').toLowerCase() === 'high' ? 'high' : 'low',
+      packId: ['cre_acquisition', 'business_acquisition', 'fundraising', 'tokenization'].includes(resolvedTransactionType)
+        ? resolvedTransactionType
+        : null,
       roles: Array.isArray(raw.roles) ? raw.roles : [],
       documents: Array.isArray(raw.documents) ? raw.documents : [],
       stages: Array.isArray(raw.stages) ? raw.stages : [],
@@ -1620,6 +1650,12 @@ app.post('/api/checkout/guest', async (req, res) => {
         lastName: meta.lastName || '',
         jurisdiction: normalizedJurisdiction,
         transactionType: meta.transactionType || '',
+        transactionTypeLabel: meta.transactionTypeLabel || '',
+        transactionTypeSource: meta.transactionTypeSource || '',
+        transactionDescription: meta.transactionDescription || '',
+        transactionStructure: meta.transactionStructure || '',
+        transactionValue: meta.transactionValue || '',
+        transactionValueConfidence: meta.transactionValueConfidence || '',
       },
     };
     if (email) sessionParams.customer_email = email;
@@ -1636,13 +1672,19 @@ app.post('/api/checkout/guest', async (req, res) => {
         address: meta.address || '',
         property_type: meta.type || '',
         property_size: meta.size || '',
-        deal_type: meta.dealType || '',
+        deal_type: meta.dealType || meta.transactionType || '',
         deal_amount: meta.dealAmount || '',
         closing_date: meta.closingDate || '',
         first_name: meta.firstName || '',
         last_name: meta.lastName || '',
         jurisdiction: normalizedJurisdiction,
         transaction_type: meta.transactionType || '',
+        transaction_type_label: meta.transactionTypeLabel || '',
+        transaction_type_source: meta.transactionTypeSource || '',
+        transaction_description: meta.transactionDescription || '',
+        transaction_structure: meta.transactionStructure || '',
+        transaction_value: meta.transactionValue || '',
+        transaction_value_confidence: meta.transactionValueConfidence || '',
          workflow_pack_id: finalPackId,
         owner_write_token: ownerWriteToken,
         created_at: new Date().toISOString(),
@@ -1696,14 +1738,25 @@ app.post(['/api/checkout/demo', '/api/checkout/trial'], async (req, res) => {
       address: meta.address || '',
       property_type: meta.type || '',
       property_size: meta.size || '',
-      deal_type: meta.dealType || '',
+      deal_type: meta.dealType || meta.transactionType || '',
       deal_amount: meta.dealAmount || '',
-      closing_date: meta.closingDate || '',
+      closing_date: dateOnly(meta.closingDate),
       first_name: meta.firstName || '',
       last_name: meta.lastName || '',
       jurisdiction: normalizedJurisdiction,
       workflow_pack_id: demoPackId,
       stages_config: demoInitialStages,
+      metadata_values: buildCreationMetadata({
+        propertyName,
+        transactionDescription: meta.transactionDescription,
+        transactionType: meta.transactionType || demoPackId,
+        transactionTypeLabel: meta.transactionTypeLabel,
+        transactionTypeSource: meta.transactionTypeSource,
+        transactionStructure: meta.transactionStructure,
+        transactionValue: meta.transactionValue,
+        transactionValueConfidence: meta.transactionValueConfidence,
+        closingDate: meta.closingDate,
+      }),
     };
 
     let roomCreated = false;
@@ -1749,6 +1802,19 @@ app.post(['/api/checkout/demo', '/api/checkout/trial'], async (req, res) => {
         error: 'Workspace could not be created',
         message: 'The workspace database did not confirm the room. No room was created.',
       });
+    }
+
+    const creationMetadata = dealRoomRecord.metadata_values;
+    try {
+      await syncMetadataToTransactionRecord(
+        pid,
+        creationMetadata,
+        { workflow_pack_id: demoPackId, deal_type: meta.transactionType || '' },
+        'Deal Owner',
+        { inferredFieldIds: inferredCreationFieldIds(creationMetadata), skipHistory: true },
+      );
+    } catch (recordErr) {
+      console.warn('[demo] creation transaction record seed skipped:', recordErr.message);
     }
 
     // Generate owner write token and persist it — included in the redirect URL
@@ -2138,6 +2204,12 @@ app.post('/api/webhook/stripe',
         lastName: metadataLastName,
         jurisdiction: metadataJurisdiction,
         transactionType: metadataTransactionType,
+        transactionTypeLabel: metadataTransactionTypeLabel,
+        transactionTypeSource: metadataTransactionTypeSource,
+        transactionDescription: metadataTransactionDescription,
+        transactionStructure: metadataTransactionStructure,
+        transactionValue: metadataTransactionValue,
+        transactionValueConfidence: metadataTransactionValueConfidence,
       } = session.metadata || {};
       const customerEmail = session.customer_details?.email || session.customer_email || '';
       const amountPaid = (session.amount_total / 100).toFixed(2);
@@ -2175,14 +2247,25 @@ app.post('/api/webhook/stripe',
         address: metadataAddress || pending.address || '',
         property_type: metadataPropertyType || pending.property_type || '',
         property_size: metadataPropertySize || pending.property_size || '',
-        deal_type: metadataDealType || pending.deal_type || '',
+        deal_type: metadataDealType || metadataTransactionType || pending.deal_type || pending.transaction_type || '',
         deal_amount: metadataDealAmount || pending.deal_amount || '',
-        closing_date: metadataClosingDate || pending.closing_date || '',
+        closing_date: dateOnly(metadataClosingDate || pending.closing_date),
         first_name: metadataFirstName || pending.first_name || '',
         last_name: metadataLastName || pending.last_name || '',
         jurisdiction: normalizedJurisdiction,
         workflow_pack_id: stripePackId,
         stages_config: stripeInitialStages,
+        metadata_values: buildCreationMetadata({
+          propertyName: propertyName || pending.property_name || '',
+          transactionDescription: metadataTransactionDescription || pending.transaction_description,
+          transactionType: metadataTransactionType || pending.transaction_type || stripePackId,
+          transactionTypeLabel: metadataTransactionTypeLabel || pending.transaction_type_label,
+          transactionTypeSource: metadataTransactionTypeSource || pending.transaction_type_source,
+          transactionStructure: metadataTransactionStructure || pending.transaction_structure,
+          transactionValue: metadataTransactionValue || pending.transaction_value,
+          transactionValueConfidence: metadataTransactionValueConfidence || pending.transaction_value_confidence,
+          closingDate: metadataClosingDate || pending.closing_date,
+        }),
       };
 
       try {
@@ -2218,6 +2301,18 @@ app.post('/api/webhook/stripe',
         }
       } catch (dbErr) {
         console.warn('[webhook] deal_rooms upsert skipped:', dbErr.message);
+      }
+
+      try {
+        await syncMetadataToTransactionRecord(
+          dealRoomRecord.property_id,
+          dealRoomRecord.metadata_values,
+          { workflow_pack_id: stripePackId, deal_type: dealRoomRecord.deal_type },
+          'Deal Owner',
+          { inferredFieldIds: inferredCreationFieldIds(dealRoomRecord.metadata_values), skipHistory: true },
+        );
+      } catch (recordErr) {
+        console.warn('[webhook] creation transaction record seed skipped:', recordErr.message);
       }
 
       // Also log to activations table (legacy)
@@ -2711,7 +2806,58 @@ const TRANSACTION_RECORD_METADATA_FIELDS = {
     fieldCategory: 'transaction',
     displayLabel: 'Target closing date',
   },
+  transaction_type: {
+    fieldKey: 'transaction.type',
+    fieldCategory: 'transaction',
+    displayLabel: 'Transaction type',
+  },
+  transaction_structure: {
+    fieldKey: 'transaction.structure',
+    fieldCategory: 'transaction',
+    displayLabel: 'Transaction structure',
+  },
 };
+
+function dateOnly(value) {
+  const match = String(value || '').trim().match(/^(\d{4}-\d{2}-\d{2})/);
+  return match ? match[1] : '';
+}
+
+function buildCreationMetadata({
+  propertyName,
+  transactionDescription,
+  transactionType,
+  transactionTypeLabel,
+  transactionTypeSource,
+  transactionStructure,
+  transactionValue,
+  transactionValueConfidence,
+  closingDate,
+}) {
+  const metadata = {
+    workspace_name: String(propertyName || '').slice(0, 500),
+    transaction_description: String(transactionDescription || '').slice(0, 2000),
+    transaction_type: String(transactionTypeLabel || transactionType || '').slice(0, 200),
+    transaction_type_key: String(transactionType || '').slice(0, 100),
+    transaction_type_source: String(transactionTypeSource || '').slice(0, 30),
+    target_close_date: dateOnly(closingDate) || null,
+  };
+  if (transactionStructure) metadata.transaction_structure = String(transactionStructure).slice(0, 200);
+  const numericValue = Number(transactionValue);
+  if (String(transactionValueConfidence || '').toLowerCase() === 'high'
+      && Number.isFinite(numericValue) && numericValue > 0) {
+    metadata.transaction_value = String(numericValue);
+  }
+  return metadata;
+}
+
+function inferredCreationFieldIds(metadata) {
+  const inferred = ['transaction_structure', 'transaction_value'];
+  if (String(metadata?.transaction_type_source || '').toLowerCase() !== 'owner') {
+    inferred.push('transaction_type');
+  }
+  return inferred;
+}
 
 function metadataTransactionValueField(schemaKey) {
   if (schemaKey === 'cre_acquisition' || schemaKey === 'business_acquisition') {
@@ -2771,12 +2917,15 @@ function formatMetadataRecordValue(fieldId, value) {
     : String(value).slice(0, 2000);
 }
 
-async function syncMetadataToTransactionRecord(propertyId, values, room, actorEmail) {
+async function syncMetadataToTransactionRecord(propertyId, values, room, actorEmail, options = {}) {
   const schemaKey = await getTransactionRecordSchemaKey(room);
   const mappings = {
     transaction_value: metadataTransactionValueField(schemaKey),
     target_close_date: TRANSACTION_RECORD_METADATA_FIELDS.target_close_date,
+    transaction_type: TRANSACTION_RECORD_METADATA_FIELDS.transaction_type,
+    transaction_structure: TRANSACTION_RECORD_METADATA_FIELDS.transaction_structure,
   };
+  const inferredFieldIds = new Set(options.inferredFieldIds || []);
 
   for (const [fieldId, mapping] of Object.entries(mappings)) {
     if (!Object.prototype.hasOwnProperty.call(values || {}, fieldId)) continue;
@@ -2792,7 +2941,8 @@ async function syncMetadataToTransactionRecord(propertyId, values, room, actorEm
     if (findError) throw findError;
 
     const nextValue = hasValue ? formatMetadataRecordValue(fieldId, rawValue) : null;
-    const nextStatus = hasValue ? 'verified' : 'missing';
+    const inferred = inferredFieldIds.has(fieldId);
+    const nextStatus = hasValue ? (inferred ? 'extracted' : 'verified') : 'missing';
     const update = {
       field_category: mapping.fieldCategory,
       display_label: mapping.displayLabel,
@@ -2802,10 +2952,9 @@ async function syncMetadataToTransactionRecord(propertyId, values, room, actorEm
       source_doc_id: null,
       source_page: null,
       source_excerpt: null,
-      extracted_by: hasValue ? 'deal_owner' : null,
-      verified_by: hasValue ? (actorEmail || 'Deal Owner') : null,
-      verified_role: hasValue ? 'Deal Owner' : null,
-      verified_at: hasValue ? now : null,
+      extracted_by: hasValue ? (inferred ? 'ai' : 'deal_owner') : null,
+      verified_by: hasValue && !inferred ? (actorEmail || 'Deal Owner') : null,
+      verified_at: hasValue && !inferred ? now : null,
       updated_at: now,
     };
 
@@ -2832,7 +2981,7 @@ async function syncMetadataToTransactionRecord(propertyId, values, room, actorEm
       fieldIdValue = inserted?.id;
     }
 
-    if (fieldIdValue && (existing?.value_text !== nextValue || existing?.status !== nextStatus)) {
+    if (!options.skipHistory && fieldIdValue && (existing?.value_text !== nextValue || existing?.status !== nextStatus)) {
       await recordTransactionFieldHistory({
         fieldId: fieldIdValue,
         propertyId,
@@ -2843,7 +2992,7 @@ async function syncMetadataToTransactionRecord(propertyId, values, room, actorEm
         newValue: nextValue,
         priorStatus: existing?.status || null,
         newStatus: nextStatus,
-        metadata: { source: 'deal_owner_input', metadataField: fieldId },
+        metadata: { source: inferred ? 'ai_creation_inference' : 'deal_owner_input', metadataField: fieldId },
       });
     }
   }
