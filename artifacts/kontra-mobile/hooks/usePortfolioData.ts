@@ -31,7 +31,7 @@ export interface ActivityItem {
 }
 
 export interface PortfolioSummary {
-  totalValue: number;
+  totalValue?: number;
   activeLoans: number;
   ytdReturn?: number;
   nextPaymentDate?: string;

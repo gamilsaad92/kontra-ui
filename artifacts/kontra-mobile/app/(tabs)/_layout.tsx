@@ -47,7 +47,7 @@ import { BlurView } from "expo-blur";
           <Tabs.Screen key={tab.name} name={tab.name} options={{
             title: tab.title,
             href: hiddenTabs.includes(tab.name) ? null : undefined,
-            tabBarIcon: ({ color }) => isIOS ? <SymbolView name={tab.sfIcon} tintColor={color} size={22} /> : <Feather name={tab.icon} size={22} color={color} />,
+            tabBarIcon: ({ color }) => isIOS ? <SymbolView name={tab.sfIcon as any} tintColor={color} size={22} /> : <Feather name={tab.icon} size={22} color={color} />,
           }} />
         ))}
       </Tabs>

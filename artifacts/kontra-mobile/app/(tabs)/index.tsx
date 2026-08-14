@@ -46,36 +46,36 @@ export default function HomeScreen() {
       <View style={[s.hero, { backgroundColor: accentColor }]}>
         <View style={s.heroTop}>
           <View>
-            <Text style={s.heroGreeting}>Good morning,</Text>
-            <Text style={s.heroName}>{user.name.split(" ")[0]}</Text>
+            <Text style={[s.heroGreeting, { color: `${colors.primaryForeground}bf` }]}>Good morning,</Text>
+            <Text style={[s.heroName, { color: colors.primaryForeground }]}>{user.name.split(" ")[0]}</Text>
           </View>
           <View style={s.heroBadgeRow}>
             {isLive && (
-              <View style={[s.liveDot, { backgroundColor: "rgba(255,255,255,0.25)" }]}>
-                <View style={s.livePulse} />
-                <Text style={s.liveText}>Live</Text>
+              <View style={[s.liveDot, { backgroundColor: `${colors.primaryForeground}33` }]}>
+                <View style={[s.livePulse, { backgroundColor: colors.success }]} />
+                <Text style={[s.liveText, { color: colors.primaryForeground }]}>Live</Text>
               </View>
             )}
-            <View style={[s.heroBadge, { backgroundColor: "rgba(255,255,255,0.2)" }]}>
-              <Text style={s.heroBadgeText}>{isInvestor ? "Investor" : "Borrower"}</Text>
+            <View style={[s.heroBadge, { backgroundColor: `${colors.primaryForeground}33` }]}>
+              <Text style={[s.heroBadgeText, { color: colors.primaryForeground }]}>{isInvestor ? "Investor" : "Borrower"}</Text>
             </View>
           </View>
         </View>
         {isInvestor ? (
           <View style={s.heroStats}>
-            <View><Text style={s.heroLabel}>Portfolio Value</Text><Text style={s.heroValue}>${((summary.totalValue ?? 0) / 1_000_000).toFixed(2)}M</Text></View>
-            <View style={s.heroSep} />
-            <View><Text style={s.heroLabel}>Active Loans</Text><Text style={s.heroValue}>{summary.activeLoans ?? loans.length}</Text></View>
-            <View style={s.heroSep} />
-            <View><Text style={s.heroLabel}>YTD Return</Text><Text style={s.heroValue}>+{summary.ytdReturn ?? 7.2}%</Text></View>
+            <View style={s.heroStat}><Text style={[s.heroLabel, { color: `${colors.primaryForeground}b3` }]}>Portfolio Value</Text><Text style={[s.heroValue, { color: colors.primaryForeground }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>${((summary.totalValue ?? 0) / 1_000_000).toFixed(2)}M</Text></View>
+            <View style={[s.heroSep, { backgroundColor: `${colors.primaryForeground}4d` }]} />
+            <View style={s.heroStat}><Text style={[s.heroLabel, { color: `${colors.primaryForeground}b3` }]}>Active Loans</Text><Text style={[s.heroValue, { color: colors.primaryForeground }]}>{summary.activeLoans ?? loans.length}</Text></View>
+            <View style={[s.heroSep, { backgroundColor: `${colors.primaryForeground}4d` }]} />
+            <View style={s.heroStat}><Text style={[s.heroLabel, { color: `${colors.primaryForeground}b3` }]}>YTD Return</Text><Text style={[s.heroValue, { color: colors.primaryForeground }]}>{`+${summary.ytdReturn ?? 7.2}%`}</Text></View>
           </View>
         ) : (
           <View style={s.heroStats}>
-            <View><Text style={s.heroLabel}>Total Debt</Text><Text style={s.heroValue}>${((summary.totalDebt ?? 0) / 1_000_000).toFixed(1)}M</Text></View>
-            <View style={s.heroSep} />
-            <View><Text style={s.heroLabel}>Active Loans</Text><Text style={s.heroValue}>{summary.activeLoans ?? loans.length}</Text></View>
-            <View style={s.heroSep} />
-            <View><Text style={s.heroLabel}>Next Payment</Text><Text style={s.heroValue}>{summary.nextPaymentDate ?? "May 1"}</Text></View>
+            <View style={s.heroStat}><Text style={[s.heroLabel, { color: `${colors.primaryForeground}b3` }]}>Total Debt</Text><Text style={[s.heroValue, { color: colors.primaryForeground }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>${((summary.totalDebt ?? 0) / 1_000_000).toFixed(1)}M</Text></View>
+            <View style={[s.heroSep, { backgroundColor: `${colors.primaryForeground}4d` }]} />
+            <View style={s.heroStat}><Text style={[s.heroLabel, { color: `${colors.primaryForeground}b3` }]}>Active Loans</Text><Text style={[s.heroValue, { color: colors.primaryForeground }]}>{summary.activeLoans ?? loans.length}</Text></View>
+            <View style={[s.heroSep, { backgroundColor: `${colors.primaryForeground}4d` }]} />
+            <View style={s.heroStat}><Text style={[s.heroLabel, { color: `${colors.primaryForeground}b3` }]}>Next Payment</Text><Text style={[s.heroValue, { color: colors.primaryForeground }]}>{summary.nextPaymentDate ?? "May 1"}</Text></View>
           </View>
         )}
       </View>
@@ -101,22 +101,28 @@ export default function HomeScreen() {
             <ActivityIndicator color={accentColor} size="small" />
             <Text style={[s.loadingText, { color: colors.mutedForeground }]}>Loading loans…</Text>
           </View>
+        ) : loans.length === 0 ? (
+          <View style={[s.emptyState, { backgroundColor: colors.secondary }]}>
+            <Feather name="briefcase" size={18} color={colors.mutedForeground} />
+            <Text style={[s.emptyTitle, { color: colors.foreground }]}>No loans to display</Text>
+            <Text style={[s.emptyBody, { color: colors.mutedForeground }]}>Your active portfolio will appear here.</Text>
+          </View>
         ) : (
           <View style={{ gap: 10 }}>
             {loans.slice(0, 3).map(loan => (
               <KontraCard key={loan.id} padding={14}>
                 <View style={s.loanTop}>
                   <View style={s.loanLeft}>
-                    <Text style={[s.loanProp, { color: colors.foreground }]}>{loan.property}</Text>
-                    <Text style={[s.loanType, { color: colors.mutedForeground }]}>{loan.type} · {loan.id}</Text>
+                    <Text style={[s.loanProp, { color: colors.foreground }]} numberOfLines={1}>{loan.property}</Text>
+                    <Text style={[s.loanType, { color: colors.mutedForeground }]} numberOfLines={1}>{loan.type} · {loan.id}</Text>
                   </View>
                   <StatusBadge status={loan.status} size="sm" />
                 </View>
                 <View style={s.loanBottom}>
-                  <View><Text style={[s.loanMetaLabel, { color: colors.mutedForeground }]}>Balance</Text><Text style={[s.loanMetaVal, { color: colors.foreground }]}>${(loan.balance / 1000000).toFixed(1)}M</Text></View>
-                  <View><Text style={[s.loanMetaLabel, { color: colors.mutedForeground }]}>Rate</Text><Text style={[s.loanMetaVal, { color: colors.foreground }]}>{loan.rate}</Text></View>
-                  <View><Text style={[s.loanMetaLabel, { color: colors.mutedForeground }]}>Maturity</Text><Text style={[s.loanMetaVal, { color: colors.foreground }]}>{loan.maturity}</Text></View>
-                  {!isInvestor && loan.nextPayment && <View><Text style={[s.loanMetaLabel, { color: colors.mutedForeground }]}>Next Pmt</Text><Text style={[s.loanMetaVal, { color: accentColor }]}>{loan.nextPayment}</Text></View>}
+                  <View style={s.loanMetric}><Text style={[s.loanMetaLabel, { color: colors.mutedForeground }]}>Balance</Text><Text style={[s.loanMetaVal, { color: colors.foreground }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>${(loan.balance / 1000000).toFixed(1)}M</Text></View>
+                  <View style={s.loanMetric}><Text style={[s.loanMetaLabel, { color: colors.mutedForeground }]}>Rate</Text><Text style={[s.loanMetaVal, { color: colors.foreground }]}>{loan.rate}</Text></View>
+                  <View style={s.loanMetric}><Text style={[s.loanMetaLabel, { color: colors.mutedForeground }]}>Maturity</Text><Text style={[s.loanMetaVal, { color: colors.foreground }]}>{loan.maturity}</Text></View>
+                  {!isInvestor && loan.nextPayment && <View style={s.loanMetric}><Text style={[s.loanMetaLabel, { color: colors.mutedForeground }]}>Next Pmt</Text><Text style={[s.loanMetaVal, { color: accentColor }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>{loan.nextPayment}</Text></View>}
                 </View>
               </KontraCard>
             ))}
@@ -131,6 +137,12 @@ export default function HomeScreen() {
           <View style={s.loadingBox}>
             <ActivityIndicator color={accentColor} size="small" />
           </View>
+        ) : activity.length === 0 ? (
+          <View style={[s.emptyState, { backgroundColor: colors.secondary }]}>
+            <Feather name="activity" size={18} color={colors.mutedForeground} />
+            <Text style={[s.emptyTitle, { color: colors.foreground }]}>No recent activity</Text>
+            <Text style={[s.emptyBody, { color: colors.mutedForeground }]}>Updates will appear here as your portfolio changes.</Text>
+          </View>
         ) : (
           <View style={{ gap: 8 }}>
             {activity.slice(0, 4).map(item => (
@@ -144,11 +156,11 @@ export default function HomeScreen() {
                     />
                   </View>
                   <View style={s.actBody}>
-                    <Text style={[s.actDesc, { color: colors.foreground }]}>{item.title}</Text>
+                    <Text style={[s.actDesc, { color: colors.foreground }]} numberOfLines={2}>{item.title}</Text>
                     <Text style={[s.actDate, { color: colors.mutedForeground }]}>{item.date}</Text>
                   </View>
                   {item.amount && (
-                    <Text style={[s.actAmount, { color: item.amount.startsWith("+") ? colors.success : colors.foreground }]}>{item.amount}</Text>
+                    <Text style={[s.actAmount, { color: item.amount.startsWith("+") ? colors.success : colors.foreground }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>{item.amount}</Text>
                   )}
                 </View>
               </KontraCard>
@@ -165,18 +177,19 @@ const s = StyleSheet.create({
   container: { paddingHorizontal: 16 },
   hero: { borderRadius: 16, padding: 20, marginBottom: 16 },
   heroTop: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 20 },
-  heroGreeting: { color: "rgba(255,255,255,0.75)", fontSize: 14, fontFamily: "Inter_400Regular" },
-  heroName: { color: "#fff", fontSize: 24, fontFamily: "Inter_700Bold" },
+  heroGreeting: { fontSize: 14, fontFamily: "Inter_400Regular" },
+  heroName: { fontSize: 24, fontFamily: "Inter_700Bold" },
   heroBadgeRow: { flexDirection: "row", gap: 6, alignItems: "center" },
   heroBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20 },
-  heroBadgeText: { color: "#fff", fontSize: 12, fontFamily: "Inter_600SemiBold" },
+  heroBadgeText: { fontSize: 12, fontFamily: "Inter_600SemiBold" },
   liveDot: { flexDirection: "row", alignItems: "center", gap: 5, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 20 },
-  livePulse: { width: 6, height: 6, borderRadius: 3, backgroundColor: "#4ade80" },
-  liveText: { color: "#fff", fontSize: 11, fontFamily: "Inter_600SemiBold" },
+  livePulse: { width: 6, height: 6, borderRadius: 3 },
+  liveText: { fontSize: 11, fontFamily: "Inter_600SemiBold" },
   heroStats: { flexDirection: "row", alignItems: "center" },
-  heroSep: { width: 1, height: 32, backgroundColor: "rgba(255,255,255,0.3)", marginHorizontal: 16 },
-  heroLabel: { color: "rgba(255,255,255,0.7)", fontSize: 11, fontFamily: "Inter_400Regular", marginBottom: 3 },
-  heroValue: { color: "#fff", fontSize: 18, fontFamily: "Inter_700Bold" },
+  heroStat: { flex: 1, minWidth: 0 },
+  heroSep: { width: 1, height: 32, marginHorizontal: 8 },
+  heroLabel: { fontSize: 11, fontFamily: "Inter_400Regular", marginBottom: 3 },
+  heroValue: { fontSize: 18, fontFamily: "Inter_700Bold" },
   quickActions: { flexDirection: "row", gap: 10, marginBottom: 24 },
   quickBtn: { flex: 1, alignItems: "center", justifyContent: "center", padding: 12, borderRadius: 12, gap: 6 },
   quickLabel: { fontSize: 11, fontFamily: "Inter_600SemiBold" },
@@ -187,7 +200,8 @@ const s = StyleSheet.create({
   loanLeft: { flex: 1, marginRight: 8 },
   loanProp: { fontSize: 14, fontFamily: "Inter_600SemiBold", marginBottom: 2 },
   loanType: { fontSize: 12, fontFamily: "Inter_400Regular" },
-  loanBottom: { flexDirection: "row", gap: 16 },
+  loanBottom: { flexDirection: "row", gap: 8 },
+  loanMetric: { flex: 1, minWidth: 0 },
   loanMetaLabel: { fontSize: 10, fontFamily: "Inter_400Regular", textTransform: "uppercase", letterSpacing: 0.3, marginBottom: 2 },
   loanMetaVal: { fontSize: 13, fontFamily: "Inter_600SemiBold" },
   actRow: { flexDirection: "row", alignItems: "center", gap: 10 },
@@ -196,4 +210,7 @@ const s = StyleSheet.create({
   actDesc: { fontSize: 13, fontFamily: "Inter_500Medium", marginBottom: 1 },
   actDate: { fontSize: 11, fontFamily: "Inter_400Regular" },
   actAmount: { fontSize: 13, fontFamily: "Inter_600SemiBold" },
+  emptyState: { alignItems: "center", borderRadius: 12, gap: 5, paddingHorizontal: 20, paddingVertical: 24 },
+  emptyTitle: { fontSize: 14, fontFamily: "Inter_600SemiBold" },
+  emptyBody: { fontSize: 12, fontFamily: "Inter_400Regular", textAlign: "center" },
 });
