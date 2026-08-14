@@ -787,11 +787,18 @@ export default function DocumentChecklistPanel({
         headers: getRoomAuthHeaders(propertyId),
         body: form,
       });
-      if (!res.ok) throw new Error("Upload failed");
+      const result = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(
+          result.message
+          || result.error
+          || `Upload failed (${res.status})`
+        );
+      }
       setRefreshKey(k => k + 1);
       onAnalysisSaved?.();
-    } catch {
-      setUploadError("Upload failed — try again.");
+    } catch (error) {
+      setUploadError(error?.message || "Upload failed — try again.");
     } finally {
       setUploadingSection(null);
     }

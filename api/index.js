@@ -3018,6 +3018,34 @@ function getSectionAssignments(packId, propertyType) {
   return null;
 }
 
+async function getCustomPackAssignedSections(packId, role) {
+  if (!packId?.startsWith('ws_') || !role) return null;
+  try {
+    const { data, error } = await supabase
+      .from('custom_workflow_packs')
+      .select('config')
+      .eq('id', packId)
+      .maybeSingle();
+    if (error || !Array.isArray(data?.config?.documents)) return null;
+    return new Set(
+      data.config.documents
+        .filter((document) => {
+          const assignedTo = Array.isArray(document?.assignedTo)
+            ? document.assignedTo
+            : document?.assignedRole
+              ? [document.assignedRole]
+              : [];
+          return assignedTo.includes(role);
+        })
+        .map((document) => document.section || document.id)
+        .filter(Boolean),
+    );
+  } catch (error) {
+    console.warn('[custom-pack] document assignment lookup failed:', error.message);
+    return null;
+  }
+}
+
 function isCoordinatorRole(packId, role) {
   const pack = DOC_ASSIGNMENTS[packId];
   return pack?.coordinatorRoles?.includes(role) ?? true; // unknown pack → allow all
@@ -3219,6 +3247,9 @@ async function getAssignedSectionsForAccess(propertyId, packId, propertyType, ac
     .map(item => item.section)
     .filter(Boolean);
   if (persistedSections.length > 0) return new Set(persistedSections);
+
+  const customSections = await getCustomPackAssignedSections(packId, access.role);
+  if (customSections?.size > 0) return customSections;
 
   const assignments = getSectionAssignments(packId, propertyType);
   if (!assignments) return new Set();
@@ -3936,9 +3967,33 @@ app.post('/api/public/deal-room/:propertyId/track-document', upload.single('file
       .from('deal_rooms').select('sealed_at').eq('property_id', propertyId).maybeSingle();
     const isPostCompletion = !!(sealCheckRoom?.sealed_at);
 
+    // Custom workspace packs may define arbitrary non-AI document sections
+    // (for example `loi`, `nda`, or `property_title`). Treat those sections
+    // like the built-in lightweight path instead of requiring a nonexistent
+    // pack-specific AI endpoint.
+    let customDocumentIsLightweight = false;
+    if (!isPostCompletion) {
+      const { data: roomPack } = await supabase
+        .from('deal_rooms')
+        .select('workflow_pack_id')
+        .eq('property_id', propertyId)
+        .maybeSingle();
+      if (roomPack?.workflow_pack_id?.startsWith('ws_')) {
+        const { data: customPack } = await supabase
+          .from('custom_workflow_packs')
+          .select('config')
+          .eq('id', roomPack.workflow_pack_id)
+          .maybeSingle();
+        const customDocument = (customPack?.config?.documents || []).find(
+          (document) => (document?.section || document?.id) === section,
+        );
+        customDocumentIsLightweight = customDocument?.ai !== true;
+      }
+    }
+
     // Section validation — only enforced for pre-completion uploads.
     // Post-completion uploads accept any section label; they bypass AI analysis.
-    if (!isPostCompletion && !LIGHTWEIGHT_SECTIONS.includes(section)) {
+    if (!isPostCompletion && !LIGHTWEIGHT_SECTIONS.includes(section) && !customDocumentIsLightweight) {
       return res.status(400).json({ error: `Section '${section}' requires AI analysis — use the AI upload endpoint instead` });
     }
 
