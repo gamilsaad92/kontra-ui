@@ -37,6 +37,11 @@ const verifiedAssetPackageRouter = require('./routers/verifiedAssetPackage');
 const { generateAndStoreVAP } = require('./routers/verifiedAssetPackage');
 const { evaluateDealRoomForTasks, evaluateReadinessTasks } = require('./lib/taskEngine');
 const {
+  recalculateTransactionState,
+  computeTransactionReadiness,
+} = require('./lib/transactionState');
+const { emit: emitInternalEvent } = require('./lib/eventBus');
+const {
   canonicalizeTransactionRecordKey,
   aliasKeysForCanonical,
   canonicalTransactionTypeLabel,
@@ -1278,24 +1283,7 @@ app.post('/api/public/deal-room/:propertyId/repack', async (req, res) => {
   const access = await getRoomAccessContext(req, propertyId, ownerWriteToken);
   if (access.mode !== 'owner') return accessDenied(res, 'Only the deal-room owner can change the workflow pack');
 
-  // Authorization — identical contract to the checklist PUT endpoint
-  if (!ownerWriteToken) {
-    return res.status(403).json({ error: 'owner_write_token required' });
-  }
-
   try {
-    // Fetch room to verify token
-    const { data: room, error: roomErr } = await supabase
-      .from('deal_rooms')
-      .select('owner_write_token')
-      .eq('property_id', propertyId)
-      .maybeSingle();
-    if (roomErr) throw roomErr;
-    if (!room) return res.status(404).json({ error: 'Workspace not found' });
-    if (!room.owner_write_token || room.owner_write_token !== ownerWriteToken) {
-      return res.status(403).json({ error: 'Invalid owner token — pack change not authorized' });
-    }
-
     // Re-seed stages from the new pack
     const newStages = getPackStageConfig(packId).stages.map(({ key, label }) => ({ key, label }));
 
@@ -3053,13 +3041,16 @@ async function getRoomAccessContext(req, propertyId, ownerTokenOverride = '') {
     if (session?.invite_id) {
       const { data: invite } = await supabase
         .from('deal_room_invites')
-        .select('property_id, role_key, status')
+        .select('property_id, role_key, invited_email, status')
         .eq('id', session.invite_id)
         .maybeSingle();
       if (invite?.property_id === propertyId && !['revoked', 'expired'].includes(invite.status)) {
         return {
           mode: 'participant',
           role: invite.role_key,
+          actorId: session.invite_id,
+          email: invite.invited_email || null,
+          actorType: 'participant',
           permissions: {
             viewOverview: true,
             viewAssignedDocuments: true,
@@ -3082,13 +3073,17 @@ async function getRoomAccessContext(req, propertyId, ownerTokenOverride = '') {
   if (ownerToken) {
     const { data: owner } = await supabase
       .from('deal_rooms')
-      .select('owner_write_token')
+      .select('id, owner_write_token, customer_email')
       .eq('property_id', propertyId)
       .maybeSingle();
     if (owner?.owner_write_token && owner.owner_write_token === ownerToken) {
       return {
         mode: 'owner',
         role: 'owner',
+        actorId: owner.customer_email || 'owner',
+        email: owner.customer_email || null,
+        roomId: owner.id || null,
+        actorType: 'owner',
         permissions: {
           viewOverview: true,
           viewAssignedDocuments: true,
@@ -3154,15 +3149,8 @@ app.post('/api/public/deal-room/:propertyId/preview-link', async (req, res) => {
   const { propertyId } = req.params;
   const ownerWriteToken = String(req.body?.ownerWriteToken || req.headers['x-owner-write-token'] || '').trim();
   try {
-    const { data: room, error } = await supabase
-      .from('deal_rooms')
-      .select('owner_write_token')
-      .eq('property_id', propertyId)
-      .maybeSingle();
-    if (error) throw error;
-    if (!room?.owner_write_token || room.owner_write_token !== ownerWriteToken) {
-      return accessDenied(res, 'Only the deal-room owner can create a preview link');
-    }
+    const access = await getRoomAccessContext(req, propertyId, ownerWriteToken);
+    if (access.mode !== 'owner') return accessDenied(res, 'Only the deal-room owner can create a preview link');
     const token = createPreviewToken(propertyId);
     res.json({
       token,
@@ -3259,11 +3247,18 @@ app.get('/api/public/deal-room/:propertyId/analyses', async (req, res) => {
       propertyType = room?.property_type || 'Multifamily';
     }
 
-    const { data, error } = await supabase
+    let { data, error } = await supabase
       .from('deal_analyses')
-      .select('id, section, filename, analysis, uploaded_by_role, created_at, storage_path, post_completion, post_completion_added_at')
+      .select('id, section, filename, analysis, uploaded_by_role, created_at, storage_path, post_completion, post_completion_added_at, processing_status, source_hash, extraction_version, processing_attempt, correlation_id, failure_reason, processing_started_at, processing_completed_at')
       .eq('property_id', propertyId)
       .order('created_at', { ascending: true }); // oldest first → version = index+1
+    if (error && /processing_status|source_hash|extraction_version|correlation_id|failure_reason/i.test(error.message || '')) {
+      ({ data, error } = await supabase
+        .from('deal_analyses')
+        .select('id, section, filename, analysis, uploaded_by_role, created_at, storage_path, post_completion, post_completion_added_at')
+        .eq('property_id', propertyId)
+        .order('created_at', { ascending: true }));
+    }
     if (error) throw error;
     // Assign version by section-scoped sequence (no extra DB column needed)
     const sectionCounters = {};
@@ -3280,15 +3275,21 @@ app.get('/api/public/deal-room/:propertyId/analyses', async (req, res) => {
     // Auto-resolve orphaned pending records older than 2 minutes (background AI job never ran)
     const now = Date.now();
     const stuckIds = allWithVersion
-      .filter(a => a.analysis?.pending && (now - new Date(a.created_at).getTime()) > 2 * 60 * 1000)
+      .filter(a => (a.processing_status === 'uploaded' || (!a.processing_status && a.analysis?.pending))
+        && (now - new Date(a.created_at).getTime()) > 2 * 60 * 1000)
       .map(a => a.id);
     if (stuckIds.length > 0) {
       // Fix each stuck record individually so we can set the right label
       for (const stuck of allWithVersion.filter(a => stuckIds.includes(a.id))) {
         const label = stuck.filename ? `${stuck.filename} received and logged.` : `Document received and logged.`;
-        supabase.from('deal_analyses').update({
-          analysis: { summary: label, documentType: stuck.analysis?.documentType || 'Document', confidence: 100, pending: false }
-        }).eq('id', stuck.id).then(() => {}).catch(() => {});
+        updateDocumentProcessing(stuck.id, {
+          analysis: { summary: label, documentType: stuck.analysis?.documentType || 'Document', confidence: 100, pending: false, processing_status: 'failed' },
+          processing_status: 'failed',
+          failure_reason: 'Background processing did not start',
+          processing_completed_at: new Date().toISOString(),
+        }, {
+          analysis: { summary: label, documentType: stuck.analysis?.documentType || 'Document', confidence: 100, pending: false },
+        }).catch(() => {});
         stuck.analysis = { ...stuck.analysis, pending: false, summary: label, confidence: 100 };
       }
     }
@@ -3793,6 +3794,11 @@ app.put('/api/public/deal-room/:propertyId/checklist', async (req, res) => {
       .update({ checklist_items: clean })
       .eq('property_id', propertyId);
     if (error) throw error;
+    recalculateTransactionState(propertyId, {
+      source: 'checklist_updated',
+      actorId: access.actorId,
+      actorType: access.actorType,
+    }).catch(e => console.warn('[transaction-state] checklist recalculation failed:', e.message));
     return res.json({ ok: true, count: clean.length });
   } catch (e) {
     console.error('[checklist PUT]', e.message);
@@ -3810,6 +3816,52 @@ const SUGGESTIONS = (() => {
 app.get('/api/suggestions', (_req, res) => {
   res.json({ suggestions: SUGGESTIONS });
 });
+
+const DOCUMENT_EXTRACTION_VERSION = 'document-agent-v1';
+
+async function updateDocumentProcessing(recordId, patch, legacyPatch = {}) {
+  if (!recordId) return;
+  const { error } = await supabase.from('deal_analyses').update(patch).eq('id', recordId);
+  if (!error) return;
+  // Keep the upload endpoint usable while a deployment is being rolled out
+  // before migration 019 has been applied.
+  if (Object.keys(legacyPatch).length > 0) {
+    const { error: legacyError } = await supabase
+      .from('deal_analyses')
+      .update(legacyPatch)
+      .eq('id', recordId);
+    if (legacyError) console.warn('[document-processing] update failed:', legacyError.message);
+  } else {
+    console.warn('[document-processing] update failed:', error.message);
+  }
+}
+
+async function documentImpact(propertyId, correlationId, beforeState = null) {
+  try {
+    const before = beforeState
+      ? { state: beforeState, beforeReadiness: beforeState.readiness }
+      : await recalculateTransactionState(propertyId, {
+          correlationId,
+          source: 'document_processing_before',
+          evaluateTasks: false,
+        });
+    const after = await recalculateTransactionState(propertyId, {
+      correlationId,
+      source: 'document_processing_after',
+      before: before.state,
+    });
+    return {
+      before: before.beforeReadiness,
+      after: after.readiness,
+      overallDelta: after.readiness.overall - before.beforeReadiness.overall,
+      confirmedDelta: after.readiness.confirmedCount - before.beforeReadiness.confirmedCount,
+      createdTaskCount: after.createdTaskCount,
+    };
+  } catch (error) {
+    console.warn('[document-processing] readiness recalculation failed:', error.message);
+    return null;
+  }
+}
 
 app.post('/api/public/deal-room/:propertyId/track-document', upload.single('file'), async (req, res) => {
   const { propertyId } = req.params;
@@ -3885,29 +3937,106 @@ app.post('/api/public/deal-room/:propertyId/track-document', upload.single('file
     const sectionLabel = SECTION_LABELS[section]
       || section.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
     const filename = req.file?.originalname || `${section}.pdf`;
+    const correlationId = crypto.randomUUID();
+
+    // Re-uploading a completed or currently-running source is idempotent.
+    // A failed source can be retried by uploading it again, preserving the
+    // original failure row and its audit trail.
+    let isRetry = false;
+    if (hash && !isPostCompletion) {
+      const { data: duplicate } = await supabase
+        .from('deal_analyses')
+        .select('id, section, filename, processing_status, analysis')
+        .eq('property_id', propertyId)
+        .eq('source_hash', hash)
+        .in('processing_status', ['uploaded', 'processing', 'retrying', 'extracted'])
+        .maybeSingle();
+      if (duplicate) {
+        return res.json({
+          ok: true,
+          duplicate: true,
+          section: duplicate.section,
+          filename: duplicate.filename,
+          pending: ['uploaded', 'processing', 'retrying'].includes(duplicate.processing_status),
+          processing_status: duplicate.processing_status,
+          analysis: duplicate.analysis || null,
+        });
+      }
+      const { data: failedDuplicate } = await supabase
+        .from('deal_analyses')
+        .select('id')
+        .eq('property_id', propertyId)
+        .eq('source_hash', hash)
+        .eq('processing_status', 'failed')
+        .maybeSingle();
+      isRetry = !!failedDuplicate;
+    }
 
     // Keep the record pending until any document analysis and transaction-field
     // extraction have both completed.
     const hasAiPrompt = !isPostCompletion && !!(buf && LIGHTWEIGHT_AI_PROMPTS[section]);
     const needsTransactionExtraction = !isPostCompletion && !!buf;
+    const initialProcessingStatus = hasAiPrompt || needsTransactionExtraction
+      ? (isRetry ? 'retrying' : 'uploaded')
+      : 'extracted';
     const initialAnalysis = hasAiPrompt || needsTransactionExtraction
-      ? { summary: `${sectionLabel} uploaded — AI analysis in progress…`, documentType: sectionLabel, confidence: 0, pending: true }
+      ? {
+          summary: `${sectionLabel} uploaded — AI analysis in progress…`,
+          documentType: sectionLabel, confidence: 0, pending: true,
+          processing_status: initialProcessingStatus, correlation_id: correlationId,
+        }
       : { summary: `${sectionLabel} received and logged.`, documentType: sectionLabel, confidence: 100, pending: false };
 
-    const [storagePath, insertRes] = await Promise.all([
-      buf ? uploadToStorage(buf, mime, propertyId, section, filename).catch(() => null) : Promise.resolve(null),
-      supabase.from('deal_analyses').insert({
+    const insertAnalysis = async () => {
+      const full = await supabase.from('deal_analyses').insert({
+        property_id: propertyId, section, filename,
+        analysis: initialAnalysis,
+        uploaded_by_role: effectiveRole,
+        source_hash: hash,
+        extraction_version: hasAiPrompt || needsTransactionExtraction ? DOCUMENT_EXTRACTION_VERSION : null,
+        processing_status: initialProcessingStatus,
+        processing_attempt: 0,
+        correlation_id: correlationId,
+        ...(initialProcessingStatus === 'extracted' ? { processing_completed_at: new Date().toISOString() } : {}),
+        ...(isPostCompletion ? { post_completion: true, post_completion_added_at: new Date().toISOString() } : {}),
+      }).select('id').single();
+      if (!full.error) return full;
+      const legacy = await supabase.from('deal_analyses').insert({
         property_id: propertyId, section, filename,
         analysis: initialAnalysis,
         uploaded_by_role: effectiveRole,
         ...(isPostCompletion ? { post_completion: true, post_completion_added_at: new Date().toISOString() } : {}),
-      }).select('id').single(),
+      }).select('id').single();
+      return legacy;
+    };
+
+    const [storagePath, insertRes] = await Promise.all([
+      buf ? uploadToStorage(buf, mime, propertyId, section, filename).catch(() => null) : Promise.resolve(null),
+      insertAnalysis(),
     ]);
     if (insertRes.error) throw insertRes.error;
     const recordId = insertRes.data?.id;
 
     logEvent(propertyId, 'document_uploaded', effectiveRole, null, `${sectionLabel} uploaded`, { section, filename, post_completion: isPostCompletion || undefined }).catch(() => {});
-    res.json({ ok: true, section, filename, pending: hasAiPrompt });
+    res.json({
+      ok: true, section, filename,
+      pending: hasAiPrompt || needsTransactionExtraction,
+      processing_status: initialProcessingStatus,
+      correlation_id: correlationId,
+    });
+
+    if (recordId && (hasAiPrompt || needsTransactionExtraction)) {
+      updateDocumentProcessing(recordId, {
+        processing_status: 'processing',
+        processing_attempt: 1,
+        processing_started_at: new Date().toISOString(),
+        correlation_id: correlationId,
+      }, { analysis: initialAnalysis, storage_path: storagePath }).catch(() => {});
+      emitInternalEvent('document.processing', {
+        propertyId, documentId: recordId, section, filename,
+        processingStatus: initialProcessingStatus, correlationId,
+      }, { correlationId, source: 'document-agent', actorId: access.actorId, actorType: access.actorType });
+    }
 
     // ── Background field extraction for non-AI-prompt sections ──────────────
     // LOI, Tax Returns, Cap Table, Contracts, Disclosure Schedule, Term Sheet,
@@ -3918,7 +4047,13 @@ app.post('/api/public/deal-room/:propertyId/track-document', upload.single('file
     if (buf && !LIGHTWEIGHT_AI_PROMPTS[section] && recordId) {
       (async () => {
         let extractionResult = { savedCount: 0 };
+        let beforeState = null;
         try {
+          beforeState = (await recalculateTransactionState(propertyId, {
+            correlationId,
+            source: 'document_processing_before',
+            evaluateTasks: false,
+          })).state;
           let text = '';
           const ext = (filename || '').split('.').pop().toLowerCase();
           const isPdf = mime === 'application/pdf' || ext === 'pdf' || (buf.length > 4 && buf.slice(0, 4).toString() === '%PDF');
@@ -3952,14 +4087,24 @@ app.post('/api/public/deal-room/:propertyId/track-document', upload.single('file
         } catch (extractErr) {
           console.warn(`[track-document] field extraction failed for ${section}:`, extractErr.message);
         }
+        const impact = await documentImpact(propertyId, correlationId, beforeState);
         const completedAnalysis = extractionResult.savedCount > 0
           ? { summary: `${sectionLabel} received and transaction facts extracted.`, documentType: sectionLabel, confidence: 100, pending: false }
           : { summary: `${sectionLabel} received and logged.`, documentType: sectionLabel, confidence: 100, pending: false };
-        const { error: completionError } = await supabase
-          .from('deal_analyses')
-          .update({ analysis: completedAnalysis })
-          .eq('id', recordId);
-        if (completionError) console.warn('[track-document] analysis completion update failed:', completionError.message);
+        await updateDocumentProcessing(recordId, {
+          analysis: { ...completedAnalysis, processing_status: 'extracted', processing_impact: impact },
+          storage_path: storagePath,
+          processing_status: 'extracted',
+          extraction_version: DOCUMENT_EXTRACTION_VERSION,
+          correlation_id: correlationId,
+          failure_reason: null,
+          processing_completed_at: new Date().toISOString(),
+        }, { analysis: { ...completedAnalysis, processing_impact: impact }, storage_path: storagePath });
+        emitInternalEvent('document.extracted', {
+          propertyId, documentId: recordId, section, filename,
+          extractedFieldCount: extractionResult.savedCount || 0,
+          impact, correlationId,
+        }, { correlationId, source: 'document-agent', actorId: access.actorId, actorType: access.actorType });
       })().catch(() => {});
     }
 
@@ -3968,10 +4113,27 @@ app.post('/api/public/deal-room/:propertyId/track-document', upload.single('file
       const bgJob = (async () => {
         const clearPending = async (analysis) => {
           if (!recordId) return;
-          const { error } = await supabase.from('deal_analyses').update({ analysis, storage_path: storagePath }).eq('id', recordId);
-          if (error) console.warn('[track-document] DB update failed:', error.message);
+          const impact = await documentImpact(propertyId, correlationId, beforeState);
+          await updateDocumentProcessing(recordId, {
+            analysis: { ...analysis, pending: false, processing_status: 'extracted', processing_impact: impact },
+            storage_path: storagePath,
+            processing_status: 'extracted',
+            extraction_version: DOCUMENT_EXTRACTION_VERSION,
+            correlation_id: correlationId,
+            failure_reason: null,
+            processing_completed_at: new Date().toISOString(),
+          }, { analysis: { ...analysis, pending: false, processing_impact: impact }, storage_path: storagePath });
+          emitInternalEvent('document.extracted', {
+            propertyId, documentId: recordId, section, filename, impact, correlationId,
+          }, { correlationId, source: 'document-agent', actorId: access.actorId, actorType: access.actorType });
         };
+        let beforeState = null;
         try {
+          beforeState = (await recalculateTransactionState(propertyId, {
+            correlationId,
+            source: 'document_processing_before',
+            evaluateTasks: false,
+          })).state;
           // Fast text extraction — skips vision pipeline to avoid hangs
           let text = '';
           let isPdf = false;
@@ -4065,8 +4227,6 @@ app.post('/api/public/deal-room/:propertyId/track-document', upload.single('file
           notifyOwner(propertyId, section, result.summary).catch(() => {});
           // Extract structured transaction record fields from the same document text
           logEvent(propertyId, 'document_analyzed', effectiveRole, null, `${SECTION_LABELS[section]} analyzed by AI`, { section, filename }).catch(() => {});
-          evaluateDealRoomForTasks(propertyId).catch(e => console.warn('[tasks] auto-evaluate on analysis failed:', e.message));
-          evaluateReadinessTasks(propertyId, []).catch(e => console.warn('[tasks] readiness evaluate on analysis failed:', e.message));
           getRoomPackId(propertyId).then(packId => runVerification(propertyId, packId)).catch(e => console.warn('[verification] trigger failed:', e.message));
           console.log(`[track-document] ✓ ${section} analyzed${needsVision ? ' (vision)' : ''} — confidence ${result.confidence}`);
         } catch (aiErr) {
@@ -4075,7 +4235,22 @@ app.post('/api/public/deal-room/:propertyId/track-document', upload.single('file
           const summary = scanned
             ? `${SECTION_LABELS[section]} uploaded. This file appears to be a scanned image or password-protected PDF, so the AI couldn't read its text. Try uploading a version with selectable text (e.g. the original digital file before signing/scanning).`
             : `${SECTION_LABELS[section]} uploaded. AI could not analyze this file — it may be scanned or password-protected.`;
-          await clearPending({ summary, documentType: SECTION_LABELS[section], confidence: 0 }).catch(() => {});
+           await updateDocumentProcessing(recordId, {
+             analysis: {
+               summary, documentType: SECTION_LABELS[section], confidence: 0,
+               pending: false, processing_status: 'failed',
+             },
+             storage_path: storagePath,
+             processing_status: 'failed',
+             extraction_version: DOCUMENT_EXTRACTION_VERSION,
+             correlation_id: correlationId,
+             failure_reason: aiErr.message,
+             processing_completed_at: new Date().toISOString(),
+           }, { analysis: { summary, documentType: SECTION_LABELS[section], confidence: 0, pending: false }, storage_path: storagePath });
+           emitInternalEvent('document.failed', {
+             propertyId, documentId: recordId, section, filename,
+             failureReason: aiErr.message, correlationId,
+           }, { correlationId, source: 'document-agent', actorId: access.actorId, actorType: access.actorType });
         }
       });
       // Hard 50-second timeout so the record never stays "pending" forever
@@ -4083,10 +4258,23 @@ app.post('/api/public/deal-room/:propertyId/track-document', upload.single('file
         .catch(async (err) => {
           console.warn(`[track-document] bg job timed out or failed for ${section}:`, err.message);
           if (recordId) {
-            await supabase.from('deal_analyses').update({
-              analysis: { summary: `${SECTION_LABELS[section]} uploaded. Analysis timed out — try re-uploading.`, documentType: SECTION_LABELS[section], confidence: 0 },
+            await updateDocumentProcessing(recordId, {
+              analysis: {
+                summary: `${SECTION_LABELS[section]} uploaded. Analysis timed out — try re-uploading.`,
+                documentType: SECTION_LABELS[section], confidence: 0, pending: false,
+                processing_status: 'failed',
+              },
               storage_path: storagePath,
-            }).eq('id', recordId).catch(() => {});
+              processing_status: 'failed',
+              extraction_version: DOCUMENT_EXTRACTION_VERSION,
+              correlation_id: correlationId,
+              failure_reason: err.message,
+              processing_completed_at: new Date().toISOString(),
+            }, { analysis: { summary: `${SECTION_LABELS[section]} uploaded. Analysis timed out — try re-uploading.`, documentType: SECTION_LABELS[section], confidence: 0, pending: false }, storage_path: storagePath }).catch(() => {});
+            emitInternalEvent('document.failed', {
+              propertyId, documentId: recordId, section, filename,
+              failureReason: err.message, correlationId,
+            }, { correlationId, source: 'document-agent', actorId: access.actorId, actorType: access.actorType });
           }
         });
     }
@@ -4223,8 +4411,11 @@ app.post('/api/public/deal-room/:propertyId/submit', async (req, res) => {
     const roleLabel = getPackRoleLabel(packId, effectiveRole);
     logEvent(propertyId, 'party_submitted', effectiveRole, name || effectiveRole, `${name || roleLabel} signaled ready`, { role: effectiveRole });
     notifyPartySubmitted(propertyId, effectiveRole, name).catch(() => {});
-    evaluateDealRoomForTasks(propertyId).catch(e => console.warn('[tasks] auto-evaluate on submit failed:', e.message));
-    evaluateReadinessTasks(propertyId, []).catch(e => console.warn('[tasks] readiness evaluate on submit failed:', e.message));
+    recalculateTransactionState(propertyId, {
+      source: 'participant_submitted',
+      actorId: access.actorId,
+      actorType: access.actorType,
+    }).catch(e => console.warn('[transaction-state] submission recalculation failed:', e.message));
     res.json({ ok: true });
   } catch (err) {
     console.error('[submit]', err.message);
@@ -4614,6 +4805,11 @@ app.post('/api/public/deal-room/:propertyId/advance', async (req, res) => {
     const { error } = await supabase.from('deal_rooms').update({ deal_stage: stage }).eq('property_id', propertyId);
     if (error) throw error;
     logEvent(propertyId, 'stage_advanced', 'owner', null, `Deal advanced to ${stageLabel}`, { stage, stageLabel });
+    recalculateTransactionState(propertyId, {
+      source: 'stage_advanced',
+      actorId: access.actorId,
+      actorType: access.actorType,
+    }).catch(e => console.warn('[transaction-state] stage recalculation failed:', e.message));
     res.json({ ok: true, stage, unchanged: !stageChanging });
 
     // Only fire notifications when the stage actually changes — prevents duplicate
@@ -4742,6 +4938,11 @@ app.patch('/api/public/deal-room/:propertyId/stages', async (req, res) => {
     logEvent(propertyId, 'stages_updated', 'owner', null, `Stage list updated (${sanitized.length} stages)`, {
       stageKeys: sanitized.map(s => s.key),
     });
+    recalculateTransactionState(propertyId, {
+      source: 'stages_updated',
+      actorId: 'owner',
+      actorType: 'owner',
+    }).catch(e => console.warn('[transaction-state] stages recalculation failed:', e.message));
 
     res.json({ ok: true, stages: sanitized });
   } catch (err) {
@@ -4802,6 +5003,11 @@ app.patch('/api/public/deal-room/:propertyId/metadata', async (req, res) => {
     logEvent(propertyId, 'metadata_updated', 'owner', null, 'Transaction details updated', {
       fieldCount: Object.keys(sanitized).length,
     });
+    recalculateTransactionState(propertyId, {
+      source: 'metadata_updated',
+      actorId: 'owner',
+      actorType: 'owner',
+    }).catch(e => console.warn('[transaction-state] metadata recalculation failed:', e.message));
 
     res.json({ ok: true, metadata_values: sanitized });
   } catch (err) {
@@ -4868,6 +5074,11 @@ app.patch('/api/public/deal-room/:propertyId/metadata-merge', async (req, res) =
     logEvent(propertyId, 'metadata_updated', 'owner', null, 'Workspace settings updated', {
       keys: Object.keys(values).join(','),
     });
+    recalculateTransactionState(propertyId, {
+      source: 'metadata_merge',
+      actorId: 'owner',
+      actorType: 'owner',
+    }).catch(e => console.warn('[transaction-state] metadata merge recalculation failed:', e.message));
 
     res.json({ ok: true, metadata_values: merged });
   } catch (err) {
@@ -4933,6 +5144,11 @@ app.patch('/api/public/deal-room/:propertyId/ownership', async (req, res) => {
     logEvent(propertyId, 'metadata_updated', 'owner', null, 'Ownership structure updated', {
       keys: 'ownership_data',
     });
+    recalculateTransactionState(propertyId, {
+      source: 'ownership_updated',
+      actorId: 'owner',
+      actorType: 'owner',
+    }).catch(e => console.warn('[transaction-state] ownership recalculation failed:', e.message));
 
     res.json({ ok: true, metadata_values: merged });
   } catch (err) {
@@ -5174,6 +5390,11 @@ app.patch('/api/public/deal-room/:transactionId/settlement/mode', async (req, re
     const { error } = await supabase.from('deal_rooms').update({ settlement_mode: mode }).eq('property_id', propertyId);
     if (error) throw error;
     logEvent(propertyId, 'settlement_mode_set', 'owner', null, `Settlement mode set to ${mode}`, { mode }).catch(() => {});
+    recalculateTransactionState(propertyId, {
+      source: 'settlement_mode_set',
+      actorId: access.actorId,
+      actorType: access.actorType,
+    }).catch(e => console.warn('[transaction-state] settlement mode recalculation failed:', e.message));
     res.json({ ok: true, mode });
   } catch (err) {
     console.error('[settlement/mode PATCH]', err.message);
@@ -5196,6 +5417,11 @@ app.patch('/api/public/deal-room/:transactionId/settlement/mode/lock', async (re
     const { error } = await supabase.from('deal_rooms').update({ settlement_mode_locked_at: now }).eq('property_id', propertyId);
     if (error) throw error;
     logEvent(propertyId, 'settlement_mode_locked', 'owner', null, `Settlement mode locked: ${room.settlement_mode}`, { mode: room.settlement_mode }).catch(() => {});
+    recalculateTransactionState(propertyId, {
+      source: 'settlement_mode_locked',
+      actorId: access.actorId,
+      actorType: access.actorType,
+    }).catch(e => console.warn('[transaction-state] settlement lock recalculation failed:', e.message));
     res.json({ ok: true, locked_at: now, mode: room.settlement_mode });
   } catch (err) {
     console.error('[settlement/mode/lock PATCH]', err.message);
@@ -5309,6 +5535,11 @@ app.post('/api/public/deal-room/:transactionId/settlement/complete', async (req,
       `Transaction sealed — ${displayName}. Settlement mode: ${room.settlement_mode}.`,
       { seal_id: rpc.seal_id, mode: room.settlement_mode, conditions_count: sealContent.conditions_count }
     ).catch(() => {});
+    recalculateTransactionState(propertyId, {
+      source: 'settlement_completed',
+      actorId: access.actorId,
+      actorType: access.actorType,
+    }).catch(e => console.warn('[transaction-state] settlement completion recalculation failed:', e.message));
 
     res.json({
       ok:                  true,
@@ -5492,6 +5723,8 @@ app.get('/api/public/deal-room/:propertyId/asset-metadata', async (req, res) => 
 // compatibility remains an optional downstream flag in the response.
 app.get('/api/public/deal-room/:propertyId/readiness', async (req, res) => {
   const { propertyId } = req.params;
+  const access = await getRoomAccessContext(req, propertyId);
+  if (access.mode === 'anonymous') return accessDenied(res);
   const { data: room, error } = await supabase
     .from('deal_rooms')
     .select('property_id, property_name, workflow_pack_id, deal_type, jurisdiction, metadata_values, checklist_items, first_name, last_name')
@@ -5507,40 +5740,15 @@ app.get('/api/public/deal-room/:propertyId/readiness', async (req, res) => {
 
   const meta = room.metadata_values || {};
   const recordSchemaKey = await getTransactionRecordSchemaKey(room);
-  const requiredKeys = TRANSACTION_RECORD_REQUIREMENTS[recordSchemaKey] || [];
-  const canonicalKey = field => canonicalizeTransactionRecordKey(field, recordSchemaKey);
-  const populatedRecordFields = (recordFields || []).filter(field => {
-    const value = String(field.value_text || '').trim().toLowerCase();
-    return value && !['n/a', 'na', 'not applicable', 'not_applicable', 'unknown'].includes(value)
-      && field.status === 'verified';
-  });
-  const notApplicableKeys = new Set((recordFields || [])
-    .filter(field => field.status === 'not_applicable')
-    .map(field => canonicalKey(field.field_key)));
-  const activeRequiredKeys = requiredKeys.filter(key => !notApplicableKeys.has(key));
-  const confirmedRequiredKeys = new Set(populatedRecordFields.map(field => canonicalKey(field.field_key)));
-  const confirmedRequiredCount = activeRequiredKeys.filter(key => confirmedRequiredKeys.has(key)).length;
-  const requiredFieldCount = activeRequiredKeys.length;
-  const overall = requiredFieldCount > 0
-    ? Math.round((confirmedRequiredCount / requiredFieldCount) * 100)
-    : 0;
-  const categories = [
-    { name: 'Structured Transaction Record', weight: 1, score: overall },
-  ];
-  const overallLabel = overall >= 80 ? 'Closing Ready' : overall >= 55 ? 'Needs Review' : overall === 0 ? 'Getting Started' : 'Needs Attention';
-  const hasTransactionFact = populatedRecordFields.some(field => field.field_key?.startsWith('transaction.'));
-  const hasAssetOrPartyFact = populatedRecordFields.some(field =>
-    field.field_key?.startsWith('asset.') || field.field_key?.startsWith('parties.')
-  );
-  const digitalAssetReadinessPercent = Math.min(
-    100,
-    Math.round((populatedRecordFields.length / 8) * 70)
-      + (hasTransactionFact ? 15 : 0)
-      + (hasAssetOrPartyFact ? 15 : 0),
-  );
-  const digitalAssetReadinessSufficient = populatedRecordFields.length >= 4
-    && hasTransactionFact
-    && hasAssetOrPartyFact;
+  const readiness = computeTransactionReadiness(room, recordFields || [], recordSchemaKey);
+  const overall = readiness.overall;
+  const overallLabel = readiness.overallLabel;
+  const confirmedRequiredCount = readiness.confirmedCount;
+  const requiredFieldCount = readiness.requiredCount;
+  const categories = readiness.categories;
+  const populatedRecordFields = (recordFields || []).filter(field => field.status === 'verified');
+  const digitalAssetReadinessPercent = readiness.digitalAssetPercent;
+  const digitalAssetReadinessSufficient = readiness.digitalAssetSufficient;
   const digitalAssetReadinessStatus = digitalAssetReadinessSufficient
     ? 'Ready to prepare'
     : populatedRecordFields.length > 0
@@ -5747,17 +5955,13 @@ app.post('/api/public/deal-room/:propertyId/request-document', async (req, res) 
   const RESEND_KEY = process.env.RESEND_API_KEY;
 
   try {
-    // Validate owner token
     const { data: room, error: roomErr } = await supabase
       .from('deal_rooms')
-      .select('owner_write_token, property_name, first_name')
+      .select('property_name, first_name')
       .eq('property_id', propertyId)
       .maybeSingle();
     if (roomErr) throw roomErr;
     if (!room) return res.status(404).json({ error: 'room not found' });
-    if (!room.owner_write_token || room.owner_write_token !== ownerWriteToken) {
-      return res.status(403).json({ error: 'invalid owner_write_token' });
-    }
 
     const propName   = room.property_name || propertyId;
     const senderName = room.first_name || 'The workspace coordinator';
@@ -7757,6 +7961,11 @@ app.patch('/api/public/deal-room/:propertyId/transaction-record/fields/:fieldId'
     if (nextStatus === 'not_applicable') {
       await markDependentTransactionFieldsNotApplicable(propertyId, existing.field_key, access.email || 'coordinator');
     }
+    recalculateTransactionState(propertyId, {
+      source: 'transaction_record_field_updated',
+      actorId: access.actorId,
+      actorType: access.actorType,
+    }).catch(e => console.warn('[transaction-state] field update recalculation failed:', e.message));
     res.json({ ok: true });
   } catch (err) {
     console.error('[transaction-record PATCH]', err.message);
@@ -7806,6 +8015,11 @@ app.post('/api/public/deal-room/:propertyId/transaction-record/fields/:fieldId/v
       field_id: fieldId, property_id: propertyId,
       action: 'approved', actor_email: email, actor_role: actorRole || 'coordinator',
     });
+    recalculateTransactionState(propertyId, {
+      source: 'transaction_record_field_confirmed',
+      actorId: access.actorId,
+      actorType: access.actorType,
+    }).catch(e => console.warn('[transaction-state] field confirmation recalculation failed:', e.message));
     res.json({ ok: true });
   } catch (err) {
     console.error('[transaction-record verify]', err.message);
@@ -7870,6 +8084,11 @@ app.post('/api/public/deal-room/:propertyId/transaction-record/fields', async (r
         if (nextStatus === 'not_applicable') {
           await markDependentTransactionFieldsNotApplicable(propertyId, field_key, access.email || 'coordinator');
         }
+        recalculateTransactionState(propertyId, {
+          source: 'transaction_record_field_updated',
+          actorId: access.actorId,
+          actorType: access.actorType,
+        }).catch(e => console.warn('[transaction-state] field update recalculation failed:', e.message));
       return res.json({ ok: true, action: 'updated', id: existing.id });
     }
     // Insert new
@@ -7900,6 +8119,11 @@ app.post('/api/public/deal-room/:propertyId/transaction-record/fields', async (r
     if (insert.status === 'not_applicable') {
       await markDependentTransactionFieldsNotApplicable(propertyId, field_key, access.email || 'coordinator');
     }
+    recalculateTransactionState(propertyId, {
+      source: 'transaction_record_field_created',
+      actorId: access.actorId,
+      actorType: access.actorType,
+    }).catch(e => console.warn('[transaction-state] field create recalculation failed:', e.message));
     res.json({ ok: true, action: 'created', id: data?.id });
   } catch (err) {
     console.error('[transaction-record POST field]', err.message);

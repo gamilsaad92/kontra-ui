@@ -3863,6 +3863,27 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
     return () => clearInterval(interval);
   }, [load]);
 
+  const processingDocuments = analyses.filter(analysis =>
+    ['uploaded', 'processing', 'retrying'].includes(analysis.processing_status)
+      || analysis.analysis?.pending === true,
+  );
+  const failedDocuments = analyses.filter(analysis =>
+    analysis.processing_status === 'failed',
+  );
+  const processedImpact = analyses
+    .filter(analysis => analysis.analysis?.processing_impact)
+    .slice(-3)
+    .reverse();
+
+  // Background extraction is durable, but it can finish after the upload
+  // response. Poll only while a document is actively processing, then stop so
+  // settled rooms return to the normal 30-second overview refresh.
+  useEffect(() => {
+    if (processingDocuments.length === 0) return undefined;
+    const interval = setInterval(load, 3000);
+    return () => clearInterval(interval);
+  }, [load, processingDocuments.length]);
+
   const currentStageKey   = coordination?.stage || stages[0]?.key;
   const currentStageIndex = Math.max(0, stages.findIndex(s => s.key === currentStageKey));
   const currentStage      = stages[currentStageIndex];
@@ -3931,6 +3952,48 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
 
   return (
     <div className="space-y-5">
+      {(processingDocuments.length > 0 || failedDocuments.length > 0 || processedImpact.length > 0) && (
+        <section className="rounded-2xl border border-gray-200 bg-white px-5 py-4 sm:px-7">
+          {processingDocuments.length > 0 && (
+            <div className="flex items-start gap-3">
+              <span className="mt-0.5 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-blue-50 text-blue-600">↻</span>
+              <div>
+                <p className="text-sm font-semibold text-gray-900">
+                  {processingDocuments.length === 1 ? 'Document processing in progress' : `${processingDocuments.length} documents processing`}
+                </p>
+                <p className="mt-0.5 text-xs text-gray-500">
+                  The Overview will update automatically when extraction completes.
+                </p>
+              </div>
+            </div>
+          )}
+          {failedDocuments.length > 0 && (
+            <div className={`${processingDocuments.length > 0 ? 'mt-3 border-t border-gray-100 pt-3' : ''} flex items-start gap-3`}>
+              <span className="mt-0.5 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-rose-50 text-rose-600">!</span>
+              <div>
+                <p className="text-sm font-semibold text-gray-900">
+                  {failedDocuments.length === 1 ? 'Document processing needs attention' : `${failedDocuments.length} documents need attention`}
+                </p>
+                <p className="mt-0.5 text-xs text-gray-500">
+                  {failedDocuments[0]?.failure_reason || 'Try uploading the original digital file again.'}
+                </p>
+              </div>
+            </div>
+          )}
+          {processedImpact.map(analysis => {
+            const impact = analysis.analysis.processing_impact;
+            const delta = Number(impact.overallDelta || 0);
+            return (
+              <div key={analysis.id} className="mt-3 border-t border-gray-100 pt-3 text-xs text-gray-600">
+                <span className="font-semibold text-gray-800">{analysis.filename || analysis.section}</span>
+                {' '}updated readiness from {Math.round(impact.before?.overall || 0)}% to {Math.round(impact.after?.overall || 0)}%
+                {delta !== 0 && <span className={`ml-1 font-semibold ${delta > 0 ? 'text-emerald-600' : 'text-amber-600'}`}>({delta > 0 ? '+' : ''}{delta} pts)</span>}
+                {Number(impact.confirmedDelta || 0) > 0 && <span className="ml-1 text-gray-500">· {impact.confirmedDelta} field{impact.confirmedDelta === 1 ? '' : 's'} confirmed</span>}
+              </div>
+            );
+          })}
+        </section>
+      )}
       {/* One decision layer: identity, authoritative readiness, next actions,
           lifecycle, and the structured record all live in one command center. */}
       <section className="rounded-2xl border border-gray-200 bg-white px-5 py-5 sm:px-7 sm:py-6">

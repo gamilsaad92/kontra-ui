@@ -122,12 +122,33 @@ async function uploadToStorage(buffer, mimetype, propertyId, section, filename) 
 
 // ── Event logger ────────────────────────────────────────────────────────────
 async function logEvent(propertyId, eventType, actorRole, actorName, description, metadata = {}) {
+  const baseEvent = {
+    property_id: propertyId, event_type: eventType, actor_role: actorRole,
+    actor_name: actorName, description, metadata,
+  };
+  const correlatedEvent = {
+    ...baseEvent,
+    org_id: metadata.orgId || null,
+    actor_id: metadata.actorId || null,
+    actor_type: metadata.actorType || null,
+    source: metadata.source || 'deal-room',
+    correlation_id: metadata.correlationId || null,
+    before_state: metadata.beforeState || null,
+    after_state: metadata.afterState || null,
+    outcome: metadata.outcome || null,
+  };
   try {
-    await supabase.from('deal_events').insert({
-      property_id: propertyId, event_type: eventType, actor_role: actorRole,
-      actor_name: actorName, description, metadata,
-    });
-  } catch (e) { console.warn('[logEvent]', e.message); }
+    const { error } = await supabase.from('deal_events').insert(correlatedEvent);
+    if (error) throw error;
+  } catch (e) {
+    // Older environments may not have migration 019 yet. Preserve the
+    // historical activity event instead of dropping it.
+    try {
+      await supabase.from('deal_events').insert(baseEvent);
+    } catch (fallbackError) {
+      console.warn('[logEvent]', fallbackError.message || e.message);
+    }
+  }
 }
 
 // ── Seals a closing record — called when deal_stage → funded ──────────────────

@@ -31,11 +31,17 @@ async function getTaskAccess(req, propertyId, ownerTokenOverride = '') {
     if (session?.invite_id) {
       const { data: invite } = await supabase
         .from('deal_room_invites')
-        .select('property_id, role_key, status')
+        .select('property_id, role_key, invited_email, status')
         .eq('id', session.invite_id)
         .maybeSingle();
       if (invite?.property_id === propertyId && !['revoked', 'expired'].includes(invite.status)) {
-        return { mode: 'participant', role: invite.role_key };
+        return {
+          mode: 'participant',
+          role: invite.role_key,
+          actorId: session.invite_id,
+          email: invite.invited_email || null,
+          actorType: 'participant',
+        };
       }
     }
   }
@@ -46,11 +52,18 @@ async function getTaskAccess(req, propertyId, ownerTokenOverride = '') {
   if (ownerToken) {
     const { data: room } = await supabase
       .from('deal_rooms')
-      .select('owner_write_token')
+      .select('id, owner_write_token, customer_email')
       .eq('property_id', propertyId)
       .maybeSingle();
     if (room?.owner_write_token && room.owner_write_token === ownerToken) {
-      return { mode: 'owner', role: 'owner' };
+      return {
+        mode: 'owner',
+        role: 'owner',
+        actorId: room.customer_email || 'owner',
+        email: room.customer_email || null,
+        roomId: room.id,
+        actorType: 'owner',
+      };
     }
   }
   return { mode: 'anonymous', role: 'guest' };
@@ -81,7 +94,9 @@ router.post('/deal-room/:propertyId/tasks/refresh', async (req, res) => {
     const propertyId = req.params.propertyId;
     const access = await getTaskAccess(req, propertyId, req.body?.ownerWriteToken);
     if (access.mode !== 'owner') return deny(res);
-    const created = await evaluateDealRoomForTasks(propertyId);
+    const created = await evaluateDealRoomForTasks(propertyId, {
+      correlationId: req.headers['x-correlation-id'] || crypto.randomUUID(),
+    });
     const tasks = await listTasksForRoom(propertyId);
     res.json({ tasks, createdCount: created.length });
   } catch (err) {
@@ -100,9 +115,17 @@ router.post('/tasks/:taskId/approve', async (req, res) => {
     if (!task) return res.status(404).json({ error: 'Task not found' });
     const access = await getTaskAccess(req, task.property_id, req.body?.ownerWriteToken);
     if (access.mode !== 'owner') return deny(res);
-    const result = await approveTask(req.params.taskId);
+    const decision = ['approve', 'reject', 'send_back'].includes(req.body?.decision)
+      ? req.body.decision
+      : 'approve';
+    const result = await approveTask(req.params.taskId, {
+      ...access,
+      propertyId: task.property_id,
+      reason: req.body?.reason || null,
+      idempotencyKey: req.headers['x-idempotency-key'] || req.body?.idempotencyKey,
+    }, decision);
     if (!result.ok) return res.status(400).json({ error: result.error });
-    res.json({ ok: true });
+    res.json({ ok: true, task: result.task || null, decision });
   } catch (err) {
     console.error('[tasks] approve failed:', err.message);
     res.status(500).json({ error: 'Failed to approve task' });
