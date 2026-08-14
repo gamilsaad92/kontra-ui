@@ -3917,6 +3917,17 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
   const confirmedRequiredCount = requiredRecordFields.filter(field =>
     confirmedRecordFieldKeys.has(field.canonicalKey || field.key)
   ).length;
+  const capturedRequiredCount = requiredRecordFields.filter(definition => {
+    const keys = new Set([definition.key, definition.aliasOf, definition.canonicalKey].filter(Boolean));
+    return recordFields.some(field => {
+      const value = String(field.value_text || '').trim().toLowerCase();
+      return keys.has(field.field_key)
+        && value
+        && !['n/a', 'na', 'not applicable', 'not_applicable', 'unknown'].includes(value)
+        && field.status !== 'not_applicable'
+        && field.status !== 'verified';
+    });
+  }).length;
 
   return (
     <div className="space-y-5">
@@ -3958,9 +3969,10 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
               Completeness and confirmation of the structured Transaction Record.
             </p>
             {requiredRecordFields.length > 0 && (
-              <p className="mt-2 text-[11px] text-gray-500">
-                {confirmedRequiredCount} of {requiredRecordFields.length} required fields confirmed
-              </p>
+              <div className="mt-2 space-y-0.5 text-[11px] text-gray-500">
+                <p>{confirmedRequiredCount} of {requiredRecordFields.length} required fields confirmed</p>
+                <p>{capturedRequiredCount} captured fields awaiting confirmation</p>
+              </div>
             )}
           </div>
 

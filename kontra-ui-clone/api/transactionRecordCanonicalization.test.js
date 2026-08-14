@@ -1,6 +1,7 @@
 const {
   canonicalizeTransactionRecordKey,
   aliasKeysForCanonical,
+  canonicalTransactionTypeLabel,
 } = require('./lib/transactionRecordCanonicalization');
 
 describe('Transaction Record canonicalization', () => {
@@ -23,5 +24,19 @@ describe('Transaction Record canonicalization', () => {
         'transaction.target_closing_date',
         'transaction.target_close_date',
       ]));
+  });
+
+  test.each([
+    ['cre_acquisition', 'cre_acquisition', 'Business Acquisition', 'Commercial Real Estate Acquisition'],
+    ['business_acquisition', 'business_acquisition', 'Commercial Real Estate Acquisition', 'Business Acquisition'],
+    ['fundraising', 'fundraising', 'Business Acquisition', 'Fundraising Round'],
+    ['tokenization', 'tokenization', 'Business Acquisition', 'Token Issuance / STO'],
+  ])('canonicalizes %s labels from the authoritative type', (machineType, workflowKey, suppliedLabel, expected) => {
+    expect(canonicalTransactionTypeLabel(machineType, workflowKey, suppliedLabel)).toBe(expected);
+  });
+
+  test('does not relabel a non-built-in machine type using its generic storage pack', () => {
+    expect(canonicalTransactionTypeLabel('lending', 'business_acquisition', 'Lending / Finance'))
+      .toBe('Lending / Finance');
   });
 });

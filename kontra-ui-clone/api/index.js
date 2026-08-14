@@ -39,6 +39,7 @@ const { evaluateDealRoomForTasks, evaluateReadinessTasks } = require('./lib/task
 const {
   canonicalizeTransactionRecordKey,
   aliasKeysForCanonical,
+  canonicalTransactionTypeLabel,
 } = require('./lib/transactionRecordCanonicalization');
 
 // Pack inference map — mirrors DEAL_TYPE_TO_PACK in dealRoomHelpers.js so that
@@ -1210,19 +1211,20 @@ IMPORTANT: You are suggesting a starting point only. Do NOT claim completeness. 
     try { raw = JSON.parse(completion.choices[0].message.content); } catch (_) {}
     const resolvedTransactionType = profile?.packId || raw.transactionType || transactionType || 'other';
     const transactionTypeLabels = {
-      business_acquisition: 'Business Acquisition',
-      cre_acquisition: 'Commercial Real Estate Acquisition',
-      fundraising: 'Fundraising Round',
-      tokenization: 'Token Issuance / STO',
       lending: 'Lending / Finance',
       licensing: 'Licensing Transaction',
       joint_venture: 'Joint Venture',
       other: 'Custom Transaction',
     };
+    const canonicalTypeLabel = canonicalTransactionTypeLabel(
+      resolvedTransactionType,
+      profile?.packId,
+      raw.transactionTypeLabel || transactionTypeLabels[resolvedTransactionType] || 'Custom Transaction',
+    );
     return res.json({
       name: raw.name || '',
       transactionType: resolvedTransactionType,
-      transactionTypeLabel: normalizedType || raw.transactionTypeLabel || transactionTypeLabels[resolvedTransactionType] || 'Custom Transaction',
+      transactionTypeLabel: canonicalTypeLabel,
       transactionStructure: typeof raw.transactionStructure === 'string' && raw.transactionStructure.trim()
         && String(raw.transactionStructureConfidence || '').toLowerCase() === 'high'
         ? raw.transactionStructure.trim().slice(0, 120)
@@ -1603,6 +1605,11 @@ app.post('/api/checkout/guest', async (req, res) => {
       finalPackId,
       meta.transactionType,
     );
+    const normalizedTransactionTypeLabel = canonicalTransactionTypeLabel(
+      meta.transactionType,
+      finalPackId,
+      meta.transactionTypeLabel,
+    );
     const origin = req.headers.origin || 'https://kontraplatform.com';
 
     const PLANS = {
@@ -1650,7 +1657,7 @@ app.post('/api/checkout/guest', async (req, res) => {
         lastName: meta.lastName || '',
         jurisdiction: normalizedJurisdiction,
         transactionType: meta.transactionType || '',
-        transactionTypeLabel: meta.transactionTypeLabel || '',
+        transactionTypeLabel: normalizedTransactionTypeLabel,
         transactionTypeSource: meta.transactionTypeSource || '',
         transactionDescription: meta.transactionDescription || '',
         transactionStructure: meta.transactionStructure || '',
@@ -1679,7 +1686,7 @@ app.post('/api/checkout/guest', async (req, res) => {
         last_name: meta.lastName || '',
         jurisdiction: normalizedJurisdiction,
         transaction_type: meta.transactionType || '',
-        transaction_type_label: meta.transactionTypeLabel || '',
+         transaction_type_label: normalizedTransactionTypeLabel,
         transaction_type_source: meta.transactionTypeSource || '',
         transaction_description: meta.transactionDescription || '',
         transaction_structure: meta.transactionStructure || '',
@@ -1748,6 +1755,7 @@ app.post(['/api/checkout/demo', '/api/checkout/trial'], async (req, res) => {
       stages_config: demoInitialStages,
       metadata_values: buildCreationMetadata({
         propertyName,
+        workflowPackId: demoPackId,
         transactionDescription: meta.transactionDescription,
         transactionType: meta.transactionType || demoPackId,
         transactionTypeLabel: meta.transactionTypeLabel,
@@ -2258,6 +2266,7 @@ app.post('/api/webhook/stripe',
         metadata_values: buildCreationMetadata({
           propertyName: propertyName || pending.property_name || '',
           transactionDescription: metadataTransactionDescription || pending.transaction_description,
+          workflowPackId: stripePackId,
           transactionType: metadataTransactionType || pending.transaction_type || stripePackId,
           transactionTypeLabel: metadataTransactionTypeLabel || pending.transaction_type_label,
           transactionTypeSource: metadataTransactionTypeSource || pending.transaction_type_source,
@@ -2825,6 +2834,7 @@ function dateOnly(value) {
 
 function buildCreationMetadata({
   propertyName,
+  workflowPackId,
   transactionDescription,
   transactionType,
   transactionTypeLabel,
@@ -2834,11 +2844,16 @@ function buildCreationMetadata({
   transactionValueConfidence,
   closingDate,
 }) {
+  const transactionTypeKey = String(transactionType || workflowPackId || '').trim();
   const metadata = {
     workspace_name: String(propertyName || '').slice(0, 500),
     transaction_description: String(transactionDescription || '').slice(0, 2000),
-    transaction_type: String(transactionTypeLabel || transactionType || '').slice(0, 200),
-    transaction_type_key: String(transactionType || '').slice(0, 100),
+    transaction_type: canonicalTransactionTypeLabel(
+      transactionType,
+      workflowPackId,
+      transactionTypeLabel,
+    ),
+    transaction_type_key: transactionTypeKey.slice(0, 100),
     transaction_type_source: String(transactionTypeSource || '').slice(0, 30),
     target_close_date: dateOnly(closingDate) || null,
   };
@@ -2926,10 +2941,19 @@ async function syncMetadataToTransactionRecord(propertyId, values, room, actorEm
     transaction_structure: TRANSACTION_RECORD_METADATA_FIELDS.transaction_structure,
   };
   const inferredFieldIds = new Set(options.inferredFieldIds || []);
+  const normalizedValues = { ...(values || {}) };
+  if (Object.prototype.hasOwnProperty.call(normalizedValues, 'transaction_type')) {
+    const machineType = normalizedValues.transaction_type_key || room?.deal_type || room?.workflow_pack_id;
+    normalizedValues.transaction_type = canonicalTransactionTypeLabel(
+      machineType,
+      room?.workflow_pack_id,
+      normalizedValues.transaction_type,
+    );
+  }
 
   for (const [fieldId, mapping] of Object.entries(mappings)) {
-    if (!Object.prototype.hasOwnProperty.call(values || {}, fieldId)) continue;
-    const rawValue = values[fieldId];
+    if (!Object.prototype.hasOwnProperty.call(normalizedValues, fieldId)) continue;
+    const rawValue = normalizedValues[fieldId];
     const hasValue = rawValue !== null && rawValue !== undefined && String(rawValue).trim() !== '';
     const now = new Date().toISOString();
     const { data: existing, error: findError } = await supabase
