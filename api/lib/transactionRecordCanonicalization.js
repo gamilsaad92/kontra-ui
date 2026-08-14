@@ -40,6 +40,32 @@ const PACK_ALIASES = {
   },
 };
 
+const TRANSACTION_TYPE_LABELS = Object.freeze({
+  cre_acquisition: 'Commercial Real Estate Acquisition',
+  business_acquisition: 'Business Acquisition',
+  fundraising: 'Fundraising Round',
+  tokenization: 'Token Issuance / STO',
+});
+
+/**
+ * Resolve the display label from the authoritative machine type/workflow key.
+ * AI-provided labels are only a fallback for non-built-in/custom transaction
+ * types; they must never override a known built-in workflow label.
+ */
+function canonicalTransactionTypeLabel(machineType, workflowKey, fallbackLabel = '') {
+  const machineKey = String(machineType || '').trim().toLowerCase();
+  const packKey = String(workflowKey || '').trim().toLowerCase();
+
+  if (TRANSACTION_TYPE_LABELS[machineKey]) return TRANSACTION_TYPE_LABELS[machineKey];
+  // Only use the workflow key when the machine type is absent or is the same
+  // built-in key. Non-built-in machine types (e.g. lending) keep their own
+  // human-readable label rather than being relabeled as the storage pack.
+  if ((!machineKey || machineKey === packKey) && TRANSACTION_TYPE_LABELS[packKey]) {
+    return TRANSACTION_TYPE_LABELS[packKey];
+  }
+  return String(fallbackLabel || machineType || workflowKey || '').trim().slice(0, 200);
+}
+
 function getPackAliases(packId = 'generic') {
   return {
     ...PACK_ALIASES.generic,
@@ -66,6 +92,8 @@ function aliasKeysForCanonical(canonicalKey, packId = 'generic') {
 module.exports = {
   UNIVERSAL_ALIASES,
   PACK_ALIASES,
+  TRANSACTION_TYPE_LABELS,
+  canonicalTransactionTypeLabel,
   canonicalizeTransactionRecordKey,
   aliasKeysForCanonical,
 };

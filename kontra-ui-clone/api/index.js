@@ -3252,10 +3252,10 @@ app.get('/api/public/deal-room/:propertyId/analyses', async (req, res) => {
       .select('id, section, filename, analysis, uploaded_by_role, created_at, storage_path, post_completion, post_completion_added_at, processing_status, source_hash, extraction_version, processing_attempt, correlation_id, failure_reason, processing_started_at, processing_completed_at')
       .eq('property_id', propertyId)
       .order('created_at', { ascending: true }); // oldest first → version = index+1
-    if (error && /processing_status|source_hash|extraction_version|correlation_id|failure_reason/i.test(error.message || '')) {
+    if (error && /post_completion|processing_status|source_hash|extraction_version|correlation_id|failure_reason/i.test(error.message || '')) {
       ({ data, error } = await supabase
         .from('deal_analyses')
-        .select('id, section, filename, analysis, uploaded_by_role, created_at, storage_path, post_completion, post_completion_added_at')
+        .select('id, section, filename, analysis, uploaded_by_role, created_at, storage_path, processing_status, source_hash, extraction_version, processing_attempt, correlation_id, failure_reason, processing_started_at, processing_completed_at')
         .eq('property_id', propertyId)
         .order('created_at', { ascending: true }));
     }
@@ -3518,7 +3518,6 @@ async function extractTransactionFields(propertyId, docId, text, sectionLabel) {
         source_page:    f.source_page || null,
         source_excerpt: f.source_excerpt ? String(f.source_excerpt).slice(0, 200) : null,
         extracted_by:   'ai',
-        extraction_timestamp: new Date().toISOString(),
         updated_at:     new Date().toISOString(),
       }, { onConflict: 'property_id,field_key', ignoreDuplicates: false }).select('id').single();
       if (saveError) throw saveError;
@@ -3817,7 +3816,10 @@ app.get('/api/suggestions', (_req, res) => {
   res.json({ suggestions: SUGGESTIONS });
 });
 
-const DOCUMENT_EXTRACTION_VERSION = 'document-agent-v1';
+// migration 015 already defines extraction_version as INTEGER. Keep the
+// document-agent version numeric so durable processing writes work on both the
+// existing schema and the additive pipeline migration.
+const DOCUMENT_EXTRACTION_VERSION = 1;
 
 async function updateDocumentProcessing(recordId, patch, legacyPatch = {}) {
   if (!recordId) return;

@@ -192,8 +192,8 @@ async function approveTask(taskId, context = {}, decision = 'approve') {
   if (task.required_approver_role && task.required_approver_role !== context.role) {
     return { ok: false, error: 'Your role cannot approve this task' };
   }
-  if (task.status === 'completed' || task.execution_status === 'completed') {
-    return { ok: false, error: 'Task already completed' };
+  if (['completed', 'dismissed'].includes(task.status) || task.execution_status === 'completed') {
+    return { ok: false, error: 'Task is already resolved' };
   }
   if (!['approve', 'reject', 'send_back'].includes(decision)) {
     return { ok: false, error: 'Unsupported task decision' };
@@ -256,7 +256,9 @@ async function approveTask(taskId, context = {}, decision = 'approve') {
     })
     .eq('id', taskId)
     .eq('status', task.status)
-    .neq('execution_status', 'executing')
+    // PostgreSQL's `!=` does not match NULL. Untouched tasks have no
+    // execution_status yet, so allow NULL as well as any non-running state.
+    .or('execution_status.is.null,execution_status.neq.executing')
     .select('*')
     .maybeSingle();
   if (claimError || !executing) return { ok: false, error: 'Task was already approved or is no longer pending' };
@@ -321,6 +323,12 @@ async function approveTask(taskId, context = {}, decision = 'approve') {
       correlationId: task.correlation_id, actorId,
       actorType: context.actorType || 'owner', source: 'task-approval',
     });
+    logEvent(task.property_id, 'action_failed', actorRole, actorId,
+      `Failed: ${task.title}`, {
+        taskId, taskType: task.task_type, correlationId: task.correlation_id,
+        actorId, actorType: context.actorType || 'owner', source: 'task-approval',
+        outcome: { ok: false, error: e.message, idempotencyKey },
+      }).catch(() => {});
     return { ok: false, error: e.message };
   }
 }

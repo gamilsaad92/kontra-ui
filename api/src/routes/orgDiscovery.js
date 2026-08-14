@@ -448,20 +448,6 @@ async function createOrgForUser(userId, name) {
   };
 }
 
-function logOrgError(req, message, error) {
-  const correlationId = getCorrelationId(req);
-  console.error(`[OrgDiscovery][${correlationId}] ${message}`, {
-    userId: getAuthUserId(req),
-    route: req.originalUrl,
-    method: req.method,
-    error: error?.message || error,
-    details: error?.details,
-    hint: error?.hint,
-    code: error?.code,
-  });
-  return correlationId;
-}
-
 router.get('/', async (req, res) => {
   const authUserId = getAuthUserId(req);
   if (!authUserId) {

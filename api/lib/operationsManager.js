@@ -119,10 +119,10 @@ function computeChainStatus(packId, tasks) {
 
 // ── Grounding context ─────────────────────────────────────────────────────────
 async function buildGroundedContext(propertyId) {
-  const [{ data: room }, tasks, { data: analyses }, { data: recordFields }] = await Promise.all([
+  const [roomResult, tasks, { data: analyses }, { data: recordFields }, { data: participants }] = await Promise.all([
     supabase
       .from('deal_rooms')
-      .select('property_name, deal_stage, closing_date, deal_type, deal_amount, workflow_pack_id, jurisdiction, metadata_values, checklist_items')
+      .select('property_name, deal_stage, closing_date, deal_type, deal_amount, workflow_pack_id, jurisdiction, metadata_values, checklist_items, settlement_mode, settlement_readiness_pct, settlement_mode_locked_at, sealed_at, completed_at')
       .eq('property_id', propertyId)
       .maybeSingle(),
     listTasksForRoom(propertyId),
@@ -138,7 +138,20 @@ async function buildGroundedContext(propertyId) {
       .eq('property_id', propertyId)
       .order('updated_at', { ascending: false })
       .limit(150),
+    supabase
+      .from('party_submissions')
+      .select('role, name, status, doc_count, submitted_at')
+      .eq('property_id', propertyId),
   ]);
+  let { data: room } = roomResult;
+  if (roomResult.error && /settlement_mode|settlement_readiness_pct|sealed_at|completed_at/i.test(roomResult.error.message || '')) {
+    const legacyRoom = await supabase
+      .from('deal_rooms')
+      .select('property_name, deal_stage, closing_date, deal_type, deal_amount, workflow_pack_id, jurisdiction, metadata_values, checklist_items')
+      .eq('property_id', propertyId)
+      .maybeSingle();
+    room = legacyRoom.data;
+  }
 
   // Resolve packId: deal_type takes priority (same mapping as frontend resolvePackId),
   // then workflow_pack_id, then CRE default.
@@ -213,6 +226,50 @@ async function buildGroundedContext(propertyId) {
     .filter(item => item.summary || item.filename)
     .slice(0, 20);
 
+  const participantContext = (participants || []).map(participant => ({
+    role: participant.role || null,
+    name: participant.name || null,
+    status: participant.status || null,
+    documentCount: Number(participant.doc_count || 0),
+    submittedAt: participant.submitted_at || null,
+  }));
+  const transactionContext = {
+    transaction: {
+      propertyId,
+      propertyName: room?.property_name || null,
+      dealType: room?.deal_type || null,
+      dealAmount: room?.deal_amount || null,
+      workflowPack: packId,
+      stage: room?.deal_stage || null,
+      stageLabel,
+      jurisdiction: room?.jurisdiction || null,
+    },
+    participants: participantContext,
+    record: {
+      facts: populatedRecordFields,
+      factCount: populatedRecordFields.length,
+      confirmedFactCount: populatedRecordFields.filter(field => field.status === 'verified').length,
+    },
+    evidence: {
+      documents: documentFindings,
+      missingDocuments,
+    },
+    operations: {
+      openTasks: openTasks.map(describeTask),
+      recentlyResolved: recentlyResolved.map(describeTask),
+      chainStatus,
+    },
+    settlement: {
+      mode: room?.settlement_mode || null,
+      readinessPct: room?.settlement_readiness_pct == null
+        ? null
+        : Math.round(Number(room.settlement_readiness_pct) * 100),
+      modeLocked: !!room?.settlement_mode_locked_at,
+      sealedAt: room?.sealed_at || null,
+      completedAt: room?.completed_at || null,
+    },
+  };
+
   return {
     packId,
     room: room
@@ -231,6 +288,7 @@ async function buildGroundedContext(propertyId) {
     recordFacts: populatedRecordFields,
     documentFindings,
     chainStatus,
+    transactionContext,
   };
 }
 
@@ -253,6 +311,7 @@ function contextToPrompt(ctx) {
       missing_documents: ctx.missingDocuments,
       transaction_record_facts: ctx.recordFacts,
       document_findings: ctx.documentFindings,
+      transaction_context: ctx.transactionContext,
     },
     null,
     2
@@ -260,7 +319,7 @@ function contextToPrompt(ctx) {
 }
 
 const GROUNDING_RULES = `You are Kontra AI Copilot inside a specific transaction deal room (which may be CRE acquisition, business acquisition, or fundraising — follow the deal context provided).
-You reason ONLY from the JSON context provided (closing_chain, open_tasks, recently_resolved_tasks, deal, missing_documents, transaction_record_facts, document_findings). Never invent
+You reason ONLY from the JSON context provided (transaction_context, closing_chain, open_tasks, recently_resolved_tasks, deal, missing_documents, transaction_record_facts, document_findings). Never invent
 facts, people, dates, or documents not present in that context. If the context does not contain
 enough information to answer, say so plainly instead of guessing.
 

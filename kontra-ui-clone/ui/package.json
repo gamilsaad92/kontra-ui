@@ -7,7 +7,7 @@
     "build": "vite build",
     "start": "serve -s dist -l $PORT",
     "preview": "vite preview",
-      "test": "jest",
+    "test": "jest",
     "wiring:gate": "node ./scripts/wiring-gate.mjs"
   },
   "dependencies": {
@@ -43,12 +43,13 @@
     "@vitejs/plugin-react": "^4.2.1",
     "autoprefixer": "^10.4.14",
     "jest": "^29.7.0",
+    "jest-environment-jsdom": "^29.7.0",
     "postcss": "^8.4.24",
     "tailwindcss": "^3.4.1",
     "vite": "^5.0.0",
     "vite-plugin-pwa": "^0.16.4"
   },
   "engines": {
-     "node": "22.x"
+    "node": "22.x"
   }
 }

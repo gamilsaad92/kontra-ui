@@ -23,3 +23,4 @@
 - [Settlement capability detection gap](settlement-capability-gap.md) — roomHasSettlementCapability must check settlement_mode; advance handler must select settlement_mode
 - [Kontra coordinator role detection](kontra-coordinator-role-detection.md) — standard packs use invitable:false; custom ws_* packs use canManage:true without invitable:false; isCoordinatorRole() must check both
 - [Kontra Overview UX architecture](kontra-overview-ux-architecture.md) — CoordinatorOverview has StageLifecycleBar, phase-conditional readiness panel; phase = transaction/closing/settlement/complete from stage key
+- [Kontra task approval invariants](kontra-task-approval-invariants.md) — approval claims must allow NULL execution_status; dismissed tasks are resolved; failed executions need durable action_failed audit events

@@ -160,6 +160,9 @@ function emit(type, data = {}, meta = {}) {
     data,
     orgId:     meta.orgId     || null,
     source:    meta.source    || 'kontra-api',
+    correlationId: meta.correlationId || data.correlationId || null,
+    actorId:    meta.actorId || null,
+    actorType:  meta.actorType || null,
     version:   meta.version   || '1.0',
     timestamp: new Date().toISOString(),
   };
