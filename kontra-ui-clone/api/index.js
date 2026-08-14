@@ -3872,7 +3872,14 @@ app.post('/api/public/deal-room/:propertyId/track-document', upload.single('file
 
   const access = await getRoomAccessContext(req, propertyId);
   if (access.mode === 'anonymous') return accessDenied(res);
-  const effectiveRole = access.mode === 'participant' ? access.role : (role || 'owner');
+  // Participant uploads keep their verified invite role. Owner uploads must
+  // never inherit the role query/body value: the owner credential identifies
+  // the coordinator and should be reflected in document provenance.
+  const effectiveRole = access.mode === 'participant'
+    ? access.role
+    : access.mode === 'owner'
+      ? 'deal_coordinator'
+      : (role || 'owner');
   if (access.mode === 'participant') {
     const { data: room } = await supabase
       .from('deal_rooms')

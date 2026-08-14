@@ -2395,7 +2395,7 @@ function AssetReadinessTab({ propertyId, property, pack, onTabChange }) {
 }
 
 // ── WorkspaceTabNav ───────────────────────────────────────────────────────────
-function WorkspaceTabNav({ activeTab, onChange }) {
+function WorkspaceTabNav({ activeTab, onChange, isCoordinator = false }) {
   const TABS = [
     { key: 'overview',      label: 'Overview'                 },
     { key: 'documents',     label: 'Documents'                },
@@ -2419,7 +2419,7 @@ function WorkspaceTabNav({ activeTab, onChange }) {
             </button>
           ))}
         </div>
-        <button
+        {isCoordinator && <button
           type="button"
           onClick={() => onChange('settings')}
           aria-label="Open workspace settings"
@@ -2434,7 +2434,7 @@ function WorkspaceTabNav({ activeTab, onChange }) {
             <path strokeLinecap="round" strokeLinejoin="round" d="M10.3 2.8h3.4l.5 2.2a7.7 7.7 0 0 1 1.7 1l2.1-.8 1.7 2.9-1.6 1.5c.1.6.1 1.3 0 1.9l1.6 1.5-1.7 2.9-2.1-.8a7.7 7.7 0 0 1-1.7 1l-.5 2.2h-3.4l-.5-2.2a7.7 7.7 0 0 1-1.7-1L6 15.9l-1.7-2.9L6 11.5a7.7 7.7 0 0 1 0-1.9L4.3 8.1 6 5.2l2.1.8a7.7 7.7 0 0 1 1.7-1l.5-2.2Z" />
             <circle cx="12" cy="10.5" r="2.7" />
           </svg>
-        </button>
+        </button>}
       </div>
     </div>
   );
@@ -3808,6 +3808,168 @@ function daysUntilDateOnly(value) {
   const today = new Date();
   const todayUtc = Date.UTC(today.getFullYear(), today.getMonth(), today.getDate());
   return Math.ceil((target - todayUtc) / (1000 * 60 * 60 * 24));
+}
+
+function ParticipantPeoplePanel({ pack, role, roleConfig }) {
+  const roles = (pack?.roles || []).filter(item => item?.label);
+  return (
+    <section className="rounded-2xl border border-gray-200 bg-white overflow-hidden">
+      <div className="px-5 py-5 sm:px-7 border-b border-gray-100">
+        <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Transaction team</p>
+        <h2 className="mt-1 text-lg font-bold text-gray-900">People in this workspace</h2>
+        <p className="mt-1 text-sm text-gray-500">Roles are shown without exposing private invitation details.</p>
+      </div>
+      <div className="divide-y divide-gray-100">
+        {roles.map(item => {
+          const isYou = item.key === role;
+          return (
+            <div key={item.key} className="flex items-center gap-3 px-5 py-3.5 sm:px-7">
+              <span
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-sm"
+                style={{ background: `${item.color || '#800020'}15` }}
+              >
+                {item.icon || '👤'}
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-semibold text-gray-800">{item.label}</p>
+                <p className="text-[11px] text-gray-400">{isYou ? 'Your role' : 'Transaction participant'}</p>
+              </div>
+              {isYou && (
+                <span
+                  className="rounded-full px-2.5 py-1 text-[10px] font-bold"
+                  style={{ color: roleConfig.color, background: `${roleConfig.color}12` }}
+                >
+                  You
+                </span>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+function ParticipantOverview({ propertyId, property, pack, role, roleConfig, onTabChange, refreshKey }) {
+  const [checklistItems, setChecklistItems] = useState([]);
+  const [analyses, setAnalyses] = useState([]);
+  const [stage, setStage] = useState('');
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    const headers = getRoomAuthHeaders(propertyId);
+    Promise.all([
+      fetch(`${API_BASE}/api/public/deal-room/${propertyId}/checklist`, { headers })
+        .then(response => response.ok ? response.json() : { items: [] })
+        .catch(() => ({ items: [] })),
+      fetch(`${API_BASE}/api/public/deal-room/${propertyId}/analyses`, { headers })
+        .then(response => response.ok ? response.json() : { analyses: [] })
+        .catch(() => ({ analyses: [] })),
+      fetch(`${API_BASE}/api/public/deal-room/${propertyId}/coordination`, { headers })
+        .then(response => response.ok ? response.json() : {})
+        .catch(() => ({})),
+    ]).then(([checklist, analysisData, coordination]) => {
+      if (cancelled) return;
+      setChecklistItems(Array.isArray(checklist?.items) ? checklist.items : []);
+      setAnalyses(Array.isArray(analysisData?.analyses) ? analysisData.analyses : []);
+      setStage(coordination?.stage || '');
+      setLoading(false);
+    });
+    return () => { cancelled = true; };
+  }, [propertyId, refreshKey]);
+
+  const configuredItems = Array.isArray(pack?.documentSchema) ? pack.documentSchema : [];
+  const sourceItems = checklistItems.length > 0 ? checklistItems : configuredItems;
+  const assignedItems = sourceItems.filter(item =>
+    Array.isArray(item.assignedTo) && item.assignedTo.includes(role)
+  );
+  const uploadedSections = new Set(analyses.map(analysis => analysis.section));
+  const uploadedCount = assignedItems.filter(item => uploadedSections.has(item.section)).length;
+  const requiredItems = assignedItems.filter(item => item.required);
+  const requiredUploadedCount = requiredItems.filter(item => uploadedSections.has(item.section)).length;
+  const pendingItems = assignedItems.filter(item => !uploadedSections.has(item.section));
+
+  return (
+    <div className="space-y-5">
+      <section className="rounded-2xl border border-gray-200 bg-white px-5 py-5 sm:px-7 sm:py-6">
+        <div className="flex items-start gap-4">
+          <div
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-xl"
+            style={{ background: `${roleConfig.color}15` }}
+          >
+            {roleConfig.icon}
+          </div>
+          <div className="min-w-0">
+            <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Participant workspace</p>
+            <h1 className="mt-1 text-xl font-bold leading-tight text-gray-900 sm:text-2xl">
+              {property?.name || property?.property_name}
+            </h1>
+            <p className="mt-1 text-sm text-gray-500">
+              {roleConfig.label} · Review the documents assigned to you
+            </p>
+            {stage && (
+              <p className="mt-2 text-xs font-semibold text-gray-700">
+                Transaction status: <span className="font-bold text-[#800020]">{stage.replace(/_/g, ' ')}</span>
+              </p>
+            )}
+          </div>
+        </div>
+
+        <div className="mt-6 rounded-xl border border-gray-100 bg-gray-50 px-4 py-4">
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-xs font-semibold uppercase tracking-wider text-gray-500">Your document progress</p>
+            <span className="text-xs font-bold text-gray-700">
+              {loading ? 'Loading…' : `${uploadedCount} of ${assignedItems.length} uploaded`}
+            </span>
+          </div>
+          <div className="mt-3 h-2 overflow-hidden rounded-full bg-gray-200">
+            <div
+              className="h-full rounded-full bg-[#800020] transition-all"
+              style={{ width: `${assignedItems.length ? Math.round((uploadedCount / assignedItems.length) * 100) : 0}%` }}
+            />
+          </div>
+          {requiredItems.length > 0 && (
+            <p className="mt-2 text-[11px] text-gray-500">
+              {requiredUploadedCount} of {requiredItems.length} required documents uploaded
+            </p>
+          )}
+        </div>
+
+        {!loading && assignedItems.length === 0 && (
+          <p className="mt-5 text-sm leading-relaxed text-gray-500">
+            No documents are currently assigned to your role. The deal coordinator will share any files that need your review.
+          </p>
+        )}
+
+        {!loading && pendingItems.length > 0 && (
+          <div className="mt-5">
+            <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Still needed from you</p>
+            <div className="mt-2 space-y-2">
+              {pendingItems.slice(0, 4).map(item => (
+                <div key={item.id || item.section} className="flex items-center gap-2.5 text-sm text-gray-700">
+                  <span className="h-2 w-2 shrink-0 rounded-full bg-amber-400" />
+                  <span>{item.label || item.section}</span>
+                  {item.required && <span className="text-[10px] font-semibold text-red-500">required</span>}
+                </div>
+              ))}
+              {pendingItems.length > 4 && (
+                <p className="text-[11px] text-gray-400">+{pendingItems.length - 4} more in Documents</p>
+              )}
+            </div>
+          </div>
+        )}
+
+        <button
+          type="button"
+          onClick={() => onTabChange('documents')}
+          className="mt-5 rounded-xl bg-[#800020] px-4 py-2.5 text-xs font-bold text-white transition hover:opacity-90"
+        >
+          Open my documents →
+        </button>
+      </section>
+    </div>
+  );
 }
 
 function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, refreshKey }) {
@@ -5274,6 +5436,9 @@ export default function DealRoomPage() {
   const [repackLoading, setRepackLoading] = useState(false);
 
   const onAnalysisSaved = () => setAnalysesRefreshKey(k => k + 1);
+  const handleParticipantUnlocked = useCallback((sessionToken) => {
+    setParticipantSession(sessionToken);
+  }, []);
 
   // Track workspace page view on load
   useEffect(() => {
@@ -5511,7 +5676,7 @@ export default function DealRoomPage() {
         propertyId={propertyId}
         role={requestedRole}
         inviteToken={inviteToken}
-        onUnlocked={(sessionToken) => setParticipantSession(sessionToken)}
+        onUnlocked={handleParticipantUnlocked}
       />
     );
   }
@@ -5817,31 +5982,44 @@ export default function DealRoomPage() {
       )}
 
       {/* Workspace tab nav — coordinator view of live paid rooms only */}
-      {property.isCustom && isCoordinator && !isDemo && (
+      {property.isCustom && !isDemo && (
         <WorkspaceTabNav
           activeTab={activeTab}
           onChange={setActiveTab}
+          isCoordinator={isCoordinator}
         />
       )}
 
       <div className="max-w-5xl mx-auto px-6 py-8">
 
-        {property.isCustom && isCoordinator && !isDemo ? (
+        {property.isCustom && !isDemo ? (
 
-          /* ── Coordinator tabbed layout ────────────────────────────────── */
+          /* ── Shared workspace layout ───────────────────────────────────── */
           <>
             {/* Floating AI button — persists across all coordinator tabs */}
-            <RoomCopilot propertyId={pid} />
+            {isCoordinator && <RoomCopilot propertyId={pid} />}
 
             {activeTab === 'overview' && (
-              <CoordinatorOverview
+              isCoordinator ? (
+                <CoordinatorOverview
+                    propertyId={pid}
+                    property={property}
+                    pack={pack}
+                    packId={packId}
+                    onTabChange={setActiveTab}
+                    refreshKey={analysesRefreshKey}
+                  />
+              ) : (
+                <ParticipantOverview
                   propertyId={pid}
                   property={property}
                   pack={pack}
-                  packId={packId}
+                  role={role}
+                  roleConfig={roleConfig}
                   onTabChange={setActiveTab}
                   refreshKey={analysesRefreshKey}
                 />
+              )
             )}
 
             {activeTab === 'documents' && (
@@ -5862,7 +6040,7 @@ export default function DealRoomPage() {
               </>
             )}
 
-            {activeTab === 'people' && (
+            {activeTab === 'people' && isCoordinator && (
               <ParticipantsPanel
                 roomId={pid}
                 packId={packId}
@@ -5879,7 +6057,11 @@ export default function DealRoomPage() {
               />
             )}
 
-            {activeTab === 'settings' && (
+            {activeTab === 'people' && !isCoordinator && (
+              <ParticipantPeoplePanel pack={pack} role={role} roleConfig={roleConfig} />
+            )}
+
+            {activeTab === 'settings' && isCoordinator && (
               <div className="space-y-4">
                 <TransactionDetailsPanel propertyId={pid} property={property} pack={pack} />
               </div>
