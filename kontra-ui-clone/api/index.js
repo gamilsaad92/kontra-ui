@@ -8352,7 +8352,7 @@ if (require.main === module) {
   const server = http.createServer(app);
   attachChatServer(server);
   attachCollabServer(server);
-  server.listen(PORT, () => {
+  server.listen(PORT, '0.0.0.0', () => {
     console.log(`Kontra API listening on port ${PORT}`);
     void ensureWorkflowPackIdColumn();
     if (process.env.NODE_ENV !== 'production') {
