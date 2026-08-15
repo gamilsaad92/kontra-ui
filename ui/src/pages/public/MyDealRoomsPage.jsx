@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { Link } from "react-router-dom";
 import { getWorkflowPack, ensureWorkflowPackLoaded } from "../../lib/workflowPacks";
+import { getCoordinatorRoleKeys } from "../../lib/workflowRoles";
 
 const API_BASE = (import.meta.env.VITE_API_BASE || "").replace(/\/+$/, "");
 const SESSION_KEY = "kontra_my_rooms_session";
@@ -21,8 +22,6 @@ const STAGE_CONFIG = {
 
 // Fallback for CRE Acquisition rooms while workflow_pack_id is unavailable.
 const FALLBACK_ROLES = ["lender", "inspector", "insurer", "attorney", "investor", "servicer"];
-const FALLBACK_REQUIRED_ROLES = ["lender", "inspector", "insurer", "attorney"];
-
 // Which role chips to show, and which are "required," is pack-driven —
 // each pack's `roles` list already knows its own role keys and marks
 // required: true, so this reads straight from the pack instead of
@@ -30,11 +29,16 @@ const FALLBACK_REQUIRED_ROLES = ["lender", "inspector", "insurer", "attorney"];
 // like buyer/seller/cpa/counsel).
 function getPackRoles(workflowPackId) {
   const pack = getWorkflowPack(workflowPackId);
-  const roleKeys = (pack.roles || []).filter(r => r.key !== "owner" && r.key !== "buyer").map(r => r.key);
-  const requiredKeys = (pack.roles || []).filter(r => r.required && r.key !== "owner" && r.key !== "buyer").map(r => r.key);
+  const coordinatorKeys = getCoordinatorRoleKeys(pack, { isCoordinator: true });
+  const roleKeys = (pack.roles || [])
+    .filter(r => !coordinatorKeys.has(r.key))
+    .map(r => r.key);
+  const requiredKeys = (pack.roles || [])
+    .filter(r => r.required && !coordinatorKeys.has(r.key))
+    .map(r => r.key);
   return {
     roles: roleKeys.length > 0 ? roleKeys : FALLBACK_ROLES,
-    required: requiredKeys.length > 0 ? requiredKeys : FALLBACK_REQUIRED_ROLES,
+    required: requiredKeys.length > 0 ? requiredKeys : ["lender", "inspector", "insurer"],
   };
 }
 
@@ -72,7 +76,12 @@ function StageBar({ stage }) {
 
 function PartyMini({ parties, workflowPackId }) {
   const { roles, required } = getPackRoles(workflowPackId);
-  const submitted = new Set((parties || []).filter(p => p.status === "submitted" || p.role).map(p => p.role));
+  const activeStatuses = new Set(["accepted", "active", "submitted", "approved"]);
+  const submitted = new Set(
+    (parties || [])
+      .filter(p => p.role && activeStatuses.has(String(p.status || "").toLowerCase()))
+      .map(p => p.role),
+  );
   const approved  = new Set((parties || []).filter(p => p.status === "approved").map(p => p.role));
   const count = submitted.size;
   return (
@@ -520,6 +529,7 @@ export default function MyDealRoomsPage() {
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-8">
             {[
              { label: "Deal Rooms", value: analytics.totalDeals, icon: "🏢", alert: false },
+              { label: "Active Participants", value: analytics.activeParticipants ?? 0, icon: "👥", alert: false },
               { label: "Waiting on Borrower", value: analytics.waitingOnBorrower, icon: "⏳", alert: analytics.waitingOnBorrower > 0 },
               { label: "Waiting on Inspector", value: analytics.waitingOnInspector, icon: "🔍", alert: analytics.waitingOnInspector > 0 },
               { label: "Avg Days Active", value: analytics.avgDaysActive != null ? `${analytics.avgDaysActive}d` : "—", icon: "📅", alert: false },

@@ -48,6 +48,10 @@ const {
   aliasKeysForCanonical,
   canonicalTransactionTypeLabel,
 } = require('./lib/transactionRecordCanonicalization');
+const {
+  buildRoomParticipants,
+  computeRoomDashboardState,
+} = require('./lib/dashboardState');
 
 // Pack inference map — mirrors DEAL_TYPE_TO_PACK in dealRoomHelpers.js so that
 // room creation writes the correct workflow_pack_id from day one.
@@ -2855,25 +2859,61 @@ app.post('/api/public/my-rooms/verify-otp', async (req, res) => {
   try {
     const { data: rooms, error } = await supabase
       .from('deal_rooms')
-      .select('property_id, property_name, property_type, deal_amount, deal_type, address, status, deal_stage, created_at, activated_at')
+      .select('property_id, property_name, property_type, deal_amount, deal_type, address, status, deal_stage, workflow_pack_id, created_at, activated_at')
       .ilike('customer_email', email)
       .order('created_at', { ascending: false });
     if (error) throw error;
     if (!rooms || rooms.length === 0) return res.json({ rooms: [] });
     const ids = rooms.map(r => r.property_id);
-    const { data: subs } = await supabase
-      .from('party_submissions')
-      .select('property_id, role, status')
-      .in('property_id', ids);
+    const [subsRes, invitesRes, analysesRes] = await Promise.all([
+      supabase
+        .from('party_submissions')
+        .select('property_id, role, name, doc_count, submitted_at, notes')
+        .in('property_id', ids),
+      supabase
+        .from('deal_room_invites')
+        .select('property_id, role_key, status, last_used_at, expires_at, revoked_at')
+        .in('property_id', ids),
+      supabase
+        .from('deal_analyses')
+        .select('property_id, section, analysis')
+        .in('property_id', ids),
+    ]);
+    if (subsRes.error) throw subsRes.error;
+    if (invitesRes.error) throw invitesRes.error;
+    if (analysesRes.error) throw analysesRes.error;
+    const subs = subsRes.data || [];
+    const invites = invitesRes.data || [];
+    const analyses = analysesRes.data || [];
     const subMap = {};
-    (subs || []).forEach(s => {
+    subs.forEach(s => {
       if (!subMap[s.property_id]) subMap[s.property_id] = [];
       subMap[s.property_id].push(s);
+    });
+    const inviteMap = {};
+    invites.forEach(invite => {
+      if (!inviteMap[invite.property_id]) inviteMap[invite.property_id] = [];
+      inviteMap[invite.property_id].push(invite);
+    });
+    const analysesMap = {};
+    analyses.forEach(analysis => {
+      if (!analysesMap[analysis.property_id]) analysesMap[analysis.property_id] = [];
+      analysesMap[analysis.property_id].push(analysis);
     });
     const enriched = rooms.map(r => ({
       ...r,
       owner_name: r.owner_name || null,
-      parties: subMap[r.property_id] || [],
+      parties: buildRoomParticipants({
+        invites: inviteMap[r.property_id] || [],
+        submissions: subMap[r.property_id] || [],
+      }),
+      document_count: (analysesMap[r.property_id] || [])
+        .filter(analysis => analysis.section !== 'cross_document_verification')
+        .length,
+      active_participant_count: buildRoomParticipants({
+        invites: inviteMap[r.property_id] || [],
+        submissions: subMap[r.property_id] || [],
+      }).length,
     }));
     res.json({ rooms: enriched, email });
   } catch (err) {
@@ -2945,35 +2985,74 @@ app.get('/api/public/my-rooms/analytics', async (req, res) => {
   try {
     const { data: rooms } = await supabase
       .from('deal_rooms')
-      .select('property_id, deal_stage, status, activated_at')
+      .select('property_id, deal_stage, status, activated_at, workflow_pack_id, deal_type, property_type, checklist_items')
       .ilike('customer_email', email);
 
     if (!rooms?.length) {
-      return res.json({ totalDeals: 0, waitingOnBorrower: 0, waitingOnInspector: 0, avgDaysActive: null, documentsUploaded: 0, aiReviewsCompleted: 0 });
+      return res.json({
+        totalDeals: 0,
+        waitingOnBorrower: 0,
+        waitingOnInspector: 0,
+        avgDaysActive: null,
+        documentsUploaded: 0,
+        aiReviewsCompleted: 0,
+        activeParticipants: 0,
+      });
     }
 
     const propertyIds = rooms.map(r => r.property_id);
 
-    const [analysesRes] = await Promise.all([
-      supabase.from('deal_analyses').select('property_id, section').in('property_id', propertyIds),
+    const [analysesRes, invitesRes, submissionsRes] = await Promise.all([
+      supabase.from('deal_analyses').select('property_id, section, analysis').in('property_id', propertyIds),
+      supabase.from('deal_room_invites')
+        .select('property_id, role_key, status, last_used_at, expires_at, revoked_at')
+        .in('property_id', propertyIds),
+      supabase.from('party_submissions')
+        .select('property_id, role, name, doc_count, submitted_at, notes')
+        .in('property_id', propertyIds),
     ]);
+    if (analysesRes.error) throw analysesRes.error;
+    if (invitesRes.error) throw invitesRes.error;
+    if (submissionsRes.error) throw submissionsRes.error;
     const analyses = analysesRes.data || [];
 
-    // Group by property
-    const sectionsByProp = {};
-    for (const a of analyses) {
-      if (!sectionsByProp[a.property_id]) sectionsByProp[a.property_id] = new Set();
-      sectionsByProp[a.property_id].add(a.section);
-    }
-
     const activeRooms = rooms.filter(r => r.status === 'active');
-    let waitingOnBorrower = 0;
-    let waitingOnInspector = 0;
-    for (const room of activeRooms) {
-      const sections = sectionsByProp[room.property_id] || new Set();
-      if (!sections.has('financials')) waitingOnBorrower++;
-      if (!sections.has('inspection')) waitingOnInspector++;
-    }
+    const invitesByProperty = {};
+    (invitesRes.data || []).forEach(invite => {
+      if (!invitesByProperty[invite.property_id]) invitesByProperty[invite.property_id] = [];
+      invitesByProperty[invite.property_id].push(invite);
+    });
+    const submissionsByProperty = {};
+    (submissionsRes.data || []).forEach(submission => {
+      if (!submissionsByProperty[submission.property_id]) submissionsByProperty[submission.property_id] = [];
+      submissionsByProperty[submission.property_id].push(submission);
+    });
+    const analysesByProperty = {};
+    analyses.forEach(analysis => {
+      if (!analysesByProperty[analysis.property_id]) analysesByProperty[analysis.property_id] = [];
+      analysesByProperty[analysis.property_id].push(analysis);
+    });
+
+    // Prefer each room's persisted checklist. Older rooms can have an empty
+    // checklist_items value, so resolve the pack schema in memory instead of
+    // seeding or mutating the room during a dashboard read.
+    const roomStates = await Promise.all(rooms.map(async room => {
+      const packId = room.workflow_pack_id
+        || DEAL_TYPE_TO_PACK_INDEX[room.deal_type]
+        || DEFAULT_PACK_ID;
+      const documents = Array.isArray(room.checklist_items) && room.checklist_items.length > 0
+        ? room.checklist_items
+        : (await getCanonicalChecklist(packId, room.property_type) || []);
+      return computeRoomDashboardState({
+        room,
+        analyses: analysesByProperty[room.property_id] || [],
+        invites: invitesByProperty[room.property_id] || [],
+        submissions: submissionsByProperty[room.property_id] || [],
+        documents,
+      });
+    }));
+    const activeRoomIds = new Set(activeRooms.map(room => room.property_id));
+    const activeRoomStates = roomStates.filter(state => activeRoomIds.has(state.property_id));
 
     // Average days active (activated → today)
     const activatedRooms = activeRooms.filter(r => r.activated_at);
@@ -2983,17 +3062,17 @@ app.get('/api/public/my-rooms/analytics', async (req, res) => {
         ) / activatedRooms.length)
       : null;
 
-    const AI_SECTIONS = new Set(['inspection', 'insurance', 'financials', 'legal', 'brand-standards']);
-    const aiReviewsCompleted = analyses.filter(a => AI_SECTIONS.has(a.section)).length;
+    const aiReviewsCompleted = roomStates.reduce((sum, state) => sum + state.aiReviewsCompleted, 0);
 
     console.log(`[analytics] ${email} → ${rooms.length} deals, ${analyses.length} docs`);
     res.json({
       totalDeals: rooms.length,
-      waitingOnBorrower,
-      waitingOnInspector,
+      waitingOnBorrower: activeRoomStates.filter(state => state.waitingOnBorrower).length,
+      waitingOnInspector: activeRoomStates.filter(state => state.waitingOnInspector).length,
       avgDaysActive,
-      documentsUploaded: analyses.length,
+      documentsUploaded: roomStates.reduce((sum, state) => sum + state.documentCount, 0),
       aiReviewsCompleted,
+      activeParticipants: activeRoomStates.reduce((sum, state) => sum + state.activeParticipants, 0),
     });
   } catch (err) {
     console.error('[analytics]', err.message);
@@ -4032,8 +4111,9 @@ async function getCanonicalChecklist(packId, propertyType) {
 // GET  /api/public/deal-room/:propertyId/checklist  → items array
 // PUT  /api/public/deal-room/:propertyId/checklist  → replace full array
 //
-// On first GET the server seeds from the canonical pack schema and saves to DB
-// so every subsequent load (from any session/browser) gets the identical list.
+// On first GET older rooms use the canonical pack schema as an in-memory
+// fallback. Reads must not mutate a room, because legacy rooms can legitimately
+// have no persisted checklist and the Production audit is read-only.
 
 app.get('/api/public/deal-room/:propertyId/checklist', async (req, res) => {
   const { propertyId } = req.params;
@@ -4053,7 +4133,7 @@ app.get('/api/public/deal-room/:propertyId/checklist', async (req, res) => {
       return res.json({ items: data.checklist_items });
     }
 
-    // Auto-seed from canonical server-side schema so all sessions get the same list
+    // Read-time fallback for rooms created before checklist_items was populated.
     const canonical = await getCanonicalChecklist(data.workflow_pack_id, data.property_type);
     if (canonical) {
       const items = canonical.map((d, i) => ({
@@ -4068,8 +4148,6 @@ app.get('/api/public/deal-room/:propertyId/checklist', async (req, res) => {
         sortOrder:  i,
         status:     'missing',
       }));
-      // Persist immediately so concurrent sessions all read the same items
-      supabase.from('deal_rooms').update({ checklist_items: items }).eq('property_id', propertyId).then(() => {}).catch(() => {});
       return res.json({ items });
     }
 
@@ -4687,19 +4765,26 @@ app.get('/api/public/document-url', async (req, res) => {
     }
 
     if (!authorized && sessionToken) {
-      // Participant path: hash the token and query deal_room_access_sessions directly.
-      // (The validate_session_for_property RPC reads from request.headers, not a param,
-      //  so it cannot be called server-side with an arbitrary token.)
+      // The legacy session table is keyed by invite_id, not property_id.
+      // Resolve the invite after the token lookup so document downloads work
+      // against the Production schema from migration 011.
       const tokenHash = crypto.createHash('sha256').update(sessionToken).digest('hex');
       const { data: sess } = await supabase
         .from('deal_room_access_sessions')
-        .select('id')
+        .select('id, invite_id')
         .eq('session_token_hash', tokenHash)
-        .eq('property_id', propertyId)
         .gt('expires_at', new Date().toISOString())
         .is('revoked_at', null)
         .maybeSingle();
-      if (sess) authorized = true;
+      if (sess?.invite_id) {
+        const { data: invite } = await supabase
+          .from('deal_room_invites')
+          .select('property_id, status')
+          .eq('id', sess.invite_id)
+          .maybeSingle();
+        authorized = invite?.property_id === propertyId
+          && !['revoked', 'expired'].includes(String(invite.status || '').toLowerCase());
+      }
     }
 
     if (!authorized) return res.status(403).json({ error: 'Access denied' });
