@@ -4720,10 +4720,13 @@ app.get('/api/public/deal-room/:propertyId/coordination', async (req, res) => {
   try {
     const access = await getRoomAccessContext(req, propertyId);
     if (access.mode === 'anonymous') return accessDenied(res);
-    const [roomRes, submissionsRes, analysesRes] = await Promise.all([
+    const [roomRes, submissionsRes, analysesRes, invitesRes] = await Promise.all([
       supabase.from('deal_rooms').select('deal_stage, property_name').eq('property_id', propertyId).maybeSingle(),
       supabase.from('party_submissions').select('*').eq('property_id', propertyId),
       supabase.from('deal_analyses').select('uploaded_by_role').eq('property_id', propertyId),
+      supabase.from('deal_room_invites')
+        .select('role_key, status, last_used_at, expires_at, revoked_at')
+        .eq('property_id', propertyId),
     ]);
     const stage = roomRes.data?.deal_stage || 'uploading';
     const allSubmissions = submissionsRes.data || [];
@@ -4737,8 +4740,17 @@ app.get('/api/public/deal-room/:propertyId/coordination', async (req, res) => {
         docsByRole[a.uploaded_by_role] = (docsByRole[a.uploaded_by_role] || 0) + 1;
       }
     });
+    const participantInvites = (invitesRes.data || []).filter(invite =>
+      access.mode !== 'participant' || invite.role_key === access.role
+    );
     res.set('Cache-Control', 'no-store');
-    res.json({ stage, submissions: safeSubmissions, parties: safeSubmissions, docsByRole });
+    res.json({
+      stage,
+      submissions: safeSubmissions,
+      parties: safeSubmissions,
+      docsByRole,
+      participantInvites,
+    });
   } catch (err) {
     console.error('[coordination]', err.message);
     res.status(500).json({ error: err.message });

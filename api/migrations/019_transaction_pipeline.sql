@@ -1,6 +1,23 @@
 -- Sprint 1: durable document processing, correlated deal-room tasks, and
 -- product-level activity metadata. All changes are additive and safe to rerun.
 
+-- Older environments may have this table from the original activity timeline
+-- setup, while fresh environments do not. Create the base shape before adding
+-- the pipeline metadata below so this migration is self-contained.
+CREATE TABLE IF NOT EXISTS deal_events (
+  id           BIGSERIAL PRIMARY KEY,
+  property_id  TEXT NOT NULL,
+  event_type   TEXT NOT NULL,
+  actor_role   TEXT,
+  actor_name   TEXT,
+  description  TEXT NOT NULL,
+  metadata     JSONB DEFAULT '{}'::jsonb,
+  created_at   TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS deal_events_property_id_idx
+  ON deal_events (property_id, created_at DESC);
+
 ALTER TABLE deal_analyses
   ADD COLUMN IF NOT EXISTS processing_status TEXT NOT NULL DEFAULT 'extracted',
   ADD COLUMN IF NOT EXISTS source_hash TEXT,

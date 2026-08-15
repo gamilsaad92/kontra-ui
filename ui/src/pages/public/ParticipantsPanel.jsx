@@ -16,13 +16,14 @@ import {
   isCoordinatorRole,
   resolveCoordinatorRole,
 } from '../../lib/workflowRoles';
+import { resolveParticipantState, participantStateToInviteStatus } from '../../lib/participantState';
 
 const API_BASE = (import.meta.env.VITE_API_BASE || '').replace(/\/+$/, '');
 
 const STATUS_CFG = {
   not_invited: { label: 'Not invited',      bg: '#f9fafb', color: '#9ca3af', border: '#e5e7eb' },
-  pending:     { label: 'Invitation sent',  bg: '#fffbeb', color: '#b45309', border: '#fde68a' },
-  accepted:    { label: 'Joined',           bg: '#f0fdf4', color: '#15803d', border: '#bbf7d0' },
+  pending:     { label: 'Invited',          bg: '#fffbeb', color: '#b45309', border: '#fde68a' },
+  accepted:    { label: 'Joined/Active',    bg: '#f0fdf4', color: '#15803d', border: '#bbf7d0' },
   revoked:     { label: 'Revoked',          bg: '#fef2f2', color: '#dc2626', border: '#fecaca' },
   expired:     { label: 'Expired',          bg: '#f9fafb', color: '#6b7280', border: '#e5e7eb' },
   superseded:  { label: 'Reissued',         bg: '#f9fafb', color: '#6b7280', border: '#e5e7eb' },
@@ -407,8 +408,9 @@ export default function ParticipantsPanel({
 
   const rows        = buildRows();
   // Only count external participant invites (not the coordinator/owner row)
-  const activeCount = invites.filter(i =>
-    ['pending', 'accepted'].includes(i.status) && !coordinatorKeys.has(i.role_key)
+  const activeCount = rows.filter(({ role, invite, isCoordinator }) =>
+    !isCoordinator
+      && resolveParticipantState(role, { invites: invite ? [invite] : [] }).invited
   ).length;
 
   return (
@@ -478,10 +480,11 @@ export default function ParticipantsPanel({
               }
 
               // ── External participant row ───────────────────────────────────────
-              const status    = invite?.status || 'not_invited';
-              const isActive  = ['pending', 'accepted'].includes(status);
-              const isInactive = ['expired', 'superseded'].includes(status);
-              const lastSeen  = invite?.last_used_at || null;
+               const participantState = resolveParticipantState(role, { invites: invite ? [invite] : [] });
+               const status = participantStateToInviteStatus(participantState);
+               const isActive  = ['pending', 'accepted'].includes(status);
+               const isInactive = ['expired', 'superseded'].includes(invite?.status);
+               const lastSeen  = invite?.last_used_at || null;
 
               return (
                 <div key={role.key}

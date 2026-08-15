@@ -32,6 +32,14 @@ CREATE TABLE IF NOT EXISTS transaction_record_fields (
   UNIQUE (property_id, field_key)
 );
 
+-- Existing installations may have created these tables from an earlier
+-- version of this migration. Keep the migration additive when it is replayed
+-- so provenance columns are brought to the same shape without manual DDL.
+ALTER TABLE transaction_record_fields
+  ADD COLUMN IF NOT EXISTS source_doc_version TEXT;
+ALTER TABLE transaction_record_fields
+  ADD COLUMN IF NOT EXISTS source_file_hash TEXT;
+
 -- Indexes covering the access patterns used by the API routes
 CREATE INDEX IF NOT EXISTS idx_trf_property    ON transaction_record_fields (property_id);
 CREATE INDEX IF NOT EXISTS idx_trf_category    ON transaction_record_fields (property_id, field_category);
@@ -63,6 +71,13 @@ CREATE TABLE IF NOT EXISTS transaction_record_approvals (
   note                  TEXT,
   created_at            TIMESTAMPTZ DEFAULT NOW()
 );
+
+ALTER TABLE transaction_record_approvals
+  ADD COLUMN IF NOT EXISTS is_manual BOOLEAN NOT NULL DEFAULT true;
+ALTER TABLE transaction_record_approvals
+  ADD COLUMN IF NOT EXISTS source_doc_id UUID;
+ALTER TABLE transaction_record_approvals
+  ADD COLUMN IF NOT EXISTS source_file_hash TEXT;
 
 CREATE INDEX IF NOT EXISTS idx_tra_field    ON transaction_record_approvals (field_id);
 CREATE INDEX IF NOT EXISTS idx_tra_property ON transaction_record_approvals (property_id);

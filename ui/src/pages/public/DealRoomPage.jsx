@@ -26,6 +26,7 @@ import {
   getExternalParticipantRoles,
   isRoleSatisfiedByWorkspaceOwner,
 } from "../../lib/workflowRoles";
+import { resolveParticipantStates } from "../../lib/participantState";
 
 // ── Jurisdiction compliance data ─────────────────────────────────────────────
 const JURISDICTION_INFO = {
@@ -1792,14 +1793,17 @@ function AssetReadinessTab({ propertyId, property, pack, onTabChange }) {
   const metaValues      = property?.metadata_values || {};
   const docCount        = Object.values(coordination?.docsByRole || {}).reduce((a, b) => a + b, 0);
   const invitableRoles  = getExternalParticipantRoles(pack);
-  const participantRows = invitableRoles.map(r => {
-    const sub     = (coordination?.submissions || []).find(s => s.role === r.key);
-    const invited = events.some(e => e.event_type === 'invite_sent' && e.metadata?.role === r.key);
-    return {
-      label: r.label, key: r.key, canManage: !!r.isCoordinator, invited, submitted: !!sub,
-      status: sub?.status === 'approved' ? 'Approved' : sub ? 'Submitted' : invited ? 'Invited' : 'Not invited',
-    };
-  });
+   const participantRows = resolveParticipantStates(invitableRoles, {
+     invites: coordination?.participantInvites || [],
+     submissions: coordination?.submissions || [],
+   }).map(state => ({
+     ...state,
+     label: state.label,
+     key: state.key,
+     canManage: !!state.isCoordinator,
+     submitted: !!state.submission,
+     status: state.stateLabel,
+   }));
 
   const packName      = pack?.name || 'Transaction';
   const isAssetPack   = isDigitalAssetLayerEnabled(property, pack);
@@ -1850,7 +1854,7 @@ function AssetReadinessTab({ propertyId, property, pack, onTabChange }) {
 
   // 4. Identity Verification
   const kycItems  = checklistItems.filter(i => i.category === 'KYC' || (i.section || '').toLowerCase().includes('kyc'));
-  const submittedPtx = participantRows.filter(r => r.submitted || r.status === 'Approved').length;
+   const submittedPtx = participantRows.filter(r => r.complete).length;
   const totalPtx     = Math.max(participantRows.filter(r => !r.canManage).length, 1);
   const kycComputed  = kycItems.length > 0
     ? Math.round((kycItems.filter(i => DONE.has(i.status)).length / kycItems.length) * 60 + (submittedPtx / totalPtx) * 40)
@@ -2815,24 +2819,21 @@ function WhatNeedsAttention({
   const partyRows = Array.isArray(coordination?.submissions)
     ? coordination.submissions
     : (Array.isArray(coordination?.parties) ? coordination.parties : []);
-  const inviteEvents = events.filter(event => event.event_type === 'invite_sent');
   const requiredParticipantRoles = getExternalParticipantRoles(pack, { isCoordinator })
     .filter(role => role.required);
-  const missingParticipants = requiredParticipantRoles.filter(role => {
-    if (isRoleSatisfiedByWorkspaceOwner(role, { pack, isCoordinator })) return false;
-    const party = partyRows.find(item => item.role === role.key);
-    const partyStatus = String(party?.status || '').toLowerCase();
-    const submitted = ['submitted', 'approved', 'complete', 'completed'].includes(partyStatus);
-    const invited = submitted
-      || ['invited', 'pending', 'accepted'].includes(partyStatus)
-      || inviteEvents.some(event => event.metadata?.role === role.key);
-    return !submitted && !invited;
+  const participantStates = resolveParticipantStates(requiredParticipantRoles, {
+    invites: coordination?.participantInvites || [],
+    submissions: partyRows,
+  });
+  const missingParticipants = participantStates.filter(state => {
+    if (isRoleSatisfiedByWorkspaceOwner(state, { pack, isCoordinator })) return false;
+    return !state.invited;
   });
 
   const hasMeaningfulActivity = recordFields.some(isRecordValue)
     || missingDocuments.length < schemaDocuments.filter(item => item.required).length
     || partyRows.length > 0
-    || inviteEvents.length > 0;
+     || (coordination?.participantInvites || []).length > 0;
 
   const items = [];
 
@@ -3814,15 +3815,9 @@ function TransactionBrief({
     : (Array.isArray(coordination?.parties) ? coordination.parties : []);
   const participantRoles = getExternalParticipantRoles(pack, { isCoordinator: true });
   const requiredParticipantRoles = participantRoles.filter(role => role.required);
-  const inviteEvents = events.filter(event => event.event_type === 'invite_sent');
-  const participantStatuses = participantRoles.map(role => {
-    const party = participantRows.find(item => item.role === role.key);
-    const status = String(party?.status || '').toLowerCase();
-    const complete = ['submitted', 'approved', 'complete', 'completed'].includes(status);
-    const invited = complete
-      || ['invited', 'pending', 'accepted'].includes(status)
-      || inviteEvents.some(event => event.metadata?.role === role.key);
-    return { ...role, status: status || 'not invited', complete, invited };
+  const participantStatuses = resolveParticipantStates(participantRoles, {
+    invites: coordination?.participantInvites || [],
+    submissions: participantRows,
   });
   const participantProgressRoles = requiredParticipantRoles.length > 0 ? requiredParticipantRoles : participantRoles;
   const participantComplete = participantProgressRoles.filter(item =>
@@ -4098,7 +4093,7 @@ function TransactionBrief({
               <div key={item.key} className="flex items-center justify-between gap-2 text-[11px]">
                 <span className="truncate text-gray-600">{item.label}</span>
                 <span className={`shrink-0 font-semibold ${item.complete ? 'text-emerald-600' : item.invited ? 'text-amber-600' : 'text-red-600'}`}>
-                  {item.complete ? 'Complete' : item.invited ? 'In progress' : 'Not invited'}
+                   {item.stateLabel}
                 </span>
               </div>
             ))}
@@ -5009,10 +5004,15 @@ function OperationsManagerView({ propertyId, property, pack, role, onTabChange }
   const partyRows       = Array.isArray(coordination?.submissions)
     ? coordination.submissions
     : (Array.isArray(coordination?.parties) ? coordination.parties : []);
+  const participantStatesForOverview = resolveParticipantStates(
+    getExternalParticipantRoles(pack, { isCoordinator: true }),
+    {
+      invites: coordination?.participantInvites || [],
+      submissions: partyRows,
+    },
+  );
   const submittedRoles  = new Set(
-    partyRows
-      .filter(row => ['submitted', 'approved', 'complete', 'completed'].includes(String(row.status || '').toLowerCase()))
-      .map(row => row.role),
+    participantStatesForOverview.filter(state => state.complete).map(state => state.key),
   );
   const requiredRoles   = getExternalParticipantRoles(pack, { isCoordinator: true })
     .filter(roleMeta => roleMeta.required)
@@ -5114,27 +5114,20 @@ function OperationsManagerView({ propertyId, property, pack, role, onTabChange }
 
   // ── Participant rows ────────────────────────────────────────────────────────
   const invitableRoles = getExternalParticipantRoles(pack, { isCoordinator: true });
-  const participantRows = invitableRoles.map(r => {
-    const sub     = partyRows.find(s => s.role === r.key);
-    const invited = events.some(e => e.event_type === 'invite_sent' && e.metadata?.role === r.key);
+  const participantRows = participantStatesForOverview.map(state => {
+    const sub = state.submission;
     const lastEv  = [...events].reverse().find(e =>
-      (e.metadata?.role === r.key || e.actor_role === r.key) && e.created_at
+      (e.metadata?.role === state.key || e.actor_role === state.key) && e.created_at
     );
     const lastActivity = lastEv
       ? new Date(lastEv.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
       : '—';
-    let status = 'Not invited';
-    if (invited && !sub)                         status = 'Invited';
-    if (sub?.status === 'approved')              status = 'Approved';
-    else if (sub?.status === 'needs_revision')   status = 'Needs Revision';
-    else if (sub)                                status = 'Submitted';
+    const status = state.stateLabel;
     const statusStyle =
-      status === 'Approved'       ? { color: '#16a34a', bg: '#f0fdf4' }
-      : status === 'Submitted'    ? { color: '#1e40af', bg: '#eff6ff' }
-      : status === 'Needs Revision'? { color: '#d97706', bg: '#fffbeb' }
-      : status === 'Invited'      ? { color: '#6b7280', bg: '#f9fafb' }
-      :                             { color: '#9ca3af', bg: '#f9fafb' };
-    return { ...r, status, lastActivity, statusStyle, invited, submitted: !!sub };
+      state.state === 'joined'  ? { color: '#16a34a', bg: '#f0fdf4' }
+      : state.state === 'invited' ? { color: '#6b7280', bg: '#f9fafb' }
+      :                            { color: '#9ca3af', bg: '#f9fafb' };
+    return { ...state, status, lastActivity, statusStyle, submitted: !!sub };
   });
 
   // ── Recent events ──────────────────────────────────────────────────────────
