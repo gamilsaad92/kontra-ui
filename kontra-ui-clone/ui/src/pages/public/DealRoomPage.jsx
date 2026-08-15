@@ -2727,6 +2727,7 @@ function formatSnapshotValue(field) {
 function WhatNeedsAttention({
   briefing,
   recordFields,
+  recordState = null,
   checklistItems = [],
   events = [],
   coordination = null,
@@ -2781,12 +2782,21 @@ function WhatNeedsAttention({
         { key: 'ownership.cap_table', label: 'Cap table / ownership' },
       ];
   const canonicalRecordKey = definition => definition.aliasOf || definition.key;
+  const canonicalStateField = definition => recordState?.fields?.find(field =>
+    field.key === canonicalRecordKey(definition)
+  );
   const missingCanonicalKeys = new Set();
   const recordMissing = visibleRecordDefinitions
     .filter(def => def.workflowRequired === true || def.required === true)
     .filter(def => {
       const canonicalKey = canonicalRecordKey(def);
       if (missingCanonicalKeys.has(canonicalKey)) return false;
+      const authoritative = canonicalStateField(def);
+      if (authoritative) {
+        if (authoritative.status !== 'missing' && authoritative.status !== 'not_applicable') return false;
+        missingCanonicalKeys.add(canonicalKey);
+        return true;
+      }
       const matches = recordFields.filter(field =>
         field.field_key === def.key || field.field_key === def.aliasOf
       );
@@ -2798,6 +2808,12 @@ function WhatNeedsAttention({
   const recordConfirmedCount = visibleRecordDefinitions.reduce((count, def) => {
     const canonicalKey = canonicalRecordKey(def);
     if (confirmedCanonicalKeys.has(canonicalKey)) return count;
+    const authoritative = canonicalStateField(def);
+    if (authoritative) {
+      if (authoritative.status !== 'confirmed') return count;
+      confirmedCanonicalKeys.add(canonicalKey);
+      return count + 1;
+    }
     const confirmed = recordFields.some(field =>
       (field.field_key === def.key || field.field_key === def.aliasOf) && isRecordValue(field)
     );
@@ -2920,7 +2936,6 @@ function WhatNeedsAttention({
   // actions, and still provide the fallback for custom workflow packs.
   const briefingActions = [
     ...(Array.isArray(briefing?.criticalPath) ? briefing.criticalPath : []),
-    ...(Array.isArray(briefing?.blocking) ? briefing.blocking : []),
     ...(Array.isArray(briefing?.actions) ? briefing.actions : []),
     ...(Array.isArray(briefing?.next_actions) ? briefing.next_actions : []),
     ...(Array.isArray(briefing?.missingDocuments) ? briefing.missingDocuments.map(document => ({
@@ -3768,8 +3783,8 @@ function getLifecycleAdvanceRecommendation(stages, currentStageIndex, analyses) 
 }
 
 const RECORD_EMPTY_VALUES = new Set(['', 'n/a', 'na', 'not applicable', 'not_applicable', 'unknown']);
-const RECORD_CONFLICT_STATUSES = new Set(['conflicting', 'source_changed']);
-const RECORD_AWAITING_STATUSES = new Set(['extracted', 'needs_review']);
+const RECORD_CONFLICT_STATUSES = new Set(['conflicting', 'conflict', 'source_changed']);
+const RECORD_AWAITING_STATUSES = new Set(['extracted', 'needs_review', 'awaiting', 'awaiting_confirmation']);
 const DONE_DOCUMENT_STATUSES = new Set(['uploaded', 'approved', 'ai_complete', 'complete', 'completed']);
 
 function hasMeaningfulRecordValue(field) {
@@ -3777,7 +3792,23 @@ function hasMeaningfulRecordValue(field) {
   return !RECORD_EMPTY_VALUES.has(value) && field?.status !== 'not_applicable';
 }
 
-function getRecordDefinitionState(definition, recordFields = []) {
+function getRecordDefinitionState(definition, recordFields = [], recordState = null) {
+  const canonicalDefinitionKey = definition?.canonicalKey || definition?.key;
+  const authoritativeField = recordState?.fields?.find(field => field.key === canonicalDefinitionKey);
+  if (authoritativeField) {
+    return {
+      definition,
+      field: authoritativeField,
+      value: authoritativeField.value || '',
+      status: authoritativeField.status === 'conflict'
+        ? 'conflict'
+        : authoritativeField.status === 'awaiting'
+          ? 'awaiting'
+          : authoritativeField.status === 'confirmed'
+            ? 'confirmed'
+            : 'missing',
+    };
+  }
   const keys = new Set([
     definition?.key,
     definition?.aliasOf,
@@ -3786,18 +3817,18 @@ function getRecordDefinitionState(definition, recordFields = []) {
   const matches = recordFields.filter(field => keys.has(field.field_key));
   const valueMatches = matches.filter(hasMeaningfulRecordValue);
   const conflict = valueMatches.find(field => RECORD_CONFLICT_STATUSES.has(field.status));
+  const confirmed = valueMatches.find(field => ['verified', 'confirmed', 'source_changed'].includes(field.status));
   const awaiting = valueMatches.find(field => RECORD_AWAITING_STATUSES.has(field.status));
-  const confirmed = valueMatches.find(field => field.status === 'verified');
-  const selected = conflict || awaiting || confirmed || valueMatches[0] || matches[0] || null;
+  const selected = conflict || confirmed || awaiting || valueMatches[0] || matches[0] || null;
   return {
     definition,
     field: selected,
     value: selected?.value_text || '',
-    status: conflict ? 'conflict' : awaiting ? 'awaiting' : confirmed ? 'confirmed' : 'missing',
+    status: conflict ? 'conflict' : confirmed ? 'confirmed' : awaiting ? 'awaiting' : 'missing',
   };
 }
 
-function getCoordinatorRecordFacts(schemaKey, recordFields = []) {
+function getCoordinatorRecordFacts(schemaKey, recordFields = [], recordState = null) {
   const fields = Object.values(getPackRecordSchema(schemaKey)).flat()
     .filter(field => field.renderable !== false);
   const preferredKeys = [
@@ -3831,7 +3862,7 @@ function getCoordinatorRecordFacts(schemaKey, recordFields = []) {
       definitions.push(definition);
     });
   return definitions.slice(0, 8).map(definition => ({
-    ...getRecordDefinitionState(definition, recordFields),
+     ...getRecordDefinitionState(definition, recordFields, recordState),
     key: definition.canonicalKey || definition.key,
     label: definition.label || definition.key,
   }));
@@ -3907,21 +3938,9 @@ function getNextMilestoneBlockers({
       action: { label: 'Open People', onClick: () => {} },
     }));
 
-  // Only use the briefing's explicit blocking lane here. Generic risks and
-  // recommendations remain issues/actions, not progression blockers.
-  const explicitBlocking = Array.isArray(briefing?.blocking) ? briefing.blocking : [];
-  explicitBlocking.slice(0, 3).forEach((item, index) => {
-    const text = typeof item === 'string'
-      ? item
-      : (item.text || item.item || item.title || item.action || '');
-    if (!text) return;
-    blockers.push({
-      key: `explicit-blocker-${index}`,
-      text,
-      detail: item.reason || item.note || `Reported as blocking ${nextStage.label}.`,
-      action: { label: 'Review Overview', onClick: () => {} },
-    });
-  });
+  // AI briefing text is advisory and can become stale after a participant or
+  // document changes. Progression blockers must come from the durable
+  // checklist and invitation-backed participant state above.
   return { nextStage, blockers };
 }
 
@@ -4030,6 +4049,7 @@ function TransactionBrief({
   checklistItems = [],
   analyses = [],
   recordFields = [],
+  recordState = null,
   readiness = null,
   stages = [],
   currentStage,
@@ -4070,20 +4090,25 @@ function TransactionBrief({
   });
 
   const recordSchemaKey = resolveSchemaKey(packId, pack, property?.name || property?.property_name);
-  const requiredRecordFields = getRequiredRecordFields(recordSchemaKey);
-  const confirmedRecordCount = requiredRecordFields.filter(field =>
-    getRecordDefinitionState(field, recordFields).status === 'confirmed'
+  const canonicalRecordState = recordState || readiness?.transaction_record || null;
+  const requiredRecordFields = canonicalRecordState?.requiredFields || getRequiredRecordFields(recordSchemaKey);
+  const confirmedRecordCount = canonicalRecordState?.confirmedCount ?? requiredRecordFields.filter(field =>
+    getRecordDefinitionState(field, recordFields, canonicalRecordState).status === 'confirmed'
   ).length;
-  const capturedAwaitingConfirmation = recordFields.filter(field =>
-    RECORD_AWAITING_STATUSES.has(field.status) && hasMeaningfulRecordValue(field)
-  );
-  const conflicts = recordFields.filter(field =>
-    RECORD_CONFLICT_STATUSES.has(field.status)
-  );
+  const capturedAwaitingConfirmation = canonicalRecordState
+    ? canonicalRecordState.requiredFields.filter(field => field.status === 'awaiting')
+    : recordFields.filter(field =>
+      RECORD_AWAITING_STATUSES.has(field.status) && hasMeaningfulRecordValue(field)
+    );
+  const conflicts = canonicalRecordState
+    ? canonicalRecordState.fields.filter(field =>
+      field.status === 'conflict' || field.attention === 'source_changed'
+    )
+    : recordFields.filter(field => RECORD_CONFLICT_STATUSES.has(field.status));
   const recentChanges = getRecentCoordinatorChanges(events, analyses, recordFields);
   const goToRecord = field => {
     onTabChange?.('overview');
-    const category = String(field?.field_key || field?.field_category || '').split('.')[0];
+    const category = String(field?.key || field?.field_key || field?.field_category || '').split('.')[0];
     window.setTimeout(() => {
       document.getElementById(`transaction-record-category-${category}`)
         ?.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -4100,18 +4125,20 @@ function TransactionBrief({
           action: { label: 'Review stage', onClick: () => setStageDecision('review') },
         }]
       : []),
-    ...conflicts.slice(0, 2).map(field => ({
-      key: `conflict-${field.id || field.field_key}`,
+     ...conflicts.slice(0, 2).map(field => ({
+       key: `conflict-${field.fieldId || field.id || field.key || field.field_key}`,
       tone: 'red',
-      text: `Resolve ${field.display_label || field.field_key}`,
-      detail: field.status === 'source_changed' ? 'A newer source changed the recorded value.' : 'Multiple sources disagree.',
+       text: `Resolve ${field.label || field.display_label || field.key || field.field_key}`,
+       detail: field.attention === 'source_changed' || field.status === 'source_changed'
+         ? 'A newer source changed the recorded value.'
+         : 'Multiple sources disagree.',
       action: { label: 'Review record', onClick: () => goToRecord(field) },
     })),
     ...capturedAwaitingConfirmation.slice(0, 2).map(field => ({
-      key: `confirm-${field.id || field.field_key}`,
+       key: `confirm-${field.fieldId || field.id || field.key || field.field_key}`,
       tone: 'blue',
-      text: `Confirm ${field.display_label || field.field_key}`,
-      detail: `Kontra extracted “${field.value_text}”.`,
+       text: `Confirm ${field.label || field.display_label || field.key || field.field_key}`,
+       detail: `Kontra extracted “${field.value || field.value_text}”.`,
       action: { label: 'Review record', onClick: () => goToRecord(field) },
     })),
   ].slice(0, 5);
@@ -4201,7 +4228,7 @@ function TransactionBrief({
           </p>
           <p className="text-[11px] text-gray-500">
             {requiredRecordFields.length > 0
-              ? `${capturedAwaitingConfirmation.length} extracted fact${capturedAwaitingConfirmation.length === 1 ? '' : 's'} awaiting confirmation`
+              ? `${canonicalRecordState?.awaitingRequiredCount ?? capturedAwaitingConfirmation.length} required field${(canonicalRecordState?.awaitingRequiredCount ?? capturedAwaitingConfirmation.length) === 1 ? '' : 's'} awaiting confirmation${canonicalRecordState?.awaitingOptionalCount ? ` · ${canonicalRecordState.awaitingOptionalCount} optional` : ''}`
               : 'No required field schema configured'}
           </p>
         </div>
@@ -4650,6 +4677,7 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
   const [analyses, setAnalyses]         = useState([]);
   const [stages, setStages]             = useState([]);
   const [recordFields, setRecordFields] = useState([]);
+  const [recordState, setRecordState]   = useState(null);
   const [readiness, setReadiness]       = useState(null);
   const [loading, setLoading]           = useState(true);
   const [ownerToken, setOwnerToken]     = useState('');
@@ -4678,6 +4706,7 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
     setCoordination(coord);
     setStages(normalizeLifecycleStages(Array.isArray(stageData?.stages) && stageData.stages.length >= 2 ? stageData.stages : (pack.stages || [])));
     setRecordFields(Array.isArray(record?.fields) ? record.fields : []);
+    setRecordState(record?.record_state || readinessData?.transaction_record || null);
     setReadiness(readinessData);
     setChecklistItems(Array.isArray(checklist?.items) ? checklist.items : []);
     setEvents(Array.isArray(eventData?.events) ? eventData.events : []);
@@ -4761,13 +4790,16 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
     || (readinessPct === 0 ? 'Getting Started' : 'Building');
   const recordSchemaKey = resolveSchemaKey(packId, pack, property?.name || property?.property_name);
   const requiredRecordFields = getRequiredRecordFields(recordSchemaKey);
-  const confirmedRequiredCount = requiredRecordFields.filter(field =>
-    getRecordDefinitionState(field, recordFields).status === 'confirmed'
-  ).length;
-  const capturedRequiredCount = requiredRecordFields.filter(definition => {
-    return getRecordDefinitionState(definition, recordFields).status === 'awaiting';
-  }).length;
-  const keyFacts = getCoordinatorRecordFacts(recordSchemaKey, recordFields);
+  const canonicalRecordState = recordState || readiness?.transaction_record || null;
+  const confirmedRequiredCount = canonicalRecordState?.confirmedCount
+    ?? requiredRecordFields.filter(field =>
+      getRecordDefinitionState(field, recordFields, canonicalRecordState).status === 'confirmed'
+    ).length;
+  const capturedRequiredCount = canonicalRecordState?.awaitingRequiredCount
+    ?? requiredRecordFields.filter(definition => {
+      return getRecordDefinitionState(definition, recordFields, canonicalRecordState).status === 'awaiting';
+    }).length;
+  const keyFacts = getCoordinatorRecordFacts(recordSchemaKey, recordFields, canonicalRecordState);
 
   return (
     <div className="space-y-5">
@@ -4847,6 +4879,7 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
             checklistItems={checklistItems}
             analyses={analyses}
             recordFields={recordFields}
+            recordState={canonicalRecordState}
             readiness={readiness}
             stages={stages}
             currentStage={currentStage}
@@ -4876,7 +4909,8 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
             {requiredRecordFields.length > 0 && (
               <div className="mt-2 space-y-0.5 text-[11px] text-gray-500">
                 <p>{confirmedRequiredCount} of {requiredRecordFields.length} required fields confirmed</p>
-                <p>{capturedRequiredCount} captured fields awaiting confirmation</p>
+                 <p>{capturedRequiredCount} required field{capturedRequiredCount === 1 ? '' : 's'} awaiting confirmation
+                   {canonicalRecordState?.awaitingOptionalCount ? ` · ${canonicalRecordState.awaitingOptionalCount} optional` : ''}</p>
               </div>
             )}
           </div>
@@ -4884,6 +4918,7 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
           <WhatNeedsAttention
             briefing={briefing}
             recordFields={recordFields}
+            recordState={canonicalRecordState}
             checklistItems={checklistItems}
             events={events}
             coordination={coordination}

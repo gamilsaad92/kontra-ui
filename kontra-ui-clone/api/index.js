@@ -39,6 +39,8 @@ const { evaluateDealRoomForTasks, evaluateReadinessTasks } = require('./lib/task
 const {
   recalculateTransactionState,
   computeTransactionReadiness,
+  computeTransactionRecordState,
+  resolveSchemaKey: resolveTransactionSchemaKey,
 } = require('./lib/transactionState');
 const { emit: emitInternalEvent } = require('./lib/eventBus');
 const {
@@ -6119,8 +6121,8 @@ app.get('/api/public/deal-room/:propertyId/readiness', async (req, res) => {
   const confirmedRequiredCount = readiness.confirmedCount;
   const requiredFieldCount = readiness.requiredCount;
   const categories = readiness.categories;
-  const populatedRecordFields = (recordFields || []).filter(field =>
-    ['verified', 'source_changed'].includes(field.status)
+  const populatedRecordFields = (readiness.recordState?.fields || []).filter(field =>
+    field.status === 'confirmed' && String(field.value || '').trim()
   );
   const digitalAssetReadinessPercent = readiness.digitalAssetPercent;
   const digitalAssetReadinessSufficient = readiness.digitalAssetSufficient;
@@ -6146,7 +6148,12 @@ app.get('/api/public/deal-room/:propertyId/readiness', async (req, res) => {
       categories,
       confirmed_fields: confirmedRequiredCount,
       required_fields: requiredFieldCount,
+      awaiting_fields: readiness.recordState.awaitingCount,
+      awaiting_required_fields: readiness.recordState.awaitingRequiredCount,
+      awaiting_optional_fields: readiness.recordState.awaitingOptionalCount,
+      conflicts: readiness.recordState.conflictCount,
     },
+    transaction_record: readiness.recordState,
     digital_asset_readiness: {
       status: digitalAssetReadinessStatus,
       percent: digitalAssetReadinessPercent,
@@ -8244,14 +8251,26 @@ app.get('/api/public/deal-room/:propertyId/transaction-record', async (req, res)
   try {
     const access = await getRoomAccessContext(req, propertyId);
     if (access.mode === 'anonymous') return accessDenied(res);
-    const { data, error } = await supabase
-      .from('transaction_record_fields')
-      .select('*')
-      .eq('property_id', propertyId)
-      .order('field_category', { ascending: true })
-      .order('display_label', { ascending: true });
-    if (error) throw error;
-    res.json({ fields: data || [] });
+    const [{ data: fields, error: fieldsError }, { data: room, error: roomError }] = await Promise.all([
+      supabase
+        .from('transaction_record_fields')
+        .select('*')
+        .eq('property_id', propertyId)
+        .order('field_category', { ascending: true })
+        .order('display_label', { ascending: true }),
+      supabase
+        .from('deal_rooms')
+        .select('workflow_pack_id, deal_type')
+        .eq('property_id', propertyId)
+        .maybeSingle(),
+    ]);
+    if (fieldsError) throw fieldsError;
+    if (roomError) throw roomError;
+    const schemaKey = await resolveTransactionSchemaKey(room);
+    res.json({
+      fields: fields || [],
+      record_state: computeTransactionRecordState(fields || [], schemaKey),
+    });
   } catch (err) {
     console.error('[transaction-record GET]', err.message);
     res.json({ fields: [] });
