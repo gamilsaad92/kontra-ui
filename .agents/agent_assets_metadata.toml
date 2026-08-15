@@ -63,3 +63,17 @@ uri = "file://screenshots/people-mobile-reference.jpg"
 type = "image"
 title = "People — mobile reference capture"
 description = "The local demo route displayed its entry gate, so this is not the post-entry People tab."
+
+[[outputs]]
+id = "4IEN6l1SVqvy15zHWpuol"
+uri = "file://screenshots/acceptance-room-current.jpg"
+type = "image"
+title = "Acceptance room view"
+description = "Live preview of the isolated acceptance room without owner authorization; verifies the coordinator boundary does not fall back to owner mode."
+
+[[outputs]]
+id = "cD-wOog7auVKZBaUPvqC5"
+uri = "file://screenshots/acceptance-buyer-scoped-view.jpg"
+type = "image"
+title = "Buyer-scoped acceptance view"
+description = "Live preview of the isolated acceptance room using the buyer role request; it remains a participant workspace and does not expose coordinator content."

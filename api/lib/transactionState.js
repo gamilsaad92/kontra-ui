@@ -48,7 +48,7 @@ function computeTransactionReadiness(room, recordFields, schemaKey) {
     const value = String(field.value_text || '').trim().toLowerCase();
     return value
       && !['n/a', 'na', 'not applicable', 'not_applicable', 'unknown'].includes(value)
-      && field.status === 'verified';
+      && ['verified', 'source_changed'].includes(field.status);
   });
   const notApplicableKeys = new Set((recordFields || [])
     .filter(field => field.status === 'not_applicable')

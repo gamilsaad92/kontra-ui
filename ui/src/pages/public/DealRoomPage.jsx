@@ -3839,7 +3839,7 @@ function TransactionBrief({
   const recordSchemaKey = resolveSchemaKey(packId, pack, property?.name || property?.property_name);
   const requiredRecordFields = getRequiredRecordFields(recordSchemaKey);
   const confirmedRecordKeys = new Set(recordFields.filter(field =>
-    field.status === 'verified' && isRecordValue(field)
+    ['verified', 'source_changed'].includes(field.status) && isRecordValue(field)
   ).map(field => field.field_key));
   const confirmedRecordCount = requiredRecordFields.filter(field =>
     confirmedRecordKeys.has(field.canonicalKey || field.key)
@@ -4536,7 +4536,7 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
     recordFields
       .filter(field => {
         const value = String(field.value_text || '').trim().toLowerCase();
-        return field.status === 'verified'
+        return ['verified', 'source_changed'].includes(field.status)
           && value && !['n/a', 'na', 'not applicable', 'not_applicable', 'unknown'].includes(value);
       })
       .map(field => field.field_key),
@@ -4552,7 +4552,7 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
         && value
         && !['n/a', 'na', 'not applicable', 'not_applicable', 'unknown'].includes(value)
         && field.status !== 'not_applicable'
-        && field.status !== 'verified';
+        && !['verified', 'source_changed'].includes(field.status);
     });
   }).length;
 

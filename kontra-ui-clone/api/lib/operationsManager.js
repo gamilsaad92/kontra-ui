@@ -248,7 +248,9 @@ async function buildGroundedContext(propertyId) {
     record: {
       facts: populatedRecordFields,
       factCount: populatedRecordFields.length,
-      confirmedFactCount: populatedRecordFields.filter(field => field.status === 'verified').length,
+      confirmedFactCount: populatedRecordFields.filter(field =>
+        ['verified', 'source_changed'].includes(field.status)
+      ).length,
     },
     evidence: {
       documents: documentFindings,

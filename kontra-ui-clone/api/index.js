@@ -3791,7 +3791,7 @@ async function extractTransactionFields(propertyId, docId, text, sectionLabel) {
         ? 'source_changed'
         : differs ? 'conflict' : 'extracted';
       const nextStatus = existing?.status === 'verified'
-        ? 'verified'
+        ? (eventType === 'source_changed' ? 'source_changed' : 'verified')
         : eventType === 'source_changed'
           ? 'source_changed'
           : eventType === 'conflict' ? 'conflicting' : 'extracted';
@@ -6107,7 +6107,9 @@ app.get('/api/public/deal-room/:propertyId/readiness', async (req, res) => {
   const confirmedRequiredCount = readiness.confirmedCount;
   const requiredFieldCount = readiness.requiredCount;
   const categories = readiness.categories;
-  const populatedRecordFields = (recordFields || []).filter(field => field.status === 'verified');
+  const populatedRecordFields = (recordFields || []).filter(field =>
+    ['verified', 'source_changed'].includes(field.status)
+  );
   const digitalAssetReadinessPercent = readiness.digitalAssetPercent;
   const digitalAssetReadinessSufficient = readiness.digitalAssetSufficient;
   const digitalAssetReadinessStatus = digitalAssetReadinessSufficient
