@@ -1,5 +1,6 @@
 const {
   computeTransactionReadiness,
+  computeTransactionRecordState,
 } = require('./lib/transactionState');
 
 const requirements = require('../shared/transaction_record_requirements.json');
@@ -25,5 +26,58 @@ describe('transaction state recalculation', () => {
     expect(result.confirmedCount).toBe(required.length - 1);
     expect(result.overall).toBe(100);
     expect(excluded).toBeDefined();
+  });
+
+  it('canonicalizes aliases and lets a verified value win over an awaiting alias', () => {
+    const result = computeTransactionRecordState([
+      {
+        field_key: 'financial.purchase_price',
+        value_text: 'stale extracted value',
+        status: 'extracted',
+      },
+      {
+        field_key: 'transaction.purchase_price',
+        value_text: '$5,000,000',
+        status: 'verified',
+      },
+      {
+        field_key: 'transaction.closing_date',
+        value_text: '2026-09-30',
+        status: 'confirmed',
+      },
+    ], 'cre_acquisition');
+
+    const price = result.requiredFields.find(field => field.key === 'transaction.purchase_price');
+    expect(price.status).toBe('confirmed');
+    expect(price.value).toBe('$5,000,000');
+    expect(result.confirmedCount).toBe(2);
+  });
+
+  it('exposes required and optional awaiting counts from one canonical state', () => {
+    const requiredKey = requirements.cre_acquisition[0];
+    const result = computeTransactionRecordState([
+      { field_key: requiredKey, value_text: 'extracted value', status: 'extracted' },
+      { field_key: 'financial.optional_note', value_text: 'optional value', status: 'needs_review' },
+    ], 'cre_acquisition');
+
+    expect(result.awaitingRequiredCount).toBe(1);
+    expect(result.awaitingOptionalCount).toBe(1);
+    expect(result.awaitingCount).toBe(2);
+  });
+
+  it('counts source-changed verified values as confirmed with visible attention', () => {
+    const result = computeTransactionRecordState([
+      {
+        field_key: 'transaction.type',
+        value_text: 'Commercial acquisition',
+        status: 'source_changed',
+      },
+    ], 'cre_acquisition');
+
+    const field = result.requiredFields.find(item => item.key === 'transaction.type');
+    expect(field.status).toBe('confirmed');
+    expect(field.attention).toBe('source_changed');
+    expect(result.confirmedCount).toBe(1);
+    expect(result.conflictCount).toBe(1);
   });
 });

@@ -216,7 +216,7 @@ function getRecordStats(
     }
     if (db?.status === "not_applicable") {
       notApplicable++;
-    } else if (db?.status === "verified") {
+    } else if (["verified", "confirmed", "source_changed"].includes(db?.status)) {
       confirmed++;
     } else if (["coordinator", "deal_owner"].includes(db?.extracted_by) && (db.value_text || db.value_json)) {
       manuallyEntered++;
@@ -311,7 +311,7 @@ function FieldRow({ field, isCoordinator, propertyId, ownerToken, onUpdated, dep
   }
 
   const isEmpty     = !field.value_text && !field.value_json;
-  const isConfirmed = field.status === "verified";
+  const isConfirmed = ["verified", "confirmed", "source_changed"].includes(field.status);
   const isNA        = field.status === "not_applicable";
   const isInactive  = dependencyInactive && !isConfirmed;
 
@@ -613,8 +613,8 @@ function getCategoryChip(catKey, dbFields, seededFields, viewMode = "full", summ
     (!isSummary || isSummarySchemaField(f, summaryKeys))
   ), seededFields);
 
-  const conflicts     = dbCat.filter(f => f.status === "conflicting" || f.status === "source_changed").length;
-  const confirmed     = dbCat.filter(f => f.status === "verified").length;
+  const conflicts     = dbCat.filter(f => f.status === "conflicting").length;
+  const confirmed     = dbCat.filter(f => ["verified", "confirmed", "source_changed"].includes(f.status)).length;
   const awaitReview   = dbCat.filter(f => f.status === "extracted" || f.status === "needs_review").length;
   const reqMissing    = seeded.filter(f =>
     (isSummary ? true : f.workflowRequired) &&
@@ -720,7 +720,7 @@ function CategorySection({
   const hasSummaryContent = viewMode === "full" || visibleDb.length > 0 || visibleSeeded.length > 0;
 
   // Progress bar (only when DB fields exist)
-  const confirmed = dbCat.filter(f => f.status === "verified").length;
+  const confirmed = dbCat.filter(f => ["verified", "confirmed", "source_changed"].includes(f.status)).length;
   const total     = dbCat.length;
 
   if (!hasSummaryContent) return null;
@@ -818,6 +818,7 @@ export default function AssetRecordTab({
   workspaceMeta, onNavigateToDocuments,
 }) {
   const [dbFields,   setDbFields]   = useState([]);
+  const [recordState, setRecordState] = useState(null);
   const [loading,    setLoading]    = useState(true);
   const [ownerToken, setOwnerToken] = useState("");
   const [refreshKey, setRefreshKey] = useState(0);
@@ -841,6 +842,7 @@ export default function AssetRecordTab({
         const data = await res.json();
         const fields = data.fields || [];
         setDbFields(fields);
+        setRecordState(data.record_state || null);
       }
     } finally { setLoading(false); }
   }, [propertyId, ownerToken]);
@@ -898,7 +900,21 @@ export default function AssetRecordTab({
     isInactiveRecord,
     false,
   );
-  const activeStats = viewMode === "summary" ? summaryStats : fullStats;
+  const authoritativeFullStats = recordState ? {
+    ...fullStats,
+    total: recordState.requiredCount,
+    fieldCount: recordState.requiredCount,
+    awaiting: recordState.awaitingRequiredCount,
+    extracted: 0,
+    confirmed: recordState.confirmedCount,
+    manuallyEntered: 0,
+    fromSetup: 0,
+    complete: recordState.confirmedCount,
+    notApplicable: recordState.notApplicableCount,
+  } : fullStats;
+  const activeStats = viewMode === "summary"
+    ? summaryStats
+    : authoritativeFullStats;
   const pct = activeStats.total > 0
     ? Math.round((activeStats.complete / activeStats.total) * 100)
     : 0;
