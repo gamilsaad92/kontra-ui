@@ -115,6 +115,7 @@ async function classifyTransactionPack(name, dealType, address) {
       model: 'gpt-4o-mini',
       response_format: { type: 'json_object' },
       max_tokens: 60,
+      temperature: 0,
       messages: [
         {
           role: 'system',
@@ -160,6 +161,150 @@ const { forecastProject } = require('./construction');
 const { isFeatureEnabled } = require('./featureFlags');
 const { scanForCompliance, gatherEvidence } = require('./compliance');
 require('dotenv').config();
+
+const WORKFLOW_PROOF_TTL_MS = 2 * 60 * 60 * 1000;
+const WORKFLOW_PROOF_SECRET = process.env.SESSION_SECRET || process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+function stableWorkflowValue(value) {
+  if (Array.isArray(value)) return value.map(stableWorkflowValue);
+  if (value && typeof value === 'object') {
+    return Object.keys(value).sort().reduce((out, key) => {
+      out[key] = stableWorkflowValue(value[key]);
+      return out;
+    }, {});
+  }
+  return value;
+}
+
+function workflowConfigForProof(config) {
+  const source = config && typeof config === 'object' ? config : {};
+  return {
+    roles: (Array.isArray(source.roles) ? source.roles : []).map(role => ({
+      key: String(role?.key || '').trim(),
+      label: String(role?.label || '').trim(),
+      required: !!role?.required,
+      needsDocs: role?.needsDocs !== false,
+      invitable: role?.invitable !== false,
+      canManage: !!role?.canManage,
+    })),
+    documents: (Array.isArray(source.documents) ? source.documents : []).map(document => ({
+      id: String(document?.id || '').trim(),
+      label: String(document?.label || document?.name || '').trim(),
+      section: String(document?.section || document?.id || '').trim(),
+      required: !!document?.required,
+      ai: !!document?.ai,
+      assignedTo: Array.isArray(document?.assignedTo)
+        ? document.assignedTo.map(role => String(role || '').trim()).filter(Boolean)
+        : document?.assignedRole
+          ? [String(document.assignedRole).trim()]
+          : [],
+    })),
+    stages: (Array.isArray(source.stages) ? source.stages : []).map(stage => ({
+      key: String(stage?.key || '').trim(),
+      label: String(stage?.label || '').trim(),
+    })),
+  };
+}
+
+function workflowConfigHash(config) {
+  return crypto.createHash('sha256')
+    .update(JSON.stringify(stableWorkflowValue(workflowConfigForProof(config))))
+    .digest('hex');
+}
+
+function signWorkflowProof(kind, payload, ttlMs = WORKFLOW_PROOF_TTL_MS) {
+  const body = Buffer.from(JSON.stringify({
+    kind,
+    ...payload,
+    iat: Date.now(),
+    exp: Date.now() + ttlMs,
+  })).toString('base64url');
+  const signature = crypto.createHmac('sha256', WORKFLOW_PROOF_SECRET)
+    .update(body)
+    .digest('base64url');
+  return `${body}.${signature}`;
+}
+
+function verifyWorkflowProof(token, expectedKind) {
+  if (!token || !WORKFLOW_PROOF_SECRET) return null;
+  try {
+    const [body, signature] = String(token).split('.');
+    if (!body || !signature) return null;
+    const expected = crypto.createHmac('sha256', WORKFLOW_PROOF_SECRET)
+      .update(body)
+      .digest('base64url');
+    const left = Buffer.from(signature);
+    const right = Buffer.from(expected);
+    if (left.length !== right.length || !crypto.timingSafeEqual(left, right)) return null;
+    const payload = JSON.parse(Buffer.from(body, 'base64url').toString('utf8'));
+    if (payload.kind !== expectedKind || !Number.isFinite(payload.exp) || payload.exp < Date.now()) return null;
+    return payload;
+  } catch (_) {
+    return null;
+  }
+}
+
+function normalizeGeneratedWorkflowConfig(raw) {
+  return {
+    roles: (Array.isArray(raw?.roles) ? raw.roles : []).map((role, index) => ({
+      key: role?.key || `role_${index + 1}`,
+      label: role?.label || '',
+      icon: role?.icon || ['👤', '🏢', '⚖️', '📊'][index % 4],
+      color: role?.color || ['#800020', '#1d4ed8', '#374151', '#16a34a'][index % 4],
+      required: !!role?.required,
+      needsDocs: role?.needsDocs !== false,
+      invitable: role?.invitable !== false,
+      canManage: index === 0 ? true : !!role?.canManage,
+    })),
+    documents: (Array.isArray(raw?.documents) ? raw.documents : []).map((document, index) => ({
+      id: document?.id || `document_${index + 1}`,
+      label: document?.label || document?.name || `Document ${index + 1}`,
+      section: document?.section || document?.id || `document_${index + 1}`,
+      required: !!document?.required,
+      ai: !!document?.ai,
+      assignedTo: Array.isArray(document?.assignedTo)
+        ? document.assignedTo
+        : document?.assignedRole
+          ? [document.assignedRole]
+          : [],
+    })),
+    stages: (Array.isArray(raw?.stages) ? raw.stages : []).map((stage, index) => ({
+      key: stage?.key || `stage_${index + 1}`,
+      label: stage?.label || `Stage ${index + 1}`,
+    })),
+  };
+}
+
+function workflowConfigNeedsApproval(config) {
+  const normalized = workflowConfigForProof(config);
+  return normalized.roles.length > 0 || normalized.documents.length > 0 || normalized.stages.length > 0;
+}
+
+function validateWorkflowApproval(meta = {}) {
+  if (!workflowConfigNeedsApproval(meta.customConfig)) {
+    return { ok: true, reviewed: false };
+  }
+  const proof = verifyWorkflowProof(meta.customConfigApprovalToken, 'workflow_approval');
+  if (!proof || proof.configHash !== workflowConfigHash(meta.customConfig)) {
+    return {
+      ok: false,
+      error: 'Workspace configuration approval is required',
+      message: 'Review and approve the participants, documents, required status, and assignments before activation.',
+    };
+  }
+  return { ok: true, reviewed: true, approval: proof };
+}
+
+async function savedPackMatchesApproval(packId, approvalHash) {
+  if (!approvalHash || !String(packId || '').startsWith('ws_')) return true;
+  const { data, error } = await supabase
+    .from('custom_workflow_packs')
+    .select('config')
+    .eq('id', packId)
+    .maybeSingle();
+  if (error || !data) return false;
+  return workflowConfigHash(data.config) === approvalHash;
+}
 // Allow OPENAI_API_KEY1 as the active key (e.g. after rotating to a new key)
 if (process.env.OPENAI_API_KEY1) {
   process.env.OPENAI_API_KEY = process.env.OPENAI_API_KEY1;
@@ -1175,6 +1320,7 @@ defaulting to commercial real estate.`;
       model: 'gpt-4o-mini',
       response_format: { type: 'json_object' },
       max_tokens: 1500,
+      temperature: 0,
       messages: [
         {
           role: 'system',
@@ -1226,6 +1372,12 @@ IMPORTANT: You are suggesting a starting point only. Do NOT claim completeness. 
       profile?.packId,
       raw.transactionTypeLabel || transactionTypeLabels[resolvedTransactionType] || 'Custom Transaction',
     );
+    const generatedConfig = normalizeGeneratedWorkflowConfig(raw);
+    const generationId = crypto.randomUUID();
+    const generationProof = signWorkflowProof('workflow_generation', {
+      generationId,
+      configHash: workflowConfigHash(generatedConfig),
+    });
     return res.json({
       name: raw.name || '',
       transactionType: resolvedTransactionType,
@@ -1243,14 +1395,46 @@ IMPORTANT: You are suggesting a starting point only. Do NOT claim completeness. 
       packId: ['cre_acquisition', 'business_acquisition', 'fundraising', 'tokenization'].includes(resolvedTransactionType)
         ? resolvedTransactionType
         : null,
-      roles: Array.isArray(raw.roles) ? raw.roles : [],
-      documents: Array.isArray(raw.documents) ? raw.documents : [],
-      stages: Array.isArray(raw.stages) ? raw.stages : [],
+      roles: generatedConfig.roles,
+      documents: generatedConfig.documents,
+      stages: generatedConfig.stages,
+      generationProof,
     });
   } catch (e) {
     console.error('[workspace/generate]', e.message);
     return res.status(500).json({ error: 'Failed to generate workspace config. Please try again.' });
   }
+});
+
+// ── Public: approve a workflow configuration before activation ───────────────
+// The approval token is signed and bound to the exact final roles/documents/
+// stages payload. AI-generated configs additionally require a valid generation
+// proof, so callers cannot relabel an AI config as a template to skip review.
+app.post('/api/workspace/approve', (req, res) => {
+  const { customConfig, baselineConfig, generationProof, source = 'creator' } = req.body || {};
+  if (!workflowConfigNeedsApproval(customConfig)) {
+    return res.status(400).json({ error: 'Workflow configuration is empty' });
+  }
+  const generation = generationProof
+    ? verifyWorkflowProof(generationProof, 'workflow_generation')
+    : null;
+  if (generationProof && !generation) {
+    return res.status(400).json({ error: 'Workflow generation proof is invalid or expired' });
+  }
+  if (source === 'ai' && !generationProof) {
+    return res.status(400).json({ error: 'AI workflow generation proof is required' });
+  }
+  if (generation && (!baselineConfig || generation.configHash !== workflowConfigHash(baselineConfig))) {
+    return res.status(400).json({ error: 'Workflow generation proof does not match the generated configuration' });
+  }
+  const configHash = workflowConfigHash(customConfig);
+  const approvalToken = signWorkflowProof('workflow_approval', {
+    generationId: generation?.generationId || null,
+    generationConfigHash: generation?.configHash || null,
+    source: generation ? 'ai' : 'manual',
+    configHash,
+  });
+  res.json({ ok: true, approvalToken, configHash, generationId: generation?.generationId || null });
 });
 
 // ── Public: classify a transaction into a workflow pack ───────────────────────
@@ -1571,6 +1755,13 @@ app.post('/api/checkout/guest', async (req, res) => {
     }
     const stripe = require('stripe')(stripeKey);
     const { propertyId, propertyName, plan = 'deal', email, role = 'lender', meta = {} } = req.body;
+    const workflowApproval = validateWorkflowApproval(meta);
+    if (!workflowApproval.ok) {
+      return res.status(400).json({
+        error: workflowApproval.error,
+        message: workflowApproval.message,
+      });
+    }
     const workflowPackId = meta.workflowPackId
       || DEAL_TYPE_TO_PACK_INDEX[meta.dealType]
       || await classifyTransactionPack(propertyName, meta.dealType, meta.address);
@@ -1587,6 +1778,12 @@ app.post('/api/checkout/guest', async (req, res) => {
         });
       }
       finalPackId = savedId;
+      if (!await savedPackMatchesApproval(finalPackId, workflowApproval.approval?.configHash)) {
+        return res.status(409).json({
+          error: 'Workspace configuration changed before activation',
+          message: 'The approved workflow no longer matches the saved configuration. Please review it again.',
+        });
+      }
     }
     const normalizedJurisdiction = await jurisdictionForTransaction(
       meta.jurisdiction,
@@ -1651,6 +1848,11 @@ app.post('/api/checkout/guest', async (req, res) => {
         transactionStructure: meta.transactionStructure || '',
         transactionValue: meta.transactionValue || '',
         transactionValueConfidence: meta.transactionValueConfidence || '',
+        customConfigReviewed: workflowApproval.reviewed ? 'true' : 'false',
+        customConfigApprovalHash: workflowApproval.approval?.configHash || '',
+        customConfigGenerationId: workflowApproval.approval?.generationId || '',
+        customConfigApprovalSource: workflowApproval.approval?.source || '',
+        customConfigApprovedAt: workflowApproval.approval?.iat ? new Date(workflowApproval.approval.iat).toISOString() : '',
       },
     };
     if (email) sessionParams.customer_email = email;
@@ -1680,6 +1882,11 @@ app.post('/api/checkout/guest', async (req, res) => {
         transaction_structure: meta.transactionStructure || '',
         transaction_value: meta.transactionValue || '',
         transaction_value_confidence: meta.transactionValueConfidence || '',
+         custom_config_reviewed: workflowApproval.reviewed,
+          custom_config_approval_hash: workflowApproval.approval?.configHash || '',
+          custom_config_generation_id: workflowApproval.approval?.generationId || '',
+          custom_config_approval_source: workflowApproval.approval?.source || '',
+          custom_config_approved_at: workflowApproval.approval?.iat ? new Date(workflowApproval.approval.iat).toISOString() : '',
          workflow_pack_id: finalPackId,
         owner_write_token: ownerWriteToken,
         created_at: new Date().toISOString(),
@@ -1698,6 +1905,13 @@ app.post('/api/checkout/guest', async (req, res) => {
 app.post(['/api/checkout/demo', '/api/checkout/trial'], async (req, res) => {
   try {
     const { propertyId, propertyName, plan = 'deal', email, role = 'owner', meta = {} } = req.body;
+    const workflowApproval = validateWorkflowApproval(meta);
+    if (!workflowApproval.ok) {
+      return res.status(400).json({
+        error: workflowApproval.error,
+        message: workflowApproval.message,
+      });
+    }
     const origin = req.headers.origin || 'https://kontraplatform.com';
     const fakeSessionId = 'demo_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
     const pid = propertyId || (propertyName || 'demo').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
@@ -1709,6 +1923,12 @@ app.post(['/api/checkout/demo', '/api/checkout/trial'], async (req, res) => {
     if (meta.customConfig) {
       const savedId = await saveCustomPackForWorkspace(pid, propertyName, meta.customConfig, meta.transactionType);
       if (savedId) demoPackId = savedId;
+      if (!await savedPackMatchesApproval(demoPackId, workflowApproval.approval?.configHash)) {
+        return res.status(409).json({
+          error: 'Workspace configuration changed before activation',
+          message: 'The approved workflow no longer matches the saved configuration. Please review it again.',
+        });
+      }
     }
 
     // Seed stages_config from the pack's default stages (or custom config if provided).
@@ -1751,6 +1971,11 @@ app.post(['/api/checkout/demo', '/api/checkout/trial'], async (req, res) => {
         transactionStructure: meta.transactionStructure,
         transactionValue: meta.transactionValue,
         transactionValueConfidence: meta.transactionValueConfidence,
+        customConfigReviewed: workflowApproval.reviewed,
+         customConfigApprovalHash: workflowApproval.approval?.configHash || '',
+         customConfigGenerationId: workflowApproval.approval?.generationId || '',
+         customConfigApprovalSource: workflowApproval.approval?.source || '',
+         customConfigApprovedAt: workflowApproval.approval?.iat ? new Date(workflowApproval.approval.iat).toISOString() : '',
         closingDate: meta.closingDate,
       }),
     };
@@ -2206,6 +2431,11 @@ app.post('/api/webhook/stripe',
         transactionStructure: metadataTransactionStructure,
         transactionValue: metadataTransactionValue,
         transactionValueConfidence: metadataTransactionValueConfidence,
+        customConfigReviewed: metadataCustomConfigReviewed,
+         customConfigApprovalHash: metadataCustomConfigApprovalHash,
+         customConfigGenerationId: metadataCustomConfigGenerationId,
+         customConfigApprovalSource: metadataCustomConfigApprovalSource,
+         customConfigApprovedAt: metadataCustomConfigApprovedAt,
       } = session.metadata || {};
       const customerEmail = session.customer_details?.email || session.customer_email || '';
       const amountPaid = (session.amount_total / 100).toFixed(2);
@@ -2222,6 +2452,11 @@ app.post('/api/webhook/stripe',
           metadataDealType || pending.deal_type,
           metadataAddress || pending.address,
         );
+      const approvalHash = metadataCustomConfigApprovalHash || pending.custom_config_approval_hash || '';
+      if (!await savedPackMatchesApproval(stripePackId, approvalHash)) {
+        console.error('[webhook] Approved workflow hash does not match the saved custom pack');
+        return res.status(409).json({ error: 'Approved workflow does not match the saved configuration' });
+      }
       const normalizedJurisdiction = await jurisdictionForTransaction(
         metadataJurisdiction || pending.jurisdiction || '',
         stripePackId,
@@ -2261,6 +2496,11 @@ app.post('/api/webhook/stripe',
           transactionStructure: metadataTransactionStructure || pending.transaction_structure,
           transactionValue: metadataTransactionValue || pending.transaction_value,
           transactionValueConfidence: metadataTransactionValueConfidence || pending.transaction_value_confidence,
+          customConfigReviewed: metadataCustomConfigReviewed === 'true' || pending.custom_config_reviewed === true,
+           customConfigApprovalHash: metadataCustomConfigApprovalHash || pending.custom_config_approval_hash,
+           customConfigGenerationId: metadataCustomConfigGenerationId || pending.custom_config_generation_id,
+           customConfigApprovalSource: metadataCustomConfigApprovalSource || pending.custom_config_approval_source,
+           customConfigApprovedAt: metadataCustomConfigApprovedAt || pending.custom_config_approved_at,
           closingDate: metadataClosingDate || pending.closing_date,
         }),
       };
@@ -2830,6 +3070,11 @@ function buildCreationMetadata({
   transactionStructure,
   transactionValue,
   transactionValueConfidence,
+  customConfigReviewed,
+  customConfigApprovalHash,
+  customConfigGenerationId,
+  customConfigApprovalSource,
+  customConfigApprovedAt,
   closingDate,
 }) {
   const transactionTypeKey = String(transactionType || workflowPackId || '').trim();
@@ -2843,6 +3088,11 @@ function buildCreationMetadata({
     ),
     transaction_type_key: transactionTypeKey.slice(0, 100),
     transaction_type_source: String(transactionTypeSource || '').slice(0, 30),
+    workflow_config_reviewed: customConfigReviewed === true || String(customConfigReviewed || '').toLowerCase() === 'true',
+    workflow_config_approval_hash: String(customConfigApprovalHash || '').slice(0, 64),
+    workflow_config_generation_id: String(customConfigGenerationId || '').slice(0, 100),
+    workflow_config_approval_source: String(customConfigApprovalSource || '').slice(0, 20),
+    workflow_config_approved_at: customConfigApprovedAt || null,
     target_close_date: dateOnly(closingDate) || null,
   };
   if (transactionStructure) metadata.transaction_structure = String(transactionStructure).slice(0, 200);

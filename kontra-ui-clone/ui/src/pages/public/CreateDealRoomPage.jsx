@@ -319,9 +319,31 @@ export default function CreateDealRoomPage() {
 
   // Customization config (roles/docs/stages)
   const [customConfig, setCustomConfig] = useState({ roles: [], documents: [], stages: [] });
-  const setRoles = roles => setCustomConfig(c => ({ ...c, roles }));
-  const setDocuments = documents => setCustomConfig(c => ({ ...c, documents }));
-  const setStages = stages => setCustomConfig(c => ({ ...c, stages }));
+  const [reviewConfirmed, setReviewConfirmed] = useState(false);
+  const [generationProof, setGenerationProof] = useState("");
+  const [generatedBaselineConfig, setGeneratedBaselineConfig] = useState(null);
+  const [approvalToken, setApprovalToken] = useState("");
+  const setRoles = roles => {
+    setCustomConfig(c => ({ ...c, roles }));
+    if (creationMode !== "blank") {
+      setReviewConfirmed(false);
+      setApprovalToken("");
+    }
+  };
+  const setDocuments = documents => {
+    setCustomConfig(c => ({ ...c, documents }));
+    if (creationMode !== "blank") {
+      setReviewConfirmed(false);
+      setApprovalToken("");
+    }
+  };
+  const setStages = stages => {
+    setCustomConfig(c => ({ ...c, stages }));
+    if (creationMode !== "blank") {
+      setReviewConfirmed(false);
+      setApprovalToken("");
+    }
+  };
 
   // AI generation
   const [aiLoading, setAiLoading] = useState(false);
@@ -431,7 +453,7 @@ export default function CreateDealRoomPage() {
         setAiTransactionStructure(data.transactionStructure || "");
         setAiTransactionValue(data.transactionValue != null ? String(data.transactionValue) : "");
         setAiTransactionValueConfidence(data.transactionValueConfidence || "");
-        setCustomConfig({
+        const generatedConfig = {
           roles: (data.roles || []).map((r, i) => ({
             key: r.key || slugKey(r.label),
             label: r.label || "",
@@ -447,13 +469,18 @@ export default function CreateDealRoomPage() {
             label: d.label || "",
             required: !!d.required,
             ai: !!d.ai,
-            assignedRole: d.assignedRole || "",
+            assignedRole: d.assignedRole || d.assignedTo?.[0] || "",
           })),
           stages: (data.stages || []).map(s => ({
             key: s.key || slugKey(s.label),
             label: s.label || "",
           })),
-        });
+        };
+        setCustomConfig(generatedConfig);
+        setGeneratedBaselineConfig(generatedConfig);
+        setReviewConfirmed(false);
+        setApprovalToken("");
+        setGenerationProof(data.generationProof || "");
         setIsAiGenerated(true);
         // Keep form.packId in sync with the transaction type the AI used so the
         // Review & Activate step shows the correct pack label and buildPayload()
@@ -474,6 +501,29 @@ export default function CreateDealRoomPage() {
 
     // Phase 1 → Phase 2
     if (phase === 1) {
+      if (creationMode !== "blank") {
+        if (!reviewConfirmed) return;
+        try {
+          const approvalRes = await fetch(`${API_BASE}/api/workspace/approve`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              source: isAiGenerated ? "ai" : "template",
+              generationProof: isAiGenerated ? generationProof : undefined,
+              baselineConfig: isAiGenerated ? generatedBaselineConfig : undefined,
+              customConfig,
+            }),
+          });
+          const approvalData = await approvalRes.json().catch(() => ({}));
+          if (!approvalRes.ok || !approvalData.approvalToken) {
+            throw new Error(approvalData.error || "Please review the workflow configuration before continuing.");
+          }
+          setApprovalToken(approvalData.approvalToken);
+        } catch (e) {
+          setError(e.message);
+          return;
+        }
+      }
       trackEvent("workspace_creation_phase", { phase: 2, mode: creationMode });
       setPhase(2);
       return;
@@ -508,6 +558,10 @@ export default function CreateDealRoomPage() {
     // Go back to phase 0 and re-trigger AI generation
     setPhase(0);
     setCustomConfig({ roles: [], documents: [], stages: [] });
+    setReviewConfirmed(false);
+    setGenerationProof("");
+    setGeneratedBaselineConfig(null);
+    setApprovalToken("");
     setIsAiGenerated(false);
   }
 
@@ -522,7 +576,8 @@ export default function CreateDealRoomPage() {
       return customConfig.roles.length > 0 &&
         customConfig.stages.length >= 2 &&
         customConfig.roles.every(r => r.label.trim()) &&
-        customConfig.stages.every(s => s.label.trim());
+        customConfig.stages.every(s => s.label.trim()) &&
+        (creationMode === "blank" || reviewConfirmed);
     }
     if (phase === 2) return !!(form.workspaceName && form.firstName && form.lastName && form.email && form.agree);
     return true;
@@ -579,6 +634,8 @@ export default function CreateDealRoomPage() {
         transactionStructure: aiTransactionStructure,
         transactionValue: aiTransactionValue,
         transactionValueConfidence: aiTransactionValueConfidence,
+         customConfigReviewed: !!approvalToken,
+         customConfigApprovalToken: approvalToken,
         firstName: form.firstName,
         lastName: form.lastName,
         workflowPackId,
@@ -843,6 +900,23 @@ export default function CreateDealRoomPage() {
                 <div className="bg-amber-50 border border-amber-200 rounded-xl px-3.5 py-3 text-xs text-amber-800 leading-relaxed">
                    Kontra provides suggested transaction structures. Review the deal room with your legal, financial, and transaction advisers before relying on it.
                 </div>
+
+                {creationMode !== "blank" && (
+                  <label className="flex items-start gap-2.5 rounded-xl border border-gray-200 bg-white px-3.5 py-3 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={reviewConfirmed}
+                      onChange={e => setReviewConfirmed(e.target.checked)}
+                      className="mt-0.5 accent-red-800 w-4 h-4 shrink-0"
+                    />
+                    <span className="text-xs text-gray-600 leading-relaxed">
+                      I reviewed the participants, documents, required status, and assignments.
+                      {isAiGenerated
+                        ? " I approve this AI-generated configuration for the workspace."
+                        : " I approve this configuration for the workspace."}
+                    </span>
+                  </label>
+                )}
 
                 {/* Collapsed sections */}
                 <div className="space-y-2">
