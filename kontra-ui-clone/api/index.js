@@ -3725,9 +3725,41 @@ const PACK_DOCUMENT_SCHEMAS = {
 
 // Returns the canonical checklist items for a pack+property_type combination.
 // Property type is matched with a fuzzy check to handle slight label variations.
-function getCanonicalChecklist(packId, propertyType) {
+async function getCanonicalChecklist(packId, propertyType) {
   const packSchemas = PACK_DOCUMENT_SCHEMAS[packId];
-  if (!packSchemas) return null;
+  if (!packSchemas) {
+    if (!packId?.startsWith('ws_')) return null;
+    try {
+      const { data, error } = await supabase
+        .from('custom_workflow_packs')
+        .select('config')
+        .eq('id', packId)
+        .maybeSingle();
+      if (error || !Array.isArray(data?.config?.documents)) return null;
+      return data.config.documents
+        .map((document, index) => {
+          const section = document?.section || document?.id || `document_${index + 1}`;
+          const assignedTo = Array.isArray(document?.assignedTo)
+            ? document.assignedTo
+            : document?.assignedRole
+              ? [document.assignedRole]
+              : [];
+          return {
+            ...document,
+            id: document?.id || section,
+            section,
+            label: document?.label || document?.name || section.replace(/_/g, ' '),
+            assignedTo: assignedTo
+              .map(role => String(role || '').trim().replace(/\s+/g, '_'))
+              .filter(Boolean),
+          };
+        })
+        .filter(document => document.section);
+    } catch (error) {
+      console.warn('[checklist] custom pack schema lookup failed:', error.message);
+      return null;
+    }
+  }
   const pt = String(propertyType || '').trim();
   // Exact match first
   if (packSchemas[pt]) return packSchemas[pt];
@@ -3765,7 +3797,7 @@ app.get('/api/public/deal-room/:propertyId/checklist', async (req, res) => {
     }
 
     // Auto-seed from canonical server-side schema so all sessions get the same list
-    const canonical = getCanonicalChecklist(data.workflow_pack_id, data.property_type);
+    const canonical = await getCanonicalChecklist(data.workflow_pack_id, data.property_type);
     if (canonical) {
       const items = canonical.map((d, i) => ({
         id:         d.id || d.section,
