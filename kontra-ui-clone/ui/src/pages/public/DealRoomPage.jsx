@@ -3733,9 +3733,453 @@ function getLifecycleEvidenceSections(stage) {
   const text = `${stage.key || ''} ${stage.label || ''}`.toLowerCase();
   if (/\bnda\b|non[-\s]?disclosure/.test(text)) return ['nda', 'non_disclosure_agreement', 'non-disclosure_agreement'];
   if (/\bloi\b|letter of intent/.test(text)) return ['loi', 'letter_of_intent'];
+  if (/due diligence|diligence|under review|review|approved|term sheet|structur/.test(text)) {
+    return ['loi', 'letter_of_intent', 'purchase_agreement', 'definitive_agreement'];
+  }
   if (/purchase agreement|purchase_agreement|definitive agreement/.test(text)) return ['purchase_agreement', 'definitive_agreement'];
   if (/closing|closed|funded|settlement|complete/.test(text)) return ['purchase_agreement', 'closing_statement', 'settlement_statement'];
   return null;
+}
+
+function getLifecycleAdvanceRecommendation(stages, currentStageIndex, analyses) {
+  if (!Array.isArray(stages) || currentStageIndex < 0 || currentStageIndex >= stages.length - 1) return null;
+  const usableAnalyses = (analyses || []).filter(analysis =>
+    !['failed', 'uploaded', 'processing', 'retrying'].includes(String(analysis.processing_status || '').toLowerCase())
+      && analysis.analysis?.pending !== true
+  );
+  const uploadedSections = new Set(usableAnalyses.map(analysis => String(analysis.section || '').toLowerCase()));
+  const laterStage = stages.slice(currentStageIndex + 1).find((stage) => {
+    const evidenceSections = getLifecycleEvidenceSections(stage);
+    return evidenceSections?.some(section => uploadedSections.has(String(section).toLowerCase()));
+  });
+  if (!laterStage) return null;
+  const evidenceSections = getLifecycleEvidenceSections(laterStage) || [];
+  const evidence = evidenceSections
+    .filter(section => uploadedSections.has(String(section).toLowerCase()))
+    .map(section => section.replace(/_/g, ' '));
+  return {
+    stage: laterStage,
+    evidence,
+    reason: evidence.length > 1
+      ? `${evidence.slice(0, 2).join(' and ')} are already on file.`
+      : `${evidence[0] || 'Supporting evidence'} is already on file.`,
+  };
+}
+
+function TransactionBrief({
+  propertyId,
+  property,
+  pack,
+  packId,
+  briefing,
+  coordination,
+  checklistItems = [],
+  analyses = [],
+  recordFields = [],
+  readiness = null,
+  stages = [],
+  currentStage,
+  currentStageIndex,
+  events = [],
+  loading,
+  ownerToken,
+  onTabChange,
+  onRefresh,
+}) {
+  const [stageDecision, setStageDecision] = useState('');
+  const [stageActionError, setStageActionError] = useState('');
+  const [advancing, setAdvancing] = useState(false);
+
+  const DONE_DOCUMENT_STATUSES = new Set(['uploaded', 'approved', 'ai_complete', 'complete', 'completed']);
+  const sourceDocuments = checklistItems.length > 0
+    ? checklistItems
+    : (typeof pack?.getDocumentSchema === 'function'
+      ? pack.getDocumentSchema(property?.property_type || property?.type)
+      : (Array.isArray(pack?.documentSchema) ? pack.documentSchema : []));
+  const requiredDocuments = sourceDocuments.filter(item => item.required);
+  const uploadedSections = new Set(analyses.map(analysis => String(analysis.section || '').toLowerCase()));
+  const completedDocuments = requiredDocuments.filter(item =>
+    DONE_DOCUMENT_STATUSES.has(String(item.status || '').toLowerCase())
+      || item.uploaded === true
+      || uploadedSections.has(String(item.section || '').toLowerCase())
+  );
+  const missingDocuments = requiredDocuments.filter(item => !completedDocuments.includes(item));
+  const documentTotal = requiredDocuments.length || Number(briefing?.missingDocuments?.length || 0);
+  const documentComplete = requiredDocuments.length
+    ? completedDocuments.length
+    : Math.max(0, Number(briefing?.snapshot?.document_count || analyses.length) - Number(briefing?.missingDocuments?.length || 0));
+
+  const participantRows = Array.isArray(coordination?.submissions)
+    ? coordination.submissions
+    : (Array.isArray(coordination?.parties) ? coordination.parties : []);
+  const participantRoles = getExternalParticipantRoles(pack, { isCoordinator: true });
+  const requiredParticipantRoles = participantRoles.filter(role => role.required);
+  const inviteEvents = events.filter(event => event.event_type === 'invite_sent');
+  const participantStatuses = participantRoles.map(role => {
+    const party = participantRows.find(item => item.role === role.key);
+    const status = String(party?.status || '').toLowerCase();
+    const complete = ['submitted', 'approved', 'complete', 'completed'].includes(status);
+    const invited = complete
+      || ['invited', 'pending', 'accepted'].includes(status)
+      || inviteEvents.some(event => event.metadata?.role === role.key);
+    return { ...role, status: status || 'not invited', complete, invited };
+  });
+  const participantProgressRoles = requiredParticipantRoles.length > 0 ? requiredParticipantRoles : participantRoles;
+  const participantComplete = participantProgressRoles.filter(item =>
+    participantStatuses.find(status => status.key === item.key)?.complete
+  ).length;
+  const missingParticipants = participantStatuses.filter(item => item.required && !item.invited);
+  const incompleteParticipants = participantStatuses.filter(item => item.required && item.invited && !item.complete);
+
+  const isRecordValue = field => {
+    const value = String(field?.value_text || '').trim().toLowerCase();
+    return value && !['n/a', 'na', 'not applicable', 'not_applicable', 'unknown'].includes(value)
+      && field?.status !== 'not_applicable';
+  };
+  const recordSchemaKey = resolveSchemaKey(packId, pack, property?.name || property?.property_name);
+  const requiredRecordFields = getRequiredRecordFields(recordSchemaKey);
+  const confirmedRecordKeys = new Set(recordFields.filter(field =>
+    field.status === 'verified' && isRecordValue(field)
+  ).map(field => field.field_key));
+  const confirmedRecordCount = requiredRecordFields.filter(field =>
+    confirmedRecordKeys.has(field.canonicalKey || field.key)
+  ).length;
+  const capturedAwaitingConfirmation = recordFields.filter(field =>
+    ['extracted', 'needs_review'].includes(field.status) && isRecordValue(field)
+  );
+  const conflicts = recordFields.filter(field =>
+    ['conflicting', 'source_changed'].includes(field.status)
+  );
+  const briefingIssues = [
+    ...(Array.isArray(briefing?.risks) ? briefing.risks : []),
+    ...(Array.isArray(briefing?.open_items) ? briefing.open_items : []),
+  ];
+  const unresolvedIssueCount = conflicts.length + briefingIssues.length;
+  const failedDocuments = analyses.filter(analysis => analysis.processing_status === 'failed');
+  const criticalTasks = Array.isArray(briefing?.criticalPath)
+    ? briefing.criticalPath
+    : (Array.isArray(briefing?.blocking) ? briefing.blocking : []);
+  const goToRecord = field => {
+    onTabChange?.('overview');
+    const category = String(field?.field_key || field?.field_category || '').split('.')[0];
+    window.setTimeout(() => {
+      document.getElementById(`transaction-record-category-${category}`)
+        ?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 0);
+  };
+  const goToTasks = () => {
+    onTabChange?.('overview');
+    window.setTimeout(() => {
+      document.getElementById('tasks-panel')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 0);
+  };
+  const routeForBriefingText = text => {
+    const value = String(text || '').toLowerCase();
+    if (/(document|upload|file|nda|loi|agreement|checklist|report|certificate|binder|commitment|rent roll|inspection)/.test(value)) {
+      return { label: 'Open Documents', onClick: () => onTabChange?.('documents') };
+    }
+    if (/(invite|participant|buyer|seller|party|counsel|lender|advisor)/.test(value)) {
+      return { label: 'Open People', onClick: () => onTabChange?.('people') };
+    }
+    return { label: 'Review Overview', onClick: () => onTabChange?.('overview') };
+  };
+  const actualBlockers = criticalTasks.slice(0, 4).map((task, index) => ({
+      key: `task-${task.taskId || index}`,
+      text: task.item || task.title || task.text || 'Critical path task needs resolution',
+      action: { label: 'Review task', onClick: goToTasks },
+    }));
+
+  const briefingRecommendations = [
+    ...(Array.isArray(briefing?.actions) ? briefing.actions : []),
+    ...(Array.isArray(briefing?.next_actions) ? briefing.next_actions : []),
+  ].slice(0, 3).map((item, index) => {
+    const text = typeof item === 'string'
+      ? item
+      : (item.text || item.action || item.item || item.title || '');
+    return {
+      key: `briefing-${index}`,
+      tone: 'gray',
+      text: String(text).trim(),
+      detail: typeof item === 'object' ? (item.reason || item.note || '') : '',
+      action: routeForBriefingText(text),
+    };
+  }).filter(item => item.text);
+
+  const stageRecommendation = getLifecycleAdvanceRecommendation(stages, currentStageIndex, analyses);
+  const recommendationItems = [
+    ...(stageRecommendation && stageDecision !== 'kept'
+      ? [{
+          key: 'stage',
+          tone: 'blue',
+          text: `Consider advancing from ${currentStage?.label || 'the current stage'} to ${stageRecommendation.stage.label}`,
+          detail: stageRecommendation.reason,
+          action: { label: 'Review stage', onClick: () => setStageDecision('review') },
+        }]
+      : []),
+    ...conflicts.slice(0, 2).map(field => ({
+      key: `conflict-${field.id || field.field_key}`,
+      tone: 'red',
+      text: `Resolve ${field.display_label || field.field_key}`,
+      detail: field.status === 'source_changed' ? 'A newer source changed the recorded value.' : 'Multiple sources disagree.',
+      action: { label: 'Review record', onClick: () => goToRecord(field) },
+    })),
+    ...missingDocuments.slice(0, 2).map(item => ({
+      key: `missing-${item.id || item.section}`,
+      tone: 'amber',
+      text: `${(item.assignedTo || item.assigned_to)?.length ? 'Request' : 'Upload'} ${item.label || item.name || 'required document'}`,
+      detail: 'Required for document collection.',
+      action: { label: 'Open Documents', onClick: () => onTabChange?.('documents') },
+    })),
+    ...missingParticipants.slice(0, 2).map(item => ({
+      key: `invite-${item.key}`,
+      tone: 'amber',
+      text: `Invite ${item.label}`,
+      detail: 'Required participant is not in the workspace yet.',
+      action: { label: 'Open People', onClick: () => onTabChange?.('people') },
+    })),
+    ...capturedAwaitingConfirmation.slice(0, 2).map(field => ({
+      key: `confirm-${field.id || field.field_key}`,
+      tone: 'blue',
+      text: `Confirm ${field.display_label || field.field_key}`,
+      detail: `Kontra extracted “${field.value_text}”.`,
+      action: { label: 'Review record', onClick: () => goToRecord(field) },
+    })),
+    ...criticalTasks.slice(0, 2).map((task, index) => ({
+      key: `task-${task.taskId || index}`,
+      tone: 'gray',
+      text: task.item || task.title || task.text || 'Review critical path task',
+      detail: task.note || 'This task is on the active transaction path.',
+      action: { label: 'Review task', onClick: goToTasks },
+    })),
+    ...briefingRecommendations,
+  ].slice(0, 5);
+
+  async function acceptStageRecommendation() {
+    if (!stageRecommendation || !ownerToken || advancing) return;
+    setAdvancing(true);
+    setStageActionError('');
+    try {
+      const response = await fetch(`${API_BASE}/api/public/deal-room/${propertyId}/advance`, {
+        method: 'POST',
+        headers: getRoomAuthHeaders(propertyId, { 'Content-Type': 'application/json' }),
+        body: JSON.stringify({
+          stage: stageRecommendation.stage.key,
+          ownerWriteToken: ownerToken,
+        }),
+      });
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data?.error || 'Stage could not be advanced');
+      }
+      setStageDecision('accepted');
+      await onRefresh?.();
+    } catch (error) {
+      setStageActionError(error.message || 'Stage could not be advanced');
+    } finally {
+      setAdvancing(false);
+    }
+  }
+
+  if (loading) {
+    return (
+      <section className="rounded-2xl border border-gray-200 bg-white px-5 py-5 sm:px-7 sm:py-6">
+        <div className="h-3 w-28 animate-pulse rounded bg-gray-100" />
+        <div className="mt-3 h-6 w-64 animate-pulse rounded bg-gray-100" />
+        <div className="mt-5 grid gap-3 sm:grid-cols-3">
+          {[1, 2, 3].map(item => <div key={item} className="h-20 animate-pulse rounded-xl bg-gray-50" />)}
+        </div>
+      </section>
+    );
+  }
+
+  const isCreTransaction = packId === DEFAULT_PACK_ID
+    || pack?.id === DEFAULT_PACK_ID
+    || ['acquisition', 'refinance', 'construction', 'flag_conversion', 'sale', 'ground_lease'].includes(property?.deal_type);
+  const transactionLabel = isCreTransaction
+    ? 'Commercial Real Estate Acquisition'
+    : (pack?.name || 'Transaction workspace');
+  const readinessLabel = readiness?.transaction_readiness?.status
+    || (readiness?.transaction_readiness?.overall_pct != null
+      ? `${Math.round(readiness.transaction_readiness.overall_pct)}%`
+      : 'Building');
+  const toneClasses = {
+    red: 'border-red-100 bg-red-50/60 text-red-700',
+    amber: 'border-amber-100 bg-amber-50/60 text-amber-800',
+    blue: 'border-blue-100 bg-blue-50/60 text-blue-700',
+    gray: 'border-gray-100 bg-gray-50 text-gray-700',
+  };
+
+  return (
+    <section className="rounded-2xl border border-[#eadde1] bg-[#fffafb] px-5 py-5 sm:px-7 sm:py-6">
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <p className="text-[10px] font-bold uppercase tracking-widest text-[#800020]">Coordinator Transaction Brief</p>
+          <h2 className="mt-1 text-lg font-bold text-gray-900">What needs a decision next</h2>
+          <p className="mt-1 text-xs text-gray-500">{transactionLabel} · derived from the current workspace state</p>
+        </div>
+        <span className="rounded-full border border-[#e7cbd3] bg-white px-3 py-1 text-[10px] font-semibold text-[#800020]">
+          {currentStage?.label || 'Stage not reported'}
+        </span>
+      </div>
+
+      <div className="mt-5 grid gap-3 sm:grid-cols-3">
+        <div className="rounded-xl border border-gray-200 bg-white px-4 py-3">
+          <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Document collection</p>
+          <p className="mt-1 text-lg font-bold text-gray-900">
+            {documentTotal > 0 ? `${documentComplete} of ${documentTotal}` : analyses.length}
+          </p>
+          <p className="text-[11px] text-gray-500">
+            {missingDocuments.length > 0 ? `${missingDocuments.length} required missing` : 'No required document gaps'}
+          </p>
+        </div>
+        <div className="rounded-xl border border-gray-200 bg-white px-4 py-3">
+          <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Transaction verification / readiness</p>
+          <p className="mt-1 text-lg font-bold text-gray-900">{readinessLabel}</p>
+          <p className="text-[11px] text-gray-500">
+            {requiredRecordFields.length > 0
+              ? `${confirmedRecordCount} of ${requiredRecordFields.length} required fields confirmed`
+              : 'Confirmed values and readiness are tracked separately'}
+          </p>
+        </div>
+        <div className="rounded-xl border border-gray-200 bg-white px-4 py-3">
+          <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Issues requiring attention</p>
+          <p className={`mt-1 text-lg font-bold ${unresolvedIssueCount > 0 ? 'text-red-700' : 'text-gray-900'}`}>{unresolvedIssueCount}</p>
+          <p className="text-[11px] text-gray-500">
+            {conflicts.length > 0 ? `${conflicts.length} conflicting field${conflicts.length === 1 ? '' : 's'}` : 'No conflicting fields recorded'}
+            {capturedAwaitingConfirmation.length > 0 ? ` · ${capturedAwaitingConfirmation.length} facts awaiting confirmation` : ''}
+          </p>
+        </div>
+      </div>
+
+      <div className="mt-5 grid gap-5 lg:grid-cols-[minmax(0,1.2fr)_minmax(230px,0.8fr)]">
+        <div>
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Prioritized recommendations</p>
+              <p className="mt-1 text-sm font-semibold text-gray-900">
+                {recommendationItems[0]?.text || 'Continue monitoring the transaction as new evidence arrives.'}
+              </p>
+            </div>
+            {recommendationItems[0]?.action && (
+              <button
+                type="button"
+                onClick={recommendationItems[0].action.onClick}
+                className="shrink-0 rounded-lg bg-[#800020] px-3 py-2 text-[10px] font-bold text-white transition hover:opacity-90"
+              >
+                {recommendationItems[0].action.label}
+              </button>
+            )}
+          </div>
+          <div className="mt-3 space-y-2">
+            {recommendationItems.slice(0, 4).map(item => (
+              <div key={item.key} className={`flex items-start gap-3 rounded-xl border px-3 py-2.5 ${toneClasses[item.tone] || toneClasses.gray}`}>
+                <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-current" />
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs font-semibold">{item.text}</p>
+                  <p className="mt-0.5 text-[11px] opacity-75">{item.detail}</p>
+                </div>
+                <button type="button" onClick={item.action.onClick} className="shrink-0 text-[10px] font-bold underline underline-offset-2">
+                  {item.action.label}
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="rounded-xl border border-gray-200 bg-white px-4 py-3">
+          <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Participants</p>
+          <p className="mt-1 text-sm font-bold text-gray-900">
+            {participantProgressRoles.length > 0
+              ? `${participantComplete} of ${participantProgressRoles.length} ${requiredParticipantRoles.length > 0 ? 'required ' : ''}complete`
+              : 'No external roles configured'}
+          </p>
+          <div className="mt-2 space-y-1.5">
+            {participantStatuses.slice(0, 4).map(item => (
+              <div key={item.key} className="flex items-center justify-between gap-2 text-[11px]">
+                <span className="truncate text-gray-600">{item.label}</span>
+                <span className={`shrink-0 font-semibold ${item.complete ? 'text-emerald-600' : item.invited ? 'text-amber-600' : 'text-red-600'}`}>
+                  {item.complete ? 'Complete' : item.invited ? 'In progress' : 'Not invited'}
+                </span>
+              </div>
+            ))}
+            {participantStatuses.length > 4 && <p className="text-[10px] text-gray-400">+{participantStatuses.length - 4} more participants</p>}
+          </div>
+          {(incompleteParticipants.length > 0 || missingParticipants.length > 0) && (
+            <button type="button" onClick={() => onTabChange?.('people')} className="mt-3 text-[10px] font-bold text-[#800020]">
+              Review participant status →
+            </button>
+          )}
+        </div>
+      </div>
+
+      {actualBlockers.length > 0 && (
+        <div className="mt-4 rounded-xl border border-red-100 bg-red-50/50 px-4 py-3">
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-[10px] font-bold uppercase tracking-wider text-red-700">Actual blockers</p>
+            <span className="text-[10px] font-semibold text-red-600">{actualBlockers.length}</span>
+          </div>
+          <div className="mt-2 space-y-1.5">
+            {actualBlockers.slice(0, 4).map(blocker => (
+              <div key={blocker.key} className="flex items-center gap-2 text-xs text-red-800">
+                <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-red-500" />
+                <span className="min-w-0 flex-1">{blocker.text}</span>
+                <button type="button" onClick={blocker.action.onClick} className="shrink-0 text-[10px] font-bold underline underline-offset-2">
+                  {blocker.action.label}
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {stageRecommendation && stageDecision !== 'kept' && (
+        <div className="mt-4 rounded-xl border border-blue-100 bg-blue-50/60 px-4 py-3">
+          <div className="flex items-start gap-3">
+            <span className="mt-0.5 text-blue-600">↗</span>
+            <div className="min-w-0 flex-1">
+              <p className="text-[10px] font-bold uppercase tracking-wider text-blue-700">Stage recommendation — coordinator decision required</p>
+              <p className="mt-1 text-sm font-semibold text-gray-900">
+                Evidence suggests {stageRecommendation.stage.label}
+              </p>
+              <p className="mt-0.5 text-xs text-gray-600">
+                Current stage: {currentStage?.label || 'Not reported'} · {stageRecommendation.reason}
+              </p>
+              {stageActionError && <p className="mt-2 text-[11px] font-semibold text-red-600">{stageActionError}</p>}
+              <div className="mt-3 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={acceptStageRecommendation}
+                  disabled={advancing || !ownerToken}
+                  className="rounded-lg bg-[#800020] px-3 py-1.5 text-[10px] font-bold text-white transition hover:opacity-90 disabled:opacity-50"
+                >
+                  {advancing ? 'Advancing…' : `Accept → ${stageRecommendation.stage.label}`}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setStageDecision('kept'); setStageActionError(''); }}
+                  disabled={advancing}
+                  className="rounded-lg border border-blue-200 bg-white px-3 py-1.5 text-[10px] font-bold text-blue-700 transition hover:bg-blue-50 disabled:opacity-50"
+                >
+                  Keep current stage
+                </button>
+              </div>
+              {!ownerToken && <p className="mt-2 text-[10px] text-amber-700">Owner authorization is required to accept a stage change.</p>}
+            </div>
+          </div>
+        </div>
+      )}
+      {stageDecision === 'accepted' && (
+        <p className="mt-4 rounded-xl border border-emerald-100 bg-emerald-50 px-4 py-3 text-xs font-semibold text-emerald-700">
+          Stage change accepted. The lifecycle and readiness sections are updating from the saved room state.
+        </p>
+      )}
+      {stageDecision === 'kept' && (
+        <p className="mt-4 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-xs text-gray-600">
+          Keeping the current stage. Kontra will continue to show new evidence without changing it automatically.
+        </p>
+      )}
+    </section>
+  );
 }
 
 // ── Transaction Seal Summary (complete phase) ─────────────────────────────────
@@ -4177,6 +4621,29 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
               Stage {currentStageIndex + 1} of {stages.length}
             </span>
           )}
+        </div>
+
+        <div className="mt-5">
+          <TransactionBrief
+            propertyId={propertyId}
+            property={property}
+            pack={pack}
+            packId={packId}
+            briefing={briefing}
+            coordination={coordination}
+            checklistItems={checklistItems}
+            analyses={analyses}
+            recordFields={recordFields}
+            readiness={readiness}
+            stages={stages}
+            currentStage={currentStage}
+            currentStageIndex={currentStageIndex}
+            events={events}
+            loading={loading}
+            ownerToken={ownerToken}
+            onTabChange={onTabChange}
+            onRefresh={load}
+          />
         </div>
 
         <div className="mt-6 grid gap-6 border-t border-gray-100 pt-5 lg:grid-cols-[minmax(180px,0.7fr)_minmax(0,1.3fr)]">
