@@ -122,14 +122,18 @@ function buildChecks(documents, runAt) {
     }
   }
 
-  if (checks.length === 0 && documents.length >= 2) {
+  if (checks.length === 0 && documents.length > 0) {
+    const firstDocument = documents[0];
+    const hasComparablePair = documents.length >= 2;
     checks.push({
-      id: 'documents:comparable-facts',
+      id: hasComparablePair ? 'documents:comparable-facts' : 'documents:awaiting-comparison',
       type: 'document_consistency',
       status: 'pending_review',
-      description: 'Multiple documents are uploaded, but they do not yet contain a shared structured amount to compare.',
-      doc_section_a: documents[0].section,
-      doc_section_b: documents[1].section,
+      description: hasComparablePair
+        ? 'Multiple documents are uploaded, but they do not yet contain a shared structured amount to compare.'
+        : 'One document is uploaded. Cross-document checks will run again automatically when another related document is added.',
+      doc_section_a: firstDocument.section,
+      ...(hasComparablePair ? { doc_section_b: documents[1].section } : {}),
       run_at: runAt,
     });
   }
@@ -181,12 +185,14 @@ async function runVerification(propertyId, packId = null) {
 
   const comparableDocuments = latestDocuments(documents);
   const runAt = new Date().toISOString();
-  const checks = comparableDocuments.length >= 2 ? buildChecks(comparableDocuments, runAt) : [];
+  const checks = buildChecks(comparableDocuments, runAt);
   const summary = summarizeChecks(checks);
   const result = {
     propertyId,
     packId,
-    status: checks.length ? 'complete' : 'pending',
+    status: checks.some(check => check.status === 'verified' || check.status === 'discrepancy')
+      ? 'complete'
+      : 'pending',
     run_at: runAt,
     summary,
     checks,

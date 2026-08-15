@@ -4610,6 +4610,7 @@ app.post('/api/public/deal-room/:propertyId/track-document', upload.single('file
              propertyId, documentId: recordId, section, filename,
              failureReason: aiErr.message, correlationId,
            }, { correlationId, source: 'document-agent', actorId: access.actorId, actorType: access.actorType });
+            getRoomPackId(propertyId).then(packId => runVerification(propertyId, packId)).catch(e => console.warn('[verification] trigger failed:', e.message));
         }
       });
       // Hard 50-second timeout so the record never stays "pending" forever
@@ -4634,6 +4635,7 @@ app.post('/api/public/deal-room/:propertyId/track-document', upload.single('file
               propertyId, documentId: recordId, section, filename,
               failureReason: err.message, correlationId,
             }, { correlationId, source: 'document-agent', actorId: access.actorId, actorType: access.actorType });
+            getRoomPackId(propertyId).then(packId => runVerification(propertyId, packId)).catch(e => console.warn('[verification] trigger failed:', e.message));
           }
         });
     }
