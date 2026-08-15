@@ -3767,6 +3767,259 @@ function getLifecycleAdvanceRecommendation(stages, currentStageIndex, analyses) 
   };
 }
 
+const RECORD_EMPTY_VALUES = new Set(['', 'n/a', 'na', 'not applicable', 'not_applicable', 'unknown']);
+const RECORD_CONFLICT_STATUSES = new Set(['conflicting', 'source_changed']);
+const RECORD_AWAITING_STATUSES = new Set(['extracted', 'needs_review']);
+const DONE_DOCUMENT_STATUSES = new Set(['uploaded', 'approved', 'ai_complete', 'complete', 'completed']);
+
+function hasMeaningfulRecordValue(field) {
+  const value = String(field?.value_text || '').trim().toLowerCase();
+  return !RECORD_EMPTY_VALUES.has(value) && field?.status !== 'not_applicable';
+}
+
+function getRecordDefinitionState(definition, recordFields = []) {
+  const keys = new Set([
+    definition?.key,
+    definition?.aliasOf,
+    definition?.canonicalKey,
+  ].filter(Boolean));
+  const matches = recordFields.filter(field => keys.has(field.field_key));
+  const valueMatches = matches.filter(hasMeaningfulRecordValue);
+  const conflict = valueMatches.find(field => RECORD_CONFLICT_STATUSES.has(field.status));
+  const awaiting = valueMatches.find(field => RECORD_AWAITING_STATUSES.has(field.status));
+  const confirmed = valueMatches.find(field => field.status === 'verified');
+  const selected = conflict || awaiting || confirmed || valueMatches[0] || matches[0] || null;
+  return {
+    definition,
+    field: selected,
+    value: selected?.value_text || '',
+    status: conflict ? 'conflict' : awaiting ? 'awaiting' : confirmed ? 'confirmed' : 'missing',
+  };
+}
+
+function getCoordinatorRecordFacts(schemaKey, recordFields = []) {
+  const fields = Object.values(getPackRecordSchema(schemaKey)).flat()
+    .filter(field => field.renderable !== false);
+  const preferredKeys = [
+    'transaction.purchase_price',
+    'transaction.value',
+    'parties.buyer',
+    'parties.seller',
+    'transaction.deposit',
+    'transaction.earnest_money',
+    'transaction.closing_date',
+    'asset.name',
+    'asset.legal_name',
+    'asset.address',
+    'asset.jurisdiction',
+    'parties.primary',
+    'parties.secondary',
+    'ownership.owner_name',
+    'financial.revenue',
+    'financial.ebitda',
+    'financial.net_income',
+  ];
+  const definitions = [];
+  const seen = new Set();
+  [...preferredKeys, ...fields.filter(field => field.summaryPriority === 'key').map(field => field.canonicalKey || field.key)]
+    .forEach(key => {
+      const definition = fields.find(field => (field.canonicalKey || field.key) === key || field.key === key);
+      if (!definition) return;
+      const canonicalKey = definition.canonicalKey || definition.key;
+      if (seen.has(canonicalKey)) return;
+      seen.add(canonicalKey);
+      definitions.push(definition);
+    });
+  return definitions.slice(0, 8).map(definition => ({
+    ...getRecordDefinitionState(definition, recordFields),
+    key: definition.canonicalKey || definition.key,
+    label: definition.label || definition.key,
+  }));
+}
+
+function getDocumentRequirementStats(checklistItems = [], pack, property, analyses = []) {
+  const sourceDocuments = checklistItems.length > 0
+    ? checklistItems
+    : (typeof pack?.getDocumentSchema === 'function'
+      ? pack.getDocumentSchema(property?.property_type || property?.type)
+      : (Array.isArray(pack?.documentSchema) ? pack.documentSchema : []));
+  const requiredDocuments = sourceDocuments.filter(item => item.required);
+  const receivedDocuments = requiredDocuments.filter(item =>
+    DONE_DOCUMENT_STATUSES.has(String(item.status || '').toLowerCase())
+      || item.uploaded === true
+      || analyses.some(analysis => String(analysis.section || '').toLowerCase() === String(item.section || '').toLowerCase())
+  );
+  const reviewStatuses = new Set(['review', 'needs_review', 'pending_review']);
+  const reviewSections = new Set(
+    analyses
+      .filter(analysis =>
+        analysis.processing_status === 'failed'
+          || analysis.analysis?.requires_human_review === true
+          || analysis.analysis?.needs_review === true
+          || analysis.analysis?.status === 'needs_review'
+      )
+      .map(analysis => String(analysis.section || '').toLowerCase()),
+  );
+  const reviewDocuments = requiredDocuments.filter(item =>
+    reviewStatuses.has(String(item.status || '').toLowerCase())
+      || reviewSections.has(String(item.section || '').toLowerCase())
+  );
+  return {
+    sourceDocuments,
+    requiredDocuments,
+    receivedDocuments,
+    reviewDocuments,
+  };
+}
+
+function getNextMilestoneBlockers({
+  stages = [],
+  currentStageIndex = 0,
+  checklistItems = [],
+  analyses = [],
+  pack,
+  property,
+  participantStates = [],
+  briefing,
+}) {
+  const nextStage = stages[currentStageIndex + 1];
+  if (!nextStage) return { nextStage: null, blockers: [] };
+  const { requiredDocuments, receivedDocuments } = getDocumentRequirementStats(checklistItems, pack, property, analyses);
+  const evidenceSections = getLifecycleEvidenceSections(nextStage) || [];
+  const missingDocuments = requiredDocuments.filter(item => !receivedDocuments.includes(item));
+  const nextStageDocuments = missingDocuments.filter(item =>
+    evidenceSections.includes(String(item.section || '').toLowerCase()),
+  );
+  const blockers = nextStageDocuments.map(item => ({
+    key: `next-doc-${item.id || item.section}`,
+    text: `${item.label || item.name || 'Required document'} is needed before ${nextStage.label}`,
+    detail: 'This requirement is tied to the next lifecycle milestone.',
+    action: { label: 'Open Documents', onClick: () => {} },
+    participantKey: (item.assignedTo || item.assigned_to || [])[0],
+  }));
+  const blockedRoles = new Set(blockers.map(blocker => blocker.participantKey).filter(Boolean));
+  participantStates
+    .filter(state => state.required && !state.joined && blockedRoles.has(state.key))
+    .forEach(state => blockers.push({
+      key: `next-participant-${state.key}`,
+      text: `${state.label} must be active before ${nextStage.label}`,
+      detail: 'This participant owns a requirement for the next milestone.',
+      action: { label: 'Open People', onClick: () => {} },
+    }));
+
+  // Only use the briefing's explicit blocking lane here. Generic risks and
+  // recommendations remain issues/actions, not progression blockers.
+  const explicitBlocking = Array.isArray(briefing?.blocking) ? briefing.blocking : [];
+  explicitBlocking.slice(0, 3).forEach((item, index) => {
+    const text = typeof item === 'string'
+      ? item
+      : (item.text || item.item || item.title || item.action || '');
+    if (!text) return;
+    blockers.push({
+      key: `explicit-blocker-${index}`,
+      text,
+      detail: item.reason || item.note || `Reported as blocking ${nextStage.label}.`,
+      action: { label: 'Review Overview', onClick: () => {} },
+    });
+  });
+  return { nextStage, blockers };
+}
+
+function getRecentCoordinatorChanges(events = [], analyses = [], recordFields = []) {
+  const meaningfulEventTypes = new Set([
+    'doc_uploaded', 'document_uploaded', 'document_analyzed', 'analysis_complete',
+    'stage_advanced', 'stage_advance', 'party_submitted', 'participant_joined',
+    'invite_accepted', 'field_verified', 'transaction_record_verified',
+    'source_changed', 'conflict_detected', 'vap_ready',
+  ]);
+  const changes = events
+    .filter(event => meaningfulEventTypes.has(event.event_type))
+    .map(event => ({
+      id: `event-${event.id || `${event.event_type}-${event.created_at}`}`,
+      type: event.event_type,
+      text: event.description || ({
+        doc_uploaded: 'A document was uploaded',
+        document_uploaded: 'A document was uploaded',
+        document_analyzed: 'A document was analyzed',
+        analysis_complete: 'Document analysis completed',
+        stage_advanced: 'The transaction stage changed',
+        stage_advance: 'The transaction stage changed',
+        party_submitted: 'A participant marked their work complete',
+        participant_joined: 'A participant joined the workspace',
+        invite_accepted: 'A participant accepted an invitation',
+        field_verified: 'A Transaction Record fact was confirmed',
+        transaction_record_verified: 'A Transaction Record fact was confirmed',
+        source_changed: 'A source changed a recorded fact',
+        conflict_detected: 'A Transaction Record conflict was detected',
+        vap_ready: 'A verified package became available',
+      }[event.event_type] || 'Transaction activity changed'),
+      date: event.created_at,
+    }))
+    .filter(item => !/readiness updated from .* to .*/i.test(item.text));
+  const fieldChanges = recordFields
+    .filter(field => RECORD_CONFLICT_STATUSES.has(field.status) || field.status === 'verified')
+    .map(field => ({
+      id: `field-${field.id || field.field_key}`,
+      type: field.status,
+      text: field.status === 'verified'
+        ? `${field.display_label || field.field_key} was confirmed`
+        : `${field.display_label || field.field_key} needs conflict review`,
+      date: field.updated_at || field.created_at,
+    }));
+  return [...changes, ...fieldChanges]
+    .sort((a, b) => new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime())
+    .slice(0, 5);
+}
+
+function KeyTransactionFacts({ facts = [], onTabChange }) {
+  const statusConfig = {
+    confirmed: { label: 'Confirmed', dot: 'bg-emerald-500', text: 'text-emerald-700', bg: 'bg-emerald-50' },
+    awaiting: { label: 'Awaiting confirmation', dot: 'bg-blue-500', text: 'text-blue-700', bg: 'bg-blue-50' },
+    conflict: { label: 'Conflict', dot: 'bg-red-500', text: 'text-red-700', bg: 'bg-red-50' },
+    missing: { label: 'Not recorded', dot: 'bg-gray-300', text: 'text-gray-500', bg: 'bg-gray-50' },
+  };
+  return (
+    <section className="rounded-2xl border border-gray-200 bg-white px-5 py-5 sm:px-7">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Key Transaction Facts</p>
+          <p className="mt-1 text-sm font-semibold text-gray-900">Canonical values from the Transaction Record</p>
+        </div>
+        <button
+          type="button"
+          onClick={() => onTabChange?.('overview')}
+          className="text-[10px] font-bold text-[#800020]"
+        >
+          Review record →
+        </button>
+      </div>
+      {facts.length === 0 ? (
+        <p className="mt-4 text-xs text-gray-400">No key facts are recorded yet.</p>
+      ) : (
+        <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+          {facts.map(fact => {
+            const config = statusConfig[fact.status] || statusConfig.missing;
+            return (
+              <div key={fact.key} className="rounded-xl border border-gray-100 bg-gray-50/70 px-3 py-3">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="truncate text-[10px] font-bold uppercase tracking-wider text-gray-400">{fact.label}</p>
+                  <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${config.dot}`} />
+                </div>
+                <p className="mt-1 break-words text-sm font-semibold text-gray-900">
+                  {fact.value || 'Not recorded'}
+                </p>
+                <span className={`mt-2 inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold ${config.bg} ${config.text}`}>
+                  {config.label}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </section>
+  );
+}
+
 function TransactionBrief({
   propertyId,
   property,
@@ -3791,25 +4044,6 @@ function TransactionBrief({
   const [stageActionError, setStageActionError] = useState('');
   const [advancing, setAdvancing] = useState(false);
 
-  const DONE_DOCUMENT_STATUSES = new Set(['uploaded', 'approved', 'ai_complete', 'complete', 'completed']);
-  const sourceDocuments = checklistItems.length > 0
-    ? checklistItems
-    : (typeof pack?.getDocumentSchema === 'function'
-      ? pack.getDocumentSchema(property?.property_type || property?.type)
-      : (Array.isArray(pack?.documentSchema) ? pack.documentSchema : []));
-  const requiredDocuments = sourceDocuments.filter(item => item.required);
-  const uploadedSections = new Set(analyses.map(analysis => String(analysis.section || '').toLowerCase()));
-  const completedDocuments = requiredDocuments.filter(item =>
-    DONE_DOCUMENT_STATUSES.has(String(item.status || '').toLowerCase())
-      || item.uploaded === true
-      || uploadedSections.has(String(item.section || '').toLowerCase())
-  );
-  const missingDocuments = requiredDocuments.filter(item => !completedDocuments.includes(item));
-  const documentTotal = requiredDocuments.length || Number(briefing?.missingDocuments?.length || 0);
-  const documentComplete = requiredDocuments.length
-    ? completedDocuments.length
-    : Math.max(0, Number(briefing?.snapshot?.document_count || analyses.length) - Number(briefing?.missingDocuments?.length || 0));
-
   const participantRows = Array.isArray(coordination?.submissions)
     ? coordination.submissions
     : (Array.isArray(coordination?.parties) ? coordination.parties : []);
@@ -3823,37 +4057,30 @@ function TransactionBrief({
   const participantComplete = participantProgressRoles.filter(item =>
     participantStatuses.find(status => status.key === item.key)?.complete
   ).length;
-  const missingParticipants = participantStatuses.filter(item => item.required && !item.invited);
-  const incompleteParticipants = participantStatuses.filter(item => item.required && item.invited && !item.complete);
+  const documentStats = getDocumentRequirementStats(checklistItems, pack, property, analyses);
+  const { nextStage: nextMilestone, blockers: nextMilestoneBlockers } = getNextMilestoneBlockers({
+    stages,
+    currentStageIndex,
+    checklistItems,
+    analyses,
+    pack,
+    property,
+    participantStates: participantStatuses,
+    briefing,
+  });
 
-  const isRecordValue = field => {
-    const value = String(field?.value_text || '').trim().toLowerCase();
-    return value && !['n/a', 'na', 'not applicable', 'not_applicable', 'unknown'].includes(value)
-      && field?.status !== 'not_applicable';
-  };
   const recordSchemaKey = resolveSchemaKey(packId, pack, property?.name || property?.property_name);
   const requiredRecordFields = getRequiredRecordFields(recordSchemaKey);
-  const confirmedRecordKeys = new Set(recordFields.filter(field =>
-    ['verified', 'source_changed'].includes(field.status) && isRecordValue(field)
-  ).map(field => field.field_key));
   const confirmedRecordCount = requiredRecordFields.filter(field =>
-    confirmedRecordKeys.has(field.canonicalKey || field.key)
+    getRecordDefinitionState(field, recordFields).status === 'confirmed'
   ).length;
   const capturedAwaitingConfirmation = recordFields.filter(field =>
-    ['extracted', 'needs_review'].includes(field.status) && isRecordValue(field)
+    RECORD_AWAITING_STATUSES.has(field.status) && hasMeaningfulRecordValue(field)
   );
   const conflicts = recordFields.filter(field =>
-    ['conflicting', 'source_changed'].includes(field.status)
+    RECORD_CONFLICT_STATUSES.has(field.status)
   );
-  const briefingIssues = [
-    ...(Array.isArray(briefing?.risks) ? briefing.risks : []),
-    ...(Array.isArray(briefing?.open_items) ? briefing.open_items : []),
-  ];
-  const unresolvedIssueCount = conflicts.length + briefingIssues.length;
-  const failedDocuments = analyses.filter(analysis => analysis.processing_status === 'failed');
-  const criticalTasks = Array.isArray(briefing?.criticalPath)
-    ? briefing.criticalPath
-    : (Array.isArray(briefing?.blocking) ? briefing.blocking : []);
+  const recentChanges = getRecentCoordinatorChanges(events, analyses, recordFields);
   const goToRecord = field => {
     onTabChange?.('overview');
     const category = String(field?.field_key || field?.field_category || '').split('.')[0];
@@ -3862,44 +4089,6 @@ function TransactionBrief({
         ?.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }, 0);
   };
-  const goToTasks = () => {
-    onTabChange?.('overview');
-    window.setTimeout(() => {
-      document.getElementById('tasks-panel')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    }, 0);
-  };
-  const routeForBriefingText = text => {
-    const value = String(text || '').toLowerCase();
-    if (/(document|upload|file|nda|loi|agreement|checklist|report|certificate|binder|commitment|rent roll|inspection)/.test(value)) {
-      return { label: 'Open Documents', onClick: () => onTabChange?.('documents') };
-    }
-    if (/(invite|participant|buyer|seller|party|counsel|lender|advisor)/.test(value)) {
-      return { label: 'Open People', onClick: () => onTabChange?.('people') };
-    }
-    return { label: 'Review Overview', onClick: () => onTabChange?.('overview') };
-  };
-  const actualBlockers = criticalTasks.slice(0, 4).map((task, index) => ({
-      key: `task-${task.taskId || index}`,
-      text: task.item || task.title || task.text || 'Critical path task needs resolution',
-      action: { label: 'Review task', onClick: goToTasks },
-    }));
-
-  const briefingRecommendations = [
-    ...(Array.isArray(briefing?.actions) ? briefing.actions : []),
-    ...(Array.isArray(briefing?.next_actions) ? briefing.next_actions : []),
-  ].slice(0, 3).map((item, index) => {
-    const text = typeof item === 'string'
-      ? item
-      : (item.text || item.action || item.item || item.title || '');
-    return {
-      key: `briefing-${index}`,
-      tone: 'gray',
-      text: String(text).trim(),
-      detail: typeof item === 'object' ? (item.reason || item.note || '') : '',
-      action: routeForBriefingText(text),
-    };
-  }).filter(item => item.text);
-
   const stageRecommendation = getLifecycleAdvanceRecommendation(stages, currentStageIndex, analyses);
   const recommendationItems = [
     ...(stageRecommendation && stageDecision !== 'kept'
@@ -3918,20 +4107,6 @@ function TransactionBrief({
       detail: field.status === 'source_changed' ? 'A newer source changed the recorded value.' : 'Multiple sources disagree.',
       action: { label: 'Review record', onClick: () => goToRecord(field) },
     })),
-    ...missingDocuments.slice(0, 2).map(item => ({
-      key: `missing-${item.id || item.section}`,
-      tone: 'amber',
-      text: `${(item.assignedTo || item.assigned_to)?.length ? 'Request' : 'Upload'} ${item.label || item.name || 'required document'}`,
-      detail: 'Required for document collection.',
-      action: { label: 'Open Documents', onClick: () => onTabChange?.('documents') },
-    })),
-    ...missingParticipants.slice(0, 2).map(item => ({
-      key: `invite-${item.key}`,
-      tone: 'amber',
-      text: `Invite ${item.label}`,
-      detail: 'Required participant is not in the workspace yet.',
-      action: { label: 'Open People', onClick: () => onTabChange?.('people') },
-    })),
     ...capturedAwaitingConfirmation.slice(0, 2).map(field => ({
       key: `confirm-${field.id || field.field_key}`,
       tone: 'blue',
@@ -3939,14 +4114,6 @@ function TransactionBrief({
       detail: `Kontra extracted “${field.value_text}”.`,
       action: { label: 'Review record', onClick: () => goToRecord(field) },
     })),
-    ...criticalTasks.slice(0, 2).map((task, index) => ({
-      key: `task-${task.taskId || index}`,
-      tone: 'gray',
-      text: task.item || task.title || task.text || 'Review critical path task',
-      detail: task.note || 'This task is on the active transaction path.',
-      action: { label: 'Review task', onClick: goToTasks },
-    })),
-    ...briefingRecommendations,
   ].slice(0, 5);
 
   async function acceptStageRecommendation() {
@@ -3993,10 +4160,6 @@ function TransactionBrief({
   const transactionLabel = isCreTransaction
     ? 'Commercial Real Estate Acquisition'
     : (pack?.name || 'Transaction workspace');
-  const readinessLabel = readiness?.transaction_readiness?.status
-    || (readiness?.transaction_readiness?.overall_pct != null
-      ? `${Math.round(readiness.transaction_readiness.overall_pct)}%`
-      : 'Building');
   const toneClasses = {
     red: 'border-red-100 bg-red-50/60 text-red-700',
     amber: 'border-amber-100 bg-amber-50/60 text-amber-800',
@@ -4017,31 +4180,52 @@ function TransactionBrief({
         </span>
       </div>
 
-      <div className="mt-5 grid gap-3 sm:grid-cols-3">
+      <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <div className="rounded-xl border border-gray-200 bg-white px-4 py-3">
-          <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Document collection</p>
+          <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Documents</p>
           <p className="mt-1 text-lg font-bold text-gray-900">
-            {documentTotal > 0 ? `${documentComplete} of ${documentTotal}` : analyses.length}
+            {documentStats.requiredDocuments.length > 0
+              ? `${documentStats.receivedDocuments.length} of ${documentStats.requiredDocuments.length} received`
+              : analyses.length}
           </p>
           <p className="text-[11px] text-gray-500">
-            {missingDocuments.length > 0 ? `${missingDocuments.length} required missing` : 'No required document gaps'}
+            {documentStats.reviewDocuments.length > 0
+              ? `${documentStats.reviewDocuments.length} requiring review`
+              : 'No documents requiring review'}
           </p>
         </div>
         <div className="rounded-xl border border-gray-200 bg-white px-4 py-3">
-          <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Transaction verification / readiness</p>
-          <p className="mt-1 text-lg font-bold text-gray-900">{readinessLabel}</p>
+          <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Transaction Record</p>
+          <p className="mt-1 text-lg font-bold text-gray-900">
+            {requiredRecordFields.length > 0 ? `${confirmedRecordCount} of ${requiredRecordFields.length} confirmed` : '—'}
+          </p>
           <p className="text-[11px] text-gray-500">
             {requiredRecordFields.length > 0
-              ? `${confirmedRecordCount} of ${requiredRecordFields.length} required fields confirmed`
-              : 'Confirmed values and readiness are tracked separately'}
+              ? `${capturedAwaitingConfirmation.length} extracted fact${capturedAwaitingConfirmation.length === 1 ? '' : 's'} awaiting confirmation`
+              : 'No required field schema configured'}
           </p>
         </div>
         <div className="rounded-xl border border-gray-200 bg-white px-4 py-3">
-          <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Issues requiring attention</p>
-          <p className={`mt-1 text-lg font-bold ${unresolvedIssueCount > 0 ? 'text-red-700' : 'text-gray-900'}`}>{unresolvedIssueCount}</p>
+          <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Open Issues</p>
+          <p className={`mt-1 text-lg font-bold ${nextMilestoneBlockers.length > 0 || conflicts.length > 0 ? 'text-red-700' : 'text-gray-900'}`}>
+            {nextMilestoneBlockers.length}
+          </p>
           <p className="text-[11px] text-gray-500">
-            {conflicts.length > 0 ? `${conflicts.length} conflicting field${conflicts.length === 1 ? '' : 's'}` : 'No conflicting fields recorded'}
-            {capturedAwaitingConfirmation.length > 0 ? ` · ${capturedAwaitingConfirmation.length} facts awaiting confirmation` : ''}
+            {conflicts.length > 0
+              ? `${conflicts.length} conflict${conflicts.length === 1 ? '' : 's'}`
+              : 'No conflicts recorded'}
+            {nextMilestone
+              ? ` · blocks ${nextMilestone.label}`
+              : ' · no next milestone'}
+          </p>
+        </div>
+        <div className="rounded-xl border border-gray-200 bg-white px-4 py-3">
+          <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Participants</p>
+          <p className="mt-1 text-lg font-bold text-gray-900">
+            {participantProgressRoles.length > 0 ? `${participantComplete} of ${participantProgressRoles.length} active` : '—'}
+          </p>
+          <p className="text-[11px] text-gray-500">
+            {participantProgressRoles.length > 0 ? 'required participants active' : 'No external roles configured'}
           </p>
         </div>
       </div>
@@ -4082,44 +4266,45 @@ function TransactionBrief({
         </div>
 
         <div className="rounded-xl border border-gray-200 bg-white px-4 py-3">
-          <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Participants</p>
-          <p className="mt-1 text-sm font-bold text-gray-900">
-            {participantProgressRoles.length > 0
-              ? `${participantComplete} of ${participantProgressRoles.length} ${requiredParticipantRoles.length > 0 ? 'required ' : ''}complete`
-              : 'No external roles configured'}
-          </p>
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Participant status</p>
+            <button type="button" onClick={() => onTabChange?.('people')} className="text-[10px] font-bold text-[#800020]">
+              Open People →
+            </button>
+          </div>
           <div className="mt-2 space-y-1.5">
             {participantStatuses.slice(0, 4).map(item => (
               <div key={item.key} className="flex items-center justify-between gap-2 text-[11px]">
                 <span className="truncate text-gray-600">{item.label}</span>
                 <span className={`shrink-0 font-semibold ${item.complete ? 'text-emerald-600' : item.invited ? 'text-amber-600' : 'text-red-600'}`}>
-                   {item.stateLabel}
+                  {item.stateLabel}
                 </span>
               </div>
             ))}
             {participantStatuses.length > 4 && <p className="text-[10px] text-gray-400">+{participantStatuses.length - 4} more participants</p>}
           </div>
-          {(incompleteParticipants.length > 0 || missingParticipants.length > 0) && (
-            <button type="button" onClick={() => onTabChange?.('people')} className="mt-3 text-[10px] font-bold text-[#800020]">
-              Review participant status →
-            </button>
-          )}
         </div>
       </div>
 
-      {actualBlockers.length > 0 && (
+      {nextMilestoneBlockers.length > 0 && (
         <div className="mt-4 rounded-xl border border-red-100 bg-red-50/50 px-4 py-3">
           <div className="flex items-center justify-between gap-3">
-            <p className="text-[10px] font-bold uppercase tracking-wider text-red-700">Actual blockers</p>
-            <span className="text-[10px] font-semibold text-red-600">{actualBlockers.length}</span>
+            <p className="text-[10px] font-bold uppercase tracking-wider text-red-700">
+              Blockers to {nextMilestone?.label || 'the next milestone'}
+            </p>
+            <span className="text-[10px] font-semibold text-red-600">{nextMilestoneBlockers.length}</span>
           </div>
           <div className="mt-2 space-y-1.5">
-            {actualBlockers.slice(0, 4).map(blocker => (
+            {nextMilestoneBlockers.slice(0, 4).map(blocker => (
               <div key={blocker.key} className="flex items-center gap-2 text-xs text-red-800">
                 <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-red-500" />
                 <span className="min-w-0 flex-1">{blocker.text}</span>
-                <button type="button" onClick={blocker.action.onClick} className="shrink-0 text-[10px] font-bold underline underline-offset-2">
-                  {blocker.action.label}
+                <button
+                  type="button"
+                  onClick={() => onTabChange?.(blocker.participantKey ? 'people' : 'documents')}
+                  className="shrink-0 text-[10px] font-bold underline underline-offset-2"
+                >
+                  {blocker.participantKey ? 'Open People' : 'Review'}
                 </button>
               </div>
             ))}
@@ -4173,6 +4358,27 @@ function TransactionBrief({
           Keeping the current stage. Kontra will continue to show new evidence without changing it automatically.
         </p>
       )}
+
+      <div className="mt-4 rounded-xl border border-gray-200 bg-white px-4 py-3">
+        <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Recent Changes</p>
+        <p className="mt-1 text-xs text-gray-500">Meaningful activity since your last visit</p>
+        {recentChanges.length === 0 ? (
+          <p className="mt-3 text-xs text-gray-400">No recent uploads, joins, confirmations, conflicts, or stage changes.</p>
+        ) : (
+          <div className="mt-2 divide-y divide-gray-100">
+            {recentChanges.slice(0, 4).map(change => (
+              <div key={change.id} className="flex items-start justify-between gap-3 py-2 text-xs">
+                <span className="text-gray-700">{change.text}</span>
+                {change.date && (
+                  <span className="shrink-0 text-[10px] text-gray-400">
+                    {new Date(change.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                  </span>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
     </section>
   );
 }
@@ -4328,6 +4534,11 @@ function ParticipantOverview({ propertyId, property, pack, role, roleConfig, onT
   const requiredItems = assignedItems.filter(item => item.required);
   const requiredUploadedCount = requiredItems.filter(item => uploadedSections.has(item.section)).length;
   const pendingItems = assignedItems.filter(item => !uploadedSections.has(item.section));
+  const targetClose = property?.metadata_values?.target_close_date
+    || property?.closing_date
+    || property?.target_close_date
+    || property?.close_date;
+  const participantHasAction = pendingItems.length > 0;
 
   return (
     <div className="space-y-5">
@@ -4349,8 +4560,11 @@ function ParticipantOverview({ propertyId, property, pack, role, roleConfig, onT
             </p>
             {stage && (
               <p className="mt-2 text-xs font-semibold text-gray-700">
-                Transaction status: <span className="font-bold text-[#800020]">{stage.replace(/_/g, ' ')}</span>
+                Current stage: <span className="font-bold text-[#800020]">{stage.replace(/_/g, ' ')}</span>
               </p>
+            )}
+            {targetClose && (
+              <p className="mt-1 text-xs text-gray-500">Target close: {formatDateOnlyLabel(targetClose)}</p>
             )}
           </div>
         </div>
@@ -4375,10 +4589,17 @@ function ParticipantOverview({ propertyId, property, pack, role, roleConfig, onT
           )}
         </div>
 
-        {!loading && assignedItems.length === 0 && (
-          <p className="mt-5 text-sm leading-relaxed text-gray-500">
-            No documents are currently assigned to your role. The deal coordinator will share any files that need your review.
-          </p>
+        {!loading && !participantHasAction && (
+          <div className="mt-5 rounded-xl border border-emerald-100 bg-emerald-50/60 px-4 py-3">
+            <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-700">Nothing requires your action right now</p>
+            <p className="mt-1 text-xs leading-relaxed text-gray-600">
+              {property?.name || property?.property_name} · {roleConfig.label} · {stage ? `Current stage: ${stage.replace(/_/g, ' ')}` : 'Stage not yet reported'}
+              {targetClose ? ` · Target close ${formatDateOnlyLabel(targetClose)}` : ''}
+            </p>
+            <p className="mt-1 text-[11px] text-gray-500">
+              The coordinator will share any new files or requests assigned to your role.
+            </p>
+          </div>
         )}
 
         {!loading && pendingItems.length > 0 && (
@@ -4399,13 +4620,23 @@ function ParticipantOverview({ propertyId, property, pack, role, roleConfig, onT
           </div>
         )}
 
-        <button
-          type="button"
-          onClick={() => onTabChange('documents')}
-          className="mt-5 rounded-xl bg-[#800020] px-4 py-2.5 text-xs font-bold text-white transition hover:opacity-90"
-        >
-          Open my documents →
-        </button>
+        {participantHasAction ? (
+          <button
+            type="button"
+            onClick={() => onTabChange('documents')}
+            className="mt-5 rounded-xl bg-[#800020] px-4 py-2.5 text-xs font-bold text-white transition hover:opacity-90"
+          >
+            Open my documents →
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={() => onTabChange('documents')}
+            className="mt-5 text-[11px] font-semibold text-gray-500 underline underline-offset-2 hover:text-gray-700"
+          >
+            View shared documents
+          </button>
+        )}
       </section>
     </div>
   );
@@ -4472,7 +4703,10 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
     analysis.processing_status === 'failed',
   );
   const processedImpact = analyses
-    .filter(analysis => analysis.analysis?.processing_impact)
+    .filter(analysis => {
+      const impact = analysis.analysis?.processing_impact;
+      return impact && (Number(impact.overallDelta || 0) !== 0 || Number(impact.confirmedDelta || 0) > 0);
+    })
     .slice(-3)
     .reverse();
 
@@ -4527,29 +4761,13 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
     || (readinessPct === 0 ? 'Getting Started' : 'Building');
   const recordSchemaKey = resolveSchemaKey(packId, pack, property?.name || property?.property_name);
   const requiredRecordFields = getRequiredRecordFields(recordSchemaKey);
-  const confirmedRecordFieldKeys = new Set(
-    recordFields
-      .filter(field => {
-        const value = String(field.value_text || '').trim().toLowerCase();
-        return ['verified', 'source_changed'].includes(field.status)
-          && value && !['n/a', 'na', 'not applicable', 'not_applicable', 'unknown'].includes(value);
-      })
-      .map(field => field.field_key),
-  );
   const confirmedRequiredCount = requiredRecordFields.filter(field =>
-    confirmedRecordFieldKeys.has(field.canonicalKey || field.key)
+    getRecordDefinitionState(field, recordFields).status === 'confirmed'
   ).length;
   const capturedRequiredCount = requiredRecordFields.filter(definition => {
-    const keys = new Set([definition.key, definition.aliasOf, definition.canonicalKey].filter(Boolean));
-    return recordFields.some(field => {
-      const value = String(field.value_text || '').trim().toLowerCase();
-      return keys.has(field.field_key)
-        && value
-        && !['n/a', 'na', 'not applicable', 'not_applicable', 'unknown'].includes(value)
-        && field.status !== 'not_applicable'
-        && !['verified', 'source_changed'].includes(field.status);
-    });
+    return getRecordDefinitionState(definition, recordFields).status === 'awaiting';
   }).length;
+  const keyFacts = getCoordinatorRecordFacts(recordSchemaKey, recordFields);
 
   return (
     <div className="space-y-5">
@@ -4587,7 +4805,7 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
             return (
               <div key={analysis.id} className="mt-3 border-t border-gray-100 pt-3 text-xs text-gray-600">
                 <span className="font-semibold text-gray-800">{analysis.filename || analysis.section}</span>
-                {' '}updated readiness from {Math.round(impact.before?.overall || 0)}% to {Math.round(impact.after?.overall || 0)}%
+                {' '}updated Record Verification from {Math.round(impact.before?.overall || 0)}% to {Math.round(impact.after?.overall || 0)}%
                 {delta !== 0 && <span className={`ml-1 font-semibold ${delta > 0 ? 'text-emerald-600' : 'text-amber-600'}`}>({delta > 0 ? '+' : ''}{delta} pts)</span>}
                 {Number(impact.confirmedDelta || 0) > 0 && <span className="ml-1 text-gray-500">· {impact.confirmedDelta} field{impact.confirmedDelta === 1 ? '' : 's'} confirmed</span>}
               </div>
@@ -4644,7 +4862,7 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
         <div className="mt-6 grid gap-6 border-t border-gray-100 pt-5 lg:grid-cols-[minmax(180px,0.7fr)_minmax(0,1.3fr)]">
           <div>
             <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">
-              {readinessPhase === 'closing' ? 'Closing readiness' : readinessPhase === 'complete' ? 'Transaction complete' : 'Transaction readiness'}
+              {readinessPhase === 'complete' ? 'Transaction complete' : 'Record Verification'}
             </p>
             <div className="mt-1 flex items-baseline gap-2">
               <span className="text-4xl font-bold tracking-tight text-gray-900">
@@ -4653,7 +4871,7 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
               <span className="text-xs font-semibold text-gray-500">{readinessStatus}</span>
             </div>
             <p className="mt-1 max-w-xs text-xs leading-relaxed text-gray-400">
-              Completeness and confirmation of the structured Transaction Record.
+              Completeness and confirmation of the structured Transaction Record — not a measure of overall transaction readiness.
             </p>
             {requiredRecordFields.length > 0 && (
               <div className="mt-2 space-y-0.5 text-[11px] text-gray-500">
@@ -4678,6 +4896,10 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
             isCoordinator
             compact
           />
+        </div>
+
+        <div className="mt-5">
+          <KeyTransactionFacts facts={keyFacts} onTabChange={onTabChange} />
         </div>
 
         <TransactionDetailsPanel
@@ -6419,11 +6641,9 @@ export default function DealRoomPage() {
                 <p className="text-[10px] text-gray-400">Review the documents assigned to your role below · Access via secure invitation link</p>
               </div>
             </div>
-            <Link to="/create-deal-room"
-              className="shrink-0 px-4 py-2 rounded-xl text-xs font-bold text-white transition hover:opacity-90"
-              style={{ background: roleConfig.color }}>
-              Create Your Room →
-            </Link>
+            <span className="shrink-0 rounded-full border border-gray-200 bg-white/70 px-3 py-1.5 text-[10px] font-semibold text-gray-500">
+              Role-scoped access
+            </span>
           </div>
         </div>
       ) : (
@@ -6441,11 +6661,9 @@ export default function DealRoomPage() {
                 <p className="text-[10px] text-gray-400">Role-scoped deal room · Demo mode</p>
               </div>
             </div>
-            <Link to="/create-deal-room"
-              className="shrink-0 px-4 py-2 rounded-xl text-xs font-bold text-white transition hover:opacity-90"
-              style={{ background: roleConfig.color }}>
-              Create Your Room →
-            </Link>
+            <span className="shrink-0 rounded-full border border-gray-200 bg-white px-3 py-1.5 text-[10px] font-semibold text-gray-500">
+              Role-scoped access
+            </span>
           </div>
         </div>
       )}
