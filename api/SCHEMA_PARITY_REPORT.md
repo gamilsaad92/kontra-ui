@@ -1,6 +1,6 @@
 # Kontra schema parity report
 
-**Scope:** release-blocker audit only. No production schema was modified.
+**Scope:** release-blocker audit and the authorized Production migration.
 
 ## Canonical migration map
 
@@ -73,21 +73,20 @@ Missing:
 - migration 019 processing/correlation indexes and the generated-task
   uniqueness index
 
-The production database has not been changed. A preflight found two existing
-`deal_room_tasks` rows with the same generated-task key:
+The preflight found two existing `deal_room_tasks` rows with the same
+generated-task key:
 
 `launch-task-validation-mspjv9c1 / missing_participant / party_role /
 missing-role:insurer`
 
-The required unique index in migration 019 cannot be created while those
-duplicates exist. No rows were deleted or altered, and migration 019 was not
-partially applied. The production action remains: resolve that duplicate
-through an explicitly approved data decision, then apply the committed,
-self-contained 019 migration through the authorized Supabase migration path
-and rerun the read-only audit.
+The workspace was confirmed as disposable validation data
+(`Task persistence validation`, `validation@example.invalid`). Only those two
+duplicate-key task rows were deleted; three unrelated task rows in the
+workspace were preserved. The duplicate preflight then returned zero groups.
+Migration 019 was applied through the authorized Supabase management SQL path.
 
 ## Release status
 
-**NOT READY** — Development 015 parity is complete, but Production 019 parity
-is not established because the required uniqueness index is currently blocked
-by pre-existing duplicate task data.
+**PASS** — Development 015 parity is complete and Production 019 parity is
+complete. The production audit confirms `deal_events`, all processing/task/event
+columns, all required indexes, and the existing settlement/seal structures.
