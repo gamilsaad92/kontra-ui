@@ -3303,10 +3303,12 @@ app.get('/api/public/deal-room/:propertyId/analyses', async (req, res) => {
     if (error) throw error;
     // Assign version by section-scoped sequence (no extra DB column needed)
     const sectionCounters = {};
-    const allWithVersion = (data || []).map(a => {
+    const allWithVersion = (data || [])
+      .filter(a => a.section !== 'cross_document_verification')
+      .map(a => {
       sectionCounters[a.section] = (sectionCounters[a.section] || 0) + 1;
       return { ...a, version: sectionCounters[a.section] };
-    });
+      });
     // Build history map (all versions per section, newest last)
     const history = {};
     for (const a of allWithVersion) {

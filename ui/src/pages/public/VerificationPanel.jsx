@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { getRoomAuthHeaders } from "../../lib/inviteUtils";
 
 const API_BASE = (import.meta.env.VITE_API_BASE || "").replace(/\/+$/, "");
 
@@ -196,13 +197,14 @@ export default function VerificationPanel({
     try {
       await fetch(`${API_BASE}/api/public/deal-room/${propertyId}/verification/run`, {
         method: "POST",
+        headers: getRoomAuthHeaders(propertyId),
       });
     } catch { /* best effort */ }
     // Wait briefly then reload to pick up results
     await new Promise(r => setTimeout(r, 2500));
     try {
       const res = await fetch(`${API_BASE}/api/public/deal-room/${propertyId}/verification`, {
-        headers: { "Cache-Control": "no-store" },
+        headers: getRoomAuthHeaders(propertyId, { "Cache-Control": "no-store" }),
       });
       if (res.ok) {
         const json = await res.json();
@@ -222,7 +224,7 @@ export default function VerificationPanel({
     async function load() {
       try {
         const res = await fetch(`${API_BASE}/api/public/deal-room/${propertyId}/verification`, {
-          headers: { "Cache-Control": "no-store" },
+          headers: getRoomAuthHeaders(propertyId, { "Cache-Control": "no-store" }),
         });
         if (!res.ok) throw new Error("not ok");
         const json = await res.json();
@@ -257,12 +259,13 @@ export default function VerificationPanel({
     try {
       await fetch(`${API_BASE}/api/public/deal-room/${propertyId}/verification/run`, {
         method: "POST",
+        headers: getRoomAuthHeaders(propertyId),
       });
       // Reload after short delay to pick up results
       setTimeout(async () => {
         try {
           const res = await fetch(`${API_BASE}/api/public/deal-room/${propertyId}/verification`, {
-            headers: { "Cache-Control": "no-store" },
+            headers: getRoomAuthHeaders(propertyId, { "Cache-Control": "no-store" }),
           });
           if (res.ok) {
             const json = await res.json();
