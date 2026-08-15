@@ -77,3 +77,45 @@ uri = "file://screenshots/acceptance-buyer-scoped-view.jpg"
 type = "image"
 title = "Buyer-scoped acceptance view"
 description = "Live preview of the isolated acceptance room using the buyer role request; it remains a participant workspace and does not expose coordinator content."
+
+[[outputs]]
+id = "b9CgpgA83nc3p4A5IJFKI"
+uri = "file://screenshots/acceptance-coordinator-overview.jpg"
+type = "image"
+title = "acceptance-coordinator-overview.jpg"
+description = "Authenticated Coordinator Overview acceptance screenshot."
+
+[[outputs]]
+id = "ao7nIwoC5clPvaeSQo38c"
+uri = "file://screenshots/acceptance-coordinator-people.jpg"
+type = "image"
+title = "acceptance-coordinator-people.jpg"
+description = "Authenticated Coordinator Overview acceptance screenshot."
+
+[[outputs]]
+id = "YWAYWKakdgQAsfpH22piH"
+uri = "file://screenshots/acceptance-buyer-overview.jpg"
+type = "image"
+title = "acceptance-buyer-overview.jpg"
+description = "Authenticated Coordinator Overview acceptance screenshot."
+
+[[outputs]]
+id = "GeQHza80_z5xaq_LFV9DV"
+uri = "file://screenshots/acceptance-seller-overview.jpg"
+type = "image"
+title = "acceptance-seller-overview.jpg"
+description = "Authenticated Coordinator Overview acceptance screenshot."
+
+[[outputs]]
+id = "asDqP6gf5wrfv1nj3RzLa"
+uri = "file://screenshots/acceptance-legal_advisor-overview.jpg"
+type = "image"
+title = "acceptance-legal_advisor-overview.jpg"
+description = "Authenticated Coordinator Overview acceptance screenshot."
+
+[[outputs]]
+id = "8yqYo081mVnPEvfk0bh_R"
+uri = "file://screenshots/acceptance-financial_advisor-overview.jpg"
+type = "image"
+title = "acceptance-financial_advisor-overview.jpg"
+description = "Authenticated Coordinator Overview acceptance screenshot."
