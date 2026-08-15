@@ -3018,8 +3018,13 @@ function getSectionAssignments(packId, propertyType) {
   return null;
 }
 
+function normalizeAccessRole(role) {
+  return String(role || '').trim().toLowerCase().replace(/\s+/g, '_');
+}
+
 async function getCustomPackAssignedSections(packId, role) {
   if (!packId?.startsWith('ws_') || !role) return null;
+  const normalizedRole = normalizeAccessRole(role);
   try {
     const { data, error } = await supabase
       .from('custom_workflow_packs')
@@ -3035,7 +3040,7 @@ async function getCustomPackAssignedSections(packId, role) {
             : document?.assignedRole
               ? [document.assignedRole]
               : [];
-          return assignedTo.includes(role);
+          return assignedTo.some(assignedRole => normalizeAccessRole(assignedRole) === normalizedRole);
         })
         .map((document) => document.section || document.id)
         .filter(Boolean),
@@ -3233,6 +3238,7 @@ app.get('/api/public/deal-room/:propertyId/preview', async (req, res) => {
 
 async function getAssignedSectionsForAccess(propertyId, packId, propertyType, access) {
   if (access.mode !== 'participant') return null;
+  const normalizedRole = normalizeAccessRole(access.role);
 
   // Prefer the room's persisted checklist because custom packs are not
   // necessarily present in the server's built-in assignment map.
@@ -3243,7 +3249,8 @@ async function getAssignedSectionsForAccess(propertyId, packId, propertyType, ac
     .maybeSingle();
   const checklistItems = Array.isArray(room?.checklist_items) ? room.checklist_items : [];
   const persistedSections = checklistItems
-    .filter(item => item && Array.isArray(item.assignedTo) && item.assignedTo.includes(access.role))
+    .filter(item => item && Array.isArray(item.assignedTo)
+      && item.assignedTo.some(role => normalizeAccessRole(role) === normalizedRole))
     .map(item => item.section)
     .filter(Boolean);
   if (persistedSections.length > 0) return new Set(persistedSections);
@@ -3254,7 +3261,7 @@ async function getAssignedSectionsForAccess(propertyId, packId, propertyType, ac
   const assignments = getSectionAssignments(packId, propertyType);
   if (!assignments) return new Set();
   return new Set(Object.entries(assignments)
-    .filter(([, roles]) => roles.includes(access.role))
+    .filter(([, roles]) => roles.some(role => normalizeAccessRole(role) === normalizedRole))
     .map(([section]) => section));
 }
 

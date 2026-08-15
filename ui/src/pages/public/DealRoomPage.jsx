@@ -5405,7 +5405,8 @@ export default function DealRoomPage() {
   const inviteToken = searchParams.get("invite") || null;
   const [participantSession, setParticipantSession] = useState(() => getInviteSession(propertyId));
   const [accessRole, setAccessRole] = useState(null);
-  const role = accessRole || (participantSession ? "guest" : requestedRole);
+  const [participantRole, setParticipantRole] = useState(null);
+  const role = accessRole || participantRole || (participantSession ? "guest" : requestedRole);
 
   const [showDemoIntro, setShowDemoIntro] = useState(() => {
     const demoIds = ['kontra-demo', 'kontra-demo-biz', 'kontra-demo-fundraising'];
@@ -5436,7 +5437,12 @@ export default function DealRoomPage() {
   const [repackLoading, setRepackLoading] = useState(false);
 
   const onAnalysisSaved = () => setAnalysesRefreshKey(k => k + 1);
-  const handleParticipantUnlocked = useCallback((sessionToken) => {
+  const handleParticipantUnlocked = useCallback((unlock) => {
+    const sessionToken = typeof unlock === "string" ? unlock : unlock?.sessionToken;
+    if (!sessionToken) return;
+    if (typeof unlock === "object" && unlock.roleKey) {
+      setParticipantRole(unlock.roleKey);
+    }
     setParticipantSession(sessionToken);
   }, []);
 
@@ -5670,6 +5676,11 @@ export default function DealRoomPage() {
     || pack?.id === 'tokenization'
     || pack?.transactionType === 'tokenization';
 
+  // This hook must run on the PIN-gate render and the unlocked render alike.
+  // Calling it below the gate's early return triggers React error #310
+  // ("Rendered more hooks than during the previous render").
+  usePageTitle(property?.name || property?.property_name);
+
   if (inviteToken && !participantSession) {
     return (
       <DealRoomPinGate
@@ -5728,8 +5739,6 @@ export default function DealRoomPage() {
   const visibleOutstandingSections = (roleConfig.sections || []).filter(
     (s) => pack.outstandingItemsSections?.includes(s)
   );
-
-  usePageTitle(property?.name || property?.property_name);
 
   // Task #187 — prevent participants from seeing room content before their session
   // is confirmed on slow connections. When an invite token is present the page

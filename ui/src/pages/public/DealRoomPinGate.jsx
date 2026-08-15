@@ -122,7 +122,7 @@ export default function DealRoomPinGate({ propertyId, role, inviteToken, onUnloc
       if (result.success) {
         storeInviteSession(propertyId, result.session_token, result.expires_at);
         touchSession(result.session_token).catch(() => {});
-        onUnlocked(result.session_token);
+        onUnlocked({ sessionToken: result.session_token, roleKey: result.role_key });
         return;
       }
       if (result.requires_pin) {
@@ -157,7 +157,7 @@ export default function DealRoomPinGate({ propertyId, role, inviteToken, onUnloc
     if (result.success) {
       storeInviteSession(propertyId, result.session_token, result.expires_at);
       touchSession(result.session_token).catch(() => {});
-      onUnlocked(result.session_token);
+      onUnlocked({ sessionToken: result.session_token, roleKey: result.role_key });
     } else {
       if (result.error === 'locked') {
         setLockedUntil(result.locked_until);

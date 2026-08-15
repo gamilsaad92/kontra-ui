@@ -2,6 +2,8 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { getWorkflowPack, DEFAULT_PACK_ID } from "../../lib/workflowPacks";
 import { getRoomAuthHeaders } from "../../lib/inviteUtils";
 
+const normalizeRoleKey = (value) => String(value || "").trim().toLowerCase().replace(/\s+/g, "_");
+
 const API_BASE = (import.meta.env.VITE_API_BASE || "").replace(/\/+$/, "");
 
 // ── helpers ──────────────────────────────────────────────────────────────────
@@ -819,12 +821,13 @@ export default function DocumentChecklistPanel({
       ? item.assignedTo : (configured?.assignedTo || []);
     return configured ? { ...configured, ...item, assignedTo } : { ...item, assignedTo };
   });
-  const myItems = allItems.filter(i => (i.assignedTo || []).includes(role));
+  const normalizedRole = normalizeRoleKey(role);
+  const myItems = allItems.filter(i =>
+    (i.assignedTo || []).some(assignedRole => normalizeRoleKey(assignedRole) === normalizedRole)
+  );
   const template = isCoordinator
     ? allItems
-    : myItems.length > 0
-      ? myItems
-      : allItems; // reviewer with no assigned docs: show all (read-only view)
+    : myItems;
 
   const requiredItems = template.filter(i => i.required);
   const doneCount = template.filter(i => uploadedSections.has(i.section)).length;
@@ -1231,11 +1234,17 @@ export default function DocumentChecklistPanel({
               <div className="text-center py-6 text-sm text-gray-400">Loading checklist…</div>
             ) : (
               <>
-                {template.length === 0 ? (
+                 {template.length === 0 ? (
                   <div className="text-center py-8">
-                    <p className="text-sm font-semibold text-gray-500 mb-1">No documents yet</p>
+                     <p className="text-sm font-semibold text-gray-500 mb-1">
+                       {!isCoordinator && allItems.length > 0
+                         ? "No documents are currently assigned to your role"
+                         : "No documents yet"}
+                     </p>
                     <p className="text-xs text-gray-400">
-                      Upload documents and invite participants to begin tracking your transaction.
+                       {!isCoordinator && allItems.length > 0
+                         ? "The deal coordinator will share any files that need your review."
+                         : "Upload documents and invite participants to begin tracking your transaction."}
                     </p>
                   </div>
                 ) : isCoordinator ? (
