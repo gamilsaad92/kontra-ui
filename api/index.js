@@ -3293,7 +3293,10 @@ app.get('/api/public/deal-room/:propertyId/analyses', async (req, res) => {
     if (error && /post_completion|processing_status|source_hash|extraction_version|correlation_id|failure_reason/i.test(error.message || '')) {
       ({ data, error } = await supabase
         .from('deal_analyses')
-        .select('id, section, filename, analysis, uploaded_by_role, created_at, storage_path, processing_status, source_hash, extraction_version, processing_attempt, correlation_id, failure_reason, processing_started_at, processing_completed_at')
+        // Production may still be on the pre-pipeline schema. Keep this
+        // fallback strictly to columns that existed before migration 019;
+        // otherwise participant reads silently degrade to an empty list.
+        .select('id, section, filename, analysis, uploaded_by_role, created_at, storage_path')
         .eq('property_id', propertyId)
         .order('created_at', { ascending: true }));
     }
@@ -3939,6 +3942,7 @@ app.post('/api/public/deal-room/:propertyId/track-document', upload.single('file
   const { propertyId } = req.params;
   const { section, role } = req.body || {};
   if (!propertyId || !section) return res.status(400).json({ error: 'propertyId and section required' });
+  if (!req.file) return res.status(400).json({ error: 'FILE_REQUIRED', message: 'Please choose a file before uploading.' });
 
   const access = await getRoomAccessContext(req, propertyId);
   if (access.mode === 'anonymous') return accessDenied(res);
