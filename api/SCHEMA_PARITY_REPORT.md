@@ -33,16 +33,14 @@ Present:
 - task-engine and durable pipeline columns
 - event metadata columns
 
-Missing from the current development schema:
+The five previously missing provenance columns were replayed from the updated
+canonical migration 015 in Development and are now present:
 
 - `transaction_record_fields.source_doc_version`
 - `transaction_record_fields.source_file_hash`
 - `transaction_record_approvals.is_manual`
 - `transaction_record_approvals.source_doc_id`
 - `transaction_record_approvals.source_file_hash`
-
-These are covered by the updated canonical migration 015. They were not added
-directly during this audit.
 
 ### Production Supabase
 
@@ -75,12 +73,21 @@ Missing:
 - migration 019 processing/correlation indexes and the generated-task
   uniqueness index
 
-The production database has not been changed. The required production action
-is to apply the committed, self-contained 019 migration through the authorized
-Supabase migration path, then re-run the read-only audit. Development should
-receive the updated 015 replay before the environments are considered equal.
+The production database has not been changed. A preflight found two existing
+`deal_room_tasks` rows with the same generated-task key:
+
+`launch-task-validation-mspjv9c1 / missing_participant / party_role /
+missing-role:insurer`
+
+The required unique index in migration 019 cannot be created while those
+duplicates exist. No rows were deleted or altered, and migration 019 was not
+partially applied. The production action remains: resolve that duplicate
+through an explicitly approved data decision, then apply the committed,
+self-contained 019 migration through the authorized Supabase migration path
+and rerun the read-only audit.
 
 ## Release status
 
-**NOT READY** — participant state is reconciled, but production schema parity
-is not established and production migration approval is intentionally absent.
+**NOT READY** — Development 015 parity is complete, but Production 019 parity
+is not established because the required uniqueness index is currently blocked
+by pre-existing duplicate task data.
