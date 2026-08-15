@@ -39,7 +39,7 @@ outputType = "console"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "cd kontra-ui-clone/api && PORT=3001 NODE_ENV=development SUPABASE_URL=${SUPABASE_URL:-https://placeholder.supabase.co} SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY:-placeholder-key} OPENAI_API_KEY=${OPENAI_API_KEY} node index.js"
+args = "cd kontra-ui-clone/api && PORT=3001 NODE_ENV=development SUPABASE_URL=${SUPABASE_URL:-https://placeholder.supabase.co} SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY:-placeholder-key} OPENAI_API_KEY=${AI_INTEGRATIONS_OPENAI_API_KEY} OPENAI_BASE_URL=${AI_INTEGRATIONS_OPENAI_BASE_URL} node index.js"
 waitForPort = 3001
 
 [[workflows.workflow]]
