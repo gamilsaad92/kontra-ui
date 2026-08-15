@@ -169,7 +169,10 @@ async function getVerificationState(propertyId) {
   return {
     status: latest.status || (checks.length ? 'complete' : 'pending'),
     summary: latest.summary || summarizeChecks(checks),
-    runs: checks,
+    // The UI renders each verification run as an object containing `checks`.
+    // Returning the checks array directly makes a pending check look like a
+    // run with zero checks (and produces the misleading "Run #1 · 0 checks").
+    runs: rows[0] ? [latest] : [],
     run_at: latest.run_at || rows[0]?.created_at || null,
   };
 }
