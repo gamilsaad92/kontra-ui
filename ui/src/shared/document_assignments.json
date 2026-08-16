@@ -1,5 +1,5 @@
 {
-  "_comment": "Server-side source of truth for which role is responsible for each document section, per pack. The backend analyses endpoint reads this to filter returned analyses by role. Keep in sync with the assignedTo arrays in ui/src/lib/workflowPacks/*.js. coordinatorRoles lists roles with canManage:true that always see all documents.",
+  "_comment": "Server-side source of truth for document responsibility by pack. CRE arrays lead with canonical buyer/seller/advisor roles and retain historical keys only as a read/access fallback for persisted rooms. coordinatorRoles lists roles with canManage:true that always see all documents.",
   "business_acquisition": {
     "coordinatorRoles": ["buyer"],
     "sections": {
@@ -14,62 +14,62 @@
     }
   },
   "cre_acquisition": {
-    "coordinatorRoles": ["owner", "lender"],
+    "coordinatorRoles": ["owner"],
     "byPropertyType": {
       "Multifamily": {
-        "purchase_agreement": ["owner"],
-        "rent_roll":          ["owner"],
-        "financials":         ["owner"],
-        "insurance":          ["insurer"],
-        "inspection":         ["inspector"],
-        "estoppel":           ["owner"],
-        "environmental":      ["inspector"],
-        "survey":             ["owner"],
-        "title":              ["attorney"]
+        "purchase_agreement": ["buyer", "seller", "legal_advisor", "owner", "attorney"],
+        "rent_roll":          ["seller", "financial_advisor", "owner", "lender"],
+        "financials":         ["seller", "financial_advisor", "owner", "lender"],
+        "insurance":          ["seller", "financial_advisor", "insurer"],
+        "inspection":         ["buyer", "financial_advisor", "inspector"],
+        "estoppel":           ["seller", "legal_advisor", "owner", "attorney"],
+        "environmental":      ["buyer", "financial_advisor", "inspector"],
+        "survey":             ["buyer", "legal_advisor", "owner", "attorney"],
+        "title":              ["buyer", "legal_advisor", "attorney"]
       },
       "Office": {
-        "purchase_agreement": ["owner"],
-        "rent_roll":          ["owner"],
-        "financials":         ["owner"],
-        "insurance":          ["insurer"],
-        "inspection":         ["inspector"],
-        "estoppel":           ["owner"],
-        "environmental":      ["inspector"],
-        "survey":             ["owner"],
-        "title":              ["attorney"],
-        "legal":              ["attorney"]
+        "purchase_agreement": ["buyer", "seller", "legal_advisor", "owner", "attorney"],
+        "rent_roll":          ["seller", "financial_advisor", "owner", "lender"],
+        "financials":         ["seller", "financial_advisor", "owner", "lender"],
+        "insurance":          ["seller", "financial_advisor", "insurer"],
+        "inspection":         ["buyer", "financial_advisor", "inspector"],
+        "estoppel":           ["seller", "legal_advisor", "owner", "attorney"],
+        "environmental":      ["buyer", "financial_advisor", "inspector"],
+        "survey":             ["buyer", "legal_advisor", "owner", "attorney"],
+        "title":              ["buyer", "legal_advisor", "attorney"],
+        "legal":              ["buyer", "seller", "legal_advisor", "attorney"]
       },
       "Industrial": {
-        "purchase_agreement": ["owner"],
-        "financials":         ["owner"],
-        "insurance":          ["insurer"],
-        "inspection":         ["inspector"],
-        "environmental":      ["inspector"],
-        "survey":             ["owner"],
-        "title":              ["attorney"],
-        "legal":              ["attorney"]
+        "purchase_agreement": ["buyer", "seller", "legal_advisor", "owner", "attorney"],
+        "financials":         ["seller", "financial_advisor", "owner", "lender"],
+        "insurance":          ["seller", "financial_advisor", "insurer"],
+        "inspection":         ["buyer", "financial_advisor", "inspector"],
+        "environmental":      ["buyer", "financial_advisor", "inspector"],
+        "survey":             ["buyer", "legal_advisor", "owner", "attorney"],
+        "title":              ["buyer", "legal_advisor", "attorney"],
+        "legal":              ["buyer", "seller", "legal_advisor", "attorney"]
       },
       "Hotel": {
-        "purchase_agreement": ["owner"],
-        "brand_standards":    ["owner"],
-        "legal":              ["attorney"],
-        "financials":         ["owner"],
-        "insurance":          ["insurer"],
-        "inspection":         ["inspector"],
-        "environmental":      ["inspector"],
-        "survey":             ["owner"],
-        "title":              ["attorney"]
+        "purchase_agreement": ["buyer", "seller", "legal_advisor", "owner", "attorney"],
+        "brand_standards":    ["seller", "legal_advisor", "owner", "attorney"],
+        "legal":              ["buyer", "seller", "legal_advisor", "attorney"],
+        "financials":         ["seller", "financial_advisor", "owner", "lender"],
+        "insurance":          ["seller", "financial_advisor", "insurer"],
+        "inspection":         ["buyer", "financial_advisor", "inspector"],
+        "environmental":      ["buyer", "financial_advisor", "inspector"],
+        "survey":             ["buyer", "legal_advisor", "owner", "attorney"],
+        "title":              ["buyer", "legal_advisor", "attorney"]
       },
       "Retail": {
-        "purchase_agreement": ["owner"],
-        "rent_roll":          ["owner"],
-        "financials":         ["owner"],
-        "insurance":          ["insurer"],
-        "inspection":         ["inspector"],
-        "estoppel":           ["owner"],
-        "environmental":      ["inspector"],
-        "survey":             ["owner"],
-        "title":              ["attorney"]
+        "purchase_agreement": ["buyer", "seller", "legal_advisor", "owner", "attorney"],
+        "rent_roll":          ["seller", "financial_advisor", "owner", "lender"],
+        "financials":         ["seller", "financial_advisor", "owner", "lender"],
+        "insurance":          ["seller", "financial_advisor", "insurer"],
+        "inspection":         ["buyer", "financial_advisor", "inspector"],
+        "estoppel":           ["seller", "legal_advisor", "owner", "attorney"],
+        "environmental":      ["buyer", "financial_advisor", "inspector"],
+        "survey":             ["buyer", "legal_advisor", "owner", "attorney"],
+        "title":              ["buyer", "legal_advisor", "attorney"]
       }
     }
   },

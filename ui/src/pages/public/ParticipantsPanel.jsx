@@ -367,10 +367,9 @@ export default function ParticipantsPanel({
     const STATUS_ORDER = { accepted: 0, pending: 1, expired: 2, revoked: 3, superseded: 4 };
 
     // Coordinator rows at the top — shown with "Owner" badge, no invite flow
-    const allKnownRoleKeys = new Set([
-      ...invitableRoles.map(r => r.key),
-      ...coordinatorRoles.map(r => r.key),
-    ]);
+    // Preserve metadata for persisted legacy CRE invites without exposing
+    // legacyOnly roles as new invitation choices.
+    const allKnownRoleKeys = new Set(pack.roles.map(r => r.key));
     const coordRows = coordinatorRoles.map(role => ({
       role, invite: null, isCoordinator: true, isCustomRole: false,
     }));
