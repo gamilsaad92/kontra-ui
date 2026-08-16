@@ -108,6 +108,45 @@ describe('room access and checklist scoping', () => {
     expect(items).toHaveLength(3);
   });
 
+  it('does not show a participant a persisted row just because the pack fallback mentions that role', () => {
+    const creAssignments = {
+      purchase_agreement: ['buyer', 'seller', 'legal_advisor', 'owner', 'attorney'],
+      inspection: ['buyer', 'financial_advisor', 'inspector'],
+      title: ['buyer', 'legal_advisor', 'attorney'],
+      financing: ['lender'],
+    };
+    const items = [
+      { section: 'purchase_agreement', assignedTo: ['owner'] },
+      { section: 'inspection', assignedTo: ['inspector'] },
+      { section: 'title', assignedTo: ['attorney'] },
+      { section: 'financing', assignedTo: ['lender'] },
+    ];
+
+    expect(app.filterChecklistItemsByRole(items, 'buyer', creAssignments).map(item => item.section))
+      .toEqual([]);
+    expect(app.filterChecklistItemsByRole(items, 'inspector', creAssignments).map(item => item.section))
+      .toEqual(['inspection']);
+    expect(app.filterChecklistItemsByRole(items, 'attorney', creAssignments).map(item => item.section))
+      .toEqual(['title']);
+    expect(app.filterChecklistItemsByRole(items, 'lender', creAssignments).map(item => item.section))
+      .toEqual(['financing']);
+  });
+
+  it('uses normalized role keys for canonical and legacy assignments', () => {
+    const items = [
+      { section: 'title', assignedTo: ['Legal Advisor'] },
+      { section: 'inspection', assignedTo: ['inspector'] },
+      { section: 'financials', assignedTo: ['financial_advisor'] },
+    ];
+
+    expect(app.filterChecklistItemsByRole(items, 'legal_advisor').map(item => item.section))
+      .toEqual(['title']);
+    expect(app.filterChecklistItemsByRole(items, 'INSPECTOR').map(item => item.section))
+      .toEqual(['inspection']);
+    expect(app.filterChecklistItemsByRole(items, 'Financial Advisor').map(item => item.section))
+      .toEqual(['financials']);
+  });
+
   it('returns only assigned checklist items to participants and the full checklist to owners', async () => {
     const participantResponse = await request(app)
       .get('/api/public/deal-room/room-1/checklist')
@@ -123,5 +162,38 @@ describe('room access and checklist scoping', () => {
       'seller_financials',
       'legal_review',
     ]);
+  });
+
+  it('keeps checklist visibility and upload authorization aligned', async () => {
+    const access = await app.getRoomAccessContext({
+      headers: { 'x-kontra-session': mockParticipantToken },
+    }, 'room-1');
+    const assignedSections = await app.getAssignedSectionsForAccess(
+      'room-1',
+      'business_acquisition',
+      'Business',
+      access,
+    );
+
+    expect([...assignedSections]).toEqual(['seller_financials']);
+
+    const uploadResponse = await request(app)
+      .post('/api/public/deal-room/room-1/track-document')
+      .set('x-kontra-session', mockParticipantToken)
+      .field('section', 'legal_review')
+      .field('role', 'counsel')
+      .attach('file', Buffer.from('not a real document'), 'document.pdf');
+
+    expect(uploadResponse.status).toBe(403);
+    expect(uploadResponse.body.message).toMatch(/not assigned to your role/i);
+  });
+
+  it('ignores URL and body role overrides for a verified participant session', async () => {
+    const response = await request(app)
+      .get('/api/public/deal-room/room-1/checklist?role=counsel')
+      .set('x-kontra-session', mockParticipantToken);
+
+    expect(response.status).toBe(200);
+    expect(response.body.items.map(item => item.section)).toEqual(['seller_financials']);
   });
 });

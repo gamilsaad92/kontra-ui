@@ -52,6 +52,11 @@ const {
   buildRoomParticipants,
   computeRoomDashboardState,
 } = require('./lib/dashboardState');
+const {
+  hasDocumentRole,
+  getChecklistItemAssignedRoles,
+  getAssignedSectionsFromChecklist,
+} = require('./lib/documentAssignmentAccess');
 
 // Pack inference map — mirrors DEAL_TYPE_TO_PACK in dealRoomHelpers.js so that
 // room creation writes the correct workflow_pack_id from day one.
@@ -3352,13 +3357,8 @@ function getSectionAssignments(packId, propertyType) {
   return null;
 }
 
-function normalizeAccessRole(role) {
-  return String(role || '').trim().toLowerCase().replace(/\s+/g, '_');
-}
-
-async function getCustomPackAssignedSections(packId, role) {
-  if (!packId?.startsWith('ws_') || !role) return null;
-  const normalizedRole = normalizeAccessRole(role);
+async function getCustomPackDocumentAssignments(packId) {
+  if (!packId?.startsWith('ws_')) return null;
   try {
     const { data, error } = await supabase
       .from('custom_workflow_packs')
@@ -3366,19 +3366,19 @@ async function getCustomPackAssignedSections(packId, role) {
       .eq('id', packId)
       .maybeSingle();
     if (error || !Array.isArray(data?.config?.documents)) return null;
-    return new Set(
-      data.config.documents
-        .filter((document) => {
-          const assignedTo = Array.isArray(document?.assignedTo)
-            ? document.assignedTo
-            : document?.assignedRole
-              ? [document.assignedRole]
-              : [];
-          return assignedTo.some(assignedRole => normalizeAccessRole(assignedRole) === normalizedRole);
-        })
-        .map((document) => document.section || document.id)
-        .filter(Boolean),
-    );
+    return data.config.documents.reduce((result, document) => {
+      const section = document?.section || document?.id;
+      if (!section) return result;
+      const assignedTo = Array.isArray(document?.assignedTo)
+        ? document.assignedTo
+        : document?.assignedRole
+          ? [document.assignedRole]
+          : [];
+      result[section] = assignedTo
+        .map(role => String(role || '').trim().replace(/\s+/g, '_'))
+        .filter(Boolean);
+      return result;
+    }, {});
   } catch (error) {
     console.warn('[custom-pack] document assignment lookup failed:', error.message);
     return null;
@@ -3387,38 +3387,47 @@ async function getCustomPackAssignedSections(packId, role) {
 
 function isCoordinatorRole(packId, role) {
   const pack = DOC_ASSIGNMENTS[packId];
-  return pack?.coordinatorRoles?.includes(role) ?? true; // unknown pack → allow all
+  return pack?.coordinatorRoles
+    ? hasDocumentRole(pack.coordinatorRoles, role)
+    : true; // unknown pack → allow all
 }
 
-function filterChecklistItemsByRole(items, role, assignments = null, assignedSections = null) {
-  const normalizedRole = normalizeAccessRole(role);
+function filterChecklistItemsByRole(items, role, assignments = null, assignedSections = null, customAssignments = null) {
   return (items || []).filter(item => {
     const section = item?.section || item?.id;
-    const persistedAssignments = Array.isArray(item?.assignedTo) && item.assignedTo.length > 0
-      ? item.assignedTo
-      : (assignments?.[section] || []);
-    if (persistedAssignments.some(assignedRole => normalizeAccessRole(assignedRole) === normalizedRole)) {
-      return true;
-    }
-    // Assignment maps retain historical CRE keys so old invites continue to
-    // resolve even when a room checklist has been seeded with the canonical
-    // buyer/seller/advisor assignments.
-    const fallbackAssignments = assignments?.[section] || [];
-    if (fallbackAssignments.some(assignedRole => normalizeAccessRole(assignedRole) === normalizedRole)) {
-      return true;
-    }
-    // Custom packs may have persisted items from before assignedTo was copied
-    // onto the room checklist. The custom-pack document schema is the durable
-    // fallback for those legacy rows.
-    return persistedAssignments.length === 0 && assignedSections?.has(section);
+    const effectiveAssignments = getChecklistItemAssignedRoles(
+      item,
+      assignments,
+      customAssignments,
+    );
+    return effectiveAssignments.length > 0
+      ? hasDocumentRole(effectiveAssignments, role)
+      : assignedSections?.has(section) === true;
   });
 }
 
 async function scopeChecklistItemsForAccess(items, access, packId, propertyType) {
   if (access.mode !== 'participant') return items;
   const assignments = getSectionAssignments(packId, propertyType);
-  const customAssignedSections = await getCustomPackAssignedSections(packId, access.role);
-  return filterChecklistItemsByRole(items, access.role, assignments, customAssignedSections);
+  const customAssignments = await getCustomPackDocumentAssignments(packId);
+  const customAssignedSections = new Set(
+    Object.entries(customAssignments || {})
+      .filter(([, roles]) => hasDocumentRole(roles, access.role))
+      .map(([section]) => section),
+  );
+  return filterChecklistItemsByRole(
+    items,
+    access.role,
+    assignments,
+    customAssignedSections,
+    customAssignments,
+  ).map(item => {
+    // The API response is the participant's authorized checklist. Include the
+    // effective assignment when the persisted legacy row omitted assignedTo so
+    // the client does not re-filter an already-authorized item out.
+    const assignedTo = getChecklistItemAssignedRoles(item, assignments, customAssignments);
+    return assignedTo.length > 0 ? { ...item, assignedTo } : item;
+  });
 }
 
 // ── Public room access context ───────────────────────────────────────────────
@@ -3606,7 +3615,6 @@ app.get('/api/public/deal-room/:propertyId/preview', async (req, res) => {
 
 async function getAssignedSectionsForAccess(propertyId, packId, propertyType, access) {
   if (access.mode !== 'participant') return null;
-  const normalizedRole = normalizeAccessRole(access.role);
 
   // Prefer the room's persisted checklist because custom packs are not
   // necessarily present in the server's built-in assignment map.
@@ -3616,21 +3624,23 @@ async function getAssignedSectionsForAccess(propertyId, packId, propertyType, ac
     .eq('property_id', propertyId)
     .maybeSingle();
   const checklistItems = Array.isArray(room?.checklist_items) ? room.checklist_items : [];
-  const persistedSections = checklistItems
-    .filter(item => item && Array.isArray(item.assignedTo)
-      && item.assignedTo.some(role => normalizeAccessRole(role) === normalizedRole))
-    .map(item => item.section)
-    .filter(Boolean);
-  if (persistedSections.length > 0) return new Set(persistedSections);
-
-  const customSections = await getCustomPackAssignedSections(packId, access.role);
-  if (customSections?.size > 0) return customSections;
-
   const assignments = getSectionAssignments(packId, propertyType);
-  if (!assignments) return new Set();
-  return new Set(Object.entries(assignments)
-    .filter(([, roles]) => roles.some(role => normalizeAccessRole(role) === normalizedRole))
-    .map(([section]) => section));
+  const customAssignments = await getCustomPackDocumentAssignments(packId);
+  const assignedSections = getAssignedSectionsFromChecklist(
+    checklistItems,
+    access.role,
+    assignments,
+    customAssignments,
+  );
+
+  // Rooms created before checklist_items was populated still use the active
+  // workflow pack's canonical schema/map as their durable authorization source.
+  if (checklistItems.length === 0) {
+    for (const [section, roles] of Object.entries(customAssignments || assignments || {})) {
+      if (hasDocumentRole(roles, access.role)) assignedSections.add(section);
+    }
+  }
+  return assignedSections;
 }
 
 // ── Public analyses fetch — no auth required ──────────────────────────────
@@ -3720,14 +3730,20 @@ app.get('/api/public/deal-room/:propertyId/analyses', async (req, res) => {
     // Custom sections (not in the assignments map) are always visible to all.
     let filtered = deduped;
     const canViewAllDocuments = access.permissions?.viewAllDocuments === true;
-    if (!canViewAllDocuments && role && packId && !isCoordinatorRole(packId, role)) {
+    if (
+      !canViewAllDocuments
+      && access.mode !== 'participant'
+      && role
+      && packId
+      && !isCoordinatorRole(packId, role)
+    ) {
       const assignments = getSectionAssignments(packId, propertyType);
       if (assignments) {
         filtered = deduped.filter(a => {
           const assignedTo = assignments[a.section];
           // Section not in the map (e.g. custom upload) → visible to all
           if (!assignedTo) return true;
-          return assignedTo.includes(role);
+          return hasDocumentRole(assignedTo, role);
         });
       }
     }
@@ -9083,5 +9099,7 @@ app.use(errorHandler);
 // these helpers do not change the public HTTP surface.
 app.getRoomAccessContext = getRoomAccessContext;
 app.filterChecklistItemsByRole = filterChecklistItemsByRole;
+app.getChecklistItemAssignedRoles = getChecklistItemAssignedRoles;
+app.getAssignedSectionsForAccess = getAssignedSectionsForAccess;
 
 module.exports = app;

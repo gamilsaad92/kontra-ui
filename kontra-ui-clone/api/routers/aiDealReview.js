@@ -10,6 +10,10 @@ const OpenAI = require('openai');
 const { supabase } = require('../db');
 const aiRateLimit = require('../middlewares/aiRateLimit');
 const { uploadToStorage, logEvent, getNextVersion, notifyOwner, notifyLender } = require('../lib/dealRoomHelpers');
+const {
+  hasDocumentRole,
+  getAssignedSectionsFromChecklist,
+} = require('../lib/documentAssignmentAccess');
 
 const router = express.Router();
 const DOC_ASSIGNMENTS = (() => {
@@ -21,6 +25,27 @@ function getSectionAssignments(packId, propertyType) {
   if (!pack) return null;
   if (pack.sections) return pack.sections;
   return pack.byPropertyType?.[propertyType] || pack.byPropertyType?.Multifamily || null;
+}
+
+async function getCustomPackDocumentAssignments(packId) {
+  if (!packId?.startsWith('ws_')) return null;
+  const { data, error } = await supabase
+    .from('custom_workflow_packs')
+    .select('config')
+    .eq('id', packId)
+    .maybeSingle();
+  if (error || !Array.isArray(data?.config?.documents)) return null;
+  return data.config.documents.reduce((result, document) => {
+    const section = document?.section || document?.id;
+    if (!section) return result;
+    const assignedTo = Array.isArray(document?.assignedTo)
+      ? document.assignedTo
+      : document?.assignedRole
+        ? [document.assignedRole]
+        : [];
+    result[section] = assignedTo.filter(Boolean);
+    return result;
+  }, {});
 }
 
 async function authorizeDocumentUpload(req, res, section) {
@@ -52,17 +77,21 @@ async function authorizeDocumentUpload(req, res, section) {
           .select('workflow_pack_id, property_type, checklist_items')
           .eq('property_id', propertyId)
           .maybeSingle();
-        const persisted = (Array.isArray(room?.checklist_items) ? room.checklist_items : [])
-          .filter(item => Array.isArray(item?.assignedTo) && item.assignedTo.includes(invite.role_key))
-          .map(item => item.section)
-          .filter(Boolean);
         const normalizedSection = section === 'brand-standards' ? 'brand_standards' : section;
         const assignments = getSectionAssignments(room?.workflow_pack_id || 'cre_acquisition', room?.property_type || 'Multifamily');
-        const assignedSections = persisted.length > 0
-          ? new Set(persisted)
-          : new Set(Object.entries(assignments || {})
-            .filter(([, roles]) => roles.includes(invite.role_key))
-            .map(([key]) => key));
+        const customAssignments = await getCustomPackDocumentAssignments(room?.workflow_pack_id);
+        const checklistItems = Array.isArray(room?.checklist_items) ? room.checklist_items : [];
+        const assignedSections = getAssignedSectionsFromChecklist(
+          checklistItems,
+          invite.role_key,
+          assignments,
+          customAssignments,
+        );
+        if (checklistItems.length === 0) {
+          for (const [key, roles] of Object.entries(customAssignments || assignments || {})) {
+            if (hasDocumentRole(roles, invite.role_key)) assignedSections.add(key);
+          }
+        }
         if (!assignedSections.has(section) && !assignedSections.has(normalizedSection)) {
           res.status(403).json({ error: 'Access denied', message: 'This document section is not assigned to your role' });
           return null;
