@@ -2742,7 +2742,10 @@ app.get('/api/public/deal-room/:propertyId', async (req, res) => {
   const { propertyId } = req.params;
   try {
     const access = await getRoomAccessContext(req, propertyId);
-    if (req.headers['x-kontra-session'] && access.mode !== 'participant') {
+    // A stale participant session may coexist with a valid owner token after
+    // the owner returns through My Deal Rooms. getRoomAccessContext gives the
+    // owner precedence, so do not reject that resolved owner context here.
+    if (req.headers['x-kontra-session'] && !['participant', 'owner'].includes(access.mode)) {
       return accessDenied(res, 'This invitation session is invalid or has expired');
     }
     const { data, error } = await supabase
@@ -3387,11 +3390,70 @@ function isCoordinatorRole(packId, role) {
   return pack?.coordinatorRoles?.includes(role) ?? true; // unknown pack → allow all
 }
 
+function filterChecklistItemsByRole(items, role, assignments = null, assignedSections = null) {
+  const normalizedRole = normalizeAccessRole(role);
+  return (items || []).filter(item => {
+    const section = item?.section || item?.id;
+    const itemAssignments = Array.isArray(item?.assignedTo) && item.assignedTo.length > 0
+      ? item.assignedTo
+      : (assignments?.[section] || []);
+    if (itemAssignments.some(assignedRole => normalizeAccessRole(assignedRole) === normalizedRole)) {
+      return true;
+    }
+    // Custom packs may have persisted items from before assignedTo was copied
+    // onto the room checklist. The custom-pack document schema is the durable
+    // fallback for those legacy rows.
+    return itemAssignments.length === 0 && assignedSections?.has(section);
+  });
+}
+
+async function scopeChecklistItemsForAccess(items, access, packId, propertyType) {
+  if (access.mode !== 'participant') return items;
+  const assignments = getSectionAssignments(packId, propertyType);
+  const customAssignedSections = await getCustomPackAssignedSections(packId, access.role);
+  return filterChecklistItemsByRole(items, access.role, assignments, customAssignedSections);
+}
+
 // ── Public room access context ───────────────────────────────────────────────
 // Owners authenticate with the owner write token issued at checkout. Participants
 // authenticate with the short-lived session created from their invite PIN/OTP.
 // Never trust role values from query strings or request bodies for authorization.
 async function getRoomAccessContext(req, propertyId, ownerTokenOverride = '') {
+  // A browser can retain a participant session after the room owner returns
+  // through My Deal Rooms or refreshes a tab. Owner authorization is stronger
+  // and must win whenever both credentials are present and valid.
+  const ownerToken = (
+    (req.headers['x-owner-write-token'] || '').trim()
+    || String(ownerTokenOverride || '').trim()
+  );
+  if (ownerToken) {
+    const { data: owner } = await supabase
+      .from('deal_rooms')
+      .select('id, owner_write_token, customer_email')
+      .eq('property_id', propertyId)
+      .maybeSingle();
+    if (owner?.owner_write_token && owner.owner_write_token === ownerToken) {
+      return {
+        mode: 'owner',
+        role: 'owner',
+        actorId: owner.customer_email || 'owner',
+        email: owner.customer_email || null,
+        roomId: owner.id || null,
+        actorType: 'owner',
+        permissions: {
+          viewOverview: true,
+          viewAssignedDocuments: true,
+          uploadAssignedDocuments: true,
+          viewAllDocuments: true,
+          manageStages: true,
+          manageParticipants: true,
+          manageSettings: true,
+          updateOwnSubmission: true,
+        },
+      };
+    }
+  }
+
   const sessionToken = (req.headers['x-kontra-session'] || '').trim();
   if (sessionToken) {
     const tokenHash = crypto.createHash('sha256').update(sessionToken).digest('hex');
@@ -3427,38 +3489,6 @@ async function getRoomAccessContext(req, propertyId, ownerTokenOverride = '') {
           },
         };
       }
-    }
-  }
-
-  const ownerToken = (
-    (req.headers['x-owner-write-token'] || '').trim()
-    || String(ownerTokenOverride || '').trim()
-  );
-  if (ownerToken) {
-    const { data: owner } = await supabase
-      .from('deal_rooms')
-      .select('id, owner_write_token, customer_email')
-      .eq('property_id', propertyId)
-      .maybeSingle();
-    if (owner?.owner_write_token && owner.owner_write_token === ownerToken) {
-      return {
-        mode: 'owner',
-        role: 'owner',
-        actorId: owner.customer_email || 'owner',
-        email: owner.customer_email || null,
-        roomId: owner.id || null,
-        actorType: 'owner',
-        permissions: {
-          viewOverview: true,
-          viewAssignedDocuments: true,
-          uploadAssignedDocuments: true,
-          viewAllDocuments: true,
-          manageStages: true,
-          manageParticipants: true,
-          manageSettings: true,
-          updateOwnSubmission: true,
-        },
-      };
     }
   }
 
@@ -4130,7 +4160,13 @@ app.get('/api/public/deal-room/:propertyId/checklist', async (req, res) => {
 
     // Already saved — return as-is (deterministic after first seed)
     if (Array.isArray(data.checklist_items) && data.checklist_items.length > 0) {
-      return res.json({ items: data.checklist_items });
+      const items = await scopeChecklistItemsForAccess(
+        data.checklist_items,
+        access,
+        data.workflow_pack_id,
+        data.property_type,
+      );
+      return res.json({ items });
     }
 
     // Read-time fallback for rooms created before checklist_items was populated.
@@ -4148,7 +4184,13 @@ app.get('/api/public/deal-room/:propertyId/checklist', async (req, res) => {
         sortOrder:  i,
         status:     'missing',
       }));
-      return res.json({ items });
+      const scopedItems = await scopeChecklistItemsForAccess(
+        items,
+        access,
+        data.workflow_pack_id,
+        data.property_type,
+      );
+      return res.json({ items: scopedItems });
     }
 
     return res.json({ items: null });
@@ -9004,5 +9046,10 @@ if (Sentry.Handlers?.errorHandler) {
   app.use(Sentry.errorHandler());
 }
 app.use(errorHandler);
+
+// Kept on the Express app for focused authorization/checklist regression tests;
+// these helpers do not change the public HTTP surface.
+app.getRoomAccessContext = getRoomAccessContext;
+app.filterChecklistItemsByRole = filterChecklistItemsByRole;
 
 module.exports = app;
