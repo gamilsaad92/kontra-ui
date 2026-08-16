@@ -58,7 +58,10 @@ export function getExternalParticipantRoles(pack, options = {}) {
   const roles = Array.isArray(pack?.roles) ? pack.roles : [];
   const coordinatorKeys = getCoordinatorRoleKeys(pack, options);
   return roles.filter(role =>
-    !coordinatorKeys.has(role.key) && !isCoordinatorRole(role)
+    role.invitable === true
+      && !role.legacyOnly
+      && !coordinatorKeys.has(role.key)
+      && !isCoordinatorRole(role)
   );
 }
 

@@ -583,7 +583,7 @@ export default function DocumentChecklistPanel({
       .then(r => r.json())
       .then(d => { setAnalyses(d.analyses || []); setLoading(false); })
       .catch(() => setLoading(false));
-  }, [propertyId, refreshKey]);
+  }, [propertyId, refreshKey, role]);
 
   // Auto-refresh if any analysis is pending
   useEffect(() => {
@@ -619,7 +619,7 @@ export default function DocumentChecklistPanel({
         setItems(seedFromPack(workflowPack, propertyType, jurisdiction));
       });
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [propertyId, packReady]);
+  }, [propertyId, packReady, role]);
 
   // ── Task #143: Request a document from an invited participant ──────────────
   async function handleRequestDoc(item) {

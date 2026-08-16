@@ -72,11 +72,10 @@ export const advanceLabel = {
 // ── Document schema per property type ───────────────────────────────────────
 // Each item declares: id/section (checklist key), label, whether AI reviews
 // it, and whether it's required for the checklist to be considered complete.
-// assignedTo: which role is responsible for uploading this document.
-// owner: property docs (financials, rent roll, purchase agreement, etc.)
-// inspector: physical/environmental reports
-// insurer: insurance certificate
-// attorney: title commitment and legal documents
+// assignedTo is normalized below to the canonical CRE participant model:
+// buyer, seller, legal_advisor, and financial_advisor. Historical inspector,
+// insurer, attorney, and owner assignments are retained in the server
+// assignment map so persisted legacy rooms remain readable.
 const documentSchemas = {
   Multifamily: [
     { id: "purchase_agreement", label: "Purchase Agreement",            section: "purchase_agreement", ai: true,  required: true,  assignedTo: ["owner"],      category: "Legal" },
@@ -137,14 +136,35 @@ const documentSchemas = {
 
 const DEFAULT_DOCUMENT_SCHEMA = documentSchemas.Multifamily;
 
+const CRE_CANONICAL_ASSIGNMENTS = {
+  purchase_agreement: ["buyer", "seller", "legal_advisor"],
+  rent_roll: ["seller", "financial_advisor"],
+  financials: ["seller", "financial_advisor"],
+  insurance: ["seller", "financial_advisor"],
+  inspection: ["buyer", "financial_advisor"],
+  estoppel: ["seller", "legal_advisor"],
+  environmental: ["buyer", "financial_advisor"],
+  survey: ["buyer", "legal_advisor"],
+  title: ["buyer", "legal_advisor"],
+  legal: ["buyer", "seller", "legal_advisor"],
+  "brand-standards": ["seller", "legal_advisor"],
+};
+
+function normalizeCreDocumentSchema(schema) {
+  return schema.map(item => ({
+    ...item,
+    assignedTo: CRE_CANONICAL_ASSIGNMENTS[item.section] || item.assignedTo,
+  }));
+}
+
 export function getDocumentSchema(propertyType) {
-  if (!propertyType) return DEFAULT_DOCUMENT_SCHEMA;
+  if (!propertyType) return normalizeCreDocumentSchema(DEFAULT_DOCUMENT_SCHEMA);
   const t = propertyType.toLowerCase();
-  if (t.includes("hotel") || t.includes("hospitality") || t.includes("motel")) return documentSchemas.Hotel;
-  if (t.includes("office")) return documentSchemas.Office;
-  if (t.includes("industrial") || t.includes("warehouse")) return documentSchemas.Industrial;
-  if (t.includes("retail") || t.includes("strip") || t.includes("shopping")) return documentSchemas.Retail;
-  return documentSchemas.Multifamily;
+  if (t.includes("hotel") || t.includes("hospitality") || t.includes("motel")) return normalizeCreDocumentSchema(documentSchemas.Hotel);
+  if (t.includes("office")) return normalizeCreDocumentSchema(documentSchemas.Office);
+  if (t.includes("industrial") || t.includes("warehouse")) return normalizeCreDocumentSchema(documentSchemas.Industrial);
+  if (t.includes("retail") || t.includes("strip") || t.includes("shopping")) return normalizeCreDocumentSchema(documentSchemas.Retail);
+  return normalizeCreDocumentSchema(documentSchemas.Multifamily);
 }
 
 // ── Extraction rules: inline key facts per section ──────────────────────────

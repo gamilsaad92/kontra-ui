@@ -3894,14 +3894,19 @@ function getDocumentRequirementStats(checklistItems = [], pack, property, analys
       .map(analysis => String(analysis.section || '').toLowerCase()),
   );
   const reviewDocuments = requiredDocuments.filter(item =>
-    reviewStatuses.has(String(item.status || '').toLowerCase())
-      || reviewSections.has(String(item.section || '').toLowerCase())
+    receivedDocuments.includes(item)
+      && (
+        reviewStatuses.has(String(item.status || '').toLowerCase())
+          || reviewSections.has(String(item.section || '').toLowerCase())
+      )
   );
+  const missingDocuments = requiredDocuments.filter(item => !receivedDocuments.includes(item));
   return {
     sourceDocuments,
     requiredDocuments,
     receivedDocuments,
     reviewDocuments,
+    missingDocuments,
   };
 }
 
@@ -4143,6 +4148,13 @@ function TransactionBrief({
        detail: `Kontra extracted “${field.value || field.value_text}”.`,
       action: { label: 'Review record', onClick: () => goToRecord(field) },
     })),
+     ...documentStats.missingDocuments.slice(0, 3).map(item => ({
+       key: `missing-document-${item.id || item.section}`,
+       tone: 'amber',
+       text: `Request ${item.label || item.name || 'required document'}`,
+       detail: 'This required document has not been received yet.',
+       action: { label: 'Open Documents', onClick: () => onTabChange?.('documents') },
+     })),
   ].slice(0, 5);
 
   async function acceptStageRecommendation() {
@@ -4212,16 +4224,28 @@ function TransactionBrief({
       <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <div className="rounded-xl border border-gray-200 bg-white px-4 py-3">
           <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Documents</p>
-          <p className="mt-1 text-lg font-bold text-gray-900">
-            {documentStats.requiredDocuments.length > 0
-              ? `${documentStats.receivedDocuments.length} of ${documentStats.requiredDocuments.length} received`
-              : analyses.length}
-          </p>
-          <p className="text-[11px] text-gray-500">
-            {documentStats.reviewDocuments.length > 0
-              ? `${documentStats.reviewDocuments.length} requiring review`
-              : 'No documents requiring review'}
-          </p>
+          <div className="mt-1 space-y-1.5 text-[11px]">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-gray-500">Received — uploaded</span>
+              <span className="font-bold text-gray-900">
+                {documentStats.requiredDocuments.length > 0
+                  ? `${documentStats.receivedDocuments.length}/${documentStats.requiredDocuments.length}`
+                  : analyses.length}
+              </span>
+            </div>
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-gray-500">Needs review</span>
+              <span className={`font-bold ${documentStats.reviewDocuments.length > 0 ? 'text-amber-700' : 'text-gray-900'}`}>
+                {documentStats.reviewDocuments.length}
+              </span>
+            </div>
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-gray-500">Missing/request needed</span>
+              <span className={`font-bold ${documentStats.missingDocuments.length > 0 ? 'text-red-700' : 'text-emerald-700'}`}>
+                {documentStats.missingDocuments.length}
+              </span>
+            </div>
+          </div>
         </div>
         <div className="rounded-xl border border-gray-200 bg-white px-4 py-3">
           <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Transaction Record</p>

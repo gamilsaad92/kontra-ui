@@ -3394,16 +3394,23 @@ function filterChecklistItemsByRole(items, role, assignments = null, assignedSec
   const normalizedRole = normalizeAccessRole(role);
   return (items || []).filter(item => {
     const section = item?.section || item?.id;
-    const itemAssignments = Array.isArray(item?.assignedTo) && item.assignedTo.length > 0
+    const persistedAssignments = Array.isArray(item?.assignedTo) && item.assignedTo.length > 0
       ? item.assignedTo
       : (assignments?.[section] || []);
-    if (itemAssignments.some(assignedRole => normalizeAccessRole(assignedRole) === normalizedRole)) {
+    if (persistedAssignments.some(assignedRole => normalizeAccessRole(assignedRole) === normalizedRole)) {
+      return true;
+    }
+    // Assignment maps retain historical CRE keys so old invites continue to
+    // resolve even when a room checklist has been seeded with the canonical
+    // buyer/seller/advisor assignments.
+    const fallbackAssignments = assignments?.[section] || [];
+    if (fallbackAssignments.some(assignedRole => normalizeAccessRole(assignedRole) === normalizedRole)) {
       return true;
     }
     // Custom packs may have persisted items from before assignedTo was copied
     // onto the room checklist. The custom-pack document schema is the durable
     // fallback for those legacy rows.
-    return itemAssignments.length === 0 && assignedSections?.has(section);
+    return persistedAssignments.length === 0 && assignedSections?.has(section);
   });
 }
 
@@ -4089,6 +4096,31 @@ const PACK_DOCUMENT_SCHEMAS = {
   },
 };
 
+// New CRE rooms use the canonical participant model. Historical role keys
+// remain in document_assignments.json as a compatibility fallback for rooms
+// whose persisted checklist still references inspector/insurer/attorney/owner.
+const CRE_CANONICAL_DOCUMENT_ASSIGNMENTS = {
+  purchase_agreement: ['buyer', 'seller', 'legal_advisor'],
+  rent_roll: ['seller', 'financial_advisor'],
+  financials: ['seller', 'financial_advisor'],
+  insurance: ['seller', 'financial_advisor'],
+  inspection: ['buyer', 'financial_advisor'],
+  estoppel: ['seller', 'legal_advisor'],
+  environmental: ['buyer', 'financial_advisor'],
+  survey: ['buyer', 'legal_advisor'],
+  title: ['buyer', 'legal_advisor'],
+  legal: ['buyer', 'seller', 'legal_advisor'],
+  'brand-standards': ['seller', 'legal_advisor'],
+};
+
+function normalizeCanonicalPackSchema(packId, schema) {
+  if (!Array.isArray(schema) || packId !== 'cre_acquisition') return schema;
+  return schema.map(document => ({
+    ...document,
+    assignedTo: CRE_CANONICAL_DOCUMENT_ASSIGNMENTS[document.section] || document.assignedTo,
+  }));
+}
+
 // Returns the canonical checklist items for a pack+property_type combination.
 // Property type is matched with a fuzzy check to handle slight label variations.
 async function getCanonicalChecklist(packId, propertyType) {
@@ -4128,13 +4160,13 @@ async function getCanonicalChecklist(packId, propertyType) {
   }
   const pt = String(propertyType || '').trim();
   // Exact match first
-  if (packSchemas[pt]) return packSchemas[pt];
+  if (packSchemas[pt]) return normalizeCanonicalPackSchema(packId, packSchemas[pt]);
   // Fuzzy match for CRE sub-types
-  if (/hotel|hospitality|motel/i.test(pt) && packSchemas.Hotel)      return packSchemas.Hotel;
-  if (/office/i.test(pt) && packSchemas.Office)                       return packSchemas.Office;
-  if (/industrial|warehouse/i.test(pt) && packSchemas.Industrial)     return packSchemas.Industrial;
-  if (/retail|strip|shopping/i.test(pt) && packSchemas.Retail)        return packSchemas.Retail;
-  return packSchemas.default || null;
+  if (/hotel|hospitality|motel/i.test(pt) && packSchemas.Hotel)      return normalizeCanonicalPackSchema(packId, packSchemas.Hotel);
+  if (/office/i.test(pt) && packSchemas.Office)                       return normalizeCanonicalPackSchema(packId, packSchemas.Office);
+  if (/industrial|warehouse/i.test(pt) && packSchemas.Industrial)     return normalizeCanonicalPackSchema(packId, packSchemas.Industrial);
+  if (/retail|strip|shopping/i.test(pt) && packSchemas.Retail)        return normalizeCanonicalPackSchema(packId, packSchemas.Retail);
+  return normalizeCanonicalPackSchema(packId, packSchemas.default || null);
 }
 
 // ── Checklist CRUD ────────────────────────────────────────────────────────────

@@ -3807,6 +3807,7 @@ function getRecordDefinitionState(definition, recordFields = [], recordState = n
           : authoritativeField.status === 'confirmed'
             ? 'confirmed'
             : 'missing',
+        attention: authoritativeField.attention || null,
     };
   }
   const keys = new Set([
@@ -3816,8 +3817,8 @@ function getRecordDefinitionState(definition, recordFields = [], recordState = n
   ].filter(Boolean));
   const matches = recordFields.filter(field => keys.has(field.field_key));
   const valueMatches = matches.filter(hasMeaningfulRecordValue);
-  const conflict = valueMatches.find(field => RECORD_CONFLICT_STATUSES.has(field.status));
-  const confirmed = valueMatches.find(field => ['verified', 'confirmed', 'source_changed'].includes(field.status));
+  const conflict = valueMatches.find(field => ['conflicting', 'conflict'].includes(String(field.status || '').toLowerCase()));
+  const confirmed = valueMatches.find(field => ['verified', 'confirmed', 'source_changed'].includes(String(field.status || '').toLowerCase()));
   const awaiting = valueMatches.find(field => RECORD_AWAITING_STATUSES.has(field.status));
   const selected = conflict || confirmed || awaiting || valueMatches[0] || matches[0] || null;
   return {
@@ -3825,6 +3826,7 @@ function getRecordDefinitionState(definition, recordFields = [], recordState = n
     field: selected,
     value: selected?.value_text || '',
     status: conflict ? 'conflict' : confirmed ? 'confirmed' : awaiting ? 'awaiting' : 'missing',
+    attention: selected?.status === 'source_changed' ? 'source_changed' : null,
   };
 }
 
@@ -3892,14 +3894,19 @@ function getDocumentRequirementStats(checklistItems = [], pack, property, analys
       .map(analysis => String(analysis.section || '').toLowerCase()),
   );
   const reviewDocuments = requiredDocuments.filter(item =>
-    reviewStatuses.has(String(item.status || '').toLowerCase())
-      || reviewSections.has(String(item.section || '').toLowerCase())
+    receivedDocuments.includes(item)
+      && (
+        reviewStatuses.has(String(item.status || '').toLowerCase())
+          || reviewSections.has(String(item.section || '').toLowerCase())
+      )
   );
+  const missingDocuments = requiredDocuments.filter(item => !receivedDocuments.includes(item));
   return {
     sourceDocuments,
     requiredDocuments,
     receivedDocuments,
     reviewDocuments,
+    missingDocuments,
   };
 }
 
@@ -4141,6 +4148,13 @@ function TransactionBrief({
        detail: `Kontra extracted “${field.value || field.value_text}”.`,
       action: { label: 'Review record', onClick: () => goToRecord(field) },
     })),
+     ...documentStats.missingDocuments.slice(0, 3).map(item => ({
+       key: `missing-document-${item.id || item.section}`,
+       tone: 'amber',
+       text: `Request ${item.label || item.name || 'required document'}`,
+       detail: 'This required document has not been received yet.',
+       action: { label: 'Open Documents', onClick: () => onTabChange?.('documents') },
+     })),
   ].slice(0, 5);
 
   async function acceptStageRecommendation() {
@@ -4210,16 +4224,28 @@ function TransactionBrief({
       <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <div className="rounded-xl border border-gray-200 bg-white px-4 py-3">
           <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Documents</p>
-          <p className="mt-1 text-lg font-bold text-gray-900">
-            {documentStats.requiredDocuments.length > 0
-              ? `${documentStats.receivedDocuments.length} of ${documentStats.requiredDocuments.length} received`
-              : analyses.length}
-          </p>
-          <p className="text-[11px] text-gray-500">
-            {documentStats.reviewDocuments.length > 0
-              ? `${documentStats.reviewDocuments.length} requiring review`
-              : 'No documents requiring review'}
-          </p>
+          <div className="mt-1 space-y-1.5 text-[11px]">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-gray-500">Received — uploaded</span>
+              <span className="font-bold text-gray-900">
+                {documentStats.requiredDocuments.length > 0
+                  ? `${documentStats.receivedDocuments.length}/${documentStats.requiredDocuments.length}`
+                  : analyses.length}
+              </span>
+            </div>
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-gray-500">Needs review</span>
+              <span className={`font-bold ${documentStats.reviewDocuments.length > 0 ? 'text-amber-700' : 'text-gray-900'}`}>
+                {documentStats.reviewDocuments.length}
+              </span>
+            </div>
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-gray-500">Missing/request needed</span>
+              <span className={`font-bold ${documentStats.missingDocuments.length > 0 ? 'text-red-700' : 'text-emerald-700'}`}>
+                {documentStats.missingDocuments.length}
+              </span>
+            </div>
+          </div>
         </div>
         <div className="rounded-xl border border-gray-200 bg-white px-4 py-3">
           <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Transaction Record</p>
@@ -4553,8 +4579,11 @@ function ParticipantOverview({ propertyId, property, pack, role, roleConfig, onT
 
   const configuredItems = Array.isArray(pack?.documentSchema) ? pack.documentSchema : [];
   const sourceItems = checklistItems.length > 0 ? checklistItems : configuredItems;
+  const normalizedRole = String(role || '').trim().toLowerCase().replace(/\s+/g, '_');
   const assignedItems = sourceItems.filter(item =>
-    Array.isArray(item.assignedTo) && item.assignedTo.includes(role)
+    (item.assignedTo || []).some(assignedRole =>
+      String(assignedRole || '').trim().toLowerCase().replace(/\s+/g, '_') === normalizedRole
+    )
   );
   const uploadedSections = new Set(analyses.map(analysis => analysis.section));
   const uploadedCount = assignedItems.filter(item => uploadedSections.has(item.section)).length;
@@ -4751,9 +4780,16 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
   const currentStageKey   = coordination?.stage || stages[0]?.key;
   const currentStageIndex = Math.max(0, stages.findIndex(s => s.key === currentStageKey));
   const currentStage      = stages[currentStageIndex];
-  const closingDate       = recordFields.find(field =>
-    field.field_key === 'transaction.closing_date' && String(field.value_text || '').trim()
-  )?.value_text || property?.metadata_values?.target_close_date || property?.closing_date || property?.target_close_date || property?.close_date;
+  const closingDate       = (recordState || readiness?.transaction_record)?.fields?.find(field =>
+      field.key === 'transaction.closing_date' && String(field.value || '').trim()
+    )?.value
+    || recordFields.find(field =>
+      field.field_key === 'transaction.closing_date' && String(field.value_text || '').trim()
+    )?.value_text
+    || property?.metadata_values?.target_close_date
+    || property?.closing_date
+    || property?.target_close_date
+    || property?.close_date;
 
   // Effective stages include settlement/complete when the room has settlement
   // capability enabled — uses the same getEffectiveStages() as OperationsManagerView.
@@ -4789,8 +4825,11 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
   const readinessStatus = readiness?.transaction_readiness?.status
     || (readinessPct === 0 ? 'Getting Started' : 'Building');
   const recordSchemaKey = resolveSchemaKey(packId, pack, property?.name || property?.property_name);
-  const requiredRecordFields = getRequiredRecordFields(recordSchemaKey);
   const canonicalRecordState = recordState || readiness?.transaction_record || null;
+  // The API's record_state includes the resolved schema, aliases, and the
+  // not-applicable denominator. Use it as the single source for every Overview
+  // count; the frontend schema is only a pre-load fallback.
+  const requiredRecordFields = canonicalRecordState?.requiredFields || getRequiredRecordFields(recordSchemaKey);
   const confirmedRequiredCount = canonicalRecordState?.confirmedCount
     ?? requiredRecordFields.filter(field =>
       getRecordDefinitionState(field, recordFields, canonicalRecordState).status === 'confirmed'
@@ -5355,10 +5394,14 @@ function OperationsManagerView({ propertyId, property, pack, role, onTabChange }
   // Uses live checklistItems (fetched in parallel on mount); falls back to the
   // pack's document schema when the checklist hasn't been seeded yet.
   const missingRequiredDocs = (() => {
-    if (checklistItems.length > 0) {
-      return checklistItems.filter(
-        item => item.required && item.status !== 'uploaded' && !item.uploaded
-      );
+    const { requiredDocuments, receivedDocuments } = getDocumentRequirementStats(
+      checklistItems,
+      pack,
+      property,
+      analyses,
+    );
+    if (requiredDocuments.length > 0) {
+      return requiredDocuments.filter(item => !receivedDocuments.includes(item));
     }
     // Checklist not yet seeded: derive from pack schema; only show when the
     // room already has some activity (at least one upload or invite) so we
