@@ -1,3 +1,510 @@
+import { useState, useEffect, useRef, useCallback } from "react";
+import { getWorkflowPack, DEFAULT_PACK_ID } from "../../lib/workflowPacks";
+import { getRoomAuthHeaders } from "../../lib/inviteUtils";
+
+const normalizeRoleKey = (value) => String(value || "").trim().toLowerCase().replace(/\s+/g, "_");
+
+const API_BASE = (import.meta.env.VITE_API_BASE || "").replace(/\/+$/, "");
+
+// ── helpers ──────────────────────────────────────────────────────────────────
+function slugify(s) {
+  return s.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
+}
+function uid() {
+  return `ci_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
+}
+
+// ── Category grouping ─────────────────────────────────────────────────────────
+// Maps known section keys → display category.  Items that already carry a
+// category field (from the pack schema or a previously-saved checklist) use
+// that value directly; unknown sections fall back to "General".
+const SECTION_TO_CATEGORY = {
+  // Financial
+  financials: "Financial", audited_financials: "Financial",
+  tax_returns: "Financial", qoe: "Financial",
+  rent_roll: "Financial", cap_table: "Financial",
+  // Legal
+  legal: "Legal", title: "Legal", loi: "Legal",
+  purchase_agreement: "Legal", spa: "Legal",
+  disclosure_schedule: "Legal", estoppel: "Legal",
+  contracts: "Legal", term_sheet: "Legal",
+  // Operational
+  environmental: "Operational",
+  // Property / Asset
+  inspection: "Property / Asset", survey: "Property / Asset",
+  // Insurance
+  insurance: "Insurance",
+  // Closing
+  "brand-standards": "Closing",
+  // Regulatory (jurisdiction-specific tokenization docs)
+  fsra_licence: "Regulatory", dfsa_promotion_approval: "Regulatory",
+  mica_white_paper: "Regulatory", national_authority_receipt: "Regulatory",
+  form_d: "Regulatory", accredited_verification: "Regulatory",
+  mas_prospectus_or_exemption: "Regulatory", mas_ps_licence: "Regulatory",
+  fca_promotion_approval: "Regulatory", fca_aml_registration: "Regulatory",
+};
+
+const CATEGORY_DISPLAY_ORDER = [
+  "Financial", "Legal", "Operational",
+  "Property / Asset", "Insurance", "Regulatory", "Closing", "General",
+];
+
+function getItemCategory(item) {
+  if (item.category && item.category !== "General") return item.category;
+  return SECTION_TO_CATEGORY[item.section] || "General";
+}
+
+// Seed the checklist from the pack's document schema when the workspace has no
+// persisted items yet. Passes jurisdiction as second arg so tokenization packs
+// can merge in jurisdiction-specific required documents.
+function seedFromPack(pack, propertyType, jurisdiction) {
+  const schema = pack.getDocumentSchema?.(propertyType, jurisdiction) || [];
+  return schema.map((d, i) => ({
+    id: d.id || d.section || uid(),
+    section: d.section || d.id,
+    label: d.label || "",
+    required: !!d.required,
+    ai: !!d.ai,
+    assignedTo: Array.isArray(d.assignedTo) ? d.assignedTo : [],
+    category: d.category || "General",
+    isCustom: false,
+    sortOrder: i,
+    aiExtraction: d.aiExtraction || null,
+  }));
+}
+
+// ── SuggestionDrawer ─────────────────────────────────────────────────────────
+const CATEGORY_ORDER = [
+  "Corporate & Ownership", "Financial", "Legal", "Tax", "Operations",
+  "Employees", "Insurance", "Intellectual Property", "Regulatory",
+  "Environmental", "Real Estate", "Financing", "Closing",
+];
+
+function SuggestionDrawer({ open, onClose, onAdd, existingIds }) {
+  const [allSuggestions, setAllSuggestions] = useState([]);
+  const [query, setQuery] = useState("");
+  const [activeCategory, setActiveCategory] = useState("All");
+  const [selected, setSelected] = useState(new Set());
+  const [loading, setLoading] = useState(false);
+  const [customName, setCustomName] = useState("");
+  const [showCustom, setShowCustom] = useState(false);
+  const inputRef = useRef(null);
+
+  useEffect(() => {
+    if (!open) { setSelected(new Set()); setQuery(""); setCustomName(""); setShowCustom(false); return; }
+    setLoading(true);
+    fetch(`${API_BASE}/api/suggestions`)
+      .then(r => r.ok ? r.json() : { suggestions: [] })
+      .then(d => setAllSuggestions(d.suggestions || []))
+      .catch(() => {})
+      .finally(() => { setLoading(false); setTimeout(() => inputRef.current?.focus(), 50); });
+  }, [open]);
+
+  const categories = ["All", ...CATEGORY_ORDER.filter(c => allSuggestions.some(s => s.category === c))];
+
+  const filtered = allSuggestions.filter(s => {
+    const matchesCat = activeCategory === "All" || s.category === activeCategory;
+    const matchesQ = !query.trim() || s.label.toLowerCase().includes(query.toLowerCase());
+    return matchesCat && matchesQ;
+  });
+
+  const alreadyAdded = id => existingIds.has(id);
+
+  function toggle(id) {
+    if (alreadyAdded(id)) return;
+    setSelected(prev => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  }
+
+  function handleAdd() {
+    const newItems = allSuggestions
+      .filter(s => selected.has(s.id))
+      .map(s => ({
+        id: uid(),
+        // Track which suggestion this came from so the drawer can reliably
+        // detect "already added" across sessions without comparing generated ids.
+        sourceSuggestionId: s.id,
+        section: `${s.id}_${Date.now().toString(36)}`,
+        label: s.label,
+        required: false,
+        ai: !!s.ai,
+        assignedTo: [],
+        category: s.category,
+        isCustom: true,
+        sortOrder: 9999,
+        aiExtraction: null,
+      }));
+    if (newItems.length) onAdd(newItems);
+    onClose();
+  }
+
+  function handleAddCustom() {
+    if (!customName.trim()) return;
+    onAdd([{
+      id: uid(),
+      section: `custom_${slugify(customName)}_${Date.now().toString(36)}`,
+      label: customName.trim(),
+      required: false,
+      ai: false,
+      assignedTo: [],
+      category: "General",
+      isCustom: true,
+      sortOrder: 9999,
+      aiExtraction: null,
+    }]);
+    setCustomName("");
+    setShowCustom(false);
+    onClose();
+  }
+
+  if (!open) return null;
+
+  // Group filtered items by category for display
+  const grouped = {};
+  for (const s of filtered) {
+    if (!grouped[s.category]) grouped[s.category] = [];
+    grouped[s.category].push(s);
+  }
+  const groupKeys = CATEGORY_ORDER.filter(c => grouped[c]);
+
+  return (
+    <div className="fixed inset-0 z-50 flex">
+      {/* Backdrop */}
+      <div className="absolute inset-0 bg-black/30" onClick={onClose} />
+
+      {/* Drawer */}
+      <div className="relative ml-auto w-full max-w-md bg-white h-full flex flex-col shadow-2xl">
+        {/* Header */}
+        <div className="px-5 pt-5 pb-3 border-b border-gray-100 shrink-0">
+          <div className="flex items-center justify-between mb-3">
+            <div>
+              <h3 className="font-bold text-gray-900 text-base">Browse Suggested Items</h3>
+              <p className="text-xs text-gray-400 mt-0.5">Items are suggestions only — you decide what's relevant.</p>
+            </div>
+            <button onClick={onClose} className="text-gray-400 hover:text-gray-600 transition p-1">
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+
+          {/* Search */}
+          <input
+            ref={inputRef}
+            type="text"
+            placeholder="Search documents…"
+            value={query}
+            onChange={e => setQuery(e.target.value)}
+            className="w-full text-sm px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#800020]/20 focus:border-[#800020]/40 placeholder-gray-300"
+          />
+
+          {/* Category pills */}
+          <div className="flex gap-1.5 overflow-x-auto py-2 mt-1 hide-scrollbar">
+            {categories.map(c => (
+              <button
+                key={c}
+                onClick={() => setActiveCategory(c)}
+                className={`shrink-0 px-2.5 py-1 rounded-full text-[11px] font-semibold transition ${
+                  activeCategory === c
+                    ? "text-white"
+                    : "bg-gray-100 text-gray-500 hover:bg-gray-200"
+                }`}
+                style={activeCategory === c ? { background: "#800020" } : {}}>
+                {c}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Item list */}
+        <div className="flex-1 overflow-y-auto px-5 py-3">
+          {loading ? (
+            <p className="text-sm text-gray-400 text-center py-8">Loading suggestions…</p>
+          ) : filtered.length === 0 ? (
+            <p className="text-sm text-gray-400 text-center py-8">No items match your search.</p>
+          ) : (
+            <div className="space-y-5">
+              {groupKeys.map(cat => (
+                <div key={cat}>
+                  <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">{cat}</p>
+                  <div className="space-y-1">
+                    {grouped[cat].map(s => {
+                      const isAdded = alreadyAdded(s.id);
+                      const isChecked = selected.has(s.id);
+                      return (
+                        <button
+                          key={s.id}
+                          onClick={() => toggle(s.id)}
+                          disabled={isAdded}
+                          className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left transition ${
+                            isAdded
+                              ? "opacity-40 cursor-default"
+                              : isChecked
+                                ? "bg-[#800020]/8 border border-[#800020]/20"
+                                : "hover:bg-gray-50 border border-transparent"
+                          }`}>
+                          {/* Checkbox */}
+                          <span className={`shrink-0 w-4 h-4 rounded border-2 flex items-center justify-center transition ${
+                            isChecked ? "border-[#800020] bg-[#800020]" : "border-gray-300"
+                          }`}>
+                            {isChecked && (
+                              <svg className="w-2.5 h-2.5 text-white" fill="currentColor" viewBox="0 0 20 20">
+                                <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                              </svg>
+                            )}
+                          </span>
+                          <span className="flex-1 min-w-0">
+                            <span className="text-sm text-gray-800">{s.label}</span>
+                          </span>
+                          <span className={`shrink-0 text-[10px] px-1.5 py-0.5 rounded font-medium ${
+                            s.tag === "commonly_requested"
+                              ? "bg-amber-50 text-amber-600"
+                              : "bg-gray-100 text-gray-400"
+                          }`}>
+                            {s.tag === "commonly_requested" ? "common" : "suggested"}
+                          </span>
+                          {s.ai && (
+                            <span className="shrink-0 text-[10px] px-1.5 py-0.5 rounded bg-blue-50 text-blue-500 font-medium">AI</span>
+                          )}
+                          {isAdded && <span className="shrink-0 text-[10px] text-gray-400">added</span>}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Create custom item shortcut */}
+          <div className="mt-4 pt-4 border-t border-gray-100">
+            {showCustom ? (
+              <div className="flex items-center gap-2">
+                <input
+                  autoFocus
+                  type="text"
+                  placeholder="Document name…"
+                  value={customName}
+                  onChange={e => setCustomName(e.target.value)}
+                  onKeyDown={e => {
+                    if (e.key === "Enter") handleAddCustom();
+                    if (e.key === "Escape") { setShowCustom(false); setCustomName(""); }
+                  }}
+                  className="flex-1 text-xs px-2.5 py-1.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#800020]/20"
+                />
+                <button onClick={handleAddCustom} disabled={!customName.trim()}
+                  className="px-3 py-1.5 rounded-lg text-[11px] font-bold text-white disabled:opacity-40 transition"
+                  style={{ background: "#800020" }}>Add</button>
+                <button onClick={() => { setShowCustom(false); setCustomName(""); }}
+                  className="px-2 py-1.5 rounded-lg text-[11px] text-gray-400 hover:text-gray-600 border border-gray-200 transition">Cancel</button>
+              </div>
+            ) : (
+              <button onClick={() => setShowCustom(true)}
+                className="flex items-center gap-2 text-xs text-gray-400 hover:text-gray-600 transition group">
+                <span className="w-4 h-4 rounded-full border-2 border-dashed border-gray-300 group-hover:border-gray-400 flex items-center justify-center text-[10px]">+</span>
+                Create a custom item instead
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Footer */}
+        {selected.size > 0 && (
+          <div className="px-5 py-4 border-t border-gray-100 bg-gray-50 shrink-0">
+            <button
+              onClick={handleAdd}
+              className="w-full py-2.5 rounded-xl text-sm font-bold text-white transition"
+              style={{ background: "#800020" }}>
+              Add {selected.size} item{selected.size !== 1 ? "s" : ""} to checklist
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── ItemEditor (inline edit form) ─────────────────────────────────────────────
+function ItemEditor({ item, roles, onSave, onCancel }) {
+  const [label, setLabel] = useState(item.label);
+  const [required, setRequired] = useState(item.required);
+  const [ai, setAi] = useState(item.ai);
+  const [assignedRole, setAssignedRole] = useState((item.assignedTo || [])[0] || "");
+
+  function handleSave() {
+    if (!label.trim()) return;
+    onSave({
+      ...item,
+      label: label.trim(),
+      required,
+      ai,
+      assignedTo: assignedRole ? [assignedRole] : [],
+    });
+  }
+
+  const inputCls = "text-xs px-2.5 py-1.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#800020]/20 focus:border-[#800020]/40";
+  const toggleCls = (on) =>
+    `relative inline-flex h-4 w-7 items-center rounded-full transition-colors ${on ? "" : "bg-gray-200"}`;
+
+  return (
+    <div className="mt-2 ml-8 p-3 bg-gray-50 rounded-xl border border-gray-200 space-y-2.5">
+      {/* Name */}
+      <div>
+        <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-1 block">Name</label>
+        <input
+          autoFocus
+          className={`w-full ${inputCls}`}
+          value={label}
+          onChange={e => setLabel(e.target.value)}
+          onKeyDown={e => { if (e.key === "Enter") handleSave(); if (e.key === "Escape") onCancel(); }}
+          placeholder="Document name"
+        />
+      </div>
+
+      {/* Toggles row */}
+      <div className="flex items-center gap-4 flex-wrap">
+        {/* Required toggle */}
+        <label className="flex items-center gap-2 cursor-pointer select-none">
+          <button
+            type="button"
+            onClick={() => setRequired(v => !v)}
+            className={toggleCls(required)}
+            style={required ? { background: "#800020" } : {}}>
+            <span className={`inline-block h-3 w-3 rounded-full bg-white shadow transition-transform ${required ? "translate-x-3.5" : "translate-x-0.5"}`} />
+          </button>
+          <span className="text-xs text-gray-600">Required</span>
+        </label>
+
+        {/* AI analysis toggle */}
+        <label className="flex items-center gap-2 cursor-pointer select-none">
+          <button
+            type="button"
+            onClick={() => setAi(v => !v)}
+            className={toggleCls(ai)}
+            style={ai ? { background: "#3b82f6" } : {}}>
+            <span className={`inline-block h-3 w-3 rounded-full bg-white shadow transition-transform ${ai ? "translate-x-3.5" : "translate-x-0.5"}`} />
+          </button>
+          <span className="text-xs text-gray-600">AI analysis</span>
+        </label>
+      </div>
+
+      {/* Role assignment */}
+      {roles.length > 0 && (
+        <div>
+          <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-1 block">Assigned to</label>
+          <select
+            className={`w-full ${inputCls} bg-white`}
+            value={assignedRole}
+            onChange={e => setAssignedRole(e.target.value)}>
+            <option value="">— unassigned —</option>
+            {roles.map(r => <option key={r.key} value={r.key}>{r.label}</option>)}
+          </select>
+        </div>
+      )}
+
+      {/* Actions */}
+      <div className="flex items-center gap-2 pt-1">
+        <button
+          onClick={handleSave}
+          disabled={!label.trim()}
+          className="px-3 py-1.5 rounded-lg text-[11px] font-bold text-white disabled:opacity-40 transition"
+          style={{ background: "#800020" }}>
+          Save
+        </button>
+        <button onClick={onCancel}
+          className="px-2.5 py-1.5 rounded-lg text-[11px] text-gray-400 hover:text-gray-600 border border-gray-200 transition">
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ── CoordinatorDocumentGroups ─────────────────────────────────────────────────
+// Splits the checklist into Core (required) and Additional (optional).
+// Additional documents are collapsed by default — the user reveals them on
+// demand once the room feels useful after the first meaningful upload.
+function CoordinatorDocumentGroups({ template, allItems, uploadedSections, buildCategoryGroups, renderItem }) {
+  const [showAdditional, setShowAdditional] = useState(false);
+
+  const coreItems       = template.filter(i => i.required && !i.notApplicable);
+  const additionalItems = template.filter(i => !i.required && !i.notApplicable);
+  const naItems         = template.filter(i => i.notApplicable);
+
+  const coreDone       = coreItems.filter(i => uploadedSections.has(i.section)).length;
+  const additionalDone = additionalItems.filter(i => uploadedSections.has(i.section)).length;
+
+  // Build category map so additional items still group by category
+  const allGroups = buildCategoryGroups();
+  function filterGroups(filterFn) {
+    return allGroups
+      .map(g => ({ ...g, items: g.items.filter(filterFn) }))
+      .filter(g => g.items.length > 0);
+  }
+
+  const coreGroups       = filterGroups(i => i.required && !i.notApplicable);
+  const additionalGroups = filterGroups(i => !i.required && !i.notApplicable);
+
+  function renderGroup(group) {
+    const groupDone  = group.items.filter(i => uploadedSections.has(i.section)).length;
+    const groupTotal = group.items.length;
+    return (
+      <div key={group.key}>
+        <div className="flex items-center gap-2 mb-2">
+          <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">{group.label}</span>
+          <span className="text-[10px] text-gray-400 font-medium">{groupDone}/{groupTotal} uploaded</span>
+        </div>
+        <div className="divide-y divide-gray-50">
+          {group.items.map((item, idx) => renderItem(item, idx, group.items.length))}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* ── Core documents ─────────────────────────────────────────────── */}
+      <div>
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-bold text-gray-800 uppercase tracking-wider">Core documents</span>
+            <span className="text-[10px] text-gray-400 font-medium">
+              {coreDone} of {coreItems.length} uploaded
+            </span>
+          </div>
+        </div>
+        {coreItems.length === 0 ? (
+          <p className="text-xs text-gray-400 py-2">No required documents defined for this transaction type.</p>
+        ) : (
+          <div className="space-y-4">
+            {coreGroups.map(renderGroup)}
+          </div>
+        )}
+      </div>
+
+      {/* ── Additional documents ───────────────────────────────────────── */}
+      {additionalItems.length > 0 && (
+        <div>
+          <button
+            type="button"
+            onClick={() => setShowAdditional(v => !v)}
+            className="flex items-center gap-2 w-full text-left group">
+            <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">
+              Additional documents
+            </span>
+            <span className="text-[10px] text-gray-400 font-medium">
+              {additionalDone} of {additionalItems.length} uploaded
+            </span>
+            <svg
+              className={`ml-auto w-3.5 h-3.5 text-gray-300 transition-transform ${showAdditional ? "rotate-180" : ""}`}
+              fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
+          {!showAdditional && (
             <p className="mt-1 text-[11px] text-gray-400">
               {additionalItems.length} optional document{additionalItems.length === 1 ? "" : "s"} — 
               <button onClick={() => setShowAdditional(true)} className="ml-1 text-[#800020] font-semibold hover:opacity-80 transition">
