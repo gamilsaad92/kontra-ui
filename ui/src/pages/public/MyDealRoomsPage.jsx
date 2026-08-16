@@ -359,6 +359,12 @@ export default function MyDealRoomsPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Invalid code — please try again");
       const n = data.rooms?.[0]?.owner_name || "";
+      Object.entries(data.owner_tokens || {}).forEach(([propertyId, ownerToken]) => {
+        if (!propertyId || !ownerToken) return;
+        try {
+          localStorage.setItem(`kontra_owner_token_${propertyId}`, ownerToken);
+        } catch {}
+      });
       const packIds = [...new Set((data.rooms || []).map(r => r.workflow_pack_id).filter(Boolean))];
       await Promise.all(packIds.map(id => ensureWorkflowPackLoaded(id)));
       setRooms(data.rooms || []); setOwnerName(n);

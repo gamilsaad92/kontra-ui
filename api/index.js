@@ -2812,6 +2812,15 @@ app.get('/api/public/deal-room/:propertyId', async (req, res) => {
 // In-memory OTP store: email → { code, expiresAt }
 const otpStore = new Map();
 
+function buildOwnerTokenMap(rooms) {
+  return (rooms || []).reduce((tokens, room) => {
+    if (room?.property_id && room?.owner_write_token) {
+      tokens[room.property_id] = room.owner_write_token;
+    }
+    return tokens;
+  }, {});
+}
+
 app.post('/api/public/my-rooms/request-otp', async (req, res) => {
   const RESEND_KEY = process.env.RESEND_API_KEY;
   if (!RESEND_KEY) return res.status(500).json({ error: 'Email not configured' });
@@ -2867,11 +2876,12 @@ app.post('/api/public/my-rooms/verify-otp', async (req, res) => {
   try {
     const { data: rooms, error } = await supabase
       .from('deal_rooms')
-      .select('property_id, property_name, property_type, deal_amount, deal_type, address, status, deal_stage, workflow_pack_id, created_at, activated_at')
+      .select('property_id, property_name, property_type, deal_amount, deal_type, address, status, deal_stage, workflow_pack_id, created_at, activated_at, owner_write_token')
       .ilike('customer_email', email)
       .order('created_at', { ascending: false });
     if (error) throw error;
-    if (!rooms || rooms.length === 0) return res.json({ rooms: [] });
+    const ownerTokens = buildOwnerTokenMap(rooms);
+    if (!rooms || rooms.length === 0) return res.json({ rooms: [], email, owner_tokens: {} });
     const ids = rooms.map(r => r.property_id);
     const [subsRes, invitesRes, analysesRes] = await Promise.all([
       supabase
@@ -2908,22 +2918,26 @@ app.post('/api/public/my-rooms/verify-otp', async (req, res) => {
       if (!analysesMap[analysis.property_id]) analysesMap[analysis.property_id] = [];
       analysesMap[analysis.property_id].push(analysis);
     });
-    const enriched = rooms.map(r => ({
-      ...r,
-      owner_name: r.owner_name || null,
+    const enriched = rooms.map(({ owner_write_token: _ownerWriteToken, ...room }) => ({
+      ...room,
+      owner_name: room.owner_name || null,
       parties: buildRoomParticipants({
-        invites: inviteMap[r.property_id] || [],
-        submissions: subMap[r.property_id] || [],
+        invites: inviteMap[room.property_id] || [],
+        submissions: subMap[room.property_id] || [],
       }),
-      document_count: (analysesMap[r.property_id] || [])
+      document_count: (analysesMap[room.property_id] || [])
         .filter(analysis => analysis.section !== 'cross_document_verification')
         .length,
       active_participant_count: buildRoomParticipants({
-        invites: inviteMap[r.property_id] || [],
-        submissions: subMap[r.property_id] || [],
+        invites: inviteMap[room.property_id] || [],
+        submissions: subMap[room.property_id] || [],
       }).length,
     }));
-    res.json({ rooms: enriched, email });
+    // The email OTP just verified ownership of every returned room. Rehydrate
+    // the same owner credential used by direct room links so a stale
+    // participant session cannot win when the owner opens a room from this
+    // dashboard. Keep the credential out of each persisted room row.
+    res.json({ rooms: enriched, email, owner_tokens: ownerTokens });
   } catch (err) {
     console.error('[verify-otp]', err.message);
     res.status(500).json({ error: 'Failed to load rooms' });
@@ -9101,5 +9115,10 @@ app.getRoomAccessContext = getRoomAccessContext;
 app.filterChecklistItemsByRole = filterChecklistItemsByRole;
 app.getChecklistItemAssignedRoles = getChecklistItemAssignedRoles;
 app.getAssignedSectionsForAccess = getAssignedSectionsForAccess;
+if (process.env.NODE_ENV === 'test') {
+  app.setMyRoomsOtpForTest = (email, code) => {
+    otpStore.set(email, { code, expiresAt: Date.now() + 60_000 });
+  };
+}
 
 module.exports = app;

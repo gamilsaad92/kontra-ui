@@ -4,6 +4,8 @@ const mockParticipantToken = 'participant-session';
 jest.mock('./db', () => {
   const owner = {
     id: 'room-1',
+    property_id: 'room-1',
+    property_name: 'Owner Room',
     owner_write_token: mockOwnerToken,
     customer_email: 'owner@example.com',
     checklist_items: [
@@ -12,6 +14,8 @@ jest.mock('./db', () => {
     ],
     workflow_pack_id: 'business_acquisition',
     property_type: 'Business',
+    status: 'active',
+    deal_stage: 'uploading',
   };
   const invite = {
     property_id: 'room-1',
@@ -34,6 +38,12 @@ jest.mock('./db', () => {
         state.filters[key] = value;
         return chain;
       },
+      ilike: (key, value) => {
+        state.filters[key] = value;
+        return chain;
+      },
+      order: () => chain,
+      in: () => chain,
       gt: () => chain,
       is: () => chain,
       maybeSingle: async () => {
@@ -47,7 +57,10 @@ jest.mock('./db', () => {
         return { data: null, error: null };
       },
       single: async () => ({ data: owner, error: null }),
-      then: (resolve) => resolve({ data: [], error: null }),
+      then: (resolve) => resolve({
+        data: table === 'deal_rooms' && state.filters.customer_email ? [owner] : [],
+        error: null,
+      }),
     };
     return chain;
   }
@@ -69,6 +82,29 @@ describe('room access and checklist scoping', () => {
 
     expect(access.mode).toBe('owner');
     expect(access.permissions.viewAllDocuments).toBe(true);
+  });
+
+  it('resolves an owner-only direct room URL to coordinator access', async () => {
+    const response = await request(app)
+      .get('/api/public/deal-room/room-1?role=seller')
+      .set('x-owner-write-token', mockOwnerToken);
+
+    expect(response.status).toBe(200);
+    expect(response.body.role).toBe('deal_coordinator');
+    expect(response.body.access).toEqual({ mode: 'owner' });
+  });
+
+  it('keeps owner coordinator access across repeated room loads', async () => {
+    for (let i = 0; i < 2; i += 1) {
+      const response = await request(app)
+        .get('/api/public/deal-room/room-1?role=seller')
+        .set('x-owner-write-token', mockOwnerToken)
+        .set('x-kontra-session', mockParticipantToken);
+
+      expect(response.status).toBe(200);
+      expect(response.body.role).toBe('deal_coordinator');
+      expect(response.body.access).toEqual({ mode: 'owner' });
+    }
   });
 
   it('does not reject the owner room lookup when a stale participant session is also present', async () => {
@@ -195,5 +231,17 @@ describe('room access and checklist scoping', () => {
 
     expect(response.status).toBe(200);
     expect(response.body.items.map(item => item.section)).toEqual(['seller_financials']);
+  });
+
+  it('rehydrates owner credentials for My Deal Rooms re-entry without exposing them in room rows', async () => {
+    app.setMyRoomsOtpForTest('owner@example.com', '123456');
+
+    const response = await request(app)
+      .post('/api/public/my-rooms/verify-otp')
+      .send({ email: 'owner@example.com', code: '123456' });
+
+    expect(response.status).toBe(200);
+    expect(response.body.owner_tokens).toEqual({ 'room-1': mockOwnerToken });
+    expect(response.body.rooms[0]).not.toHaveProperty('owner_write_token');
   });
 });
