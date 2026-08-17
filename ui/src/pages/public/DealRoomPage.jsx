@@ -208,6 +208,15 @@ const DEMO_PROPERTIES = {
   },
 };
 
+// Public demo rooms are backed by the same seeded coordinator endpoints as
+// live rooms. Keep their IDs separate from the older static sample properties
+// above so demo routing does not skip the room payload request.
+const DEMO_ROOM_IDS = new Set([
+  'kontra-demo',
+  'kontra-demo-biz',
+  'kontra-demo-fundraising',
+]);
+
 // ── Generate realistic sample data for newly created deal rooms ──────────────
 function generateDemoData(apiProp) {
   const amount = parseFloat((apiProp.deal_amount || "").replace(/[^0-9.]/g, "")) || 5000000;
@@ -6182,7 +6191,9 @@ export default function DealRoomPage() {
   // packReady: true once the custom pack for this room is registered in the
   // client-side PACKS registry. Demo rooms always use a built-in pack so it
   // starts true; live rooms wait for ensureWorkflowPackLoaded to resolve.
-  const [packReady, setPackReady] = useState(!!DEMO_PROPERTIES[propertyId]);
+  const [packReady, setPackReady] = useState(
+    DEMO_ROOM_IDS.has(propertyId) || !!DEMO_PROPERTIES[propertyId],
+  );
   const [analysesRefreshKey, setAnalysesRefreshKey] = useState(0);
   const [activeTab, setActiveTabRaw] = useState('overview');
   const [showAdvancedSettings, setShowAdvancedSettings] = useState(false);
@@ -6212,8 +6223,10 @@ export default function DealRoomPage() {
 
   // Try to fetch custom deal room from API
   useEffect(() => {
-    // Skip API fetch for demo rooms
-    if (DEMO_PROPERTIES[propertyId]) {
+    // The legacy static sample properties are intentionally client-only, but
+    // public demo rooms consume seeded API fixtures so the coordinator shell
+    // receives the real pack-specific workspace payload.
+    if (DEMO_PROPERTIES[propertyId] && !DEMO_ROOM_IDS.has(propertyId)) {
       setLoadingApi(false);
       return;
     }
@@ -6271,7 +6284,7 @@ export default function DealRoomPage() {
   // Only runs for coordinator view of live (non-demo) rooms with a standard built-in pack.
   // Custom ws_* packs are always intentional — never suggest a change for those.
   useEffect(() => {
-    if (!apiProperty || DEMO_PROPERTIES[propertyId]) return;
+    if (!apiProperty || DEMO_ROOM_IDS.has(propertyId) || DEMO_PROPERTIES[propertyId]) return;
     const stored = apiProperty.workflow_pack_id;
     if (!stored || stored.startsWith('ws_')) return;
     fetch(`${API_BASE}/api/public/classify-pack`, {
@@ -6402,7 +6415,7 @@ export default function DealRoomPage() {
     };
   }
 
-  const isDemo = ['kontra-demo', 'kontra-demo-biz', 'kontra-demo-fundraising'].includes(propertyId);
+  const isDemo = DEMO_ROOM_IDS.has(propertyId);
 
   // Per-demo hero image overrides — each room gets a visually appropriate photo
   if (propertyId === 'kontra-demo' && property) {
