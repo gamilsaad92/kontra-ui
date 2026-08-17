@@ -2582,10 +2582,34 @@ app.post('/api/webhook/stripe',
 // the real handlers so the demo always works regardless of DB state.
 ;(() => {
   const { PROPERTY, TASKS, BRIEFING, ANALYSES, DEMO_QA_CONTEXT } = require('./lib/demoData');
+  const { getDemoFixture } = require('./lib/demoRoomFixtures');
   const openai = new OpenAI();
   const DEMO_ID = 'kontra-demo';
+  const fixture = getDemoFixture('cre_acquisition', PROPERTY);
 
-  app.get(`/api/public/deal-room/${DEMO_ID}`, (_req, res) => res.json(PROPERTY));
+  app.get(`/api/public/deal-room/${DEMO_ID}`, (_req, res) => res.json(fixture.property));
+  app.get(`/api/public/deal-room/${DEMO_ID}/checklist`, (_req, res) => res.json({ items: fixture.checklist }));
+  app.get(`/api/public/deal-room/${DEMO_ID}/transaction-record`, (_req, res) => res.json(fixture.record));
+  app.get(`/api/public/deal-room/${DEMO_ID}/readiness`, (_req, res) => res.json(fixture.readiness));
+  app.get(`/api/public/deal-room/${DEMO_ID}/stages`, (_req, res) => res.json({
+    stages: fixture.stages, currentStage: fixture.coordination.stage, packId: fixture.packId,
+  }));
+  app.get(`/api/public/deal-room/${DEMO_ID}/coordination`, (_req, res) => res.json(fixture.coordination));
+  app.get(`/api/public/deal-room/${DEMO_ID}/events`, (_req, res) => res.json({ events: fixture.events }));
+  app.get(`/api/public/deal-room/${DEMO_ID}/invites`, (_req, res) => res.json({ invites: fixture.coordination.participantInvites }));
+  app.get(`/api/public/deal-room/${DEMO_ID}/comments`, (_req, res) => res.json({ comments: [] }));
+  app.put(`/api/public/deal-room/${DEMO_ID}/checklist`, (_req, res) => res.json({ ok: true, demo: true, items: fixture.checklist }));
+  app.post(`/api/public/deal-room/${DEMO_ID}/track-document`, (_req, res) => res.json({ ok: true, demo: true }));
+  app.post(`/api/public/deal-room/${DEMO_ID}/request-document`, (_req, res) => res.json({ ok: true, demo: true, message: 'Demo mode — no request sent.' }));
+  app.post(`/api/public/deal-room/${DEMO_ID}/submit`, (_req, res) => res.json({ ok: true, demo: true }));
+  app.post(`/api/public/deal-room/${DEMO_ID}/advance`, (_req, res) => res.json({ ok: true, demo: true, message: 'Demo mode — stage did not change.' }));
+  app.post(`/api/public/deal-room/${DEMO_ID}/invite`, (_req, res) => res.json({ ok: true, demo: true, message: 'Demo mode — invitation not sent.' }));
+  app.post(`/api/public/deal-room/${DEMO_ID}/comments`, (_req, res) => res.json({ ok: true, demo: true }));
+  app.patch(`/api/public/deal-room/${DEMO_ID}/metadata`, (_req, res) => res.json({ ok: true, demo: true }));
+  app.patch(`/api/public/deal-room/${DEMO_ID}/metadata-merge`, (_req, res) => res.json({ ok: true, demo: true }));
+  app.patch(`/api/public/deal-room/${DEMO_ID}/stages`, (_req, res) => res.json({ ok: true, demo: true, stages: fixture.stages }));
+  app.post(`/api/public/deal-room/${DEMO_ID}/transaction-record/fields/:fieldId/verify`, (_req, res) => res.json({ ok: true, demo: true }));
+  app.patch(`/api/public/deal-room/${DEMO_ID}/transaction-record/fields/:fieldId`, (_req, res) => res.json({ ok: true, demo: true }));
 
   app.get(`/api/public/deal-room/${DEMO_ID}/tasks`, (_req, res) =>
     res.json({ tasks: TASKS }));
@@ -2650,10 +2674,35 @@ app.post('/api/webhook/stripe',
 // ── Business Acquisition demo — kontra-demo-biz ───────────────────────────────
 ;(() => {
   const { PROPERTY, TASKS, BRIEFING, ANALYSES, DEMO_QA_CONTEXT } = require('./lib/demoDataBiz');
+  const { getDemoFixture } = require('./lib/demoRoomFixtures');
   const openai = new OpenAI();
   const BIZ_ID = 'kontra-demo-biz';
+  const fixture = getDemoFixture('business_acquisition', PROPERTY);
 
-  app.get(`/api/public/deal-room/${BIZ_ID}`, (_req, res) => res.json(PROPERTY));
+  app.get(`/api/public/deal-room/${BIZ_ID}`, (_req, res) => res.json(fixture.property));
+  app.get(`/api/public/deal-room/${BIZ_ID}/checklist`, (_req, res) => res.json({ items: fixture.checklist }));
+  app.get(`/api/public/deal-room/${BIZ_ID}/transaction-record`, (_req, res) => res.json(fixture.record));
+  app.get(`/api/public/deal-room/${BIZ_ID}/readiness`, (_req, res) => res.json(fixture.readiness));
+  app.get(`/api/public/deal-room/${BIZ_ID}/stages`, (_req, res) => res.json({
+    stages: fixture.stages, currentStage: fixture.coordination.stage, packId: fixture.packId,
+  }));
+  app.get(`/api/public/deal-room/${BIZ_ID}/coordination`, (_req, res) => res.json(fixture.coordination));
+  app.get(`/api/public/deal-room/${BIZ_ID}/events`, (_req, res) => res.json({ events: fixture.events }));
+  app.get(`/api/public/deal-room/${BIZ_ID}/invites`, (_req, res) => res.json({ invites: fixture.coordination.participantInvites }));
+  app.get(`/api/public/deal-room/${BIZ_ID}/comments`, (_req, res) => res.json({ comments: [] }));
+  app.put(`/api/public/deal-room/${BIZ_ID}/checklist`, (_req, res) => res.json({ ok: true, demo: true, items: fixture.checklist }));
+  app.post(`/api/public/deal-room/${BIZ_ID}/track-document`, (_req, res) => res.json({ ok: true, demo: true }));
+  app.post(`/api/public/deal-room/${BIZ_ID}/request-document`, (_req, res) => res.json({ ok: true, demo: true, message: 'Demo mode — no request sent.' }));
+  app.post(`/api/public/deal-room/${BIZ_ID}/submit`, (_req, res) => res.json({ ok: true, demo: true }));
+  app.post(`/api/public/deal-room/${BIZ_ID}/advance`, (_req, res) => res.json({ ok: true, demo: true, message: 'Demo mode — stage did not change.' }));
+  app.post(`/api/public/deal-room/${BIZ_ID}/invite`, (_req, res) => res.json({ ok: true, demo: true, message: 'Demo mode — invitation not sent.' }));
+  app.post(`/api/public/deal-room/${BIZ_ID}/comments`, (_req, res) => res.json({ ok: true, demo: true }));
+  app.patch(`/api/public/deal-room/${BIZ_ID}/metadata`, (_req, res) => res.json({ ok: true, demo: true }));
+  app.patch(`/api/public/deal-room/${BIZ_ID}/metadata-merge`, (_req, res) => res.json({ ok: true, demo: true }));
+  app.patch(`/api/public/deal-room/${BIZ_ID}/stages`, (_req, res) => res.json({ ok: true, demo: true, stages: fixture.stages }));
+  app.post(`/api/public/deal-room/${BIZ_ID}/transaction-record/fields/:fieldId/verify`, (_req, res) => res.json({ ok: true, demo: true }));
+  app.patch(`/api/public/deal-room/${BIZ_ID}/transaction-record/fields/:fieldId`, (_req, res) => res.json({ ok: true, demo: true }));
+
   app.get(`/api/public/deal-room/${BIZ_ID}/tasks`, (_req, res) => res.json({ tasks: TASKS }));
   app.post(`/api/public/deal-room/${BIZ_ID}/tasks/refresh`, (_req, res) => res.json({ tasks: TASKS }));
   app.get(`/api/public/deal-room/${BIZ_ID}/brain/briefing`, (_req, res) => res.json(BRIEFING));
@@ -2697,10 +2746,35 @@ app.post('/api/webhook/stripe',
 // ── Fundraising demo — kontra-demo-fundraising ────────────────────────────────
 ;(() => {
   const { PROPERTY, TASKS, BRIEFING, ANALYSES, DEMO_QA_CONTEXT } = require('./lib/demoDataFundraising');
+  const { getDemoFixture } = require('./lib/demoRoomFixtures');
   const openai = new OpenAI();
   const FUND_ID = 'kontra-demo-fundraising';
+  const fixture = getDemoFixture('fundraising', PROPERTY);
 
-  app.get(`/api/public/deal-room/${FUND_ID}`, (_req, res) => res.json(PROPERTY));
+  app.get(`/api/public/deal-room/${FUND_ID}`, (_req, res) => res.json(fixture.property));
+  app.get(`/api/public/deal-room/${FUND_ID}/checklist`, (_req, res) => res.json({ items: fixture.checklist }));
+  app.get(`/api/public/deal-room/${FUND_ID}/transaction-record`, (_req, res) => res.json(fixture.record));
+  app.get(`/api/public/deal-room/${FUND_ID}/readiness`, (_req, res) => res.json(fixture.readiness));
+  app.get(`/api/public/deal-room/${FUND_ID}/stages`, (_req, res) => res.json({
+    stages: fixture.stages, currentStage: fixture.coordination.stage, packId: fixture.packId,
+  }));
+  app.get(`/api/public/deal-room/${FUND_ID}/coordination`, (_req, res) => res.json(fixture.coordination));
+  app.get(`/api/public/deal-room/${FUND_ID}/events`, (_req, res) => res.json({ events: fixture.events }));
+  app.get(`/api/public/deal-room/${FUND_ID}/invites`, (_req, res) => res.json({ invites: fixture.coordination.participantInvites }));
+  app.get(`/api/public/deal-room/${FUND_ID}/comments`, (_req, res) => res.json({ comments: [] }));
+  app.put(`/api/public/deal-room/${FUND_ID}/checklist`, (_req, res) => res.json({ ok: true, demo: true, items: fixture.checklist }));
+  app.post(`/api/public/deal-room/${FUND_ID}/track-document`, (_req, res) => res.json({ ok: true, demo: true }));
+  app.post(`/api/public/deal-room/${FUND_ID}/request-document`, (_req, res) => res.json({ ok: true, demo: true, message: 'Demo mode — no request sent.' }));
+  app.post(`/api/public/deal-room/${FUND_ID}/submit`, (_req, res) => res.json({ ok: true, demo: true }));
+  app.post(`/api/public/deal-room/${FUND_ID}/advance`, (_req, res) => res.json({ ok: true, demo: true, message: 'Demo mode — stage did not change.' }));
+  app.post(`/api/public/deal-room/${FUND_ID}/invite`, (_req, res) => res.json({ ok: true, demo: true, message: 'Demo mode — invitation not sent.' }));
+  app.post(`/api/public/deal-room/${FUND_ID}/comments`, (_req, res) => res.json({ ok: true, demo: true }));
+  app.patch(`/api/public/deal-room/${FUND_ID}/metadata`, (_req, res) => res.json({ ok: true, demo: true }));
+  app.patch(`/api/public/deal-room/${FUND_ID}/metadata-merge`, (_req, res) => res.json({ ok: true, demo: true }));
+  app.patch(`/api/public/deal-room/${FUND_ID}/stages`, (_req, res) => res.json({ ok: true, demo: true, stages: fixture.stages }));
+  app.post(`/api/public/deal-room/${FUND_ID}/transaction-record/fields/:fieldId/verify`, (_req, res) => res.json({ ok: true, demo: true }));
+  app.patch(`/api/public/deal-room/${FUND_ID}/transaction-record/fields/:fieldId`, (_req, res) => res.json({ ok: true, demo: true }));
+
   app.get(`/api/public/deal-room/${FUND_ID}/tasks`, (_req, res) => res.json({ tasks: TASKS }));
   app.post(`/api/public/deal-room/${FUND_ID}/tasks/refresh`, (_req, res) => res.json({ tasks: TASKS }));
   app.get(`/api/public/deal-room/${FUND_ID}/brain/briefing`, (_req, res) => res.json(BRIEFING));

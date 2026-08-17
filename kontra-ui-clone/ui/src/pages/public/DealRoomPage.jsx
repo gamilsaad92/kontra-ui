@@ -2399,7 +2399,7 @@ function AssetReadinessTab({ propertyId, property, pack, onTabChange }) {
 }
 
 // ── WorkspaceTabNav ───────────────────────────────────────────────────────────
-function WorkspaceTabNav({ activeTab, onChange, isCoordinator = false }) {
+function WorkspaceTabNav({ activeTab, onChange, isCoordinator = false, isDemo = false }) {
   const TABS = [
     { key: 'overview',      label: 'Overview'                 },
     { key: 'documents',     label: 'Documents'                },
@@ -2423,7 +2423,7 @@ function WorkspaceTabNav({ activeTab, onChange, isCoordinator = false }) {
             </button>
           ))}
         </div>
-        {isCoordinator && <button
+        {isCoordinator && !isDemo && <button
           type="button"
           onClick={() => onChange('settings')}
           aria-label="Open workspace settings"
@@ -6168,10 +6168,9 @@ export default function DealRoomPage() {
   const [participantRole, setParticipantRole] = useState(null);
   const role = accessRole || participantRole || (participantSession ? "guest" : requestedRole);
 
-  const [showDemoIntro, setShowDemoIntro] = useState(() => {
-    const demoIds = ['kontra-demo', 'kontra-demo-biz', 'kontra-demo-fundraising'];
-    return demoIds.includes(propertyId) && !sessionStorage.getItem('kontra-demo-intro-seen');
-  });
+  // Public demos open directly into the production coordinator workspace.
+  // The former welcome overlay was part of the retired presentation flow.
+  const [showDemoIntro, setShowDemoIntro] = useState(false);
   const [checkoutLoading, setCheckoutLoading] = useState(false);
   const [checkoutError, setCheckoutError] = useState("");
   const [apiProperty, setApiProperty] = useState(null);
@@ -6422,13 +6421,19 @@ export default function DealRoomPage() {
     property.deal_amount = property.deal_amount || "42,000,000";
   }
 
-  // Which Workflow Pack powers this deal room. Demo properties are always
-  // CRE Acquisition; custom rooms carry their pack id from creation time.
+  // Which Workflow Pack powers this deal room. Public demos deliberately use
+  // the same pack-specific configuration as a fresh production room.
   // Resolution (deal_type inference wins over the stored workflow_pack_id
   // column) lives in one shared place — lib/workflowPacks.resolvePackId —
   // so every page that needs a room's pack (this page, checkout success,
   // invite links, etc.) agrees, instead of duplicating/drifting logic.
-  const packId = demoProperty ? DEFAULT_PACK_ID : resolvePackId(apiProperty);
+  const packId = isDemo
+    ? ({
+        'kontra-demo': 'cre_acquisition',
+        'kontra-demo-biz': 'business_acquisition',
+        'kontra-demo-fundraising': 'fundraising',
+      }[propertyId] || DEFAULT_PACK_ID)
+    : resolvePackId(apiProperty);
   const pack = getWorkflowPack(packId);
   const isCREPack       = packId === DEFAULT_PACK_ID;
   const isTokenization  = isDigitalAssetLayerEnabled(apiProperty, pack);
@@ -6481,7 +6486,7 @@ export default function DealRoomPage() {
   // non-invitable; a canManage flag alone must not turn an external participant
   // into the workspace owner.
   const isOwnerAccess = property?.access?.mode === 'owner';
-  const isCoordinator = isOwnerAccess
+  const isCoordinator = isDemo || isOwnerAccess
     || (hasOwnerToken && role === 'owner')
     || (
       property?.access?.mode !== 'participant'
@@ -6747,17 +6752,18 @@ export default function DealRoomPage() {
       )}
 
       {/* Workspace tab nav — coordinator view of live paid rooms only */}
-      {property.isCustom && !isDemo && (
+      {property.isCustom && (
         <WorkspaceTabNav
           activeTab={activeTab}
           onChange={setActiveTab}
           isCoordinator={isCoordinator}
+          isDemo={isDemo}
         />
       )}
 
       <div className="max-w-5xl mx-auto px-6 py-8">
 
-        {property.isCustom && !isDemo ? (
+        {property.isCustom ? (
 
           /* ── Shared workspace layout ───────────────────────────────────── */
           <>
@@ -6794,7 +6800,7 @@ export default function DealRoomPage() {
                     propertyId={pid}
                     propertyType={property.property_type || property.type}
                     role={role}
-                    isDemo={false}
+                    isDemo={isDemo}
                     packId={packId}
                     packReady={packReady}
                     onAnalysisSaved={onAnalysisSaved}
@@ -6811,6 +6817,7 @@ export default function DealRoomPage() {
                 packId={packId}
                 isV2={!!property.auth_v2_enabled}
                 isCoordinator={isCoordinator}
+                readOnly={isDemo}
                 coordinatorRole={isCoordinator ? (
                   pack.roles?.find(r => r.canManage === true) || {
                     key: 'deal_coordinator',

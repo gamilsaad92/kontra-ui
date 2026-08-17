@@ -226,6 +226,7 @@ export default function ParticipantsPanel({
   isV2 = false,
   isCoordinator = false,
   coordinatorRole = null,
+  readOnly = false,
 }) {
   const pack = getWorkflowPack(packId);
 
@@ -524,7 +525,9 @@ export default function ParticipantsPanel({
 
                     {/* Action */}
                     <div className="flex items-center justify-end" style={{ width: 36 }}>
-                      {status === 'not_invited' ? (
+                      {readOnly ? (
+                        <span className="text-[10px] text-gray-400">Read-only</span>
+                      ) : status === 'not_invited' ? (
                         <button
                           onClick={() => { setModalRole(role.key); setShowModal(true); }}
                           className="px-2.5 py-1 rounded-lg text-[11px] font-bold transition hover:opacity-90"
@@ -630,18 +633,19 @@ export default function ParticipantsPanel({
         </p>
       </div>
 
-      {/* Invite modal */}
-      <InviteModal
-        open={showModal}
-        onClose={() => {
-          setShowModal(false);
-          loadInvites().catch(() => {});
-        }}
-        prefilledRoleKey={modalRole}
-        roles={invitableRoles}
-        isV2={isV2}
-        onSend={handleSend}
-      />
+      {!readOnly && (
+        <InviteModal
+          open={showModal}
+          onClose={() => {
+            setShowModal(false);
+            loadInvites().catch(() => {});
+          }}
+          prefilledRoleKey={modalRole}
+          roles={invitableRoles}
+          isV2={isV2}
+          onSend={handleSend}
+        />
+      )}
     </div>
   );
 }
