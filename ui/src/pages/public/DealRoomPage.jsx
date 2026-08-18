@@ -34,9 +34,9 @@ const JURISDICTION_INFO = {
     label: "UAE — ADGM / DFSA",
     flag: "🇦🇪",
     points: [
-      "FSRA Category 3C or 3D licence (or exemption) required to operate a digital asset business within ADGM.",
-      "Token issuances targeting UAE retail investors are subject to DFSA Financial Promotion rules — ensure marketing materials are approved by a licensed firm.",
-      "KYC / AML obligations follow FSRA Anti-Money Laundering, Countering Financing of Terrorism and Sanctions (AML) rules.",
+        "Record the proposed ADGM / DFSA jurisdiction and ask qualified counsel to confirm the applicable framework.",
+        "Coordinate any financial-promotion, licensing, or exemption questions with the issuer's counsel and external providers.",
+        "Capture the KYC / AML preparation status and keep the supporting source documents in the workspace.",
     ],
     color: "#1d4ed8",
     bg: "#eff6ff",
@@ -46,9 +46,9 @@ const JURISDICTION_INFO = {
     label: "EU — MiCA (Markets in Crypto-Assets)",
     flag: "🇪🇺",
     points: [
-      "MiCA White Paper mandatory for all crypto-asset offerings since 30 June 2024 — must be submitted to the competent national authority before publication.",
-      "Asset-Referenced Tokens (ARTs) and E-Money Tokens (EMTs) carry additional reserve, governance, and own-funds requirements.",
-      "Ongoing disclosure obligations apply: significant developments affecting the crypto-asset must be notified to investors promptly.",
+        "Record the proposed EU jurisdiction and ask qualified counsel to identify any applicable MiCA preparation inputs.",
+        "Coordinate white-paper, reserve, governance, disclosure, and provider-review questions with the issuer's advisers.",
+        "Keep source documents and professional review notes linked to the Transaction Record.",
     ],
     color: "#0369a1",
     bg: "#f0f9ff",
@@ -58,9 +58,9 @@ const JURISDICTION_INFO = {
     label: "US — Regulation D (SEC)",
     flag: "🇺🇸",
     points: [
-      "Rule 506(b): up to 35 non-accredited sophisticated investors permitted; no general solicitation or advertising allowed.",
-      "Rule 506(c): unlimited accredited investors only; general solicitation permitted; must verify accredited status (income, net worth, or third-party letter).",
-      "Form D must be filed with the SEC within 15 days after the first sale of securities. Blue-sky filings may be required in individual states.",
+        "Record the proposed US jurisdiction and have counsel confirm whether a particular offering pathway is applicable.",
+        "Coordinate investor, disclosure, filing, and verification questions with qualified counsel and external providers.",
+        "Use the workspace to organize supporting documents and review status; it does not determine eligibility.",
     ],
     color: "#6b21a8",
     bg: "#faf5ff",
@@ -70,9 +70,9 @@ const JURISDICTION_INFO = {
     label: "Singapore — MAS",
     flag: "🇸🇬",
     points: [
-      "Digital tokens that constitute capital markets products (securities, CIS units, derivatives) require a prospectus or fall under an exemption (e.g. small offers under S$5M / 12-month period, private placement to ≤50 persons).",
-      "MAS Payment Services Act licence required if the token issuance involves regulated payment services or DPT services.",
-      "Anti-Money Laundering requirements follow MAS Notice PSN02 / SFA Notice SFA04-N02 — rigorous CDD on all investors.",
+        "Record the proposed Singapore jurisdiction and ask counsel to identify the relevant preparation path.",
+        "Coordinate capital-markets, payment-services, investor, and AML/KYC questions with qualified advisers.",
+        "Keep the evidence and review status organized for external professional review.",
     ],
     color: "#0f766e",
     bg: "#f0fdfa",
@@ -82,9 +82,9 @@ const JURISDICTION_INFO = {
     label: "UK — FCA",
     flag: "🇬🇧",
     points: [
-      "Financial promotions for qualifying cryptoassets must be approved by an FCA-authorised firm or the issuer must be registered under the Cryptoasset Financial Promotion regime.",
-      "Security tokens (qualifying as specified investments) require an FCA-approved prospectus or rely on an exemption (e.g. exempt under s86 FSMA for qualified investors / high-net-worth).",
-      "Cryptoasset businesses must be registered with the FCA for AML/CTF purposes under the Money Laundering Regulations 2017.",
+        "Record the proposed UK jurisdiction and ask qualified counsel to confirm the applicable preparation inputs.",
+        "Coordinate financial-promotion, prospectus, registration, and AML/CTF questions with qualified advisers.",
+        "Use the workspace for document organization and review tracking, not for a legal or regulatory determination.",
     ],
     color: "#9a3412",
     bg: "#fff7ed",
@@ -121,7 +121,7 @@ function JurisdictionComplianceCard({ jurisdiction }) {
         <span className="text-sm font-bold" style={{ color: info.color }}>{info.label}</span>
         <span className="ml-auto text-xs font-semibold px-2 py-0.5 rounded-full"
           style={{ background: info.border, color: info.color }}>
-          Regulatory Checkpoints
+          Preparation Checkpoints
         </span>
       </div>
       <ul className="space-y-1.5 mb-3">
@@ -133,7 +133,7 @@ function JurisdictionComplianceCard({ jurisdiction }) {
         ))}
       </ul>
       <p className="text-[11px] text-gray-400 border-t pt-2.5 mt-2.5" style={{ borderColor: info.border }}>
-        ⚠️ This is an informational summary only and does not constitute legal advice. Consult qualified legal counsel before making any regulatory decisions.
+         ⚠️ This is an informational preparation summary only. Consult qualified counsel before relying on it or making legal or regulatory decisions.
       </p>
     </div>
   );
@@ -216,6 +216,77 @@ const DEMO_ROOM_IDS = new Set([
   'kontra-demo-biz',
   'kontra-demo-fundraising',
 ]);
+
+// Demo room identity is stable and intentionally duplicated here as a tiny
+// first-paint shell. The API response still replaces this object immediately
+// after it arrives; keeping the shell local avoids showing a blank loading
+// screen while the seeded public fixture request is in flight.
+const DEMO_ROOM_SHELLS = {
+  'kontra-demo': {
+    id: 'kontra-demo',
+    property_id: 'kontra-demo',
+    property_name: 'Harbor View Apartments',
+    name: 'Harbor View Apartments',
+    property_type: 'Multifamily',
+    type: 'Multifamily',
+    address: '1425 Brickell Ave, Miami, FL 33131',
+    deal_amount: '14000000',
+    deal_stage: 'under_review',
+    workflow_pack_id: 'cre_acquisition',
+    metadata_values: {
+      target_close_date: '2026-09-18',
+      transaction_value: '$14,000,000',
+      transaction_type: 'Commercial real estate acquisition',
+    },
+    market: 'Miami, FL',
+    image: 'https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?w=1200&q=80',
+    isCustom: true,
+    is_demo: true,
+  },
+  'kontra-demo-biz': {
+    id: 'kontra-demo-biz',
+    property_id: 'kontra-demo-biz',
+    property_name: 'Meridian Software Group',
+    name: 'Meridian Software Group',
+    property_type: 'Business Acquisition',
+    type: 'Business Acquisition',
+    address: 'Austin, TX',
+    deal_amount: '8500000',
+    deal_stage: 'under_review',
+    workflow_pack_id: 'business_acquisition',
+    metadata_values: {
+      target_close_date: '2026-10-02',
+      transaction_value: '$8,500,000',
+      transaction_type: 'Business acquisition',
+    },
+    market: 'Austin, TX',
+    image: 'https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?w=1200&q=80',
+    isCustom: true,
+    is_demo: true,
+  },
+  'kontra-demo-fundraising': {
+    id: 'kontra-demo-fundraising',
+    property_id: 'kontra-demo-fundraising',
+    property_name: 'Nexus AI — Series B',
+    name: 'Nexus AI — Series B',
+    property_type: 'Technology',
+    type: 'Technology',
+    address: 'San Francisco, CA',
+    deal_amount: '42000000',
+    deal_stage: 'under_review',
+    workflow_pack_id: 'fundraising',
+    metadata_values: {
+      target_close_date: '2026-10-15',
+      transaction_value: '$42,000,000',
+      transaction_type: 'Series B fundraising',
+      transaction_structure: 'Series B preferred stock',
+    },
+    market: 'San Francisco, CA',
+    image: 'https://images.unsplash.com/photo-1497366216548-37526070297c?w=1200&q=80',
+    isCustom: true,
+    is_demo: true,
+  },
+};
 
 // ── Generate realistic sample data for newly created deal rooms ──────────────
 function generateDemoData(apiProp) {
@@ -1421,7 +1492,7 @@ function JurisdictionSettingsPanel({ propertyId, property }) {
       {isEditable ? (
         <>
           <p className="text-[11px] text-gray-400 mb-3 leading-snug">
-             Sets the regulatory framework that governs this deal room and loads the corresponding compliance preparation checklist.
+             Records the jurisdiction context for this deal room and loads the corresponding preparation checklist for professional review.
           </p>
           <select
             value={value}
@@ -1741,8 +1812,8 @@ function DigitalAssetConfigPanel({ property, pack }) {
       {/* Contextual explanation */}
       <p className="text-[10px] text-gray-400 mt-3 leading-relaxed">
         {showDigitalLayer
-           ? 'This deal room is configured for digital asset (token) issuance preparation. All readiness tracking, regulatory compliance, and document requirements reflect this configuration.'
-           : 'Jurisdiction overlay loads the corresponding regulatory compliance checklist and readiness requirements for this deal room.'}
+           ? 'This optional deal-room layer organizes digital-asset preparation inputs for external professional and provider review. It does not determine eligibility or approval.'
+           : 'Jurisdiction context helps organize preparation questions and source documents for professional review.'}
       </p>
     </div>
   );
@@ -1768,7 +1839,7 @@ const PACK_LABELS = {
 
 // ── AssetReadinessTab ─────────────────────────────────────────────────────────
 // Kontra Tokenization Architecture — advisor brief (Aug 2026):
-//   "Make every completed transaction automatically become Tokenization Ready."
+//   "Keep digital-asset preparation optional and downstream of the verified transaction record."
 // No blockchain dependency. Everything generated from existing workflow data.
 // Exportable as JSON. API-first for future tokenization platform partners.
 // Applies to ALL workspace types — not just tokenization.
@@ -1902,7 +1973,7 @@ function AssetReadinessTab({ propertyId, property, pack, onTabChange }) {
   const ALL_CATEGORIES = [
     { key: 'ownership',    icon: '🏛️', label: 'Ownership Structure',    pct: ownershipPct, weight: 0.15, missing: ownershipMiss, cta: 'Settings → Ownership',   onClick: () => { onTabChange?.('settings'); setTimeout(() => document.getElementById('ownership-structure')?.scrollIntoView({ behavior: 'smooth' }), 150); },
       explanation: isAssetPack
-        ? 'Records who owns the asset, the entity structure, and beneficial ownership information required for institutional transactions and regulatory filings.'
+        ? 'Records who owns the asset, the entity structure, and beneficial ownership information needed for institutional review and downstream coordination.'
         : 'Records who owns the asset and the entity structure — required for due diligence, title transfer, and closing documentation.' },
     { key: 'legal',        icon: '📋', label: 'Legal Documentation',    pct: legalPct,     weight: 0.15, missing: legalMiss,     cta: 'Upload legal docs',       onClick: () => onTabChange?.('documents'),
       explanation: 'Executed agreements, title documents, and corporate authorizations that form the foundation of a verifiable transaction record.' },
@@ -1912,8 +1983,8 @@ function AssetReadinessTab({ propertyId, property, pack, onTabChange }) {
         : 'Financial statements, valuations, and key figures that enable independent assessment of the asset\'s financial position.' },
     { key: 'identity',     icon: '🪪', label: 'Identity Verification',  pct: identityPct,  weight: 0.12, missing: identityMiss,  cta: 'Documents → KYC',         onClick: () => onTabChange?.('documents'),
       explanation: isAssetPack
-        ? 'KYC/AML verification of all transaction parties. Required by all regulated issuance platforms and custodians before asset transfer or token issuance can proceed.'
-        : 'Identity verification of all transaction parties. Required for closing, escrow release, and regulatory compliance.' },
+        ? 'KYC/AML preparation status for transaction parties. Coordinate the applicable review with qualified advisers and external providers.'
+        : 'Identity verification of all transaction parties for closing, escrow release, and counterparty review.' },
     ...(isAssetPack ? [
       { key: 'cap_table',  icon: '📊', label: 'Cap Table',              pct: capPct,       weight: 0.12, missing: capMiss,       cta: 'Settings → Ownership',   onClick: () => { onTabChange?.('settings'); setTimeout(() => document.getElementById('ownership-structure')?.scrollIntoView({ behavior: 'smooth' }), 150); },
         explanation: 'Token allocation breakdown — investor, team, and reserve percentages, vesting schedules, and lead investor details.' },
@@ -1922,8 +1993,8 @@ function AssetReadinessTab({ propertyId, property, pack, onTabChange }) {
        explanation: 'Complete, timestamped log of every action taken in the deal room. Forms the immutable record required by institutional auditors and counterparties.' },
     { key: 'compliance',   icon: '✅', label: isAssetPack ? 'Compliance' : 'Deal Compliance', pct: compPct, weight: 0.12, missing: compMiss, cta: 'Settings → Jurisdiction', onClick: () => onTabChange?.('settings'),
       explanation: isAssetPack
-        ? 'Regulatory framework compliance — jurisdiction set, required regulatory filings uploaded, and any jurisdiction-specific exemptions documented.'
-        : 'Governing framework — jurisdiction set and any required regulatory or deal-specific filings uploaded.' },
+        ? 'Jurisdiction and review inputs — proposed framework recorded, supporting documents organized, and open adviser questions visible.'
+        : 'Governing framework — jurisdiction context recorded and deal-specific supporting documents organized.' },
     { key: 'doc_integrity',icon: '🔒', label: 'Document Integrity',     pct: docIntPct,    weight: 0.10, missing: docIntMiss,    cta: 'Documents tab',           onClick: () => onTabChange?.('documents'),
       explanation: 'All required documents uploaded and AI-verified. Document integrity is the baseline requirement for the closing package and any downstream export.' },
   ];
@@ -2662,15 +2733,14 @@ function DigitalAssetPrepCard({ propertyId, recordFields = [], readiness = null 
     }
   }
 
-  const populatedFacts = recordFields.filter(field => {
-    const value = String(field.value_text || '').trim().toLowerCase();
-    return value && !['n/a', 'na', 'not applicable', 'not_applicable', 'unknown'].includes(value)
-      && field.status !== 'not_applicable';
-  });
-  const localReadinessSufficient = populatedFacts.length >= 4
-    && populatedFacts.some(field => field.field_key?.startsWith('transaction.'))
-    && populatedFacts.some(field => field.field_key?.startsWith('asset.') || field.field_key?.startsWith('parties.'));
-  const hasEnoughInformation = readiness?.digital_asset_readiness?.sufficient ?? localReadinessSufficient;
+  const tokenizationRecordState = readiness?.transaction_record || null;
+  const tokenizationDefinitions = getRequiredRecordFields('tokenization');
+  const tokenizationInputStates = tokenizationDefinitions.map(definition =>
+    getRecordDefinitionState(definition, recordFields, tokenizationRecordState)
+  );
+  const tokenizationGaps = tokenizationInputStates.filter(item => item.status !== 'confirmed');
+  const hasEnoughInformation = readiness?.digital_asset_readiness?.sufficient === true
+    && tokenizationGaps.length === 0;
 
   // Digital Asset Prep is intentionally progressive: it is a downstream
   // structured-package action, not a default destination for an empty room.
@@ -2701,12 +2771,12 @@ function DigitalAssetPrepCard({ propertyId, recordFields = [], readiness = null 
             )}
           </div>
           <p className="text-xs text-gray-500 mt-1 leading-relaxed">
-            Organize the transaction facts already collected into an AI-prepared structured package for external review.
+             Organize the confirmed tokenization-specific inputs already collected into an AI-prepared structured package for external review.
           </p>
           {requested && (
             <div className="mt-3 rounded-xl bg-gray-50 border border-gray-100 px-3 py-2.5">
               <p className="text-xs font-semibold text-gray-800">
-                {result?.status === 'prepared' ? 'AI-prepared package generated.' : 'A few facts are still needed.'}
+                 {result?.status === 'inputs_captured' ? 'AI-prepared package generated for external review.' : 'A few inputs are still needed.'}
               </p>
               {result?.missing?.length > 0 && (
                 <p className="text-[11px] text-gray-500 mt-1">
@@ -2715,7 +2785,7 @@ function DigitalAssetPrepCard({ propertyId, recordFields = [], readiness = null 
                 </p>
               )}
               <p className="text-[10px] text-gray-400 mt-1">
-                AI-prepared only. Kontra does not provide legal or regulatory verification, and does not issue, sell, recommend, custody, or settle digital assets.
+                 AI-prepared only. Kontra does not determine legal or regulatory outcomes, and does not issue, sell, recommend, custody, or settle digital assets.
               </p>
             </div>
           )}
@@ -3205,6 +3275,7 @@ function WhatNeedsAttention({
 function DigitalAssetReadinessSection({
   propertyId,
   recordFields,
+  recordState = null,
   readiness,
   onTabChange,
   schemaKey = DEFAULT_PACK_ID,
@@ -3331,7 +3402,14 @@ function DigitalAssetReadinessSection({
   const readyCount   = categories.filter(c => c.st === 'ready').length;
   const buildingCount = categories.filter(c => ['building','needs_info'].includes(c.st)).length;
   const serverSufficient = readiness?.digital_asset_readiness?.sufficient;
-  const allReady     = serverSufficient || readyCount === categories.length;
+  const tokenizationDefinitions = getRequiredRecordFields('tokenization');
+  const tokenizationInputStates = tokenizationDefinitions.map(definition =>
+    getRecordDefinitionState(definition, recordFields, recordState || readiness?.transaction_record || null)
+  );
+  const tokenizationGaps = tokenizationInputStates.filter(item => item.status !== 'confirmed');
+  const tokenizationInputsComplete = serverSufficient === true
+    && tokenizationGaps.length === 0;
+  const allReady     = tokenizationInputsComplete;
 
   // Overall state
   const overallState = allReady
@@ -3342,7 +3420,7 @@ function DigitalAssetReadinessSection({
         ? { label: 'Building',   color: 'text-amber-700',  bg: 'bg-amber-50',    border: 'border-amber-100' }
         : { label: 'Early',      color: 'text-gray-500',   bg: 'bg-gray-50',     border: 'border-gray-200' };
 
-  const stLabel = { not_started: 'Not started', building: 'Building', needs_info: 'Needs information', ready: 'Ready for review' };
+  const stLabel = { not_started: 'Not started', building: 'Building', needs_info: 'Needs information', ready: 'Key fields present' };
   const stColor = { not_started: 'text-gray-400', building: 'text-amber-600', needs_info: 'text-orange-600', ready: 'text-emerald-600' };
   const stDot   = { not_started: 'bg-gray-200',   building: 'bg-amber-400',   needs_info: 'bg-orange-400',   ready: 'bg-emerald-400' };
   const stBar   = { not_started: 'bg-gray-100',   building: 'bg-amber-300',   needs_info: 'bg-orange-300',   ready: 'bg-emerald-400' };
@@ -3478,10 +3556,10 @@ function DigitalAssetReadinessSection({
       {/* Footer — DA prep available (only when tokenization/DA is explicitly enabled) */}
       {digitalAssetEnabled && allReady ? (
         <div className="border-t border-emerald-100 bg-emerald-50/60 px-5 py-4">
-          <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-600 mb-1">Digital Asset Readiness</p>
-          <p className="text-xs font-semibold text-gray-800">Preparation Available</p>
+          <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-600 mb-1">Optional Digital Asset Preparation</p>
+          <p className="text-xs font-semibold text-gray-800">Required preparation inputs captured</p>
           <p className="mt-0.5 text-xs text-gray-500 leading-relaxed">
-            Your transaction record contains enough organized information to begin preparing a handoff package for external legal, compliance, or issuance providers.
+            The Transaction Record contains the tokenization-specific inputs needed to assemble a package for external professional or provider review. This is not legal, regulatory, or issuance approval.
           </p>
           <button
             onClick={async () => {
@@ -3502,9 +3580,9 @@ function DigitalAssetReadinessSection({
         </div>
       ) : digitalAssetEnabled ? (
         <div className="border-t border-gray-100 bg-indigo-50/30 px-5 py-3">
-          <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-500 mb-0.5">Digital Asset Readiness</p>
+          <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-500 mb-0.5">Optional Digital Asset Preparation</p>
           <p className="text-[10px] text-gray-400">
-            Building your digital asset profile from transaction data. Complete more transaction readiness categories to unlock.
+            {tokenizationGaps.length} tokenization-specific input{tokenizationGaps.length === 1 ? '' : 's'} still need to be recorded or confirmed. General transaction completeness does not replace these inputs.
           </p>
         </div>
       ) : (
@@ -3766,7 +3844,8 @@ function getLifecycleEvidenceSections(stage) {
   return null;
 }
 
-function getLifecycleAdvanceRecommendation(stages, currentStageIndex, analyses) {
+function getLifecycleAdvanceRecommendation(stages, currentStageIndex, analyses, hasBlockingIssues = false) {
+  if (hasBlockingIssues) return null;
   if (!Array.isArray(stages) || currentStageIndex < 0 || currentStageIndex >= stages.length - 1) return null;
   const usableAnalyses = (analyses || []).filter(analysis =>
     !['failed', 'uploaded', 'processing', 'retrying'].includes(String(analysis.processing_status || '').toLowerCase())
@@ -3789,6 +3868,10 @@ function getLifecycleAdvanceRecommendation(stages, currentStageIndex, analyses) 
       ? `${evidence.slice(0, 2).join(' and ')} are already on file.`
       : `${evidence[0] || 'Supporting evidence'} is already on file.`,
   };
+}
+
+function getOpenIssueCount(conflicts = [], nextMilestoneBlockers = []) {
+  return conflicts.length + nextMilestoneBlockers.length;
 }
 
 const RECORD_EMPTY_VALUES = new Set(['', 'n/a', 'na', 'not applicable', 'not_applicable', 'unknown']);
@@ -3942,11 +4025,19 @@ function getNextMilestoneBlockers({
     text: `${item.label || item.name || 'Required document'} is needed before ${nextStage.label}`,
     detail: 'This requirement is tied to the next lifecycle milestone.',
     action: { label: 'Open Documents', onClick: () => {} },
-    participantKey: (item.assignedTo || item.assigned_to || [])[0],
+    participantKey: (Array.isArray(item.assignedTo || item.assigned_to)
+      ? (item.assignedTo || item.assigned_to)
+      : [item.assignedTo || item.assigned_to].filter(Boolean))[0],
   }));
   const blockedRoles = new Set(blockers.map(blocker => blocker.participantKey).filter(Boolean));
+  const nextStageParticipantRoles = new Set([
+    ...(Array.isArray(nextStage.requiredRoles) ? nextStage.requiredRoles : []),
+    ...(Array.isArray(nextStage.requiredRoleKeys) ? nextStage.requiredRoleKeys : []),
+    ...(Array.isArray(nextStage.participantRoles) ? nextStage.participantRoles : []),
+  ]);
+  const participantRolesForMilestone = new Set([...blockedRoles, ...nextStageParticipantRoles]);
   participantStates
-    .filter(state => state.required && !state.joined && blockedRoles.has(state.key))
+    .filter(state => state.required && !state.joined && participantRolesForMilestone.has(state.key))
     .forEach(state => blockers.push({
       key: `next-participant-${state.key}`,
       text: `${state.label} must be active before ${nextStage.label}`,
@@ -4130,9 +4221,16 @@ function TransactionBrief({
         ?.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }, 0);
   };
-  const stageRecommendation = getLifecycleAdvanceRecommendation(stages, currentStageIndex, analyses);
+  const hasBlockingIssues = conflicts.length > 0 || nextMilestoneBlockers.length > 0;
+  const stageRecommendation = getLifecycleAdvanceRecommendation(
+    stages,
+    currentStageIndex,
+    analyses,
+    hasBlockingIssues,
+  );
+  const openIssueCount = getOpenIssueCount(conflicts, nextMilestoneBlockers);
   const recommendationItems = [
-    ...(stageRecommendation && stageDecision !== 'kept'
+    ...(stageRecommendation && !hasBlockingIssues && stageDecision !== 'kept'
       ? [{
           key: 'stage',
           tone: 'blue',
@@ -4270,12 +4368,15 @@ function TransactionBrief({
         <div className="rounded-xl border border-gray-200 bg-white px-4 py-3">
           <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Open Issues</p>
           <p className={`mt-1 text-lg font-bold ${nextMilestoneBlockers.length > 0 || conflicts.length > 0 ? 'text-red-700' : 'text-gray-900'}`}>
-            {nextMilestoneBlockers.length}
+            {openIssueCount}
           </p>
           <p className="text-[11px] text-gray-500">
             {conflicts.length > 0
               ? `${conflicts.length} conflict${conflicts.length === 1 ? '' : 's'}`
               : 'No conflicts recorded'}
+            {nextMilestoneBlockers.length > 0
+              ? ` · ${nextMilestoneBlockers.length} milestone blocker${nextMilestoneBlockers.length === 1 ? '' : 's'}`
+              : ''}
             {nextMilestone
               ? ` · blocks ${nextMilestone.label}`
               : ' · no next milestone'}
@@ -4444,6 +4545,8 @@ function TransactionBrief({
     </section>
   );
 }
+
+export { getLifecycleAdvanceRecommendation, getNextMilestoneBlockers, getOpenIssueCount };
 
 // ── Transaction Seal Summary (complete phase) ─────────────────────────────────
 // Fetches the Transaction Seal record and displays a compact completed-state
@@ -4719,6 +4822,7 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
   const [readiness, setReadiness]       = useState(null);
   const [loading, setLoading]           = useState(true);
   const [ownerToken, setOwnerToken]     = useState('');
+  const loadSequence = useRef(0);
 
   useEffect(() => {
     try { setOwnerToken(localStorage.getItem(`kontra_owner_token_${propertyId}`) || ''); } catch {}
@@ -4726,30 +4830,52 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
 
   const load = useCallback(async () => {
     if (!propertyId) return;
+    // The coordinator shell is useful before secondary panels finish
+    // hydrating. Keep the old loading prop for the brief's skeleton only, but
+    // do not make the entire Overview wait for every endpoint in the fan-out.
+    setLoading(false);
+    const sequence = ++loadSequence.current;
     const headers = getRoomAuthHeaders(propertyId);
     const get = (path, fallback) => fetch(`${API_BASE}${path}`, { headers })
       .then(r => r.ok ? r.json() : fallback)
       .catch(() => fallback);
-    const [brief, coord, stageData, record, readinessData, checklist, eventData, analysisData] = await Promise.all([
-      get(`/api/public/deal-room/${propertyId}/brain/briefing`, null),
-      get(`/api/public/deal-room/${propertyId}/coordination`, null),
-      get(`/api/public/deal-room/${propertyId}/stages`, { stages: [] }),
-      get(`/api/public/deal-room/${propertyId}/transaction-record`, { fields: [] }),
-      get(`/api/public/deal-room/${propertyId}/readiness`, null),
-      get(`/api/public/deal-room/${propertyId}/checklist`, { items: [] }),
-      get(`/api/public/deal-room/${propertyId}/events`, { events: [] }),
-      get(`/api/public/deal-room/${propertyId}/analyses`, { analyses: [] }),
-    ]);
-    setBriefing(brief);
-    setCoordination(coord);
-    setStages(normalizeLifecycleStages(Array.isArray(stageData?.stages) && stageData.stages.length >= 2 ? stageData.stages : (pack.stages || [])));
-    setRecordFields(Array.isArray(record?.fields) ? record.fields : []);
-    setRecordState(record?.record_state || readinessData?.transaction_record || null);
-    setReadiness(readinessData);
-    setChecklistItems(Array.isArray(checklist?.items) ? checklist.items : []);
-    setEvents(Array.isArray(eventData?.events) ? eventData.events : []);
-    setAnalyses(Array.isArray(analysisData?.analyses) ? analysisData.analyses : []);
-    setLoading(false);
+    const apply = (setter, transform = value => value) => data => {
+      if (sequence === loadSequence.current) setter(transform(data));
+    };
+
+    get(`/api/public/deal-room/${propertyId}/brain/briefing`, null)
+      .then(apply(setBriefing));
+    get(`/api/public/deal-room/${propertyId}/coordination`, null)
+      .then(apply(setCoordination));
+    get(`/api/public/deal-room/${propertyId}/stages`, { stages: [] })
+      .then(apply(
+        setStages,
+        stageData => normalizeLifecycleStages(
+          Array.isArray(stageData?.stages) && stageData.stages.length >= 2
+            ? stageData.stages
+            : (pack.stages || []),
+        ),
+      ));
+    get(`/api/public/deal-room/${propertyId}/transaction-record`, { fields: [] })
+      .then(record => {
+        if (sequence !== loadSequence.current) return;
+        setRecordFields(Array.isArray(record?.fields) ? record.fields : []);
+        setRecordState(record?.record_state || null);
+      });
+    get(`/api/public/deal-room/${propertyId}/readiness`, null)
+      .then(data => {
+        if (sequence !== loadSequence.current) return;
+        setReadiness(data);
+        if (data?.transaction_record) {
+          setRecordState(previous => previous || data.transaction_record);
+        }
+      });
+    get(`/api/public/deal-room/${propertyId}/checklist`, { items: [] })
+      .then(apply(setChecklistItems, checklist => Array.isArray(checklist?.items) ? checklist.items : []));
+    get(`/api/public/deal-room/${propertyId}/events`, { events: [] })
+      .then(apply(setEvents, eventData => Array.isArray(eventData?.events) ? eventData.events : []));
+    get(`/api/public/deal-room/${propertyId}/analyses`, { analyses: [] })
+      .then(apply(setAnalyses, analysisData => Array.isArray(analysisData?.analyses) ? analysisData.analyses : []));
   // refreshKey is intentionally included so any document upload (which bumps
   // analysesRefreshKey in DealRoomPage) immediately triggers a re-fetch here,
   // making the Snapshot and WhatNeedsAttention update without waiting 30s.
@@ -4824,11 +4950,7 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
 
   // Digital Asset Readiness sub-section only shown when tokenization/DA is
   // explicitly enabled for this workspace.
-  const digitalAssetEnabled = !!(
-    property?.metadata_values?.digital_asset_enabled ||
-    property?.metadata_values?.digital_assets_enabled ||
-    property?.metadata_values?.tokenization_enabled
-  );
+  const digitalAssetEnabled = isDigitalAssetLayerEnabled(property, pack);
 
   const readinessPct = readiness?.transaction_readiness?.overall_pct ?? null;
   const readinessStatus = readiness?.transaction_readiness?.status
@@ -5013,6 +5135,7 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
           <DigitalAssetReadinessSection
             propertyId={propertyId}
             recordFields={recordFields}
+            recordState={canonicalRecordState}
             readiness={readiness}
             onTabChange={onTabChange}
             schemaKey={recordSchemaKey}
@@ -6384,15 +6507,21 @@ export default function DealRoomPage() {
     }
   }
 
-  // Resolve property: demo first, then API, then derive from slug
+  const isDemo = DEMO_ROOM_IDS.has(propertyId);
+
+  // Resolve property: use a local demo shell first, then merge the complete
+  // API payload as soon as it arrives, then derive from the slug for unknown
+  // rooms.
   const demoProperty = DEMO_PROPERTIES[propertyId];
-  const isCustom = !demoProperty;
+  const demoRoomShell = DEMO_ROOM_SHELLS[propertyId];
+  const isCustom = isDemo || !demoProperty;
 
   // Build display property object
-  let property = demoProperty;
-  if (!property && apiProperty) {
+  let property = demoRoomShell || demoProperty;
+  if (apiProperty) {
     const sample = generateDemoData(apiProperty);
     property = {
+      ...(demoRoomShell || {}),
       ...apiProperty,
       ...sample,
       name: apiProperty.property_name,
@@ -6414,8 +6543,6 @@ export default function DealRoomPage() {
       property_type: "", property_size: "", deal_type: "", deal_amount: "",
     };
   }
-
-  const isDemo = DEMO_ROOM_IDS.has(propertyId);
 
   // Per-demo hero image overrides — each room gets a visually appropriate photo
   if (propertyId === 'kontra-demo' && property) {
@@ -6537,7 +6664,7 @@ export default function DealRoomPage() {
   }
 
   // Generic loading state
-  if (loadingApi && isCustom) {
+  if (loadingApi && isCustom && !isDemo) {
     return (
       <PublicLayout hideFooter>
         <div className="min-h-[60vh] flex items-center justify-center">

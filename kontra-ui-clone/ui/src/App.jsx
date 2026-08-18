@@ -1,4 +1,4 @@
-import React, { useContext } from "react";
+import React, { lazy, Suspense, useContext } from "react";
 import { Navigate, Route, Routes, useParams } from "react-router-dom";
 import LoginPage from "./pages/LoginPage";
 import PortalSelectPage from "./pages/PortalSelectPage";
@@ -24,7 +24,6 @@ import ServiceProvidersPage from "./pages/public/ServiceProvidersPage";
 import PricingPage from "./pages/public/PricingPage";
 import TokenizationPage from "./pages/public/TokenizationPage";
 import HowItWorksPage from "./pages/public/HowItWorksPage";
-import DealRoomPage from "./pages/public/DealRoomPage";
 import DealSummaryPage from "./pages/public/DealSummaryPage";
 import DealSharePage from "./pages/public/DealSharePage";
 import SharedVAPPage from "./pages/public/SharedVAPPage";
@@ -43,6 +42,22 @@ import TermsPage from "./pages/public/TermsPage";
 import SecurityPage from "./pages/public/SecurityPage";
 import AboutPage from "./pages/public/AboutPage";
 import ProductPage from "./pages/public/ProductPage";
+
+// The deal room imports the largest public-page surface. Keep it out of the
+// initial application bundle so the marketing pages and the room's first
+// shell can start sooner.
+const DealRoomPage = lazy(() => import("./pages/public/DealRoomPage"));
+
+function DealRoomRouteFallback() {
+  return (
+    <div className="min-h-[60vh] flex items-center justify-center">
+      <div className="text-center">
+        <div className="w-8 h-8 border-2 border-gray-300 border-t-red-800 rounded-full mx-auto mb-3 animate-spin" />
+        <p className="text-sm text-gray-500">Opening deal room…</p>
+      </div>
+    </div>
+  );
+}
 
 // Unified workspace — any authenticated user
 import NewDashboard from "./pages/NewDashboard";
@@ -87,7 +102,14 @@ function AuthedApp() {
         <Route path="/tokenization" element={<TokenizationPage />} />
         <Route path="/how-it-works" element={<HowItWorksPage />} />
         <Route path="/product" element={<ProductPage />} />
-        <Route path="/deal-room/:propertyId" element={<DealRoomPage />} />
+        <Route
+          path="/deal-room/:propertyId"
+          element={(
+            <Suspense fallback={<DealRoomRouteFallback />}>
+              <DealRoomPage />
+            </Suspense>
+          )}
+        />
         <Route path="/deal-room/:propertyId/summary" element={<DealSummaryPage />} />
         <Route path="/deal-room/:propertyId/share" element={<DealSharePage />} />
         {/* Task #188 — redirect participants who bookmark /verify back to their deal room */}

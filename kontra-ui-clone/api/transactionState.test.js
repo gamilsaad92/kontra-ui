@@ -80,4 +80,23 @@ describe('transaction state recalculation', () => {
     expect(result.confirmedCount).toBe(1);
     expect(result.conflictCount).toBe(1);
   });
+
+  it('does not treat four generic transaction facts as sufficient digital-asset preparation', () => {
+    const fields = [
+      { field_key: 'transaction.type', value_text: 'Commercial acquisition', status: 'verified' },
+      { field_key: 'transaction.jurisdiction', value_text: 'us_fl', status: 'verified' },
+      { field_key: 'asset.name', value_text: 'Harbor View Apartments', status: 'verified' },
+      { field_key: 'parties.buyer', value_text: 'Harbor View Capital', status: 'verified' },
+    ];
+
+    const result = computeTransactionReadiness(
+      { workflow_pack_id: 'cre_acquisition' },
+      fields,
+      'cre_acquisition',
+    );
+
+    expect(result.digitalAssetSufficient).toBe(false);
+    expect(result.digitalAssetGapCount).toBeGreaterThan(0);
+    expect(result.digitalAssetRequiredInputCount).toBeGreaterThan(4);
+  });
 });

@@ -66,6 +66,13 @@ Token economics (name, ticker, supply, price, raise target) = customer-provided 
 
 Readiness score = document and workflow completion ONLY, not legal eligibility.
 
+## AI grounding
+Tokenization and digital-asset questions must lead with the current Transaction Record facts and statuses, then list tokenization-specific preparation gaps, then provide clearly labeled general education. The answer must preserve optionality and avoid unsupported readiness, approval, eligibility, exemption, or regulatory claims.
+
+**Why:** model prompts alone can still lead with generic demo or document context, so the response contract needs a deterministic factual preface before any generated explanation.
+
+**How to apply:** derive the preface from `transaction_context.record.state` for real rooms and the equivalent fixture record for demos; treat conflicts and awaiting-confirmation values as open review items.
+
 ## Primary export action
 ✅ "Export Preparation Package" or "Send to External Provider"
 ❌ Never "Issue Token"

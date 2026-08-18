@@ -11,6 +11,12 @@ const {
   getRoomPackId,
 } = require('./dealRoomHelpers');
 const { listTasksForRoom } = require('./taskEngine');
+const {
+  isTokenizationQuestion,
+  buildTokenizationGuidance,
+  buildTokenizationPrompt,
+  buildTokenizationAnswerPrefix,
+} = require('./tokenizationGuidance');
 
 let _deps = null;
 function getDependencies() {
@@ -233,6 +239,21 @@ async function buildGroundedContext(propertyId) {
     documentCount: Number(participant.doc_count || 0),
     submittedAt: participant.submitted_at || null,
   }));
+  const recordStateFields = (recordFields || []).map(field => ({
+    key: field.field_key,
+    label: field.display_label || field.field_key,
+    value: field.value_text || null,
+    status: field.status || null,
+    attention: field.status === 'source_changed' ? 'source_changed' : null,
+  }));
+  const digitalAssetEnabled = room?.metadata_values?.digital_asset_enabled === true
+    || room?.metadata_values?.digital_asset_enabled === 'true'
+    || room?.metadata_values?.digital_assets_enabled === true
+    || room?.metadata_values?.digital_assets_enabled === 'true'
+    || room?.metadata_values?.tokenization_enabled === true
+    || room?.metadata_values?.tokenization_enabled === 'true'
+    || room?.workflow_pack_id === 'tokenization'
+    || room?.deal_type === 'tokenization';
   const transactionContext = {
     transaction: {
       propertyId,
@@ -243,6 +264,8 @@ async function buildGroundedContext(propertyId) {
       stage: room?.deal_stage || null,
       stageLabel,
       jurisdiction: room?.jurisdiction || null,
+      digitalAssetEnabled,
+      tokenizationOptional: true,
     },
     participants: participantContext,
     record: {
@@ -251,6 +274,10 @@ async function buildGroundedContext(propertyId) {
       confirmedFactCount: populatedRecordFields.filter(field =>
         ['verified', 'source_changed'].includes(field.status)
       ).length,
+      state: {
+        schema: packId,
+        fields: recordStateFields,
+      },
     },
     evidence: {
       documents: documentFindings,
@@ -306,6 +333,7 @@ function contextToPrompt(ctx) {
 
   return JSON.stringify(
     {
+      transaction_context: ctx.transactionContext,
       deal: ctx.room,
       closing_chain: chainSummary,
       open_tasks: ctx.openTasks,
@@ -313,7 +341,6 @@ function contextToPrompt(ctx) {
       missing_documents: ctx.missingDocuments,
       transaction_record_facts: ctx.recordFacts,
       document_findings: ctx.documentFindings,
-      transaction_context: ctx.transactionContext,
     },
     null,
     2
@@ -326,7 +353,8 @@ facts, people, dates, or documents not present in that context. If the context d
 enough information to answer, say so plainly instead of guessing.
 
 Answer as a quiet transaction-workspace guide: explain findings, summarize what is missing, identify the next action, and give concise daily briefs when asked. Cite the specific task, document finding, record fact, or checklist item behind every claim.
-This is AI-prepared operational guidance, not legal, regulatory, tax, investment, or settlement advice. Never claim that Kontra verified a legal or regulatory requirement.
+This is AI-prepared operational guidance, not legal, regulatory, tax, investment, or settlement advice. Never claim that Kontra verified a legal or regulatory requirement, determined an exemption, approved an offering, or established eligibility. Use preparation, coordination, professional-review, and external-provider-handoff language instead.
+Tokenization and digital-asset preparation are optional downstream paths. They never replace the transaction workflow and must not be presented as a default outcome.
 
 DEPENDENCY CHAIN REASONING: The closing_chain shows sequential steps where each step gates the next.
 The earliest step that is NOT "complete" is the ACTIVE BLOCKER — tasks in that step are on the critical path.
@@ -530,8 +558,20 @@ async function askQuestion(propertyId, question) {
   }
   const ctx = await buildGroundedContext(propertyId);
   const openai = getOpenAI();
+  const tokenizationGuidance = isTokenizationQuestion(question)
+    ? buildTokenizationGuidance({ transactionContext: ctx.transactionContext })
+    : null;
 
   if (!openai) {
+    if (tokenizationGuidance) {
+      const gaps = tokenizationGuidance.gaps.slice(0, 4)
+        .map(item => item.label)
+        .join(', ');
+      return {
+        answer: `${buildTokenizationAnswerPrefix(tokenizationGuidance)}${gaps ? ` Next coordination focus: ${gaps}.` : ''}`,
+        citedTaskIds: ctx.openTasks.map(t => t.id),
+      };
+    }
     return {
       answer: `AI reasoning is temporarily unavailable. There are ${ctx.openTasks.length} open task(s) in this workspace.`,
       citedTaskIds: ctx.openTasks.map(t => t.id),
@@ -552,19 +592,28 @@ Answer the user's operational question. Respond as JSON:
   from what's parallel. If only one step is the blocker, say which one it is and explicitly note
   the others are NOT blocking closing. Always name task owners. Always cite specific evidence.),
   "citedTaskIds": [ string ] }
-If the question cannot be answered from context, say so directly.`,
+If the question cannot be answered from context, say so directly.
+${tokenizationGuidance ? `\n${buildTokenizationPrompt(tokenizationGuidance)}` : ''}`,
         },
         { role: 'user', content: `Workspace context:\n${contextToPrompt(ctx)}\n\nQuestion: ${question}` },
       ],
     });
     const parsed = JSON.parse(resp.choices[0].message.content || '{}');
+    const aiAnswer = parsed.answer || 'I could not generate an answer from the current workspace data.';
     return {
-      answer: parsed.answer || 'I could not generate an answer from the current workspace data.',
+      answer: tokenizationGuidance
+        ? `${buildTokenizationAnswerPrefix(tokenizationGuidance)}\n\n${aiAnswer}`
+        : aiAnswer,
       citedTaskIds: Array.isArray(parsed.citedTaskIds) ? parsed.citedTaskIds : [],
     };
   } catch (err) {
     console.error('[operationsManager] askQuestion LLM error:', err.message);
-    return { answer: 'Something went wrong answering that question. Please try again.', citedTaskIds: [] };
+    return {
+      answer: tokenizationGuidance
+        ? `${buildTokenizationAnswerPrefix(tokenizationGuidance)}\n\nAI explanation is temporarily unavailable; use the recorded facts and preparation gaps above.`
+        : 'Something went wrong answering that question. Please try again.',
+      citedTaskIds: [],
+    };
   }
 }
 

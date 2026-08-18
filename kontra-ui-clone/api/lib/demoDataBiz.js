@@ -37,12 +37,12 @@ const TASKS = [
   },
   {
     id: 'biz-task-counsel',
-    title: 'Vance & Partners — rep and warranty schedule review pending',
+    title: 'Vance & Partners — Purchase Agreement still missing',
     priority: 'medium',
     status: 'pending',
     role: 'attorney',
     due: 'Tomorrow',
-    description: 'Disclosure schedule uploaded. Vance & Partners have 48 hours to review rep and warranty provisions before the purchase agreement draft is circulated.',
+    description: 'The Purchase Agreement has not been received. Vance & Partners need to provide or confirm the agreement before the room can advance.',
   },
   {
     id: 'biz-task-mgt',
@@ -65,15 +65,16 @@ const TASKS = [
 ];
 
 const BRIEFING = {
-  hook: 'LOI signed — QoE report is the critical path to close.',
-  summary: 'Financials and disclosure schedule are uploaded and reviewed. The Quality of Earnings report from Davidson Advisory is 4 days overdue and blocks LOI finalization. Three material customer contracts are still outstanding from the seller.',
+  hook: 'Transaction Record is substantially complete — Purchase Agreement blocks advancement.',
+  summary: 'Most transaction facts are confirmed, but the Purchase Agreement is still missing and blocks advancement. Two related fields — contingencies and board approval — are captured but awaiting confirmation. The Quality of Earnings report and three material customer contracts remain diligence threads.',
   actions: [
-    'Send follow-up to Davidson Advisory on the QoE report — 4 days overdue',
+    'Request the missing Purchase Agreement from Vance & Partners before advancing the room',
+    'Confirm the recorded contingencies and pending board approval once the agreement is received',
     'Request outstanding contracts from Tom Briggs: Apex Corp, Bluewater, NovaTech',
-    'Confirm with Vance & Partners that rep/warranty review is on track for tomorrow',
   ],
   risks: [
-    'QoE report overdue — LOI cannot be finalized without it',
+    'Purchase Agreement missing — advancement is blocked until it is received and reviewed',
+    'QoE report overdue — diligence remains incomplete',
     'Customer concentration risk: top 3 customers = 61% of ARR',
   ],
 };
@@ -176,8 +177,10 @@ You are the AI advisor for the Meridian Software Group acquisition.
 Deal amount: $8.5M (cash-free, debt-free, 100% equity). Stage: Due Diligence. Pack: Business Acquisition.
 Key facts: SaaS business, $2.1M ARR, 75% gross margin, $420K EBITDA, 32% revenue CAGR, 4.2% churn, Austin TX.
 Parties: Davidson Advisory (CPA — QoE report 4 days overdue), Tom Briggs (seller — 3 contracts outstanding), Vance & Partners (attorney — rep/warranty review), Rachael Park (buyer lead), Meridian Advisors (M&A broker).
-Outstanding: QoE report (blocks LOI), 3 material contracts, IP assignment from former contractor.
+Outstanding: Purchase Agreement (blocks advancement), QoE report, 3 material contracts, IP assignment from former contractor.
 Pre-seeded documents: LOI (clean), 3-year financials (strong growth, concentration risk), disclosure schedule (IP gap found).
+Transaction Record status: 19 of 21 fields are confirmed; contingencies and board approval are awaiting confirmation, and the Purchase Agreement field is missing.
+For tokenization questions, distinguish technical or structural preparation from legal/regulatory eligibility. Kontra identifies information and documentation needed for external professional review; it does not determine securities-law or regulatory compliance.
 Answer questions concisely and factually based on this context.
 `.trim();
 

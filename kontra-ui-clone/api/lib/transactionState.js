@@ -12,6 +12,9 @@ const {
 const {
   canonicalizeTransactionRecordKey,
 } = require('./transactionRecordCanonicalization');
+const {
+  buildTokenizationGuidance,
+} = require('./tokenizationGuidance');
 
 let requirements = null;
 function getRequirements() {
@@ -164,17 +167,19 @@ function computeTransactionReadiness(room, recordFields, schemaKey) {
       : overall === 0
         ? 'Getting Started'
         : 'Needs Attention';
-  const hasTransactionFact = populated.some(field => field.key?.startsWith('transaction.'));
-  const hasAssetOrPartyFact = populated.some(field =>
-    field.key?.startsWith('asset.') || field.key?.startsWith('parties.')
-  );
+  const tokenizationGuidance = buildTokenizationGuidance({
+    recordState,
+    recordFields,
+    enabled: true,
+  });
+  const confirmedTokenizationInputs = tokenizationGuidance.known.filter(field =>
+    ['verified', 'confirmed'].includes(field.status)
+  ).length;
   const digitalAssetPercent = Math.min(
     100,
-    Math.round((populated.length / 8) * 70)
-      + (hasTransactionFact ? 15 : 0)
-      + (hasAssetOrPartyFact ? 15 : 0),
+    Math.round((confirmedTokenizationInputs / tokenizationGuidance.inputCount) * 100),
   );
-  const digitalAssetSufficient = populated.length >= 4 && hasTransactionFact && hasAssetOrPartyFact;
+  const digitalAssetSufficient = tokenizationGuidance.complete;
 
   return {
     overall,
@@ -184,6 +189,9 @@ function computeTransactionReadiness(room, recordFields, schemaKey) {
     notApplicableCount: recordState.notApplicableCount,
     digitalAssetPercent,
     digitalAssetSufficient,
+    digitalAssetConfirmedInputCount: confirmedTokenizationInputs,
+    digitalAssetRequiredInputCount: tokenizationGuidance.inputCount,
+    digitalAssetGapCount: tokenizationGuidance.gaps.length,
     populatedCount: populated.length,
     recordState,
     categories: [{ name: 'Structured Transaction Record', weight: 1, score: overall }],
