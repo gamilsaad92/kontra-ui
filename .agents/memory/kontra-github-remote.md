@@ -13,6 +13,12 @@ Gotchas: `git diff-tree -r --raw <sha>` prints the commit SHA as its first line 
 
 **Why:** The connector proxy is the reliable fallback when the workspace Git credential helper cannot authenticate. The proxy path preserves the GitHub tree and can update `main` without touching `master`.
 
+**Remote verification:** The local `github/main` tracking ref can lag the actual GitHub `main` when another publish path advances the branch. Verify the live ref through the connector before pushing; preserve any remote commits instead of trusting the stale local ref.
+
+**Why:** A direct push based on the stale tracking ref risks overwriting remote deployment work even when the local worktree is clean.
+
+**How to apply:** Read `/repos/gamilsaad92/kontra-ui/git/ref/heads/main` first, compare its commit to local ancestry, and publish on top of the live SHA.
+
 ## Vercel deployment aliases
 
 Vercel can successfully deploy a new GitHub `main` commit while leaving an older deployment-specific `*.vercel.app` URL pointed at the previous build. A successful Vercel status on the commit includes the current deployment URL; verify that URL directly instead of assuming an older preview/deployment alias moved.
