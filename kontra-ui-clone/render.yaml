@@ -3,8 +3,8 @@ services:
     name: kontra-api
     env: node
     rootDir: api
-    buildCommand: "npm install"
-    startCommand: "node index.js"
+    buildCommand: "if [ -f api/package.json ]; then npm ci --prefix api --ignore-scripts --no-audit --no-fund; else npm ci --ignore-scripts --no-audit --no-fund; fi"
+    startCommand: "if [ -f api/index.js ]; then node api/index.js; else node index.js; fi"
     healthCheckPath: /health
     envVars:
       - key: SUPABASE_URL
