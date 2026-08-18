@@ -168,7 +168,7 @@ const PACK_SCHEMAS = {
   // ── Fundraising ────────────────────────────────────────────────────────────
   fundraising: {
     transaction_extra: [
-      { key: "transaction.target_close",     label: "Target close date",      required: false, sources: ["Term Sheet"] },
+       { key: "transaction.target_close",     label: "Target close date",      required: false, aliasOf: "transaction.closing_date", sources: ["Term Sheet"] },
       { key: "transaction.instrument_type",  label: "Instrument type",        required: true,  sources: ["Term Sheet"], hint: "SAFE, convertible note, equity" },
     ],
     asset_identity: [
@@ -431,7 +431,7 @@ export function getPackRecordSchema(schemaKey) {
       // Acquisition packs have one economic fact: transaction.purchase_price.
       // Keep aliases in the schema for canonical DB matching, but do not render
       // them as separate Transaction Record rows.
-      renderable: !(ACQUISITION_SCHEMA_KEYS.has(schemaKey) && field.aliasOf),
+       renderable: !field.aliasOf,
     };
   };
   return Object.fromEntries([

@@ -83,13 +83,56 @@ function buildRecord(packId) {
   const fields = requiredKeys.map((key, index) => {
     const value = values[key] || '';
     const conflict = packId === 'cre_acquisition' && key === 'legal.encumbrances';
+    const notApplicable = packId === 'business_acquisition' && key === 'approval.shareholder';
     const awaiting = (packId === 'cre_acquisition' && key === 'approval.counsel')
       || (packId === 'business_acquisition' && ['legal.contingencies', 'approval.board'].includes(key));
-    return { id: `demo-record-${packId}-${index}`, field_key: key, field_category: key.split('.')[0], display_label: label(key), value_text: value, status: conflict ? 'conflicting' : awaiting ? 'needs_review' : value ? 'verified' : 'missing', source_document: value ? 'Demo transaction materials' : null, updated_at: '2026-08-14T15:30:00.000Z' };
+    const status = notApplicable
+      ? 'not_applicable'
+      : conflict
+        ? 'conflicting'
+        : awaiting
+          ? 'needs_review'
+          : value
+            ? 'verified'
+            : 'missing';
+    return { id: `demo-record-${packId}-${index}`, field_key: key, field_category: key.split('.')[0], display_label: label(key), value_text: value, status, source_document: value ? 'Demo transaction materials' : null, updated_at: '2026-08-14T15:30:00.000Z' };
   });
-  const stateFields = fields.map(field => ({ key: field.field_key, label: field.display_label, value: field.value_text, status: field.status === 'conflicting' ? 'conflict' : field.status === 'needs_review' ? 'awaiting' : field.value_text ? 'confirmed' : 'missing', attention: field.status === 'conflicting' ? 'source_changed' : null, required: true }));
-  const confirmedCount = stateFields.filter(field => field.status === 'confirmed').length;
-  return { fields, record_state: { schema: packId, fields: stateFields, requiredFields: stateFields, confirmedCount, requiredCount: requiredKeys.length, awaitingCount: stateFields.filter(f => f.status === 'awaiting').length, awaitingRequiredCount: stateFields.filter(f => f.status === 'awaiting').length, awaitingOptionalCount: 0, conflictCount: stateFields.filter(f => f.status === 'conflict').length } };
+  const stateFields = fields.map(field => ({
+    key: field.field_key,
+    label: field.display_label,
+    value: field.value_text,
+    status: field.status === 'conflicting'
+      ? 'conflict'
+      : field.status === 'needs_review'
+        ? 'awaiting'
+        : field.status === 'not_applicable'
+          ? 'not_applicable'
+          : field.value_text
+            ? 'confirmed'
+            : 'missing',
+    attention: field.status === 'conflicting' ? 'source_changed' : null,
+    required: true,
+  }));
+  const notApplicableCount = stateFields.filter(field => field.status === 'not_applicable').length;
+  const requiredFields = stateFields.filter(field => field.status !== 'not_applicable');
+  const confirmedCount = requiredFields.filter(field => field.status === 'confirmed').length;
+  const awaitingCount = stateFields.filter(field => field.status === 'awaiting').length;
+  const awaitingRequiredCount = requiredFields.filter(field => field.status === 'awaiting').length;
+  return {
+    fields,
+    record_state: {
+      schema: packId,
+      fields: stateFields,
+      requiredFields,
+      confirmedCount,
+      requiredCount: requiredFields.length,
+      awaitingCount,
+      awaitingRequiredCount,
+      awaitingOptionalCount: awaitingCount - awaitingRequiredCount,
+      conflictCount: stateFields.filter(f => f.status === 'conflict').length,
+      notApplicableCount,
+    },
+  };
 }
 
 function getDemoFixture(packId, property) {
@@ -105,7 +148,7 @@ function getDemoFixture(packId, property) {
   const participantInvites = participants.map(([role, name, status], index) => ({ id: `demo-invite-${packId}-${index}`, role_key: role, status, invited_email: `${role}@demo.example`, created_at: '2026-08-08T16:00:00.000Z', last_used_at: status === 'accepted' ? '2026-08-14T14:10:00.000Z' : null, expires_at: '2026-09-08T16:00:00.000Z', display_name: name }));
   const coordination = { stage: 'under_review', submissions, parties: submissions, docsByRole: Object.fromEntries(submissions.map(row => [row.role, row.doc_count])), participantInvites };
   const state = record.record_state;
-  const readiness = { record_type: 'transaction_readiness', asset_id: property.property_id, overall_score: packId === 'cre_acquisition' ? 82 : packId === 'business_acquisition' ? 76 : 71, status: 'Building', closing_ready: false, transaction_ready: false, transaction_readiness: { overall_pct: Math.round((state.confirmedCount / state.requiredCount) * 100), status: 'Building', categories: [], confirmed_fields: state.confirmedCount, required_fields: state.requiredCount, awaiting_fields: state.awaitingCount, awaiting_required_fields: state.awaitingRequiredCount, awaiting_optional_fields: 0, conflicts: state.conflictCount }, transaction_record: state, digital_asset_readiness: { status: 'Building quietly', percent: Math.round((state.confirmedCount / state.requiredCount) * 100), sufficient: false, captured_facts: state.confirmedCount, note: 'AI-prepared only. Kontra does not provide legal or regulatory verification.' } };
+  const readiness = { record_type: 'transaction_readiness', asset_id: property.property_id, overall_score: packId === 'cre_acquisition' ? 82 : packId === 'business_acquisition' ? 76 : 71, status: 'Building', closing_ready: false, transaction_ready: false, transaction_readiness: { overall_pct: Math.round((state.confirmedCount / state.requiredCount) * 100), status: 'Building', categories: [], confirmed_fields: state.confirmedCount, required_fields: state.requiredCount, awaiting_fields: state.awaitingCount, awaiting_required_fields: state.awaitingRequiredCount, awaiting_optional_fields: state.awaitingOptionalCount, conflicts: state.conflictCount }, transaction_record: state, digital_asset_readiness: { status: 'Building quietly', percent: Math.round((state.confirmedCount / state.requiredCount) * 100), sufficient: false, captured_facts: state.confirmedCount, note: 'AI-prepared only. Kontra does not provide legal or regulatory verification.' } };
   const events = [
     { id: `demo-event-${packId}-1`, event_type: 'document_analyzed', description: 'Kontra completed AI analysis on newly uploaded transaction materials', actor_role: 'coordinator', actor_name: 'Demo Coordinator', created_at: '2026-08-14T15:30:00.000Z' },
     { id: `demo-event-${packId}-2`, event_type: 'field_verified', description: 'Key transaction facts were confirmed from source documents', actor_role: 'coordinator', actor_name: 'Demo Coordinator', created_at: '2026-08-13T17:10:00.000Z' },

@@ -3286,61 +3286,47 @@ function DigitalAssetReadinessSection({
   const [expandedCat, setExpandedCat] = useState(null);
   const isAcquisitionSchema = schemaKey === 'cre_acquisition' || schemaKey === 'business_acquisition';
 
-  // Per-field definitions for each category — label used in expand panel
-  const CAT_FIELD_DEFS = {
-    parties: [
-      { key: 'parties.buyer',      label: 'Buyer / primary party' },
-      { key: 'parties.seller',     label: 'Seller / counterparty' },
-      { key: 'parties.primary',    label: 'Primary party' },
-      { key: 'parties.secondary',  label: 'Secondary party' },
-      { key: 'parties.borrower',   label: 'Borrower' },
-      { key: 'ownership.owner_name', label: 'Registered owner' },
-    ],
-    asset: [
-      { key: 'asset.name',         label: 'Asset name' },
-      { key: 'asset.type',         label: 'Asset type' },
-      { key: 'asset.address',      label: 'Property address' },
-      { key: 'asset.legal_name',   label: 'Legal entity name' },
-      { key: 'asset.jurisdiction', label: 'Jurisdiction' },
-      { key: 'asset.description',  label: 'Asset description' },
-    ],
-    terms: [
-      ...(isAcquisitionSchema
-        ? [{ key: 'transaction.purchase_price', label: 'Transaction value / purchase price' }]
-        : [
-            { key: 'transaction.purchase_price', label: 'Purchase price' },
-            { key: 'transaction.value',          label: 'Transaction value' },
-          ]),
-      { key: 'transaction.closing_date',   label: 'Closing date' },
-      { key: 'transaction.type',           label: 'Transaction type' },
-      { key: 'transaction.structure',      label: 'Transaction structure' },
-    ],
-    financial: [
-      ...(!isAcquisitionSchema
-        ? [
-            { key: 'financial.purchase_price', label: 'Purchase price' },
-            { key: 'financial.deal_value',     label: 'Deal value' },
-          ]
-        : []),
-      { key: 'financial.revenue',        label: 'Revenue' },
-      { key: 'financial.noi',            label: 'Net operating income' },
-      { key: 'financial.loan_amount',    label: 'Loan amount' },
-      { key: 'asset.noi',                label: 'Asset NOI' },
-      { key: 'asset.revenue',            label: 'Asset revenue' },
-    ],
-    legal: [
-      { key: 'ownership.cap_table',          label: 'Cap table / ownership' },
-      { key: 'ownership.beneficial_owners',  label: 'Beneficial owners' },
-      { key: 'ownership.liens',              label: 'Liens & encumbrances' },
-      { key: 'ownership.encumbrances',       label: 'Encumbrances' },
-      { key: 'legal.title_status',           label: 'Title status' },
-      { key: 'legal.regulatory_approvals',   label: 'Regulatory approvals' },
-    ],
+  // Keep the existing five visual categories, but derive their fields from the
+  // same pack schema and required canonical state used by the Overview and the
+  // full Transaction Record. This is data wiring only; the rendered layout is
+  // intentionally unchanged.
+  const canonicalRecordState = recordState || readiness?.transaction_record || null;
+  const requiredKeys = new Set(
+    (canonicalRecordState?.requiredFields || getRequiredRecordFields(schemaKey))
+      .map(field => field.key || field.canonicalKey)
+      .filter(Boolean),
+  );
+  const schemaFields = Object.entries(getPackRecordSchema(schemaKey)).flatMap(([category, fields]) =>
+    fields.map(field => ({ ...field, category })),
+  );
+  const categorySchemaGroups = {
+    parties: ['parties', 'beneficial_ownership'],
+    asset: ['asset_identity'],
+    terms: ['transaction'],
+    financial: ['financial'],
+    legal: ['legal', 'approvals'],
   };
+  const CAT_FIELD_DEFS = Object.fromEntries(
+    Object.entries(categorySchemaGroups).map(([categoryKey, schemaCategories]) => [
+      categoryKey,
+      schemaFields
+        .filter(field =>
+          schemaCategories.includes(field.category)
+          && requiredKeys.has(field.canonicalKey || field.key)
+          && field.renderable !== false,
+        )
+        .map(field => ({
+          key: field.key,
+          canonicalKey: field.canonicalKey || field.key,
+          aliasOf: field.aliasOf || null,
+          label: field.label,
+        })),
+    ]),
+  );
 
   // Returns field objects from recordFields that match a given key (supports * prefix)
   function matchingFields(keyDef) {
-    const keys = [keyDef.key, keyDef.aliasOf].filter(Boolean);
+    const keys = [keyDef.key, keyDef.aliasOf, keyDef.canonicalKey].filter(Boolean);
     return recordFields.filter(f =>
       keyDef.key.endsWith('*')
         ? f.field_key?.startsWith(keyDef.key.slice(0, -1))
@@ -3365,11 +3351,18 @@ function DigitalAssetReadinessSection({
   ].map(cat => {
     const enriched = cat.fieldDefs.map(def => {
       const matched = matchingFields(def);
-      const populated = matched.find(f => isPopulated(f));
-      return { ...def, field: populated || null, allMatches: matched };
+      const state = getRecordDefinitionState(def, recordFields, canonicalRecordState);
+      const populated = state.status === 'confirmed'
+        ? matched.find(f => isPopulated(f)) || {
+            ...state.field,
+            value_text: state.value,
+            status: 'verified',
+          }
+        : null;
+      return { ...def, field: populated, state, allMatches: matched };
     });
-    const confirmedDefs = enriched.filter(d => d.field);
-    const missingDefs   = enriched.filter(d => !d.field);
+    const confirmedDefs = enriched.filter(d => d.state.status === 'confirmed');
+    const missingDefs   = enriched.filter(d => d.state.status !== 'confirmed');
     const count = confirmedDefs.length;
     const total = enriched.length;
     // Derive sources from populated fields

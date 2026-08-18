@@ -57,6 +57,14 @@ const {
   getChecklistItemAssignedRoles,
   getAssignedSectionsFromChecklist,
 } = require('./lib/documentAssignmentAccess');
+const {
+  isTokenizationQuestion,
+  buildTokenizationGuidance,
+  buildTokenizationPrompt,
+  buildTokenizationAnswerPrefix,
+  buildFixtureTransactionContext,
+} = require('./lib/tokenizationGuidance');
+const { sanitizeDemoTokenizationAnswer } = require('./lib/demoRoomFixtures');
 
 // Pack inference map — mirrors DEAL_TYPE_TO_PACK in dealRoomHelpers.js so that
 // room creation writes the correct workflow_pack_id from day one.
@@ -81,6 +89,23 @@ function isTokenizationTransaction(packId, transactionType, metadataValues = nul
     || transactionType === 'tokenization'
     || transactionType === 'token_issuance'
     || digitalAssetEnabled;
+}
+
+function buildDemoQaSystemPrompt(basePrompt, fixture, question) {
+  if (!isTokenizationQuestion(question)) return basePrompt;
+  const guidance = buildTokenizationGuidance({
+    transactionContext: buildFixtureTransactionContext(fixture),
+  });
+  return `${basePrompt}\n\n${buildTokenizationPrompt(guidance)}`;
+}
+
+function formatDemoTokenizationAnswer(answer, fixture, question) {
+  if (!isTokenizationQuestion(question)) return answer;
+  const guidance = buildTokenizationGuidance({
+    transactionContext: buildFixtureTransactionContext(fixture),
+  });
+  const safeAnswer = sanitizeDemoTokenizationAnswer(answer);
+  return `${buildTokenizationAnswerPrefix(guidance)}\n\nKontra can assess technical or structural tokenization readiness and identify required information and documentation for external professional review; it does not determine securities-law or regulatory eligibility.\n\n${safeAnswer}`;
 }
 
 async function jurisdictionForTransaction(jurisdiction, packId, transactionType, metadataValues = null) {
@@ -2587,8 +2612,6 @@ app.post('/api/webhook/stripe',
   const DEMO_ID = 'kontra-demo';
   const fixture = getDemoFixture('cre_acquisition', PROPERTY);
 
-  // Demo rooms use the same response contracts as live rooms, but every write
-  // is intentionally contained here and returns a no-op response.
   app.get(`/api/public/deal-room/${DEMO_ID}`, (_req, res) => res.json(fixture.property));
   app.get(`/api/public/deal-room/${DEMO_ID}/checklist`, (_req, res) => res.json({ items: fixture.checklist }));
   app.get(`/api/public/deal-room/${DEMO_ID}/transaction-record`, (_req, res) => res.json(fixture.record));
@@ -2629,15 +2652,20 @@ app.post('/api/webhook/stripe',
       const completion = await openai.chat.completions.create({
         model: 'gpt-4o-mini',
         messages: [
-          { role: 'system', content: DEMO_QA_CONTEXT },
+          { role: 'system', content: buildDemoQaSystemPrompt(DEMO_QA_CONTEXT, fixture, question) },
           { role: 'user', content: question },
         ],
         max_tokens: 200,
         temperature: 0.4,
       });
-      res.json({ answer: completion.choices[0].message.content.trim() });
+      res.json({
+        answer: formatDemoTokenizationAnswer(completion.choices[0].message.content.trim(), fixture, question),
+      });
     } catch (e) {
-      res.json({ answer: 'The inspection report is the critical item right now — everything else is secondary until Marcus Webb submits.' });
+      const fallback = isTokenizationQuestion(question)
+        ? 'AI explanation is temporarily unavailable; use the recorded facts and preparation gaps above.'
+        : 'The inspection report is the critical item right now — everything else is secondary until Marcus Webb submits.';
+      res.json({ answer: formatDemoTokenizationAnswer(fallback, fixture, question) });
     }
   });
 
@@ -2716,15 +2744,20 @@ app.post('/api/webhook/stripe',
       const completion = await openai.chat.completions.create({
         model: 'gpt-4o-mini',
         messages: [
-          { role: 'system', content: DEMO_QA_CONTEXT },
+          { role: 'system', content: buildDemoQaSystemPrompt(DEMO_QA_CONTEXT, fixture, question) },
           { role: 'user', content: question },
         ],
         max_tokens: 200,
         temperature: 0.4,
       });
-      res.json({ answer: completion.choices[0].message.content.trim() });
+      res.json({
+        answer: formatDemoTokenizationAnswer(completion.choices[0].message.content.trim(), fixture, question),
+      });
     } catch (e) {
-      res.json({ answer: 'The QoE report is the critical item — the LOI cannot be finalized until Davidson Advisory delivers it.' });
+      const fallback = isTokenizationQuestion(question)
+        ? 'AI explanation is temporarily unavailable; use the recorded facts and preparation gaps above.'
+        : 'The QoE report is the critical item — the LOI cannot be finalized until Davidson Advisory delivers it.';
+      res.json({ answer: formatDemoTokenizationAnswer(fallback, fixture, question) });
     }
   });
 
@@ -2788,15 +2821,20 @@ app.post('/api/webhook/stripe',
       const completion = await openai.chat.completions.create({
         model: 'gpt-4o-mini',
         messages: [
-          { role: 'system', content: DEMO_QA_CONTEXT },
+          { role: 'system', content: buildDemoQaSystemPrompt(DEMO_QA_CONTEXT, fixture, question) },
           { role: 'user', content: question },
         ],
         max_tokens: 200,
         temperature: 0.4,
       });
-      res.json({ answer: completion.choices[0].message.content.trim() });
+      res.json({
+        answer: formatDemoTokenizationAnswer(completion.choices[0].message.content.trim(), fixture, question),
+      });
     } catch (e) {
-      res.json({ answer: 'Two subscription agreements from committed LPs are outstanding — Clearwater\'s $5M agreement is the most urgent before the August 1 close.' });
+      const fallback = isTokenizationQuestion(question)
+        ? 'AI explanation is temporarily unavailable; use the recorded facts and preparation gaps above.'
+        : 'Two subscription agreements from committed LPs are outstanding — Clearwater\'s $5M agreement is the most urgent before the August 1 close.';
+      res.json({ answer: formatDemoTokenizationAnswer(fallback, fixture, question) });
     }
   });
 
@@ -6392,10 +6430,10 @@ app.get('/api/public/deal-room/:propertyId/readiness', async (req, res) => {
   const digitalAssetReadinessPercent = readiness.digitalAssetPercent;
   const digitalAssetReadinessSufficient = readiness.digitalAssetSufficient;
   const digitalAssetReadinessStatus = digitalAssetReadinessSufficient
-    ? 'Ready to prepare'
+    ? 'Preparation inputs captured'
     : populatedRecordFields.length > 0
-      ? 'Building quietly'
-      : 'Waiting for documents';
+      ? 'Preparation inputs incomplete'
+      : 'No preparation inputs recorded';
 
   res.json({
     record_type:        'transaction_readiness',
@@ -6424,7 +6462,10 @@ app.get('/api/public/deal-room/:propertyId/readiness', async (req, res) => {
       percent: digitalAssetReadinessPercent,
       sufficient: digitalAssetReadinessSufficient,
       captured_facts: populatedRecordFields.length,
-      note: 'AI-prepared only. Kontra does not provide legal or regulatory verification.',
+      required_inputs: readiness.digitalAssetRequiredInputCount,
+      confirmed_inputs: readiness.digitalAssetConfirmedInputCount,
+      missing_inputs: readiness.digitalAssetGapCount,
+      note: 'AI-prepared coordination data only. Kontra does not determine legal or regulatory outcomes.',
     },
     ...((room.workflow_pack_id === 'tokenization'
       || room.deal_type === 'tokenization'
@@ -8878,32 +8919,32 @@ app.post('/api/public/deal-room/:propertyId/digital-asset-prep', async (req, res
     if (!room) return res.status(404).json({ error: 'room not found' });
 
     const recordFields = fields || [];
-    const missing = recordFields
-      .filter(field => field.status !== 'not_applicable' && !String(field.value_text || '').trim())
+    const tokenizationGuidance = buildTokenizationGuidance({
+      recordFields,
+      enabled: true,
+    });
+    const missing = tokenizationGuidance.gaps
       .slice(0, 12)
       .map(field => ({
-        field_key: field.field_key,
-        label: field.display_label || field.field_key,
+        field_key: field.key,
+        label: field.label,
+        reason: field.reason,
+        status: field.status,
       }));
     const now = new Date().toISOString();
     const preparedPackage = {
       package_type: 'digital_asset_preparation',
-      preparation_status: missing.length > 0 ? 'needs_information' : 'prepared',
+      preparation_status: missing.length > 0 ? 'needs_information' : 'inputs_captured',
       prepared_at: now,
-      facts: recordFields
-        .filter(field => field.status !== 'not_applicable' && String(field.value_text || '').trim())
-        .map(field => ({
-          field_key: field.field_key,
-          label: field.display_label || field.field_key,
-          value: field.value_text,
-          status: field.status || 'captured',
-        })),
+      facts: tokenizationGuidance.known,
       missing,
-      disclaimer: 'AI-prepared only. Kontra does not provide legal or regulatory verification and does not issue, sell, recommend, custody, or settle digital assets.',
+      optional: true,
+      disclaimer: 'AI-prepared coordination data only. Kontra does not determine legal or regulatory outcomes and does not issue, sell, recommend, custody, or settle digital assets.',
     };
     const metadata = {
       ...(room.metadata_values || {}),
       digital_asset_prep_requested: true,
+      digital_asset_prep_opted_in: true,
       digital_asset_prep_requested_at: now,
       digital_asset_prep_package: preparedPackage,
     };
@@ -8919,9 +8960,9 @@ app.post('/api/public/deal-room/:propertyId/digital-asset-prep', async (req, res
 
     res.json({
       ok: true,
-      status: missing.length > 0 ? 'needs_information' : 'prepared',
+      status: missing.length > 0 ? 'needs_information' : 'inputs_captured',
       missing,
-      prepared_field_count: recordFields.length - missing.length,
+      prepared_field_count: tokenizationGuidance.known.length,
       package: preparedPackage,
       requested_at: now,
     });
