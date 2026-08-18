@@ -14,6 +14,9 @@ The GitHub repo gamilsaad92/kontra-ui has two API directories:
 - After editing `kontra-ui-clone/api/lib/pgAdapter.js`, run: `cp kontra-ui-clone/api/lib/pgAdapter.js api/lib/pgAdapter.js`
 - After editing `kontra-ui-clone/api/index.js`, run: `cp kontra-ui-clone/api/index.js api/index.js`
 - Trigger a Render deploy through the configured Render service control; do not store deploy-hook credentials in project memory.
+- Render services can retain a repository-root working directory even when the blueprint declares `rootDir: api`; use a context-independent build/start command that targets `api/` when it exists.
+- **Why:** A cached pnpm-style root `node_modules` can make root-level npm resolution fail with an Arborist `matches` error, while the API lockfile installs cleanly.
+- **How to apply:** Prefer `npm ci --prefix api --ignore-scripts --no-audit --no-fund` plus `node api/index.js` from the repository root, with `npm ci`/`node index.js` as the `rootDir: api` fallback.
 - UI (Vite app) lives at: `kontra-ui-clone/ui/src/` and is mirrored to `ui/src/`; the Vercel project builds top-level `ui/` and currently follows GitHub `master`, so keep `main` and `master` aligned before frontend deploys.
 - Vercel branch split: Production builds track `main`, Preview builds track `master` (2026-08 Vercel dashboard: Production green on `main`, Preview red on `master` because it builds with `npm install`). The deterministic `npm ci` install fix (commit `aaa496c3` on `main`) was published to `main` only — `master` is intentionally untouched (user constraint), so Vercel Preview may still build with `npm install` until `master` is updated.
 - Vercel can build the UI with `ui/` as its project root, so imports from `ui/src` must not reach outside that root. Keep workflow metadata under each UI's `src/shared`; root-only `shared/` files make clean Vercel builds fail even when repository-root builds pass.

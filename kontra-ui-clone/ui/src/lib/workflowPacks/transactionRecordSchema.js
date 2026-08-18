@@ -31,8 +31,6 @@ const UNIVERSAL_TRANSACTION_FIELDS = [
   { key: "transaction.jurisdiction", label: "Jurisdiction",            workflowRequired: true,  setup: "jurisdiction"      },
 ];
 
-const ACQUISITION_SCHEMA_KEYS = new Set(["cre_acquisition", "business_acquisition"]);
-
 // ── Per-pack schemas ──────────────────────────────────────────────────────────
 
 const PACK_SCHEMAS = {
@@ -428,10 +426,9 @@ export function getPackRecordSchema(schemaKey) {
       summaryPriority: field.summaryPriority ||
         (SUMMARY_KEYS_BY_SCHEMA[schemaKey]?.includes(field.key) ? "key" : "supporting"),
       canonicalKey: field.aliasOf || field.key,
-      // Acquisition packs have one economic fact: transaction.purchase_price.
-      // Keep aliases in the schema for canonical DB matching, but do not render
-      // them as separate Transaction Record rows.
-       renderable: !field.aliasOf,
+      // Keep display aliases in the schema for canonical DB matching, but do not
+      // render them as separate Transaction Record rows for any workflow pack.
+      renderable: !field.aliasOf,
     };
   };
   return Object.fromEntries([

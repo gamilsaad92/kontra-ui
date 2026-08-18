@@ -14,3 +14,9 @@ Field history is an append-only audit stream for extraction, manual edits, confi
 **Why:** the Transaction Record is the product-wide factual source of truth, so reviewers need to distinguish a new document disagreement from an intentional correction without losing the previously confirmed value.
 
 **How to apply:** keep the current field row authoritative for reads, expose history per field, preserve verified values on `source_changed`, and apply dependency cascades as explicit N/A rows when the prerequisite is marked N/A.
+
+Demo and overview summaries must derive category membership and counts from the resolved pack schema plus canonical record state; never maintain a second generic field-definition list for seeded demos. Display-only aliases such as target-close must be marked non-renderable and resolve to the canonical closing-date fact.
+
+**Why:** a separate generic summary list treated valid pack-specific fields as missing and counted a target-close alias twice, causing the Overview percentage, Key Facts, and detailed Transaction Record to disagree.
+
+**How to apply:** use `getRequiredRecordFields`/`getPackRecordSchema` with `recordState.requiredFields`, exclude non-renderable aliases, and let N/A fields leave the required denominator while remaining visible in the full state.

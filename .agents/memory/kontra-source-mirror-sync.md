@@ -3,8 +3,8 @@ name: Kontra source mirror sync
 description: Repository behavior that mirrors the deployed UI source during commits
 ---
 
-The Kontra repository has a pre-commit sync hook that copies `kontra-ui-clone/ui/src` into the root `ui/src` mirror. A commit can therefore stage the primary source change first and leave the mirrored change staged afterward.
+The Kontra repository has mirrored deployed trees: UI source is copied from `kontra-ui-clone/ui/src` into root `ui/src`, while Render's API service runs the root `api/` tree and may require approved API fixture changes to be mirrored from `kontra-ui-clone/api/`.
 
-**Why:** A navigation change initially pushed the primary source commit while the hook-created mirror update remained staged, leaving GitHub with temporarily divergent copies.
+**Why:** A production API deployment can be live on the intended commit while still serving stale behavior if the approved API change exists only in the clone tree.
 
-**How to apply:** After committing Kontra UI changes, inspect `git status` and `git diff --cached`; if the mirror contains the same intended change, commit and push the sync commit before reporting the work as fully pushed.
+**How to apply:** Before deployment, compare changed runtime files against both trees; after committing, inspect `git status` and `git diff --cached`, then deploy the root API mirror and primary UI source together when both are involved.
