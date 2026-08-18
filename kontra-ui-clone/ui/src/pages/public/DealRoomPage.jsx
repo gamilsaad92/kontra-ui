@@ -3724,9 +3724,14 @@ function RoomCopilot({ propertyId }) {
               )}
 
               {answer && !loading && (
-                <div className="rounded-xl border border-[#eadde1] bg-[#fffafb] px-4 py-3">
+                <div
+                  className="max-h-[50vh] overflow-y-auto rounded-xl border border-[#eadde1] bg-[#fffafb] px-4 py-3"
+                  aria-live="polite"
+                  aria-label="Kontra AI answer"
+                  tabIndex={0}
+                >
                   <p className="text-[10px] font-bold uppercase tracking-wider text-[#800020] mb-1.5">Kontra AI</p>
-                  <p className="whitespace-pre-wrap text-sm leading-relaxed text-gray-700">{answer}</p>
+                  <p className="break-words whitespace-pre-wrap text-sm leading-relaxed text-gray-700">{answer}</p>
                   <button onClick={() => { setAnswer(''); setQuestion(''); }}
                     className="mt-3 text-[10px] font-semibold text-gray-400 transition hover:text-gray-600">
                     Ask another question

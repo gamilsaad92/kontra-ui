@@ -1,6 +1,8 @@
 // Pack-specific, read-only response fixtures for the public demo workspaces.
 // Keep these response shapes aligned with the live coordinator endpoints.
 
+const DEMO_AI_MAX_TOKENS = 900;
+
 const STAGES = {
   cre_acquisition: [
     { key: 'uploading', label: 'Uploading', icon: '📤' },
@@ -166,4 +168,4 @@ function sanitizeDemoTokenizationAnswer(answer) {
     .replace(/\beligible for tokenization\b/gi, 'requiring legal/regulatory eligibility review for tokenization');
 }
 
-module.exports = { getDemoFixture, sanitizeDemoTokenizationAnswer, STAGES };
+module.exports = { DEMO_AI_MAX_TOKENS, getDemoFixture, sanitizeDemoTokenizationAnswer, STAGES };

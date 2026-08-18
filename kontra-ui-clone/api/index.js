@@ -64,7 +64,7 @@ const {
   buildTokenizationAnswerPrefix,
   buildFixtureTransactionContext,
 } = require('./lib/tokenizationGuidance');
-const { sanitizeDemoTokenizationAnswer } = require('./lib/demoRoomFixtures');
+const { DEMO_AI_MAX_TOKENS, sanitizeDemoTokenizationAnswer } = require('./lib/demoRoomFixtures');
 
 // Pack inference map — mirrors DEAL_TYPE_TO_PACK in dealRoomHelpers.js so that
 // room creation writes the correct workflow_pack_id from day one.
@@ -2655,7 +2655,7 @@ app.post('/api/webhook/stripe',
           { role: 'system', content: buildDemoQaSystemPrompt(DEMO_QA_CONTEXT, fixture, question) },
           { role: 'user', content: question },
         ],
-        max_tokens: 200,
+        max_tokens: DEMO_AI_MAX_TOKENS,
         temperature: 0.4,
       });
       res.json({
@@ -2747,7 +2747,7 @@ app.post('/api/webhook/stripe',
           { role: 'system', content: buildDemoQaSystemPrompt(DEMO_QA_CONTEXT, fixture, question) },
           { role: 'user', content: question },
         ],
-        max_tokens: 200,
+        max_tokens: DEMO_AI_MAX_TOKENS,
         temperature: 0.4,
       });
       res.json({
@@ -2824,7 +2824,7 @@ app.post('/api/webhook/stripe',
           { role: 'system', content: buildDemoQaSystemPrompt(DEMO_QA_CONTEXT, fixture, question) },
           { role: 'user', content: question },
         ],
-        max_tokens: 200,
+        max_tokens: DEMO_AI_MAX_TOKENS,
         temperature: 0.4,
       });
       res.json({

@@ -1,4 +1,8 @@
-const { getDemoFixture } = require('./lib/demoRoomFixtures');
+const {
+  DEMO_AI_MAX_TOKENS,
+  getDemoFixture,
+  sanitizeDemoTokenizationAnswer,
+} = require('./lib/demoRoomFixtures');
 
 const DEMO_PACKS = [
   ['cre_acquisition', { required: 29, confirmed: 27, awaiting: 1, missing: 0, conflicts: 1, notApplicable: 0, percent: 93 }],
@@ -44,5 +48,16 @@ describe('seeded demo Transaction Record state', () => {
     expect(keys).not.toContain('transaction.target_close');
     expect(keys).not.toContain('transaction.target_close_date');
     expect(fixture.property.metadata_values.target_close_date).toBe('2026-10-15');
+  });
+
+  test('preserves the complete long Ask Kontra answer', () => {
+    const finalSentence = 'Final sentence remains accessible after the long answer.';
+    const longAnswer = Array.from({ length: 30 }, (_, index) =>
+      `Point ${index + 1}: ${'This transaction preparation detail remains available to the coordinator. '.repeat(12)}`
+    ).join('\n') + `\n${finalSentence}`;
+
+    expect(DEMO_AI_MAX_TOKENS).toBeGreaterThanOrEqual(900);
+    expect(sanitizeDemoTokenizationAnswer(longAnswer)).toContain(finalSentence);
+    expect(sanitizeDemoTokenizationAnswer(longAnswer)).toHaveLength(longAnswer.length);
   });
 });
