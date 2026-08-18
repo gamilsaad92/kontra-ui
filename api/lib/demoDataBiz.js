@@ -179,7 +179,7 @@ Key facts: SaaS business, $2.1M ARR, 75% gross margin, $420K EBITDA, 32% revenue
 Parties: Davidson Advisory (CPA — QoE report 4 days overdue), Tom Briggs (seller — 3 contracts outstanding), Vance & Partners (attorney — rep/warranty review), Rachael Park (buyer lead), Meridian Advisors (M&A broker).
 Outstanding: Purchase Agreement (blocks advancement), QoE report, 3 material contracts, IP assignment from former contractor.
 Pre-seeded documents: LOI (clean), 3-year financials (strong growth, concentration risk), disclosure schedule (IP gap found).
-Transaction Record status: 19 of 21 fields are confirmed; contingencies and board approval are awaiting confirmation, and the Purchase Agreement field is missing.
+Transaction Record status: 17 of 20 active fields are confirmed; contingencies and board approval are awaiting confirmation, the Purchase Agreement field is missing, and shareholder consent is not applicable.
 For tokenization questions, distinguish technical or structural preparation from legal/regulatory eligibility. Kontra identifies information and documentation needed for external professional review; it does not determine securities-law or regulatory compliance.
 Answer questions concisely and factually based on this context.
 `.trim();
