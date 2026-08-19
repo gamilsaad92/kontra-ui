@@ -71,4 +71,49 @@ describe('tokenization AI grounding', () => {
     expect(prefix).toContain('digital-asset preparation optional and not enabled');
     expect(prefix).toContain('Target raise');
   });
+
+  test('hydrates room-known type, stage, and closing date without changing record fields', () => {
+    const roomContext = {
+      transaction: {
+        propertyName: 'REO Test Room',
+        dealType: 'cre_acquisition',
+        transactionType: 'CRE Acquisition',
+        workflowPack: 'cre_acquisition',
+        stageLabel: 'Uploading',
+        closingDate: '2026-12-31',
+        digitalAssetEnabled: false,
+      },
+      record: {
+        state: {
+          fields: [
+            { key: 'asset.name', label: 'Asset name', value: 'REO Test Asset', status: 'confirmed' },
+          ],
+        },
+      },
+    };
+    const originalFieldCount = roomContext.record.state.fields.length;
+    const guidance = buildTokenizationGuidance({ transactionContext: roomContext });
+    const hydratedKeys = new Set([
+      'transaction.type',
+      'transaction.stage',
+      'transaction.closing_date',
+    ]);
+    const preHydrationGapCount = guidance.inputCount
+      - guidance.known.filter(item => !hydratedKeys.has(item.key)).length;
+
+    expect(guidance.gaps).not.toEqual(expect.arrayContaining([
+      expect.objectContaining({ key: 'transaction.type' }),
+      expect.objectContaining({ key: 'transaction.stage' }),
+      expect.objectContaining({ key: 'transaction.closing_date' }),
+    ]));
+    expect(preHydrationGapCount).toBe(20);
+    expect(guidance.gaps).toHaveLength(17);
+    expect(guidance.known).toEqual(expect.arrayContaining([
+      expect.objectContaining({ key: 'transaction.type', value: 'CRE Acquisition' }),
+      expect.objectContaining({ key: 'transaction.stage', value: 'Uploading' }),
+      expect.objectContaining({ key: 'transaction.closing_date', value: '2026-12-31' }),
+    ]));
+    expect(roomContext.record.state.fields).toHaveLength(originalFieldCount);
+    expect(guidance.enabled).toBe(false);
+  });
 });

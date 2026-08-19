@@ -72,6 +72,35 @@ function hasMeaningfulValue(field) {
   return value && !EMPTY_VALUES.has(value) && field?.status !== 'not_applicable';
 }
 
+function roomContextFields(transaction) {
+  const candidates = [
+    {
+      key: 'transaction.type',
+      label: TOKENIZATION_INPUT_LABELS['transaction.type'],
+      value: transaction.transactionType || transaction.dealType || transaction.workflowPack || null,
+    },
+    {
+      key: 'transaction.stage',
+      label: TOKENIZATION_INPUT_LABELS['transaction.stage'],
+      value: transaction.stageLabel || transaction.stage || null,
+    },
+    {
+      key: 'transaction.closing_date',
+      label: TOKENIZATION_INPUT_LABELS['transaction.closing_date'],
+      value: transaction.closingDate || null,
+    },
+  ];
+
+  return candidates
+    .filter(field => hasMeaningfulValue(field))
+    .map(field => ({
+      ...field,
+      status: 'confirmed',
+      attention: null,
+      source: 'resolved_room_context',
+    }));
+}
+
 function buildTokenizationGuidance({
   transactionContext = null,
   recordState = null,
@@ -84,9 +113,18 @@ function buildTokenizationGuidance({
     ?? transactionContext?.digitalAssetEnabled;
   const tokenizationEnabled = enabled == null ? !!contextEnabled : !!enabled;
   const fields = normalizeStateFields({ transactionContext, recordState, recordFields });
+  const hydratedFields = roomContextFields(transaction);
   const fieldsByKey = new Map();
   fields.forEach(field => {
     if (!fieldsByKey.has(field.key)) fieldsByKey.set(field.key, field);
+  });
+  hydratedFields.forEach(field => {
+    const existing = fieldsByKey.get(field.key);
+    const preservesExistingState = existing
+      && (hasMeaningfulValue(existing)
+        || ['conflict', 'conflicting', 'source_changed', 'awaiting', 'awaiting_confirmation', 'needs_review']
+          .includes(existing.status));
+    if (!preservesExistingState) fieldsByKey.set(field.key, field);
   });
 
   const getField = key => {
@@ -138,8 +176,10 @@ function buildTokenizationGuidance({
     transaction: {
       propertyName: transaction.propertyName || null,
       dealType: transaction.dealType || null,
+      transactionType: transaction.transactionType || transaction.dealType || transaction.workflowPack || null,
       workflowPack: transaction.workflowPack || null,
       stage: transaction.stageLabel || transaction.stage || null,
+      closingDate: transaction.closingDate || null,
       jurisdiction: transaction.jurisdiction || null,
       digitalAssetEnabled: tokenizationEnabled,
     },
@@ -172,7 +212,9 @@ function buildTokenizationAnswerPrefix(guidance) {
   const transaction = guidance?.transaction || {};
   const context = [
     transaction.propertyName && `workspace ${transaction.propertyName}`,
+    transaction.transactionType && `transaction type ${transaction.transactionType}`,
     transaction.dealType && `deal type ${transaction.dealType}`,
+    transaction.closingDate && `closing date ${transaction.closingDate}`,
     transaction.stage && `stage ${transaction.stage}`,
     transaction.jurisdiction && `proposed jurisdiction ${transaction.jurisdiction}`,
     `digital-asset preparation ${transaction.digitalAssetEnabled ? 'enabled' : 'optional and not enabled'}`,

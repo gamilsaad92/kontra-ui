@@ -6,11 +6,13 @@
 const { supabase } = require('../db');
 const {
   DEFAULT_PACK_ID,
+  getPackRoleConfig,
   getPackRoleLabel,
+  getPackStageConfig,
   getPackStageLabel,
-  getRoomPackId,
 } = require('./dealRoomHelpers');
 const { listTasksForRoom } = require('./taskEngine');
+const { readTransactionState } = require('./transactionState');
 const {
   isTokenizationQuestion,
   buildTokenizationGuidance,
@@ -123,14 +125,112 @@ function computeChainStatus(packId, tasks) {
   return { chain: annotated, activeStep, criticalTaskIds, parallelTaskIds, totalSteps: closingChain.length };
 }
 
+function hasOpenTaskStatus(task) {
+  return ['pending', 'in_progress', 'escalated'].includes(String(task?.status || '').toLowerCase());
+}
+
+function taskEvidence(task) {
+  if (Array.isArray(task?.evidence)) return task.evidence.filter(Boolean);
+  if (typeof task?.evidence === 'string') {
+    try {
+      const parsed = JSON.parse(task.evidence);
+      return Array.isArray(parsed) ? parsed.filter(Boolean) : [];
+    } catch {
+      return task.evidence.trim() ? [task.evidence.trim()] : [];
+    }
+  }
+  return [];
+}
+
+function buildPackLifecycle(packId, stageKey) {
+  const stageConfig = getPackStageConfig(packId) || {};
+  const stages = Array.isArray(stageConfig.stages) ? stageConfig.stages : [];
+  const current = stages.find(stage => stage.key === stageKey) || null;
+
+  return {
+    source: 'resolved_workflow_pack_and_room_stage',
+    packId,
+    currentStageKey: stageKey || null,
+    currentStageLabel: current?.label || (stageKey ? getPackStageLabel(packId, stageKey) : null),
+    stages: stages.map(stage => ({ key: stage.key, label: stage.label })),
+  };
+}
+
+function buildGroundedBlockers({ packId, recordState, missingDocuments, participants, tasks }) {
+  const blockers = [];
+  const requiredFields = Array.isArray(recordState?.requiredFields) ? recordState.requiredFields : [];
+  const participantRows = Array.isArray(participants) ? participants : [];
+  const openTasks = Array.isArray(tasks) ? tasks.filter(hasOpenTaskStatus) : [];
+
+  (Array.isArray(missingDocuments) ? missingDocuments : []).forEach(document => {
+    blockers.push({
+      sourceType: 'required_document',
+      label: document.label,
+      section: document.section || null,
+      evidence: [`Required checklist item "${document.label}" is not complete.`],
+    });
+  });
+
+  (getPackRoleConfig(packId)?.roles || [])
+    .filter(role => role.required && role.invitable !== false)
+    .forEach(role => {
+      const participant = participantRows.find(row => row.role === role.key);
+      const participantStatus = String(participant?.status || '').toLowerCase();
+      const submitted = ['submitted', 'complete', 'completed'].includes(participantStatus)
+        || Number(participant?.documentCount || participant?.doc_count || 0) > 0;
+      if (submitted) return;
+
+      const roleLabel = getPackRoleLabel(packId, role.key);
+      blockers.push({
+        sourceType: 'required_participant',
+        role: role.key,
+        label: roleLabel,
+        status: participant?.status || 'missing',
+        evidence: [
+          participant
+            ? `${roleLabel} status is "${participant.status || 'unknown'}" with ${Number(participant.documentCount || participant.doc_count || 0)} submitted document(s).`
+            : `No participant submission exists for required role "${role.key}".`,
+        ],
+      });
+    });
+
+  requiredFields
+    .filter(field => ['missing', 'awaiting', 'conflict'].includes(field.status)
+      || field.attention === 'source_changed')
+    .forEach(field => {
+      blockers.push({
+        sourceType: 'transaction_record',
+        key: field.key,
+        label: field.label || field.key,
+        status: field.status,
+        attention: field.attention || null,
+        evidence: [
+          field.attention === 'source_changed'
+            ? `${field.label || field.key} changed source and requires coordinator review.`
+            : `${field.label || field.key} is ${field.status}.`,
+        ],
+      });
+    });
+
+  openTasks
+    .filter(task => (task.blocking === true || task.blocking === 'true') && taskEvidence(task).length > 0)
+    .forEach(task => {
+      blockers.push({
+        sourceType: 'explicit_blocking_task',
+        taskId: task.id,
+        label: task.title,
+        status: task.status,
+        evidence: taskEvidence(task),
+      });
+    });
+
+  return blockers;
+}
+
 // ── Grounding context ─────────────────────────────────────────────────────────
 async function buildGroundedContext(propertyId) {
-  const [roomResult, tasks, { data: analyses }, { data: recordFields }, { data: participants }] = await Promise.all([
-    supabase
-      .from('deal_rooms')
-      .select('property_name, deal_stage, closing_date, deal_type, deal_amount, workflow_pack_id, jurisdiction, metadata_values, checklist_items, settlement_mode, settlement_readiness_pct, settlement_mode_locked_at, sealed_at, completed_at')
-      .eq('property_id', propertyId)
-      .maybeSingle(),
+  const [transactionState, tasks, { data: analyses }, { data: participants }] = await Promise.all([
+    readTransactionState(propertyId),
     listTasksForRoom(propertyId),
     supabase
       .from('deal_analyses')
@@ -139,41 +239,13 @@ async function buildGroundedContext(propertyId) {
       .order('created_at', { ascending: false })
       .limit(30),
     supabase
-      .from('transaction_record_fields')
-      .select('field_key, display_label, value_text, status, field_category, source_doc_id, updated_at')
-      .eq('property_id', propertyId)
-      .order('updated_at', { ascending: false })
-      .limit(150),
-    supabase
       .from('party_submissions')
       .select('role, name, status, doc_count, submitted_at')
       .eq('property_id', propertyId),
   ]);
-  let { data: room } = roomResult;
-  if (roomResult.error && /settlement_mode|settlement_readiness_pct|sealed_at|completed_at/i.test(roomResult.error.message || '')) {
-    const legacyRoom = await supabase
-      .from('deal_rooms')
-      .select('property_name, deal_stage, closing_date, deal_type, deal_amount, workflow_pack_id, jurisdiction, metadata_values, checklist_items')
-      .eq('property_id', propertyId)
-      .maybeSingle();
-    room = legacyRoom.data;
-  }
-
-  // Resolve packId: deal_type takes priority (same mapping as frontend resolvePackId),
-  // then workflow_pack_id, then CRE default.
-  const DEAL_TYPE_TO_PACK = {
-    acquisition: DEFAULT_PACK_ID, refinance: DEFAULT_PACK_ID, construction: DEFAULT_PACK_ID,
-    flag_conversion: DEFAULT_PACK_ID, sale: DEFAULT_PACK_ID, ground_lease: DEFAULT_PACK_ID,
-    full_acquisition: 'business_acquisition', asset_purchase: 'business_acquisition',
-    mbo: 'business_acquisition', merger: 'business_acquisition', business_acquisition: 'business_acquisition',
-    seed: 'fundraising', series_a: 'fundraising', series_b_plus: 'fundraising',
-    bridge: 'fundraising', fundraising: 'fundraising',
-  };
-  const inferredPack = room?.deal_type ? (DEAL_TYPE_TO_PACK[room.deal_type] ?? null) : null;
-  // If deal_type inference resolves to the default CRE pack but workflow_pack_id says otherwise, trust workflow_pack_id
-  const packId = (inferredPack && inferredPack !== DEFAULT_PACK_ID)
-    ? inferredPack
-    : (room?.workflow_pack_id || inferredPack || DEFAULT_PACK_ID);
+  const room = transactionState.room;
+  const packId = transactionState.packId || DEFAULT_PACK_ID;
+  const recordState = transactionState.recordState;
   const stageLabel = room?.deal_stage ? getPackStageLabel(packId, room.deal_stage) : null;
 
   const openTasks = tasks.filter(t => ['pending', 'in_progress', 'escalated'].includes(t.status));
@@ -204,19 +276,19 @@ async function buildGroundedContext(propertyId) {
       label: item.label || item.name || item.id || 'Required document',
       section: item.section || item.category || null,
     }));
-  const populatedRecordFields = (recordFields || [])
-    .filter(field => {
-      const value = String(field.value_text || '').trim().toLowerCase();
-      return value && !['n/a', 'na', 'not applicable', 'not_applicable', 'unknown'].includes(value)
-        && field.status !== 'not_applicable';
-    })
+  const populatedRecordFields = (recordState.fields || [])
+    .filter(field => field.value !== null && field.value !== undefined
+      && String(field.value).trim()
+      && field.status !== 'not_applicable')
     .slice(0, 100)
     .map(field => ({
-      key: field.field_key,
-      label: field.display_label || field.field_key,
-      value: String(field.value_text).slice(0, 500),
-      status: field.status || null,
-      sourceDocId: field.source_doc_id || null,
+      key: field.key,
+      label: field.label || field.key,
+      value: String(field.value).slice(0, 500),
+      status: field.status,
+      rawStatus: field.rawStatus,
+      attention: field.attention,
+      required: field.required,
     }));
   const documentFindings = (analyses || [])
     .map(item => {
@@ -239,13 +311,16 @@ async function buildGroundedContext(propertyId) {
     documentCount: Number(participant.doc_count || 0),
     submittedAt: participant.submitted_at || null,
   }));
-  const recordStateFields = (recordFields || []).map(field => ({
-    key: field.field_key,
-    label: field.display_label || field.field_key,
-    value: field.value_text || null,
-    status: field.status || null,
-    attention: field.status === 'source_changed' ? 'source_changed' : null,
-  }));
+  const recordStateFields = recordState.fields || [];
+  const meaningfulRecordField = key => recordStateFields.find(field =>
+    field.key === key
+      && field.value !== null
+      && field.value !== undefined
+      && String(field.value).trim()
+      && field.status !== 'not_applicable'
+  );
+  const transactionTypeField = meaningfulRecordField('transaction.type');
+  const closingDateField = meaningfulRecordField('transaction.closing_date');
   const digitalAssetEnabled = room?.metadata_values?.digital_asset_enabled === true
     || room?.metadata_values?.digital_asset_enabled === 'true'
     || room?.metadata_values?.digital_assets_enabled === true
@@ -259,10 +334,12 @@ async function buildGroundedContext(propertyId) {
       propertyId,
       propertyName: room?.property_name || null,
       dealType: room?.deal_type || null,
+      transactionType: transactionTypeField?.value || room?.deal_type || packId,
       dealAmount: room?.deal_amount || null,
       workflowPack: packId,
       stage: room?.deal_stage || null,
       stageLabel,
+      closingDate: room?.closing_date || closingDateField?.value || null,
       jurisdiction: room?.jurisdiction || null,
       digitalAssetEnabled,
       tokenizationOptional: true,
@@ -271,12 +348,15 @@ async function buildGroundedContext(propertyId) {
     record: {
       facts: populatedRecordFields,
       factCount: populatedRecordFields.length,
-      confirmedFactCount: populatedRecordFields.filter(field =>
-        ['verified', 'source_changed'].includes(field.status)
-      ).length,
+      confirmedFactCount: recordStateFields.filter(field => field.status === 'confirmed').length,
       state: {
-        schema: packId,
+        schema: recordState.schemaKey,
         fields: recordStateFields,
+        requiredCount: recordState.requiredCount,
+        confirmedCount: recordState.confirmedCount,
+        awaitingRequiredCount: recordState.awaitingRequiredCount,
+        conflictRequiredCount: recordState.conflictRequiredCount,
+        notApplicableCount: recordState.notApplicableCount,
       },
     },
     evidence: {
@@ -317,7 +397,17 @@ async function buildGroundedContext(propertyId) {
     recordFacts: populatedRecordFields,
     documentFindings,
     chainStatus,
+    lifecycle: buildPackLifecycle(packId, room?.deal_stage || null),
+    groundedBlockers: buildGroundedBlockers({
+      packId,
+      recordState,
+      missingDocuments,
+      participants: participantContext,
+      tasks,
+    }),
     transactionContext,
+    recordState,
+    readiness: transactionState.readiness,
   };
 }
 
@@ -347,6 +437,36 @@ function contextToPrompt(ctx) {
   );
 }
 
+function askContextToPrompt(ctx) {
+  const blockerTaskIds = new Set(
+    (ctx.groundedBlockers || [])
+      .map(blocker => blocker.taskId)
+      .filter(Boolean)
+  );
+
+  return JSON.stringify(
+    {
+      transaction_context: ctx.transactionContext,
+      lifecycle: ctx.lifecycle,
+      blockers: ctx.groundedBlockers,
+      non_blocking_open_tasks: ctx.openTasks
+        .filter(task => !blockerTaskIds.has(task.id))
+        .map(task => ({
+          id: task.id,
+          title: task.title,
+          status: task.status,
+          ownerRole: task.ownerRole,
+          evidence: task.evidence,
+        })),
+      recently_resolved_tasks: ctx.recentlyResolved,
+      missing_documents: ctx.missingDocuments,
+      transaction_record_facts: ctx.recordFacts,
+      document_findings: ctx.documentFindings,
+    },
+    null,
+    2
+  );
+}
 const GROUNDING_RULES = `You are Kontra AI Copilot inside a specific transaction deal room (which may be CRE acquisition, business acquisition, or fundraising — follow the deal context provided).
 You reason ONLY from the JSON context provided (transaction_context, closing_chain, open_tasks, recently_resolved_tasks, deal, missing_documents, transaction_record_facts, document_findings). Never invent
 facts, people, dates, or documents not present in that context. If the context does not contain
@@ -363,6 +483,26 @@ Tasks in parallel tracks are open but do NOT gate the chain steps.
 
 CRITICAL PATH DISCIPLINE: most open tasks do not block closing. Only tasks in the earliest incomplete
 chain step are truly on the critical path. Everything else is background noise. Always name the owner.`;
+
+const ASK_GROUNDING_RULES = `You are Kontra AI inside one specific transaction deal room.
+Reason ONLY from the JSON context provided. Never invent facts, stages, blockers, people, dates,
+documents, or requirements from general CRE, lending, legal, or financial knowledge.
+
+LIFECYCLE RULE: The lifecycle object is the only source for current stage and stage order. Use its
+resolved Workflow Pack and room stage exactly. Never substitute a generic lending or CRE lifecycle.
+
+BLOCKER RULE: The blockers array is the complete factual blocker list. It contains only required
+document gaps, required participant state, canonical required Transaction Record gaps/conflicts,
+and explicit blocking tasks with evidence. A non_blocking_open_tasks item is not a blocker. If the
+blockers array is empty, say that no blocker is recorded instead of inferring one.
+
+TOKENIZATION RULE: Digital-asset preparation is optional and downstream. Use the transaction_context
+facts first, then tokenization-specific guidance if supplied. Already-known transaction type, pack,
+stage, and closing date must not be described as missing. Separate core transaction gaps from
+optional digital-asset preparation gaps.
+
+This is coordination and preparation guidance, not legal, regulatory, investment, settlement,
+issuance, custody, or eligibility advice. Keep every factual statement tied to a provided source.`;
 
 // ── Morning briefing ──────────────────────────────────────────────────────────
 async function getBriefing(propertyId) {
@@ -559,7 +699,10 @@ async function askQuestion(propertyId, question) {
   const ctx = await buildGroundedContext(propertyId);
   const openai = getOpenAI();
   const tokenizationGuidance = isTokenizationQuestion(question)
-    ? buildTokenizationGuidance({ transactionContext: ctx.transactionContext })
+    ? buildTokenizationGuidance({
+      transactionContext: ctx.transactionContext,
+      recordState: ctx.recordState,
+    })
     : null;
 
   if (!openai) {
@@ -585,17 +728,17 @@ async function askQuestion(propertyId, question) {
       messages: [
         {
           role: 'system',
-          content: `${GROUNDING_RULES}
+          content: `${ASK_GROUNDING_RULES}
 
 Answer the user's operational question. Respond as JSON:
-{ "answer": string (direct answer — 1-4 sentences. Use the closing_chain to distinguish what's truly blocking
-  from what's parallel. If only one step is the blocker, say which one it is and explicitly note
-  the others are NOT blocking closing. Always name task owners. Always cite specific evidence.),
+{ "answer": string (direct answer — 1-4 sentences. Use lifecycle and blockers only for transaction-specific
+  claims. If blockers are present, name the source and evidence. If only non-blocking tasks are open,
+  say they are follow-up work rather than blockers.),
   "citedTaskIds": [ string ] }
 If the question cannot be answered from context, say so directly.
 ${tokenizationGuidance ? `\n${buildTokenizationPrompt(tokenizationGuidance)}` : ''}`,
         },
-        { role: 'user', content: `Workspace context:\n${contextToPrompt(ctx)}\n\nQuestion: ${question}` },
+        { role: 'user', content: `Workspace context:\n${askContextToPrompt(ctx)}\n\nQuestion: ${question}` },
       ],
     });
     const parsed = JSON.parse(resp.choices[0].message.content || '{}');
@@ -746,6 +889,9 @@ function clearCache(propertyId) {
 
 module.exports = {
   buildGroundedContext,
+  buildPackLifecycle,
+  buildGroundedBlockers,
+  askContextToPrompt,
   getBriefing,
   getStandup,
   askQuestion,
