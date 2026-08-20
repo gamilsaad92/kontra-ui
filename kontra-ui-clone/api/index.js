@@ -77,6 +77,7 @@ const {
   computeTransactionReadiness,
   computeTransactionRecordState,
   readTransactionState,
+  reconcileStoredDocumentConflicts,
   resolveSchemaKey: resolveTransactionSchemaKey,
 } = require('./lib/transactionState');
 const { emit: emitInternalEvent } = require('./lib/eventBus');
@@ -9515,6 +9516,12 @@ app.post('/api/public/deal-room/:propertyId/transaction-record/extract', async (
           console.warn('[tx-record re-extract]', doc.id, docErr.message);
         }
       }
+      await reconcileStoredDocumentConflicts(propertyId);
+      await recalculateTransactionState(propertyId, {
+        source: 'transaction_record_reextract_backfill',
+        actorId: access.actorId,
+        actorType: access.actorType,
+      });
     } catch (err) {
       console.warn('[tx-record re-extract outer]', err.message);
     }
