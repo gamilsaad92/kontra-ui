@@ -5048,6 +5048,7 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
   const currentStageKey   = coordination?.stage || stages[0]?.key;
   const currentStageIndex = Math.max(0, stages.findIndex(s => s.key === currentStageKey));
   const currentStage      = stages[currentStageIndex];
+  const generatedRoom     = isGeneratedAiRoom(property);
   const closingDate = getRecordDateValue(
     property,
     recordFields,
