@@ -342,11 +342,13 @@ function FieldRow({ field, isCoordinator, propertyId, ownerToken, onUpdated, dep
             ) : (
               <p className="text-xs text-gray-800 leading-relaxed">{field.value_text}</p>
             )}
-            {field.source_doc_id && field.source_page && (
+            {(field.source_doc_id && field.source_page) || (!field.source_doc_id && field.extracted_by === "ai" && !isEmpty) ? (
               <p className="text-[10px] text-gray-400 mt-0.5">
-                Source: {field.source_excerpt ? `"${field.source_excerpt.slice(0, 60)}…"` : "Document"} — p.{field.source_page}
+                Source: {field.source_doc_id
+                  ? `${field.source_excerpt ? `"${field.source_excerpt.slice(0, 60)}…"` : "Document"}${field.source_page ? ` — p.${field.source_page}` : ""}`
+                  : "Transaction Description · AI extracted · Awaiting confirmation"}
               </p>
-            )}
+            ) : null}
             {field.status === "source_changed" && (
               <p className="text-[10px] text-purple-600 mt-0.5 font-medium">
                 Previously confirmed — newer source document requires review

@@ -1365,7 +1365,7 @@ defaulting to commercial real estate.`;
     const completion = await openai.chat.completions.create({
       model: 'gpt-4o-mini',
       response_format: { type: 'json_object' },
-      max_tokens: 1500,
+      max_tokens: 2400,
       temperature: 0,
       messages: [
         {
@@ -1383,13 +1383,37 @@ Return exactly this shape:
   "transactionValueConfidence": "high|low",
   "roles": [{ "key": "snake_case_key", "label": "Display Name", "required": bool, "needsDocs": bool, "icon": "emoji", "color": "#hex" }],
   "documents": [{ "id": "snake_case_id", "label": "Document Name", "required": bool, "ai": bool, "assignedRole": "role_key" }],
-  "stages": [{ "key": "snake_case_key", "label": "Stage Name" }]
+  "stages": [{ "key": "snake_case_key", "label": "Stage Name" }],
+  "transaction_record_fields": [{
+    "key": "canonical.dotted.key",
+    "label": "Human-readable label",
+    "value": "explicit value from the description or null",
+    "required": bool,
+    "confidence": 0.0,
+    "rationale": "why this field matters for this transaction",
+    "source_type": "transaction_description|ai_recommendation"
+  }]
 }
 
 Rules:
 - 3–6 roles; first role is the deal-room owner / coordinator (canManage=true implied)
 - 6–14 documents covering the key due-diligence areas for this transaction type
 - 3–6 stages reflecting the actual lifecycle (e.g. NDA → LOI → Due Diligence → Closing)
+- 8–18 transaction_record_fields covering the material structured facts explicitly
+  stated in the description plus relevant transaction-specific fields that must be
+  collected later. Use null value and source_type "ai_recommendation" for unknown
+  fields; do not omit important missing fields merely because their value is unknown.
+- For every fact explicitly stated in the description, preserve its value in the
+  Transaction Record with source_type "transaction_description", confidence at
+  least 0.85, and a short source_excerpt when practical. These are awaiting
+  confirmation, not verified facts.
+- Use source_type "ai_recommendation" only for inferred classifications, suggested
+  requirements, and missing fields. Never represent an inference as an established
+  fact.
+- Preserve transaction orientation. A property marketed or sold on behalf of an
+  owner is seller-oriented and should use Sale / Asset Sale language rather than
+  automatically calling the room an Acquisition. A buyer-led request may use
+  Acquisition; a neutral request may remain neutral.
 - Mark key legal/financial docs required:true; mark docs where AI extraction adds value ai:true
 - Use professional labels; avoid jargon unique to a single industry unless the description uses it
 - Keep stage labels short (1–4 words)
@@ -3613,7 +3637,9 @@ async function syncGeneratedProposalToTransactionRecord(propertyId, proposal, ac
       extracted_by: hasValue ? 'ai' : null,
       verified_by: null,
       verified_at: null,
-      notes: field.rationale || null,
+      notes: field.source_type === 'transaction_description'
+        ? 'AI extracted from the transaction description; awaiting confirmation.'
+        : (field.rationale || null),
       updated_at: now,
     }, { onConflict: 'property_id,field_key' });
     if (error) throw error;
