@@ -2,14 +2,13 @@ const OpenAI = require('openai');
 const nodemailer = require('nodemailer');
 const twilio = require('twilio');
 const { createClient } = require('@supabase/supabase-js');
+const { supabase: fallbackSupabase } = require('./db');
 require('dotenv').config();
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY || 'sk-not-configured' });
-
-const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY
-);
+const supabase = process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY
+  ? createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY)
+  : fallbackSupabase;
 
 async function generateReminder({ borrower_name, loan_status, risk_score, history }) {
   const prompt = `Draft a short friendly reminder email and SMS for borrower ${borrower_name}. Loan status is ${loan_status}. Risk score is ${risk_score}. Borrower history: ${history || 'none'}. Separate email and sms sections with \n---SMS---\n.`;

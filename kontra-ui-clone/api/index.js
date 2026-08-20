@@ -3,12 +3,48 @@
 // fallbacks set in the workflow command. In production (Render), we do NOT
 // override so that env vars set in the Render dashboard take precedence.
 require('dotenv').config(process.env.NODE_ENV !== 'production' ? { override: true } : {});
+
+// Allow OPENAI_API_KEY1 as the active key (e.g. after rotating to a new key).
+if (process.env.OPENAI_API_KEY1) {
+  process.env.OPENAI_API_KEY = process.env.OPENAI_API_KEY1;
+}
+
+const REQUIRED_PRODUCTION_ENV = [
+  'SUPABASE_URL',
+  'SUPABASE_SERVICE_ROLE_KEY',
+  'OPENAI_API_KEY',
+];
+const PLACEHOLDER_ENV_VALUES = new Set(['placeholder', 'placeholder-key', 'sk-not-configured']);
+
+function isConfiguredEnvironmentValue(value) {
+  const normalizedValue = String(value || '').trim().toLowerCase();
+  return Boolean(normalizedValue)
+    && !PLACEHOLDER_ENV_VALUES.has(normalizedValue)
+    && !normalizedValue.includes('placeholder');
+}
+
+function getMissingRequiredConfiguration() {
+  return REQUIRED_PRODUCTION_ENV.filter((name) => !isConfiguredEnvironmentValue(process.env[name]));
+}
+
+// Development can use the in-memory database and unavailable AI client, but a
+// production deployment must never look healthy with placeholder credentials.
+if (process.env.NODE_ENV === 'production') {
+  const missingConfiguration = getMissingRequiredConfiguration();
+  missingConfiguration.forEach((name) => {
+    console.error(`FATAL: ${name} is required in production`);
+  });
+  if (missingConfiguration.length > 0) {
+    process.exit(1);
+  }
+}
+
 const express = require('express');
 const Sentry = require('@sentry/node');
 const cors = require('cors');
 const helmet = require('helmet');
 const multer = require('multer');
-const { supabase, replica } = require('./db');
+const { supabase, replica, isDatabaseConnected } = require('./db');
 const {
   DEFAULT_PACK_ID,
   getPackStageConfig,
@@ -351,17 +387,6 @@ async function savedPackMatchesApproval(packId, approvalHash) {
   if (error || !data) return false;
   return workflowConfigHash(data.config) === approvalHash;
 }
-// Allow OPENAI_API_KEY1 as the active key (e.g. after rotating to a new key)
-if (process.env.OPENAI_API_KEY1) {
-  process.env.OPENAI_API_KEY = process.env.OPENAI_API_KEY1;
-}
-// Hard required — platform cannot function without these
-["SUPABASE_URL","SUPABASE_SERVICE_ROLE_KEY","OPENAI_API_KEY"].forEach(k => {
-  if (!process.env[k]) {
-    console.error(`[FATAL] Missing required env var: ${k}`);
-    process.exit(1);
-  }
-});
 // Optional — warn but stay running; features degrade gracefully
 ["SENTRY_DSN","STRIPE_SECRET_KEY","ENCRYPTION_KEY","PII_ENCRYPTION_KEY"].forEach(k => {
   if (!process.env[k]) {
@@ -967,8 +992,25 @@ app.use(
 );
 app.use(auditLogger);
 app.use(rateLimit);
+function sendHealthResponse(res, extra = {}) {
+  const missingConfiguration = getMissingRequiredConfiguration();
+  const databaseConnected = isDatabaseConnected();
+  const healthy = missingConfiguration.length === 0 && databaseConnected;
+
+  return res.status(healthy ? 200 : 503).json({
+    ok: healthy,
+    status: healthy ? 'ok' : 'degraded',
+    ...extra,
+    checks: {
+      database: databaseConnected ? 'connected' : 'unavailable',
+      configuration: missingConfiguration.length === 0 ? 'configured' : 'missing',
+    },
+    missing_configuration: missingConfiguration,
+  });
+}
+
 app.get('/api/health', (_req, res) => {
-  res.json({ ok: true, version: 'v2-checkout-fix', deployed: new Date().toISOString() });
+  sendHealthResponse(res, { version: 'v2-checkout-fix', deployed: new Date().toISOString() });
 });
 
 // ── Public deal room routes — registered EARLY, before any org/auth middleware ──
@@ -2840,7 +2882,7 @@ app.post('/api/webhook/stripe',
 ;(() => {
   const { PROPERTY, TASKS, BRIEFING, ANALYSES, DEMO_QA_CONTEXT } = require('./lib/demoData');
   const { getDemoFixture } = require('./lib/demoRoomFixtures');
-  const openai = new OpenAI();
+  const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY || 'sk-not-configured' });
   const DEMO_ID = 'kontra-demo';
   const fixture = getDemoFixture('cre_acquisition', PROPERTY);
 
@@ -2937,7 +2979,7 @@ app.post('/api/webhook/stripe',
 ;(() => {
   const { PROPERTY, TASKS, BRIEFING, ANALYSES, DEMO_QA_CONTEXT } = require('./lib/demoDataBiz');
   const { getDemoFixture } = require('./lib/demoRoomFixtures');
-  const openai = new OpenAI();
+  const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY || 'sk-not-configured' });
   const BIZ_ID = 'kontra-demo-biz';
   const fixture = getDemoFixture('business_acquisition', PROPERTY);
 
@@ -3014,7 +3056,7 @@ app.post('/api/webhook/stripe',
 ;(() => {
   const { PROPERTY, TASKS, BRIEFING, ANALYSES, DEMO_QA_CONTEXT } = require('./lib/demoDataFundraising');
   const { getDemoFixture } = require('./lib/demoRoomFixtures');
-  const openai = new OpenAI();
+  const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY || 'sk-not-configured' });
   const FUND_ID = 'kontra-demo-fundraising';
   const fixture = getDemoFixture('fundraising', PROPERTY);
 
@@ -7302,7 +7344,7 @@ app.use('/api', restaurantsRouter);
 // ── Health Checks ──────────────────────────────────────────────────────────
 app.get('/', (req, res) => res.send('Sentry test running!'));
 app.get('/api/test', (req, res) => res.send('✅ API is alive'));
-app.get('/health', (req, res) => res.json({ ok: true }));
+app.get('/health', (_req, res) => sendHealthResponse(res));
 app.get('/api/whoami', authenticate, (req, res) => {
   res.json({
     ok: true,

@@ -26,16 +26,17 @@
 const express   = require('express');
 const crypto    = require('crypto');
 const { createClient } = require('@supabase/supabase-js');
+const { supabase: fallbackSupabase } = require('../db');
 const { callPrivate }  = require('../lib/privateDb');
 
 const router = express.Router();
-
-// ── Supabase admin client (service role — never sent to browser) ─────────────
-const supabaseAdmin = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY,
-  { auth: { autoRefreshToken: false, persistSession: false } }
-);
+const supabaseAdmin = process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY
+  ? createClient(
+    process.env.SUPABASE_URL,
+    process.env.SUPABASE_SERVICE_ROLE_KEY,
+    { auth: { autoRefreshToken: false, persistSession: false } }
+  )
+  : fallbackSupabase;
 
 // ── Resend email sender ──────────────────────────────────────────────────────
 const RESEND_KEY  = process.env.RESEND_API_KEY;
