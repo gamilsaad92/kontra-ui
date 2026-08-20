@@ -2886,9 +2886,11 @@ function WhatNeedsAttention({
     return value && !['n/a', 'na', 'not applicable', 'not_applicable', 'unknown'].includes(value)
       && field?.status !== 'not_applicable';
   };
-  const schemaKey = resolveSchemaKey(packId, pack, property?.name || property?.property_name);
-  const recordSchema = Object.values(getPackRecordSchema(schemaKey)).flat();
-  const visibleRecordDefinitions = recordSchema.length > 0
+  const schemaKey = getEffectiveRecordSchemaKey(property, packId, pack);
+  const recordSchema = getEffectiveRecordDefinitions(schemaKey, property);
+  const visibleRecordDefinitions = schemaKey === 'generated_ai'
+    ? recordSchema
+    : recordSchema.length > 0
     ? recordSchema
     : [
         { key: 'parties.buyer', label: 'Buyer' },
@@ -3329,11 +3331,18 @@ function DigitalAssetReadinessSection({
   // full Transaction Record. This is data wiring only; the rendered layout is
   // intentionally unchanged.
   const canonicalRecordState = recordState || readiness?.transaction_record || null;
-  const generatedFields = Array.isArray(property?.generated_proposal?.transaction_record_fields)
-    ? property.generated_proposal.transaction_record_fields
+  const generatedFields = Array.isArray(getGeneratedProposal(property)?.transaction_record_fields)
+    ? getGeneratedProposal(property).transaction_record_fields
     : [];
+  const generatedSchemaKeys = generatedFields
+    .map(field => field?.key)
+    .filter(Boolean);
   const requiredKeys = new Set(
-    (canonicalRecordState?.requiredFields || getRequiredRecordFields(schemaKey))
+    (canonicalRecordState?.requiredFields?.length
+      ? canonicalRecordState.requiredFields
+      : (generatedSchemaKeys.length
+        ? generatedSchemaKeys.map(key => ({ key }))
+        : getRequiredRecordFields(schemaKey)))
       .map(field => field.key || field.canonicalKey)
       .filter(Boolean),
   );
@@ -3969,9 +3978,73 @@ function getRecordDefinitionState(definition, recordFields = [], recordState = n
   };
 }
 
-function getCoordinatorRecordFacts(schemaKey, recordFields = [], recordState = null) {
-  const fields = Object.values(getPackRecordSchema(schemaKey)).flat()
+function getGeneratedProposal(property) {
+  return property?.generated_proposal || property?.metadata_values?.generated_proposal || null;
+}
+
+function isGeneratedAiRoom(property) {
+  return Array.isArray(getGeneratedProposal(property)?.transaction_record_fields);
+}
+
+function getEffectiveRecordSchemaKey(property, packId, pack) {
+  return isGeneratedAiRoom(property)
+    ? 'generated_ai'
+    : resolveSchemaKey(packId, pack, property?.name || property?.property_name);
+}
+
+function getEffectiveRecordDefinitions(schemaKey, property) {
+  const generatedFields = getGeneratedProposal(property)?.transaction_record_fields;
+  if (schemaKey === 'generated_ai' && Array.isArray(generatedFields)) {
+    return generatedFields
+      .filter(field => field?.key && field?.label)
+      .map(field => ({
+        ...field,
+        category: String(field.key).split('.')[0] || 'transaction',
+        canonicalKey: field.key,
+        workflowRequired: field.required !== false,
+        renderable: field.renderable !== false,
+        summaryPriority: field.summaryPriority || 'key',
+      }))
+      .filter(field => field.renderable !== false);
+  }
+  return Object.values(getPackRecordSchema(schemaKey)).flat()
     .filter(field => field.renderable !== false);
+}
+
+function getRecordDateValue(property, recordFields = [], recordState = null, fallbackKeys = []) {
+  const generated = isGeneratedAiRoom(property);
+  const generatedKeys = new Set(
+    (getGeneratedProposal(property)?.transaction_record_fields || [])
+      .map(field => String(field?.key || '').toLowerCase())
+      .filter(key => key.includes('date') && (key.includes('close') || key.includes('completion'))),
+  );
+  const keys = generated
+    ? generatedKeys
+    : new Set(fallbackKeys);
+  if (keys.size === 0) return '';
+  const stateField = recordState?.fields?.find(field =>
+    keys.has(String(field.key || '').toLowerCase())
+      && field.status !== 'not_applicable'
+      && String(field.value || '').trim(),
+  );
+  if (stateField) return String(stateField.value);
+  const recordField = recordFields.find(field =>
+    keys.has(String(field.field_key || '').toLowerCase())
+      && field.status !== 'not_applicable'
+      && String(field.value_text || '').trim(),
+  );
+  return recordField?.value_text ? String(recordField.value_text) : '';
+}
+
+function getCoordinatorRecordFacts(schemaKey, property, recordFields = [], recordState = null) {
+  const fields = getEffectiveRecordDefinitions(schemaKey, property);
+  if (schemaKey === 'generated_ai') {
+    return fields.slice(0, 8).map(definition => ({
+      ...getRecordDefinitionState(definition, recordFields, recordState),
+      key: definition.canonicalKey || definition.key,
+      label: definition.label || definition.key,
+    }));
+  }
   const economicKey = schemaKey === 'fundraising'
     ? 'financial.target_raise'
     : schemaKey === 'business_acquisition'
@@ -4250,16 +4323,19 @@ function TransactionBrief({
     briefing,
   });
 
-  const isGeneratedRoom = Array.isArray(property?.generated_proposal?.transaction_record_fields);
-  const recordSchemaKey = isGeneratedRoom
-    ? (property?.base_pack && !String(property.base_pack).startsWith('ws_') ? property.base_pack : 'generic')
-    : resolveSchemaKey(packId, pack, property?.name || property?.property_name);
+  const generatedRoom = isGeneratedAiRoom(property);
+  const recordSchemaKey = getEffectiveRecordSchemaKey(property, packId, pack);
   const canonicalRecordState = recordState || readiness?.transaction_record || null;
-  const requiredRecordFields = canonicalRecordState?.requiredFields || getRequiredRecordFields(recordSchemaKey);
+  const generatedRecordDefinitions = getEffectiveRecordDefinitions(recordSchemaKey, property);
+  const requiredRecordFields = canonicalRecordState?.requiredFields?.length
+    ? canonicalRecordState.requiredFields
+    : (recordSchemaKey === 'generated_ai'
+      ? generatedRecordDefinitions
+      : getRequiredRecordFields(recordSchemaKey));
   const confirmedRecordCount = canonicalRecordState?.confirmedCount ?? requiredRecordFields.filter(field =>
     getRecordDefinitionState(field, recordFields, canonicalRecordState).status === 'confirmed'
   ).length;
-  const capturedAwaitingConfirmation = canonicalRecordState
+  const capturedAwaitingConfirmation = canonicalRecordState?.requiredFields?.length
     ? canonicalRecordState.requiredFields.filter(field => field.status === 'awaiting')
     : recordFields.filter(field =>
       RECORD_AWAITING_STATUSES.has(field.status) && hasMeaningfulRecordValue(field)
@@ -4418,7 +4494,7 @@ function TransactionBrief({
           </p>
           <p className="text-[11px] text-gray-500">
             {requiredRecordFields.length > 0
-              ? `${canonicalRecordState?.awaitingRequiredCount ?? capturedAwaitingConfirmation.length} required field${(canonicalRecordState?.awaitingRequiredCount ?? capturedAwaitingConfirmation.length) === 1 ? '' : 's'} awaiting confirmation${canonicalRecordState?.awaitingOptionalCount ? ` · ${canonicalRecordState.awaitingOptionalCount} optional` : ''}`
+              ? `${capturedAwaitingConfirmation.length} ${recordSchemaKey === 'generated_ai' ? 'generated' : 'required'} field${capturedAwaitingConfirmation.length === 1 ? '' : 's'} awaiting confirmation${recordSchemaKey === 'generated_ai' ? '' : (canonicalRecordState?.awaitingOptionalCount ? ` · ${canonicalRecordState.awaitingOptionalCount} optional` : '')}`
               : 'No required field schema configured'}
           </p>
         </div>
@@ -4972,16 +5048,17 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
   const currentStageKey   = coordination?.stage || stages[0]?.key;
   const currentStageIndex = Math.max(0, stages.findIndex(s => s.key === currentStageKey));
   const currentStage      = stages[currentStageIndex];
-  const closingDate       = (recordState || readiness?.transaction_record)?.fields?.find(field =>
-      field.key === 'transaction.closing_date' && String(field.value || '').trim()
-    )?.value
-    || recordFields.find(field =>
-      field.field_key === 'transaction.closing_date' && String(field.value_text || '').trim()
-    )?.value_text
-    || property?.metadata_values?.target_close_date
-    || property?.closing_date
-    || property?.target_close_date
-    || property?.close_date;
+  const closingDate = getRecordDateValue(
+    property,
+    recordFields,
+    recordState || readiness?.transaction_record,
+    ['transaction.closing_date'],
+  ) || (!generatedRoom
+    ? property?.metadata_values?.target_close_date
+      || property?.closing_date
+      || property?.target_close_date
+      || property?.close_date
+    : '');
 
   // Effective stages include settlement/complete when the room has settlement
   // capability enabled — uses the same getEffectiveStages() as OperationsManagerView.
@@ -5012,21 +5089,29 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
   const readinessPct = readiness?.transaction_readiness?.overall_pct ?? null;
   const readinessStatus = readiness?.transaction_readiness?.status
     || (readinessPct === 0 ? 'Getting Started' : 'Building');
-  const recordSchemaKey = resolveSchemaKey(packId, pack, property?.name || property?.property_name);
+  const recordSchemaKey = getEffectiveRecordSchemaKey(property, packId, pack);
   const canonicalRecordState = recordState || readiness?.transaction_record || null;
   // The API's record_state includes the resolved schema, aliases, and the
   // not-applicable denominator. Use it as the single source for every Overview
   // count; the frontend schema is only a pre-load fallback.
-  const requiredRecordFields = canonicalRecordState?.requiredFields || getRequiredRecordFields(recordSchemaKey);
-  const confirmedRequiredCount = canonicalRecordState?.confirmedCount
-    ?? requiredRecordFields.filter(field =>
+  const generatedRecordDefinitions = getEffectiveRecordDefinitions(recordSchemaKey, property);
+  const requiredRecordFields = canonicalRecordState?.requiredFields?.length
+    ? canonicalRecordState.requiredFields
+    : (recordSchemaKey === 'generated_ai'
+      ? generatedRecordDefinitions
+      : getRequiredRecordFields(recordSchemaKey));
+  const confirmedRequiredCount = canonicalRecordState?.requiredFields?.length
+    ? canonicalRecordState.confirmedCount
+    : requiredRecordFields.filter(field =>
       getRecordDefinitionState(field, recordFields, canonicalRecordState).status === 'confirmed'
     ).length;
-  const capturedRequiredCount = canonicalRecordState?.awaitingRequiredCount
-    ?? requiredRecordFields.filter(definition => {
+  const capturedRequiredCount = canonicalRecordState?.requiredFields?.length
+    ? canonicalRecordState.awaitingRequiredCount
+    : requiredRecordFields.filter(definition => {
       return getRecordDefinitionState(definition, recordFields, canonicalRecordState).status === 'awaiting';
     }).length;
-  const keyFacts = getCoordinatorRecordFacts(recordSchemaKey, recordFields, canonicalRecordState);
+  const keyFacts = getCoordinatorRecordFacts(recordSchemaKey, property, recordFields, canonicalRecordState);
+  const lifecycleDateLabel = isGeneratedAiRoom(property) ? 'Target completion' : 'Target close';
 
   return (
     <div className="space-y-5">
@@ -5084,7 +5169,7 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
             <p className="mt-1 text-sm text-gray-500">
               {[
                 currentStage?.label,
-                closingDate && `Target close ${formatDateOnlyLabel(closingDate)}`,
+                closingDate && `${lifecycleDateLabel} ${formatDateOnlyLabel(closingDate)}`,
               ].filter(Boolean).join(' · ') || pack.name}
             </p>
           </div>
@@ -5514,7 +5599,19 @@ function OperationsManagerView({ propertyId, property, pack, role, onTabChange }
   const docSchema       = pack.getDocumentSchema?.(property?.property_type || property?.type) || [];
   const requiredDocCount = docSchema.filter(d => d.required).length;
   const openBlockers    = (briefing?.risks || briefing?.open_items || []).length;
-  const closingDate     = property?.metadata_values?.target_close_date || property?.closing_date || property?.target_close_date || property?.close_date || '';
+  const generatedRoom  = isGeneratedAiRoom(property);
+  const closingDate    = getRecordDateValue(
+    property,
+    [],
+    null,
+    ['transaction.closing_date'],
+  ) || (!generatedRoom
+    ? property?.metadata_values?.target_close_date
+      || property?.closing_date
+      || property?.target_close_date
+      || property?.close_date
+    : '');
+  const lifecycleDateLabel = generatedRoom ? 'Target completion' : 'Target close';
   const daysToClose     = closingDate ? daysUntilDateOnly(closingDate) : null;
 
   // ── Overall status ─────────────────────────────────────────────────────────
@@ -5690,7 +5787,7 @@ function OperationsManagerView({ propertyId, property, pack, role, onTabChange }
               {closingDate && (
                 <span className="text-sm text-gray-500 flex items-center gap-1">
                   <span className="text-gray-300 text-xs">·</span>
-                  Target close: {formatDateOnlyLabel(closingDate)}
+                  {lifecycleDateLabel}: {formatDateOnlyLabel(closingDate)}
                 </span>
               )}
             </div>

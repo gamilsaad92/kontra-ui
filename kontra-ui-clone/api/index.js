@@ -8873,25 +8873,10 @@ app.get('/api/public/deal-room/:propertyId/transaction-record', async (req, res)
   try {
     const access = await getRoomAccessContext(req, propertyId);
     if (access.mode === 'anonymous') return accessDenied(res);
-    const [{ data: fields, error: fieldsError }, { data: room, error: roomError }] = await Promise.all([
-      supabase
-        .from('transaction_record_fields')
-        .select('*')
-        .eq('property_id', propertyId)
-        .order('field_category', { ascending: true })
-        .order('display_label', { ascending: true }),
-      supabase
-        .from('deal_rooms')
-        .select('workflow_pack_id, deal_type')
-        .eq('property_id', propertyId)
-        .maybeSingle(),
-    ]);
-    if (fieldsError) throw fieldsError;
-    if (roomError) throw roomError;
-    const schemaKey = await resolveTransactionSchemaKey(room);
+    const transactionState = await readTransactionState(propertyId);
     res.json({
-      fields: fields || [],
-      record_state: computeTransactionRecordState(fields || [], schemaKey),
+      fields: transactionState.recordFields || [],
+      record_state: transactionState.recordState,
     });
   } catch (err) {
     console.error('[transaction-record GET]', err.message);
