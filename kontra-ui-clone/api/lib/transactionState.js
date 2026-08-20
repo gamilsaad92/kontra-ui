@@ -75,7 +75,6 @@ async function reconcileStoredDocumentConflicts(propertyId) {
       supabase.from('deal_analyses')
         .select('id, section, filename, analysis, created_at')
         .eq('property_id', propertyId)
-        .neq('section', 'cross_document_verification')
         .order('created_at', { ascending: true }),
       supabase.from('transaction_record_fields')
         .select('id, field_key, display_label, value_text, status, source_doc_id, source_page, source_excerpt')
@@ -83,9 +82,39 @@ async function reconcileStoredDocumentConflicts(propertyId) {
     ]);
     if (documentsError) throw documentsError;
     if (fieldsError) throw fieldsError;
-    const candidates = (documents || []).flatMap(document =>
+    const sourceDocuments = (documents || []).filter(document =>
+      document.section !== 'cross_document_verification'
+    );
+    const candidates = sourceDocuments.flatMap(document =>
       storedDocumentAmounts(document).map(value => ({ ...value, document }))
     );
+    // The verification engine is the durable source for older rooms: it may
+    // have recognized a discrepancy from document summaries/metrics even when
+    // those values are not present under repair-specific JSON keys.
+    const verification = (documents || [])
+      .filter(document => document.section === 'cross_document_verification')
+      .sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0))[0];
+    const sourceBySection = new Map(sourceDocuments.map(document => [document.section, document]));
+    for (const check of verification?.analysis?.checks || []) {
+      if (check?.status !== 'discrepancy') continue;
+      const isRepairCheck = REPAIR_CONTEXT.test(
+        `${check.id || ''} ${check.description || ''} ${check.doc_section_a || ''} ${check.doc_section_b || ''}`
+      );
+      if (!isRepairCheck) continue;
+      const valueA = parseAmount(check.value_a);
+      const valueB = parseAmount(check.value_b);
+      if (!valueA || !valueB || valueA === valueB) continue;
+      const documentA = sourceBySection.get(check.doc_section_a) || {
+        id: null, section: check.doc_section_a, filename: check.doc_section_a,
+      };
+      const documentB = sourceBySection.get(check.doc_section_b) || {
+        id: null, section: check.doc_section_b, filename: check.doc_section_b,
+      };
+      candidates.push(
+        { amount: valueA, excerpt: check.description || null, document: documentA },
+        { amount: valueB, excerpt: check.description || null, document: documentB },
+      );
+    }
     if (candidates.length < 2) return;
 
     const canonicalKey = canonicalizeTransactionRecordKey('financial.repair_costs', 'generic');
