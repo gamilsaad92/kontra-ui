@@ -176,8 +176,10 @@ function buildTokenizationGuidance({
     transaction: {
       propertyName: transaction.propertyName || null,
       dealType: transaction.dealType || null,
+      transactionType: transaction.transactionType || transaction.dealType || transaction.workflowPack || null,
       workflowPack: transaction.workflowPack || null,
       stage: transaction.stageLabel || transaction.stage || null,
+      closingDate: transaction.closingDate || null,
       jurisdiction: transaction.jurisdiction || null,
       digitalAssetEnabled: tokenizationEnabled,
     },
@@ -210,7 +212,9 @@ function buildTokenizationAnswerPrefix(guidance) {
   const transaction = guidance?.transaction || {};
   const context = [
     transaction.propertyName && `workspace ${transaction.propertyName}`,
+    transaction.transactionType && `transaction type ${transaction.transactionType}`,
     transaction.dealType && `deal type ${transaction.dealType}`,
+    transaction.closingDate && `closing date ${transaction.closingDate}`,
     transaction.stage && `stage ${transaction.stage}`,
     transaction.jurisdiction && `proposed jurisdiction ${transaction.jurisdiction}`,
     `digital-asset preparation ${transaction.digitalAssetEnabled ? 'enabled' : 'optional and not enabled'}`,

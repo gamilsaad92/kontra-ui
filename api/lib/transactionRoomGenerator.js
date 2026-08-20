@@ -47,15 +47,22 @@ function extractTransactionContext(description = '') {
   };
   if (/freddie\s*mac/i.test(text)) add('organization.investor_or_agency', 'Investor / agency', 'Freddie Mac');
   if (/\bcbre\b/i.test(text)) add('organization.broker', 'Broker', 'CBRE');
-  const units = text.match(/(\d[\d,]*)\s*(?:affected\s+)?units?\b/i);
-  if (units) add('asset.units_affected', 'Units affected', units[1].replace(/,/g, ''));
+  const units = text.match(/(\d[\d,]*)\s*[-\s]*(?:affected\s+)?units?\b/i);
+  if (units) {
+    const affected = /\baffected\s+units?\b/i.test(text);
+    add(
+      affected ? 'asset.units_affected' : 'asset.unit_count',
+      affected ? 'Units affected' : 'Unit count',
+      units[1].replace(/,/g, ''),
+    );
+  }
   const advanced = text.match(/(?:advanced|advance of|approximately)\s*\$?\s*([\d,]+(?:\.\d+)?)\s*(m|million|k|thousand)?/i);
   if (advanced) {
     const multiplier = /million/i.test(advanced[2] || '') || advanced[2]?.toLowerCase() === 'm' ? 1000000
       : /thousand/i.test(advanced[2] || '') || advanced[2]?.toLowerCase() === 'k' ? 1000 : 1;
     add('financial.borrower_funds_advanced', 'Borrower funds advanced', String(Number(advanced[1].replace(/,/g, '')) * multiplier));
   }
-  if (/\bmultifamily\b/i.test(text)) add('asset.property_type', 'Property type', 'Multifamily');
+  if (/\bmultifamily\b/i.test(text)) add('transaction.property_type', 'Property type', 'Multifamily');
   if (/\b(hazard\s+loss|casualty)\b/i.test(text)) add('transaction.loss_type', 'Loss type', /casualty/i.test(text) ? 'Casualty / hazard loss' : 'Hazard loss');
   if (/\bfire\b/i.test(text)) add('transaction.loss_event', 'Loss event', 'Fire');
   if (/claim\s+(?:has\s+been\s+)?acknowledged|acknowledged\s+the\s+claim/i.test(text)) add('insurance.claim_status', 'Insurance claim status', 'Acknowledged');
@@ -84,7 +91,7 @@ function inferGeneratedTransactionIdentity({
   const generated = String(generatedType || '').trim().toLowerCase();
   const text = String(description || '').toLowerCase();
   const isSellerOriented = /\b(marketed|listed|offered|sale|selling|seller|on behalf of the seller|seller[-\s]side)\b/.test(text);
-  const isBuyerOriented = /\b(acquir(?:e|er|ing)|purchase|buy(?:er|ing)|buyer[-\s]side)\b/.test(text);
+  const isBuyerOriented = /\b(acquir(?:e|er|ing)|purchasing|purchase of|buyer[-\s]side|on behalf of the buyer)\b/.test(text);
 
   // An owner-selected type is authoritative. "other" deliberately leaves
   // room for the description to establish a more specific identity.
@@ -164,7 +171,7 @@ function normalizeProposal(raw = {}, context = {}) {
       ...source,
     };
   });
-  const transactionRecordFields = (Array.isArray(raw.transaction_record_fields)
+  const modelTransactionRecordFields = (Array.isArray(raw.transaction_record_fields)
     ? raw.transaction_record_fields
     : []).map((field, index) => ({
     key: String(field.key || field.field_key || `transaction.field_${index + 1}`).trim().slice(0, 120),
@@ -175,6 +182,15 @@ function normalizeProposal(raw = {}, context = {}) {
     rationale: String(field.rationale || '').trim().slice(0, 500),
     ...normalizeSource(field),
   }));
+  const contextTransactionFields = contextFields(context.contextFacts || []);
+  const transactionRecordFields = [...modelTransactionRecordFields];
+  const modelFieldKeys = new Set(transactionRecordFields.map(field => field.key));
+  for (const field of contextTransactionFields) {
+    if (field.key === 'asset.unit_count' && transactionRecordFields.some(item =>
+      /\bunit(?:s)?\b/i.test(`${item.key} ${item.label}`),
+    )) continue;
+    if (!modelFieldKeys.has(field.key)) transactionRecordFields.push(field);
+  }
   const issues = (Array.isArray(raw.issues_to_confirm) ? raw.issues_to_confirm : (Array.isArray(raw.questions) ? raw.questions : []))
     .map(item => ({
       question: String(item.question || '').trim().slice(0, 500),
@@ -209,9 +225,7 @@ function normalizeProposal(raw = {}, context = {}) {
     requirements,
     participants,
     issues_to_confirm: issues,
-    transaction_record_fields: transactionRecordFields.length
-      ? transactionRecordFields
-      : contextFields(context.contextFacts || []),
+    transaction_record_fields: transactionRecordFields,
     research_sources: Array.isArray(raw.research_sources)
       ? raw.research_sources.map(normalizeSource).slice(0, 50)
       : [],
