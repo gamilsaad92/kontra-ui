@@ -31,6 +31,28 @@ const UNIVERSAL_TRANSACTION_FIELDS = [
   { key: "transaction.jurisdiction", label: "Jurisdiction",            workflowRequired: true,  setup: "jurisdiction"      },
 ];
 
+// Legacy metadata ids remain readable for compatibility, but they resolve to
+// the canonical Transaction Record fact and must never render as a second row.
+export const RECORD_FIELD_ALIASES = Object.freeze({
+  "transaction.target_close": "transaction.closing_date",
+  target_close_date: "transaction.closing_date",
+});
+
+export function getCanonicalRecordFieldKey(fieldOrKey) {
+  const key = typeof fieldOrKey === "string"
+    ? fieldOrKey
+    : fieldOrKey?.key || fieldOrKey?.id;
+  return fieldOrKey?.aliasOf || RECORD_FIELD_ALIASES[key] || key;
+}
+
+export function isRecordFieldRenderable(field) {
+  // Kept public so dynamic and pack-specific record surfaces share one filter.
+  const key = typeof field === "string" ? field : field?.key || field?.id;
+  return field?.renderable !== false
+    && !field?.aliasOf
+    && !RECORD_FIELD_ALIASES[key];
+}
+
 // ── Per-pack schemas ──────────────────────────────────────────────────────────
 
 const PACK_SCHEMAS = {
@@ -166,7 +188,7 @@ const PACK_SCHEMAS = {
   // ── Fundraising ────────────────────────────────────────────────────────────
   fundraising: {
     transaction_extra: [
-      { key: "transaction.target_close",     label: "Target close date",      required: false, sources: ["Term Sheet"] },
+       { key: "transaction.target_close",     label: "Target close date",      required: false, aliasOf: "transaction.closing_date", sources: ["Term Sheet"] },
       { key: "transaction.instrument_type",  label: "Instrument type",        required: true,  sources: ["Term Sheet"], hint: "SAFE, convertible note, equity" },
     ],
     asset_identity: [
@@ -419,16 +441,20 @@ export function getPackRecordSchema(schemaKey) {
   const specific = PACK_SCHEMAS[schemaKey] || GENERIC_SCHEMA;
   const normalize = (field) => {
     const workflowRequired = field.workflowRequired ?? field.required ?? false;
+    const aliasOf = getCanonicalRecordFieldKey(field) === field.key
+      ? (field.aliasOf || null)
+      : getCanonicalRecordFieldKey(field);
     return {
       ...field,
       workflowRequired,
       requirement: field.requirement || (workflowRequired ? "workflow" : "expected"),
       summaryPriority: field.summaryPriority ||
         (SUMMARY_KEYS_BY_SCHEMA[schemaKey]?.includes(field.key) ? "key" : "supporting"),
-      canonicalKey: field.aliasOf || field.key,
+      aliasOf,
+      canonicalKey: aliasOf || field.key,
       // Keep display aliases in the schema for canonical DB matching, but do not
       // render them as separate Transaction Record rows for any workflow pack.
-      renderable: !field.aliasOf,
+      renderable: isRecordFieldRenderable({ ...field, aliasOf }),
     };
   };
   return Object.fromEntries([
