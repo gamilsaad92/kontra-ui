@@ -2591,6 +2591,7 @@ function WorkspaceTabNav({ activeTab, onChange, isCoordinator = false, isDemo = 
 // record editor.
 function TransactionFindingsPanel({ propertyId, onTabChange }) {
   const [fields, setFields] = useState([]);
+  const [conflicts, setConflicts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [confirming, setConfirming] = useState('');
   const [expanded, setExpanded] = useState('');
@@ -2603,6 +2604,7 @@ function TransactionFindingsPanel({ propertyId, onTabChange }) {
       });
       const data = res.ok ? await res.json() : { fields: [] };
       setFields(Array.isArray(data?.fields) ? data.fields : []);
+      setConflicts(Array.isArray(data?.conflicts) ? data.conflicts : []);
     } catch {
       setFields([]);
     } finally {
@@ -2628,6 +2630,26 @@ function TransactionFindingsPanel({ propertyId, onTabChange }) {
           method: 'POST',
           headers: getRoomAuthHeaders(propertyId, { 'Content-Type': 'application/json' }),
           body: JSON.stringify({ ownerWriteToken, actorRole: 'coordinator' }),
+        },
+      );
+      if (res.ok) await load();
+    } finally {
+      setConfirming('');
+    }
+  }
+
+  async function resolveConflict(conflict, valueText) {
+    let ownerWriteToken = '';
+    try { ownerWriteToken = localStorage.getItem(`kontra_owner_token_${propertyId}`) || ''; } catch {}
+    if (!ownerWriteToken || confirming) return;
+    setConfirming(conflict.id);
+    try {
+      const res = await fetch(
+        `${API_BASE}/api/public/deal-room/${propertyId}/transaction-record/conflicts/${conflict.id}/resolve`,
+        {
+          method: 'POST',
+          headers: getRoomAuthHeaders(propertyId, { 'Content-Type': 'application/json' }),
+          body: JSON.stringify({ ownerWriteToken, value_text: valueText }),
         },
       );
       if (res.ok) await load();
@@ -2764,6 +2786,45 @@ function TransactionFindingsPanel({ propertyId, onTabChange }) {
           })}
         </div>
       )}
+      {conflicts.length > 0 && (
+        <div className="border-t border-red-100 bg-red-50/40 px-5 py-4">
+          <p className="text-[10px] font-bold uppercase tracking-wider text-red-700">Unresolved source discrepancies</p>
+          <div className="mt-2 space-y-3">
+            {conflicts.map(conflict => (
+              <div key={conflict.id} className="rounded-xl border border-red-100 bg-white px-3.5 py-3">
+                <p className="text-sm font-bold text-gray-900">
+                  {/repair\s*cost/i.test(`${conflict.label || ''} ${conflict.fieldKey || ''}`)
+                    ? 'Resolve Repair Cost Discrepancy'
+                    : `Resolve ${conflict.label || conflict.fieldKey || 'Transaction Record'} Discrepancy`}
+                </p>
+                <p className="mt-1 text-xs text-gray-600">
+                  Canonical: <span className="font-semibold">{conflict.canonicalValue || 'Not recorded'}</span>
+                  {' · '}
+                  Other source: <span className="font-semibold">{conflict.conflictingValue || 'Not recorded'}</span>
+                </p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => resolveConflict(conflict, conflict.canonicalValue)}
+                    disabled={confirming === conflict.id}
+                    className="rounded-lg bg-[#800020] px-3 py-1.5 text-[11px] font-bold text-white disabled:opacity-50"
+                  >
+                    {confirming === conflict.id ? 'Saving…' : 'Keep canonical value'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => resolveConflict(conflict, conflict.conflictingValue)}
+                    disabled={confirming === conflict.id}
+                    className="rounded-lg border border-gray-200 px-3 py-1.5 text-[11px] font-semibold text-gray-700 disabled:opacity-50"
+                  >
+                    Use other source
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -2868,6 +2929,7 @@ function WhatNeedsAttention({
   briefing,
   recordFields,
   recordState = null,
+  conflicts = [],
   checklistItems = [],
   events = [],
   coordination = null,
@@ -2996,6 +3058,22 @@ function WhatNeedsAttention({
   const items = [];
 
   // 1. Conflicting / source-changed — highest urgency
+  (conflicts.length > 0 ? conflicts : (recordState?.unresolvedConflicts || [])).forEach(conflict => {
+    const fieldKey = conflict.fieldKey || conflict.field_key || '';
+    const label = conflict.label || conflict.display_label || fieldKey || 'Transaction Record';
+    items.push({
+      id: `transaction-conflict-${conflict.id || fieldKey}`,
+      urgency: 'high',
+      title: /repair\s*cost/i.test(`${label} ${fieldKey}`)
+        ? 'Resolve Repair Cost Discrepancy'
+        : `Resolve ${label} Discrepancy`,
+      reason: `Canonical value ${conflict.canonicalValue || conflict.canonical_value || 'not recorded'} conflicts with ${conflict.conflictingValue || conflict.conflicting_value || 'another source'}.`,
+      excerpt: conflict.conflictingSourceExcerpt || conflict.conflicting_source_excerpt || null,
+      routeItem: { field_key: fieldKey },
+      actions: [{ label: 'Review discrepancy', onClick: () => onTabChange?.('overview') }],
+      sourcePriority: 0,
+    });
+  });
   recordFields
     .filter(f => ['conflicting', 'source_changed'].includes(f.status))
     .slice(0, 3)
@@ -4307,6 +4385,7 @@ function TransactionBrief({
   analyses = [],
   recordFields = [],
   recordState = null,
+  conflicts = [],
   readiness = null,
   stages = [],
   currentStage,
@@ -4363,11 +4442,12 @@ function TransactionBrief({
     : recordFields.filter(field =>
       RECORD_AWAITING_STATUSES.has(field.status) && hasMeaningfulRecordValue(field)
     );
-  const conflicts = canonicalRecordState
+  const recordConflicts = canonicalRecordState
     ? canonicalRecordState.fields.filter(field =>
       field.status === 'conflict' || field.attention === 'source_changed'
     )
     : recordFields.filter(field => RECORD_CONFLICT_STATUSES.has(field.status));
+  const allConflicts = conflicts.length > 0 ? conflicts : (canonicalRecordState?.unresolvedConflicts || []);
   const recentChanges = getRecentCoordinatorChanges(events, analyses, recordFields);
   const goToRecord = field => {
     onTabChange?.('overview');
@@ -4377,7 +4457,7 @@ function TransactionBrief({
         ?.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }, 0);
   };
-  const hasBlockingIssues = conflicts.length > 0 || nextMilestoneBlockers.length > 0;
+  const hasBlockingIssues = recordConflicts.length > 0 || allConflicts.length > 0 || nextMilestoneBlockers.length > 0;
   const stageRecommendation = getLifecycleAdvanceRecommendation(
     stages,
     currentStageIndex,
@@ -5092,8 +5172,10 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
     stages,
   );
   const milestoneEvidenceSections = getLifecycleEvidenceSections(currentStage);
+  const documentStats = getDocumentRequirementStats(checklistItems, pack, property, analyses);
   const supportingDocumentPresent = milestoneEvidenceSections
     ? analyses.some(analysis => milestoneEvidenceSections.includes(analysis.section))
+      || (documentStats.requiredDocuments.length > 0 && documentStats.missingDocuments.length === 0)
     : null;
 
   // Readiness phase drives which panel appears in position 3 of the Overview.
@@ -5216,6 +5298,7 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
             analyses={analyses}
             recordFields={recordFields}
             recordState={canonicalRecordState}
+            conflicts={readiness?.conflicts || canonicalRecordState?.unresolvedConflicts || []}
             readiness={readiness}
             stages={stages}
             currentStage={currentStage}
@@ -5255,6 +5338,7 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
             briefing={briefing}
             recordFields={recordFields}
             recordState={canonicalRecordState}
+            conflicts={readiness?.conflicts || canonicalRecordState?.unresolvedConflicts || []}
             checklistItems={checklistItems}
             events={events}
             coordination={coordination}

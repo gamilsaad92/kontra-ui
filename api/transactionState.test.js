@@ -81,6 +81,55 @@ describe('transaction state recalculation', () => {
     expect(result.conflictCount).toBe(1);
   });
 
+  it('keeps the canonical value while exposing a durable unresolved source conflict', () => {
+    const conflicts = [{
+      id: 'repair-cost-conflict',
+      property_id: 'room-1',
+      field_id: 'field-1',
+      field_key: 'financial.repair_costs',
+      display_label: 'Repair Costs',
+      canonical_value: '$210,000',
+      conflicting_value: '$225,000',
+      canonical_source_doc_id: 'contractor-doc',
+      conflicting_source_doc_id: 'invoice-doc',
+      status: 'unresolved',
+    }];
+    const state = computeTransactionRecordState([{
+      id: 'field-1',
+      field_key: 'financial.repair_costs',
+      display_label: 'Repair Costs',
+      value_text: '$210,000',
+      status: 'extracted',
+      source_doc_id: 'contractor-doc',
+    }], 'generic', null, conflicts);
+    const readiness = computeTransactionReadiness(
+      { workflow_pack_id: 'generic' },
+      [{
+        id: 'field-1',
+        field_key: 'financial.repair_costs',
+        display_label: 'Repair Costs',
+        value_text: '$210,000',
+        status: 'extracted',
+        source_doc_id: 'contractor-doc',
+      }],
+      'generic',
+      null,
+      conflicts,
+    );
+
+    expect(state.fields.find(field => field.key === 'financial.repair_costs').value).toBe('$210,000');
+    expect(state.unresolvedConflicts[0]).toEqual(expect.objectContaining({
+      canonicalValue: '$210,000',
+      conflictingValue: '$225,000',
+      canonicalSourceDocId: 'contractor-doc',
+      conflictingSourceDocId: 'invoice-doc',
+    }));
+    expect(state.unresolvedConflictCount).toBe(1);
+    expect(readiness.hasBlockingConflicts).toBe(true);
+    expect(readiness.approvalReady).toBe(false);
+    expect(readiness.fundReleaseReady).toBe(false);
+  });
+
   it('does not treat four generic transaction facts as sufficient digital-asset preparation', () => {
     const fields = [
       { field_key: 'transaction.type', value_text: 'Commercial acquisition', status: 'verified' },
