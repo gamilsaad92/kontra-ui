@@ -68,6 +68,49 @@ function extractTransactionContext(description = '') {
   return facts;
 }
 
+/**
+ * Keep the generated transaction identity separate from the compatibility
+ * workflow pack. A generic/custom request can be rendered with a structural
+ * pack, but that must not relabel the user's actual transaction.
+ */
+function inferGeneratedTransactionIdentity({
+  description = '',
+  selectedType = '',
+  generatedType = '',
+  generatedLabel = '',
+} = {}) {
+  const selected = String(selectedType || '').trim().toLowerCase();
+  const generated = String(generatedType || '').trim().toLowerCase();
+  const text = String(description || '').toLowerCase();
+
+  // An owner-selected type is authoritative. "other" deliberately leaves
+  // room for the description to establish a more specific identity.
+  if (selected && selected !== 'other') {
+    return {
+      type: selected,
+      label: String(generatedLabel || selected).trim(),
+      subtype: null,
+    };
+  }
+
+  const isLossReview = /\b(hazard\s+loss|casualty\s+loss|casualty)\b/.test(text)
+    && /\b(insurance\s+proceeds?|proceeds?|claim)\b/.test(text)
+    && /\b(repair|reimbursement|disburse(?:ment)?|release)\b/.test(text);
+  if (isLossReview) {
+    return {
+      type: 'hazard_loss_proceeds_review',
+      label: 'Hazard-Loss Insurance Proceeds Review',
+      subtype: 'Insurance proceeds disbursement and repair review',
+    };
+  }
+
+  return {
+    type: generated || selected || 'other',
+    label: String(generatedLabel || generated || selected || 'Custom Transaction').trim(),
+    subtype: null,
+  };
+}
+
 function contextFields(facts = []) {
   return facts.map(fact => ({
     key: fact.key,
@@ -274,6 +317,7 @@ module.exports = {
   PROPOSAL_VERSION,
   SOURCE_TYPES,
   extractTransactionContext,
+  inferGeneratedTransactionIdentity,
   normalizeProposal,
   buildLegacyProposal,
   validateProposal,

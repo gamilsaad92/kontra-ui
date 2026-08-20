@@ -73,6 +73,7 @@ const {
   createGenerationId,
   PROPOSAL_VERSION,
   extractTransactionContext,
+  inferGeneratedTransactionIdentity,
 } = require('./lib/transactionRoomGenerator');
 
 // Pack inference map — mirrors DEAL_TYPE_TO_PACK in dealRoomHelpers.js so that
@@ -1405,7 +1406,17 @@ IMPORTANT: You are suggesting a starting point only. Do NOT claim completeness. 
 
     let raw = {};
     try { raw = JSON.parse(completion.choices[0].message.content); } catch (_) {}
-    const resolvedTransactionType = profile?.packId || raw.transactionType || transactionType || 'other';
+    const generatedIdentity = inferGeneratedTransactionIdentity({
+      description,
+      selectedType: transactionType,
+      generatedType: raw.transactionType,
+      generatedLabel: raw.transactionTypeLabel,
+    });
+    const resolvedTransactionType = generatedIdentity.type;
+    const compatibilityPackId = profile?.packId
+      || (['cre_acquisition', 'business_acquisition', 'fundraising', 'tokenization'].includes(resolvedTransactionType)
+        ? resolvedTransactionType
+        : 'business_acquisition');
     const transactionTypeLabels = {
       lending: 'Lending / Finance',
       licensing: 'Licensing Transaction',
@@ -1415,7 +1426,7 @@ IMPORTANT: You are suggesting a starting point only. Do NOT claim completeness. 
     const canonicalTypeLabel = canonicalTransactionTypeLabel(
       resolvedTransactionType,
       profile?.packId,
-      raw.transactionTypeLabel || transactionTypeLabels[resolvedTransactionType] || 'Custom Transaction',
+      generatedIdentity.label || transactionTypeLabels[resolvedTransactionType] || 'Custom Transaction',
     );
     const generatedConfig = normalizeGeneratedWorkflowConfig(raw);
     const generationId = createGenerationId();
@@ -1428,6 +1439,7 @@ IMPORTANT: You are suggesting a starting point only. Do NOT claim completeness. 
       ...generatedConfig,
       transactionType: resolvedTransactionType,
       transactionTypeLabel: canonicalTypeLabel,
+      transactionStructure: generatedIdentity.subtype || raw.transactionStructure,
     }, { description: description.trim(), transactionType: resolvedTransactionType }));
     const proposalValidation = validateProposal(proposal);
     if (!proposalValidation.ok) {
@@ -1467,19 +1479,19 @@ IMPORTANT: You are suggesting a starting point only. Do NOT claim completeness. 
       name: raw.name || '',
       transactionType: resolvedTransactionType,
       transactionTypeLabel: canonicalTypeLabel,
-      transactionStructure: typeof raw.transactionStructure === 'string' && raw.transactionStructure.trim()
-        && String(raw.transactionStructureConfidence || '').toLowerCase() === 'high'
-        ? raw.transactionStructure.trim().slice(0, 120)
-        : null,
-      transactionStructureConfidence: String(raw.transactionStructureConfidence || '').toLowerCase() === 'high' ? 'high' : 'low',
+      transactionStructure: generatedIdentity.subtype
+        || (typeof raw.transactionStructure === 'string' && raw.transactionStructure.trim()
+          && String(raw.transactionStructureConfidence || '').toLowerCase() === 'high'
+          ? raw.transactionStructure.trim().slice(0, 120)
+          : null),
+      transactionStructureConfidence: (generatedIdentity.subtype
+        || String(raw.transactionStructureConfidence || '').toLowerCase() === 'high') ? 'high' : 'low',
       transactionValue: String(raw.transactionValueConfidence || '').toLowerCase() === 'high'
         && Number.isFinite(Number(raw.transactionValue)) && Number(raw.transactionValue) > 0
         ? Number(raw.transactionValue)
         : null,
       transactionValueConfidence: String(raw.transactionValueConfidence || '').toLowerCase() === 'high' ? 'high' : 'low',
-      packId: ['cre_acquisition', 'business_acquisition', 'fundraising', 'tokenization'].includes(resolvedTransactionType)
-        ? resolvedTransactionType
-        : null,
+      packId: compatibilityPackId,
       roles: generatedConfig.roles,
       documents: generatedConfig.documents,
       stages: generatedConfig.stages,
