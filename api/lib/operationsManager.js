@@ -167,11 +167,35 @@ function buildPackLifecycle(packId, stageKey, generatedProposal = null) {
   };
 }
 
-function buildGroundedBlockers({ packId, recordState, missingDocuments, participants, tasks, participantDefinitions }) {
+function buildGroundedBlockers({
+  packId, recordState, missingDocuments, participants, tasks, participantDefinitions, conflicts = [],
+}) {
   const blockers = [];
   const requiredFields = Array.isArray(recordState?.requiredFields) ? recordState.requiredFields : [];
   const participantRows = Array.isArray(participants) ? participants : [];
   const openTasks = Array.isArray(tasks) ? tasks.filter(hasOpenTaskStatus) : [];
+
+  (Array.isArray(conflicts) ? conflicts : []).forEach(conflict => {
+    const fieldKey = conflict.fieldKey || conflict.field_key || '';
+    const label = conflict.label || conflict.display_label || fieldKey || 'Transaction Record field';
+    const title = /repair\s*cost/i.test(`${label} ${fieldKey}`)
+      ? 'Resolve Repair Cost Discrepancy'
+      : `Resolve ${label} Discrepancy`;
+    blockers.push({
+      sourceType: 'transaction_record_conflict',
+      conflictId: conflict.id || null,
+      key: fieldKey || null,
+      label: title,
+      status: 'unresolved',
+      evidence: [
+        `${label} has conflicting values: ${conflict.canonicalValue ?? conflict.canonical_value ?? 'not recorded'} and ${conflict.conflictingValue ?? conflict.conflicting_value ?? 'not recorded'}.`,
+        ...(conflict.canonicalSourceDocId || conflict.canonical_source_doc_id
+          ? [`Canonical source document: ${conflict.canonicalSourceDocId || conflict.canonical_source_doc_id}.`] : []),
+        ...(conflict.conflictingSourceDocId || conflict.conflicting_source_doc_id
+          ? [`Conflicting source document: ${conflict.conflictingSourceDocId || conflict.conflicting_source_doc_id}.`] : []),
+      ],
+    });
+  });
 
   (Array.isArray(missingDocuments) ? missingDocuments : []).forEach(document => {
     blockers.push({
@@ -259,6 +283,7 @@ async function buildGroundedContext(propertyId) {
   const generatedProposal = room?.generated_proposal || null;
   const generatedTransaction = generatedProposal?.transaction || {};
   const recordState = transactionState.recordState;
+  const conflicts = transactionState.conflicts || recordState.unresolvedConflicts || [];
   const generatedStage = generatedProposal?.stages?.find(stage => stage.key === room?.deal_stage);
   const stageLabel = generatedStage?.name
     || (room?.deal_stage ? getPackStageLabel(packId, room.deal_stage) : null);
@@ -382,12 +407,14 @@ async function buildGroundedContext(propertyId) {
         confirmedCount: recordState.confirmedCount,
         awaitingRequiredCount: recordState.awaitingRequiredCount,
         conflictRequiredCount: recordState.conflictRequiredCount,
+        unresolvedConflictCount: recordState.unresolvedConflictCount || 0,
         notApplicableCount: recordState.notApplicableCount,
       },
     },
     evidence: {
       documents: documentFindings,
       missingDocuments,
+      conflicts,
     },
     operations: {
       openTasks: openTasks.map(describeTask),
@@ -420,6 +447,7 @@ async function buildGroundedContext(propertyId) {
     openTasks: openTasks.map(describeTask),
     recentlyResolved: recentlyResolved.map(describeTask),
     missingDocuments,
+    conflicts,
     recordFacts: populatedRecordFields,
     documentFindings,
     chainStatus,
@@ -431,6 +459,7 @@ async function buildGroundedContext(propertyId) {
       participants: participantContext,
       tasks,
       participantDefinitions,
+      conflicts,
     }),
     transactionContext,
     recordState,
@@ -458,6 +487,7 @@ function contextToPrompt(ctx) {
       missing_documents: ctx.missingDocuments,
       transaction_record_facts: ctx.recordFacts,
       document_findings: ctx.documentFindings,
+      transaction_record_conflicts: ctx.conflicts,
     },
     null,
     2
@@ -489,6 +519,7 @@ function askContextToPrompt(ctx) {
       missing_documents: ctx.missingDocuments,
       transaction_record_facts: ctx.recordFacts,
       document_findings: ctx.documentFindings,
+      transaction_record_conflicts: ctx.conflicts,
     },
     null,
     2
@@ -560,6 +591,16 @@ async function getBriefing(propertyId) {
     note: t.description || '',
     chainStep: activeStep.step,
   }));
+  const conflictPathDetermined = (ctx.conflicts || []).map(conflict => ({
+    taskId: `transaction-conflict-${conflict.id || conflict.fieldKey}`,
+    owner: 'Deal Coordinator',
+    item: /repair\s*cost/i.test(`${conflict.label || ''} ${conflict.fieldKey || ''}`)
+      ? 'Resolve Repair Cost Discrepancy'
+      : `Resolve ${conflict.label || conflict.fieldKey || 'Transaction Record'} Discrepancy`,
+    note: `Canonical value ${conflict.canonicalValue || 'not recorded'} conflicts with ${conflict.conflictingValue || 'another source'}.`,
+    chainStep: activeStep?.step || null,
+  }));
+  const allCriticalPath = [...conflictPathDetermined, ...criticalPathDetermined];
 
   // Tasks in later chain steps (blocked) + parallel tracks = non-blocking
   const nonBlockingDetermined = ctx.openTasks
@@ -615,12 +656,16 @@ The closing_chain in context shows which step is active. Focus only on the EARLI
     // Deterministic status override: if there are literally zero open tasks,
     // the deal cannot be "blocked" — pending chain steps without tasks just means
     // the step hasn't kicked off yet, which is normal deal flow.
-    const deterministicStatus = ctx.openTasks.length === 0
+    const deterministicStatus = (ctx.conflicts || []).length > 0
+      ? 'blocked'
+      : ctx.openTasks.length === 0
       ? 'on_track'
       : criticalPathDetermined.length > 0
         ? (parsed.status || 'at_risk')
         : (parsed.status || 'on_track');
-    const deterministicStatusLabel = ctx.openTasks.length === 0
+    const deterministicStatusLabel = (ctx.conflicts || []).length > 0
+      ? 'Blocked'
+      : ctx.openTasks.length === 0
       ? 'On Track'
       : criticalPathDetermined.length > 0
         ? (parsed.statusLabel || 'At Risk')
@@ -634,8 +679,8 @@ The closing_chain in context shows which step is active. Focus only on the EARLI
       parallelNote:    parsed.parallelNote || null,
       prepared:        parsed.prepared || [],
       // Always use deterministic values, never LLM-computed ones
-      criticalPath:    criticalPathDetermined,
-      blocking:        criticalPathDetermined,
+      criticalPath:    allCriticalPath,
+      blocking:        allCriticalPath,
       nonBlockingTaskIds: nonBlockingDetermined,
       taskRisks:       taskRisksDetermined,
       chain: chainStatus?.chain?.map(s => ({
@@ -684,20 +729,42 @@ function buildFallbackBriefing(ctx) {
     .map(t => `Prepared draft for: ${t.title}`);
 
   const activeStep = chainStatus?.activeStep;
-  const narrative = ctx.openTasks.length === 0
-    ? 'No open tasks — the deal room is progressing normally.'
-    : activeStep && activeStep.openCount > 0
-      ? `Step ${activeStep.step}: ${activeStep.label} is the active blocker — ${activeStep.openCount} task(s) need resolution before the next step can begin.`
-      : criticalPath.length
-        ? 'AI reasoning is temporarily unavailable — showing a plain readout of open tasks.'
-        : 'All tasks are resolved. The transaction is on track.';
+  const narrative = (ctx.conflicts || []).length
+    ? 'A material Transaction Record discrepancy needs coordinator resolution before approval or fund release.'
+    : ctx.openTasks.length === 0
+      ? 'No open tasks — the deal room is progressing normally.'
+      : activeStep && activeStep.openCount > 0
+        ? `Step ${activeStep.step}: ${activeStep.label} is the active blocker — ${activeStep.openCount} task(s) need resolution before the next step can begin.`
+        : criticalPath.length
+          ? 'AI reasoning is temporarily unavailable — showing a plain readout of open tasks.'
+          : 'All tasks are resolved. The transaction is on track.';
 
   return {
-    status: criticalPath.length ? 'at_risk' : 'on_track',
-    statusLabel: criticalPath.length ? 'At Risk' : 'On Track',
+    status: (ctx.conflicts || []).length ? 'blocked' : (criticalPath.length ? 'at_risk' : 'on_track'),
+    statusLabel: (ctx.conflicts || []).length ? 'Blocked' : (criticalPath.length ? 'At Risk' : 'On Track'),
     expectedClosing: ctx.room?.closingDate || null,
-    criticalPath,
-    blocking: criticalPath,
+    criticalPath: [
+      ...(ctx.conflicts || []).map(conflict => ({
+        taskId: `transaction-conflict-${conflict.id || conflict.fieldKey}`,
+        owner: 'Deal Coordinator',
+        item: /repair\s*cost/i.test(`${conflict.label || ''} ${conflict.fieldKey || ''}`)
+          ? 'Resolve Repair Cost Discrepancy'
+          : `Resolve ${conflict.label || conflict.fieldKey || 'Transaction Record'} Discrepancy`,
+        note: `Canonical value ${conflict.canonicalValue || 'not recorded'} conflicts with ${conflict.conflictingValue || 'another source'}.`,
+      })),
+      ...criticalPath,
+    ],
+    blocking: [
+      ...(ctx.conflicts || []).map(conflict => ({
+        taskId: `transaction-conflict-${conflict.id || conflict.fieldKey}`,
+        owner: 'Deal Coordinator',
+        item: /repair\s*cost/i.test(`${conflict.label || ''} ${conflict.fieldKey || ''}`)
+          ? 'Resolve Repair Cost Discrepancy'
+          : `Resolve ${conflict.label || conflict.fieldKey || 'Transaction Record'} Discrepancy`,
+        note: `Canonical value ${conflict.canonicalValue || 'not recorded'} conflicts with ${conflict.conflictingValue || 'another source'}.`,
+      })),
+      ...criticalPath,
+    ],
     nonBlockingTaskIds,
     parallelNote: nonCritical.length > 0
       ? `${nonCritical.length} other task(s) are open but run parallel and do not gate the current step.`

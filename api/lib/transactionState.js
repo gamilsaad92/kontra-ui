@@ -55,6 +55,29 @@ function hasMeaningfulRecordValue(field) {
   return !EMPTY_RECORD_VALUES.has(value) && field?.status !== 'not_applicable';
 }
 
+function normalizeTransactionConflicts(conflicts) {
+  return (Array.isArray(conflicts) ? conflicts : [])
+    .filter(conflict => String(conflict?.status || 'unresolved').toLowerCase() === 'unresolved')
+    .map(conflict => ({
+      id: conflict.id || null,
+      propertyId: conflict.property_id || null,
+      fieldId: conflict.field_id || null,
+      fieldKey: conflict.field_key || null,
+      label: conflict.display_label || conflict.field_key || 'Transaction Record field',
+      canonicalValue: conflict.canonical_value ?? null,
+      conflictingValue: conflict.conflicting_value ?? null,
+      canonicalSourceDocId: conflict.canonical_source_doc_id || null,
+      conflictingSourceDocId: conflict.conflicting_source_doc_id || null,
+      canonicalSourcePage: conflict.canonical_source_page || null,
+      conflictingSourcePage: conflict.conflicting_source_page || null,
+      canonicalSourceExcerpt: conflict.canonical_source_excerpt || null,
+      conflictingSourceExcerpt: conflict.conflicting_source_excerpt || null,
+      status: 'unresolved',
+      createdAt: conflict.created_at || null,
+      updatedAt: conflict.updated_at || conflict.created_at || null,
+    }));
+}
+
 function recordStatusRank(field) {
   const status = String(field?.status || '').toLowerCase();
   if (CONFLICT_RECORD_STATUSES.has(status)) return 5;
@@ -70,7 +93,7 @@ function recordStatusRank(field) {
  * Older rooms can contain aliases or legacy "confirmed" rows, while newer
  * extraction writes canonical keys and uses "verified".
  */
-function computeTransactionRecordState(recordFields, schemaKey, requiredKeysOverride = null) {
+function computeTransactionRecordState(recordFields, schemaKey, requiredKeysOverride = null, conflicts = []) {
   const allRequirements = getRequirements();
   const requiredKeys = [...new Set(requiredKeysOverride || allRequirements[schemaKey] || [])];
   const canonicalKey = field => canonicalizeTransactionRecordKey(field, schemaKey);
@@ -136,6 +159,8 @@ function computeTransactionRecordState(recordFields, schemaKey, requiredKeysOver
   const confirmedCount = count(requiredFields, 'confirmed');
   const awaitingRequiredCount = count(requiredFields, 'awaiting');
 
+  const unresolvedConflicts = normalizeTransactionConflicts(conflicts);
+  const conflictKeys = new Set(unresolvedConflicts.map(conflict => conflict.fieldKey).filter(Boolean));
   return {
     schemaKey,
     fields,
@@ -145,17 +170,27 @@ function computeTransactionRecordState(recordFields, schemaKey, requiredKeysOver
     awaitingCount: count(fields, 'awaiting'),
     awaitingRequiredCount,
     awaitingOptionalCount: Math.max(0, count(fields, 'awaiting') - awaitingRequiredCount),
-    conflictCount: fields.filter(field => field.status === 'conflict' || field.attention === 'source_changed').length,
+    conflictCount: fields.filter(field => field.status === 'conflict' || field.attention === 'source_changed').length
+      + unresolvedConflicts.filter(conflict => !fields.some(field =>
+        field.key === conflict.fieldKey && (field.status === 'conflict' || field.attention === 'source_changed')
+      )).length,
     conflictRequiredCount: requiredFields.filter(field =>
       field.status === 'conflict' || field.attention === 'source_changed'
+    ).length + unresolvedConflicts.filter(conflict =>
+      requiredKeys.includes(conflict.fieldKey)
+      && !requiredFields.some(field => field.key === conflict.fieldKey
+        && (field.status === 'conflict' || field.attention === 'source_changed'))
     ).length,
+    unresolvedConflicts,
+    unresolvedConflictCount: unresolvedConflicts.length,
+    unresolvedConflictKeys: [...conflictKeys],
     notApplicableCount: notApplicableKeys.size,
     activeRequiredKeys,
   };
 }
 
-function computeTransactionReadiness(room, recordFields, schemaKey, requiredKeysOverride = null) {
-  const recordState = computeTransactionRecordState(recordFields, schemaKey, requiredKeysOverride);
+function computeTransactionReadiness(room, recordFields, schemaKey, requiredKeysOverride = null, conflicts = []) {
+  const recordState = computeTransactionRecordState(recordFields, schemaKey, requiredKeysOverride, conflicts);
   const populated = recordState.fields.filter(field =>
     field.status === 'confirmed' && hasMeaningfulRecordValue(field)
   );
@@ -195,6 +230,16 @@ function computeTransactionReadiness(room, recordFields, schemaKey, requiredKeys
     digitalAssetRequiredInputCount: tokenizationGuidance.inputCount,
     digitalAssetGapCount: tokenizationGuidance.gaps.length,
     populatedCount: populated.length,
+    unresolvedConflictCount: recordState.unresolvedConflictCount,
+    hasBlockingConflicts: recordState.unresolvedConflictCount > 0,
+    approvalReady: recordState.unresolvedConflictCount === 0,
+    fundReleaseReady: recordState.unresolvedConflictCount === 0,
+    approvalBlockedReason: recordState.unresolvedConflictCount > 0
+      ? 'Resolve all material Transaction Record conflicts before approval.'
+      : null,
+    fundReleaseBlockedReason: recordState.unresolvedConflictCount > 0
+      ? 'Resolve all material Transaction Record conflicts before fund release.'
+      : null,
     recordState,
     categories: [{ name: 'Structured Transaction Record', weight: 1, score: overall }],
   };
@@ -206,12 +251,18 @@ async function readTransactionState(propertyId) {
     .select('id, property_id, property_name, deal_amount, closing_date, workflow_pack_id, base_pack, transaction_type, transaction_subtype, transaction_context, generated_proposal, deal_type, deal_stage, jurisdiction, metadata_values, checklist_items, settlement_mode, settlement_readiness_pct, settlement_mode_locked_at, sealed_at, completed_at')
     .eq('property_id', propertyId)
     .maybeSingle();
-  const [{ data: initialRoom, error: initialRoomError }, { data: recordFields, error: fieldsError }] = await Promise.all([
+  const [{ data: initialRoom, error: initialRoomError }, { data: recordFields, error: fieldsError }, conflictsResult] = await Promise.all([
     roomQuery,
     supabase
       .from('transaction_record_fields')
       .select('id, field_key, display_label, value_text, status, source_doc_id, source_page, source_excerpt, confidence, updated_at, created_at')
       .eq('property_id', propertyId),
+    supabase
+      .from('transaction_record_conflicts')
+      .select('*')
+      .eq('property_id', propertyId)
+      .eq('status', 'unresolved')
+      .order('updated_at', { ascending: false }),
   ]);
   let room = initialRoom;
   let roomError = initialRoomError;
@@ -226,6 +277,11 @@ async function readTransactionState(propertyId) {
   }
   if (roomError) throw roomError;
   if (fieldsError) throw fieldsError;
+  // Migration 023 is additive. Keep older template rooms readable while the
+  // conflict table is being rolled out to an environment.
+  const conflicts = conflictsResult?.error
+    ? (/relation|schema cache|column/i.test(conflictsResult.error.message || '') ? [] : (() => { throw conflictsResult.error; })())
+    : (conflictsResult?.data || []);
   const packId = await getRoomPackId(room);
   const schemaKey = await resolveSchemaKey(room, packId);
   const generatedProposal = room?.generated_proposal || room?.metadata_values?.generated_proposal;
@@ -234,14 +290,15 @@ async function readTransactionState(propertyId) {
       .filter(field => field.required !== false)
       .map(field => field.key)
     : null;
-  const recordState = computeTransactionRecordState(recordFields || [], schemaKey, dynamicRequiredKeys);
+   const recordState = computeTransactionRecordState(recordFields || [], schemaKey, dynamicRequiredKeys, conflicts);
   return {
     room,
     recordFields: recordFields || [],
     schemaKey,
     packId,
     stage: room?.deal_stage || null,
-    readiness: computeTransactionReadiness(room, recordFields || [], schemaKey, dynamicRequiredKeys),
+    readiness: computeTransactionReadiness(room, recordFields || [], schemaKey, dynamicRequiredKeys, conflicts),
+    conflicts: normalizeTransactionConflicts(conflicts),
     recordState,
   };
 }
