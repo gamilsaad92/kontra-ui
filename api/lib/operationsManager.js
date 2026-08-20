@@ -142,7 +142,18 @@ function taskEvidence(task) {
   return [];
 }
 
-function buildPackLifecycle(packId, stageKey) {
+function buildPackLifecycle(packId, stageKey, generatedProposal = null) {
+  if (generatedProposal?.stages?.length) {
+    const stages = generatedProposal.stages.map(stage => ({ key: stage.key, label: stage.name }));
+    const current = stages.find(stage => stage.key === stageKey) || null;
+    return {
+      source: 'approved_generated_proposal',
+      packId,
+      currentStageKey: stageKey || null,
+      currentStageLabel: current?.label || null,
+      stages,
+    };
+  }
   const stageConfig = getPackStageConfig(packId) || {};
   const stages = Array.isArray(stageConfig.stages) ? stageConfig.stages : [];
   const current = stages.find(stage => stage.key === stageKey) || null;
@@ -156,7 +167,7 @@ function buildPackLifecycle(packId, stageKey) {
   };
 }
 
-function buildGroundedBlockers({ packId, recordState, missingDocuments, participants, tasks }) {
+function buildGroundedBlockers({ packId, recordState, missingDocuments, participants, tasks, participantDefinitions }) {
   const blockers = [];
   const requiredFields = Array.isArray(recordState?.requiredFields) ? recordState.requiredFields : [];
   const participantRows = Array.isArray(participants) ? participants : [];
@@ -171,7 +182,7 @@ function buildGroundedBlockers({ packId, recordState, missingDocuments, particip
     });
   });
 
-  (getPackRoleConfig(packId)?.roles || [])
+  (participantDefinitions || getPackRoleConfig(packId)?.roles || [])
     .filter(role => role.required && role.invitable !== false)
     .forEach(role => {
       const participant = participantRows.find(row => row.role === role.key);
@@ -245,8 +256,12 @@ async function buildGroundedContext(propertyId) {
   ]);
   const room = transactionState.room;
   const packId = transactionState.packId || DEFAULT_PACK_ID;
+  const generatedProposal = room?.generated_proposal || null;
+  const generatedTransaction = generatedProposal?.transaction || {};
   const recordState = transactionState.recordState;
-  const stageLabel = room?.deal_stage ? getPackStageLabel(packId, room.deal_stage) : null;
+  const generatedStage = generatedProposal?.stages?.find(stage => stage.key === room?.deal_stage);
+  const stageLabel = generatedStage?.name
+    || (room?.deal_stage ? getPackStageLabel(packId, room.deal_stage) : null);
 
   const openTasks = tasks.filter(t => ['pending', 'in_progress', 'escalated'].includes(t.status));
   const recentlyResolved = tasks
@@ -304,6 +319,12 @@ async function buildGroundedContext(propertyId) {
     .filter(item => item.summary || item.filename)
     .slice(0, 20);
 
+  const participantDefinitions = generatedProposal?.participants?.map(participant => ({
+    key: participant.role,
+    label: participant.label,
+    required: participant.required !== false,
+    invitable: true,
+  }));
   const participantContext = (participants || []).map(participant => ({
     role: participant.role || null,
     name: participant.name || null,
@@ -334,7 +355,12 @@ async function buildGroundedContext(propertyId) {
       propertyId,
       propertyName: room?.property_name || null,
       dealType: room?.deal_type || null,
-      transactionType: transactionTypeField?.value || room?.deal_type || packId,
+       transactionType: transactionTypeField?.value || room?.transaction_type || room?.deal_type || packId,
+       transactionSubtype: room?.transaction_subtype || generatedTransaction.subtype || null,
+       basePack: room?.base_pack || packId,
+       contextFacts: generatedTransaction.context_facts || room?.transaction_context || [],
+       unresolvedQuestions: generatedProposal?.issues_to_confirm || [],
+       requirementProvenance: generatedProposal?.requirements || [],
       dealAmount: room?.deal_amount || null,
       workflowPack: packId,
       stage: room?.deal_stage || null,
@@ -397,13 +423,14 @@ async function buildGroundedContext(propertyId) {
     recordFacts: populatedRecordFields,
     documentFindings,
     chainStatus,
-    lifecycle: buildPackLifecycle(packId, room?.deal_stage || null),
+     lifecycle: buildPackLifecycle(packId, room?.deal_stage || null, generatedProposal),
     groundedBlockers: buildGroundedBlockers({
       packId,
       recordState,
       missingDocuments,
       participants: participantContext,
       tasks,
+      participantDefinitions,
     }),
     transactionContext,
     recordState,

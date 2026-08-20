@@ -2,7 +2,7 @@
 
 const crypto = require('crypto');
 const { supabase } = require('../db');
-const { getRoomPackId, logEvent } = require('./dealRoomHelpers');
+const { getRoomPackId, resolvePackIdFromRoom, logEvent } = require('./dealRoomHelpers');
 const { emit } = require('./eventBus');
 const {
   listTasksForRoom,
@@ -24,9 +24,10 @@ function getRequirements() {
   return requirements;
 }
 
-async function resolveSchemaKey(room) {
+async function resolveSchemaKey(room, resolvedPackId = null) {
+  if (Array.isArray(room?.generated_proposal?.transaction_record_fields)) return 'generated_ai';
   const allRequirements = getRequirements();
-  let schemaKey = room?.workflow_pack_id || room?.deal_type || 'generic';
+  let schemaKey = resolvedPackId || resolvePackIdFromRoom(room);
   if (!allRequirements[schemaKey] && String(schemaKey).startsWith('ws_')) {
     try {
       const { data } = await supabase
@@ -68,9 +69,9 @@ function recordStatusRank(field) {
  * Older rooms can contain aliases or legacy "confirmed" rows, while newer
  * extraction writes canonical keys and uses "verified".
  */
-function computeTransactionRecordState(recordFields, schemaKey) {
+function computeTransactionRecordState(recordFields, schemaKey, requiredKeysOverride = null) {
   const allRequirements = getRequirements();
-  const requiredKeys = [...new Set(allRequirements[schemaKey] || [])];
+  const requiredKeys = [...new Set(requiredKeysOverride || allRequirements[schemaKey] || [])];
   const canonicalKey = field => canonicalizeTransactionRecordKey(field, schemaKey);
   const byKey = new Map();
 
@@ -152,8 +153,8 @@ function computeTransactionRecordState(recordFields, schemaKey) {
   };
 }
 
-function computeTransactionReadiness(room, recordFields, schemaKey) {
-  const recordState = computeTransactionRecordState(recordFields, schemaKey);
+function computeTransactionReadiness(room, recordFields, schemaKey, requiredKeysOverride = null) {
+  const recordState = computeTransactionRecordState(recordFields, schemaKey, requiredKeysOverride);
   const populated = recordState.fields.filter(field =>
     field.status === 'confirmed' && hasMeaningfulRecordValue(field)
   );
@@ -202,26 +203,32 @@ async function readTransactionState(propertyId) {
   const [{ data: room, error: roomError }, { data: recordFields, error: fieldsError }] = await Promise.all([
     supabase
       .from('deal_rooms')
-      .select('id, property_id, workflow_pack_id, deal_type, deal_stage, jurisdiction, metadata_values, checklist_items')
+       .select('id, property_id, property_name, deal_amount, closing_date, workflow_pack_id, base_pack, transaction_type, transaction_subtype, transaction_context, generated_proposal, deal_type, deal_stage, jurisdiction, metadata_values, checklist_items, settlement_mode, settlement_readiness_pct, settlement_mode_locked_at, sealed_at, completed_at')
       .eq('property_id', propertyId)
       .maybeSingle(),
     supabase
       .from('transaction_record_fields')
-      .select('field_key, value_text, status, source_doc_id, source_page, source_excerpt, confidence, updated_at')
+      .select('id, field_key, display_label, value_text, status, source_doc_id, source_page, source_excerpt, confidence, updated_at, created_at')
       .eq('property_id', propertyId),
   ]);
   if (roomError) throw roomError;
   if (fieldsError) throw fieldsError;
-  const schemaKey = await resolveSchemaKey(room);
-  const packId = await getRoomPackId(propertyId);
+  const packId = await getRoomPackId(room);
+  const schemaKey = await resolveSchemaKey(room, packId);
+  const dynamicRequiredKeys = schemaKey === 'generated_ai'
+    ? (room.generated_proposal.transaction_record_fields || [])
+      .filter(field => field.required !== false)
+      .map(field => field.key)
+    : null;
+  const recordState = computeTransactionRecordState(recordFields || [], schemaKey, dynamicRequiredKeys);
   return {
     room,
     recordFields: recordFields || [],
     schemaKey,
     packId,
     stage: room?.deal_stage || null,
-    readiness: computeTransactionReadiness(room, recordFields || [], schemaKey),
-    recordState: computeTransactionRecordState(recordFields || [], schemaKey),
+    readiness: computeTransactionReadiness(room, recordFields || [], schemaKey, dynamicRequiredKeys),
+    recordState,
   };
 }
 
@@ -285,6 +292,7 @@ module.exports = {
   resolveSchemaKey,
   computeTransactionReadiness,
   computeTransactionRecordState,
+  hasMeaningfulRecordValue,
   readTransactionState,
   recalculateTransactionState,
 };

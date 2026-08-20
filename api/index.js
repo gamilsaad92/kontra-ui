@@ -40,6 +40,7 @@ const {
   recalculateTransactionState,
   computeTransactionReadiness,
   computeTransactionRecordState,
+  readTransactionState,
   resolveSchemaKey: resolveTransactionSchemaKey,
 } = require('./lib/transactionState');
 const { emit: emitInternalEvent } = require('./lib/eventBus');
@@ -65,6 +66,14 @@ const {
   buildFixtureTransactionContext,
 } = require('./lib/tokenizationGuidance');
 const { DEMO_AI_MAX_TOKENS, sanitizeDemoTokenizationAnswer } = require('./lib/demoRoomFixtures');
+const {
+  buildLegacyProposal,
+  normalizeProposal,
+  validateProposal,
+  createGenerationId,
+  PROPOSAL_VERSION,
+  extractTransactionContext,
+} = require('./lib/transactionRoomGenerator');
 
 // Pack inference map — mirrors DEAL_TYPE_TO_PACK in dealRoomHelpers.js so that
 // room creation writes the correct workflow_pack_id from day one.
@@ -1238,7 +1247,7 @@ app.get('/api/copilot/tokenization-eligibility', (req, res) => {
 // ── Workspace AI Generation ───────────────────────────────────────────────────
 // Given a plain-language description of a transaction, returns a structured
 // workspace config (roles, documents, stages) as a starting point.
-app.post('/api/workspace/generate', aiRateLimit, async (req, res) => {
+app.post(['/api/workspace/generate', '/api/room-generator/analyze'], aiRateLimit, async (req, res) => {
   const { description, transactionType, currentStage } = req.body || {};
   if (!description || !description.trim()) {
     return res.status(400).json({ error: 'Description is required' });
@@ -1409,11 +1418,51 @@ IMPORTANT: You are suggesting a starting point only. Do NOT claim completeness. 
       raw.transactionTypeLabel || transactionTypeLabels[resolvedTransactionType] || 'Custom Transaction',
     );
     const generatedConfig = normalizeGeneratedWorkflowConfig(raw);
-    const generationId = crypto.randomUUID();
+    const generationId = createGenerationId();
     const generationProof = signWorkflowProof('workflow_generation', {
       generationId,
       configHash: workflowConfigHash(generatedConfig),
     });
+    const proposal = normalizeProposal(buildLegacyProposal({
+      ...raw,
+      ...generatedConfig,
+      transactionType: resolvedTransactionType,
+      transactionTypeLabel: canonicalTypeLabel,
+    }, { description: description.trim(), transactionType: resolvedTransactionType }));
+    const proposalValidation = validateProposal(proposal);
+    if (!proposalValidation.ok) {
+      console.warn('[room-generator] normalized proposal warnings', proposalValidation.errors);
+    }
+    let generationSessionId = null;
+    if (req.path === '/api/room-generator/analyze') {
+      const { error: sessionError } = await supabase
+        .from('transaction_generation_sessions')
+        .insert({
+          id: generationId,
+          description: description.trim(),
+          transaction_type: resolvedTransactionType,
+          proposal,
+          generation_proof: generationProof,
+          model: 'gpt-4o-mini',
+          generation_version: PROPOSAL_VERSION,
+        });
+      if (sessionError) {
+        console.error('[room-generator/analyze] session persistence failed', sessionError.message);
+        return res.status(503).json({ error: 'The room-generation session could not be saved. Apply migration 020 and try again.' });
+      }
+      generationSessionId = generationId;
+      const sources = [...(proposal.requirements || []), ...(proposal.transaction_record_fields || [])]
+        .filter(item => item.source_type)
+        .map(item => ({
+          session_id: generationId,
+          requirement_key: item.key,
+          source_type: item.source_type,
+          source_title: item.source_title,
+          source_url: item.source_url,
+          source_excerpt: item.source_excerpt,
+        }));
+      if (sources.length) await supabase.from('transaction_generation_sources').insert(sources);
+    }
     return res.json({
       name: raw.name || '',
       transactionType: resolvedTransactionType,
@@ -1435,11 +1484,95 @@ IMPORTANT: You are suggesting a starting point only. Do NOT claim completeness. 
       documents: generatedConfig.documents,
       stages: generatedConfig.stages,
       generationProof,
+      generationSessionId,
+      proposal,
+      proposalValidation,
     });
   } catch (e) {
     console.error('[workspace/generate]', e.message);
     return res.status(500).json({ error: 'Failed to generate workspace config. Please try again.' });
   }
+});
+
+// ── Auditable proposal editing and approval ───────────────────────────────────
+app.get('/api/room-generator/:sessionId', async (req, res) => {
+  const { data, error } = await supabase
+    .from('transaction_generation_sessions')
+    .select('id, description, transaction_type, status, proposal, edited_proposal, approved_snapshot, generation_version, created_at, updated_at, approved_at')
+    .eq('id', req.params.sessionId)
+    .maybeSingle();
+  if (error) return res.status(500).json({ error: 'Unable to load generation session' });
+  if (!data) return res.status(404).json({ error: 'Generation session not found' });
+  return res.json({ ...data, proposal: data.edited_proposal || data.proposal });
+});
+
+app.patch('/api/room-generator/:sessionId', async (req, res) => {
+  const proposal = normalizeProposal(req.body?.proposal || {}, { description: req.body?.description });
+  const result = validateProposal(proposal);
+  if (!result.ok) return res.status(400).json({ error: 'Proposal is invalid', details: result.errors });
+  const { data, error } = await supabase
+    .from('transaction_generation_sessions')
+    .update({ edited_proposal: proposal, status: 'draft' })
+    .eq('id', req.params.sessionId)
+    .select('id, status, proposal, edited_proposal, updated_at')
+    .maybeSingle();
+  if (error) return res.status(500).json({ error: 'Unable to save proposal draft' });
+  if (!data) return res.status(404).json({ error: 'Generation session not found' });
+  return res.json({ ...data, proposal: data.edited_proposal || data.proposal, validation: result });
+});
+
+app.post('/api/room-generator/:sessionId/regenerate', aiRateLimit, async (req, res) => {
+  const { data: session, error } = await supabase
+    .from('transaction_generation_sessions')
+    .select('id, description, transaction_type, edited_proposal')
+    .eq('id', req.params.sessionId)
+    .maybeSingle();
+  if (error || !session) return res.status(404).json({ error: 'Generation session not found' });
+  // Regeneration is intentionally explicit: the client submits the new proposal
+  // after the normal analyze call, so user edits can be merged deterministically.
+  const preserved = req.body?.preserve || {};
+  return res.json({
+    sessionId: session.id,
+    description: session.description,
+    transactionType: session.transaction_type,
+    preserved,
+    next: '/api/room-generator/analyze',
+    message: 'Run analyze with the revised description and merge preserved edits before saving.',
+  });
+});
+
+app.post('/api/room-generator/:sessionId/approve', async (req, res) => {
+  const proposal = normalizeProposal(req.body?.proposal || {}, {});
+  const result = validateProposal(proposal);
+  if (!result.ok) return res.status(400).json({ error: 'Proposal must be valid before approval', details: result.errors });
+  const snapshot = JSON.parse(JSON.stringify(proposal));
+  const { data, error } = await supabase
+    .from('transaction_generation_sessions')
+    .update({ edited_proposal: proposal, approved_snapshot: snapshot, status: 'approved', approved_at: new Date().toISOString() })
+    .eq('id', req.params.sessionId)
+    .select('id, status, approved_snapshot, approved_at')
+    .maybeSingle();
+  if (error) return res.status(500).json({ error: 'Unable to approve proposal' });
+  if (!data) return res.status(404).json({ error: 'Generation session not found' });
+  return res.json({ ...data, proposal: snapshot, auditSnapshot: snapshot });
+});
+
+app.post('/api/room-generator/:sessionId/create-room', async (req, res) => {
+  const { data: session, error } = await supabase
+    .from('transaction_generation_sessions')
+    .select('id, status, approved_snapshot')
+    .eq('id', req.params.sessionId)
+    .maybeSingle();
+  if (error || !session) return res.status(404).json({ error: 'Generation session not found' });
+  if (session.status !== 'approved' || !session.approved_snapshot) {
+    return res.status(409).json({ error: 'Approve the validated proposal before creating a room' });
+  }
+  const { error: updateError } = await supabase
+    .from('transaction_generation_sessions')
+    .update({ status: 'created', created_room_id: req.body?.roomId || null })
+    .eq('id', req.params.sessionId);
+  if (updateError) return res.status(500).json({ error: 'Unable to record room creation' });
+  return res.json({ ok: true, sessionId: session.id, proposal: session.approved_snapshot });
 });
 
 // ── Public: approve a workflow configuration before activation ───────────────
@@ -1791,6 +1924,10 @@ app.post('/api/checkout/guest', async (req, res) => {
     }
     const stripe = require('stripe')(stripeKey);
     const { propertyId, propertyName, plan = 'deal', email, role = 'lender', meta = {} } = req.body;
+    const generatedProposal = await getApprovedGenerationProposal(meta.generationSessionId);
+    if (meta.generationSessionId && !generatedProposal) {
+      return res.status(409).json({ error: 'An approved AI room proposal is required before checkout' });
+    }
     const workflowApproval = validateWorkflowApproval(meta);
     if (!workflowApproval.ok) {
       return res.status(400).json({
@@ -1884,6 +2021,7 @@ app.post('/api/checkout/guest', async (req, res) => {
         transactionStructure: meta.transactionStructure || '',
         transactionValue: meta.transactionValue || '',
         transactionValueConfidence: meta.transactionValueConfidence || '',
+        generationSessionId: meta.generationSessionId || '',
         customConfigReviewed: workflowApproval.reviewed ? 'true' : 'false',
         customConfigApprovalHash: workflowApproval.approval?.configHash || '',
         customConfigGenerationId: workflowApproval.approval?.generationId || '',
@@ -1918,6 +2056,8 @@ app.post('/api/checkout/guest', async (req, res) => {
         transaction_structure: meta.transactionStructure || '',
         transaction_value: meta.transactionValue || '',
         transaction_value_confidence: meta.transactionValueConfidence || '',
+          generation_session_id: meta.generationSessionId || '',
+          generated_proposal: generatedProposal || null,
          custom_config_reviewed: workflowApproval.reviewed,
           custom_config_approval_hash: workflowApproval.approval?.configHash || '',
           custom_config_generation_id: workflowApproval.approval?.generationId || '',
@@ -1941,6 +2081,10 @@ app.post('/api/checkout/guest', async (req, res) => {
 app.post(['/api/checkout/demo', '/api/checkout/trial'], async (req, res) => {
   try {
     const { propertyId, propertyName, plan = 'deal', email, role = 'owner', meta = {} } = req.body;
+    const generatedProposal = await getApprovedGenerationProposal(meta.generationSessionId);
+    if (meta.generationSessionId && !generatedProposal) {
+      return res.status(409).json({ error: 'An approved AI room proposal is required before creating a demo room' });
+    }
     const workflowApproval = validateWorkflowApproval(meta);
     if (!workflowApproval.ok) {
       return res.status(400).json({
@@ -1954,8 +2098,9 @@ app.post(['/api/checkout/demo', '/api/checkout/trial'], async (req, res) => {
 
     // If the owner customized the config, persist it as a custom pack so the
     // workspace loads with the owner's roles/documents/stages.
-    let demoPackId = meta.workflowPackId || DEAL_TYPE_TO_PACK_INDEX[meta.dealType]
+    const generatedBasePack = meta.workflowPackId || DEAL_TYPE_TO_PACK_INDEX[meta.dealType]
       || await classifyTransactionPack(propertyName, meta.dealType, meta.address);
+    let demoPackId = generatedBasePack;
     if (meta.customConfig) {
       const savedId = await saveCustomPackForWorkspace(pid, propertyName, meta.customConfig, meta.transactionType);
       if (savedId) demoPackId = savedId;
@@ -1970,6 +2115,9 @@ app.post(['/api/checkout/demo', '/api/checkout/trial'], async (req, res) => {
     // Seed stages_config from the pack's default stages (or custom config if provided).
     // Icon/desc are frontend-only; backend stores key+label only.
     const demoInitialStages = await getInitialStagesForPack(demoPackId, meta.customConfig?.stages);
+    const generatedTransaction = generatedProposal?.transaction || {};
+    const generatedType = generatedTransaction.category || meta.transactionType || '';
+    const generatedSubtype = generatedTransaction.subtype || meta.transactionStructure || null;
 
     const normalizedJurisdiction = await jurisdictionForTransaction(
       meta.jurisdiction,
@@ -1989,22 +2137,27 @@ app.post(['/api/checkout/demo', '/api/checkout/trial'], async (req, res) => {
       address: meta.address || '',
       property_type: meta.type || '',
       property_size: meta.size || '',
-      deal_type: meta.dealType || meta.transactionType || '',
+       deal_type: generatedType,
       deal_amount: meta.dealAmount || '',
       closing_date: dateOnly(meta.closingDate),
       first_name: meta.firstName || '',
       last_name: meta.lastName || '',
       jurisdiction: normalizedJurisdiction,
       workflow_pack_id: demoPackId,
+       base_pack: generatedProposal ? generatedBasePack : null,
+       transaction_type: generatedProposal ? generatedType : null,
+       transaction_subtype: generatedProposal ? generatedSubtype : null,
+       transaction_context: generatedProposal?.transaction?.context_facts || null,
+       generated_proposal: generatedProposal || null,
       stages_config: demoInitialStages,
       metadata_values: buildCreationMetadata({
         propertyName,
         workflowPackId: demoPackId,
         transactionDescription: meta.transactionDescription,
-        transactionType: meta.transactionType || demoPackId,
+         transactionType: generatedType || demoPackId,
         transactionTypeLabel: meta.transactionTypeLabel,
         transactionTypeSource: meta.transactionTypeSource,
-        transactionStructure: meta.transactionStructure,
+         transactionStructure: generatedSubtype,
         transactionValue: meta.transactionValue,
         transactionValueConfidence: meta.transactionValueConfidence,
         customConfigReviewed: workflowApproval.reviewed,
@@ -2024,7 +2177,7 @@ app.post(['/api/checkout/demo', '/api/checkout/trial'], async (req, res) => {
         // schema-cache miss for the column (what Supabase actually returns).
         // Either way workflow_pack_id/stages_config isn't migrated yet — retry without those columns.
         const isMissingColumn = upsertErr.code === '42703' || upsertErr.code === 'PGRST204' ||
-          /column .*(workflow_pack_id|stages_config).* (does not exist|schema cache)/i.test(upsertErr.message || '');
+          /column .*(workflow_pack_id|stages_config|base_pack|transaction_type|transaction_subtype|transaction_context|generated_proposal).* (does not exist|schema cache)/i.test(upsertErr.message || '');
         if (isMissingColumn) {
           // Keep workflow_pack_id whenever that column is available. A missing
           // stages_config column must not erase the custom ws_* pack link or
@@ -2032,6 +2185,9 @@ app.post(['/api/checkout/demo', '/api/checkout/trial'], async (req, res) => {
           const baseRecord = { ...dealRoomRecord };
           if (/stages_config/i.test(upsertErr.message || '')) delete baseRecord.stages_config;
           if (/workflow_pack_id/i.test(upsertErr.message || '')) delete baseRecord.workflow_pack_id;
+          for (const column of ['base_pack', 'transaction_type', 'transaction_subtype', 'transaction_context', 'generated_proposal']) {
+            if (new RegExp(column, 'i').test(upsertErr.message || '')) delete baseRecord[column];
+          }
           const { error: retryErr } = await supabase.from('deal_rooms').upsert(baseRecord, { onConflict: 'property_id' });
           if (retryErr) throw retryErr;
           roomCreated = true;
@@ -2063,13 +2219,17 @@ app.post(['/api/checkout/demo', '/api/checkout/trial'], async (req, res) => {
 
     const creationMetadata = dealRoomRecord.metadata_values;
     try {
-      await syncMetadataToTransactionRecord(
-        pid,
-        creationMetadata,
-        { workflow_pack_id: demoPackId, deal_type: meta.transactionType || '' },
-        'Deal Owner',
-        { inferredFieldIds: inferredCreationFieldIds(creationMetadata), skipHistory: true },
-      );
+      if (generatedProposal) {
+        await syncGeneratedProposalToTransactionRecord(pid, generatedProposal);
+      } else {
+        await syncMetadataToTransactionRecord(
+          pid,
+          creationMetadata,
+          { workflow_pack_id: demoPackId, deal_type: meta.transactionType || '' },
+          'Deal Owner',
+          { inferredFieldIds: inferredCreationFieldIds(creationMetadata), skipHistory: true },
+        );
+      }
     } catch (recordErr) {
       console.warn('[demo] creation transaction record seed skipped:', recordErr.message);
     }
@@ -2472,6 +2632,7 @@ app.post('/api/webhook/stripe',
          customConfigGenerationId: metadataCustomConfigGenerationId,
          customConfigApprovalSource: metadataCustomConfigApprovalSource,
          customConfigApprovedAt: metadataCustomConfigApprovedAt,
+         generationSessionId: metadataGenerationSessionId,
       } = session.metadata || {};
       const customerEmail = session.customer_details?.email || session.customer_email || '';
       const amountPaid = (session.amount_total / 100).toFixed(2);
@@ -2481,6 +2642,12 @@ app.post('/api/webhook/stripe',
       // Pull pending deal room data stored at checkout time
       const pending = pendingDealRooms.get(session.id) || {};
       pendingDealRooms.delete(session.id);
+      const generationSessionId = metadataGenerationSessionId || pending.generation_session_id || '';
+      const generatedProposal = await getApprovedGenerationProposal(generationSessionId);
+      if (generationSessionId && !generatedProposal) {
+        console.error('[webhook] approved AI proposal not found:', generationSessionId);
+        return res.status(409).json({ error: 'Approved AI room proposal not found' });
+      }
 
       const stripePackId = metadataPackId || pending.workflow_pack_id || DEAL_TYPE_TO_PACK_INDEX[metadataDealType || pending.deal_type]
         || await classifyTransactionPack(
@@ -2500,6 +2667,12 @@ app.post('/api/webhook/stripe',
       );
       // Seed stages_config from the pack's default stages so the owner can start editing immediately.
       const stripeInitialStages = await getInitialStagesForPack(stripePackId);
+      const generatedTransaction = generatedProposal?.transaction || {};
+      const generatedBasePack = metadataPackId || pending.workflow_pack_id || stripePackId;
+      const generatedType = generatedTransaction.category
+        || metadataTransactionType || pending.transaction_type || metadataDealType || pending.deal_type || '';
+      const generatedSubtype = generatedTransaction.subtype
+        || metadataTransactionStructure || pending.transaction_structure || null;
 
       const dealRoomRecord = {
         stripe_session_id: session.id,
@@ -2514,22 +2687,27 @@ app.post('/api/webhook/stripe',
         address: metadataAddress || pending.address || '',
         property_type: metadataPropertyType || pending.property_type || '',
         property_size: metadataPropertySize || pending.property_size || '',
-        deal_type: metadataDealType || metadataTransactionType || pending.deal_type || pending.transaction_type || '',
+         deal_type: generatedType,
         deal_amount: metadataDealAmount || pending.deal_amount || '',
         closing_date: dateOnly(metadataClosingDate || pending.closing_date),
         first_name: metadataFirstName || pending.first_name || '',
         last_name: metadataLastName || pending.last_name || '',
         jurisdiction: normalizedJurisdiction,
         workflow_pack_id: stripePackId,
+         base_pack: generatedProposal ? generatedBasePack : null,
+         transaction_type: generatedProposal ? generatedType : null,
+         transaction_subtype: generatedProposal ? generatedSubtype : null,
+         transaction_context: generatedProposal?.transaction?.context_facts || null,
+         generated_proposal: generatedProposal || null,
         stages_config: stripeInitialStages,
         metadata_values: buildCreationMetadata({
           propertyName: propertyName || pending.property_name || '',
           transactionDescription: metadataTransactionDescription || pending.transaction_description,
           workflowPackId: stripePackId,
-          transactionType: metadataTransactionType || pending.transaction_type || stripePackId,
+           transactionType: generatedType || stripePackId,
           transactionTypeLabel: metadataTransactionTypeLabel || pending.transaction_type_label,
           transactionTypeSource: metadataTransactionTypeSource || pending.transaction_type_source,
-          transactionStructure: metadataTransactionStructure || pending.transaction_structure,
+           transactionStructure: generatedSubtype,
           transactionValue: metadataTransactionValue || pending.transaction_value,
           transactionValueConfidence: metadataTransactionValueConfidence || pending.transaction_value_confidence,
           customConfigReviewed: metadataCustomConfigReviewed === 'true' || pending.custom_config_reviewed === true,
@@ -2548,11 +2726,14 @@ app.post('/api/webhook/stripe',
           // schema-cache miss for the column (what Supabase actually returns).
           // Either way workflow_pack_id/stages_config isn't migrated yet — retry without those columns.
           const isMissingColumn = wErr.code === '42703' || wErr.code === 'PGRST204' ||
-            /column .*(workflow_pack_id|stages_config).* (does not exist|schema cache)/i.test(wErr.message || '');
+            /column .*(workflow_pack_id|stages_config|base_pack|transaction_type|transaction_subtype|transaction_context|generated_proposal).* (does not exist|schema cache)/i.test(wErr.message || '');
           if (isMissingColumn) {
             const baseRecord = { ...dealRoomRecord };
             if (/stages_config/i.test(wErr.message || '')) delete baseRecord.stages_config;
             if (/workflow_pack_id/i.test(wErr.message || '')) delete baseRecord.workflow_pack_id;
+            for (const column of ['base_pack', 'transaction_type', 'transaction_subtype', 'transaction_context', 'generated_proposal']) {
+              if (new RegExp(column, 'i').test(wErr.message || '')) delete baseRecord[column];
+            }
             const { error: retryErr } = await supabase.from('deal_rooms').upsert(baseRecord, { onConflict: 'property_id' });
             if (retryErr) throw retryErr;
             console.log(`[webhook] ✅ Deal room saved (no workflow_pack_id/stages_config col yet) — ${dealRoomRecord.property_id}`);
@@ -2577,13 +2758,17 @@ app.post('/api/webhook/stripe',
       }
 
       try {
-        await syncMetadataToTransactionRecord(
-          dealRoomRecord.property_id,
-          dealRoomRecord.metadata_values,
-          { workflow_pack_id: stripePackId, deal_type: dealRoomRecord.deal_type },
-          'Deal Owner',
-          { inferredFieldIds: inferredCreationFieldIds(dealRoomRecord.metadata_values), skipHistory: true },
-        );
+        if (generatedProposal) {
+          await syncGeneratedProposalToTransactionRecord(dealRoomRecord.property_id, generatedProposal);
+        } else {
+          await syncMetadataToTransactionRecord(
+            dealRoomRecord.property_id,
+            dealRoomRecord.metadata_values,
+            { workflow_pack_id: stripePackId, deal_type: dealRoomRecord.deal_type },
+            'Deal Owner',
+            { inferredFieldIds: inferredCreationFieldIds(dealRoomRecord.metadata_values), skipHistory: true },
+          );
+        }
       } catch (recordErr) {
         console.warn('[webhook] creation transaction record seed skipped:', recordErr.message);
       }
@@ -3359,24 +3544,53 @@ function metadataTransactionValueField(schemaKey) {
 }
 
 async function getTransactionRecordSchemaKey(room) {
-  let schemaKey = room?.workflow_pack_id
-    || DEAL_TYPE_TO_PACK_INDEX[room?.deal_type]
-    || 'generic';
-  if (!TRANSACTION_RECORD_REQUIREMENTS[schemaKey] && schemaKey.startsWith('ws_')) {
-    try {
-      const { data: customPack } = await supabase
-        .from('custom_workflow_packs')
-        .select('config')
-        .eq('id', schemaKey)
-        .maybeSingle();
-      const transactionType = customPack?.config?.transactionType;
-      if (TRANSACTION_RECORD_REQUIREMENTS[transactionType]) schemaKey = transactionType;
-    } catch (e) {
-      console.warn('[transaction-record] custom pack schema lookup failed:', e.message);
-    }
+  return resolveTransactionSchemaKey(room);
+}
+
+async function getApprovedGenerationProposal(sessionId) {
+  if (!sessionId) return null;
+  const { data, error } = await supabase
+    .from('transaction_generation_sessions')
+    .select('id, status, approved_snapshot')
+    .eq('id', sessionId)
+    .maybeSingle();
+  if (error) {
+    console.warn('[room-generator] approved proposal lookup failed:', error.message);
+    return null;
   }
-  if (!TRANSACTION_RECORD_REQUIREMENTS[schemaKey]) schemaKey = 'generic';
-  return schemaKey;
+  return ['approved', 'created'].includes(data?.status) && data.approved_snapshot
+    ? data.approved_snapshot
+    : null;
+}
+
+async function syncGeneratedProposalToTransactionRecord(propertyId, proposal, actorEmail = 'Deal Owner') {
+  const fields = Array.isArray(proposal?.transaction_record_fields)
+    ? proposal.transaction_record_fields
+    : [];
+  for (const field of fields) {
+    if (!field?.key || !field?.label) continue;
+    const value = field.value === null || field.value === undefined ? null : String(field.value).slice(0, 2000);
+    const hasValue = value !== null && value.trim() !== '';
+    const now = new Date().toISOString();
+    const { error } = await supabase.from('transaction_record_fields').upsert({
+      property_id: propertyId,
+      field_key: String(field.key).slice(0, 120),
+      field_category: String(field.key).split('.')[0] || 'transaction',
+      display_label: String(field.label).slice(0, 160),
+      value_text: value,
+      status: hasValue ? 'extracted' : 'missing',
+      confidence: Number.isFinite(Number(field.confidence)) ? Number(field.confidence) : null,
+      source_doc_id: null,
+      source_page: null,
+      source_excerpt: field.source_excerpt || null,
+      extracted_by: hasValue ? 'ai' : null,
+      verified_by: null,
+      verified_at: null,
+      notes: field.rationale || null,
+      updated_at: now,
+    }, { onConflict: 'property_id,field_key' });
+    if (error) throw error;
+  }
 }
 
 function formatMetadataRecordValue(fieldId, value) {
@@ -5923,24 +6137,26 @@ async function computeSettlementReadiness(propertyId, mode) {
     return { score: 0, conditions: [], all_conditions_met: false, unmet: [], mode: null };
   }
   const conditions = getSettlementConditionsServer(mode);
-  const fieldKeys   = conditions.filter(c => c.type === 'field').map(c => c.key);
   const approvalKeys = conditions.filter(c => c.type === 'approval').map(c => c.key);
 
-  const [{ data: fields }, { data: approvalFieldRows }] = await Promise.all([
-    fieldKeys.length
-      ? supabase.from('transaction_record_fields').select('field_key, status, value_text, id').eq('property_id', propertyId).in('field_key', fieldKeys)
-      : { data: [] },
-    approvalKeys.length
-      ? supabase.from('transaction_record_fields').select('id, field_key').eq('property_id', propertyId).in('field_key', approvalKeys)
-      : { data: [] },
-  ]);
-
-  const approvalFieldIds = (approvalFieldRows || []).map(f => f.id);
+  // All record fields come from the same canonical resolver used by the
+  // Transaction Record, Key Facts, and Operations Manager. This prevents
+  // settlement from interpreting aliases or legacy statuses independently.
+  const transactionState = await readTransactionState(propertyId);
+  const fieldsByKey = new Map(
+    (transactionState.recordState.fields || []).map(field => [field.key, field]),
+  );
+  const approvalFieldRows = approvalKeys
+    .map(key => {
+      const field = fieldsByKey.get(key);
+      return field?.fieldId ? { id: field.fieldId, field_key: key } : null;
+    })
+    .filter(Boolean);
+  const approvalFieldIds = approvalFieldRows.map(f => f.id);
   const { data: approvals } = approvalFieldIds.length
     ? await supabase.from('transaction_record_approvals').select('field_id, action').eq('property_id', propertyId).in('field_id', approvalFieldIds)
     : { data: [] };
 
-  const fieldsByKey       = new Map((fields || []).map(f => [f.field_key, f]));
   const approvalFieldByKey = new Map((approvalFieldRows || []).map(f => [f.field_key, f]));
   const approvedFieldIds  = new Set((approvals || []).filter(a => a.action === 'approved').map(a => a.field_id));
 
@@ -5957,9 +6173,11 @@ async function computeSettlementReadiness(propertyId, mode) {
 
     if (cond.type === 'field') {
       const field = fieldsByKey.get(cond.key);
-      status = field?.status || 'missing';
-      if (status === 'verified') { score = 1.0; met = true; }
-      else if (status === 'needs_review') { score = 0.5; }
+      // source_changed is represented as confirmed + attention by the
+      // canonical state engine, but it still requires review before settlement.
+      status = field?.attention === 'source_changed' ? 'source_changed' : (field?.status || 'missing');
+      if (status === 'confirmed') { score = 1.0; met = true; }
+      else if (status === 'awaiting' || status === 'captured') { score = 0.5; }
     } else {
       const af = approvalFieldByKey.get(cond.key);
       met = af ? approvedFieldIds.has(af.id) : false;
@@ -6290,6 +6508,8 @@ app.get('/api/public/deal-room/:transactionId/settlement/seal', async (req, res)
 // from workspace data. The endpoint name remains stable for existing clients.
 app.get('/api/public/deal-room/:propertyId/asset-passport', async (req, res) => {
   const { propertyId } = req.params;
+  const access = await getRoomAccessContext(req, propertyId);
+  if (access.mode === 'anonymous') return accessDenied(res);
   const { data: room, error } = await supabase
     .from('deal_rooms')
     .select('property_id, property_name, workflow_pack_id, deal_type, jurisdiction, metadata_values, created_at, first_name, last_name')
@@ -6403,22 +6623,12 @@ app.get('/api/public/deal-room/:propertyId/readiness', async (req, res) => {
   const { propertyId } = req.params;
   const access = await getRoomAccessContext(req, propertyId);
   if (access.mode === 'anonymous') return accessDenied(res);
-  const { data: room, error } = await supabase
-    .from('deal_rooms')
-    .select('property_id, property_name, workflow_pack_id, deal_type, jurisdiction, metadata_values, checklist_items, first_name, last_name')
-    .eq('property_id', propertyId)
-    .maybeSingle();
-  if (error) return res.status(500).json({ error: error.message });
+  const transactionState = await readTransactionState(propertyId);
+  const room = transactionState.room;
   if (!room) return res.status(404).json({ error: 'room not found' });
 
-  const { data: recordFields } = await supabase
-    .from('transaction_record_fields')
-    .select('field_key, value_text, status')
-    .eq('property_id', propertyId);
-
   const meta = room.metadata_values || {};
-  const recordSchemaKey = await getTransactionRecordSchemaKey(room);
-  const readiness = computeTransactionReadiness(room, recordFields || [], recordSchemaKey);
+  const readiness = transactionState.readiness;
   const overall = readiness.overall;
   const overallLabel = readiness.overallLabel;
   const confirmedRequiredCount = readiness.confirmedCount;
@@ -6868,6 +7078,85 @@ app.use('/api', workflowPacksRouter);
 // Must stay BEFORE requireOrgContext — these endpoints are called by
 // unauthenticated participants and owners who do not have an org JWT.
 app.use('/api/v2/deal-room', dealRoomSecurityV2Router);
+
+// Tokenization execution boundary — keep synthetic/ledger-only mutation paths
+// clearly disabled before authentication can turn them into an ambiguous 401.
+// Readiness and preparation endpoints (/tokenization/assess, /contract/*)
+// intentionally remain available.
+const PRODUCTION_TOKENIZATION_EXECUTION_PATHS = [
+  '/tokenization/packages',
+  '/tokenization/whitelist',
+  '/tokenization/transfers',
+  '/tokenization/payments',
+  '/tokenization/secondary-market',
+  '/tokenization/governance',
+  '/tokenization/pools',
+  '/capital-markets/tokens',
+  '/pools',
+  '/investments',
+  '/investors/subscribe',
+  '/tokenize-loan',
+];
+const PRODUCTION_TOKENIZATION_MUTATION_PREFIXES = [
+  '/marketplace',
+  '/trades',
+  '/exchange-programs',
+  '/markets',
+];
+const PRODUCTION_MARKET_EXECUTION_PREFIXES = [
+  '/market/tokenize',
+  '/market/offerings',
+  '/market/approvals',
+  '/market/rfq',
+  '/market/trades',
+];
+const MARKET_PREPARATION_SUFFIXES = [
+  '/disclosures/generate',
+  '/ai/summary',
+];
+app.use('/api', (req, res, next) => {
+  if (process.env.NODE_ENV !== 'production') return next();
+  const isKnownExecutionPath = PRODUCTION_TOKENIZATION_EXECUTION_PATHS.some(path =>
+    req.path === path || req.path.startsWith(`${path}/`)
+  );
+  const isMutation = !['GET', 'HEAD', 'OPTIONS'].includes(req.method);
+  const isMutationPrefix = isMutation && PRODUCTION_TOKENIZATION_MUTATION_PREFIXES.some(path =>
+    req.path === path || req.path.startsWith(`${path}/`)
+  );
+  const isMarketExecution = isMutation
+    && PRODUCTION_MARKET_EXECUTION_PREFIXES.some(path =>
+      req.path === path || req.path.startsWith(`${path}/`)
+    )
+    && !MARKET_PREPARATION_SUFFIXES.some(suffix => req.path.endsWith(suffix));
+  const isDrawTokenization = req.method === 'POST'
+    && /^\/draw-requests\/[^/]+\/(?:tokenize|tokenizations\/mint)$/.test(req.path);
+  const isBlockchainLedgerWrite = req.method === 'POST'
+    && ['/blockchain/transactions', '/blockchain/cashflows'].includes(req.path);
+  const isLoanGovernanceExecution = req.method === 'POST'
+    && /^\/loan-governance\/proposals\/[^/]+\/execute$/.test(req.path);
+  const isInvestorWhitelistWrite = isMutation
+    && (req.path === '/investors/whitelist' || req.path.startsWith('/investors/whitelist/'));
+  const isStablecoinPaymentCreation = req.method === 'POST'
+    && req.path === '/payments/stablecoin';
+  const isExchangeExecution = isMutation && [
+    '/exchange/tokenize',
+    '/exchange/listings',
+    '/exchange/offers',
+    '/exchange/trades',
+  ].some(path => req.path === path || req.path.startsWith(`${path}/`));
+
+  if (!isKnownExecutionPath && !isMutationPrefix && !isMarketExecution && !isDrawTokenization
+    && !isBlockchainLedgerWrite && !isLoanGovernanceExecution
+    && !isInvestorWhitelistWrite && !isStablecoinPaymentCreation
+    && !isExchangeExecution) {
+    return next();
+  }
+  return res.status(503).json({
+    error: 'TOKENIZATION_EXECUTION_DISABLED',
+    message: 'This tokenization execution surface is preparation-only until a live authorized chain adapter and durable evidence path are enabled.',
+    alternative: '/api/tokenization/assess',
+  });
+});
 
 app.use('/api', requireOrgContext);
 app.use('/api/dashboard-layout', authenticate, dashboard);
@@ -9068,33 +9357,29 @@ app.post('/api/public/deal-room/:propertyId/brain/ask', async (req, res) => {
   if (!question) return res.status(400).json({ error: 'question required' });
 
   try {
+    const access = await getRoomAccessContext(req, propertyId, req.body?.ownerWriteToken);
+    if (access.mode === 'anonymous') return accessDenied(res);
+
     const [
-      { data: room },
+      transactionState,
       { count: docCount },
-      { data: fields },
       { data: invites },
     ] = await Promise.all([
-      supabase.from('deal_rooms')
-        .select('property_name, workflow_pack_id, deal_type, deal_amount')
-        .eq('property_id', propertyId)
-        .maybeSingle(),
+      readTransactionState(propertyId),
       supabase.from('deal_analyses')
         .select('id', { count: 'exact', head: true })
-        .eq('property_id', propertyId),
-      supabase.from('transaction_record_fields')
-        .select('field_key, display_label, value_text, status, source_doc_id, source_page')
         .eq('property_id', propertyId),
       supabase.from('deal_room_invites')
         .select('role_key, status')
         .eq('property_id', propertyId),
     ]);
+    const room = transactionState.room;
+    const fields = transactionState.recordState.fields || [];
 
-    const populated = (fields || []).filter(f => {
-      const v = String(f.value_text || '').trim().toLowerCase();
-      return v && !['n/a', 'na', 'not applicable', 'not_applicable', 'unknown'].includes(v) && f.status !== 'not_applicable';
-    });
-    const conflicts = (fields || []).filter(f => ['conflicting', 'source_changed'].includes(f.status));
-    const needsReview = (fields || []).filter(f => ['needs_review', 'extracted'].includes(f.status) && f.value_text);
+    const populated = fields.filter(f => f.value !== null && f.value !== undefined
+      && String(f.value).trim() && f.status !== 'not_applicable');
+    const conflicts = fields.filter(f => f.status === 'conflict' || f.attention === 'source_changed');
+    const needsReview = fields.filter(f => f.status === 'awaiting' && f.value !== null && f.value !== undefined);
     const inviteCount = (invites || []).length;
 
     const CAT_PREFIXES = {
@@ -9112,7 +9397,7 @@ app.post('/api/public/deal-room/:propertyId/brain/ask', async (req, res) => {
     const systemPrompt = `You are Kontra AI, a transaction-aware assistant embedded in a deal room called Kontra. You reason specifically from the current room state below. Never give generic advice — always tie your answer to the specific room context.
 
 ROOM NAME: ${room?.property_name || 'Unnamed transaction'}
-TYPE: ${room?.deal_type || room?.workflow_pack_id || 'General transaction'}
+TYPE: ${transactionState.packId || transactionState.schemaKey || room?.deal_type || 'General transaction'}
 DOCUMENTS UPLOADED: ${docCount || 0}
 PARTICIPANTS INVITED: ${inviteCount}
 EXTRACTED FACTS: ${populated.length}
@@ -9122,9 +9407,9 @@ NEEDS REVIEW: ${needsReview.length}
 DIGITAL ASSET READINESS BY CATEGORY:
 ${catStatus}
 
-${populated.length > 0 ? `KNOWN FACTS (up to 20):\n${populated.slice(0, 20).map(f => `• ${f.display_label || f.field_key}: ${f.value_text}${f.source_page ? ` (page ${f.source_page})` : ''}`).join('\n')}` : '(No facts have been extracted yet — no documents have been uploaded or analyzed.)'}
+${populated.length > 0 ? `KNOWN FACTS (up to 20):\n${populated.slice(0, 20).map(f => `• ${f.label || f.key}: ${f.value}`).join('\n')}` : '(No facts have been extracted yet — no documents have been uploaded or analyzed.)'}
 
-${conflicts.length > 0 ? `CONFLICTS TO RESOLVE:\n${conflicts.map(f => `• ${f.display_label || f.field_key}: conflicting sources — needs coordinator review`).join('\n')}` : ''}
+${conflicts.length > 0 ? `CONFLICTS TO RESOLVE:\n${conflicts.map(f => `• ${f.label || f.key}: conflicting sources — needs coordinator review`).join('\n')}` : ''}
 
 RULES:
 - If the room is empty (0 documents, 0 facts): clearly state this room has not started, recommend uploading the most relevant first document (e.g. Letter of Intent or Purchase Agreement), and explain what Kontra will extract from it.
@@ -9165,17 +9450,16 @@ app.get('/api/public/deal-room/:propertyId/brain/facts', async (req, res) => {
   const access = await getRoomAccessContext(req, propertyId, req.body?.ownerWriteToken);
   if (access.mode === 'anonymous') return accessDenied(res, 'A verified deal-room invitation or owner access token is required');
   try {
-    const [{ data: fields }, { count: docCount }] = await Promise.all([
-      supabase.from('transaction_record_fields')
-        .select('field_key, display_label, value_text, status, source_doc_id')
-        .eq('property_id', propertyId),
+    const [transactionState, { count: docCount }] = await Promise.all([
+      readTransactionState(propertyId),
       supabase.from('deal_analyses')
         .select('id', { count: 'exact', head: true })
         .eq('property_id', propertyId),
     ]);
+    const fields = transactionState.recordState.fields || [];
 
-    const conflicts   = (fields || []).filter(f => ['conflicting', 'source_changed'].includes(f.status));
-    const needsReview = (fields || []).filter(f => ['needs_review', 'extracted'].includes(f.status) && f.value_text);
+    const conflicts   = fields.filter(f => f.status === 'conflict' || f.attention === 'source_changed');
+    const needsReview = fields.filter(f => f.status === 'awaiting' && f.value !== null && f.value !== undefined);
 
     // Return null only when truly nothing has been uploaded or extracted yet
     if ((docCount || 0) === 0 && (fields || []).length === 0) {
@@ -9183,12 +9467,12 @@ app.get('/api/public/deal-room/:propertyId/brain/facts', async (req, res) => {
     }
 
     const risks = conflicts.map(f => ({
-      text: `${f.display_label || f.field_key} has conflicting values from different sources`,
-      field_key: f.field_key,
+      text: `${f.label || f.key} has conflicting values from different sources`,
+      field_key: f.key,
     }));
     const actions = needsReview.slice(0, 4).map(f => ({
-      text: `Confirm "${f.display_label || f.field_key}" extracted as "${f.value_text}"`,
-      field_key: f.field_key,
+      text: `Confirm "${f.label || f.key}" extracted as "${f.value}"`,
+      field_key: f.key,
     }));
 
     res.json({
@@ -9196,11 +9480,12 @@ app.get('/api/public/deal-room/:propertyId/brain/facts', async (req, res) => {
       risks,
       open_items: [],
       snapshot: { document_count: docCount || 0, fact_count: (fields || []).length },
+      record_state: transactionState.recordState,
       // Surface the most important known values for the Overview snapshot row
       known_values: Object.fromEntries(
         (fields || [])
-          .filter(f => f.value_text && f.status !== 'not_applicable')
-          .map(f => [f.field_key, f.value_text])
+          .filter(f => f.value !== null && f.value !== undefined && f.status !== 'not_applicable')
+          .map(f => [f.key, f.value])
       ),
     });
   } catch (err) {
