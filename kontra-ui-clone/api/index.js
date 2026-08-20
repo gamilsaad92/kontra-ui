@@ -1421,6 +1421,7 @@ Return exactly this shape:
   "transactionTypeLabel": "string — human-readable transaction type",
   "transactionStructure": "string|null — short structure such as Asset Purchase, Stock Purchase, Equity Round; null when not confidently supported",
   "transactionStructureConfidence": "high|low",
+  "transactionValueLabel": "string|null — semantic label such as Insurance Proceeds, Purchase Price, Target Raise; null when no meaningful transaction value exists",
   "transactionValue": "number|null — only when an amount is explicitly supplied or confidently extracted; otherwise null",
   "transactionValueConfidence": "high|low",
   "roles": [{ "key": "snake_case_key", "label": "Display Name", "required": bool, "needsDocs": bool, "icon": "emoji", "color": "#hex", "rationale": "why this role matters", "source_type": "ai_recommendation" }],
@@ -1457,6 +1458,10 @@ Rules:
 - Preserve relative timing statements such as "closing targeted in 45 days" as a
   Target Closing field whose value retains "45 days"; a calendar date may be added
   only when the room creation date is available and the calculation is safe.
+- Give every explicit amount its real semantic label. For example, insurance
+  proceeds are "Insurance Proceeds", not "Transaction Value". Return null for
+  transactionValue when the amount is a fund flow, reserve, repair budget, or
+  other figure that is not a meaningful transaction value.
 - Use source_type "ai_recommendation" only for inferred classifications, suggested
   requirements, and missing fields. Never represent an inference as an established
   fact.
@@ -1551,6 +1556,26 @@ IMPORTANT: You are suggesting a starting point only. Do NOT claim completeness. 
         }));
       if (sources.length) await supabase.from('transaction_generation_sources').insert(sources);
     }
+    const valueFields = (proposal.transaction_record_fields || []).filter(field =>
+      field?.value !== null
+        && field?.value !== undefined
+        && String(field.value).trim()
+        && /\b(value|price|proceeds|raise|capital|loan|funding|amount|budget)\b/i.test(`${field.key || ''} ${field.label || ''}`),
+    );
+    const meaningfulValueField = valueFields.find(field =>
+      /\b(proceeds|purchase price|asking price|target raise|loan amount|funding amount)\b/i.test(`${field.key || ''} ${field.label || ''}`),
+    ) || valueFields[0];
+    const transactionValueLabel = String(
+      meaningfulValueField?.label
+        || raw.transactionValueLabel
+        || '',
+    ).trim().slice(0, 120) || null;
+    const numericTransactionValue = String(raw.transactionValueConfidence || '').toLowerCase() === 'high'
+      && Number.isFinite(Number(raw.transactionValue))
+      && Number(raw.transactionValue) > 0
+      && transactionValueLabel
+      ? Number(raw.transactionValue)
+      : null;
     return res.json({
       name: raw.name || '',
       transactionType: resolvedTransactionType,
@@ -1562,11 +1587,9 @@ IMPORTANT: You are suggesting a starting point only. Do NOT claim completeness. 
           : null),
       transactionStructureConfidence: (generatedIdentity.subtype
         || String(raw.transactionStructureConfidence || '').toLowerCase() === 'high') ? 'high' : 'low',
-      transactionValue: String(raw.transactionValueConfidence || '').toLowerCase() === 'high'
-        && Number.isFinite(Number(raw.transactionValue)) && Number(raw.transactionValue) > 0
-        ? Number(raw.transactionValue)
-        : null,
-      transactionValueConfidence: String(raw.transactionValueConfidence || '').toLowerCase() === 'high' ? 'high' : 'low',
+      transactionValueLabel,
+      transactionValue: numericTransactionValue,
+      transactionValueConfidence: numericTransactionValue !== null ? 'high' : 'low',
       packId: compatibilityPackId,
       roles: generatedConfig.roles,
       documents: generatedConfig.documents,

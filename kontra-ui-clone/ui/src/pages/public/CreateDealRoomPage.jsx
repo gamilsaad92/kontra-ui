@@ -43,6 +43,34 @@ function slugKey(s) {
   return String(s || "").toLowerCase().trim().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 40);
 }
 
+function humanizeIdentifier(value) {
+  return String(value || "")
+    .replace(/[_-]+/g, " ")
+    .replace(/\b\w/g, char => char.toUpperCase())
+    .trim() || "Custom Transaction";
+}
+
+function proposalDisplayLabel(proposal, fallbackLabel, fallbackType) {
+  return proposal?.transaction?.label
+    || proposal?.transaction?.name
+    || fallbackLabel
+    || AI_TYPE_LABELS[fallbackType]
+    || humanizeIdentifier(fallbackType);
+}
+
+function recommendationChipLabel(item) {
+  return item?.title
+    || item?.label
+    || item?.description
+    || humanizeIdentifier(item?.key);
+}
+
+function recommendationChipDetail(item) {
+  return [item?.rationale, item?.source_excerpt]
+    .filter(Boolean)
+    .join(" · ");
+}
+
 function configFromPack(pack) {
   if (!pack) return { roles: [], documents: [], stages: [] };
   return {
@@ -516,10 +544,12 @@ export default function CreateDealRoomPage() {
               description: aiDescription.trim(),
             },
             participants: customConfig.roles.map(role => ({
+              ...(generationProposal.participants || []).find(item => item.role === role.key || item.key === role.key),
               role: role.key,
               label: role.label,
               required: role.required,
               rationale: "Reviewed and edited by the room creator.",
+              source_type: "authoritative",
             })),
             requirements: customConfig.documents.map(document => ({
               ...(generationProposal.requirements || []).find(item => item.key === document.id),
@@ -531,9 +561,11 @@ export default function CreateDealRoomPage() {
               stage_key: (generationProposal.requirements || []).find(item => item.key === document.id)?.stage_key || customConfig.stages[0]?.key,
             })),
             stages: customConfig.stages.map((stage, index) => ({
+              ...(generationProposal.stages || []).find(item => item.key === stage.key),
               key: stage.key,
               name: stage.label,
               position: index + 1,
+              source_type: (generationProposal.stages || []).find(item => item.key === stage.key)?.source_type || "authoritative",
             })),
           } : null;
           if (isAiGenerated && generationSessionId && proposalForApproval) {
@@ -915,7 +947,7 @@ export default function CreateDealRoomPage() {
                   <div className="flex items-center justify-between gap-3 bg-gray-50 border border-gray-100 rounded-xl px-3.5 py-2.5">
                     <p className="text-xs text-gray-600">
                       {aiTransactionType && aiTransactionType !== 'other'
-                        ? <><span className="font-semibold text-gray-800">{AI_TYPE_LABELS[aiTransactionType] || aiTransactionType}</span> · participants, documents, and stages pre-configured.</>
+                        ? <><span className="font-semibold text-gray-800">{proposalDisplayLabel(generationProposal, aiTransactionTypeLabel, aiTransactionType)}</span> · participants, documents, and stages pre-configured.</>
                         : "Configured as a custom transaction — review the sections below."}
                     </p>
                     {/* Type correction — shown only when AI returned 'other' or no type */}
@@ -944,9 +976,7 @@ export default function CreateDealRoomPage() {
                   <div className="rounded-xl border border-indigo-100 bg-indigo-50/60 px-3.5 py-3 space-y-2">
                     <div className="flex items-center justify-between">
                       <span className="text-xs font-semibold text-indigo-900">AI proposal evidence</span>
-                      <span className="text-[11px] text-indigo-700">
-                        Confidence: {Math.round((generationProposal.transaction?.confidence || 0) * 100)}%
-                      </span>
+                      <span className="text-[11px] text-indigo-700">AI-generated proposal — review required</span>
                     </div>
                     <p className="text-xs text-indigo-800 leading-relaxed">
                       {generationProposal.summary || "Suggested starting point — review each item before relying on it."}
@@ -966,7 +996,9 @@ export default function CreateDealRoomPage() {
                             item.source_type === "template" ? "bg-gray-200 text-gray-700" :
                             "bg-amber-100 text-amber-800"
                           }`}>
-                            {item.source_type === "ai_recommendation" ? "AI recommendation" : item.source_type.replace("_", " ")}
+                            <span title={recommendationChipDetail(item) || "Suggested from the generated transaction workflow."}>
+                              {item.source_type === "ai_recommendation" ? `Suggested: ${recommendationChipLabel(item)}` : recommendationChipLabel(item)}
+                            </span>
                           </span>
                         ))}
                       </div>
@@ -1123,7 +1155,12 @@ export default function CreateDealRoomPage() {
                   {[
                     { label: "Workspace", value: form.workspaceName || "—" },
                     jurisdictionRelevant && form.jurisdiction && { label: "Jurisdiction", value: { uae_adgm: "UAE — ADGM / DFSA", eu_mica: "EU — MiCA", us_reg_d: "US — Regulation D", sg_mas: "Singapore — MAS", uk_fca: "UK — FCA", other: "Other / Not listed" }[form.jurisdiction] || form.jurisdiction },
-                    creationMode !== "blank" && { label: "Type", value: activePack?.label || "Custom" },
+                    creationMode !== "blank" && {
+                      label: "Type",
+                      value: isAiGenerated
+                        ? proposalDisplayLabel(generationProposal, aiTransactionTypeLabel, aiTransactionType)
+                        : activePack?.label || "Custom",
+                    },
                     creationMode !== "blank" && customConfig.roles.length > 0 && { label: "Participants", value: `${customConfig.roles.length} role${customConfig.roles.length !== 1 ? "s" : ""}` },
                     creationMode !== "blank" && customConfig.documents.length > 0 && { label: "Documents", value: `${customConfig.documents.length} item${customConfig.documents.length !== 1 ? "s" : ""}` },
                     creationMode !== "blank" && customConfig.stages.length > 0 && { label: "Stages", value: `${customConfig.stages.length} stage${customConfig.stages.length !== 1 ? "s" : ""}` },

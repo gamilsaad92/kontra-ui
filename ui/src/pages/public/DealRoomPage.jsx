@@ -636,7 +636,30 @@ function PendingPanel({ title, icon, description }) {
   );
 }
 
+function getGeneratedValuePresentation(property) {
+  const proposal = getGeneratedProposal(property);
+  if (!proposal) {
+    return property?.deal_amount ? { label: "Deal Size", value: property.deal_amount } : null;
+  }
+  const fields = Array.isArray(proposal.transaction_record_fields) ? proposal.transaction_record_fields : [];
+  const valueFields = fields.filter(field =>
+    field?.value !== null
+      && field?.value !== undefined
+      && String(field.value).trim()
+      && /\b(value|price|proceeds|raise|capital|loan|funding|amount|budget)\b/i.test(`${field.key || ''} ${field.label || ''}`),
+  );
+  const valueField = valueFields.find(field =>
+    /\b(proceeds|purchase price|asking price|target raise|loan amount|funding amount)\b/i.test(`${field.key || ''} ${field.label || ''}`),
+  ) || valueFields[0];
+  return valueField ? { label: valueField.label, value: valueField.value } : null;
+}
+
 function PendingPropertyPanel({ property }) {
+  const generatedValue = getGeneratedValuePresentation(property);
+  const generatedProposal = getGeneratedProposal(property);
+  const generatedTypeLabel = generatedProposal?.transaction?.label
+    || property?.metadata_values?.transaction_type_label
+    || property?.deal_type?.replace(/[_-]+/g, " ").replace(/\b\w/g, char => char.toUpperCase());
   return (
     <div className="bg-white rounded-2xl border border-gray-200 p-5">
       <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-4">Property Details</p>
@@ -644,8 +667,8 @@ function PendingPropertyPanel({ property }) {
         { label: "Address", value: property.address },
         { label: "Type", value: property.property_type },
         { label: "Size", value: property.property_size },
-        { label: "Deal Type", value: property.deal_type ? property.deal_type.replace(/^\w/, c => c.toUpperCase()) : null },
-        { label: "Deal Size", value: property.deal_amount },
+        { label: "Deal Type", value: generatedTypeLabel },
+         generatedValue,
       ].filter(i => i.value).map((item) => (
         <div key={item.label} className="flex items-start justify-between py-2 border-t border-gray-100 first:border-t-0">
           <span className="text-xs text-gray-400">{item.label}</span>
