@@ -2165,6 +2165,9 @@ app.post(['/api/checkout/demo', '/api/checkout/trial'], async (req, res) => {
          customConfigGenerationId: workflowApproval.approval?.generationId || '',
          customConfigApprovalSource: workflowApproval.approval?.source || '',
          customConfigApprovedAt: workflowApproval.approval?.iat ? new Date(workflowApproval.approval.iat).toISOString() : '',
+         generatedProposal,
+         generatedBasePack,
+         generatedSubtype,
         closingDate: meta.closingDate,
       }),
     };
@@ -2183,11 +2186,13 @@ app.post(['/api/checkout/demo', '/api/checkout/trial'], async (req, res) => {
           // stages_config column must not erase the custom ws_* pack link or
           // the room will render as CRE on the next page load.
           const baseRecord = { ...dealRoomRecord };
-          if (/stages_config/i.test(upsertErr.message || '')) delete baseRecord.stages_config;
-          if (/workflow_pack_id/i.test(upsertErr.message || '')) delete baseRecord.workflow_pack_id;
-          for (const column of ['base_pack', 'transaction_type', 'transaction_subtype', 'transaction_context', 'generated_proposal']) {
-            if (new RegExp(column, 'i').test(upsertErr.message || '')) delete baseRecord[column];
-          }
+          // PostgREST reports only the first missing column. Remove the whole
+          // optional generated-room group in one retry so older production
+          // schemas can still create the room.
+          for (const column of [
+            'stages_config', 'workflow_pack_id', 'base_pack', 'transaction_type',
+            'transaction_subtype', 'transaction_context', 'generated_proposal',
+          ]) delete baseRecord[column];
           const { error: retryErr } = await supabase.from('deal_rooms').upsert(baseRecord, { onConflict: 'property_id' });
           if (retryErr) throw retryErr;
           roomCreated = true;
@@ -2715,6 +2720,9 @@ app.post('/api/webhook/stripe',
            customConfigGenerationId: metadataCustomConfigGenerationId || pending.custom_config_generation_id,
            customConfigApprovalSource: metadataCustomConfigApprovalSource || pending.custom_config_approval_source,
            customConfigApprovedAt: metadataCustomConfigApprovedAt || pending.custom_config_approved_at,
+           generatedProposal,
+           generatedBasePack,
+           generatedSubtype,
           closingDate: metadataClosingDate || pending.closing_date,
         }),
       };
@@ -2729,11 +2737,10 @@ app.post('/api/webhook/stripe',
             /column .*(workflow_pack_id|stages_config|base_pack|transaction_type|transaction_subtype|transaction_context|generated_proposal).* (does not exist|schema cache)/i.test(wErr.message || '');
           if (isMissingColumn) {
             const baseRecord = { ...dealRoomRecord };
-            if (/stages_config/i.test(wErr.message || '')) delete baseRecord.stages_config;
-            if (/workflow_pack_id/i.test(wErr.message || '')) delete baseRecord.workflow_pack_id;
-            for (const column of ['base_pack', 'transaction_type', 'transaction_subtype', 'transaction_context', 'generated_proposal']) {
-              if (new RegExp(column, 'i').test(wErr.message || '')) delete baseRecord[column];
-            }
+            for (const column of [
+              'stages_config', 'workflow_pack_id', 'base_pack', 'transaction_type',
+              'transaction_subtype', 'transaction_context', 'generated_proposal',
+            ]) delete baseRecord[column];
             const { error: retryErr } = await supabase.from('deal_rooms').upsert(baseRecord, { onConflict: 'property_id' });
             if (retryErr) throw retryErr;
             console.log(`[webhook] ✅ Deal room saved (no workflow_pack_id/stages_config col yet) — ${dealRoomRecord.property_id}`);
@@ -3477,6 +3484,9 @@ function buildCreationMetadata({
   customConfigGenerationId,
   customConfigApprovalSource,
   customConfigApprovedAt,
+  generatedProposal,
+  generatedBasePack,
+  generatedSubtype,
   closingDate,
 }) {
   const transactionTypeKey = String(transactionType || workflowPackId || '').trim();
@@ -3496,6 +3506,9 @@ function buildCreationMetadata({
     workflow_config_approval_source: String(customConfigApprovalSource || '').slice(0, 20),
     workflow_config_approved_at: customConfigApprovedAt || null,
     target_close_date: dateOnly(closingDate) || null,
+    generated_proposal: generatedProposal || null,
+    generated_base_pack: generatedBasePack || null,
+    generated_transaction_subtype: generatedSubtype || null,
   };
   if (transactionStructure) metadata.transaction_structure = String(transactionStructure).slice(0, 200);
   const numericValue = Number(transactionValue);

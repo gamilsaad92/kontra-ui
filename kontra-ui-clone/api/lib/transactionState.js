@@ -25,7 +25,8 @@ function getRequirements() {
 }
 
 async function resolveSchemaKey(room, resolvedPackId = null) {
-  if (Array.isArray(room?.generated_proposal?.transaction_record_fields)) return 'generated_ai';
+  const generatedProposal = room?.generated_proposal || room?.metadata_values?.generated_proposal;
+  if (Array.isArray(generatedProposal?.transaction_record_fields)) return 'generated_ai';
   const allRequirements = getRequirements();
   let schemaKey = resolvedPackId || resolvePackIdFromRoom(room);
   if (!allRequirements[schemaKey] && String(schemaKey).startsWith('ws_')) {
@@ -200,23 +201,36 @@ function computeTransactionReadiness(room, recordFields, schemaKey, requiredKeys
 }
 
 async function readTransactionState(propertyId) {
-  const [{ data: room, error: roomError }, { data: recordFields, error: fieldsError }] = await Promise.all([
-    supabase
-      .from('deal_rooms')
-       .select('id, property_id, property_name, deal_amount, closing_date, workflow_pack_id, base_pack, transaction_type, transaction_subtype, transaction_context, generated_proposal, deal_type, deal_stage, jurisdiction, metadata_values, checklist_items, settlement_mode, settlement_readiness_pct, settlement_mode_locked_at, sealed_at, completed_at')
-      .eq('property_id', propertyId)
-      .maybeSingle(),
+  const roomQuery = supabase
+    .from('deal_rooms')
+    .select('id, property_id, property_name, deal_amount, closing_date, workflow_pack_id, base_pack, transaction_type, transaction_subtype, transaction_context, generated_proposal, deal_type, deal_stage, jurisdiction, metadata_values, checklist_items, settlement_mode, settlement_readiness_pct, settlement_mode_locked_at, sealed_at, completed_at')
+    .eq('property_id', propertyId)
+    .maybeSingle();
+  const [{ data: initialRoom, error: initialRoomError }, { data: recordFields, error: fieldsError }] = await Promise.all([
+    roomQuery,
     supabase
       .from('transaction_record_fields')
       .select('id, field_key, display_label, value_text, status, source_doc_id, source_page, source_excerpt, confidence, updated_at, created_at')
       .eq('property_id', propertyId),
   ]);
+  let room = initialRoom;
+  let roomError = initialRoomError;
+  if (roomError && /column|schema cache|base_pack|generated_proposal/i.test(roomError.message || '')) {
+    const legacy = await supabase
+      .from('deal_rooms')
+      .select('id, property_id, property_name, deal_amount, closing_date, workflow_pack_id, deal_type, deal_stage, jurisdiction, metadata_values, checklist_items, settlement_mode, settlement_readiness_pct, settlement_mode_locked_at, sealed_at, completed_at')
+      .eq('property_id', propertyId)
+      .maybeSingle();
+    room = legacy.data;
+    roomError = legacy.error;
+  }
   if (roomError) throw roomError;
   if (fieldsError) throw fieldsError;
   const packId = await getRoomPackId(room);
   const schemaKey = await resolveSchemaKey(room, packId);
+  const generatedProposal = room?.generated_proposal || room?.metadata_values?.generated_proposal;
   const dynamicRequiredKeys = schemaKey === 'generated_ai'
-    ? (room.generated_proposal.transaction_record_fields || [])
+    ? (generatedProposal?.transaction_record_fields || [])
       .filter(field => field.required !== false)
       .map(field => field.key)
     : null;

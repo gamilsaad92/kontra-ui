@@ -321,6 +321,8 @@ export default function CreateDealRoomPage() {
   const [customConfig, setCustomConfig] = useState({ roles: [], documents: [], stages: [] });
   const [reviewConfirmed, setReviewConfirmed] = useState(false);
   const [generationProof, setGenerationProof] = useState("");
+  const [generationSessionId, setGenerationSessionId] = useState("");
+  const [generationProposal, setGenerationProposal] = useState(null);
   const [generatedBaselineConfig, setGeneratedBaselineConfig] = useState(null);
   const [approvalToken, setApprovalToken] = useState("");
   const setRoles = roles => {
@@ -436,7 +438,7 @@ export default function CreateDealRoomPage() {
         const body = { description: aiDescription };
         if (aiTransactionType) body.transactionType = aiTransactionType;
         if (aiCurrentStage) body.currentStage = aiCurrentStage;
-        const res = await fetch(`${API_BASE}/api/workspace/generate`, {
+        const res = await fetch(`${API_BASE}/api/room-generator/analyze`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(body),
@@ -481,6 +483,8 @@ export default function CreateDealRoomPage() {
         setReviewConfirmed(false);
         setApprovalToken("");
         setGenerationProof(data.generationProof || "");
+        setGenerationSessionId(data.generationSessionId || "");
+        setGenerationProposal(data.proposal || null);
         setIsAiGenerated(true);
         // Keep form.packId in sync with the transaction type the AI used so the
         // Review & Activate step shows the correct pack label and buildPayload()
@@ -504,6 +508,44 @@ export default function CreateDealRoomPage() {
       if (creationMode !== "blank") {
         if (!reviewConfirmed) return;
         try {
+          const proposalForApproval = generationProposal ? {
+            ...generationProposal,
+            transaction: {
+              ...generationProposal.transaction,
+              title: form.workspaceName || generationProposal.transaction?.title,
+              description: aiDescription.trim(),
+            },
+            participants: customConfig.roles.map(role => ({
+              role: role.key,
+              label: role.label,
+              required: role.required,
+              rationale: "Reviewed and edited by the room creator.",
+            })),
+            requirements: customConfig.documents.map(document => ({
+              ...(generationProposal.requirements || []).find(item => item.key === document.id),
+              key: document.id,
+              title: document.label,
+              required: document.required,
+              responsible_role: document.assignedRole || "coordinator",
+              source_type: (generationProposal.requirements || []).find(item => item.key === document.id)?.source_type || "ai_recommendation",
+              stage_key: (generationProposal.requirements || []).find(item => item.key === document.id)?.stage_key || customConfig.stages[0]?.key,
+            })),
+            stages: customConfig.stages.map((stage, index) => ({
+              key: stage.key,
+              name: stage.label,
+              position: index + 1,
+            })),
+          } : null;
+          if (isAiGenerated && generationSessionId && proposalForApproval) {
+            const sessionApproval = await fetch(`${API_BASE}/api/room-generator/${generationSessionId}/approve`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ proposal: proposalForApproval }),
+            });
+            const sessionApprovalData = await sessionApproval.json().catch(() => ({}));
+            if (!sessionApproval.ok) throw new Error(sessionApprovalData.error || "The generated proposal needs more review.");
+            setGenerationProposal(sessionApprovalData.proposal || proposalForApproval);
+          }
           const approvalRes = await fetch(`${API_BASE}/api/workspace/approve`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -563,6 +605,8 @@ export default function CreateDealRoomPage() {
     setGeneratedBaselineConfig(null);
     setApprovalToken("");
     setIsAiGenerated(false);
+    setGenerationSessionId("");
+    setGenerationProposal(null);
   }
 
   // ── Validation ────────────────────────────────────────────────────────────
@@ -634,6 +678,7 @@ export default function CreateDealRoomPage() {
         transactionStructure: aiTransactionStructure,
         transactionValue: aiTransactionValue,
         transactionValueConfidence: aiTransactionValueConfidence,
+         generationSessionId: isAiGenerated ? generationSessionId : "",
          customConfigReviewed: !!approvalToken,
          customConfigApprovalToken: approvalToken,
         firstName: form.firstName,
@@ -649,6 +694,15 @@ export default function CreateDealRoomPage() {
     setLoading(true);
     setError("");
     try {
+      if (isAiGenerated && generationSessionId) {
+        const sessionRes = await fetch(`${API_BASE}/api/room-generator/${generationSessionId}/create-room`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ roomId: form.workspaceName || null }),
+        });
+        const sessionData = await sessionRes.json().catch(() => ({}));
+        if (!sessionRes.ok) throw new Error(sessionData.error || "Approve the generated proposal before creating a room.");
+      }
       const endpoint = demo ? `${API_BASE}/api/checkout/trial` : `${API_BASE}/api/checkout/guest`;
       const res = await fetch(endpoint, {
         method: "POST",
@@ -882,6 +936,40 @@ export default function CreateDealRoomPage() {
                         <option value="licensing">Licensing</option>
                         <option value="joint_venture">Joint Venture</option>
                       </select>
+                    )}
+                  </div>
+                )}
+
+                {isAiGenerated && generationProposal && (
+                  <div className="rounded-xl border border-indigo-100 bg-indigo-50/60 px-3.5 py-3 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-semibold text-indigo-900">AI proposal evidence</span>
+                      <span className="text-[11px] text-indigo-700">
+                        Confidence: {Math.round((generationProposal.transaction?.confidence || 0) * 100)}%
+                      </span>
+                    </div>
+                    <p className="text-xs text-indigo-800 leading-relaxed">
+                      {generationProposal.summary || "Suggested starting point — review each item before relying on it."}
+                    </p>
+                    {!!generationProposal.issues_to_confirm?.length && (
+                      <div className="text-[11px] text-indigo-900">
+                        <span className="font-semibold">Open questions:</span>{" "}
+                        {generationProposal.issues_to_confirm.slice(0, 2).map(item => item.question).join(" · ")}
+                      </div>
+                    )}
+                    {!!generationProposal.requirements?.length && (
+                      <div className="flex flex-wrap gap-1.5 pt-0.5">
+                        {generationProposal.requirements.slice(0, 8).map(item => (
+                          <span key={item.key} className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${
+                            item.source_type === "authoritative" ? "bg-emerald-100 text-emerald-800" :
+                            item.source_type === "uploaded" ? "bg-blue-100 text-blue-800" :
+                            item.source_type === "template" ? "bg-gray-200 text-gray-700" :
+                            "bg-amber-100 text-amber-800"
+                          }`}>
+                            {item.source_type === "ai_recommendation" ? "AI recommendation" : item.source_type.replace("_", " ")}
+                          </span>
+                        ))}
+                      </div>
                     )}
                   </div>
                 )}

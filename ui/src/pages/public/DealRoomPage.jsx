@@ -20,6 +20,7 @@ import SettlementReadinessPanel from "./SettlementReadinessPanel";
 import {
   getPackRecordSchema,
   getRequiredRecordFields,
+  isRecordFieldRenderable,
   resolveSchemaKey,
 } from "../../lib/workflowPacks/transactionRecordSchema";
 import {
@@ -1293,8 +1294,6 @@ function useDealAnalyses(propertyId, refreshKey) {
 // Auth: owner write token read from localStorage (same pattern as stages PATCH).
 function TransactionDetailsPanel({ property, propertyId, pack, recordFields = [], recordState = null, onSaved }) {
   const isLegacyTokenPack = pack?.id === 'tokenization' || pack?.transactionType === 'tokenization';
-  const isReadOnlyDemo = DEMO_ROOM_IDS.has(propertyId)
-    || Boolean(property?.is_demo || property?.demo_mode);
   const hiddenLaunchFields = new Set([
     'asset_type', 'raise_amount', 'raise_target', 'token_price',
     'min_investment', 'token_name', 'token_symbol', 'total_supply',
@@ -1302,22 +1301,18 @@ function TransactionDetailsPanel({ property, propertyId, pack, recordFields = []
   ]);
   const packFields = (isLegacyTokenPack
     ? (pack?.metadataFields || []).filter(field => !hiddenLaunchFields.has(field.id))
-    : (pack?.metadataFields || []))
-    .filter(field => !(isReadOnlyDemo && field.id === 'target_close_date'));
+    : (pack?.metadataFields || []));
   const creationFields = [
     { id: "workspace_name",          label: "Deal Room Name",        fieldType: "text",     fullWidth: true, placeholder: property?.property_name || "" },
     { id: "transaction_description", label: "Transaction Description", fieldType: "text", fullWidth: true },
     { id: "transaction_type",        label: "Transaction Type",      fieldType: "text" },
     { id: "transaction_structure",   label: "Transaction Structure", fieldType: "text" },
     { id: "transaction_value",       label: "Transaction Value ($)", fieldType: "currency", placeholder: "e.g. 1000000" },
-    ...(!isReadOnlyDemo
-      ? [{ id: "target_close_date",   label: "Target Closing Date",   fieldType: "date" }]
-      : []),
   ];
   const fields = [
     ...creationFields,
     ...packFields.filter(field => !creationFields.some(creationField => creationField.id === field.id)),
-  ];
+  ].filter(isRecordFieldRenderable);
 
   const sectionTitle = isLegacyTokenPack ? "Deal Room Details" : (pack?.metadataLabel || "Transaction Details");
   const savedMetadata = property?.metadata_values || {};
@@ -3333,14 +3328,25 @@ function DigitalAssetReadinessSection({
   // full Transaction Record. This is data wiring only; the rendered layout is
   // intentionally unchanged.
   const canonicalRecordState = recordState || readiness?.transaction_record || null;
+  const generatedFields = Array.isArray(property?.generated_proposal?.transaction_record_fields)
+    ? property.generated_proposal.transaction_record_fields
+    : [];
   const requiredKeys = new Set(
     (canonicalRecordState?.requiredFields || getRequiredRecordFields(schemaKey))
       .map(field => field.key || field.canonicalKey)
       .filter(Boolean),
   );
-  const schemaFields = Object.entries(getPackRecordSchema(schemaKey)).flatMap(([category, fields]) =>
-    fields.map(field => ({ ...field, category })),
-  );
+  const schemaFields = generatedFields.length
+    ? generatedFields.map(field => ({
+        ...field,
+        category: String(field.key || '').split('.')[0] || 'transaction',
+        workflowRequired: field.required !== false,
+        canonicalKey: field.key,
+        renderable: true,
+      }))
+    : Object.entries(getPackRecordSchema(schemaKey)).flatMap(([category, fields]) =>
+        fields.map(field => ({ ...field, category })),
+      );
   const categorySchemaGroups = {
     parties: ['parties', 'beneficial_ownership'],
     asset: ['asset_identity'],
@@ -3437,7 +3443,7 @@ function DigitalAssetReadinessSection({
   const readyCount   = categories.filter(c => c.st === 'ready').length;
   const buildingCount = categories.filter(c => ['building','needs_info'].includes(c.st)).length;
   const serverSufficient = readiness?.digital_asset_readiness?.sufficient;
-  const tokenizationDefinitions = getRequiredRecordFields('tokenization');
+  const tokenizationDefinitions = generatedFields.length ? [] : getRequiredRecordFields('tokenization');
   const tokenizationInputStates = tokenizationDefinitions.map(definition =>
     getRecordDefinitionState(definition, recordFields, recordState || readiness?.transaction_record || null)
   );
@@ -4243,7 +4249,10 @@ function TransactionBrief({
     briefing,
   });
 
-  const recordSchemaKey = resolveSchemaKey(packId, pack, property?.name || property?.property_name);
+  const isGeneratedRoom = Array.isArray(property?.generated_proposal?.transaction_record_fields);
+  const recordSchemaKey = isGeneratedRoom
+    ? (property?.base_pack && !String(property.base_pack).startsWith('ws_') ? property.base_pack : 'generic')
+    : resolveSchemaKey(packId, pack, property?.name || property?.property_name);
   const canonicalRecordState = recordState || readiness?.transaction_record || null;
   const requiredRecordFields = canonicalRecordState?.requiredFields || getRequiredRecordFields(recordSchemaKey);
   const confirmedRecordCount = canonicalRecordState?.confirmedCount ?? requiredRecordFields.filter(field =>
@@ -5183,6 +5192,7 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
           )}
           <DigitalAssetReadinessSection
             propertyId={propertyId}
+             property={property}
             recordFields={recordFields}
             recordState={canonicalRecordState}
             readiness={readiness}
