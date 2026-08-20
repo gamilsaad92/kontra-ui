@@ -3312,6 +3312,7 @@ function WhatNeedsAttention({
 // Rows are expandable — shows confirmed fields, missing fields, and sources.
 function DigitalAssetReadinessSection({
   propertyId,
+  property,
   recordFields,
   recordState = null,
   readiness,
