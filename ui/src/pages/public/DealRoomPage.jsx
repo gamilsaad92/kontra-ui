@@ -3722,7 +3722,7 @@ function RoomCopilot({ propertyId }) {
       <button
         onClick={() => setOpen(true)}
         aria-label="Open Kontra AI"
-        className="fixed bottom-6 right-6 z-40 flex items-center gap-2 rounded-full bg-[#800020] py-3 pl-4 pr-5 text-white shadow-xl transition hover:opacity-90 hover:shadow-2xl">
+        className="fixed bottom-4 right-3 z-40 flex max-w-[calc(100vw-1.5rem)] items-center gap-2 rounded-full bg-[#800020] py-2.5 pl-3.5 pr-4 text-white shadow-xl transition hover:opacity-90 hover:shadow-2xl sm:bottom-6 sm:right-6 sm:py-3 sm:pl-4 sm:pr-5">
         <span className="text-sm" aria-hidden="true">✦</span>
         <span className="text-sm font-semibold">Kontra AI</span>
       </button>

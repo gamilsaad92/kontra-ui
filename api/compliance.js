@@ -1,16 +1,15 @@
 const OpenAI = require('openai');
 const { createClient } = require('@supabase/supabase-js');
+const { supabase: fallbackSupabase } = require('./db');
 const { logAuditEntry } = require('./auditLogger');
 const { isFeatureEnabled } = require('./featureFlags');
 const { getLegalConfiguration, enforceTransferControls } = require('./legalConfiguration');
 require('dotenv').config();
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY || 'sk-not-configured' });
-
-const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY
-);
+const supabase = process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY
+  ? createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY)
+  : fallbackSupabase;
 
 const defaultRules = [
   { name: 'EHL disclosure', required: 'Equal Housing Lender' },

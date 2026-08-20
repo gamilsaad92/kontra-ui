@@ -14,12 +14,14 @@ const isRealSupabase = process.env.SUPABASE_URL &&
 const hasLocalDb = !!process.env.DATABASE_URL;
 
 let supabase, replica;
+let databaseConnected = false;
 
 if (hasLocalDb) {
   // ── Path 1: Replit PostgreSQL (preferred) ──────────────────────────────────
   const { createPgClient } = require('./lib/pgAdapter');
   supabase = createPgClient();
   replica = supabase;
+  databaseConnected = true;
   console.log('[db] Connected to Replit PostgreSQL via pgAdapter');
 
 } else if (isRealSupabase) {
@@ -29,6 +31,7 @@ if (hasLocalDb) {
   replica = process.env.SUPABASE_REPLICA_URL
     ? createClient(process.env.SUPABASE_REPLICA_URL, process.env.SUPABASE_SERVICE_ROLE_KEY)
     : supabase;
+  databaseConnected = true;
   console.log('[db] Connected to Supabase:', process.env.SUPABASE_URL);
 
 } else {
@@ -53,4 +56,8 @@ if (hasLocalDb) {
   replica = supabase;
 }
 
-module.exports = { supabase, replica };
+function isDatabaseConnected() {
+  return databaseConnected;
+}
+
+module.exports = { supabase, replica, isDatabaseConnected };

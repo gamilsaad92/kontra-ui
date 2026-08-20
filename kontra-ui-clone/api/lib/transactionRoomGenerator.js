@@ -148,12 +148,15 @@ function normalizeProposal(raw = {}, context = {}) {
     name: String(stage.name || stage.label || `Stage ${index + 1}`).trim().slice(0, 120),
     description: String(stage.description || '').trim().slice(0, 500),
     position: Number(stage.position) || index + 1,
+    rationale: String(stage.rationale || '').trim().slice(0, 500),
+    source_type: normalizeSource(stage).source_type,
   }));
   const participants = (Array.isArray(raw.participants) ? raw.participants : (raw.roles || [])).map((role, index) => ({
     role: slug(role.role || role.key || role.label, `role_${index + 1}`),
     label: String(role.label || role.name || role.key || `Participant ${index + 1}`).trim().slice(0, 120),
     required: role.required !== false,
     rationale: String(role.rationale || '').trim().slice(0, 500),
+    source_type: normalizeSource(role).source_type,
   }));
   const requirements = (Array.isArray(raw.requirements) ? raw.requirements : (raw.documents || [])).map((item, index) => {
     const key = slug(item.key || item.id || item.label, `requirement_${index + 1}`);

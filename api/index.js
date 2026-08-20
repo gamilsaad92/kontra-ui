@@ -3,12 +3,48 @@
 // fallbacks set in the workflow command. In production (Render), we do NOT
 // override so that env vars set in the Render dashboard take precedence.
 require('dotenv').config(process.env.NODE_ENV !== 'production' ? { override: true } : {});
+
+// Allow OPENAI_API_KEY1 as the active key (e.g. after rotating to a new key).
+if (process.env.OPENAI_API_KEY1) {
+  process.env.OPENAI_API_KEY = process.env.OPENAI_API_KEY1;
+}
+
+const REQUIRED_PRODUCTION_ENV = [
+  'SUPABASE_URL',
+  'SUPABASE_SERVICE_ROLE_KEY',
+  'OPENAI_API_KEY',
+];
+const PLACEHOLDER_ENV_VALUES = new Set(['placeholder', 'placeholder-key', 'sk-not-configured']);
+
+function isConfiguredEnvironmentValue(value) {
+  const normalizedValue = String(value || '').trim().toLowerCase();
+  return Boolean(normalizedValue)
+    && !PLACEHOLDER_ENV_VALUES.has(normalizedValue)
+    && !normalizedValue.includes('placeholder');
+}
+
+function getMissingRequiredConfiguration() {
+  return REQUIRED_PRODUCTION_ENV.filter((name) => !isConfiguredEnvironmentValue(process.env[name]));
+}
+
+// Development can use the in-memory database and unavailable AI client, but a
+// production deployment must never look healthy with placeholder credentials.
+if (process.env.NODE_ENV === 'production') {
+  const missingConfiguration = getMissingRequiredConfiguration();
+  missingConfiguration.forEach((name) => {
+    console.error(`FATAL: ${name} is required in production`);
+  });
+  if (missingConfiguration.length > 0) {
+    process.exit(1);
+  }
+}
+
 const express = require('express');
 const Sentry = require('@sentry/node');
 const cors = require('cors');
 const helmet = require('helmet');
 const multer = require('multer');
-const { supabase, replica } = require('./db');
+const { supabase, replica, isDatabaseConnected } = require('./db');
 const {
   DEFAULT_PACK_ID,
   getPackStageConfig,
@@ -351,17 +387,6 @@ async function savedPackMatchesApproval(packId, approvalHash) {
   if (error || !data) return false;
   return workflowConfigHash(data.config) === approvalHash;
 }
-// Allow OPENAI_API_KEY1 as the active key (e.g. after rotating to a new key)
-if (process.env.OPENAI_API_KEY1) {
-  process.env.OPENAI_API_KEY = process.env.OPENAI_API_KEY1;
-}
-// Hard required — platform cannot function without these
-["SUPABASE_URL","SUPABASE_SERVICE_ROLE_KEY","OPENAI_API_KEY"].forEach(k => {
-  if (!process.env[k]) {
-    console.error(`[FATAL] Missing required env var: ${k}`);
-    process.exit(1);
-  }
-});
 // Optional — warn but stay running; features degrade gracefully
 ["SENTRY_DSN","STRIPE_SECRET_KEY","ENCRYPTION_KEY","PII_ENCRYPTION_KEY"].forEach(k => {
   if (!process.env[k]) {
@@ -967,8 +992,25 @@ app.use(
 );
 app.use(auditLogger);
 app.use(rateLimit);
+function sendHealthResponse(res, extra = {}) {
+  const missingConfiguration = getMissingRequiredConfiguration();
+  const databaseConnected = isDatabaseConnected();
+  const healthy = missingConfiguration.length === 0 && databaseConnected;
+
+  return res.status(healthy ? 200 : 503).json({
+    ok: healthy,
+    status: healthy ? 'ok' : 'degraded',
+    ...extra,
+    checks: {
+      database: databaseConnected ? 'connected' : 'unavailable',
+      configuration: missingConfiguration.length === 0 ? 'configured' : 'missing',
+    },
+    missing_configuration: missingConfiguration,
+  });
+}
+
 app.get('/api/health', (_req, res) => {
-  res.json({ ok: true, version: 'v2-checkout-fix', deployed: new Date().toISOString() });
+  sendHealthResponse(res, { version: 'v2-checkout-fix', deployed: new Date().toISOString() });
 });
 
 // ── Public deal room routes — registered EARLY, before any org/auth middleware ──
@@ -1381,9 +1423,9 @@ Return exactly this shape:
   "transactionStructureConfidence": "high|low",
   "transactionValue": "number|null — only when an amount is explicitly supplied or confidently extracted; otherwise null",
   "transactionValueConfidence": "high|low",
-  "roles": [{ "key": "snake_case_key", "label": "Display Name", "required": bool, "needsDocs": bool, "icon": "emoji", "color": "#hex" }],
+  "roles": [{ "key": "snake_case_key", "label": "Display Name", "required": bool, "needsDocs": bool, "icon": "emoji", "color": "#hex", "rationale": "why this role matters", "source_type": "ai_recommendation" }],
   "documents": [{ "id": "snake_case_id", "label": "Document Name", "required": bool, "ai": bool, "assignedRole": "role_key" }],
-  "stages": [{ "key": "snake_case_key", "label": "Stage Name" }],
+  "stages": [{ "key": "snake_case_key", "label": "Stage Name", "rationale": "why this stage is in the lifecycle", "source_type": "ai_recommendation" }],
   "transaction_record_fields": [{
     "key": "canonical.dotted.key",
     "label": "Human-readable label",
@@ -1399,6 +1441,11 @@ Rules:
 - 3–6 roles; first role is the deal-room owner / coordinator (canManage=true implied)
 - 6–14 documents covering the key due-diligence areas for this transaction type
 - 3–6 stages reflecting the actual lifecycle (e.g. NDA → LOI → Due Diligence → Closing)
+- Infer the current lifecycle position from explicit context. If the description
+  says an LOI is signed/executed and due diligence is beginning or underway, include
+  an LOI status field with value Executed/Signed, a Due Diligence Status field with
+  value Beginning/In Progress, and make Due Diligence the current stage rather than
+  defaulting to NDA or Stage 1.
 - 8–18 transaction_record_fields covering the material structured facts explicitly
   stated in the description plus relevant transaction-specific fields that must be
   collected later. Use null value and source_type "ai_recommendation" for unknown
@@ -1407,6 +1454,9 @@ Rules:
   Transaction Record with source_type "transaction_description", confidence at
   least 0.85, and a short source_excerpt when practical. These are awaiting
   confirmation, not verified facts.
+- Preserve relative timing statements such as "closing targeted in 45 days" as a
+  Target Closing field whose value retains "45 days"; a calendar date may be added
+  only when the room creation date is available and the calculation is safe.
 - Use source_type "ai_recommendation" only for inferred classifications, suggested
   requirements, and missing fields. Never represent an inference as an established
   fact.
@@ -1890,6 +1940,34 @@ async function saveCustomPackForWorkspace(propertyId, propertyName, customConfig
 // Built-in stage definitions live in the API registry, but AI-generated
 // workspace packs are stored as JSON in custom_workflow_packs. Never ask the
 // built-in registry for a ws_* ID — that silently returns the CRE stages.
+function inferGeneratedCurrentStage(stages = [], proposal = null) {
+  const safeStages = Array.isArray(stages) ? stages : [];
+  if (safeStages.length === 0) return null;
+  const transaction = proposal?.transaction || {};
+  const facts = Array.isArray(proposal?.transaction_record_fields)
+    ? proposal.transaction_record_fields
+    : [];
+  const contextFacts = Array.isArray(transaction.context_facts) ? transaction.context_facts : [];
+  const text = [
+    transaction.description,
+    ...contextFacts.flatMap(fact => [fact?.label, fact?.value]),
+    ...facts.flatMap(field => [field?.label, field?.value]),
+  ].filter(Boolean).join(' ').toLowerCase();
+  const loiExecuted = /\b(?:loi|letter of intent)\b[\s\S]{0,80}\b(?:signed|executed|fully executed)\b|\b(?:signed|executed|fully executed)\b[\s\S]{0,80}\b(?:loi|letter of intent)\b/.test(text);
+  const diligenceStarted = /\b(?:due diligence|diligence)\b[\s\S]{0,60}\b(?:beginning|begun|starting|started|underway|in progress)\b|\b(?:beginning|begun|starting|started|underway|in progress)\b[\s\S]{0,60}\b(?:due diligence|diligence)\b/.test(text);
+  const findStage = pattern => safeStages.find(stage => pattern.test(`${stage.key || ''} ${stage.label || ''}`.toLowerCase()));
+  if (loiExecuted && diligenceStarted) {
+    return findStage(/\b(due diligence|diligence|underwriting|review|verification)\b/)?.key
+      || safeStages[Math.min(2, safeStages.length - 1)].key;
+  }
+  if (loiExecuted) {
+    return findStage(/\b(due diligence|diligence|underwriting|review)\b/)?.key
+      || findStage(/\bloi|letter of intent\b/)?.key
+      || safeStages[0].key;
+  }
+  return safeStages[0].key;
+}
+
 async function getInitialStagesForPack(packId, explicitStages = null) {
   const sourceStages = Array.isArray(explicitStages) && explicitStages.length >= 2
     ? explicitStages
@@ -2187,7 +2265,10 @@ app.post(['/api/checkout/demo', '/api/checkout/trial'], async (req, res) => {
        transaction_subtype: generatedProposal ? generatedSubtype : null,
        transaction_context: generatedProposal?.transaction?.context_facts || null,
        generated_proposal: generatedProposal || null,
-      stages_config: demoInitialStages,
+       stages_config: demoInitialStages,
+       deal_stage: generatedProposal
+         ? inferGeneratedCurrentStage(demoInitialStages, generatedProposal)
+         : undefined,
       metadata_values: buildCreationMetadata({
         propertyName,
         workflowPackId: demoPackId,
@@ -2743,7 +2824,10 @@ app.post('/api/webhook/stripe',
          transaction_subtype: generatedProposal ? generatedSubtype : null,
          transaction_context: generatedProposal?.transaction?.context_facts || null,
          generated_proposal: generatedProposal || null,
-        stages_config: stripeInitialStages,
+       stages_config: stripeInitialStages,
+       deal_stage: generatedProposal
+         ? inferGeneratedCurrentStage(stripeInitialStages, generatedProposal)
+         : undefined,
         metadata_values: buildCreationMetadata({
           propertyName: propertyName || pending.property_name || '',
           transactionDescription: metadataTransactionDescription || pending.transaction_description,
@@ -2840,7 +2924,7 @@ app.post('/api/webhook/stripe',
 ;(() => {
   const { PROPERTY, TASKS, BRIEFING, ANALYSES, DEMO_QA_CONTEXT } = require('./lib/demoData');
   const { getDemoFixture } = require('./lib/demoRoomFixtures');
-  const openai = new OpenAI();
+  const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY || 'sk-not-configured' });
   const DEMO_ID = 'kontra-demo';
   const fixture = getDemoFixture('cre_acquisition', PROPERTY);
 
@@ -2937,7 +3021,7 @@ app.post('/api/webhook/stripe',
 ;(() => {
   const { PROPERTY, TASKS, BRIEFING, ANALYSES, DEMO_QA_CONTEXT } = require('./lib/demoDataBiz');
   const { getDemoFixture } = require('./lib/demoRoomFixtures');
-  const openai = new OpenAI();
+  const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY || 'sk-not-configured' });
   const BIZ_ID = 'kontra-demo-biz';
   const fixture = getDemoFixture('business_acquisition', PROPERTY);
 
@@ -3014,7 +3098,7 @@ app.post('/api/webhook/stripe',
 ;(() => {
   const { PROPERTY, TASKS, BRIEFING, ANALYSES, DEMO_QA_CONTEXT } = require('./lib/demoDataFundraising');
   const { getDemoFixture } = require('./lib/demoRoomFixtures');
-  const openai = new OpenAI();
+  const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY || 'sk-not-configured' });
   const FUND_ID = 'kontra-demo-fundraising';
   const fixture = getDemoFixture('fundraising', PROPERTY);
 
@@ -7302,7 +7386,7 @@ app.use('/api', restaurantsRouter);
 // ── Health Checks ──────────────────────────────────────────────────────────
 app.get('/', (req, res) => res.send('Sentry test running!'));
 app.get('/api/test', (req, res) => res.send('✅ API is alive'));
-app.get('/health', (req, res) => res.json({ ok: true }));
+app.get('/health', (_req, res) => sendHealthResponse(res));
 app.get('/api/whoami', authenticate, (req, res) => {
   res.json({
     ok: true,

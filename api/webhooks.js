@@ -1,9 +1,9 @@
 const { createClient } = require('@supabase/supabase-js');
+const { supabase: fallbackSupabase } = require('./db');
 
-const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY
-);
+const supabase = process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY
+  ? createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY)
+  : fallbackSupabase;
 
 // Known webhook topics. Additional topics can be appended here as the
 // platform grows but we make sure the trade events exist by default.

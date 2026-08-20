@@ -1423,9 +1423,9 @@ Return exactly this shape:
   "transactionStructureConfidence": "high|low",
   "transactionValue": "number|null — only when an amount is explicitly supplied or confidently extracted; otherwise null",
   "transactionValueConfidence": "high|low",
-  "roles": [{ "key": "snake_case_key", "label": "Display Name", "required": bool, "needsDocs": bool, "icon": "emoji", "color": "#hex" }],
+  "roles": [{ "key": "snake_case_key", "label": "Display Name", "required": bool, "needsDocs": bool, "icon": "emoji", "color": "#hex", "rationale": "why this role matters", "source_type": "ai_recommendation" }],
   "documents": [{ "id": "snake_case_id", "label": "Document Name", "required": bool, "ai": bool, "assignedRole": "role_key" }],
-  "stages": [{ "key": "snake_case_key", "label": "Stage Name" }],
+  "stages": [{ "key": "snake_case_key", "label": "Stage Name", "rationale": "why this stage is in the lifecycle", "source_type": "ai_recommendation" }],
   "transaction_record_fields": [{
     "key": "canonical.dotted.key",
     "label": "Human-readable label",
@@ -1441,6 +1441,11 @@ Rules:
 - 3–6 roles; first role is the deal-room owner / coordinator (canManage=true implied)
 - 6–14 documents covering the key due-diligence areas for this transaction type
 - 3–6 stages reflecting the actual lifecycle (e.g. NDA → LOI → Due Diligence → Closing)
+- Infer the current lifecycle position from explicit context. If the description
+  says an LOI is signed/executed and due diligence is beginning or underway, include
+  an LOI status field with value Executed/Signed, a Due Diligence Status field with
+  value Beginning/In Progress, and make Due Diligence the current stage rather than
+  defaulting to NDA or Stage 1.
 - 8–18 transaction_record_fields covering the material structured facts explicitly
   stated in the description plus relevant transaction-specific fields that must be
   collected later. Use null value and source_type "ai_recommendation" for unknown
@@ -1449,6 +1454,9 @@ Rules:
   Transaction Record with source_type "transaction_description", confidence at
   least 0.85, and a short source_excerpt when practical. These are awaiting
   confirmation, not verified facts.
+- Preserve relative timing statements such as "closing targeted in 45 days" as a
+  Target Closing field whose value retains "45 days"; a calendar date may be added
+  only when the room creation date is available and the calculation is safe.
 - Use source_type "ai_recommendation" only for inferred classifications, suggested
   requirements, and missing fields. Never represent an inference as an established
   fact.
@@ -1932,6 +1940,34 @@ async function saveCustomPackForWorkspace(propertyId, propertyName, customConfig
 // Built-in stage definitions live in the API registry, but AI-generated
 // workspace packs are stored as JSON in custom_workflow_packs. Never ask the
 // built-in registry for a ws_* ID — that silently returns the CRE stages.
+function inferGeneratedCurrentStage(stages = [], proposal = null) {
+  const safeStages = Array.isArray(stages) ? stages : [];
+  if (safeStages.length === 0) return null;
+  const transaction = proposal?.transaction || {};
+  const facts = Array.isArray(proposal?.transaction_record_fields)
+    ? proposal.transaction_record_fields
+    : [];
+  const contextFacts = Array.isArray(transaction.context_facts) ? transaction.context_facts : [];
+  const text = [
+    transaction.description,
+    ...contextFacts.flatMap(fact => [fact?.label, fact?.value]),
+    ...facts.flatMap(field => [field?.label, field?.value]),
+  ].filter(Boolean).join(' ').toLowerCase();
+  const loiExecuted = /\b(?:loi|letter of intent)\b[\s\S]{0,80}\b(?:signed|executed|fully executed)\b|\b(?:signed|executed|fully executed)\b[\s\S]{0,80}\b(?:loi|letter of intent)\b/.test(text);
+  const diligenceStarted = /\b(?:due diligence|diligence)\b[\s\S]{0,60}\b(?:beginning|begun|starting|started|underway|in progress)\b|\b(?:beginning|begun|starting|started|underway|in progress)\b[\s\S]{0,60}\b(?:due diligence|diligence)\b/.test(text);
+  const findStage = pattern => safeStages.find(stage => pattern.test(`${stage.key || ''} ${stage.label || ''}`.toLowerCase()));
+  if (loiExecuted && diligenceStarted) {
+    return findStage(/\b(due diligence|diligence|underwriting|review|verification)\b/)?.key
+      || safeStages[Math.min(2, safeStages.length - 1)].key;
+  }
+  if (loiExecuted) {
+    return findStage(/\b(due diligence|diligence|underwriting|review)\b/)?.key
+      || findStage(/\bloi|letter of intent\b/)?.key
+      || safeStages[0].key;
+  }
+  return safeStages[0].key;
+}
+
 async function getInitialStagesForPack(packId, explicitStages = null) {
   const sourceStages = Array.isArray(explicitStages) && explicitStages.length >= 2
     ? explicitStages
@@ -2229,7 +2265,10 @@ app.post(['/api/checkout/demo', '/api/checkout/trial'], async (req, res) => {
        transaction_subtype: generatedProposal ? generatedSubtype : null,
        transaction_context: generatedProposal?.transaction?.context_facts || null,
        generated_proposal: generatedProposal || null,
-      stages_config: demoInitialStages,
+       stages_config: demoInitialStages,
+       deal_stage: generatedProposal
+         ? inferGeneratedCurrentStage(demoInitialStages, generatedProposal)
+         : undefined,
       metadata_values: buildCreationMetadata({
         propertyName,
         workflowPackId: demoPackId,
@@ -2785,7 +2824,10 @@ app.post('/api/webhook/stripe',
          transaction_subtype: generatedProposal ? generatedSubtype : null,
          transaction_context: generatedProposal?.transaction?.context_facts || null,
          generated_proposal: generatedProposal || null,
-        stages_config: stripeInitialStages,
+       stages_config: stripeInitialStages,
+       deal_stage: generatedProposal
+         ? inferGeneratedCurrentStage(stripeInitialStages, generatedProposal)
+         : undefined,
         metadata_values: buildCreationMetadata({
           propertyName: propertyName || pending.property_name || '',
           transactionDescription: metadataTransactionDescription || pending.transaction_description,
