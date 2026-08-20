@@ -2189,10 +2189,11 @@ app.post(['/api/checkout/demo', '/api/checkout/trial'], async (req, res) => {
           // PostgREST reports only the first missing column. Remove the whole
           // optional generated-room group in one retry so older production
           // schemas can still create the room.
-          for (const column of [
-            'stages_config', 'workflow_pack_id', 'base_pack', 'transaction_type',
-            'transaction_subtype', 'transaction_context', 'generated_proposal',
-          ]) delete baseRecord[column];
+          for (const column of ['base_pack', 'transaction_type', 'transaction_subtype', 'transaction_context', 'generated_proposal']) {
+            delete baseRecord[column];
+          }
+          if (/stages_config/i.test(upsertErr.message || '')) delete baseRecord.stages_config;
+          if (/workflow_pack_id/i.test(upsertErr.message || '')) delete baseRecord.workflow_pack_id;
           const { error: retryErr } = await supabase.from('deal_rooms').upsert(baseRecord, { onConflict: 'property_id' });
           if (retryErr) throw retryErr;
           roomCreated = true;
@@ -2737,10 +2738,11 @@ app.post('/api/webhook/stripe',
             /column .*(workflow_pack_id|stages_config|base_pack|transaction_type|transaction_subtype|transaction_context|generated_proposal).* (does not exist|schema cache)/i.test(wErr.message || '');
           if (isMissingColumn) {
             const baseRecord = { ...dealRoomRecord };
-            for (const column of [
-              'stages_config', 'workflow_pack_id', 'base_pack', 'transaction_type',
-              'transaction_subtype', 'transaction_context', 'generated_proposal',
-            ]) delete baseRecord[column];
+            for (const column of ['base_pack', 'transaction_type', 'transaction_subtype', 'transaction_context', 'generated_proposal']) {
+              delete baseRecord[column];
+            }
+            if (/stages_config/i.test(wErr.message || '')) delete baseRecord.stages_config;
+            if (/workflow_pack_id/i.test(wErr.message || '')) delete baseRecord.workflow_pack_id;
             const { error: retryErr } = await supabase.from('deal_rooms').upsert(baseRecord, { onConflict: 'property_id' });
             if (retryErr) throw retryErr;
             console.log(`[webhook] ✅ Deal room saved (no workflow_pack_id/stages_config col yet) — ${dealRoomRecord.property_id}`);
