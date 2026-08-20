@@ -5,6 +5,7 @@ const crypto = require('crypto');
 const SOURCE_TYPES = new Set([
   'authoritative',
   'uploaded',
+  'transaction_description',
   'template',
   'ai_recommendation',
 ]);
@@ -82,6 +83,8 @@ function inferGeneratedTransactionIdentity({
   const selected = String(selectedType || '').trim().toLowerCase();
   const generated = String(generatedType || '').trim().toLowerCase();
   const text = String(description || '').toLowerCase();
+  const isSellerOriented = /\b(marketed|listed|offered|sale|selling|seller|on behalf of the seller|seller[-\s]side)\b/.test(text);
+  const isBuyerOriented = /\b(acquir(?:e|er|ing)|purchase|buy(?:er|ing)|buyer[-\s]side)\b/.test(text);
 
   // An owner-selected type is authoritative. "other" deliberately leaves
   // room for the description to establish a more specific identity.
@@ -89,7 +92,9 @@ function inferGeneratedTransactionIdentity({
     return {
       type: selected,
       label: String(generatedLabel || selected).trim(),
-      subtype: null,
+      subtype: selected === 'cre_acquisition' && isSellerOriented && !isBuyerOriented
+        ? 'Asset Sale'
+        : null,
     };
   }
 
@@ -119,7 +124,7 @@ function contextFields(facts = []) {
     required: false,
     confidence: confidence(fact.confidence),
     rationale: 'Extracted from the creator-provided transaction description.',
-    source_type: 'ai_recommendation',
+    source_type: 'transaction_description',
   }));
 }
 

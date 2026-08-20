@@ -1447,11 +1447,13 @@ IMPORTANT: You are suggesting a starting point only. Do NOT claim completeness. 
       joint_venture: 'Joint Venture',
       other: 'Custom Transaction',
     };
-    const canonicalTypeLabel = canonicalTransactionTypeLabel(
-      resolvedTransactionType,
-      profile?.packId,
-      generatedIdentity.label || transactionTypeLabels[resolvedTransactionType] || 'Custom Transaction',
-    );
+    const canonicalTypeLabel = generatedIdentity.subtype === 'Asset Sale'
+      ? 'Commercial Real Estate Sale'
+      : canonicalTransactionTypeLabel(
+        resolvedTransactionType,
+        profile?.packId,
+        generatedIdentity.label || transactionTypeLabels[resolvedTransactionType] || 'Custom Transaction',
+      );
     const generatedConfig = normalizeGeneratedWorkflowConfig(raw);
     const generationId = createGenerationId();
     const generationProof = signWorkflowProof('workflow_generation', {
