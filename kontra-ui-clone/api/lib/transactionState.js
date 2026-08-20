@@ -16,6 +16,143 @@ const {
   buildTokenizationGuidance,
 } = require('./tokenizationGuidance');
 
+// Existing rooms may have document-level discrepancy metadata but no
+// transaction_record_conflicts row because they predate the durable conflict
+// table. Reconcile those stored findings on hydration so reopening a room is
+// enough to restore its blocking state. This is deliberately deterministic and
+// never calls an LLM.
+const conflictReconcileAt = new Map();
+const MONEY_PATTERN = /\$\s*([\d,]+(?:\.\d+)?)/g;
+const REPAIR_CONTEXT = /repair|contractor|invoice|restoration|loss\s+proceeds|hazard/i;
+
+function parseAmount(value) {
+  if (typeof value === 'number' && Number.isFinite(value) && value > 0) return value;
+  if (typeof value !== 'string') return null;
+  const match = value.match(/\$?\s*([\d,]+(?:\.\d+)?)/);
+  if (!match) return null;
+  const amount = Number(match[1].replace(/,/g, ''));
+  return Number.isFinite(amount) && amount > 0 ? amount : null;
+}
+
+function storedDocumentAmounts(document) {
+  const analysis = document?.analysis && typeof document.analysis === 'object'
+    ? document.analysis
+    : {};
+  const context = `${document?.section || ''} ${document?.filename || ''} ${JSON.stringify(analysis)}`;
+  if (!REPAIR_CONTEXT.test(context)) return [];
+  const values = [];
+  const walk = (node, path = '') => {
+    if (!node || typeof node !== 'object') return;
+    for (const [key, raw] of Object.entries(node)) {
+      const nextPath = `${path}.${key}`;
+      const keyText = `${key} ${nextPath}`;
+      if (/(repair|restoration).*(cost|amount|estimate|total)|(?:invoice|contractor).*(amount|total|cost)|(?:total|estimated).*(repair|cost)/i.test(keyText)) {
+        const amount = parseAmount(raw);
+        if (amount) values.push({ amount, excerpt: `${key}: ${String(raw).slice(0, 180)}` });
+      }
+      if (raw && typeof raw === 'object') walk(raw, nextPath);
+    }
+  };
+  walk(analysis);
+  // Old analyses often only retain a prose discrepancy/summary. Monetary
+  // strings in repair-related documents are still safe candidates.
+  if (!values.length) {
+    for (const match of JSON.stringify(analysis).matchAll(MONEY_PATTERN)) {
+      const amount = Number(match[1].replace(/,/g, ''));
+      if (amount > 0) values.push({ amount, excerpt: match[0] });
+    }
+  }
+  return [...new Map(values.map(item => [item.amount, item])).values()];
+}
+
+async function reconcileStoredDocumentConflicts(propertyId) {
+  if (!propertyId) return;
+  const now = Date.now();
+  if (now - (conflictReconcileAt.get(propertyId) || 0) < 15000) return;
+  conflictReconcileAt.set(propertyId, now);
+  try {
+    const [{ data: documents, error: documentsError }, { data: fields, error: fieldsError }] = await Promise.all([
+      supabase.from('deal_analyses')
+        .select('id, section, filename, analysis, created_at')
+        .eq('property_id', propertyId)
+        .neq('section', 'cross_document_verification')
+        .order('created_at', { ascending: true }),
+      supabase.from('transaction_record_fields')
+        .select('id, field_key, display_label, value_text, status, source_doc_id, source_page, source_excerpt')
+        .eq('property_id', propertyId),
+    ]);
+    if (documentsError) throw documentsError;
+    if (fieldsError) throw fieldsError;
+    const candidates = (documents || []).flatMap(document =>
+      storedDocumentAmounts(document).map(value => ({ ...value, document }))
+    );
+    if (candidates.length < 2) return;
+
+    const canonicalKey = canonicalizeTransactionRecordKey('financial.repair_costs', 'generic');
+    const field = (fields || []).find(item =>
+      canonicalizeTransactionRecordKey(item.field_key, 'generic') === canonicalKey
+    );
+    const canonicalAmount = parseAmount(field?.value_text) || candidates[0].amount;
+    const canonicalCandidate = candidates.find(item => item.amount === canonicalAmount) || candidates[0];
+    const different = candidates.find(item => item.amount !== canonicalAmount);
+    if (!different) return;
+
+    let fieldId = field?.id || null;
+    if (!fieldId) {
+      const { data: created, error } = await supabase.from('transaction_record_fields').insert({
+        property_id: propertyId,
+        field_key: canonicalKey,
+        field_category: 'financial',
+        display_label: 'Repair Costs',
+        value_text: `$${Math.round(canonicalAmount).toLocaleString('en-US')}`,
+        status: 'extracted',
+        extracted_by: 'document_backfill',
+        source_doc_id: canonicalCandidate.document.id,
+        source_excerpt: canonicalCandidate.excerpt,
+      }).select('id').single();
+      if (error) throw error;
+      fieldId = created?.id || null;
+    }
+    const { data: openConflict, error: conflictLookupError } = await supabase
+      .from('transaction_record_conflicts')
+      .select('id')
+      .eq('property_id', propertyId)
+      .eq('field_key', canonicalKey)
+      .eq('status', 'unresolved')
+      .maybeSingle();
+    if (conflictLookupError) {
+      if (/relation|schema cache|column/i.test(conflictLookupError.message || '')) return;
+      throw conflictLookupError;
+    }
+    const payload = {
+      property_id: propertyId,
+      field_id: fieldId,
+      field_key: canonicalKey,
+      display_label: field?.display_label || 'Repair Costs',
+      canonical_value: field?.value_text || `$${Math.round(canonicalAmount).toLocaleString('en-US')}`,
+      conflicting_value: `$${Math.round(different.amount).toLocaleString('en-US')}`,
+      canonical_source_doc_id: field?.source_doc_id || canonicalCandidate.document.id,
+      conflicting_source_doc_id: different.document.id,
+      canonical_source_page: field?.source_page || null,
+      conflicting_source_page: null,
+      canonical_source_excerpt: field?.source_excerpt || canonicalCandidate.excerpt,
+      conflicting_source_excerpt: different.excerpt,
+      status: 'unresolved',
+      updated_at: new Date().toISOString(),
+    };
+    const query = openConflict?.id
+      ? supabase.from('transaction_record_conflicts').update(payload).eq('id', openConflict.id)
+      : supabase.from('transaction_record_conflicts').insert(payload);
+    const { error: saveError } = await query;
+    if (saveError) throw saveError;
+  } catch (error) {
+    // Conflict migration rollout must not make every room unreadable.
+    if (!/relation|schema cache|column/i.test(error.message || '')) {
+      console.warn('[transaction-state] stored conflict reconciliation failed:', error.message);
+    }
+  }
+}
+
 let requirements = null;
 function getRequirements() {
   if (!requirements) {
@@ -246,6 +383,7 @@ function computeTransactionReadiness(room, recordFields, schemaKey, requiredKeys
 }
 
 async function readTransactionState(propertyId) {
+  await reconcileStoredDocumentConflicts(propertyId);
   const roomQuery = supabase
     .from('deal_rooms')
     .select('id, property_id, property_name, deal_amount, closing_date, workflow_pack_id, base_pack, transaction_type, transaction_subtype, transaction_context, generated_proposal, deal_type, deal_stage, jurisdiction, metadata_values, checklist_items, settlement_mode, settlement_readiness_pct, settlement_mode_locked_at, sealed_at, completed_at')
@@ -363,6 +501,7 @@ module.exports = {
   resolveSchemaKey,
   computeTransactionReadiness,
   computeTransactionRecordState,
+  reconcileStoredDocumentConflicts,
   hasMeaningfulRecordValue,
   readTransactionState,
   recalculateTransactionState,
