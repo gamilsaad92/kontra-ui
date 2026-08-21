@@ -122,7 +122,12 @@ async function reconcileStoredDocumentConflicts(propertyId) {
     // dollar mention become the Transaction Record conflict.
     const repairSections = new Set(['contractor_documentation', 'repair_invoices']);
     const focusedCandidates = candidates.filter(item => repairSections.has(item.document?.section));
-    const candidatePool = focusedCandidates.length >= 2 ? focusedCandidates : candidates;
+    const candidatePool = focusedCandidates.length >= 2
+      ? focusedCandidates.sort((a, b) => {
+        const rank = item => item.document?.section === 'contractor_documentation' ? 0 : 1;
+        return rank(a) - rank(b);
+      })
+      : candidates;
     const repairFields = (fields || [])
       .filter(item => /repair[_ .-]?cost/i.test(item.field_key || '') || /repair costs/i.test(item.display_label || ''))
       .sort((a, b) => {
