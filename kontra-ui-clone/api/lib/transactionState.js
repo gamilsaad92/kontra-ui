@@ -117,14 +117,39 @@ async function reconcileStoredDocumentConflicts(propertyId) {
     }
     if (candidates.length < 2) return;
 
-    const canonicalKey = canonicalizeTransactionRecordKey('financial.repair_costs', 'generic');
-    const field = (fields || []).find(item =>
-      canonicalizeTransactionRecordKey(item.field_key, 'generic') === canonicalKey
-    );
-    const canonicalAmount = parseAmount(field?.value_text) || candidates[0].amount;
-    const canonicalCandidate = candidates.find(item => item.amount === canonicalAmount) || candidates[0];
-    const different = candidates.find(item => item.amount !== canonicalAmount);
+    // Hazard-loss rooms can contain other insurance/adjuster amounts. When
+    // both explicit repair evidence sections exist, never let an unrelated
+    // dollar mention become the Transaction Record conflict.
+    const repairSections = new Set(['contractor_documentation', 'repair_invoices']);
+    const focusedCandidates = candidates.filter(item => repairSections.has(item.document?.section));
+    const candidatePool = focusedCandidates.length >= 2
+      ? focusedCandidates.sort((a, b) => {
+        const rank = item => item.document?.section === 'contractor_documentation' ? 0 : 1;
+        return rank(a) - rank(b);
+      })
+      : candidates;
+    const repairFields = (fields || [])
+      .filter(item => /repair[_ .-]?cost/i.test(item.field_key || '') || /repair costs/i.test(item.display_label || ''))
+      .sort((a, b) => {
+        const rank = item => item.field_key === 'transaction.repair_costs' ? 0 : item.field_key === 'financial.repair_costs' ? 1 : 2;
+        return rank(a) - rank(b);
+      });
+    const field = repairFields[0] || null;
+    const canonicalKey = field?.field_key || 'transaction.repair_costs';
+    const canonicalAmount = parseAmount(field?.value_text) || candidatePool[0].amount;
+    const canonicalCandidate = candidatePool.find(item => item.amount === canonicalAmount) || candidatePool[0];
+    const different = candidatePool.find(item => item.amount !== canonicalAmount);
     if (!different) return;
+    const canonicalSource = focusedCandidates.length >= 2
+      ? (candidatePool.find(item =>
+        item.amount === canonicalAmount && item.document?.section === 'contractor_documentation'
+      ) || canonicalCandidate)
+      : canonicalCandidate;
+    const conflictingSource = focusedCandidates.length >= 2
+      ? (candidatePool.find(item =>
+        item.amount !== canonicalAmount && item.document?.section === 'repair_invoices'
+      ) || different)
+      : different;
 
     let fieldId = field?.id || null;
     if (!fieldId) {
@@ -146,7 +171,7 @@ async function reconcileStoredDocumentConflicts(propertyId) {
       .from('transaction_record_conflicts')
       .select('id')
       .eq('property_id', propertyId)
-      .eq('field_key', canonicalKey)
+      .ilike('display_label', 'Repair Costs')
       .eq('status', 'unresolved')
       .maybeSingle();
     if (conflictLookupError) {
@@ -160,12 +185,12 @@ async function reconcileStoredDocumentConflicts(propertyId) {
       display_label: field?.display_label || 'Repair Costs',
       canonical_value: field?.value_text || `$${Math.round(canonicalAmount).toLocaleString('en-US')}`,
       conflicting_value: `$${Math.round(different.amount).toLocaleString('en-US')}`,
-      canonical_source_doc_id: field?.source_doc_id || canonicalCandidate.document.id,
-      conflicting_source_doc_id: different.document.id,
+       canonical_source_doc_id: canonicalSource.document.id || field?.source_doc_id || null,
+       conflicting_source_doc_id: conflictingSource.document.id,
       canonical_source_page: field?.source_page || null,
       conflicting_source_page: null,
-      canonical_source_excerpt: field?.source_excerpt || canonicalCandidate.excerpt,
-      conflicting_source_excerpt: different.excerpt,
+       canonical_source_excerpt: canonicalSource.excerpt,
+       conflicting_source_excerpt: conflictingSource.excerpt,
       status: 'unresolved',
       updated_at: new Date().toISOString(),
     };
