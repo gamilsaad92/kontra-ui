@@ -1,6 +1,7 @@
 const {
   computeTransactionReadiness,
   computeTransactionRecordState,
+  shouldPreserveResolvedConflict,
 } = require('./lib/transactionState');
 
 const requirements = require('../shared/transaction_record_requirements.json');
@@ -128,6 +129,54 @@ describe('transaction state recalculation', () => {
     expect(readiness.hasBlockingConflicts).toBe(true);
     expect(readiness.approvalReady).toBe(false);
     expect(readiness.fundReleaseReady).toBe(false);
+  });
+
+  it('does not reopen a resolved conflict during a read-after-write refresh', () => {
+    expect(shouldPreserveResolvedConflict({
+      fieldKey: 'financial.repair_costs',
+      latestEvidenceAt: '2026-08-20T12:00:00.000Z',
+      resolvedConflicts: [{
+        field_key: 'financial.repair_costs',
+        status: 'resolved',
+        resolved_at: '2026-08-20T12:01:00.000Z',
+      }],
+    })).toBe(true);
+
+    expect(shouldPreserveResolvedConflict({
+      fieldKey: 'financial.repair_costs',
+      latestEvidenceAt: '2026-08-21T12:00:00.000Z',
+      resolvedConflicts: [{
+        field_key: 'financial.repair_costs',
+        status: 'resolved',
+        resolved_at: '2026-08-20T12:01:00.000Z',
+      }],
+    })).toBe(false);
+  });
+
+  it('treats a resolved canonical field as confirmed after a fresh state read', () => {
+    const fields = [{
+      id: 'repair-cost-field',
+      field_key: 'financial.repair_costs',
+      display_label: 'Repair Costs',
+      value_text: '$229,950',
+      status: 'verified',
+    }];
+    const readiness = computeTransactionReadiness(
+      { workflow_pack_id: 'generic' },
+      fields,
+      'generic',
+      null,
+      [],
+    );
+
+    expect(readiness.recordState.fields).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        key: 'financial.repair_costs',
+        value: '$229,950',
+        status: 'confirmed',
+      }),
+    ]));
+    expect(readiness.unresolvedConflictCount).toBe(0);
   });
 
   it('does not treat four generic transaction facts as sufficient digital-asset preparation', () => {

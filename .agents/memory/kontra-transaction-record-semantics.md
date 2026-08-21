@@ -20,3 +20,9 @@ Demo and overview summaries must derive category membership and counts from the 
 **Why:** a separate generic summary list treated valid pack-specific fields as missing and counted a target-close alias twice, causing the Overview percentage, Key Facts, and detailed Transaction Record to disagree.
 
 **How to apply:** use `getRequiredRecordFields`/`getPackRecordSchema` with `recordState.requiredFields`, exclude non-renderable aliases, and let N/A fields leave the required denominator while remaining visible in the full state.
+
+Document-derived conflict backfills must honor a coordinator-resolved conflict before recreating it during a read-after-write hydration. A later source may reopen the field, but the same evidence must remain resolved.
+
+**Why:** conflict resolution updates durable field and conflict rows before recalculation; re-scanning the unchanged documents in that same recalculation can otherwise resurrect the blocker and make every derived surface disagree.
+
+**How to apply:** compare resolved conflict timestamps with the newest relevant evidence before upserting a document-derived conflict, and resolve the selected conflict ID rather than every conflict sharing a field key.

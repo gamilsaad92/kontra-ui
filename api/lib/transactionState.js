@@ -34,6 +34,27 @@ function parseAmount(value) {
   return Number.isFinite(amount) && amount > 0 ? amount : null;
 }
 
+function shouldPreserveResolvedConflict({
+  resolvedConflicts = [],
+  fieldKey,
+  latestEvidenceAt = null,
+} = {}) {
+  const resolved = (Array.isArray(resolvedConflicts) ? resolvedConflicts : [])
+    .filter(conflict =>
+      conflict?.status === 'resolved'
+      && conflict?.field_key === fieldKey
+      && conflict?.resolved_at
+    )
+    .sort((a, b) => new Date(b.resolved_at).getTime() - new Date(a.resolved_at).getTime())[0];
+  if (!resolved) return false;
+
+  // A resolution applies to the evidence that existed when it was made. A
+  // genuinely newer source is allowed to reopen the field for review, but the
+  // same source pair must not be resurrected by the read-after-write path.
+  if (!latestEvidenceAt) return true;
+  return new Date(resolved.resolved_at).getTime() >= new Date(latestEvidenceAt).getTime();
+}
+
 function storedDocumentAmounts(document) {
   const analysis = document?.analysis && typeof document.analysis === 'object'
     ? document.analysis
@@ -85,6 +106,10 @@ async function reconcileStoredDocumentConflicts(propertyId) {
     const sourceDocuments = (documents || []).filter(document =>
       document.section !== 'cross_document_verification'
     );
+    const latestEvidenceAt = (documents || [])
+      .map(document => document.created_at)
+      .filter(Boolean)
+      .sort((a, b) => new Date(b).getTime() - new Date(a).getTime())[0] || null;
     const candidates = sourceDocuments.flatMap(document =>
       storedDocumentAmounts(document).map(value => ({ ...value, document }))
     );
@@ -169,15 +194,22 @@ async function reconcileStoredDocumentConflicts(propertyId) {
     }
     const { data: openConflict, error: conflictLookupError } = await supabase
       .from('transaction_record_conflicts')
-      .select('id')
+      .select('id, field_key, status, resolved_at')
       .eq('property_id', propertyId)
       .ilike('display_label', 'Repair Costs')
-      .eq('status', 'unresolved')
-      .maybeSingle();
+      .order('updated_at', { ascending: false });
     if (conflictLookupError) {
       if (/relation|schema cache|column/i.test(conflictLookupError.message || '')) return;
       throw conflictLookupError;
     }
+    if (shouldPreserveResolvedConflict({
+      resolvedConflicts: openConflict || [],
+      fieldKey: canonicalKey,
+      latestEvidenceAt,
+    })) return;
+    const unresolvedConflict = (openConflict || []).find(conflict =>
+      conflict.status === 'unresolved' && conflict.field_key === canonicalKey
+    );
     const payload = {
       property_id: propertyId,
       field_id: fieldId,
@@ -194,8 +226,8 @@ async function reconcileStoredDocumentConflicts(propertyId) {
       status: 'unresolved',
       updated_at: new Date().toISOString(),
     };
-    const query = openConflict?.id
-      ? supabase.from('transaction_record_conflicts').update(payload).eq('id', openConflict.id)
+    const query = unresolvedConflict?.id
+      ? supabase.from('transaction_record_conflicts').update(payload).eq('id', unresolvedConflict.id)
       : supabase.from('transaction_record_conflicts').insert(payload);
     const { error: saveError } = await query;
     if (saveError) throw saveError;
@@ -557,6 +589,7 @@ module.exports = {
   computeTransactionRecordState,
   reconcileStoredDocumentConflicts,
   hasMeaningfulRecordValue,
+  shouldPreserveResolvedConflict,
   readTransactionState,
   recalculateTransactionState,
 };

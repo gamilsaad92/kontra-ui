@@ -4368,6 +4368,7 @@ async function upsertTransactionRecordConflict({
 }
 
 async function resolveTransactionRecordConflicts(propertyId, fieldKey, {
+  conflictId = null,
   resolutionValue = null,
   resolutionNote = null,
   resolvedBy = 'coordinator',
@@ -4384,8 +4385,8 @@ async function resolveTransactionRecordConflicts(propertyId, fieldKey, {
       updated_at: new Date().toISOString(),
     })
     .eq('property_id', propertyId)
-    .eq('field_key', fieldKey)
-    .eq('status', 'unresolved');
+    .eq('status', 'unresolved')
+    .match(conflictId ? { id: conflictId } : { field_key: fieldKey });
   if (error && !/relation|schema cache|column/i.test(error.message || '')) throw error;
 }
 
@@ -9317,6 +9318,10 @@ app.post('/api/public/deal-room/:propertyId/transaction-record/conflicts/:confli
       .eq('property_id', propertyId)
       .maybeSingle();
     if (fieldError) throw fieldError;
+    const priorField = field ? {
+      value_text: field.value_text,
+      status: field.status,
+    } : null;
     if (field) {
       const { error } = await supabase.from('transaction_record_fields').update({
         value_text: selectedValue,
@@ -9327,24 +9332,41 @@ app.post('/api/public/deal-room/:propertyId/transaction-record/conflicts/:confli
         updated_at: new Date().toISOString(),
       }).eq('id', field.id).eq('property_id', propertyId);
       if (error) throw error;
+    }
+    try {
+      await resolveTransactionRecordConflicts(propertyId, conflict.field_key, {
+        conflictId,
+        resolutionValue: selectedValue,
+        resolutionNote: note ? String(note).slice(0, 500) : 'Coordinator resolved the material source discrepancy.',
+        resolvedBy: access.email || 'coordinator',
+      });
+    } catch (resolutionError) {
+      // Keep the persisted field and conflict row aligned if the second write
+      // fails. Without compensation, the audit trail can say "confirmed" while
+      // the conflict remains blocking (or vice versa).
+      if (field && priorField) {
+        await supabase.from('transaction_record_fields').update({
+          value_text: priorField.value_text,
+          status: priorField.status,
+          updated_at: new Date().toISOString(),
+        }).eq('id', field.id).eq('property_id', propertyId);
+      }
+      throw resolutionError;
+    }
+    if (field) {
       await recordTransactionFieldHistory({
         fieldId: field.id,
         propertyId,
         eventType: 'confirmed',
         actorEmail: access.email || 'coordinator',
         actorRole: 'Deal Coordinator',
-        priorValue: field.value_text,
+        priorValue: priorField?.value_text,
         newValue: selectedValue,
-        priorStatus: field.status,
+        priorStatus: priorField?.status,
         newStatus: 'verified',
         metadata: { conflictId, resolution: true },
       });
     }
-    await resolveTransactionRecordConflicts(propertyId, conflict.field_key, {
-      resolutionValue: selectedValue,
-      resolutionNote: note ? String(note).slice(0, 500) : 'Coordinator resolved the material source discrepancy.',
-      resolvedBy: access.email || 'coordinator',
-    });
     const recalculated = await recalculateTransactionState(propertyId, {
       source: 'transaction_record_conflict_resolved',
       actorId: access.actorId,
