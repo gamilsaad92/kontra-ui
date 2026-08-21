@@ -2923,6 +2923,29 @@ function formatSnapshotValue(field) {
   return field.value_text;
 }
 
+function getTransactionRecordCategory(field) {
+  const rawCategory = String(
+    field?.category
+    || field?.field_category
+    || field?.key
+    || field?.field_key
+    || '',
+  ).split('.')[0].toLowerCase();
+  return {
+    transaction: 'terms',
+    terms: 'terms',
+    parties: 'parties',
+    beneficial_ownership: 'parties',
+    asset: 'asset',
+    asset_identity: 'asset',
+    financial: 'financial',
+    legal: 'legal',
+    approvals: 'legal',
+    approval: 'legal',
+    ownership: 'parties',
+  }[rawCategory] || rawCategory;
+}
+
 // ── WhatNeedsAttention ────────────────────────────────────────────────────────
 // Unified prioritized feed merging AI findings, next actions, and issues.
 // Replaces the old separate "Next Actions", "AI Findings", and "Issues" cards.
@@ -5280,14 +5303,22 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
     }
     if (action.type === 'record') {
       onTabChange?.('overview');
-      const category = String(
-        action.field?.key || action.field?.field_key || action.field?.field_category || '',
-      ).split('.')[0];
-      window.setTimeout(() => {
+      const category = getTransactionRecordCategory(action.field);
+      const revealRecordCategory = (attempt = 0) => {
         const target = document.getElementById(`transaction-record-category-${category}`);
-        target?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        target?.querySelector('button')?.click();
-      }, 80);
+        if (target) {
+          target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          target.querySelector('button')?.click();
+          return;
+        }
+        // Transaction Details Panel hydrates after the Overview action feed.
+        // Wait for that async content instead of dropping the user's action
+        // when the old fixed delay happens before the category is mounted.
+        if (attempt < 24) {
+          window.setTimeout(() => revealRecordCategory(attempt + 1), 50);
+        }
+      };
+      revealRecordCategory();
     }
   }, [onTabChange]);
   // The API's record_state includes the resolved schema, aliases, and the
