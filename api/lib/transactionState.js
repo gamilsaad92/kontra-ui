@@ -140,6 +140,16 @@ async function reconcileStoredDocumentConflicts(propertyId) {
     const canonicalCandidate = candidatePool.find(item => item.amount === canonicalAmount) || candidatePool[0];
     const different = candidatePool.find(item => item.amount !== canonicalAmount);
     if (!different) return;
+    const canonicalSource = focusedCandidates.length >= 2
+      ? (candidatePool.find(item =>
+        item.amount === canonicalAmount && item.document?.section === 'contractor_documentation'
+      ) || canonicalCandidate)
+      : canonicalCandidate;
+    const conflictingSource = focusedCandidates.length >= 2
+      ? (candidatePool.find(item =>
+        item.amount !== canonicalAmount && item.document?.section === 'repair_invoices'
+      ) || different)
+      : different;
 
     let fieldId = field?.id || null;
     if (!fieldId) {
@@ -175,12 +185,12 @@ async function reconcileStoredDocumentConflicts(propertyId) {
       display_label: field?.display_label || 'Repair Costs',
       canonical_value: field?.value_text || `$${Math.round(canonicalAmount).toLocaleString('en-US')}`,
       conflicting_value: `$${Math.round(different.amount).toLocaleString('en-US')}`,
-      canonical_source_doc_id: field?.source_doc_id || canonicalCandidate.document.id,
-      conflicting_source_doc_id: different.document.id,
+       canonical_source_doc_id: canonicalSource.document.id || field?.source_doc_id || null,
+       conflicting_source_doc_id: conflictingSource.document.id,
       canonical_source_page: field?.source_page || null,
       conflicting_source_page: null,
-      canonical_source_excerpt: field?.source_excerpt || canonicalCandidate.excerpt,
-      conflicting_source_excerpt: different.excerpt,
+       canonical_source_excerpt: canonicalSource.excerpt,
+       conflicting_source_excerpt: conflictingSource.excerpt,
       status: 'unresolved',
       updated_at: new Date().toISOString(),
     };
