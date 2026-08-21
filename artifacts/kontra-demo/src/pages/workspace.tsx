@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useLocation } from "wouter";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -125,10 +125,15 @@ export default function Workspace() {
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
   const [analyzing, setAnalyzing] = useState(false);
   const [analyzed, setAnalyzed] = useState(false);
+  const [invitedRoles, setInvitedRoles] = useState<string[]>([]);
+  const [sharedWithCounterparty, setSharedWithCounterparty] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
+  useEffect(() => {
+    if (!selectedPack) setLocation("/");
+  }, [selectedPack, setLocation]);
+
   if (!selectedPack) {
-    setLocation("/");
     return null;
   }
 
@@ -138,6 +143,12 @@ export default function Workspace() {
     setUploadedFile(file);
     setAnalyzing(true);
     setTimeout(() => { setAnalyzing(false); setAnalyzed(true); setActiveTab("intelligence"); }, 2800);
+  };
+
+  const handleFileDrop = (event: React.DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    const file = event.dataTransfer.files?.[0];
+    if (file) handleUpload(file);
   };
 
   // ── Tab content ─────────────────────────────────────────────────────────
@@ -259,7 +270,16 @@ export default function Workspace() {
           <h4 className="text-sm font-medium mb-4 flex items-center gap-2">
             <Upload className="w-4 h-4 text-muted-foreground" /> Upload Document
           </h4>
-          <input ref={fileRef} type="file" className="hidden" onChange={e => { if (e.target.files?.[0]) handleUpload(e.target.files[0]); }} />
+           <input
+             ref={fileRef}
+             type="file"
+             accept=".pdf,.xls,.xlsx,.csv"
+             className="hidden"
+             onChange={e => {
+               if (e.target.files?.[0]) handleUpload(e.target.files[0]);
+               e.currentTarget.value = "";
+             }}
+           />
           {analyzing ? (
             <div className="border border-dashed border-primary/40 rounded-lg p-8 text-center space-y-3">
               <div className="flex justify-center">
@@ -280,6 +300,8 @@ export default function Workspace() {
             <div
               className="border-2 border-dashed border-border/50 hover:border-primary/40 rounded-lg p-10 text-center cursor-pointer transition-colors"
               onClick={() => fileRef.current?.click()}
+              onDragOver={event => event.preventDefault()}
+              onDrop={handleFileDrop}
             >
               <Upload className="w-8 h-8 text-muted-foreground mx-auto mb-3" />
               <p className="text-sm font-medium mb-1">Drag & drop or click to upload</p>
@@ -323,7 +345,12 @@ export default function Workspace() {
                     <span className="text-xs text-emerald-400">Invited</span>
                   </div>
                 ) : (
-                  <Button size="sm" variant="outline" className="text-xs h-7 gap-1.5">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="text-xs h-7 gap-1.5"
+                    onClick={() => setInvitedRoles(current => [...current, role.name])}
+                  >
                     <Mail className="w-3 h-3" /> Invite
                   </Button>
                 )}
@@ -423,8 +450,13 @@ export default function Workspace() {
             <h4 className="text-sm font-medium flex items-center gap-2">
               <Package className="w-4 h-4 text-muted-foreground" /> Closing Package
             </h4>
-            <Button size="sm" variant="outline" className="text-xs h-7 gap-1.5">
-              <Lock className="w-3 h-3" /> Share with Counterparty
+            <Button
+              size="sm"
+              variant="outline"
+              className="text-xs h-7 gap-1.5"
+              onClick={() => setSharedWithCounterparty(true)}
+            >
+              <Lock className="w-3 h-3" /> {sharedWithCounterparty ? "Shared with Counterparty" : "Share with Counterparty"}
             </Button>
           </div>
           <div className="p-5 space-y-3">

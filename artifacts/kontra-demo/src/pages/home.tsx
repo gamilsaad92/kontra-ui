@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { motion } from "framer-motion";
 import { ArrowRight, Building2, TrendingUp, Rocket, Sparkles, ChevronRight, Check } from "lucide-react";
@@ -30,12 +30,17 @@ export default function Home() {
   const { setSelectedPack, setDealName } = useDemoContext();
   const [hoveredPack, setHoveredPack] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const navigationTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => () => {
+    if (navigationTimer.current) clearTimeout(navigationTimer.current);
+  }, []);
 
   const handleSelectPack = (pack: WorkflowPack) => {
     setSelectedId(pack.id);
     setSelectedPack(pack);
     setDealName(pack.sampleDealName);
-    setTimeout(() => setLocation("/generating"), 180);
+    navigationTimer.current = setTimeout(() => setLocation("/generating"), 180);
   };
 
   return (
