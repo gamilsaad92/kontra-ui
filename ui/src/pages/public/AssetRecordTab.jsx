@@ -826,6 +826,7 @@ export default function AssetRecordTab({
   const [refreshKey, setRefreshKey] = useState(0);
   const [extracting, setExtracting] = useState(false);
   const [enablingDA, setEnablingDA] = useState(false);
+  const [daSuggestionDismissed, setDaSuggestionDismissed] = useState(false);
 
   // Summary is the operational default; Full Record remains available for the
   // complete pack schema, including expected-but-empty items.
@@ -1017,7 +1018,7 @@ export default function AssetRecordTab({
       ))}
 
       {/* ── Digital Asset Readiness ── */}
-      {isTokenizationRelevant && !daReadinessEnabled && isCoordinator && (
+      {isTokenizationRelevant && !daReadinessEnabled && !daSuggestionDismissed && isCoordinator && (
         <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
           <div className="px-5 py-4">
             <div className="flex items-start gap-3 mb-3">
@@ -1038,7 +1039,10 @@ export default function AssetRecordTab({
                 style={{ background: ACCENT }}>
                 {enablingDA ? "Enabling…" : "Add preparation workflow"}
               </button>
-              <button className="text-xs font-medium px-3 py-1.5 rounded-xl border border-gray-200 text-gray-500 hover:bg-gray-50 transition">
+              <button
+                onClick={() => setDaSuggestionDismissed(true)}
+                className="text-xs font-medium px-3 py-1.5 rounded-xl border border-gray-200 text-gray-500 hover:bg-gray-50 transition"
+              >
                 Not needed
               </button>
             </div>

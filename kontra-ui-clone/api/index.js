@@ -5801,7 +5801,7 @@ app.post('/api/public/deal-room/send-invite-email', async (req, res) => {
     const { data: invite, error: inviteErr } = await supabase
       .from('deal_room_invites')
       .select('id, property_id, invited_email, role_key, status')
-      .eq('token_hash', tokenHash)
+      .eq('invite_token_hash', tokenHash)
       .single();
     if (inviteErr || !invite) return res.status(404).json({ error: 'Invite not found' });
     if (invite.status === 'revoked') return res.status(400).json({ error: 'Invite is revoked' });
@@ -6824,6 +6824,8 @@ app.get('/api/public/deal-room/:propertyId/asset-passport', async (req, res) => 
 // Portable structured data for closing, audit, and downstream integrations.
 app.get('/api/public/deal-room/:propertyId/asset-metadata', async (req, res) => {
   const { propertyId } = req.params;
+  const access = await getRoomAccessContext(req, propertyId);
+  if (access.mode === 'anonymous') return accessDenied(res);
   const { data: room, error } = await supabase
     .from('deal_rooms')
     .select('property_id, property_name, workflow_pack_id, deal_type, jurisdiction, metadata_values, created_at, first_name, last_name')
@@ -7033,6 +7035,8 @@ app.patch('/api/public/deal-room/:propertyId/jurisdiction', async (req, res) => 
 // ── Notification log — owner can see what emails were sent ──────────────────
 app.get('/api/public/deal-room/:propertyId/notifications', async (req, res) => {
   const { propertyId } = req.params;
+  const access = await getRoomAccessContext(req, propertyId);
+  if (access.mode !== 'owner') return accessDenied(res, 'Only the deal-room owner can view notifications');
   try {
     const { data, error } = await supabase
       .from('deal_notifications')

@@ -116,6 +116,20 @@ describe('room access and checklist scoping', () => {
     expect(response.status).not.toBe(403);
   });
 
+  it('blocks anonymous access to transaction metadata', async () => {
+    const response = await request(app)
+      .get('/api/public/deal-room/room-1/asset-metadata');
+
+    expect(response.status).toBe(403);
+  });
+
+  it('blocks anonymous access to the notification log', async () => {
+    const response = await request(app)
+      .get('/api/public/deal-room/room-1/notifications');
+
+    expect(response.status).toBe(403);
+  });
+
   it('keeps a participant session role-scoped when no owner token is present', async () => {
     const access = await app.getRoomAccessContext({
       headers: { 'x-kontra-session': mockParticipantToken },
