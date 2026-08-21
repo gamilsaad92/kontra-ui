@@ -7079,6 +7079,11 @@ export default function DealRoomPage() {
     );
   }
 
+  // Every resolved deal-room URL uses the current workspace shell. The
+  // property.isCustom flag is retained for data/panel behavior, but must not
+  // select the retired welcome/activity/checklist layout.
+  const isCurrentWorkspace = Boolean(property);
+
   const SECTION_MAP = property.isCustom
     ? buildPendingSectionMap(property, role, onAnalysisSaved, propertyId, analysesRefreshKey, pack)
     : {
@@ -7258,7 +7263,7 @@ export default function DealRoomPage() {
       )}
 
       {/* Workspace tab nav — coordinator view of live paid rooms only */}
-      {property.isCustom && (
+      {isCurrentWorkspace && (
         <WorkspaceTabNav
           activeTab={activeTab}
           onChange={setActiveTab}
@@ -7269,7 +7274,7 @@ export default function DealRoomPage() {
 
       <div className="max-w-5xl mx-auto px-6 py-8">
 
-        {property.isCustom ? (
+        {isCurrentWorkspace ? (
 
           /* ── Shared workspace layout ───────────────────────────────────── */
           <>
