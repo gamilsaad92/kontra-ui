@@ -117,13 +117,23 @@ async function reconcileStoredDocumentConflicts(propertyId) {
     }
     if (candidates.length < 2) return;
 
-    const canonicalKey = canonicalizeTransactionRecordKey('financial.repair_costs', 'generic');
-    const field = (fields || []).find(item =>
-      canonicalizeTransactionRecordKey(item.field_key, 'generic') === canonicalKey
-    );
-    const canonicalAmount = parseAmount(field?.value_text) || candidates[0].amount;
-    const canonicalCandidate = candidates.find(item => item.amount === canonicalAmount) || candidates[0];
-    const different = candidates.find(item => item.amount !== canonicalAmount);
+    // Hazard-loss rooms can contain other insurance/adjuster amounts. When
+    // both explicit repair evidence sections exist, never let an unrelated
+    // dollar mention become the Transaction Record conflict.
+    const repairSections = new Set(['contractor_documentation', 'repair_invoices']);
+    const focusedCandidates = candidates.filter(item => repairSections.has(item.document?.section));
+    const candidatePool = focusedCandidates.length >= 2 ? focusedCandidates : candidates;
+    const repairFields = (fields || [])
+      .filter(item => /repair[_ .-]?cost/i.test(item.field_key || '') || /repair costs/i.test(item.display_label || ''))
+      .sort((a, b) => {
+        const rank = item => item.field_key === 'transaction.repair_costs' ? 0 : item.field_key === 'financial.repair_costs' ? 1 : 2;
+        return rank(a) - rank(b);
+      });
+    const field = repairFields[0] || null;
+    const canonicalKey = field?.field_key || 'transaction.repair_costs';
+    const canonicalAmount = parseAmount(field?.value_text) || candidatePool[0].amount;
+    const canonicalCandidate = candidatePool.find(item => item.amount === canonicalAmount) || candidatePool[0];
+    const different = candidatePool.find(item => item.amount !== canonicalAmount);
     if (!different) return;
 
     let fieldId = field?.id || null;
@@ -146,7 +156,7 @@ async function reconcileStoredDocumentConflicts(propertyId) {
       .from('transaction_record_conflicts')
       .select('id')
       .eq('property_id', propertyId)
-      .eq('field_key', canonicalKey)
+      .ilike('display_label', 'Repair Costs')
       .eq('status', 'unresolved')
       .maybeSingle();
     if (conflictLookupError) {
