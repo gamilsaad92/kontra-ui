@@ -41,6 +41,10 @@ export default function LoginScreen() {
       await loginAsDemo(role);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       router.replace("/(tabs)");
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Demo login failed. Please try again.";
+      setError(msg);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
     } finally {
       setLoading(false);
     }

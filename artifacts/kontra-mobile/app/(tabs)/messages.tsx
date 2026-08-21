@@ -20,13 +20,25 @@ import { Feather } from "@expo/vector-icons";
     { id: "m2", from: "You", body: "Thank you. Can you also confirm the per diem interest rate that will be used?", time: "Apr 15, 11:05 AM", isMe: true },
     { id: "m3", from: "Kontra Servicing", body: "Of course. The per diem will be calculated at 6.10% / 365 × current outstanding principal. We'll include the full calculation in your payoff statement.", time: "Apr 15, 2:18 PM", isMe: false },
   ];
+  const THREAD_MESSAGES_BY_ID: Record<string, Message[]> = {
+    T001: THREAD_MESSAGES,
+    T002: [
+      { id: "t2m1", from: "Kontra Servicing", body: "Please provide the updated rent roll for review so we can continue the maturity extension assessment.", time: "Apr 10, 9:14 AM", isMe: false },
+    ],
+    T003: [
+      { id: "t3m1", from: "Kontra Servicing", body: "Your insurance certificate has been approved and filed to the loan record.", time: "Mar 28, 3:42 PM", isMe: false },
+    ],
+    T004: [
+      { id: "t4m1", from: "Kontra Servicing", body: "Phase 2 draw has been approved. Funds will be released according to the scheduled disbursement.", time: "Mar 15, 1:08 PM", isMe: false },
+    ],
+  };
 
   export default function MessagesScreen() {
     const colors = useColors();
     const insets = useSafeAreaInsets();
     const isWeb = Platform.OS === "web";
     const [selectedThread, setSelectedThread] = useState<Thread | null>(null);
-    const [messages, setMessages] = useState<Message[]>(THREAD_MESSAGES);
+  const [messages, setMessages] = useState<Message[]>(THREAD_MESSAGES);
     const [input, setInput] = useState("");
     const flatRef = useRef<FlatList>(null);
 
@@ -71,7 +83,7 @@ import { Feather } from "@expo/vector-icons";
     return (
       <FlatList data={THREADS} keyExtractor={t => t.id} style={{ backgroundColor: colors.background }} contentContainerStyle={[s.listContainer, { paddingTop: isWeb ? 83 : insets.top + 16, paddingBottom: isWeb ? 34 : insets.bottom + 80 }]} ItemSeparatorComponent={() => <View style={{ height: 8 }} />}
         renderItem={({ item }) => (
-          <TouchableOpacity onPress={() => { setSelectedThread(item); Haptics.selectionAsync(); }} activeOpacity={0.8}>
+            <TouchableOpacity onPress={() => { setSelectedThread(item); setMessages(THREAD_MESSAGES_BY_ID[item.id] ?? []); Haptics.selectionAsync(); }} activeOpacity={0.8}>
             <View style={[s.threadCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
               {item.unread && <View style={[s.unreadDot, { backgroundColor: colors.borrower }]} />}
               <View style={s.threadBody}>

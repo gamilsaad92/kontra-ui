@@ -51,29 +51,33 @@ export default function ProfileScreen() {
     ]);
   };
 
+  const showUnavailable = (label: string) => {
+    Alert.alert(label, "This account area is not available in the current demo.");
+  };
+
   const menuGroups: { title: string; items: MenuItem[] }[] = [
     {
       title: "Account",
       items: [
-        { icon: "user", label: "Personal Information", sublabel: user.email },
-        { icon: "bell", label: "Notifications" },
-        { icon: "lock", label: "Security & Privacy" },
+        { icon: "user", label: "Personal Information", sublabel: user.email, onPress: () => showUnavailable("Personal Information") },
+        { icon: "bell", label: "Notifications", onPress: () => showUnavailable("Notifications") },
+        { icon: "lock", label: "Security & Privacy", onPress: () => showUnavailable("Security & Privacy") },
       ],
     },
     {
       title: "Portfolio",
       items: [
-        { icon: "file-text", label: "Statements & Reports" },
-        { icon: "download", label: "Export Data" },
-        { icon: "calendar", label: "Tax Documents" },
+        { icon: "file-text", label: "Statements & Reports", onPress: () => showUnavailable("Statements & Reports") },
+        { icon: "download", label: "Export Data", onPress: () => showUnavailable("Export Data") },
+        { icon: "calendar", label: "Tax Documents", onPress: () => showUnavailable("Tax Documents") },
       ],
     },
     {
       title: "Support",
       items: [
-        { icon: "headphones", label: "Contact Servicer" },
-        { icon: "book-open", label: "Help Center" },
-        { icon: "info", label: "About Kontra" },
+        { icon: "headphones", label: "Contact Servicer", onPress: () => showUnavailable("Contact Servicer") },
+        { icon: "book-open", label: "Help Center", onPress: () => showUnavailable("Help Center") },
+        { icon: "info", label: "About Kontra", onPress: () => showUnavailable("About Kontra") },
       ],
     },
   ];
@@ -149,7 +153,7 @@ export default function ProfileScreen() {
                   styles.menuItem,
                   i < group.items.length - 1 && { borderBottomWidth: 1, borderBottomColor: colors.border },
                 ]}
-                onPress={item.onPress ?? (() => Haptics.selectionAsync())}
+                onPress={() => { item.onPress?.(); Haptics.selectionAsync(); }}
                 activeOpacity={0.7}
               >
                 <View style={[styles.menuIcon, { backgroundColor: colors.secondary }]}>

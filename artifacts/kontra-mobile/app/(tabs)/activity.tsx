@@ -102,8 +102,7 @@ export default function ActivityScreen() {
                 destructive: colors.destructive,
               }[cfg.tone];
               return (
-                <TouchableOpacity key={item.id} activeOpacity={0.8}>
-                  <KontraCard padding={14} style={!item.read ? { borderLeftWidth: 3, borderLeftColor: accentColor } as any : undefined}>
+                <KontraCard key={item.id} padding={14} style={!item.read ? { borderLeftWidth: 3, borderLeftColor: accentColor } as any : undefined}>
                     <View style={s.row}>
                       <View style={[s.icon, { backgroundColor: `${tone}18` }]}>
                         <Feather name={cfg.icon} size={18} color={tone} />
@@ -119,8 +118,7 @@ export default function ActivityScreen() {
                         </Text>
                       )}
                     </View>
-                  </KontraCard>
-                </TouchableOpacity>
+                </KontraCard>
               );
               })}
             </View>

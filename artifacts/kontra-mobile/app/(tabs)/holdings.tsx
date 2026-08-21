@@ -17,6 +17,7 @@ export default function HoldingsScreen() {
   const isWeb = Platform.OS === "web";
   const [filter, setFilter] = useState("All");
   const [sortBy, setSortBy] = useState<"balance" | "rate" | "ytd">("balance");
+  const [expandedLoanId, setExpandedLoanId] = useState<string | null>(null);
 
   const { loans, summary, loading, isLive } = usePortfolioData();
 
@@ -85,7 +86,7 @@ export default function HoldingsScreen() {
 
       <SectionHeader title={`${filtered.length} Holdings`} />
       <View style={{ gap: 12 }}>
-        {filtered.map(h => (
+          {filtered.map(h => (
           <KontraCard key={h.id} padding={16}>
             <View style={s.cardTop}>
               <View style={s.cardLeft}>
@@ -112,11 +113,27 @@ export default function HoldingsScreen() {
             </View>
             <View style={[s.footer, { borderTopColor: colors.border }]}>
               <Text style={[s.maturity, { color: colors.mutedForeground }]}>Matures {h.maturity}</Text>
-              <TouchableOpacity style={[s.viewBtn, { borderColor: colors.investor }]} activeOpacity={0.8}>
-                <Text style={[s.viewBtnText, { color: colors.investor }]}>Details</Text>
+              <TouchableOpacity
+                style={[s.viewBtn, { borderColor: colors.investor }]}
+                activeOpacity={0.8}
+                onPress={() => setExpandedLoanId(current => current === h.id ? null : h.id)}
+                accessibilityRole="button"
+                accessibilityLabel={`${expandedLoanId === h.id ? "Hide" : "View"} details for ${h.property}`}
+              >
+                <Text style={[s.viewBtnText, { color: colors.investor }]}>{expandedLoanId === h.id ? "Hide" : "Details"}</Text>
                 <Feather name="chevron-right" size={14} color={colors.investor} />
               </TouchableOpacity>
             </View>
+            {expandedLoanId === h.id && (
+              <View style={[s.detailPanel, { backgroundColor: colors.secondary }]}>
+                <Text style={[s.detailText, { color: colors.mutedForeground }]}>
+                  Debt service coverage ratio: {h.dscr ? `${h.dscr}x` : "—"}
+                </Text>
+                <Text style={[s.detailText, { color: colors.mutedForeground }]}>
+                  Next payment: {h.nextPayment ?? "Not scheduled"}
+                </Text>
+              </View>
+            )}
           </KontraCard>
         ))}
       </View>
@@ -153,4 +170,6 @@ const s = StyleSheet.create({
   maturity: { fontSize: 12, fontFamily: "Inter_400Regular" },
   viewBtn: { flexDirection: "row", alignItems: "center", gap: 4, borderWidth: 1, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 5 },
   viewBtnText: { fontSize: 12, fontFamily: "Inter_600SemiBold" },
+  detailPanel: { marginTop: 10, padding: 10, borderRadius: 8, gap: 3 },
+  detailText: { fontSize: 11, fontFamily: "Inter_400Regular" },
 });
