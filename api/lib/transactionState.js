@@ -278,6 +278,14 @@ function hasMeaningfulRecordValue(field) {
   return !EMPTY_RECORD_VALUES.has(value) && field?.status !== 'not_applicable';
 }
 
+function normalizeRecordLabel(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .replace(/\s+/g, ' ');
+}
+
 function normalizeTransactionConflicts(conflicts) {
   return (Array.isArray(conflicts) ? conflicts : [])
     .filter(conflict => String(conflict?.status || 'unresolved').toLowerCase() === 'unresolved')
@@ -318,7 +326,10 @@ function recordStatusRank(field) {
  */
 function computeTransactionRecordState(recordFields, schemaKey, requiredKeysOverride = null, conflicts = []) {
   const allRequirements = getRequirements();
-  const requiredKeys = [...new Set(requiredKeysOverride || allRequirements[schemaKey] || [])];
+  const requiredDefinitions = requiredKeysOverride || allRequirements[schemaKey] || [];
+  const requiredKeys = [...new Set(requiredDefinitions.map(field =>
+    typeof field === 'string' ? field : field?.key
+  ).filter(Boolean))];
   const canonicalKey = field => canonicalizeTransactionRecordKey(field, schemaKey);
   const byKey = new Map();
 
@@ -364,19 +375,37 @@ function computeTransactionRecordState(recordFields, schemaKey, requiredKeysOver
   });
 
   const fieldByKey = new Map(fields.map(field => [field.key, field]));
+  const requiredLabelByKey = new Map(requiredDefinitions
+    .filter(field => field && typeof field === 'object' && field.key && field.label)
+    .map(field => [canonicalKey(field.key), normalizeRecordLabel(field.label)]));
+  const fieldByLabel = new Map();
+  for (const field of fields) {
+    const label = normalizeRecordLabel(field.label);
+    if (!label || fieldByLabel.has(label)) {
+      if (label) fieldByLabel.set(label, null);
+      continue;
+    }
+    fieldByLabel.set(label, field);
+  }
   const notApplicableKeys = new Set(fields
     .filter(field => field.status === 'not_applicable')
     .map(field => field.key));
   const activeRequiredKeys = requiredKeys.filter(key => !notApplicableKeys.has(key));
-  const requiredFields = activeRequiredKeys.map(key => fieldByKey.get(key) || {
-    key,
-    label: key,
-    value: null,
-    status: 'missing',
-    rawStatus: null,
-    attention: null,
-    required: true,
-    updatedAt: null,
+  const requiredFields = activeRequiredKeys.map(key => {
+    const label = requiredLabelByKey.get(canonicalKey(key));
+    const matchedByLabel = label ? fieldByLabel.get(label) : null;
+    return fieldByKey.get(key) || (matchedByLabel || {
+      key,
+      label: requiredDefinitions.find(field =>
+        (typeof field === 'object' ? field?.key : field) === key
+      )?.label || key,
+      value: null,
+      status: 'missing',
+      rawStatus: null,
+      attention: null,
+      required: true,
+      updatedAt: null,
+    });
   });
   const count = (items, status) => items.filter(field => field.status === status).length;
   const confirmedCount = count(requiredFields, 'confirmed');
@@ -509,10 +538,10 @@ async function readTransactionState(propertyId) {
   const packId = await getRoomPackId(room);
   const schemaKey = await resolveSchemaKey(room, packId);
   const generatedProposal = room?.generated_proposal || room?.metadata_values?.generated_proposal;
-  const dynamicRequiredKeys = schemaKey === 'generated_ai'
+    const dynamicRequiredKeys = schemaKey === 'generated_ai'
     ? (generatedProposal?.transaction_record_fields || [])
       .filter(field => field.required !== false)
-      .map(field => field.key)
+        .map(field => ({ key: field.key, label: field.label }))
     : null;
    const recordState = computeTransactionRecordState(recordFields || [], schemaKey, dynamicRequiredKeys, conflicts);
   return {

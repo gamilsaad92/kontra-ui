@@ -179,6 +179,30 @@ describe('transaction state recalculation', () => {
     expect(readiness.unresolvedConflictCount).toBe(0);
   });
 
+  it('matches a persisted required field by its unique generated label when keys differ', () => {
+    const readiness = computeTransactionReadiness(
+      { workflow_pack_id: 'generated_ai' },
+      [{
+        id: 'repair-cost-field',
+        field_key: 'financial.repair_costs',
+        display_label: 'Repair Costs',
+        value_text: '$229,950',
+        status: 'verified',
+      }],
+      'generated_ai',
+      [{ key: 'transaction.repairs_total', label: 'Repair Costs' }],
+      [],
+    );
+
+    expect(readiness.confirmedCount).toBe(1);
+    expect(readiness.requiredCount).toBe(1);
+    expect(readiness.overall).toBe(100);
+    expect(readiness.recordState.requiredFields[0]).toEqual(expect.objectContaining({
+      value: '$229,950',
+      status: 'confirmed',
+    }));
+  });
+
   it('does not treat four generic transaction facts as sufficient digital-asset preparation', () => {
     const fields = [
       { field_key: 'transaction.type', value_text: 'Commercial acquisition', status: 'verified' },

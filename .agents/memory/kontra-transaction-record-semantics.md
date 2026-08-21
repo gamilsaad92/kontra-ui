@@ -26,3 +26,9 @@ Document-derived conflict backfills must honor a coordinator-resolved conflict b
 **Why:** conflict resolution updates durable field and conflict rows before recalculation; re-scanning the unchanged documents in that same recalculation can otherwise resurrect the blocker and make every derived surface disagree.
 
 **How to apply:** compare resolved conflict timestamps with the newest relevant evidence before upserting a document-derived conflict, and resolve the selected conflict ID rather than every conflict sharing a field key.
+
+Generated Transaction Record schemas may use a different machine key than the persisted field row. Required-state reconciliation may match a unique generated label as a compatibility fallback, and key-fact summaries must not truncate away populated confirmed fields.
+
+**Why:** generated rooms can persist a canonical field from document extraction under a legacy/category key; exact-key-only matching made a confirmed value count as missing, while fixed first-N summaries hid later confirmed facts.
+
+**How to apply:** prefer canonical key matches, then unique normalized labels for generated required definitions; include populated confirmed/conflict/awaiting generated fields in Key Transaction Facts even when they fall beyond the initial summary window.

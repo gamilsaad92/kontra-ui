@@ -4074,6 +4074,7 @@ function getRecordDefinitionState(definition, recordFields = [], recordState = n
         : authoritativeField.status === 'awaiting'
           ? 'awaiting'
           : authoritativeField.status === 'confirmed'
+            || authoritativeField.rawStatus === 'source_changed'
             ? 'confirmed'
             : 'missing',
         attention: authoritativeField.attention || null,
@@ -4160,11 +4161,27 @@ function getRecordDateValue(property, recordFields = [], recordState = null, fal
 function getCoordinatorRecordFacts(schemaKey, property, recordFields = [], recordState = null) {
   const fields = getEffectiveRecordDefinitions(schemaKey, property);
   if (schemaKey === 'generated_ai') {
-    return fields.slice(0, 8).map(definition => ({
+    const prioritizedDefinitions = [
+      ...fields.slice(0, 8),
+      ...fields.filter(definition => {
+        const state = getRecordDefinitionState(definition, recordFields, recordState);
+        return ['confirmed', 'conflict', 'awaiting'].includes(state.status)
+          && String(state.value || '').trim();
+      }),
+    ];
+    const seen = new Set();
+    return prioritizedDefinitions
+      .filter(definition => {
+        const key = definition.canonicalKey || definition.key;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      })
+      .map(definition => ({
       ...getRecordDefinitionState(definition, recordFields, recordState),
       key: definition.canonicalKey || definition.key,
       label: definition.label || definition.key,
-    }));
+      }));
   }
   const economicKey = schemaKey === 'fundraising'
     ? 'financial.target_raise'
@@ -4876,7 +4893,13 @@ function TransactionBrief({
   );
 }
 
-export { getLifecycleAdvanceRecommendation, getNextMilestoneBlockers, getOpenIssueCount };
+export {
+  getLifecycleAdvanceRecommendation,
+  getNextMilestoneBlockers,
+  getOpenIssueCount,
+  getRecordDefinitionState,
+  getCoordinatorRecordFacts,
+};
 
 // ── Transaction Seal Summary (complete phase) ─────────────────────────────────
 // Fetches the Transaction Seal record and displays a compact completed-state

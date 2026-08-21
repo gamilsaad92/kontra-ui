@@ -6,6 +6,7 @@ const {
   getLifecycleAdvanceRecommendation,
   getNextMilestoneBlockers,
   getOpenIssueCount,
+  getCoordinatorRecordFacts,
 } = require('./DealRoomPage');
 
 describe('coordinator transaction brief logic', () => {
@@ -43,5 +44,35 @@ describe('coordinator transaction brief logic', () => {
     expect(result.blockers).toEqual(expect.arrayContaining([
       expect.objectContaining({ key: 'next-participant-buyer' }),
     ]));
+  });
+
+  test('keeps a confirmed generated field beyond the initial facts slice visible', () => {
+    const definitions = Array.from({ length: 9 }, (_, index) => ({
+      key: `transaction.fact_${index + 1}`,
+      label: `Fact ${index + 1}`,
+      required: true,
+    }));
+    const property = {
+      generated_proposal: {
+        transaction_record_fields: definitions,
+      },
+    };
+    const recordState = {
+      fields: definitions.map((definition, index) => ({
+        key: definition.key,
+        label: definition.label,
+        value: index === 8 ? 'Confirmed value' : '',
+        status: index === 8 ? 'confirmed' : 'missing',
+      })),
+    };
+
+    expect(getCoordinatorRecordFacts('generated_ai', property, [], recordState))
+      .toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          key: 'transaction.fact_9',
+          value: 'Confirmed value',
+          status: 'confirmed',
+        }),
+      ]));
   });
 });
