@@ -34,6 +34,13 @@ function parseAmount(value) {
   return Number.isFinite(amount) && amount > 0 ? amount : null;
 }
 
+function latestEvidenceTimestamp(candidates = []) {
+  return (Array.isArray(candidates) ? candidates : [])
+    .map(candidate => candidate?.document?.created_at || candidate?.created_at)
+    .filter(Boolean)
+    .sort((a, b) => new Date(b).getTime() - new Date(a).getTime())[0] || null;
+}
+
 function shouldPreserveResolvedConflict({
   resolvedConflicts = [],
   fieldKey,
@@ -106,10 +113,6 @@ async function reconcileStoredDocumentConflicts(propertyId) {
     const sourceDocuments = (documents || []).filter(document =>
       document.section !== 'cross_document_verification'
     );
-    const latestEvidenceAt = (documents || [])
-      .map(document => document.created_at)
-      .filter(Boolean)
-      .sort((a, b) => new Date(b).getTime() - new Date(a).getTime())[0] || null;
     const candidates = sourceDocuments.flatMap(document =>
       storedDocumentAmounts(document).map(value => ({ ...value, document }))
     );
@@ -141,6 +144,10 @@ async function reconcileStoredDocumentConflicts(propertyId) {
       );
     }
     if (candidates.length < 2) return;
+    // Only evidence that can actually produce this field may reopen a resolved
+    // conflict. An unrelated document uploaded later (for example a title
+    // report) must not resurrect an already resolved repair-cost discrepancy.
+    const latestEvidenceAt = latestEvidenceTimestamp(candidates);
 
     // Hazard-loss rooms can contain other insurance/adjuster amounts. When
     // both explicit repair evidence sections exist, never let an unrelated
@@ -619,6 +626,7 @@ module.exports = {
   reconcileStoredDocumentConflicts,
   hasMeaningfulRecordValue,
   shouldPreserveResolvedConflict,
+  latestEvidenceTimestamp,
   readTransactionState,
   recalculateTransactionState,
 };

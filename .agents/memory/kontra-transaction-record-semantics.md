@@ -32,3 +32,9 @@ Generated Transaction Record schemas may use a different machine key than the pe
 **Why:** generated rooms can persist a canonical field from document extraction under a legacy/category key; exact-key-only matching made a confirmed value count as missing, while fixed first-N summaries hid later confirmed facts.
 
 **How to apply:** prefer canonical key matches, then unique normalized labels for generated required definitions; include populated confirmed/conflict/awaiting generated fields in Key Transaction Facts even when they fall beyond the initial summary window.
+
+Generated room hydration must treat a verified Transaction Record row as coordinator-owned state and never overwrite it from the proposal snapshot; conflict resolution must recover the field by canonical key when a legacy conflict points at a removed row.
+
+**Why:** room generation and re-entry can run after confirmation, and legacy alias cleanup can leave a conflict row without its original field ID. Re-syncing or resolving only the stale ID otherwise makes a confirmed value disappear from readiness.
+
+**How to apply:** skip proposal synchronization for verified/confirmed/source-changed rows, and have conflict resolution update or recreate the authoritative field before marking the selected conflict resolved.
