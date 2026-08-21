@@ -2941,6 +2941,7 @@ function WhatNeedsAttention({
   propertyId,
   isCoordinator = false,
   compact = false,
+  onOverviewAction,
 }) {
   const [confirming, setConfirming] = useState('');
   const [showAll, setShowAll] = useState(false);
@@ -3070,7 +3071,7 @@ function WhatNeedsAttention({
       reason: `Canonical value ${conflict.canonicalValue || conflict.canonical_value || 'not recorded'} conflicts with ${conflict.conflictingValue || conflict.conflicting_value || 'another source'}.`,
       excerpt: conflict.conflictingSourceExcerpt || conflict.conflicting_source_excerpt || null,
       routeItem: { field_key: fieldKey },
-      actions: [{ label: 'Review discrepancy', onClick: () => onTabChange?.('overview') }],
+      actions: [{ label: 'Review discrepancy', onClick: () => onOverviewAction?.({ type: 'conflict', conflict }) }],
       sourcePriority: 0,
     });
   });
@@ -3204,12 +3205,7 @@ function WhatNeedsAttention({
   // displayed action must lead somewhere useful. Do not create a second task
   // system here — these are only routing affordances for the existing items.
   function goToRecord(field) {
-    onTabChange?.('overview');
-    const category = String(field?.field_key || field?.field_category || '').split('.')[0];
-    window.setTimeout(() => {
-      const target = document.getElementById(`transaction-record-category-${category}`);
-      target?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    }, 0);
+    onOverviewAction?.({ type: 'record', field });
   }
 
   function routeForText(text) {
@@ -3288,7 +3284,7 @@ function WhatNeedsAttention({
                    </div>
                   <button
                     type="button"
-                    onClick={action.onClick}
+                     onClick={(event) => { event.preventDefault(); event.stopPropagation(); action.onClick?.(); }}
                     disabled={action.disabled}
                     className="shrink-0 rounded-lg border border-gray-200 px-2.5 py-1 text-[10px] font-bold text-gray-600 transition hover:bg-gray-50 disabled:opacity-50">
                     {action.label}
@@ -3301,7 +3297,7 @@ function WhatNeedsAttention({
          {!loading && items.length > 3 && (
            <button
              type="button"
-             onClick={() => setShowAll(value => !value)}
+              onClick={(event) => { event.preventDefault(); event.stopPropagation(); setShowAll(value => !value); }}
              className="mt-3 text-[11px] font-semibold text-[#800020] hover:opacity-80 transition">
              {showAll ? 'Show top 3' : `View all ${items.length} actions`} →
            </button>
@@ -3338,11 +3334,11 @@ function WhatNeedsAttention({
             Add the first transaction documents and participants so Kontra can begin organizing the deal.
           </p>
           <div className="mt-4 flex items-center gap-2 flex-wrap">
-            <button onClick={() => onTabChange?.('documents')}
+            <button type="button" onClick={() => onTabChange?.('documents')}
               className="rounded-xl bg-[#800020] px-4 py-2 text-xs font-bold text-white transition hover:opacity-90">
               Upload first document
             </button>
-            <button onClick={() => onTabChange?.('people')}
+            <button type="button" onClick={() => onTabChange?.('people')}
               className="rounded-xl border border-gray-200 px-4 py-2 text-xs font-semibold text-gray-700 transition hover:bg-gray-50">
               Invite participant
             </button>
@@ -3382,7 +3378,7 @@ function WhatNeedsAttention({
                   {item.actions.length > 0 && (
                     <div className="mt-2.5 flex flex-wrap gap-2">
                       {item.actions.map((a, ai) => (
-                        <button key={ai} onClick={a.onClick} disabled={a.disabled}
+                       <button key={ai} type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); a.onClick?.(); }} disabled={a.disabled}
                           className={`rounded-lg px-3 py-1.5 text-[11px] font-bold transition disabled:opacity-50 ${
                             a.primary ? 'bg-[#800020] text-white hover:opacity-90' : 'border border-gray-200 text-gray-700 hover:bg-gray-50'
                           }`}>
@@ -3397,7 +3393,7 @@ function WhatNeedsAttention({
           </div>
       {items.length > 3 && (
             <div className="border-t border-gray-100 px-5 py-3">
-              <button onClick={() => onTabChange?.('documents')}
+               <button type="button" onClick={() => onTabChange?.('documents')}
                 className="text-[11px] font-semibold text-[#800020] hover:opacity-80 transition">
                 View all in Documents →
               </button>
@@ -4374,6 +4370,92 @@ function KeyTransactionFacts({ facts = [], onTabChange }) {
   );
 }
 
+function TransactionConflictResolver({ propertyId, conflict, analyses = [], onResolved, onClose }) {
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  if (!conflict) return null;
+
+  const sourceName = id => {
+    const source = analyses.find(item => item.id === id);
+    return source?.filename || source?.section || 'Source document';
+  };
+  const resolve = async valueText => {
+    let ownerWriteToken = '';
+    try { ownerWriteToken = localStorage.getItem(`kontra_owner_token_${propertyId}`) || ''; } catch {}
+    if (!ownerWriteToken || saving) return;
+    setSaving(true);
+    setError('');
+    try {
+      const response = await fetch(
+        `${API_BASE}/api/public/deal-room/${propertyId}/transaction-record/conflicts/${conflict.id}/resolve`,
+        {
+          method: 'POST',
+          headers: getRoomAuthHeaders(propertyId, { 'Content-Type': 'application/json' }),
+          body: JSON.stringify({ ownerWriteToken, value_text: valueText }),
+        },
+      );
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data?.error || 'The conflict could not be resolved.');
+      }
+      await onResolved?.();
+      onClose?.();
+    } catch (resolveError) {
+      setError(resolveError.message || 'The conflict could not be resolved.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const options = [
+    {
+      value: conflict.canonicalValue || conflict.canonical_value || 'Not recorded',
+      label: 'Current canonical value',
+      source: sourceName(conflict.canonicalSourceDocId || conflict.canonical_source_doc_id),
+      primary: true,
+    },
+    {
+      value: conflict.conflictingValue || conflict.conflicting_value || 'Not recorded',
+      label: 'Conflicting value',
+      source: sourceName(conflict.conflictingSourceDocId || conflict.conflicting_source_doc_id),
+      primary: false,
+    },
+  ];
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/30 px-3 py-3 sm:items-center sm:px-5" role="dialog" aria-modal="true" aria-label="Resolve transaction record conflict">
+      <div className="w-full max-w-lg rounded-2xl border border-gray-200 bg-white p-5 shadow-2xl">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-widest text-red-700">Transaction Record conflict</p>
+            <h2 className="mt-1 text-lg font-bold text-gray-900">Resolve {conflict.label || 'Repair Costs'}</h2>
+            <p className="mt-1 text-xs leading-relaxed text-gray-500">Choose the value that should remain authoritative for this transaction record.</p>
+          </div>
+          <button type="button" onClick={onClose} className="shrink-0 rounded-lg px-2 py-1 text-lg leading-none text-gray-400" aria-label="Close conflict resolver">×</button>
+        </div>
+        <div className="mt-4 grid gap-3 sm:grid-cols-2">
+          {options.map(option => (
+            <div key={`${option.label}-${option.value}`} className={`rounded-xl border p-3 ${option.primary ? 'border-[#800020]/30 bg-[#800020]/5' : 'border-gray-200 bg-gray-50'}`}>
+              <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">{option.label}</p>
+              <p className="mt-1 text-xl font-bold text-gray-900">{option.value}</p>
+              <p className="mt-1 break-words text-[11px] text-gray-500">Source: {option.source}</p>
+              <button
+                type="button"
+                onClick={() => resolve(option.value)}
+                disabled={saving}
+                className={`mt-3 w-full rounded-lg px-3 py-2 text-[11px] font-bold disabled:opacity-50 ${option.primary ? 'bg-[#800020] text-white' : 'border border-gray-300 bg-white text-gray-700'}`}
+              >
+                {saving ? 'Saving…' : option.primary ? 'Keep canonical value' : 'Use this value'}
+              </button>
+            </div>
+          ))}
+        </div>
+        {error && <p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-700">{error}</p>}
+      </div>
+    </div>
+  );
+}
+
 function TransactionBrief({
   propertyId,
   property,
@@ -4395,6 +4477,7 @@ function TransactionBrief({
   ownerToken,
   onTabChange,
   onRefresh,
+  onOverviewAction,
 }) {
   const [stageDecision, setStageDecision] = useState('');
   const [stageActionError, setStageActionError] = useState('');
@@ -4450,12 +4533,7 @@ function TransactionBrief({
   const allConflicts = conflicts.length > 0 ? conflicts : (canonicalRecordState?.unresolvedConflicts || []);
   const recentChanges = getRecentCoordinatorChanges(events, analyses, recordFields);
   const goToRecord = field => {
-    onTabChange?.('overview');
-    const category = String(field?.key || field?.field_key || field?.field_category || '').split('.')[0];
-    window.setTimeout(() => {
-      document.getElementById(`transaction-record-category-${category}`)
-        ?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    }, 0);
+    onOverviewAction?.({ type: 'record', field });
   };
   const hasBlockingIssues = recordConflicts.length > 0 || allConflicts.length > 0 || nextMilestoneBlockers.length > 0;
   const stageRecommendation = getLifecycleAdvanceRecommendation(
@@ -4641,7 +4719,7 @@ function TransactionBrief({
             {recommendationItems[0]?.action && (
               <button
                 type="button"
-                onClick={recommendationItems[0].action.onClick}
+                onClick={(event) => { event.preventDefault(); event.stopPropagation(); recommendationItems[0].action.onClick?.(); }}
                 className="shrink-0 rounded-lg bg-[#800020] px-3 py-2 text-[10px] font-bold text-white transition hover:opacity-90"
               >
                 {recommendationItems[0].action.label}
@@ -4656,7 +4734,7 @@ function TransactionBrief({
                   <p className="text-xs font-semibold">{item.text}</p>
                   <p className="mt-0.5 text-[11px] opacity-75">{item.detail}</p>
                 </div>
-                <button type="button" onClick={item.action.onClick} className="shrink-0 text-[10px] font-bold underline underline-offset-2">
+                <button type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); item.action.onClick?.(); }} className="shrink-0 text-[10px] font-bold underline underline-offset-2">
                   {item.action.label}
                 </button>
               </div>
