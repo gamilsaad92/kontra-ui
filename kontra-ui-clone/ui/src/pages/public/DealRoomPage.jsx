@@ -2553,8 +2553,9 @@ function WorkspaceTabNav({ activeTab, onChange, isCoordinator = false, isDemo = 
           {TABS.map(t => (
             <button
               key={t.key}
+              type="button"
               onClick={() => onChange(t.key)}
-              className={`shrink-0 px-4 py-3.5 text-sm font-semibold border-b-2 transition whitespace-nowrap ${
+              className={`relative z-10 shrink-0 px-4 py-3.5 text-sm font-semibold border-b-2 transition whitespace-nowrap ${
                 activeTab === t.key
                   ? 'border-[#800020] text-[#800020]'
                   : 'border-transparent text-gray-500 hover:text-gray-700'
@@ -3286,7 +3287,7 @@ function WhatNeedsAttention({
                     type="button"
                      onClick={(event) => { event.preventDefault(); event.stopPropagation(); action.onClick?.(); }}
                     disabled={action.disabled}
-                    className="shrink-0 rounded-lg border border-gray-200 px-2.5 py-1 text-[10px] font-bold text-gray-600 transition hover:bg-gray-50 disabled:opacity-50">
+                    className="relative z-10 cursor-pointer shrink-0 rounded-lg border border-gray-200 px-2.5 py-1 text-[10px] font-bold text-gray-600 transition hover:bg-gray-50 disabled:opacity-50">
                     {action.label}
                   </button>
                 </div>
@@ -3378,8 +3379,8 @@ function WhatNeedsAttention({
                   {item.actions.length > 0 && (
                     <div className="mt-2.5 flex flex-wrap gap-2">
                       {item.actions.map((a, ai) => (
-                       <button key={ai} type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); a.onClick?.(); }} disabled={a.disabled}
-                          className={`rounded-lg px-3 py-1.5 text-[11px] font-bold transition disabled:opacity-50 ${
+                         <button key={ai} type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); a.onClick?.(); }} disabled={a.disabled}
+                           className={`relative z-10 cursor-pointer rounded-lg px-3 py-1.5 text-[11px] font-bold transition disabled:opacity-50 ${
                             a.primary ? 'bg-[#800020] text-white hover:opacity-90' : 'border border-gray-200 text-gray-700 hover:bg-gray-50'
                           }`}>
                           {a.label}
@@ -4709,10 +4710,10 @@ function TransactionBrief({
               </p>
             </div>
             {recommendationItems[0]?.action && (
-              <button
+               <button
                 type="button"
                 onClick={(event) => { event.preventDefault(); event.stopPropagation(); recommendationItems[0].action.onClick?.(); }}
-                className="shrink-0 rounded-lg bg-[#800020] px-3 py-2 text-[10px] font-bold text-white transition hover:opacity-90"
+                 className="relative z-10 cursor-pointer shrink-0 rounded-lg bg-[#800020] px-3 py-2 text-[10px] font-bold text-white transition hover:opacity-90"
               >
                 {recommendationItems[0].action.label}
               </button>
@@ -4726,7 +4727,7 @@ function TransactionBrief({
                   <p className="text-xs font-semibold">{item.text}</p>
                   <p className="mt-0.5 text-[11px] opacity-75">{item.detail}</p>
                 </div>
-                <button type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); item.action.onClick?.(); }} className="shrink-0 text-[10px] font-bold underline underline-offset-2">
+                 <button type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); item.action.onClick?.(); }} className="relative z-10 cursor-pointer shrink-0 text-[10px] font-bold underline underline-offset-2">
                   {item.action.label}
                 </button>
               </div>
@@ -4737,7 +4738,7 @@ function TransactionBrief({
         <div className="rounded-xl border border-gray-200 bg-white px-4 py-3">
           <div className="flex items-center justify-between gap-3">
             <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Participant status</p>
-            <button type="button" onClick={() => onTabChange?.('people')} className="text-[10px] font-bold text-[#800020]">
+             <button type="button" onClick={() => onTabChange?.('people')} className="relative z-10 cursor-pointer text-[10px] font-bold text-[#800020]">
               Open People →
             </button>
           </div>
@@ -4768,10 +4769,10 @@ function TransactionBrief({
               <div key={blocker.key} className="flex items-center gap-2 text-xs text-red-800">
                 <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-red-500" />
                 <span className="min-w-0 flex-1">{blocker.text}</span>
-                <button
+                 <button
                   type="button"
                   onClick={() => onTabChange?.(blocker.participantKey ? 'people' : 'documents')}
-                  className="shrink-0 text-[10px] font-bold underline underline-offset-2"
+                   className="relative z-10 cursor-pointer shrink-0 text-[10px] font-bold underline underline-offset-2"
                 >
                   {blocker.participantKey ? 'Open People' : 'Review'}
                 </button>
@@ -4795,19 +4796,19 @@ function TransactionBrief({
               </p>
               {stageActionError && <p className="mt-2 text-[11px] font-semibold text-red-600">{stageActionError}</p>}
               <div className="mt-3 flex flex-wrap gap-2">
-                <button
+                 <button
                   type="button"
                   onClick={acceptStageRecommendation}
                   disabled={advancing || !ownerToken}
-                  className="rounded-lg bg-[#800020] px-3 py-1.5 text-[10px] font-bold text-white transition hover:opacity-90 disabled:opacity-50"
+                   className="relative z-10 cursor-pointer rounded-lg bg-[#800020] px-3 py-1.5 text-[10px] font-bold text-white transition hover:opacity-90 disabled:opacity-50"
                 >
                   {advancing ? 'Advancing…' : `Accept → ${stageRecommendation.stage.label}`}
                 </button>
-                <button
+                 <button
                   type="button"
                   onClick={() => { setStageDecision('kept'); setStageActionError(''); }}
                   disabled={advancing}
-                  className="rounded-lg border border-blue-200 bg-white px-3 py-1.5 text-[10px] font-bold text-blue-700 transition hover:bg-blue-50 disabled:opacity-50"
+                   className="relative z-10 cursor-pointer rounded-lg border border-blue-200 bg-white px-3 py-1.5 text-[10px] font-bold text-blue-700 transition hover:bg-blue-50 disabled:opacity-50"
                 >
                   Keep current stage
                 </button>
@@ -7272,7 +7273,7 @@ export default function DealRoomPage() {
         />
       )}
 
-      <div className="max-w-5xl mx-auto px-6 py-8">
+       <div className="relative z-10 isolate pointer-events-auto max-w-5xl mx-auto px-6 py-8">
 
         {isCurrentWorkspace ? (
 
