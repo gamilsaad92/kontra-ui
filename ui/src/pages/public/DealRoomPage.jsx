@@ -1430,14 +1430,14 @@ function TransactionDetailsPanel({ property, propertyId, pack, recordFields = []
       return (
         <div key={field.id} className={`py-2 border-t border-gray-100 first:border-t-0 ${field.fullWidth ? "col-span-2" : ""}`}>
           <span className="text-xs text-gray-400 block mb-0.5">{field.label}</span>
-          <span className="text-xs font-medium text-gray-800">{val || "—"}</span>
+          <span className="break-words text-xs font-medium text-gray-800">{val || "—"}</span>
         </div>
       );
     }
 
     if (field.fieldType === "select" && field.options) {
       return (
-        <div key={field.id} className={field.fullWidth ? "col-span-2" : ""}>
+        <div key={field.id} className={field.fullWidth ? "sm:col-span-2" : ""}>
           <label className="text-xs text-gray-400 mb-1 block">{field.label}</label>
           <select value={val} onChange={e => setForm(f => ({ ...f, [field.id]: e.target.value }))}
             className={`${inputClass} bg-white`}>
@@ -1450,7 +1450,7 @@ function TransactionDetailsPanel({ property, propertyId, pack, recordFields = []
 
     if (field.fieldType === "date") {
       return (
-        <div key={field.id} className={field.fullWidth ? "col-span-2" : ""}>
+        <div key={field.id} className={field.fullWidth ? "sm:col-span-2" : ""}>
           <label className="text-xs text-gray-400 mb-1 block">{field.label}</label>
           <input type="date" value={val}
             onChange={e => setForm(f => ({ ...f, [field.id]: e.target.value }))}
@@ -1460,7 +1460,7 @@ function TransactionDetailsPanel({ property, propertyId, pack, recordFields = []
     }
 
     return (
-      <div key={field.id} className={field.fullWidth ? "col-span-2" : ""}>
+      <div key={field.id} className={field.fullWidth ? "sm:col-span-2" : ""}>
         <label className="text-xs text-gray-400 mb-1 block">{field.label}</label>
         <input
           type={field.fieldType === "number" || field.fieldType === "currency" ? "number" : "text"}
@@ -1481,7 +1481,7 @@ function TransactionDetailsPanel({ property, propertyId, pack, recordFields = []
         {saveOk && <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-green-50 text-green-700">✓ Saved</span>}
       </div>
 
-      <div className={`grid gap-2 ${isEditable ? "grid-cols-2" : ""}`}>
+      <div className={`grid gap-2 ${isEditable ? "sm:grid-cols-2" : ""}`}>
         {fields.map(f => renderField(f))}
       </div>
 
@@ -2253,7 +2253,7 @@ function AssetReadinessTab({ propertyId, property, pack, onTabChange }) {
                       </span>
                     </div>
                     {!done && !expanded && cat.missing.length > 0 && (
-                      <p className="text-[10px] text-gray-400 mt-0.5 truncate">
+                      <p className="text-[10px] text-gray-400 mt-0.5 leading-snug break-words">
                         {cat.missing[0]}{cat.missing.length > 1 && ` +${cat.missing.length - 1} more`}
                       </p>
                     )}
@@ -3692,10 +3692,10 @@ function DigitalAssetReadinessSection({
                   <div className="min-w-0">
                    <div className="flex items-center gap-2 min-w-0">
                      <span className={`h-2 w-2 shrink-0 rounded-full ${stDot[cat.st]}`} />
-                     <p className="text-sm text-gray-700 truncate">{cat.label}</p>
+                      <p className="break-words text-sm leading-snug text-gray-700 sm:truncate sm:leading-normal">{cat.label}</p>
                    </div>
                    {cat.summary && cat.missingDefs.length > 0 && (
-                     <p className="mt-0.5 pl-4 text-[11px] text-gray-400 truncate">{cat.summary}</p>
+                      <p className="mt-0.5 pl-4 break-words text-[11px] leading-snug text-gray-400 sm:truncate sm:leading-normal">{cat.summary}</p>
                    )}
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
@@ -3897,9 +3897,9 @@ function RoomCopilot({ propertyId }) {
       <button
         onClick={() => setOpen(true)}
         aria-label="Open Kontra AI"
-        className="fixed bottom-4 right-3 z-40 flex max-w-[calc(100vw-1.5rem)] items-center gap-2 rounded-full bg-[#800020] py-2.5 pl-3.5 pr-4 text-white shadow-xl transition hover:opacity-90 hover:shadow-2xl sm:bottom-6 sm:right-6 sm:py-3 sm:pl-4 sm:pr-5">
+        className="fixed bottom-20 right-3 z-40 flex h-10 w-10 max-w-[calc(100vw-1.5rem)] items-center justify-center gap-2 rounded-full bg-[#800020] p-0 text-white shadow-xl transition hover:opacity-90 hover:shadow-2xl sm:bottom-6 sm:right-6 sm:h-auto sm:w-auto sm:py-3 sm:pl-4 sm:pr-5">
         <span className="text-sm" aria-hidden="true">✦</span>
-        <span className="text-sm font-semibold">Kontra AI</span>
+        <span className="hidden text-sm font-semibold sm:inline">Kontra AI</span>
       </button>
 
       {/* Side drawer */}
@@ -4525,7 +4525,7 @@ function KeyTransactionFacts({ facts = [], onTabChange, onOverviewAction }) {
             return (
               <div key={fact.key} className="rounded-xl border border-gray-100 bg-gray-50/70 px-3 py-3">
                 <div className="flex items-center justify-between gap-2">
-                  <p className="truncate text-[10px] font-bold uppercase tracking-wider text-gray-400">{fact.label}</p>
+                  <p className="break-words text-[10px] font-bold uppercase leading-snug tracking-wider text-gray-400 sm:truncate sm:leading-normal">{fact.label}</p>
                   <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${config.dot}`} />
                 </div>
                 <p className="mt-1 break-words text-sm font-semibold text-gray-900">
@@ -4897,7 +4897,7 @@ function TransactionBrief({
                 <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-current" />
                 <div className="min-w-0 flex-1">
                   <p className="text-xs font-semibold">{item.text}</p>
-                  <p className="mt-0.5 text-[11px] opacity-75">{item.detail}</p>
+                  <p className="mt-0.5 break-words text-[11px] leading-snug opacity-75 sm:leading-normal">{item.detail}</p>
                 </div>
                  <button type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); item.action.onClick?.(); }} className="relative z-10 cursor-pointer shrink-0 text-[10px] font-bold underline underline-offset-2">
                   {item.action.label}
@@ -5010,7 +5010,7 @@ function TransactionBrief({
           <div className="mt-2 divide-y divide-gray-100">
             {recentChanges.slice(0, 4).map(change => (
               <div key={change.id} className="flex items-start justify-between gap-3 py-2 text-xs">
-                <span className="text-gray-700">{change.text}</span>
+                <span className="min-w-0 break-words leading-snug text-gray-700 sm:leading-normal">{change.text}</span>
                 {change.date && (
                   <span className="shrink-0 text-[10px] text-gray-400">
                     {new Date(change.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
