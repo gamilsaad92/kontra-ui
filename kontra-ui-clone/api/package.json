@@ -14,7 +14,7 @@
     "migrate:app-db": "psql \"$APP_DATABASE_URL\" -f sql/app_identity_schema.sql"
   },
   "dependencies": {
-    "@google-cloud/dialogflow": "^4.4.0",
+    "@google-cloud/dialogflow": "^7.0.0",
     "@sentry/node": "^9.24.0",
     "@sentry/react": "^9.24.0",
     "@supabase/supabase-js": "^2.49.8",
