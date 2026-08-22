@@ -179,6 +179,8 @@ function normalizeProposal(raw = {}, context = {}) {
     : []).map((field, index) => ({
     key: String(field.key || field.field_key || `transaction.field_${index + 1}`).trim().slice(0, 120),
     label: String(field.label || field.display_label || field.key || `Transaction field ${index + 1}`).trim().slice(0, 160),
+    category: String(field.category || field.field_category || String(field.key || '').split('.')[0] || 'transaction')
+      .trim().toLowerCase().replace(/[^a-z0-9_]+/g, '_').slice(0, 80) || 'transaction',
     value: field.value ?? field.value_text ?? null,
     required: field.required !== false,
     confidence: confidence(field.confidence),

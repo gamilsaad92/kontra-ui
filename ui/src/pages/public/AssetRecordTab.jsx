@@ -879,7 +879,24 @@ export default function AssetRecordTab({
   //   2. pack.transactionType (custom ws_* packs store their base type here)
   //   3. workspace name inference ("hotel", "apartment", "series a", etc.)
   const schemaKey    = resolveSchemaKey(rawPackId || pack?.id, pack, workspaceMeta?.name);
-  const seededFields = buildSeededFromSchema(schemaKey, workspaceMeta);
+  const generatedRoom = recordState?.schemaKey === "generated_ai" ||
+    dbFields.some(field => field.definition_key);
+  // AI rooms are materialized at creation, so their persisted rows provide
+  // both the definitions and the values. Do not merge a static pack schema
+  // into that list; doing so recreates the old "missing in accordion" split.
+  const seededFields = generatedRoom
+    ? dbFields.map(field => ({
+      ...field,
+      key: field.field_key,
+      canonicalKey: field.field_key,
+      label: field.display_label || field.field_key,
+      category: field.field_category || String(field.field_key || "").split(".")[0] || "transaction",
+      workflowRequired: field.is_required !== false,
+      required: field.is_required !== false,
+      value: field.value_text,
+      renderable: true,
+    }))
+    : buildSeededFromSchema(schemaKey, workspaceMeta);
   const summaryKeys = getSummaryFieldKeys(schemaKey);
   const summarySchemaFields = seededFields.filter(field =>
     isSummarySchemaField(field, summaryKeys)
@@ -915,7 +932,9 @@ export default function AssetRecordTab({
     complete: recordState.confirmedCount,
     notApplicable: recordState.notApplicableCount,
   } : fullStats;
-  const activeStats = viewMode === "summary"
+  const activeStats = generatedRoom
+    ? authoritativeFullStats
+    : viewMode === "summary"
     ? summaryStats
     : authoritativeFullStats;
   const pct = activeStats.total > 0
@@ -1001,7 +1020,10 @@ export default function AssetRecordTab({
       </div>
 
       {/* ── Category sections ── */}
-      {CATEGORIES.map(cat => (
+      {[...CATEGORIES, ...[...new Set(seededFields.map(field => field.category))]
+        .filter(key => !CATEGORIES.some(cat => cat.key === key))
+        .map(key => ({ key, label: String(key).replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase()), icon: "•", defaultOpen: true }))
+      ].map(cat => (
         <CategorySection
           key={cat.key}
           category={cat}

@@ -2380,7 +2380,11 @@ app.post(['/api/checkout/demo', '/api/checkout/trial'], async (req, res) => {
         );
       }
     } catch (recordErr) {
-      console.warn('[demo] creation transaction record seed skipped:', recordErr.message);
+      console.error('[demo] canonical transaction record materialization failed:', recordErr.message);
+      return res.status(503).json({
+        error: 'Workspace could not be created',
+        message: 'The approved transaction facts could not be saved. Please retry after the database is updated.',
+      });
     }
 
     // Generate owner write token and persist it — included in the redirect URL
@@ -2925,7 +2929,10 @@ app.post('/api/webhook/stripe',
           );
         }
       } catch (recordErr) {
-        console.warn('[webhook] creation transaction record seed skipped:', recordErr.message);
+        console.error('[webhook] canonical transaction record materialization failed:', recordErr.message);
+        // Throw so Stripe retries the event instead of leaving a room whose
+        // approved facts exist only in generated_proposal JSON.
+        throw recordErr;
       }
 
       // Also log to activations table (legacy)
@@ -3730,16 +3737,31 @@ async function syncGeneratedProposalToTransactionRecord(propertyId, proposal, ac
     : [];
   for (const field of fields) {
     if (!field?.key || !field?.label) continue;
-    const fieldKey = String(field.key).slice(0, 120);
+    const definitionKey = String(field.key).trim().slice(0, 120);
+    const fieldKey = definitionKey;
+    const fieldCategory = String(field.category || field.field_category || fieldKey.split('.')[0] || 'transaction')
+      .trim().toLowerCase().replace(/[^a-z0-9_]+/g, '_').slice(0, 80) || 'transaction';
     const value = field.value === null || field.value === undefined ? null : String(field.value).slice(0, 2000);
     const hasValue = value !== null && value.trim() !== '';
     const now = new Date().toISOString();
-    const { data: existing, error: lookupError } = await supabase
+    let lookup = await supabase
       .from('transaction_record_fields')
-      .select('id, status')
+      .select('id, field_key, display_label, status, value_text')
       .eq('property_id', propertyId)
       .eq('field_key', fieldKey)
       .maybeSingle();
+    // A prior generated room may have been saved under an alias key. Preserve
+    // that row as the canonical identity rather than creating a second fact.
+    if (!lookup.error && !lookup.data) {
+      lookup = await supabase
+        .from('transaction_record_fields')
+        .select('id, field_key, display_label, status, value_text')
+        .eq('property_id', propertyId)
+        .eq('display_label', String(field.label).slice(0, 160))
+        .maybeSingle();
+    }
+    const existing = lookup.data;
+    const lookupError = lookup.error;
     if (lookupError) throw lookupError;
     // Room hydration/generation can run again after a coordinator confirms a
     // value. Never let the proposal snapshot roll that durable decision back
@@ -3750,10 +3772,16 @@ async function syncGeneratedProposalToTransactionRecord(propertyId, proposal, ac
     const payload = {
       property_id: propertyId,
       field_key: fieldKey,
-      field_category: fieldKey.split('.')[0] || 'transaction',
+      field_category: fieldCategory,
       display_label: String(field.label).slice(0, 160),
       value_text: value,
       status: hasValue ? 'extracted' : 'missing',
+      // These columns are added by 021_ai_transaction_record_authority. They
+      // make the approved proposal durable metadata instead of UI-only schema.
+      definition_key: definitionKey,
+      is_required: field.required !== false,
+      source_type: field.source_type || 'ai_recommendation',
+      conflict_candidates: [],
       confidence: Number.isFinite(Number(field.confidence)) ? Number(field.confidence) : null,
       source_doc_id: null,
       source_page: null,
@@ -3766,10 +3794,36 @@ async function syncGeneratedProposalToTransactionRecord(propertyId, proposal, ac
         : (field.rationale || null),
       updated_at: now,
     };
-    const { error } = existing
+    let write = existing
       ? await supabase.from('transaction_record_fields').update(payload).eq('id', existing.id).eq('property_id', propertyId)
-      : await supabase.from('transaction_record_fields').insert(payload);
+      : await supabase.from('transaction_record_fields').insert(payload).select('id').single();
+    // Keep older installations readable until migration 021 is applied; the
+    // generated-room path still writes the same canonical row in that case.
+    if (write.error && /column|schema cache/i.test(write.error.message || '')) {
+      const legacyPayload = { ...payload };
+      delete legacyPayload.definition_key;
+      delete legacyPayload.is_required;
+      delete legacyPayload.source_type;
+      delete legacyPayload.conflict_candidates;
+      write = existing
+        ? await supabase.from('transaction_record_fields').update(legacyPayload).eq('id', existing.id).eq('property_id', propertyId)
+        : await supabase.from('transaction_record_fields').insert(legacyPayload).select('id').single();
+    }
+    const error = write.error;
     if (error) throw error;
+    const fieldId = existing?.id || write.data?.id;
+    if (!existing && fieldId && hasValue) {
+      await recordTransactionFieldHistory({
+        fieldId,
+        propertyId,
+        eventType: 'extracted',
+        actorEmail: actorEmail || 'Deal Owner',
+        actorRole: 'Deal Owner',
+        newValue: value,
+        newStatus: 'extracted',
+        metadata: { source: 'approved_generated_proposal', definitionKey },
+      });
+    }
   }
 }
 
@@ -4373,6 +4427,10 @@ async function upsertTransactionRecordConflict({
       .select('id')
       .single();
     if (error) throw error;
+    await persistTransactionFieldConflictCandidates(propertyId, fieldId, fieldKey, [
+      canonicalValue,
+      conflictingValue,
+    ]);
     return data;
   }
   const { data, error } = await supabase
@@ -4381,7 +4439,25 @@ async function upsertTransactionRecordConflict({
     .select('id')
     .single();
   if (error) throw error;
+  await persistTransactionFieldConflictCandidates(propertyId, fieldId, fieldKey, [
+    canonicalValue,
+    conflictingValue,
+  ]);
   return data;
+}
+
+async function persistTransactionFieldConflictCandidates(propertyId, fieldId, fieldKey, candidates) {
+  const values = [...new Set(candidates.filter(value => value !== null && value !== undefined)
+    .map(value => String(value).slice(0, 2000)))];
+  let query = supabase.from('transaction_record_fields').update({
+    conflict_candidates: values,
+    updated_at: new Date().toISOString(),
+  }).eq('property_id', propertyId);
+  query = fieldId ? query.eq('id', fieldId) : query.eq('field_key', fieldKey);
+  const { error } = await query;
+  // This metadata is additive; old installations continue using the durable
+  // conflict table until migration 021 is available.
+  if (error && !/column|schema cache|relation/i.test(error.message || '')) throw error;
 }
 
 async function resolveTransactionRecordConflicts(propertyId, fieldKey, {
@@ -4405,6 +4481,12 @@ async function resolveTransactionRecordConflicts(propertyId, fieldKey, {
     .eq('status', 'unresolved')
     .match(conflictId ? { id: conflictId } : { field_key: fieldKey });
   if (error && !/relation|schema cache|column/i.test(error.message || '')) throw error;
+  const clear = await supabase
+    .from('transaction_record_fields')
+    .update({ conflict_candidates: [], updated_at: new Date().toISOString() })
+    .eq('property_id', propertyId)
+    .eq('field_key', fieldKey);
+  if (clear.error && !/column|schema cache|relation/i.test(clear.error.message || '')) throw clear.error;
 }
 
 async function markDependentTransactionFieldsNotApplicable(propertyId, dependencyKey, actorEmail = 'coordinator', actorRole = 'Deal Coordinator') {

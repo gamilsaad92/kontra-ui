@@ -32,3 +32,21 @@ Generated Transaction Record schemas may use a different machine key than the pe
 **Why:** generated rooms can persist a canonical field from document extraction under a legacy/category key; exact-key-only matching made a confirmed value count as missing, while fixed first-N summaries hid later confirmed facts.
 
 **How to apply:** prefer canonical key matches, then unique normalized labels for generated required definitions; include populated confirmed/conflict/awaiting generated fields in Key Transaction Facts even when they fall beyond the initial summary window.
+
+Generated room hydration must treat a verified Transaction Record row as coordinator-owned state and never overwrite it from the proposal snapshot; conflict resolution must recover the field by canonical key when a legacy conflict points at a removed row.
+
+**Why:** room generation and re-entry can run after confirmation, and legacy alias cleanup can leave a conflict row without its original field ID. Re-syncing or resolving only the stale ID otherwise makes a confirmed value disappear from readiness.
+
+**How to apply:** skip proposal synchronization for verified/confirmed/source-changed rows, and have conflict resolution update or recreate the authoritative field before marking the selected conflict resolved.
+
+Legacy coordinator confirmations may exist only in the activity stream, so state hydration must be able to promote the matching persisted field row from a field ID/key or an exact label confirmation event.
+
+**Why:** older rooms can show a confirmed Recent Change while their field row remains extracted, making every current-state surface disagree even though the audit trail proves the coordinator action.
+
+**How to apply:** reconcile the latest confirmed field-history or field-specific activity event before computing readiness, while never overriding a newer source conflict.
+
+Generated AI rooms must materialize every approved proposal field as a durable record row at creation, including null values; proposal JSON may describe generation context but cannot supply field values or definitions after materialization.
+
+**Why:** allowing the proposal snapshot to remain a parallel field source caused Key Facts, accordions, counts, and confirmation state to disagree after refresh and room re-entry.
+
+**How to apply:** persist definition identity, category, requiredness, source type, and unresolved candidates on the field row; project generated-room UI and readiness from those rows, with proposal fallback only for pre-migration compatibility.

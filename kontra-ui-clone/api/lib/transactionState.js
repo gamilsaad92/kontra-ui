@@ -455,6 +455,7 @@ function computeTransactionRecordState(recordFields, schemaKey, requiredKeysOver
       key,
       fieldId: field.id || null,
       persistedKey: field.field_key || key,
+      definitionKey: field.definition_key || key,
       category: field.field_category || String(field.field_key || key).split('.')[0] || 'transaction',
       label: field.display_label || key,
       value: field.value_text || field.value_json || null,
@@ -462,6 +463,9 @@ function computeTransactionRecordState(recordFields, schemaKey, requiredKeysOver
       rawStatus: rawStatus || null,
       attention: rawStatus === 'source_changed' ? 'source_changed' : null,
       required: requiredKeys.includes(key),
+      isRequired: field.is_required !== false,
+      sourceType: field.source_type || null,
+      conflictCandidates: Array.isArray(field.conflict_candidates) ? field.conflict_candidates : [],
       updatedAt: field.updated_at || field.created_at || null,
     };
   });
@@ -490,8 +494,9 @@ function computeTransactionRecordState(recordFields, schemaKey, requiredKeysOver
     if (matched) {
       return {
         ...matched,
-        definitionKey: key,
+        definitionKey: matched.definition_key || key,
         required: true,
+        isRequired: matched.is_required !== false,
       };
     }
     return {
@@ -508,6 +513,9 @@ function computeTransactionRecordState(recordFields, schemaKey, requiredKeysOver
       rawStatus: null,
       attention: null,
       required: true,
+      isRequired: true,
+      sourceType: null,
+      conflictCandidates: [],
       updatedAt: null,
     };
   });
@@ -609,11 +617,11 @@ async function readTransactionState(propertyId) {
     .select('id, property_id, property_name, deal_amount, closing_date, workflow_pack_id, base_pack, transaction_type, transaction_subtype, transaction_context, generated_proposal, deal_type, deal_stage, jurisdiction, metadata_values, checklist_items, settlement_mode, settlement_readiness_pct, settlement_mode_locked_at, sealed_at, completed_at')
     .eq('property_id', propertyId)
     .maybeSingle();
-  const [{ data: initialRoom, error: initialRoomError }, { data: recordFields, error: fieldsError }, conflictsResult] = await Promise.all([
+  const [{ data: initialRoom, error: initialRoomError }, fieldsResult, conflictsResult] = await Promise.all([
     roomQuery,
     supabase
       .from('transaction_record_fields')
-       .select('id, field_key, field_category, display_label, value_text, status, source_doc_id, source_page, source_excerpt, confidence, updated_at, created_at')
+       .select('id, field_key, definition_key, field_category, display_label, value_text, status, is_required, source_type, conflict_candidates, source_doc_id, source_page, source_excerpt, confidence, updated_at, created_at')
       .eq('property_id', propertyId),
     supabase
       .from('transaction_record_conflicts')
@@ -622,6 +630,16 @@ async function readTransactionState(propertyId) {
       .eq('status', 'unresolved')
       .order('updated_at', { ascending: false }),
   ]);
+  let recordFields = fieldsResult.data;
+  let fieldsError = fieldsResult.error;
+  if (fieldsError && /column|schema cache/i.test(fieldsError.message || '')) {
+    const legacyFields = await supabase
+      .from('transaction_record_fields')
+      .select('id, field_key, field_category, display_label, value_text, status, source_doc_id, source_page, source_excerpt, confidence, updated_at, created_at')
+      .eq('property_id', propertyId);
+    recordFields = legacyFields.data;
+    fieldsError = legacyFields.error;
+  }
   let room = initialRoom;
   let roomError = initialRoomError;
   if (roomError && /column|schema cache|base_pack|generated_proposal/i.test(roomError.message || '')) {
@@ -644,14 +662,22 @@ async function readTransactionState(propertyId) {
   const schemaKey = await resolveSchemaKey(room, packId);
   const generatedProposal = room?.generated_proposal || room?.metadata_values?.generated_proposal;
     const dynamicRequiredKeys = schemaKey === 'generated_ai'
-    ? (generatedProposal?.transaction_record_fields || [])
-      .filter(field => field.required !== false)
-        .map(field => ({
-          key: field.key,
-          label: field.label,
-          category: field.category || field.field_category || String(field.key || '').split('.')[0] || 'transaction',
-          required: field.required !== false,
-        }))
+     ? ((recordFields || []).some(field => field.definition_key)
+       ? (recordFields || []).filter(field => field.is_required !== false).map(field => ({
+         key: field.field_key,
+         definitionKey: field.definition_key || field.field_key,
+         label: field.display_label,
+         category: field.field_category || String(field.field_key || '').split('.')[0] || 'transaction',
+         required: field.is_required !== false,
+       }))
+       : (generatedProposal?.transaction_record_fields || [])
+         .filter(field => field.required !== false)
+         .map(field => ({
+           key: field.key,
+           label: field.label,
+           category: field.category || field.field_category || String(field.key || '').split('.')[0] || 'transaction',
+           required: field.required !== false,
+         })))
     : null;
    const recordState = computeTransactionRecordState(recordFields || [], schemaKey, dynamicRequiredKeys, conflicts);
   return {
