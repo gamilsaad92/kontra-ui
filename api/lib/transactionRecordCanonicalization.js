@@ -13,6 +13,8 @@ const UNIVERSAL_ALIASES = {
   'transaction.due_diligence_expiration': 'transaction.dd_expiration',
   'financial.annual_revenue': 'financial.revenue',
   'financial.total_revenue': 'financial.revenue',
+  'financial.borrower_advanced_funds': 'financial.borrower_funds_advanced',
+  'financial.borrower_funds_advanced_amount': 'financial.borrower_funds_advanced',
 };
 
 const PACK_ALIASES = {
