@@ -3751,40 +3751,67 @@ async function syncGeneratedProposalToTransactionRecord(propertyId, proposal, ac
   for (const field of fields) {
     if (!field?.key || !field?.label) continue;
     const definitionKey = String(field.definition_key || field.key).trim().slice(0, 120);
-    const fieldKey = definitionKey;
-    const fieldCategory = String(field.category || field.field_category || fieldKey.split('.')[0] || 'transaction')
+    const fieldKey = canonicalizeTransactionRecordKey(field.key, 'generic');
+    const canonicalCategory = {
+      asset: 'asset_identity',
+      ownership: 'beneficial_ownership',
+    }[fieldKey.split('.')[0]] || fieldKey.split('.')[0] || 'transaction';
+    const fieldCategory = String(canonicalCategory || field.category || field.field_category || 'transaction')
       .trim().toLowerCase().replace(/[^a-z0-9_]+/g, '_').slice(0, 80) || 'transaction';
     const value = field.value === null || field.value === undefined ? null : String(field.value).slice(0, 2000);
     const hasValue = value !== null && value.trim() !== '';
     const now = new Date().toISOString();
+    const aliasKeys = aliasKeysForCanonical(fieldKey, 'generic');
     let lookup = await supabase
       .from('transaction_record_fields')
-      .select('id, field_key, display_label, status, value_text')
+      .select('id, field_key, definition_key, field_category, display_label, status, value_text, is_required, source_type')
       .eq('property_id', propertyId)
-      .eq('field_key', fieldKey)
-      .maybeSingle();
-    // A prior generated room may have been saved under an alias key. Preserve
-    // that row as the canonical identity rather than creating a second fact.
-    if (!lookup.error && !lookup.data) {
-      lookup = await supabase
-        .from('transaction_record_fields')
-        .select('id, field_key, display_label, status, value_text')
-        .eq('property_id', propertyId)
-        .eq('display_label', String(field.label).slice(0, 160))
-        .maybeSingle();
-    }
-    const existing = lookup.data;
+      .in('field_key', aliasKeys);
+    const statusRank = row => ({
+      conflicting: 5, conflict: 5, verified: 4, confirmed: 4,
+      source_changed: 4, extracted: 3, needs_review: 3, awaiting: 3,
+    }[String(row?.status || '').toLowerCase()] || (row?.value_text ? 2 : 0));
+    const existingRows = lookup.data || [];
+    const existing = existingRows
+      .slice()
+      .sort((a, b) => {
+        const rank = statusRank(b) - statusRank(a);
+        if (rank) return rank;
+        return (a.field_key === fieldKey ? -1 : 0) - (b.field_key === fieldKey ? -1 : 0);
+      })[0] || null;
     const lookupError = lookup.error;
     if (lookupError) throw lookupError;
+    const duplicateRows = existingRows.filter(row => row.id !== existing?.id);
+    if (existing && duplicateRows.length) {
+      const { error: deleteError } = await supabase.from('transaction_record_fields')
+        .delete().eq('property_id', propertyId).in('id', duplicateRows.map(row => row.id));
+      if (deleteError) throw deleteError;
+    }
+    if (existing && existing.field_key !== fieldKey) {
+      const { error: moveError } = await supabase.from('transaction_record_fields')
+        .update({ field_key: fieldKey, updated_at: now })
+        .eq('id', existing.id).eq('property_id', propertyId);
+      if (moveError) throw moveError;
+      existing = { ...existing, field_key: fieldKey };
+    }
     // Room hydration/generation can run again after a coordinator confirms a
     // value. Never let the proposal snapshot roll that durable decision back
     // to "extracted" or replace a value selected during conflict resolution.
     if (existing && ['verified', 'confirmed', 'source_changed'].includes(String(existing.status || '').toLowerCase())) {
+      const { error: metadataError } = await supabase.from('transaction_record_fields').update({
+        field_key: fieldKey,
+        field_category: existing.field_category || fieldCategory,
+        display_label: existing.display_label || String(field.label).slice(0, 160),
+        definition_key: existing.definition_key || definitionKey,
+        is_required: existing.is_required == null ? field.required !== false : existing.is_required,
+        updated_at: now,
+      }).eq('id', existing.id).eq('property_id', propertyId);
+      if (metadataError && !/column|schema cache/i.test(metadataError.message || '')) throw metadataError;
       continue;
     }
     const payload = {
       property_id: propertyId,
-      field_key: fieldKey,
+       field_key: fieldKey,
       field_category: fieldCategory,
       display_label: String(field.label).slice(0, 160),
       value_text: value,
@@ -4574,7 +4601,7 @@ async function extractTransactionFields(propertyId, docId, text, sectionLabel) {
       const aliasKeys = aliasKeysForCanonical(canonicalKey, schemaKey);
       const { data: existingRows } = await supabase
         .from('transaction_record_fields')
-        .select('id, field_key, status, value_text, source_doc_id, source_page, source_excerpt, verified_by, verified_role')
+        .select('id, field_key, definition_key, field_category, is_required, source_type, status, value_text, source_doc_id, source_page, source_excerpt, verified_by, verified_role')
         .eq('property_id', propertyId)
         .in('field_key', aliasKeys);
       let existing = (existingRows || []).find(row => row.field_key === canonicalKey)
@@ -4631,7 +4658,13 @@ async function extractTransactionFields(propertyId, docId, text, sectionLabel) {
       const { data: savedField, error: saveError } = await supabase.from('transaction_record_fields').upsert({
         property_id:    propertyId,
         field_key:      canonicalKey,
-        field_category: f.field_category,
+      // Preserve generated definition metadata when extraction fulfills the
+      // row; otherwise use the canonical namespace rather than the AI's raw
+      // category spelling.
+      field_category: existing?.field_category || ({
+        asset: 'asset_identity',
+        ownership: 'beneficial_ownership',
+      }[canonicalKey.split('.')[0]] || canonicalKey.split('.')[0] || f.field_category),
         display_label:  f.display_label || canonicalKey,
         value_text:     nextValue,
         status:         nextStatus,

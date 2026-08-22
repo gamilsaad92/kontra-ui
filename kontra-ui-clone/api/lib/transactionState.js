@@ -305,6 +305,14 @@ function normalizeRecordCategory(value, key = '', label = '') {
   const raw = String(value || '').trim().toLowerCase().replace(/[\s-]+/g, '_');
   const keyCategory = String(key || '').split('.')[0].toLowerCase();
   const category = raw || keyCategory || 'transaction';
+  // Once a field has a canonical key, its namespace is authoritative. This
+  // prevents a generated `hazard` category from moving canonical insurance
+  // or repair fields into Transaction Terms.
+  if (['transaction', 'asset', 'parties', 'ownership', 'financial', 'legal', 'approvals'].includes(keyCategory)) {
+    return keyCategory === 'asset' ? 'asset_identity'
+      : keyCategory === 'ownership' ? 'beneficial_ownership'
+        : keyCategory;
+  }
   if (['transaction', 'transaction_extra', 'terms', 'deal_terms', 'hazard', 'incident', 'loss', 'event', 'timeline'].includes(category)) return 'transaction';
   if (['asset', 'asset_identity', 'property', 'company', 'identity'].includes(category)) return 'asset_identity';
   if (['party', 'parties', 'counterparties'].includes(category)) return 'parties';
@@ -333,21 +341,34 @@ async function normalizeStoredTransactionRecord(propertyId, room, recordFields, 
 
   const definitions = Array.isArray(proposal?.transaction_record_fields)
     ? proposal.transaction_record_fields : [];
-  const definitionByLabel = new Map(definitions.map(definition => [
-    normalizeRecordLabel(definition.label || definition.display_label || definition.key),
-    definition,
-  ]).filter(([label]) => label));
+  const definitionByCanonicalKey = new Map();
+  for (const definition of definitions) {
+    const key = canonicalizeTransactionRecordKey(definition?.key, schemaKey);
+    if (key && !definitionByCanonicalKey.has(key)) definitionByCanonicalKey.set(key, definition);
+  }
+  // Label matching remains a compatibility fallback for old rows that have no
+  // usable key/definition metadata. It is deliberately not the primary join.
+  const definitionByLabel = new Map();
+  for (const definition of definitions) {
+    const label = normalizeRecordLabel(definition.label || definition.display_label || definition.key);
+    if (!label || definitionByLabel.has(label)) continue;
+    definitionByLabel.set(label, definition);
+  }
   const groups = new Map();
   for (const field of fields) {
     const originalKey = field.field_key;
     const canonicalKey = canonicalizeTransactionRecordKey(originalKey, schemaKey) || originalKey;
     const definition = looksLikeGeneratedRoom(room, proposal)
-      ? definitionByLabel.get(normalizeRecordLabel(field.display_label))
+      ? definitionByCanonicalKey.get(canonicalKey)
+        || definitionByCanonicalKey.get(canonicalizeTransactionRecordKey(field.definition_key, schemaKey))
+        || definitionByLabel.get(normalizeRecordLabel(field.display_label))
       : null;
     field.field_key = canonicalKey;
-    if (!field.definition_key && definition?.key) field.definition_key = definition.key;
+    if (definition?.key) field.definition_key = definition.key;
+    if (definition && field.is_required == null) field.is_required = definition.required !== false;
+    if (definition?.label) field.display_label = definition.label;
     field.field_category = normalizeRecordCategory(
-      field.field_category || definition?.category,
+      definition?.category || field.field_category,
       canonicalKey,
       field.display_label,
     );
@@ -356,7 +377,8 @@ async function normalizeStoredTransactionRecord(propertyId, room, recordFields, 
   }
 
   const canonical = [];
-  const writes = [];
+  const deleteWrites = [];
+  const updateWrites = [];
   for (const [key, group] of groups) {
     group.sort((a, b) => {
       const rankDelta = recordStatusRank(b.field) - recordStatusRank(a.field);
@@ -368,32 +390,62 @@ async function normalizeStoredTransactionRecord(propertyId, room, recordFields, 
         - new Date(a.field.updated_at || a.field.created_at || 0);
     });
     const winner = group[0].field;
+    const generatedDefinition = looksLikeGeneratedRoom(room, proposal)
+      ? definitionByCanonicalKey.get(key)
+      : null;
+    // An extracted row may outrank an empty generated row. Carry the
+    // generated definition metadata onto that value so requiredness,
+    // category, provenance identity, and confirmation all remain attached to
+    // the same canonical winner.
+    if (generatedDefinition?.key) winner.definition_key = generatedDefinition.key;
+    if (generatedDefinition && winner.is_required == null) {
+      winner.is_required = generatedDefinition.required !== false;
+    }
+    if (generatedDefinition?.label) winner.display_label = generatedDefinition.label;
+    if (generatedDefinition?.category) {
+      winner.field_category = normalizeRecordCategory(
+        generatedDefinition.category,
+        key,
+        generatedDefinition.label,
+      );
+    }
     canonical.push(winner);
     const original = recordFields.find(field => field.id === winner.id);
+    for (const duplicate of group.slice(1)) {
+      if (duplicate.field.id) {
+        deleteWrites.push(supabase.from('transaction_record_fields')
+          .delete().eq('id', duplicate.field.id).eq('property_id', propertyId));
+      }
+    }
     if (winner.id && original && (
       winner.field_key !== original.field_key
       || winner.definition_key !== original.definition_key
       || winner.field_category !== original.field_category
+      || winner.display_label !== original.display_label
+      || winner.is_required !== original.is_required
     )) {
-      writes.push(supabase.from('transaction_record_fields').update({
+      updateWrites.push(supabase.from('transaction_record_fields').update({
         field_key: winner.field_key,
         definition_key: winner.definition_key || null,
         field_category: winner.field_category || String(key).split('.')[0] || 'transaction',
+        display_label: winner.display_label || key,
+        is_required: winner.is_required !== false,
         updated_at: new Date().toISOString(),
       }).eq('id', winner.id).eq('property_id', propertyId));
     }
-    for (const duplicate of group.slice(1)) {
-      if (duplicate.field.id) {
-        writes.push(supabase.from('transaction_record_fields')
-          .delete().eq('id', duplicate.field.id).eq('property_id', propertyId));
-      }
-    }
   }
-  if (writes.length) {
-    const results = await Promise.all(writes);
+  if (deleteWrites.length) {
+    const results = await Promise.all(deleteWrites);
     const failed = results.find(result => result.error);
     if (failed?.error && !/column|schema cache|relation/i.test(failed.error.message || '')) {
       console.warn('[transaction-state] record normalization write failed:', failed.error.message);
+    }
+  }
+  if (updateWrites.length) {
+    const results = await Promise.all(updateWrites);
+    const failed = results.find(result => result.error);
+    if (failed?.error && !/column|schema cache|relation/i.test(failed.error.message || '')) {
+      console.warn('[transaction-state] record normalization update failed:', failed.error.message);
     }
   }
   return canonical;
