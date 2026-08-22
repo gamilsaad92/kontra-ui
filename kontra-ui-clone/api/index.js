@@ -6098,6 +6098,36 @@ app.post('/api/public/deal-room/:propertyId/advance', async (req, res) => {
     const currentStage = room?.deal_stage;
     const stageChanging = currentStage !== stage;
 
+    // Hazard-loss rooms have a small set of factual gates that must be
+    // confirmed before work can move from claim review into repair execution
+    // or fund release.  Keep this check server-side: UI counters and proposal
+    // snapshots are only projections and can be stale after a re-entry.
+    const targetLabel = String(stageLabel || stage).toLowerCase();
+    const hazardMilestone = /claim\s*review|repair\s*progress|fund\s*release|insurance|hazard|casualty/.test(
+      `${targetLabel} ${room?.workflow_pack_id || ''}`,
+    );
+    if (hazardMilestone && stageChanging && /repair\s*progress|fund\s*release/.test(targetLabel)) {
+      const transactionState = await readTransactionState(propertyId);
+      const requiredForRepair = [
+        'transaction.incident_date',
+        'financial.insurance_proceeds',
+        'financial.repair_costs',
+      ];
+      const unmet = requiredForRepair.filter(key => {
+        const field = transactionState.recordState?.fields?.find(item => item.key === key);
+        return !field || field.status !== 'confirmed' || !String(field.value || '').trim();
+      });
+      const conflicts = transactionState.recordState?.unresolvedConflictCount || 0;
+      if (unmet.length || conflicts > 0) {
+        return res.status(409).json({
+          error: 'HAZARD_LOSS_GATE',
+          message: 'Confirm incident date, insurance proceeds, and repair costs before advancing this hazard-loss milestone.',
+          unmet_fields: unmet,
+          unresolved_conflicts: conflicts,
+        });
+      }
+    }
+
     const { error } = await supabase.from('deal_rooms').update({ deal_stage: stage }).eq('property_id', propertyId);
     if (error) throw error;
     logEvent(propertyId, 'stage_advanced', 'owner', null, `Deal advanced to ${stageLabel}`, { stage, stageLabel });
@@ -9404,6 +9434,10 @@ app.post('/api/public/deal-room/:propertyId/transaction-record/fields/:fieldId/v
       .select('id, field_key, value_text, status')
       .eq('id', fieldId).eq('property_id', propertyId).maybeSingle();
     if (!existing) return res.status(404).json({ error: 'Transaction Record field not found' });
+    // The GET endpoint returns reconciled canonical rows. Older clients can
+    // still post an alias-row id during the reconciliation window, so resolve
+    // the field key before writing history/conflict state.
+    const canonicalFieldKey = canonicalizeTransactionRecordKey(existing.field_key, 'generic');
     const nextValue = existing.value_text;
     const { error: updateError } = await supabase.from('transaction_record_fields').update({
       status: 'verified', verified_by: email,
@@ -9423,17 +9457,17 @@ app.post('/api/public/deal-room/:propertyId/transaction-record/fields/:fieldId/v
     if (approvalError && !/relation|schema cache|column/i.test(approvalError.message || '')) {
       throw approvalError;
     }
-    await resolveTransactionRecordConflicts(propertyId, existing.field_key, {
+    await resolveTransactionRecordConflicts(propertyId, canonicalFieldKey, {
       resolutionValue: nextValue,
       resolutionNote: 'Coordinator confirmed the canonical Transaction Record value.',
       resolvedBy: email,
     });
-    recalculateTransactionState(propertyId, {
+    const recalculated = await recalculateTransactionState(propertyId, {
       source: 'transaction_record_field_confirmed',
       actorId: access.actorId,
       actorType: access.actorType,
-    }).catch(e => console.warn('[transaction-state] field confirmation recalculation failed:', e.message));
-    res.json({ ok: true });
+    });
+    res.json({ ok: true, state: recalculated.state });
   } catch (err) {
     console.error('[transaction-record verify]', err.message);
     res.status(500).json({ error: err.message });
