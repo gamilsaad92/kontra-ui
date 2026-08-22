@@ -22,6 +22,7 @@ const {
 // enough to restore its blocking state. This is deliberately deterministic and
 // never calls an LLM.
 const conflictReconcileAt = new Map();
+const recordNormalizeAt = new Map();
 const MONEY_PATTERN = /\$\s*([\d,]+(?:\.\d+)?)/g;
 const REPAIR_CONTEXT = /repair|contractor|invoice|restoration|loss\s+proceeds|hazard/i;
 
@@ -255,8 +256,8 @@ function getRequirements() {
 }
 
 async function resolveSchemaKey(room, resolvedPackId = null) {
-  const generatedProposal = room?.generated_proposal || room?.metadata_values?.generated_proposal;
-  if (Array.isArray(generatedProposal?.transaction_record_fields)) return 'generated_ai';
+  const generatedProposal = generatedProposalFromRoom(room);
+  if (looksLikeGeneratedRoom(room, generatedProposal)) return 'generated_ai';
   const allRequirements = getRequirements();
   let schemaKey = resolvedPackId || resolvePackIdFromRoom(room);
   if (!allRequirements[schemaKey] && String(schemaKey).startsWith('ws_')) {
@@ -291,6 +292,111 @@ function normalizeRecordLabel(value) {
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, ' ')
     .replace(/\s+/g, ' ');
+}
+
+function generatedProposalFromRoom(room) {
+  return room?.generated_proposal
+    || room?.metadata_values?.generated_proposal
+    || room?.transaction_context?.generated_proposal
+    || null;
+}
+
+function normalizeRecordCategory(value, key = '', label = '') {
+  const raw = String(value || '').trim().toLowerCase().replace(/[\s-]+/g, '_');
+  const keyCategory = String(key || '').split('.')[0].toLowerCase();
+  const category = raw || keyCategory || 'transaction';
+  if (['transaction', 'transaction_extra', 'terms', 'deal_terms', 'hazard', 'incident', 'loss', 'event', 'timeline'].includes(category)) return 'transaction';
+  if (['asset', 'asset_identity', 'property', 'company', 'identity'].includes(category)) return 'asset_identity';
+  if (['party', 'parties', 'counterparties'].includes(category)) return 'parties';
+  if (['ownership', 'beneficial_ownership', 'cap_table'].includes(category)) return 'beneficial_ownership';
+  if (['finance', 'financial', 'financials', 'economics', 'insurance', 'coverage', 'repairs', 'repair'].includes(category)) return 'financial';
+  if (['legal', 'diligence', 'regulatory', 'document', 'documents', 'evidence'].includes(category)) return 'legal';
+  if (['approval', 'approvals', 'signoff'].includes(category)) return 'approvals';
+  const text = `${key} ${label}`.toLowerCase();
+  if (/(repair|cost|amount|financial|insurance|coverage|proceeds|valuation)/.test(text)) return 'financial';
+  if (/(incident|date|loss|event|deadline|closing|completion)/.test(text)) return 'transaction';
+  return keyCategory || category;
+}
+
+function looksLikeGeneratedRoom(room, proposal = null) {
+  return room?.workflow_pack_id === 'generated_ai'
+    || room?.base_pack === 'generated_ai'
+    || room?.transaction_type === 'generated_ai'
+    || Array.isArray(proposal?.transaction_record_fields);
+}
+
+async function normalizeStoredTransactionRecord(propertyId, room, recordFields, schemaKey, proposal) {
+  const fields = Array.isArray(recordFields) ? recordFields.map(field => ({ ...field })) : [];
+  const now = Date.now();
+  if (!propertyId || now - (recordNormalizeAt.get(propertyId) || 0) < 15000) return fields;
+  recordNormalizeAt.set(propertyId, now);
+
+  const definitions = Array.isArray(proposal?.transaction_record_fields)
+    ? proposal.transaction_record_fields : [];
+  const definitionByLabel = new Map(definitions.map(definition => [
+    normalizeRecordLabel(definition.label || definition.display_label || definition.key),
+    definition,
+  ]).filter(([label]) => label));
+  const groups = new Map();
+  for (const field of fields) {
+    const originalKey = field.field_key;
+    const canonicalKey = canonicalizeTransactionRecordKey(originalKey, schemaKey) || originalKey;
+    const definition = looksLikeGeneratedRoom(room, proposal)
+      ? definitionByLabel.get(normalizeRecordLabel(field.display_label))
+      : null;
+    field.field_key = canonicalKey;
+    if (!field.definition_key && definition?.key) field.definition_key = definition.key;
+    field.field_category = normalizeRecordCategory(
+      field.field_category || definition?.category,
+      canonicalKey,
+      field.display_label,
+    );
+    if (!groups.has(canonicalKey)) groups.set(canonicalKey, []);
+    groups.get(canonicalKey).push({ field, originalKey });
+  }
+
+  const canonical = [];
+  const writes = [];
+  for (const [key, group] of groups) {
+    group.sort((a, b) => {
+      const rankDelta = recordStatusRank(b.field) - recordStatusRank(a.field);
+      if (rankDelta) return rankDelta;
+      if ((a.field.field_key === key) !== (b.field.field_key === key)) {
+        return a.field.field_key === key ? -1 : 1;
+      }
+      return new Date(b.field.updated_at || b.field.created_at || 0)
+        - new Date(a.field.updated_at || a.field.created_at || 0);
+    });
+    const winner = group[0].field;
+    canonical.push(winner);
+    const original = recordFields.find(field => field.id === winner.id);
+    if (winner.id && original && (
+      winner.field_key !== original.field_key
+      || winner.definition_key !== original.definition_key
+      || winner.field_category !== original.field_category
+    )) {
+      writes.push(supabase.from('transaction_record_fields').update({
+        field_key: winner.field_key,
+        definition_key: winner.definition_key || null,
+        field_category: winner.field_category || String(key).split('.')[0] || 'transaction',
+        updated_at: new Date().toISOString(),
+      }).eq('id', winner.id).eq('property_id', propertyId));
+    }
+    for (const duplicate of group.slice(1)) {
+      if (duplicate.field.id) {
+        writes.push(supabase.from('transaction_record_fields')
+          .delete().eq('id', duplicate.field.id).eq('property_id', propertyId));
+      }
+    }
+  }
+  if (writes.length) {
+    const results = await Promise.all(writes);
+    const failed = results.find(result => result.error);
+    if (failed?.error && !/column|schema cache|relation/i.test(failed.error.message || '')) {
+      console.warn('[transaction-state] record normalization write failed:', failed.error.message);
+    }
+  }
+  return canonical;
 }
 
 async function reconcileConfirmedFieldHistory(propertyId) {
@@ -456,7 +562,11 @@ function computeTransactionRecordState(recordFields, schemaKey, requiredKeysOver
       fieldId: field.id || null,
       persistedKey: field.field_key || key,
       definitionKey: field.definition_key || key,
-      category: field.field_category || String(field.field_key || key).split('.')[0] || 'transaction',
+      category: normalizeRecordCategory(
+        field.field_category,
+        field.field_key || key,
+        field.display_label,
+      ),
       label: field.display_label || key,
       value: field.value_text || field.value_json || null,
       status,
@@ -465,6 +575,12 @@ function computeTransactionRecordState(recordFields, schemaKey, requiredKeysOver
       required: requiredKeys.includes(key),
       isRequired: field.is_required !== false,
       sourceType: field.source_type || null,
+      sourceDocId: field.source_doc_id || null,
+      sourcePage: field.source_page || null,
+      sourceExcerpt: field.source_excerpt || null,
+      source_document: field.source_document || field.source_file || field.source_doc_id || null,
+      source_file: field.source_file || null,
+      confidence: field.confidence ?? null,
       conflictCandidates: Array.isArray(field.conflict_candidates) ? field.conflict_candidates : [],
       updatedAt: field.updated_at || field.created_at || null,
     };
@@ -659,9 +775,24 @@ async function readTransactionState(propertyId) {
     ? (/relation|schema cache|column/i.test(conflictsResult.error.message || '') ? [] : (() => { throw conflictsResult.error; })())
     : (conflictsResult?.data || []);
   const packId = await getRoomPackId(room);
-  const schemaKey = await resolveSchemaKey(room, packId);
-  const generatedProposal = room?.generated_proposal || room?.metadata_values?.generated_proposal;
-    const dynamicRequiredKeys = schemaKey === 'generated_ai'
+  let schemaKey = await resolveSchemaKey(room, packId);
+  const generatedProposal = generatedProposalFromRoom(room);
+  // A legacy generated room may have lost its proposal JSON but still retain
+  // its generated definition/category keys. Recover that identity from the
+  // durable rows before selecting the required-field denominator.
+  if (schemaKey !== 'generated_ai' && (
+    looksLikeGeneratedRoom(room, generatedProposal)
+    || (recordFields || []).some(field =>
+      /^(hazard|insurance|repairs|repair|loss)\./i.test(
+        `${field.definition_key || ''} ${field.field_key || ''}`,
+      ))
+  )) {
+    schemaKey = 'generated_ai';
+  }
+  recordFields = await normalizeStoredTransactionRecord(
+    propertyId, room, recordFields || [], schemaKey, generatedProposal,
+  );
+  const dynamicRequiredKeys = schemaKey === 'generated_ai'
      ? ((recordFields || []).some(field => field.definition_key)
        ? (recordFields || []).filter(field => field.is_required !== false).map(field => ({
          key: field.field_key,

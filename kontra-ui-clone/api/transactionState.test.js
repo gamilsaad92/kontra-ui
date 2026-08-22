@@ -328,6 +328,37 @@ describe('transaction state recalculation', () => {
     expect(readiness.overall).toBe(67);
   });
 
+  it('keeps a legacy hazard-loss snapshot coherent across categories and confirmation states', () => {
+    const readiness = computeTransactionReadiness(
+      { workflow_pack_id: 'generated_ai' },
+      [
+        { id: 'repair', field_key: 'financial.repair_costs', field_category: 'repairs', display_label: 'Repair Costs', value_text: '$229,950', status: 'verified' },
+        { id: 'incident', field_key: 'transaction.incident_date', field_category: 'incident', display_label: 'Incident Date', value_text: '2026-07-14', status: 'needs_review' },
+        { id: 'proceeds', field_key: 'insurance.proceeds', field_category: 'insurance', display_label: 'Insurance Proceeds', value_text: '$300,000', status: 'extracted' },
+        { id: 'proof', field_key: 'legal.proof_of_payment', field_category: 'documents', display_label: 'Proof of Payment', value_text: 'Uploaded', status: 'needs_review' },
+        { id: 'lien', field_key: 'legal.lien_waivers', field_category: 'legal', display_label: 'Lien Waivers', value_text: 'Uploaded', status: 'needs_review' },
+      ],
+      'generated_ai',
+      [
+        { key: 'hazard.repair_costs', label: 'Repair Costs' },
+        { key: 'hazard.incident_date', label: 'Incident Date' },
+        { key: 'hazard.insurance_proceeds', label: 'Insurance Proceeds' },
+        { key: 'hazard.proof_of_payment', label: 'Proof of Payment' },
+        { key: 'hazard.lien_waivers', label: 'Lien Waivers' },
+      ],
+      [],
+    );
+
+    expect(readiness.recordState.requiredCount).toBe(5);
+    expect(readiness.recordState.confirmedCount).toBe(1);
+    expect(readiness.recordState.awaitingRequiredCount).toBe(4);
+    expect(readiness.recordState.requiredFields).toEqual(expect.arrayContaining([
+      expect.objectContaining({ definitionKey: 'hazard.repair_costs', persistedKey: 'financial.repair_costs', status: 'confirmed', category: 'financial' }),
+      expect.objectContaining({ definitionKey: 'hazard.incident_date', persistedKey: 'transaction.incident_date', status: 'awaiting', category: 'transaction' }),
+    ]));
+    expect(readiness.overall).toBe(20);
+  });
+
   it('does not treat four generic transaction facts as sufficient digital-asset preparation', () => {
     const fields = [
       { field_key: 'transaction.type', value_text: 'Commercial acquisition', status: 'verified' },
