@@ -15,6 +15,23 @@ const UNIVERSAL_ALIASES = {
   'financial.total_revenue': 'financial.revenue',
   'financial.borrower_advanced_funds': 'financial.borrower_funds_advanced',
   'financial.borrower_funds_advanced_amount': 'financial.borrower_funds_advanced',
+  // Hazard-loss fields are emitted under several namespaces by generated
+  // proposals and document extraction. Keep one durable identity per fact.
+  'hazard.incident_date': 'transaction.incident_date',
+  'incident.incident_date': 'transaction.incident_date',
+  'loss.incident_date': 'transaction.incident_date',
+  'hazard.units_damaged': 'asset.units_damaged',
+  'incident.units_damaged': 'asset.units_damaged',
+  'loss.units_damaged': 'asset.units_damaged',
+  'asset.units_affected': 'asset.units_damaged',
+  'hazard.insurance_proceeds': 'financial.insurance_proceeds',
+  'insurance.proceeds': 'financial.insurance_proceeds',
+  'insurance.insurance_proceeds': 'financial.insurance_proceeds',
+  'financial.proceeds': 'financial.insurance_proceeds',
+  'financial.repair_costs': 'financial.repair_costs',
+  'hazard.repair_costs': 'financial.repair_costs',
+  'repairs.repair_costs': 'financial.repair_costs',
+  'repair.repair_costs': 'financial.repair_costs',
 };
 
 const PACK_ALIASES = {

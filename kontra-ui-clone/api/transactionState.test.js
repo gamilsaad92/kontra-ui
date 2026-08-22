@@ -6,8 +6,75 @@ const {
 } = require('./lib/transactionState');
 
 const requirements = require('../shared/transaction_record_requirements.json');
+const {
+  canonicalizeTransactionRecordKey,
+  aliasKeysForCanonical,
+} = require('./lib/transactionRecordCanonicalization');
 
 describe('transaction state recalculation', () => {
+  it.each([
+    ['hazard.incident_date', 'transaction.incident_date'],
+    ['transaction.incident_date', 'transaction.incident_date'],
+    ['hazard.insurance_proceeds', 'financial.insurance_proceeds'],
+    ['insurance.proceeds', 'financial.insurance_proceeds'],
+    ['financial.insurance_proceeds', 'financial.insurance_proceeds'],
+    ['hazard.repair_costs', 'financial.repair_costs'],
+    ['asset.units_affected', 'asset.units_damaged'],
+  ])('resolves %s to one canonical identity', (alias, canonical) => {
+    expect(canonicalizeTransactionRecordKey(alias, 'generated_ai')).toBe(canonical);
+    expect(aliasKeysForCanonical(canonical, 'generated_ai')).toContain(alias);
+  });
+
+  it('counts extracted hazard aliases against generated required definitions', () => {
+    const readiness = computeTransactionReadiness(
+      { workflow_pack_id: 'generated_ai' },
+      [
+        {
+          id: 'incident-date',
+          field_key: 'transaction.incident_date',
+          field_category: 'legal',
+          display_label: 'Incident Date',
+          value_text: '2026-07-10',
+          status: 'verified',
+        },
+        {
+          id: 'insurance-proceeds',
+          field_key: 'insurance.proceeds',
+          field_category: 'insurance',
+          display_label: 'Insurance Proceeds',
+          value_text: '$325,000',
+          status: 'extracted',
+        },
+      ],
+      'generated_ai',
+      [
+        { key: 'hazard.incident_date', label: 'Incident Date', required: true, category: 'hazard' },
+        { key: 'hazard.insurance_proceeds', label: 'Insurance Proceeds', required: true, category: 'hazard' },
+      ],
+      [],
+    );
+
+    expect(readiness.recordState.requiredFields).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        definitionKey: 'hazard.incident_date',
+        key: 'transaction.incident_date',
+        category: 'transaction',
+        value: '2026-07-10',
+        status: 'confirmed',
+      }),
+      expect.objectContaining({
+        definitionKey: 'hazard.insurance_proceeds',
+        key: 'financial.insurance_proceeds',
+        category: 'financial',
+        value: '$325,000',
+        status: 'awaiting',
+      }),
+    ]));
+    expect(readiness.confirmedCount).toBe(1);
+    expect(readiness.requiredCount).toBe(2);
+    expect(readiness.overall).toBe(50);
+  });
+
   it('removes not-applicable fields from the required denominator', () => {
     const required = requirements.cre_acquisition;
     const excluded = required[0];
@@ -313,7 +380,7 @@ describe('transaction state recalculation', () => {
       expect.objectContaining({
         definitionKey: 'hazard.incident_date',
         persistedKey: 'transaction.incident_date',
-        category: 'legal',
+        category: 'transaction',
         status: 'confirmed',
       }),
       expect.objectContaining({
