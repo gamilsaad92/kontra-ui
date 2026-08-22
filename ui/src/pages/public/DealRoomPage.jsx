@@ -2951,6 +2951,7 @@ function getTransactionRecordCategory(field) {
 // Replaces the old separate "Next Actions", "AI Findings", and "Issues" cards.
 function WhatNeedsAttention({
   briefing,
+  analyses = [],
   recordFields,
   recordState = null,
   conflicts = [],
@@ -2996,7 +2997,7 @@ function WhatNeedsAttention({
     return value && !['n/a', 'na', 'not applicable', 'not_applicable', 'unknown'].includes(value)
       && field?.status !== 'not_applicable';
   };
-  const schemaKey = getEffectiveRecordSchemaKey(property, packId, pack);
+  const schemaKey = recordState?.schemaKey || getEffectiveRecordSchemaKey(property, packId, pack);
   const recordSchema = getEffectiveRecordDefinitions(schemaKey, property, recordFields, recordState);
   const visibleRecordDefinitions = schemaKey === 'generated_ai'
     ? recordSchema
@@ -3059,6 +3060,7 @@ function WhatNeedsAttention({
     : schemaDocuments
   )
     .filter(item => item.required && !DONE_DOCUMENT_STATUSES.has(item.status) && !item.uploaded);
+  const documentReviewItems = analyses.filter(hasDocumentReviewFinding).slice(0, 4);
 
   const roleMeta = Object.fromEntries((pack?.roles || []).map(role => [role.key, role]));
   const partyRows = Array.isArray(coordination?.submissions)
@@ -3081,6 +3083,19 @@ function WhatNeedsAttention({
      || (coordination?.participantInvites || []).length > 0;
 
   const items = [];
+
+  documentReviewItems.forEach(analysis => {
+    const result = analysis.analysis || {};
+    items.push({
+      id: `document-review-${analysis.id || analysis.section}`,
+      urgency: 'medium',
+      title: `${analysis.filename || analysis.section || 'Uploaded document'} needs review`,
+      reason: result.summary || result.review_reason || result.reviewReason
+        || 'AI found an item that needs coordinator review.',
+      actions: [{ label: 'Review document', onClick: () => onTabChange?.('documents') }],
+      sourcePriority: 1,
+    });
+  });
 
   // 1. Conflicting / source-changed — highest urgency
   (conflicts.length > 0 ? conflicts : (recordState?.unresolvedConflicts || [])).forEach(conflict => {
@@ -4101,8 +4116,8 @@ function getLifecycleAdvanceRecommendation(stages, currentStageIndex, analyses, 
   };
 }
 
-function getOpenIssueCount(conflicts = [], nextMilestoneBlockers = []) {
-  return conflicts.length + nextMilestoneBlockers.length;
+function getOpenIssueCount(conflicts = [], nextMilestoneBlockers = [], documentReviewCount = 0) {
+  return conflicts.length + nextMilestoneBlockers.length + documentReviewCount;
 }
 
 const RECORD_EMPTY_VALUES = new Set(['', 'n/a', 'na', 'not applicable', 'not_applicable', 'unknown']);
@@ -4113,6 +4128,42 @@ const DONE_DOCUMENT_STATUSES = new Set(['uploaded', 'approved', 'ai_complete', '
 function hasMeaningfulRecordValue(field) {
   const value = String(field?.value_text || '').trim().toLowerCase();
   return !RECORD_EMPTY_VALUES.has(value) && field?.status !== 'not_applicable';
+}
+
+function hasDocumentReviewFinding(analysis) {
+  const result = analysis?.analysis || {};
+  const reviewStatuses = new Set(['review', 'needs_review', 'pending_review', 'needs_attention', 'attention']);
+  const explicitReview = [
+    analysis?.processing_status,
+    result.status,
+    result.review_status,
+    result.reviewStatus,
+    result.complianceStatus,
+    result.document_status,
+    result.documentStatus,
+  ].some(value => reviewStatuses.has(String(value || '').trim().toLowerCase().replace(/[\s-]+/g, '_')))
+    || result.requires_human_review === true
+    || result.needs_review === true
+    || result.needsAttention === true
+    || result.requiresHumanReview === true;
+  if (explicitReview || analysis?.processing_status === 'failed') return true;
+
+  const findingArrays = [
+    result.redFlags,
+    result.anomalies,
+    result.coverageGaps,
+    result.lifeSafetyFindings,
+    result.scheduleBExceptions,
+    result.discrepancies,
+    result.paymentDiscrepancy,
+    result.paymentDiscrepancies,
+    result.reviewFindings,
+    result.review_findings,
+    result.findings,
+    result.deficiencies,
+    result.issues,
+  ];
+  return findingArrays.some(items => Array.isArray(items) && items.length > 0);
 }
 
 function normalizeRecordCategory(value, key = '', label = '') {
@@ -4378,21 +4429,16 @@ function getDocumentRequirementStats(checklistItems = [], pack, property, analys
       || item.uploaded === true
       || analyses.some(analysis => String(analysis.section || '').toLowerCase() === String(item.section || '').toLowerCase())
   );
-  const reviewStatuses = new Set(['review', 'needs_review', 'pending_review']);
+  const reviewStatuses = new Set(['review', 'needs_review', 'pending_review', 'needs_attention', 'attention']);
   const reviewSections = new Set(
     analyses
-      .filter(analysis =>
-        analysis.processing_status === 'failed'
-          || analysis.analysis?.requires_human_review === true
-          || analysis.analysis?.needs_review === true
-          || analysis.analysis?.status === 'needs_review'
-      )
+      .filter(hasDocumentReviewFinding)
       .map(analysis => String(analysis.section || '').toLowerCase()),
   );
   const reviewDocuments = requiredDocuments.filter(item =>
     receivedDocuments.includes(item)
       && (
-        reviewStatuses.has(String(item.status || '').toLowerCase())
+        reviewStatuses.has(String(item.status || '').toLowerCase().replace(/[\s-]+/g, '_'))
           || reviewSections.has(String(item.section || '').toLowerCase())
       )
   );
@@ -4715,7 +4761,11 @@ function TransactionBrief({
     analyses,
     hasBlockingIssues,
   );
-  const openIssueCount = getOpenIssueCount(conflicts, nextMilestoneBlockers);
+  const openIssueCount = getOpenIssueCount(
+    conflicts,
+    nextMilestoneBlockers,
+    documentStats.reviewDocuments.length,
+  );
   const recommendationItems = [
     ...(stageRecommendation && !hasBlockingIssues && stageDecision !== 'kept'
       ? [{
@@ -4858,9 +4908,14 @@ function TransactionBrief({
             {openIssueCount}
           </p>
           <p className="text-[11px] text-gray-500">
-            {conflicts.length > 0
+            {documentStats.reviewDocuments.length > 0
+              ? `${documentStats.reviewDocuments.length} document${documentStats.reviewDocuments.length === 1 ? '' : 's'} need review`
+              : conflicts.length > 0
               ? `${conflicts.length} conflict${conflicts.length === 1 ? '' : 's'}`
               : 'No conflicts recorded'}
+            {documentStats.reviewDocuments.length > 0 && conflicts.length > 0
+              ? ` · ${conflicts.length} conflict${conflicts.length === 1 ? '' : 's'}`
+              : ''}
             {nextMilestoneBlockers.length > 0
               ? ` · ${nextMilestoneBlockers.length} milestone blocker${nextMilestoneBlockers.length === 1 ? '' : 's'}`
               : ''}
@@ -5037,6 +5092,7 @@ export {
   getLifecycleAdvanceRecommendation,
   getNextMilestoneBlockers,
   getOpenIssueCount,
+  hasDocumentReviewFinding,
   getRecordDefinitionState,
   getCoordinatorRecordFacts,
 };
@@ -5354,7 +5410,7 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
       .then(record => {
         if (sequence !== loadSequence.current) return;
         setRecordFields(Array.isArray(record?.fields) ? record.fields : []);
-        setRecordState(record?.record_state || null);
+         setRecordState(previous => record?.record_state || previous);
       });
     get(`/api/public/deal-room/${propertyId}/readiness`, null)
       .then(data => {
@@ -5450,11 +5506,18 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
   // explicitly enabled for this workspace.
   const digitalAssetEnabled = isDigitalAssetLayerEnabled(property, pack);
 
-  const readinessPct = readiness?.transaction_readiness?.overall_pct ?? null;
-  const readinessStatus = readiness?.transaction_readiness?.status
-    || (readinessPct === 0 ? 'Getting Started' : 'Building');
-  const recordSchemaKey = getEffectiveRecordSchemaKey(property, packId, pack);
   const canonicalRecordState = recordState || readiness?.transaction_record || null;
+  const readinessPct = canonicalRecordState?.requiredCount > 0
+    ? Math.round((canonicalRecordState.confirmedCount / canonicalRecordState.requiredCount) * 100)
+    : (readiness?.transaction_readiness?.overall_pct ?? null);
+  const readinessStatus = canonicalRecordState?.requiredCount > 0
+    ? (readinessPct >= 80 ? 'Closing Ready'
+      : readinessPct >= 55 ? 'Needs Review'
+        : readinessPct === 0 ? 'Getting Started' : 'Needs Attention')
+    : (readiness?.transaction_readiness?.status
+      || (readinessPct === 0 ? 'Getting Started' : 'Building'));
+  const recordSchemaKey = canonicalRecordState?.schemaKey
+    || getEffectiveRecordSchemaKey(property, packId, pack);
   const overviewAction = useCallback((action = {}) => {
     if (action.type === 'conflict' && action.conflict) {
       setSelectedConflict(action.conflict);
@@ -5624,6 +5687,7 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
 
           <WhatNeedsAttention
             briefing={briefing}
+             analyses={analyses}
             recordFields={recordFields}
             recordState={canonicalRecordState}
             conflicts={readiness?.conflicts || canonicalRecordState?.unresolvedConflicts || []}
