@@ -6106,7 +6106,7 @@ app.post('/api/public/deal-room/:propertyId/advance', async (req, res) => {
     const hazardMilestone = /claim\s*review|repair\s*progress|fund\s*release|insurance|hazard|casualty/.test(
       `${targetLabel} ${room?.workflow_pack_id || ''}`,
     );
-    if (hazardMilestone && stageChanging && /repair\s*progress|fund\s*release/.test(targetLabel)) {
+    if (hazardMilestone && stageChanging && /repair\s*progress|funds?\s*release/.test(targetLabel)) {
       const transactionState = await readTransactionState(propertyId);
       const requiredForRepair = [
         'transaction.incident_date',

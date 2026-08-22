@@ -260,6 +260,20 @@ async function resolveSchemaKey(room, resolvedPackId = null) {
   if (looksLikeGeneratedRoom(room, generatedProposal)) return 'generated_ai';
   const allRequirements = getRequirements();
   let schemaKey = resolvedPackId || resolvePackIdFromRoom(room);
+  // Older generated hazard rooms may have lost their proposal JSON and may
+  // only retain a structural custom pack. Do not reinterpret those rooms as
+  // CRE just because the pack's generic transactionType is "lending"; their
+  // persisted canonical rows are the authoritative generated definition.
+  const roomText = [
+    room?.property_name,
+    room?.workflow_pack_id,
+    room?.metadata_values?.workspace_name,
+    room?.metadata_values?.transaction_description,
+    room?.transaction_context?.description,
+  ].filter(Boolean).join(' ').toLowerCase();
+  if (/\bhazard\s+loss\b|\bcasualty\b|\binsurance\s+proceeds?\b/.test(roomText)) {
+    return 'generated_ai';
+  }
   if (!allRequirements[schemaKey] && String(schemaKey).startsWith('ws_')) {
     try {
       const { data } = await supabase
