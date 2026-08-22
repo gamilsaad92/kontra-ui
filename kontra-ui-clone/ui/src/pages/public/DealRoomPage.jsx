@@ -2997,7 +2997,7 @@ function WhatNeedsAttention({
       && field?.status !== 'not_applicable';
   };
   const schemaKey = getEffectiveRecordSchemaKey(property, packId, pack);
-  const recordSchema = getEffectiveRecordDefinitions(schemaKey, property);
+  const recordSchema = getEffectiveRecordDefinitions(schemaKey, property, recordFields, recordState);
   const visibleRecordDefinitions = schemaKey === 'generated_ai'
     ? recordSchema
     : recordSchema.length > 0
@@ -4158,20 +4158,56 @@ function getEffectiveRecordSchemaKey(property, packId, pack) {
     : resolveSchemaKey(packId, pack, property?.name || property?.property_name);
 }
 
-function getEffectiveRecordDefinitions(schemaKey, property) {
-  const generatedFields = getGeneratedProposal(property)?.transaction_record_fields;
-  if (schemaKey === 'generated_ai' && Array.isArray(generatedFields)) {
-    return generatedFields
-      .filter(field => field?.key && field?.label)
-      .map(field => ({
+function getEffectiveRecordDefinitions(schemaKey, property, recordFields = [], recordState = null) {
+  // Generated rooms have no reusable pack schema. Once the room exists, the
+  // persisted record rows are the schema: this prevents the proposal JSON
+  // from becoming a second source of field identity, category, or requiredness.
+  if (schemaKey === 'generated_ai') {
+    const persistedFields = (recordState?.fields?.length ? recordState.fields : recordFields)
+      .filter(field => field?.field_key || field?.key)
+      .map(field => {
+        const approvedDefinitionKey = field.definitionKey ||
+          field.definition_key ||
+          recordState?.requiredFields?.find(required =>
+            required?.key === (field.key || field.field_key)
+              || required?.persistedKey === (field.key || field.field_key)
+          )?.definitionKey ||
+          field.key || field.field_key;
+        return {
         ...field,
-        category: normalizeRecordCategory(field.category || field.field_category, field.key),
-        canonicalKey: field.key,
-        workflowRequired: field.required !== false,
+        definitionKey: approvedDefinitionKey,
+        // Keep the approved definition key visible for legacy generated
+        // rooms, while canonicalKey remains the durable database identity.
+        key: approvedDefinitionKey,
+        canonicalKey: field.key || field.field_key,
+        persistedKey: field.key || field.field_key,
+        label: field.label || field.display_label || field.field_key,
+        category: normalizeRecordCategory(field.category || field.field_category, field.key || field.field_key),
+        workflowRequired: field.required !== false && field.is_required !== false,
+        required: field.required !== false && field.is_required !== false,
         renderable: field.renderable !== false,
         summaryPriority: field.summaryPriority || 'key',
-      }))
+        };
+      })
       .filter(field => field.renderable !== false);
+    if (persistedFields.length > 0) return persistedFields;
+    // Pre-migration compatibility only. New rooms always take the branch
+    // above because materialization creates one row per approved field.
+    const generatedFields = getGeneratedProposal(property)?.transaction_record_fields;
+    if (Array.isArray(generatedFields)) {
+      return generatedFields
+        .filter(field => field?.key && field?.label)
+        .map(field => ({
+          ...field,
+          category: normalizeRecordCategory(field.category || field.field_category, field.key),
+          canonicalKey: field.key,
+          workflowRequired: field.required !== false,
+          renderable: field.renderable !== false,
+          summaryPriority: field.summaryPriority || 'key',
+        }))
+        .filter(field => field.renderable !== false);
+    }
+    return [];
   }
   return Object.values(getPackRecordSchema(schemaKey)).flat()
     .filter(field => field.renderable !== false);
@@ -4203,7 +4239,7 @@ function getRecordDateValue(property, recordFields = [], recordState = null, fal
 }
 
 function getCoordinatorRecordFacts(schemaKey, property, recordFields = [], recordState = null) {
-  const fields = getEffectiveRecordDefinitions(schemaKey, property);
+  const fields = getEffectiveRecordDefinitions(schemaKey, property, recordFields, recordState);
   if (schemaKey === 'generated_ai') {
     const prioritizedDefinitions = [
       ...fields.slice(0, 8),
@@ -4223,7 +4259,7 @@ function getCoordinatorRecordFacts(schemaKey, property, recordFields = [], recor
       })
       .map(definition => ({
       ...getRecordDefinitionState(definition, recordFields, recordState),
-      key: definition.canonicalKey || definition.key,
+      key: definition.key || definition.canonicalKey,
       label: definition.label || definition.key,
       }));
   }
@@ -4588,7 +4624,7 @@ function TransactionBrief({
   const generatedRoom = isGeneratedAiRoom(property);
   const recordSchemaKey = getEffectiveRecordSchemaKey(property, packId, pack);
   const canonicalRecordState = recordState || readiness?.transaction_record || null;
-  const generatedRecordDefinitions = getEffectiveRecordDefinitions(recordSchemaKey, property);
+  const generatedRecordDefinitions = getEffectiveRecordDefinitions(recordSchemaKey, property, recordFields, canonicalRecordState);
   const requiredRecordFields = canonicalRecordState?.requiredFields?.length
     ? canonicalRecordState.requiredFields
     : (recordSchemaKey === 'generated_ai'
@@ -5391,7 +5427,7 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
   // The API's record_state includes the resolved schema, aliases, and the
   // not-applicable denominator. Use it as the single source for every Overview
   // count; the frontend schema is only a pre-load fallback.
-  const generatedRecordDefinitions = getEffectiveRecordDefinitions(recordSchemaKey, property);
+  const generatedRecordDefinitions = getEffectiveRecordDefinitions(recordSchemaKey, property, recordFields, canonicalRecordState);
   const requiredRecordFields = canonicalRecordState?.requiredFields?.length
     ? canonicalRecordState.requiredFields
     : (recordSchemaKey === 'generated_ai'

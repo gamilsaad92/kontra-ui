@@ -44,3 +44,9 @@ Legacy coordinator confirmations may exist only in the activity stream, so state
 **Why:** older rooms can show a confirmed Recent Change while their field row remains extracted, making every current-state surface disagree even though the audit trail proves the coordinator action.
 
 **How to apply:** reconcile the latest confirmed field-history or field-specific activity event before computing readiness, while never overriding a newer source conflict.
+
+Generated AI rooms must materialize every approved proposal field as a durable record row at creation, including null values; proposal JSON may describe generation context but cannot supply field values or definitions after materialization.
+
+**Why:** allowing the proposal snapshot to remain a parallel field source caused Key Facts, accordions, counts, and confirmation state to disagree after refresh and room re-entry.
+
+**How to apply:** persist definition identity, category, requiredness, source type, and unresolved candidates on the field row; project generated-room UI and readiness from those rows, with proposal fallback only for pre-migration compatibility.
