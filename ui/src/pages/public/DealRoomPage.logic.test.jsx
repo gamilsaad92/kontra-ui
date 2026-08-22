@@ -7,6 +7,7 @@ const {
   getNextMilestoneBlockers,
   getOpenIssueCount,
   getCoordinatorRecordFacts,
+  getRecordDefinitionState,
 } = require('./DealRoomPage');
 
 describe('coordinator transaction brief logic', () => {
@@ -123,5 +124,23 @@ describe('coordinator transaction brief logic', () => {
           status: 'confirmed',
         }),
       ]));
+  });
+
+  test('keeps a populated awaiting generated field out of the missing state', () => {
+    const result = getRecordDefinitionState(
+      { key: 'hazard.incident_date', label: 'Incident Date', category: 'incident' },
+      [{
+        field_key: 'transaction.incident_date',
+        display_label: 'Incident Date',
+        value_text: '2026-07-10',
+        status: 'extracted',
+      }],
+      null,
+    );
+
+    expect(result).toEqual(expect.objectContaining({
+      value: '2026-07-10',
+      status: 'awaiting',
+    }));
   });
 });

@@ -4139,6 +4139,7 @@ function recordStateFieldForDefinition(definition, recordState) {
   const definitions = [
     definition?.canonicalKey,
     definition?.key,
+    definition?.definitionKey,
     definition?.aliasOf,
   ].filter(Boolean);
   const normalizeLabel = value => String(value || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, ' ').replace(/\s+/g, ' ');
@@ -4178,10 +4179,16 @@ function getRecordDefinitionState(definition, recordFields = [], recordState = n
   }
   const keys = new Set([
     definition?.key,
+    definition?.definitionKey,
     definition?.aliasOf,
     definition?.canonicalKey,
   ].filter(Boolean));
-  const matches = recordFields.filter(field => keys.has(field.field_key));
+  const normalizeLabel = value => String(value || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, ' ').replace(/\s+/g, ' ');
+  const definitionLabel = normalizeLabel(definition?.label);
+  const matches = recordFields.filter(field =>
+    keys.has(field.field_key)
+      || (definitionLabel && normalizeLabel(field.display_label) === definitionLabel)
+  );
   const valueMatches = matches.filter(hasMeaningfulRecordValue);
   const conflict = valueMatches.find(field => ['conflicting', 'conflict'].includes(String(field.status || '').toLowerCase()));
   const confirmed = valueMatches.find(field => ['verified', 'confirmed', 'source_changed'].includes(String(field.status || '').toLowerCase()));
@@ -4674,8 +4681,9 @@ function TransactionBrief({
   });
 
   const generatedRoom = isGeneratedAiRoom(property);
-  const recordSchemaKey = getEffectiveRecordSchemaKey(property, packId, pack);
   const canonicalRecordState = recordState || readiness?.transaction_record || null;
+  const recordSchemaKey = canonicalRecordState?.schemaKey
+    || getEffectiveRecordSchemaKey(property, packId, pack);
   const generatedRecordDefinitions = getEffectiveRecordDefinitions(recordSchemaKey, property, recordFields, canonicalRecordState);
   const requiredRecordFields = canonicalRecordState?.requiredFields?.length
     ? canonicalRecordState.requiredFields
