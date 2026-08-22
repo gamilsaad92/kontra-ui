@@ -293,6 +293,89 @@ function normalizeRecordLabel(value) {
     .replace(/\s+/g, ' ');
 }
 
+async function reconcileConfirmedFieldHistory(propertyId) {
+  if (!propertyId) return;
+  try {
+    const [
+      { data: history, error: historyError },
+      { data: fields, error: fieldsError },
+      { data: activity, error: activityError },
+    ] = await Promise.all([
+      supabase.from('transaction_record_history')
+        .select('field_id, event_type, new_value, new_status, created_at')
+        .eq('property_id', propertyId)
+        .order('created_at', { ascending: true }),
+      supabase.from('transaction_record_fields')
+        .select('id, value_text, status, updated_at')
+        .eq('property_id', propertyId),
+      supabase.from('deal_events')
+        .select('event_type, description, metadata, created_at')
+        .eq('property_id', propertyId)
+        .in('event_type', ['field_verified', 'transaction_record_verified'])
+        .order('created_at', { ascending: true }),
+    ]);
+    if (historyError || fieldsError) {
+      const message = historyError?.message || fieldsError?.message || '';
+      if (!/relation|schema cache|column/i.test(message)) console.warn('[transaction-state] confirmation history lookup failed:', message);
+      return;
+    }
+    const fieldsById = new Map((fields || []).map(field => [field.id, field]));
+    const latestByField = new Map();
+    for (const event of history || []) {
+      if (event?.field_id) latestByField.set(event.field_id, event);
+    }
+    // Very old rooms only recorded the confirmation in the activity stream.
+    // Recover the same persisted row when the event carries an ID/key, or when
+    // its description names exactly one field label.
+    for (const event of activityError ? [] : (activity || [])) {
+      const metadata = event?.metadata && typeof event.metadata === 'object' ? event.metadata : {};
+      const metadataId = metadata.field_id || metadata.fieldId;
+      const metadataKey = metadata.field_key || metadata.fieldKey;
+      const description = normalizeRecordLabel(event?.description);
+      const match = metadataId
+        ? fieldsById.get(metadataId)
+        : (fields || []).find(field =>
+          (metadataKey && field.field_key === metadataKey)
+            || (description && description.includes(`${normalizeRecordLabel(field.display_label)} was confirmed`))
+        );
+      const prior = match ? latestByField.get(match.id) : null;
+      if (match && (!prior || new Date(event.created_at || 0).getTime() >= new Date(prior.created_at || 0).getTime())) {
+        latestByField.set(match.id, {
+          field_id: match.id,
+          event_type: 'confirmed',
+          new_value: metadata.new_value ?? metadata.value ?? match.value_text,
+          new_status: 'verified',
+          created_at: event.created_at,
+        });
+      }
+    }
+    for (const [fieldId, event] of latestByField) {
+      const field = fieldsById.get(fieldId);
+      const status = String(field?.status || '').toLowerCase();
+      const historyStatus = String(event?.new_status || '').toLowerCase();
+      if (!field || event.event_type !== 'confirmed' || !['verified', 'confirmed'].includes(historyStatus)) continue;
+      // A newer source conflict is intentionally not repaired from old
+      // history; it needs the coordinator's current decision.
+      if (['conflicting', 'conflict', 'source_changed'].includes(status)) continue;
+      const value = event.new_value == null ? field.value_text : String(event.new_value).slice(0, 2000);
+      const { error } = await supabase.from('transaction_record_fields')
+        .update({
+          value_text: value,
+          status: 'verified',
+          verified_at: event.created_at || new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', fieldId)
+        .eq('property_id', propertyId);
+      if (error && !/relation|schema cache|column/i.test(error.message || '')) throw error;
+    }
+  } catch (error) {
+    if (!/relation|schema cache|column/i.test(error.message || '')) {
+      console.warn('[transaction-state] confirmed field history reconciliation failed:', error.message);
+    }
+  }
+}
+
 function normalizeTransactionConflicts(conflicts) {
   return (Array.isArray(conflicts) ? conflicts : [])
     .filter(conflict => String(conflict?.status || 'unresolved').toLowerCase() === 'unresolved')
@@ -371,6 +454,8 @@ function computeTransactionRecordState(recordFields, schemaKey, requiredKeysOver
     return {
       key,
       fieldId: field.id || null,
+      persistedKey: field.field_key || key,
+      category: field.field_category || String(field.field_key || key).split('.')[0] || 'transaction',
       label: field.display_label || key,
       value: field.value_text || field.value_json || null,
       status,
@@ -401,8 +486,20 @@ function computeTransactionRecordState(recordFields, schemaKey, requiredKeysOver
   const requiredFields = activeRequiredKeys.map(key => {
     const label = requiredLabelByKey.get(canonicalKey(key));
     const matchedByLabel = label ? fieldByLabel.get(label) : null;
-    return fieldByKey.get(key) || (matchedByLabel || {
+    const matched = fieldByKey.get(key) || matchedByLabel;
+    if (matched) {
+      return {
+        ...matched,
+        definitionKey: key,
+        required: true,
+      };
+    }
+    return {
       key,
+      definitionKey: key,
+      fieldId: null,
+      persistedKey: key,
+      category: String(key).split('.')[0] || 'transaction',
       label: requiredDefinitions.find(field =>
         (typeof field === 'object' ? field?.key : field) === key
       )?.label || key,
@@ -412,7 +509,7 @@ function computeTransactionRecordState(recordFields, schemaKey, requiredKeysOver
       attention: null,
       required: true,
       updatedAt: null,
-    });
+    };
   });
   const count = (items, status) => items.filter(field => field.status === status).length;
   const confirmedCount = count(requiredFields, 'confirmed');
@@ -506,6 +603,7 @@ function computeTransactionReadiness(room, recordFields, schemaKey, requiredKeys
 
 async function readTransactionState(propertyId) {
   await reconcileStoredDocumentConflicts(propertyId);
+  await reconcileConfirmedFieldHistory(propertyId);
   const roomQuery = supabase
     .from('deal_rooms')
     .select('id, property_id, property_name, deal_amount, closing_date, workflow_pack_id, base_pack, transaction_type, transaction_subtype, transaction_context, generated_proposal, deal_type, deal_stage, jurisdiction, metadata_values, checklist_items, settlement_mode, settlement_readiness_pct, settlement_mode_locked_at, sealed_at, completed_at')
@@ -515,7 +613,7 @@ async function readTransactionState(propertyId) {
     roomQuery,
     supabase
       .from('transaction_record_fields')
-      .select('id, field_key, display_label, value_text, status, source_doc_id, source_page, source_excerpt, confidence, updated_at, created_at')
+       .select('id, field_key, field_category, display_label, value_text, status, source_doc_id, source_page, source_excerpt, confidence, updated_at, created_at')
       .eq('property_id', propertyId),
     supabase
       .from('transaction_record_conflicts')
@@ -548,7 +646,12 @@ async function readTransactionState(propertyId) {
     const dynamicRequiredKeys = schemaKey === 'generated_ai'
     ? (generatedProposal?.transaction_record_fields || [])
       .filter(field => field.required !== false)
-        .map(field => ({ key: field.key, label: field.label }))
+        .map(field => ({
+          key: field.key,
+          label: field.label,
+          category: field.category || field.field_category || String(field.key || '').split('.')[0] || 'transaction',
+          required: field.required !== false,
+        }))
     : null;
    const recordState = computeTransactionRecordState(recordFields || [], schemaKey, dynamicRequiredKeys, conflicts);
   return {
@@ -624,6 +727,7 @@ module.exports = {
   computeTransactionReadiness,
   computeTransactionRecordState,
   reconcileStoredDocumentConflicts,
+  reconcileConfirmedFieldHistory,
   hasMeaningfulRecordValue,
   shouldPreserveResolvedConflict,
   latestEvidenceTimestamp,

@@ -277,7 +277,55 @@ describe('transaction state recalculation', () => {
     expect(readiness.recordState.requiredFields[0]).toEqual(expect.objectContaining({
       value: '$229,950',
       status: 'confirmed',
+      definitionKey: 'transaction.repairs_total',
+      persistedKey: 'financial.repair_costs',
     }));
+  });
+
+  it('keeps generated category and field identity on the same authoritative state row', () => {
+    const readiness = computeTransactionReadiness(
+      { workflow_pack_id: 'generated_ai' },
+      [{
+        id: 'incident-date-field',
+        field_key: 'transaction.incident_date',
+        field_category: 'legal',
+        display_label: 'Incident Date',
+        value_text: '2026-08-01',
+        status: 'verified',
+      }, {
+        id: 'repair-cost-field',
+        field_key: 'financial.repair_costs',
+        field_category: 'financial',
+        display_label: 'Repair Costs',
+        value_text: '$210,000',
+        status: 'verified',
+      }],
+      'generated_ai',
+      [
+        { key: 'hazard.incident_date', label: 'Incident Date' },
+        { key: 'hazard.repair_costs', label: 'Repair Costs' },
+        { key: 'hazard.open_issues', label: 'Open Issues' },
+      ],
+      [],
+    );
+
+    expect(readiness.recordState.requiredFields).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        definitionKey: 'hazard.incident_date',
+        persistedKey: 'transaction.incident_date',
+        category: 'legal',
+        status: 'confirmed',
+      }),
+      expect.objectContaining({
+        definitionKey: 'hazard.repair_costs',
+        persistedKey: 'financial.repair_costs',
+        category: 'financial',
+        status: 'confirmed',
+      }),
+    ]));
+    expect(readiness.confirmedCount).toBe(2);
+    expect(readiness.requiredCount).toBe(3);
+    expect(readiness.overall).toBe(67);
   });
 
   it('does not treat four generic transaction facts as sufficient digital-asset preparation', () => {
