@@ -3444,17 +3444,34 @@ function DigitalAssetReadinessSection({
   readinessPhase = 'transaction',
   digitalAssetEnabled = false,
   embedded = false,
+  onRecordUpdated,
 }) {
   const [expandedCat, setExpandedCat] = useState(null);
+  const [confirmingField, setConfirmingField] = useState('');
 
   // Keep the existing five visual categories, but derive their fields from the
   // same pack schema and required canonical state used by the Overview and the
   // full Transaction Record. This is data wiring only; the rendered layout is
   // intentionally unchanged.
   const canonicalRecordState = recordState || readiness?.transaction_record || null;
-  const generatedFields = Array.isArray(getGeneratedProposal(property)?.transaction_record_fields)
+  const proposalFields = Array.isArray(getGeneratedProposal(property)?.transaction_record_fields)
     ? getGeneratedProposal(property).transaction_record_fields
     : [];
+  // Once the room has hydrated, the persisted record state is the generated
+  // schema. The proposal remains only a pre-materialization compatibility
+  // fallback; it must never make a populated canonical row appear missing.
+  const generatedFields = schemaKey === 'generated_ai' && canonicalRecordState?.fields?.length
+    ? canonicalRecordState.fields.map(field => ({
+        ...field,
+        key: field.key || field.persistedKey,
+        definitionKey: field.definitionKey || field.persistedKey || field.key,
+        canonicalKey: field.key || field.persistedKey,
+        label: field.label || field.persistedKey || field.key,
+        category: normalizeRecordCategory(field.category, field.key || field.persistedKey),
+        workflowRequired: field.required !== false && field.isRequired !== false,
+        renderable: true,
+      }))
+    : proposalFields;
   const generatedSchemaKeys = generatedFields
     .map(field => field?.key)
     .filter(Boolean);
@@ -3507,11 +3524,11 @@ function DigitalAssetReadinessSection({
 
   // Returns field objects from recordFields that match a given key (supports * prefix)
   function matchingFields(keyDef) {
-    const keys = [keyDef.key, keyDef.aliasOf, keyDef.canonicalKey].filter(Boolean);
+    const keys = [keyDef.key, keyDef.definitionKey, keyDef.aliasOf, keyDef.canonicalKey].filter(Boolean);
     return recordFields.filter(f =>
       keyDef.key.endsWith('*')
         ? f.field_key?.startsWith(keyDef.key.slice(0, -1))
-        : keys.includes(f.field_key)
+        : keys.includes(f.field_key) || (f.definition_key && keys.includes(f.definition_key))
     );
   }
 
@@ -3584,6 +3601,29 @@ function DigitalAssetReadinessSection({
   const tokenizationInputsComplete = serverSufficient === true
     && tokenizationGaps.length === 0;
   const allReady     = tokenizationInputsComplete;
+
+  async function confirmRecordField(field) {
+    const fieldId = field?.fieldId;
+    if (!fieldId || confirmingField) return;
+    let ownerWriteToken = '';
+    try { ownerWriteToken = localStorage.getItem(`kontra_owner_token_${propertyId}`) || ''; } catch {}
+    if (!ownerWriteToken) return;
+    setConfirmingField(fieldId);
+    try {
+      const response = await fetch(
+        `${API_BASE}/api/public/deal-room/${propertyId}/transaction-record/fields/${fieldId}/verify`,
+        {
+          method: 'POST',
+          headers: getRoomAuthHeaders(propertyId, { 'Content-Type': 'application/json' }),
+          body: JSON.stringify({ ownerWriteToken, actorRole: 'coordinator' }),
+        },
+      );
+      if (!response.ok) throw new Error('The Transaction Record field could not be confirmed.');
+      await onRecordUpdated?.();
+    } finally {
+      setConfirmingField('');
+    }
+  }
 
   // Overall state
   const overallState = allReady
@@ -3699,7 +3739,19 @@ function DigitalAssetReadinessSection({
                           {cat.missingDefs.slice(0, 4).map(d => (
                             <li key={d.key} className="flex items-start gap-1.5 text-xs text-gray-500">
                               <span className="mt-0.5 text-gray-300 shrink-0">○</span>
-                              <span>{d.label}</span>
+                              <span className="flex min-w-0 flex-1 items-center justify-between gap-2">
+                                <span>{d.label}{d.state?.value ? <span className="text-gray-400"> — {d.state.value}</span> : ''}</span>
+                                {d.state?.fieldId && d.state?.value && (
+                                  <button
+                                    type="button"
+                                    onClick={() => confirmRecordField(d.state)}
+                                    disabled={confirmingField === d.state.fieldId}
+                                    className="shrink-0 rounded-lg bg-[#800020] px-2 py-1 text-[10px] font-bold text-white disabled:opacity-50"
+                                  >
+                                    {confirmingField === d.state.fieldId ? 'Confirming…' : 'Confirm'}
+                                  </button>
+                                )}
+                              </span>
                             </li>
                           ))}
                           {cat.missingDefs.length > 4 && (
@@ -5624,6 +5676,7 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
             readinessPhase={readinessPhase}
             digitalAssetEnabled={digitalAssetEnabled}
             embedded
+            onRecordUpdated={load}
           />
         </div>
       </section>

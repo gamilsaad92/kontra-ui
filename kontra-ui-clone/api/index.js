@@ -3732,12 +3732,25 @@ async function getApprovedGenerationProposal(sessionId) {
 }
 
 async function syncGeneratedProposalToTransactionRecord(propertyId, proposal, actorEmail = 'Deal Owner') {
-  const fields = Array.isArray(proposal?.transaction_record_fields)
+  const proposalFields = Array.isArray(proposal?.transaction_record_fields)
     ? proposal.transaction_record_fields
     : [];
+  const fieldsByCanonicalKey = new Map();
+  for (const field of proposalFields) {
+    if (!field?.key) continue;
+    const key = canonicalizeTransactionRecordKey(String(field.key), 'generic');
+    const existing = fieldsByCanonicalKey.get(key);
+    const hasValue = field.value !== null && field.value !== undefined && String(field.value).trim() !== '';
+    const existingHasValue = existing?.value !== null && existing?.value !== undefined
+      && String(existing.value).trim() !== '';
+    if (!existing || (hasValue && !existingHasValue)) {
+      fieldsByCanonicalKey.set(key, { ...field, key });
+    }
+  }
+  const fields = [...fieldsByCanonicalKey.values()];
   for (const field of fields) {
     if (!field?.key || !field?.label) continue;
-    const definitionKey = String(field.key).trim().slice(0, 120);
+    const definitionKey = String(field.definition_key || field.key).trim().slice(0, 120);
     const fieldKey = definitionKey;
     const fieldCategory = String(field.category || field.field_category || fieldKey.split('.')[0] || 'transaction')
       .trim().toLowerCase().replace(/[^a-z0-9_]+/g, '_').slice(0, 80) || 'transaction';
