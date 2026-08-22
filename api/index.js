@@ -3730,13 +3730,27 @@ async function syncGeneratedProposalToTransactionRecord(propertyId, proposal, ac
     : [];
   for (const field of fields) {
     if (!field?.key || !field?.label) continue;
+    const fieldKey = String(field.key).slice(0, 120);
     const value = field.value === null || field.value === undefined ? null : String(field.value).slice(0, 2000);
     const hasValue = value !== null && value.trim() !== '';
     const now = new Date().toISOString();
-    const { error } = await supabase.from('transaction_record_fields').upsert({
+    const { data: existing, error: lookupError } = await supabase
+      .from('transaction_record_fields')
+      .select('id, status')
+      .eq('property_id', propertyId)
+      .eq('field_key', fieldKey)
+      .maybeSingle();
+    if (lookupError) throw lookupError;
+    // Room hydration/generation can run again after a coordinator confirms a
+    // value. Never let the proposal snapshot roll that durable decision back
+    // to "extracted" or replace a value selected during conflict resolution.
+    if (existing && ['verified', 'confirmed', 'source_changed'].includes(String(existing.status || '').toLowerCase())) {
+      continue;
+    }
+    const payload = {
       property_id: propertyId,
-      field_key: String(field.key).slice(0, 120),
-      field_category: String(field.key).split('.')[0] || 'transaction',
+      field_key: fieldKey,
+      field_category: fieldKey.split('.')[0] || 'transaction',
       display_label: String(field.label).slice(0, 160),
       value_text: value,
       status: hasValue ? 'extracted' : 'missing',
@@ -3751,7 +3765,10 @@ async function syncGeneratedProposalToTransactionRecord(propertyId, proposal, ac
         ? 'AI extracted from the transaction description; awaiting confirmation.'
         : (field.rationale || null),
       updated_at: now,
-    }, { onConflict: 'property_id,field_key' });
+    };
+    const { error } = existing
+      ? await supabase.from('transaction_record_fields').update(payload).eq('id', existing.id).eq('property_id', propertyId)
+      : await supabase.from('transaction_record_fields').insert(payload);
     if (error) throw error;
   }
 }
@@ -9260,20 +9277,24 @@ app.post('/api/public/deal-room/:propertyId/transaction-record/fields/:fieldId/v
       .eq('id', fieldId).eq('property_id', propertyId).maybeSingle();
     if (!existing) return res.status(404).json({ error: 'Transaction Record field not found' });
     const nextValue = existing.value_text;
-    await supabase.from('transaction_record_fields').update({
+    const { error: updateError } = await supabase.from('transaction_record_fields').update({
       status: 'verified', verified_by: email,
       verified_at: new Date().toISOString(), updated_at: new Date().toISOString(),
     }).eq('id', fieldId).eq('property_id', propertyId);
+    if (updateError) throw updateError;
     await recordTransactionFieldHistory({
       fieldId, propertyId, eventType: 'confirmed',
       actorEmail: email, actorRole: actorRole || 'coordinator',
       priorValue: existing.value_text, newValue: nextValue,
       priorStatus: existing.status, newStatus: 'verified',
     });
-    await supabase.from('transaction_record_approvals').insert({
+    const { error: approvalError } = await supabase.from('transaction_record_approvals').insert({
       field_id: fieldId, property_id: propertyId,
       action: 'approved', actor_email: email, actor_role: actorRole || 'coordinator',
     });
+    if (approvalError && !/relation|schema cache|column/i.test(approvalError.message || '')) {
+      throw approvalError;
+    }
     await resolveTransactionRecordConflicts(propertyId, existing.field_key, {
       resolutionValue: nextValue,
       resolutionNote: 'Coordinator confirmed the canonical Transaction Record value.',
@@ -9300,7 +9321,7 @@ app.post('/api/public/deal-room/:propertyId/transaction-record/conflicts/:confli
   try {
     const { data: conflict, error: conflictError } = await supabase
       .from('transaction_record_conflicts')
-      .select('id, field_id, field_key, canonical_value, display_label, status')
+      .select('id, field_id, field_key, canonical_value, conflicting_value, display_label, status, canonical_source_doc_id, conflicting_source_doc_id, canonical_source_page, conflicting_source_page, canonical_source_excerpt, conflicting_source_excerpt')
       .eq('id', conflictId)
       .eq('property_id', propertyId)
       .maybeSingle();
@@ -9311,27 +9332,80 @@ app.post('/api/public/deal-room/:propertyId/transaction-record/conflicts/:confli
     const selectedValue = value_text === undefined || value_text === null || String(value_text).trim() === ''
       ? conflict.canonical_value
       : String(value_text).slice(0, 2000);
-    const { data: field, error: fieldError } = await supabase
+    let { data: field, error: fieldError } = await supabase
       .from('transaction_record_fields')
-      .select('id, value_text, status')
+      .select('id, field_key, field_category, display_label, value_text, status, source_doc_id, source_page, source_excerpt')
       .eq('id', conflict.field_id)
       .eq('property_id', propertyId)
       .maybeSingle();
     if (fieldError) throw fieldError;
+    // A legacy conflict can outlive its field row (for example after alias
+    // cleanup). Recover the authoritative row by key before resolving instead
+    // of marking the conflict resolved while readiness still shows missing.
+    if (!field && conflict.field_key) {
+      const fallback = await supabase
+        .from('transaction_record_fields')
+        .select('id, field_key, field_category, display_label, value_text, status, source_doc_id, source_page, source_excerpt')
+        .eq('property_id', propertyId)
+        .eq('field_key', conflict.field_key)
+        .maybeSingle();
+      if (fallback.error) throw fallback.error;
+      field = fallback.data;
+    }
     const priorField = field ? {
       value_text: field.value_text,
       status: field.status,
     } : null;
     if (field) {
+      const selectedIsConflict = selectedValue === conflict.conflicting_value;
       const { error } = await supabase.from('transaction_record_fields').update({
         value_text: selectedValue,
         status: 'verified',
         verified_by: access.email || 'coordinator',
         verified_role: 'Deal Coordinator',
         verified_at: new Date().toISOString(),
+        source_doc_id: selectedIsConflict
+          ? (conflict.conflicting_source_doc_id || field.source_doc_id || null)
+          : (conflict.canonical_source_doc_id || field.source_doc_id || null),
+        source_page: selectedIsConflict
+          ? (conflict.conflicting_source_page || field.source_page || null)
+          : (conflict.canonical_source_page || field.source_page || null),
+        source_excerpt: selectedIsConflict
+          ? (conflict.conflicting_source_excerpt || field.source_excerpt || null)
+          : (conflict.canonical_source_excerpt || field.source_excerpt || null),
         updated_at: new Date().toISOString(),
       }).eq('id', field.id).eq('property_id', propertyId);
       if (error) throw error;
+    } else {
+      const { data: createdField, error: createFieldError } = await supabase
+        .from('transaction_record_fields')
+        .insert({
+          property_id: propertyId,
+          field_key: String(conflict.field_key).slice(0, 120),
+          field_category: String(conflict.field_key).split('.')[0] || 'transaction',
+          display_label: conflict.display_label || conflict.field_key,
+          value_text: selectedValue,
+          status: 'verified',
+          source_doc_id: selectedValue === conflict.conflicting_value
+            ? (conflict.conflicting_source_doc_id || null)
+            : (conflict.canonical_source_doc_id || null),
+          source_page: selectedValue === conflict.conflicting_value
+            ? (conflict.conflicting_source_page || null)
+            : (conflict.canonical_source_page || null),
+          source_excerpt: selectedValue === conflict.conflicting_value
+            ? (conflict.conflicting_source_excerpt || null)
+            : (conflict.canonical_source_excerpt || null),
+          extracted_by: 'conflict_resolution',
+          verified_by: access.email || 'coordinator',
+          verified_role: 'Deal Coordinator',
+          verified_at: new Date().toISOString(),
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        })
+        .select('id, field_key, value_text, status')
+        .single();
+      if (createFieldError) throw createFieldError;
+      field = createdField;
     }
     try {
       await resolveTransactionRecordConflicts(propertyId, conflict.field_key, {

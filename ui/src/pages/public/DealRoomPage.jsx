@@ -3470,7 +3470,7 @@ function DigitalAssetReadinessSection({
   const schemaFields = generatedFields.length
     ? generatedFields.map(field => ({
         ...field,
-        category: String(field.key || '').split('.')[0] || 'transaction',
+        category: normalizeRecordCategory(field.category || field.field_category, field.key),
         workflowRequired: field.required !== false,
         canonicalKey: field.key,
         renderable: true,
@@ -3491,7 +3491,9 @@ function DigitalAssetReadinessSection({
       schemaFields
         .filter(field =>
           schemaCategories.includes(field.category)
-          && requiredKeys.has(field.canonicalKey || field.key)
+         && (generatedFields.length
+           ? field.workflowRequired !== false
+           : requiredKeys.has(field.canonicalKey || field.key))
           && field.renderable !== false,
         )
         .map(field => ({
@@ -3531,12 +3533,12 @@ function DigitalAssetReadinessSection({
     const enriched = cat.fieldDefs.map(def => {
       const matched = matchingFields(def);
       const state = getRecordDefinitionState(def, recordFields, canonicalRecordState);
-      const populated = state.status === 'confirmed'
-        ? matched.find(f => isPopulated(f)) || {
-            ...state.field,
-            value_text: state.value,
-            status: 'verified',
-          }
+       const populated = state.status === 'confirmed'
+         ? matched.find(f => isPopulated(f)) || (state.field ? {
+             ...state.field,
+             value_text: state.value,
+             status: 'verified',
+           } : null)
         : null;
       return { ...def, field: populated, state, allMatches: matched };
     });
@@ -4061,14 +4063,56 @@ function hasMeaningfulRecordValue(field) {
   return !RECORD_EMPTY_VALUES.has(value) && field?.status !== 'not_applicable';
 }
 
+function normalizeRecordCategory(value, key = '', label = '') {
+  const raw = String(value || '').trim().toLowerCase().replace(/[\s-]+/g, '_');
+  const keyCategory = String(key || '').split('.')[0].toLowerCase();
+  const category = raw || keyCategory || 'transaction';
+  if (['transaction', 'transaction_extra', 'terms', 'deal_terms'].includes(category)) return 'transaction';
+  if (['asset', 'asset_identity', 'property', 'company', 'identity'].includes(category)) return 'asset_identity';
+  if (['party', 'parties', 'counterparties'].includes(category)) return 'parties';
+  if (['ownership', 'beneficial_ownership', 'cap_table'].includes(category)) return 'beneficial_ownership';
+  if (['finance', 'financial', 'financials', 'economics'].includes(category)) return 'financial';
+  if (['legal', 'diligence', 'regulatory'].includes(category)) return 'legal';
+  if (['approval', 'approvals', 'signoff'].includes(category)) return 'approvals';
+  if (['hazard', 'incident', 'loss', 'event', 'timeline'].includes(category)) return 'transaction';
+  if (['insurance', 'coverage', 'repairs', 'repair'].includes(category)) return 'financial';
+  if (['document', 'documents', 'evidence'].includes(category)) return 'legal';
+  const labelText = String(label || '').toLowerCase();
+  if (/(repair|cost|amount|financial|insurance|coverage|proceeds|valuation)/.test(`${key} ${labelText}`)) return 'financial';
+  if (/(incident|date|loss|event|deadline|closing|completion)/.test(`${key} ${labelText}`)) return 'transaction';
+  return keyCategory || category;
+}
+
+function recordStateFieldForDefinition(definition, recordState) {
+  const definitions = [
+    definition?.canonicalKey,
+    definition?.key,
+    definition?.aliasOf,
+  ].filter(Boolean);
+  const normalizeLabel = value => String(value || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, ' ').replace(/\s+/g, ' ');
+  const label = normalizeLabel(definition?.label);
+  const required = recordState?.requiredFields?.find(field =>
+    definitions.includes(field?.definitionKey)
+      || definitions.includes(field?.key)
+      || definitions.includes(field?.persistedKey)
+      || (label && normalizeLabel(field?.label) === label)
+  );
+  if (required) return required;
+  return recordState?.fields?.find(field =>
+    definitions.includes(field?.key)
+      || definitions.includes(field?.persistedKey)
+      || (label && normalizeLabel(field?.label) === label)
+  ) || null;
+}
+
 function getRecordDefinitionState(definition, recordFields = [], recordState = null) {
   const canonicalDefinitionKey = definition?.canonicalKey || definition?.key;
-  const authoritativeField = recordState?.fields?.find(field => field.key === canonicalDefinitionKey);
+  const authoritativeField = recordStateFieldForDefinition(definition, recordState);
   if (authoritativeField) {
     return {
       definition,
       field: authoritativeField,
-      value: authoritativeField.value || '',
+      value: authoritativeField.value || authoritativeField.value_text || '',
       status: authoritativeField.status === 'conflict'
         ? 'conflict'
         : authoritativeField.status === 'awaiting'
@@ -4121,7 +4165,7 @@ function getEffectiveRecordDefinitions(schemaKey, property) {
       .filter(field => field?.key && field?.label)
       .map(field => ({
         ...field,
-        category: String(field.key).split('.')[0] || 'transaction',
+        category: normalizeRecordCategory(field.category || field.field_category, field.key),
         canonicalKey: field.key,
         workflowRequired: field.required !== false,
         renderable: field.renderable !== false,

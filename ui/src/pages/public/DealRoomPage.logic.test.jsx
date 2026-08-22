@@ -75,4 +75,53 @@ describe('coordinator transaction brief logic', () => {
         }),
       ]));
   });
+
+  test('maps a confirmed generated field through its persisted legacy key', () => {
+    const property = {
+      generated_proposal: {
+        transaction_record_fields: [
+          { key: 'hazard.repair_costs', label: 'Repair Costs', required: true, category: 'hazard' },
+          { key: 'hazard.incident_date', label: 'Incident Date', required: true, category: 'incident' },
+        ],
+      },
+    };
+    const recordState = {
+      fields: [
+        {
+          key: 'financial.repair_costs',
+          persistedKey: 'financial.repair_costs',
+          label: 'Repair Costs',
+          value: '$210,000',
+          status: 'confirmed',
+        },
+      ],
+      requiredFields: [
+        {
+          key: 'financial.repair_costs',
+          definitionKey: 'hazard.repair_costs',
+          persistedKey: 'financial.repair_costs',
+          label: 'Repair Costs',
+          value: '$210,000',
+          status: 'confirmed',
+        },
+        {
+          key: 'hazard.incident_date',
+          definitionKey: 'hazard.incident_date',
+          label: 'Incident Date',
+          value: '',
+          status: 'awaiting',
+        },
+      ],
+    };
+
+    expect(getCoordinatorRecordFacts('generated_ai', property, [], recordState))
+      .toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          key: 'hazard.repair_costs',
+          label: 'Repair Costs',
+          value: '$210,000',
+          status: 'confirmed',
+        }),
+      ]));
+  });
 });
