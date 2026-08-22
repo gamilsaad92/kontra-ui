@@ -7393,17 +7393,17 @@ export default function DealRoomPage() {
         </div>
       ) : property.isCustom && isCoordinator ? (
         <div className="border-b border-green-100 bg-green-50 px-6 py-2">
-          <div className="max-w-5xl mx-auto flex items-center justify-between gap-4">
-            <div className="flex items-center gap-2">
+          <div className="max-w-5xl mx-auto flex flex-col items-stretch gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+            <div className="flex min-w-0 items-start gap-2">
               <div className="w-6 h-6 rounded-md flex items-center justify-center text-sm shrink-0 bg-green-100">
                 🔑
               </div>
               <div>
-                <p className="text-xs font-semibold text-green-900">Deal room active — invite participants and upload documents to begin</p>
-                <p className="text-[10px] text-green-600">Secure role-based access for every participant · AI analyzes each file as it's uploaded</p>
+                <p className="break-words text-xs font-semibold leading-snug text-green-900">Deal room active — invite participants and upload documents to begin</p>
+                <p className="break-words text-[10px] leading-snug text-green-600">Secure role-based access for every participant · AI analyzes each file as it's uploaded</p>
               </div>
             </div>
-            <div className="flex items-center gap-2 shrink-0">
+            <div className="flex w-full items-center gap-2 sm:w-auto sm:shrink-0">
               <ShareButton propertyId={propertyId} />
             </div>
           </div>
