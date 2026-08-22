@@ -38,3 +38,9 @@ Generated room hydration must treat a verified Transaction Record row as coordin
 **Why:** room generation and re-entry can run after confirmation, and legacy alias cleanup can leave a conflict row without its original field ID. Re-syncing or resolving only the stale ID otherwise makes a confirmed value disappear from readiness.
 
 **How to apply:** skip proposal synchronization for verified/confirmed/source-changed rows, and have conflict resolution update or recreate the authoritative field before marking the selected conflict resolved.
+
+Legacy coordinator confirmations may exist only in the activity stream, so state hydration must be able to promote the matching persisted field row from a field ID/key or an exact label confirmation event.
+
+**Why:** older rooms can show a confirmed Recent Change while their field row remains extracted, making every current-state surface disagree even though the audit trail proves the coordinator action.
+
+**How to apply:** reconcile the latest confirmed field-history or field-specific activity event before computing readiness, while never overriding a newer source conflict.
