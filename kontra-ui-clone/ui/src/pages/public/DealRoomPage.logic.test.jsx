@@ -6,6 +6,7 @@ const {
   getLifecycleAdvanceRecommendation,
   getNextMilestoneBlockers,
   getOpenIssueCount,
+  hasDocumentReviewFinding,
   getCoordinatorRecordFacts,
   getRecordDefinitionState,
 } = require('./DealRoomPage');
@@ -28,6 +29,7 @@ describe('coordinator transaction brief logic', () => {
   test('counts conflicts as open issues even when there are no checklist blockers', () => {
     expect(getOpenIssueCount([{ key: 'legal.title_status' }], [])).toBe(1);
     expect(getOpenIssueCount([], [{ key: 'next-doc-purchase_agreement' }])).toBe(1);
+    expect(getOpenIssueCount([], [], 2)).toBe(2);
   });
 
   test('adds a required participant blocker tied to the next milestone', () => {
@@ -142,5 +144,16 @@ describe('coordinator transaction brief logic', () => {
       value: '2026-07-10',
       status: 'awaiting',
     }));
+  });
+
+  test('recognizes document findings without treating them as record conflicts', () => {
+    expect(hasDocumentReviewFinding({
+      section: 'proof_of_payment',
+      analysis: { paymentDiscrepancies: [{ issue: 'Amount differs' }] },
+    })).toBe(true);
+    expect(hasDocumentReviewFinding({
+      section: 'lien_waivers',
+      analysis: { status: 'complete' },
+    })).toBe(false);
   });
 });
