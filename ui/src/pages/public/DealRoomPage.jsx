@@ -5410,14 +5410,17 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
       .then(record => {
         if (sequence !== loadSequence.current) return;
         setRecordFields(Array.isArray(record?.fields) ? record.fields : []);
-         setRecordState(previous => record?.record_state || previous);
+        // Always replace the projection when the record endpoint responds.
+        // Keeping the first response allowed a slower readiness request to
+        // leave Overview showing an older proposal-shaped state after confirm.
+        if (record?.record_state) setRecordState(record.record_state);
       });
     get(`/api/public/deal-room/${propertyId}/readiness`, null)
       .then(data => {
         if (sequence !== loadSequence.current) return;
         setReadiness(data);
         if (data?.transaction_record) {
-          setRecordState(previous => previous || data.transaction_record);
+          setRecordState(data.transaction_record);
         }
       });
     get(`/api/public/deal-room/${propertyId}/checklist`, { items: [] })
