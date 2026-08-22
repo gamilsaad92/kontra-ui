@@ -28,3 +28,4 @@
 - [Kontra interaction audit](kontra-interaction-audit.md) — every visible affordance needs a state change, navigation, or clear unavailable message
 - [Kontra task approval invariants](kontra-task-approval-invariants.md) — approval claims must allow NULL execution_status; dismissed tasks are resolved; failed executions need durable action_failed audit events
 - [Kontra demo performance](kontra-demo-performance.md) — demo rooms render a local shell, hydrate independently, and keep the heavy room route code-split
+- [Kontra Render dependency safety](kontra-render-dependency-safety.md) — keep Dialogflow on its maintained protobuf-7-compatible release line so clean Render installs are not blocked by protobuf 6.x
