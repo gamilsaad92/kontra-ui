@@ -3772,7 +3772,7 @@ async function syncGeneratedProposalToTransactionRecord(propertyId, proposal, ac
       source_changed: 4, extracted: 3, needs_review: 3, awaiting: 3,
     }[String(row?.status || '').toLowerCase()] || (row?.value_text ? 2 : 0));
     const existingRows = lookup.data || [];
-    const existing = existingRows
+    let existing = existingRows
       .slice()
       .sort((a, b) => {
         const rank = statusRank(b) - statusRank(a);
