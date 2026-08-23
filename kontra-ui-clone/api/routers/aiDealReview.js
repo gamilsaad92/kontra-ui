@@ -12,16 +12,22 @@ const aiRateLimit = require('../middlewares/aiRateLimit');
 const { uploadToStorage, logEvent, notifyOwner, notifyLender } = require('../lib/dealRoomHelpers');
 const { recalculateTransactionState } = require('../lib/transactionState');
 const { evaluateDealRoomForTasks } = require('../lib/taskEngine');
+const { runVerification } = require('../lib/verificationEngine');
 const {
   hasDocumentRole,
   getAssignedSectionsFromChecklist,
 } = require('../lib/documentAssignmentAccess');
 
 const router = express.Router();
+let transactionFieldExtractor = null;
+
+function setTransactionFieldExtractor(handler) {
+  transactionFieldExtractor = typeof handler === 'function' ? handler : null;
+}
 
 // AI checklist uploads use the same durable replacement boundary as lightweight
 // uploads: an earlier version remains auditable but cannot remain live evidence.
-async function persistAiDocumentVersion({ propertyId, section, filename, analysis, role, storagePath, fileBuffer }) {
+async function persistAiDocumentVersion({ propertyId, section, filename, analysis, role, storagePath, fileBuffer, extractedText }) {
   const sourceHash = fileBuffer ? crypto.createHash('sha256').update(fileBuffer).digest('hex') : null;
   if (sourceHash) {
     const { data: existing, error: existingError } = await supabase.from('deal_analyses')
@@ -56,6 +62,17 @@ async function persistAiDocumentVersion({ propertyId, section, filename, analysi
     }).eq('property_id', propertyId).in('source_doc_id', priorIds)
       .in('status', ['extracted', 'needs_review', 'awaiting', 'awaiting_confirmation', 'conflicting']);
   }
+  // Re-run canonical Transaction Record extraction from the replacement's
+  // actual text before recalculating state. This makes newly supported fields
+  // (for example servicer-controlled insurance proceeds) enter as extracted /
+  // awaiting confirmation instead of leaving the prior document's state live.
+  if (transactionFieldExtractor && extractedText) {
+    await transactionFieldExtractor(propertyId, recordId, extractedText, section);
+  }
+  // Rebuild the cross-document evidence snapshot from active versions only.
+  // Otherwise a verification row generated before this replacement can
+  // continue to feed the live conflict/readiness path.
+  await runVerification(propertyId);
   await recalculateTransactionState(propertyId, { source: 'ai_document_replacement' });
   await evaluateDealRoomForTasks(propertyId, { source: 'ai_document_replacement' });
   return recordId;
@@ -310,7 +327,7 @@ Inspection report text:\n${text}` }
         try {
           await persistAiDocumentVersion({
             propertyId: property_id, section: 'inspection', filename: _name,
-            analysis: result, role: role || 'unknown', storagePath, fileBuffer: _buf,
+            analysis: result, role: role || 'unknown', storagePath, fileBuffer: _buf, extractedText: text,
           });
         } catch (error) { e = error; }
         if (e) console.warn('[deal_analyses] inspection save:', e.message);
@@ -471,7 +488,7 @@ Policy text:\n${text}` }
       (async () => {
         const storagePath = await uploadToStorage(_buf, _mime, property_id, 'insurance', _name);
         let e = null;
-        try { await persistAiDocumentVersion({ propertyId: property_id, section: 'insurance', filename: _name, analysis: result, role, storagePath, fileBuffer: _buf }); }
+        try { await persistAiDocumentVersion({ propertyId: property_id, section: 'insurance', filename: _name, analysis: result, role, storagePath, fileBuffer: _buf, extractedText: text }); }
         catch (error) { e = error; }
         if (e) console.warn('[deal_analyses] insurance save:', e.message);
         else console.log('[deal_analyses] insurance replacement saved');
@@ -522,7 +539,7 @@ Financial document:\n${text}` }
       (async () => {
         const storagePath = await uploadToStorage(_buf, _mime, property_id, 'financials', _name);
         let e = null;
-        try { await persistAiDocumentVersion({ propertyId: property_id, section: 'financials', filename: _name, analysis: result, role, storagePath, fileBuffer: _buf }); }
+        try { await persistAiDocumentVersion({ propertyId: property_id, section: 'financials', filename: _name, analysis: result, role, storagePath, fileBuffer: _buf, extractedText: text }); }
         catch (error) { e = error; }
         if (e) console.warn('[deal_analyses] financials save:', e.message);
         else console.log('[deal_analyses] financials replacement saved');
@@ -573,7 +590,7 @@ Legal document:\n${text}` }
       uploadToStorage(_buf, _mime, property_id, 'legal', _name).then(storagePath => {
         persistAiDocumentVersion({
           propertyId: property_id, section: 'legal', filename: _name,
-          analysis: result, role: role || 'attorney', storagePath, fileBuffer: _buf,
+          analysis: result, role: role || 'attorney', storagePath, fileBuffer: _buf, extractedText: text,
         }).then(() => {
         }).catch(e => {
           if (e) console.warn('[deal_analyses] legal save:', e.message);
@@ -625,7 +642,7 @@ Document:\n${text}` }
       uploadToStorage(_buf, _mime, property_id, 'brand-standards', _name).then(storagePath => {
         persistAiDocumentVersion({
           propertyId: property_id, section: 'brand-standards', filename: _name,
-          analysis: result, role: role || 'owner', storagePath, fileBuffer: _buf,
+          analysis: result, role: role || 'owner', storagePath, fileBuffer: _buf, extractedText: text,
         }).then(() => {
         }).catch(e => {
           if (e) console.warn('[deal_analyses] brand-standards save:', e.message);
@@ -713,7 +730,7 @@ Return only valid JSON. No extra text.`;
         try {
           await persistAiDocumentVersion({
             propertyId: property_id, section, filename: _name, analysis: result,
-            role: role || 'unknown', storagePath, fileBuffer: _buf,
+            role: role || 'unknown', storagePath, fileBuffer: _buf, extractedText: text,
           });
         } catch (error) { e = error; }
         if (e) console.warn(`[deal_analyses] ${section} save:`, e.message);
@@ -730,5 +747,7 @@ Return only valid JSON. No extra text.`;
     res.status(500).json({ error: 'Review failed', message: err.message });
   }
 });
+
+router.setTransactionFieldExtractor = setTransactionFieldExtractor;
 
 module.exports = router;
