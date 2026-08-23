@@ -791,6 +791,38 @@ function computeTransactionReadiness(room, recordFields, schemaKey, requiredKeys
   };
 }
 
+const HAZARD_LOSS_REPAIR_REQUIREMENTS = [
+  'transaction.incident_date',
+  'financial.insurance_proceeds',
+  'financial.repair_costs',
+];
+
+function isImmediateLifecycleAdvance(stages, currentStage, requestedStage) {
+  if (currentStage === requestedStage) return true;
+  // Preserve the legacy settlement migration path documented by the advance
+  // endpoint: older rooms at funded may still enter settlement.
+  if (currentStage === 'funded' && requestedStage === 'settlement') return true;
+  const orderedStages = Array.isArray(stages) ? stages : [];
+  const currentIndex = orderedStages.findIndex(stage => stage?.key === currentStage);
+  const requestedIndex = orderedStages.findIndex(stage => stage?.key === requestedStage);
+  return currentIndex >= 0 && requestedIndex === currentIndex + 1;
+}
+
+function getHazardLossRepairGate(state) {
+  const recordState = state?.recordState || state?.readiness?.recordState || {};
+  const fields = Array.isArray(recordState.fields) ? recordState.fields : [];
+  const unmetFields = HAZARD_LOSS_REPAIR_REQUIREMENTS.filter(key => {
+    const field = fields.find(item => item.key === key);
+    return !field || field.status !== 'confirmed' || !String(field.value || '').trim();
+  });
+  const unresolvedConflicts = Number(recordState.unresolvedConflictCount || 0);
+  return {
+    ok: unmetFields.length === 0 && unresolvedConflicts === 0,
+    unmetFields,
+    unresolvedConflicts,
+  };
+}
+
 async function readTransactionState(propertyId) {
   await reconcileStoredDocumentConflicts(propertyId);
   await reconcileConfirmedFieldHistory(propertyId);
@@ -949,6 +981,8 @@ module.exports = {
   resolveSchemaKey,
   computeTransactionReadiness,
   computeTransactionRecordState,
+  getHazardLossRepairGate,
+  isImmediateLifecycleAdvance,
   reconcileStoredDocumentConflicts,
   reconcileConfirmedFieldHistory,
   hasMeaningfulRecordValue,

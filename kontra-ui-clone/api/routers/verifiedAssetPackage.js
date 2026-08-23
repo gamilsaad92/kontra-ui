@@ -18,6 +18,7 @@ const router = express.Router();
 const crypto = require('crypto');
 const { supabase } = require('../db');
 const { getRoomPackId, getPackStageConfig } = require('../lib/dealRoomHelpers');
+const { readTransactionState, getHazardLossRepairGate } = require('../lib/transactionState');
 const OpenAI = require('openai');
 const cache = require('../cache');
 
@@ -70,6 +71,18 @@ const REQUIRED_SECTIONS = {
 function getRequiredSections(packId, propertyType) {
   const packMap = REQUIRED_SECTIONS[packId] || REQUIRED_SECTIONS.cre_acquisition;
   return packMap[propertyType] || packMap.default || [];
+}
+
+function isHazardLossRoom(room) {
+  const text = [
+    room?.property_name,
+    room?.workflow_pack_id,
+    room?.base_pack,
+    room?.transaction_type,
+    room?.metadata_values?.transaction_description,
+    room?.metadata_values?.workspace_name,
+  ].filter(Boolean).join(' ').toLowerCase();
+  return /\bhazard\s+loss\b|\bcasualty\b|\binsurance\s+proceeds?\b/.test(text);
 }
 
 function computeCompletenessScore(uploadedSections, requiredSections) {
@@ -332,6 +345,27 @@ async function storeVAP(propertyId, pkg, seal = false) {
 // ── Public generate+store helper (used by advance endpoint + sealClosingRecord) ─
 async function generateAndStoreVAP(propertyId, { seal = false } = {}) {
   try {
+    const { data: room } = await supabase
+      .from('deal_rooms')
+      .select('property_name, workflow_pack_id, base_pack, transaction_type, metadata_values, deal_stage, stages_config')
+      .eq('property_id', propertyId)
+      .maybeSingle();
+    if (!room) return null;
+    const packId = await getRoomPackId(propertyId);
+    const { lastKey, secondToLastKey } = getTerminalStageKeys(room, packId);
+    const eligibleStage = seal ? lastKey : secondToLastKey;
+    if (room.deal_stage !== eligibleStage) {
+      console.warn(`[vap] skipped before persisted lifecycle milestone — ${propertyId} stage=${room.deal_stage} expected=${eligibleStage}`);
+      return null;
+    }
+    if (isHazardLossRoom(room)) {
+      const transactionState = await readTransactionState(propertyId);
+      const gate = getHazardLossRepairGate(transactionState);
+      if (!gate.ok) {
+        console.warn(`[vap] skipped while hazard-loss facts remain unconfirmed — ${propertyId}`);
+        return null;
+      }
+    }
     const pkg = await buildVAP(propertyId);
     await storeVAP(propertyId, pkg, seal);
     return pkg;
@@ -348,6 +382,34 @@ router.get('/api/public/deal-room/:propertyId/verified-asset-package', async (re
   const { propertyId } = req.params;
 
   try {
+    const { data: room } = await supabase
+      .from('deal_rooms')
+      .select('property_name, workflow_pack_id, base_pack, transaction_type, metadata_values, deal_stage, stages_config')
+      .eq('property_id', propertyId)
+      .maybeSingle();
+    if (!room) return res.status(404).json({ error: 'Deal room not found' });
+    if (isHazardLossRoom(room)) {
+      const packId = await getRoomPackId(propertyId);
+      const { lastKey, secondToLastKey } = getTerminalStageKeys(room, packId);
+      if (![lastKey, secondToLastKey].includes(room.deal_stage)) {
+        return res.status(409).json({
+          error: 'VAP_LIFECYCLE_GATE',
+          message: 'The Verified Transaction Package is available after the required lifecycle milestone is reached.',
+          current_stage: room.deal_stage,
+          required_stage: secondToLastKey,
+        });
+      }
+      const transactionState = await readTransactionState(propertyId);
+      const gate = getHazardLossRepairGate(transactionState);
+      if (!gate.ok) {
+        return res.status(409).json({
+          error: 'VAP_HAZARD_LOSS_GATE',
+          message: 'Confirm the required hazard-loss Transaction Record facts before generating the Verified Transaction Package.',
+          unmet_fields: gate.unmetFields,
+          unresolved_conflicts: gate.unresolvedConflicts,
+        });
+      }
+    }
     // 1. Check for a persisted package
     const { data: stored } = await supabase
       .from('verified_asset_packages')

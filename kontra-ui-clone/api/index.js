@@ -76,6 +76,8 @@ const {
   recalculateTransactionState,
   computeTransactionReadiness,
   computeTransactionRecordState,
+  getHazardLossRepairGate,
+  isImmediateLifecycleAdvance,
   readTransactionState,
   reconcileStoredDocumentConflicts,
   resolveSchemaKey: resolveTransactionSchemaKey,
@@ -6075,6 +6077,22 @@ app.post('/api/public/deal-room/:propertyId/advance', async (req, res) => {
 
     if (!VALID.includes(stage)) return res.status(400).json({ error: 'invalid stage' });
 
+    const currentStage = room?.deal_stage;
+    const stageChanging = currentStage !== stage;
+    // A lifecycle transition is always one forward step from the persisted
+    // stage. This prevents stale UI/task requests from skipping Claim Review
+    // gates or replaying an old transition after the room has been re-entered.
+    if (stageChanging && (
+      !isImmediateLifecycleAdvance(stagesForValidation, currentStage, stage)
+    )) {
+      return res.status(409).json({
+        error: 'INVALID_LIFECYCLE_TRANSITION',
+        message: 'A deal can only advance to the next stage from its persisted lifecycle state.',
+        current_stage: currentStage,
+        requested_stage: stage,
+      });
+    }
+
     // Resolve the display label for the incoming stage key.
     // Custom stages may have owner-supplied labels; pack stages use the JSON label.
     const allKnownStages = [...stagesForValidation, ...(settlementCapableAdv && !alreadyHasSettlement ? [{ key: 'settlement', label: 'Settlement' }, { key: 'complete', label: 'Complete' }] : [])];
@@ -6095,9 +6113,6 @@ app.post('/api/public/deal-room/:propertyId/advance', async (req, res) => {
       ? fullEffectiveStages[fullEffectiveStages.length - 2].key
       : null;
 
-    const currentStage = room?.deal_stage;
-    const stageChanging = currentStage !== stage;
-
     // Hazard-loss rooms have a small set of factual gates that must be
     // confirmed before work can move from claim review into repair execution
     // or fund release.  Keep this check server-side: UI counters and proposal
@@ -6108,28 +6123,33 @@ app.post('/api/public/deal-room/:propertyId/advance', async (req, res) => {
     );
     if (hazardMilestone && stageChanging && /repair\s*progress|funds?\s*release/.test(targetLabel)) {
       const transactionState = await readTransactionState(propertyId);
-      const requiredForRepair = [
-        'transaction.incident_date',
-        'financial.insurance_proceeds',
-        'financial.repair_costs',
-      ];
-      const unmet = requiredForRepair.filter(key => {
-        const field = transactionState.recordState?.fields?.find(item => item.key === key);
-        return !field || field.status !== 'confirmed' || !String(field.value || '').trim();
-      });
-      const conflicts = transactionState.recordState?.unresolvedConflictCount || 0;
-      if (unmet.length || conflicts > 0) {
+      const gate = getHazardLossRepairGate(transactionState);
+      if (!gate.ok) {
         return res.status(409).json({
           error: 'HAZARD_LOSS_GATE',
           message: 'Confirm incident date, insurance proceeds, and repair costs before advancing this hazard-loss milestone.',
-          unmet_fields: unmet,
-          unresolved_conflicts: conflicts,
+          unmet_fields: gate.unmetFields,
+          unresolved_conflicts: gate.unresolvedConflicts,
         });
       }
     }
 
-    const { error } = await supabase.from('deal_rooms').update({ deal_stage: stage }).eq('property_id', propertyId);
+    // Compare-and-set the stage so only the request that observed the current
+    // persisted stage can create the transition event and its side effects.
+    const { data: transitionedRoom, error } = await supabase
+      .from('deal_rooms')
+      .update({ deal_stage: stage })
+      .eq('property_id', propertyId)
+      .eq('deal_stage', currentStage)
+      .select('deal_stage')
+      .maybeSingle();
     if (error) throw error;
+    if (!transitionedRoom) {
+      return res.status(409).json({
+        error: 'STALE_LIFECYCLE_STATE',
+        message: 'The deal lifecycle changed before this transition was saved. Refresh the room and try again.',
+      });
+    }
     logEvent(propertyId, 'stage_advanced', 'owner', null, `Deal advanced to ${stageLabel}`, { stage, stageLabel });
     recalculateTransactionState(propertyId, {
       source: 'stage_advanced',

@@ -1,6 +1,8 @@
 const {
   computeTransactionReadiness,
   computeTransactionRecordState,
+  getHazardLossRepairGate,
+  isImmediateLifecycleAdvance,
   latestEvidenceTimestamp,
   shouldPreserveResolvedConflict,
 } = require('./lib/transactionState');
@@ -12,6 +14,52 @@ const {
 } = require('./lib/transactionRecordCanonicalization');
 
 describe('transaction state recalculation', () => {
+  it('accepts only the next persisted lifecycle stage, plus legacy funded settlement migration', () => {
+    const stages = [
+      { key: 'claim_review' },
+      { key: 'repair_progress' },
+      { key: 'funds_release' },
+    ];
+    expect(isImmediateLifecycleAdvance(stages, 'claim_review', 'repair_progress')).toBe(true);
+    expect(isImmediateLifecycleAdvance(stages, 'claim_review', 'funds_release')).toBe(false);
+    expect(isImmediateLifecycleAdvance(stages, 'repair_progress', 'claim_review')).toBe(false);
+    expect(isImmediateLifecycleAdvance(stages, 'funded', 'settlement')).toBe(true);
+  });
+
+  it('blocks hazard-loss repair advancement until all canonical facts are confirmed', () => {
+    const awaitingState = {
+      recordState: {
+        fields: [
+          { key: 'transaction.incident_date', value: '2026-07-10', status: 'awaiting' },
+          { key: 'financial.insurance_proceeds', value: '$325,000', status: 'awaiting' },
+          { key: 'financial.repair_costs', value: '$229,950', status: 'confirmed' },
+        ],
+        unresolvedConflictCount: 0,
+      },
+    };
+    expect(getHazardLossRepairGate(awaitingState)).toEqual({
+      ok: false,
+      unmetFields: ['transaction.incident_date', 'financial.insurance_proceeds'],
+      unresolvedConflicts: 0,
+    });
+
+    const confirmedState = {
+      recordState: {
+        fields: [
+          { key: 'transaction.incident_date', value: '2026-07-10', status: 'confirmed' },
+          { key: 'financial.insurance_proceeds', value: '$325,000', status: 'confirmed' },
+          { key: 'financial.repair_costs', value: '$229,950', status: 'confirmed' },
+        ],
+        unresolvedConflictCount: 0,
+      },
+    };
+    expect(getHazardLossRepairGate(confirmedState)).toEqual({
+      ok: true,
+      unmetFields: [],
+      unresolvedConflicts: 0,
+    });
+  });
+
   it.each([
     ['hazard.incident_date', 'transaction.incident_date'],
     ['transaction.incident_date', 'transaction.incident_date'],
