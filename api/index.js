@@ -5373,6 +5373,7 @@ app.post('/api/public/deal-room/:propertyId/track-document', upload.single('file
         .select('id, section, filename, processing_status, analysis')
         .eq('property_id', propertyId)
         .eq('source_hash', hash)
+        .eq('is_active', true)
         .in('processing_status', ['uploaded', 'processing', 'retrying', 'extracted'])
         .maybeSingle();
       if (duplicate) {
