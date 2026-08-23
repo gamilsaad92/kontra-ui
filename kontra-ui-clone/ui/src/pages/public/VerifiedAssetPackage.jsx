@@ -178,6 +178,11 @@ function ExportActions({ pkg, propertyId }) {
   return (
     <div className="mt-4">
       <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-2">Export & Share</p>
+        {pkg.handoff?.schema_version && (
+          <p className="text-[10px] text-gray-400 mb-2">
+            Provider-neutral handoff representation · v{pkg.handoff.schema_version}
+          </p>
+        )}
       <div className="flex flex-wrap gap-2 mb-3">
         <button onClick={exportClosingBinder} disabled={!!exporting}
           className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold border border-gray-200 bg-white text-gray-700 hover:bg-gray-50 transition disabled:opacity-50">

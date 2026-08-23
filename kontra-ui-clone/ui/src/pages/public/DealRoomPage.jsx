@@ -5448,6 +5448,9 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
   const failedDocuments = analyses.filter(analysis =>
     analysis.processing_status === 'failed',
   );
+  const replacementDocuments = processingDocuments.filter(analysis =>
+    analysis.is_replacement === true || (analysis.versionHistory || []).length > 1,
+  );
   const processedImpact = analyses
     .filter(analysis => {
       const impact = analysis.analysis?.processing_impact;
@@ -5581,10 +5584,18 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
               <span className="mt-0.5 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-blue-50 text-blue-600">↻</span>
               <div>
                 <p className="text-sm font-semibold text-gray-900">
-                  {processingDocuments.length === 1 ? 'Document processing in progress' : `${processingDocuments.length} documents processing`}
+                  {replacementDocuments.length === 1
+                    ? 'Replacement document processing'
+                    : replacementDocuments.length > 1
+                      ? `${replacementDocuments.length} replacement documents processing`
+                      : processingDocuments.length === 1
+                        ? 'Document processing in progress'
+                        : `${processingDocuments.length} documents processing`}
                 </p>
                 <p className="mt-0.5 text-xs text-gray-500">
-                  The Overview will update automatically when extraction completes.
+                  {replacementDocuments.length > 0
+                    ? `${replacementDocuments.map(analysis => analysis.filename || analysis.section).join(', ')} is replacing an earlier version. The new evidence will refresh the Transaction Record automatically.`
+                    : 'The Overview will update automatically when extraction completes.'}
                 </p>
               </div>
             </div>

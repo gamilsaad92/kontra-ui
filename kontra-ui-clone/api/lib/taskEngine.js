@@ -18,6 +18,7 @@ const {
   logEvent,
 } = require('./dealRoomHelpers');
 const { emit } = require('./eventBus');
+const { selectActiveDocumentVersions } = require('./documentVersions');
 
 // ── Schema bootstrap (Replit Postgres local dev) ────────────────────────────
 // Mirrors the pattern in routers/workflowPacks.js: lazily create the table
@@ -359,7 +360,7 @@ async function evaluateDealRoomForTasks(propertyId, options = {}) {
 
   const existing = existingRes.data || [];
   const submissions = submissionsRes.data || [];
-  const analyses = analysesRes.data || [];
+  const analyses = selectActiveDocumentVersions(analysesRes.data || []);
 
   const hasExistingTask = (taskType, sourceId) => existing.some(t =>
     t.task_type === taskType && t.source_id === sourceId);
