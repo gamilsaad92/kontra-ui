@@ -66,6 +66,7 @@ function latestDocuments(rows) {
   const bySection = new Map();
   for (const row of rows || []) {
     if (!row?.section || row.section === VERIFICATION_SECTION) continue;
+    if (row.is_active === false || row.superseded_at) continue;
     const existing = bySection.get(row.section);
     if (!existing || new Date(row.created_at || 0) > new Date(existing.created_at || 0)) {
       bySection.set(row.section, row);
@@ -180,7 +181,7 @@ async function getVerificationState(propertyId) {
 async function runVerification(propertyId, packId = null) {
   const { data: documents, error: documentError } = await supabase
     .from('deal_analyses')
-    .select('section, analysis, created_at')
+    .select('id, section, analysis, created_at, is_active, superseded_at')
     .eq('property_id', propertyId)
     .neq('section', VERIFICATION_SECTION)
     .order('created_at', { ascending: true });
