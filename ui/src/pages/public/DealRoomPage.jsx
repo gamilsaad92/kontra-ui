@@ -3210,14 +3210,14 @@ function WhatNeedsAttention({
     actions: [],
     sourcePriority: 2,
   }));
-  const recordActions = recordMissing.slice(0, 6).map(field => ({
+  const recordActions = recordMissing.map(field => ({
     id: `missing-record-${field.key}`,
-    urgency: 'medium',
-    title: `Confirm ${field.label}`,
-    reason: `Missing from ${field.key.split('.')[0].replace(/^\w/, char => char.toUpperCase())}`,
+    urgency: 'high',
+    title: `Provide ${field.label}`,
+    reason: `Required Transaction Record field "${field.label}" is missing. Add and confirm the authoritative value.`,
     routeItem: { field_key: field.key },
     actions: [],
-    sourcePriority: 3,
+    sourcePriority: 1,
   }));
 
   const derivedActions = [...documentActions, ...participantActions, ...recordActions]
@@ -3269,6 +3269,15 @@ function WhatNeedsAttention({
     items.push({ id: `issue-${i}`, urgency: 'high', title: normalizedText, reason: '', routeItem: item, actions: [] });
   });
 
+  const urgencyPriority = { high: 0, medium: 1, low: 2 };
+  const prioritizedItems = items
+    .map((item, index) => ({ item, index }))
+    .sort((a, b) =>
+      (urgencyPriority[a.item.urgency] ?? 3) - (urgencyPriority[b.item.urgency] ?? 3)
+      || (a.item.sourcePriority ?? 9) - (b.item.sourcePriority ?? 9)
+      || a.index - b.index
+    )
+    .map(entry => entry.item);
   const urgencyDot = { high: 'bg-red-400', medium: 'bg-amber-400', low: 'bg-gray-300' };
 
   // The command center keeps the existing prioritization data, but every
@@ -3316,7 +3325,7 @@ function WhatNeedsAttention({
   }
 
   if (compact) {
-    const compactItems = showAll ? items : items.slice(0, 3);
+    const compactItems = showAll ? prioritizedItems : prioritizedItems.slice(0, 3);
     return (
       <div className="min-w-0">
         <div className="flex items-center justify-between gap-3">
@@ -3364,12 +3373,12 @@ function WhatNeedsAttention({
             })}
           </div>
         )}
-         {!loading && items.length > 3 && (
+          {!loading && prioritizedItems.length > 3 && (
            <button
              type="button"
               onClick={(event) => { event.preventDefault(); event.stopPropagation(); setShowAll(value => !value); }}
              className="mt-3 text-[11px] font-semibold text-[#800020] hover:opacity-80 transition">
-             {showAll ? 'Show top 3' : `View all ${items.length} actions`} →
+              {showAll ? 'Show top 3' : `View all ${prioritizedItems.length} actions`} →
            </button>
          )}
       </div>
@@ -3381,8 +3390,8 @@ function WhatNeedsAttention({
       <div className="px-5 py-4 border-b border-gray-100">
         <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">What needs attention</p>
         <p className="mt-1 text-sm font-bold text-gray-900">
-          {loading ? 'Loading…' : items.length > 0
-            ? `${items.length} item${items.length === 1 ? '' : 's'} to address`
+          {loading ? 'Loading…' : prioritizedItems.length > 0
+            ? `${prioritizedItems.length} item${prioritizedItems.length === 1 ? '' : 's'} to address`
             : hasMeaningfulActivity ? 'Nothing urgent right now' : 'Start this transaction'}
         </p>
         <p className="mt-0.5 text-xs text-gray-400">
@@ -3396,7 +3405,7 @@ function WhatNeedsAttention({
         <div className="p-5 space-y-3">
           {[1, 2].map(n => <div key={n} className="h-14 animate-pulse rounded-xl bg-gray-50" />)}
         </div>
-      ) : items.length === 0 && !hasMeaningfulActivity ? (
+      ) : prioritizedItems.length === 0 && !hasMeaningfulActivity ? (
         /* ── STATE A: Genuinely empty room ────────────────────────────── */
         <div className="px-5 py-6">
           <p className="text-sm font-semibold text-gray-900">Start this transaction</p>
@@ -3426,7 +3435,7 @@ function WhatNeedsAttention({
             ))}
           </ul>
         </div>
-      ) : items.length === 0 ? (
+      ) : prioritizedItems.length === 0 ? (
         /* ── STATE B: Active but no blockers — only shown when meaningful activity exists ── */
         <div className="px-5 py-5">
           <p className="text-sm font-semibold text-gray-800">Nothing requires your attention right now.</p>
@@ -3438,7 +3447,7 @@ function WhatNeedsAttention({
         /* ── STATE C/D: Items to address ──────────────────────────────── */
         <>
           <div className="divide-y divide-gray-100">
-            {items.slice(0, 5).map(item => (
+            {prioritizedItems.slice(0, 5).map(item => (
               <div key={item.id} className={`flex items-start gap-3 px-5 py-4 ${item.urgency === 'high' ? 'bg-red-50/40' : ''}`}>
                 <span className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${urgencyDot[item.urgency]}`} />
                 <div className="flex-1 min-w-0">
