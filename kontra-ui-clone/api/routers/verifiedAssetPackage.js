@@ -20,6 +20,7 @@ const { supabase } = require('../db');
 const { getRoomPackId, getPackStageConfig } = require('../lib/dealRoomHelpers');
 const { selectActiveDocumentVersions } = require('../lib/documentVersions');
 const { readTransactionState, getHazardLossRepairGate } = require('../lib/transactionState');
+const { buildVerifiedAssetHandoff } = require('../lib/verifiedAssetHandoff');
 const OpenAI = require('openai');
 const cache = require('../cache');
 
@@ -146,9 +147,9 @@ function getTerminalStageKeys(room, packId) {
 // ── Core package builder ─────────────────────────────────────────────────────
 // Exported so sealClosingRecord can call it without re-fetching everything.
 async function buildVAP(propertyId) {
-  const [roomRes, analysesRes, eventsRes, submissionsRes] = await Promise.all([
+  const [roomRes, analysesRes, eventsRes, submissionsRes, transactionState, approvalsRes, historyRes] = await Promise.all([
     supabase.from('deal_rooms')
-      .select('property_name, property_type, deal_amount, address, customer_email, first_name, activated_at, deal_stage, workflow_pack_id, deal_type, stages_config')
+      .select('property_name, property_type, deal_amount, address, customer_email, first_name, activated_at, deal_stage, workflow_pack_id, deal_type, stages_config, metadata_values, settlement_mode')
       .eq('property_id', propertyId).maybeSingle(),
     supabase.from('deal_analyses')
       .select('id, section, filename, uploaded_by_role, created_at, analysis, is_active, superseded_at')
@@ -161,6 +162,15 @@ async function buildVAP(propertyId) {
     supabase.from('party_submissions')
       .select('role, name, status, submitted_at')
       .eq('property_id', propertyId),
+    readTransactionState(propertyId),
+    supabase.from('transaction_record_approvals')
+      .select('field_id, action, actor_role, is_manual, created_at')
+      .eq('property_id', propertyId)
+      .order('created_at', { ascending: true }),
+    supabase.from('transaction_record_history')
+      .select('field_id, event_type, new_status, created_at')
+      .eq('property_id', propertyId)
+      .order('created_at', { ascending: true }),
   ]);
 
   const room = roomRes.data;
@@ -206,6 +216,29 @@ async function buildVAP(propertyId) {
   if (paAn.dueDiligencePeriod) legalTerms.dueDiligencePeriod = paAn.dueDiligencePeriod;
 
   const tokenizationReadiness = computeTokenizationReadiness(room, analyses, submissions, packId);
+  const sourceStateAt = (transactionState?.recordState?.fields || [])
+    .map(field => field.updatedAt || field.updated_at)
+    .filter(Boolean)
+    .sort()
+    .at(-1) || room.activated_at || new Date().toISOString();
+  const handoff = buildVerifiedAssetHandoff({
+    propertyId,
+    sourceStateAt,
+    recordState: transactionState?.recordState,
+    approvals: approvalsRes?.data || [],
+    history: historyRes?.data || [],
+    conflicts: transactionState?.conflicts || [],
+    closingContext: {
+      current_stage: room.deal_stage || null,
+      deal_amount: room.deal_amount || null,
+      settlement_mode: room.settlement_mode || null,
+      participant_count: submissions.length,
+      document_count: analyses.length,
+    },
+    readiness: room.metadata_values?.digital_asset_enabled
+      ? tokenizationReadiness
+      : null,
+  });
 
   // AI verification summary — cached per deal room (keyed by uploaded sections)
   const aiCacheKey = `vap-ai:${propertyId}:${uploadedSections.sort().join(',')}`;
@@ -318,6 +351,9 @@ Write a concise verification summary. Respond with valid JSON only:
       document_inventory: uploadedSections,
       tokenization_readiness: tokenizationReadiness,
     },
+    // Separate provider-neutral handoff contract. Existing package sections
+    // remain unchanged for current consumers.
+    handoff,
   };
 }
 
@@ -325,16 +361,33 @@ Write a concise verification summary. Respond with valid JSON only:
 // seal=true locks the record — further auto-regeneration will be skipped.
 async function storeVAP(propertyId, pkg, seal = false) {
   try {
-    const { error } = await supabase.from('verified_asset_packages').upsert(
-      {
+    const { data: existing } = await supabase.from('verified_asset_packages')
+      .select('revision, handoff_key')
+      .eq('property_id', propertyId)
+      .maybeSingle();
+    const revision = Number(existing?.revision || 0) + 1;
+    const payload = {
         property_id: propertyId,
         package: pkg,
         generated_at: pkg.generated_at,
         sealed: seal,
+        schema_version: pkg.handoff?.schema_version || null,
+        revision,
+        source_state_at: pkg.handoff?.source_state_at || null,
+        handoff_key: pkg.handoff?.handoff_key || null,
         updated_at: new Date().toISOString(),
-      },
-      { onConflict: 'property_id' }
-    );
+    };
+    let { error } = await supabase.from('verified_asset_packages')
+      .upsert(payload, { onConflict: 'property_id' });
+    if (error && /column|schema cache/i.test(error.message || '')) {
+      const legacyPayload = { ...payload };
+      delete legacyPayload.schema_version;
+      delete legacyPayload.revision;
+      delete legacyPayload.source_state_at;
+      delete legacyPayload.handoff_key;
+      ({ error } = await supabase.from('verified_asset_packages')
+        .upsert(legacyPayload, { onConflict: 'property_id' }));
+    }
     if (error) {
       console.warn('[vap] storeVAP error:', error.message);
     } else {
