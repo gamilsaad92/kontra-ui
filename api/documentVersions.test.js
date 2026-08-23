@@ -104,4 +104,65 @@ describe('document version selection', () => {
       status: 'awaiting',
     }));
   });
+
+  it('projects a replacement summary and candidates from the same active evidence set', () => {
+    const oldAnalysis = {
+      id: 'insurance-v1',
+      section: 'insurance_claim_documentation',
+      analysis: {
+        summary: 'Riverside Commons water supply line rupture; repair cost $229,950; net proceeds $180,000.',
+      },
+      created_at: '2026-08-20T09:00:00.000Z',
+      is_active: false,
+      superseded_at: '2026-08-21T09:00:00.000Z',
+    };
+    const replacementAnalysis = {
+      id: 'insurance-v2',
+      section: 'insurance_claim_documentation',
+      analysis: {
+        summary: 'Insurance proceeds are $325,000 and are held and controlled by the servicer.',
+      },
+      created_at: '2026-08-21T09:00:00.000Z',
+      is_active: true,
+    };
+    const active = selectActiveDocumentVersions([oldAnalysis, replacementAnalysis]);
+    const visibleDocuments = active.map(document => document.analysis);
+    expect(visibleDocuments).toEqual([
+      expect.objectContaining({
+        summary: expect.stringContaining('$325,000'),
+      }),
+    ]);
+    expect(JSON.stringify(visibleDocuments)).not.toContain('$229,950');
+    expect(JSON.stringify(visibleDocuments)).not.toContain('$180,000');
+
+    const state = computeTransactionRecordState([
+      {
+        id: 'proceeds-field',
+        field_key: 'financial.insurance_proceeds',
+        display_label: 'Insurance Proceeds',
+        value_text: '$325,000',
+        status: 'extracted',
+        source_doc_id: replacementAnalysis.id,
+      },
+      {
+        id: 'control-field',
+        field_key: 'financial.insurance_proceeds_control',
+        display_label: 'Insurance Proceeds Control',
+        value_text: 'held and controlled by the servicer',
+        status: 'extracted',
+        source_doc_id: replacementAnalysis.id,
+      },
+    ], 'generated_ai', [
+      { key: 'financial.insurance_proceeds', label: 'Insurance Proceeds', required: true },
+      { key: 'financial.insurance_proceeds_control', label: 'Insurance Proceeds Control', required: true },
+    ]);
+    expect(state.requiredFields).toEqual(expect.arrayContaining([
+      expect.objectContaining({ label: 'Insurance Proceeds', value: '$325,000', status: 'awaiting' }),
+      expect.objectContaining({
+        label: 'Insurance Proceeds Control',
+        value: 'held and controlled by the servicer',
+        status: 'awaiting',
+      }),
+    ]));
+  });
 });
