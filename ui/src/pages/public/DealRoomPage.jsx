@@ -4154,6 +4154,7 @@ function getOpenIssueCount(conflicts = [], nextMilestoneBlockers = [], documentR
 }
 
 const RECORD_EMPTY_VALUES = new Set(['', 'n/a', 'na', 'not applicable', 'not_applicable', 'unknown']);
+const RECORD_CONFIRMED_STATUSES = new Set(['verified', 'confirmed']);
 const RECORD_CONFLICT_STATUSES = new Set(['conflicting', 'conflict', 'source_changed']);
 const RECORD_AWAITING_STATUSES = new Set(['extracted', 'needs_review', 'awaiting', 'awaiting_confirmation']);
 const DONE_DOCUMENT_STATUSES = new Set(['uploaded', 'approved', 'ai_complete', 'complete', 'completed']);
@@ -4161,6 +4162,15 @@ const DONE_DOCUMENT_STATUSES = new Set(['uploaded', 'approved', 'ai_complete', '
 function hasMeaningfulRecordValue(field) {
   const value = String(field?.value_text || '').trim().toLowerCase();
   return !RECORD_EMPTY_VALUES.has(value) && field?.status !== 'not_applicable';
+}
+
+function normalizedRecordStatus(field) {
+  const rawStatus = String(field?.canonicalStatus || field?.status || '').toLowerCase();
+  if (RECORD_CONFLICT_STATUSES.has(rawStatus)) return 'conflict';
+  if (RECORD_CONFIRMED_STATUSES.has(rawStatus)) return 'confirmed';
+  if (rawStatus === 'not_applicable') return 'not_applicable';
+  if (hasMeaningfulRecordValue(field)) return 'awaiting';
+  return 'missing';
 }
 
 function hasDocumentReviewFinding(analysis) {
@@ -4246,16 +4256,16 @@ function getRecordDefinitionState(definition, recordFields = [], recordState = n
   const canonicalDefinitionKey = definition?.canonicalKey || definition?.key;
   const authoritativeField = recordStateFieldForDefinition(definition, recordState);
   if (authoritativeField) {
+    const authoritativeStatus = normalizedRecordStatus(authoritativeField);
     return {
       definition,
       field: authoritativeField,
       value: authoritativeField.value || authoritativeField.value_text || '',
-      status: authoritativeField.status === 'conflict'
+      status: authoritativeStatus === 'conflict'
         ? 'conflict'
-        : authoritativeField.status === 'awaiting'
+        : authoritativeStatus === 'awaiting'
           ? 'awaiting'
-          : authoritativeField.status === 'confirmed'
-            || authoritativeField.rawStatus === 'source_changed'
+          : authoritativeStatus === 'confirmed'
             ? 'confirmed'
             : 'missing',
         attention: authoritativeField.attention || null,
@@ -4276,7 +4286,7 @@ function getRecordDefinitionState(definition, recordFields = [], recordState = n
   const valueMatches = matches.filter(hasMeaningfulRecordValue);
   const conflict = valueMatches.find(field => ['conflicting', 'conflict'].includes(String(field.status || '').toLowerCase()));
   const confirmed = valueMatches.find(field => ['verified', 'confirmed', 'source_changed'].includes(String(field.status || '').toLowerCase()));
-  const awaiting = valueMatches.find(field => RECORD_AWAITING_STATUSES.has(field.status));
+  const awaiting = valueMatches.find(field => normalizedRecordStatus(field) === 'awaiting');
   const selected = conflict || confirmed || awaiting || valueMatches[0] || matches[0] || null;
   return {
     definition,
@@ -5127,6 +5137,7 @@ export {
   getOpenIssueCount,
   hasDocumentReviewFinding,
   getRecordDefinitionState,
+  normalizedRecordStatus,
   getCoordinatorRecordFacts,
 };
 

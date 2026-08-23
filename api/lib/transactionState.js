@@ -616,12 +616,12 @@ function computeTransactionRecordState(recordFields, schemaKey, requiredKeysOver
       ? 'conflict'
       : CONFIRMED_RECORD_STATUSES.has(rawStatus)
         ? 'confirmed'
-        : AWAITING_RECORD_STATUSES.has(rawStatus)
+        : AWAITING_RECORD_STATUSES.has(rawStatus) && hasMeaningfulRecordValue(field)
           ? 'awaiting'
           : rawStatus === 'not_applicable'
             ? 'not_applicable'
             : hasMeaningfulRecordValue(field)
-              ? 'captured'
+              ? 'awaiting'
               : 'missing';
     return {
       key,

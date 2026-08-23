@@ -16,13 +16,35 @@ const CATEGORIES = [
 
 const STATUS_CONFIG = {
   missing:        { label: "Missing",                     bg: "#f3f4f6", text: "#6b7280", dot: "#d1d5db" },
-  extracted:      { label: "Extracted — review",          bg: "#eff6ff", text: "#1d4ed8", dot: "#3b82f6" },
-  needs_review:   { label: "Needs Review",                bg: "#fffbeb", text: "#92400e", dot: "#f59e0b" },
+  awaiting:       { label: "Awaiting confirmation",       bg: "#eff6ff", text: "#1d4ed8", dot: "#3b82f6" },
+  extracted:      { label: "Awaiting confirmation",       bg: "#eff6ff", text: "#1d4ed8", dot: "#3b82f6" },
+  needs_review:   { label: "Awaiting confirmation",       bg: "#eff6ff", text: "#1d4ed8", dot: "#3b82f6" },
   verified:       { label: "Confirmed",                   bg: "#f0fdf4", text: "#15803d", dot: "#22c55e" },
-  conflicting:    { label: "Conflicting",                 bg: "#fef2f2", text: "#991b1b", dot: "#ef4444" },
-  source_changed: { label: "Source Changed",              bg: "#fdf4ff", text: "#7e22ce", dot: "#a855f7" },
+  confirmed:      { label: "Confirmed",                   bg: "#f0fdf4", text: "#15803d", dot: "#22c55e" },
+  conflicting:    { label: "Conflict",                    bg: "#fef2f2", text: "#991b1b", dot: "#ef4444" },
+  conflict:       { label: "Conflict",                    bg: "#fef2f2", text: "#991b1b", dot: "#ef4444" },
+  source_changed: { label: "Confirmed · source changed", bg: "#fdf4ff", text: "#7e22ce", dot: "#a855f7" },
   not_applicable: { label: "N/A",                         bg: "#f9fafb", text: "#9ca3af", dot: "#e5e7eb" },
 };
+
+const CONFIRMED_STATUSES = new Set(["verified", "confirmed"]);
+const CONFLICT_STATUSES = new Set(["conflicting", "conflict", "source_changed"]);
+const AWAITING_STATUSES = new Set(["extracted", "needs_review", "awaiting", "awaiting_confirmation"]);
+const EMPTY_VALUES = new Set(["", "n/a", "na", "not applicable", "not_applicable", "unknown"]);
+
+function hasUsableValue(field) {
+  const value = String(field?.value_text || field?.value_json || field?.value || "").trim().toLowerCase();
+  return !EMPTY_VALUES.has(value) && field?.status !== "not_applicable";
+}
+
+export function canonicalFieldStatus(field) {
+  const raw = String(field?.canonicalStatus || field?.status || "").toLowerCase();
+  if (CONFLICT_STATUSES.has(raw)) return "conflict";
+  if (CONFIRMED_STATUSES.has(raw)) return "confirmed";
+  if (raw === "not_applicable") return "not_applicable";
+  if (hasUsableValue(field)) return "awaiting";
+  return "missing";
+}
 
 function StatusBadge({ status }) {
   const cfg = STATUS_CONFIG[status] || STATUS_CONFIG.missing;
@@ -181,7 +203,7 @@ function uniqueCanonicalFields(fields, seededFields) {
   return result;
 }
 
-function getRecordStats(
+export function getRecordStats(
   schemaFields,
   dbFields,
   seededFields,
@@ -214,19 +236,18 @@ function getRecordStats(
       notApplicable++;
       continue;
     }
-    if (db?.status === "not_applicable") {
+    const status = canonicalFieldStatus(db);
+    if (status === "not_applicable") {
       notApplicable++;
-    } else if (["verified", "confirmed", "source_changed"].includes(db?.status)) {
+    } else if (status === "confirmed") {
       confirmed++;
-    } else if (["coordinator", "deal_owner"].includes(db?.extracted_by) && (db.value_text || db.value_json)) {
-      manuallyEntered++;
-    } else if ((db?.status === "extracted" || db?.status === "needs_review") &&
-      (db.value_text || db.value_json)) {
-      extracted++;
-    } else if (seeded?.value && !db) {
-      fromSetup++;
-    } else if (db || !seeded?.value) {
+    } else if (status === "awaiting") {
       awaiting++;
+      if (db?.status === "extracted" || db?.status === "needs_review") extracted++;
+      if (["coordinator", "deal_owner"].includes(db?.extracted_by)) manuallyEntered++;
+    } else if (seeded?.value && !db) {
+      awaiting++;
+      fromSetup++;
     }
   }
   const fieldCount = byKey.size;
@@ -239,7 +260,7 @@ function getRecordStats(
     confirmed,
     manuallyEntered,
     fromSetup,
-    complete: confirmed + extracted + manuallyEntered + fromSetup,
+    complete: confirmed,
     notApplicable,
   };
 }
@@ -311,7 +332,8 @@ function FieldRow({ field, isCoordinator, propertyId, ownerToken, onUpdated, dep
   }
 
   const isEmpty     = !field.value_text && !field.value_json;
-  const isConfirmed = ["verified", "confirmed", "source_changed"].includes(field.status);
+  const displayStatus = canonicalFieldStatus(field);
+  const isConfirmed = displayStatus === "confirmed";
   const isNA        = field.status === "not_applicable";
   const isInactive  = dependencyInactive && !isConfirmed;
 
@@ -330,7 +352,7 @@ function FieldRow({ field, isCoordinator, propertyId, ownerToken, onUpdated, dep
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap mb-0.5">
               <p className="text-xs font-semibold text-gray-700 shrink-0">{field.display_label}</p>
-              <StatusBadge status={isInactive ? "not_applicable" : field.status} />
+               <StatusBadge status={isInactive ? "not_applicable" : displayStatus} />
               {field.confidence != null && field.status === "extracted" && (
                 <span className="text-[10px] text-gray-400">{Math.round(field.confidence * 100)}% confidence</span>
               )}
@@ -349,7 +371,7 @@ function FieldRow({ field, isCoordinator, propertyId, ownerToken, onUpdated, dep
                   : "Transaction Description · AI extracted · Awaiting confirmation"}
               </p>
             ) : null}
-            {field.status === "source_changed" && (
+              {displayStatus === "confirmed" && field.status === "source_changed" && (
               <p className="text-[10px] text-purple-600 mt-0.5 font-medium">
                 Previously confirmed — newer source document requires review
               </p>
@@ -615,9 +637,9 @@ function getCategoryChip(catKey, dbFields, seededFields, viewMode = "full", summ
     (!isSummary || isSummarySchemaField(f, summaryKeys))
   ), seededFields);
 
-  const conflicts     = dbCat.filter(f => f.status === "conflicting").length;
-  const confirmed     = dbCat.filter(f => ["verified", "confirmed", "source_changed"].includes(f.status)).length;
-  const awaitReview   = dbCat.filter(f => f.status === "extracted" || f.status === "needs_review").length;
+  const conflicts     = dbCat.filter(f => canonicalFieldStatus(f) === "conflict").length;
+  const confirmed     = dbCat.filter(f => canonicalFieldStatus(f) === "confirmed").length;
+  const awaitReview   = dbCat.filter(f => canonicalFieldStatus(f) === "awaiting").length;
   const reqMissing    = seeded.filter(f =>
     (isSummary ? true : f.workflowRequired) &&
     !f.value &&
@@ -722,7 +744,7 @@ function CategorySection({
   const hasSummaryContent = viewMode === "full" || visibleDb.length > 0 || visibleSeeded.length > 0;
 
   // Progress bar (only when DB fields exist)
-  const confirmed = dbCat.filter(f => ["verified", "confirmed", "source_changed"].includes(f.status)).length;
+  const confirmed = dbCat.filter(f => canonicalFieldStatus(f) === "confirmed").length;
   const total     = dbCat.length;
 
   if (!hasSummaryContent) return null;
@@ -844,8 +866,20 @@ export default function AssetRecordTab({
       if (res.ok) {
         const data = await res.json();
         const fields = data.fields || [];
-        setDbFields(fields);
-        setRecordState(data.record_state || null);
+        const nextRecordState = data.record_state || null;
+        const stateByKey = new Map((nextRecordState?.fields || []).flatMap(state => [
+          [state.persistedKey || state.key, state],
+          [state.key, state],
+        ]).filter(([key]) => key));
+        setDbFields(fields.map(field => {
+          const state = stateByKey.get(field.field_key);
+          return state ? {
+            ...field,
+            canonicalStatus: state.attention === "source_changed" ? "source_changed" : state.status,
+            canonicalState: state,
+          } : field;
+        }));
+        setRecordState(nextRecordState);
       }
     } finally { setLoading(false); }
   }, [propertyId, ownerToken]);

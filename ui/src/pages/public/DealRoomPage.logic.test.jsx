@@ -9,6 +9,7 @@ const {
   hasDocumentReviewFinding,
   getCoordinatorRecordFacts,
   getRecordDefinitionState,
+  normalizedRecordStatus,
 } = require('./DealRoomPage');
 
 describe('coordinator transaction brief logic', () => {
@@ -144,6 +145,18 @@ describe('coordinator transaction brief logic', () => {
       value: '2026-07-10',
       status: 'awaiting',
     }));
+  });
+
+  test('promotes a populated unconfirmed fallback field to awaiting confirmation', () => {
+    expect(normalizedRecordStatus({
+      value_text: 'Fire',
+      status: 'generated',
+    })).toBe('awaiting');
+    expect(getRecordDefinitionState(
+      { key: 'hazard.loss_type', label: 'Loss Type' },
+      [{ field_key: 'hazard.loss_type', value_text: 'Fire', status: 'generated' }],
+      null,
+    )).toEqual(expect.objectContaining({ value: 'Fire', status: 'awaiting' }));
   });
 
   test('recognizes document findings without treating them as record conflicts', () => {

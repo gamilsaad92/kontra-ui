@@ -123,6 +123,36 @@ describe('transaction state recalculation', () => {
     expect(readiness.overall).toBe(50);
   });
 
+  it('maps every populated unconfirmed value to awaiting without changing the required denominator', () => {
+    const result = computeTransactionRecordState([
+      { field_key: 'transaction.incident_date', value_text: '2026-07-10', status: 'needs_review' },
+      { field_key: 'financial.insurance_proceeds', value_text: '$325,000', status: 'extracted' },
+      { field_key: 'financial.borrower_funds_advanced', value_text: '$40,000', status: 'captured' },
+      { field_key: 'financial.contractor_proposal_amount', value_text: '$229,950', status: 'manual' },
+      { field_key: 'asset.type', value_text: 'Multifamily', status: 'generated' },
+      { field_key: 'transaction.loss_type', value_text: 'Fire', status: 'generated' },
+      { field_key: 'transaction.loss_event', value_text: 'Hurricane', status: 'generated' },
+      { field_key: 'transaction.expected_completion_date', value_text: '2026-12-01', status: 'generated' },
+      { field_key: 'financial.repair_costs', value_text: '$229,950', status: 'verified' },
+    ], 'generated_ai', [
+      { key: 'transaction.incident_date', label: 'Incident Date', required: true },
+      { key: 'financial.insurance_proceeds', label: 'Insurance Proceeds', required: true },
+      { key: 'financial.borrower_funds_advanced', label: 'Borrower Funds Advanced', required: true },
+      { key: 'financial.contractor_proposal_amount', label: 'Contractor Proposal Amount', required: true },
+      { key: 'asset.type', label: 'Property Type', required: true },
+      { key: 'transaction.loss_type', label: 'Loss Type', required: true },
+      { key: 'transaction.loss_event', label: 'Loss Event', required: true },
+      { key: 'transaction.expected_completion_date', label: 'Expected Completion Date', required: true },
+      { key: 'financial.repair_costs', label: 'Repair Costs', required: true },
+    ]);
+
+    expect(result.requiredFields.filter(field => field.status === 'awaiting')).toHaveLength(8);
+    expect(result.requiredFields.filter(field => field.status === 'missing')).toHaveLength(0);
+    expect(result.confirmedCount).toBe(1);
+    expect(result.awaitingRequiredCount).toBe(8);
+    expect(result.requiredCount).toBe(9);
+  });
+
   it('removes not-applicable fields from the required denominator', () => {
     const required = requirements.cre_acquisition;
     const excluded = required[0];
