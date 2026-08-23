@@ -3494,6 +3494,10 @@ function DigitalAssetReadinessSection({
 }) {
   const [expandedCat, setExpandedCat] = useState(null);
   const [confirmingField, setConfirmingField] = useState('');
+  const [editingField, setEditingField] = useState(null);
+  const [editValue, setEditValue] = useState('');
+  const [savingField, setSavingField] = useState('');
+  const [recordActionError, setRecordActionError] = useState('');
 
   // Keep the existing five visual categories, but derive their fields from the
   // same pack schema and required canonical state used by the Overview and the
@@ -3659,6 +3663,7 @@ function DigitalAssetReadinessSection({
     if (!ownerWriteToken) return;
     setConfirmingField(fieldId);
     try {
+      setRecordActionError('');
       const response = await fetch(
         `${API_BASE}/api/public/deal-room/${propertyId}/transaction-record/fields/${fieldId}/verify`,
         {
@@ -3669,8 +3674,41 @@ function DigitalAssetReadinessSection({
       );
       if (!response.ok) throw new Error('The Transaction Record field could not be confirmed.');
       await onRecordUpdated?.();
+    } catch (error) {
+      setRecordActionError(error.message || 'The Transaction Record field could not be confirmed.');
     } finally {
       setConfirmingField('');
+    }
+  }
+
+  async function updateRecordField(field, values) {
+    const fieldId = field?.fieldId;
+    if (!fieldId || savingField) return;
+    let ownerWriteToken = '';
+    try { ownerWriteToken = localStorage.getItem(`kontra_owner_token_${propertyId}`) || ''; } catch {}
+    if (!ownerWriteToken) return;
+    setSavingField(fieldId);
+    setRecordActionError('');
+    try {
+      const response = await fetch(
+        `${API_BASE}/api/public/deal-room/${propertyId}/transaction-record/fields/${fieldId}`,
+        {
+          method: 'PATCH',
+          headers: getRoomAuthHeaders(propertyId, { 'Content-Type': 'application/json' }),
+          body: JSON.stringify({ ...values, ownerWriteToken }),
+        },
+      );
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data?.error || 'The Transaction Record field could not be updated.');
+      }
+      setEditingField(null);
+      setEditValue('');
+      await onRecordUpdated?.();
+    } catch (error) {
+      setRecordActionError(error.message || 'The Transaction Record field could not be updated.');
+    } finally {
+      setSavingField('');
     }
   }
 
@@ -3786,19 +3824,42 @@ function DigitalAssetReadinessSection({
                       ) : (
                         <ul className="space-y-1">
                           {cat.awaitingDefs.slice(0, 4).map(d => (
-                            <li key={d.key} className="flex items-start gap-1.5 text-xs text-blue-700">
+                            <li key={d.key} data-transaction-record-field-id={d.state?.fieldId || undefined} className="flex items-start gap-1.5 text-xs text-blue-700">
                               <span className="mt-0.5 text-blue-400 shrink-0">○</span>
-                              <span className="flex min-w-0 flex-1 items-center justify-between gap-2">
-                                <span>{d.label}{d.state?.value ? <span className="text-gray-500"> — {d.state.value}</span> : ''}</span>
-                                {d.state?.fieldId && d.state?.value && (
-                                  <button
-                                    type="button"
-                                    onClick={() => confirmRecordField(d.state)}
-                                    disabled={confirmingField === d.state.fieldId}
-                                    className="shrink-0 rounded-lg bg-[#800020] px-2 py-1 text-[10px] font-bold text-white disabled:opacity-50"
-                                  >
-                                    {confirmingField === d.state.fieldId ? 'Confirming…' : 'Confirm'}
-                                  </button>
+                              <span className="flex min-w-0 flex-1 flex-wrap items-center justify-between gap-2">
+                                {editingField === d.state?.fieldId ? (
+                                  <span className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+                                    <input
+                                      value={editValue}
+                                      onChange={event => setEditValue(event.target.value)}
+                                      aria-label={`Correct ${d.label}`}
+                                      className="min-w-[10rem] flex-1 rounded-md border border-blue-200 bg-white px-2 py-1 text-xs text-gray-800"
+                                      autoFocus
+                                    />
+                                    <button type="button" onClick={() => updateRecordField(d.state, { value_text: editValue.trim(), status: 'needs_review' })} disabled={!editValue.trim() || savingField === d.state.fieldId} className="rounded-lg bg-[#800020] px-2 py-1 text-[10px] font-bold text-white disabled:opacity-50">
+                                      {savingField === d.state.fieldId ? 'Saving…' : 'Save correction'}
+                                    </button>
+                                    <button type="button" onClick={() => { setEditingField(null); setEditValue(''); }} className="rounded-lg border border-gray-200 px-2 py-1 text-[10px] font-semibold text-gray-600">
+                                      Cancel
+                                    </button>
+                                  </span>
+                                ) : (
+                                  <>
+                                    <span>{d.label}{d.state?.value ? <span className="text-gray-500"> — {d.state.value}</span> : ''}</span>
+                                    {d.state?.fieldId && d.state?.value && (
+                                      <span className="flex shrink-0 flex-wrap items-center gap-1.5">
+                                        <button type="button" onClick={() => confirmRecordField(d.state)} disabled={confirmingField === d.state.fieldId || savingField === d.state.fieldId} className="rounded-lg bg-[#800020] px-2 py-1 text-[10px] font-bold text-white disabled:opacity-50">
+                                          {confirmingField === d.state.fieldId ? 'Confirming…' : 'Confirm'}
+                                        </button>
+                                        <button type="button" onClick={() => { setEditingField(d.state.fieldId); setEditValue(String(d.state.value || '')); }} disabled={!!savingField} className="rounded-lg border border-blue-200 bg-white px-2 py-1 text-[10px] font-semibold text-blue-700 disabled:opacity-50">
+                                          Edit/Correct
+                                        </button>
+                                        <button type="button" onClick={() => updateRecordField(d.state, { value_text: '', value_json: null, status: 'missing' })} disabled={!!savingField} className="rounded-lg border border-gray-200 bg-white px-2 py-1 text-[10px] font-semibold text-gray-500 disabled:opacity-50">
+                                          Reject/Clear
+                                        </button>
+                                      </span>
+                                    )}
+                                  </>
                                 )}
                               </span>
                             </li>
@@ -3829,6 +3890,9 @@ function DigitalAssetReadinessSection({
                       )}
                     </div>
                   </div>
+                  {recordActionError && (
+                    <p role="alert" className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-[11px] text-red-700">{recordActionError}</p>
+                  )}
                   {/* Sources */}
                   {cat.sources.length > 0 && (
                     <div className="mt-3 pt-3 border-t border-gray-100">
