@@ -99,6 +99,24 @@ async function authorizeDocumentUpload(req, res, section) {
     return null;
   }
 
+  // Owner access is stronger than a participant session. Browsers can retain
+  // an old invite session while the coordinator returns to the room; checking
+  // the participant first incorrectly rejects a valid owner upload when the
+  // selected section is not assigned to that stale participant role.
+  const ownerToken = String(
+    req.headers['x-owner-write-token'] || req.body?.ownerWriteToken || '',
+  ).trim();
+  if (ownerToken) {
+    const { data: room } = await supabase
+      .from('deal_rooms')
+      .select('owner_write_token')
+      .eq('property_id', propertyId)
+      .maybeSingle();
+    if (room?.owner_write_token && room.owner_write_token === ownerToken) {
+      return { mode: 'owner', role: 'owner', propertyId };
+    }
+  }
+
   const sessionToken = String(req.headers['x-kontra-session'] || '').trim();
   if (sessionToken) {
     const tokenHash = crypto.createHash('sha256').update(sessionToken).digest('hex');
@@ -142,20 +160,6 @@ async function authorizeDocumentUpload(req, res, section) {
         }
         return { mode: 'participant', role: invite.role_key, propertyId };
       }
-    }
-  }
-
-  const ownerToken = String(
-    req.headers['x-owner-write-token'] || req.body?.ownerWriteToken || '',
-  ).trim();
-  if (ownerToken) {
-    const { data: room } = await supabase
-      .from('deal_rooms')
-      .select('owner_write_token')
-      .eq('property_id', propertyId)
-      .maybeSingle();
-    if (room?.owner_write_token && room.owner_write_token === ownerToken) {
-      return { mode: 'owner', role: req.body?.role || 'owner', propertyId };
     }
   }
 
