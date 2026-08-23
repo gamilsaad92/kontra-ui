@@ -4293,12 +4293,19 @@ app.get('/api/public/deal-room/:propertyId/analyses', async (req, res) => {
     if (error && /post_completion|processing_status|source_hash|extraction_version|correlation_id|failure_reason|processing_started_at|processing_completed_at|is_active|superseded_at|superseded_by/i.test(error.message || '')) {
       ({ data, error } = await supabase
         .from('deal_analyses')
-        // Production may still be on the pre-pipeline schema. Keep this
-        // fallback strictly to columns that existed before migration 019;
-        // otherwise participant reads silently degrade to an empty list.
-        .select('id, section, filename, analysis, uploaded_by_role, created_at, storage_path')
+        // A partially rolled-out database may have the processing columns but
+        // not the version columns yet. Keep those useful columns so the
+        // legacy projection can still choose the newest successful version.
+        .select('id, section, filename, analysis, uploaded_by_role, created_at, storage_path, post_completion, post_completion_added_at, processing_status, source_hash, extraction_version, processing_attempt, correlation_id, failure_reason, processing_started_at, processing_completed_at')
         .eq('property_id', propertyId)
         .order('created_at', { ascending: true }));
+      if (error && /post_completion|processing_status|source_hash|extraction_version|correlation_id|failure_reason|processing_started_at|processing_completed_at/i.test(error.message || '')) {
+        ({ data, error } = await supabase
+          .from('deal_analyses')
+          .select('id, section, filename, analysis, uploaded_by_role, created_at, storage_path')
+          .eq('property_id', propertyId)
+          .order('created_at', { ascending: true }));
+      }
     }
     if (error) throw error;
     // Assign version by section-scoped sequence (no extra DB column needed)
@@ -4572,7 +4579,7 @@ async function extractTransactionFields(propertyId, docId, text, sectionLabel) {
     return { rawCount: 0, savedCount: 0, rawKeys: [], canonicalKeys: [] };
   }
   try {
-    const [{ data: room }, { data: sourceDocument }] = await Promise.all([
+    const [{ data: room }, sourceResult] = await Promise.all([
       supabase
         .from('deal_rooms')
         .select('workflow_pack_id, deal_type')
@@ -4582,14 +4589,32 @@ async function extractTransactionFields(propertyId, docId, text, sectionLabel) {
         ? supabase.from('deal_analyses').select('id, section, source_hash, is_active, superseded_at').eq('id', docId).maybeSingle()
         : Promise.resolve({ data: null }),
     ]);
+    let sourceDocument = sourceResult.data;
+    if (sourceResult.error && /is_active|superseded_at|superseded_by|schema cache/i.test(sourceResult.error.message || '')) {
+      const legacySource = await supabase
+        .from('deal_analyses')
+        .select('id, section, source_hash, created_at, processing_status, analysis')
+        .eq('id', docId)
+        .eq('property_id', propertyId)
+        .maybeSingle();
+      sourceDocument = legacySource.data;
+    }
     const isCurrentSource = async () => {
       if (!docId || !sourceDocument) return !docId;
-      const { data: currentSource } = await supabase
+      let { data: currentSource, error: currentSourceError } = await supabase
         .from('deal_analyses')
         .select('id, section, is_active, superseded_at')
         .eq('id', docId)
         .eq('property_id', propertyId)
         .maybeSingle();
+      if (currentSourceError && /is_active|superseded_at|superseded_by|schema cache/i.test(currentSourceError.message || '')) {
+        ({ data: currentSource, error: currentSourceError } = await supabase
+          .from('deal_analyses')
+          .select('id, section, created_at, processing_status, analysis')
+          .eq('id', docId)
+          .eq('property_id', propertyId)
+          .maybeSingle());
+      }
       if (!isActiveDocumentVersion(currentSource)) return false;
       // Environments still rolling out version columns fall back to newest
       // section semantics; once explicit state is present, it is authoritative.
@@ -5113,6 +5138,14 @@ app.get('/api/suggestions', (_req, res) => {
 // existing schema and the additive pipeline migration.
 const DOCUMENT_EXTRACTION_VERSION = 1;
 
+function safeDocumentErrorMessage(error, fallback = 'Document upload could not be completed. Please try again.') {
+  const message = String(error?.message || '');
+  if (/deal_analyses|is_active|superseded_at|superseded_by|schema cache|column .* does not exist/i.test(message)) {
+    return 'Documents are temporarily unavailable while the document-history schema is being updated. Please try again shortly.';
+  }
+  return fallback;
+}
+
 async function updateDocumentProcessing(recordId, patch, legacyPatch = {}) {
   if (!recordId) return;
   const { error } = await supabase.from('deal_analyses').update(patch).eq('id', recordId);
@@ -5373,7 +5406,7 @@ app.post('/api/public/deal-room/:propertyId/track-document', upload.single('file
     // original failure row and its audit trail.
     let isRetry = false;
     if (hash && !isPostCompletion) {
-      const { data: duplicate } = await supabase
+      let { data: duplicate, error: duplicateError } = await supabase
         .from('deal_analyses')
         .select('id, section, filename, processing_status, analysis')
         .eq('property_id', propertyId)
@@ -5381,6 +5414,19 @@ app.post('/api/public/deal-room/:propertyId/track-document', upload.single('file
         .eq('is_active', true)
         .in('processing_status', ['uploaded', 'processing', 'retrying', 'extracted'])
         .maybeSingle();
+      if (duplicateError && /is_active|superseded_at|superseded_by|schema cache/i.test(duplicateError.message || '')) {
+        const legacyDuplicates = await supabase
+          .from('deal_analyses')
+          .select('id, section, filename, processing_status, analysis, source_hash, created_at')
+          .eq('property_id', propertyId)
+          .eq('source_hash', hash)
+          .order('created_at', { ascending: false });
+        duplicate = selectActiveDocumentVersions(legacyDuplicates.data || [])
+          .find(row => row.source_hash === hash
+            && !['failed', 'uploaded', 'processing', 'retrying'].includes(String(row.processing_status || '').toLowerCase())
+            && row.analysis?.pending !== true) || null;
+        duplicateError = legacyDuplicates.error;
+      }
       if (duplicate) {
         return res.json({
           ok: true,
@@ -5729,7 +5775,7 @@ app.post('/api/public/deal-room/:propertyId/track-document', upload.single('file
     }
   } catch (err) {
     console.error('[track-document]', err.message);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: safeDocumentErrorMessage(err) });
   }
 });
 
