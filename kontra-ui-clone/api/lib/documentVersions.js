@@ -13,7 +13,7 @@ function selectActiveDocumentVersions(analyses = []) {
 
   for (const analysis of analyses || []) {
     if (!analysis || analysis.section === 'cross_document_verification') continue;
-    if (analysis.is_active === false || analysis.superseded_at) continue;
+    if (!isActiveDocumentVersion(analysis)) continue;
 
     const existing = activeBySection.get(analysis.section);
     const currentTime = new Date(analysis.created_at || 0).getTime();
@@ -24,6 +24,12 @@ function selectActiveDocumentVersions(analyses = []) {
   }
 
   return [...activeBySection.values()];
+}
+
+function isActiveDocumentVersion(analysis) {
+  return Boolean(analysis)
+    && analysis.is_active !== false
+    && !analysis.superseded_at;
 }
 
 function replacementHistoryBySection(analyses = []) {
@@ -50,5 +56,6 @@ function replacementHistoryBySection(analyses = []) {
 
 module.exports = {
   selectActiveDocumentVersions,
+  isActiveDocumentVersion,
   replacementHistoryBySection,
 };

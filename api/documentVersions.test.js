@@ -1,5 +1,6 @@
 const {
   selectActiveDocumentVersions,
+  isActiveDocumentVersion,
   replacementHistoryBySection,
 } = require('./lib/documentVersions');
 const {
@@ -51,6 +52,11 @@ describe('document version selection', () => {
       { id: 'v1', section: 'legal', created_at: '2026-08-20T09:00:00.000Z' },
       { id: 'v2', section: 'legal', created_at: '2026-08-21T09:00:00.000Z' },
     ])).toEqual([expect.objectContaining({ id: 'v2' })]);
+  });
+
+  it('marks a superseded source inactive so a late extraction job cannot use it', () => {
+    expect(isActiveDocumentVersion(initial)).toBe(false);
+    expect(isActiveDocumentVersion(replacement)).toBe(true);
   });
 
   it('supports reject, replacement, and awaiting-confirmation evidence lifecycle', () => {

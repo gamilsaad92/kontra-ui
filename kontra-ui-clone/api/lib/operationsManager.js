@@ -13,6 +13,7 @@ const {
 } = require('./dealRoomHelpers');
 const { listTasksForRoom } = require('./taskEngine');
 const { readTransactionState } = require('./transactionState');
+const { selectActiveDocumentVersions } = require('./documentVersions');
 const {
   isTokenizationQuestion,
   buildTokenizationGuidance,
@@ -269,7 +270,7 @@ async function buildGroundedContext(propertyId) {
     listTasksForRoom(propertyId),
     supabase
       .from('deal_analyses')
-      .select('section, filename, analysis, created_at')
+      .select('id, section, filename, analysis, created_at, is_active, superseded_at')
       .eq('property_id', propertyId)
       .order('created_at', { ascending: false })
       .limit(30),
@@ -278,6 +279,7 @@ async function buildGroundedContext(propertyId) {
       .select('role, name, status, doc_count, submitted_at')
       .eq('property_id', propertyId),
   ]);
+  const activeAnalyses = selectActiveDocumentVersions(analyses || []);
   const room = transactionState.room;
   const packId = transactionState.packId || DEFAULT_PACK_ID;
   const generatedProposal = room?.generated_proposal || null;
@@ -330,7 +332,7 @@ async function buildGroundedContext(propertyId) {
       attention: field.attention,
       required: field.required,
     }));
-  const documentFindings = (analyses || [])
+  const documentFindings = activeAnalyses
     .map(item => {
       const analysis = item.analysis && typeof item.analysis === 'object' ? item.analysis : {};
       return {
