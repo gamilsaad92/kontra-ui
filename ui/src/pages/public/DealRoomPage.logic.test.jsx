@@ -204,6 +204,44 @@ describe('coordinator transaction brief logic', () => {
       .toEqual(expect.objectContaining({ value: 'Acknowledged', status: 'awaiting' }));
   });
 
+  test('keeps the durable field identity through confirmation and refresh for insurance claim status', () => {
+    const definition = {
+      key: 'insurance.claim_status',
+      canonicalKey: 'insurance.claim_status',
+      label: 'Insurance Claim Status',
+      required: true,
+      category: 'financial',
+    };
+    const awaitingState = {
+      requiredFields: [{
+        fieldId: 'claim-status-field',
+        key: 'insurance.claim_status',
+        persistedKey: 'insurance.claim_status',
+        definitionKey: 'insurance.claim_status',
+        label: 'Insurance Claim Status',
+        value: 'Acknowledged',
+        status: 'awaiting',
+      }],
+    };
+    const confirmedState = {
+      requiredFields: [{
+        ...awaitingState.requiredFields[0],
+        status: 'confirmed',
+      }],
+    };
+
+    expect(getRecordDefinitionState(definition, [], awaitingState)).toEqual(expect.objectContaining({
+      fieldId: 'claim-status-field',
+      value: 'Acknowledged',
+      status: 'awaiting',
+    }));
+    expect(getRecordDefinitionState(definition, [], confirmedState)).toEqual(expect.objectContaining({
+      fieldId: 'claim-status-field',
+      value: 'Acknowledged',
+      status: 'confirmed',
+    }));
+  });
+
   test('recognizes document findings without treating them as record conflicts', () => {
     expect(hasDocumentReviewFinding({
       section: 'proof_of_payment',

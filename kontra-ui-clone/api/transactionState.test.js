@@ -153,6 +153,33 @@ describe('transaction state recalculation', () => {
     expect(result.requiredCount).toBe(9);
   });
 
+  it('treats a cleared JSON-backed candidate as missing after the canonical refresh', () => {
+    const definition = [{ key: 'insurance.claim_details', label: 'Insurance Claim Details', required: true }];
+    const awaiting = computeTransactionRecordState([
+      {
+        id: 'claim-details',
+        field_key: 'insurance.claim_details',
+        value_text: '',
+        value_json: { status: 'Acknowledged' },
+        status: 'needs_review',
+      },
+    ], 'generated_ai', definition);
+    const cleared = computeTransactionRecordState([
+      {
+        id: 'claim-details',
+        field_key: 'insurance.claim_details',
+        value_text: '',
+        value_json: null,
+        status: 'missing',
+      },
+    ], 'generated_ai', definition);
+
+    expect(awaiting.requiredFields[0]).toEqual(expect.objectContaining({ status: 'awaiting' }));
+    expect(cleared.requiredFields[0]).toEqual(expect.objectContaining({ status: 'missing' }));
+    expect(cleared.awaitingRequiredCount).toBe(0);
+    expect(cleared.confirmedCount).toBe(0);
+  });
+
   it('removes not-applicable fields from the required denominator', () => {
     const required = requirements.cre_acquisition;
     const excluded = required[0];

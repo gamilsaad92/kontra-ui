@@ -3657,7 +3657,7 @@ function DigitalAssetReadinessSection({
 
   async function confirmRecordField(field) {
     const fieldId = field?.fieldId;
-    if (!fieldId || confirmingField) return;
+    if (!fieldId || confirmingField || savingField) return;
     let ownerWriteToken = '';
     try { ownerWriteToken = localStorage.getItem(`kontra_owner_token_${propertyId}`) || ''; } catch {}
     if (!ownerWriteToken) return;
@@ -3683,7 +3683,7 @@ function DigitalAssetReadinessSection({
 
   async function updateRecordField(field, values) {
     const fieldId = field?.fieldId;
-    if (!fieldId || savingField) return;
+    if (!fieldId || savingField || confirmingField) return;
     let ownerWriteToken = '';
     try { ownerWriteToken = localStorage.getItem(`kontra_owner_token_${propertyId}`) || ''; } catch {}
     if (!ownerWriteToken) return;
@@ -3775,6 +3775,7 @@ function DigitalAssetReadinessSection({
               <button
                 type="button"
                 onClick={() => setExpandedCat(isExpanded ? null : cat.key)}
+                aria-expanded={isExpanded}
                 className="flex items-center justify-between w-full px-5 py-3 gap-4 text-left hover:bg-gray-50 transition">
                   <div className="min-w-0">
                    <div className="flex items-center gap-2 min-w-0">
@@ -3823,8 +3824,8 @@ function DigitalAssetReadinessSection({
                         <p className="text-xs text-gray-400 italic">No candidate values awaiting review.</p>
                       ) : (
                         <ul className="space-y-1">
-                          {cat.awaitingDefs.slice(0, 4).map(d => (
-                            <li key={d.key} data-transaction-record-field-id={d.state?.fieldId || undefined} className="flex items-start gap-1.5 text-xs text-blue-700">
+                          {cat.awaitingDefs.map(d => (
+                            <li key={d.key} tabIndex="-1" data-transaction-record-field-id={d.state?.fieldId || undefined} data-transaction-record-field-key={d.state?.persistedKey || d.state?.key || d.key} className="flex items-start gap-1.5 text-xs text-blue-700">
                               <span className="mt-0.5 text-blue-400 shrink-0">○</span>
                               <span className="flex min-w-0 flex-1 flex-wrap items-center justify-between gap-2">
                                 {editingField === d.state?.fieldId ? (
@@ -3848,13 +3849,13 @@ function DigitalAssetReadinessSection({
                                     <span>{d.label}{d.state?.value ? <span className="text-gray-500"> — {d.state.value}</span> : ''}</span>
                                     {d.state?.fieldId && d.state?.value && (
                                       <span className="flex shrink-0 flex-wrap items-center gap-1.5">
-                                        <button type="button" onClick={() => confirmRecordField(d.state)} disabled={confirmingField === d.state.fieldId || savingField === d.state.fieldId} className="rounded-lg bg-[#800020] px-2 py-1 text-[10px] font-bold text-white disabled:opacity-50">
+                                        <button type="button" onClick={() => confirmRecordField(d.state)} disabled={!!confirmingField || !!savingField} className="rounded-lg bg-[#800020] px-2 py-1 text-[10px] font-bold text-white disabled:opacity-50">
                                           {confirmingField === d.state.fieldId ? 'Confirming…' : 'Confirm'}
                                         </button>
-                                        <button type="button" onClick={() => { setEditingField(d.state.fieldId); setEditValue(String(d.state.value || '')); }} disabled={!!savingField} className="rounded-lg border border-blue-200 bg-white px-2 py-1 text-[10px] font-semibold text-blue-700 disabled:opacity-50">
+                                        <button type="button" onClick={() => { setEditingField(d.state.fieldId); setEditValue(String(d.state.value || '')); }} disabled={!!confirmingField || !!savingField} className="rounded-lg border border-blue-200 bg-white px-2 py-1 text-[10px] font-semibold text-blue-700 disabled:opacity-50">
                                           Edit/Correct
                                         </button>
-                                        <button type="button" onClick={() => updateRecordField(d.state, { value_text: '', value_json: null, status: 'missing' })} disabled={!!savingField} className="rounded-lg border border-gray-200 bg-white px-2 py-1 text-[10px] font-semibold text-gray-500 disabled:opacity-50">
+                                        <button type="button" onClick={() => updateRecordField(d.state, { value_text: '', value_json: null, status: 'missing' })} disabled={!!confirmingField || !!savingField} className="rounded-lg border border-gray-200 bg-white px-2 py-1 text-[10px] font-semibold text-gray-500 disabled:opacity-50">
                                           Reject/Clear
                                         </button>
                                       </span>
@@ -3864,9 +3865,6 @@ function DigitalAssetReadinessSection({
                               </span>
                             </li>
                           ))}
-                          {cat.awaitingDefs.length > 4 && (
-                            <li className="text-[10px] text-gray-400">+{cat.awaitingDefs.length - 4} more</li>
-                          )}
                         </ul>
                       )}
                     </div>
@@ -4344,6 +4342,9 @@ function getRecordDefinitionState(definition, recordFields = [], recordState = n
     return {
       definition,
       field: authoritativeField,
+      fieldId: authoritativeField.fieldId || authoritativeField.id || null,
+      key: authoritativeField.key || authoritativeField.persistedKey || canonicalDefinitionKey,
+      persistedKey: authoritativeField.persistedKey || authoritativeField.key || canonicalDefinitionKey,
       value: authoritativeField.value || authoritativeField.value_text || '',
       status: authoritativeStatus === 'conflict'
         ? 'conflict'
@@ -4375,6 +4376,9 @@ function getRecordDefinitionState(definition, recordFields = [], recordState = n
   return {
     definition,
     field: selected,
+    fieldId: selected?.fieldId || selected?.id || null,
+    key: selected?.key || selected?.field_key || canonicalDefinitionKey,
+    persistedKey: selected?.persistedKey || selected?.key || selected?.field_key || canonicalDefinitionKey,
     value: selected?.value_text ?? selected?.value ?? selected?.value_json ?? '',
     status: conflict ? 'conflict' : confirmed ? 'confirmed' : awaiting ? 'awaiting' : 'missing',
     attention: selected?.status === 'source_changed' ? 'source_changed' : null,
@@ -5661,11 +5665,27 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
     if (action.type === 'record') {
       onTabChange?.('overview');
       const category = getTransactionRecordCategory(action.field);
+      const fieldId = action.field?.fieldId || action.field?.id || '';
+      const fieldKey = action.field?.persistedKey || action.field?.field_key || action.field?.key || '';
       const revealRecordCategory = (attempt = 0) => {
         const target = document.getElementById(`transaction-record-category-${category}`);
         if (target) {
-          target.scrollIntoView({ behavior: 'smooth', block: 'center' });
-          target.querySelector('button')?.click();
+          const categoryButton = target.querySelector('button[aria-expanded]');
+          if (categoryButton?.getAttribute('aria-expanded') !== 'true') categoryButton?.click();
+          const revealField = (fieldAttempt = 0) => {
+            const matchingField = Array.from(target.querySelectorAll('[data-transaction-record-field-id], [data-transaction-record-field-key]'))
+              .find(element => (
+                (fieldId && element.dataset.transactionRecordFieldId === String(fieldId))
+                || (fieldKey && element.dataset.transactionRecordFieldKey === String(fieldKey))
+              ));
+            if (matchingField) {
+              matchingField.scrollIntoView({ behavior: 'smooth', block: 'center' });
+              matchingField.focus({ preventScroll: true });
+              return;
+            }
+            if (fieldAttempt < 12) window.setTimeout(() => revealField(fieldAttempt + 1), 50);
+          };
+          window.setTimeout(revealField, 0);
           return;
         }
         // Transaction Details Panel hydrates after the Overview action feed.

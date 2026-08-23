@@ -9412,7 +9412,7 @@ app.get('/api/public/deal-room/:propertyId/transaction-record/fields/:fieldId/hi
 
 app.patch('/api/public/deal-room/:propertyId/transaction-record/fields/:fieldId', async (req, res) => {
   const { propertyId, fieldId } = req.params;
-  const { value_text, notes, status, ownerWriteToken } = req.body || {};
+  const { value_text, value_json, notes, status, ownerWriteToken } = req.body || {};
   const access = await getRoomAccessContext(req, propertyId, ownerWriteToken);
   if (access.mode !== 'owner') return accessDenied(res, 'Owner access required');
 
@@ -9430,12 +9430,13 @@ app.patch('/api/public/deal-room/:propertyId/transaction-record/fields/:fieldId'
   const ALLOWED_STATUSES = ['missing','extracted','needs_review','verified','conflicting','not_applicable'];
   const update = { updated_at: new Date().toISOString() };
   if (value_text !== undefined) { update.value_text = String(value_text).slice(0, 2000); update.extracted_by = 'coordinator'; }
+  if (value_json !== undefined) update.value_json = value_json;
   if (notes !== undefined)      update.notes = String(notes).slice(0, 500);
   if (status && ALLOWED_STATUSES.includes(status)) update.status = status;
   try {
     const { data: existing } = await supabase
       .from('transaction_record_fields')
-      .select('id, field_key, value_text, status')
+      .select('id, field_key, value_text, value_json, status')
       .eq('id', fieldId)
       .eq('property_id', propertyId)
       .maybeSingle();
@@ -9447,12 +9448,19 @@ app.patch('/api/public/deal-room/:propertyId/transaction-record/fields/:fieldId'
       .eq('property_id', propertyId);
     if (error) throw error;
     const nextStatus = update.status || existing.status;
-    const nextValue = update.value_text !== undefined ? update.value_text : existing.value_text;
+    const valueForHistory = value => typeof value === 'string' ? value : JSON.stringify(value);
+    const nextValue = update.value_text !== undefined
+      ? update.value_text
+      : value_json !== undefined
+        ? valueForHistory(value_json)
+        : existing.value_text || valueForHistory(existing.value_json);
+    const jsonChanged = value_json !== undefined
+      && JSON.stringify(value_json) !== JSON.stringify(existing.value_json);
     const eventType = nextStatus === 'not_applicable'
       ? 'marked_not_applicable'
       : nextStatus === 'conflicting'
         ? 'conflict'
-        : nextValue !== existing.value_text ? 'manual_edit' : null;
+        : nextValue !== existing.value_text || jsonChanged ? 'manual_edit' : null;
     if (eventType) {
       await recordTransactionFieldHistory({
         fieldId,
@@ -9469,18 +9477,21 @@ app.patch('/api/public/deal-room/:propertyId/transaction-record/fields/:fieldId'
     if (nextStatus === 'not_applicable') {
       await markDependentTransactionFieldsNotApplicable(propertyId, existing.field_key, access.email || 'coordinator');
     }
-    if (nextStatus === 'verified' || (update.value_text !== undefined && nextStatus !== 'conflicting')) {
+    if (
+      nextStatus === 'verified'
+      || (update.value_text !== undefined && !['conflicting', 'missing', 'not_applicable'].includes(nextStatus))
+    ) {
       await resolveTransactionRecordConflicts(propertyId, existing.field_key, {
         resolutionValue: nextValue,
         resolutionNote: notes || 'Coordinator confirmed the canonical Transaction Record value.',
         resolvedBy: access.email || 'coordinator',
       });
     }
-    recalculateTransactionState(propertyId, {
+    await recalculateTransactionState(propertyId, {
       source: 'transaction_record_field_updated',
       actorId: access.actorId,
       actorType: access.actorType,
-    }).catch(e => console.warn('[transaction-state] field update recalculation failed:', e.message));
+    });
     res.json({ ok: true });
   } catch (err) {
     console.error('[transaction-record PATCH]', err.message);
@@ -9512,23 +9523,63 @@ app.post('/api/public/deal-room/:propertyId/transaction-record/fields/:fieldId/v
       .select('id').eq('id', fieldId).eq('property_id', propertyId).maybeSingle();
     if (fErr) throw fErr;
     const { data: existing } = await supabase.from('transaction_record_fields')
-      .select('id, field_key, value_text, status')
+      .select('id, field_key, value_text, value_json, status, updated_at')
       .eq('id', fieldId).eq('property_id', propertyId).maybeSingle();
     if (!existing) return res.status(404).json({ error: 'Transaction Record field not found' });
+    const valueForVerification = value => {
+      if (value === null || value === undefined) return '';
+      return typeof value === 'string' ? value : JSON.stringify(value);
+    };
+    const hasMeaningfulVerificationValue = value => {
+      if (value === null || value === undefined) return false;
+      if (typeof value === 'string') return Boolean(value.trim());
+      if (Array.isArray(value)) return value.length > 0;
+      if (typeof value === 'object') return Object.keys(value).length > 0;
+      return true;
+    };
+    const verificationRawValue = String(existing.value_text || '').trim()
+      ? existing.value_text
+      : existing.value_json;
+    const verificationValue = valueForVerification(verificationRawValue);
+    const blockedVerificationStatuses = new Set([
+      'verified', 'confirmed', 'missing', 'not_applicable',
+      'conflicting', 'conflict', 'source_changed',
+    ]);
+    const awaitingVerificationStatuses = new Set([
+      '', 'extracted', 'needs_review', 'awaiting', 'awaiting_confirmation',
+      'generated', 'captured', 'manual', 'pending',
+    ]);
+    if (
+      !hasMeaningfulVerificationValue(verificationRawValue)
+      || blockedVerificationStatuses.has(existing.status)
+      || !awaitingVerificationStatuses.has(existing.status || '')
+    ) {
+      return res.status(409).json({
+        error: 'FIELD_NOT_AWAITING_CONFIRMATION',
+        message: 'Only a populated Awaiting Confirmation field can be confirmed.',
+      });
+    }
     // The GET endpoint returns reconciled canonical rows. Older clients can
     // still post an alias-row id during the reconciliation window, so resolve
     // the field key before writing history/conflict state.
     const canonicalFieldKey = canonicalizeTransactionRecordKey(existing.field_key, 'generic');
-    const nextValue = existing.value_text;
-    const { error: updateError } = await supabase.from('transaction_record_fields').update({
+    const nextValue = verificationValue;
+    const { data: verifiedRows, error: updateError } = await supabase.from('transaction_record_fields').update({
       status: 'verified', verified_by: email,
       verified_at: new Date().toISOString(), updated_at: new Date().toISOString(),
-    }).eq('id', fieldId).eq('property_id', propertyId);
+    }).eq('id', fieldId).eq('property_id', propertyId).eq('status', existing.status)
+      .eq('updated_at', existing.updated_at).select('id');
     if (updateError) throw updateError;
+    if (!verifiedRows?.length) {
+      return res.status(409).json({
+        error: 'FIELD_CHANGED',
+        message: 'This field changed while it was being reviewed. Refresh the Transaction Record and review the latest value.',
+      });
+    }
     await recordTransactionFieldHistory({
       fieldId, propertyId, eventType: 'confirmed',
       actorEmail: email, actorRole: actorRole || 'coordinator',
-      priorValue: existing.value_text, newValue: nextValue,
+      priorValue: verificationValue, newValue: nextValue,
       priorStatus: existing.status, newStatus: 'verified',
     });
     const { error: approvalError } = await supabase.from('transaction_record_approvals').insert({
