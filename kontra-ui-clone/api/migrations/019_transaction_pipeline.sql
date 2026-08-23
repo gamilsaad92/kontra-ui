@@ -26,12 +26,17 @@ ALTER TABLE deal_analyses
   ADD COLUMN IF NOT EXISTS correlation_id UUID,
   ADD COLUMN IF NOT EXISTS failure_reason TEXT,
   ADD COLUMN IF NOT EXISTS processing_started_at TIMESTAMPTZ,
-  ADD COLUMN IF NOT EXISTS processing_completed_at TIMESTAMPTZ;
+  ADD COLUMN IF NOT EXISTS processing_completed_at TIMESTAMPTZ,
+  ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT true,
+  ADD COLUMN IF NOT EXISTS superseded_at TIMESTAMPTZ,
+  ADD COLUMN IF NOT EXISTS superseded_by UUID;
 
 CREATE INDEX IF NOT EXISTS idx_deal_analyses_processing
   ON deal_analyses (property_id, processing_status, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_deal_analyses_correlation
   ON deal_analyses (correlation_id);
+CREATE INDEX IF NOT EXISTS idx_deal_analyses_active_version
+  ON deal_analyses (property_id, section, is_active, created_at DESC);
 
 ALTER TABLE deal_room_tasks
   ADD COLUMN IF NOT EXISTS severity TEXT,

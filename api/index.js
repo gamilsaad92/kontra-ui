@@ -87,6 +87,9 @@ const {
   canonicalTransactionTypeLabel,
 } = require('./lib/transactionRecordCanonicalization');
 const {
+  selectActiveDocumentVersions,
+} = require('./lib/documentVersions');
+const {
   buildRoomParticipants,
   computeRoomDashboardState,
 } = require('./lib/dashboardState');
@@ -4281,7 +4284,7 @@ app.get('/api/public/deal-room/:propertyId/analyses', async (req, res) => {
 
     let { data, error } = await supabase
       .from('deal_analyses')
-      .select('id, section, filename, analysis, uploaded_by_role, created_at, storage_path, post_completion, post_completion_added_at, processing_status, source_hash, extraction_version, processing_attempt, correlation_id, failure_reason, processing_started_at, processing_completed_at')
+      .select('id, section, filename, analysis, uploaded_by_role, created_at, storage_path, post_completion, post_completion_added_at, processing_status, source_hash, extraction_version, processing_attempt, correlation_id, failure_reason, processing_started_at, processing_completed_at, is_active, superseded_at, superseded_by')
       .eq('property_id', propertyId)
       .order('created_at', { ascending: true }); // oldest first → version = index+1
     if (error && /post_completion|processing_status|source_hash|extraction_version|correlation_id|failure_reason/i.test(error.message || '')) {
@@ -4331,13 +4334,16 @@ app.get('/api/public/deal-room/:propertyId/analyses', async (req, res) => {
       }
     }
 
-    // De-duplicate: keep only the latest per section (highest version)
-    const seen = {};
-    const deduped = [...allWithVersion].reverse().filter(a => {
-      if (seen[a.section]) return false;
-      seen[a.section] = true;
-      return true;
-    }).map(a => ({ ...a, versionHistory: history[a.section] || [] }));
+    // Only the active version contributes to the current document view. Earlier
+    // replacements are retained in versionHistory for audit visibility.
+    const activeIds = new Set(selectActiveDocumentVersions(allWithVersion).map(a => a.id));
+    const deduped = allWithVersion
+      .filter(a => activeIds.has(a.id))
+      .map(a => ({
+        ...a,
+        versionHistory: history[a.section] || [],
+        is_replacement: (history[a.section] || []).length > 1,
+      }));
 
     // Role-scoped filtering applies to participants only. The owner access
     // context is authenticated by the room's owner_write_token and carries
@@ -4563,11 +4569,16 @@ async function extractTransactionFields(propertyId, docId, text, sectionLabel) {
     return { rawCount: 0, savedCount: 0, rawKeys: [], canonicalKeys: [] };
   }
   try {
-    const { data: room } = await supabase
-      .from('deal_rooms')
-      .select('workflow_pack_id, deal_type')
-      .eq('property_id', propertyId)
-      .maybeSingle();
+    const [{ data: room }, { data: sourceDocument }] = await Promise.all([
+      supabase
+        .from('deal_rooms')
+        .select('workflow_pack_id, deal_type')
+        .eq('property_id', propertyId)
+        .maybeSingle(),
+      docId
+        ? supabase.from('deal_analyses').select('source_hash').eq('id', docId).maybeSingle()
+        : Promise.resolve({ data: null }),
+    ]);
     const schemaKey = await getTransactionRecordSchemaKey(room);
     const completion = await openai.chat.completions.create({
       model: 'gpt-4o-mini',
@@ -4601,7 +4612,7 @@ async function extractTransactionFields(propertyId, docId, text, sectionLabel) {
       const aliasKeys = aliasKeysForCanonical(canonicalKey, schemaKey);
       const { data: existingRows } = await supabase
         .from('transaction_record_fields')
-        .select('id, field_key, definition_key, field_category, is_required, source_type, status, value_text, source_doc_id, source_page, source_excerpt, verified_by, verified_role')
+        .select('id, field_key, definition_key, field_category, is_required, source_type, status, value_text, source_doc_id, source_doc_version, source_file_hash, source_page, source_excerpt, verified_by, verified_role')
         .eq('property_id', propertyId)
         .in('field_key', aliasKeys);
       let existing = (existingRows || []).find(row => row.field_key === canonicalKey)
@@ -4670,6 +4681,8 @@ async function extractTransactionFields(propertyId, docId, text, sectionLabel) {
         status:         nextStatus,
         confidence:     f.confidence != null ? Math.min(1, Math.max(0, parseFloat(f.confidence))) : null,
         source_doc_id:  differs ? (existing.source_doc_id || docId || null) : (docId || null),
+        source_doc_version: differs ? (existing.source_doc_version || null) : (docId || null),
+        source_file_hash: differs ? (existing.source_file_hash || null) : (sourceDocument?.source_hash || null),
         source_page:    differs ? (existing.source_page || f.source_page || null) : (f.source_page || null),
         source_excerpt: differs
           ? (existing.source_excerpt || (f.source_excerpt ? String(f.source_excerpt).slice(0, 200) : null))
@@ -5079,6 +5092,109 @@ async function updateDocumentProcessing(recordId, patch, legacyPatch = {}) {
   }
 }
 
+// A changed re-upload creates a new evidence version. Historical rows remain
+// available for audit, but their unconfirmed findings must stop influencing the
+// live Transaction Record, readiness, and task surfaces immediately.
+async function supersedePriorDocumentVersions(propertyId, section, recordId, correlationId) {
+  if (!propertyId || !section || !recordId) return { replaced: false, priorIds: [] };
+
+  const { data: priorRows, error: priorError } = await supabase
+    .from('deal_analyses')
+    .select('id')
+    .eq('property_id', propertyId)
+    .eq('section', section)
+    .neq('id', recordId);
+  if (priorError) throw priorError;
+
+  const priorIds = (priorRows || []).map(row => row.id).filter(Boolean);
+  if (!priorIds.length) return { replaced: false, priorIds: [] };
+
+  const supersededAt = new Date().toISOString();
+  const { error: versionError } = await supabase
+    .from('deal_analyses')
+    .update({
+      is_active: false,
+      superseded_at: supersededAt,
+      superseded_by: recordId,
+    })
+    .eq('property_id', propertyId)
+    .eq('section', section)
+    .neq('id', recordId);
+  // Until the additive migration is applied, read projections still choose the
+  // newest row per section; do not block a valid replacement during rollout.
+  if (versionError && !/column|schema cache/i.test(versionError.message || '')) {
+    throw versionError;
+  }
+
+  const { data: staleFields, error: staleFieldsError } = await supabase
+    .from('transaction_record_fields')
+    .select('id, value_text, status, source_doc_id')
+    .eq('property_id', propertyId)
+    .in('source_doc_id', priorIds)
+    .in('status', ['extracted', 'needs_review', 'awaiting', 'awaiting_confirmation', 'conflicting']);
+  if (staleFieldsError && !/relation|schema cache|column/i.test(staleFieldsError.message || '')) {
+    throw staleFieldsError;
+  }
+  const fieldsToClear = staleFields || [];
+  if (fieldsToClear.length) {
+    const { error: clearError } = await supabase
+      .from('transaction_record_fields')
+      .update({
+        value_text: null,
+        value_json: null,
+        status: 'missing',
+        source_doc_id: null,
+        source_doc_version: null,
+        source_file_hash: null,
+        source_page: null,
+        source_excerpt: null,
+        updated_at: supersededAt,
+      })
+      .eq('property_id', propertyId)
+      .in('id', fieldsToClear.map(field => field.id));
+    if (clearError) throw clearError;
+    await Promise.all(fieldsToClear.map(field => recordTransactionFieldHistory({
+      fieldId: field.id,
+      propertyId,
+      eventType: 'source_changed',
+      priorValue: field.value_text,
+      newValue: null,
+      priorStatus: field.status,
+      newStatus: 'missing',
+      sourceDocId: field.source_doc_id,
+      metadata: {
+        reason: 'document_replaced',
+        replacement_document_id: recordId,
+        correlationId,
+      },
+    })));
+  }
+
+  const conflictPatch = {
+    status: 'resolved',
+    resolved_at: supersededAt,
+    resolution_note: 'Source document was replaced; review the replacement evidence.',
+    updated_at: supersededAt,
+  };
+  await Promise.all([
+    supabase.from('transaction_record_conflicts').update(conflictPatch)
+      .eq('property_id', propertyId).in('canonical_source_doc_id', priorIds),
+    supabase.from('transaction_record_conflicts').update(conflictPatch)
+      .eq('property_id', propertyId).in('conflicting_source_doc_id', priorIds),
+  ]).catch(error => {
+    if (!/relation|schema cache|column/i.test(error?.message || '')) throw error;
+  });
+
+  logEvent(propertyId, 'document_replaced', 'system', null,
+    `${section.replace(/_/g, ' ')} replacement uploaded`, {
+      section,
+      replacement_document_id: recordId,
+      superseded_document_ids: priorIds,
+      correlationId,
+    }).catch(() => {});
+  return { replaced: true, priorIds };
+}
+
 async function documentImpact(propertyId, correlationId, beforeState = null) {
   try {
     const before = beforeState
@@ -5272,6 +5388,7 @@ app.post('/api/public/deal-room/:propertyId/track-document', upload.single('file
         processing_status: initialProcessingStatus,
         processing_attempt: 0,
         correlation_id: correlationId,
+        is_active: true,
         ...(initialProcessingStatus === 'extracted' ? { processing_completed_at: new Date().toISOString() } : {}),
         ...(isPostCompletion ? { post_completion: true, post_completion_added_at: new Date().toISOString() } : {}),
       }).select('id').single();
@@ -5291,13 +5408,26 @@ app.post('/api/public/deal-room/:propertyId/track-document', upload.single('file
     ]);
     if (insertRes.error) throw insertRes.error;
     const recordId = insertRes.data?.id;
+    const replacement = !isPostCompletion
+      ? await supersedePriorDocumentVersions(propertyId, section, recordId, correlationId)
+      : { replaced: false, priorIds: [] };
 
-    logEvent(propertyId, 'document_uploaded', effectiveRole, null, `${sectionLabel} uploaded`, { section, filename, post_completion: isPostCompletion || undefined }).catch(() => {});
+    logEvent(propertyId, 'document_uploaded', effectiveRole, null,
+      `${sectionLabel}${replacement.replaced ? ' replacement' : ''} uploaded`,
+      {
+        section,
+        filename,
+        post_completion: isPostCompletion || undefined,
+        replacement_of: replacement.priorIds,
+        correlationId,
+      }).catch(() => {});
     res.json({
       ok: true, section, filename,
       pending: hasAiPrompt || needsTransactionExtraction,
       processing_status: initialProcessingStatus,
       correlation_id: correlationId,
+      replacement: replacement.replaced,
+      superseded_document_ids: replacement.priorIds,
     });
 
     if (recordId && (hasAiPrompt || needsTransactionExtraction)) {

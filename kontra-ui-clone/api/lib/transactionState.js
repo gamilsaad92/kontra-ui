@@ -15,6 +15,7 @@ const {
 const {
   buildTokenizationGuidance,
 } = require('./tokenizationGuidance');
+const { selectActiveDocumentVersions } = require('./documentVersions');
 
 // Existing rooms may have document-level discrepancy metadata but no
 // transaction_record_conflicts row because they predate the durable conflict
@@ -111,9 +112,7 @@ async function reconcileStoredDocumentConflicts(propertyId) {
     ]);
     if (documentsError) throw documentsError;
     if (fieldsError) throw fieldsError;
-    const sourceDocuments = (documents || []).filter(document =>
-      document.section !== 'cross_document_verification'
-    );
+    const sourceDocuments = selectActiveDocumentVersions(documents || []);
     const candidates = sourceDocuments.flatMap(document =>
       storedDocumentAmounts(document).map(value => ({ ...value, document }))
     );
