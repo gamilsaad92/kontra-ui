@@ -165,4 +165,25 @@ describe('document version selection', () => {
       }),
     ]));
   });
+
+  it('keeps the prior legacy version visible when a newer upload failed', () => {
+    const active = selectActiveDocumentVersions([
+      {
+        id: 'insurance-success',
+        section: 'insurance',
+        created_at: '2026-08-20T09:00:00.000Z',
+        processing_status: 'extracted',
+        analysis: { summary: 'Prior successful insurance analysis.' },
+      },
+      {
+        id: 'insurance-failed',
+        section: 'insurance',
+        created_at: '2026-08-21T09:00:00.000Z',
+        processing_status: 'failed',
+        analysis: { summary: 'Replacement failed.' },
+      },
+    ]);
+    expect(active).toHaveLength(1);
+    expect(active[0].id).toBe('insurance-success');
+  });
 });
