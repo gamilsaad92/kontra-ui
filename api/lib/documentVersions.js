@@ -10,10 +10,17 @@
  */
 function selectActiveDocumentVersions(analyses = []) {
   const activeBySection = new Map();
+  const hasExplicitVersionState = (analyses || []).some(analysis =>
+    analysis && Object.prototype.hasOwnProperty.call(analysis, 'is_active')
+  );
 
   for (const analysis of analyses || []) {
     if (!analysis || analysis.section === 'cross_document_verification') continue;
     if (!isActiveDocumentVersion(analysis)) continue;
+    // During rollout, some databases expose the processing columns but not
+    // the version columns. A failed or still-pending row must not hide the
+    // previously successful version in that legacy projection.
+    if (!hasExplicitVersionState && !isSuccessfulDocumentVersion(analysis)) continue;
 
     const existing = activeBySection.get(analysis.section);
     const currentTime = new Date(analysis.created_at || 0).getTime();
@@ -24,6 +31,14 @@ function selectActiveDocumentVersions(analyses = []) {
   }
 
   return [...activeBySection.values()];
+}
+
+function isSuccessfulDocumentVersion(analysis) {
+  if (!analysis) return false;
+  const status = String(analysis.processing_status || '').toLowerCase();
+  if (status === 'failed' || status === 'uploaded' || status === 'processing' || status === 'retrying') return false;
+  if (analysis.analysis?.pending === true) return false;
+  return true;
 }
 
 function isActiveDocumentVersion(analysis) {
@@ -56,6 +71,7 @@ function replacementHistoryBySection(analyses = []) {
 
 module.exports = {
   selectActiveDocumentVersions,
+  isSuccessfulDocumentVersion,
   isActiveDocumentVersion,
   replacementHistoryBySection,
 };
