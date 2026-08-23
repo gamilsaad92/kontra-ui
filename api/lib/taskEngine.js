@@ -19,6 +19,9 @@ const {
 } = require('./dealRoomHelpers');
 const { emit } = require('./eventBus');
 const { selectActiveDocumentVersions } = require('./documentVersions');
+const {
+  getRecordRemediationPlan,
+} = require('./recordRemediation');
 
 // ── Schema bootstrap (Replit Postgres local dev) ────────────────────────────
 // Mirrors the pattern in routers/workflowPacks.js: lazily create the table
@@ -177,6 +180,64 @@ async function updateTaskStatus(taskId, status) {
     .single();
   if (error) { console.warn('[taskEngine] updateTaskStatus:', error.message); return null; }
   return data;
+}
+
+async function reconcileRecordRemediationTasks(propertyId, recordState, existingTasks, options = {}) {
+  const plan = getRecordRemediationPlan(recordState, existingTasks || []);
+  const reconciled = [];
+
+  for (const { task, existing } of plan.upsert) {
+    const payload = {
+      title: task.title,
+      description: task.description,
+      owner_type: 'human',
+      owner_role: 'owner',
+      status: 'pending',
+      evidence: JSON.stringify(task.evidence),
+      source_type: 'transaction_record',
+      source_id: task.sourceId,
+      category: 'transaction_record',
+      severity: 'high',
+      blocking: true,
+      resolved_at: null,
+      execution_status: null,
+      execution_result: null,
+      executed_at: null,
+      decision: null,
+      updated_at: new Date().toISOString(),
+    };
+    if (existing) {
+      const { data, error } = await supabase.from('deal_room_tasks')
+        .update(payload)
+        .eq('id', existing.id)
+        .select('*')
+        .maybeSingle();
+      if (error) console.warn('[taskEngine] update record remediation:', error.message);
+      if (data) reconciled.push(data);
+      continue;
+    }
+    const createdTask = await createTask(propertyId, {
+      ...task,
+      correlationId: options.correlationId,
+    });
+    if (createdTask) reconciled.push(createdTask);
+  }
+
+  for (const task of plan.dismiss) {
+    if (['dismissed', 'completed'].includes(task.status)) continue;
+    const { data, error } = await supabase.from('deal_room_tasks')
+      .update({
+        status: 'dismissed',
+        resolved_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', task.id)
+      .select('*')
+      .maybeSingle();
+    if (error) console.warn('[taskEngine] dismiss stale record remediation:', error.message);
+    if (data) reconciled.push(data);
+  }
+  return reconciled;
 }
 
 // ── Approve: the only place a draft_action is ever executed ────────────────
@@ -349,11 +410,12 @@ async function dismissTask(taskId) {
 // creates a task if one with the same task_type+source has never existed, so
 // refreshing does not spam duplicates or resurrect completed work.
 async function evaluateDealRoomForTasks(propertyId, options = {}) {
+  const { readTransactionState } = require('./transactionState');
   const packId = await getRoomPackId(propertyId);
   const roleConfig = getPackRoleConfig(packId);
 
   const [existingRes, submissionsRes, analysesRes] = await Promise.all([
-    supabase.from('deal_room_tasks').select('task_type, source_type, source_id, status').eq('property_id', propertyId),
+    supabase.from('deal_room_tasks').select('*').eq('property_id', propertyId),
     supabase.from('party_submissions').select('role, email, name, status, submitted_at').eq('property_id', propertyId),
     supabase.from('deal_analyses').select('id, section, filename, analysis, created_at').eq('property_id', propertyId),
   ]);
@@ -361,11 +423,18 @@ async function evaluateDealRoomForTasks(propertyId, options = {}) {
   const existing = existingRes.data || [];
   const submissions = submissionsRes.data || [];
   const analyses = selectActiveDocumentVersions(analysesRes.data || []);
+  const transactionState = await readTransactionState(propertyId);
 
   const hasExistingTask = (taskType, sourceId) => existing.some(t =>
     t.task_type === taskType && t.source_id === sourceId);
 
   const created = [];
+  created.push(...await reconcileRecordRemediationTasks(
+    propertyId,
+    transactionState.recordState,
+    existing,
+    options,
+  ));
 
   // 1) Missing required party — required role never invited/submitted.
   const requiredRoles = (roleConfig.roles || []).filter(r => r.required && r.needsDocs);
@@ -570,4 +639,5 @@ module.exports = {
   dismissTask,
   evaluateDealRoomForTasks,
   evaluateReadinessTasks,
+  reconcileRecordRemediationTasks,
 };

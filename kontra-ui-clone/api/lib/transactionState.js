@@ -619,8 +619,8 @@ function computeTransactionRecordState(recordFields, schemaKey, requiredKeysOver
           ? 'awaiting'
           : rawStatus === 'not_applicable'
             ? 'not_applicable'
-            : hasMeaningfulRecordValue(field)
-              ? 'captured'
+             : hasMeaningfulRecordValue(field)
+               ? 'awaiting'
               : 'missing';
     return {
       key,
@@ -703,6 +703,7 @@ function computeTransactionRecordState(recordFields, schemaKey, requiredKeysOver
   const count = (items, status) => items.filter(field => field.status === status).length;
   const confirmedCount = count(requiredFields, 'confirmed');
   const awaitingRequiredCount = count(requiredFields, 'awaiting');
+  const missingRequiredCount = count(requiredFields, 'missing');
 
   const unresolvedConflicts = normalizeTransactionConflicts(conflicts);
   const conflictKeys = new Set(unresolvedConflicts.map(conflict => conflict.fieldKey).filter(Boolean));
@@ -715,6 +716,8 @@ function computeTransactionRecordState(recordFields, schemaKey, requiredKeysOver
     awaitingCount: count(fields, 'awaiting'),
     awaitingRequiredCount,
     awaitingOptionalCount: Math.max(0, count(fields, 'awaiting') - awaitingRequiredCount),
+    missingCount: count(fields, 'missing'),
+    missingRequiredCount,
     conflictCount: fields.filter(field => field.status === 'conflict' || field.attention === 'source_changed').length
       + unresolvedConflicts.filter(conflict => !fields.some(field =>
         field.key === conflict.fieldKey && (field.status === 'conflict' || field.attention === 'source_changed')

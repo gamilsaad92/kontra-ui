@@ -275,7 +275,7 @@ function FieldRow({ field, isCoordinator, propertyId, ownerToken, onUpdated, dep
   }
 
   async function saveField() {
-    if (!ownerToken) return;
+    if (!ownerToken || verifying) return;
     setSaving(true);
     try {
       const res = await fetch(
@@ -288,7 +288,7 @@ function FieldRow({ field, isCoordinator, propertyId, ownerToken, onUpdated, dep
   }
 
   async function verifyField() {
-    if (!ownerToken) return;
+    if (!ownerToken || saving) return;
     setVerifying(true);
     try {
       const res = await fetch(
@@ -308,6 +308,19 @@ function FieldRow({ field, isCoordinator, propertyId, ownerToken, onUpdated, dep
         body: JSON.stringify({ status: "not_applicable", ownerWriteToken: ownerToken }) }
     );
     onUpdated();
+  }
+
+  async function clearField() {
+    if (!ownerToken || verifying) return;
+    setSaving(true);
+    try {
+      const res = await fetch(
+        `${API_BASE}/api/public/deal-room/${propertyId}/transaction-record/fields/${field.id}`,
+        { method: "PATCH", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ value_text: "", value_json: null, status: "missing", ownerWriteToken: ownerToken }) }
+      );
+      if (res.ok) onUpdated();
+    } finally { setSaving(false); }
   }
 
   const isEmpty     = !field.value_text && !field.value_json;
@@ -394,19 +407,19 @@ function FieldRow({ field, isCoordinator, propertyId, ownerToken, onUpdated, dep
           {isCoordinator && !isNA && !isInactive && (
             <div className="flex items-center gap-1.5 shrink-0">
               {!isConfirmed && !isEmpty && (
-                <button onClick={verifyField} disabled={verifying}
+                <button onClick={verifyField} disabled={verifying || saving}
                   className="text-[10px] font-bold text-green-700 bg-green-50 border border-green-100 px-2 py-1 rounded-lg hover:bg-green-100 transition disabled:opacity-50">
                   {verifying ? "…" : "Confirm"}
                 </button>
               )}
-              <button onClick={() => { setEditVal(field.value_text || ""); setEditNotes(field.notes || ""); setEditing(true); }}
+                <button onClick={() => { setEditVal(field.value_text || field.value || ""); setEditNotes(field.notes || ""); setEditing(true); }} disabled={verifying || saving}
                 className="text-[10px] font-medium text-gray-400 hover:text-gray-700 px-2 py-1 rounded-lg hover:bg-gray-100 transition">
-                Edit
+                  Edit/Correct
               </button>
               {!isEmpty && (
-                <button onClick={markNA}
+                  <button onClick={clearField} disabled={verifying || saving}
                   className="text-[10px] font-medium text-gray-300 hover:text-gray-500 px-1 py-1 rounded-lg hover:bg-gray-100 transition">
-                  N/A
+                  Reject/Clear
                 </button>
               )}
               <button onClick={loadHistory}

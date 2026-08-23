@@ -182,6 +182,27 @@ describe('transaction state recalculation', () => {
     expect(result.awaitingCount).toBe(2);
   });
 
+  it('normalizes every populated unconfirmed value to awaiting confirmation', () => {
+    const result = computeTransactionRecordState([
+      { field_key: 'asset.property_type', display_label: 'Property Type', value_text: 'Multifamily', status: 'captured' },
+      { field_key: 'transaction.loss_event', display_label: 'Loss Event', value_text: 'Water-line rupture', status: 'extracted' },
+      { field_key: 'financial.insurance_proceeds_control', display_label: 'Insurance Proceeds Control', value_text: null, status: 'missing' },
+    ], 'generated_ai', [
+      { key: 'asset.property_type', label: 'Property Type', required: true },
+      { key: 'transaction.loss_event', label: 'Loss Event', required: true },
+      { key: 'financial.insurance_proceeds_control', label: 'Insurance Proceeds Control', required: true },
+    ]);
+
+    expect(result.requiredFields).toEqual(expect.arrayContaining([
+      expect.objectContaining({ label: 'Property Type', value: 'Multifamily', status: 'awaiting' }),
+      expect.objectContaining({ label: 'Loss Event', value: 'Water-line rupture', status: 'awaiting' }),
+      expect.objectContaining({ label: 'Insurance Proceeds Control', status: 'missing', value: null }),
+    ]));
+    expect(result.confirmedCount).toBe(0);
+    expect(result.awaitingRequiredCount).toBe(2);
+    expect(result.missingRequiredCount).toBe(1);
+  });
+
   it('counts source-changed verified values as confirmed with visible attention', () => {
     const result = computeTransactionRecordState([
       {

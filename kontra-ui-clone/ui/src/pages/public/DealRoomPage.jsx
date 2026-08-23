@@ -3130,7 +3130,7 @@ function WhatNeedsAttention({
 
   // 2. Needs review / newly extracted
   recordFields
-    .filter(f => ['needs_review', 'extracted'].includes(f.status) && f.value_text)
+    .filter(f => normalizeRecordStatus(f) === 'awaiting' && f.value_text)
     .slice(0, 4)
     .forEach(f => items.push({
       id: `review-${f.id}`,
@@ -3179,14 +3179,14 @@ function WhatNeedsAttention({
     actions: [],
     sourcePriority: 2,
   }));
-  const recordActions = recordMissing.slice(0, 6).map(field => ({
+  const recordActions = recordMissing.map(field => ({
     id: `missing-record-${field.key}`,
-    urgency: 'medium',
-    title: `Confirm ${field.label}`,
-    reason: `Missing from ${field.key.split('.')[0].replace(/^\w/, char => char.toUpperCase())}`,
+    urgency: 'high',
+    title: `Provide ${field.label}`,
+    reason: `Required Transaction Record field "${field.label}" is missing. Add and confirm the authoritative value.`,
     routeItem: { field_key: field.key },
     actions: [],
-    sourcePriority: 3,
+    sourcePriority: 1,
   }));
 
   const derivedActions = [...documentActions, ...participantActions, ...recordActions]
@@ -3238,6 +3238,15 @@ function WhatNeedsAttention({
     items.push({ id: `issue-${i}`, urgency: 'high', title: normalizedText, reason: '', routeItem: item, actions: [] });
   });
 
+  const urgencyPriority = { high: 0, medium: 1, low: 2 };
+  const prioritizedItems = items
+    .map((item, index) => ({ item, index }))
+    .sort((a, b) =>
+      (urgencyPriority[a.item.urgency] ?? 3) - (urgencyPriority[b.item.urgency] ?? 3)
+      || (a.item.sourcePriority ?? 9) - (b.item.sourcePriority ?? 9)
+      || a.index - b.index
+    )
+    .map(entry => entry.item);
   const urgencyDot = { high: 'bg-red-400', medium: 'bg-amber-400', low: 'bg-gray-300' };
 
   // The command center keeps the existing prioritization data, but every
@@ -3285,7 +3294,7 @@ function WhatNeedsAttention({
   }
 
   if (compact) {
-    const compactItems = showAll ? items : items.slice(0, 3);
+    const compactItems = showAll ? prioritizedItems : prioritizedItems.slice(0, 3);
     return (
       <div className="min-w-0">
         <div className="flex items-center justify-between gap-3">
@@ -3333,12 +3342,12 @@ function WhatNeedsAttention({
             })}
           </div>
         )}
-         {!loading && items.length > 3 && (
+          {!loading && prioritizedItems.length > 3 && (
            <button
              type="button"
               onClick={(event) => { event.preventDefault(); event.stopPropagation(); setShowAll(value => !value); }}
              className="mt-3 text-[11px] font-semibold text-[#800020] hover:opacity-80 transition">
-             {showAll ? 'Show top 3' : `View all ${items.length} actions`} →
+              {showAll ? 'Show top 3' : `View all ${prioritizedItems.length} actions`} →
            </button>
          )}
       </div>
@@ -3350,8 +3359,8 @@ function WhatNeedsAttention({
       <div className="px-5 py-4 border-b border-gray-100">
         <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">What needs attention</p>
         <p className="mt-1 text-sm font-bold text-gray-900">
-          {loading ? 'Loading…' : items.length > 0
-            ? `${items.length} item${items.length === 1 ? '' : 's'} to address`
+          {loading ? 'Loading…' : prioritizedItems.length > 0
+            ? `${prioritizedItems.length} item${prioritizedItems.length === 1 ? '' : 's'} to address`
             : hasMeaningfulActivity ? 'Nothing urgent right now' : 'Start this transaction'}
         </p>
         <p className="mt-0.5 text-xs text-gray-400">
@@ -3365,7 +3374,7 @@ function WhatNeedsAttention({
         <div className="p-5 space-y-3">
           {[1, 2].map(n => <div key={n} className="h-14 animate-pulse rounded-xl bg-gray-50" />)}
         </div>
-      ) : items.length === 0 && !hasMeaningfulActivity ? (
+      ) : prioritizedItems.length === 0 && !hasMeaningfulActivity ? (
         /* ── STATE A: Genuinely empty room ────────────────────────────── */
         <div className="px-5 py-6">
           <p className="text-sm font-semibold text-gray-900">Start this transaction</p>
@@ -3395,7 +3404,7 @@ function WhatNeedsAttention({
             ))}
           </ul>
         </div>
-      ) : items.length === 0 ? (
+      ) : prioritizedItems.length === 0 ? (
         /* ── STATE B: Active but no blockers — only shown when meaningful activity exists ── */
         <div className="px-5 py-5">
           <p className="text-sm font-semibold text-gray-800">Nothing requires your attention right now.</p>
@@ -3407,7 +3416,7 @@ function WhatNeedsAttention({
         /* ── STATE C/D: Items to address ──────────────────────────────── */
         <>
           <div className="divide-y divide-gray-100">
-            {items.slice(0, 5).map(item => (
+            {prioritizedItems.slice(0, 5).map(item => (
               <div key={item.id} className={`flex items-start gap-3 px-5 py-4 ${item.urgency === 'high' ? 'bg-red-50/40' : ''}`}>
                 <span className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${urgencyDot[item.urgency]}`} />
                 <div className="flex-1 min-w-0">
@@ -3565,17 +3574,18 @@ function DigitalAssetReadinessSection({
     const enriched = cat.fieldDefs.map(def => {
       const matched = matchingFields(def);
       const state = getRecordDefinitionState(def, recordFields, canonicalRecordState);
-       const populated = state.status === 'confirmed'
+       const populated = ['confirmed', 'awaiting'].includes(state.status)
          ? matched.find(f => isPopulated(f)) || (state.field ? {
              ...state.field,
              value_text: state.value,
-             status: 'verified',
+              status: state.status === 'confirmed' ? 'verified' : 'extracted',
            } : null)
         : null;
       return { ...def, field: populated, state, allMatches: matched };
     });
     const confirmedDefs = enriched.filter(d => d.state.status === 'confirmed');
-    const missingDefs   = enriched.filter(d => d.state.status !== 'confirmed');
+     const awaitingDefs  = enriched.filter(d => d.state.status === 'awaiting');
+     const missingDefs   = enriched.filter(d => d.state.status === 'missing');
     const count = confirmedDefs.length;
     const total = enriched.length;
     // Derive sources from populated fields
@@ -3592,9 +3602,11 @@ function DigitalAssetReadinessSection({
           ? 'needs_info'
           : 'building';
 
-    const missingLabels = missingDefs.map(d => d.label.toLowerCase());
-    const summary = missingDefs.length === 0
+     const missingLabels = missingDefs.map(d => d.label.toLowerCase());
+     const summary = missingDefs.length === 0 && awaitingDefs.length === 0
       ? 'All key fields present'
+       : awaitingDefs.length > 0 && missingDefs.length === 0
+         ? `${awaitingDefs.length} field${awaitingDefs.length === 1 ? '' : 's'} awaiting confirmation`
       : cat.key === 'parties' && missingLabels.some(label => label.includes('buyer'))
         && missingLabels.some(label => label.includes('seller'))
         ? 'Buyer and seller not identified'
@@ -3602,7 +3614,7 @@ function DigitalAssetReadinessSection({
           ? 'Transaction value missing'
           : `${missingDefs[0].label} missing`;
 
-    return { ...cat, enriched, confirmedDefs, missingDefs, count, total, sources, st, summary };
+     return { ...cat, enriched, confirmedDefs, awaitingDefs, missingDefs, count, total, sources, st, summary };
   });
 
   const readyCount   = categories.filter(c => c.st === 'ready').length;
@@ -3709,13 +3721,13 @@ function DigitalAssetReadinessSection({
                      <span className={`h-2 w-2 shrink-0 rounded-full ${stDot[cat.st]}`} />
                       <p className="break-words text-sm leading-snug text-gray-700 sm:truncate sm:leading-normal">{cat.label}</p>
                    </div>
-                   {cat.summary && cat.missingDefs.length > 0 && (
+                   {cat.summary && (cat.missingDefs.length > 0 || cat.awaitingDefs.length > 0) && (
                       <p className="mt-0.5 pl-4 break-words text-[11px] leading-snug text-gray-400 sm:truncate sm:leading-normal">{cat.summary}</p>
                    )}
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
                   <span className={`text-[10px] font-semibold ${embedded ? 'text-gray-500' : stColor[cat.st]}`}>
-                    {cat.count} of {cat.total} confirmed
+                     {cat.count} confirmed · {cat.awaitingDefs.length} awaiting · {cat.missingDefs.length} missing
                   </span>
                   <svg className={`w-3 h-3 text-gray-300 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
                     fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
@@ -3727,7 +3739,7 @@ function DigitalAssetReadinessSection({
               {/* Expanded detail panel */}
               {isExpanded && (
                 <div className="px-5 pb-4 pt-1 bg-gray-50/60 border-t border-gray-100">
-                  <div className="grid gap-3 sm:grid-cols-2">
+                   <div className="grid gap-3 sm:grid-cols-3">
                     {/* Confirmed */}
                     <div>
                       <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-1.5">Confirmed</p>
@@ -3744,7 +3756,38 @@ function DigitalAssetReadinessSection({
                         </ul>
                       )}
                     </div>
-                    {/* Missing */}
+                     {/* Awaiting confirmation */}
+                     <div>
+                       <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-1.5">Awaiting confirmation</p>
+                       {cat.awaitingDefs.length === 0 ? (
+                         <p className="text-xs text-gray-400 italic">No unconfirmed candidates.</p>
+                       ) : (
+                         <ul className="space-y-1">
+                           {cat.awaitingDefs.slice(0, 4).map(d => (
+                             <li key={d.key} className="flex items-start gap-1.5 text-xs text-blue-700">
+                               <span className="mt-0.5 text-blue-500 shrink-0">●</span>
+                               <span className="flex min-w-0 flex-1 items-center justify-between gap-2">
+                                 <span>{d.label}{d.state?.value ? <span className="text-gray-400"> — {d.state.value}</span> : ''}</span>
+                                 {d.state?.fieldId && d.state?.value && (
+                                   <button
+                                     type="button"
+                                     onClick={() => confirmRecordField(d.state)}
+                                     disabled={confirmingField === d.state.fieldId}
+                                     className="shrink-0 rounded-lg bg-[#800020] px-2 py-1 text-[10px] font-bold text-white disabled:opacity-50"
+                                   >
+                                     {confirmingField === d.state.fieldId ? 'Confirming…' : 'Confirm'}
+                                   </button>
+                                 )}
+                               </span>
+                             </li>
+                           ))}
+                           {cat.awaitingDefs.length > 4 && (
+                             <li className="text-[10px] text-gray-400">+{cat.awaitingDefs.length - 4} more</li>
+                           )}
+                         </ul>
+                       )}
+                     </div>
+                     {/* Missing */}
                     <div>
                       <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-1.5">Missing</p>
                       {cat.missingDefs.length === 0 ? (
@@ -3756,16 +3799,6 @@ function DigitalAssetReadinessSection({
                               <span className="mt-0.5 text-gray-300 shrink-0">○</span>
                               <span className="flex min-w-0 flex-1 items-center justify-between gap-2">
                                 <span>{d.label}{d.state?.value ? <span className="text-gray-400"> — {d.state.value}</span> : ''}</span>
-                                {d.state?.fieldId && d.state?.value && (
-                                  <button
-                                    type="button"
-                                    onClick={() => confirmRecordField(d.state)}
-                                    disabled={confirmingField === d.state.fieldId}
-                                    className="shrink-0 rounded-lg bg-[#800020] px-2 py-1 text-[10px] font-bold text-white disabled:opacity-50"
-                                  >
-                                    {confirmingField === d.state.fieldId ? 'Confirming…' : 'Confirm'}
-                                  </button>
-                                )}
                               </span>
                             </li>
                           ))}
@@ -4130,6 +4163,17 @@ function hasMeaningfulRecordValue(field) {
   return !RECORD_EMPTY_VALUES.has(value) && field?.status !== 'not_applicable';
 }
 
+function normalizeRecordStatus(field) {
+  const raw = String(field?.status || '').toLowerCase();
+  if (RECORD_CONFLICT_STATUSES.has(raw)) return 'conflict';
+  if (['verified', 'confirmed'].includes(raw) || field?.attention === 'source_changed') return 'confirmed';
+  if (raw === 'not_applicable') return 'not_applicable';
+  // Extracted, manually entered, and legacy captured rows all mean that a
+  // candidate exists but a human has not confirmed it yet.
+  if (RECORD_AWAITING_STATUSES.has(raw) || hasMeaningfulRecordValue(field)) return 'awaiting';
+  return 'missing';
+}
+
 function hasDocumentReviewFinding(analysis) {
   const result = analysis?.analysis || {};
   const reviewStatuses = new Set(['review', 'needs_review', 'pending_review', 'needs_attention', 'attention']);
@@ -4213,18 +4257,12 @@ function getRecordDefinitionState(definition, recordFields = [], recordState = n
   const canonicalDefinitionKey = definition?.canonicalKey || definition?.key;
   const authoritativeField = recordStateFieldForDefinition(definition, recordState);
   if (authoritativeField) {
+    const status = normalizeRecordStatus(authoritativeField);
     return {
       definition,
       field: authoritativeField,
       value: authoritativeField.value || authoritativeField.value_text || '',
-      status: authoritativeField.status === 'conflict'
-        ? 'conflict'
-        : authoritativeField.status === 'awaiting'
-          ? 'awaiting'
-          : authoritativeField.status === 'confirmed'
-            || authoritativeField.rawStatus === 'source_changed'
-            ? 'confirmed'
-            : 'missing',
+      status,
         attention: authoritativeField.attention || null,
     };
   }
@@ -4249,7 +4287,8 @@ function getRecordDefinitionState(definition, recordFields = [], recordState = n
     definition,
     field: selected,
     value: selected?.value_text || '',
-    status: conflict ? 'conflict' : confirmed ? 'confirmed' : awaiting ? 'awaiting' : 'missing',
+    status: conflict ? 'conflict' : confirmed ? 'confirmed' : awaiting ? 'awaiting'
+      : selected && hasMeaningfulRecordValue(selected) ? 'awaiting' : 'missing',
     attention: selected?.status === 'source_changed' ? 'source_changed' : null,
   };
 }
