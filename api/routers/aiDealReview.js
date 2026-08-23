@@ -77,6 +77,13 @@ async function persistAiDocumentVersion({ propertyId, section, filename, analysi
   await evaluateDealRoomForTasks(propertyId, { source: 'ai_document_replacement' });
   return recordId;
 }
+
+async function persistUploadedAiDocument({ propertyId, section, filename, analysis, role, fileBuffer, mimetype, extractedText }) {
+  const storagePath = await uploadToStorage(fileBuffer, mimetype, propertyId, section, filename);
+  return persistAiDocumentVersion({
+    propertyId, section, filename, analysis, role, storagePath, fileBuffer, extractedText,
+  });
+}
 const DOC_ASSIGNMENTS = (() => {
   try { return require('../../shared/document_assignments.json'); } catch { return {}; }
 })();
@@ -316,27 +323,19 @@ Inspection report text:\n${text}` }
       temperature: 0.3,
     });
     const result = JSON.parse(completion.choices[0].message.content);
-    res.json({ success: true, analysis: result });
-    // Persist analysis + store original file (fire-and-forget)
     const { property_id, role } = req.body;
     if (property_id) {
       const _buf = req.file.buffer, _mime = req.file.mimetype, _name = req.file.originalname;
-      (async () => {
-        const storagePath = await uploadToStorage(_buf, _mime, property_id, 'inspection', _name);
-        let e = null;
-        try {
-          await persistAiDocumentVersion({
-            propertyId: property_id, section: 'inspection', filename: _name,
-            analysis: result, role: role || 'unknown', storagePath, fileBuffer: _buf, extractedText: text,
-          });
-        } catch (error) { e = error; }
-        if (e) console.warn('[deal_analyses] inspection save:', e.message);
-        else console.log('[deal_analyses] inspection replacement saved');
-      })().catch(e => console.warn('[deal_analyses] inspection:', e.message));
+      await persistUploadedAiDocument({
+        propertyId: property_id, section: 'inspection', filename: _name, analysis: result,
+        role: role || 'unknown', fileBuffer: _buf, mimetype: _mime, extractedText: text,
+      });
+      console.log('[deal_analyses] inspection replacement saved');
       notifyOwner(property_id, 'inspection', result.summary);
       logEvent(property_id, 'document_analyzed', role || 'unknown', null, 'Inspection Report analyzed by AI', { section: 'inspection', filename: req.file.originalname });
       if (role === 'inspector') notifyLender(property_id, role, 'inspection', result.summary).catch(() => {});
     }
+    res.json({ success: true, analysis: result });
   } catch (err) {
     console.error('[analyze-inspection]', err.message);
     if (err.message === 'ENCRYPTED_PDF') return res.status(422).json({ error: 'This PDF is password-protected. Please remove the password and re-upload.' });
@@ -481,22 +480,19 @@ Policy text:\n${text}` }
       temperature: 0.3,
     });
     const result = JSON.parse(completion.choices[0].message.content);
-    res.json({ success: true, analysis: result });
     const { property_id, role } = req.body;
     if (property_id) {
       const _buf = req.file.buffer, _mime = req.file.mimetype, _name = req.file.originalname;
-      (async () => {
-        const storagePath = await uploadToStorage(_buf, _mime, property_id, 'insurance', _name);
-        let e = null;
-        try { await persistAiDocumentVersion({ propertyId: property_id, section: 'insurance', filename: _name, analysis: result, role, storagePath, fileBuffer: _buf, extractedText: text }); }
-        catch (error) { e = error; }
-        if (e) console.warn('[deal_analyses] insurance save:', e.message);
-        else console.log('[deal_analyses] insurance replacement saved');
-      })().catch(e => console.warn('[deal_analyses] insurance:', e.message));
+      await persistUploadedAiDocument({
+        propertyId: property_id, section: 'insurance', filename: _name, analysis: result,
+        role, fileBuffer: _buf, mimetype: _mime, extractedText: text,
+      });
+      console.log('[deal_analyses] insurance replacement saved');
       notifyOwner(property_id, 'insurance', result.summary);
       logEvent(property_id, 'document_analyzed', role || 'unknown', null, 'Insurance Certificate analyzed by AI', { section: 'insurance', filename: req.file.originalname });
       if (['insurer', 'insurance'].includes(role)) notifyLender(property_id, role, 'insurance', result.summary).catch(() => {});
     }
+    res.json({ success: true, analysis: result });
   } catch (err) {
     console.error('[review-insurance]', err.message);
     if (err.message === 'ENCRYPTED_PDF') return res.status(422).json({ error: 'This PDF is password-protected. Please remove the password and re-upload.' });
@@ -532,22 +528,19 @@ Financial document:\n${text}` }
       temperature: 0.3,
     });
     const result = JSON.parse(completion.choices[0].message.content);
-    res.json({ success: true, analysis: result });
     const { property_id, role } = req.body;
     if (property_id) {
       const _buf = req.file.buffer, _mime = req.file.mimetype, _name = req.file.originalname;
-      (async () => {
-        const storagePath = await uploadToStorage(_buf, _mime, property_id, 'financials', _name);
-        let e = null;
-        try { await persistAiDocumentVersion({ propertyId: property_id, section: 'financials', filename: _name, analysis: result, role, storagePath, fileBuffer: _buf, extractedText: text }); }
-        catch (error) { e = error; }
-        if (e) console.warn('[deal_analyses] financials save:', e.message);
-        else console.log('[deal_analyses] financials replacement saved');
-      })().catch(e => console.warn('[deal_analyses] financials:', e.message));
+      await persistUploadedAiDocument({
+        propertyId: property_id, section: 'financials', filename: _name, analysis: result,
+        role, fileBuffer: _buf, mimetype: _mime, extractedText: text,
+      });
+      console.log('[deal_analyses] financials replacement saved');
       notifyOwner(property_id, 'financials', result.summary);
       logEvent(property_id, 'document_analyzed', role || 'unknown', null, 'Financial Statement analyzed by AI', { section: 'financials', filename: req.file.originalname });
       if (['owner', 'borrower'].includes(role)) notifyLender(property_id, role, 'financials', result.summary).catch(() => {});
     }
+    res.json({ success: true, analysis: result });
   } catch (err) {
     console.error('[review-financials]', err.message);
     if (err.message === 'ENCRYPTED_PDF') return res.status(422).json({ error: 'This PDF is password-protected. Please remove the password and re-upload.' });
@@ -583,23 +576,18 @@ Legal document:\n${text}` }
       temperature: 0.3,
     });
     const result = JSON.parse(completion.choices[0].message.content);
-    res.json({ success: true, analysis: result });
     const { property_id, role } = req.body;
     if (property_id) {
       const _buf = req.file.buffer, _mime = req.file.mimetype, _name = req.file.originalname;
-      uploadToStorage(_buf, _mime, property_id, 'legal', _name).then(storagePath => {
-        persistAiDocumentVersion({
-          propertyId: property_id, section: 'legal', filename: _name,
-          analysis: result, role: role || 'attorney', storagePath, fileBuffer: _buf, extractedText: text,
-        }).then(() => {
-        }).catch(e => {
-          if (e) console.warn('[deal_analyses] legal save:', e.message);
-        });
+      await persistUploadedAiDocument({
+        propertyId: property_id, section: 'legal', filename: _name, analysis: result,
+        role: role || 'attorney', fileBuffer: _buf, mimetype: _mime, extractedText: text,
       });
       notifyOwner(property_id, 'legal', result.summary);
       logEvent(property_id, 'document_analyzed', role || 'unknown', null, 'Legal Document analyzed by AI', { section: 'legal', filename: req.file.originalname });
       if (role === 'attorney') notifyLender(property_id, role, 'legal', result.summary).catch(() => {});
     }
+    res.json({ success: true, analysis: result });
   } catch (err) {
     console.error('[review-legal]', err.message);
     if (err.message === 'ENCRYPTED_PDF') return res.status(422).json({ error: 'This PDF is password-protected. Please remove the password and re-upload.' });
@@ -635,22 +623,17 @@ Document:\n${text}` }
       temperature: 0.3,
     });
     const result = JSON.parse(completion.choices[0].message.content);
-    res.json({ success: true, analysis: result });
     const { property_id, role } = req.body;
     if (property_id) {
       const _buf = req.file.buffer, _mime = req.file.mimetype, _name = req.file.originalname;
-      uploadToStorage(_buf, _mime, property_id, 'brand-standards', _name).then(storagePath => {
-        persistAiDocumentVersion({
-          propertyId: property_id, section: 'brand-standards', filename: _name,
-          analysis: result, role: role || 'owner', storagePath, fileBuffer: _buf, extractedText: text,
-        }).then(() => {
-        }).catch(e => {
-          if (e) console.warn('[deal_analyses] brand-standards save:', e.message);
-        });
+      await persistUploadedAiDocument({
+        propertyId: property_id, section: 'brand-standards', filename: _name, analysis: result,
+        role: role || 'owner', fileBuffer: _buf, mimetype: _mime, extractedText: text,
       });
       notifyOwner(property_id, 'brand-standards', result.summary);
       logEvent(property_id, 'document_analyzed', role || 'unknown', null, 'Brand Standards / PIP analyzed by AI', { section: 'brand-standards', filename: req.file.originalname });
     }
+    res.json({ success: true, analysis: result });
   } catch (err) {
     console.error('[review-brand-standards]', err.message);
     if (err.message === 'ENCRYPTED_PDF') return res.status(422).json({ error: 'This PDF is password-protected. Please remove the password and re-upload.' });
@@ -720,24 +703,16 @@ Return only valid JSON. No extra text.`;
       temperature: 0.2,
     });
     const result = JSON.parse(completion.choices[0].message.content);
-    res.json({ success: true, analysis: result });
-
     if (property_id && section) {
       const _buf = req.file.buffer, _mime = req.file.mimetype, _name = req.file.originalname;
-      (async () => {
-        const storagePath = await uploadToStorage(_buf, _mime, property_id, section, _name);
-        let e = null;
-        try {
-          await persistAiDocumentVersion({
-            propertyId: property_id, section, filename: _name, analysis: result,
-            role: role || 'unknown', storagePath, fileBuffer: _buf, extractedText: text,
-          });
-        } catch (error) { e = error; }
-        if (e) console.warn(`[deal_analyses] ${section} save:`, e.message);
-        else console.log(`[deal_analyses] ${section} saved (analyze-document)`);
-      })().catch(e => console.warn(`[deal_analyses] ${section}:`, e.message));
+      await persistUploadedAiDocument({
+        propertyId: property_id, section, filename: _name, analysis: result,
+        role: role || 'unknown', fileBuffer: _buf, mimetype: _mime, extractedText: text,
+      });
+      console.log(`[deal_analyses] ${section} saved (analyze-document)`);
       logEvent(property_id, 'document_analyzed', role || 'unknown', null, `${section} analyzed by AI`, { section, filename: req.file.originalname });
     }
+    res.json({ success: true, analysis: result });
   } catch (err) {
     console.error('[analyze-document]', err.message);
     if (err.message === 'ENCRYPTED_PDF') return res.status(422).json({ error: 'This PDF is password-protected. Please remove the password and re-upload.' });
