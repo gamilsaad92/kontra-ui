@@ -17,9 +17,20 @@ const {
   hasDocumentRole,
   getAssignedSectionsFromChecklist,
 } = require('../lib/documentAssignmentAccess');
+const {
+  selectActiveDocumentVersions,
+} = require('../lib/documentVersions');
 
 const router = express.Router();
 let transactionFieldExtractor = null;
+
+function safeAiErrorMessage(error, fallback = 'Document analysis failed. Please try again.') {
+  const message = String(error?.message || '');
+  if (/deal_analyses|is_active|superseded_at|superseded_by|schema cache|column .* does not exist/i.test(message)) {
+    return 'Documents are temporarily unavailable while the document-history schema is being updated. Please try again shortly.';
+  }
+  return fallback;
+}
 
 function setTransactionFieldExtractor(handler) {
   transactionFieldExtractor = typeof handler === 'function' ? handler : null;
@@ -30,9 +41,19 @@ function setTransactionFieldExtractor(handler) {
 async function persistAiDocumentVersion({ propertyId, section, filename, analysis, role, storagePath, fileBuffer, extractedText }) {
   const sourceHash = fileBuffer ? crypto.createHash('sha256').update(fileBuffer).digest('hex') : null;
   if (sourceHash) {
-    const { data: existing, error: existingError } = await supabase.from('deal_analyses')
+    let { data: existing, error: existingError } = await supabase.from('deal_analyses')
       .select('id').eq('property_id', propertyId).eq('section', section)
       .eq('source_hash', sourceHash).eq('is_active', true).maybeSingle();
+    if (existingError && /is_active|superseded_at|superseded_by|schema cache/i.test(existingError.message || '')) {
+      const legacy = await supabase.from('deal_analyses')
+        .select('id, section, created_at, processing_status, analysis, source_hash')
+        .eq('property_id', propertyId).eq('section', section)
+        .eq('source_hash', sourceHash)
+        .order('created_at', { ascending: false });
+      existing = selectActiveDocumentVersions(legacy.data || [])
+        .find(row => row.source_hash === sourceHash) || null;
+      existingError = legacy.error;
+    }
     if (!existingError && existing?.id) return existing.id;
   }
   let { data: saved, error } = await supabase.from('deal_analyses').insert({
@@ -342,7 +363,7 @@ Inspection report text:\n${text}` }
     if (err.status >= 429 || (err.status >= 500 && err.status < 600) || err.code === 'insufficient_quota' || err.code === 'ECONNRESET') {
       return res.json({ success: true, pending: true, analysis: { summary: 'Document received — AI analysis is queued and will complete shortly. Refresh in a few minutes.', pending: true, confidence: 0 } });
     }
-    res.status(500).json({ error: 'Analysis failed', message: err.message });
+    res.status(500).json({ error: 'Analysis failed', message: safeAiErrorMessage(err) });
   }
 });
 
