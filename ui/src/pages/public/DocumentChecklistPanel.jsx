@@ -782,7 +782,7 @@ export default function DocumentChecklistPanel({
     }
     try {
       const endpoint = isAiEndpoint
-        ? `${API_BASE}${AI_UPLOAD_ENDPOINTS[section]}`
+        ? `${API_BASE}${AI_UPLOAD_ENDPOINTS?.[section] || "/api/ai/analyze-document"}`
         : `${API_BASE}/api/public/deal-room/${propertyId}/track-document`;
       const res = await fetch(endpoint, {
         method: "POST",
@@ -799,6 +799,15 @@ export default function DocumentChecklistPanel({
       }
       setRefreshKey(k => k + 1);
       onAnalysisSaved?.();
+      // AI routes acknowledge the upload before their background persistence
+      // finishes. Rehydrate a few times so the checklist cannot stay at
+      // "Missing" after a successful upload.
+      [500, 1500, 3000].forEach(delay => {
+        window.setTimeout(() => {
+          setRefreshKey(k => k + 1);
+          onAnalysisSaved?.();
+        }, delay);
+      });
     } catch (error) {
       setUploadError(error?.message || "Upload failed — try again.");
     } finally {
