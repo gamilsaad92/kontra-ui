@@ -4763,6 +4763,11 @@ async function extractTransactionFields(propertyId, docId, text, sectionLabel) {
   }
 }
 
+// AI upload routes are defined in a separate router, but replacement authority
+// must use this same canonical extractor so every upload path updates the
+// Transaction Record from the active document's contents.
+aiDealReviewRouter.setTransactionFieldExtractor(extractTransactionFields);
+
 const LIGHTWEIGHT_AI_PROMPTS = {
   purchase_agreement: {
     system: 'You are a CRE transaction analyst. Extract key terms from purchase agreements and PSAs. Return JSON only.',
