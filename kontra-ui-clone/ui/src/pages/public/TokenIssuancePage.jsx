@@ -284,7 +284,7 @@ export default function TokenIssuancePage() {
                 style={{ background: "#7c3aed" }}>
                 Create your token issuance workspace →
               </Link>
-              <Link to="/deal-room/kontra-demo"
+              <Link to="/deal-room/kontra-demo-tokenization"
                 className="px-7 py-3.5 rounded-xl text-sm font-semibold border border-white/30 text-white hover:bg-white/10 transition">
                 See a live workspace example
               </Link>

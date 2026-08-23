@@ -3205,6 +3205,67 @@ app.post('/api/webhook/stripe',
   app.get(`/api/public/deal-room/${FUND_ID}/comments`, (_req, res) => res.json({ comments: [] }));
 })();
 
+// ── Token issuance demo — kontra-demo-tokenization ────────────────────────────
+;(() => {
+  const { PROPERTY, TASKS, BRIEFING, ANALYSES, DEMO_QA_CONTEXT } = require('./lib/demoDataTokenization');
+  const { getDemoFixture } = require('./lib/demoRoomFixtures');
+  const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY || 'sk-not-configured' });
+  const TOKEN_ID = 'kontra-demo-tokenization';
+  const fixture = getDemoFixture('tokenization', PROPERTY);
+
+  app.get(`/api/public/deal-room/${TOKEN_ID}`, (_req, res) => res.json(fixture.property));
+  app.get(`/api/public/deal-room/${TOKEN_ID}/checklist`, (_req, res) => res.json({ items: fixture.checklist }));
+  app.get(`/api/public/deal-room/${TOKEN_ID}/transaction-record`, (_req, res) => res.json(fixture.record));
+  app.get(`/api/public/deal-room/${TOKEN_ID}/readiness`, (_req, res) => res.json(fixture.readiness));
+  app.get(`/api/public/deal-room/${TOKEN_ID}/stages`, (_req, res) => res.json({
+    stages: fixture.stages, currentStage: fixture.coordination.stage, packId: fixture.packId,
+  }));
+  app.get(`/api/public/deal-room/${TOKEN_ID}/coordination`, (_req, res) => res.json(fixture.coordination));
+  app.get(`/api/public/deal-room/${TOKEN_ID}/events`, (_req, res) => res.json({ events: fixture.events }));
+  app.get(`/api/public/deal-room/${TOKEN_ID}/invites`, (_req, res) => res.json({ invites: fixture.coordination.participantInvites }));
+  app.get(`/api/public/deal-room/${TOKEN_ID}/comments`, (_req, res) => res.json({ comments: [] }));
+  app.put(`/api/public/deal-room/${TOKEN_ID}/checklist`, (_req, res) => res.json({ ok: true, demo: true, items: fixture.checklist }));
+  app.post(`/api/public/deal-room/${TOKEN_ID}/track-document`, (_req, res) => res.json({ ok: true, demo: true }));
+  app.post(`/api/public/deal-room/${TOKEN_ID}/request-document`, (_req, res) => res.json({ ok: true, demo: true, message: 'Demo mode — no request sent.' }));
+  app.post(`/api/public/deal-room/${TOKEN_ID}/submit`, (_req, res) => res.json({ ok: true, demo: true }));
+  app.post(`/api/public/deal-room/${TOKEN_ID}/advance`, (_req, res) => res.json({ ok: true, demo: true, message: 'Demo mode — stage did not change.' }));
+  app.post(`/api/public/deal-room/${TOKEN_ID}/invite`, (_req, res) => res.json({ ok: true, demo: true, message: 'Demo mode — invitation not sent.' }));
+  app.post(`/api/public/deal-room/${TOKEN_ID}/comments`, (_req, res) => res.json({ ok: true, demo: true }));
+  app.patch(`/api/public/deal-room/${TOKEN_ID}/metadata`, (_req, res) => res.json({ ok: true, demo: true }));
+  app.patch(`/api/public/deal-room/${TOKEN_ID}/metadata-merge`, (_req, res) => res.json({ ok: true, demo: true }));
+  app.patch(`/api/public/deal-room/${TOKEN_ID}/stages`, (_req, res) => res.json({ ok: true, demo: true, stages: fixture.stages }));
+  app.post(`/api/public/deal-room/${TOKEN_ID}/transaction-record/fields/:fieldId/verify`, (_req, res) => res.json({ ok: true, demo: true }));
+  app.patch(`/api/public/deal-room/${TOKEN_ID}/transaction-record/fields/:fieldId`, (_req, res) => res.json({ ok: true, demo: true }));
+  app.get(`/api/public/deal-room/${TOKEN_ID}/tasks`, (_req, res) => res.json({ tasks: TASKS }));
+  app.post(`/api/public/deal-room/${TOKEN_ID}/tasks/refresh`, (_req, res) => res.json({ tasks: TASKS }));
+  app.get(`/api/public/deal-room/${TOKEN_ID}/brain/briefing`, (_req, res) => res.json(BRIEFING));
+
+  app.post(`/api/public/deal-room/${TOKEN_ID}/brain/ask`, async (req, res) => {
+    const { question } = req.body || {};
+    if (!question) return res.status(400).json({ error: 'question required' });
+    try {
+      const completion = await openai.chat.completions.create({
+        model: 'gpt-4o-mini',
+        messages: [
+          { role: 'system', content: buildDemoQaSystemPrompt(DEMO_QA_CONTEXT, fixture, question) },
+          { role: 'user', content: question },
+        ],
+        max_tokens: DEMO_AI_MAX_TOKENS,
+        temperature: 0.4,
+      });
+      res.json({
+        answer: formatDemoTokenizationAnswer(completion.choices[0].message.content.trim(), fixture, question),
+      });
+    } catch (e) {
+      res.json({
+        answer: 'Three investors are onboarded. The remaining work is to complete one enhanced due diligence review and confirm the ADGM / DFSA filing package with counsel.',
+      });
+    }
+  });
+
+  app.get(`/api/public/deal-room/${TOKEN_ID}/analyses`, (_req, res) => res.json({ analyses: ANALYSES }));
+})();
+
 // ── Public deal room lookup — no auth required ────────────────────────────────
 app.get('/api/public/deal-room/:propertyId', async (req, res) => {
   const { propertyId } = req.params;

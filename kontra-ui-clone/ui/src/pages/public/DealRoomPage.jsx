@@ -207,6 +207,12 @@ const DEMO_PROPERTIES = {
     complianceItems: 6, compliancePassed: 5,
     highlights: ["LA Metro adjacent", "Ground floor retail", "EV charging"],
   },
+  "kontra-demo-tokenization": {
+    id: "kontra-demo-tokenization", name: "Meridian Digital Securities STO", type: "Token Issuance", market: "Abu Dhabi, UAE",
+    address: "Abu Dhabi Global Market, Abu Dhabi, UAE", deal_amount: "22000000",
+    jurisdiction: "uae_adgm", workflow_pack_id: "tokenization", deal_stage: "subscription",
+    investors_onboarded: 3, highlights: ["$22M target raise", "3 investors onboarded", "ADGM / DFSA preparation"],
+  },
 };
 
 // Public demo rooms are backed by the same seeded coordinator endpoints as
@@ -216,6 +222,7 @@ const DEMO_ROOM_IDS = new Set([
   'kontra-demo',
   'kontra-demo-biz',
   'kontra-demo-fundraising',
+  'kontra-demo-tokenization',
 ]);
 
 // Demo room identity is stable and intentionally duplicated here as a tiny
@@ -284,6 +291,32 @@ const DEMO_ROOM_SHELLS = {
     },
     market: 'San Francisco, CA',
     image: 'https://images.unsplash.com/photo-1497366216548-37526070297c?w=1200&q=80',
+    isCustom: true,
+    is_demo: true,
+  },
+  'kontra-demo-tokenization': {
+    id: 'kontra-demo-tokenization',
+    property_id: 'kontra-demo-tokenization',
+    property_name: 'Meridian Digital Securities STO',
+    name: 'Meridian Digital Securities STO',
+    property_type: 'Token Issuance',
+    type: 'Token Issuance',
+    address: 'Abu Dhabi Global Market, Abu Dhabi, UAE',
+    deal_amount: '22000000',
+    deal_stage: 'subscription',
+    deal_type: 'tokenization',
+    jurisdiction: 'uae_adgm',
+    workflow_pack_id: 'tokenization',
+    metadata_values: {
+      target_close_date: '2026-11-20',
+      transaction_value: '$22,000,000',
+      transaction_type: 'Regulated security token offering',
+      transaction_structure: 'ADGM / DFSA security token offering',
+      investors_onboarded: 3,
+      digital_asset_enabled: true,
+    },
+    market: 'Abu Dhabi, UAE',
+    image: 'https://images.unsplash.com/photo-1546412414-e1885259563a?w=1200&q=80',
     isCustom: true,
     is_demo: true,
   },
@@ -7189,6 +7222,11 @@ export default function DealRoomPage() {
     property.market = "San Francisco, CA";
     property.deal_amount = property.deal_amount || "42,000,000";
   }
+  if (propertyId === 'kontra-demo-tokenization' && property) {
+    property.image = "https://images.unsplash.com/photo-1546412414-e1885259563a?w=1200&q=80";
+    property.market = "Abu Dhabi, UAE";
+    property.deal_amount = property.deal_amount || "22,000,000";
+  }
 
   // Which Workflow Pack powers this deal room. Public demos deliberately use
   // the same pack-specific configuration as a fresh production room.
@@ -7201,6 +7239,7 @@ export default function DealRoomPage() {
         'kontra-demo': 'cre_acquisition',
         'kontra-demo-biz': 'business_acquisition',
         'kontra-demo-fundraising': 'fundraising',
+        'kontra-demo-tokenization': 'tokenization',
       }[propertyId] || DEFAULT_PACK_ID)
     : resolvePackId(apiProperty);
   const pack = getWorkflowPack(packId);
@@ -7370,7 +7409,7 @@ export default function DealRoomPage() {
         <div className="bg-gray-900 border border-gray-700 rounded-3xl p-10 max-w-md w-full text-center shadow-2xl">
           <div className="w-16 h-16 rounded-2xl flex items-center justify-center text-3xl mx-auto mb-6"
             style={{ background: "#80002015", border: "1px solid #80002040" }}>
-            {propertyId === 'kontra-demo-biz' ? '💼' : propertyId === 'kontra-demo-fundraising' ? '📈' : '🏢'}
+            {propertyId === 'kontra-demo-biz' ? '💼' : propertyId === 'kontra-demo-fundraising' ? '📈' : propertyId === 'kontra-demo-tokenization' ? '🪙' : '🏢'}
           </div>
           <p className="text-xs font-bold uppercase tracking-widest mb-2" style={{ color: "#c0392b" }}>
             Welcome to the Kontra Demo
@@ -7454,6 +7493,12 @@ export default function DealRoomPage() {
                 <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
                 LIVE DEMO
               </span>
+              {property?.jurisdiction && JURISDICTION_INFO[property.jurisdiction] && (
+                <span className="hidden sm:inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold"
+                  style={{ background: JURISDICTION_INFO[property.jurisdiction].bg, color: JURISDICTION_INFO[property.jurisdiction].color }}>
+                  {JURISDICTION_INFO[property.jurisdiction].flag} {JURISDICTION_INFO[property.jurisdiction].label}
+                </span>
+              )}
               <div>
                 <p className="text-xs font-semibold text-white">{property?.name || property?.property_name || 'Kontra Demo'} · AI features active</p>
                 <p className="text-[10px] text-white/50">Shared demo room · Explore all panels · No signup required</p>
