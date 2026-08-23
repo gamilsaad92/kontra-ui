@@ -159,6 +159,51 @@ describe('coordinator transaction brief logic', () => {
     )).toEqual(expect.objectContaining({ value: 'Fire', status: 'awaiting' }));
   });
 
+  test('keeps canonical refresh values awaiting across every hazard fact projection', () => {
+    const definitions = [
+      ['insurance.claim_status', 'Insurance Claim Status', 'Acknowledged'],
+      ['insurance.proceeds_control', 'Insurance Proceeds Control', 'Held or controlled by servicer'],
+      ['financial.funding_request', 'Funding Request', 'Reimbursement and/or additional repair proceeds'],
+      ['asset.type', 'Property Type', 'Multifamily'],
+      ['transaction.loss_type', 'Loss Type', 'Hazard loss'],
+      ['transaction.loss_event', 'Loss Event', 'Fire'],
+      ['asset.units_damaged', 'Units Damaged', '18'],
+      ['financial.repair_costs', 'Repair Costs', '$229,950'],
+    ].map(([key, label, value]) => ({ key, label, value, required: true, category: key.split('.')[0] }));
+    const property = { generated_proposal: { transaction_record_fields: definitions } };
+    const recordState = {
+      fields: definitions.map((definition, index) => ({
+        key: definition.key,
+        persistedKey: definition.key,
+        definitionKey: definition.key,
+        label: definition.label,
+        value: definition.value,
+        status: index === definitions.length - 1 ? 'confirmed' : 'awaiting',
+      })),
+    };
+
+    const facts = getCoordinatorRecordFacts('generated_ai', property, [], recordState);
+    expect(facts).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        label: 'Insurance Claim Status',
+        value: 'Acknowledged',
+        status: 'awaiting',
+      }),
+      expect.objectContaining({
+        label: 'Loss Event',
+        value: 'Fire',
+        status: 'awaiting',
+      }),
+      expect.objectContaining({
+        label: 'Repair Costs',
+        value: '$229,950',
+        status: 'confirmed',
+      }),
+    ]));
+    expect(getRecordDefinitionState(definitions[0], [], recordState))
+      .toEqual(expect.objectContaining({ value: 'Acknowledged', status: 'awaiting' }));
+  });
+
   test('recognizes document findings without treating them as record conflicts', () => {
     expect(hasDocumentReviewFinding({
       section: 'proof_of_payment',

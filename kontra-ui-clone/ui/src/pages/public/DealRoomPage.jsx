@@ -2952,8 +2952,8 @@ function DigitalAssetPrepCard({ propertyId, recordFields = [], readiness = null 
 }
 
 function formatSnapshotValue(field) {
-  if (!field?.value_text) return 'Not recorded';
-  return field.value_text;
+  const value = field?.value_text ?? field?.value ?? field?.value_json;
+  return String(value ?? '').trim() || 'Not recorded';
 }
 
 function getTransactionRecordCategory(field) {
@@ -3026,7 +3026,7 @@ function WhatNeedsAttention({
   // the existing tabs remain the source of truth and own the actual flows.
   const DONE_DOCUMENT_STATUSES = new Set(['uploaded', 'approved', 'ai_complete']);
   const isRecordValue = field => {
-    const value = String(field?.value_text || '').trim().toLowerCase();
+    const value = String(field?.value_text ?? field?.value ?? field?.value_json ?? '').trim().toLowerCase();
     return value && !['n/a', 'na', 'not applicable', 'not_applicable', 'unknown'].includes(value)
       && field?.status !== 'not_applicable';
   };
@@ -3045,9 +3045,7 @@ function WhatNeedsAttention({
         { key: 'ownership.cap_table', label: 'Cap table / ownership' },
       ];
   const canonicalRecordKey = definition => definition.aliasOf || definition.key;
-  const canonicalStateField = definition => recordState?.fields?.find(field =>
-    field.key === canonicalRecordKey(definition)
-  );
+  const canonicalStateField = definition => recordStateFieldForDefinition(definition, recordState);
   const missingCanonicalKeys = new Set();
   const recordMissing = visibleRecordDefinitions
     .filter(def => def.workflowRequired === true || def.required === true)
@@ -3056,7 +3054,7 @@ function WhatNeedsAttention({
       if (missingCanonicalKeys.has(canonicalKey)) return false;
       const authoritative = canonicalStateField(def);
       if (authoritative) {
-        if (authoritative.status !== 'missing' && authoritative.status !== 'not_applicable') return false;
+        if (normalizedRecordStatus(authoritative) !== 'missing') return false;
         missingCanonicalKeys.add(canonicalKey);
         return true;
       }
@@ -3163,13 +3161,13 @@ function WhatNeedsAttention({
 
   // 2. Needs review / newly extracted
   recordFields
-    .filter(f => ['needs_review', 'extracted'].includes(f.status) && f.value_text)
+    .filter(f => normalizedRecordStatus(f) === 'awaiting' && isRecordValue(f))
     .slice(0, 4)
     .forEach(f => items.push({
       id: `review-${f.id}`,
       urgency: 'medium',
       title: f.display_label || f.field_key,
-      reason: `Kontra extracted "${f.value_text}" from an uploaded document. Confirm this is correct.`,
+      reason: `Kontra extracted "${formatSnapshotValue(f)}" from an uploaded document. Confirm this is correct.`,
       excerpt: f.source_excerpt ? `"${f.source_excerpt}"${f.source_page ? ` · page ${f.source_page}` : ''}` : null,
       field: f,
       actions: [{ label: confirming === f.id ? 'Confirming…' : 'Confirm', primary: true, disabled: !!confirming, onClick: () => confirmField(f) }],
@@ -3583,7 +3581,7 @@ function DigitalAssetReadinessSection({
   const SKIP_VALUES = new Set(['n/a', 'na', 'not applicable', 'not_applicable', 'unknown']);
 
   function isPopulated(f) {
-    const val = String(f.value_text || '').trim().toLowerCase();
+    const val = String(f.value_text ?? f.value ?? f.value_json ?? '').trim().toLowerCase();
     return val && !SKIP_VALUES.has(val) && f.status !== 'not_applicable';
   }
 
@@ -3608,7 +3606,8 @@ function DigitalAssetReadinessSection({
       return { ...def, field: populated, state, allMatches: matched };
     });
     const confirmedDefs = enriched.filter(d => d.state.status === 'confirmed');
-    const missingDefs   = enriched.filter(d => d.state.status !== 'confirmed');
+    const awaitingDefs  = enriched.filter(d => d.state.status === 'awaiting');
+    const missingDefs   = enriched.filter(d => d.state.status === 'missing');
     const count = confirmedDefs.length;
     const total = enriched.length;
     // Derive sources from populated fields
@@ -3618,7 +3617,7 @@ function DigitalAssetReadinessSection({
 
     // Four-state status
     const st = count === 0
-      ? 'not_started'
+      ? (awaitingDefs.length > 0 ? 'building' : 'not_started')
       : count >= Math.ceil(total * 0.67)
         ? 'ready'
         : count >= Math.ceil(total * 0.34)
@@ -3626,8 +3625,10 @@ function DigitalAssetReadinessSection({
           : 'building';
 
     const missingLabels = missingDefs.map(d => d.label.toLowerCase());
-    const summary = missingDefs.length === 0
-      ? 'All key fields present'
+    const summary = missingDefs.length === 0 && awaitingDefs.length === 0
+      ? 'All key fields confirmed'
+      : awaitingDefs.length > 0 && missingDefs.length === 0
+        ? `${awaitingDefs[0].label} awaiting confirmation`
       : cat.key === 'parties' && missingLabels.some(label => label.includes('buyer'))
         && missingLabels.some(label => label.includes('seller'))
         ? 'Buyer and seller not identified'
@@ -3635,7 +3636,7 @@ function DigitalAssetReadinessSection({
           ? 'Transaction value missing'
           : `${missingDefs[0].label} missing`;
 
-    return { ...cat, enriched, confirmedDefs, missingDefs, count, total, sources, st, summary };
+    return { ...cat, enriched, confirmedDefs, awaitingDefs, missingDefs, count, total, sources, st, summary };
   });
 
   const readyCount   = categories.filter(c => c.st === 'ready').length;
@@ -3742,7 +3743,7 @@ function DigitalAssetReadinessSection({
                      <span className={`h-2 w-2 shrink-0 rounded-full ${stDot[cat.st]}`} />
                       <p className="break-words text-sm leading-snug text-gray-700 sm:truncate sm:leading-normal">{cat.label}</p>
                    </div>
-                   {cat.summary && cat.missingDefs.length > 0 && (
+                    {cat.summary && (cat.missingDefs.length > 0 || cat.awaitingDefs.length > 0) && (
                       <p className="mt-0.5 pl-4 break-words text-[11px] leading-snug text-gray-400 sm:truncate sm:leading-normal">{cat.summary}</p>
                    )}
                 </div>
@@ -3760,7 +3761,7 @@ function DigitalAssetReadinessSection({
               {/* Expanded detail panel */}
               {isExpanded && (
                 <div className="px-5 pb-4 pt-1 bg-gray-50/60 border-t border-gray-100">
-                  <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="grid gap-3 sm:grid-cols-3">
                     {/* Confirmed */}
                     <div>
                       <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-1.5">Confirmed</p>
@@ -3777,18 +3778,18 @@ function DigitalAssetReadinessSection({
                         </ul>
                       )}
                     </div>
-                    {/* Missing */}
+                    {/* Awaiting confirmation */}
                     <div>
-                      <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-1.5">Missing</p>
-                      {cat.missingDefs.length === 0 ? (
-                        <p className="text-xs text-emerald-600 font-medium">All key fields present.</p>
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-blue-600 mb-1.5">Awaiting confirmation</p>
+                      {cat.awaitingDefs.length === 0 ? (
+                        <p className="text-xs text-gray-400 italic">No candidate values awaiting review.</p>
                       ) : (
                         <ul className="space-y-1">
-                          {cat.missingDefs.slice(0, 4).map(d => (
-                            <li key={d.key} className="flex items-start gap-1.5 text-xs text-gray-500">
-                              <span className="mt-0.5 text-gray-300 shrink-0">○</span>
+                          {cat.awaitingDefs.slice(0, 4).map(d => (
+                            <li key={d.key} className="flex items-start gap-1.5 text-xs text-blue-700">
+                              <span className="mt-0.5 text-blue-400 shrink-0">○</span>
                               <span className="flex min-w-0 flex-1 items-center justify-between gap-2">
-                                <span>{d.label}{d.state?.value ? <span className="text-gray-400"> — {d.state.value}</span> : ''}</span>
+                                <span>{d.label}{d.state?.value ? <span className="text-gray-500"> — {d.state.value}</span> : ''}</span>
                                 {d.state?.fieldId && d.state?.value && (
                                   <button
                                     type="button"
@@ -3800,6 +3801,25 @@ function DigitalAssetReadinessSection({
                                   </button>
                                 )}
                               </span>
+                            </li>
+                          ))}
+                          {cat.awaitingDefs.length > 4 && (
+                            <li className="text-[10px] text-gray-400">+{cat.awaitingDefs.length - 4} more</li>
+                          )}
+                        </ul>
+                      )}
+                    </div>
+                    {/* Missing */}
+                    <div>
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-1.5">Missing</p>
+                      {cat.missingDefs.length === 0 ? (
+                        <p className="text-xs text-emerald-600 font-medium">No key fields missing.</p>
+                      ) : (
+                        <ul className="space-y-1">
+                          {cat.missingDefs.slice(0, 4).map(d => (
+                            <li key={d.key} className="flex items-start gap-1.5 text-xs text-gray-500">
+                              <span className="mt-0.5 text-gray-300 shrink-0">○</span>
+                              <span>{d.label}</span>
                             </li>
                           ))}
                           {cat.missingDefs.length > 4 && (
@@ -4160,7 +4180,7 @@ const RECORD_AWAITING_STATUSES = new Set(['extracted', 'needs_review', 'awaiting
 const DONE_DOCUMENT_STATUSES = new Set(['uploaded', 'approved', 'ai_complete', 'complete', 'completed']);
 
 function hasMeaningfulRecordValue(field) {
-  const value = String(field?.value_text || '').trim().toLowerCase();
+  const value = String(field?.value_text ?? field?.value ?? field?.value_json ?? '').trim().toLowerCase();
   return !RECORD_EMPTY_VALUES.has(value) && field?.status !== 'not_applicable';
 }
 
@@ -4291,7 +4311,7 @@ function getRecordDefinitionState(definition, recordFields = [], recordState = n
   return {
     definition,
     field: selected,
-    value: selected?.value_text || '',
+    value: selected?.value_text ?? selected?.value ?? selected?.value_json ?? '',
     status: conflict ? 'conflict' : confirmed ? 'confirmed' : awaiting ? 'awaiting' : 'missing',
     attention: selected?.status === 'source_changed' ? 'source_changed' : null,
   };
