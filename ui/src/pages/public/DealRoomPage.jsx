@@ -2975,10 +2975,12 @@ function WhatNeedsAttention({
     let ownerWriteToken = '';
     try { ownerWriteToken = localStorage.getItem(`kontra_owner_token_${propertyId}`) || ''; } catch {}
     if (!ownerWriteToken || confirming) return;
-    setConfirming(field.id);
+    const fieldId = field.id || field.fieldId;
+    if (!fieldId) return;
+    setConfirming(fieldId);
     try {
       await fetch(
-        `${API_BASE}/api/public/deal-room/${propertyId}/transaction-record/fields/${field.id}/verify`,
+        `${API_BASE}/api/public/deal-room/${propertyId}/transaction-record/fields/${fieldId}/verify`,
         {
           method: 'POST',
           headers: getRoomAuthHeaders(propertyId, { 'Content-Type': 'application/json' }),
@@ -3051,7 +3053,7 @@ function WhatNeedsAttention({
     return count + 1;
   }, 0);
 
-  const schemaDocuments = typeof pack?.getDocumentSchema === 'function'
+   const schemaDocuments = typeof pack?.getDocumentSchema === 'function'
     ? pack.getDocumentSchema(property?.property_type || property?.type)
     : (Array.isArray(pack?.documentSchema) ? pack.documentSchema : []);
    const documentStats = getDocumentRequirementStats(checklistItems, pack, property, analyses);
@@ -3104,7 +3106,8 @@ function WhatNeedsAttention({
   });
 
   // 1. Conflicting / source-changed — highest urgency
-  (conflicts.length > 0 ? conflicts : (recordState?.unresolvedConflicts || [])).forEach(conflict => {
+  const canonicalConflicts = getCanonicalUnresolvedConflicts(recordState);
+  canonicalConflicts.forEach(conflict => {
     const fieldKey = conflict.fieldKey || conflict.field_key || '';
     const label = conflict.label || conflict.display_label || fieldKey || 'Transaction Record';
     items.push({
@@ -3120,32 +3123,19 @@ function WhatNeedsAttention({
       sourcePriority: 0,
     });
   });
-  recordFields
-    .filter(f => ['conflicting', 'source_changed'].includes(f.status))
-    .slice(0, 3)
-    .forEach(f => items.push({
-      id: `conflict-${f.id}`,
-      urgency: 'high',
-      title: f.display_label || f.field_key,
-      reason: f.status === 'source_changed'
-        ? 'A new document provided a different value. Review and confirm the correct one.'
-        : 'Two sources provided conflicting values for this field.',
-      excerpt: f.source_excerpt || null,
-      actions: [{ label: 'Review', onClick: () => onTabChange?.('documents') }],
-    }));
-
   // 2. Needs review / newly extracted
-  recordFields
-    .filter(f => normalizeRecordStatus(f) === 'awaiting' && f.value_text)
+  getCanonicalAwaitingRecordFields(recordState)
     .slice(0, 4)
     .forEach(f => items.push({
-      id: `review-${f.id}`,
+      id: `review-${f.fieldId || f.id || f.key}`,
       urgency: 'medium',
-      title: f.display_label || f.field_key,
-      reason: `Kontra extracted "${f.value_text}" from an uploaded document. Confirm this is correct.`,
-      excerpt: f.source_excerpt ? `"${f.source_excerpt}"${f.source_page ? ` · page ${f.source_page}` : ''}` : null,
+      title: f.label || f.display_label || f.key,
+      reason: `Kontra extracted "${f.value ?? f.value_text}" from an uploaded document. Confirm this is correct.`,
+      excerpt: f.sourceExcerpt || f.source_excerpt
+        ? `"${f.sourceExcerpt || f.source_excerpt}"${f.sourcePage || f.source_page ? ` · page ${f.sourcePage || f.source_page}` : ''}`
+        : null,
       field: f,
-      actions: [{ label: confirming === f.id ? 'Confirming…' : 'Confirm', primary: true, disabled: !!confirming, onClick: () => confirmField(f) }],
+      actions: [{ label: confirming === (f.fieldId || f.id) ? 'Confirming…' : 'Confirm', primary: true, disabled: !!confirming, onClick: () => confirmField(f) }],
     }));
 
   // 3. Specific actions derived from existing workflow state. Required
@@ -4529,6 +4519,29 @@ function dedupeAttentionItems(items = []) {
   });
 }
 
+function getCanonicalAwaitingRecordFields(recordState) {
+  if (!Array.isArray(recordState?.requiredFields)) return [];
+  return recordState.requiredFields.filter(field =>
+    field?.status === 'awaiting'
+      && String(field.value ?? field.value_text ?? '').trim()
+  );
+}
+
+function getCanonicalUnresolvedConflicts(recordState) {
+  const source = Array.isArray(recordState?.unresolvedConflicts)
+    ? recordState.unresolvedConflicts
+    : [];
+  const seen = new Set();
+  return source.filter(conflict => {
+    const key = conflict?.fieldKey || conflict?.field_key
+      || conflict?.id
+      || `${conflict?.label || conflict?.display_label || ''}:${conflict?.canonicalValue || conflict?.canonical_value || ''}`;
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
 function getNextMilestoneBlockers({
   stages = [],
   currentStageIndex = 0,
@@ -5173,6 +5186,8 @@ export {
   getDocumentRequirementStats,
   filterLiveDocumentActions,
   dedupeAttentionItems,
+  getCanonicalAwaitingRecordFields,
+  getCanonicalUnresolvedConflicts,
   getRecordDefinitionState,
   getCoordinatorRecordFacts,
 };

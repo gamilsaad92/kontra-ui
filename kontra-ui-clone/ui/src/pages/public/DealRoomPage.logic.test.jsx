@@ -10,6 +10,8 @@ const {
   getDocumentRequirementStats,
   filterLiveDocumentActions,
   dedupeAttentionItems,
+  getCanonicalAwaitingRecordFields,
+  getCanonicalUnresolvedConflicts,
   getCoordinatorRecordFacts,
   getRecordDefinitionState,
 } = require('./DealRoomPage');
@@ -205,5 +207,41 @@ describe('coordinator transaction brief logic', () => {
       'Resolve Repair Cost Discrepancy',
       'Resolve Insurance Proceeds Discrepancy',
     ]);
+  });
+
+  test('builds awaiting actions from canonical required fields, not stale raw rows', () => {
+    const recordState = {
+      requiredFields: [
+        { key: 'financial.repair_cost', fieldId: 'canonical-1', label: 'Repair Costs', value: '$325,000', status: 'confirmed' },
+        { key: 'financial.proceeds', fieldId: 'canonical-2', label: 'Insurance Proceeds', value: '$325,000', status: 'awaiting' },
+      ],
+    };
+    const rawRows = [
+      { id: 'old-1', field_key: 'financial.repair_cost', value_text: '$229,950', status: 'extracted' },
+      { id: 'old-2', field_key: 'financial.proceeds', value_text: '$180,000', status: 'extracted' },
+    ];
+
+    expect(getCanonicalAwaitingRecordFields(recordState)).toEqual([
+      recordState.requiredFields[1],
+    ]);
+    expect(getCanonicalAwaitingRecordFields(recordState)).not.toContain(rawRows[0]);
+    expect(getCanonicalAwaitingRecordFields(recordState)).not.toContain(rawRows[1]);
+  });
+
+  test('uses canonical unresolved conflicts and deduplicates by canonical field key', () => {
+    const recordState = {
+      unresolvedConflicts: [
+        { id: 'conflict-1', fieldKey: 'financial.repair_cost', label: 'Repair Cost' },
+        { id: 'conflict-2', fieldKey: 'financial.repair_cost', label: 'Repair Cost' },
+        { id: 'conflict-3', fieldKey: 'financial.proceeds', label: 'Insurance Proceeds' },
+      ],
+    };
+    const fallbackConflicts = [
+      { id: 'raw-status-row', fieldKey: 'financial.repair_cost', label: 'Raw status row' },
+    ];
+
+    expect(getCanonicalUnresolvedConflicts(recordState, fallbackConflicts))
+      .toEqual([recordState.unresolvedConflicts[0], recordState.unresolvedConflicts[2]]);
+    expect(getCanonicalUnresolvedConflicts(null, fallbackConflicts)).toEqual([]);
   });
 });
