@@ -5466,6 +5466,7 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
   const [recordState, setRecordState]   = useState(null);
   const [readiness, setReadiness]       = useState(null);
   const [verifiedAssetReadiness, setVerifiedAssetReadiness] = useState(null);
+  const [snapshotAction, setSnapshotAction] = useState({ loading: false, message: '', error: false });
   const [loading, setLoading]           = useState(true);
   const [ownerToken, setOwnerToken]     = useState('');
   const [selectedConflict, setSelectedConflict] = useState(null);
@@ -5539,6 +5540,39 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
     const interval = setInterval(load, 30000);
     return () => clearInterval(interval);
   }, [load]);
+
+  const recordReadinessSnapshot = useCallback(async () => {
+    if (!propertyId || !ownerToken || snapshotAction.loading) return;
+    setSnapshotAction({ loading: true, message: '', error: false });
+    try {
+      const response = await fetch(
+        `${API_BASE}/api/public/deal-room/${propertyId}/verified-asset/snapshots`,
+        {
+          method: 'POST',
+          headers: getRoomAuthHeaders(propertyId, { 'Content-Type': 'application/json' }),
+          body: JSON.stringify({ ownerWriteToken: ownerToken }),
+        },
+      );
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(data.message || data.error || 'Snapshot could not be recorded.');
+      }
+      const snapshot = data.snapshot || {};
+      const eligibility = snapshot.eligibility_status === 'eligible'
+        ? 'eligible'
+        : 'ineligible';
+      setSnapshotAction({
+        loading: false,
+        error: false,
+        message: data.created === false
+          ? `Snapshot v${snapshot.version} already records this state (${eligibility}).`
+          : `Snapshot v${snapshot.version} recorded (${eligibility}).`,
+      });
+      await load();
+    } catch (error) {
+      setSnapshotAction({ loading: false, error: true, message: error.message });
+    }
+  }, [propertyId, ownerToken, snapshotAction.loading, load]);
 
   const processingDocuments = analyses.filter(analysis =>
     ['uploaded', 'processing', 'retrying'].includes(analysis.processing_status)
@@ -6397,7 +6431,22 @@ function OperationsManagerView({ propertyId, property, pack, role, onTabChange }
                 Snapshot v{verifiedAssetReadiness.latest_snapshot.version}
               </span>
             )}
+            {ownerToken && (
+              <button
+                type="button"
+                onClick={recordReadinessSnapshot}
+                disabled={snapshotAction.loading}
+                className="ml-auto rounded-lg border border-gray-200 px-2.5 py-1 text-[10px] font-bold text-gray-600 transition hover:border-gray-300 hover:bg-gray-50 disabled:cursor-wait disabled:opacity-50"
+              >
+                {snapshotAction.loading ? 'Recording…' : 'Record readiness snapshot'}
+              </button>
+            )}
           </div>
+        )}
+        {snapshotAction.message && (
+          <p className={`mt-2 text-[10px] ${snapshotAction.error ? 'text-red-600' : 'text-gray-500'}`}>
+            {snapshotAction.message}
+          </p>
         )}
         {statusKey === 'not_enough_info' && (
           <p className="text-xs text-gray-400 mt-3 pt-3 border-t border-gray-100">
