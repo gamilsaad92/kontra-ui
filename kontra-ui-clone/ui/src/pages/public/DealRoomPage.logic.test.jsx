@@ -7,6 +7,9 @@ const {
   getNextMilestoneBlockers,
   getOpenIssueCount,
   hasDocumentReviewFinding,
+  getDocumentRequirementStats,
+  filterLiveDocumentActions,
+  dedupeAttentionItems,
   getCoordinatorRecordFacts,
   getRecordDefinitionState,
 } = require('./DealRoomPage');
@@ -155,5 +158,52 @@ describe('coordinator transaction brief logic', () => {
       section: 'lien_waivers',
       analysis: { status: 'complete' },
     })).toBe(false);
+  });
+
+  test('uses active analyses as the live checklist document state', () => {
+    const labels = [
+      'Contractor Agreement',
+      'Insurance Claim Documentation',
+      'Repair Invoices',
+      'Proof of Payment',
+      'Lien Waivers',
+      'Repair Progress Report',
+    ];
+    const checklistItems = labels.map((label, index) => ({
+      id: `doc-${index}`,
+      section: label.toLowerCase().replaceAll(' ', '_'),
+      label,
+      required: true,
+      status: 'missing',
+      uploaded: false,
+    }));
+    const analyses = checklistItems.map((item, index) => ({
+      id: `analysis-${index}`,
+      section: item.section,
+      filename: `${item.label}.pdf`,
+      processing_status: 'complete',
+      analysis: index === 1 ? { discrepancies: ['Claim amount needs review'] } : { summary: 'Received' },
+    }));
+    const stats = getDocumentRequirementStats(checklistItems, null, {}, analyses);
+
+    expect(stats.receivedDocuments).toHaveLength(6);
+    expect(stats.missingDocuments).toHaveLength(0);
+    expect(stats.reviewDocuments.map(item => item.label)).toEqual(['Insurance Claim Documentation']);
+    expect(filterLiveDocumentActions([
+      { title: 'Request Contractor Agreement', document: true },
+      { title: 'Request Insurance Claim Documentation', document: true },
+      { title: 'Request a missing title report', document: true },
+    ], stats).map(item => item.title)).toEqual(['Request a missing title report']);
+  });
+
+  test('deduplicates repeated repair discrepancy actions without removing other actions', () => {
+    expect(dedupeAttentionItems([
+      { title: 'Resolve Repair Cost Discrepancy' },
+      { title: 'Repair Costs' },
+      { title: 'Resolve Insurance Proceeds Discrepancy' },
+    ]).map(item => item.title)).toEqual([
+      'Resolve Repair Cost Discrepancy',
+      'Resolve Insurance Proceeds Discrepancy',
+    ]);
   });
 });

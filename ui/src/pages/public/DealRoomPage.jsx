@@ -2991,7 +2991,6 @@ function WhatNeedsAttention({
   // The command center derives these actions from the same state rendered in
   // Documents, People, and Transaction Record. This is prioritization only —
   // the existing tabs remain the source of truth and own the actual flows.
-  const DONE_DOCUMENT_STATUSES = new Set(['uploaded', 'approved', 'ai_complete']);
   const isRecordValue = field => {
     const value = String(field?.value_text || '').trim().toLowerCase();
     return value && !['n/a', 'na', 'not applicable', 'not_applicable', 'unknown'].includes(value)
@@ -3055,12 +3054,19 @@ function WhatNeedsAttention({
   const schemaDocuments = typeof pack?.getDocumentSchema === 'function'
     ? pack.getDocumentSchema(property?.property_type || property?.type)
     : (Array.isArray(pack?.documentSchema) ? pack.documentSchema : []);
-  const missingDocuments = (checklistItems.length > 0
-    ? checklistItems
-    : schemaDocuments
-  )
-    .filter(item => item.required && !DONE_DOCUMENT_STATUSES.has(item.status) && !item.uploaded);
-  const documentReviewItems = analyses.filter(hasDocumentReviewFinding).slice(0, 4);
+   const documentStats = getDocumentRequirementStats(checklistItems, pack, property, analyses);
+   const missingDocuments = documentStats.missingDocuments;
+   const documentReviewItems = analyses
+     .filter(hasDocumentReviewFinding)
+     .filter(analysis => {
+       const section = String(analysis.section || '').toLowerCase();
+       return documentStats.reviewDocuments.some(item =>
+         String(item.section || '').toLowerCase() === section
+       ) || documentStats.receivedDocuments.some(item =>
+         String(item.section || '').toLowerCase() === section
+       );
+     })
+     .slice(0, 4);
 
   const roleMeta = Object.fromEntries((pack?.roles || []).map(role => [role.key, role]));
   const partyRows = Array.isArray(coordination?.submissions)
@@ -3194,7 +3200,7 @@ function WhatNeedsAttention({
 
   // Existing briefing/task-engine actions remain useful after concrete state
   // actions, and still provide the fallback for custom workflow packs.
-  const briefingActions = [
+   const briefingActions = filterLiveDocumentActions([
     ...(Array.isArray(briefing?.criticalPath) ? briefing.criticalPath : []),
     ...(Array.isArray(briefing?.actions) ? briefing.actions : []),
     ...(Array.isArray(briefing?.next_actions) ? briefing.next_actions : []),
@@ -3202,7 +3208,7 @@ function WhatNeedsAttention({
       title: `Upload ${typeof document === 'string' ? document : document.label || document.name || 'required document'}`,
       document: true,
     })) : []),
-  ];
+   ], documentStats);
   const seenBriefingActions = new Set();
   derivedActions.forEach(item => items.push(item));
   briefingActions.forEach((item, i) => {
@@ -3239,7 +3245,7 @@ function WhatNeedsAttention({
   });
 
   const urgencyPriority = { high: 0, medium: 1, low: 2 };
-  const prioritizedItems = items
+   const prioritizedItems = dedupeAttentionItems(items)
     .map((item, index) => ({ item, index }))
     .sort((a, b) =>
       (urgencyPriority[a.item.urgency] ?? 3) - (urgencyPriority[b.item.urgency] ?? 3)
@@ -4491,6 +4497,38 @@ function getDocumentRequirementStats(checklistItems = [], pack, property, analys
   };
 }
 
+function isStaleDocumentAction(action, documentStats) {
+  const text = String(typeof action === 'string'
+    ? action
+    : (action?.text || action?.action || action?.item || action?.title || '')).trim().toLowerCase();
+  if (!text || !/(request|upload|missing|provide|receive|document|file)/i.test(text)) return false;
+  return documentStats.receivedDocuments.some(document => {
+    const terms = [document.label, document.name, document.section]
+      .filter(Boolean)
+      .map(value => String(value).toLowerCase().replace(/[_-]+/g, ' '));
+    return terms.some(term => term.length > 2 && text.includes(term));
+  });
+}
+
+function filterLiveDocumentActions(actions = [], documentStats) {
+  return (actions || []).filter(action => !isStaleDocumentAction(action, documentStats));
+}
+
+function dedupeAttentionItems(items = []) {
+  const seen = new Set();
+  return items.filter(item => {
+    const raw = String(item?.title || item?.text || '').trim().toLowerCase();
+    const key = /repair\s*cost/i.test(raw)
+      ? 'repair-cost-discrepancy'
+      : /discrepancy|conflict/.test(raw) && /repair|cost/.test(raw)
+        ? 'repair-cost-discrepancy'
+        : raw;
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
 function getNextMilestoneBlockers({
   stages = [],
   currentStageIndex = 0,
@@ -5132,6 +5170,9 @@ export {
   getNextMilestoneBlockers,
   getOpenIssueCount,
   hasDocumentReviewFinding,
+  getDocumentRequirementStats,
+  filterLiveDocumentActions,
+  dedupeAttentionItems,
   getRecordDefinitionState,
   getCoordinatorRecordFacts,
 };
@@ -6185,7 +6226,9 @@ function OperationsManagerView({ propertyId, property, pack, role, onTabChange }
 
   // ── Action cards ───────────────────────────────────────────────────────────
   const rawActions  = briefing?.actions || briefing?.next_actions || [];
-  const actionCards = rawActions.slice(0, 5).map((a, i) => ({
+  const liveDocumentStats = getDocumentRequirementStats(checklistItems, pack, property, analyses);
+  const actionCards = filterLiveDocumentActions(rawActions, liveDocumentStats)
+    .slice(0, 5).map((a, i) => ({
     text:        typeof a === 'string' ? a : (a.text || a.action || ''),
     severity:    typeof a === 'object' ? (a.severity || (i === 0 ? 'high' : 'medium')) : (i === 0 ? 'high' : 'medium'),
     responsible: typeof a === 'object' ? (a.party || a.responsible || a.role || '') : '',
