@@ -27,5 +27,6 @@
 - [Kontra Overview record actions](kontra-overview-record-actions.md) — map backend field namespaces to rendered categories and wait for async record-panel hydration before expanding
 - [Kontra interaction audit](kontra-interaction-audit.md) — every visible affordance needs a state change, navigation, or clear unavailable message
 - [Replacement live evidence](kontra-replacement-live-evidence.md) — replacements must rerun canonical extraction and active-only verification before recalculating live state
+- [Verified Asset snapshots](kontra-verified-asset-snapshots.md) — immutable readiness snapshots are append-only and distinct from the legacy mutable package artifact
 - [Kontra task approval invariants](kontra-task-approval-invariants.md) — approval claims must allow NULL execution_status; dismissed tasks are resolved; failed executions need durable action_failed audit events
 - [Kontra demo performance](kontra-demo-performance.md) — demo rooms render a local shell, hydrate independently, and keep the heavy room route code-split
