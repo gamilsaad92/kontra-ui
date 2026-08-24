@@ -89,6 +89,9 @@ const {
   canonicalTransactionTypeLabel,
 } = require('./lib/transactionRecordCanonicalization');
 const {
+  buildVerifiedAssetSnapshot,
+} = require('./lib/verifiedAssetSnapshot');
+const {
   selectActiveDocumentVersions,
   isActiveDocumentVersion,
 } = require('./lib/documentVersions');
@@ -10081,6 +10084,153 @@ app.post('/api/public/deal-room/:propertyId/transaction-record/extract', async (
 // Uses the background transaction record without exposing token economics or a
 // tokenization workflow in the deal-room UI. The response intentionally reports
 // only missing facts that the owner can supply before an external handoff.
+async function getVerifiedAssetSnapshotContext(propertyId) {
+  const state = await readTransactionState(propertyId);
+  if (!state?.room) return null;
+  const [{ data: approvals, error: approvalsError }, { data: exceptions, error: exceptionsError }] = await Promise.all([
+    supabase.from('transaction_record_approvals')
+      .select('field_id, action, actor_email, actor_role, is_manual, created_at')
+      .eq('property_id', propertyId)
+      .order('created_at', { ascending: true }),
+    supabase.from('transaction_record_conflicts')
+      .select('*')
+      .eq('property_id', propertyId)
+      .order('created_at', { ascending: true }),
+  ]);
+  if (approvalsError && !/relation|schema cache|column/i.test(approvalsError.message || '')) throw approvalsError;
+  if (exceptionsError && !/relation|schema cache|column/i.test(exceptionsError.message || '')) throw exceptionsError;
+  const snapshot = buildVerifiedAssetSnapshot({
+    propertyId,
+    room: state.room,
+    recordState: state.recordState,
+    conflicts: exceptions || state.recordState?.unresolvedConflicts || state.conflicts || [],
+    approvals: approvals || [],
+  });
+  return { state, approvals: approvals || [], snapshot };
+}
+
+app.get('/api/public/deal-room/:propertyId/verified-asset/snapshots', async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('verified_asset_snapshots')
+      .select('id, version, eligibility_status, source_state_at, snapshot_hash, snapshot, created_by, created_at')
+      .eq('property_id', req.params.propertyId)
+      .order('version', { ascending: false });
+    if (error) {
+      if (/relation|schema cache/i.test(error.message || '')) {
+        return res.status(503).json({ error: 'Verified Asset snapshots are not available until migration 024 is applied.' });
+      }
+      throw error;
+    }
+    res.json({ snapshots: data || [] });
+  } catch (err) {
+    console.error('[verified-asset/snapshots GET]', err.message);
+    res.status(500).json({ error: 'Failed to load Verified Asset snapshots' });
+  }
+});
+
+// Live status for the existing transaction experience. This does not create a
+// snapshot: creation is an explicit, immutable append operation.
+app.get('/api/public/deal-room/:propertyId/verified-asset/readiness', async (req, res) => {
+  try {
+    const context = await getVerifiedAssetSnapshotContext(req.params.propertyId);
+    if (!context) return res.status(404).json({ error: 'room not found' });
+    const { data: latest, error } = await supabase
+      .from('verified_asset_snapshots')
+      .select('id, version, eligibility_status, source_state_at, snapshot_hash, created_at')
+      .eq('property_id', req.params.propertyId)
+      .order('version', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (error && !/relation|schema cache/i.test(error.message || '')) throw error;
+    res.json({
+      eligibility: context.snapshot.digital_asset_readiness.eligible ? 'eligible' : 'ineligible',
+      status: context.snapshot.digital_asset_readiness.status,
+      reasons: {
+        incomplete_required_fields: context.snapshot.digital_asset_readiness.exceptions.incomplete_required_fields,
+        unresolved_conflicts: context.snapshot.digital_asset_readiness.exceptions.unresolved_conflicts,
+        missing_approvals: context.snapshot.digital_asset_readiness.approvals.missing,
+        provenance_gaps: context.snapshot.digital_asset_readiness.provenance.gaps,
+      },
+      latest_snapshot: latest || null,
+      settlement_mode: context.state.room.settlement_mode || null,
+      disclosure: context.snapshot.disclosure,
+    });
+  } catch (err) {
+    console.error('[verified-asset/readiness]', err.message);
+    res.status(500).json({ error: 'Failed to calculate Verified Asset readiness' });
+  }
+});
+
+// Append a new immutable snapshot. Identical canonical state returns the
+// existing version; any changed source state gets a new version.
+app.post('/api/public/deal-room/:propertyId/verified-asset/snapshots', async (req, res) => {
+  const { propertyId } = req.params;
+  const { ownerWriteToken } = req.body || {};
+  const access = await getRoomAccessContext(req, propertyId, ownerWriteToken);
+  if (access.mode !== 'owner') return accessDenied(res, 'Owner access required');
+  try {
+    const context = await getVerifiedAssetSnapshotContext(propertyId);
+    if (!context) return res.status(404).json({ error: 'room not found' });
+    const snapshot = context.snapshot;
+    const { data: existing, error: existingError } = await supabase
+      .from('verified_asset_snapshots')
+      .select('id, version, eligibility_status, source_state_at, snapshot_hash, snapshot, created_by, created_at')
+      .eq('property_id', propertyId)
+      .eq('snapshot_hash', snapshot.snapshot_hash)
+      .maybeSingle();
+    if (existingError && !/relation|schema cache/i.test(existingError.message || '')) throw existingError;
+    if (existing) return res.json({ created: false, snapshot: existing });
+
+    const { data: last, error: lastError } = await supabase
+      .from('verified_asset_snapshots')
+      .select('version')
+      .eq('property_id', propertyId)
+      .order('version', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (lastError && !/relation|schema cache/i.test(lastError.message || '')) throw lastError;
+    const version = Number(last?.version || 0) + 1;
+    const payload = {
+      property_id: propertyId,
+      version,
+      snapshot_hash: snapshot.snapshot_hash,
+      eligibility_status: snapshot.digital_asset_readiness.eligible ? 'eligible' : 'ineligible',
+      source_state_at: snapshot.source_state_at,
+      snapshot,
+      created_by: access.email || context.state.room.customer_email || null,
+    };
+    const { data: created, error: insertError } = await supabase
+      .from('verified_asset_snapshots')
+      .insert(payload)
+      .select('id, version, eligibility_status, source_state_at, snapshot_hash, snapshot, created_by, created_at')
+      .single();
+    if (insertError) {
+      // A concurrent writer may have appended the same immutable state.
+      if (/duplicate key|unique constraint/i.test(insertError.message || '')) {
+        const { data: concurrent } = await supabase
+          .from('verified_asset_snapshots')
+          .select('id, version, eligibility_status, source_state_at, snapshot_hash, snapshot, created_by, created_at')
+          .eq('property_id', propertyId)
+          .eq('snapshot_hash', snapshot.snapshot_hash)
+          .maybeSingle();
+        if (concurrent) return res.json({ created: false, snapshot: concurrent });
+      }
+      throw insertError;
+    }
+    logEvent(propertyId, 'verified_asset_snapshot_created', 'owner', access.email || null,
+      `Verified Asset snapshot v${version} created`,
+      { version, eligibility: payload.eligibility_status, snapshot_hash: snapshot.snapshot_hash });
+    res.status(201).json({ created: true, snapshot: created });
+  } catch (err) {
+    console.error('[verified-asset/snapshots]', err.message);
+    if (/relation|schema cache/i.test(err.message || '')) {
+      return res.status(503).json({ error: 'Verified Asset snapshots are not available until migration 024 is applied.' });
+    }
+    res.status(500).json({ error: 'Failed to create Verified Asset snapshot' });
+  }
+});
+
 app.post('/api/public/deal-room/:propertyId/digital-asset-prep', async (req, res) => {
   const { propertyId } = req.params;
   const { ownerWriteToken } = req.body || {};

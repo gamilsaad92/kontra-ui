@@ -5465,6 +5465,7 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
   const [recordFields, setRecordFields] = useState([]);
   const [recordState, setRecordState]   = useState(null);
   const [readiness, setReadiness]       = useState(null);
+  const [verifiedAssetReadiness, setVerifiedAssetReadiness] = useState(null);
   const [loading, setLoading]           = useState(true);
   const [ownerToken, setOwnerToken]     = useState('');
   const [selectedConflict, setSelectedConflict] = useState(null);
@@ -5519,6 +5520,8 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
           setRecordState(data.transaction_record);
         }
       });
+    get(`/api/public/deal-room/${propertyId}/verified-asset/readiness`, null)
+      .then(apply(setVerifiedAssetReadiness));
     get(`/api/public/deal-room/${propertyId}/checklist`, { items: [] })
       .then(apply(setChecklistItems, checklist => Array.isArray(checklist?.items) ? checklist.items : []));
     get(`/api/public/deal-room/${propertyId}/events`, { events: [] })
@@ -6378,6 +6381,24 @@ function OperationsManagerView({ propertyId, property, pack, role, onTabChange }
             {statusCfg.label}
           </div>
         </div>
+        {verifiedAssetReadiness && (
+          <div className="mt-3 flex items-center gap-2 border-t border-gray-100 pt-3">
+            <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-[10px] font-bold ${
+              verifiedAssetReadiness.eligibility === 'eligible'
+                ? 'bg-emerald-50 text-emerald-700'
+                : 'bg-gray-100 text-gray-600'
+            }`}>
+              {verifiedAssetReadiness.eligibility === 'eligible'
+                ? 'Verified Asset eligible'
+                : 'Digital Asset Readiness in progress'}
+            </span>
+            {verifiedAssetReadiness.latest_snapshot && (
+              <span className="text-[10px] text-gray-400">
+                Snapshot v{verifiedAssetReadiness.latest_snapshot.version}
+              </span>
+            )}
+          </div>
+        )}
         {statusKey === 'not_enough_info' && (
           <p className="text-xs text-gray-400 mt-3 pt-3 border-t border-gray-100">
             Upload documents and invite participants before Kontra can assess transaction risk.
