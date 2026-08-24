@@ -4775,7 +4775,6 @@ function TransactionBrief({
   analyses = [],
   recordFields = [],
   recordState = null,
-  conflicts = [],
   readiness = null,
   stages = [],
   currentStage,
@@ -4820,31 +4819,33 @@ function TransactionBrief({
   const canonicalRecordState = recordState || readiness?.transaction_record || null;
   const recordSchemaKey = canonicalRecordState?.schemaKey
     || getEffectiveRecordSchemaKey(property, packId, pack);
-  const generatedRecordDefinitions = getEffectiveRecordDefinitions(recordSchemaKey, property, recordFields, canonicalRecordState);
-  const requiredRecordFields = canonicalRecordState?.requiredFields?.length
+  const generatedRecordDefinitions = getEffectiveRecordDefinitions(
+    recordSchemaKey,
+    property,
+    canonicalRecordState ? [] : recordFields,
+    canonicalRecordState,
+  );
+  const requiredRecordFields = Array.isArray(canonicalRecordState?.requiredFields)
     ? canonicalRecordState.requiredFields
     : (recordSchemaKey === 'generated_ai'
       ? generatedRecordDefinitions
       : getRequiredRecordFields(recordSchemaKey));
-  const confirmedRecordCount = canonicalRecordState?.confirmedCount ?? requiredRecordFields.filter(field =>
-    getRecordDefinitionState(field, recordFields, canonicalRecordState).status === 'confirmed'
-  ).length;
-  const capturedAwaitingConfirmation = canonicalRecordState?.requiredFields?.length
-    ? canonicalRecordState.requiredFields.filter(field => field.status === 'awaiting')
-    : recordFields.filter(field =>
-      RECORD_AWAITING_STATUSES.has(field.status) && hasMeaningfulRecordValue(field)
-    );
-  const recordConflicts = canonicalRecordState
-    ? canonicalRecordState.fields.filter(field =>
-      field.status === 'conflict' || field.attention === 'source_changed'
+  const confirmedRecordCount = canonicalRecordState
+    ? (canonicalRecordState.confirmedCount || 0)
+    : 0;
+  const capturedAwaitingConfirmation = Array.isArray(canonicalRecordState?.requiredFields)
+    ? canonicalRecordState.requiredFields.filter(field =>
+      field.status === 'awaiting' && String(field.value ?? field.value_text ?? '').trim()
     )
-    : recordFields.filter(field => RECORD_CONFLICT_STATUSES.has(field.status));
-  const allConflicts = conflicts.length > 0 ? conflicts : (canonicalRecordState?.unresolvedConflicts || []);
+    : [];
+  // The Brief must not invent a second conflict projection. The canonical
+  // unresolved list is also the source used by WhatNeedsAttention.
+  const allConflicts = getCanonicalUnresolvedConflicts(canonicalRecordState);
   const recentChanges = getRecentCoordinatorChanges(events, analyses, recordFields);
   const goToRecord = field => {
     onOverviewAction?.({ type: 'record', field });
   };
-  const hasBlockingIssues = recordConflicts.length > 0 || allConflicts.length > 0 || nextMilestoneBlockers.length > 0;
+  const hasBlockingIssues = allConflicts.length > 0 || nextMilestoneBlockers.length > 0;
   const stageRecommendation = getLifecycleAdvanceRecommendation(
     stages,
     currentStageIndex,
@@ -4852,7 +4853,7 @@ function TransactionBrief({
     hasBlockingIssues,
   );
   const openIssueCount = getOpenIssueCount(
-    conflicts,
+    allConflicts,
     nextMilestoneBlockers,
     documentStats.reviewDocuments.length,
   );
@@ -4866,7 +4867,7 @@ function TransactionBrief({
           action: { label: 'Review stage', onClick: () => setStageDecision('review') },
         }]
       : []),
-     ...conflicts.slice(0, 2).map(field => ({
+     ...allConflicts.slice(0, 2).map(field => ({
        key: `conflict-${field.fieldId || field.id || field.key || field.field_key}`,
       tone: 'red',
        text: `Resolve ${field.label || field.display_label || field.key || field.field_key}`,
@@ -4994,17 +4995,17 @@ function TransactionBrief({
         </div>
         <div className="rounded-xl border border-gray-200 bg-white px-4 py-3">
           <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Open Issues</p>
-          <p className={`mt-1 text-lg font-bold ${nextMilestoneBlockers.length > 0 || conflicts.length > 0 ? 'text-red-700' : 'text-gray-900'}`}>
+          <p className={`mt-1 text-lg font-bold ${nextMilestoneBlockers.length > 0 || allConflicts.length > 0 ? 'text-red-700' : 'text-gray-900'}`}>
             {openIssueCount}
           </p>
           <p className="text-[11px] text-gray-500">
             {documentStats.reviewDocuments.length > 0
               ? `${documentStats.reviewDocuments.length} document${documentStats.reviewDocuments.length === 1 ? '' : 's'} need review`
-              : conflicts.length > 0
-              ? `${conflicts.length} conflict${conflicts.length === 1 ? '' : 's'}`
+              : allConflicts.length > 0
+              ? `${allConflicts.length} conflict${allConflicts.length === 1 ? '' : 's'}`
               : 'No conflicts recorded'}
-            {documentStats.reviewDocuments.length > 0 && conflicts.length > 0
-              ? ` · ${conflicts.length} conflict${conflicts.length === 1 ? '' : 's'}`
+            {documentStats.reviewDocuments.length > 0 && allConflicts.length > 0
+              ? ` · ${allConflicts.length} conflict${allConflicts.length === 1 ? '' : 's'}`
               : ''}
             {nextMilestoneBlockers.length > 0
               ? ` · ${nextMilestoneBlockers.length} milestone blocker${nextMilestoneBlockers.length === 1 ? '' : 's'}`
