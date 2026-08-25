@@ -2967,8 +2967,10 @@ function WhatNeedsAttention({
   isCoordinator = false,
   compact = false,
   onOverviewAction,
+  onRefresh,
 }) {
   const [confirming, setConfirming] = useState('');
+  const [confirmError, setConfirmError] = useState('');
   const [showAll, setShowAll] = useState(false);
 
   async function confirmField(field) {
@@ -2978,8 +2980,9 @@ function WhatNeedsAttention({
     const fieldId = field.id || field.fieldId;
     if (!fieldId) return;
     setConfirming(fieldId);
+    setConfirmError('');
     try {
-      await fetch(
+      const response = await fetch(
         `${API_BASE}/api/public/deal-room/${propertyId}/transaction-record/fields/${fieldId}/verify`,
         {
           method: 'POST',
@@ -2987,7 +2990,16 @@ function WhatNeedsAttention({
           body: JSON.stringify({ ownerWriteToken, actorRole: 'coordinator' }),
         },
       );
-    } finally { setConfirming(''); }
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(data.message || data.error || 'The Transaction Record field could not be confirmed.');
+      }
+      await onRefresh?.();
+    } catch (error) {
+      setConfirmError(error.message || 'The Transaction Record field could not be confirmed.');
+    } finally {
+      setConfirming('');
+    }
   }
 
   // The command center derives these actions from the same state rendered in
@@ -3303,6 +3315,11 @@ function WhatNeedsAttention({
             </p>
           </div>
         </div>
+        {confirmError && (
+          <p className="mt-2 rounded-lg bg-red-50 px-3 py-2 text-[11px] font-semibold text-red-700">
+            {confirmError}
+          </p>
+        )}
          {loading ? (
           <div className="mt-3 space-y-2">
             {[1, 2].map(n => <div key={n} className="h-9 animate-pulse rounded-lg bg-gray-50" />)}
@@ -3710,6 +3727,7 @@ function DigitalAssetReadinessSection({
             <div key={cat.key} id={`transaction-record-category-${cat.key}`}>
               <button
                 type="button"
+                aria-expanded={isExpanded}
                 onClick={() => setExpandedCat(isExpanded ? null : cat.key)}
                 className="flex items-center justify-between w-full px-5 py-3 gap-4 text-left hover:bg-gray-50 transition">
                   <div className="min-w-0">
@@ -5815,7 +5833,8 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
         const target = document.getElementById(`transaction-record-category-${category}`);
         if (target) {
           target.scrollIntoView({ behavior: 'smooth', block: 'center' });
-          target.querySelector('button')?.click();
+          const toggle = target.querySelector('button');
+          if (toggle?.getAttribute('aria-expanded') !== 'true') toggle?.click();
           return;
         }
         // Transaction Details Panel hydrates after the Overview action feed.
@@ -5992,6 +6011,7 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
             isCoordinator
             compact
             onOverviewAction={overviewAction}
+            onRefresh={load}
           />
         </div>
 

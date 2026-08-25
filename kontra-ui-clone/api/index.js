@@ -9545,7 +9545,7 @@ app.get('/api/public/deal-room/:propertyId/transaction-record', async (req, res)
     });
   } catch (err) {
     console.error('[transaction-record GET]', err.message);
-    res.json({ fields: [] });
+    res.status(500).json({ error: 'Failed to load Transaction Record' });
   }
 });
 
@@ -9737,7 +9737,8 @@ app.post('/api/public/deal-room/:propertyId/transaction-record/fields/:fieldId/v
     await recordTransactionFieldHistory({
       fieldId, propertyId, eventType: 'confirmed',
       actorEmail: email, actorRole: actorRole || 'coordinator',
-      priorValue: verificationValue, newValue: nextValue,
+      priorValue: existing.value_text || valueForVerification(existing.value_json),
+      newValue: nextValue,
       priorStatus: existing.status, newStatus: 'verified',
     });
     const { error: approvalError } = await supabase.from('transaction_record_approvals').insert({
@@ -9962,11 +9963,11 @@ app.post('/api/public/deal-room/:propertyId/transaction-record/fields', async (r
         if (nextStatus === 'not_applicable') {
           await markDependentTransactionFieldsNotApplicable(propertyId, field_key, access.email || 'coordinator');
         }
-        recalculateTransactionState(propertyId, {
+        await recalculateTransactionState(propertyId, {
           source: 'transaction_record_field_updated',
           actorId: access.actorId,
           actorType: access.actorType,
-        }).catch(e => console.warn('[transaction-state] field update recalculation failed:', e.message));
+        });
       return res.json({ ok: true, action: 'updated', id: existing.id });
     }
     // Insert new
@@ -9997,11 +9998,11 @@ app.post('/api/public/deal-room/:propertyId/transaction-record/fields', async (r
     if (insert.status === 'not_applicable') {
       await markDependentTransactionFieldsNotApplicable(propertyId, field_key, access.email || 'coordinator');
     }
-    recalculateTransactionState(propertyId, {
+    await recalculateTransactionState(propertyId, {
       source: 'transaction_record_field_created',
       actorId: access.actorId,
       actorType: access.actorType,
-    }).catch(e => console.warn('[transaction-state] field create recalculation failed:', e.message));
+    });
     res.json({ ok: true, action: 'created', id: data?.id });
   } catch (err) {
     console.error('[transaction-record POST field]', err.message);

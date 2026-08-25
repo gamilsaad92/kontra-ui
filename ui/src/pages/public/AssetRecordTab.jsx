@@ -251,6 +251,7 @@ function FieldRow({ field, isCoordinator, propertyId, ownerToken, onUpdated, dep
   const [editNotes, setEditNotes] = useState(field.notes || "");
   const [saving,    setSaving]    = useState(false);
   const [verifying, setVerifying] = useState(false);
+  const [error,     setError]     = useState("");
   const [historyOpen, setHistoryOpen] = useState(false);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [history, setHistory] = useState([]);
@@ -277,49 +278,71 @@ function FieldRow({ field, isCoordinator, propertyId, ownerToken, onUpdated, dep
   async function saveField() {
     if (!ownerToken || verifying) return;
     setSaving(true);
+    setError("");
     try {
       const res = await fetch(
         `${API_BASE}/api/public/deal-room/${propertyId}/transaction-record/fields/${field.id}`,
         { method: "PATCH", headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ value_text: editVal, notes: editNotes, status: "needs_review", ownerWriteToken: ownerToken }) }
       );
-      if (res.ok) { onUpdated(); setEditing(false); }
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.message || data.error || "Could not save this field.");
+      onUpdated(); setEditing(false);
+    } catch (err) {
+      setError(err.message || "Could not save this field.");
     } finally { setSaving(false); }
   }
 
   async function verifyField() {
     if (!ownerToken || saving) return;
     setVerifying(true);
+    setError("");
     try {
       const res = await fetch(
         `${API_BASE}/api/public/deal-room/${propertyId}/transaction-record/fields/${field.id}/verify`,
         { method: "POST", headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ ownerWriteToken: ownerToken, actorRole: "Deal Coordinator" }) }
       );
-      if (res.ok) onUpdated();
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.message || data.error || "Could not confirm this field.");
+      onUpdated();
+    } catch (err) {
+      setError(err.message || "Could not confirm this field.");
     } finally { setVerifying(false); }
   }
 
   async function markNA() {
     if (!ownerToken) return;
-    await fetch(
-      `${API_BASE}/api/public/deal-room/${propertyId}/transaction-record/fields/${field.id}`,
-      { method: "PATCH", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: "not_applicable", ownerWriteToken: ownerToken }) }
-    );
-    onUpdated();
+    setError("");
+    try {
+      const res = await fetch(
+        `${API_BASE}/api/public/deal-room/${propertyId}/transaction-record/fields/${field.id}`,
+        { method: "PATCH", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ status: "not_applicable", ownerWriteToken: ownerToken }) }
+      );
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.message || data.error || "Could not mark this field not applicable.");
+      onUpdated();
+    } catch (err) {
+      setError(err.message || "Could not mark this field not applicable.");
+    }
   }
 
   async function clearField() {
     if (!ownerToken || verifying) return;
     setSaving(true);
+    setError("");
     try {
       const res = await fetch(
         `${API_BASE}/api/public/deal-room/${propertyId}/transaction-record/fields/${field.id}`,
         { method: "PATCH", headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ value_text: "", value_json: null, status: "missing", ownerWriteToken: ownerToken }) }
       );
-      if (res.ok) onUpdated();
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.message || data.error || "Could not clear this field.");
+      onUpdated();
+    } catch (err) {
+      setError(err.message || "Could not clear this field.");
     } finally { setSaving(false); }
   }
 
@@ -338,6 +361,7 @@ function FieldRow({ field, isCoordinator, propertyId, ownerToken, onUpdated, dep
 
   return (
     <div className={`border-b border-gray-50 last:border-0 px-5 py-3.5 ${isNA || isInactive ? "opacity-40" : ""}`}>
+      {error && <p className="mb-2 rounded-lg bg-red-50 px-3 py-2 text-[10px] font-semibold text-red-700">{error}</p>}
       {!editing ? (
         <div className="flex items-start gap-3">
           <div className="flex-1 min-w-0">
@@ -468,10 +492,12 @@ function SeededFieldRow({ field, isCoordinator, propertyId, ownerToken, onUpdate
   const [saving,     setSaving]     = useState(false);
   const [naing,      setNAing]      = useState(false);
   const [requestSent, setRequestSent] = useState(false);
+  const [error,      setError]      = useState("");
 
   async function saveManual() {
     if (!ownerToken || !enterVal.trim()) return;
     setSaving(true);
+    setError("");
     try {
       const res = await fetch(
         `${API_BASE}/api/public/deal-room/${propertyId}/transaction-record/fields`,
@@ -485,13 +511,18 @@ function SeededFieldRow({ field, isCoordinator, propertyId, ownerToken, onUpdate
             ownerWriteToken: ownerToken,
           }) }
       );
-      if (res.ok) { onUpdated(); setEntering(false); setEnterVal(""); }
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.message || data.error || "Could not save this field.");
+      onUpdated(); setEntering(false); setEnterVal("");
+    } catch (err) {
+      setError(err.message || "Could not save this field.");
     } finally { setSaving(false); }
   }
 
   async function markNA() {
     if (!ownerToken) return;
     setNAing(true);
+    setError("");
     try {
       const res = await fetch(
         `${API_BASE}/api/public/deal-room/${propertyId}/transaction-record/fields`,
@@ -505,7 +536,11 @@ function SeededFieldRow({ field, isCoordinator, propertyId, ownerToken, onUpdate
             ownerWriteToken: ownerToken,
           }) }
       );
-      if (res.ok) onUpdated();
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.message || data.error || "Could not mark this field not applicable.");
+      onUpdated();
+    } catch (err) {
+      setError(err.message || "Could not mark this field not applicable.");
     } finally { setNAing(false); }
   }
 
@@ -514,6 +549,7 @@ function SeededFieldRow({ field, isCoordinator, propertyId, ownerToken, onUpdate
 
   return (
     <div className={`border-b border-gray-50 last:border-0 px-5 py-3 ${isInactive ? "opacity-40" : ""}`}>
+      {error && <p className="mb-2 rounded-lg bg-red-50 px-3 py-2 text-[10px] font-semibold text-red-700">{error}</p>}
       {!entering ? (
         <div>
           <div className="flex items-start gap-3">

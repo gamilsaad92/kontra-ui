@@ -550,6 +550,7 @@ export default function DocumentChecklistPanel({
   // ── Checklist items (persisted) ──────────────────────────────────────────
   const [items, setItems] = useState(null); // null = not loaded yet
   const [savingChecklist, setSavingChecklist] = useState(false);
+  const [checklistError, setChecklistError] = useState("");
   const saveTimerRef = useRef(null);
 
   // ── Edit / reorder / suggestion drawer state ────────────────────────────
@@ -667,16 +668,22 @@ export default function DocumentChecklistPanel({
     clearTimeout(saveTimerRef.current);
     saveTimerRef.current = setTimeout(async () => {
       setSavingChecklist(true);
+      setChecklistError("");
       try {
         let ownerToken = "";
         try { ownerToken = localStorage.getItem(`kontra_owner_token_${propertyId}`) || ""; } catch { /* storage unavailable */ }
-        await fetch(`${API_BASE}/api/public/deal-room/${propertyId}/checklist`, {
+        const response = await fetch(`${API_BASE}/api/public/deal-room/${propertyId}/checklist`, {
           method: "PUT",
           headers: getRoomAuthHeaders(propertyId, { "Content-Type": "application/json" }),
           body: JSON.stringify({ items: newItems, ownerWriteToken: ownerToken }),
         });
-      } catch { /* silent */ }
-      setSavingChecklist(false);
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(result.message || result.error || "Checklist changes could not be saved.");
+      } catch (error) {
+        setChecklistError(error.message || "Checklist changes could not be saved.");
+      } finally {
+        setSavingChecklist(false);
+      }
     }, 600);
   }, [propertyId, isDemo]);
 
@@ -1219,6 +1226,9 @@ export default function DocumentChecklistPanel({
             )}
             {savingChecklist && isCoordinator && (
               <span className="text-[10px] text-gray-400 font-medium">saving…</span>
+            )}
+            {checklistError && isCoordinator && (
+              <span className="text-[10px] text-red-600 font-semibold">{checklistError}</span>
             )}
           </div>
           <svg className={`w-4 h-4 text-gray-400 transition-transform shrink-0 ${expanded ? "rotate-180" : ""}`}
