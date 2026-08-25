@@ -310,7 +310,11 @@ export default function MyDealRoomsPage() {
     try {
       const saved = sessionStorage.getItem(SESSION_KEY);
       if (saved) {
-        const { rooms: r, email: e, ownerName: n } = JSON.parse(saved);
+        const { rooms: r, email: e, ownerName: n, owner_tokens: ownerTokens = {} } = JSON.parse(saved);
+        Object.entries(ownerTokens).forEach(([propertyId, ownerToken]) => {
+          if (!propertyId || !ownerToken) return;
+          try { localStorage.setItem(`kontra_owner_token_${propertyId}`, ownerToken); } catch {}
+        });
         const packIds = [...new Set((r || []).map(room => room.workflow_pack_id).filter(Boolean))];
         Promise.all(packIds.map(id => ensureWorkflowPackLoaded(id))).finally(() => {
           setRooms(r); setEmail(e); setOwnerName(n || "");
@@ -368,7 +372,12 @@ export default function MyDealRoomsPage() {
       const packIds = [...new Set((data.rooms || []).map(r => r.workflow_pack_id).filter(Boolean))];
       await Promise.all(packIds.map(id => ensureWorkflowPackLoaded(id)));
       setRooms(data.rooms || []); setOwnerName(n);
-      sessionStorage.setItem(SESSION_KEY, JSON.stringify({ rooms: data.rooms || [], email: data.email || email, ownerName: n }));
+      sessionStorage.setItem(SESSION_KEY, JSON.stringify({
+         rooms: data.rooms || [],
+         email: data.email || email,
+         ownerName: n,
+         owner_tokens: data.owner_tokens || {},
+       }));
       setStep("dashboard");
     } catch (err) { setError(err.message); }
     finally { setLoading(false); }

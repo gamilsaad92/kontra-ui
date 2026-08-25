@@ -10146,6 +10146,18 @@ app.get('/api/public/deal-room/:propertyId/verified-asset/readiness', async (req
     res.json({
       eligibility: context.snapshot.digital_asset_readiness.eligible ? 'eligible' : 'ineligible',
       status: context.snapshot.digital_asset_readiness.status,
+      summary: {
+        confirmed_count: context.snapshot.created_from.readiness.confirmed_count || 0,
+        required_count: context.snapshot.created_from.readiness.required_count || 0,
+        unresolved_exception_count: context.snapshot.digital_asset_readiness.exceptions.unresolved_conflicts.length
+          + context.snapshot.digital_asset_readiness.exceptions.incomplete_required_fields.length
+          + context.snapshot.digital_asset_readiness.approvals.missing.length
+          + context.snapshot.digital_asset_readiness.provenance.gaps.length,
+        provenance_intact: context.snapshot.digital_asset_readiness.provenance.intact,
+        provenance_gap_count: context.snapshot.digital_asset_readiness.provenance.gaps.length,
+        approvals_satisfied: context.snapshot.digital_asset_readiness.approvals.satisfied,
+        missing_approval_count: context.snapshot.digital_asset_readiness.approvals.missing.length,
+      },
       reasons: {
         incomplete_required_fields: context.snapshot.digital_asset_readiness.exceptions.incomplete_required_fields,
         unresolved_conflicts: context.snapshot.digital_asset_readiness.exceptions.unresolved_conflicts,

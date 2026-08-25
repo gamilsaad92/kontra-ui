@@ -6415,34 +6415,6 @@ function OperationsManagerView({ propertyId, property, pack, role, onTabChange }
             {statusCfg.label}
           </div>
         </div>
-        {verifiedAssetReadiness && (
-          <div className="mt-3 flex items-center gap-2 border-t border-gray-100 pt-3">
-            <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-[10px] font-bold ${
-              verifiedAssetReadiness.eligibility === 'eligible'
-                ? 'bg-emerald-50 text-emerald-700'
-                : 'bg-gray-100 text-gray-600'
-            }`}>
-              {verifiedAssetReadiness.eligibility === 'eligible'
-                ? 'Verified Asset eligible'
-                : 'Digital Asset Readiness in progress'}
-            </span>
-            {verifiedAssetReadiness.latest_snapshot && (
-              <span className="text-[10px] text-gray-400">
-                Snapshot v{verifiedAssetReadiness.latest_snapshot.version}
-              </span>
-            )}
-            {ownerToken && (
-              <button
-                type="button"
-                onClick={recordReadinessSnapshot}
-                disabled={snapshotAction.loading}
-                className="ml-auto rounded-lg border border-gray-200 px-2.5 py-1 text-[10px] font-bold text-gray-600 transition hover:border-gray-300 hover:bg-gray-50 disabled:cursor-wait disabled:opacity-50"
-              >
-                {snapshotAction.loading ? 'Recording…' : 'Record readiness snapshot'}
-              </button>
-            )}
-          </div>
-        )}
         {snapshotAction.message && (
           <p className={`mt-2 text-[10px] ${snapshotAction.error ? 'text-red-600' : 'text-gray-500'}`}>
             {snapshotAction.message}
@@ -6454,6 +6426,89 @@ function OperationsManagerView({ propertyId, property, pack, role, onTabChange }
           </p>
         )}
       </div>
+
+      {verifiedAssetReadiness && (
+        <section className="rounded-2xl border border-[#d9d2c8] bg-[#fcfbf8] px-5 py-5 shadow-sm">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-[#800020]">
+                Verified Asset foundation
+              </p>
+              <h2 className="mt-1 text-lg font-bold text-gray-900">Digital Asset Readiness</h2>
+              <p className="mt-1 max-w-2xl text-xs leading-relaxed text-gray-500">
+                Provider-neutral preparation status derived from the canonical Transaction Record.
+              </p>
+            </div>
+            <span className={`rounded-full px-3 py-1.5 text-xs font-bold ${
+              verifiedAssetReadiness.eligibility === 'eligible'
+                ? 'bg-emerald-100 text-emerald-800'
+                : 'bg-amber-100 text-amber-800'
+            }`}>
+              {verifiedAssetReadiness.eligibility === 'eligible' ? 'Eligible' : 'In progress'}
+            </span>
+          </div>
+
+          <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="rounded-xl border border-gray-200 bg-white px-3 py-3">
+              <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Canonical fields</p>
+              <p className="mt-1 text-base font-black text-gray-900">
+                {verifiedAssetReadiness.summary?.confirmed_count || 0}
+                <span className="text-xs font-semibold text-gray-400"> / {verifiedAssetReadiness.summary?.required_count || 0} confirmed</span>
+              </p>
+            </div>
+            <div className="rounded-xl border border-gray-200 bg-white px-3 py-3">
+              <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Open exceptions</p>
+              <p className={`mt-1 text-base font-black ${
+                (verifiedAssetReadiness.summary?.unresolved_exception_count || 0) > 0 ? 'text-amber-700' : 'text-emerald-700'
+              }`}>
+                {verifiedAssetReadiness.summary?.unresolved_exception_count || 0}
+                <span className="text-xs font-semibold text-gray-400"> blockers</span>
+              </p>
+            </div>
+            <div className="rounded-xl border border-gray-200 bg-white px-3 py-3">
+              <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Evidence readiness</p>
+              <p className="mt-1 text-xs font-bold text-gray-700">
+                {verifiedAssetReadiness.summary?.provenance_intact ? 'Provenance intact' : `${verifiedAssetReadiness.summary?.provenance_gap_count || 0} provenance gaps`}
+              </p>
+              <p className="mt-1 text-[10px] text-gray-400">
+                {verifiedAssetReadiness.summary?.approvals_satisfied
+                  ? 'Approvals satisfied'
+                  : `${verifiedAssetReadiness.summary?.missing_approval_count || 0} approvals missing`}
+              </p>
+            </div>
+            <div className="rounded-xl border border-gray-200 bg-white px-3 py-3">
+              <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Settlement mode</p>
+              <p className="mt-1 text-xs font-bold capitalize text-gray-700">
+                {verifiedAssetReadiness.settlement_mode || 'Not recorded'}
+              </p>
+              <p className="mt-1 text-[10px] text-gray-400">
+                {verifiedAssetReadiness.latest_snapshot ? `Latest snapshot v${verifiedAssetReadiness.latest_snapshot.version}` : 'No snapshot recorded'}
+              </p>
+            </div>
+          </div>
+
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-gray-200 pt-4">
+            <p className="text-xs text-gray-500">
+              {ownerToken
+                ? 'Owner session active — snapshots can be recorded.'
+                : 'Owner session not available — sign in through My Deal Rooms to record a snapshot.'}
+            </p>
+            <button
+              type="button"
+              onClick={recordReadinessSnapshot}
+              disabled={!ownerToken || snapshotAction.loading}
+              className="rounded-lg border border-[#800020] px-3 py-2 text-xs font-bold text-[#800020] transition hover:bg-[#800020] hover:text-white disabled:cursor-not-allowed disabled:border-gray-300 disabled:text-gray-400 disabled:hover:bg-transparent disabled:hover:text-gray-400"
+            >
+              {snapshotAction.loading ? 'Recording…' : 'Record readiness snapshot'}
+            </button>
+          </div>
+          {snapshotAction.message && (
+            <p className={`mt-3 text-xs ${snapshotAction.error ? 'text-red-600' : 'text-gray-600'}`}>
+              {snapshotAction.message}
+            </p>
+          )}
+        </section>
+      )}
 
       {/* Legacy token economics intentionally stays out of the launch Overview. */}
       {false && isTokenization && (() => {

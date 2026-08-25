@@ -223,6 +223,8 @@ function buildVerifiedAssetSnapshot({
         overall: recordState.requiredCount
           ? Math.round(((recordState.confirmedCount || 0) / recordState.requiredCount) * 100)
           : 0,
+        confirmed_count: recordState.confirmedCount || 0,
+        required_count: recordState.requiredCount || requiredFields.length,
         awaiting_count: recordState.awaitingRequiredCount || 0,
         missing_count: recordState.missingRequiredCount || 0,
         conflict_count: recordState.unresolvedConflictCount || 0,
