@@ -1,5 +1,5 @@
 {
-  "installCommand": "npm install --prefix ui --ignore-scripts --no-audit --no-fund",
+  "installCommand": "npm install --prefix ui --package-lock=false --ignore-scripts --no-audit --no-fund",
   "buildCommand": "npm run validate:requirements && npm run build --prefix ui",
   "outputDirectory": "ui/dist",
   "rewrites": [
