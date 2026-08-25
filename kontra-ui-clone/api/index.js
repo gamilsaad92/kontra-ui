@@ -10109,6 +10109,14 @@ async function getVerifiedAssetSnapshotContext(propertyId) {
   return { state, approvals: approvals || [], snapshot };
 }
 
+function verifiedAssetSnapshotsUnavailable(error) {
+  const message = String(error?.message || '');
+  return error?.code === '42P01'
+    || error?.code === 'PGRST205'
+    || /verified_asset_snapshots.*(?:does not exist|schema cache|not found)/i.test(message)
+    || /(?:relation|table).*verified_asset_snapshots/i.test(message);
+}
+
 app.get('/api/public/deal-room/:propertyId/verified-asset/snapshots', async (req, res) => {
   try {
     const { data, error } = await supabase
@@ -10117,7 +10125,7 @@ app.get('/api/public/deal-room/:propertyId/verified-asset/snapshots', async (req
       .eq('property_id', req.params.propertyId)
       .order('version', { ascending: false });
     if (error) {
-      if (/relation|schema cache/i.test(error.message || '')) {
+      if (verifiedAssetSnapshotsUnavailable(error)) {
         return res.status(503).json({ error: 'Verified Asset snapshots are not available until migration 024 is applied.' });
       }
       throw error;
@@ -10142,7 +10150,12 @@ app.get('/api/public/deal-room/:propertyId/verified-asset/readiness', async (req
       .order('version', { ascending: false })
       .limit(1)
       .maybeSingle();
-    if (error && !/relation|schema cache/i.test(error.message || '')) throw error;
+    if (error) {
+      if (verifiedAssetSnapshotsUnavailable(error)) {
+        return res.status(503).json({ error: 'Verified Asset snapshots are not available until migration 024 is applied.' });
+      }
+      throw error;
+    }
     res.json({
       eligibility: context.snapshot.digital_asset_readiness.eligible ? 'eligible' : 'ineligible',
       status: context.snapshot.digital_asset_readiness.status,
@@ -10191,7 +10204,12 @@ app.post('/api/public/deal-room/:propertyId/verified-asset/snapshots', async (re
       .eq('property_id', propertyId)
       .eq('snapshot_hash', snapshot.snapshot_hash)
       .maybeSingle();
-    if (existingError && !/relation|schema cache/i.test(existingError.message || '')) throw existingError;
+    if (existingError) {
+      if (verifiedAssetSnapshotsUnavailable(existingError)) {
+        return res.status(503).json({ error: 'Verified Asset snapshots are not available until migration 024 is applied.' });
+      }
+      throw existingError;
+    }
     if (existing) return res.json({ created: false, snapshot: existing });
 
     const { data: last, error: lastError } = await supabase
@@ -10201,7 +10219,12 @@ app.post('/api/public/deal-room/:propertyId/verified-asset/snapshots', async (re
       .order('version', { ascending: false })
       .limit(1)
       .maybeSingle();
-    if (lastError && !/relation|schema cache/i.test(lastError.message || '')) throw lastError;
+    if (lastError) {
+      if (verifiedAssetSnapshotsUnavailable(lastError)) {
+        return res.status(503).json({ error: 'Verified Asset snapshots are not available until migration 024 is applied.' });
+      }
+      throw lastError;
+    }
     const version = Number(last?.version || 0) + 1;
     const payload = {
       property_id: propertyId,
@@ -10236,7 +10259,7 @@ app.post('/api/public/deal-room/:propertyId/verified-asset/snapshots', async (re
     res.status(201).json({ created: true, snapshot: created });
   } catch (err) {
     console.error('[verified-asset/snapshots]', err.message);
-    if (/relation|schema cache/i.test(err.message || '')) {
+    if (verifiedAssetSnapshotsUnavailable(err)) {
       return res.status(503).json({ error: 'Verified Asset snapshots are not available until migration 024 is applied.' });
     }
     res.status(500).json({ error: 'Failed to create Verified Asset snapshot' });

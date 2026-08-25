@@ -131,4 +131,25 @@ describe('Verified Asset snapshot foundation', () => {
       digital_asset_readiness: first.digital_asset_readiness,
     })).toEqual(expect.any(String));
   });
+
+  test('keeps an earlier snapshot unchanged when canonical fields later change', () => {
+    const first = build();
+    const archivedFirst = JSON.parse(JSON.stringify(first));
+    const updatedField = {
+      ...state().fields[0],
+      value: 'Updated Asset Name',
+      updatedAt: '2026-08-25T00:00:00.000Z',
+    };
+    const second = build({
+      recordState: state({
+        fields: [updatedField],
+        requiredFields: [updatedField],
+      }),
+    });
+
+    expect(first).toEqual(archivedFirst);
+    expect(first.created_from.transaction_record.fields[0].value).toBe('Example Asset');
+    expect(second.created_from.transaction_record.fields[0].value).toBe('Updated Asset Name');
+    expect(second.snapshot_hash).not.toBe(first.snapshot_hash);
+  });
 });
