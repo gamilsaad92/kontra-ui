@@ -5455,6 +5455,148 @@ function ParticipantOverview({ propertyId, property, pack, role, roleConfig, onT
   );
 }
 
+function VerifiedAssetReadinessCard({
+  verifiedAssetReadiness,
+  ownerToken,
+  snapshotAction,
+  onRecordSnapshot,
+}) {
+  const isUnavailable = !verifiedAssetReadiness;
+  const summary = verifiedAssetReadiness?.summary || {};
+  const reasons = verifiedAssetReadiness?.reasons || {};
+  const eligibility = verifiedAssetReadiness?.eligibility || 'unavailable';
+  const readinessStatus = verifiedAssetReadiness?.status;
+  const incompleteFields = Array.isArray(reasons.incomplete_required_fields)
+    ? reasons.incomplete_required_fields
+    : [];
+  const unresolvedConflicts = Array.isArray(reasons.unresolved_conflicts)
+    ? reasons.unresolved_conflicts
+    : [];
+  const blockerLabels = [
+    ...incompleteFields.map(item => item?.label || item?.field_key),
+    ...unresolvedConflicts.map(item => item?.label || item?.field_key),
+  ].filter(Boolean);
+  const statusLabel = isUnavailable
+    ? 'Loading or unavailable'
+    : (readinessStatus || eligibility || 'in progress').replace(/_/g, ' ');
+  const eligibilityLabel = eligibility === 'eligible'
+    ? 'Eligible'
+    : eligibility === 'unavailable'
+      ? 'Unavailable'
+      : 'In progress';
+  const action = snapshotAction || { loading: false, message: '', error: false };
+
+  return (
+    <section className="rounded-2xl border border-[#d9d2c8] bg-[#fcfbf8] px-5 py-5 shadow-sm">
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-[#800020]">
+            Verified Asset foundation
+          </p>
+          <h2 className="mt-1 text-lg font-bold text-gray-900">Digital Asset Readiness</h2>
+          <p className="mt-1 max-w-2xl text-xs leading-relaxed text-gray-500">
+            Provider-neutral preparation status derived from the canonical Transaction Record.
+          </p>
+          <p className="mt-2 text-[11px] font-semibold capitalize text-gray-700">
+            Status: {statusLabel}
+          </p>
+        </div>
+        <span className={`rounded-full px-3 py-1.5 text-xs font-bold ${
+          eligibility === 'eligible'
+            ? 'bg-emerald-100 text-emerald-800'
+            : eligibility === 'unavailable'
+              ? 'bg-gray-200 text-gray-700'
+              : 'bg-amber-100 text-amber-800'
+        }`}>
+          {eligibilityLabel}
+        </span>
+      </div>
+
+      <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="rounded-xl border border-gray-200 bg-white px-3 py-3">
+          <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Canonical fields</p>
+          <p className="mt-1 text-base font-black text-gray-900">
+            {summary.confirmed_count || 0}
+            <span className="text-xs font-semibold text-gray-400"> / {summary.required_count || 0} confirmed</span>
+          </p>
+        </div>
+        <div className="rounded-xl border border-gray-200 bg-white px-3 py-3">
+          <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Open exceptions</p>
+          <p className={`mt-1 text-base font-black ${
+            (summary.unresolved_exception_count || 0) > 0 ? 'text-amber-700' : 'text-emerald-700'
+          }`}>
+            {summary.unresolved_exception_count || 0}
+            <span className="text-xs font-semibold text-gray-400"> blockers</span>
+          </p>
+        </div>
+        <div className="rounded-xl border border-gray-200 bg-white px-3 py-3">
+          <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Evidence readiness</p>
+          <p className="mt-1 text-xs font-bold text-gray-700">
+            {summary.provenance_intact ? 'Provenance intact' : `${summary.provenance_gap_count || 0} provenance gaps`}
+          </p>
+          <p className="mt-1 text-[10px] text-gray-400">
+            {summary.approvals_satisfied
+              ? 'Approvals satisfied'
+              : `${summary.missing_approval_count || 0} approvals missing`}
+          </p>
+        </div>
+        <div className="rounded-xl border border-gray-200 bg-white px-3 py-3">
+          <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Settlement mode</p>
+          <p className="mt-1 text-xs font-bold capitalize text-gray-700">
+            {verifiedAssetReadiness?.settlement_mode || 'Not recorded'}
+          </p>
+          <p className="mt-1 text-[10px] text-gray-400">
+            {verifiedAssetReadiness?.latest_snapshot
+              ? `Latest snapshot v${verifiedAssetReadiness.latest_snapshot.version}`
+              : 'No snapshot recorded'}
+          </p>
+        </div>
+      </div>
+
+      {isUnavailable ? (
+        <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-3 py-3 text-xs text-amber-800">
+          Readiness details are loading or currently unavailable. This card stays visible while Kontra reconnects to the readiness service.
+        </div>
+      ) : blockerLabels.length > 0 ? (
+        <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-3 py-3">
+          <p className="text-[10px] font-bold uppercase tracking-wider text-amber-800">
+            Current blockers and exceptions
+          </p>
+          <p className="mt-1 text-xs text-amber-900">
+            {blockerLabels.slice(0, 3).join(' · ')}
+            {blockerLabels.length > 3 ? ` · +${blockerLabels.length - 3} more` : ''}
+          </p>
+        </div>
+      ) : (
+        <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-3 text-xs text-emerald-800">
+          No canonical blockers or unresolved exceptions are currently reported.
+        </div>
+      )}
+
+      <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-gray-200 pt-4">
+        <p className="text-xs text-gray-500">
+          {ownerToken
+            ? 'Owner session active — snapshots can be recorded.'
+            : 'Owner session not available — sign in through My Deal Rooms to record a snapshot.'}
+        </p>
+        <button
+          type="button"
+          onClick={onRecordSnapshot}
+          disabled={!ownerToken || action.loading}
+          className="rounded-lg border border-[#800020] px-3 py-2 text-xs font-bold text-[#800020] transition hover:bg-[#800020] hover:text-white disabled:cursor-not-allowed disabled:border-gray-300 disabled:text-gray-400 disabled:hover:bg-transparent disabled:hover:text-gray-400"
+        >
+          {action.loading ? 'Recording…' : 'Record readiness snapshot'}
+        </button>
+      </div>
+      {action.message && (
+        <p className={`mt-3 text-xs ${action.error ? 'text-red-600' : 'text-gray-600'}`}>
+          {action.message}
+        </p>
+      )}
+    </section>
+  );
+}
+
 function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, refreshKey }) {
   const [briefing, setBriefing]         = useState(null);
   const [coordination, setCoordination] = useState(null);
@@ -5641,8 +5783,8 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
     return 'transaction';
   })();
 
-  // Digital Asset Readiness sub-section only shown when tokenization/DA is
-  // explicitly enabled for this workspace.
+  // This only changes the embedded Transaction Record section's optional
+  // preparation guidance. The dedicated readiness card is always visible.
   const digitalAssetEnabled = isDigitalAssetLayerEnabled(property, pack);
 
   const canonicalRecordState = recordState || readiness?.transaction_record || null;
@@ -5899,6 +6041,12 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
           />
         </div>
       </section>
+      <VerifiedAssetReadinessCard
+        verifiedAssetReadiness={verifiedAssetReadiness}
+        ownerToken={ownerToken}
+        snapshotAction={snapshotAction}
+        onRecordSnapshot={recordReadinessSnapshot}
+      />
       <TransactionConflictResolver
         propertyId={propertyId}
         conflict={selectedConflict}
@@ -6261,21 +6409,6 @@ function OperationsManagerView({ propertyId, property, pack, role, onTabChange }
   // the coordinator home into a tokenization/settings workflow.
   const isTokenization = false;
   const metaValues = property?.metadata_values || {};
-  const readinessDisplay = verifiedAssetReadiness || {
-    eligibility: 'unavailable',
-    summary: {
-      confirmed_count: 0,
-      required_count: 0,
-      unresolved_exception_count: 0,
-      provenance_intact: false,
-      provenance_gap_count: 0,
-      approvals_satisfied: false,
-      missing_approval_count: 0,
-    },
-    settlement_mode: null,
-    latest_snapshot: null,
-  };
-
   // KYC progress — read from briefing snapshot if available
   const kycMetrics   = briefing?.snapshot?.kyc_aml?.metrics || briefing?.bySection?.kyc_aml?.metrics || {};
   const kycVerified  = kycMetrics.investors_verified  != null ? Number(kycMetrics.investors_verified)  : null;
@@ -6429,109 +6562,12 @@ function OperationsManagerView({ propertyId, property, pack, role, onTabChange }
             {statusCfg.label}
           </div>
         </div>
-        {snapshotAction.message && (
-          <p className={`mt-2 text-[10px] ${snapshotAction.error ? 'text-red-600' : 'text-gray-500'}`}>
-            {snapshotAction.message}
-          </p>
-        )}
         {statusKey === 'not_enough_info' && (
           <p className="text-xs text-gray-400 mt-3 pt-3 border-t border-gray-100">
             Upload documents and invite participants before Kontra can assess transaction risk.
           </p>
         )}
       </div>
-
-      {(
-        <section className="rounded-2xl border border-[#d9d2c8] bg-[#fcfbf8] px-5 py-5 shadow-sm">
-          <div className="flex flex-wrap items-start justify-between gap-4">
-            <div>
-              <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-[#800020]">
-                Verified Asset foundation
-              </p>
-              <h2 className="mt-1 text-lg font-bold text-gray-900">Digital Asset Readiness</h2>
-              <p className="mt-1 max-w-2xl text-xs leading-relaxed text-gray-500">
-                Provider-neutral preparation status derived from the canonical Transaction Record.
-              </p>
-            </div>
-            <span className={`rounded-full px-3 py-1.5 text-xs font-bold ${
-              readinessDisplay.eligibility === 'eligible'
-                ? 'bg-emerald-100 text-emerald-800'
-                : 'bg-amber-100 text-amber-800'
-            }`}>
-              {readinessDisplay.eligibility === 'eligible'
-                ? 'Eligible'
-                : readinessDisplay.eligibility === 'unavailable'
-                  ? 'Unavailable'
-                  : 'In progress'}
-            </span>
-          </div>
-
-          <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-            <div className="rounded-xl border border-gray-200 bg-white px-3 py-3">
-              <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Canonical fields</p>
-              <p className="mt-1 text-base font-black text-gray-900">
-                {readinessDisplay.summary?.confirmed_count || 0}
-                <span className="text-xs font-semibold text-gray-400"> / {readinessDisplay.summary?.required_count || 0} confirmed</span>
-              </p>
-            </div>
-            <div className="rounded-xl border border-gray-200 bg-white px-3 py-3">
-              <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Open exceptions</p>
-              <p className={`mt-1 text-base font-black ${
-                (readinessDisplay.summary?.unresolved_exception_count || 0) > 0 ? 'text-amber-700' : 'text-emerald-700'
-              }`}>
-                {readinessDisplay.summary?.unresolved_exception_count || 0}
-                <span className="text-xs font-semibold text-gray-400"> blockers</span>
-              </p>
-            </div>
-            <div className="rounded-xl border border-gray-200 bg-white px-3 py-3">
-              <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Evidence readiness</p>
-              <p className="mt-1 text-xs font-bold text-gray-700">
-                {readinessDisplay.summary?.provenance_intact ? 'Provenance intact' : `${readinessDisplay.summary?.provenance_gap_count || 0} provenance gaps`}
-              </p>
-              <p className="mt-1 text-[10px] text-gray-400">
-                {readinessDisplay.summary?.approvals_satisfied
-                  ? 'Approvals satisfied'
-                  : `${readinessDisplay.summary?.missing_approval_count || 0} approvals missing`}
-              </p>
-            </div>
-            <div className="rounded-xl border border-gray-200 bg-white px-3 py-3">
-              <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Settlement mode</p>
-              <p className="mt-1 text-xs font-bold capitalize text-gray-700">
-                {readinessDisplay.settlement_mode || 'Not recorded'}
-              </p>
-              <p className="mt-1 text-[10px] text-gray-400">
-                {readinessDisplay.latest_snapshot ? `Latest snapshot v${readinessDisplay.latest_snapshot.version}` : 'No snapshot recorded'}
-              </p>
-            </div>
-          </div>
-
-          <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-gray-200 pt-4">
-            <p className="text-xs text-gray-500">
-              {ownerToken
-                ? 'Owner session active — snapshots can be recorded.'
-                : 'Owner session not available — sign in through My Deal Rooms to record a snapshot.'}
-            </p>
-            <button
-              type="button"
-              onClick={recordReadinessSnapshot}
-              disabled={!ownerToken || snapshotAction.loading}
-              className="rounded-lg border border-[#800020] px-3 py-2 text-xs font-bold text-[#800020] transition hover:bg-[#800020] hover:text-white disabled:cursor-not-allowed disabled:border-gray-300 disabled:text-gray-400 disabled:hover:bg-transparent disabled:hover:text-gray-400"
-            >
-              {snapshotAction.loading ? 'Recording…' : 'Record readiness snapshot'}
-            </button>
-          </div>
-          {snapshotAction.message && (
-            <p className={`mt-3 text-xs ${snapshotAction.error ? 'text-red-600' : 'text-gray-600'}`}>
-              {snapshotAction.message}
-            </p>
-          )}
-          {!verifiedAssetReadiness && (
-            <p className="mt-3 text-xs text-amber-700">
-              Readiness details are not available yet. The card remains visible while the room reconnects to the readiness service.
-            </p>
-          )}
-        </section>
-      )}
 
       {/* Legacy token economics intentionally stays out of the launch Overview. */}
       {false && isTokenization && (() => {
