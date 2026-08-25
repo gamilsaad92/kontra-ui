@@ -3485,6 +3485,9 @@ function DigitalAssetReadinessSection({
 }) {
   const [expandedCat, setExpandedCat] = useState(null);
   const [confirmingField, setConfirmingField] = useState('');
+  const [editingMissing, setEditingMissing] = useState('');
+  const [missingValue, setMissingValue] = useState('');
+  const [mutationError, setMutationError] = useState('');
 
   // Keep the existing five visual categories, but derive their fields from the
   // same pack schema and required canonical state used by the Overview and the
@@ -3643,12 +3646,13 @@ function DigitalAssetReadinessSection({
   const allReady     = tokenizationInputsComplete;
 
   async function confirmRecordField(field) {
-    const fieldId = field?.fieldId;
+    const fieldId = field?.fieldId || field?.id;
     if (!fieldId || confirmingField) return;
     let ownerWriteToken = '';
     try { ownerWriteToken = localStorage.getItem(`kontra_owner_token_${propertyId}`) || ''; } catch {}
     if (!ownerWriteToken) return;
     setConfirmingField(fieldId);
+    setMutationError('');
     try {
       const response = await fetch(
         `${API_BASE}/api/public/deal-room/${propertyId}/transaction-record/fields/${fieldId}/verify`,
@@ -3660,6 +3664,61 @@ function DigitalAssetReadinessSection({
       );
       if (!response.ok) throw new Error('The Transaction Record field could not be confirmed.');
       await onRecordUpdated?.();
+    } catch (error) {
+      setMutationError(error.message || 'The Transaction Record field could not be confirmed.');
+    } finally {
+      setConfirmingField('');
+    }
+  }
+
+  async function saveMissingField(field) {
+    const value = missingValue.trim();
+    if (!value) return;
+    let ownerWriteToken = '';
+    try { ownerWriteToken = localStorage.getItem(`kontra_owner_token_${propertyId}`) || ''; } catch {}
+    if (!ownerWriteToken) {
+      setMutationError('Owner session required to add a Transaction Record value.');
+      return;
+    }
+    setMutationError('');
+    setConfirmingField(field.key);
+    try {
+      const response = await fetch(
+        `${API_BASE}/api/public/deal-room/${propertyId}/transaction-record/fields`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            field_key: field.canonicalKey || field.key,
+            display_label: field.label,
+            field_category: field.category,
+            value_text: value,
+            status: 'needs_review',
+            ownerWriteToken,
+          }),
+        },
+      );
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !data.id) {
+        throw new Error(data.message || data.error || 'The Transaction Record value could not be saved.');
+      }
+      const verifyResponse = await fetch(
+        `${API_BASE}/api/public/deal-room/${propertyId}/transaction-record/fields/${data.id}/verify`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ownerWriteToken, actorRole: 'coordinator' }),
+        },
+      );
+      const verifyData = await verifyResponse.json().catch(() => ({}));
+      if (!verifyResponse.ok) {
+        throw new Error(verifyData.message || verifyData.error || 'The new Transaction Record value could not be confirmed.');
+      }
+      setEditingMissing('');
+      setMissingValue('');
+      await onRecordUpdated?.();
+    } catch (error) {
+      setMutationError(error.message || 'The Transaction Record value could not be saved.');
     } finally {
       setConfirmingField('');
     }
@@ -3778,18 +3837,18 @@ function DigitalAssetReadinessSection({
                        ) : (
                          <ul className="space-y-1">
                            {cat.awaitingDefs.slice(0, 4).map(d => (
-                             <li key={d.key} className="flex items-start gap-1.5 text-xs text-blue-700">
+                              <li key={d.key} id={`transaction-record-field-${encodeURIComponent(d.key)}`} className="flex items-start gap-1.5 text-xs text-blue-700">
                                <span className="mt-0.5 text-blue-500 shrink-0">●</span>
                                <span className="flex min-w-0 flex-1 items-center justify-between gap-2">
                                  <span>{d.label}{d.state?.value ? <span className="text-gray-400"> — {d.state.value}</span> : ''}</span>
-                                 {d.state?.fieldId && d.state?.value && (
+                                  {(d.state?.fieldId || d.state?.field?.id) && d.state?.value && (
                                    <button
                                      type="button"
                                      onClick={() => confirmRecordField(d.state)}
-                                     disabled={confirmingField === d.state.fieldId}
+                                      disabled={confirmingField === (d.state.fieldId || d.state.field?.id)}
                                      className="shrink-0 rounded-lg bg-[#800020] px-2 py-1 text-[10px] font-bold text-white disabled:opacity-50"
                                    >
-                                     {confirmingField === d.state.fieldId ? 'Confirming…' : 'Confirm'}
+                                      {confirmingField === (d.state.fieldId || d.state.field?.id) ? 'Confirming…' : 'Confirm'}
                                    </button>
                                  )}
                                </span>
@@ -3807,12 +3866,39 @@ function DigitalAssetReadinessSection({
                       {cat.missingDefs.length === 0 ? (
                         <p className="text-xs text-emerald-600 font-medium">All key fields present.</p>
                       ) : (
-                        <ul className="space-y-1">
+                           <ul className="space-y-1">
                           {cat.missingDefs.slice(0, 4).map(d => (
-                            <li key={d.key} className="flex items-start gap-1.5 text-xs text-gray-500">
+                              <li key={d.key} id={`transaction-record-field-${encodeURIComponent(d.key)}`} className="flex items-start gap-1.5 text-xs text-gray-500">
                               <span className="mt-0.5 text-gray-300 shrink-0">○</span>
                               <span className="flex min-w-0 flex-1 items-center justify-between gap-2">
                                 <span>{d.label}{d.state?.value ? <span className="text-gray-400"> — {d.state.value}</span> : ''}</span>
+                                   {editingMissing === d.key ? (
+                                     <span className="flex shrink-0 items-center gap-1">
+                                       <input
+                                         value={missingValue}
+                                         onChange={event => setMissingValue(event.target.value)}
+                                         placeholder="Enter value"
+                                         aria-label={`Enter ${d.label}`}
+                                         className="w-28 rounded border border-gray-200 bg-white px-2 py-1 text-[10px] text-gray-700"
+                                       />
+                                       <button
+                                         type="button"
+                                         onClick={() => saveMissingField(d)}
+                                         disabled={!missingValue.trim() || confirmingField === d.key}
+                                         className="rounded bg-[#800020] px-2 py-1 text-[10px] font-bold text-white disabled:opacity-50"
+                                       >
+                                         {confirmingField === d.key ? 'Saving…' : 'Save & confirm'}
+                                       </button>
+                                     </span>
+                                   ) : (
+                                     <button
+                                       type="button"
+                                       onClick={() => { setEditingMissing(d.key); setMissingValue(''); setMutationError(''); }}
+                                       className="shrink-0 rounded-lg border border-gray-200 bg-white px-2 py-1 text-[10px] font-bold text-gray-600 hover:bg-gray-50"
+                                     >
+                                       Add value
+                                     </button>
+                                   )}
                               </span>
                             </li>
                           ))}
@@ -3840,6 +3926,11 @@ function DigitalAssetReadinessSection({
           );
         })}
       </div>
+      {mutationError && (
+        <p className="border-t border-red-100 bg-red-50 px-5 py-2.5 text-[11px] font-semibold text-red-700">
+          {mutationError}
+        </p>
+      )}
 
       {/* Footer — DA prep available (only when tokenization/DA is explicitly enabled) */}
       {digitalAssetEnabled && allReady ? (
@@ -5829,12 +5920,17 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
     if (action.type === 'record') {
       onTabChange?.('overview');
       const category = getTransactionRecordCategory(action.field);
+      const fieldKey = action.field?.key || action.field?.field_key || action.field?.canonicalKey || '';
+      const fieldTargetId = `transaction-record-field-${encodeURIComponent(fieldKey)}`;
       const revealRecordCategory = (attempt = 0) => {
         const target = document.getElementById(`transaction-record-category-${category}`);
         if (target) {
-          target.scrollIntoView({ behavior: 'smooth', block: 'center' });
           const toggle = target.querySelector('button');
           if (toggle?.getAttribute('aria-expanded') !== 'true') toggle?.click();
+          const fieldTarget = document.getElementById(fieldTargetId);
+          if (fieldTarget) fieldTarget.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          else if (attempt < 24) window.setTimeout(() => revealRecordCategory(attempt + 1), 50);
+          else target.scrollIntoView({ behavior: 'smooth', block: 'center' });
           return;
         }
         // Transaction Details Panel hydrates after the Overview action feed.
