@@ -3493,13 +3493,22 @@ function DigitalAssetReadinessSection({
   const [mutationError, setMutationError] = useState('');
 
   useEffect(() => {
-    const key = focusRequest?.key;
-    if (!key) return;
+    const requestedKeys = [
+      focusRequest?.key,
+      focusRequest?.fieldKey,
+      focusRequest?.field_key,
+      focusRequest?.canonicalKey,
+      focusRequest?.persistedKey,
+    ].filter(Boolean);
+    if (requestedKeys.length === 0) return;
+    const key = requestedKeys[0];
     const category = getTransactionRecordCategory({ field_key: key });
     setExpandedCat(category);
     window.requestAnimationFrame(() => {
-      document.getElementById(`transaction-record-field-${encodeURIComponent(key)}`)
-        ?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      const target = requestedKeys
+        .map(candidate => document.getElementById(`transaction-record-field-${encodeURIComponent(candidate)}`))
+        .find(Boolean);
+      target?.scrollIntoView({ behavior: 'smooth', block: 'center' });
     });
   }, [focusRequest]);
 
@@ -4435,6 +4444,7 @@ function getRecordDefinitionState(definition, recordFields = [], recordState = n
     return {
       definition,
       field: authoritativeField,
+      fieldId: authoritativeField.fieldId || authoritativeField.id || null,
       value: authoritativeField.value || authoritativeField.value_text || '',
       status,
         attention: authoritativeField.attention || null,
@@ -4460,6 +4470,7 @@ function getRecordDefinitionState(definition, recordFields = [], recordState = n
   return {
     definition,
     field: selected,
+    fieldId: selected?.fieldId || selected?.id || null,
     value: selected?.value_text || '',
     status: conflict ? 'conflict' : confirmed ? 'confirmed' : awaiting ? 'awaiting'
       : selected && hasMeaningfulRecordValue(selected) ? 'awaiting' : 'missing',
