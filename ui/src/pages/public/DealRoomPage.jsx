@@ -3283,7 +3283,22 @@ function WhatNeedsAttention({
   // displayed action must lead somewhere useful. Do not create a second task
   // system here — these are only routing affordances for the existing items.
   function goToRecord(field) {
-    onOverviewAction?.({ type: 'record', field });
+    const fieldKey = field?.key || field?.field_key || field?.canonicalKey || field?.persistedKey || field?.definitionKey || '';
+    const keys = [
+      fieldKey,
+      field?.key,
+      field?.field_key,
+      field?.canonicalKey,
+      field?.persistedKey,
+      field?.definitionKey,
+    ].filter(Boolean);
+    onOverviewAction?.({
+      type: 'record',
+      field: { ...field, key: fieldKey, field_key: field?.field_key || fieldKey },
+      keys: [...new Set(keys)],
+      autoEdit: ['missing', 'not_applicable'].includes(String(field?.status || '').toLowerCase())
+        || !String(field?.value ?? field?.value_text ?? '').trim(),
+    });
   }
 
   function routeForText(text) {
@@ -3513,9 +3528,11 @@ function DigitalAssetReadinessSection({
   const [editingField, setEditingField] = useState('');
   const [editValue, setEditValue] = useState('');
   const [mutationError, setMutationError] = useState('');
+  const [focusedFieldKey, setFocusedFieldKey] = useState('');
 
   useEffect(() => {
     const requestedKeys = [
+      ...(Array.isArray(focusRequest?.keys) ? focusRequest.keys : []),
       focusRequest?.key,
       focusRequest?.fieldKey,
       focusRequest?.field_key,
@@ -3526,6 +3543,13 @@ function DigitalAssetReadinessSection({
     const key = requestedKeys[0];
     const category = getTransactionRecordCategory({ field_key: key });
     setExpandedCat(category);
+    setFocusedFieldKey(key);
+    const focusTimer = window.setTimeout(() => setFocusedFieldKey(''), 2400);
+    if (focusRequest?.autoEdit) {
+      setEditingMissing(key);
+      setMissingValue('');
+      setMutationError('');
+    }
     let cancelled = false;
     const focusTarget = (attempt = 0) => {
       if (cancelled) return;
@@ -3541,6 +3565,7 @@ function DigitalAssetReadinessSection({
     window.requestAnimationFrame(() => focusTarget());
     return () => {
       cancelled = true;
+      window.clearTimeout(focusTimer);
     };
   }, [focusRequest]);
 
@@ -3717,7 +3742,10 @@ function DigitalAssetReadinessSection({
           body: JSON.stringify({ ownerWriteToken, actorRole: 'coordinator' }),
         },
       );
-      if (!response.ok) throw new Error('The Transaction Record field could not be confirmed.');
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(data.message || data.error || 'The Transaction Record field could not be confirmed.');
+      }
       await onRecordUpdated?.();
     } catch (error) {
       setMutationError(error.message || 'The Transaction Record field could not be confirmed.');
@@ -3927,7 +3955,7 @@ function DigitalAssetReadinessSection({
                        ) : (
                          <ul className="space-y-1">
                            {cat.awaitingDefs.slice(0, 4).map(d => (
-                              <li key={d.key} id={`transaction-record-field-${encodeURIComponent(d.key)}`} className="flex items-start gap-1.5 text-xs text-blue-700">
+                              <li key={d.key} id={`transaction-record-field-${encodeURIComponent(d.key)}`} className={`flex items-start gap-1.5 rounded-lg px-1 text-xs text-blue-700 transition-shadow ${focusedFieldKey === d.key ? 'bg-blue-50 ring-2 ring-blue-300 ring-offset-1' : ''}`}>
                                <span className="mt-0.5 text-blue-500 shrink-0">●</span>
                                <span className="flex min-w-0 flex-1 items-center justify-between gap-2">
                                  <span>{d.label}{d.state?.value ? <span className="text-gray-400"> — {d.state.value}</span> : ''}</span>
@@ -3978,7 +4006,7 @@ function DigitalAssetReadinessSection({
                       ) : (
                            <ul className="space-y-1">
                           {cat.missingDefs.slice(0, 4).map(d => (
-                              <li key={d.key} id={`transaction-record-field-${encodeURIComponent(d.key)}`} className="flex items-start gap-1.5 text-xs text-gray-500">
+                              <li key={d.key} id={`transaction-record-field-${encodeURIComponent(d.key)}`} className={`flex items-start gap-1.5 rounded-lg px-1 text-xs text-gray-500 transition-shadow ${focusedFieldKey === d.key ? 'bg-amber-50 ring-2 ring-amber-300 ring-offset-1' : ''}`}>
                               <span className="mt-0.5 text-gray-300 shrink-0">○</span>
                               <span className="flex min-w-0 flex-1 items-center justify-between gap-2">
                                 <span>{d.label}{d.state?.value ? <span className="text-gray-400"> — {d.state.value}</span> : ''}</span>
@@ -6032,16 +6060,31 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
     }
     if (action.type === 'record') {
       onTabChange?.('overview');
-      const fieldKey = action.field?.key || action.field?.field_key || action.field?.canonicalKey || '';
-      setRecordFocus({ key: fieldKey, nonce: Date.now() });
-      const category = getTransactionRecordCategory(action.field);
-      const fieldTargetId = `transaction-record-field-${encodeURIComponent(fieldKey)}`;
+      const requestedKeys = [
+        ...(Array.isArray(action.keys) ? action.keys : []),
+        action.field?.key,
+        action.field?.field_key,
+        action.field?.canonicalKey,
+        action.field?.persistedKey,
+        action.field?.definitionKey,
+      ].filter(Boolean);
+      const keys = [...new Set(requestedKeys)];
+      const fieldKey = keys[0] || '';
+      setRecordFocus({
+        key: fieldKey,
+        keys,
+        autoEdit: Boolean(action.autoEdit),
+        nonce: Date.now(),
+      });
+      const category = getTransactionRecordCategory({ ...action.field, field_key: fieldKey });
       const revealRecordCategory = (attempt = 0) => {
         const target = document.getElementById(`transaction-record-category-${category}`);
         if (target) {
           const toggle = target.querySelector('button');
           if (toggle?.getAttribute('aria-expanded') !== 'true') toggle?.click();
-          const fieldTarget = document.getElementById(fieldTargetId);
+          const fieldTarget = keys
+            .map(key => document.getElementById(`transaction-record-field-${encodeURIComponent(key)}`))
+            .find(Boolean);
           if (fieldTarget) fieldTarget.scrollIntoView({ behavior: 'smooth', block: 'center' });
           else if (attempt < 24) window.setTimeout(() => revealRecordCategory(attempt + 1), 50);
           else target.scrollIntoView({ behavior: 'smooth', block: 'center' });
