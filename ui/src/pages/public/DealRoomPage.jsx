@@ -3504,12 +3504,22 @@ function DigitalAssetReadinessSection({
     const key = requestedKeys[0];
     const category = getTransactionRecordCategory({ field_key: key });
     setExpandedCat(category);
-    window.requestAnimationFrame(() => {
+    let cancelled = false;
+    const focusTarget = (attempt = 0) => {
+      if (cancelled) return;
       const target = requestedKeys
         .map(candidate => document.getElementById(`transaction-record-field-${encodeURIComponent(candidate)}`))
         .find(Boolean);
-      target?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    });
+      if (target) {
+        target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      } else if (attempt < 20) {
+        window.setTimeout(() => focusTarget(attempt + 1), 50);
+      }
+    };
+    window.requestAnimationFrame(() => focusTarget());
+    return () => {
+      cancelled = true;
+    };
   }, [focusRequest]);
 
   // Keep the existing five visual categories, but derive their fields from the
@@ -3710,7 +3720,7 @@ function DigitalAssetReadinessSection({
         `${API_BASE}/api/public/deal-room/${propertyId}/transaction-record/fields`,
         {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: getRoomAuthHeaders(propertyId, { 'Content-Type': 'application/json' }),
           body: JSON.stringify({
             field_key: field.canonicalKey || field.key,
             display_label: field.label,
@@ -3729,7 +3739,7 @@ function DigitalAssetReadinessSection({
         `${API_BASE}/api/public/deal-room/${propertyId}/transaction-record/fields/${data.id}/verify`,
         {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: getRoomAuthHeaders(propertyId, { 'Content-Type': 'application/json' }),
           body: JSON.stringify({ ownerWriteToken, actorRole: 'coordinator' }),
         },
       );
