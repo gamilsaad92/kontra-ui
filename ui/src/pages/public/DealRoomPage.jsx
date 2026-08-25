@@ -6261,6 +6261,20 @@ function OperationsManagerView({ propertyId, property, pack, role, onTabChange }
   // the coordinator home into a tokenization/settings workflow.
   const isTokenization = false;
   const metaValues = property?.metadata_values || {};
+  const readinessDisplay = verifiedAssetReadiness || {
+    eligibility: 'unavailable',
+    summary: {
+      confirmed_count: 0,
+      required_count: 0,
+      unresolved_exception_count: 0,
+      provenance_intact: false,
+      provenance_gap_count: 0,
+      approvals_satisfied: false,
+      missing_approval_count: 0,
+    },
+    settlement_mode: null,
+    latest_snapshot: null,
+  };
 
   // KYC progress — read from briefing snapshot if available
   const kycMetrics   = briefing?.snapshot?.kyc_aml?.metrics || briefing?.bySection?.kyc_aml?.metrics || {};
@@ -6427,7 +6441,7 @@ function OperationsManagerView({ propertyId, property, pack, role, onTabChange }
         )}
       </div>
 
-      {verifiedAssetReadiness && (
+      {(
         <section className="rounded-2xl border border-[#d9d2c8] bg-[#fcfbf8] px-5 py-5 shadow-sm">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
@@ -6440,11 +6454,15 @@ function OperationsManagerView({ propertyId, property, pack, role, onTabChange }
               </p>
             </div>
             <span className={`rounded-full px-3 py-1.5 text-xs font-bold ${
-              verifiedAssetReadiness.eligibility === 'eligible'
+              readinessDisplay.eligibility === 'eligible'
                 ? 'bg-emerald-100 text-emerald-800'
                 : 'bg-amber-100 text-amber-800'
             }`}>
-              {verifiedAssetReadiness.eligibility === 'eligible' ? 'Eligible' : 'In progress'}
+              {readinessDisplay.eligibility === 'eligible'
+                ? 'Eligible'
+                : readinessDisplay.eligibility === 'unavailable'
+                  ? 'Unavailable'
+                  : 'In progress'}
             </span>
           </div>
 
@@ -6452,37 +6470,37 @@ function OperationsManagerView({ propertyId, property, pack, role, onTabChange }
             <div className="rounded-xl border border-gray-200 bg-white px-3 py-3">
               <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Canonical fields</p>
               <p className="mt-1 text-base font-black text-gray-900">
-                {verifiedAssetReadiness.summary?.confirmed_count || 0}
-                <span className="text-xs font-semibold text-gray-400"> / {verifiedAssetReadiness.summary?.required_count || 0} confirmed</span>
+                {readinessDisplay.summary?.confirmed_count || 0}
+                <span className="text-xs font-semibold text-gray-400"> / {readinessDisplay.summary?.required_count || 0} confirmed</span>
               </p>
             </div>
             <div className="rounded-xl border border-gray-200 bg-white px-3 py-3">
               <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Open exceptions</p>
               <p className={`mt-1 text-base font-black ${
-                (verifiedAssetReadiness.summary?.unresolved_exception_count || 0) > 0 ? 'text-amber-700' : 'text-emerald-700'
+                (readinessDisplay.summary?.unresolved_exception_count || 0) > 0 ? 'text-amber-700' : 'text-emerald-700'
               }`}>
-                {verifiedAssetReadiness.summary?.unresolved_exception_count || 0}
+                {readinessDisplay.summary?.unresolved_exception_count || 0}
                 <span className="text-xs font-semibold text-gray-400"> blockers</span>
               </p>
             </div>
             <div className="rounded-xl border border-gray-200 bg-white px-3 py-3">
               <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Evidence readiness</p>
               <p className="mt-1 text-xs font-bold text-gray-700">
-                {verifiedAssetReadiness.summary?.provenance_intact ? 'Provenance intact' : `${verifiedAssetReadiness.summary?.provenance_gap_count || 0} provenance gaps`}
+                {readinessDisplay.summary?.provenance_intact ? 'Provenance intact' : `${readinessDisplay.summary?.provenance_gap_count || 0} provenance gaps`}
               </p>
               <p className="mt-1 text-[10px] text-gray-400">
-                {verifiedAssetReadiness.summary?.approvals_satisfied
+                {readinessDisplay.summary?.approvals_satisfied
                   ? 'Approvals satisfied'
-                  : `${verifiedAssetReadiness.summary?.missing_approval_count || 0} approvals missing`}
+                  : `${readinessDisplay.summary?.missing_approval_count || 0} approvals missing`}
               </p>
             </div>
             <div className="rounded-xl border border-gray-200 bg-white px-3 py-3">
               <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Settlement mode</p>
               <p className="mt-1 text-xs font-bold capitalize text-gray-700">
-                {verifiedAssetReadiness.settlement_mode || 'Not recorded'}
+                {readinessDisplay.settlement_mode || 'Not recorded'}
               </p>
               <p className="mt-1 text-[10px] text-gray-400">
-                {verifiedAssetReadiness.latest_snapshot ? `Latest snapshot v${verifiedAssetReadiness.latest_snapshot.version}` : 'No snapshot recorded'}
+                {readinessDisplay.latest_snapshot ? `Latest snapshot v${readinessDisplay.latest_snapshot.version}` : 'No snapshot recorded'}
               </p>
             </div>
           </div>
@@ -6505,6 +6523,11 @@ function OperationsManagerView({ propertyId, property, pack, role, onTabChange }
           {snapshotAction.message && (
             <p className={`mt-3 text-xs ${snapshotAction.error ? 'text-red-600' : 'text-gray-600'}`}>
               {snapshotAction.message}
+            </p>
+          )}
+          {!verifiedAssetReadiness && (
+            <p className="mt-3 text-xs text-amber-700">
+              Readiness details are not available yet. The card remains visible while the room reconnects to the readiness service.
             </p>
           )}
         </section>
