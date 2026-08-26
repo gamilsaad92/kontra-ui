@@ -3630,7 +3630,7 @@ function DigitalAssetReadinessSection({
       .map(field => field.key || field.canonicalKey)
       .filter(Boolean),
   );
-  const schemaFields = generatedFields.length
+  const baseSchemaFields = generatedFields.length
     ? generatedFields.map(field => ({
         ...field,
         category: normalizeRecordCategory(field.category || field.field_category, field.key),
@@ -3641,6 +3641,39 @@ function DigitalAssetReadinessSection({
     : Object.entries(getPackRecordSchema(schemaKey)).flatMap(([category, fields]) =>
         fields.map(field => ({ ...field, category })),
       );
+  // The canonical API can contain required fields added by a room-specific
+  // workflow pack that is not present in the older static schema. Keep those
+  // fields visible so Overview actions never land on an empty category.
+  const canonicalSchemaFields = (canonicalRecordState?.requiredFields || [])
+    .map(field => {
+      const key = field?.key || field?.persistedKey || field?.field_key || '';
+      const canonicalKey = field?.canonicalKey || field?.persistedKey || key;
+      const uiCategory = getTransactionRecordCategory({ ...field, field_key: key });
+      const category = {
+        parties: 'parties',
+        asset: 'asset_identity',
+        terms: 'transaction',
+        financial: 'financial',
+        legal: 'legal',
+      }[uiCategory] || uiCategory;
+      return {
+        ...field,
+        key,
+        canonicalKey,
+        label: field?.label || field?.display_label || key,
+        category,
+        workflowRequired: true,
+        renderable: true,
+      };
+    })
+    .filter(field => field.key);
+  const schemaFieldKeys = new Set(baseSchemaFields.map(field => field.canonicalKey || field.key));
+  const schemaFields = [
+    ...baseSchemaFields,
+    ...canonicalSchemaFields.filter(field =>
+      !schemaFieldKeys.has(field.canonicalKey || field.key)
+    ),
+  ];
   const categorySchemaGroups = {
     parties: ['parties', 'beneficial_ownership'],
     asset: ['asset_identity'],
