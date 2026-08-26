@@ -4869,6 +4869,26 @@ function getCanonicalAwaitingRecordFields(recordState) {
   );
 }
 
+function mergeTransactionRecordState(previous, incoming) {
+  if (!incoming) return previous || null;
+  if (!previous) return incoming;
+  const merged = { ...previous, ...incoming };
+  const arrayKeys = ['requiredFields', 'fields', 'unresolvedConflicts'];
+  arrayKeys.forEach(key => {
+    const incomingValue = incoming[key];
+    const previousValue = previous[key];
+    if (Array.isArray(incomingValue) && incomingValue.length > 0) {
+      merged[key] = incomingValue;
+    } else if (Array.isArray(previousValue) && previousValue.length > 0) {
+      merged[key] = previousValue;
+    }
+  });
+  ['schemaKey', 'requiredCount', 'confirmedCount', 'awaitingRequiredCount'].forEach(key => {
+    if (incoming[key] == null && previous[key] != null) merged[key] = previous[key];
+  });
+  return merged;
+}
+
 function getCanonicalUnresolvedConflicts(recordState) {
   const source = Array.isArray(recordState?.unresolvedConflicts)
     ? recordState.unresolvedConflicts
@@ -5996,14 +6016,16 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
         // Always replace the projection when the record endpoint responds.
         // Keeping the first response allowed a slower readiness request to
         // leave Overview showing an older proposal-shaped state after confirm.
-        if (record?.record_state) setRecordState(record.record_state);
+        if (record?.record_state) {
+          setRecordState(previous => mergeTransactionRecordState(previous, record.record_state));
+        }
       });
     get(`/api/public/deal-room/${propertyId}/readiness`, null)
       .then(data => {
         if (sequence !== loadSequence.current) return;
         setReadiness(data);
         if (data?.transaction_record) {
-          setRecordState(data.transaction_record);
+          setRecordState(previous => mergeTransactionRecordState(previous, data.transaction_record));
         }
       });
     get(`/api/public/deal-room/${propertyId}/verified-asset/readiness`, null)
