@@ -3076,7 +3076,11 @@ function WhatNeedsAttention({
         { key: 'transaction.purchase_price', label: 'Purchase price' },
         { key: 'ownership.cap_table', label: 'Cap table / ownership' },
       ];
-  const operationalRecordDefinitions = getHazardLossOperationalFieldDefinitions(property);
+  const operationalRecordDefinitions = getHazardLossOperationalFieldDefinitions(
+    property,
+    recordState,
+    recordFields,
+  );
   const canonicalRequiredDefinitions = (Array.isArray(recordState?.requiredFields)
     ? recordState.requiredFields
     : []
@@ -3794,7 +3798,11 @@ function DigitalAssetReadinessSection({
       };
     })
     .filter(field => field.key);
-  const operationalSchemaFields = getHazardLossOperationalFieldDefinitions(property);
+  const operationalSchemaFields = getHazardLossOperationalFieldDefinitions(
+    property,
+    canonicalRecordState,
+    recordFields,
+  );
   const schemaFieldKeys = new Set(baseSchemaFields.map(field => field.canonicalKey || field.key));
   const schemaFields = [
     ...baseSchemaFields,
@@ -4743,10 +4751,12 @@ const HAZARD_LOSS_OPERATIONAL_FIELDS = Object.freeze([
   },
 ]);
 
-function isHazardLossWorkspace(property) {
+function isHazardLossWorkspace(property, recordState = null, recordFields = []) {
   const text = [
     property?.name,
     property?.property_name,
+    property?.type,
+    property?.workspace_type,
     property?.property_type,
     property?.deal_type,
     property?.transaction_type,
@@ -4756,11 +4766,25 @@ function isHazardLossWorkspace(property) {
     property?.metadata_values?.description,
     property?.metadata_values?.transaction_type,
   ].filter(Boolean).join(' ').toLowerCase();
-  return /\bfreddie\s*mac\b|\bhazard[\s-]+loss\b|\bcasualty\b|\binsurance\s+proceeds?\b|\brepair\s+(?:progress|funds?|proceeds?)\b/.test(text);
+  const fields = [
+    ...(Array.isArray(recordState?.fields) ? recordState.fields : []),
+    ...(Array.isArray(recordState?.requiredFields) ? recordState.requiredFields : []),
+    ...(Array.isArray(recordFields) ? recordFields : []),
+  ];
+  const fieldText = fields.map(field => [
+    field?.key,
+    field?.field_key,
+    field?.definitionKey,
+    field?.definition_key,
+    field?.label,
+    field?.display_label,
+  ].filter(Boolean).join(' ')).join(' ').toLowerCase();
+  return /\bfreddie\s*mac\b|\bhazard[\s-]+loss\b|\bcasualty\b|\binsurance\s+proceeds?\b|\brepair\s+(?:progress|funds?|proceeds?)\b/.test(text)
+    || /\b(?:organization\.)?investor[_\s/]+or[_\s/]agency\b|\bfinancial\.(?:borrower[_\s]+funds[_\s]+advanced|borrower[_\s]+advanced[_\s]+funds)\b|\bfunding\.(?:request|fund[_\s]+release[_\s]+request)\b|\bfund[_\s]+release[_\s]+request\b|\bborrower[_\s]+funds[_\s]+advanced\b/.test(fieldText);
 }
 
-function getHazardLossOperationalFieldDefinitions(property) {
-  return isHazardLossWorkspace(property)
+function getHazardLossOperationalFieldDefinitions(property, recordState = null, recordFields = []) {
+  return isHazardLossWorkspace(property, recordState, recordFields)
     ? HAZARD_LOSS_OPERATIONAL_FIELDS.map(field => ({ ...field, renderable: true }))
     : [];
 }

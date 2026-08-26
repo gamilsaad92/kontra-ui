@@ -306,6 +306,24 @@ describe('coordinator transaction brief logic', () => {
     ]));
   });
 
+  test('recognizes sparse hazard-loss rooms from canonical generated field keys', () => {
+    const definitions = getHazardLossOperationalFieldDefinitions(
+      { property_name: 'Multifamily review' },
+      {
+        fields: [
+          { key: 'funding.request', display_label: 'Fund Release Request' },
+          { key: 'financial.borrower_advanced_funds', display_label: 'Borrower funds advanced' },
+        ],
+      },
+    );
+
+    expect(definitions.map(field => field.key)).toEqual(expect.arrayContaining([
+      'funding.request',
+      'financial.borrower_funds_advanced',
+      'organization.investor_or_agency',
+    ]));
+  });
+
   test('matches string briefing actions to their canonical record field', () => {
     expect(actionTextMentionsRecordField(
       'Borrower Advanced Funds — confirm 90,000',
