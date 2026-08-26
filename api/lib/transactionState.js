@@ -818,11 +818,18 @@ function getHazardLossRepairGate(state) {
     ...(Array.isArray(recordState.requiredFields) ? recordState.requiredFields : []),
     ...(Array.isArray(state?.recordFields) ? state.recordFields : []),
   ];
+  const labels = {
+    'transaction.incident_date': /incident\s*date/i,
+    'financial.insurance_proceeds': /insurance\s*proceeds/i,
+    'financial.repair_costs': /repair\s*costs?/i,
+  };
   const unmetFields = HAZARD_LOSS_REPAIR_REQUIREMENTS.filter(key => {
     const field = fields.find(item => canonicalizeTransactionRecordKey(
       item?.key || item?.field_key || item?.persistedKey || item?.definitionKey,
       packId,
-    ) === key);
+    ) === key) || fields.find(item => labels[key]?.test(
+      String(item?.label || item?.display_label || ''),
+    ));
     const status = String(field?.status || field?.rawStatus || '').toLowerCase();
     const value = field?.value ?? field?.value_text ?? field?.value_json;
     return !field || !['confirmed', 'verified'].includes(status) || !String(value ?? '').trim();

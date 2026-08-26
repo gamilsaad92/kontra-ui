@@ -1020,7 +1020,7 @@ function sendHealthResponse(res, extra = {}) {
 }
 
 app.get('/api/health', (_req, res) => {
-  sendHealthResponse(res, { version: 'v2-checkout-fix', deployed: new Date().toISOString() });
+  sendHealthResponse(res, { version: 'v3-hazard-record-gate', deployed: new Date().toISOString() });
 });
 
 // ── Public deal room routes — registered EARLY, before any org/auth middleware ──

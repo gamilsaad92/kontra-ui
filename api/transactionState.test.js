@@ -82,6 +82,24 @@ describe('transaction state recalculation', () => {
     });
   });
 
+  it('falls back to the visible hazard labels for legacy field identities', () => {
+    const labelState = {
+      recordState: {
+        fields: [
+          { key: 'legacy_date', label: 'Incident Date', value: '2026-07-10', status: 'confirmed' },
+          { key: 'legacy_proceeds', label: 'Insurance Proceeds', value: '$325,000', status: 'confirmed' },
+          { key: 'legacy_costs', label: 'Repair Costs', value: '$229,950', status: 'confirmed' },
+        ],
+        unresolvedConflictCount: 0,
+      },
+    };
+    expect(getHazardLossRepairGate(labelState)).toEqual({
+      ok: true,
+      unmetFields: [],
+      unresolvedConflicts: 0,
+    });
+  });
+
   it.each([
     ['hazard.incident_date', 'transaction.incident_date'],
     ['transaction.incident_date', 'transaction.incident_date'],

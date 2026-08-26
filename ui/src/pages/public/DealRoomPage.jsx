@@ -6369,7 +6369,16 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
         }),
       });
       const data = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(data?.message || data?.error || 'Stage could not be advanced');
+      if (!response.ok) {
+        const details = [];
+        if (Array.isArray(data?.unmet_fields) && data.unmet_fields.length > 0) {
+          details.push(`Unconfirmed: ${data.unmet_fields.map(key => String(key).replace(/^(transaction|financial)\./, '').replace(/_/g, ' ')).join(', ')}`);
+        }
+        if (Number(data?.unresolved_conflicts || 0) > 0) {
+          details.push(`Unresolved Transaction Record conflicts: ${data.unresolved_conflicts}`);
+        }
+        throw new Error([data?.message || data?.error || 'Stage could not be advanced', ...details].join(' · '));
+      }
       await load();
     } catch (error) {
       setStageActionError(error.message || 'Stage could not be advanced');
