@@ -2924,6 +2924,21 @@ function formatSnapshotValue(field) {
 }
 
 function getTransactionRecordCategory(field) {
+  const fieldText = [
+    field?.key,
+    field?.field_key,
+    field?.canonicalKey,
+    field?.persistedKey,
+    field?.definitionKey,
+    field?.label,
+    field?.display_label,
+  ].filter(Boolean).join(' ').toLowerCase();
+  if (/(units?[\s_-]+(damaged|affected)|properties?[\s_-]+damaged)/.test(fieldText)) {
+    return 'asset';
+  }
+  if (/(additional[\s_-]+work[\s_-]+invoice|fund[\s_-]+release[\s_-]+request)/.test(fieldText)) {
+    return 'financial';
+  }
   const rawCategory = String(
     field?.category
     || field?.field_category
@@ -4549,6 +4564,13 @@ function hasDocumentReviewFinding(analysis) {
 function normalizeRecordCategory(value, key = '', label = '') {
   const raw = String(value || '').trim().toLowerCase().replace(/[\s-]+/g, '_');
   const keyCategory = String(key || '').split('.')[0].toLowerCase();
+  const fieldText = `${key} ${label}`.toLowerCase();
+  if (/(units?[\s_-]+(damaged|affected)|properties?[\s_-]+damaged)/.test(fieldText)) {
+    return 'asset_identity';
+  }
+  if (/(additional[\s_-]+work[\s_-]+invoice|fund[\s_-]+release[\s_-]+request)/.test(fieldText)) {
+    return 'financial';
+  }
   const category = raw || keyCategory || 'transaction';
   if (['transaction', 'transaction_extra', 'terms', 'deal_terms'].includes(category)) return 'transaction';
   if (['asset', 'asset_identity', 'property', 'company', 'identity'].includes(category)) return 'asset_identity';
