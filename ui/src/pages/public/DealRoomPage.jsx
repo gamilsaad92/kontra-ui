@@ -3076,6 +3076,7 @@ function WhatNeedsAttention({
         { key: 'transaction.purchase_price', label: 'Purchase price' },
         { key: 'ownership.cap_table', label: 'Cap table / ownership' },
       ];
+  const operationalRecordDefinitions = getHazardLossOperationalFieldDefinitions(property);
   const canonicalRequiredDefinitions = (Array.isArray(recordState?.requiredFields)
     ? recordState.requiredFields
     : []
@@ -3103,6 +3104,7 @@ function WhatNeedsAttention({
   const effectiveRecordDefinitions = [
     ...visibleRecordDefinitions,
     ...canonicalRequiredDefinitions,
+    ...operationalRecordDefinitions,
   ].filter((definition, index, definitions) => {
     const identity = normalizeAttentionFieldKey(
       definition.canonicalKey || definition.key || definition.persistedKey,
@@ -3792,11 +3794,18 @@ function DigitalAssetReadinessSection({
       };
     })
     .filter(field => field.key);
+  const operationalSchemaFields = getHazardLossOperationalFieldDefinitions(property);
   const schemaFieldKeys = new Set(baseSchemaFields.map(field => field.canonicalKey || field.key));
   const schemaFields = [
     ...baseSchemaFields,
     ...canonicalSchemaFields.filter(field =>
       !schemaFieldKeys.has(field.canonicalKey || field.key)
+    ),
+    ...operationalSchemaFields.filter(field =>
+      !schemaFieldKeys.has(field.canonicalKey || field.key)
+      && !canonicalSchemaFields.some(canonical =>
+        (canonical.canonicalKey || canonical.key) === (field.canonicalKey || field.key)
+      )
     ),
   ];
   const categorySchemaGroups = {
@@ -4704,6 +4713,58 @@ function normalizeRecordCategory(value, key = '', label = '') {
   return keyCategory || category;
 }
 
+const HAZARD_LOSS_OPERATIONAL_FIELDS = Object.freeze([
+  {
+    key: 'organization.investor_or_agency',
+    label: 'Investor / agency',
+    category: 'parties',
+    workflowRequired: true,
+    required: true,
+    sources: ['Insurance Claim Documentation', 'Servicer Correspondence'],
+    hint: 'The investor, agency, or servicer responsible for the loss review.',
+  },
+  {
+    key: 'financial.borrower_funds_advanced',
+    label: 'Borrower funds advanced',
+    category: 'financial',
+    workflowRequired: true,
+    required: true,
+    sources: ['Funding Request', 'Servicer Correspondence'],
+    hint: 'Confirmed amount of borrower funds already advanced for the loss.',
+  },
+  {
+    key: 'funding.request',
+    label: 'Funding request',
+    category: 'financial',
+    workflowRequired: true,
+    required: true,
+    sources: ['Funding Request', 'Additional Work Invoice'],
+    hint: 'The reimbursement or additional repair proceeds requested.',
+  },
+]);
+
+function isHazardLossWorkspace(property) {
+  const text = [
+    property?.name,
+    property?.property_name,
+    property?.property_type,
+    property?.deal_type,
+    property?.transaction_type,
+    property?.description,
+    property?.generated_proposal?.transaction_identity?.type,
+    property?.generated_proposal?.transaction_identity?.label,
+    property?.metadata_values?.description,
+    property?.metadata_values?.transaction_type,
+  ].filter(Boolean).join(' ').toLowerCase();
+  return /\bfreddie\s*mac\b|\bhazard[\s-]+loss\b|\bcasualty\b|\binsurance\s+proceeds?\b|\brepair\s+(?:progress|funds?|proceeds?)\b/.test(text);
+}
+
+function getHazardLossOperationalFieldDefinitions(property) {
+  return isHazardLossWorkspace(property)
+    ? HAZARD_LOSS_OPERATIONAL_FIELDS.map(field => ({ ...field, renderable: true }))
+    : [];
+}
+
 function recordStateFieldForDefinition(definition, recordState) {
   const definitions = [
     definition?.canonicalKey,
@@ -5071,13 +5132,18 @@ function getCanonicalRecordFieldCandidates(recordState, recordFields = []) {
 }
 
 function actionTextMentionsRecordField(action, field) {
+  const actionValue = typeof action === 'string'
+    ? action
+    : [
+      action?.title,
+      action?.text,
+      action?.action,
+      action?.item,
+      action?.reason,
+      action?.note,
+    ].filter(Boolean).join(' ');
   const text = normalizeAttentionText([
-    action?.title,
-    action?.text,
-    action?.action,
-    action?.item,
-    action?.reason,
-    action?.note,
+    actionValue,
   ].filter(Boolean).join(' '));
   if (!text) return false;
   const actionTokens = new Set(text.split(' '));
@@ -5838,6 +5904,8 @@ export {
   getDocumentRequirementStats,
   filterLiveDocumentActions,
   filterStaleRecordActions,
+  actionTextMentionsRecordField,
+  getHazardLossOperationalFieldDefinitions,
   dedupeAttentionItems,
   getCanonicalAwaitingRecordFields,
   getCanonicalUnresolvedConflicts,

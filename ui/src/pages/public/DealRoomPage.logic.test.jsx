@@ -10,6 +10,8 @@ const {
   getDocumentRequirementStats,
   filterLiveDocumentActions,
   filterStaleRecordActions,
+  actionTextMentionsRecordField,
+  getHazardLossOperationalFieldDefinitions,
   dedupeAttentionItems,
   getCanonicalAwaitingRecordFields,
   getCanonicalUnresolvedConflicts,
@@ -276,8 +278,39 @@ describe('coordinator transaction brief logic', () => {
     };
 
     expect(filterStaleRecordActions([
-      { title: 'Borrower Advanced Funds — confirm 90,000' },
+      'Borrower Advanced Funds — confirm 90,000',
     ], recordState)).toEqual([]);
+  });
+
+  test('provides real edit destinations for hazard-loss operational fields', () => {
+    const definitions = getHazardLossOperationalFieldDefinitions({
+      property_name: 'Freddie Mac Multifamily Hazard Loss Review',
+    });
+
+    expect(definitions).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        key: 'financial.borrower_funds_advanced',
+        category: 'financial',
+        workflowRequired: true,
+      }),
+      expect.objectContaining({
+        key: 'funding.request',
+        category: 'financial',
+        workflowRequired: true,
+      }),
+      expect.objectContaining({
+        key: 'organization.investor_or_agency',
+        category: 'parties',
+        workflowRequired: true,
+      }),
+    ]));
+  });
+
+  test('matches string briefing actions to their canonical record field', () => {
+    expect(actionTextMentionsRecordField(
+      'Borrower Advanced Funds — confirm 90,000',
+      { label: 'Borrower funds advanced', key: 'financial.borrower_funds_advanced' },
+    )).toBe(true);
   });
 
   test('keeps unresolved record actions tied to their canonical field', () => {
