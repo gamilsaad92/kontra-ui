@@ -4046,12 +4046,45 @@ function DigitalAssetReadinessSection({
                         <p className="text-xs text-gray-400 italic">Nothing confirmed yet.</p>
                       ) : (
                         <ul className="space-y-1">
-                          {cat.confirmedDefs.map(d => (
-                            <li key={d.key} className="flex items-start gap-1.5 text-xs text-gray-700">
-                              <span className="mt-0.5 text-emerald-500 shrink-0">✓</span>
-                              <span>{d.label}{d.field?.value_text ? <span className="text-gray-400"> — {d.field.value_text}</span> : ''}</span>
-                            </li>
-                          ))}
+                          {cat.confirmedDefs.map(d => {
+                            const confirmedFieldId = d.state?.fieldId || d.state?.field?.id;
+                            return (
+                              <li key={d.key} id={`transaction-record-field-${encodeURIComponent(d.key)}`} data-transaction-record-field="true" data-transaction-record-key={d.key} data-transaction-record-label={d.label} className={`rounded-lg px-1 text-xs text-gray-700 transition-shadow ${focusedFieldKey === d.key ? 'bg-emerald-50 ring-2 ring-emerald-300 ring-offset-1' : ''}`}>
+                                <span className="flex items-start gap-1.5">
+                                  <span className="mt-0.5 text-emerald-500 shrink-0">✓</span>
+                                  <span className="flex min-w-0 flex-1 items-center justify-between gap-2">
+                                    <span>{d.label}{d.state?.value ? <span className="text-gray-400"> — {d.state.value}</span> : ''}</span>
+                                    {confirmedFieldId && (
+                                      <span className="flex shrink-0 items-center gap-1">
+                                        <button type="button"
+                                          onClick={() => { setEditingField(confirmedFieldId); setEditValue(d.state.value || ''); setMutationError(''); }}
+                                          disabled={!!confirmingField}
+                                          className="rounded-lg border border-gray-200 bg-white px-2 py-1 text-[10px] font-bold text-gray-600 disabled:opacity-50">
+                                          Edit/correct
+                                        </button>
+                                        <button type="button"
+                                          onClick={() => updateRecordField(d.state.field || d.state, { value_text: '', status: 'missing' })}
+                                          disabled={!!confirmingField}
+                                          className="rounded-lg border border-red-200 bg-white px-2 py-1 text-[10px] font-bold text-red-600 disabled:opacity-50">
+                                          Reject/Clear
+                                        </button>
+                                      </span>
+                                    )}
+                                  </span>
+                                </span>
+                                {editingField === confirmedFieldId && (
+                                  <span className="mt-1 flex w-full items-center gap-1 pl-4">
+                                    <input value={editValue} onChange={event => setEditValue(event.target.value)}
+                                      aria-label={`Correct ${d.label}`} className="min-w-0 flex-1 rounded border border-gray-200 bg-white px-2 py-1 text-[10px]" />
+                                    <button type="button" onClick={() => updateRecordField(d.state.field || d.state, { value_text: editValue, status: 'needs_review' })}
+                                      disabled={!editValue.trim() || !!confirmingField} className="rounded bg-gray-700 px-2 py-1 text-[10px] font-bold text-white disabled:opacity-50">
+                                      Save correction
+                                    </button>
+                                  </span>
+                                )}
+                              </li>
+                            );
+                          })}
                         </ul>
                       )}
                     </div>
@@ -4699,7 +4732,6 @@ function getEffectiveRecordDefinitions(schemaKey, property, recordFields = [], r
         };
       })
       .filter(field => field.renderable !== false);
-    if (persistedFields.length > 0) return persistedFields;
     const canonicalFields = (recordState?.requiredFields || [])
       .filter(field => field?.key || field?.persistedKey || field?.field_key || field?.definitionKey)
       .map(field => {
@@ -4722,6 +4754,25 @@ function getEffectiveRecordDefinitions(schemaKey, property, recordFields = [], r
         };
       })
       .filter(field => field.renderable !== false);
+    if (persistedFields.length > 0) {
+      const persistedIdentities = new Set(
+        persistedFields.flatMap(field => [
+          field.key,
+          field.canonicalKey,
+          field.persistedKey,
+          field.definitionKey,
+        ].filter(Boolean)),
+      );
+      return [
+        ...persistedFields,
+        ...canonicalFields.filter(field => ![
+          field.key,
+          field.canonicalKey,
+          field.persistedKey,
+          field.definitionKey,
+        ].some(identity => identity && persistedIdentities.has(identity))),
+      ];
+    }
     if (canonicalFields.length > 0) return canonicalFields;
     // Pre-migration compatibility only. New rooms always take the branch
     // above because materialization creates one row per approved field.
