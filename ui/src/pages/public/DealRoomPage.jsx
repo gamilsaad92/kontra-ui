@@ -2946,6 +2946,8 @@ function getTransactionRecordCategory(field) {
     finance: 'financial',
     financials: 'financial',
     economics: 'financial',
+    funding: 'financial',
+    financing: 'financial',
     insurance: 'financial',
     coverage: 'financial',
     repairs: 'financial',
@@ -2965,7 +2967,20 @@ function getTransactionRecordCategory(field) {
     document: 'legal',
     documents: 'legal',
     evidence: 'legal',
-  }[rawCategory] || rawCategory;
+  }[rawCategory]
+    || (/(fund|proceed|repair|cost|insurance|coverage|financial)/.test(
+      String(field?.label || field?.display_label || '').toLowerCase(),
+    )
+      ? 'financial'
+      : /(investor|agency|borrower|lender|buyer|seller|party|owner)/.test(
+        String(field?.label || field?.display_label || '').toLowerCase(),
+      )
+        ? 'parties'
+        : /(hazard|loss|incident|damage|completion|event|date)/.test(
+          String(field?.label || field?.display_label || '').toLowerCase(),
+        )
+          ? 'terms'
+          : rawCategory);
 }
 
 // ── WhatNeedsAttention ────────────────────────────────────────────────────────
@@ -3214,7 +3229,7 @@ function WhatNeedsAttention({
     urgency: 'high',
     title: `Provide ${field.label}`,
     reason: `Required Transaction Record field "${field.label}" is missing. Add and confirm the authoritative value.`,
-    routeItem: { field_key: field.key },
+    routeItem: { field_key: field.key, key: field.key, label: field.label },
     actions: [],
     sourcePriority: 1,
   }));
@@ -3296,6 +3311,7 @@ function WhatNeedsAttention({
       type: 'record',
       field: { ...field, key: fieldKey, field_key: field?.field_key || fieldKey },
       keys: [...new Set(keys)],
+      label: field?.label || field?.display_label || '',
       autoEdit: ['missing', 'not_applicable'].includes(String(field?.status || '').toLowerCase())
         || !String(field?.value ?? field?.value_text ?? '').trim(),
     });
@@ -3539,6 +3555,10 @@ function DigitalAssetReadinessSection({
       focusRequest?.canonicalKey,
       focusRequest?.persistedKey,
     ].filter(Boolean);
+    const requestedLabels = [
+      focusRequest?.label,
+      focusRequest?.displayLabel,
+    ].filter(Boolean).map(value => String(value).trim().toLowerCase());
     if (requestedKeys.length === 0) return;
     const key = requestedKeys[0];
     const category = getTransactionRecordCategory({ field_key: key });
@@ -3555,8 +3575,14 @@ function DigitalAssetReadinessSection({
       if (cancelled) return;
       const target = requestedKeys
         .map(candidate => document.getElementById(`transaction-record-field-${encodeURIComponent(candidate)}`))
-        .find(Boolean);
+        .find(Boolean)
+        || (requestedLabels.length > 0
+          ? [...document.querySelectorAll('[data-transaction-record-field]')].find(element =>
+            requestedLabels.includes(String(element.dataset.transactionRecordLabel || '').trim().toLowerCase())
+          )
+          : null);
       if (target) {
+        setFocusedFieldKey(target.dataset.transactionRecordKey || key);
         target.scrollIntoView({ behavior: 'smooth', block: 'center' });
       } else if (attempt < 20) {
         window.setTimeout(() => focusTarget(attempt + 1), 50);
@@ -3962,7 +3988,7 @@ function DigitalAssetReadinessSection({
                        ) : (
                          <ul className="space-y-1">
                            {cat.awaitingDefs.slice(0, 4).map(d => (
-                              <li key={d.key} id={`transaction-record-field-${encodeURIComponent(d.key)}`} className={`flex items-start gap-1.5 rounded-lg px-1 text-xs text-blue-700 transition-shadow ${focusedFieldKey === d.key ? 'bg-blue-50 ring-2 ring-blue-300 ring-offset-1' : ''}`}>
+                              <li key={d.key} id={`transaction-record-field-${encodeURIComponent(d.key)}`} data-transaction-record-field="true" data-transaction-record-key={d.key} data-transaction-record-label={d.label} className={`flex items-start gap-1.5 rounded-lg px-1 text-xs text-blue-700 transition-shadow ${focusedFieldKey === d.key ? 'bg-blue-50 ring-2 ring-blue-300 ring-offset-1' : ''}`}>
                                <span className="mt-0.5 text-blue-500 shrink-0">●</span>
                                <span className="flex min-w-0 flex-1 items-center justify-between gap-2">
                                  <span>{d.label}{d.state?.value ? <span className="text-gray-400"> — {d.state.value}</span> : ''}</span>
@@ -4013,7 +4039,7 @@ function DigitalAssetReadinessSection({
                       ) : (
                            <ul className="space-y-1">
                           {cat.missingDefs.slice(0, 4).map(d => (
-                              <li key={d.key} id={`transaction-record-field-${encodeURIComponent(d.key)}`} className={`flex items-start gap-1.5 rounded-lg px-1 text-xs text-gray-500 transition-shadow ${focusedFieldKey === d.key ? 'bg-amber-50 ring-2 ring-amber-300 ring-offset-1' : ''}`}>
+                              <li key={d.key} id={`transaction-record-field-${encodeURIComponent(d.key)}`} data-transaction-record-field="true" data-transaction-record-key={d.key} data-transaction-record-label={d.label} className={`flex items-start gap-1.5 rounded-lg px-1 text-xs text-gray-500 transition-shadow ${focusedFieldKey === d.key ? 'bg-amber-50 ring-2 ring-amber-300 ring-offset-1' : ''}`}>
                               <span className="mt-0.5 text-gray-300 shrink-0">○</span>
                               <span className="flex min-w-0 flex-1 items-center justify-between gap-2">
                                 <span>{d.label}{d.state?.value ? <span className="text-gray-400"> — {d.state.value}</span> : ''}</span>
@@ -6076,10 +6102,16 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
         action.field?.definitionKey,
       ].filter(Boolean);
       const keys = [...new Set(requestedKeys)];
+      const requestedLabels = [
+        action.label,
+        action.field?.label,
+        action.field?.display_label,
+      ].filter(Boolean).map(value => String(value).trim().toLowerCase());
       const fieldKey = keys[0] || '';
       setRecordFocus({
         key: fieldKey,
         keys,
+        label: requestedLabels[0] || '',
         autoEdit: Boolean(action.autoEdit),
         nonce: Date.now(),
       });
@@ -6091,7 +6123,12 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
           if (toggle?.getAttribute('aria-expanded') !== 'true') toggle?.click();
           const fieldTarget = keys
             .map(key => document.getElementById(`transaction-record-field-${encodeURIComponent(key)}`))
-            .find(Boolean);
+            .find(Boolean)
+            || (requestedLabels.length > 0
+              ? [...document.querySelectorAll('[data-transaction-record-field]')].find(element =>
+                requestedLabels.includes(String(element.dataset.transactionRecordLabel || '').trim().toLowerCase())
+              )
+              : null);
           if (fieldTarget) fieldTarget.scrollIntoView({ behavior: 'smooth', block: 'center' });
           else if (attempt < 24) window.setTimeout(() => revealRecordCategory(attempt + 1), 50);
           else target.scrollIntoView({ behavior: 'smooth', block: 'center' });
