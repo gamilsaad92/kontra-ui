@@ -3757,6 +3757,13 @@ function DigitalAssetReadinessSection({
   async function saveMissingField(field) {
     const value = missingValue.trim();
     if (!value) return;
+    const fieldKey = field?.canonicalKey || field?.key || field?.field_key || '';
+    const fieldCategory = field?.category || field?.field_category
+      || getTransactionRecordCategory({ field_key: fieldKey });
+    if (!fieldKey || !fieldCategory) {
+      setMutationError('This Transaction Record field is missing its canonical category and cannot be saved yet.');
+      return;
+    }
     let ownerWriteToken = '';
     try { ownerWriteToken = localStorage.getItem(`kontra_owner_token_${propertyId}`) || ''; } catch {}
     if (!ownerWriteToken) {
@@ -3772,9 +3779,9 @@ function DigitalAssetReadinessSection({
           method: 'POST',
           headers: getRoomAuthHeaders(propertyId, { 'Content-Type': 'application/json' }),
           body: JSON.stringify({
-            field_key: field.canonicalKey || field.key,
+            field_key: fieldKey,
             display_label: field.label,
-            field_category: field.category,
+            field_category: fieldCategory,
             value_text: value,
             status: 'needs_review',
             ownerWriteToken,
