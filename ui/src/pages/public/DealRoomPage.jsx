@@ -3298,7 +3298,23 @@ function WhatNeedsAttention({
   // displayed action must lead somewhere useful. Do not create a second task
   // system here — these are only routing affordances for the existing items.
   function goToRecord(field) {
-    const fieldKey = field?.key || field?.field_key || field?.canonicalKey || field?.persistedKey || field?.definitionKey || '';
+    const normalizeLabel = value => String(value || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, ' ').replace(/\s+/g, ' ');
+    const label = field?.label || field?.display_label || '';
+    const labelMatch = label
+      ? [...recordSchema, ...(recordState?.requiredFields || [])].find(candidate =>
+        normalizeLabel(candidate?.label || candidate?.display_label) === normalizeLabel(label)
+      )
+      : null;
+    const fieldKey = field?.key
+      || field?.field_key
+      || field?.canonicalKey
+      || field?.persistedKey
+      || field?.definitionKey
+      || labelMatch?.key
+      || labelMatch?.field_key
+      || labelMatch?.persistedKey
+      || labelMatch?.definitionKey
+      || '';
     const keys = [
       fieldKey,
       field?.key,
@@ -3311,7 +3327,7 @@ function WhatNeedsAttention({
       type: 'record',
       field: { ...field, key: fieldKey, field_key: field?.field_key || fieldKey },
       keys: [...new Set(keys)],
-      label: field?.label || field?.display_label || '',
+      label,
       autoEdit: ['missing', 'not_applicable'].includes(String(field?.status || '').toLowerCase())
         || !String(field?.value ?? field?.value_text ?? '').trim(),
     });
@@ -3388,7 +3404,8 @@ function WhatNeedsAttention({
             {compactItems.map(item => {
               const action = item.field
                 ? { label: 'Review record', onClick: () => goToRecord(item.field) }
-                : item.actions[0] || routeForItem(item.routeItem || item);
+                : item.actions.find(candidate => typeof candidate?.onClick === 'function')
+                  || routeForItem(item.routeItem || item);
               return (
                 <div key={item.id} className="flex items-center gap-2.5 py-2.5">
                   <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${urgencyDot[item.urgency]}`} />
@@ -3482,16 +3499,25 @@ function WhatNeedsAttention({
         /* ── STATE C/D: Items to address ──────────────────────────────── */
         <>
           <div className="divide-y divide-gray-100">
-            {prioritizedItems.slice(0, 5).map(item => (
+            {prioritizedItems.slice(0, 5).map(item => {
+              const itemActions = Array.isArray(item.actions)
+                ? item.actions.filter(action => typeof action?.onClick === 'function')
+                : [];
+              const renderedActions = item.field
+                ? [{ label: 'Review record', onClick: () => goToRecord(item.field) }]
+                : itemActions.length > 0
+                  ? itemActions
+                  : [routeForItem(item.routeItem || item)];
+              return (
               <div key={item.id} className={`flex items-start gap-3 px-5 py-4 ${item.urgency === 'high' ? 'bg-red-50/40' : ''}`}>
                 <span className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${urgencyDot[item.urgency]}`} />
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-semibold text-gray-900 leading-snug">{item.title}</p>
                   {item.reason ? <p className="mt-0.5 text-xs text-gray-500 leading-relaxed">{item.reason}</p> : null}
                   {item.excerpt ? <p className="mt-1 text-[11px] text-gray-400 italic leading-relaxed">{item.excerpt}</p> : null}
-                  {item.actions.length > 0 && (
+                  {renderedActions.length > 0 && (
                     <div className="mt-2.5 flex flex-wrap gap-2">
-                      {item.actions.map((a, ai) => (
+                      {renderedActions.map((a, ai) => (
                          <button key={ai} type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); a.onClick?.(); }} disabled={a.disabled}
                            className={`relative z-10 cursor-pointer rounded-lg px-3 py-1.5 text-[11px] font-bold transition disabled:opacity-50 ${
                             a.primary ? 'bg-[#800020] text-white hover:opacity-90' : 'border border-gray-200 text-gray-700 hover:bg-gray-50'
@@ -3503,7 +3529,8 @@ function WhatNeedsAttention({
                   )}
                 </div>
               </div>
-            ))}
+              );
+            })}
           </div>
       {items.length > 3 && (
             <div className="border-t border-gray-100 px-5 py-3">
@@ -3622,12 +3649,12 @@ function DigitalAssetReadinessSection({
     .map(field => field?.key)
     .filter(Boolean);
   const requiredKeys = new Set(
-    (canonicalRecordState?.requiredFields?.length
+      (canonicalRecordState?.requiredFields?.length
       ? canonicalRecordState.requiredFields
       : (generatedSchemaKeys.length
         ? generatedSchemaKeys.map(key => ({ key }))
         : getRequiredRecordFields(schemaKey)))
-      .map(field => field.key || field.canonicalKey)
+      .map(field => field.key || field.canonicalKey || field.persistedKey || field.field_key || field.definitionKey)
       .filter(Boolean),
   );
   const baseSchemaFields = generatedFields.length
@@ -3646,8 +3673,8 @@ function DigitalAssetReadinessSection({
   // fields visible so Overview actions never land on an empty category.
   const canonicalSchemaFields = (canonicalRecordState?.requiredFields || [])
     .map(field => {
-      const key = field?.key || field?.persistedKey || field?.field_key || '';
-      const canonicalKey = field?.canonicalKey || field?.persistedKey || key;
+      const key = field?.key || field?.persistedKey || field?.field_key || field?.definitionKey || '';
+      const canonicalKey = field?.canonicalKey || field?.definitionKey || field?.persistedKey || key;
       const uiCategory = getTransactionRecordCategory({ ...field, field_key: key });
       const category = {
         parties: 'parties',
