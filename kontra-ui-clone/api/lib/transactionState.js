@@ -816,6 +816,7 @@ function getHazardLossRepairGate(state) {
   const fields = [
     ...(Array.isArray(recordState.fields) ? recordState.fields : []),
     ...(Array.isArray(recordState.requiredFields) ? recordState.requiredFields : []),
+    ...(Array.isArray(state?.recordFields) ? state.recordFields : []),
   ];
   const unmetFields = HAZARD_LOSS_REPAIR_REQUIREMENTS.filter(key => {
     const field = fields.find(item => canonicalizeTransactionRecordKey(

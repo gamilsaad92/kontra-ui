@@ -64,15 +64,16 @@ describe('transaction state recalculation', () => {
     const legacyState = {
       schemaKey: 'generated_ai',
       recordState: {
-        fields: [
-          { key: 'hazard.incident_date', value_text: '2026-07-10', status: 'verified' },
-          { key: 'hazard.insurance_proceeds', value_text: '$325,000', status: 'verified' },
-        ],
+        fields: [],
         requiredFields: [
           { key: 'financial.repair_costs', value: '$229,950', status: 'confirmed' },
         ],
         unresolvedConflictCount: 0,
       },
+      recordFields: [
+        { field_key: 'hazard.incident_date', value_text: '2026-07-10', status: 'verified' },
+        { field_key: 'hazard.insurance_proceeds', value_text: '$325,000', status: 'verified' },
+      ],
     };
     expect(getHazardLossRepairGate(legacyState)).toEqual({
       ok: true,

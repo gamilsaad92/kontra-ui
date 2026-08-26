@@ -6344,9 +6344,15 @@ app.post('/api/public/deal-room/:propertyId/advance', async (req, res) => {
       const transactionState = await readTransactionState(propertyId);
       const gate = getHazardLossRepairGate(transactionState);
       if (!gate.ok) {
+        const unmetLabels = gate.unmetFields.map(key => key
+          .replace(/^transaction\./, '')
+          .replace(/^financial\./, '')
+          .replace(/_/g, ' '));
         return res.status(409).json({
           error: 'HAZARD_LOSS_GATE',
-          message: 'Confirm incident date, insurance proceeds, and repair costs before advancing this hazard-loss milestone.',
+          message: gate.unmetFields.length > 0
+            ? `Confirm ${unmetLabels.join(', ')} before advancing this hazard-loss milestone.`
+            : 'Resolve the remaining Transaction Record conflicts before advancing this hazard-loss milestone.',
           unmet_fields: gate.unmetFields,
           unresolved_conflicts: gate.unresolvedConflicts,
         });
