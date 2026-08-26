@@ -5256,7 +5256,7 @@ function mergeTransactionRecordState(previous, incoming) {
   arrayKeys.forEach(key => {
     const incomingValue = incoming[key];
     const previousValue = previous[key];
-    if (Array.isArray(incomingValue)) {
+    if (Array.isArray(incomingValue) && incomingValue.length > 0) {
       merged[key] = incomingValue;
     } else if (Array.isArray(previousValue) && previousValue.length > 0) {
       merged[key] = previousValue;
