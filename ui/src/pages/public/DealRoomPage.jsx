@@ -4678,6 +4678,29 @@ function getEffectiveRecordDefinitions(schemaKey, property, recordFields = [], r
       })
       .filter(field => field.renderable !== false);
     if (persistedFields.length > 0) return persistedFields;
+    const canonicalFields = (recordState?.requiredFields || [])
+      .filter(field => field?.key || field?.persistedKey || field?.field_key || field?.definitionKey)
+      .map(field => {
+        const key = field.key || field.persistedKey || field.field_key || field.definitionKey;
+        return {
+          ...field,
+          key,
+          definitionKey: field.definitionKey || key,
+          canonicalKey: field.canonicalKey || field.persistedKey || field.field_key || key,
+          persistedKey: field.persistedKey || field.field_key || key,
+          label: field.label || field.display_label || key,
+          category: normalizeRecordCategory(
+            field.category || field.field_category,
+            key,
+            field.label || field.display_label,
+          ),
+          workflowRequired: field.required !== false && field.isRequired !== false,
+          required: true,
+          renderable: field.renderable !== false,
+        };
+      })
+      .filter(field => field.renderable !== false);
+    if (canonicalFields.length > 0) return canonicalFields;
     // Pre-migration compatibility only. New rooms always take the branch
     // above because materialization creates one row per approved field.
     const generatedFields = getGeneratedProposal(property)?.transaction_record_fields;
