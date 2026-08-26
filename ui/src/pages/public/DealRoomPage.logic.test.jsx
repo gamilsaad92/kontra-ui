@@ -9,11 +9,13 @@ const {
   hasDocumentReviewFinding,
   getDocumentRequirementStats,
   filterLiveDocumentActions,
+  filterStaleRecordActions,
   dedupeAttentionItems,
   getCanonicalAwaitingRecordFields,
   getCanonicalUnresolvedConflicts,
   getCoordinatorRecordFacts,
   getRecordDefinitionState,
+  mergeTransactionRecordState,
 } = require('./DealRoomPage');
 
 describe('coordinator transaction brief logic', () => {
@@ -226,6 +228,72 @@ describe('coordinator transaction brief logic', () => {
     ]);
     expect(getCanonicalAwaitingRecordFields(recordState)).not.toContain(rawRows[0]);
     expect(getCanonicalAwaitingRecordFields(recordState)).not.toContain(rawRows[1]);
+  });
+
+  test('replaces a previous canonical array when the newer response is empty', () => {
+    const previous = {
+      requiredFields: [{ key: 'financial.borrower_funds_advanced', status: 'awaiting', value: '90,000' }],
+      fields: [{ key: 'financial.borrower_funds_advanced', status: 'awaiting', value: '90,000' }],
+      unresolvedConflicts: [{ fieldKey: 'financial.borrower_funds_advanced' }],
+    };
+    const incoming = {
+      requiredFields: [],
+      fields: [],
+      unresolvedConflicts: [],
+      confirmedCount: 0,
+    };
+
+    expect(mergeTransactionRecordState(previous, incoming)).toEqual(expect.objectContaining({
+      requiredFields: [],
+      fields: [],
+      unresolvedConflicts: [],
+      confirmedCount: 0,
+    }));
+  });
+
+  test('removes a stale extracted funds action after canonical confirmation', () => {
+    const recordState = {
+      requiredFields: [
+        {
+          key: 'financial.borrower_funds_advanced',
+          label: 'Borrower funds advanced',
+          value: '9,000',
+          status: 'confirmed',
+        },
+        {
+          key: 'funding.request',
+          label: 'Funding request',
+          value: '',
+          status: 'missing',
+        },
+        {
+          key: 'organization.investor_or_agency',
+          label: 'Investor / agency',
+          value: '',
+          status: 'missing',
+        },
+      ],
+    };
+
+    expect(filterStaleRecordActions([
+      { title: 'Borrower Advanced Funds — confirm 90,000' },
+    ], recordState)).toEqual([]);
+  });
+
+  test('keeps unresolved record actions tied to their canonical field', () => {
+    const recordState = {
+      requiredFields: [
+        { key: 'funding.request', label: 'Funding request', value: '', status: 'missing' },
+      ],
+    };
+    const canonicalActionKeys = new Set(['funding.request']);
+
+    expect(filterStaleRecordActions([
+      { title: 'Confirm the funding request' },
+    ], recordState, [], canonicalActionKeys)).toEqual([]);
+    expect(filterStaleRecordActions([
+      { title: 'Review unrelated underwriting note' },
+    ], recordState, [], canonicalActionKeys)).toHaveLength(1);
   });
 
   test('uses canonical unresolved conflicts and deduplicates by canonical field key', () => {

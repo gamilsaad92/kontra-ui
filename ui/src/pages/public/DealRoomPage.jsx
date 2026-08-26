@@ -3076,19 +3076,59 @@ function WhatNeedsAttention({
         { key: 'transaction.purchase_price', label: 'Purchase price' },
         { key: 'ownership.cap_table', label: 'Cap table / ownership' },
       ];
+  const canonicalRequiredDefinitions = (Array.isArray(recordState?.requiredFields)
+    ? recordState.requiredFields
+    : []
+  ).map(field => {
+    const key = field?.definitionKey
+      || field?.key
+      || field?.persistedKey
+      || field?.field_key;
+    return {
+      ...field,
+      key,
+      canonicalKey: field?.key || field?.persistedKey || field?.field_key || key,
+      persistedKey: field?.persistedKey || field?.field_key || field?.key || key,
+      label: field?.label || field?.display_label || key,
+      category: normalizeRecordCategory(
+        field?.category || field?.field_category,
+        key,
+        field?.label || field?.display_label,
+      ),
+      workflowRequired: true,
+      required: true,
+      renderable: field?.renderable !== false,
+    };
+  }).filter(field => field.key && field.renderable !== false);
+  const effectiveRecordDefinitions = [
+    ...visibleRecordDefinitions,
+    ...canonicalRequiredDefinitions,
+  ].filter((definition, index, definitions) => {
+    const identity = normalizeAttentionFieldKey(
+      definition.canonicalKey || definition.key || definition.persistedKey,
+    );
+    const label = normalizeAttentionText(definition.label || definition.display_label);
+    return index === definitions.findIndex(candidate =>
+      identity && identity === normalizeAttentionFieldKey(
+        candidate.canonicalKey || candidate.key || candidate.persistedKey,
+      )
+        || (label && label === normalizeAttentionText(candidate.label || candidate.display_label))
+    );
+  });
   const canonicalRecordKey = definition => definition.aliasOf || definition.key;
   const canonicalStateField = definition => recordState?.fields?.find(field =>
     field.key === canonicalRecordKey(definition)
   );
   const missingCanonicalKeys = new Set();
-  const recordMissing = visibleRecordDefinitions
+  const recordMissing = effectiveRecordDefinitions
     .filter(def => def.workflowRequired === true || def.required === true)
     .filter(def => {
       const canonicalKey = canonicalRecordKey(def);
       if (missingCanonicalKeys.has(canonicalKey)) return false;
-      const authoritative = canonicalStateField(def);
+      const authoritative = recordStateFieldForDefinition(def, recordState)
+        || canonicalStateField(def);
       if (authoritative) {
-        if (authoritative.status !== 'missing' && authoritative.status !== 'not_applicable') return false;
+        if (!['missing', 'not_applicable'].includes(normalizeRecordStatus(authoritative))) return false;
         missingCanonicalKeys.add(canonicalKey);
         return true;
       }
@@ -3100,12 +3140,13 @@ function WhatNeedsAttention({
       return true;
     });
   const confirmedCanonicalKeys = new Set();
-  const recordConfirmedCount = visibleRecordDefinitions.reduce((count, def) => {
+  const recordConfirmedCount = effectiveRecordDefinitions.reduce((count, def) => {
     const canonicalKey = canonicalRecordKey(def);
     if (confirmedCanonicalKeys.has(canonicalKey)) return count;
-    const authoritative = canonicalStateField(def);
+    const authoritative = recordStateFieldForDefinition(def, recordState)
+      || canonicalStateField(def);
     if (authoritative) {
-      if (authoritative.status !== 'confirmed') return count;
+      if (normalizeRecordStatus(authoritative) !== 'confirmed') return count;
       confirmedCanonicalKeys.add(canonicalKey);
       return count + 1;
     }
@@ -3244,17 +3285,36 @@ function WhatNeedsAttention({
     urgency: 'high',
     title: `Provide ${field.label}`,
     reason: `Required Transaction Record field "${field.label}" is missing. Add and confirm the authoritative value.`,
-    routeItem: { field_key: field.key, key: field.key, label: field.label },
+    field: {
+      ...field,
+      ...(recordStateFieldForDefinition(field, recordState) || {}),
+      key: field.canonicalKey || field.key,
+      field_key: field.canonicalKey || field.key,
+      label: field.label,
+      status: recordStateFieldForDefinition(field, recordState)?.status || 'missing',
+    },
+    routeItem: {
+      field_key: field.canonicalKey || field.key,
+      key: field.canonicalKey || field.key,
+      label: field.label,
+      status: 'missing',
+    },
     actions: [],
     sourcePriority: 1,
   }));
 
   const derivedActions = [...documentActions, ...participantActions, ...recordActions]
     .sort((a, b) => a.sourcePriority - b.sourcePriority);
+  const canonicalAwaitingFields = getCanonicalAwaitingRecordFields(recordState);
+  const canonicalActionKeys = new Set([
+    ...recordMissing,
+    ...canonicalAwaitingFields,
+    ...canonicalConflicts,
+  ].flatMap(field => [...getRecordFieldIdentitySet(field)]));
 
   // Existing briefing/task-engine actions remain useful after concrete state
   // actions, and still provide the fallback for custom workflow packs.
-   const briefingActions = filterLiveDocumentActions([
+  const briefingActions = filterStaleRecordActions(filterLiveDocumentActions([
     ...(Array.isArray(briefing?.criticalPath) ? briefing.criticalPath : []),
     ...(Array.isArray(briefing?.actions) ? briefing.actions : []),
     ...(Array.isArray(briefing?.next_actions) ? briefing.next_actions : []),
@@ -3262,7 +3322,7 @@ function WhatNeedsAttention({
       title: `Upload ${typeof document === 'string' ? document : document.label || document.name || 'required document'}`,
       document: true,
     })) : []),
-   ], documentStats);
+  ], documentStats), recordState, recordFields, canonicalActionKeys);
   const seenBriefingActions = new Set();
   derivedActions.forEach(item => items.push(item));
   briefingActions.forEach((item, i) => {
@@ -3289,7 +3349,12 @@ function WhatNeedsAttention({
   });
 
   // 4. Issues / risks, deduplicated against the existing action feed.
-  const rawIssues = [...(briefing?.risks || []), ...(briefing?.open_items || [])];
+  const rawIssues = filterStaleRecordActions(
+    [...(briefing?.risks || []), ...(briefing?.open_items || [])],
+    recordState,
+    recordFields,
+    canonicalActionKeys,
+  );
   rawIssues.slice(0, 3).forEach((item, i) => {
     const text = typeof item === 'string' ? item : (item.text || item.risk || item.item || item.title || '');
     const normalizedText = String(text).trim();
@@ -3355,6 +3420,24 @@ function WhatNeedsAttention({
     }
     if (/(invite|participant|buyer|seller|party|counsel|lender|advisor)/.test(value)) {
       return { label: 'Open People', onClick: () => onOverviewAction?.({ type: 'tab', tab: 'people' }) };
+    }
+    if (/(borrower.*(advanced|advance).*fund|(advanced|advance).*fund.*borrower)/.test(value)) {
+      return {
+        label: 'Review record',
+        onClick: () => goToRecord({ field_key: 'financial.borrower_funds_advanced', label: 'Borrower funds advanced' }),
+      };
+    }
+    if (/funding\s+request|fund\s+release\s+request/.test(value)) {
+      return {
+        label: 'Review record',
+        onClick: () => goToRecord({ field_key: 'funding.request', label: 'Funding request' }),
+      };
+    }
+    if (/investor\s*(\/|or)\s*agency|investor.*agency|agency.*investor/.test(value)) {
+      return {
+        label: 'Review record',
+        onClick: () => goToRecord({ field_key: 'organization.investor_or_agency', label: 'Investor / agency' }),
+      };
     }
     if (/(term|purchase price|transaction value|closing date|structure)/.test(value)) {
       return { label: 'Review terms', onClick: () => goToRecord({ field_key: 'transaction.terms' }) };
@@ -4942,6 +5025,116 @@ function filterLiveDocumentActions(actions = [], documentStats) {
   return (actions || []).filter(action => !isStaleDocumentAction(action, documentStats));
 }
 
+function normalizeAttentionText(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .replace(/\s+/g, ' ');
+}
+
+function normalizeAttentionFieldKey(value) {
+  const key = String(value || '').trim().toLowerCase();
+  return {
+    'financial.borrower_advanced_funds': 'financial.borrower_funds_advanced',
+    'financial.borrower_funds_advanced_amount': 'financial.borrower_funds_advanced',
+    'transaction.investor_or_agency': 'organization.investor_or_agency',
+    'parties.investor_or_agency': 'organization.investor_or_agency',
+  }[key] || key;
+}
+
+function getRecordFieldIdentitySet(field) {
+  return new Set([
+    field?.key,
+    field?.field_key,
+    field?.canonicalKey,
+    field?.persistedKey,
+    field?.definitionKey,
+  ].filter(Boolean).map(normalizeAttentionFieldKey));
+}
+
+function getCanonicalRecordFieldCandidates(recordState, recordFields = []) {
+  const candidates = [
+    ...(Array.isArray(recordState?.requiredFields) ? recordState.requiredFields : []),
+    ...(Array.isArray(recordState?.fields) ? recordState.fields : []),
+    ...(Array.isArray(recordFields) ? recordFields : []),
+  ];
+  const seen = new Set();
+  return candidates.filter(field => {
+    const identities = getRecordFieldIdentitySet(field);
+    const label = normalizeAttentionText(field?.label || field?.display_label);
+    const identity = [...identities][0] || (label ? `label:${label}` : '');
+    if (!identity || seen.has(identity)) return false;
+    seen.add(identity);
+    return true;
+  });
+}
+
+function actionTextMentionsRecordField(action, field) {
+  const text = normalizeAttentionText([
+    action?.title,
+    action?.text,
+    action?.action,
+    action?.item,
+    action?.reason,
+    action?.note,
+  ].filter(Boolean).join(' '));
+  if (!text) return false;
+  const actionTokens = new Set(text.split(' '));
+  return [
+    field?.label,
+    field?.display_label,
+    field?.key,
+    field?.field_key,
+    field?.definitionKey,
+  ].filter(Boolean).some(value => {
+    const label = normalizeAttentionText(value);
+    if (!label) return false;
+    if (` ${text} `.includes(` ${label} `)) return true;
+    const tokens = label.split(' ').filter(token => token.length > 1);
+    return tokens.length >= 2 && tokens.every(token => actionTokens.has(token));
+  });
+}
+
+function findCanonicalRecordFieldForAction(action, recordState, recordFields = []) {
+  const candidates = getCanonicalRecordFieldCandidates(recordState, recordFields);
+  const explicitKeys = [
+    action?.field_key,
+    action?.fieldKey,
+    action?.key,
+    action?.canonicalKey,
+    action?.persistedKey,
+    action?.definitionKey,
+  ].filter(Boolean).map(normalizeAttentionFieldKey);
+  if (explicitKeys.length > 0) {
+    const explicitMatch = candidates.find(field => {
+      const identities = getRecordFieldIdentitySet(field);
+      return explicitKeys.some(key => identities.has(key));
+    });
+    if (explicitMatch) return explicitMatch;
+  }
+  return candidates.find(field => actionTextMentionsRecordField(action, field)) || null;
+}
+
+function filterStaleRecordActions(
+  actions = [],
+  recordState = null,
+  recordFields = [],
+  canonicalActionKeys = new Set(),
+) {
+  return (actions || []).filter(action => {
+    const field = findCanonicalRecordFieldForAction(action, recordState, recordFields);
+    if (!field) return true;
+    const identities = getRecordFieldIdentitySet(field);
+    const isResolved = normalizeRecordStatus(field) === 'confirmed';
+    const hasCanonicalAction = [...identities].some(identity => canonicalActionKeys.has(identity));
+    // Briefing text can contain an older extracted candidate. Once the
+    // canonical field is confirmed, or once a canonical Review record action
+    // exists for it, never render that stale candidate as a second action.
+    return !isResolved && !hasCanonicalAction;
+  });
+}
+
 function dedupeAttentionItems(items = []) {
   const seen = new Set();
   return items.filter(item => {
@@ -4960,7 +5153,7 @@ function dedupeAttentionItems(items = []) {
 function getCanonicalAwaitingRecordFields(recordState) {
   if (!Array.isArray(recordState?.requiredFields)) return [];
   return recordState.requiredFields.filter(field =>
-    field?.status === 'awaiting'
+    normalizeRecordStatus(field) === 'awaiting'
       && String(field.value ?? field.value_text ?? '').trim()
   );
 }
@@ -4973,7 +5166,7 @@ function mergeTransactionRecordState(previous, incoming) {
   arrayKeys.forEach(key => {
     const incomingValue = incoming[key];
     const previousValue = previous[key];
-    if (Array.isArray(incomingValue) && incomingValue.length > 0) {
+    if (Array.isArray(incomingValue)) {
       merged[key] = incomingValue;
     } else if (Array.isArray(previousValue) && previousValue.length > 0) {
       merged[key] = previousValue;
@@ -5644,9 +5837,11 @@ export {
   hasDocumentReviewFinding,
   getDocumentRequirementStats,
   filterLiveDocumentActions,
+  filterStaleRecordActions,
   dedupeAttentionItems,
   getCanonicalAwaitingRecordFields,
   getCanonicalUnresolvedConflicts,
+  mergeTransactionRecordState,
   getRecordDefinitionState,
   getCoordinatorRecordFacts,
 };
