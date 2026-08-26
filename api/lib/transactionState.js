@@ -812,10 +812,19 @@ function isImmediateLifecycleAdvance(stages, currentStage, requestedStage) {
 
 function getHazardLossRepairGate(state) {
   const recordState = state?.recordState || state?.readiness?.recordState || {};
-  const fields = Array.isArray(recordState.fields) ? recordState.fields : [];
+  const packId = state?.schemaKey || 'generic';
+  const fields = [
+    ...(Array.isArray(recordState.fields) ? recordState.fields : []),
+    ...(Array.isArray(recordState.requiredFields) ? recordState.requiredFields : []),
+  ];
   const unmetFields = HAZARD_LOSS_REPAIR_REQUIREMENTS.filter(key => {
-    const field = fields.find(item => item.key === key);
-    return !field || field.status !== 'confirmed' || !String(field.value || '').trim();
+    const field = fields.find(item => canonicalizeTransactionRecordKey(
+      item?.key || item?.field_key || item?.persistedKey || item?.definitionKey,
+      packId,
+    ) === key);
+    const status = String(field?.status || field?.rawStatus || '').toLowerCase();
+    const value = field?.value ?? field?.value_text ?? field?.value_json;
+    return !field || !['confirmed', 'verified'].includes(status) || !String(value ?? '').trim();
   });
   const unresolvedConflicts = Number(recordState.unresolvedConflictCount || 0);
   return {

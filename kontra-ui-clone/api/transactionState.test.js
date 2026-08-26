@@ -60,6 +60,27 @@ describe('transaction state recalculation', () => {
     });
   });
 
+  it('uses canonical aliases and persisted value fields when checking the hazard gate', () => {
+    const legacyState = {
+      schemaKey: 'generated_ai',
+      recordState: {
+        fields: [
+          { key: 'hazard.incident_date', value_text: '2026-07-10', status: 'verified' },
+          { key: 'hazard.insurance_proceeds', value_text: '$325,000', status: 'verified' },
+        ],
+        requiredFields: [
+          { key: 'financial.repair_costs', value: '$229,950', status: 'confirmed' },
+        ],
+        unresolvedConflictCount: 0,
+      },
+    };
+    expect(getHazardLossRepairGate(legacyState)).toEqual({
+      ok: true,
+      unmetFields: [],
+      unresolvedConflicts: 0,
+    });
+  });
+
   it.each([
     ['hazard.incident_date', 'transaction.incident_date'],
     ['transaction.incident_date', 'transaction.incident_date'],
