@@ -4052,10 +4052,10 @@ function DigitalAssetReadinessSection({
                               <li key={d.key} id={`transaction-record-field-${encodeURIComponent(d.key)}`} data-transaction-record-field="true" data-transaction-record-key={d.key} data-transaction-record-label={d.label} className={`rounded-lg px-1 text-xs text-gray-700 transition-shadow ${focusedFieldKey === d.key ? 'bg-emerald-50 ring-2 ring-emerald-300 ring-offset-1' : ''}`}>
                                 <span className="flex items-start gap-1.5">
                                   <span className="mt-0.5 text-emerald-500 shrink-0">✓</span>
-                                  <span className="flex min-w-0 flex-1 items-center justify-between gap-2">
-                                    <span>{d.label}{d.state?.value ? <span className="text-gray-400"> — {d.state.value}</span> : ''}</span>
+                                  <span className="flex min-w-0 flex-1 flex-col items-start gap-1">
+                                    <span className="break-words">{d.label}{d.state?.value ? <span className="text-gray-400"> — {d.state.value}</span> : ''}</span>
                                     {confirmedFieldId && (
-                                      <span className="flex shrink-0 items-center gap-1">
+                                      <span className="flex max-w-full flex-wrap items-center gap-1">
                                         <button type="button"
                                           onClick={() => { setEditingField(confirmedFieldId); setEditValue(d.state.value || ''); setMutationError(''); }}
                                           disabled={!!confirmingField}
@@ -4098,10 +4098,10 @@ function DigitalAssetReadinessSection({
                            {cat.awaitingDefs.slice(0, 4).map(d => (
                               <li key={d.key} id={`transaction-record-field-${encodeURIComponent(d.key)}`} data-transaction-record-field="true" data-transaction-record-key={d.key} data-transaction-record-label={d.label} className={`flex items-start gap-1.5 rounded-lg px-1 text-xs text-blue-700 transition-shadow ${focusedFieldKey === d.key ? 'bg-blue-50 ring-2 ring-blue-300 ring-offset-1' : ''}`}>
                                <span className="mt-0.5 text-blue-500 shrink-0">●</span>
-                               <span className="flex min-w-0 flex-1 items-center justify-between gap-2">
-                                 <span>{d.label}{d.state?.value ? <span className="text-gray-400"> — {d.state.value}</span> : ''}</span>
+                               <span className="flex min-w-0 flex-1 flex-col items-start gap-1">
+                                 <span className="break-words">{d.label}{d.state?.value ? <span className="text-gray-400"> — {d.state.value}</span> : ''}</span>
                                   {(d.state?.fieldId || d.state?.field?.id) && d.state?.value && (
-                                    <span className="flex shrink-0 items-center gap-1">
+                                    <span className="flex max-w-full flex-wrap items-center gap-1">
                                       <button type="button" onClick={() => confirmRecordField(d.state)} disabled={!!confirmingField}
                                         className="rounded-lg bg-[#800020] px-2 py-1 text-[10px] font-bold text-white disabled:opacity-50">
                                         {confirmingField ? 'Working…' : 'Confirm'}
@@ -6032,11 +6032,16 @@ function VerifiedAssetReadinessCard({
       )}
 
       <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-gray-200 pt-4">
-        <p className="text-xs text-gray-500">
-          {ownerToken
-            ? 'Owner session active — snapshots can be recorded.'
-            : 'Owner session not available — sign in through My Deal Rooms to record a snapshot.'}
-        </p>
+        <div className="min-w-0 flex-1">
+          <p className="text-xs text-gray-500">
+            {ownerToken
+              ? 'Owner session active — snapshots can be recorded.'
+              : 'Owner session not available — sign in through My Deal Rooms to record a snapshot.'}
+          </p>
+          <p className="mt-1 text-[10px] leading-relaxed text-gray-400">
+            Recording preserves this exact readiness state, including any ineligible status. It does not generate a preparation package or bypass blockers.
+          </p>
+        </div>
         <button
           type="button"
           onClick={onRecordSnapshot}
@@ -6047,7 +6052,9 @@ function VerifiedAssetReadinessCard({
         </button>
       </div>
       {action.message && (
-        <p className={`mt-3 text-xs ${action.error ? 'text-red-600' : 'text-gray-600'}`}>
+        <p role="status" className={`mt-3 rounded-lg border px-3 py-2 text-xs ${action.error
+          ? 'border-red-100 bg-red-50 text-red-600'
+          : 'border-gray-200 bg-white text-gray-600'}`}>
           {action.message}
         </p>
       )}
@@ -6168,8 +6175,8 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
         loading: false,
         error: false,
         message: data.created === false
-          ? `Snapshot v${snapshot.version} already records this state (${eligibility}).`
-          : `Snapshot v${snapshot.version} recorded (${eligibility}).`,
+          ? `No new snapshot was needed. Snapshot v${snapshot.version} already records this exact state as ${eligibility}.`
+          : `New snapshot v${snapshot.version} recorded as ${eligibility}.`,
       });
       await load();
     } catch (error) {
