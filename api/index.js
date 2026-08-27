@@ -10195,6 +10195,27 @@ function verifiedAssetSnapshotsUnavailable(error) {
     || /(?:relation|table).*verified_asset_snapshots/i.test(message);
 }
 
+function presentStoredVerifiedAssetSnapshot(row) {
+  if (!row) return null;
+  const frozenSnapshot = row.snapshot && typeof row.snapshot === 'object' ? row.snapshot : {};
+  return {
+    id: row.id,
+    version: row.version,
+    snapshot_version: row.version,
+    timestamp: row.created_at,
+    recorded_at: row.created_at,
+    eligibility_status: row.eligibility_status,
+    status: frozenSnapshot.digital_asset_readiness?.status || null,
+    source_state_at: row.source_state_at,
+    snapshot_hash: row.snapshot_hash,
+    created_by: row.created_by,
+    created_at: row.created_at,
+    // This is the persisted JSONB payload. Do not merge live readiness or
+    // Transaction Record state into it when inspecting historical snapshots.
+    snapshot: frozenSnapshot,
+  };
+}
+
 app.get('/api/public/deal-room/:propertyId/verified-asset/snapshots', async (req, res) => {
   try {
     const { data, error } = await supabase
@@ -10208,10 +10229,36 @@ app.get('/api/public/deal-room/:propertyId/verified-asset/snapshots', async (req
       }
       throw error;
     }
-    res.json({ snapshots: data || [] });
+    res.json({ snapshots: (data || []).map(presentStoredVerifiedAssetSnapshot) });
   } catch (err) {
     console.error('[verified-asset/snapshots GET]', err.message);
     res.status(500).json({ error: 'Failed to load Verified Asset snapshots' });
+  }
+});
+
+app.get('/api/public/deal-room/:propertyId/verified-asset/snapshots/:version', async (req, res) => {
+  const version = Number(req.params.version);
+  if (!Number.isInteger(version) || version < 1) {
+    return res.status(400).json({ error: 'Snapshot version must be a positive integer.' });
+  }
+  try {
+    const { data, error } = await supabase
+      .from('verified_asset_snapshots')
+      .select('id, version, eligibility_status, source_state_at, snapshot_hash, snapshot, created_by, created_at')
+      .eq('property_id', req.params.propertyId)
+      .eq('version', version)
+      .maybeSingle();
+    if (error) {
+      if (verifiedAssetSnapshotsUnavailable(error)) {
+        return res.status(503).json({ error: 'Verified Asset snapshots are not available until migration 024 is applied.' });
+      }
+      throw error;
+    }
+    if (!data) return res.status(404).json({ error: `Snapshot v${version} not found.` });
+    res.json({ snapshot: presentStoredVerifiedAssetSnapshot(data) });
+  } catch (err) {
+    console.error('[verified-asset/snapshot GET]', err.message);
+    res.status(500).json({ error: 'Failed to load Verified Asset snapshot' });
   }
 });
 

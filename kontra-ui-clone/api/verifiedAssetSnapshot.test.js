@@ -397,4 +397,59 @@ describe('Verified Asset snapshot foundation', () => {
     expect(second.created_from.transaction_record.fields[0].value).toBe('Updated Asset Name');
     expect(second.snapshot_hash).not.toBe(first.snapshot_hash);
   });
+
+  test('freezes Borrower funds at 90,000 after the live value changes to 80,000', () => {
+    const borrowerFunds = {
+      id: 'field-borrower-funds',
+      key: 'financial.borrower_funds',
+      label: 'Borrower funds',
+      category: 'financial',
+      value: 90000,
+      status: 'confirmed',
+      sourceDocId: 'invoice-1',
+      sourceFileHash: 'funds-hash',
+      verifiedBy: 'coordinator@example.com',
+      verifiedAt: '2026-08-24T00:00:00.000Z',
+    };
+    const v8 = build({
+      recordState: state({
+        fields: [borrowerFunds],
+        requiredFields: [borrowerFunds],
+        requiredCount: 1,
+        confirmedCount: 1,
+      }),
+    });
+    const storedSnapshots = [{
+      version: 8,
+      snapshot: JSON.parse(JSON.stringify(v8)),
+    }];
+    const liveBorrowerFunds = {
+      ...borrowerFunds,
+      value: 80000,
+      updatedAt: '2026-08-27T00:00:00.000Z',
+    };
+    const liveState = build({
+      recordState: state({
+        fields: [liveBorrowerFunds],
+        requiredFields: [liveBorrowerFunds],
+        requiredCount: 1,
+        confirmedCount: 1,
+      }),
+    });
+
+    const inspectedV8 = storedSnapshots.find(item => item.version === 8).snapshot;
+    expect(inspectedV8.created_from.transaction_record.canonical_fields).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ field_key: 'financial.borrower_funds', value: 90000 }),
+      ]),
+    );
+    expect(liveState.created_from.transaction_record.canonical_fields).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ field_key: 'financial.borrower_funds', value: 80000 }),
+      ]),
+    );
+    expect(inspectedV8.created_from.transaction_record.canonical_fields[0].value).toBe(90000);
+    expect(storedSnapshots).toHaveLength(1);
+    expect(storedSnapshots.map(item => item.version)).toEqual([8]);
+  });
 });

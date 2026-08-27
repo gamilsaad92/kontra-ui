@@ -290,6 +290,16 @@ function serializeField(field, approvals = [], confirmationHistory = []) {
   };
 }
 
+function serializeCanonicalField(field, approvals = [], confirmationHistory = []) {
+  return {
+    ...serializeField(field, approvals, confirmationHistory),
+    // The handoff projection intentionally redacts values that are not
+    // confirmed. Snapshot inspection must preserve the exact canonical value
+    // that existed when the snapshot was recorded, regardless of state.
+    value: fieldValue(field),
+  };
+}
+
 function buildDigitalAssetReadiness({
   fields,
   requiredFields,
@@ -425,6 +435,11 @@ function buildVerifiedAssetSnapshot({
             confirmationHistory.filter(event => historyMatchesField(field, event)),
           );
         }),
+        canonical_fields: fields.map(field => serializeCanonicalField(
+          field,
+          approvals.filter(approval => approval.field_id === (field.fieldId || field.field_id || field.id)),
+          confirmationHistory.filter(event => historyMatchesField(field, event)),
+        )),
       },
       provenance_manifest: fields.map(field => ({
         field_key: fieldKey(field),

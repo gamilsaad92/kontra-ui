@@ -6449,11 +6449,378 @@ function ParticipantOverview({ propertyId, property, pack, role, roleConfig, onT
   );
 }
 
+function formatSnapshotDate(value) {
+  if (!value) return 'Not recorded';
+  const date = new Date(value);
+  return Number.isNaN(date.getTime())
+    ? String(value)
+    : date.toLocaleString(undefined, {
+      dateStyle: 'medium',
+      timeStyle: 'short',
+    });
+}
+
+function formatStoredSnapshotValue(value) {
+  if (value === null || value === undefined || String(value).trim() === '') return 'Not recorded';
+  if (typeof value === 'number') return value.toLocaleString();
+  if (typeof value === 'boolean') return value ? 'Yes' : 'No';
+  if (typeof value === 'object') {
+    try {
+      return JSON.stringify(value);
+    } catch {
+      return String(value);
+    }
+  }
+  return String(value);
+}
+
+function SnapshotInspectionModal({ snapshot, snapshots = [], onSelectSnapshot, onClose }) {
+  if (!snapshot) return null;
+
+  // Everything below comes from the selected persisted JSON payload. In
+  // particular, never replace these fields with the live readiness response.
+  const payload = snapshot.snapshot && typeof snapshot.snapshot === 'object'
+    ? snapshot.snapshot
+    : {};
+  const transactionRecord = payload.created_from?.transaction_record || {};
+  const frozenFields = Array.isArray(transactionRecord.canonical_fields)
+    ? transactionRecord.canonical_fields
+    : (Array.isArray(transactionRecord.fields) ? transactionRecord.fields : []);
+  const recordedReadiness = payload.created_from?.readiness || {};
+  const digitalReadiness = payload.digital_asset_readiness || {};
+  const recordedExceptions = Array.isArray(payload.created_from?.exceptions)
+    ? payload.created_from.exceptions
+    : [];
+  const readinessExceptions = digitalReadiness.exceptions || {};
+  const blockers = [
+    ...(Array.isArray(readinessExceptions.incomplete_required_fields)
+      ? readinessExceptions.incomplete_required_fields.map(item => ({
+        label: item?.label || item?.field_key,
+        detail: item?.state || 'required field incomplete',
+      }))
+      : []),
+    ...(Array.isArray(readinessExceptions.unresolved_conflicts)
+      ? readinessExceptions.unresolved_conflicts.map(item => ({
+        label: item?.label || item?.field_key || 'Transaction Record conflict',
+        detail: 'unresolved conflict',
+      }))
+      : []),
+    ...(Array.isArray(digitalReadiness.approvals?.missing)
+      ? digitalReadiness.approvals.missing.map(item => ({
+        label: item?.label || item?.field_key || 'Required approval',
+        detail: 'approval required',
+      }))
+      : []),
+    ...(Array.isArray(digitalReadiness.provenance?.gaps)
+      ? digitalReadiness.provenance.gaps.map(item => ({
+        label: item?.label || item?.field_key || 'Confirmed field',
+        detail: item?.requirement || 'provenance gap',
+      }))
+      : []),
+  ].filter(item => item.label);
+  const provenanceManifest = Array.isArray(payload.created_from?.provenance_manifest)
+    ? payload.created_from.provenance_manifest
+    : [];
+  const confirmationHistory = Array.isArray(payload.created_from?.confirmation_history)
+    ? payload.created_from.confirmation_history
+    : [];
+  const approvals = Array.isArray(payload.created_from?.approvals)
+    ? payload.created_from.approvals
+    : [];
+  const settlementMode = payload.created_from?.settlement_mode
+    || digitalReadiness.settlement_method?.mode
+    || 'Not recorded';
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-gray-900/50 px-4 py-6 sm:py-10"
+      role="presentation"
+      onMouseDown={event => {
+        if (event.target === event.currentTarget) onClose?.();
+      }}
+    >
+      <section
+        className="w-full max-w-6xl overflow-hidden rounded-2xl border border-gray-200 bg-[#fcfbf8] shadow-2xl"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="verified-asset-snapshot-title"
+      >
+        <div className="flex items-start justify-between gap-4 border-b border-gray-200 bg-white px-5 py-4 sm:px-7">
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-[#800020]">
+              Immutable Verified Asset record
+            </p>
+            <h2 id="verified-asset-snapshot-title" className="mt-1 text-lg font-bold text-gray-900">
+              Snapshot v{snapshot.version}
+            </h2>
+            <p className="mt-1 text-xs text-gray-500">
+              Recorded {formatSnapshotDate(snapshot.timestamp || snapshot.created_at)}
+              {snapshot.created_by ? ` · by ${snapshot.created_by}` : ''}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close snapshot inspection"
+            className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-bold text-gray-600 hover:bg-gray-50"
+          >
+            Close
+          </button>
+        </div>
+
+        <div className="grid lg:grid-cols-[220px_minmax(0,1fr)]">
+          <aside className="border-b border-gray-200 bg-white px-4 py-4 lg:border-b-0 lg:border-r">
+            <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Snapshot history</p>
+            {snapshots.length === 0 ? (
+              <p className="mt-3 text-xs text-gray-500">No stored snapshots.</p>
+            ) : (
+              <div className="mt-3 space-y-2">
+                {snapshots.map(item => {
+                  const selected = item.id === snapshot.id || item.version === snapshot.version;
+                  return (
+                    <button
+                      key={item.id || item.version}
+                      type="button"
+                      onClick={() => onSelectSnapshot?.(item)}
+                      className={`w-full rounded-xl border px-3 py-2.5 text-left transition ${
+                        selected
+                          ? 'border-[#800020] bg-[#800020]/5'
+                          : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-xs font-bold text-gray-900">v{item.version}</span>
+                        <span className={`rounded-full px-2 py-0.5 text-[9px] font-bold ${
+                          item.eligibility_status === 'eligible'
+                            ? 'bg-emerald-100 text-emerald-700'
+                            : 'bg-amber-100 text-amber-700'
+                        }`}>
+                          {item.eligibility_status || 'ineligible'}
+                        </span>
+                      </div>
+                      <p className="mt-1 text-[10px] text-gray-500">
+                        {formatSnapshotDate(item.timestamp || item.created_at)}
+                      </p>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </aside>
+
+          <div className="max-h-[calc(100vh-150px)] overflow-y-auto px-5 py-5 sm:px-7">
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <div className="rounded-xl border border-gray-200 bg-white px-3 py-3">
+                <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Status</p>
+                <p className="mt-1 text-xs font-bold capitalize text-gray-900">
+                  {(snapshot.status || digitalReadiness.status || 'not recorded').replace(/_/g, ' ')}
+                </p>
+              </div>
+              <div className="rounded-xl border border-gray-200 bg-white px-3 py-3">
+                <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Eligibility</p>
+                <p className={`mt-1 text-xs font-bold ${
+                  snapshot.eligibility_status === 'eligible' ? 'text-emerald-700' : 'text-amber-700'
+                }`}>
+                  {snapshot.eligibility_status || (digitalReadiness.eligible ? 'eligible' : 'ineligible')}
+                </p>
+              </div>
+              <div className="rounded-xl border border-gray-200 bg-white px-3 py-3">
+                <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Record counts</p>
+                <p className="mt-1 text-xs font-bold text-gray-900">
+                  {recordedReadiness.confirmed_count ?? transactionRecord.confirmed_count ?? 0}
+                  {' / '}
+                  {recordedReadiness.required_count ?? transactionRecord.required_count ?? 0} confirmed
+                </p>
+              </div>
+              <div className="rounded-xl border border-gray-200 bg-white px-3 py-3">
+                <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Settlement mode</p>
+                <p className="mt-1 text-xs font-bold capitalize text-gray-900">{String(settlementMode).replace(/_/g, ' ')}</p>
+              </div>
+            </div>
+
+            <div className="mt-5 rounded-xl border border-gray-200 bg-white px-4 py-4">
+              <div className="flex flex-wrap items-baseline justify-between gap-2">
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Snapshot metadata</p>
+                  <p className="mt-1 text-xs text-gray-600">
+                    Version {snapshot.version} · source state {formatSnapshotDate(snapshot.source_state_at || payload.source_state_at)}
+                  </p>
+                </div>
+                {snapshot.snapshot_hash && (
+                  <p className="max-w-full break-all text-[10px] text-gray-400">Hash: {snapshot.snapshot_hash}</p>
+                )}
+              </div>
+              <p className="mt-2 text-[11px] leading-relaxed text-gray-500">
+                This view is frozen to the persisted snapshot. Later Transaction Record edits do not change these values.
+              </p>
+            </div>
+
+            <div className="mt-5">
+              <div className="flex items-baseline justify-between gap-3">
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Frozen canonical values</p>
+                  <p className="mt-1 text-xs text-gray-500">
+                    {frozenFields.length} field{frozenFields.length === 1 ? '' : 's'} captured at recording time
+                  </p>
+                </div>
+                <span className="text-[10px] font-semibold text-gray-400">
+                  {recordedReadiness.awaiting_count || 0} awaiting · {recordedReadiness.missing_count || 0} missing
+                </span>
+              </div>
+              {frozenFields.length === 0 ? (
+                <p className="mt-3 rounded-xl border border-gray-200 bg-white px-4 py-3 text-xs text-gray-500">
+                  No canonical fields were stored in this snapshot.
+                </p>
+              ) : (
+                <div className="mt-3 overflow-hidden rounded-xl border border-gray-200 bg-white">
+                  <div className="hidden grid-cols-[minmax(0,1.3fr)_minmax(0,1.5fr)_120px] gap-3 border-b border-gray-100 bg-gray-50 px-4 py-2 text-[10px] font-bold uppercase tracking-wider text-gray-400 sm:grid">
+                    <span>Field</span><span>Frozen value</span><span>State</span>
+                  </div>
+                  <div className="divide-y divide-gray-100">
+                    {frozenFields.map((field, index) => (
+                      <div key={field.field_id || field.field_key || `${field.label}-${index}`} className="grid gap-1 px-4 py-3 sm:grid-cols-[minmax(0,1.3fr)_minmax(0,1.5fr)_120px] sm:gap-3">
+                        <div className="min-w-0">
+                          <p className="text-xs font-semibold text-gray-800">{field.label || field.field_key || 'Unnamed field'}</p>
+                          <p className="mt-0.5 break-all text-[10px] text-gray-400">{field.field_key || field.definition_key || 'No field key'}</p>
+                        </div>
+                        <p className="break-words text-xs text-gray-700">{formatStoredSnapshotValue(field.value)}</p>
+                        <p className={`text-[10px] font-bold capitalize ${
+                          field.confirmation?.confirmed ? 'text-emerald-700' : 'text-amber-700'
+                        }`}>
+                          {(field.current_state || 'missing').replace(/_/g, ' ')}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="mt-5 grid gap-5 xl:grid-cols-2">
+              <div className="rounded-xl border border-gray-200 bg-white px-4 py-4">
+                <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Blockers and exceptions</p>
+                <p className="mt-1 text-xs text-gray-500">
+                  {blockers.length} blocker{blockers.length === 1 ? '' : 's'} at recording time · {recordedExceptions.length} exception record{recordedExceptions.length === 1 ? '' : 's'}
+                </p>
+                {blockers.length > 0 ? (
+                  <ul className="mt-3 space-y-2">
+                    {blockers.map((item, index) => (
+                      <li key={`${item.label}-${index}`} className="flex items-start gap-2 text-xs text-amber-900">
+                        <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500" />
+                        <span><strong>{item.label}</strong> — {item.detail}</span>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="mt-3 text-xs text-emerald-700">No blockers were recorded.</p>
+                )}
+                {recordedExceptions.length > 0 && (
+                  <div className="mt-3 border-t border-gray-100 pt-3">
+                    {recordedExceptions.map((item, index) => (
+                      <p key={item.id || `${item.field_key}-${index}`} className="mt-1 text-[11px] text-gray-600">
+                        {item.label || item.field_key || 'Exception'} · <span className="capitalize">{item.status || 'unresolved'}</span>
+                        {item.resolution_note ? ` · ${item.resolution_note}` : ''}
+                      </p>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="rounded-xl border border-gray-200 bg-white px-4 py-4">
+                <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Provenance and evidence</p>
+                <p className="mt-1 text-xs text-gray-500">
+                  {digitalReadiness.provenance?.intact ? 'Provenance intact' : `${digitalReadiness.provenance?.gaps?.length || 0} provenance gaps`}
+                  {' · '}{provenanceManifest.length} field evidence entries
+                </p>
+                {provenanceManifest.length > 0 ? (
+                  <div className="mt-3 max-h-52 space-y-2 overflow-y-auto pr-1">
+                    {provenanceManifest.map((item, index) => {
+                      const source = item.provenance || {};
+                      return (
+                        <div key={item.field_key || index} className="rounded-lg bg-gray-50 px-3 py-2">
+                          <p className="text-[11px] font-semibold text-gray-700">{item.field_key || 'Unnamed field'}</p>
+                          <p className="mt-0.5 break-words text-[10px] text-gray-500">
+                            {source.source_document_id || source.source_file_hash || source.source_type || 'No source recorded'}
+                            {source.source_page != null ? ` · page ${source.source_page}` : ''}
+                          </p>
+                          {source.source_excerpt && (
+                            <p className="mt-1 text-[10px] italic text-gray-400">“{source.source_excerpt}”</p>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <p className="mt-3 text-xs text-gray-500">No provenance entries were recorded.</p>
+                )}
+              </div>
+            </div>
+
+            <div className="mt-5 grid gap-5 xl:grid-cols-2">
+              <div className="rounded-xl border border-gray-200 bg-white px-4 py-4">
+                <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Approvals</p>
+                <p className="mt-1 text-xs text-gray-500">
+                  {digitalReadiness.approvals?.satisfied ? 'Required approvals satisfied' : `${digitalReadiness.approvals?.missing?.length || 0} required approval gaps`}
+                  {' · '}{approvals.length} approval event{approvals.length === 1 ? '' : 's'} captured
+                </p>
+                {approvals.length > 0 ? (
+                  <div className="mt-3 space-y-2">
+                    {approvals.map((item, index) => (
+                      <div key={`${item.field_id || 'approval'}-${item.created_at || index}`} className="flex flex-wrap justify-between gap-2 rounded-lg bg-gray-50 px-3 py-2 text-[10px] text-gray-600">
+                        <span><strong>{item.action || 'approval'}</strong> · {item.actor_role || item.actor_email || 'actor not recorded'}</span>
+                        <span>{formatSnapshotDate(item.created_at)}</span>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="mt-3 text-xs text-gray-500">No approval events were recorded.</p>
+                )}
+              </div>
+
+              <div className="rounded-xl border border-gray-200 bg-white px-4 py-4">
+                <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Confirmation history</p>
+                <p className="mt-1 text-xs text-gray-500">
+                  {confirmationHistory.length} evidence event{confirmationHistory.length === 1 ? '' : 's'} captured in this snapshot
+                </p>
+                {confirmationHistory.length > 0 ? (
+                  <div className="mt-3 max-h-52 space-y-2 overflow-y-auto pr-1">
+                    {confirmationHistory.map((item, index) => (
+                      <div key={`${item.field_id || item.field_key || 'event'}-${item.created_at || index}`} className="rounded-lg bg-gray-50 px-3 py-2">
+                        <div className="flex flex-wrap justify-between gap-2 text-[10px] text-gray-600">
+                          <span className="font-semibold">{item.event_type || 'record event'}</span>
+                          <span>{formatSnapshotDate(item.created_at)}</span>
+                        </div>
+                        <p className="mt-1 text-[10px] text-gray-500">
+                          {item.field_key || item.field_id || 'Field not identified'}
+                          {item.new_status ? ` · ${item.new_status}` : ''}
+                          {item.actor_role || item.actor_email ? ` · ${item.actor_role || item.actor_email}` : ''}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="mt-3 text-xs text-gray-500">No confirmation history was recorded.</p>
+                )}
+              </div>
+            </div>
+
+            {payload.disclosure && (
+              <p className="mt-5 text-[10px] leading-relaxed text-gray-400">{payload.disclosure}</p>
+            )}
+          </div>
+        </div>
+      </section>
+    </div>
+  );
+}
+
 function VerifiedAssetReadinessCard({
   verifiedAssetReadiness,
   ownerToken,
   snapshotAction,
+  snapshotHistory = [],
   onRecordSnapshot,
+  onOpenSnapshot,
   onOpenProvenance,
 }) {
   const isUnavailable = !verifiedAssetReadiness;
@@ -6613,6 +6980,34 @@ function VerifiedAssetReadinessCard({
           {action.loading ? 'Recording…' : 'Record readiness snapshot'}
         </button>
       </div>
+      <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-gray-100 pt-4">
+        <div>
+          <p className="text-xs font-semibold text-gray-700">Immutable readiness history</p>
+          <p className="mt-1 text-[10px] text-gray-400">
+            {snapshotHistory.length > 0
+              ? `${snapshotHistory.length} stored snapshot${snapshotHistory.length === 1 ? '' : 's'} · historical values remain frozen`
+              : 'No readiness snapshots have been recorded yet.'}
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => onOpenSnapshot?.(snapshotHistory[0])}
+            disabled={snapshotHistory.length === 0}
+            className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-xs font-bold text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            View latest snapshot
+          </button>
+          <button
+            type="button"
+            onClick={() => onOpenSnapshot?.(snapshotHistory[0])}
+            disabled={snapshotHistory.length === 0}
+            className="rounded-lg border border-[#800020] px-3 py-2 text-xs font-bold text-[#800020] hover:bg-[#800020] hover:text-white disabled:cursor-not-allowed disabled:border-gray-300 disabled:text-gray-400 disabled:hover:bg-transparent disabled:hover:text-gray-400"
+          >
+            Snapshot history ({snapshotHistory.length})
+          </button>
+        </div>
+      </div>
       {action.message && (
         <p role="status" className={`mt-3 rounded-lg border px-3 py-2 text-xs ${action.error
           ? 'border-red-100 bg-red-50 text-red-600'
@@ -6635,6 +7030,8 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
   const [recordState, setRecordState]   = useState(null);
   const [readiness, setReadiness]       = useState(null);
   const [verifiedAssetReadiness, setVerifiedAssetReadiness] = useState(null);
+  const [snapshotHistory, setSnapshotHistory] = useState([]);
+  const [selectedSnapshot, setSelectedSnapshot] = useState(null);
   const [snapshotAction, setSnapshotAction] = useState({ loading: false, message: '', error: false });
   const [loading, setLoading]           = useState(true);
   const [ownerToken, setOwnerToken]     = useState('');
@@ -6697,6 +7094,11 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
       });
     get(`/api/public/deal-room/${propertyId}/verified-asset/readiness`, null)
       .then(apply(setVerifiedAssetReadiness));
+    get(`/api/public/deal-room/${propertyId}/verified-asset/snapshots`, { snapshots: [] })
+      .then(apply(
+        setSnapshotHistory,
+        snapshotData => Array.isArray(snapshotData?.snapshots) ? snapshotData.snapshots : [],
+      ));
     get(`/api/public/deal-room/${propertyId}/checklist`, { items: [] })
       .then(apply(setChecklistItems, checklist => Array.isArray(checklist?.items) ? checklist.items : []));
     get(`/api/public/deal-room/${propertyId}/events`, { events: [] })
@@ -7189,8 +7591,10 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
       <VerifiedAssetReadinessCard
         verifiedAssetReadiness={verifiedAssetReadiness}
         ownerToken={ownerToken}
+        snapshotHistory={snapshotHistory}
         snapshotAction={snapshotAction}
         onRecordSnapshot={recordReadinessSnapshot}
+        onOpenSnapshot={setSelectedSnapshot}
         onOpenProvenance={gap => overviewAction({
           type: 'record',
           field: {
@@ -7200,6 +7604,12 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
           },
           keys: [gap?.field_key].filter(Boolean),
         })}
+      />
+      <SnapshotInspectionModal
+        snapshot={selectedSnapshot}
+        snapshots={snapshotHistory}
+        onSelectSnapshot={setSelectedSnapshot}
+        onClose={() => setSelectedSnapshot(null)}
       />
       <TransactionConflictResolver
         propertyId={propertyId}
