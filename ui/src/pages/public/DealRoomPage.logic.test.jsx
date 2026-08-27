@@ -24,6 +24,7 @@ const {
   getCurrentProvenanceGap,
   preparationDraftValue,
   preparationSaveConfirmation,
+  preparationPdfConfirmation,
 } = require('./DealRoomPage');
 
 describe('coordinator transaction brief logic', () => {
@@ -61,6 +62,15 @@ describe('coordinator transaction brief logic', () => {
       packageStatus: 'needs_information',
       idempotent: true,
     })).toContain('No duplicate revision was created.');
+  });
+
+  test('distinguishes a newly generated PDF from an idempotent replay', () => {
+    expect(preparationPdfConfirmation({ revision: 3 })).toBe(
+      'Preparation PDF generated for Revision 3.',
+    );
+    expect(preparationPdfConfirmation({ revision: 3, created: false })).toBe(
+      'PDF already exists for Revision 3; no duplicate artifact was created.',
+    );
   });
 
   test('matches a live provenance gap to the confirmed canonical field', () => {

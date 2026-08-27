@@ -6167,6 +6167,7 @@ export {
   getCoordinatorRecordFacts,
   preparationDraftValue,
   preparationSaveConfirmation,
+  preparationPdfConfirmation,
 };
 
 // ── Transaction Seal Summary (complete phase) ─────────────────────────────────
@@ -6876,6 +6877,13 @@ function preparationSaveConfirmation({ revision, packageStatus, idempotent = fal
   return `Saved as Revision ${revisionNumber}. Package status: ${status}. Add the remaining named fields before provider review.`;
 }
 
+function preparationPdfConfirmation({ revision, created = true } = {}) {
+  const revisionNumber = revision ?? '—';
+  return created
+    ? `Preparation PDF generated for Revision ${revisionNumber}.`
+    : `PDF already exists for Revision ${revisionNumber}; no duplicate artifact was created.`;
+}
+
 function DigitalAssetPackageModal({
   propertyId,
   ownerToken,
@@ -6888,14 +6896,19 @@ function DigitalAssetPackageModal({
   const [draft, setDraft] = useState({});
   const [saveState, setSaveState] = useState({ loading: false, error: false, message: '' });
   const [revisions, setRevisions] = useState([]);
+  const [pdfArtifacts, setPdfArtifacts] = useState([]);
+  const [pdfAction, setPdfAction] = useState({ loading: false, error: false, message: '', revisionId: null });
   const saveInFlightRef = useRef(false);
   const saveRequestIdRef = useRef(null);
+  const pdfInFlightRef = useRef(false);
   const preserveSaveMessageRef = useRef(false);
 
   useEffect(() => {
     if (!packageRecord) {
       setDraft({});
       setRevisions([]);
+      setPdfArtifacts([]);
+      setPdfAction({ loading: false, error: false, message: '', revisionId: null });
       saveRequestIdRef.current = null;
       return;
     }
@@ -6925,6 +6938,22 @@ function DigitalAssetPackageModal({
       })
       .catch(() => {
         if (!cancelled) setRevisions([]);
+      });
+    return () => { cancelled = true; };
+  }, [propertyId, packageRecord?.id, packageRecord?.revision]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!packageRecord?.id || !propertyId) return undefined;
+    fetch(`${API_BASE}/api/public/deal-room/${propertyId}/digital-asset-packages/${packageRecord.id}/artifacts`, {
+      headers: getRoomAuthHeaders(propertyId),
+    })
+      .then(response => response.ok ? response.json() : { artifacts: [] })
+      .then(data => {
+        if (!cancelled) setPdfArtifacts(Array.isArray(data?.artifacts) ? data.artifacts : []);
+      })
+      .catch(() => {
+        if (!cancelled) setPdfArtifacts([]);
       });
     return () => { cancelled = true; };
   }, [propertyId, packageRecord?.id, packageRecord?.revision]);
@@ -7129,6 +7158,100 @@ function DigitalAssetPackageModal({
       setSaveState({ loading: false, error: true, message: error.message });
     } finally {
       saveInFlightRef.current = false;
+    }
+  }
+
+  function artifactForRevision(revision) {
+    if (!revision?.id) return null;
+    return pdfArtifacts.find(artifact => artifact.source_revision_id === revision.id)
+      || pdfArtifacts.find(artifact =>
+        Number(artifact.source_revision) === Number(revision.revision)
+        && artifact.source_revision_hash === revision.package_hash,
+      )
+      || null;
+  }
+
+  async function generatePreparationPdf(revision) {
+    if (!ownerToken || !revision?.id || pdfAction.loading || pdfInFlightRef.current) return;
+    pdfInFlightRef.current = true;
+    setPdfAction({ loading: true, error: false, message: '', revisionId: revision.id });
+    try {
+      const response = await fetch(
+        `${API_BASE}/api/public/deal-room/${propertyId}/digital-asset-packages/${packageRecord.id}/revisions/${revision.id}/artifacts`,
+        {
+          method: 'POST',
+          headers: getRoomAuthHeaders(propertyId, { 'Content-Type': 'application/json' }),
+          body: JSON.stringify({
+            ownerWriteToken: ownerToken,
+            revision: revision.revision,
+            sourceSnapshotId: revision.source_snapshot_id || packageRecord.source_snapshot_id,
+            sourceSnapshotVersion: revision.source_snapshot_version || packageRecord.source_snapshot_version,
+            sourceSnapshotHash: revision.source_snapshot_hash || packageRecord.source_snapshot_hash,
+            packageHash: revision.package_hash,
+          }),
+        },
+      );
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.message || data.error || 'Preparation PDF could not be generated.');
+      if (data.artifact) {
+        setPdfArtifacts(previous => [
+          data.artifact,
+          ...previous.filter(item => item.id !== data.artifact.id),
+        ]);
+      }
+      setPdfAction({
+        loading: false,
+        error: false,
+        revisionId: revision.id,
+        message: preparationPdfConfirmation({
+          revision: revision.revision,
+          created: data.created !== false,
+        }),
+      });
+    } catch (error) {
+      setPdfAction({ loading: false, error: true, revisionId: revision.id, message: error.message });
+    } finally {
+      pdfInFlightRef.current = false;
+    }
+  }
+
+  async function openPreparationPdf(artifact, mode = 'view') {
+    if (!artifact?.id || pdfAction.loading) return;
+    const popup = mode === 'view' ? window.open('', '_blank', 'noopener,noreferrer') : null;
+    setPdfAction({ loading: true, error: false, message: '', revisionId: artifact.source_revision_id });
+    try {
+      const fallbackPath = `/api/public/deal-room/${encodeURIComponent(propertyId)}/digital-asset-packages/${encodeURIComponent(packageRecord.id)}/artifacts/${encodeURIComponent(artifact.id)}${mode === 'download' ? '?download=1' : ''}`;
+      const path = mode === 'download' ? (artifact.download_path || fallbackPath) : (artifact.view_path || fallbackPath);
+      const response = await fetch(`${API_BASE}${path}`, {
+        headers: getRoomAuthHeaders(propertyId),
+      });
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.message || data.error || 'The preparation PDF could not be opened.');
+      }
+      const url = URL.createObjectURL(await response.blob());
+      if (mode === 'view' && popup) {
+        popup.location.href = url;
+        setTimeout(() => URL.revokeObjectURL(url), 60_000);
+      } else {
+        if (popup) popup.close();
+        const anchor = document.createElement('a');
+        anchor.href = url;
+        if (mode === 'download') anchor.download = artifact.filename || 'digital-asset-preparation.pdf';
+        anchor.target = '_blank';
+        anchor.rel = 'noopener';
+        anchor.click();
+        setTimeout(() => URL.revokeObjectURL(url), 5_000);
+      }
+      setPdfAction({
+        loading: false,
+        error: false,
+        revisionId: artifact.source_revision_id,
+        message: mode === 'download' ? 'PDF download started.' : 'PDF opened in a new tab.',
+      });
+    } catch (error) {
+      if (popup) popup.close();
+      setPdfAction({ loading: false, error: true, revisionId: artifact.source_revision_id, message: error.message });
     }
   }
 
@@ -7378,19 +7501,80 @@ function DigitalAssetPackageModal({
                {revisions.length > 0 ? (
                  <div className="mt-3 space-y-2">
                    {revisions.map(revision => (
-                     <div key={revision.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2">
-                       <span className="text-xs font-semibold text-gray-800">
-                         Revision {revision.revision} · {String(revision.package_status || 'needs_information').replace(/_/g, ' ')}
-                       </span>
-                       <span className="text-[10px] text-gray-500">
-                         {(revision.changed_fields || []).join(', ') || 'No field list'} · {formatSnapshotDate(revision.created_at)}
-                       </span>
+                      <div key={revision.id} className="rounded-lg border border-gray-200 bg-white px-3 py-2">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <span className="text-xs font-semibold text-gray-800">
+                            Revision {revision.revision} · {String(revision.package_status || 'needs_information').replace(/_/g, ' ')}
+                          </span>
+                          <span className="text-[10px] text-gray-500">
+                            {(revision.changed_fields || []).join(', ') || 'No field list'} · {formatSnapshotDate(revision.created_at)}
+                          </span>
+                        </div>
+                        {artifactForRevision(revision) ? (
+                          <div className="mt-2 flex flex-wrap items-center justify-between gap-2 border-t border-gray-100 pt-2">
+                            <span className="text-[10px] font-semibold text-emerald-700">
+                              PDF generated · {formatSnapshotDate(artifactForRevision(revision).generated_at)}
+                            </span>
+                            <div className="flex flex-wrap gap-2">
+                              <button
+                                type="button"
+                                onClick={() => openPreparationPdf(artifactForRevision(revision), 'view')}
+                                disabled={pdfAction.loading}
+                                className="rounded-md border border-gray-300 px-2.5 py-1 text-[10px] font-bold text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+                              >
+                                {pdfAction.loading && pdfAction.revisionId === revision.id ? 'Opening…' : 'View PDF'}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => openPreparationPdf(artifactForRevision(revision), 'download')}
+                                disabled={pdfAction.loading}
+                                className="rounded-md border border-[#800020] px-2.5 py-1 text-[10px] font-bold text-[#800020] hover:bg-[#800020]/5 disabled:cursor-not-allowed disabled:opacity-50"
+                              >
+                                Download PDF
+                              </button>
+                            </div>
+                          </div>
+                        ) : revision.package_status === 'ready_for_provider_review' ? (
+                          <div className="mt-2 flex flex-wrap items-center justify-between gap-2 border-t border-gray-100 pt-2">
+                            <span className="text-[10px] text-gray-500">
+                              Ready revision; generating a PDF is a separate owner action.
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => generatePreparationPdf(revision)}
+                              disabled={!ownerToken || pdfAction.loading}
+                              className="rounded-md bg-[#800020] px-2.5 py-1.5 text-[10px] font-bold text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                              {pdfAction.loading && pdfAction.revisionId === revision.id
+                                ? 'Generating…'
+                                : 'Generate Preparation Package'}
+                            </button>
+                          </div>
+                        ) : (
+                          <p className="mt-2 border-t border-gray-100 pt-2 text-[10px] text-gray-400">
+                            PDF generation unlocks when this revision is ready for provider review.
+                          </p>
+                        )}
                      </div>
                    ))}
                  </div>
                ) : (
                  <p className="mt-3 text-xs text-gray-400">No preparation revisions have been saved.</p>
                )}
+                {!ownerToken && revisions.some(revision => revision.package_status === 'ready_for_provider_review') && (
+                  <p className="mt-3 text-[10px] font-semibold text-amber-700">
+                    Owner authorization is required to generate a preparation PDF.
+                  </p>
+                )}
+                {pdfAction.message && (
+                  <p role={pdfAction.error ? 'alert' : 'status'} className={`mt-3 rounded-lg border px-3 py-2 text-xs ${
+                    pdfAction.error
+                      ? 'border-red-200 bg-red-50 text-red-700'
+                      : 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                  }`}>
+                    {pdfAction.message}
+                  </p>
+                )}
              </div>
 
             <p className="mt-5 text-[10px] leading-relaxed text-gray-400">

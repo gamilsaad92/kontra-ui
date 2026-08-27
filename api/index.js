@@ -98,6 +98,13 @@ const {
   digitalAssetPackagesUnavailable,
 } = require('./lib/digitalAssetPreparationPackage');
 const {
+  PREPARATION_PDF_BUCKET,
+  PREPARATION_PDF_SCHEMA,
+  PREPARATION_PDF_VERSION,
+  buildPreparationPdfBuffer,
+  hashPreparationPdf,
+} = require('./lib/digitalAssetPreparationPdf');
+const {
   selectActiveDocumentVersions,
   isActiveDocumentVersion,
 } = require('./lib/documentVersions');
@@ -10518,6 +10525,7 @@ async function createDigitalAssetPreparationPackage(propertyId, access, {
 
 const DIGITAL_ASSET_PACKAGE_SELECT = 'id, property_id, source_snapshot_id, source_snapshot_version, source_snapshot_hash, package_hash, package, created_by, created_at';
 const DIGITAL_ASSET_PACKAGE_REVISION_SELECT = 'id, package_id, property_id, revision, source_snapshot_id, source_snapshot_version, source_snapshot_hash, package_hash, package, changed_fields, created_by, created_at';
+const DIGITAL_ASSET_PREPARATION_PDF_ARTIFACT_SELECT = 'id, package_id, property_id, source_snapshot_id, source_snapshot_version, source_snapshot_hash, source_revision_id, source_revision, source_revision_hash, artifact_hash, storage_bucket, storage_path, filename, content_type, generated_by, generated_at';
 const PREPARATION_SAVE_REQUEST_ID_MAX_LENGTH = 128;
 
 function digitalAssetPackageRevisionsUnavailable(error) {
@@ -10526,6 +10534,151 @@ function digitalAssetPackageRevisionsUnavailable(error) {
     || error?.code === 'PGRST205'
     || /digital_asset_preparation_package_revisions.*(?:does not exist|schema cache|not found)/i.test(message)
     || /(?:relation|table).*digital_asset_preparation_package_revisions/i.test(message);
+}
+
+function digitalAssetPreparationPdfArtifactsUnavailable(error) {
+  const message = String(error?.message || '');
+  return error?.code === '42P01'
+    || error?.code === 'PGRST205'
+    || /digital_asset_preparation_pdf_artifacts.*(?:does not exist|schema cache|not found)/i.test(message)
+    || /(?:relation|table).*digital_asset_preparation_pdf_artifacts/i.test(message);
+}
+
+function presentDigitalAssetPreparationPdfArtifact(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    package_id: row.package_id,
+    property_id: row.property_id,
+    source_snapshot_id: row.source_snapshot_id,
+    source_snapshot_version: row.source_snapshot_version,
+    source_snapshot_hash: row.source_snapshot_hash,
+    source_revision_id: row.source_revision_id,
+    source_revision: row.source_revision,
+    source_revision_hash: row.source_revision_hash,
+    artifact_hash: row.artifact_hash,
+    schema: PREPARATION_PDF_SCHEMA,
+    artifact_version: PREPARATION_PDF_VERSION,
+    filename: row.filename,
+    content_type: row.content_type || 'application/pdf',
+    generated_by: row.generated_by,
+    generated_at: row.generated_at,
+  };
+}
+
+async function getStoredDigitalAssetPreparationPdfArtifact(propertyId, packageId, revisionId) {
+  const { data, error } = await supabase
+    .from('digital_asset_preparation_pdf_artifacts')
+    .select(DIGITAL_ASSET_PREPARATION_PDF_ARTIFACT_SELECT)
+    .eq('property_id', propertyId)
+    .eq('package_id', packageId)
+    .eq('source_revision_id', revisionId)
+    .maybeSingle();
+  if (error) {
+    if (digitalAssetPreparationPdfArtifactsUnavailable(error)) {
+      throw packageRouteError(
+        503,
+        'PDF_ARTIFACTS_UNAVAILABLE',
+        'Preparation PDF artifacts are not available until migration 027 is applied.',
+      );
+    }
+    throw error;
+  }
+  return data || null;
+}
+
+async function getPreparationRevisionForPdf(propertyId, packageId, revisionId, revisionNumber) {
+  if (!revisionId) {
+    throw packageRouteError(400, 'PREPARATION_REVISION_REQUIRED', 'Select one saved preparation revision.');
+  }
+  const { data: packageRow, error: packageError } = await supabase
+    .from('digital_asset_preparation_packages')
+    .select(DIGITAL_ASSET_PACKAGE_SELECT)
+    .eq('property_id', propertyId)
+    .eq('id', packageId)
+    .maybeSingle();
+  if (packageError) {
+    if (digitalAssetPackagesUnavailable(packageError)) {
+      throw packageRouteError(
+        503,
+        'PACKAGES_UNAVAILABLE',
+        'Digital Asset Preparation Packages are not available until migration 025 is applied.',
+      );
+    }
+    throw packageError;
+  }
+  if (!packageRow) {
+    throw packageRouteError(404, 'PACKAGE_NOT_FOUND', 'The Digital Asset Preparation Package was not found.');
+  }
+
+  const { data: revision, error: revisionError } = await supabase
+    .from('digital_asset_preparation_package_revisions')
+    .select(DIGITAL_ASSET_PACKAGE_REVISION_SELECT)
+    .eq('property_id', propertyId)
+    .eq('package_id', packageId)
+    .eq('id', revisionId)
+    .maybeSingle();
+  if (revisionError) {
+    if (digitalAssetPackageRevisionsUnavailable(revisionError)) {
+      throw packageRouteError(
+        503,
+        'PACKAGE_REVISIONS_UNAVAILABLE',
+        'Package editing is not available until migration 026 is applied.',
+      );
+    }
+    throw revisionError;
+  }
+  if (!revision) {
+    throw packageRouteError(404, 'PREPARATION_REVISION_NOT_FOUND', 'The selected preparation revision was not found.');
+  }
+  if (revisionNumber != null && Number(revision.revision) !== Number(revisionNumber)) {
+    throw packageRouteError(409, 'PREPARATION_REVISION_MISMATCH', 'The selected revision ID and number do not match.');
+  }
+
+  const revisionPayload = revision.package && typeof revision.package === 'object'
+    ? revision.package
+    : {};
+  if (revisionPayload.package_status !== 'ready_for_provider_review') {
+    throw packageRouteError(
+      409,
+      'PREPARATION_REVISION_NOT_READY',
+      `Preparation Revision ${revision.revision} must be ready for provider review before a PDF can be generated.`,
+    );
+  }
+  if (
+    revision.source_snapshot_id !== packageRow.source_snapshot_id
+    || Number(revision.source_snapshot_version) !== Number(packageRow.source_snapshot_version)
+    || revision.source_snapshot_hash !== packageRow.source_snapshot_hash
+    || revision.package_id !== packageRow.id
+  ) {
+    throw packageRouteError(
+      409,
+      'PREPARATION_SOURCE_BINDING_INVALID',
+      'The saved preparation revision is not bound to the package source snapshot.',
+    );
+  }
+
+  const snapshot = await getSelectedVerifiedAssetSnapshot(
+    propertyId,
+    revision.source_snapshot_id,
+    revision.source_snapshot_version,
+  );
+  if (
+    snapshot.snapshot_hash !== revision.source_snapshot_hash
+    || snapshot.snapshot_hash !== packageRow.source_snapshot_hash
+  ) {
+    throw packageRouteError(
+      409,
+      'PREPARATION_SNAPSHOT_BINDING_INVALID',
+      'The preparation revision does not match the persisted readiness snapshot hash.',
+    );
+  }
+  return { packageRow, revision, snapshot };
+}
+
+function artifactStoragePath(propertyId, packageId, revision, packageHash) {
+  const safe = value => String(value || 'unknown').replace(/[^a-zA-Z0-9._-]/g, '_');
+  return `digital-asset-preparation/${safe(propertyId)}/${safe(packageId)}/revision-${Number(revision)}-${safe(packageHash)}.pdf`;
 }
 
 async function getLatestDigitalAssetPackageRevision(packageId) {
@@ -10757,6 +10910,251 @@ app.get('/api/public/deal-room/:propertyId/digital-asset-packages/:packageId/rev
   } catch (err) {
     console.error('[digital-asset-package revisions GET]', err.message);
     return res.status(500).json({ error: 'Failed to load Digital Asset Preparation Package revisions' });
+  }
+});
+
+app.get('/api/public/deal-room/:propertyId/digital-asset-packages/:packageId/artifacts', async (req, res) => {
+  const { propertyId, packageId } = req.params;
+  const access = await getRoomAccessContext(req, propertyId);
+  if (access.mode === 'anonymous') return accessDenied(res);
+  try {
+    const { data: packageRow, error: packageError } = await supabase
+      .from('digital_asset_preparation_packages')
+      .select('id')
+      .eq('property_id', propertyId)
+      .eq('id', packageId)
+      .maybeSingle();
+    if (packageError) {
+      if (digitalAssetPackagesUnavailable(packageError)) {
+        return res.status(503).json({
+          error: 'PACKAGES_UNAVAILABLE',
+          message: 'Digital Asset Preparation Packages are not available until migration 025 is applied.',
+        });
+      }
+      throw packageError;
+    }
+    if (!packageRow) return res.status(404).json({ error: 'PACKAGE_NOT_FOUND', message: 'The package was not found.' });
+
+    const { data, error } = await supabase
+      .from('digital_asset_preparation_pdf_artifacts')
+      .select(DIGITAL_ASSET_PREPARATION_PDF_ARTIFACT_SELECT)
+      .eq('property_id', propertyId)
+      .eq('package_id', packageId)
+      .order('source_revision', { ascending: false });
+    if (error) {
+      if (digitalAssetPreparationPdfArtifactsUnavailable(error)) {
+        return res.status(503).json({
+          error: 'PDF_ARTIFACTS_UNAVAILABLE',
+          message: 'Preparation PDF artifacts are not available until migration 027 is applied.',
+        });
+      }
+      throw error;
+    }
+    return res.json({
+      artifacts: (data || []).map(row => ({
+        ...presentDigitalAssetPreparationPdfArtifact(row),
+        view_path: `/api/public/deal-room/${encodeURIComponent(propertyId)}/digital-asset-packages/${encodeURIComponent(packageId)}/artifacts/${encodeURIComponent(row.id)}`,
+        download_path: `/api/public/deal-room/${encodeURIComponent(propertyId)}/digital-asset-packages/${encodeURIComponent(packageId)}/artifacts/${encodeURIComponent(row.id)}?download=1`,
+      })),
+    });
+  } catch (err) {
+    console.error('[digital-asset-preparation-pdf artifacts GET]', err.message);
+    if (err.statusCode) return res.status(err.statusCode).json({ error: err.code, message: err.message, details: err.details });
+    return res.status(500).json({ error: 'Failed to load preparation PDF artifacts' });
+  }
+});
+
+app.post('/api/public/deal-room/:propertyId/digital-asset-packages/:packageId/revisions/:revisionId/artifacts', async (req, res) => {
+  const { propertyId, packageId, revisionId } = req.params;
+  const { ownerWriteToken } = req.body || {};
+  const access = await getRoomAccessContext(req, propertyId, ownerWriteToken);
+  if (access.mode !== 'owner') return accessDenied(res, 'Only the deal-room owner can generate a preparation PDF.');
+
+  try {
+    const {
+      revision: requestedRevision,
+      sourceSnapshotId,
+      sourceSnapshotVersion,
+      sourceSnapshotHash,
+      packageHash,
+    } = req.body || {};
+    const resolved = await getPreparationRevisionForPdf(
+      propertyId,
+      packageId,
+      revisionId,
+      requestedRevision,
+    );
+    const { packageRow, revision } = resolved;
+
+    if (
+      sourceSnapshotId !== packageRow.source_snapshot_id
+      || Number(sourceSnapshotVersion) !== Number(packageRow.source_snapshot_version)
+      || sourceSnapshotHash !== packageRow.source_snapshot_hash
+      || packageHash !== revision.package_hash
+    ) {
+      throw packageRouteError(
+        409,
+        'PREPARATION_ARTIFACT_REFERENCE_MISMATCH',
+        'The requested PDF references do not match the exact package revision and readiness snapshot.',
+      );
+    }
+
+    const existing = await getStoredDigitalAssetPreparationPdfArtifact(propertyId, packageId, revision.id);
+    if (existing) {
+      return res.json({
+        created: false,
+        idempotent: true,
+        artifact: presentDigitalAssetPreparationPdfArtifact(existing),
+      });
+    }
+
+    const pdfBuffer = await buildPreparationPdfBuffer({
+      propertyId,
+      packageId,
+      packagePayload: revision.package,
+      revisionId: revision.id,
+      revisionNumber: revision.revision,
+      revisionCreatedAt: revision.created_at,
+      revisionHash: revision.package_hash,
+    });
+    const artifactHash = hashPreparationPdf(pdfBuffer);
+    const filename = `digital-asset-preparation-${propertyId}-revision-${revision.revision}.pdf`
+      .replace(/[^a-zA-Z0-9._-]/g, '_');
+    const storagePath = artifactStoragePath(propertyId, packageId, revision.revision, revision.package_hash);
+    const { data: uploadData, error: uploadError } = await supabase.storage
+      .from(PREPARATION_PDF_BUCKET)
+      .upload(storagePath, pdfBuffer, {
+        contentType: 'application/pdf',
+        upsert: false,
+      });
+    if (uploadError) {
+      const afterUploadError = await getStoredDigitalAssetPreparationPdfArtifact(propertyId, packageId, revision.id);
+      if (afterUploadError) {
+        return res.json({
+          created: false,
+          idempotent: true,
+          artifact: presentDigitalAssetPreparationPdfArtifact(afterUploadError),
+        });
+      }
+      throw uploadError;
+    }
+
+    const { data: created, error: insertError } = await supabase
+      .from('digital_asset_preparation_pdf_artifacts')
+      .insert({
+        package_id: packageRow.id,
+        property_id: propertyId,
+        source_snapshot_id: revision.source_snapshot_id,
+        source_snapshot_version: revision.source_snapshot_version,
+        source_snapshot_hash: revision.source_snapshot_hash,
+        source_revision_id: revision.id,
+        source_revision: revision.revision,
+        source_revision_hash: revision.package_hash,
+        artifact_hash: artifactHash,
+        storage_bucket: PREPARATION_PDF_BUCKET,
+        storage_path: uploadData?.path || storagePath,
+        filename,
+        content_type: 'application/pdf',
+        generated_by: access.email || null,
+      })
+      .select(DIGITAL_ASSET_PREPARATION_PDF_ARTIFACT_SELECT)
+      .single();
+    if (insertError) {
+      if (/duplicate key|unique constraint/i.test(insertError.message || '')) {
+        const concurrent = await getStoredDigitalAssetPreparationPdfArtifact(propertyId, packageId, revision.id);
+        if (concurrent) {
+          return res.json({
+            created: false,
+            idempotent: true,
+            artifact: presentDigitalAssetPreparationPdfArtifact(concurrent),
+          });
+        }
+      }
+      throw insertError;
+    }
+    logEvent(
+      propertyId,
+      'digital_asset_preparation_pdf_generated',
+      'owner',
+      access.email || null,
+      `Preparation PDF generated for package revision ${revision.revision}`,
+      {
+        artifact_id: created.id,
+        package_id: packageRow.id,
+        source_snapshot_id: revision.source_snapshot_id,
+        source_snapshot_version: revision.source_snapshot_version,
+        source_snapshot_hash: revision.source_snapshot_hash,
+        source_revision_id: revision.id,
+        source_revision: revision.revision,
+        artifact_hash: artifactHash,
+      },
+    ).catch(() => {});
+    return res.status(201).json({
+      created: true,
+      artifact: presentDigitalAssetPreparationPdfArtifact(created),
+    });
+  } catch (err) {
+    console.error('[digital-asset-preparation-pdf POST]', err.message);
+    if (err.statusCode) return res.status(err.statusCode).json({ error: err.code, message: err.message, details: err.details });
+    if (digitalAssetPreparationPdfArtifactsUnavailable(err)) {
+      return res.status(503).json({
+        error: 'PDF_ARTIFACTS_UNAVAILABLE',
+        message: 'Preparation PDF artifacts are not available until migration 027 is applied.',
+      });
+    }
+    return res.status(500).json({ error: 'Failed to generate preparation PDF artifact' });
+  }
+});
+
+app.get('/api/public/deal-room/:propertyId/digital-asset-packages/:packageId/artifacts/:artifactId', async (req, res) => {
+  const { propertyId, packageId, artifactId } = req.params;
+  const access = await getRoomAccessContext(req, propertyId);
+  if (access.mode === 'anonymous') return accessDenied(res);
+  try {
+    const { data: artifact, error } = await supabase
+      .from('digital_asset_preparation_pdf_artifacts')
+      .select(DIGITAL_ASSET_PREPARATION_PDF_ARTIFACT_SELECT)
+      .eq('property_id', propertyId)
+      .eq('package_id', packageId)
+      .eq('id', artifactId)
+      .maybeSingle();
+    if (error) {
+      if (digitalAssetPreparationPdfArtifactsUnavailable(error)) {
+        return res.status(503).json({
+          error: 'PDF_ARTIFACTS_UNAVAILABLE',
+          message: 'Preparation PDF artifacts are not available until migration 027 is applied.',
+        });
+      }
+      throw error;
+    }
+    if (!artifact) return res.status(404).json({ error: 'PDF_ARTIFACT_NOT_FOUND', message: 'The preparation PDF artifact was not found.' });
+
+    const { data: file, error: downloadError } = await supabase.storage
+      .from(artifact.storage_bucket || PREPARATION_PDF_BUCKET)
+      .download(artifact.storage_path);
+    if (downloadError || !file) {
+      console.error('[digital-asset-preparation-pdf download]', downloadError?.message || 'storage object missing');
+      return res.status(404).json({ error: 'PDF_ARTIFACT_FILE_NOT_FOUND', message: 'The stored preparation PDF is not available.' });
+    }
+    const buffer = Buffer.isBuffer(file)
+      ? file
+      : Buffer.from(await file.arrayBuffer());
+    const digest = hashPreparationPdf(buffer);
+    if (digest !== artifact.artifact_hash) {
+      return res.status(409).json({ error: 'PDF_ARTIFACT_HASH_MISMATCH', message: 'The stored preparation PDF failed integrity verification.' });
+    }
+    res.set({
+      'Content-Type': artifact.content_type || 'application/pdf',
+      'Content-Disposition': `${req.query.download === '1' ? 'attachment' : 'inline'}; filename="${artifact.filename}"`,
+      'Content-Length': String(buffer.length),
+      'Cache-Control': 'private, max-age=31536000, immutable',
+      ETag: `"${artifact.artifact_hash}"`,
+    });
+    return res.send(buffer);
+  } catch (err) {
+    console.error('[digital-asset-preparation-pdf GET]', err.message);
+    if (err.statusCode) return res.status(err.statusCode).json({ error: err.code, message: err.message, details: err.details });
+    return res.status(500).json({ error: 'Failed to load preparation PDF artifact' });
   }
 });
 
