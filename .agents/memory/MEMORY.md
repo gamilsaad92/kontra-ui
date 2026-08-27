@@ -31,3 +31,4 @@
 - [Verified Asset snapshots](kontra-verified-asset-snapshots.md) — immutable readiness snapshots are append-only and distinct from the legacy mutable package artifact
 - [Kontra task approval invariants](kontra-task-approval-invariants.md) — approval claims must allow NULL execution_status; dismissed tasks are resolved; failed executions need durable action_failed audit events
 - [Kontra demo performance](kontra-demo-performance.md) — demo rooms render a local shell, hydrate independently, and keep the heavy room route code-split
+- [Kontra UI Jest harness](kontra-ui-jest-harness.md) — legacy root UI tests need package-local jsdom/CSS dependencies and a test-only import.meta transform

@@ -39,6 +39,14 @@ const readinessPhase = (() => {
 
 **Why:** The categories (Identity & Parties, Asset/Company, Transaction Terms, etc.) are universal transaction-readiness categories. "Digital Asset Readiness" is an optional second capability layer gated on the `digital_asset_enabled` flag. The panel is universal; the DA branding is conditional.
 
+## Canonical field rendering invariant
+
+The Overview counts and action feed use `record_state.requiredFields`, so the Transaction Record category renderer must merge those canonical definitions into the visible category schema when a pack's static definitions do not contain them. Otherwise awaiting or missing fields can affect readiness while having no row or mutation control.
+
+**Why:** Freddie room-specific fields exposed this as a 13/19 confirmed count with four awaiting fields but zero awaiting rows in every visible category.
+
+**How to apply:** Resolve each canonical field by key, persisted key, definition key, or normalized label; assign it to the existing UI category and render the same mutation controls used by ordinary fields.
+
 ## StageLifecycleBar
 
 Adapted from unmounted OperationsManagerView stage bar. Uses `getEffectiveStages(packId, property, stages)` — this is key because it adds settlement/complete to the bar when settlement capability is enabled, even if the room is at an early stage.

@@ -24,25 +24,74 @@ function fieldCategory(field) {
   return field?.category || field?.field_category || key.split('.')[0] || 'transaction';
 }
 
-function fieldProvenance(field) {
+function backingFieldFor(requiredField, fields = []) {
+  const requiredIdentities = [
+    requiredField?.fieldId,
+    requiredField?.field_id,
+    requiredField?.id,
+    requiredField?.fieldKey,
+    requiredField?.field_key,
+    requiredField?.key,
+    requiredField?.definitionKey,
+    requiredField?.definition_key,
+    requiredField?.label,
+  ].filter(Boolean).map(value => String(value).trim().toLowerCase());
+  return fields.find(field => [
+    field?.fieldId,
+    field?.field_id,
+    field?.id,
+    field?.fieldKey,
+    field?.field_key,
+    field?.key,
+    field?.definitionKey,
+    field?.definition_key,
+    field?.label,
+  ].filter(Boolean).some(value => requiredIdentities.includes(String(value).trim().toLowerCase()))) || requiredField;
+}
+
+function latestApprovalForField(field, approvals = []) {
+  const fieldId = field?.fieldId || field?.field_id || field?.id;
+  if (!fieldId) return null;
+  return (Array.isArray(approvals) ? approvals : [])
+    .filter(approval => approval?.field_id === fieldId)
+    .sort((a, b) => new Date(a.created_at || 0) - new Date(b.created_at || 0))
+    .at(-1) || null;
+}
+
+function fieldProvenance(field, approval = null) {
   return {
-    source_document_id: field?.sourceDocId || field?.source_doc_id || null,
+    source_document_id: field?.sourceDocId || field?.source_doc_id || approval?.source_doc_id || null,
     source_document_version: field?.sourceDocVersion || field?.source_doc_version || null,
-    source_file_hash: field?.sourceFileHash || field?.source_file_hash || null,
+    source_file_hash: field?.sourceFileHash || field?.source_file_hash || approval?.source_file_hash || null,
     source_page: field?.sourcePage ?? field?.source_page ?? null,
     source_excerpt: field?.sourceExcerpt || field?.source_excerpt || null,
     extracted_at: field?.extractionTimestamp || field?.extraction_timestamp || null,
-    source_type: field?.sourceType || field?.source_type || null,
+    source_type: field?.sourceType || field?.source_type
+      || (approval ? (approval.is_manual !== false ? 'manual_confirmation' : 'provider_confirmation') : null),
   };
 }
 
-function provenanceIsIntact(field) {
-  const source = fieldProvenance(field);
+function provenanceIsIntact(field, approvals = []) {
+  const approval = latestApprovalForField(field, approvals);
+  const source = fieldProvenance(field, approval);
   return Boolean(
     source.source_document_id
     || source.source_file_hash
-    || (source.source_type === 'manual' && (field?.verifiedBy || field?.verified_by)),
+    || (source.source_type === 'manual' && (field?.verifiedBy || field?.verified_by))
+    || (
+      approval?.action === 'approved'
+      && approval?.is_manual !== false
+      && (approval.actor_email || approval.actor_role)
+      && approval.created_at
+    ),
   );
+}
+
+function approvalEvidence(field, approvals = []) {
+  const approval = latestApprovalForField(field, approvals);
+  if (!approval || approval.action !== 'approved' || approval.is_manual === false) return null;
+  if (!(approval.actor_email || approval.actor_role) || !approval.created_at) return null;
+  return approval;
 }
 
 function stable(value) {
@@ -61,6 +110,7 @@ function hashSnapshot(value) {
 function serializeField(field, approvals = []) {
   const status = field?.status || 'missing';
   const confirmed = CONFIRMED.has(status);
+  const approval = approvalEvidence(field, approvals);
   return {
     field_id: field?.fieldId || field?.id || null,
     field_key: fieldKey(field),
@@ -71,11 +121,11 @@ function serializeField(field, approvals = []) {
     value: confirmed ? fieldValue(field) : null,
     confirmation: {
       confirmed,
-      verified_by: field?.verifiedBy || field?.verified_by || null,
-      verified_role: field?.verifiedRole || field?.verified_role || null,
-      verified_at: field?.verifiedAt || field?.verified_at || null,
+      verified_by: field?.verifiedBy || field?.verified_by || approval?.actor_email || null,
+      verified_role: field?.verifiedRole || field?.verified_role || approval?.actor_role || null,
+      verified_at: field?.verifiedAt || field?.verified_at || approval?.created_at || null,
     },
-    provenance: fieldProvenance(field),
+    provenance: fieldProvenance(field, approval),
     approvals: approvals.map(approval => ({
       action: approval.action,
       actor_role: approval.actor_role || null,
@@ -86,26 +136,25 @@ function serializeField(field, approvals = []) {
 }
 
 function buildDigitalAssetReadiness({ fields, requiredFields, conflicts, approvals, room }) {
+  const approvalsFor = field => approvals.filter(approval =>
+    approval?.field_id && approval.field_id === (field?.fieldId || field?.field_id || field?.id),
+  );
   const serialized = fields.map(field => serializeField(
     field,
-    approvals.filter(approval => approval.field_id && approval.field_id === (field.fieldId || field.id)),
+    approvalsFor(field),
   ));
   const byCategory = category => serialized.filter(field => field.category === category);
-  const required = requiredFields.map(field => serializeField(
-    field,
-    approvals.filter(approval => approval.field_id && approval.field_id === (field.fieldId || field.id)),
-  ));
+  const required = requiredFields.map(requiredField => {
+    const field = backingFieldFor(requiredField);
+    return serializeField(field, approvalsFor(field));
+  });
   const requiredApprovalFields = required.filter(field =>
     field.category === 'approvals' || String(field.field_key || '').startsWith('approval.'),
-  );
-  const approvedFieldIds = new Set(
-    approvals.filter(approval => approval.action === 'approved').map(approval => approval.field_id),
   );
   const approvalResults = requiredApprovalFields.map(field => ({
     field_key: field.field_key,
     label: field.label,
-    satisfied: field.approvals.some(approval => approval.action === 'approved')
-      || approvedFieldIds.has(field.field_id),
+    satisfied: latestApprovalForField(field, approvals)?.action === 'approved',
   }));
   const blockingFields = required.filter(field =>
     field.current_state !== 'confirmed' && field.current_state !== NON_APPLICABLE,
@@ -113,7 +162,19 @@ function buildDigitalAssetReadiness({ fields, requiredFields, conflicts, approva
   const unresolvedConflicts = conflicts.filter(conflict => conflict?.status === 'unresolved');
   const provenanceGaps = required
     .filter(field => field.current_state === 'confirmed')
-    .filter(field => !provenanceIsIntact(fields.find(item => fieldKey(item) === field.field_key)));
+    .filter(field => {
+      const backingField = backingFieldFor(field, fields);
+      return !provenanceIsIntact(backingField, approvalsFor(backingField));
+    })
+    .map(field => ({
+      field_key: field.field_key,
+      label: field.label,
+      requirement: 'document or file provenance, or an approved manual confirmation',
+      source: field.provenance.source_document_id
+        || field.provenance.source_file_hash
+        || field.provenance.source_type
+        || 'none',
+    }));
   const missingApprovals = approvalResults.filter(item => !item.satisfied);
   const sections = {
     asset: byCategory('asset_identity'),
@@ -138,7 +199,7 @@ function buildDigitalAssetReadiness({ fields, requiredFields, conflicts, approva
     provenance: {
       intact: provenanceGaps.length === 0,
       confirmed_field_count: required.filter(field => field.current_state === 'confirmed').length,
-      gaps: provenanceGaps.map(field => ({ field_key: field.field_key, label: field.label })),
+      gaps: provenanceGaps,
     },
     approvals: {
       required: approvalResults,
@@ -190,10 +251,13 @@ function buildVerifiedAssetSnapshot({
         schema_key: recordState.schemaKey || null,
         required_count: requiredFields.length,
         confirmed_count: recordState.confirmedCount || 0,
-        fields: requiredFields.map(field => serializeField(
-          field,
-          approvals.filter(approval => approval.field_id === (field.fieldId || field.id)),
-        )),
+        fields: requiredFields.map(requiredField => {
+          const field = backingFieldFor(requiredField, fields);
+          return serializeField(
+            field,
+            approvals.filter(approval => approval.field_id === (field.fieldId || field.field_id || field.id)),
+          );
+        }),
       },
       provenance_manifest: fields.map(field => ({
         field_key: fieldKey(field),

@@ -9,11 +9,18 @@ const {
   hasDocumentReviewFinding,
   getDocumentRequirementStats,
   filterLiveDocumentActions,
+  filterStaleRecordActions,
+  actionTextMentionsRecordField,
+  isBorrowerFundsRecordAction,
+  getHazardLossOperationalFieldDefinitions,
   dedupeAttentionItems,
   getCanonicalAwaitingRecordFields,
   getCanonicalUnresolvedConflicts,
   getCoordinatorRecordFacts,
   getRecordDefinitionState,
+  mergeTransactionRecordState,
+  normalizeRecordCategory,
+  getTransactionRecordCategory,
 } = require('./DealRoomPage');
 
 describe('coordinator transaction brief logic', () => {
@@ -209,6 +216,19 @@ describe('coordinator transaction brief logic', () => {
     ]);
   });
 
+  test('deduplicates borrower-funds actions across legacy field aliases', () => {
+    expect(dedupeAttentionItems([
+      {
+        title: 'Provide Borrower funds advanced',
+        fieldKey: 'financial.borrower_funds_advanced',
+      },
+      {
+        title: 'Advance borrower funds',
+        routeItem: { field_key: 'financial.borrower_advanced_funds' },
+      },
+    ])).toHaveLength(1);
+  });
+
   test('builds awaiting actions from canonical required fields, not stale raw rows', () => {
     const recordState = {
       requiredFields: [
@@ -226,6 +246,190 @@ describe('coordinator transaction brief logic', () => {
     ]);
     expect(getCanonicalAwaitingRecordFields(recordState)).not.toContain(rawRows[0]);
     expect(getCanonicalAwaitingRecordFields(recordState)).not.toContain(rawRows[1]);
+  });
+
+  test('does not keep an awaiting borrower-funds alias after confirmation', () => {
+    const recordState = {
+      requiredFields: [
+        {
+          key: 'financial.borrower_advanced_funds',
+          label: 'Borrower funds advanced',
+          value: '90,000',
+          status: 'awaiting',
+        },
+        {
+          key: 'financial.borrower_funds_advanced',
+          label: 'Borrower funds advanced',
+          value: '9,000',
+          status: 'confirmed',
+        },
+      ],
+    };
+
+    expect(getCanonicalAwaitingRecordFields(recordState)).toEqual([]);
+    expect(filterStaleRecordActions([
+      'Advance borrower funds before review',
+    ], recordState)).toEqual([]);
+  });
+
+  test('replaces a previous canonical array when the newer response is empty', () => {
+    const previous = {
+      requiredFields: [{ key: 'financial.borrower_funds_advanced', status: 'awaiting', value: '90,000' }],
+      fields: [{ key: 'financial.borrower_funds_advanced', status: 'awaiting', value: '90,000' }],
+      unresolvedConflicts: [{ fieldKey: 'financial.borrower_funds_advanced' }],
+    };
+    const incoming = {
+      requiredFields: [],
+      fields: [],
+      unresolvedConflicts: [],
+      confirmedCount: 0,
+    };
+
+    expect(mergeTransactionRecordState(previous, incoming)).toEqual(expect.objectContaining({
+      requiredFields: [],
+      fields: [],
+      unresolvedConflicts: [],
+      confirmedCount: 0,
+    }));
+  });
+
+  test('removes a stale extracted funds action after canonical confirmation', () => {
+    const recordState = {
+      requiredFields: [
+        {
+          key: 'financial.borrower_funds_advanced',
+          label: 'Borrower funds advanced',
+          value: '9,000',
+          status: 'confirmed',
+        },
+        {
+          key: 'funding.request',
+          label: 'Funding request',
+          value: '',
+          status: 'missing',
+        },
+        {
+          key: 'organization.investor_or_agency',
+          label: 'Investor / agency',
+          value: '',
+          status: 'missing',
+        },
+      ],
+    };
+
+    expect(filterStaleRecordActions([
+      'Borrower Advanced Funds — confirm 90,000',
+    ], recordState)).toEqual([]);
+  });
+
+  test('provides real edit destinations for hazard-loss operational fields', () => {
+    const definitions = getHazardLossOperationalFieldDefinitions({
+      property_name: 'Freddie Mac Multifamily Hazard Loss Review',
+    });
+
+    expect(definitions).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        key: 'financial.borrower_funds_advanced',
+        category: 'financial',
+        workflowRequired: true,
+      }),
+      expect.objectContaining({
+        key: 'funding.request',
+        category: 'financial',
+        workflowRequired: true,
+      }),
+      expect.objectContaining({
+        key: 'organization.investor_or_agency',
+        category: 'parties',
+        workflowRequired: true,
+      }),
+    ]));
+  });
+
+  test('recognizes sparse hazard-loss rooms from canonical generated field keys', () => {
+    const definitions = getHazardLossOperationalFieldDefinitions(
+      { property_name: 'Multifamily review' },
+      {
+        fields: [
+          { key: 'funding.request', display_label: 'Fund Release Request' },
+          { key: 'financial.borrower_advanced_funds', display_label: 'Borrower funds advanced' },
+        ],
+      },
+    );
+
+    expect(definitions.map(field => field.key)).toEqual(expect.arrayContaining([
+      'funding.request',
+      'financial.borrower_funds_advanced',
+      'organization.investor_or_agency',
+    ]));
+  });
+
+  test('matches string briefing actions to their canonical record field', () => {
+    expect(actionTextMentionsRecordField(
+      'Borrower Advanced Funds — confirm 90,000',
+      { label: 'Borrower funds advanced', key: 'financial.borrower_funds_advanced' },
+    )).toBe(true);
+  });
+
+  test('matches alternate advance-funds wording to the canonical borrower field', () => {
+    expect(actionTextMentionsRecordField(
+      'Advance borrower funds before the next review',
+      { label: 'Borrower funds advanced', key: 'financial.borrower_funds_advanced' },
+    )).toBe(true);
+  });
+
+  test('matches the historical confirm borrower advanced funds wording', () => {
+    const recordState = {
+      requiredFields: [{
+        key: 'financial.borrower_funds_advanced',
+        value_text: '9,000',
+        status: 'confirmed',
+      }],
+    };
+
+    expect(actionTextMentionsRecordField(
+      'Confirm Borrower Advanced Funds',
+      { key: 'financial.borrower_funds_advanced' },
+    )).toBe(true);
+    expect(filterStaleRecordActions([{
+      title: 'Confirm Borrower Advanced Funds',
+      reason: 'Kontra extracted "90,000" from an uploaded document. Confirm this is correct.',
+    }], recordState)).toEqual([]);
+  });
+
+  test('removes borrower-funds briefing copies from next actions', () => {
+    expect(isBorrowerFundsRecordAction({
+      title: 'Confirm Borrower Advanced Funds',
+      reason: 'Kontra extracted "90,000" from an uploaded document.',
+    })).toBe(true);
+    expect(isBorrowerFundsRecordAction({
+      title: 'Confirm Funding Request',
+    })).toBe(false);
+  });
+
+  test('keeps investor organization fields in Identity & Parties', () => {
+    expect(normalizeRecordCategory('organization', 'organization.investor_or_agency'))
+      .toBe('parties');
+    expect(getTransactionRecordCategory({
+      field_key: 'organization.investor_or_agency',
+      display_label: 'Investor / agency',
+    })).toBe('parties');
+  });
+
+  test('keeps unresolved record actions tied to their canonical field', () => {
+    const recordState = {
+      requiredFields: [
+        { key: 'funding.request', label: 'Funding request', value: '', status: 'missing' },
+      ],
+    };
+    const canonicalActionKeys = new Set(['funding.request']);
+
+    expect(filterStaleRecordActions([
+      { title: 'Confirm the funding request' },
+    ], recordState, [], canonicalActionKeys)).toEqual([]);
+    expect(filterStaleRecordActions([
+      { title: 'Review unrelated underwriting note' },
+    ], recordState, [], canonicalActionKeys)).toHaveLength(1);
   });
 
   test('uses canonical unresolved conflicts and deduplicates by canonical field key', () => {

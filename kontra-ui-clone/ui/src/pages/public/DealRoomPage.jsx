@@ -2924,6 +2924,21 @@ function formatSnapshotValue(field) {
 }
 
 function getTransactionRecordCategory(field) {
+  const fieldText = [
+    field?.key,
+    field?.field_key,
+    field?.canonicalKey,
+    field?.persistedKey,
+    field?.definitionKey,
+    field?.label,
+    field?.display_label,
+  ].filter(Boolean).join(' ').toLowerCase();
+  if (/(units?[\s_-]+(damaged|affected)|properties?[\s_-]+damaged)/.test(fieldText)) {
+    return 'asset';
+  }
+  if (/(additional[\s_-]+work[\s_-]+invoice|fund[\s_-]+release[\s_-]+request)/.test(fieldText)) {
+    return 'financial';
+  }
   const rawCategory = String(
     field?.category
     || field?.field_category
@@ -2934,16 +2949,55 @@ function getTransactionRecordCategory(field) {
   return {
     transaction: 'terms',
     terms: 'terms',
-    parties: 'parties',
+     parties: 'parties',
+     organization: 'parties',
+     organizer: 'parties',
     beneficial_ownership: 'parties',
+    party: 'parties',
     asset: 'asset',
     asset_identity: 'asset',
+    property: 'asset',
+    company: 'asset',
+    identity: 'asset',
     financial: 'financial',
+    finance: 'financial',
+    financials: 'financial',
+    economics: 'financial',
+    funding: 'financial',
+    financing: 'financial',
+    insurance: 'financial',
+    coverage: 'financial',
+    repairs: 'financial',
+    repair: 'financial',
     legal: 'legal',
+    diligence: 'legal',
+    regulatory: 'legal',
     approvals: 'legal',
     approval: 'legal',
     ownership: 'parties',
-  }[rawCategory] || rawCategory;
+    cap_table: 'parties',
+    hazard: 'terms',
+    incident: 'terms',
+    loss: 'terms',
+    event: 'terms',
+    timeline: 'terms',
+    document: 'legal',
+    documents: 'legal',
+    evidence: 'legal',
+  }[rawCategory]
+    || (/(fund|proceed|repair|cost|insurance|coverage|financial)/.test(
+      String(field?.label || field?.display_label || '').toLowerCase(),
+    )
+      ? 'financial'
+      : /(investor|agency|borrower|lender|buyer|seller|party|owner)/.test(
+        String(field?.label || field?.display_label || '').toLowerCase(),
+      )
+        ? 'parties'
+        : /(hazard|loss|incident|damage|completion|event|date)/.test(
+          String(field?.label || field?.display_label || '').toLowerCase(),
+        )
+          ? 'terms'
+          : rawCategory);
 }
 
 // ── WhatNeedsAttention ────────────────────────────────────────────────────────
@@ -3024,19 +3078,67 @@ function WhatNeedsAttention({
         { key: 'transaction.purchase_price', label: 'Purchase price' },
         { key: 'ownership.cap_table', label: 'Cap table / ownership' },
       ];
-  const canonicalRecordKey = definition => definition.aliasOf || definition.key;
+  const operationalRecordDefinitions = getHazardLossOperationalFieldDefinitions(
+    property,
+    recordState,
+    recordFields,
+  );
+  const canonicalRequiredDefinitions = (Array.isArray(recordState?.requiredFields)
+    ? recordState.requiredFields
+    : []
+  ).map(field => {
+    const key = field?.definitionKey
+      || field?.key
+      || field?.persistedKey
+      || field?.field_key;
+    return {
+      ...field,
+      key,
+      canonicalKey: field?.key || field?.persistedKey || field?.field_key || key,
+      persistedKey: field?.persistedKey || field?.field_key || field?.key || key,
+      label: field?.label || field?.display_label || key,
+      category: normalizeRecordCategory(
+        field?.category || field?.field_category,
+        key,
+        field?.label || field?.display_label,
+      ),
+      workflowRequired: true,
+      required: true,
+      renderable: field?.renderable !== false,
+    };
+  }).filter(field => field.key && field.renderable !== false);
+  const effectiveRecordDefinitions = [
+    ...visibleRecordDefinitions,
+    ...canonicalRequiredDefinitions,
+    ...operationalRecordDefinitions,
+  ].filter((definition, index, definitions) => {
+    const identity = normalizeAttentionFieldKey(
+      definition.canonicalKey || definition.key || definition.persistedKey,
+    );
+    const label = normalizeAttentionText(definition.label || definition.display_label);
+    return index === definitions.findIndex(candidate =>
+      identity && identity === normalizeAttentionFieldKey(
+        candidate.canonicalKey || candidate.key || candidate.persistedKey,
+      )
+        || (label && label === normalizeAttentionText(candidate.label || candidate.display_label))
+    );
+  });
+  const canonicalRecordKey = definition => normalizeAttentionFieldKey(
+    definition.aliasOf || definition.key,
+  );
   const canonicalStateField = definition => recordState?.fields?.find(field =>
-    field.key === canonicalRecordKey(definition)
+    getRecordFieldIdentitySet(field).has(canonicalRecordKey(definition))
   );
   const missingCanonicalKeys = new Set();
-  const recordMissing = visibleRecordDefinitions
+  const recordMissing = effectiveRecordDefinitions
     .filter(def => def.workflowRequired === true || def.required === true)
     .filter(def => {
       const canonicalKey = canonicalRecordKey(def);
       if (missingCanonicalKeys.has(canonicalKey)) return false;
-      const authoritative = canonicalStateField(def);
+      const authoritative = recordStateFieldForDefinition(def, recordState)
+        || canonicalStateField(def);
       if (authoritative) {
-        if (authoritative.status !== 'missing' && authoritative.status !== 'not_applicable') return false;
+        if (!['missing', 'not_applicable'].includes(normalizeRecordStatus(authoritative))) return false;
         missingCanonicalKeys.add(canonicalKey);
         return true;
       }
@@ -3048,12 +3150,13 @@ function WhatNeedsAttention({
       return true;
     });
   const confirmedCanonicalKeys = new Set();
-  const recordConfirmedCount = visibleRecordDefinitions.reduce((count, def) => {
+  const recordConfirmedCount = effectiveRecordDefinitions.reduce((count, def) => {
     const canonicalKey = canonicalRecordKey(def);
     if (confirmedCanonicalKeys.has(canonicalKey)) return count;
-    const authoritative = canonicalStateField(def);
+    const authoritative = recordStateFieldForDefinition(def, recordState)
+      || canonicalStateField(def);
     if (authoritative) {
-      if (authoritative.status !== 'confirmed') return count;
+      if (normalizeRecordStatus(authoritative) !== 'confirmed') return count;
       confirmedCanonicalKeys.add(canonicalKey);
       return count + 1;
     }
@@ -3124,6 +3227,7 @@ function WhatNeedsAttention({
     const label = conflict.label || conflict.display_label || fieldKey || 'Transaction Record';
     items.push({
       id: `transaction-conflict-${conflict.id || fieldKey}`,
+      fieldKey: normalizeAttentionFieldKey(fieldKey),
       urgency: 'high',
       title: /repair\s*cost/i.test(`${label} ${fieldKey}`)
         ? 'Resolve Repair Cost Discrepancy'
@@ -3140,6 +3244,7 @@ function WhatNeedsAttention({
     .slice(0, 4)
     .forEach(f => items.push({
       id: `review-${f.fieldId || f.id || f.key}`,
+      fieldKey: normalizeAttentionFieldKey(f.key || f.field_key || f.persistedKey),
       urgency: 'medium',
       title: f.label || f.display_label || f.key,
       reason: `Kontra extracted "${f.value ?? f.value_text}" from an uploaded document. Confirm this is correct.`,
@@ -3189,20 +3294,40 @@ function WhatNeedsAttention({
   }));
   const recordActions = recordMissing.map(field => ({
     id: `missing-record-${field.key}`,
+    fieldKey: normalizeAttentionFieldKey(field.key),
     urgency: 'high',
     title: `Provide ${field.label}`,
     reason: `Required Transaction Record field "${field.label}" is missing. Add and confirm the authoritative value.`,
-    routeItem: { field_key: field.key },
+    field: {
+      ...field,
+      ...(recordStateFieldForDefinition(field, recordState) || {}),
+      key: field.canonicalKey || field.key,
+      field_key: field.canonicalKey || field.key,
+      label: field.label,
+      status: recordStateFieldForDefinition(field, recordState)?.status || 'missing',
+    },
+    routeItem: {
+      field_key: field.canonicalKey || field.key,
+      key: field.canonicalKey || field.key,
+      label: field.label,
+      status: 'missing',
+    },
     actions: [],
     sourcePriority: 1,
   }));
 
   const derivedActions = [...documentActions, ...participantActions, ...recordActions]
     .sort((a, b) => a.sourcePriority - b.sourcePriority);
+  const canonicalAwaitingFields = getCanonicalAwaitingRecordFields(recordState);
+  const canonicalActionKeys = new Set([
+    ...recordMissing,
+    ...canonicalAwaitingFields,
+    ...canonicalConflicts,
+  ].flatMap(field => [...getRecordFieldIdentitySet(field)]));
 
   // Existing briefing/task-engine actions remain useful after concrete state
   // actions, and still provide the fallback for custom workflow packs.
-   const briefingActions = filterLiveDocumentActions([
+  const briefingActions = filterStaleRecordActions(filterLiveDocumentActions([
     ...(Array.isArray(briefing?.criticalPath) ? briefing.criticalPath : []),
     ...(Array.isArray(briefing?.actions) ? briefing.actions : []),
     ...(Array.isArray(briefing?.next_actions) ? briefing.next_actions : []),
@@ -3210,7 +3335,8 @@ function WhatNeedsAttention({
       title: `Upload ${typeof document === 'string' ? document : document.label || document.name || 'required document'}`,
       document: true,
     })) : []),
-   ], documentStats);
+  ], documentStats), recordState, recordFields, canonicalActionKeys)
+    .filter(action => !isBorrowerFundsRecordAction(action));
   const seenBriefingActions = new Set();
   derivedActions.forEach(item => items.push(item));
   briefingActions.forEach((item, i) => {
@@ -3224,10 +3350,14 @@ function WhatNeedsAttention({
     const structuredField = item?.field_key || item?.fieldKey
       ? { field_key: item.field_key || item.fieldKey }
       : null;
+    const matchedRecordField = findCanonicalRecordFieldForAction(item, recordState, recordFields);
     const routeItem = structuredField || item;
     const isCritical = item?.taskId || item?.chainStep || briefing?.criticalPath?.includes(item);
     items.push({
       id: `action-${i}`,
+      fieldKey: matchedRecordField
+        ? [...getRecordFieldIdentitySet(matchedRecordField)][0]
+        : normalizeAttentionFieldKey(item?.field_key || item?.fieldKey),
       urgency: isCritical ? 'high' : i === 0 ? 'medium' : 'low',
       title: normalizedText,
       reason: typeof item === 'object' ? (item.reason || item.note || item.why || '') : '',
@@ -3237,13 +3367,29 @@ function WhatNeedsAttention({
   });
 
   // 4. Issues / risks, deduplicated against the existing action feed.
-  const rawIssues = [...(briefing?.risks || []), ...(briefing?.open_items || [])];
+  const rawIssues = filterStaleRecordActions(
+    [...(briefing?.risks || []), ...(briefing?.open_items || [])],
+    recordState,
+    recordFields,
+    canonicalActionKeys,
+  ).filter(item => !isBorrowerFundsRecordAction(item));
   rawIssues.slice(0, 3).forEach((item, i) => {
     const text = typeof item === 'string' ? item : (item.text || item.risk || item.item || item.title || '');
     const normalizedText = String(text).trim();
     if (!normalizedText || seenBriefingActions.has(normalizedText.toLowerCase())) return;
     seenBriefingActions.add(normalizedText.toLowerCase());
-    items.push({ id: `issue-${i}`, urgency: 'high', title: normalizedText, reason: '', routeItem: item, actions: [] });
+    const matchedRecordField = findCanonicalRecordFieldForAction(item, recordState, recordFields);
+    items.push({
+      id: `issue-${i}`,
+      fieldKey: matchedRecordField
+        ? [...getRecordFieldIdentitySet(matchedRecordField)][0]
+        : normalizeAttentionFieldKey(item?.field_key || item?.fieldKey),
+      urgency: 'high',
+      title: normalizedText,
+      reason: '',
+      routeItem: item,
+      actions: [],
+    });
   });
 
   const urgencyPriority = { high: 0, medium: 1, low: 2 };
@@ -3261,7 +3407,39 @@ function WhatNeedsAttention({
   // displayed action must lead somewhere useful. Do not create a second task
   // system here — these are only routing affordances for the existing items.
   function goToRecord(field) {
-    onOverviewAction?.({ type: 'record', field });
+    const normalizeLabel = value => String(value || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, ' ').replace(/\s+/g, ' ');
+    const label = field?.label || field?.display_label || '';
+    const labelMatch = label
+      ? [...recordSchema, ...(recordState?.requiredFields || [])].find(candidate =>
+        normalizeLabel(candidate?.label || candidate?.display_label) === normalizeLabel(label)
+      )
+      : null;
+    const fieldKey = field?.key
+      || field?.field_key
+      || field?.canonicalKey
+      || field?.persistedKey
+      || field?.definitionKey
+      || labelMatch?.key
+      || labelMatch?.field_key
+      || labelMatch?.persistedKey
+      || labelMatch?.definitionKey
+      || '';
+    const keys = [
+      fieldKey,
+      field?.key,
+      field?.field_key,
+      field?.canonicalKey,
+      field?.persistedKey,
+      field?.definitionKey,
+    ].filter(Boolean);
+    onOverviewAction?.({
+      type: 'record',
+      field: { ...field, key: fieldKey, field_key: field?.field_key || fieldKey },
+      keys: [...new Set(keys)],
+      label,
+      autoEdit: ['missing', 'not_applicable'].includes(String(field?.status || '').toLowerCase())
+        || !String(field?.value ?? field?.value_text ?? '').trim(),
+    });
   }
 
   function routeForText(text) {
@@ -3271,6 +3449,24 @@ function WhatNeedsAttention({
     }
     if (/(invite|participant|buyer|seller|party|counsel|lender|advisor)/.test(value)) {
       return { label: 'Open People', onClick: () => onOverviewAction?.({ type: 'tab', tab: 'people' }) };
+    }
+    if (/(borrower.*(advanced|advance).*fund|(advanced|advance).*fund.*borrower)/.test(value)) {
+      return {
+        label: 'Review record',
+        onClick: () => goToRecord({ field_key: 'financial.borrower_funds_advanced', label: 'Borrower funds advanced' }),
+      };
+    }
+    if (/funding\s+request|fund\s+release\s+request/.test(value)) {
+      return {
+        label: 'Review record',
+        onClick: () => goToRecord({ field_key: 'funding.request', label: 'Funding request' }),
+      };
+    }
+    if (/investor\s*(\/|or)\s*agency|investor.*agency|agency.*investor/.test(value)) {
+      return {
+        label: 'Review record',
+        onClick: () => goToRecord({ field_key: 'organization.investor_or_agency', label: 'Investor / agency' }),
+      };
     }
     if (/(term|purchase price|transaction value|closing date|structure)/.test(value)) {
       return { label: 'Review terms', onClick: () => goToRecord({ field_key: 'transaction.terms' }) };
@@ -3335,19 +3531,24 @@ function WhatNeedsAttention({
             {compactItems.map(item => {
               const action = item.field
                 ? { label: 'Review record', onClick: () => goToRecord(item.field) }
-                : item.actions[0] || routeForItem(item.routeItem || item);
+                : item.actions.find(candidate => typeof candidate?.onClick === 'function')
+                  || routeForItem(item.routeItem || item);
               return (
-                <div key={item.id} className="flex items-center gap-2.5 py-2.5">
+                  <div key={item.id} className="flex items-start gap-2.5 py-2.5">
                   <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${urgencyDot[item.urgency]}`} />
                    <div className="min-w-0 flex-1">
-                     <p className="truncate text-xs font-semibold text-gray-800">{item.title}</p>
-                     {item.reason && <p className="mt-0.5 truncate text-[10px] text-gray-400">{item.reason}</p>}
+                      <p className="break-words text-xs font-semibold text-gray-800">{item.title}</p>
+                      {item.reason && <p className="mt-0.5 break-words text-[10px] text-gray-400">{item.reason}</p>}
                    </div>
                   <button
                     type="button"
                      onClick={(event) => { event.preventDefault(); event.stopPropagation(); action.onClick?.(); }}
                     disabled={action.disabled}
-                    className="relative z-10 cursor-pointer shrink-0 rounded-lg border border-gray-200 px-2.5 py-1 text-[10px] font-bold text-gray-600 transition hover:bg-gray-50 disabled:opacity-50">
+                     className={`relative z-10 max-w-full shrink-0 cursor-pointer rounded-lg px-2.5 py-1 text-[10px] font-bold transition disabled:opacity-50 ${
+                       action.primary
+                         ? 'bg-[#800020] text-white hover:opacity-90'
+                         : 'border border-[#800020] bg-white text-[#800020] hover:bg-[#800020]/5'
+                     }`}>
                     {action.label}
                   </button>
                 </div>
@@ -3429,19 +3630,28 @@ function WhatNeedsAttention({
         /* ── STATE C/D: Items to address ──────────────────────────────── */
         <>
           <div className="divide-y divide-gray-100">
-            {prioritizedItems.slice(0, 5).map(item => (
-              <div key={item.id} className={`flex items-start gap-3 px-5 py-4 ${item.urgency === 'high' ? 'bg-red-50/40' : ''}`}>
+            {prioritizedItems.slice(0, 5).map(item => {
+              const itemActions = Array.isArray(item.actions)
+                ? item.actions.filter(action => typeof action?.onClick === 'function')
+                : [];
+              const renderedActions = item.field
+                ? [{ label: 'Review record', onClick: () => goToRecord(item.field) }]
+                : itemActions.length > 0
+                  ? itemActions
+                  : [routeForItem(item.routeItem || item)];
+              return (
+              <div key={item.id} className={`flex min-w-0 items-start gap-3 px-5 py-4 ${item.urgency === 'high' ? 'bg-red-50/40' : ''}`}>
                 <span className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${urgencyDot[item.urgency]}`} />
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold text-gray-900 leading-snug">{item.title}</p>
-                  {item.reason ? <p className="mt-0.5 text-xs text-gray-500 leading-relaxed">{item.reason}</p> : null}
-                  {item.excerpt ? <p className="mt-1 text-[11px] text-gray-400 italic leading-relaxed">{item.excerpt}</p> : null}
-                  {item.actions.length > 0 && (
-                    <div className="mt-2.5 flex flex-wrap gap-2">
-                      {item.actions.map((a, ai) => (
+                  <p className="break-words text-sm font-semibold leading-snug text-gray-900">{item.title}</p>
+                  {item.reason ? <p className="mt-0.5 break-words text-xs leading-relaxed text-gray-500">{item.reason}</p> : null}
+                  {item.excerpt ? <p className="mt-1 break-words text-[11px] italic leading-relaxed text-gray-400">{item.excerpt}</p> : null}
+                  {renderedActions.length > 0 && (
+                    <div className="mt-2.5 flex max-w-full flex-wrap items-center gap-2">
+                      {renderedActions.map((a, ai) => (
                          <button key={ai} type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); a.onClick?.(); }} disabled={a.disabled}
-                           className={`relative z-10 cursor-pointer rounded-lg px-3 py-1.5 text-[11px] font-bold transition disabled:opacity-50 ${
-                            a.primary ? 'bg-[#800020] text-white hover:opacity-90' : 'border border-gray-200 text-gray-700 hover:bg-gray-50'
+                           className={`relative z-10 max-w-full cursor-pointer rounded-lg px-3 py-1.5 text-[11px] font-bold transition disabled:opacity-50 ${
+                            a.primary ? 'bg-[#800020] text-white hover:opacity-90' : 'border border-[#800020] bg-white text-[#800020] hover:bg-[#800020]/5'
                           }`}>
                           {a.label}
                         </button>
@@ -3450,7 +3660,8 @@ function WhatNeedsAttention({
                   )}
                 </div>
               </div>
-            ))}
+              );
+            })}
           </div>
       {items.length > 3 && (
             <div className="border-t border-gray-100 px-5 py-3">
@@ -3491,25 +3702,55 @@ function DigitalAssetReadinessSection({
   const [editingField, setEditingField] = useState('');
   const [editValue, setEditValue] = useState('');
   const [mutationError, setMutationError] = useState('');
+  const [focusedFieldKey, setFocusedFieldKey] = useState('');
 
   useEffect(() => {
     const requestedKeys = [
+      ...(Array.isArray(focusRequest?.keys) ? focusRequest.keys : []),
       focusRequest?.key,
       focusRequest?.fieldKey,
       focusRequest?.field_key,
       focusRequest?.canonicalKey,
       focusRequest?.persistedKey,
     ].filter(Boolean);
+    const requestedLabels = [
+      focusRequest?.label,
+      focusRequest?.displayLabel,
+    ].filter(Boolean).map(value => String(value).trim().toLowerCase());
     if (requestedKeys.length === 0) return;
     const key = requestedKeys[0];
     const category = getTransactionRecordCategory({ field_key: key });
     setExpandedCat(category);
-    window.requestAnimationFrame(() => {
+    setFocusedFieldKey(key);
+    const focusTimer = window.setTimeout(() => setFocusedFieldKey(''), 2400);
+    if (focusRequest?.autoEdit) {
+      setEditingMissing(key);
+      setMissingValue('');
+      setMutationError('');
+    }
+    let cancelled = false;
+    const focusTarget = (attempt = 0) => {
+      if (cancelled) return;
       const target = requestedKeys
         .map(candidate => document.getElementById(`transaction-record-field-${encodeURIComponent(candidate)}`))
-        .find(Boolean);
-      target?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    });
+        .find(Boolean)
+        || (requestedLabels.length > 0
+          ? [...document.querySelectorAll('[data-transaction-record-field]')].find(element =>
+            requestedLabels.includes(String(element.dataset.transactionRecordLabel || '').trim().toLowerCase())
+          )
+          : null);
+      if (target) {
+        setFocusedFieldKey(target.dataset.transactionRecordKey || key);
+        target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      } else if (attempt < 20) {
+        window.setTimeout(() => focusTarget(attempt + 1), 50);
+      }
+    };
+    window.requestAnimationFrame(() => focusTarget());
+    return () => {
+      cancelled = true;
+      window.clearTimeout(focusTimer);
+    };
   }, [focusRequest]);
 
   // Keep the existing five visual categories, but derive their fields from the
@@ -3539,15 +3780,15 @@ function DigitalAssetReadinessSection({
     .map(field => field?.key)
     .filter(Boolean);
   const requiredKeys = new Set(
-    (canonicalRecordState?.requiredFields?.length
+      (canonicalRecordState?.requiredFields?.length
       ? canonicalRecordState.requiredFields
       : (generatedSchemaKeys.length
         ? generatedSchemaKeys.map(key => ({ key }))
         : getRequiredRecordFields(schemaKey)))
-      .map(field => field.key || field.canonicalKey)
+      .map(field => field.key || field.canonicalKey || field.persistedKey || field.field_key || field.definitionKey)
       .filter(Boolean),
   );
-  const schemaFields = generatedFields.length
+  const baseSchemaFields = generatedFields.length
     ? generatedFields.map(field => ({
         ...field,
         category: normalizeRecordCategory(field.category || field.field_category, field.key),
@@ -3558,6 +3799,74 @@ function DigitalAssetReadinessSection({
     : Object.entries(getPackRecordSchema(schemaKey)).flatMap(([category, fields]) =>
         fields.map(field => ({ ...field, category })),
       );
+  // The canonical API can contain required fields added by a room-specific
+  // workflow pack that is not present in the older static schema. Keep those
+  // fields visible so Overview actions never land on an empty category.
+  const canonicalSchemaFields = (canonicalRecordState?.requiredFields || [])
+    .map(field => {
+      const key = field?.key || field?.persistedKey || field?.field_key || field?.definitionKey || '';
+      const canonicalKey = field?.canonicalKey || field?.definitionKey || field?.persistedKey || key;
+      const uiCategory = getTransactionRecordCategory({ ...field, field_key: key });
+      const category = {
+        parties: 'parties',
+        asset: 'asset_identity',
+        terms: 'transaction',
+        financial: 'financial',
+        legal: 'legal',
+      }[uiCategory] || uiCategory;
+      return {
+        ...field,
+        key,
+        canonicalKey,
+        label: field?.label || field?.display_label || key,
+        category,
+        workflowRequired: true,
+        renderable: true,
+      };
+    })
+    .filter(field => field.key);
+  const operationalSchemaFields = getHazardLossOperationalFieldDefinitions(
+    property,
+    canonicalRecordState,
+    recordFields,
+  );
+  const schemaFieldKeys = new Set(baseSchemaFields.map(field => field.canonicalKey || field.key));
+  const rawSchemaFields = [
+    ...baseSchemaFields,
+    ...canonicalSchemaFields.filter(field =>
+      !schemaFieldKeys.has(field.canonicalKey || field.key)
+    ),
+    ...operationalSchemaFields.filter(field =>
+      !schemaFieldKeys.has(field.canonicalKey || field.key)
+      && !canonicalSchemaFields.some(canonical =>
+        (canonical.canonicalKey || canonical.key) === (field.canonicalKey || field.key)
+      )
+    ),
+  ];
+  const operationalByIdentity = new Map();
+  operationalSchemaFields.forEach(field => {
+    [
+      field.key,
+      field.canonicalKey,
+      field.persistedKey,
+      field.definitionKey,
+    ].filter(Boolean).forEach(identity => {
+      operationalByIdentity.set(normalizeAttentionFieldKey(identity), field);
+    });
+  });
+  const schemaFields = rawSchemaFields.map(field => {
+    const operational = [
+      field.key,
+      field.canonicalKey,
+      field.persistedKey,
+      field.definitionKey,
+    ].filter(Boolean)
+      .map(identity => operationalByIdentity.get(normalizeAttentionFieldKey(identity)))
+      .find(Boolean);
+    return operational
+      ? { ...field, label: operational.label, category: operational.category, hint: operational.hint, sources: operational.sources }
+      : field;
+  });
   const categorySchemaGroups = {
     parties: ['parties', 'beneficial_ownership'],
     asset: ['asset_identity'],
@@ -3581,6 +3890,7 @@ function DigitalAssetReadinessSection({
           canonicalKey: field.canonicalKey || field.key,
           aliasOf: field.aliasOf || null,
           label: field.label,
+           hint: field.hint || '',
         })),
     ]),
   );
@@ -3642,16 +3952,20 @@ function DigitalAssetReadinessSection({
           : 'building';
 
      const missingLabels = missingDefs.map(d => d.label.toLowerCase());
-     const summary = missingDefs.length === 0 && awaitingDefs.length === 0
-      ? 'All key fields present'
-       : awaitingDefs.length > 0 && missingDefs.length === 0
-         ? `${awaitingDefs.length} field${awaitingDefs.length === 1 ? '' : 's'} awaiting confirmation`
-      : cat.key === 'parties' && missingLabels.some(label => label.includes('buyer'))
-        && missingLabels.some(label => label.includes('seller'))
-        ? 'Buyer and seller not identified'
-        : cat.key === 'terms' && missingLabels.some(label => label.includes('value') || label.includes('price'))
-          ? 'Transaction value missing'
-          : `${missingDefs[0].label} missing`;
+      const summary = missingDefs.length === 0 && awaitingDefs.length === 0
+       ? 'All key fields present'
+        : awaitingDefs.length > 0 && missingDefs.length === 0
+          ? `${awaitingDefs.length} field${awaitingDefs.length === 1 ? '' : 's'} awaiting confirmation`
+       : cat.key === 'parties' && missingLabels.some(label => label.includes('investor'))
+         ? 'Add the investor / agency here'
+       : cat.key === 'parties' && missingLabels.some(label => label.includes('buyer'))
+         && missingLabels.some(label => label.includes('seller'))
+         ? 'Buyer and seller not identified'
+         : cat.key === 'financial' && missingLabels.some(label => label.includes('funding request'))
+           ? 'Add the requested release amount here'
+         : cat.key === 'terms' && missingLabels.some(label => label.includes('value') || label.includes('price'))
+           ? 'Transaction value missing'
+           : `${missingDefs[0].label} missing`;
 
      return { ...cat, enriched, confirmedDefs, awaitingDefs, missingDefs, count, total, sources, st, summary };
   });
@@ -3685,7 +3999,10 @@ function DigitalAssetReadinessSection({
           body: JSON.stringify({ ownerWriteToken, actorRole: 'coordinator' }),
         },
       );
-      if (!response.ok) throw new Error('The Transaction Record field could not be confirmed.');
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(data.message || data.error || 'The Transaction Record field could not be confirmed.');
+      }
       await onRecordUpdated?.();
     } catch (error) {
       setMutationError(error.message || 'The Transaction Record field could not be confirmed.');
@@ -3697,6 +4014,13 @@ function DigitalAssetReadinessSection({
   async function saveMissingField(field) {
     const value = missingValue.trim();
     if (!value) return;
+    const fieldKey = field?.canonicalKey || field?.key || field?.field_key || '';
+    const fieldCategory = field?.category || field?.field_category
+      || getTransactionRecordCategory({ field_key: fieldKey });
+    if (!fieldKey || !fieldCategory) {
+      setMutationError('This Transaction Record field is missing its canonical category and cannot be saved yet.');
+      return;
+    }
     let ownerWriteToken = '';
     try { ownerWriteToken = localStorage.getItem(`kontra_owner_token_${propertyId}`) || ''; } catch {}
     if (!ownerWriteToken) {
@@ -3710,11 +4034,11 @@ function DigitalAssetReadinessSection({
         `${API_BASE}/api/public/deal-room/${propertyId}/transaction-record/fields`,
         {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: getRoomAuthHeaders(propertyId, { 'Content-Type': 'application/json' }),
           body: JSON.stringify({
-            field_key: field.canonicalKey || field.key,
+            field_key: fieldKey,
             display_label: field.label,
-            field_category: field.category,
+            field_category: fieldCategory,
             value_text: value,
             status: 'needs_review',
             ownerWriteToken,
@@ -3729,7 +4053,7 @@ function DigitalAssetReadinessSection({
         `${API_BASE}/api/public/deal-room/${propertyId}/transaction-record/fields/${data.id}/verify`,
         {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: getRoomAuthHeaders(propertyId, { 'Content-Type': 'application/json' }),
           body: JSON.stringify({ ownerWriteToken, actorRole: 'coordinator' }),
         },
       );
@@ -3870,7 +4194,7 @@ function DigitalAssetReadinessSection({
               {/* Expanded detail panel */}
               {isExpanded && (
                 <div className="px-5 pb-4 pt-1 bg-gray-50/60 border-t border-gray-100">
-                   <div className="grid gap-3 sm:grid-cols-3">
+                    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                     {/* Confirmed */}
                     <div>
                       <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-1.5">Confirmed</p>
@@ -3878,12 +4202,45 @@ function DigitalAssetReadinessSection({
                         <p className="text-xs text-gray-400 italic">Nothing confirmed yet.</p>
                       ) : (
                         <ul className="space-y-1">
-                          {cat.confirmedDefs.map(d => (
-                            <li key={d.key} className="flex items-start gap-1.5 text-xs text-gray-700">
-                              <span className="mt-0.5 text-emerald-500 shrink-0">✓</span>
-                              <span>{d.label}{d.field?.value_text ? <span className="text-gray-400"> — {d.field.value_text}</span> : ''}</span>
-                            </li>
-                          ))}
+                          {cat.confirmedDefs.map(d => {
+                            const confirmedFieldId = d.state?.fieldId || d.state?.field?.id;
+                            return (
+                              <li key={d.key} id={`transaction-record-field-${encodeURIComponent(d.key)}`} data-transaction-record-field="true" data-transaction-record-key={d.key} data-transaction-record-label={d.label} className={`rounded-lg px-1 text-xs text-gray-700 transition-shadow ${focusedFieldKey === d.key ? 'bg-emerald-50 ring-2 ring-emerald-300 ring-offset-1' : ''}`}>
+                                <span className="flex items-start gap-1.5">
+                                  <span className="mt-0.5 text-emerald-500 shrink-0">✓</span>
+                                  <span className="flex min-w-0 flex-1 flex-col items-start gap-1">
+                                    <span className="break-words">{d.label}{d.state?.value ? <span className="text-gray-400"> — {d.state.value}</span> : ''}</span>
+                                    {confirmedFieldId && (
+                                      <span className="flex max-w-full flex-wrap items-center gap-1">
+                                        <button type="button"
+                                          onClick={() => { setEditingField(confirmedFieldId); setEditValue(d.state.value || ''); setMutationError(''); }}
+                                          disabled={!!confirmingField}
+                                          className="rounded-lg border border-[#800020] bg-white px-2 py-1 text-[10px] font-bold text-[#800020] hover:bg-[#800020]/5 disabled:opacity-50">
+                                          Edit/correct
+                                        </button>
+                                        <button type="button"
+                                          onClick={() => updateRecordField(d.state.field || d.state, { value_text: '', status: 'missing' })}
+                                          disabled={!!confirmingField}
+                                          className="rounded-lg border border-red-200 bg-white px-2 py-1 text-[10px] font-bold text-red-600 disabled:opacity-50">
+                                          Reject/Clear
+                                        </button>
+                                      </span>
+                                    )}
+                                  </span>
+                                </span>
+                                {editingField === confirmedFieldId && (
+                                  <span className="mt-1 flex w-full items-center gap-1 pl-4">
+                                    <input value={editValue} onChange={event => setEditValue(event.target.value)}
+                                      aria-label={`Correct ${d.label}`} className="min-w-0 flex-1 rounded border border-gray-200 bg-white px-2 py-1 text-[10px]" />
+                                    <button type="button" onClick={() => updateRecordField(d.state.field || d.state, { value_text: editValue, status: 'needs_review' })}
+                                      disabled={!editValue.trim() || !!confirmingField} className="rounded bg-[#800020] px-2 py-1 text-[10px] font-bold text-white hover:opacity-90 disabled:opacity-50">
+                                      Save correction
+                                    </button>
+                                  </span>
+                                )}
+                              </li>
+                            );
+                          })}
                         </ul>
                       )}
                     </div>
@@ -3895,12 +4252,12 @@ function DigitalAssetReadinessSection({
                        ) : (
                          <ul className="space-y-1">
                            {cat.awaitingDefs.slice(0, 4).map(d => (
-                              <li key={d.key} id={`transaction-record-field-${encodeURIComponent(d.key)}`} className="flex items-start gap-1.5 text-xs text-blue-700">
+                              <li key={d.key} id={`transaction-record-field-${encodeURIComponent(d.key)}`} data-transaction-record-field="true" data-transaction-record-key={d.key} data-transaction-record-label={d.label} className={`flex items-start gap-1.5 rounded-lg px-1 text-xs text-blue-700 transition-shadow ${focusedFieldKey === d.key ? 'bg-blue-50 ring-2 ring-blue-300 ring-offset-1' : ''}`}>
                                <span className="mt-0.5 text-blue-500 shrink-0">●</span>
-                               <span className="flex min-w-0 flex-1 items-center justify-between gap-2">
-                                 <span>{d.label}{d.state?.value ? <span className="text-gray-400"> — {d.state.value}</span> : ''}</span>
+                               <span className="flex min-w-0 flex-1 flex-col items-start gap-1">
+                                 <span className="break-words">{d.label}{d.state?.value ? <span className="text-gray-400"> — {d.state.value}</span> : ''}</span>
                                   {(d.state?.fieldId || d.state?.field?.id) && d.state?.value && (
-                                    <span className="flex shrink-0 items-center gap-1">
+                                    <span className="flex max-w-full flex-wrap items-center gap-1">
                                       <button type="button" onClick={() => confirmRecordField(d.state)} disabled={!!confirmingField}
                                         className="rounded-lg bg-[#800020] px-2 py-1 text-[10px] font-bold text-white disabled:opacity-50">
                                         {confirmingField ? 'Working…' : 'Confirm'}
@@ -3908,7 +4265,7 @@ function DigitalAssetReadinessSection({
                                       <button type="button"
                                         onClick={() => { setEditingField(d.state.fieldId || d.state.field.id); setEditValue(d.state.value || ''); setMutationError(''); }}
                                         disabled={!!confirmingField}
-                                        className="rounded-lg border border-gray-200 bg-white px-2 py-1 text-[10px] font-bold text-gray-600 disabled:opacity-50">
+                                         className="rounded-lg border border-[#800020] bg-white px-2 py-1 text-[10px] font-bold text-[#800020] hover:bg-[#800020]/5 disabled:opacity-50">
                                         Edit/correct
                                       </button>
                                       <button type="button"
@@ -3925,7 +4282,7 @@ function DigitalAssetReadinessSection({
                                     <input value={editValue} onChange={event => setEditValue(event.target.value)}
                                       aria-label={`Correct ${d.label}`} className="min-w-0 flex-1 rounded border border-gray-200 bg-white px-2 py-1 text-[10px]" />
                                     <button type="button" onClick={() => updateRecordField(d.state.field || d.state, { value_text: editValue, status: 'needs_review' })}
-                                      disabled={!editValue.trim() || !!confirmingField} className="rounded bg-gray-700 px-2 py-1 text-[10px] font-bold text-white disabled:opacity-50">
+                                       disabled={!editValue.trim() || !!confirmingField} className="rounded bg-[#800020] px-2 py-1 text-[10px] font-bold text-white hover:opacity-90 disabled:opacity-50">
                                       Save correction
                                     </button>
                                   </span>
@@ -3946,16 +4303,22 @@ function DigitalAssetReadinessSection({
                       ) : (
                            <ul className="space-y-1">
                           {cat.missingDefs.slice(0, 4).map(d => (
-                              <li key={d.key} id={`transaction-record-field-${encodeURIComponent(d.key)}`} className="flex items-start gap-1.5 text-xs text-gray-500">
+                              <li key={d.key} id={`transaction-record-field-${encodeURIComponent(d.key)}`} data-transaction-record-field="true" data-transaction-record-key={d.key} data-transaction-record-label={d.label} className={`flex items-start gap-1.5 rounded-lg px-1 text-xs text-gray-500 transition-shadow ${focusedFieldKey === d.key ? 'bg-amber-50 ring-2 ring-amber-300 ring-offset-1' : ''}`}>
                               <span className="mt-0.5 text-gray-300 shrink-0">○</span>
-                              <span className="flex min-w-0 flex-1 items-center justify-between gap-2">
-                                <span>{d.label}{d.state?.value ? <span className="text-gray-400"> — {d.state.value}</span> : ''}</span>
+                               <span className="flex min-w-0 flex-1 flex-wrap items-start justify-between gap-2">
+                                 <span className="min-w-0 flex-1 break-words">{d.label}{d.state?.value ? <span className="text-gray-400"> — {d.state.value}</span> : ''}</span>
                                    {editingMissing === d.key ? (
-                                     <span className="flex shrink-0 items-center gap-1">
+                                     <span className="flex max-w-full shrink-0 flex-wrap items-center gap-1">
                                        <input
                                          value={missingValue}
                                          onChange={event => setMissingValue(event.target.value)}
-                                         placeholder="Enter value"
+                                          placeholder={
+                                            d.key === 'organization.investor_or_agency'
+                                              ? 'e.g. Freddie Mac'
+                                              : d.key === 'funding.request'
+                                                ? 'e.g. $5,500'
+                                                : 'Enter value'
+                                          }
                                          aria-label={`Enter ${d.label}`}
                                          className="w-28 rounded border border-gray-200 bg-white px-2 py-1 text-[10px] text-gray-700"
                                        />
@@ -3972,7 +4335,7 @@ function DigitalAssetReadinessSection({
                                      <button
                                        type="button"
                                        onClick={() => { setEditingMissing(d.key); setMissingValue(''); setMutationError(''); }}
-                                       className="shrink-0 rounded-lg border border-gray-200 bg-white px-2 py-1 text-[10px] font-bold text-gray-600 hover:bg-gray-50"
+                                          className="shrink-0 rounded-lg border border-[#800020] bg-white px-2 py-1 text-[10px] font-bold text-[#800020] hover:bg-[#800020]/5"
                                      >
                                        Add value
                                      </button>
@@ -4396,10 +4759,17 @@ function hasDocumentReviewFinding(analysis) {
 function normalizeRecordCategory(value, key = '', label = '') {
   const raw = String(value || '').trim().toLowerCase().replace(/[\s-]+/g, '_');
   const keyCategory = String(key || '').split('.')[0].toLowerCase();
+  const fieldText = `${key} ${label}`.toLowerCase();
+  if (/(units?[\s_-]+(damaged|affected)|properties?[\s_-]+damaged)/.test(fieldText)) {
+    return 'asset_identity';
+  }
+  if (/(additional[\s_-]+work[\s_-]+invoice|fund[\s_-]+release[\s_-]+request)/.test(fieldText)) {
+    return 'financial';
+  }
   const category = raw || keyCategory || 'transaction';
   if (['transaction', 'transaction_extra', 'terms', 'deal_terms'].includes(category)) return 'transaction';
   if (['asset', 'asset_identity', 'property', 'company', 'identity'].includes(category)) return 'asset_identity';
-  if (['party', 'parties', 'counterparties'].includes(category)) return 'parties';
+  if (['party', 'parties', 'counterparties', 'organization', 'organizer'].includes(category)) return 'parties';
   if (['ownership', 'beneficial_ownership', 'cap_table'].includes(category)) return 'beneficial_ownership';
   if (['finance', 'financial', 'financials', 'economics'].includes(category)) return 'financial';
   if (['legal', 'diligence', 'regulatory'].includes(category)) return 'legal';
@@ -4413,6 +4783,74 @@ function normalizeRecordCategory(value, key = '', label = '') {
   return keyCategory || category;
 }
 
+const HAZARD_LOSS_OPERATIONAL_FIELDS = Object.freeze([
+  {
+    key: 'organization.investor_or_agency',
+    label: 'Investor / agency',
+    category: 'parties',
+    workflowRequired: true,
+    required: true,
+    sources: ['Insurance Claim Documentation', 'Servicer Correspondence'],
+    hint: 'The investor, agency, or servicer responsible for the loss review.',
+  },
+  {
+    key: 'financial.borrower_funds_advanced',
+    label: 'Borrower funds advanced',
+    category: 'financial',
+    workflowRequired: true,
+    required: true,
+    sources: ['Funding Request', 'Servicer Correspondence'],
+    hint: 'Confirmed amount of borrower funds already advanced for the loss.',
+  },
+  {
+    key: 'funding.request',
+    label: 'Funding request',
+    category: 'financial',
+    workflowRequired: true,
+    required: true,
+    sources: ['Funding Request', 'Additional Work Invoice'],
+    hint: 'The reimbursement or additional repair proceeds requested.',
+  },
+]);
+
+function isHazardLossWorkspace(property, recordState = null, recordFields = []) {
+  const text = [
+    property?.name,
+    property?.property_name,
+    property?.type,
+    property?.workspace_type,
+    property?.property_type,
+    property?.deal_type,
+    property?.transaction_type,
+    property?.description,
+    property?.generated_proposal?.transaction_identity?.type,
+    property?.generated_proposal?.transaction_identity?.label,
+    property?.metadata_values?.description,
+    property?.metadata_values?.transaction_type,
+  ].filter(Boolean).join(' ').toLowerCase();
+  const fields = [
+    ...(Array.isArray(recordState?.fields) ? recordState.fields : []),
+    ...(Array.isArray(recordState?.requiredFields) ? recordState.requiredFields : []),
+    ...(Array.isArray(recordFields) ? recordFields : []),
+  ];
+  const fieldText = fields.map(field => [
+    field?.key,
+    field?.field_key,
+    field?.definitionKey,
+    field?.definition_key,
+    field?.label,
+    field?.display_label,
+  ].filter(Boolean).join(' ')).join(' ').toLowerCase();
+  return /\bfreddie\s*mac\b|\bhazard[\s-]+loss\b|\bcasualty\b|\binsurance\s+proceeds?\b|\brepair\s+(?:progress|funds?|proceeds?)\b/.test(text)
+    || /\b(?:organization\.)?investor[_\s/]+or[_\s/]agency\b|\bfinancial\.(?:borrower[_\s]+funds[_\s]+advanced|borrower[_\s]+advanced[_\s]+funds)\b|\bfunding\.(?:request|fund[_\s]+release[_\s]+request)\b|\bfund[_\s]+release[_\s]+request\b|\bborrower[_\s]+funds[_\s]+advanced\b/.test(fieldText);
+}
+
+function getHazardLossOperationalFieldDefinitions(property, recordState = null, recordFields = []) {
+  return isHazardLossWorkspace(property, recordState, recordFields)
+    ? HAZARD_LOSS_OPERATIONAL_FIELDS.map(field => ({ ...field, renderable: true }))
+    : [];
+}
+
 function recordStateFieldForDefinition(definition, recordState) {
   const definitions = [
     definition?.canonicalKey,
@@ -4422,18 +4860,32 @@ function recordStateFieldForDefinition(definition, recordState) {
   ].filter(Boolean);
   const normalizeLabel = value => String(value || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, ' ').replace(/\s+/g, ' ');
   const label = normalizeLabel(definition?.label);
-  const required = recordState?.requiredFields?.find(field =>
-    definitions.includes(field?.definitionKey)
-      || definitions.includes(field?.key)
-      || definitions.includes(field?.persistedKey)
-      || (label && normalizeLabel(field?.label) === label)
+  const definitionIdentities = new Set(definitions.map(normalizeAttentionFieldKey));
+  const matches = [
+    ...(Array.isArray(recordState?.requiredFields) ? recordState.requiredFields : []),
+    ...(Array.isArray(recordState?.fields) ? recordState.fields : []),
+  ].filter(field =>
+    [...getRecordFieldIdentitySet(field)].some(identity => definitionIdentities.has(identity))
+      || (label && normalizeLabel(field?.label || field?.display_label) === label)
   );
-  if (required) return required;
-  return recordState?.fields?.find(field =>
-    definitions.includes(field?.key)
-      || definitions.includes(field?.persistedKey)
-      || (label && normalizeLabel(field?.label) === label)
-  ) || null;
+  const statusPriority = {
+    confirmed: 0,
+    verified: 0,
+    source_changed: 1,
+    conflict: 2,
+    conflicting: 2,
+    awaiting: 3,
+    needs_review: 3,
+    extracted: 3,
+    missing: 4,
+    not_applicable: 5,
+  };
+  return matches
+    .slice()
+    .sort((a, b) =>
+      (statusPriority[normalizeRecordStatus(a)] ?? 6)
+      - (statusPriority[normalizeRecordStatus(b)] ?? 6)
+    )[0] || null;
 }
 
 function getRecordDefinitionState(definition, recordFields = [], recordState = null) {
@@ -4524,7 +4976,49 @@ function getEffectiveRecordDefinitions(schemaKey, property, recordFields = [], r
         };
       })
       .filter(field => field.renderable !== false);
-    if (persistedFields.length > 0) return persistedFields;
+    const canonicalFields = (recordState?.requiredFields || [])
+      .filter(field => field?.key || field?.persistedKey || field?.field_key || field?.definitionKey)
+      .map(field => {
+        const key = field.key || field.persistedKey || field.field_key || field.definitionKey;
+        return {
+          ...field,
+          key,
+          definitionKey: field.definitionKey || key,
+          canonicalKey: field.canonicalKey || field.persistedKey || field.field_key || key,
+          persistedKey: field.persistedKey || field.field_key || key,
+          label: field.label || field.display_label || key,
+          category: normalizeRecordCategory(
+            field.category || field.field_category,
+            key,
+            field.label || field.display_label,
+          ),
+          workflowRequired: field.required !== false && field.isRequired !== false,
+          required: true,
+          renderable: field.renderable !== false,
+        };
+      })
+      .filter(field => field.renderable !== false);
+    if (persistedFields.length > 0) {
+      const persistedIdentities = new Set(
+        persistedFields.flatMap(field => [
+          field.key,
+          field.canonicalKey,
+          field.persistedKey,
+          field.definitionKey,
+        ].filter(Boolean).map(normalizeAttentionFieldKey)),
+      );
+      return [
+        ...persistedFields,
+        ...canonicalFields.filter(field => ![
+          field.key,
+          field.canonicalKey,
+          field.persistedKey,
+          field.definitionKey,
+        ].filter(Boolean).map(normalizeAttentionFieldKey)
+          .some(identity => persistedIdentities.has(identity))),
+      ];
+    }
+    if (canonicalFields.length > 0) return canonicalFields;
     // Pre-migration compatibility only. New rooms always take the branch
     // above because materialization creates one row per approved field.
     const generatedFields = getGeneratedProposal(property)?.transaction_record_fields;
@@ -4693,10 +5187,227 @@ function filterLiveDocumentActions(actions = [], documentStats) {
   return (actions || []).filter(action => !isStaleDocumentAction(action, documentStats));
 }
 
+function normalizeAttentionText(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .replace(/\s+/g, ' ');
+}
+
+function normalizeAttentionFieldKey(value) {
+  const key = String(value || '').trim().toLowerCase();
+  return {
+    'financial.borrower_advanced_funds': 'financial.borrower_funds_advanced',
+    'financial.borrower_funds_advanced_amount': 'financial.borrower_funds_advanced',
+    'transaction.investor_or_agency': 'organization.investor_or_agency',
+    'parties.investor_or_agency': 'organization.investor_or_agency',
+  }[key] || key;
+}
+
+function getRecordFieldIdentitySet(field) {
+  return new Set([
+    field?.key,
+    field?.field_key,
+    field?.canonicalKey,
+    field?.persistedKey,
+    field?.definitionKey,
+  ].filter(Boolean).map(normalizeAttentionFieldKey));
+}
+
+function getCanonicalRecordFieldCandidates(recordState, recordFields = []) {
+  const candidates = [
+    ...(Array.isArray(recordState?.requiredFields) ? recordState.requiredFields : []),
+    ...(Array.isArray(recordState?.fields) ? recordState.fields : []),
+    ...(Array.isArray(recordFields) ? recordFields : []),
+  ];
+  const candidatesByIdentity = new Map();
+  const statusPriority = {
+    confirmed: 0,
+    verified: 0,
+    source_changed: 1,
+    conflict: 2,
+    conflicting: 2,
+    awaiting: 3,
+    needs_review: 3,
+    extracted: 3,
+    missing: 4,
+    not_applicable: 5,
+  };
+  candidates.forEach(field => {
+    const identities = getRecordFieldIdentitySet(field);
+    const label = normalizeAttentionText(field?.label || field?.display_label);
+    const identity = [...identities][0] || (label ? `label:${label}` : '');
+    if (!identity) return;
+    const current = candidatesByIdentity.get(identity);
+    if (
+      !current
+      || (statusPriority[normalizeRecordStatus(field)] ?? 6)
+        < (statusPriority[normalizeRecordStatus(current)] ?? 6)
+    ) {
+      candidatesByIdentity.set(identity, field);
+    }
+  });
+  return [...candidatesByIdentity.values()];
+}
+
+function actionTextMentionsRecordField(action, field) {
+  const actionValue = typeof action === 'string'
+    ? action
+    : [
+      action?.title,
+      action?.text,
+      action?.action,
+      action?.item,
+      action?.reason,
+      action?.note,
+    ].filter(Boolean).join(' ');
+  const text = normalizeAttentionText([
+    actionValue,
+  ].filter(Boolean).join(' '));
+  if (!text) return false;
+  const actionTokens = new Set(text.split(' '));
+  const directMatch = [
+    field?.label,
+    field?.display_label,
+    field?.key,
+    field?.field_key,
+    field?.definitionKey,
+  ].filter(Boolean).some(value => {
+    const label = normalizeAttentionText(value);
+    if (!label) return false;
+    if (` ${text} `.includes(` ${label} `)) return true;
+    const tokens = label.split(' ').filter(token => token.length > 1);
+    return tokens.length >= 2 && tokens.every(token => actionTokens.has(token));
+  });
+  if (directMatch) return true;
+
+  // Briefing/task-engine actions were generated with several historical
+  // phrasings for the hazard-loss fields. Match those semantic aliases to the
+  // canonical field so a confirmed 9,000 value cannot leave an old
+  // "advance borrower funds" action in the attention feed.
+  const fieldKeys = [
+    field?.key,
+    field?.field_key,
+    field?.canonicalKey,
+    field?.persistedKey,
+    field?.definitionKey,
+  ].filter(Boolean).map(normalizeAttentionFieldKey);
+  if (fieldKeys.includes('financial.borrower_funds_advanced')) {
+    return /\b(?:borrower(?:s)?\s+)?(?:funds?|amount)\s+(?:already\s+)?advanc(?:e|ed|ing)\b/.test(text)
+      || /\bborrower(?:s)?\s+advanc(?:e|ed|ing)\s+(?:funds?|amount)\b/.test(text)
+      || /\badvanc(?:e|ed|ing)\s+(?:the\s+)?borrower(?:s)?\s+funds?\b/.test(text)
+      || /\bborrower(?:s)?\s+out\s+of\s+pocket\b/.test(text);
+  }
+  if (fieldKeys.includes('funding.request')) {
+    return /\b(?:funding|fund|repair)\s+(?:request|release|proceeds)\b/.test(text)
+      || /\b(?:request|release|reimburse(?:ment)?)\s+(?:additional\s+)?(?:repair\s+)?(?:funds?|proceeds?)\b/.test(text);
+  }
+  return fieldKeys.includes('organization.investor_or_agency')
+    && /\b(?:investor|agency)\b/.test(text)
+    && /\b(?:add|identify|confirm|record|provide|select)\b/.test(text);
+}
+
+function isBorrowerFundsRecordAction(action) {
+  const actionValue = typeof action === 'string'
+    ? action
+    : [
+      action?.title,
+      action?.text,
+      action?.action,
+      action?.item,
+      action?.reason,
+      action?.note,
+    ].filter(Boolean).join(' ');
+  const text = normalizeAttentionText(actionValue);
+  if (!text) return false;
+  return (
+    /\bborrower\b.*\badvanc(?:e|ed|ing)\b.*\bfunds?\b/.test(text)
+    || /\bborrower\b.*\bfunds?\b.*\badvanc(?:e|ed|ing)\b/.test(text)
+    || /\badvanc(?:e|ed|ing)\b.*\bborrower\b.*\bfunds?\b/.test(text)
+    || /\bborrower\b.*\bout\s+of\s+pocket\b/.test(text)
+  );
+}
+
+function findCanonicalRecordFieldForAction(action, recordState, recordFields = []) {
+  const candidates = getCanonicalRecordFieldCandidates(recordState, recordFields);
+  const preferCurrentState = matches => matches
+    .slice()
+    .sort((a, b) => {
+      const priority = status => {
+        const normalized = normalizeRecordStatus({ status });
+        return ({
+        confirmed: 0,
+        verified: 0,
+        conflict: 1,
+        conflicting: 1,
+        source_changed: 1,
+        awaiting: 2,
+        needs_review: 2,
+        extracted: 2,
+        missing: 3,
+        }[normalized] ?? 4);
+      };
+      return priority(a?.status) - priority(b?.status);
+    })[0] || null;
+  const explicitKeys = [
+    action?.field_key,
+    action?.fieldKey,
+    action?.key,
+    action?.canonicalKey,
+    action?.persistedKey,
+    action?.definitionKey,
+  ].filter(Boolean).map(normalizeAttentionFieldKey);
+  if (explicitKeys.length > 0) {
+    const explicitMatches = candidates.filter(field => {
+      const identities = getRecordFieldIdentitySet(field);
+      return explicitKeys.some(key => identities.has(key));
+    });
+    if (explicitMatches.length > 0) return preferCurrentState(explicitMatches);
+  }
+  const textMatches = candidates.filter(field => actionTextMentionsRecordField(action, field));
+  return textMatches.length > 0 ? preferCurrentState(textMatches) : null;
+}
+
+function filterStaleRecordActions(
+  actions = [],
+  recordState = null,
+  recordFields = [],
+  canonicalActionKeys = new Set(),
+) {
+  return (actions || []).filter(action => {
+    const field = findCanonicalRecordFieldForAction(action, recordState, recordFields);
+    if (!field) return true;
+    const identities = getRecordFieldIdentitySet(field);
+    const isResolved = normalizeRecordStatus(field) === 'confirmed';
+    const hasCanonicalAction = [...identities].some(identity => canonicalActionKeys.has(identity));
+    // Briefing text can contain an older extracted candidate. Once the
+    // canonical field is confirmed, or once a canonical Review record action
+    // exists for it, never render that stale candidate as a second action.
+    return !isResolved && !hasCanonicalAction;
+  });
+}
+
 function dedupeAttentionItems(items = []) {
   const seen = new Set();
+  const seenFields = new Set();
   return items.filter(item => {
     const raw = String(item?.title || item?.text || '').trim().toLowerCase();
+    const explicitField = [
+      item?.field,
+      item?.fieldKey,
+      item?.field_key,
+      item?.routeItem?.field,
+      item?.routeItem?.fieldKey,
+      item?.routeItem?.field_key,
+    ].find(Boolean);
+    const fieldKey = typeof explicitField === 'object'
+      ? [...getRecordFieldIdentitySet(explicitField)][0]
+      : normalizeAttentionFieldKey(explicitField);
+    if (fieldKey) {
+      if (seenFields.has(fieldKey)) return false;
+      seenFields.add(fieldKey);
+    }
     const key = /repair\s*cost/i.test(raw)
       ? 'repair-cost-discrepancy'
       : /discrepancy|conflict/.test(raw) && /repair|cost/.test(raw)
@@ -4710,10 +5421,42 @@ function dedupeAttentionItems(items = []) {
 
 function getCanonicalAwaitingRecordFields(recordState) {
   if (!Array.isArray(recordState?.requiredFields)) return [];
-  return recordState.requiredFields.filter(field =>
-    field?.status === 'awaiting'
+  const fieldsByIdentity = new Map();
+  recordState.requiredFields.forEach(field => {
+    const identity = [...getRecordFieldIdentitySet(field)][0]
+      || `label:${normalizeAttentionText(field?.label || field?.display_label)}`;
+    if (!identity) return;
+    const current = fieldsByIdentity.get(identity);
+    const currentStatus = normalizeRecordStatus(current);
+    const nextStatus = normalizeRecordStatus(field);
+    if (!current || (currentStatus !== 'confirmed' && nextStatus === 'confirmed')) {
+      fieldsByIdentity.set(identity, field);
+    }
+  });
+  return [...fieldsByIdentity.values()].filter(field =>
+    normalizeRecordStatus(field) === 'awaiting'
       && String(field.value ?? field.value_text ?? '').trim()
   );
+}
+
+function mergeTransactionRecordState(previous, incoming) {
+  if (!incoming) return previous || null;
+  if (!previous) return incoming;
+  const merged = { ...previous, ...incoming };
+  const arrayKeys = ['requiredFields', 'fields', 'unresolvedConflicts'];
+  arrayKeys.forEach(key => {
+    const incomingValue = incoming[key];
+    // An empty array is an authoritative response too. Keeping the previous
+    // projection here resurrects stale awaiting fields and conflicts after a
+    // confirmation or a fresh empty record response.
+    if (Array.isArray(incomingValue)) {
+      merged[key] = incomingValue;
+    }
+  });
+  ['schemaKey', 'requiredCount', 'confirmedCount', 'awaitingRequiredCount'].forEach(key => {
+    if (incoming[key] == null && previous[key] != null) merged[key] = previous[key];
+  });
+  return merged;
 }
 
 function getCanonicalUnresolvedConflicts(recordState) {
@@ -5375,9 +6118,16 @@ export {
   hasDocumentReviewFinding,
   getDocumentRequirementStats,
   filterLiveDocumentActions,
+  filterStaleRecordActions,
+  actionTextMentionsRecordField,
+  isBorrowerFundsRecordAction,
+  normalizeRecordCategory,
+  getTransactionRecordCategory,
+  getHazardLossOperationalFieldDefinitions,
   dedupeAttentionItems,
   getCanonicalAwaitingRecordFields,
   getCanonicalUnresolvedConflicts,
+  mergeTransactionRecordState,
   getRecordDefinitionState,
   getCoordinatorRecordFacts,
 };
@@ -5661,9 +6411,19 @@ function VerifiedAssetReadinessCard({
   const unresolvedConflicts = Array.isArray(reasons.unresolved_conflicts)
     ? reasons.unresolved_conflicts
     : [];
+  const missingApprovals = Array.isArray(reasons.missing_approvals)
+    ? reasons.missing_approvals
+    : [];
+  const provenanceGaps = Array.isArray(reasons.provenance_gaps)
+    ? reasons.provenance_gaps
+    : [];
   const blockerLabels = [
     ...incompleteFields.map(item => item?.label || item?.field_key),
     ...unresolvedConflicts.map(item => item?.label || item?.field_key),
+    ...missingApprovals.map(item => `${item?.label || item?.field_key} — approval required`),
+    ...provenanceGaps.map(item =>
+      `${item?.label || item?.field_key} — ${item?.source || item?.requirement || 'current provenance required'}`,
+    ),
   ].filter(Boolean);
   const statusLabel = isUnavailable
     ? 'Loading or unavailable'
@@ -5763,11 +6523,16 @@ function VerifiedAssetReadinessCard({
       )}
 
       <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-gray-200 pt-4">
-        <p className="text-xs text-gray-500">
-          {ownerToken
-            ? 'Owner session active — snapshots can be recorded.'
-            : 'Owner session not available — sign in through My Deal Rooms to record a snapshot.'}
-        </p>
+        <div className="min-w-0 flex-1">
+          <p className="text-xs text-gray-500">
+            {ownerToken
+              ? 'Owner session active — snapshots can be recorded.'
+              : 'Owner session not available — sign in through My Deal Rooms to record a snapshot.'}
+          </p>
+          <p className="mt-1 text-[10px] leading-relaxed text-gray-400">
+            Recording preserves this exact readiness state, including any ineligible status. It does not generate a preparation package or bypass blockers.
+          </p>
+        </div>
         <button
           type="button"
           onClick={onRecordSnapshot}
@@ -5778,7 +6543,9 @@ function VerifiedAssetReadinessCard({
         </button>
       </div>
       {action.message && (
-        <p className={`mt-3 text-xs ${action.error ? 'text-red-600' : 'text-gray-600'}`}>
+        <p role="status" className={`mt-3 rounded-lg border px-3 py-2 text-xs ${action.error
+          ? 'border-red-100 bg-red-50 text-red-600'
+          : 'border-gray-200 bg-white text-gray-600'}`}>
           {action.message}
         </p>
       )}
@@ -5800,6 +6567,8 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
   const [snapshotAction, setSnapshotAction] = useState({ loading: false, message: '', error: false });
   const [loading, setLoading]           = useState(true);
   const [ownerToken, setOwnerToken]     = useState('');
+  const [advancingStage, setAdvancingStage] = useState(false);
+  const [stageActionError, setStageActionError] = useState('');
   const [selectedConflict, setSelectedConflict] = useState(null);
   const [recordFocus, setRecordFocus] = useState(null);
   const loadSequence = useRef(0);
@@ -5843,14 +6612,16 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
         // Always replace the projection when the record endpoint responds.
         // Keeping the first response allowed a slower readiness request to
         // leave Overview showing an older proposal-shaped state after confirm.
-        if (record?.record_state) setRecordState(record.record_state);
+        if (record?.record_state) {
+          setRecordState(previous => mergeTransactionRecordState(previous, record.record_state));
+        }
       });
     get(`/api/public/deal-room/${propertyId}/readiness`, null)
       .then(data => {
         if (sequence !== loadSequence.current) return;
         setReadiness(data);
         if (data?.transaction_record) {
-          setRecordState(data.transaction_record);
+          setRecordState(previous => mergeTransactionRecordState(previous, data.transaction_record));
         }
       });
     get(`/api/public/deal-room/${propertyId}/verified-asset/readiness`, null)
@@ -5897,8 +6668,8 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
         loading: false,
         error: false,
         message: data.created === false
-          ? `Snapshot v${snapshot.version} already records this state (${eligibility}).`
-          : `Snapshot v${snapshot.version} recorded (${eligibility}).`,
+          ? `No new snapshot was needed. Snapshot v${snapshot.version} already records this exact state as ${eligibility}.`
+          : `New snapshot v${snapshot.version} recorded as ${eligibility}.`,
       });
       await load();
     } catch (error) {
@@ -5956,6 +6727,8 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
     property,
     stages,
   );
+  const effectiveStageIndex = Math.max(0, effectiveStages.findIndex(stage => stage.key === currentStageKey));
+  const nextLifecycleStage = effectiveStages[effectiveStageIndex + 1] || null;
   const milestoneEvidenceSections = getLifecycleEvidenceSections(currentStage);
   const documentStats = getDocumentRequirementStats(checklistItems, pack, property, analyses);
   const supportingDocumentPresent = milestoneEvidenceSections
@@ -6000,16 +6773,42 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
     }
     if (action.type === 'record') {
       onTabChange?.('overview');
-      const fieldKey = action.field?.key || action.field?.field_key || action.field?.canonicalKey || '';
-      setRecordFocus({ key: fieldKey, nonce: Date.now() });
-      const category = getTransactionRecordCategory(action.field);
-      const fieldTargetId = `transaction-record-field-${encodeURIComponent(fieldKey)}`;
+      const requestedKeys = [
+        ...(Array.isArray(action.keys) ? action.keys : []),
+        action.field?.key,
+        action.field?.field_key,
+        action.field?.canonicalKey,
+        action.field?.persistedKey,
+        action.field?.definitionKey,
+      ].filter(Boolean);
+      const keys = [...new Set(requestedKeys)];
+      const requestedLabels = [
+        action.label,
+        action.field?.label,
+        action.field?.display_label,
+      ].filter(Boolean).map(value => String(value).trim().toLowerCase());
+      const fieldKey = keys[0] || '';
+      setRecordFocus({
+        key: fieldKey,
+        keys,
+        label: requestedLabels[0] || '',
+        autoEdit: Boolean(action.autoEdit),
+        nonce: Date.now(),
+      });
+      const category = getTransactionRecordCategory({ ...action.field, field_key: fieldKey });
       const revealRecordCategory = (attempt = 0) => {
         const target = document.getElementById(`transaction-record-category-${category}`);
         if (target) {
           const toggle = target.querySelector('button');
           if (toggle?.getAttribute('aria-expanded') !== 'true') toggle?.click();
-          const fieldTarget = document.getElementById(fieldTargetId);
+          const fieldTarget = keys
+            .map(key => document.getElementById(`transaction-record-field-${encodeURIComponent(key)}`))
+            .find(Boolean)
+            || (requestedLabels.length > 0
+              ? [...document.querySelectorAll('[data-transaction-record-field]')].find(element =>
+                requestedLabels.includes(String(element.dataset.transactionRecordLabel || '').trim().toLowerCase())
+              )
+              : null);
           if (fieldTarget) fieldTarget.scrollIntoView({ behavior: 'smooth', block: 'center' });
           else if (attempt < 24) window.setTimeout(() => revealRecordCategory(attempt + 1), 50);
           else target.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -6046,6 +6845,38 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
     }).length;
   const keyFacts = getCoordinatorRecordFacts(recordSchemaKey, property, recordFields, canonicalRecordState);
   const lifecycleDateLabel = isGeneratedAiRoom(property) ? 'Target completion' : 'Target close';
+
+  async function advanceLifecycleStage() {
+    if (!ownerToken || !nextLifecycleStage || advancingStage) return;
+    setAdvancingStage(true);
+    setStageActionError('');
+    try {
+      const response = await fetch(`${API_BASE}/api/public/deal-room/${propertyId}/advance`, {
+        method: 'POST',
+        headers: getRoomAuthHeaders(propertyId, { 'Content-Type': 'application/json' }),
+        body: JSON.stringify({
+          stage: nextLifecycleStage.key,
+          ownerWriteToken: ownerToken,
+        }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        const details = [];
+        if (Array.isArray(data?.unmet_fields) && data.unmet_fields.length > 0) {
+          details.push(`Unconfirmed: ${data.unmet_fields.map(key => String(key).replace(/^(transaction|financial)\./, '').replace(/_/g, ' ')).join(', ')}`);
+        }
+        if (Number(data?.unresolved_conflicts || 0) > 0) {
+          details.push(`Unresolved Transaction Record conflicts: ${data.unresolved_conflicts}`);
+        }
+        throw new Error([data?.message || data?.error || 'Stage could not be advanced', ...details].join(' · '));
+      }
+      await load();
+    } catch (error) {
+      setStageActionError(error.message || 'Stage could not be advanced');
+    } finally {
+      setAdvancingStage(false);
+    }
+  }
 
   return (
     <div className="space-y-5">
@@ -6211,6 +7042,48 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
           compact
           supportingDocumentPresent={supportingDocumentPresent}
         />
+        <div className="mt-4 border-t border-gray-100 pt-4">
+          {nextLifecycleStage ? (
+            <div className="flex flex-col gap-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="min-w-0">
+                <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">
+                  Lifecycle action
+                </p>
+                <p className="mt-1 text-xs text-gray-600">
+                  Next stage:{' '}
+                  <span className="font-semibold text-gray-900">
+                    {nextLifecycleStage.icon && `${nextLifecycleStage.icon} `}
+                    {nextLifecycleStage.label}
+                  </span>
+                </p>
+                {stageActionError && (
+                  <p role="alert" className="mt-1 text-[11px] font-semibold text-red-600">
+                    {stageActionError}
+                  </p>
+                )}
+              </div>
+              {ownerToken ? (
+                <button
+                  type="button"
+                  onClick={advanceLifecycleStage}
+                  disabled={advancingStage}
+                  className="shrink-0 rounded-xl px-4 py-2 text-xs font-bold text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+                  style={{ background: '#800020' }}
+                >
+                  {advancingStage ? 'Advancing…' : `Advance to ${nextLifecycleStage.label} →`}
+                </button>
+              ) : (
+                <p className="shrink-0 text-right text-[10px] font-semibold text-amber-700">
+                  Open this room from My Deal Rooms to verify owner access.
+                </p>
+              )}
+            </div>
+          ) : effectiveStages.length > 0 ? (
+            <p className="text-xs font-semibold text-emerald-700">
+              Transaction reached its final lifecycle stage: {effectiveStages[effectiveStageIndex]?.label}.
+            </p>
+          ) : null}
+        </div>
 
         <div className="mt-6 border-t border-gray-100 pt-5">
           {readinessPhase === 'settlement' && (

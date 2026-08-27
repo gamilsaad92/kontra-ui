@@ -6411,9 +6411,19 @@ function VerifiedAssetReadinessCard({
   const unresolvedConflicts = Array.isArray(reasons.unresolved_conflicts)
     ? reasons.unresolved_conflicts
     : [];
+  const missingApprovals = Array.isArray(reasons.missing_approvals)
+    ? reasons.missing_approvals
+    : [];
+  const provenanceGaps = Array.isArray(reasons.provenance_gaps)
+    ? reasons.provenance_gaps
+    : [];
   const blockerLabels = [
     ...incompleteFields.map(item => item?.label || item?.field_key),
     ...unresolvedConflicts.map(item => item?.label || item?.field_key),
+    ...missingApprovals.map(item => `${item?.label || item?.field_key} — approval required`),
+    ...provenanceGaps.map(item =>
+      `${item?.label || item?.field_key} — ${item?.source || item?.requirement || 'current provenance required'}`,
+    ),
   ].filter(Boolean);
   const statusLabel = isUnavailable
     ? 'Loading or unavailable'

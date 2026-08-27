@@ -122,6 +122,88 @@ describe('Verified Asset snapshot foundation', () => {
     expect(snapshot.digital_asset_readiness.provenance.gaps).toHaveLength(1);
   });
 
+  test('uses the latest manual approval as current provenance evidence', () => {
+    const snapshot = build({
+      recordState: state({
+        fields: [{ ...state().fields[0], sourceDocId: null, sourceFileHash: null }],
+        requiredFields: [{ ...state().fields[0], sourceDocId: null, sourceFileHash: null }],
+      }),
+      approvals: [{
+        field_id: 'field-1',
+        action: 'approved',
+        actor_email: 'coordinator@example.com',
+        actor_role: 'coordinator',
+        is_manual: true,
+        created_at: '2026-08-26T00:00:00.000Z',
+      }],
+    });
+    expect(snapshot.digital_asset_readiness.eligible).toBe(true);
+    expect(snapshot.digital_asset_readiness.provenance.gaps).toHaveLength(0);
+    expect(snapshot.created_from.transaction_record.fields[0].confirmation).toEqual(expect.objectContaining({
+      verified_by: 'coordinator@example.com',
+      verified_role: 'coordinator',
+    }));
+    expect(snapshot.created_from.transaction_record.fields[0].provenance.source_type).toBe('manual_confirmation');
+  });
+
+  test('does not reuse an older approval after the latest approval action changes', () => {
+    const snapshot = build({
+      recordState: state({
+        fields: [{ ...state().fields[0], sourceDocId: null, sourceFileHash: null }],
+        requiredFields: [{ ...state().fields[0], sourceDocId: null, sourceFileHash: null }],
+      }),
+      approvals: [
+        {
+          field_id: 'field-1',
+          action: 'approved',
+          actor_email: 'coordinator@example.com',
+          actor_role: 'coordinator',
+          is_manual: true,
+          created_at: '2026-08-26T00:00:00.000Z',
+        },
+        {
+          field_id: 'field-1',
+          action: 'rejected',
+          actor_email: 'coordinator@example.com',
+          actor_role: 'coordinator',
+          is_manual: true,
+          created_at: '2026-08-27T00:00:00.000Z',
+        },
+      ],
+    });
+    expect(snapshot.digital_asset_readiness.eligible).toBe(false);
+    expect(snapshot.digital_asset_readiness.provenance.gaps).toHaveLength(1);
+  });
+
+  test('matches persisted fields to required definitions by canonical key or id', () => {
+    const required = {
+      id: 'required-row-id',
+      key: 'asset.name',
+      label: 'Asset name',
+      category: 'asset_identity',
+      status: 'confirmed',
+      value: 'Required value',
+    };
+    const persisted = {
+      id: 'persisted-row-id',
+      field_key: 'asset.name',
+      label: 'Asset name',
+      category: 'asset_identity',
+      status: 'confirmed',
+      value: 'Persisted value',
+      sourceDocId: 'document-2',
+      sourceFileHash: 'hash-2',
+    };
+    const snapshot = build({
+      recordState: state({
+        fields: [persisted],
+        requiredFields: [required],
+      }),
+    });
+    expect(snapshot.digital_asset_readiness.eligible).toBe(true);
+    expect(snapshot.created_from.transaction_record.fields[0].value).toBe('Persisted value');
+  });
+
   test('hash is stable for the same source payload', () => {
     const first = build();
     const second = build();

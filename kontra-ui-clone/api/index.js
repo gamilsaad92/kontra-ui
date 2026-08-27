@@ -10096,7 +10096,7 @@ async function getVerifiedAssetSnapshotContext(propertyId) {
   if (!state?.room) return null;
   const [{ data: approvals, error: approvalsError }, { data: exceptions, error: exceptionsError }] = await Promise.all([
     supabase.from('transaction_record_approvals')
-      .select('field_id, action, actor_email, actor_role, is_manual, created_at')
+      .select('field_id, action, actor_email, actor_role, is_manual, source_doc_id, source_file_hash, created_at')
       .eq('property_id', propertyId)
       .order('created_at', { ascending: true }),
     supabase.from('transaction_record_conflicts')

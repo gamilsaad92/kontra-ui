@@ -13,7 +13,7 @@ The GitHub repo gamilsaad92/kontra-ui has two API directories:
 **How to apply:**
 - After editing `kontra-ui-clone/api/lib/pgAdapter.js`, run: `cp kontra-ui-clone/api/lib/pgAdapter.js api/lib/pgAdapter.js`
 - After editing `kontra-ui-clone/api/index.js`, run: `cp kontra-ui-clone/api/index.js api/index.js`
-- Trigger a Render deploy through the configured Render service control; do not store deploy-hook credentials in project memory.
+- Trigger a Render deploy through the configured Render service control after GitHub API commits; repository updates may not auto-deploy this service. Do not store deploy-hook credentials in project memory.
 - Render services can retain a repository-root working directory even when the blueprint declares `rootDir: api`; use a context-independent build/start command that targets `api/` when it exists.
 - **Why:** A cached pnpm-style root `node_modules` can make root-level npm resolution fail with an Arborist `matches` error, while the API lockfile installs cleanly.
 - **How to apply:** Prefer `npm ci --prefix api --ignore-scripts --no-audit --no-fund` plus `node api/index.js` from the repository root, with `npm ci`/`node index.js` as the `rootDir: api` fallback.

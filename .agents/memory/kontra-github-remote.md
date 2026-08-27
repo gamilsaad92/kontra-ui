@@ -26,3 +26,11 @@ Vercel can successfully deploy a new GitHub `main` commit while leaving an older
 **Why:** The production commit deployed successfully, but the previously shared deployment URL continued serving an older cached bundle with the old room labels.
 
 **How to apply:** After publishing through the GitHub connector, read the Vercel deployment status URL from the commit/deployment metadata and test that hostname. Treat an old deployment-specific hostname as immutable history, not the canonical production alias.
+
+## Vercel webhook lag
+
+GitHub `main` can advance successfully while the Kontra production alias continues serving an older hashed bundle; verify the alias contents after each frontend publish.
+
+**Why:** The Vercel connection may report no usable client, and a GitHub push alone is not proof that the live alias rebuilt.
+
+**How to apply:** Do not call a frontend fix deployed until the live alias references a new room chunk containing the change; repair Vercel deployment access through the workspace connection rather than asking for a token.
