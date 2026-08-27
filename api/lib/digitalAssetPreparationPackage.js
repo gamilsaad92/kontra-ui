@@ -5,6 +5,47 @@ const crypto = require('crypto');
 const PACKAGE_SCHEMA = 'kontra.digital-asset-preparation-package';
 const PACKAGE_VERSION = '1.0.0';
 
+const PREPARATION_FIELD_DEFINITIONS = {
+  issuer: {
+    label: 'Issuer',
+    description: 'The organization sponsoring or issuing the prepared asset.',
+  },
+  jurisdiction: {
+    label: 'Jurisdiction',
+    description: 'The governing jurisdiction to be reviewed by qualified counsel.',
+  },
+  legal_entity: {
+    label: 'Legal Entity',
+    description: 'The legal entity that owns or sponsors the underlying asset.',
+  },
+  underlying_asset: {
+    label: 'Underlying Asset',
+    description: 'The asset or interest represented by this preparation package.',
+  },
+  settlement_method: {
+    label: 'Settlement Method',
+    description: 'The provider-neutral settlement method to be confirmed externally.',
+  },
+  ownership_evidence: {
+    label: 'Ownership Evidence',
+    description: 'Evidence supporting the ownership or control of the underlying asset.',
+  },
+  governing_documents: {
+    label: 'Governing Documents',
+    description: 'Documents that will govern the proposed structure.',
+  },
+  investor_restrictions: {
+    label: 'Investor Restrictions',
+    description: 'Known investor, transfer, or participation restrictions for review.',
+  },
+  security_offering_structure: {
+    label: 'Security Offering Structure',
+    description: 'The proposed provider-neutral security or participation structure.',
+  },
+};
+
+const REQUIRED_PREPARATION_FIELDS = Object.freeze(Object.keys(PREPARATION_FIELD_DEFINITIONS));
+
 function clone(value) {
   return value == null ? value : JSON.parse(JSON.stringify(value));
 }
@@ -61,31 +102,117 @@ function findPreparationField(fields, candidates) {
 }
 
 function preparationField(fieldKey, sourceField) {
-  if (!sourceField) {
-    return {
-      field_key: fieldKey,
-      value: null,
-      status: 'not_recorded',
-      source_field_key: null,
-      provenance: null,
-    };
-  }
   return {
     field_key: fieldKey,
-    value: clone(sourceField.value),
-    status: sourceField.current_state || 'recorded',
-    source_field_key: sourceField.field_key || sourceField.definition_key || null,
-    provenance: clone(sourceField.provenance || null),
+    label: PREPARATION_FIELD_DEFINITIONS[fieldKey]?.label || fieldKey,
+    description: PREPARATION_FIELD_DEFINITIONS[fieldKey]?.description || '',
+    value: null,
+    status: 'not_recorded',
+    origin: 'preparation_input',
+    editable: true,
+    required: REQUIRED_PREPARATION_FIELDS.includes(fieldKey),
+    // Keep the matching source key as context only. Its value is deliberately
+    // not copied into this preparation input; frozen source values stay under
+    // frozen_readiness.canonical_fields.
+    source_field_key: sourceField?.field_key || sourceField?.definition_key || null,
+    source_provenance: clone(sourceField?.provenance || null),
   };
 }
 
-function buildPreparationFields(fields) {
+function normalizedPreparationValue(value) {
+  if (value == null) return null;
+  if (Array.isArray(value)) {
+    const values = value
+      .map(item => String(item ?? '').trim())
+      .filter(Boolean);
+    return values.length > 0 ? values : null;
+  }
+  if (typeof value === 'object') return clone(value);
+  const text = String(value).trim();
+  return text || null;
+}
+
+function hasPreparationValue(value) {
+  if (Array.isArray(value)) return value.some(hasPreparationValue);
+  if (value && typeof value === 'object') return Object.keys(value).length > 0;
+  return String(value ?? '').trim().length > 0;
+}
+
+function buildPreparationFields(fields, preparationValues = {}) {
   return Object.fromEntries(
     Object.entries(PREPARATION_FIELD_MATCHERS).map(([fieldKey, candidates]) => [
       fieldKey,
-      preparationField(fieldKey, findPreparationField(fields, candidates)),
+      {
+        ...preparationField(fieldKey, findPreparationField(fields, candidates)),
+        value: normalizedPreparationValue(preparationValues[fieldKey]),
+        status: hasPreparationValue(preparationValues[fieldKey]) ? 'recorded' : 'not_recorded',
+      },
     ]),
   );
+}
+
+function extractPreparationValues(packagePayload) {
+  return Object.fromEntries(
+    Object.entries(packagePayload?.preparation_fields || {}).map(([key, field]) => [
+      key,
+      field?.value,
+    ]),
+  );
+}
+
+function preparationStatus(preparationFields, sourceSnapshot = {}) {
+  const missingKeys = REQUIRED_PREPARATION_FIELDS.filter(key =>
+    !hasPreparationValue(preparationFields?.[key]?.value),
+  );
+  const missingNames = missingKeys.map(key =>
+    PREPARATION_FIELD_DEFINITIONS[key]?.label || key,
+  );
+  const sourceEligible = sourceSnapshot?.eligibility_status === 'eligible'
+    && sourceSnapshot?.eligible === true;
+  return {
+    status: sourceEligible && missingKeys.length === 0
+      ? 'ready_for_provider_review'
+      : 'needs_information',
+    missingKeys,
+    missingNames,
+  };
+}
+
+function buildPackageHashInput(packagePayload) {
+  return {
+    source_snapshot: packagePayload.source_snapshot,
+    frozen_readiness: packagePayload.frozen_readiness,
+    preparation_fields: packagePayload.preparation_fields,
+  };
+}
+
+function updateDigitalAssetPreparationPackage({
+  packagePayload,
+  preparationValues = {},
+  revision = 1,
+} = {}) {
+  if (!packagePayload || typeof packagePayload !== 'object') {
+    throw new Error('A stored Digital Asset Preparation Package is required.');
+  }
+  const next = clone(packagePayload);
+  const canonicalFields = next.frozen_readiness?.canonical_fields
+    || canonicalFieldsFromSnapshot(next.frozen_snapshot);
+  const preparationFields = buildPreparationFields(canonicalFields, preparationValues);
+  const state = preparationStatus(preparationFields, {
+    eligibility_status: next.source_snapshot?.eligibility_status,
+    eligible: next.frozen_readiness?.eligible === true,
+  });
+  next.package_revision = revision;
+  next.preparation_fields = preparationFields;
+  next.package_status = state.status;
+  next.package_hash = hashPackage(buildPackageHashInput(next));
+  next.human_summary = {
+    ...(next.human_summary || {}),
+    missing_preparation_fields: state.missingKeys,
+    missing_preparation_field_names: state.missingNames,
+    preparation_status: state.status,
+  };
+  return next;
 }
 
 function buildBlockerStatus(snapshot) {
@@ -167,21 +294,24 @@ function buildDigitalAssetPreparationPackage({
       || readiness.settlement_method?.mode
       || null,
   };
+  const preparationFields = buildPreparationFields(fields);
+  const preparationState = preparationStatus(preparationFields, {
+    eligibility_status: snapshotRow.eligibility_status,
+    eligible: readiness.eligible === true,
+  });
   const packageHash = hashPackage(frozenCore);
-  const missingPreparationFields = Object.values(buildPreparationFields(fields))
-    .filter(field => field.status === 'not_recorded')
-    .map(field => field.field_key);
 
   return {
     schema: PACKAGE_SCHEMA,
     package_version: PACKAGE_VERSION,
     package_type: 'digital_asset_preparation',
+    package_revision: 0,
     package_hash: packageHash,
-    package_status: missingPreparationFields.length > 0 ? 'needs_information' : 'inputs_captured',
+    package_status: preparationState.status,
     generated_at: generatedAt,
     source_snapshot: sourceSnapshot,
     frozen_readiness: frozenCore,
-    preparation_fields: buildPreparationFields(fields),
+    preparation_fields: preparationFields,
     human_summary: {
       title: 'Digital Asset Preparation Package',
       headline: `Prepared from eligible readiness snapshot v${snapshotRow.version}`,
@@ -195,7 +325,8 @@ function buildDigitalAssetPreparationPackage({
       approvals: frozenCore.approvals.satisfied
         ? 'Required approvals satisfied'
         : `${frozenCore.approvals.missing_count} required approvals missing`,
-      missing_preparation_fields: missingPreparationFields,
+      missing_preparation_fields: preparationState.missingKeys,
+      missing_preparation_field_names: preparationState.missingNames,
       disclosure: 'Provider-neutral preparation data only. Kontra does not issue, sell, recommend, custody, perform KYC/AML, transfer, trade, or settle digital assets.',
     },
     // Keep the complete persisted snapshot projection inside the artifact. This
@@ -206,6 +337,7 @@ function buildDigitalAssetPreparationPackage({
 
 function presentStoredDigitalAssetPackage(row) {
   if (!row) return null;
+  const packagePayload = clone(row.package || {});
   return {
     id: row.id,
     property_id: row.property_id,
@@ -215,7 +347,9 @@ function presentStoredDigitalAssetPackage(row) {
     package_hash: row.package_hash,
     created_by: row.created_by,
     created_at: row.created_at,
-    package: clone(row.package || {}),
+    revision: Number(row.revision ?? packagePayload.package_revision ?? 0),
+    revision_id: row.revision_id || null,
+    package: packagePayload,
   };
 }
 
@@ -230,8 +364,16 @@ function digitalAssetPackagesUnavailable(error) {
 module.exports = {
   PACKAGE_SCHEMA,
   PACKAGE_VERSION,
+  PREPARATION_FIELD_DEFINITIONS,
+  REQUIRED_PREPARATION_FIELDS,
   PREPARATION_FIELD_MATCHERS,
   buildDigitalAssetPreparationPackage,
+  buildPackageHashInput,
+  buildPreparationFields,
+  extractPreparationValues,
+  hasPreparationValue,
+  preparationStatus,
+  updateDigitalAssetPreparationPackage,
   presentStoredDigitalAssetPackage,
   digitalAssetPackagesUnavailable,
   hashPackage,

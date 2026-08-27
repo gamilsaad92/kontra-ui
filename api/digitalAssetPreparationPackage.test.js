@@ -3,6 +3,7 @@
 const {
   buildDigitalAssetPreparationPackage,
   hashPackage,
+  updateDigitalAssetPreparationPackage,
 } = require('./lib/digitalAssetPreparationPackage');
 
 function snapshotRow(value = 80000) {
@@ -82,7 +83,28 @@ describe('Digital Asset Preparation Package', () => {
       value: null,
       status: 'not_recorded',
     }));
-    expect(pkg.human_summary.missing_preparation_fields).toContain('issuer');
+    expect(pkg.human_summary.missing_preparation_fields).toEqual([
+      'issuer',
+      'jurisdiction',
+      'legal_entity',
+      'underlying_asset',
+      'settlement_method',
+      'ownership_evidence',
+      'governing_documents',
+      'investor_restrictions',
+      'security_offering_structure',
+    ]);
+    expect(pkg.human_summary.missing_preparation_field_names).toEqual([
+      'Issuer',
+      'Jurisdiction',
+      'Legal Entity',
+      'Underlying Asset',
+      'Settlement Method',
+      'Ownership Evidence',
+      'Governing Documents',
+      'Investor Restrictions',
+      'Security Offering Structure',
+    ]);
   });
 
   test('does not change when the live source value later changes', () => {
@@ -109,5 +131,42 @@ describe('Digital Asset Preparation Package', () => {
       approvals: pkg.frozen_readiness.approvals,
       settlement_mode: pkg.frozen_readiness.settlement_mode,
     }));
+  });
+
+  test('recalculates named preparation requirements without changing frozen source values', () => {
+    const pkg = buildDigitalAssetPreparationPackage({
+      propertyId: 'freddie-room',
+      snapshotRow: snapshotRow(),
+      generatedAt: '2026-08-27T12:01:00.000Z',
+    });
+    const completed = updateDigitalAssetPreparationPackage({
+      packagePayload: pkg,
+      revision: 1,
+      preparationValues: {
+        issuer: 'Kontra Issuer',
+        jurisdiction: 'Texas, United States',
+        legal_entity: 'Kontra Asset Owner LLC',
+        underlying_asset: 'Freddie Mac Multifamily Hazard Loss Review - Texas',
+        settlement_method: 'Traditional institutional settlement',
+        ownership_evidence: 'Recorded deed and closing evidence',
+        governing_documents: 'Counsel-reviewed governing documents',
+        investor_restrictions: 'Qualified purchasers; transfer restrictions apply',
+        security_offering_structure: 'Provider-neutral participation interest',
+      },
+    });
+
+    expect(completed.package_status).toBe('ready_for_provider_review');
+    expect(completed.package_revision).toBe(1);
+    expect(completed.human_summary.missing_preparation_fields).toEqual([]);
+    expect(completed.human_summary.missing_preparation_field_names).toEqual([]);
+    expect(completed.preparation_fields.issuer).toEqual(expect.objectContaining({
+      value: 'Kontra Issuer',
+      origin: 'preparation_input',
+      editable: true,
+      required: true,
+    }));
+    expect(completed.frozen_readiness.canonical_fields[0].value).toBe(80000);
+    expect(completed.frozen_snapshot.created_from.transaction_record.canonical_fields[0].value).toBe(80000);
+    expect(pkg.package_status).toBe('needs_information');
   });
 });

@@ -6842,7 +6842,50 @@ function SnapshotInspectionModal({
   );
 }
 
-function DigitalAssetPackageModal({ packageRecord, packages = [], onSelectPackage, onClose }) {
+function DigitalAssetPackageModal({
+  propertyId,
+  ownerToken,
+  packageRecord,
+  packages = [],
+  onSelectPackage,
+  onPackageUpdated,
+  onClose,
+}) {
+  const [draft, setDraft] = useState({});
+  const [saveState, setSaveState] = useState({ loading: false, error: false, message: '' });
+  const [revisions, setRevisions] = useState([]);
+
+  useEffect(() => {
+    if (!packageRecord) {
+      setDraft({});
+      setRevisions([]);
+      return;
+    }
+    setDraft(Object.fromEntries(
+      Object.entries(packageRecord.package?.preparation_fields || {}).map(([key, field]) => [
+        key,
+        Array.isArray(field?.value) ? field.value.join(', ') : (field?.value || ''),
+      ]),
+    ));
+    setSaveState({ loading: false, error: false, message: '' });
+  }, [packageRecord]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!packageRecord?.id || !propertyId) return undefined;
+    fetch(`${API_BASE}/api/public/deal-room/${propertyId}/digital-asset-packages/${packageRecord.id}/revisions`, {
+      headers: getRoomAuthHeaders(propertyId),
+    })
+      .then(response => response.ok ? response.json() : { revisions: [] })
+      .then(data => {
+        if (!cancelled) setRevisions(Array.isArray(data?.revisions) ? data.revisions : []);
+      })
+      .catch(() => {
+        if (!cancelled) setRevisions([]);
+      });
+    return () => { cancelled = true; };
+  }, [propertyId, packageRecord?.id, packageRecord?.revision]);
+
   if (!packageRecord) return null;
   const payload = packageRecord.package && typeof packageRecord.package === 'object'
     ? packageRecord.package
@@ -6857,6 +6900,56 @@ function DigitalAssetPackageModal({ packageRecord, packages = [], onSelectPackag
   const borrowerFundsField = frozenCanonicalFields.find(field =>
     /borrower funds|borrower_funds/i.test(`${field?.field_key || ''} ${field?.label || ''}`),
   );
+  const missingPreparationNames = Array.isArray(summary.missing_preparation_field_names)
+    ? summary.missing_preparation_field_names
+    : (Array.isArray(summary.missing_preparation_fields) ? summary.missing_preparation_fields : []);
+  const statusLabel = String(payload.package_status || 'needs_information')
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, char => char.toUpperCase());
+
+  function updateDraft(key, value) {
+    setDraft(previous => ({ ...previous, [key]: value }));
+    setSaveState(previous => previous.message
+      ? { loading: false, error: false, message: '' }
+      : previous);
+  }
+
+  async function savePreparationFields() {
+    if (!ownerToken || saveState.loading) return;
+    setSaveState({ loading: true, error: false, message: '' });
+    try {
+      const response = await fetch(
+        `${API_BASE}/api/public/deal-room/${propertyId}/digital-asset-packages/${packageRecord.id}/preparation-fields`,
+        {
+          method: 'PATCH',
+          headers: getRoomAuthHeaders(propertyId, { 'Content-Type': 'application/json' }),
+          body: JSON.stringify({ ownerWriteToken: ownerToken, fields: draft }),
+        },
+      );
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.message || data.error || 'Preparation fields could not be saved.');
+      if (data.package) onPackageUpdated?.(data.package);
+      if (data.revision) {
+        setRevisions(previous => [
+          {
+            ...data.revision,
+            package_status: data.package?.package?.package_status || 'needs_information',
+          },
+          ...previous.filter(item => item.id !== data.revision.id),
+        ]);
+      }
+      const nextStatus = data.package?.package?.package_status || 'needs_information';
+      setSaveState({
+        loading: false,
+        error: false,
+        message: nextStatus === 'ready_for_provider_review'
+          ? 'Saved. This package is ready for provider review.'
+          : 'Saved. Add the remaining named fields before provider review.',
+      });
+    } catch (error) {
+      setSaveState({ loading: false, error: true, message: error.message });
+    }
+  }
 
   function exportPackageJson() {
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
@@ -6885,13 +6978,13 @@ function DigitalAssetPackageModal({ packageRecord, packages = [], onSelectPackag
         <div className="flex items-start justify-between gap-4 border-b border-gray-200 bg-white px-5 py-4 sm:px-7">
           <div>
             <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-[#800020]">
-              Immutable preparation artifact
+               Snapshot-bound preparation artifact
             </p>
             <h2 id="digital-asset-package-title" className="mt-1 text-lg font-bold text-gray-900">
               Digital Asset Preparation Package
             </h2>
             <p className="mt-1 text-xs text-gray-500">
-              Generated from readiness snapshot v{sourceSnapshot.version || '—'} · {formatSnapshotDate(packageRecord.created_at)}
+               Source snapshot v{sourceSnapshot.version || '—'} · revision {packageRecord.revision ?? payload.package_revision ?? 0} · {formatSnapshotDate(packageRecord.created_at)}
             </p>
           </div>
           <div className="flex flex-wrap justify-end gap-2">
@@ -6937,7 +7030,7 @@ function DigitalAssetPackageModal({ packageRecord, packages = [], onSelectPackag
                       <div className="flex items-center justify-between gap-2">
                         <span className="text-xs font-bold text-gray-900">Package</span>
                         <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[9px] font-bold text-emerald-700">
-                          Snapshot v{item.source_snapshot_version || itemSnapshot.version || '—'}
+                           Snapshot v{item.source_snapshot_version || itemSnapshot.version || '—'} · r{item.revision ?? item.package?.package_revision ?? 0}
                         </span>
                       </div>
                       <p className="mt-1 text-[10px] text-gray-500">
@@ -6965,7 +7058,7 @@ function DigitalAssetPackageModal({ packageRecord, packages = [], onSelectPackag
                 <div className="text-right">
                   <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Package status</p>
                   <p className="mt-1 text-xs font-bold capitalize text-gray-900">
-                    {(payload.package_status || 'not recorded').replace(/_/g, ' ')}
+                     {statusLabel}
                   </p>
                 </div>
               </div>
@@ -7012,27 +7105,112 @@ function DigitalAssetPackageModal({ packageRecord, packages = [], onSelectPackag
               </div>
             </div>
 
-            <div className="mt-5">
-              <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Preparation fields</p>
-              <p className="mt-1 text-xs text-gray-500">
-                Structured inputs for future professional or provider review; blank values are intentionally not recorded.
-              </p>
-              <div className="mt-3 overflow-hidden rounded-xl border border-gray-200 bg-white">
-                <div className="divide-y divide-gray-100">
-                  {Object.entries(preparationFields).map(([key, field]) => (
-                    <div key={key} className="grid gap-1 px-4 py-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1.5fr)_130px] sm:gap-3">
-                      <p className="text-xs font-semibold capitalize text-gray-800">{key.replace(/_/g, ' ')}</p>
-                      <p className="break-words text-xs text-gray-700">{formatStoredSnapshotValue(field?.value)}</p>
-                      <p className={`text-[10px] font-bold capitalize ${
-                        field?.status === 'not_recorded' ? 'text-gray-400' : 'text-emerald-700'
-                      }`}>
-                        {(field?.status || 'not recorded').replace(/_/g, ' ')}
-                      </p>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
+             <div className="mt-5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-4">
+               <p className="text-[10px] font-bold uppercase tracking-wider text-amber-800">Editable preparation inputs</p>
+               <p className="mt-1 text-xs text-gray-500">
+                 Owner-entered inputs are saved as append-only revisions. They never change the frozen source snapshot or the live Transaction Record.
+               </p>
+               {missingPreparationNames.length > 0 ? (
+                 <p className="mt-3 text-xs font-semibold text-amber-800">
+                   Missing required fields: {missingPreparationNames.join(', ')}
+                 </p>
+               ) : (
+                 <p className="mt-3 text-xs font-semibold text-emerald-700">All required preparation fields are complete.</p>
+               )}
+               <div className="mt-3 overflow-hidden rounded-xl border border-gray-200 bg-white">
+                 <div className="divide-y divide-gray-100">
+                   {Object.entries(preparationFields).map(([key, field]) => (
+                     <label key={key} className="grid gap-1 px-4 py-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1.5fr)_130px] sm:gap-3">
+                       <span>
+                         <span className="block text-xs font-semibold text-gray-800">{field?.label || key.replace(/_/g, ' ')}</span>
+                         <span className="mt-1 block text-[10px] leading-relaxed text-gray-400">{field?.description}</span>
+                       </span>
+                       {['governing_documents', 'ownership_evidence', 'investor_restrictions', 'security_offering_structure'].includes(key) ? (
+                         <textarea
+                           value={draft[key] || ''}
+                           onChange={event => updateDraft(key, event.target.value)}
+                           rows={3}
+                           disabled={!ownerToken || saveState.loading}
+                           className="w-full rounded-lg border border-gray-200 px-3 py-2 text-xs text-gray-800 outline-none focus:border-[#800020] focus:ring-1 focus:ring-[#800020]/20 disabled:bg-gray-50"
+                           placeholder={`Enter ${field?.label || key.replace(/_/g, ' ').toLowerCase()}`}
+                         />
+                       ) : (
+                         <input
+                           value={draft[key] || ''}
+                           onChange={event => updateDraft(key, event.target.value)}
+                           disabled={!ownerToken || saveState.loading}
+                           className="w-full rounded-lg border border-gray-200 px-3 py-2 text-xs text-gray-800 outline-none focus:border-[#800020] focus:ring-1 focus:ring-[#800020]/20 disabled:bg-gray-50"
+                           placeholder={`Enter ${field?.label || key.replace(/_/g, ' ').toLowerCase()}`}
+                         />
+                       )}
+                       <span className={`text-[10px] font-bold capitalize ${
+                         field?.status === 'not_recorded' ? 'text-gray-400' : 'text-emerald-700'
+                       }`}>
+                         {(field?.status || 'not recorded').replace(/_/g, ' ')}
+                       </span>
+                     </label>
+                   ))}
+                 </div>
+               </div>
+               <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+                 <p className="text-[10px] text-gray-400">
+                   {ownerToken ? 'Owner authorization detected.' : 'Owner authorization is required to edit these fields.'}
+                 </p>
+                 <button
+                   type="button"
+                   onClick={savePreparationFields}
+                   disabled={!ownerToken || saveState.loading}
+                   className="rounded-lg bg-[#800020] px-4 py-2 text-xs font-bold text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+                 >
+                   {saveState.loading ? 'Saving…' : 'Save preparation revision'}
+                 </button>
+               </div>
+               {saveState.message && (
+                 <p role="status" className={`mt-3 rounded-lg border px-3 py-2 text-xs ${
+                   saveState.error ? 'border-red-200 bg-red-50 text-red-700' : 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                 }`}>
+                   {saveState.message}
+                 </p>
+               )}
+             </div>
+
+             <div className="mt-5">
+               <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Frozen source values</p>
+               <p className="mt-1 text-xs text-gray-500">
+                 Read-only values copied from Snapshot v{sourceSnapshot.version || '—'} at package generation. These are not preparation inputs.
+               </p>
+               <div className="mt-3 overflow-hidden rounded-xl border border-emerald-200 bg-emerald-50/40">
+                 <div className="divide-y divide-emerald-100">
+                   {frozenCanonicalFields.map((field, index) => (
+                     <div key={`${field?.field_key || 'frozen'}-${index}`} className="grid gap-1 px-4 py-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1.5fr)] sm:gap-3">
+                       <p className="text-xs font-semibold text-gray-800">{field?.label || field?.field_key || 'Canonical field'}</p>
+                       <p className="break-words text-xs text-gray-700">{formatStoredSnapshotValue(field?.value)}</p>
+                     </div>
+                   ))}
+                 </div>
+               </div>
+             </div>
+
+             <div className="mt-5">
+               <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Preparation revision history</p>
+               <p className="mt-1 text-xs text-gray-500">The original package stays immutable; each owner save adds a numbered revision.</p>
+               {revisions.length > 0 ? (
+                 <div className="mt-3 space-y-2">
+                   {revisions.map(revision => (
+                     <div key={revision.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2">
+                       <span className="text-xs font-semibold text-gray-800">
+                         Revision {revision.revision} · {String(revision.package_status || 'needs_information').replace(/_/g, ' ')}
+                       </span>
+                       <span className="text-[10px] text-gray-500">
+                         {(revision.changed_fields || []).join(', ') || 'No field list'} · {formatSnapshotDate(revision.created_at)}
+                       </span>
+                     </div>
+                   ))}
+                 </div>
+               ) : (
+                 <p className="mt-3 text-xs text-gray-400">No preparation revisions have been saved.</p>
+               )}
+             </div>
 
             <p className="mt-5 text-[10px] leading-relaxed text-gray-400">
               {summary.disclosure || 'Provider-neutral preparation data only. This is not issuance, custody, KYC/AML, settlement, or investment approval.'}
@@ -7464,6 +7642,14 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
       setPackageAction({ loading: false, error: true, message: error.message });
     }
   }, [propertyId, ownerToken, packageAction.loading, load]);
+
+  const updatePackageRecord = useCallback(updatedPackage => {
+    if (!updatedPackage) return;
+    setSelectedPackage(updatedPackage);
+    setPackageHistory(previous => previous.map(item =>
+      item.id === updatedPackage.id ? updatedPackage : item,
+    ));
+  }, []);
 
   const processingDocuments = analyses.filter(analysis =>
     ['uploaded', 'processing', 'retrying'].includes(analysis.processing_status)
@@ -7936,9 +8122,12 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
         onClose={() => setSelectedSnapshot(null)}
       />
       <DigitalAssetPackageModal
+        propertyId={propertyId}
+        ownerToken={ownerToken}
         packageRecord={selectedPackage}
         packages={packageHistory}
         onSelectPackage={setSelectedPackage}
+        onPackageUpdated={updatePackageRecord}
         onClose={() => setSelectedPackage(null)}
       />
       <TransactionConflictResolver
