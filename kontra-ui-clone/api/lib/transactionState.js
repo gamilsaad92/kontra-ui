@@ -653,8 +653,14 @@ function computeTransactionRecordState(recordFields, schemaKey, requiredKeysOver
       isRequired: field.is_required !== false,
       sourceType: field.source_type || null,
       sourceDocId: field.source_doc_id || null,
+      sourceDocVersion: field.source_doc_version || null,
+      sourceFileHash: field.source_file_hash || null,
       sourcePage: field.source_page || null,
       sourceExcerpt: field.source_excerpt || null,
+      extractionTimestamp: field.extraction_timestamp || null,
+      verifiedBy: field.verified_by || null,
+      verifiedRole: field.verified_role || null,
+      verifiedAt: field.verified_at || null,
       source_document: field.source_document || field.source_file || field.source_doc_id || null,
       source_file: field.source_file || null,
       confidence: field.confidence ?? null,
@@ -866,7 +872,7 @@ async function readTransactionState(propertyId) {
     roomQuery,
     supabase
       .from('transaction_record_fields')
-       .select('id, field_key, definition_key, field_category, display_label, value_text, status, is_required, source_type, conflict_candidates, source_doc_id, source_page, source_excerpt, confidence, updated_at, created_at')
+       .select('id, field_key, definition_key, field_category, display_label, value_text, value_json, status, is_required, source_type, conflict_candidates, source_doc_id, source_doc_version, source_file_hash, source_page, source_excerpt, extraction_timestamp, verified_by, verified_role, verified_at, confidence, updated_at, created_at')
       .eq('property_id', propertyId),
     supabase
       .from('transaction_record_conflicts')

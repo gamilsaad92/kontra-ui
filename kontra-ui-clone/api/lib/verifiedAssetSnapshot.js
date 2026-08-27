@@ -24,6 +24,24 @@ function fieldCategory(field) {
   return field?.category || field?.field_category || key.split('.')[0] || 'transaction';
 }
 
+function normalizedIdentity(value) {
+  return value === null || value === undefined
+    ? ''
+    : String(value).trim().toLowerCase();
+}
+
+function comparableValue(value) {
+  if (value === null || value === undefined) return '';
+  if (typeof value === 'object') {
+    try {
+      return JSON.stringify(value);
+    } catch {
+      return String(value);
+    }
+  }
+  return String(value).trim();
+}
+
 function backingFieldFor(requiredField, fields = []) {
   const requiredIdentities = [
     requiredField?.fieldId,
@@ -49,6 +67,112 @@ function backingFieldFor(requiredField, fields = []) {
   ].filter(Boolean).some(value => requiredIdentities.includes(String(value).trim().toLowerCase()))) || requiredField;
 }
 
+function historyMatchesField(field, event) {
+  const fieldId = field?.fieldId || field?.field_id || field?.id;
+  const eventFieldId = event?.field_id || event?.fieldId;
+  if (fieldId && eventFieldId) return normalizedIdentity(fieldId) === normalizedIdentity(eventFieldId);
+  const identities = [
+    field?.key,
+    field?.field_key,
+    field?.persistedKey,
+    field?.fieldKey,
+    field?.definitionKey,
+    field?.definition_key,
+    field?.label,
+    field?.display_label,
+  ].filter(Boolean).map(normalizedIdentity);
+  return [
+    event?.field_key,
+    event?.fieldKey,
+    event?.definition_key,
+    event?.definitionKey,
+    event?.label,
+    event?.display_label,
+  ].filter(Boolean).some(value => identities.includes(normalizedIdentity(value)));
+}
+
+function historyValueMatchesField(field, event) {
+  const eventValue = event?.new_value ?? event?.value ?? null;
+  if (!meaningful(eventValue)) return true;
+  return comparableValue(eventValue) === comparableValue(fieldValue(field));
+}
+
+function latestHistoryEvidence(field, confirmationHistory = []) {
+  const events = (Array.isArray(confirmationHistory) ? confirmationHistory : [])
+    .filter(event => historyMatchesField(field, event))
+    .sort((a, b) => new Date(a.created_at || a.createdAt || 0) - new Date(b.created_at || b.createdAt || 0));
+  let evidence = null;
+  for (const event of events) {
+    const eventType = normalizedIdentity(event?.event_type || event?.eventType);
+    const newStatus = normalizedIdentity(event?.new_status || event?.newStatus);
+    const hasActor = Boolean(event?.actor_email || event?.actorEmail || event?.actor_role || event?.actorRole);
+    const hasTimestamp = Boolean(event?.created_at || event?.createdAt);
+    const hasDocumentEvidence = Boolean(
+      event?.source_doc_id
+      || event?.sourceDocId
+      || event?.source_file_hash
+      || event?.sourceFileHash
+      || event?.metadata?.source_doc_id
+      || event?.metadata?.source_file_hash,
+    );
+    const isConfirmedStatus = CONFIRMED.has(newStatus);
+    const isInvalidating = new Set([
+      'manual_edit',
+      'source_changed',
+      'conflict',
+      'marked_not_applicable',
+    ]).has(eventType);
+
+    if (isInvalidating) {
+      // A current confirmed manual edit is itself valid review evidence only
+      // when its value and confirmed status match the canonical row.
+      if (
+        eventType === 'manual_edit'
+        && isConfirmedStatus
+        && hasActor
+        && hasTimestamp
+        && historyValueMatchesField(field, event)
+      ) {
+        evidence = event;
+      } else {
+        evidence = null;
+      }
+      continue;
+    }
+
+    if (
+      ['extracted', 'confirmed'].includes(eventType)
+      && meaningful(event?.new_value)
+      && !historyValueMatchesField(field, event)
+    ) {
+      // A newer event for a different value cannot leave an older
+      // confirmation attached to the current canonical field.
+      evidence = null;
+      continue;
+    }
+
+    if (
+      eventType === 'confirmed'
+      && (isConfirmedStatus || !newStatus)
+      && hasActor
+      && hasTimestamp
+      && historyValueMatchesField(field, event)
+    ) {
+      evidence = event;
+      continue;
+    }
+
+    if (
+      eventType === 'extracted'
+      && hasDocumentEvidence
+      && historyValueMatchesField(field, event)
+    ) {
+      evidence = event;
+    }
+  }
+  return evidence;
+}
+
 function latestApprovalForField(field, approvals = []) {
   const fieldId = field?.fieldId || field?.field_id || field?.id;
   if (!fieldId) return null;
@@ -58,22 +182,34 @@ function latestApprovalForField(field, approvals = []) {
     .at(-1) || null;
 }
 
-function fieldProvenance(field, approval = null) {
+function fieldProvenance(field, approval = null, historyEvidence = null) {
+  const historySourceDocumentId = historyEvidence?.source_doc_id
+    || historyEvidence?.sourceDocId
+    || historyEvidence?.metadata?.source_doc_id
+    || null;
+  const historySourceFileHash = historyEvidence?.source_file_hash
+    || historyEvidence?.sourceFileHash
+    || historyEvidence?.metadata?.source_file_hash
+    || null;
   return {
-    source_document_id: field?.sourceDocId || field?.source_doc_id || approval?.source_doc_id || null,
+    source_document_id: field?.sourceDocId || field?.source_doc_id || approval?.source_doc_id || historySourceDocumentId,
     source_document_version: field?.sourceDocVersion || field?.source_doc_version || null,
-    source_file_hash: field?.sourceFileHash || field?.source_file_hash || approval?.source_file_hash || null,
-    source_page: field?.sourcePage ?? field?.source_page ?? null,
-    source_excerpt: field?.sourceExcerpt || field?.source_excerpt || null,
-    extracted_at: field?.extractionTimestamp || field?.extraction_timestamp || null,
+    source_file_hash: field?.sourceFileHash || field?.source_file_hash || approval?.source_file_hash || historySourceFileHash,
+    source_page: field?.sourcePage ?? field?.source_page ?? historyEvidence?.source_page ?? null,
+    source_excerpt: field?.sourceExcerpt || field?.source_excerpt || historyEvidence?.source_excerpt || null,
+    extracted_at: field?.extractionTimestamp || field?.extraction_timestamp || historyEvidence?.created_at || null,
     source_type: field?.sourceType || field?.source_type
-      || (approval ? (approval.is_manual !== false ? 'manual_confirmation' : 'provider_confirmation') : null),
+      || (approval ? (approval.is_manual !== false ? 'manual_confirmation' : 'provider_confirmation') : null)
+      || (historyEvidence
+        ? (historySourceDocumentId || historySourceFileHash ? 'document_history' : 'manual_confirmation_history')
+        : null),
   };
 }
 
-function provenanceIsIntact(field, approvals = []) {
+function provenanceIsIntact(field, approvals = [], confirmationHistory = []) {
   const approval = approvalEvidence(field, approvals);
-  const source = fieldProvenance(field, approval);
+  const historyEvidence = latestHistoryEvidence(field, confirmationHistory);
+  const source = fieldProvenance(field, approval, historyEvidence);
   return Boolean(
     source.source_document_id
     || source.source_file_hash
@@ -83,7 +219,20 @@ function provenanceIsIntact(field, approvals = []) {
       && approval?.is_manual !== false
       && (approval.actor_email || approval.actor_role)
       && approval.created_at
-    ),
+    )
+    || (
+      historyEvidence
+      && (
+        historyEvidence.event_type === 'extracted'
+        || historyEvidence.eventType === 'extracted'
+        || historyEvidence.event_type === 'confirmed'
+        || historyEvidence.eventType === 'confirmed'
+        || historyEvidence.event_type === 'manual_edit'
+        || historyEvidence.eventType === 'manual_edit'
+      )
+      && (historyEvidence.actor_email || historyEvidence.actorEmail || historyEvidence.actor_role || historyEvidence.actorRole)
+      && (historyEvidence.created_at || historyEvidence.createdAt)
+    )
   );
 }
 
@@ -112,10 +261,11 @@ function hashSnapshot(value) {
   return crypto.createHash('sha256').update(JSON.stringify(stable(value))).digest('hex');
 }
 
-function serializeField(field, approvals = []) {
+function serializeField(field, approvals = [], confirmationHistory = []) {
   const status = field?.status || 'missing';
   const confirmed = CONFIRMED.has(status);
   const approval = approvalEvidence(field, approvals);
+  const historyEvidence = latestHistoryEvidence(field, confirmationHistory);
   return {
     field_id: field?.fieldId || field?.id || null,
     field_key: fieldKey(field),
@@ -126,11 +276,11 @@ function serializeField(field, approvals = []) {
     value: confirmed ? fieldValue(field) : null,
     confirmation: {
       confirmed,
-      verified_by: field?.verifiedBy || field?.verified_by || approval?.actor_email || null,
-      verified_role: field?.verifiedRole || field?.verified_role || approval?.actor_role || null,
-      verified_at: field?.verifiedAt || field?.verified_at || approval?.created_at || null,
+      verified_by: field?.verifiedBy || field?.verified_by || approval?.actor_email || historyEvidence?.actor_email || null,
+      verified_role: field?.verifiedRole || field?.verified_role || approval?.actor_role || historyEvidence?.actor_role || null,
+      verified_at: field?.verifiedAt || field?.verified_at || approval?.created_at || historyEvidence?.created_at || null,
     },
-    provenance: fieldProvenance(field, approval),
+    provenance: fieldProvenance(field, approval, historyEvidence),
     approvals: approvals.map(approval => ({
       action: approval.action,
       actor_role: approval.actor_role || null,
@@ -140,18 +290,27 @@ function serializeField(field, approvals = []) {
   };
 }
 
-function buildDigitalAssetReadiness({ fields, requiredFields, conflicts, approvals, room }) {
+function buildDigitalAssetReadiness({
+  fields,
+  requiredFields,
+  conflicts,
+  approvals,
+  confirmationHistory = [],
+  room,
+}) {
   const approvalsFor = field => approvals.filter(approval =>
     approval?.field_id && approval.field_id === (field?.fieldId || field?.field_id || field?.id),
   );
+  const historyFor = field => confirmationHistory.filter(event => historyMatchesField(field, event));
   const serialized = fields.map(field => serializeField(
     field,
     approvalsFor(field),
+    historyFor(field),
   ));
   const byCategory = category => serialized.filter(field => field.category === category);
   const required = requiredFields.map(requiredField => {
-    const field = backingFieldFor(requiredField);
-    return serializeField(field, approvalsFor(field));
+    const field = backingFieldFor(requiredField, fields);
+    return serializeField(field, approvalsFor(field), historyFor(field));
   });
   const requiredApprovalFields = required.filter(field =>
     field.category === 'approvals' || String(field.field_key || '').startsWith('approval.'),
@@ -169,7 +328,7 @@ function buildDigitalAssetReadiness({ fields, requiredFields, conflicts, approva
     .filter(field => field.current_state === 'confirmed')
     .filter(field => {
       const backingField = backingFieldFor(field, fields);
-      return !provenanceIsIntact(backingField, approvalsFor(backingField));
+      return !provenanceIsIntact(backingField, approvalsFor(backingField), historyFor(backingField));
     })
     .map(field => ({
       field_key: field.field_key,
@@ -236,6 +395,7 @@ function buildVerifiedAssetSnapshot({
   recordState = {},
   conflicts = [],
   approvals = [],
+  confirmationHistory = [],
   sourceStateAt = null,
 } = {}) {
   const fields = Array.isArray(recordState.fields) ? recordState.fields : [];
@@ -245,6 +405,7 @@ function buildVerifiedAssetSnapshot({
     requiredFields,
     conflicts,
     approvals,
+    confirmationHistory,
     room,
   });
   const snapshot = {
@@ -261,12 +422,32 @@ function buildVerifiedAssetSnapshot({
           return serializeField(
             field,
             approvals.filter(approval => approval.field_id === (field.fieldId || field.field_id || field.id)),
+            confirmationHistory.filter(event => historyMatchesField(field, event)),
           );
         }),
       },
       provenance_manifest: fields.map(field => ({
         field_key: fieldKey(field),
-        provenance: fieldProvenance(field),
+        provenance: fieldProvenance(
+          field,
+          approvalEvidence(field, approvals.filter(approval =>
+            approval.field_id === (field.fieldId || field.field_id || field.id),
+          )),
+          latestHistoryEvidence(field, confirmationHistory),
+        ),
+      })),
+      confirmation_history: confirmationHistory.map(event => ({
+        field_id: event.field_id || event.fieldId || null,
+        field_key: event.field_key || event.fieldKey || null,
+        event_type: event.event_type || event.eventType || null,
+        actor_email: event.actor_email || event.actorEmail || null,
+        actor_role: event.actor_role || event.actorRole || null,
+        new_status: event.new_status || event.newStatus || null,
+        created_at: event.created_at || event.createdAt || null,
+        source_doc_id: event.source_doc_id || event.sourceDocId || null,
+        source_page: event.source_page || event.sourcePage || null,
+        source_excerpt: event.source_excerpt || event.sourceExcerpt || null,
+        metadata: event.metadata || null,
       })),
       approvals: approvals.map(approval => ({
         field_id: approval.field_id || null,
@@ -307,6 +488,7 @@ function buildVerifiedAssetSnapshot({
     .map(field => field?.updatedAt || field?.updated_at)
     .filter(Boolean)
     .concat(approvals.map(approval => approval?.created_at).filter(Boolean))
+    .concat(confirmationHistory.map(event => event?.created_at || event?.createdAt).filter(Boolean))
     .sort();
   return {
     ...snapshot,

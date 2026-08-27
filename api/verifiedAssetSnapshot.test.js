@@ -38,6 +38,7 @@ function build(overrides = {}) {
     recordState: state(overrides.recordState),
     conflicts: overrides.conflicts || [],
     approvals: overrides.approvals || [],
+    confirmationHistory: overrides.confirmationHistory || [],
   });
 }
 
@@ -144,6 +145,140 @@ describe('Verified Asset snapshot foundation', () => {
       verified_role: 'coordinator',
     }));
     expect(snapshot.created_from.transaction_record.fields[0].provenance.source_type).toBe('manual_confirmation');
+  });
+
+  test('uses current persisted confirmation history as provenance evidence', () => {
+    const snapshot = build({
+      recordState: state({
+        fields: [{ ...state().fields[0], sourceDocId: null, sourceFileHash: null }],
+        requiredFields: [{ ...state().fields[0], sourceDocId: null, sourceFileHash: null }],
+      }),
+      confirmationHistory: [{
+        field_id: 'field-1',
+        event_type: 'confirmed',
+        actor_email: 'coordinator@example.com',
+        actor_role: 'Deal Coordinator',
+        new_value: 'Example Asset',
+        new_status: 'verified',
+        created_at: '2026-08-26T00:00:00.000Z',
+      }],
+    });
+
+    expect(snapshot.digital_asset_readiness.eligible).toBe(true);
+    expect(snapshot.digital_asset_readiness.provenance.gaps).toHaveLength(0);
+    expect(snapshot.created_from.transaction_record.fields[0].provenance.source_type)
+      .toBe('manual_confirmation_history');
+  });
+
+  test('clears persisted confirmation evidence after a later incompatible field change', () => {
+    const snapshot = build({
+      recordState: state({
+        fields: [{
+          ...state().fields[0],
+          value: 'Updated Asset Name',
+          sourceDocId: null,
+          sourceFileHash: null,
+        }],
+        requiredFields: [{
+          ...state().fields[0],
+          value: 'Updated Asset Name',
+          sourceDocId: null,
+          sourceFileHash: null,
+        }],
+      }),
+      confirmationHistory: [
+        {
+          field_id: 'field-1',
+          event_type: 'confirmed',
+          actor_email: 'coordinator@example.com',
+          actor_role: 'Deal Coordinator',
+          new_value: 'Example Asset',
+          new_status: 'verified',
+          created_at: '2026-08-26T00:00:00.000Z',
+        },
+        {
+          field_id: 'field-1',
+          event_type: 'manual_edit',
+          actor_email: 'coordinator@example.com',
+          actor_role: 'Deal Coordinator',
+          new_value: 'Updated Asset Name',
+          new_status: 'awaiting',
+          created_at: '2026-08-27T00:00:00.000Z',
+        },
+      ],
+    });
+
+    expect(snapshot.digital_asset_readiness.eligible).toBe(false);
+    expect(snapshot.digital_asset_readiness.provenance.gaps).toHaveLength(1);
+  });
+
+  test('clears persisted confirmation evidence after a source replacement', () => {
+    const snapshot = build({
+      recordState: state({
+        fields: [{ ...state().fields[0], sourceDocId: null, sourceFileHash: null }],
+        requiredFields: [{ ...state().fields[0], sourceDocId: null, sourceFileHash: null }],
+      }),
+      confirmationHistory: [
+        {
+          field_id: 'field-1',
+          event_type: 'confirmed',
+          actor_email: 'coordinator@example.com',
+          actor_role: 'Deal Coordinator',
+          new_value: 'Example Asset',
+          new_status: 'verified',
+          created_at: '2026-08-26T00:00:00.000Z',
+        },
+        {
+          field_id: 'field-1',
+          event_type: 'source_changed',
+          new_value: 'Example Asset',
+          new_status: 'source_changed',
+          created_at: '2026-08-27T00:00:00.000Z',
+        },
+      ],
+    });
+
+    expect(snapshot.digital_asset_readiness.eligible).toBe(false);
+    expect(snapshot.digital_asset_readiness.provenance.gaps).toHaveLength(1);
+  });
+
+  test('clears all current provenance gaps for confirmed fields with persisted history', () => {
+    const fields = Array.from({ length: 21 }, (_, index) => ({
+      id: `field-${index + 1}`,
+      key: `transaction.fact_${index + 1}`,
+      label: `Fact ${index + 1}`,
+      category: 'transaction',
+      value: `Value ${index + 1}`,
+      status: 'confirmed',
+      sourceDocId: null,
+      sourceFileHash: null,
+    }));
+    const snapshot = build({
+      recordState: state({
+        fields,
+        requiredFields: fields,
+        requiredCount: 21,
+        confirmedCount: 21,
+      }),
+      confirmationHistory: fields.map(field => ({
+        field_id: field.id,
+        event_type: 'confirmed',
+        actor_email: 'coordinator@example.com',
+        actor_role: 'Deal Coordinator',
+        new_value: field.value,
+        new_status: 'verified',
+        created_at: '2026-08-26T00:00:00.000Z',
+      })),
+    });
+
+    expect(snapshot.created_from.readiness).toEqual(expect.objectContaining({
+      confirmed_count: 21,
+      required_count: 21,
+    }));
+    expect(snapshot.digital_asset_readiness.provenance.gaps).toHaveLength(0);
+    expect(snapshot.digital_asset_readiness.exceptions.blocking_count).toBe(0);
+    expect(snapshot.digital_asset_readiness.status).toBe('ready_for_external_review');
+    expect(snapshot.digital_asset_readiness.eligible).toBe(true);
   });
 
   test('does not reuse an older approval after the latest approval action changes', () => {

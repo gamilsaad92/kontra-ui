@@ -10155,7 +10155,11 @@ app.post('/api/public/deal-room/:propertyId/transaction-record/extract', async (
 async function getVerifiedAssetSnapshotContext(propertyId) {
   const state = await readTransactionState(propertyId);
   if (!state?.room) return null;
-  const [{ data: approvals, error: approvalsError }, { data: exceptions, error: exceptionsError }] = await Promise.all([
+  const [
+    { data: approvals, error: approvalsError },
+    { data: exceptions, error: exceptionsError },
+    { data: confirmationHistory, error: historyError },
+  ] = await Promise.all([
     supabase.from('transaction_record_approvals')
       .select('field_id, action, actor_email, actor_role, is_manual, source_doc_id, source_file_hash, created_at')
       .eq('property_id', propertyId)
@@ -10164,17 +10168,23 @@ async function getVerifiedAssetSnapshotContext(propertyId) {
       .select('*')
       .eq('property_id', propertyId)
       .order('created_at', { ascending: true }),
+    supabase.from('transaction_record_history')
+      .select('field_id, event_type, actor_email, actor_role, prior_value, new_value, prior_status, new_status, source_doc_id, source_page, source_excerpt, metadata, created_at')
+      .eq('property_id', propertyId)
+      .order('created_at', { ascending: true }),
   ]);
   if (approvalsError && !/relation|schema cache|column/i.test(approvalsError.message || '')) throw approvalsError;
   if (exceptionsError && !/relation|schema cache|column/i.test(exceptionsError.message || '')) throw exceptionsError;
+  if (historyError && !/relation|schema cache|column/i.test(historyError.message || '')) throw historyError;
   const snapshot = buildVerifiedAssetSnapshot({
     propertyId,
     room: state.room,
     recordState: state.recordState,
     conflicts: exceptions || state.recordState?.unresolvedConflicts || state.conflicts || [],
     approvals: approvals || [],
+    confirmationHistory: confirmationHistory || [],
   });
-  return { state, approvals: approvals || [], snapshot };
+  return { state, approvals: approvals || [], confirmationHistory: confirmationHistory || [], snapshot };
 }
 
 function verifiedAssetSnapshotsUnavailable(error) {
