@@ -2836,21 +2836,17 @@ function DigitalAssetPrepCard({ propertyId, recordFields = [], readiness = null 
   const [result, setResult] = useState(null);
 
   async function requestPrep() {
-    let ownerWriteToken = '';
-    try { ownerWriteToken = localStorage.getItem(`kontra_owner_token_${propertyId}`) || ''; } catch {}
-    if (!ownerWriteToken || loading) return;
+    if (loading) return;
     setLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/api/public/deal-room/${propertyId}/digital-asset-prep`, {
-        method: 'POST',
-        headers: getRoomAuthHeaders(propertyId, { 'Content-Type': 'application/json' }),
-        body: JSON.stringify({ ownerWriteToken }),
+      // This legacy card is retained for compatibility with older pack
+      // layouts, but package generation now requires an explicitly selected
+      // persisted eligible snapshot in CoordinatorOverview.
+      setRequested(true);
+      setResult({
+        status: 'snapshot_required',
+        missing: [{ label: 'Select an eligible immutable readiness snapshot' }],
       });
-      const data = res.ok ? await res.json() : null;
-      if (data) {
-        setRequested(true);
-        setResult(data);
-      }
     } finally {
       setLoading(false);
     }
@@ -4406,24 +4402,8 @@ function DigitalAssetReadinessSection({
           <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-600 mb-1">Optional Digital Asset Preparation</p>
           <p className="text-xs font-semibold text-gray-800">Required preparation inputs captured</p>
           <p className="mt-0.5 text-xs text-gray-500 leading-relaxed">
-            The Transaction Record contains the tokenization-specific inputs needed to assemble a package for external professional or provider review. This is not legal, regulatory, or issuance approval.
+            Select an eligible immutable readiness snapshot in the Verified Asset Readiness card to assemble a frozen package for external professional or provider review. This is not legal, regulatory, or issuance approval.
           </p>
-          <button
-            onClick={async () => {
-              let ownerWriteToken = '';
-              try { ownerWriteToken = localStorage.getItem(`kontra_owner_token_${propertyId}`) || ''; } catch {}
-              try {
-                await fetch(`${API_BASE}/api/public/deal-room/${propertyId}/digital-asset-prep`, {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ ownerWriteToken }),
-                });
-              } catch {}
-              onTabChange?.('documents');
-            }}
-            className="mt-3 rounded-xl bg-[#800020] px-4 py-2 text-xs font-bold text-white transition hover:opacity-90">
-            Prepare digital asset package
-          </button>
         </div>
       ) : digitalAssetEnabled ? (
         <div className="border-t border-gray-100 bg-indigo-50/30 px-5 py-3">
@@ -6474,7 +6454,17 @@ function formatStoredSnapshotValue(value) {
   return String(value);
 }
 
-function SnapshotInspectionModal({ snapshot, snapshots = [], onSelectSnapshot, onClose }) {
+function SnapshotInspectionModal({
+  snapshot,
+  snapshots = [],
+  packageHistory = [],
+  packageAction,
+  ownerToken,
+  onSelectSnapshot,
+  onGeneratePackage,
+  onOpenPackage,
+  onClose,
+}) {
   if (!snapshot) return null;
 
   // Everything below comes from the selected persisted JSON payload. In
@@ -6558,14 +6548,37 @@ function SnapshotInspectionModal({ snapshot, snapshots = [], onSelectSnapshot, o
               {snapshot.created_by ? ` · by ${snapshot.created_by}` : ''}
             </p>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Close snapshot inspection"
-            className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-bold text-gray-600 hover:bg-gray-50"
-          >
-            Close
-          </button>
+          <div className="flex flex-wrap justify-end gap-2">
+            {snapshot.eligibility_status === 'eligible' && (
+              packageHistory.find(item => item.source_snapshot_id === snapshot.id)
+                ? (
+                  <button
+                    type="button"
+                    onClick={() => onOpenPackage?.(packageHistory.find(item => item.source_snapshot_id === snapshot.id))}
+                    className="rounded-lg border border-[#800020] px-3 py-1.5 text-xs font-bold text-[#800020] hover:bg-[#800020]/5"
+                  >
+                    View generated package
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => onGeneratePackage?.(snapshot)}
+                    disabled={!ownerToken || packageAction?.loading}
+                    className="rounded-lg bg-[#800020] px-3 py-1.5 text-xs font-bold text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {packageAction?.loading ? 'Generating…' : 'Generate Digital Asset Package'}
+                  </button>
+                )
+            )}
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Close snapshot inspection"
+              className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-bold text-gray-600 hover:bg-gray-50"
+            >
+              Close
+            </button>
+          </div>
         </div>
 
         <div className="grid lg:grid-cols-[220px_minmax(0,1fr)]">
@@ -6653,6 +6666,21 @@ function SnapshotInspectionModal({ snapshot, snapshots = [], onSelectSnapshot, o
               <p className="mt-2 text-[11px] leading-relaxed text-gray-500">
                 This view is frozen to the persisted snapshot. Later Transaction Record edits do not change these values.
               </p>
+              {snapshot.eligibility_status !== 'eligible' && (
+                <p className="mt-2 text-[11px] font-semibold text-amber-700">
+                  Package generation is available only for eligible snapshots.
+                </p>
+              )}
+              {!ownerToken && snapshot.eligibility_status === 'eligible' && (
+                <p className="mt-2 text-[11px] font-semibold text-amber-700">
+                  Owner access is required to generate a package from this snapshot.
+                </p>
+              )}
+              {packageAction?.message && (
+                <p role={packageAction.error ? 'alert' : 'status'} className={`mt-2 text-[11px] ${packageAction.error ? 'text-red-600' : 'text-gray-600'}`}>
+                  {packageAction.message}
+                </p>
+              )}
             </div>
 
             <div className="mt-5">
@@ -6814,13 +6842,219 @@ function SnapshotInspectionModal({ snapshot, snapshots = [], onSelectSnapshot, o
   );
 }
 
+function DigitalAssetPackageModal({ packageRecord, packages = [], onSelectPackage, onClose }) {
+  if (!packageRecord) return null;
+  const payload = packageRecord.package && typeof packageRecord.package === 'object'
+    ? packageRecord.package
+    : {};
+  const frozenReadiness = payload.frozen_readiness || {};
+  const sourceSnapshot = payload.source_snapshot || {};
+  const preparationFields = payload.preparation_fields || {};
+  const summary = payload.human_summary || {};
+  const frozenCanonicalFields = Array.isArray(frozenReadiness.canonical_fields)
+    ? frozenReadiness.canonical_fields
+    : [];
+  const borrowerFundsField = frozenCanonicalFields.find(field =>
+    /borrower funds|borrower_funds/i.test(`${field?.field_key || ''} ${field?.label || ''}`),
+  );
+
+  function exportPackageJson() {
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = `digital-asset-preparation-package-v${sourceSnapshot.version || 'latest'}.json`;
+    anchor.click();
+    URL.revokeObjectURL(url);
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-gray-900/50 px-4 py-6 sm:py-10"
+      role="presentation"
+      onMouseDown={event => {
+        if (event.target === event.currentTarget) onClose?.();
+      }}
+    >
+      <section
+        className="w-full max-w-6xl overflow-hidden rounded-2xl border border-gray-200 bg-[#fcfbf8] shadow-2xl"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="digital-asset-package-title"
+      >
+        <div className="flex items-start justify-between gap-4 border-b border-gray-200 bg-white px-5 py-4 sm:px-7">
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-[#800020]">
+              Immutable preparation artifact
+            </p>
+            <h2 id="digital-asset-package-title" className="mt-1 text-lg font-bold text-gray-900">
+              Digital Asset Preparation Package
+            </h2>
+            <p className="mt-1 text-xs text-gray-500">
+              Generated from readiness snapshot v{sourceSnapshot.version || '—'} · {formatSnapshotDate(packageRecord.created_at)}
+            </p>
+          </div>
+          <div className="flex flex-wrap justify-end gap-2">
+            <button
+              type="button"
+              onClick={exportPackageJson}
+              className="rounded-lg bg-[#800020] px-3 py-1.5 text-xs font-bold text-white hover:opacity-90"
+            >
+              Export JSON
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Close Digital Asset Preparation Package"
+              className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-bold text-gray-600 hover:bg-gray-50"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+
+        <div className="grid lg:grid-cols-[220px_minmax(0,1fr)]">
+          <aside className="border-b border-gray-200 bg-white px-4 py-4 lg:border-b-0 lg:border-r">
+            <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Package history</p>
+            {packages.length === 0 ? (
+              <p className="mt-3 text-xs text-gray-500">No stored packages.</p>
+            ) : (
+              <div className="mt-3 space-y-2">
+                {packages.map(item => {
+                  const itemSnapshot = item.package?.source_snapshot || {};
+                  const selected = item.id === packageRecord.id;
+                  return (
+                    <button
+                      key={item.id}
+                      type="button"
+                      onClick={() => onSelectPackage?.(item)}
+                      className={`w-full rounded-xl border px-3 py-2.5 text-left transition ${
+                        selected
+                          ? 'border-[#800020] bg-[#800020]/5'
+                          : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-xs font-bold text-gray-900">Package</span>
+                        <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[9px] font-bold text-emerald-700">
+                          Snapshot v{item.source_snapshot_version || itemSnapshot.version || '—'}
+                        </span>
+                      </div>
+                      <p className="mt-1 text-[10px] text-gray-500">
+                        {formatSnapshotDate(item.created_at)}
+                      </p>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </aside>
+
+          <div className="max-h-[calc(100vh-150px)] overflow-y-auto px-5 py-5 sm:px-7">
+            <div className="rounded-xl border border-[#800020]/20 bg-[#800020]/5 px-4 py-4">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-[#800020]">Source snapshot</p>
+                  <p className="mt-1 text-sm font-bold text-gray-900">
+                    Snapshot v{sourceSnapshot.version || '—'} · {sourceSnapshot.eligibility_status || 'not recorded'}
+                  </p>
+                  <p className="mt-1 break-all text-[10px] text-gray-500">
+                    {sourceSnapshot.id || 'Snapshot ID not recorded'}
+                  </p>
+                </div>
+                <div className="text-right">
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Package status</p>
+                  <p className="mt-1 text-xs font-bold capitalize text-gray-900">
+                    {(payload.package_status || 'not recorded').replace(/_/g, ' ')}
+                  </p>
+                </div>
+              </div>
+              <p className="mt-3 text-xs leading-relaxed text-gray-600">
+                {summary.headline || 'This artifact is frozen to the selected immutable readiness snapshot.'}
+              </p>
+            </div>
+
+            <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-3">
+                <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-700">Frozen proof value</p>
+                <p className="mt-1 text-xs font-bold text-gray-900">Borrower funds advanced</p>
+                <p className="mt-1 text-base font-black text-emerald-800">
+                  {borrowerFundsField ? formatStoredSnapshotValue(borrowerFundsField.value) : 'Not recorded'}
+                </p>
+              </div>
+              <div className="rounded-xl border border-gray-200 bg-white px-3 py-3">
+                <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Readiness</p>
+                <p className="mt-1 text-xs font-bold capitalize text-gray-900">
+                  {(frozenReadiness.status || 'not recorded').replace(/_/g, ' ')}
+                </p>
+                <p className="mt-1 text-[10px] text-gray-500">{summary.readiness || 'Counts not recorded'}</p>
+              </div>
+              <div className="rounded-xl border border-gray-200 bg-white px-3 py-3">
+                <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Provenance</p>
+                <p className="mt-1 text-xs font-bold text-gray-900">{summary.provenance || 'Not recorded'}</p>
+                <p className="mt-1 text-[10px] text-gray-500">
+                  {frozenReadiness.provenance_evidence?.evidence_entry_count || 0} evidence entries
+                </p>
+              </div>
+              <div className="rounded-xl border border-gray-200 bg-white px-3 py-3">
+                <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Blockers</p>
+                <p className="mt-1 text-xs font-bold text-gray-900">{summary.blockers || 'Not recorded'}</p>
+                <p className="mt-1 text-[10px] text-gray-500">
+                  {frozenReadiness.blockers_exceptions?.resolved ? 'Resolved' : 'Requires review'}
+                </p>
+              </div>
+              <div className="rounded-xl border border-gray-200 bg-white px-3 py-3">
+                <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Approvals / settlement</p>
+                <p className="mt-1 text-xs font-bold text-gray-900">{summary.approvals || 'Not recorded'}</p>
+                <p className="mt-1 text-[10px] capitalize text-gray-500">
+                  {String(frozenReadiness.settlement_mode || 'Not recorded').replace(/_/g, ' ')}
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-5">
+              <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Preparation fields</p>
+              <p className="mt-1 text-xs text-gray-500">
+                Structured inputs for future professional or provider review; blank values are intentionally not recorded.
+              </p>
+              <div className="mt-3 overflow-hidden rounded-xl border border-gray-200 bg-white">
+                <div className="divide-y divide-gray-100">
+                  {Object.entries(preparationFields).map(([key, field]) => (
+                    <div key={key} className="grid gap-1 px-4 py-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1.5fr)_130px] sm:gap-3">
+                      <p className="text-xs font-semibold capitalize text-gray-800">{key.replace(/_/g, ' ')}</p>
+                      <p className="break-words text-xs text-gray-700">{formatStoredSnapshotValue(field?.value)}</p>
+                      <p className={`text-[10px] font-bold capitalize ${
+                        field?.status === 'not_recorded' ? 'text-gray-400' : 'text-emerald-700'
+                      }`}>
+                        {(field?.status || 'not recorded').replace(/_/g, ' ')}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <p className="mt-5 text-[10px] leading-relaxed text-gray-400">
+              {summary.disclosure || 'Provider-neutral preparation data only. This is not issuance, custody, KYC/AML, settlement, or investment approval.'}
+            </p>
+          </div>
+        </div>
+      </section>
+    </div>
+  );
+}
+
 function VerifiedAssetReadinessCard({
   verifiedAssetReadiness,
   ownerToken,
   snapshotAction,
   snapshotHistory = [],
+  packageHistory = [],
+  packageAction,
   onRecordSnapshot,
   onOpenSnapshot,
+  onOpenPackage,
+  onGeneratePackage,
   onOpenProvenance,
 }) {
   const isUnavailable = !verifiedAssetReadiness;
@@ -7008,6 +7242,43 @@ function VerifiedAssetReadinessCard({
           </button>
         </div>
       </div>
+      <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-gray-100 pt-4">
+        <div>
+          <p className="text-xs font-semibold text-gray-700">Digital Asset Preparation Packages</p>
+          <p className="mt-1 text-[10px] text-gray-400">
+            {packageHistory.length > 0
+              ? `${packageHistory.length} immutable package${packageHistory.length === 1 ? '' : 's'} stored · each tied to one snapshot`
+              : 'Select an eligible snapshot above to generate the first package.'}
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => onOpenPackage?.(packageHistory[0])}
+            disabled={packageHistory.length === 0}
+            className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-xs font-bold text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            View latest package
+          </button>
+          <button
+            type="button"
+            onClick={() => onOpenPackage?.(packageHistory[0])}
+            disabled={packageHistory.length === 0}
+            className="rounded-lg border border-[#800020] px-3 py-2 text-xs font-bold text-[#800020] hover:bg-[#800020] hover:text-white disabled:cursor-not-allowed disabled:border-gray-300 disabled:text-gray-400 disabled:hover:bg-transparent disabled:hover:text-gray-400"
+          >
+            Package history ({packageHistory.length})
+          </button>
+        </div>
+      </div>
+      {packageAction?.message && (
+        <p role={packageAction.error ? 'alert' : 'status'} className={`mt-3 rounded-lg border px-3 py-2 text-xs ${
+          packageAction.error
+            ? 'border-red-100 bg-red-50 text-red-600'
+            : 'border-gray-200 bg-white text-gray-600'
+        }`}>
+          {packageAction.message}
+        </p>
+      )}
       {action.message && (
         <p role="status" className={`mt-3 rounded-lg border px-3 py-2 text-xs ${action.error
           ? 'border-red-100 bg-red-50 text-red-600'
@@ -7033,6 +7304,9 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
   const [snapshotHistory, setSnapshotHistory] = useState([]);
   const [selectedSnapshot, setSelectedSnapshot] = useState(null);
   const [snapshotAction, setSnapshotAction] = useState({ loading: false, message: '', error: false });
+  const [packageHistory, setPackageHistory] = useState([]);
+  const [selectedPackage, setSelectedPackage] = useState(null);
+  const [packageAction, setPackageAction] = useState({ loading: false, message: '', error: false });
   const [loading, setLoading]           = useState(true);
   const [ownerToken, setOwnerToken]     = useState('');
   const [advancingStage, setAdvancingStage] = useState(false);
@@ -7099,6 +7373,11 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
         setSnapshotHistory,
         snapshotData => Array.isArray(snapshotData?.snapshots) ? snapshotData.snapshots : [],
       ));
+    get(`/api/public/deal-room/${propertyId}/digital-asset-packages`, { packages: [] })
+      .then(apply(
+        setPackageHistory,
+        packageData => Array.isArray(packageData?.packages) ? packageData.packages : [],
+      ));
     get(`/api/public/deal-room/${propertyId}/checklist`, { items: [] })
       .then(apply(setChecklistItems, checklist => Array.isArray(checklist?.items) ? checklist.items : []));
     get(`/api/public/deal-room/${propertyId}/events`, { events: [] })
@@ -7109,7 +7388,7 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
   // analysesRefreshKey in DealRoomPage) immediately triggers a re-fetch here,
   // making the Snapshot and WhatNeedsAttention update without waiting 30s.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [propertyId, pack, refreshKey]);
+  }, [propertyId, pack, refreshKey, ownerToken]);
 
   useEffect(() => {
     load();
@@ -7149,6 +7428,42 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
       setSnapshotAction({ loading: false, error: true, message: error.message });
     }
   }, [propertyId, ownerToken, snapshotAction.loading, load]);
+
+  const generateDigitalAssetPackage = useCallback(async snapshot => {
+    if (!propertyId || !ownerToken || !snapshot?.id || packageAction.loading) return;
+    setPackageAction({ loading: true, message: '', error: false });
+    try {
+      const response = await fetch(
+        `${API_BASE}/api/public/deal-room/${propertyId}/digital-asset-packages`,
+        {
+          method: 'POST',
+          headers: getRoomAuthHeaders(propertyId, { 'Content-Type': 'application/json' }),
+          body: JSON.stringify({
+            ownerWriteToken: ownerToken,
+            snapshotId: snapshot.id,
+            snapshotVersion: snapshot.version,
+          }),
+        },
+      );
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.message || data.error || 'Package could not be generated.');
+      const packageRecord = data.package;
+      if (packageRecord) {
+        setSelectedPackage(packageRecord);
+        setSelectedSnapshot(null);
+      }
+      setPackageAction({
+        loading: false,
+        error: false,
+        message: data.created === false
+          ? `A package for snapshot v${snapshot.version} already exists.`
+          : `Digital Asset Preparation Package generated from snapshot v${snapshot.version}.`,
+      });
+      await load();
+    } catch (error) {
+      setPackageAction({ loading: false, error: true, message: error.message });
+    }
+  }, [propertyId, ownerToken, packageAction.loading, load]);
 
   const processingDocuments = analyses.filter(analysis =>
     ['uploaded', 'processing', 'retrying'].includes(analysis.processing_status)
@@ -7593,8 +7908,12 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
         ownerToken={ownerToken}
         snapshotHistory={snapshotHistory}
         snapshotAction={snapshotAction}
+        packageHistory={packageHistory}
+        packageAction={packageAction}
         onRecordSnapshot={recordReadinessSnapshot}
         onOpenSnapshot={setSelectedSnapshot}
+        onGeneratePackage={generateDigitalAssetPackage}
+        onOpenPackage={setSelectedPackage}
         onOpenProvenance={gap => overviewAction({
           type: 'record',
           field: {
@@ -7608,8 +7927,19 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
       <SnapshotInspectionModal
         snapshot={selectedSnapshot}
         snapshots={snapshotHistory}
+        packageHistory={packageHistory}
+        packageAction={packageAction}
+        ownerToken={ownerToken}
         onSelectSnapshot={setSelectedSnapshot}
+        onGeneratePackage={generateDigitalAssetPackage}
+        onOpenPackage={setSelectedPackage}
         onClose={() => setSelectedSnapshot(null)}
+      />
+      <DigitalAssetPackageModal
+        packageRecord={selectedPackage}
+        packages={packageHistory}
+        onSelectPackage={setSelectedPackage}
+        onClose={() => setSelectedPackage(null)}
       />
       <TransactionConflictResolver
         propertyId={propertyId}

@@ -62,7 +62,6 @@ const {
   notifyStageAdvance,
   notifyStatusChange,
   notifyOwner,
-  notifyVAPReady,
 } = require('./lib/dealRoomHelpers');
 const aiDealReviewRouter = require('./routers/aiDealReview');
 const tasksRouter = require('./routers/tasks');
@@ -70,7 +69,6 @@ const operationsManagerRouter = require('./routers/operationsManager');
 const verificationRouter = require('./routers/verification');
 const { runVerification } = require('./lib/verificationEngine');
 const verifiedAssetPackageRouter = require('./routers/verifiedAssetPackage');
-const { generateAndStoreVAP } = require('./routers/verifiedAssetPackage');
 const { evaluateDealRoomForTasks, evaluateReadinessTasks } = require('./lib/taskEngine');
 const {
   recalculateTransactionState,
@@ -91,6 +89,11 @@ const {
 const {
   buildVerifiedAssetSnapshot,
 } = require('./lib/verifiedAssetSnapshot');
+const {
+  buildDigitalAssetPreparationPackage,
+  presentStoredDigitalAssetPackage,
+  digitalAssetPackagesUnavailable,
+} = require('./lib/digitalAssetPreparationPackage');
 const {
   selectActiveDocumentVersions,
   isActiveDocumentVersion,
@@ -6389,26 +6392,9 @@ app.post('/api/public/deal-room/:propertyId/advance', async (req, res) => {
 
     notifyStageAdvance(propertyId, stage, stageLabel).catch(() => {});
 
-    // Position-based VAP triggers — fire on the last two stages regardless of key name.
-    // generateAndStoreVAP returns null on failure (swallows errors internally), so we
-    // gate all downstream actions on a truthy return value to avoid sending a "ready" email
-    // when the package actually failed to build.
-    if (stage === secondToLastStageKey) {
-      generateAndStoreVAP(propertyId, { seal: false })
-        .then(pkg => { if (pkg) return notifyVAPReady(propertyId, stage, stageLabel); })
-        .catch(() => {});
-    }
-    if (stage === lastStageKey) {
-      generateAndStoreVAP(propertyId, { seal: true })
-        .then(pkg => {
-          if (!pkg) return;
-          return Promise.all([
-            sealClosingRecord(propertyId),
-            notifyVAPReady(propertyId, stage, stageLabel),
-          ]);
-        })
-        .catch(() => {});
-    }
+    // Package generation is deliberately not a lifecycle side effect. An owner
+    // must select a specific eligible immutable readiness snapshot and invoke
+    // the snapshot-bound Digital Asset Preparation Package endpoint.
   } catch (err) {
     console.error('[advance]', err.message);
     res.status(500).json({ error: err.message });
@@ -10391,75 +10377,245 @@ app.post('/api/public/deal-room/:propertyId/verified-asset/snapshots', async (re
   }
 });
 
-app.post('/api/public/deal-room/:propertyId/digital-asset-prep', async (req, res) => {
+function packageRouteError(status, code, message, details = {}) {
+  const error = new Error(message);
+  error.statusCode = status;
+  error.code = code;
+  error.details = details;
+  return error;
+}
+
+async function getSelectedVerifiedAssetSnapshot(propertyId, snapshotId, snapshotVersion) {
+  if (!snapshotId && snapshotVersion == null) {
+    throw packageRouteError(
+      400,
+      'SNAPSHOT_REQUIRED',
+      'Select one eligible immutable readiness snapshot before generating a package.',
+    );
+  }
+  let query = supabase.from('verified_asset_snapshots')
+    .select('id, version, eligibility_status, source_state_at, snapshot_hash, snapshot, created_by, created_at')
+    .eq('property_id', propertyId);
+  if (snapshotId) query = query.eq('id', snapshotId);
+  else query = query.eq('version', Number(snapshotVersion));
+  const { data, error } = await query.maybeSingle();
+  if (error) {
+    if (verifiedAssetSnapshotsUnavailable(error)) {
+      throw packageRouteError(
+        503,
+        'SNAPSHOTS_UNAVAILABLE',
+        'Verified Asset snapshots are not available until migration 024 is applied.',
+      );
+    }
+    throw error;
+  }
+  if (!data) {
+    throw packageRouteError(404, 'SNAPSHOT_NOT_FOUND', 'The selected readiness snapshot was not found.');
+  }
+  if (snapshotVersion != null && Number(data.version) !== Number(snapshotVersion)) {
+    throw packageRouteError(409, 'SNAPSHOT_MISMATCH', 'The selected snapshot ID and version do not match.');
+  }
+  if (
+    data.eligibility_status !== 'eligible'
+    || data.snapshot?.digital_asset_readiness?.eligible !== true
+  ) {
+    throw packageRouteError(
+      409,
+      'SNAPSHOT_NOT_ELIGIBLE',
+      `Digital Asset Packages can only be generated from an eligible readiness snapshot. Snapshot v${data.version} is ineligible.`,
+      { snapshot_version: data.version, eligibility_status: data.eligibility_status },
+    );
+  }
+  return data;
+}
+
+async function createDigitalAssetPreparationPackage(propertyId, access, {
+  snapshotId,
+  snapshotVersion,
+} = {}) {
+  const snapshot = await getSelectedVerifiedAssetSnapshot(propertyId, snapshotId, snapshotVersion);
+  const { data: existing, error: existingError } = await supabase
+    .from('digital_asset_preparation_packages')
+    .select('id, property_id, source_snapshot_id, source_snapshot_version, source_snapshot_hash, package_hash, package, created_by, created_at')
+    .eq('property_id', propertyId)
+    .eq('source_snapshot_id', snapshot.id)
+    .maybeSingle();
+  if (existingError) {
+    if (digitalAssetPackagesUnavailable(existingError)) {
+      throw packageRouteError(
+        503,
+        'PACKAGES_UNAVAILABLE',
+        'Digital Asset Preparation Packages are not available until migration 025 is applied.',
+      );
+    }
+    throw existingError;
+  }
+  if (existing) {
+    return { created: false, package: presentStoredDigitalAssetPackage(existing) };
+  }
+
+  const packagePayload = buildDigitalAssetPreparationPackage({
+    propertyId,
+    snapshotRow: snapshot,
+  });
+  const { data: created, error: insertError } = await supabase
+    .from('digital_asset_preparation_packages')
+    .insert({
+      property_id: propertyId,
+      source_snapshot_id: snapshot.id,
+      source_snapshot_version: snapshot.version,
+      source_snapshot_hash: snapshot.snapshot_hash,
+      package_hash: packagePayload.package_hash,
+      package: packagePayload,
+      created_by: access.email || null,
+    })
+    .select('id, property_id, source_snapshot_id, source_snapshot_version, source_snapshot_hash, package_hash, package, created_by, created_at')
+    .single();
+  if (insertError) {
+    if (/duplicate key|unique constraint/i.test(insertError.message || '')) {
+      const { data: concurrent } = await supabase
+        .from('digital_asset_preparation_packages')
+        .select('id, property_id, source_snapshot_id, source_snapshot_version, source_snapshot_hash, package_hash, package, created_by, created_at')
+        .eq('property_id', propertyId)
+        .eq('source_snapshot_id', snapshot.id)
+        .maybeSingle();
+      if (concurrent) return { created: false, package: presentStoredDigitalAssetPackage(concurrent) };
+    }
+    if (digitalAssetPackagesUnavailable(insertError)) {
+      throw packageRouteError(
+        503,
+        'PACKAGES_UNAVAILABLE',
+        'Digital Asset Preparation Packages are not available until migration 025 is applied.',
+      );
+    }
+    throw insertError;
+  }
+
+  logEvent(
+    propertyId,
+    'digital_asset_preparation_package_created',
+    'owner',
+    access.email || null,
+    `Digital Asset Preparation Package generated from readiness snapshot v${snapshot.version}`,
+    {
+      package_id: created.id,
+      source_snapshot_id: snapshot.id,
+      source_snapshot_version: snapshot.version,
+      package_hash: packagePayload.package_hash,
+    },
+  );
+  return { created: true, package: presentStoredDigitalAssetPackage(created) };
+}
+
+app.get('/api/public/deal-room/:propertyId/digital-asset-packages', async (req, res) => {
+  const access = await getRoomAccessContext(req, req.params.propertyId);
+  if (access.mode === 'anonymous') return accessDenied(res);
+  try {
+    const { data, error } = await supabase
+      .from('digital_asset_preparation_packages')
+      .select('id, property_id, source_snapshot_id, source_snapshot_version, source_snapshot_hash, package_hash, package, created_by, created_at')
+      .eq('property_id', req.params.propertyId)
+      .order('created_at', { ascending: false });
+    if (error) {
+      if (digitalAssetPackagesUnavailable(error)) {
+        return res.status(503).json({
+          error: 'PACKAGES_UNAVAILABLE',
+          message: 'Digital Asset Preparation Packages are not available until migration 025 is applied.',
+        });
+      }
+      throw error;
+    }
+    return res.json({ packages: (data || []).map(presentStoredDigitalAssetPackage) });
+  } catch (err) {
+    console.error('[digital-asset-packages GET]', err.message);
+    return res.status(500).json({ error: 'Failed to load Digital Asset Preparation Packages' });
+  }
+});
+
+app.get('/api/public/deal-room/:propertyId/digital-asset-packages/by-snapshot/:snapshotId', async (req, res) => {
+  const access = await getRoomAccessContext(req, req.params.propertyId);
+  if (access.mode === 'anonymous') return accessDenied(res);
+  try {
+    const { data, error } = await supabase
+      .from('digital_asset_preparation_packages')
+      .select('id, property_id, source_snapshot_id, source_snapshot_version, source_snapshot_hash, package_hash, package, created_by, created_at')
+      .eq('property_id', req.params.propertyId)
+      .eq('source_snapshot_id', req.params.snapshotId)
+      .maybeSingle();
+    if (error) {
+      if (digitalAssetPackagesUnavailable(error)) {
+        return res.status(503).json({
+          error: 'PACKAGES_UNAVAILABLE',
+          message: 'Digital Asset Preparation Packages are not available until migration 025 is applied.',
+        });
+      }
+      throw error;
+    }
+    if (!data) {
+      return res.status(404).json({
+        error: 'PACKAGE_NOT_FOUND',
+        message: 'No Digital Asset Preparation Package has been generated from this snapshot.',
+      });
+    }
+    return res.json({ package: presentStoredDigitalAssetPackage(data) });
+  } catch (err) {
+    console.error('[digital-asset-package by snapshot GET]', err.message);
+    return res.status(500).json({ error: 'Failed to load Digital Asset Preparation Package' });
+  }
+});
+
+app.get('/api/public/deal-room/:propertyId/digital-asset-packages/:packageId', async (req, res) => {
+  const access = await getRoomAccessContext(req, req.params.propertyId);
+  if (access.mode === 'anonymous') return accessDenied(res);
+  try {
+    const { data, error } = await supabase
+      .from('digital_asset_preparation_packages')
+      .select('id, property_id, source_snapshot_id, source_snapshot_version, source_snapshot_hash, package_hash, package, created_by, created_at')
+      .eq('property_id', req.params.propertyId)
+      .eq('id', req.params.packageId)
+      .maybeSingle();
+    if (error) {
+      if (digitalAssetPackagesUnavailable(error)) {
+        return res.status(503).json({
+          error: 'PACKAGES_UNAVAILABLE',
+          message: 'Digital Asset Preparation Packages are not available until migration 025 is applied.',
+        });
+      }
+      throw error;
+    }
+    if (!data) return res.status(404).json({ error: 'Digital Asset Preparation Package not found.' });
+    return res.json({ package: presentStoredDigitalAssetPackage(data) });
+  } catch (err) {
+    console.error('[digital-asset-package GET]', err.message);
+    return res.status(500).json({ error: 'Failed to load Digital Asset Preparation Package' });
+  }
+});
+
+app.post('/api/public/deal-room/:propertyId/digital-asset-packages', async (req, res) => {
   const { propertyId } = req.params;
-  const { ownerWriteToken } = req.body || {};
+  const { ownerWriteToken, snapshotId, snapshotVersion } = req.body || {};
   const access = await getRoomAccessContext(req, propertyId, ownerWriteToken);
   if (access.mode !== 'owner') return accessDenied(res, 'Owner access required');
 
   try {
-    const [{ data: room, error: roomErr }, { data: fields, error: fieldsErr }] = await Promise.all([
-      supabase.from('deal_rooms').select('metadata_values').eq('property_id', propertyId).maybeSingle(),
-      supabase.from('transaction_record_fields')
-        .select('field_key, display_label, value_text, status')
-        .eq('property_id', propertyId)
-        .order('display_label', { ascending: true }),
-    ]);
-    if (roomErr) throw roomErr;
-    if (fieldsErr) throw fieldsErr;
-    if (!room) return res.status(404).json({ error: 'room not found' });
-
-    const recordFields = fields || [];
-    const tokenizationGuidance = buildTokenizationGuidance({
-      recordFields,
-      enabled: true,
+    const result = await createDigitalAssetPreparationPackage(propertyId, access, {
+      snapshotId,
+      snapshotVersion,
     });
-    const missing = tokenizationGuidance.gaps
-      .slice(0, 12)
-      .map(field => ({
-        field_key: field.key,
-        label: field.label,
-        reason: field.reason,
-        status: field.status,
-      }));
-    const now = new Date().toISOString();
-    const preparedPackage = {
-      package_type: 'digital_asset_preparation',
-      preparation_status: missing.length > 0 ? 'needs_information' : 'inputs_captured',
-      prepared_at: now,
-      facts: tokenizationGuidance.known,
-      missing,
-      optional: true,
-      disclaimer: 'AI-prepared coordination data only. Kontra does not determine legal or regulatory outcomes and does not issue, sell, recommend, custody, or settle digital assets.',
-    };
-    const metadata = {
-      ...(room.metadata_values || {}),
-      digital_asset_prep_requested: true,
-      digital_asset_prep_opted_in: true,
-      digital_asset_prep_requested_at: now,
-      digital_asset_prep_package: preparedPackage,
-    };
-    const { error: updateErr } = await supabase
-      .from('deal_rooms')
-      .update({ metadata_values: metadata })
-      .eq('property_id', propertyId);
-    if (updateErr) throw updateErr;
-
-    logEvent(propertyId, 'digital_asset_prep_requested', 'owner', null, 'Digital asset preparation requested', {
-      missing_count: missing.length,
-    });
-
-    res.json({
+    return res.status(result.created ? 201 : 200).json({
       ok: true,
-      status: missing.length > 0 ? 'needs_information' : 'inputs_captured',
-      missing,
-      prepared_field_count: tokenizationGuidance.known.length,
-      package: preparedPackage,
-      requested_at: now,
+      ...result,
     });
   } catch (err) {
     console.error('[digital-asset-prep]', err.message);
-    res.status(500).json({ error: err.message });
+    if (err.statusCode) {
+      return res.status(err.statusCode).json({
+        error: err.code,
+        message: err.message,
+        ...err.details,
+      });
+    }
+    return res.status(500).json({ error: 'Failed to generate Digital Asset Preparation Package' });
   }
 });
 

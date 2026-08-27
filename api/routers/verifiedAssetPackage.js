@@ -3,11 +3,10 @@
 // output summarising identity, verification, transaction record, and structured
 // data extracted from uploaded documents + audit trail.
 //
-// Persistence layer (Task 55):
-//   - GET  reads from verified_asset_packages first; generates + stores if absent
-//   - When deal_stage === 'funded' the package is also sealed (sealed=true)
-//   - POST /regenerate allows the owner to force a fresh package on a non-sealed deal
-//     (or any deal, by passing ?force=true)
+// Persistence layer:
+//   - GET reads from verified_asset_packages only when a legacy package already exists
+//   - Missing legacy packages are not generated from live state
+//   - New immutable preparation artifacts use the snapshot-bound routes in index.js
 //
 // Share layer:
 //   - POST /share generates a time-limited HMAC-signed token and optionally emails it
@@ -398,42 +397,10 @@ async function storeVAP(propertyId, pkg, seal = false) {
   }
 }
 
-// ── Public generate+store helper (used by advance endpoint + sealClosingRecord) ─
-async function generateAndStoreVAP(propertyId, { seal = false } = {}) {
-  try {
-    const { data: room } = await supabase
-      .from('deal_rooms')
-      .select('property_name, workflow_pack_id, base_pack, transaction_type, metadata_values, deal_stage, stages_config')
-      .eq('property_id', propertyId)
-      .maybeSingle();
-    if (!room) return null;
-    const packId = await getRoomPackId(propertyId);
-    const { lastKey, secondToLastKey } = getTerminalStageKeys(room, packId);
-    const eligibleStage = seal ? lastKey : secondToLastKey;
-    if (room.deal_stage !== eligibleStage) {
-      console.warn(`[vap] skipped before persisted lifecycle milestone — ${propertyId} stage=${room.deal_stage} expected=${eligibleStage}`);
-      return null;
-    }
-    if (isHazardLossRoom(room)) {
-      const transactionState = await readTransactionState(propertyId);
-      const gate = getHazardLossRepairGate(transactionState);
-      if (!gate.ok) {
-        console.warn(`[vap] skipped while hazard-loss facts remain unconfirmed — ${propertyId}`);
-        return null;
-      }
-    }
-    const pkg = await buildVAP(propertyId);
-    await storeVAP(propertyId, pkg, seal);
-    return pkg;
-  } catch (e) {
-    console.warn('[vap] generateAndStoreVAP failed:', e.message);
-    return null;
-  }
-}
-
 // ── GET /api/public/deal-room/:propertyId/verified-asset-package ─────────────
-// Returns the stored package when available; falls back to live generation.
-// When the deal is funded, stores the freshly generated package and seals it.
+// Legacy read surface. It may serve an already-persisted legacy package, but
+// it must never create one from live room state. New preparation artifacts use
+// the snapshot-bound digital-asset-packages routes in api/index.js.
 router.get('/api/public/deal-room/:propertyId/verified-asset-package', async (req, res) => {
   const { propertyId } = req.params;
 
@@ -478,24 +445,10 @@ router.get('/api/public/deal-room/:propertyId/verified-asset-package', async (re
       return res.json({ ...stored.package, _stored: true, _sealed: stored.sealed });
     }
 
-    // 2. No stored package — generate fresh
-    const pkg = await buildVAP(propertyId);
-
-    // 3. Persist at last two stages (position-based, works for custom-staged workspaces).
-    // Fetch stages_config here so we can derive terminal keys without changing the public
-    // pkg shape.
-    const stage = pkg.identity?.deal_stage;
-    const packId = pkg.identity?.workflow_pack;
-    const { data: roomForStages } = await supabase
-      .from('deal_rooms').select('stages_config').eq('property_id', propertyId).maybeSingle();
-    const { lastKey, secondToLastKey } = getTerminalStageKeys(roomForStages, packId);
-    const shouldStore = [lastKey, secondToLastKey].includes(stage);
-    const seal = stage === lastKey;
-    if (shouldStore) {
-      storeVAP(propertyId, pkg, seal).catch(() => {});
-    }
-
-    return res.json(pkg);
+    return res.status(404).json({
+      error: 'LEGACY_PACKAGE_NOT_FOUND',
+      message: 'No legacy package is stored. Select an eligible immutable readiness snapshot to generate a Digital Asset Preparation Package.',
+    });
   } catch (e) {
     console.error('[vap]', e.message);
     return res.status(500).json({ error: 'Failed to generate Verified Transaction Package' });
@@ -506,40 +459,10 @@ router.get('/api/public/deal-room/:propertyId/verified-asset-package', async (re
 // Allows the owner to force a fresh package. Sealed packages are protected
 // unless ?force=true is passed (reserved for admin use).
 router.post('/api/public/deal-room/:propertyId/verified-asset-package/regenerate', async (req, res) => {
-  const { propertyId } = req.params;
-  const force = req.query.force === 'true';
-
-  try {
-    // Check if sealed
-    const { data: stored } = await supabase
-      .from('verified_asset_packages')
-      .select('sealed')
-      .eq('property_id', propertyId)
-      .maybeSingle();
-
-    if (stored?.sealed && !force) {
-      return res.status(403).json({
-        error: 'This Verified Transaction Package has been sealed at funding and cannot be regenerated. Pass ?force=true to override.',
-      });
-    }
-
-    // Fetch current deal stage to determine whether to re-seal
-    const { data: room } = await supabase
-      .from('deal_rooms')
-      .select('deal_stage')
-      .eq('property_id', propertyId)
-      .maybeSingle();
-
-    const seal = room?.deal_stage === 'funded';
-    const pkg = await buildVAP(propertyId);
-    await storeVAP(propertyId, pkg, seal);
-
-    console.log(`[vap] regenerated${seal ? ' (sealed)' : ''} — ${propertyId}`);
-    return res.json({ ok: true, regenerated_at: pkg.generated_at, sealed: seal, package: pkg });
-  } catch (e) {
-    console.error('[vap] regenerate', e.message);
-    return res.status(500).json({ error: 'Failed to regenerate Verified Transaction Package' });
-  }
+  return res.status(410).json({
+    error: 'SNAPSHOT_BOUND_PACKAGE_REQUIRED',
+    message: 'Legacy package regeneration from live room state is disabled. Generate a Digital Asset Preparation Package from a selected eligible immutable readiness snapshot.',
+  });
 });
 
 // ── POST /api/public/deal-room/:propertyId/verified-asset-package/share ──────
@@ -665,9 +588,10 @@ router.get('/api/public/verify/:token', async (req, res) => {
       return res.json({ ...stored.package, _shared: true, _expires_at: new Date(expiresAt).toISOString() });
     }
 
-    // Fall back to live generation
-    const pkg = await buildVAP(propertyId);
-    return res.json({ ...pkg, _shared: true, _expires_at: new Date(expiresAt).toISOString() });
+    return res.status(404).json({
+      error: 'LEGACY_PACKAGE_NOT_FOUND',
+      message: 'No persisted package is available for this share link.',
+    });
   } catch (e) {
     console.error('[vap/verify]', e.message);
     return res.status(500).json({ error: 'Failed to load Verified Transaction Package' });
@@ -675,5 +599,4 @@ router.get('/api/public/verify/:token', async (req, res) => {
 });
 
 module.exports = router;
-module.exports.generateAndStoreVAP = generateAndStoreVAP;
 module.exports.buildVAP = buildVAP;
