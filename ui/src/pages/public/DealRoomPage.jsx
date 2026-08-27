@@ -5337,11 +5337,11 @@ function mergeTransactionRecordState(previous, incoming) {
   const arrayKeys = ['requiredFields', 'fields', 'unresolvedConflicts'];
   arrayKeys.forEach(key => {
     const incomingValue = incoming[key];
-    const previousValue = previous[key];
-    if (Array.isArray(incomingValue) && incomingValue.length > 0) {
+    // An empty array is an authoritative response too. Keeping the previous
+    // projection here resurrects stale awaiting fields and conflicts after a
+    // confirmation or a fresh empty record response.
+    if (Array.isArray(incomingValue)) {
       merged[key] = incomingValue;
-    } else if (Array.isArray(previousValue) && previousValue.length > 0) {
-      merged[key] = previousValue;
     }
   });
   ['schemaKey', 'requiredCount', 'confirmedCount', 'awaitingRequiredCount'].forEach(key => {
