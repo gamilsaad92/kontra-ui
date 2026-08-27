@@ -215,6 +215,19 @@ describe('coordinator transaction brief logic', () => {
     ]);
   });
 
+  test('deduplicates borrower-funds actions across legacy field aliases', () => {
+    expect(dedupeAttentionItems([
+      {
+        title: 'Provide Borrower funds advanced',
+        fieldKey: 'financial.borrower_funds_advanced',
+      },
+      {
+        title: 'Advance borrower funds',
+        routeItem: { field_key: 'financial.borrower_advanced_funds' },
+      },
+    ])).toHaveLength(1);
+  });
+
   test('builds awaiting actions from canonical required fields, not stale raw rows', () => {
     const recordState = {
       requiredFields: [
@@ -232,6 +245,30 @@ describe('coordinator transaction brief logic', () => {
     ]);
     expect(getCanonicalAwaitingRecordFields(recordState)).not.toContain(rawRows[0]);
     expect(getCanonicalAwaitingRecordFields(recordState)).not.toContain(rawRows[1]);
+  });
+
+  test('does not keep an awaiting borrower-funds alias after confirmation', () => {
+    const recordState = {
+      requiredFields: [
+        {
+          key: 'financial.borrower_advanced_funds',
+          label: 'Borrower funds advanced',
+          value: '90,000',
+          status: 'awaiting',
+        },
+        {
+          key: 'financial.borrower_funds_advanced',
+          label: 'Borrower funds advanced',
+          value: '9,000',
+          status: 'confirmed',
+        },
+      ],
+    };
+
+    expect(getCanonicalAwaitingRecordFields(recordState)).toEqual([]);
+    expect(filterStaleRecordActions([
+      'Advance borrower funds before review',
+    ], recordState)).toEqual([]);
   });
 
   test('replaces a previous canonical array when the newer response is empty', () => {

@@ -3123,9 +3123,11 @@ function WhatNeedsAttention({
         || (label && label === normalizeAttentionText(candidate.label || candidate.display_label))
     );
   });
-  const canonicalRecordKey = definition => definition.aliasOf || definition.key;
+  const canonicalRecordKey = definition => normalizeAttentionFieldKey(
+    definition.aliasOf || definition.key,
+  );
   const canonicalStateField = definition => recordState?.fields?.find(field =>
-    field.key === canonicalRecordKey(definition)
+    getRecordFieldIdentitySet(field).has(canonicalRecordKey(definition))
   );
   const missingCanonicalKeys = new Set();
   const recordMissing = effectiveRecordDefinitions
@@ -3225,6 +3227,7 @@ function WhatNeedsAttention({
     const label = conflict.label || conflict.display_label || fieldKey || 'Transaction Record';
     items.push({
       id: `transaction-conflict-${conflict.id || fieldKey}`,
+      fieldKey: normalizeAttentionFieldKey(fieldKey),
       urgency: 'high',
       title: /repair\s*cost/i.test(`${label} ${fieldKey}`)
         ? 'Resolve Repair Cost Discrepancy'
@@ -3241,6 +3244,7 @@ function WhatNeedsAttention({
     .slice(0, 4)
     .forEach(f => items.push({
       id: `review-${f.fieldId || f.id || f.key}`,
+      fieldKey: normalizeAttentionFieldKey(f.key || f.field_key || f.persistedKey),
       urgency: 'medium',
       title: f.label || f.display_label || f.key,
       reason: `Kontra extracted "${f.value ?? f.value_text}" from an uploaded document. Confirm this is correct.`,
@@ -3290,6 +3294,7 @@ function WhatNeedsAttention({
   }));
   const recordActions = recordMissing.map(field => ({
     id: `missing-record-${field.key}`,
+    fieldKey: normalizeAttentionFieldKey(field.key),
     urgency: 'high',
     title: `Provide ${field.label}`,
     reason: `Required Transaction Record field "${field.label}" is missing. Add and confirm the authoritative value.`,
@@ -3344,10 +3349,14 @@ function WhatNeedsAttention({
     const structuredField = item?.field_key || item?.fieldKey
       ? { field_key: item.field_key || item.fieldKey }
       : null;
+    const matchedRecordField = findCanonicalRecordFieldForAction(item, recordState, recordFields);
     const routeItem = structuredField || item;
     const isCritical = item?.taskId || item?.chainStep || briefing?.criticalPath?.includes(item);
     items.push({
       id: `action-${i}`,
+      fieldKey: matchedRecordField
+        ? [...getRecordFieldIdentitySet(matchedRecordField)][0]
+        : normalizeAttentionFieldKey(item?.field_key || item?.fieldKey),
       urgency: isCritical ? 'high' : i === 0 ? 'medium' : 'low',
       title: normalizedText,
       reason: typeof item === 'object' ? (item.reason || item.note || item.why || '') : '',
@@ -3368,7 +3377,18 @@ function WhatNeedsAttention({
     const normalizedText = String(text).trim();
     if (!normalizedText || seenBriefingActions.has(normalizedText.toLowerCase())) return;
     seenBriefingActions.add(normalizedText.toLowerCase());
-    items.push({ id: `issue-${i}`, urgency: 'high', title: normalizedText, reason: '', routeItem: item, actions: [] });
+    const matchedRecordField = findCanonicalRecordFieldForAction(item, recordState, recordFields);
+    items.push({
+      id: `issue-${i}`,
+      fieldKey: matchedRecordField
+        ? [...getRecordFieldIdentitySet(matchedRecordField)][0]
+        : normalizeAttentionFieldKey(item?.field_key || item?.fieldKey),
+      urgency: 'high',
+      title: normalizedText,
+      reason: '',
+      routeItem: item,
+      actions: [],
+    });
   });
 
   const urgencyPriority = { high: 0, medium: 1, low: 2 };
@@ -3513,17 +3533,21 @@ function WhatNeedsAttention({
                 : item.actions.find(candidate => typeof candidate?.onClick === 'function')
                   || routeForItem(item.routeItem || item);
               return (
-                <div key={item.id} className="flex items-center gap-2.5 py-2.5">
+                  <div key={item.id} className="flex items-start gap-2.5 py-2.5">
                   <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${urgencyDot[item.urgency]}`} />
                    <div className="min-w-0 flex-1">
-                     <p className="truncate text-xs font-semibold text-gray-800">{item.title}</p>
-                     {item.reason && <p className="mt-0.5 truncate text-[10px] text-gray-400">{item.reason}</p>}
+                      <p className="break-words text-xs font-semibold text-gray-800">{item.title}</p>
+                      {item.reason && <p className="mt-0.5 break-words text-[10px] text-gray-400">{item.reason}</p>}
                    </div>
                   <button
                     type="button"
                      onClick={(event) => { event.preventDefault(); event.stopPropagation(); action.onClick?.(); }}
                     disabled={action.disabled}
-                    className="relative z-10 cursor-pointer shrink-0 rounded-lg border border-gray-200 px-2.5 py-1 text-[10px] font-bold text-gray-600 transition hover:bg-gray-50 disabled:opacity-50">
+                     className={`relative z-10 max-w-full shrink-0 cursor-pointer rounded-lg px-2.5 py-1 text-[10px] font-bold transition disabled:opacity-50 ${
+                       action.primary
+                         ? 'bg-[#800020] text-white hover:opacity-90'
+                         : 'border border-[#800020] bg-white text-[#800020] hover:bg-[#800020]/5'
+                     }`}>
                     {action.label}
                   </button>
                 </div>
@@ -3615,18 +3639,18 @@ function WhatNeedsAttention({
                   ? itemActions
                   : [routeForItem(item.routeItem || item)];
               return (
-              <div key={item.id} className={`flex items-start gap-3 px-5 py-4 ${item.urgency === 'high' ? 'bg-red-50/40' : ''}`}>
+              <div key={item.id} className={`flex min-w-0 items-start gap-3 px-5 py-4 ${item.urgency === 'high' ? 'bg-red-50/40' : ''}`}>
                 <span className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${urgencyDot[item.urgency]}`} />
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold text-gray-900 leading-snug">{item.title}</p>
-                  {item.reason ? <p className="mt-0.5 text-xs text-gray-500 leading-relaxed">{item.reason}</p> : null}
-                  {item.excerpt ? <p className="mt-1 text-[11px] text-gray-400 italic leading-relaxed">{item.excerpt}</p> : null}
+                  <p className="break-words text-sm font-semibold leading-snug text-gray-900">{item.title}</p>
+                  {item.reason ? <p className="mt-0.5 break-words text-xs leading-relaxed text-gray-500">{item.reason}</p> : null}
+                  {item.excerpt ? <p className="mt-1 break-words text-[11px] italic leading-relaxed text-gray-400">{item.excerpt}</p> : null}
                   {renderedActions.length > 0 && (
-                    <div className="mt-2.5 flex flex-wrap gap-2">
+                    <div className="mt-2.5 flex max-w-full flex-wrap items-center gap-2">
                       {renderedActions.map((a, ai) => (
                          <button key={ai} type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); a.onClick?.(); }} disabled={a.disabled}
-                           className={`relative z-10 cursor-pointer rounded-lg px-3 py-1.5 text-[11px] font-bold transition disabled:opacity-50 ${
-                            a.primary ? 'bg-[#800020] text-white hover:opacity-90' : 'border border-gray-200 text-gray-700 hover:bg-gray-50'
+                           className={`relative z-10 max-w-full cursor-pointer rounded-lg px-3 py-1.5 text-[11px] font-bold transition disabled:opacity-50 ${
+                            a.primary ? 'bg-[#800020] text-white hover:opacity-90' : 'border border-[#800020] bg-white text-[#800020] hover:bg-[#800020]/5'
                           }`}>
                           {a.label}
                         </button>
@@ -4169,7 +4193,7 @@ function DigitalAssetReadinessSection({
               {/* Expanded detail panel */}
               {isExpanded && (
                 <div className="px-5 pb-4 pt-1 bg-gray-50/60 border-t border-gray-100">
-                   <div className="grid gap-3 sm:grid-cols-3">
+                    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                     {/* Confirmed */}
                     <div>
                       <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-1.5">Confirmed</p>
@@ -4190,7 +4214,7 @@ function DigitalAssetReadinessSection({
                                         <button type="button"
                                           onClick={() => { setEditingField(confirmedFieldId); setEditValue(d.state.value || ''); setMutationError(''); }}
                                           disabled={!!confirmingField}
-                                          className="rounded-lg border border-gray-200 bg-white px-2 py-1 text-[10px] font-bold text-gray-600 disabled:opacity-50">
+                                          className="rounded-lg border border-[#800020] bg-white px-2 py-1 text-[10px] font-bold text-[#800020] hover:bg-[#800020]/5 disabled:opacity-50">
                                           Edit/correct
                                         </button>
                                         <button type="button"
@@ -4208,7 +4232,7 @@ function DigitalAssetReadinessSection({
                                     <input value={editValue} onChange={event => setEditValue(event.target.value)}
                                       aria-label={`Correct ${d.label}`} className="min-w-0 flex-1 rounded border border-gray-200 bg-white px-2 py-1 text-[10px]" />
                                     <button type="button" onClick={() => updateRecordField(d.state.field || d.state, { value_text: editValue, status: 'needs_review' })}
-                                      disabled={!editValue.trim() || !!confirmingField} className="rounded bg-gray-700 px-2 py-1 text-[10px] font-bold text-white disabled:opacity-50">
+                                      disabled={!editValue.trim() || !!confirmingField} className="rounded bg-[#800020] px-2 py-1 text-[10px] font-bold text-white hover:opacity-90 disabled:opacity-50">
                                       Save correction
                                     </button>
                                   </span>
@@ -4240,7 +4264,7 @@ function DigitalAssetReadinessSection({
                                       <button type="button"
                                         onClick={() => { setEditingField(d.state.fieldId || d.state.field.id); setEditValue(d.state.value || ''); setMutationError(''); }}
                                         disabled={!!confirmingField}
-                                        className="rounded-lg border border-gray-200 bg-white px-2 py-1 text-[10px] font-bold text-gray-600 disabled:opacity-50">
+                                         className="rounded-lg border border-[#800020] bg-white px-2 py-1 text-[10px] font-bold text-[#800020] hover:bg-[#800020]/5 disabled:opacity-50">
                                         Edit/correct
                                       </button>
                                       <button type="button"
@@ -4257,7 +4281,7 @@ function DigitalAssetReadinessSection({
                                     <input value={editValue} onChange={event => setEditValue(event.target.value)}
                                       aria-label={`Correct ${d.label}`} className="min-w-0 flex-1 rounded border border-gray-200 bg-white px-2 py-1 text-[10px]" />
                                     <button type="button" onClick={() => updateRecordField(d.state.field || d.state, { value_text: editValue, status: 'needs_review' })}
-                                      disabled={!editValue.trim() || !!confirmingField} className="rounded bg-gray-700 px-2 py-1 text-[10px] font-bold text-white disabled:opacity-50">
+                                       disabled={!editValue.trim() || !!confirmingField} className="rounded bg-[#800020] px-2 py-1 text-[10px] font-bold text-white hover:opacity-90 disabled:opacity-50">
                                       Save correction
                                     </button>
                                   </span>
@@ -4280,10 +4304,10 @@ function DigitalAssetReadinessSection({
                           {cat.missingDefs.slice(0, 4).map(d => (
                               <li key={d.key} id={`transaction-record-field-${encodeURIComponent(d.key)}`} data-transaction-record-field="true" data-transaction-record-key={d.key} data-transaction-record-label={d.label} className={`flex items-start gap-1.5 rounded-lg px-1 text-xs text-gray-500 transition-shadow ${focusedFieldKey === d.key ? 'bg-amber-50 ring-2 ring-amber-300 ring-offset-1' : ''}`}>
                               <span className="mt-0.5 text-gray-300 shrink-0">○</span>
-                              <span className="flex min-w-0 flex-1 items-center justify-between gap-2">
-                                <span>{d.label}{d.state?.value ? <span className="text-gray-400"> — {d.state.value}</span> : ''}</span>
+                               <span className="flex min-w-0 flex-1 flex-wrap items-start justify-between gap-2">
+                                 <span className="min-w-0 flex-1 break-words">{d.label}{d.state?.value ? <span className="text-gray-400"> — {d.state.value}</span> : ''}</span>
                                    {editingMissing === d.key ? (
-                                     <span className="flex shrink-0 items-center gap-1">
+                                     <span className="flex max-w-full shrink-0 flex-wrap items-center gap-1">
                                        <input
                                          value={missingValue}
                                          onChange={event => setMissingValue(event.target.value)}
@@ -4310,7 +4334,7 @@ function DigitalAssetReadinessSection({
                                      <button
                                        type="button"
                                        onClick={() => { setEditingMissing(d.key); setMissingValue(''); setMutationError(''); }}
-                                       className="shrink-0 rounded-lg border border-gray-200 bg-white px-2 py-1 text-[10px] font-bold text-gray-600 hover:bg-gray-50"
+                                          className="shrink-0 rounded-lg border border-[#800020] bg-white px-2 py-1 text-[10px] font-bold text-[#800020] hover:bg-[#800020]/5"
                                      >
                                        Add value
                                      </button>
@@ -4835,18 +4859,32 @@ function recordStateFieldForDefinition(definition, recordState) {
   ].filter(Boolean);
   const normalizeLabel = value => String(value || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, ' ').replace(/\s+/g, ' ');
   const label = normalizeLabel(definition?.label);
-  const required = recordState?.requiredFields?.find(field =>
-    definitions.includes(field?.definitionKey)
-      || definitions.includes(field?.key)
-      || definitions.includes(field?.persistedKey)
-      || (label && normalizeLabel(field?.label) === label)
+  const definitionIdentities = new Set(definitions.map(normalizeAttentionFieldKey));
+  const matches = [
+    ...(Array.isArray(recordState?.requiredFields) ? recordState.requiredFields : []),
+    ...(Array.isArray(recordState?.fields) ? recordState.fields : []),
+  ].filter(field =>
+    [...getRecordFieldIdentitySet(field)].some(identity => definitionIdentities.has(identity))
+      || (label && normalizeLabel(field?.label || field?.display_label) === label)
   );
-  if (required) return required;
-  return recordState?.fields?.find(field =>
-    definitions.includes(field?.key)
-      || definitions.includes(field?.persistedKey)
-      || (label && normalizeLabel(field?.label) === label)
-  ) || null;
+  const statusPriority = {
+    confirmed: 0,
+    verified: 0,
+    source_changed: 1,
+    conflict: 2,
+    conflicting: 2,
+    awaiting: 3,
+    needs_review: 3,
+    extracted: 3,
+    missing: 4,
+    not_applicable: 5,
+  };
+  return matches
+    .slice()
+    .sort((a, b) =>
+      (statusPriority[normalizeRecordStatus(a)] ?? 6)
+      - (statusPriority[normalizeRecordStatus(b)] ?? 6)
+    )[0] || null;
 }
 
 function getRecordDefinitionState(definition, recordFields = [], recordState = null) {
@@ -4966,7 +5004,7 @@ function getEffectiveRecordDefinitions(schemaKey, property, recordFields = [], r
           field.canonicalKey,
           field.persistedKey,
           field.definitionKey,
-        ].filter(Boolean)),
+        ].filter(Boolean).map(normalizeAttentionFieldKey)),
       );
       return [
         ...persistedFields,
@@ -4975,7 +5013,8 @@ function getEffectiveRecordDefinitions(schemaKey, property, recordFields = [], r
           field.canonicalKey,
           field.persistedKey,
           field.definitionKey,
-        ].some(identity => identity && persistedIdentities.has(identity))),
+        ].filter(Boolean).map(normalizeAttentionFieldKey)
+          .some(identity => persistedIdentities.has(identity))),
       ];
     }
     if (canonicalFields.length > 0) return canonicalFields;
@@ -5181,15 +5220,34 @@ function getCanonicalRecordFieldCandidates(recordState, recordFields = []) {
     ...(Array.isArray(recordState?.fields) ? recordState.fields : []),
     ...(Array.isArray(recordFields) ? recordFields : []),
   ];
-  const seen = new Set();
-  return candidates.filter(field => {
+  const candidatesByIdentity = new Map();
+  const statusPriority = {
+    confirmed: 0,
+    verified: 0,
+    source_changed: 1,
+    conflict: 2,
+    conflicting: 2,
+    awaiting: 3,
+    needs_review: 3,
+    extracted: 3,
+    missing: 4,
+    not_applicable: 5,
+  };
+  candidates.forEach(field => {
     const identities = getRecordFieldIdentitySet(field);
     const label = normalizeAttentionText(field?.label || field?.display_label);
     const identity = [...identities][0] || (label ? `label:${label}` : '');
-    if (!identity || seen.has(identity)) return false;
-    seen.add(identity);
-    return true;
+    if (!identity) return;
+    const current = candidatesByIdentity.get(identity);
+    if (
+      !current
+      || (statusPriority[normalizeRecordStatus(field)] ?? 6)
+        < (statusPriority[normalizeRecordStatus(current)] ?? 6)
+    ) {
+      candidatesByIdentity.set(identity, field);
+    }
   });
+  return [...candidatesByIdentity.values()];
 }
 
 function actionTextMentionsRecordField(action, field) {
@@ -5309,8 +5367,24 @@ function filterStaleRecordActions(
 
 function dedupeAttentionItems(items = []) {
   const seen = new Set();
+  const seenFields = new Set();
   return items.filter(item => {
     const raw = String(item?.title || item?.text || '').trim().toLowerCase();
+    const explicitField = [
+      item?.field,
+      item?.fieldKey,
+      item?.field_key,
+      item?.routeItem?.field,
+      item?.routeItem?.fieldKey,
+      item?.routeItem?.field_key,
+    ].find(Boolean);
+    const fieldKey = typeof explicitField === 'object'
+      ? [...getRecordFieldIdentitySet(explicitField)][0]
+      : normalizeAttentionFieldKey(explicitField);
+    if (fieldKey) {
+      if (seenFields.has(fieldKey)) return false;
+      seenFields.add(fieldKey);
+    }
     const key = /repair\s*cost/i.test(raw)
       ? 'repair-cost-discrepancy'
       : /discrepancy|conflict/.test(raw) && /repair|cost/.test(raw)
@@ -5324,7 +5398,19 @@ function dedupeAttentionItems(items = []) {
 
 function getCanonicalAwaitingRecordFields(recordState) {
   if (!Array.isArray(recordState?.requiredFields)) return [];
-  return recordState.requiredFields.filter(field =>
+  const fieldsByIdentity = new Map();
+  recordState.requiredFields.forEach(field => {
+    const identity = [...getRecordFieldIdentitySet(field)][0]
+      || `label:${normalizeAttentionText(field?.label || field?.display_label)}`;
+    if (!identity) return;
+    const current = fieldsByIdentity.get(identity);
+    const currentStatus = normalizeRecordStatus(current);
+    const nextStatus = normalizeRecordStatus(field);
+    if (!current || (currentStatus !== 'confirmed' && nextStatus === 'confirmed')) {
+      fieldsByIdentity.set(identity, field);
+    }
+  });
+  return [...fieldsByIdentity.values()].filter(field =>
     normalizeRecordStatus(field) === 'awaiting'
       && String(field.value ?? field.value_text ?? '').trim()
   );
