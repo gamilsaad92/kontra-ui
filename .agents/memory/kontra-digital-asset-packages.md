@@ -9,8 +9,8 @@ Digital Asset Preparation Packages are append-only artifacts created only by an 
 
 **How to apply:** require owner authorization and an exact snapshot ID/version, reject missing or ineligible snapshots, persist one immutable package per source snapshot, serve reads/JSON export from the persisted package only, and keep issuance, custody, KYC/AML execution, trading, and settlement execution out of scope.
 
-Preparation inputs must be explicitly entered by the owner; do not infer or copy values from frozen Transaction Record fields just to make a package appear complete.
+Preparation inputs must be explicitly entered by the owner or safely inherited from a confirmed, exact frozen Transaction Record mapping; never fabricate or use ambiguous label matches.
 
-**Why:** the frozen readiness evidence and new provider-review inputs have different provenance and must remain visibly and cryptographically distinguishable.
+**Why:** the frozen readiness evidence and new provider-review inputs have different provenance, while trustworthy exact mappings avoid asking owners to re-enter facts already confirmed in the selected snapshot.
 
-**How to apply:** keep preparation values in append-only revisions, return missing fields by name, and leave a package in `needs_information` until each required input has a real owner-entered value.
+**How to apply:** mark inherited values and their source, let owners revise or clear them into append-only revisions, return missing fields by name, and keep the package in `needs_information` when required inputs remain blank.
