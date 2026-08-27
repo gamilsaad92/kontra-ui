@@ -6165,6 +6165,7 @@ export {
   getRecordDefinitionState,
   getCurrentProvenanceGap,
   getCoordinatorRecordFacts,
+  preparationDraftValue,
 };
 
 // ── Transaction Seal Summary (complete phase) ─────────────────────────────────
@@ -6842,6 +6843,26 @@ function SnapshotInspectionModal({
   );
 }
 
+function preparationDraftValue(field) {
+  const value = field?.value;
+  if (field?.input_type === 'choice_with_detail') {
+    if (value && typeof value === 'object' && !Array.isArray(value)) {
+      return { choice: value.choice || '', detail: value.detail || value.details || '' };
+    }
+    return { choice: value || '', detail: '' };
+  }
+  if (field?.input_type === 'multi_choice_with_detail') {
+    if (value && typeof value === 'object' && !Array.isArray(value)) {
+      return {
+        choices: Array.isArray(value.choices) ? value.choices : [],
+        detail: value.detail || value.details || '',
+      };
+    }
+    return { choices: Array.isArray(value) ? value : value ? [value] : [], detail: '' };
+  }
+  return Array.isArray(value) ? value.join(', ') : (value || '');
+}
+
 function DigitalAssetPackageModal({
   propertyId,
   ownerToken,
@@ -6864,7 +6885,7 @@ function DigitalAssetPackageModal({
     setDraft(Object.fromEntries(
       Object.entries(packageRecord.package?.preparation_fields || {}).map(([key, field]) => [
         key,
-        Array.isArray(field?.value) ? field.value.join(', ') : (field?.value || ''),
+        preparationDraftValue(field),
       ]),
     ));
     setSaveState({ loading: false, error: false, message: '' });
@@ -6912,6 +6933,111 @@ function DigitalAssetPackageModal({
     setSaveState(previous => previous.message
       ? { loading: false, error: false, message: '' }
       : previous);
+  }
+
+  function renderPreparationInput(key, field) {
+    const inputType = field?.input_type || 'text';
+    const disabled = !ownerToken || saveState.loading;
+    const inputClass = 'w-full rounded-lg border border-gray-200 px-3 py-2 text-xs text-gray-800 outline-none focus:border-[#800020] focus:ring-1 focus:ring-[#800020]/20 disabled:bg-gray-50';
+    if (inputType === 'choice_with_detail') {
+      const value = draft[key] && typeof draft[key] === 'object'
+        ? draft[key]
+        : { choice: '', detail: '' };
+      return (
+        <div className="space-y-2">
+          <select
+            value={value.choice || ''}
+            onChange={event => updateDraft(key, {
+              ...value,
+              choice: event.target.value,
+              detail: event.target.value === 'other' ? (value.detail || '') : '',
+            })}
+            disabled={disabled}
+            className={inputClass}
+            aria-label={field?.label || key}
+          >
+            <option value="">Choose an option…</option>
+            {(field?.choices || []).map(choice => (
+              <option key={choice.value} value={choice.value}>{choice.label}</option>
+            ))}
+          </select>
+          {value.choice === 'other' && (
+            <input
+              value={value.detail || ''}
+              onChange={event => updateDraft(key, { ...value, detail: event.target.value })}
+              disabled={disabled}
+              className={inputClass}
+              placeholder={field?.detail_placeholder || 'Add a short detail'}
+              aria-label={field?.detail_label || `${field?.label || key} detail`}
+            />
+          )}
+        </div>
+      );
+    }
+    if (inputType === 'multi_choice_with_detail') {
+      const value = draft[key] && typeof draft[key] === 'object'
+        ? draft[key]
+        : { choices: [], detail: '' };
+      const selected = Array.isArray(value.choices) ? value.choices : [];
+      return (
+        <div className="space-y-2">
+          <div className="grid gap-2">
+            {(field?.choices || []).map(choice => (
+              <label key={choice.value} className="flex items-start gap-2 text-xs text-gray-700">
+                <input
+                  type="checkbox"
+                  checked={selected.includes(choice.value)}
+                  onChange={event => updateDraft(key, {
+                    ...value,
+                    choices: event.target.checked
+                      ? [...selected, choice.value]
+                      : selected.filter(item => item !== choice.value),
+                    detail: !event.target.checked && choice.value === 'other' ? '' : (value.detail || ''),
+                  })}
+                  disabled={disabled}
+                  className="mt-0.5 accent-[#800020]"
+                  aria-label={choice.label}
+                />
+                <span>{choice.label}</span>
+              </label>
+            ))}
+          </div>
+          {(selected.includes('other') || selected.some(item => item !== 'none_identified')) && (
+            <input
+              value={value.detail || ''}
+              onChange={event => updateDraft(key, { ...value, detail: event.target.value })}
+              disabled={disabled}
+              className={inputClass}
+              placeholder={field?.detail_placeholder || 'Add context'}
+              aria-label={field?.detail_label || `${field?.label || key} detail`}
+            />
+          )}
+        </div>
+      );
+    }
+    if (inputType === 'textarea') {
+      return (
+        <textarea
+          value={draft[key] || ''}
+          onChange={event => updateDraft(key, event.target.value)}
+          rows={3}
+          disabled={disabled}
+          className={inputClass}
+          aria-label={field?.label || key}
+          placeholder={field?.placeholder || `Enter ${field?.label || key.replace(/_/g, ' ').toLowerCase()}`}
+        />
+      );
+    }
+    return (
+      <input
+        value={draft[key] || ''}
+        onChange={event => updateDraft(key, event.target.value)}
+        disabled={disabled}
+        className={inputClass}
+        aria-label={field?.label || key}
+        placeholder={field?.placeholder || `Enter ${field?.label || key.replace(/_/g, ' ').toLowerCase()}`}
+      />
+    );
   }
 
   async function savePreparationFields() {
@@ -7119,36 +7245,35 @@ function DigitalAssetPackageModal({
                )}
                <div className="mt-3 overflow-hidden rounded-xl border border-gray-200 bg-white">
                  <div className="divide-y divide-gray-100">
-                   {Object.entries(preparationFields).map(([key, field]) => (
-                     <label key={key} className="grid gap-1 px-4 py-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1.5fr)_130px] sm:gap-3">
+                    {Object.entries(preparationFields).map(([key, field]) => (
+                      <div key={key} className="grid gap-1 px-4 py-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1.5fr)_130px] sm:gap-3">
                        <span>
-                         <span className="block text-xs font-semibold text-gray-800">{field?.label || key.replace(/_/g, ' ')}</span>
-                         <span className="mt-1 block text-[10px] leading-relaxed text-gray-400">{field?.description}</span>
+                          <span className="flex flex-wrap items-center gap-2 text-xs font-semibold text-gray-800">
+                            {field?.label || key.replace(/_/g, ' ')}
+                            <span className={`rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide ${
+                              field?.required
+                                ? 'bg-amber-100 text-amber-800'
+                                : 'bg-gray-100 text-gray-500'
+                            }`}>
+                              {field?.required ? 'Required' : 'Optional'}
+                            </span>
+                          </span>
+                          <span className="mt-1 block text-[10px] leading-relaxed text-gray-500">
+                            {field?.guidance || field?.description}
+                          </span>
+                          {field?.inherited && (
+                            <span className="mt-1 block text-[10px] font-semibold text-blue-700">
+                              Inherited from {field?.source_field_key || field?.inherited_from?.field_key || 'the frozen Transaction Record'} — revise this preparation value if needed.
+                            </span>
+                          )}
                        </span>
-                       {['governing_documents', 'ownership_evidence', 'investor_restrictions', 'security_offering_structure'].includes(key) ? (
-                         <textarea
-                           value={draft[key] || ''}
-                           onChange={event => updateDraft(key, event.target.value)}
-                           rows={3}
-                           disabled={!ownerToken || saveState.loading}
-                           className="w-full rounded-lg border border-gray-200 px-3 py-2 text-xs text-gray-800 outline-none focus:border-[#800020] focus:ring-1 focus:ring-[#800020]/20 disabled:bg-gray-50"
-                           placeholder={`Enter ${field?.label || key.replace(/_/g, ' ').toLowerCase()}`}
-                         />
-                       ) : (
-                         <input
-                           value={draft[key] || ''}
-                           onChange={event => updateDraft(key, event.target.value)}
-                           disabled={!ownerToken || saveState.loading}
-                           className="w-full rounded-lg border border-gray-200 px-3 py-2 text-xs text-gray-800 outline-none focus:border-[#800020] focus:ring-1 focus:ring-[#800020]/20 disabled:bg-gray-50"
-                           placeholder={`Enter ${field?.label || key.replace(/_/g, ' ').toLowerCase()}`}
-                         />
-                       )}
+                        {renderPreparationInput(key, field)}
                        <span className={`text-[10px] font-bold capitalize ${
                          field?.status === 'not_recorded' ? 'text-gray-400' : 'text-emerald-700'
                        }`}>
-                         {(field?.status || 'not recorded').replace(/_/g, ' ')}
+                          {(field?.status || 'not recorded').replace(/_/g, ' ')}
                        </span>
-                     </label>
+                      </div>
                    ))}
                  </div>
                </div>

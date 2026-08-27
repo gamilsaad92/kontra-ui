@@ -92,6 +92,7 @@ const {
 const {
   buildDigitalAssetPreparationPackage,
   extractPreparationValues,
+  normalizePreparationValueForField,
   PREPARATION_FIELD_DEFINITIONS,
   updateDigitalAssetPreparationPackage,
   presentStoredDigitalAssetPackage,
@@ -10561,16 +10562,19 @@ function normalizePreparationUpdates(fields) {
     if (!Object.prototype.hasOwnProperty.call(PREPARATION_FIELD_DEFINITIONS, key)) {
       throw packageRouteError(400, 'UNKNOWN_PREPARATION_FIELD', `Preparation field "${key}" is not supported.`);
     }
-    if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
-      throw packageRouteError(400, 'INVALID_PREPARATION_FIELD', `Preparation field "${key}" must be text or a list of text values.`);
-    }
-    const values = Array.isArray(value) ? value : [value];
-    if (values.some(item => item != null && String(item).length > 10000)) {
+    const serializedValue = JSON.stringify(value);
+    if (serializedValue && serializedValue.length > 10000) {
       throw packageRouteError(400, 'PREPARATION_FIELD_TOO_LONG', `Preparation field "${key}" is too long.`);
     }
-    updates[key] = Array.isArray(value)
-      ? value.map(item => String(item ?? '').trim()).filter(Boolean)
-      : (value == null ? null : String(value).trim());
+    try {
+      updates[key] = normalizePreparationValueForField(key, value, { strict: true });
+    } catch (error) {
+      throw packageRouteError(
+        400,
+        'INVALID_PREPARATION_FIELD',
+        `Preparation field "${key}" is invalid: ${error.message}`,
+      );
+    }
   }
   if (Object.keys(updates).length === 0) {
     throw packageRouteError(400, 'PREPARATION_FIELDS_REQUIRED', 'Provide at least one preparation field to save.');
@@ -10754,6 +10758,7 @@ app.patch('/api/public/deal-room/:propertyId/digital-asset-packages/:packageId/p
       packagePayload: currentPayload,
       preparationValues: nextValues,
       revision: nextRevision,
+      explicitKeys: Object.keys(updates),
     });
     const { data: revision, error: revisionError } = await supabase
       .from('digital_asset_preparation_package_revisions')

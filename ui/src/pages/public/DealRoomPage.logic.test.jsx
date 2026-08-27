@@ -22,6 +22,7 @@ const {
   normalizeRecordCategory,
   getTransactionRecordCategory,
   getCurrentProvenanceGap,
+  preparationDraftValue,
 } = require('./DealRoomPage');
 
 describe('coordinator transaction brief logic', () => {
@@ -29,6 +30,20 @@ describe('coordinator transaction brief logic', () => {
     { key: 'under_review', label: 'Under Review' },
     { key: 'approved', label: 'Approved' },
   ];
+
+  test('keeps inherited structured preparation values editable without flattening them', () => {
+    expect(preparationDraftValue({
+      input_type: 'choice_with_detail',
+      value: { choice: 'other', detail: 'Texas, United States' },
+    })).toEqual({ choice: 'other', detail: 'Texas, United States' });
+    expect(preparationDraftValue({
+      input_type: 'multi_choice_with_detail',
+      value: { choices: ['qualified_investors'], detail: 'Review with counsel' },
+    })).toEqual({
+      choices: ['qualified_investors'],
+      detail: 'Review with counsel',
+    });
+  });
 
   test('matches a live provenance gap to the confirmed canonical field', () => {
     expect(getCurrentProvenanceGap(

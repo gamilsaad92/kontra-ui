@@ -3,6 +3,7 @@
 const {
   buildDigitalAssetPreparationPackage,
   hashPackage,
+  normalizePreparationValueForField,
   updateDigitalAssetPreparationPackage,
 } = require('./lib/digitalAssetPreparationPackage');
 
@@ -83,12 +84,16 @@ describe('Digital Asset Preparation Package', () => {
       value: null,
       status: 'not_recorded',
     }));
+    expect(pkg.preparation_fields.settlement_method).toEqual(expect.objectContaining({
+      value: { choice: 'traditional', detail: '' },
+      origin: 'inherited_source',
+      inherited: true,
+    }));
     expect(pkg.human_summary.missing_preparation_fields).toEqual([
       'issuer',
       'jurisdiction',
       'legal_entity',
       'underlying_asset',
-      'settlement_method',
       'ownership_evidence',
       'governing_documents',
       'investor_restrictions',
@@ -99,7 +104,6 @@ describe('Digital Asset Preparation Package', () => {
       'Jurisdiction',
       'Legal Entity',
       'Underlying Asset',
-      'Settlement Method',
       'Ownership Evidence',
       'Governing Documents',
       'Investor Restrictions',
@@ -168,5 +172,81 @@ describe('Digital Asset Preparation Package', () => {
     expect(completed.frozen_readiness.canonical_fields[0].value).toBe(80000);
     expect(completed.frozen_snapshot.created_from.transaction_record.canonical_fields[0].value).toBe(80000);
     expect(pkg.package_status).toBe('needs_information');
+  });
+
+  test('prefills only confirmed exact source mappings and preserves provenance', () => {
+    const source = snapshotRow();
+    source.snapshot.created_from.transaction_record.canonical_fields.push(
+      {
+        field_key: 'issuer_name',
+        value: 'Freddie Mac',
+        current_state: 'confirmed',
+        confirmation: { confirmed: true },
+        provenance: { source_document_id: 'issuer-doc' },
+      },
+      {
+        field_key: 'jurisdiction',
+        value: 'Texas, United States',
+        current_state: 'confirmed',
+        confirmation: { confirmed: true },
+      },
+      {
+        label: 'Legal Entity',
+        value: 'Do not inherit this ambiguous label-only value',
+        current_state: 'confirmed',
+      },
+    );
+
+    const pkg = buildDigitalAssetPreparationPackage({
+      propertyId: 'freddie-room',
+      snapshotRow: source,
+    });
+
+    expect(pkg.preparation_fields.issuer).toEqual(expect.objectContaining({
+      value: 'Freddie Mac',
+      origin: 'inherited_source',
+      inherited: true,
+      source_field_key: 'issuer_name',
+      source_provenance: { source_document_id: 'issuer-doc' },
+    }));
+    expect(pkg.preparation_fields.jurisdiction).toEqual(expect.objectContaining({
+      value: { choice: 'other', detail: 'Texas, United States' },
+      origin: 'inherited_source',
+      inherited: true,
+    }));
+    expect(pkg.preparation_fields.legal_entity.value).toBeNull();
+  });
+
+  test('supports structured choices and keeps an explicit owner clear from re-inheriting', () => {
+    expect(normalizePreparationValueForField('security_offering_structure', {
+      choice: 'equity_interest',
+      detail: '',
+    }, { strict: true })).toEqual({ choice: 'equity_interest', detail: '' });
+    expect(normalizePreparationValueForField('investor_restrictions', {
+      choices: ['qualified_investors', 'transfer_restrictions'],
+      detail: 'Review with counsel',
+    }, { strict: true })).toEqual({
+      choices: ['qualified_investors', 'transfer_restrictions'],
+      detail: 'Review with counsel',
+    });
+
+    const pkg = buildDigitalAssetPreparationPackage({
+      propertyId: 'freddie-room',
+      snapshotRow: snapshotRow(),
+    });
+    const cleared = updateDigitalAssetPreparationPackage({
+      packagePayload: pkg,
+      revision: 1,
+      explicitKeys: ['settlement_method'],
+      preparationValues: { settlement_method: null },
+    });
+
+    expect(cleared.preparation_fields.settlement_method).toEqual(expect.objectContaining({
+      value: null,
+      origin: 'preparation_input',
+      inherited: false,
+      status: 'not_recorded',
+    }));
+    expect(cleared.frozen_readiness.settlement_mode).toBe('traditional');
   });
 });
