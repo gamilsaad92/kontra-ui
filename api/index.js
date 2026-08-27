@@ -9665,7 +9665,8 @@ app.patch('/api/public/deal-room/:propertyId/transaction-record/fields/:fieldId'
 
 app.post('/api/public/deal-room/:propertyId/transaction-record/fields/:fieldId/verify', async (req, res) => {
   const { propertyId, fieldId } = req.params;
-  const { ownerWriteToken, actorRole } = req.body || {};
+  const { ownerWriteToken, actorRole, approveProvenance = false } = req.body || {};
+  const provenanceApprovalRequested = approveProvenance === true;
   const access = await getRoomAccessContext(req, propertyId, ownerWriteToken);
   if (access.mode !== 'owner') return accessDenied(res, 'Owner access required');
 
@@ -9687,7 +9688,7 @@ app.post('/api/public/deal-room/:propertyId/transaction-record/fields/:fieldId/v
       .select('id').eq('id', fieldId).eq('property_id', propertyId).maybeSingle();
     if (fErr) throw fErr;
     const { data: existing } = await supabase.from('transaction_record_fields')
-      .select('id, field_key, value_text, value_json, status, updated_at')
+      .select('id, field_key, value_text, value_json, status, updated_at, source_doc_id, source_file_hash')
       .eq('id', fieldId).eq('property_id', propertyId).maybeSingle();
     if (!existing) return res.status(404).json({ error: 'Transaction Record field not found' });
     const valueForVerification = value => {
@@ -9705,6 +9706,66 @@ app.post('/api/public/deal-room/:propertyId/transaction-record/fields/:fieldId/v
       ? existing.value_text
       : existing.value_json;
     const verificationValue = valueForVerification(verificationRawValue);
+    if (provenanceApprovalRequested) {
+      const confirmedStatus = new Set(['verified', 'confirmed']);
+      const hasDocumentProvenance = Boolean(existing.source_doc_id || existing.source_file_hash);
+      if (
+        !confirmedStatus.has(existing.status)
+        || !hasMeaningfulVerificationValue(verificationRawValue)
+        || hasDocumentProvenance
+      ) {
+        return res.status(409).json({
+          error: 'FIELD_NOT_MISSING_PROVENANCE',
+          message: 'Only a populated confirmed field without document or file provenance can receive a manual provenance approval.',
+        });
+      }
+
+      // This action does not change the canonical value or field status. It
+      // records the owner's current, auditable approval as provenance evidence.
+      const approvalTime = new Date().toISOString();
+      const approvalRole = 'Workspace Owner';
+      const approvalEmail = access.email || room?.customer_email || 'coordinator';
+      const { error: approvalError } = await supabase.from('transaction_record_approvals').insert({
+        field_id: fieldId,
+        property_id: propertyId,
+        action: 'approved',
+        actor_email: approvalEmail,
+        actor_role: approvalRole,
+        is_manual: true,
+        prior_value: verificationValue,
+        new_value: verificationValue,
+        note: 'Owner approved the current confirmed value as manual provenance for Verified Asset readiness.',
+        created_at: approvalTime,
+      });
+      if (approvalError && !/relation|schema cache|column/i.test(approvalError.message || '')) {
+        throw approvalError;
+      }
+      await recordTransactionFieldHistory({
+        fieldId,
+        propertyId,
+        eventType: 'provenance_approved',
+        actorEmail: approvalEmail,
+        actorRole: approvalRole,
+        priorValue: verificationValue,
+        newValue: verificationValue,
+        priorStatus: existing.status,
+        newStatus: existing.status,
+        metadata: {
+          verification_kind: 'manual_provenance_approval',
+          approved_at: approvalTime,
+        },
+      });
+      const recalculated = await recalculateTransactionState(propertyId, {
+        source: 'transaction_record_provenance_approved',
+        actorId: access.actorId,
+        actorType: access.actorType,
+      });
+      return res.json({
+        ok: true,
+        provenanceApproved: true,
+        state: recalculated.state,
+      });
+    }
     const blockedVerificationStatuses = new Set([
       'verified', 'confirmed', 'missing', 'not_applicable',
       'conflicting', 'conflict', 'source_changed',

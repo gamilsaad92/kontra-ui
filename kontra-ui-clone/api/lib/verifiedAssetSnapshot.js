@@ -72,7 +72,7 @@ function fieldProvenance(field, approval = null) {
 }
 
 function provenanceIsIntact(field, approvals = []) {
-  const approval = latestApprovalForField(field, approvals);
+  const approval = approvalEvidence(field, approvals);
   const source = fieldProvenance(field, approval);
   return Boolean(
     source.source_document_id
@@ -91,6 +91,11 @@ function approvalEvidence(field, approvals = []) {
   const approval = latestApprovalForField(field, approvals);
   if (!approval || approval.action !== 'approved' || approval.is_manual === false) return null;
   if (!(approval.actor_email || approval.actor_role) || !approval.created_at) return null;
+  // A direct edit, rejection, or source replacement updates the canonical
+  // field after the old approval was recorded. The old approval remains in
+  // the audit trail, but it cannot attest to the newer current value.
+  const fieldUpdatedAt = field?.updatedAt || field?.updated_at;
+  if (fieldUpdatedAt && new Date(approval.created_at) < new Date(fieldUpdatedAt)) return null;
   return approval;
 }
 
@@ -301,6 +306,7 @@ function buildVerifiedAssetSnapshot({
   const sourceTimes = sourceFields
     .map(field => field?.updatedAt || field?.updated_at)
     .filter(Boolean)
+    .concat(approvals.map(approval => approval?.created_at).filter(Boolean))
     .sort();
   return {
     ...snapshot,

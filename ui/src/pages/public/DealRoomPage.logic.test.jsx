@@ -21,6 +21,7 @@ const {
   mergeTransactionRecordState,
   normalizeRecordCategory,
   getTransactionRecordCategory,
+  getCurrentProvenanceGap,
 } = require('./DealRoomPage');
 
 describe('coordinator transaction brief logic', () => {
@@ -28,6 +29,27 @@ describe('coordinator transaction brief logic', () => {
     { key: 'under_review', label: 'Under Review' },
     { key: 'approved', label: 'Approved' },
   ];
+
+  test('matches a live provenance gap to the confirmed canonical field', () => {
+    expect(getCurrentProvenanceGap(
+      {
+        key: 'transaction.value',
+        label: 'Transaction value',
+        state: {
+          fieldId: 'field-value',
+          field: { field_key: 'transaction.value', display_label: 'Transaction value' },
+        },
+      },
+      [{ field_key: 'transaction.value', label: 'Transaction value', requirement: 'Owner approval required' }],
+    )).toEqual(expect.objectContaining({ field_key: 'transaction.value' }));
+  });
+
+  test('does not show a provenance action for an unrelated confirmed field', () => {
+    expect(getCurrentProvenanceGap(
+      { key: 'asset.name', label: 'Asset name' },
+      [{ field_key: 'transaction.value', label: 'Transaction value' }],
+    )).toBeNull();
+  });
 
   test('suppresses the Approved recommendation when a blocking conflict exists', () => {
     const analyses = [{ section: 'loi', processing_status: 'complete', analysis: { summary: 'Executed' } }];

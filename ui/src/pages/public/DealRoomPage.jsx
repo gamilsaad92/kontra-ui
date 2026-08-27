@@ -3687,6 +3687,8 @@ function DigitalAssetReadinessSection({
   recordFields,
   recordState = null,
   readiness,
+  provenanceGaps = [],
+  ownerToken = '',
   onTabChange,
   schemaKey = DEFAULT_PACK_ID,
   readinessPhase = 'transaction',
@@ -3996,12 +3998,20 @@ function DigitalAssetReadinessSection({
         {
           method: 'POST',
           headers: getRoomAuthHeaders(propertyId, { 'Content-Type': 'application/json' }),
-          body: JSON.stringify({ ownerWriteToken, actorRole: 'coordinator' }),
+          body: JSON.stringify({
+            ownerWriteToken,
+            actorRole: field?.approveProvenance ? 'Workspace Owner' : 'coordinator',
+            approveProvenance: field?.approveProvenance === true,
+          }),
         },
       );
       const data = await response.json().catch(() => ({}));
       if (!response.ok) {
-        throw new Error(data.message || data.error || 'The Transaction Record field could not be confirmed.');
+        throw new Error(data.message || data.error || (
+          field?.approveProvenance
+            ? 'Manual provenance approval could not be recorded.'
+            : 'The Transaction Record field could not be confirmed.'
+        ));
       }
       await onRecordUpdated?.();
     } catch (error) {
@@ -4204,6 +4214,7 @@ function DigitalAssetReadinessSection({
                         <ul className="space-y-1">
                           {cat.confirmedDefs.map(d => {
                             const confirmedFieldId = d.state?.fieldId || d.state?.field?.id;
+                            const provenanceGap = getCurrentProvenanceGap(d, provenanceGaps);
                             return (
                               <li key={d.key} id={`transaction-record-field-${encodeURIComponent(d.key)}`} data-transaction-record-field="true" data-transaction-record-key={d.key} data-transaction-record-label={d.label} className={`rounded-lg px-1 text-xs text-gray-700 transition-shadow ${focusedFieldKey === d.key ? 'bg-emerald-50 ring-2 ring-emerald-300 ring-offset-1' : ''}`}>
                                 <span className="flex items-start gap-1.5">
@@ -4224,10 +4235,26 @@ function DigitalAssetReadinessSection({
                                           className="rounded-lg border border-red-200 bg-white px-2 py-1 text-[10px] font-bold text-red-600 disabled:opacity-50">
                                           Reject/Clear
                                         </button>
+                                        {provenanceGap && (
+                                          <button
+                                            type="button"
+                                            onClick={() => confirmRecordField({ ...d.state, approveProvenance: true })}
+                                            disabled={!!confirmingField || !ownerToken}
+                                            title={ownerToken ? 'Record an auditable owner approval for the current value.' : 'Owner session required.'}
+                                            className="rounded-lg border border-amber-300 bg-amber-50 px-2 py-1 text-[10px] font-bold text-amber-800 hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-50"
+                                          >
+                                            {confirmingField === confirmedFieldId ? 'Working…' : 'Approve provenance'}
+                                          </button>
+                                        )}
                                       </span>
                                     )}
                                   </span>
                                 </span>
+                                {provenanceGap && (
+                                  <span className="mt-1 block pl-4 text-[10px] leading-relaxed text-amber-700">
+                                    {provenanceGap.requirement || 'Current value needs document/file provenance or an auditable owner approval.'}
+                                  </span>
+                                )}
                                 {editingField === confirmedFieldId && (
                                   <span className="mt-1 flex w-full items-center gap-1 pl-4">
                                     <input value={editValue} onChange={event => setEditValue(event.target.value)}
@@ -4928,6 +4955,33 @@ function getRecordDefinitionState(definition, recordFields = [], recordState = n
       : selected && hasMeaningfulRecordValue(selected) ? 'awaiting' : 'missing',
     attention: selected?.status === 'source_changed' ? 'source_changed' : null,
   };
+}
+
+function getCurrentProvenanceGap(field, provenanceGaps = []) {
+  const identities = new Set([
+    field?.key,
+    field?.field_key,
+    field?.canonicalKey,
+    field?.persistedKey,
+    field?.definitionKey,
+    field?.state?.key,
+    field?.state?.field_key,
+    field?.state?.field?.key,
+    field?.state?.field?.field_key,
+  ].filter(Boolean).map(normalizeAttentionFieldKey));
+  const labels = new Set([
+    field?.label,
+    field?.display_label,
+    field?.state?.label,
+    field?.state?.field?.label,
+    field?.state?.field?.display_label,
+  ].filter(Boolean).map(normalizeAttentionText));
+  return (Array.isArray(provenanceGaps) ? provenanceGaps : []).find(gap => {
+    const gapKey = gap?.field_key || gap?.fieldKey || gap?.key;
+    const gapLabel = gap?.label || gap?.display_label;
+    return (gapKey && identities.has(normalizeAttentionFieldKey(gapKey)))
+      || (gapLabel && labels.has(normalizeAttentionText(gapLabel)));
+  }) || null;
 }
 
 function getGeneratedProposal(property) {
@@ -6129,6 +6183,7 @@ export {
   getCanonicalUnresolvedConflicts,
   mergeTransactionRecordState,
   getRecordDefinitionState,
+  getCurrentProvenanceGap,
   getCoordinatorRecordFacts,
 };
 
@@ -6399,6 +6454,7 @@ function VerifiedAssetReadinessCard({
   ownerToken,
   snapshotAction,
   onRecordSnapshot,
+  onOpenProvenance,
 }) {
   const isUnavailable = !verifiedAssetReadiness;
   const summary = verifiedAssetReadiness?.summary || {};
@@ -6515,6 +6571,21 @@ function VerifiedAssetReadinessCard({
             {blockerLabels.slice(0, 3).join(' · ')}
             {blockerLabels.length > 3 ? ` · +${blockerLabels.length - 3} more` : ''}
           </p>
+          {provenanceGaps.length > 0 && (
+            <div className="mt-3 flex flex-wrap gap-2">
+              {provenanceGaps.map(gap => (
+                <button
+                  key={gap.field_key || gap.label}
+                  type="button"
+                  onClick={() => onOpenProvenance?.(gap)}
+                  disabled={!onOpenProvenance}
+                  className="rounded-lg border border-amber-300 bg-white px-2.5 py-1.5 text-[10px] font-bold text-amber-800 hover:bg-amber-100 disabled:cursor-default disabled:opacity-60"
+                >
+                  Resolve {gap.label || gap.field_key} →
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       ) : (
         <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-3 text-xs text-emerald-800">
@@ -7103,6 +7174,8 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
             recordFields={recordFields}
             recordState={canonicalRecordState}
             readiness={readiness}
+             provenanceGaps={verifiedAssetReadiness?.reasons?.provenance_gaps || []}
+             ownerToken={ownerToken}
             onTabChange={onTabChange}
             schemaKey={recordSchemaKey}
             readinessPhase={readinessPhase}
@@ -7118,6 +7191,15 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
         ownerToken={ownerToken}
         snapshotAction={snapshotAction}
         onRecordSnapshot={recordReadinessSnapshot}
+        onOpenProvenance={gap => overviewAction({
+          type: 'record',
+          field: {
+            key: gap?.field_key,
+            field_key: gap?.field_key,
+            label: gap?.label,
+          },
+          keys: [gap?.field_key].filter(Boolean),
+        })}
       />
       <TransactionConflictResolver
         propertyId={propertyId}

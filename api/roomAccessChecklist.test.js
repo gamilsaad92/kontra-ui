@@ -1,5 +1,7 @@
 const mockOwnerToken = 'owner-token';
 const mockParticipantToken = 'participant-session';
+const mockInsertedRows = [];
+let mockFieldSourceDocId = null;
 
 jest.mock('./db', () => {
   const owner = {
@@ -29,11 +31,25 @@ jest.mock('./db', () => {
     revoked_at: null,
   };
   const sessionHash = require('crypto').createHash('sha256').update(mockParticipantToken).digest('hex');
+  const transactionField = () => ({
+    id: 'field-1',
+    field_key: 'financial.borrower_funds',
+    value_text: '90000',
+    value_json: null,
+    status: 'verified',
+    updated_at: '2026-08-26T12:00:00.000Z',
+    source_doc_id: mockFieldSourceDocId,
+    source_file_hash: null,
+  });
 
   function builder(table) {
     const state = { filters: {} };
     const chain = {
       select: () => chain,
+      insert: (values) => {
+        mockInsertedRows.push({ table, values });
+        return chain;
+      },
       eq: (key, value) => {
         state.filters[key] = value;
         return chain;
@@ -48,6 +64,7 @@ jest.mock('./db', () => {
       is: () => chain,
       maybeSingle: async () => {
         if (table === 'deal_rooms') return { data: owner, error: null };
+        if (table === 'transaction_record_fields') return { data: transactionField(), error: null };
         if (table === 'deal_room_access_sessions') {
           return state.filters.session_token_hash === sessionHash
             ? { data: session, error: null }
@@ -58,7 +75,9 @@ jest.mock('./db', () => {
       },
       single: async () => ({ data: owner, error: null }),
       then: (resolve) => resolve({
-        data: table === 'deal_rooms' && state.filters.customer_email ? [owner] : [],
+        data: table === 'deal_rooms' && state.filters.customer_email
+          ? [owner]
+          : table === 'transaction_record_fields' ? [transactionField()] : [],
         error: null,
       }),
     };
@@ -68,10 +87,22 @@ jest.mock('./db', () => {
   return { supabase: { from: builder } };
 });
 
+jest.mock('./lib/transactionState', () => ({
+  ...jest.requireActual('./lib/transactionState'),
+  recalculateTransactionState: jest.fn().mockResolvedValue({
+    state: { recordState: { fields: [] } },
+  }),
+}));
+
 const app = require('./index');
 const request = require('supertest');
 
 describe('room access and checklist scoping', () => {
+  beforeEach(() => {
+    mockInsertedRows.length = 0;
+    mockFieldSourceDocId = null;
+  });
+
   it('gives a valid owner token precedence over a valid participant session', async () => {
     const access = await app.getRoomAccessContext({
       headers: {
@@ -121,6 +152,50 @@ describe('room access and checklist scoping', () => {
       .get('/api/public/deal-room/room-1/asset-metadata');
 
     expect(response.status).toBe(403);
+  });
+
+  it('blocks anonymous access to the owner-only provenance approval endpoint', async () => {
+    const response = await request(app)
+      .post('/api/public/deal-room/room-1/transaction-record/fields/field-1/verify')
+      .send({ approveProvenance: true });
+
+    expect(response.status).toBe(403);
+  });
+
+  it('records owner provenance approval without changing the confirmed value or status', async () => {
+    const response = await request(app)
+      .post('/api/public/deal-room/room-1/transaction-record/fields/field-1/verify')
+      .send({ ownerWriteToken: mockOwnerToken, approveProvenance: true });
+
+    expect(response.status).toBe(200);
+    expect(response.body.provenanceApproved).toBe(true);
+    const approval = mockInsertedRows.find(row => row.table === 'transaction_record_approvals');
+    const history = mockInsertedRows.find(row => row.table === 'transaction_record_history');
+    expect(approval.values).toEqual(expect.objectContaining({
+      field_id: 'field-1',
+      action: 'approved',
+      is_manual: true,
+      prior_value: '90000',
+      new_value: '90000',
+    }));
+    expect(history.values).toEqual(expect.objectContaining({
+      event_type: 'provenance_approved',
+      prior_value: '90000',
+      new_value: '90000',
+      prior_status: 'verified',
+      new_status: 'verified',
+    }));
+  });
+
+  it('rejects manual provenance approval when document provenance already exists', async () => {
+    mockFieldSourceDocId = 'source-document-1';
+    const response = await request(app)
+      .post('/api/public/deal-room/room-1/transaction-record/fields/field-1/verify')
+      .send({ ownerWriteToken: mockOwnerToken, approveProvenance: true });
+
+    expect(response.status).toBe(409);
+    expect(response.body.error).toBe('FIELD_NOT_MISSING_PROVENANCE');
+    expect(mockInsertedRows).toHaveLength(0);
   });
 
   it('blocks anonymous access to the notification log', async () => {

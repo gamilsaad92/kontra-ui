@@ -175,6 +175,34 @@ describe('Verified Asset snapshot foundation', () => {
     expect(snapshot.digital_asset_readiness.provenance.gaps).toHaveLength(1);
   });
 
+  test('does not reuse a manual approval after the canonical field is updated', () => {
+    const snapshot = build({
+      recordState: state({
+        fields: [{
+          ...state().fields[0],
+          sourceDocId: null,
+          sourceFileHash: null,
+          updated_at: '2026-08-27T00:00:00.000Z',
+        }],
+        requiredFields: [{
+          ...state().fields[0],
+          sourceDocId: null,
+          sourceFileHash: null,
+          updated_at: '2026-08-27T00:00:00.000Z',
+        }],
+      }),
+      approvals: [{
+        field_id: 'field-1',
+        action: 'approved',
+        actor_email: 'coordinator@example.com',
+        actor_role: 'Workspace Owner',
+        is_manual: true,
+        created_at: '2026-08-26T00:00:00.000Z',
+      }],
+    });
+    expect(snapshot.digital_asset_readiness.provenance.gaps).toHaveLength(1);
+  });
+
   test('matches persisted fields to required definitions by canonical key or id', () => {
     const required = {
       id: 'required-row-id',

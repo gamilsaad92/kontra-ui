@@ -42,6 +42,15 @@ function getPackStageLabel(packId, stageKey) {
   return stage ? stage.label : stageKey;
 }
 
+function resolvePackIdFromRoom(room) {
+  if (!room) return DEFAULT_PACK_ID;
+  if (room.workflow_pack_id && room.workflow_pack_id.startsWith('ws_')) {
+    return room.workflow_pack_id;
+  }
+  const inferred = room.deal_type ? (DEAL_TYPE_TO_PACK[room.deal_type] ?? null) : null;
+  return inferred || room.workflow_pack_id || DEFAULT_PACK_ID;
+}
+
 // ── Participant roles, per Workflow Pack ────────────────────────────────────
 // Single source of truth lives in shared/workflowRoles.json — never hardcode
 // a role key's meaning, since the same key can carry a different label in a
@@ -62,17 +71,7 @@ async function getRoomPackId(propertyId) {
     .select('workflow_pack_id, deal_type')
     .eq('property_id', propertyId).maybeSingle();
   if (!data) return DEFAULT_PACK_ID;
-  // Custom workspace packs (ws_* IDs) always win — mirrors frontend resolvePackId in
-  // workflowPacks/index.js. These packs were explicitly built for this workspace and
-  // contain the actual roles/docs/stages chosen at creation; deal_type is only a fallback
-  // for rooms created before the pack system existed.
-  if (data.workflow_pack_id && data.workflow_pack_id.startsWith('ws_')) {
-    return data.workflow_pack_id;
-  }
-  // deal_type inference for standard (non-ws_*) packs
-  const inferred = data.deal_type ? (DEAL_TYPE_TO_PACK[data.deal_type] ?? null) : null;
-  if (inferred) return inferred;
-  return data.workflow_pack_id || DEFAULT_PACK_ID;
+  return resolvePackIdFromRoom(data);
 }
 
 // ── Shared email helper — logs Resend errors instead of swallowing them ──────
@@ -503,6 +502,7 @@ module.exports = {
   getPackStageLabel,
   getPackRoleConfig,
   getPackRoleLabel,
+  resolvePackIdFromRoom,
   getRoomPackId,
   sendResendEmail,
   getNextVersion,

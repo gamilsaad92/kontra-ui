@@ -473,7 +473,7 @@ async function reconcileConfirmedFieldHistory(propertyId) {
       { data: activity, error: activityError },
     ] = await Promise.all([
       supabase.from('transaction_record_history')
-        .select('field_id, event_type, new_value, new_status, created_at')
+        .select('field_id, event_type, new_value, new_status, metadata, created_at')
         .eq('property_id', propertyId)
         .order('created_at', { ascending: true }),
       supabase.from('transaction_record_fields')
@@ -524,11 +524,23 @@ async function reconcileConfirmedFieldHistory(propertyId) {
       const field = fieldsById.get(fieldId);
       const status = String(field?.status || '').toLowerCase();
       const historyStatus = String(event?.new_status || '').toLowerCase();
-      if (!field || event.event_type !== 'confirmed' || !['verified', 'confirmed'].includes(historyStatus)) continue;
+      if (
+        !field
+        || event.event_type !== 'confirmed'
+        || event?.metadata?.verification_kind === 'manual_provenance_approval'
+        || !['verified', 'confirmed'].includes(historyStatus)
+      ) continue;
       // A newer source conflict is intentionally not repaired from old
       // history; it needs the coordinator's current decision.
       if (['conflicting', 'conflict', 'source_changed'].includes(status)) continue;
       const value = event.new_value == null ? field.value_text : String(event.new_value).slice(0, 2000);
+      const fieldUpdatedAt = new Date(field.updated_at || 0).getTime();
+      const eventCreatedAt = new Date(event.created_at || 0).getTime();
+      if (
+        fieldUpdatedAt >= eventCreatedAt
+        && String(field.value_text ?? field.value_json ?? '') === String(value ?? '')
+        && ['verified', 'confirmed'].includes(status)
+      ) continue;
       const { error } = await supabase.from('transaction_record_fields')
         .update({
           value_text: value,
