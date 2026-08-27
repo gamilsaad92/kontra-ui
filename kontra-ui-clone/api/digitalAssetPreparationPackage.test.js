@@ -5,6 +5,8 @@ const {
   hashPackage,
   normalizePreparationValueForField,
   updateDigitalAssetPreparationPackage,
+  appendDigitalAssetPreparationRevision,
+  PREPARATION_FIELD_DEFINITIONS,
 } = require('./lib/digitalAssetPreparationPackage');
 
 function snapshotRow(value = 80000) {
@@ -248,5 +250,121 @@ describe('Digital Asset Preparation Package', () => {
       status: 'not_recorded',
     }));
     expect(cleared.frozen_readiness.settlement_mode).toBe('traditional');
+  });
+
+  test('keeps offering frameworks out of jurisdiction and normalizes legacy values safely', () => {
+    expect(PREPARATION_FIELD_DEFINITIONS.jurisdiction.choices.map(choice => choice.value))
+      .not.toContain('us_reg_d');
+    expect(PREPARATION_FIELD_DEFINITIONS.jurisdiction.choices
+      .some(choice => /regulation d/i.test(choice.label))).toBe(false);
+    expect(PREPARATION_FIELD_DEFINITIONS.security_offering_structure.choices
+      .map(choice => choice.value)).toEqual(expect.arrayContaining(['regulation_d', 'regulation_s']));
+
+    expect(normalizePreparationValueForField(
+      'jurisdiction',
+      'United States — Regulation D (counsel to confirm)',
+      { strict: true },
+    )).toEqual({ choice: 'united_states', detail: 'United States' });
+    expect(normalizePreparationValueForField(
+      'jurisdiction',
+      { choice: 'us_reg_d', detail: 'United States' },
+      { strict: true },
+    )).toEqual({ choice: 'united_states', detail: 'United States' });
+    expect(normalizePreparationValueForField(
+      'security_offering_structure',
+      { choice: 'regulation_d', detail: '' },
+      { strict: true },
+    )).toEqual({ choice: 'regulation_d', detail: '' });
+  });
+
+  test('creates exactly one append-only revision for an idempotent save request', async () => {
+    const packageRow = {
+      id: 'package-1',
+      property_id: 'freddie-room',
+      source_snapshot_id: 'snapshot-v9-id',
+      source_snapshot_version: 9,
+      source_snapshot_hash: 'snapshot-v9-hash',
+      package: buildDigitalAssetPreparationPackage({ propertyId: 'freddie-room', snapshotRow: snapshotRow() }),
+    };
+    const revisions = [];
+    const getLatestRevision = async () => revisions[revisions.length - 1] || null;
+    const getRevisionByRequestId = async (_packageId, requestId) =>
+      revisions.find(revision => revision.package.save_request_id === requestId) || null;
+    const insertRevision = async values => {
+      if (revisions.some(revision => revision.revision === values.revision)) {
+        return { data: null, error: new Error('duplicate key value violates unique constraint') };
+      }
+      const revision = {
+        ...values,
+        id: `revision-${values.revision}`,
+        created_at: '2026-08-27T12:02:00.000Z',
+      };
+      revisions.push(revision);
+      return { data: revision, error: null };
+    };
+    const save = {
+      packageRow,
+      updates: { issuer: 'Kontra Issuer' },
+      saveRequestId: 'save-request-1',
+      getLatestRevision,
+      getRevisionByRequestId,
+      insertRevision,
+    };
+
+    const first = await appendDigitalAssetPreparationRevision(save);
+    const retry = await appendDigitalAssetPreparationRevision(save);
+
+    expect(first).toEqual(expect.objectContaining({ created: true, idempotent: false }));
+    expect(retry).toEqual(expect.objectContaining({ created: false, idempotent: true }));
+    expect(first.revision.id).toBe(retry.revision.id);
+    expect(revisions).toHaveLength(1);
+    expect(revisions[0].package.package_revision).toBe(1);
+    expect(revisions[0].package.save_request_id).toBe('save-request-1');
+    expect(packageRow.package.package_revision).toBe(0);
+    expect(packageRow.package.save_request_id).toBeUndefined();
+  });
+
+  test('assigns separate revisions to concurrent deliberate saves', async () => {
+    const packageRow = {
+      id: 'package-1',
+      property_id: 'freddie-room',
+      source_snapshot_id: 'snapshot-v9-id',
+      source_snapshot_version: 9,
+      source_snapshot_hash: 'snapshot-v9-hash',
+      package: buildDigitalAssetPreparationPackage({ propertyId: 'freddie-room', snapshotRow: snapshotRow() }),
+    };
+    const revisions = [];
+    const getLatestRevision = async () => {
+      await new Promise(resolve => setTimeout(resolve, 0));
+      return revisions[revisions.length - 1] || null;
+    };
+    const getRevisionByRequestId = async (_packageId, requestId) =>
+      revisions.find(revision => revision.package.save_request_id === requestId) || null;
+    const insertRevision = async values => {
+      await new Promise(resolve => setTimeout(resolve, 0));
+      if (revisions.some(revision => revision.revision === values.revision)) {
+        return { data: null, error: new Error('duplicate key value violates unique constraint') };
+      }
+      const revision = { ...values, id: `revision-${values.revision}` };
+      revisions.push(revision);
+      return { data: revision, error: null };
+    };
+    const makeSave = requestId => ({
+      packageRow,
+      updates: { issuer: `Issuer ${requestId}` },
+      saveRequestId: requestId,
+      getLatestRevision,
+      getRevisionByRequestId,
+      insertRevision,
+    });
+
+    const results = await Promise.all([
+      appendDigitalAssetPreparationRevision(makeSave('save-a')),
+      appendDigitalAssetPreparationRevision(makeSave('save-b')),
+    ]);
+
+    expect(revisions.map(revision => revision.revision)).toEqual([1, 2]);
+    expect(results.map(result => result.revision.revision).sort()).toEqual([1, 2]);
+    expect(results.every(result => result.created)).toBe(true);
   });
 });

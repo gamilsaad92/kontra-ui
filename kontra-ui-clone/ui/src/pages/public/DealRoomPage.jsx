@@ -6166,6 +6166,7 @@ export {
   getCurrentProvenanceGap,
   getCoordinatorRecordFacts,
   preparationDraftValue,
+  preparationSaveConfirmation,
 };
 
 // ── Transaction Seal Summary (complete phase) ─────────────────────────────────
@@ -6863,6 +6864,18 @@ function preparationDraftValue(field) {
   return Array.isArray(value) ? value.join(', ') : (value || '');
 }
 
+function preparationSaveConfirmation({ revision, packageStatus, idempotent = false } = {}) {
+  const revisionNumber = revision ?? '—';
+  const status = String(packageStatus || 'needs_information').replace(/_/g, ' ');
+  if (idempotent) {
+    return `Already saved as Revision ${revisionNumber}. Package status: ${status}. No duplicate revision was created.`;
+  }
+  if (packageStatus === 'ready_for_provider_review') {
+    return `Saved as Revision ${revisionNumber}. Package status: Ready for provider review.`;
+  }
+  return `Saved as Revision ${revisionNumber}. Package status: ${status}. Add the remaining named fields before provider review.`;
+}
+
 function DigitalAssetPackageModal({
   propertyId,
   ownerToken,
@@ -6875,11 +6888,15 @@ function DigitalAssetPackageModal({
   const [draft, setDraft] = useState({});
   const [saveState, setSaveState] = useState({ loading: false, error: false, message: '' });
   const [revisions, setRevisions] = useState([]);
+  const saveInFlightRef = useRef(false);
+  const saveRequestIdRef = useRef(null);
+  const preserveSaveMessageRef = useRef(false);
 
   useEffect(() => {
     if (!packageRecord) {
       setDraft({});
       setRevisions([]);
+      saveRequestIdRef.current = null;
       return;
     }
     setDraft(Object.fromEntries(
@@ -6888,7 +6905,12 @@ function DigitalAssetPackageModal({
         preparationDraftValue(field),
       ]),
     ));
-    setSaveState({ loading: false, error: false, message: '' });
+    saveRequestIdRef.current = null;
+    if (preserveSaveMessageRef.current) {
+      preserveSaveMessageRef.current = false;
+    } else {
+      setSaveState({ loading: false, error: false, message: '' });
+    }
   }, [packageRecord]);
 
   useEffect(() => {
@@ -6929,6 +6951,7 @@ function DigitalAssetPackageModal({
     .replace(/\b\w/g, char => char.toUpperCase());
 
   function updateDraft(key, value) {
+    saveRequestIdRef.current = null;
     setDraft(previous => ({ ...previous, [key]: value }));
     setSaveState(previous => previous.message
       ? { loading: false, error: false, message: '' }
@@ -7041,39 +7064,71 @@ function DigitalAssetPackageModal({
   }
 
   async function savePreparationFields() {
-    if (!ownerToken || saveState.loading) return;
+    if (!ownerToken || saveState.loading || saveInFlightRef.current) return;
+    saveInFlightRef.current = true;
+    const saveRequestId = saveRequestIdRef.current
+      || globalThis.crypto?.randomUUID?.();
+    if (!saveRequestId) {
+      saveInFlightRef.current = false;
+      setSaveState({
+        loading: false,
+        error: true,
+        message: 'This browser could not create a save request ID. Please reload and try again.',
+      });
+      return;
+    }
+    saveRequestIdRef.current = saveRequestId;
     setSaveState({ loading: true, error: false, message: '' });
     try {
       const response = await fetch(
         `${API_BASE}/api/public/deal-room/${propertyId}/digital-asset-packages/${packageRecord.id}/preparation-fields`,
         {
           method: 'PATCH',
-          headers: getRoomAuthHeaders(propertyId, { 'Content-Type': 'application/json' }),
+          headers: getRoomAuthHeaders(propertyId, {
+            'Content-Type': 'application/json',
+            'Idempotency-Key': saveRequestId,
+          }),
           body: JSON.stringify({ ownerWriteToken: ownerToken, fields: draft }),
         },
       );
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data.message || data.error || 'Preparation fields could not be saved.');
-      if (data.package) onPackageUpdated?.(data.package);
+      if (data.package) {
+        preserveSaveMessageRef.current = true;
+        onPackageUpdated?.(data.package);
+      }
       if (data.revision) {
         setRevisions(previous => [
           {
             ...data.revision,
-            package_status: data.package?.package?.package_status || 'needs_information',
+            package_status: data.revision.package_status
+              || data.package?.package?.package_status
+              || 'needs_information',
           },
           ...previous.filter(item => item.id !== data.revision.id),
         ]);
       }
-      const nextStatus = data.package?.package?.package_status || 'needs_information';
+      const revisionNumber = data.revision?.revision
+        ?? data.package?.revision
+        ?? '—';
+      const nextStatus = data.revision?.package_status
+        || data.package?.package?.package_status
+        || 'needs_information';
+      const replayed = data.idempotent === true || data.created === false;
       setSaveState({
         loading: false,
         error: false,
-        message: nextStatus === 'ready_for_provider_review'
-          ? 'Saved. This package is ready for provider review.'
-          : 'Saved. Add the remaining named fields before provider review.',
+        message: preparationSaveConfirmation({
+          revision: revisionNumber,
+          packageStatus: nextStatus,
+          idempotent: replayed,
+        }),
       });
+      saveRequestIdRef.current = null;
     } catch (error) {
       setSaveState({ loading: false, error: true, message: error.message });
+    } finally {
+      saveInFlightRef.current = false;
     }
   }
 
@@ -7285,6 +7340,7 @@ function DigitalAssetPackageModal({
                    type="button"
                    onClick={savePreparationFields}
                    disabled={!ownerToken || saveState.loading}
+                    aria-busy={saveState.loading}
                    className="rounded-lg bg-[#800020] px-4 py-2 text-xs font-bold text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
                  >
                    {saveState.loading ? 'Saving…' : 'Save preparation revision'}
