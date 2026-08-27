@@ -5294,6 +5294,7 @@ function actionTextMentionsRecordField(action, field) {
   ].filter(Boolean).map(normalizeAttentionFieldKey);
   if (fieldKeys.includes('financial.borrower_funds_advanced')) {
     return /\b(?:borrower(?:s)?\s+)?(?:funds?|amount)\s+(?:already\s+)?advanc(?:e|ed|ing)\b/.test(text)
+      || /\bborrower(?:s)?\s+advanc(?:e|ed|ing)\s+(?:funds?|amount)\b/.test(text)
       || /\badvanc(?:e|ed|ing)\s+(?:the\s+)?borrower(?:s)?\s+funds?\b/.test(text)
       || /\bborrower(?:s)?\s+out\s+of\s+pocket\b/.test(text);
   }

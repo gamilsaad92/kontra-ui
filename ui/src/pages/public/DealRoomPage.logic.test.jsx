@@ -377,6 +377,25 @@ describe('coordinator transaction brief logic', () => {
     )).toBe(true);
   });
 
+  test('matches the historical confirm borrower advanced funds wording', () => {
+    const recordState = {
+      requiredFields: [{
+        key: 'financial.borrower_funds_advanced',
+        value_text: '9,000',
+        status: 'confirmed',
+      }],
+    };
+
+    expect(actionTextMentionsRecordField(
+      'Confirm Borrower Advanced Funds',
+      { key: 'financial.borrower_funds_advanced' },
+    )).toBe(true);
+    expect(filterStaleRecordActions([{
+      title: 'Confirm Borrower Advanced Funds',
+      reason: 'Kontra extracted "90,000" from an uploaded document. Confirm this is correct.',
+    }], recordState)).toEqual([]);
+  });
+
   test('keeps investor organization fields in Identity & Parties', () => {
     expect(normalizeRecordCategory('organization', 'organization.investor_or_agency'))
       .toBe('parties');
