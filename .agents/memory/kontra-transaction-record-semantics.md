@@ -50,3 +50,9 @@ Generated AI rooms must materialize every approved proposal field as a durable r
 **Why:** allowing the proposal snapshot to remain a parallel field source caused Key Facts, accordions, counts, and confirmation state to disagree after refresh and room re-entry.
 
 **How to apply:** persist definition identity, category, requiredness, source type, and unresolved candidates on the field row; project generated-room UI and readiness from those rows, with proposal fallback only for pre-migration compatibility.
+
+Action-feed suppression must match historical wording variants as well as canonical field keys, including reordered phrases such as “borrower advanced funds” versus “borrower funds advanced.”
+
+**Why:** persisted briefing/task text can outlive the extraction schema that produced it, so exact label or key matching alone can leave a stale action beside the authoritative record state.
+
+**How to apply:** normalize aliases and semantic word-order variants before rendering briefing actions, then prefer the confirmed/current record row when duplicate candidates share one canonical identity.
