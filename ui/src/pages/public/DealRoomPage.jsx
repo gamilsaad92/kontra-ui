@@ -2949,7 +2949,9 @@ function getTransactionRecordCategory(field) {
   return {
     transaction: 'terms',
     terms: 'terms',
-    parties: 'parties',
+     parties: 'parties',
+     organization: 'parties',
+     organizer: 'parties',
     beneficial_ownership: 'parties',
     party: 'parties',
     asset: 'asset',
@@ -3804,7 +3806,7 @@ function DigitalAssetReadinessSection({
     recordFields,
   );
   const schemaFieldKeys = new Set(baseSchemaFields.map(field => field.canonicalKey || field.key));
-  const schemaFields = [
+  const rawSchemaFields = [
     ...baseSchemaFields,
     ...canonicalSchemaFields.filter(field =>
       !schemaFieldKeys.has(field.canonicalKey || field.key)
@@ -3816,6 +3818,30 @@ function DigitalAssetReadinessSection({
       )
     ),
   ];
+  const operationalByIdentity = new Map();
+  operationalSchemaFields.forEach(field => {
+    [
+      field.key,
+      field.canonicalKey,
+      field.persistedKey,
+      field.definitionKey,
+    ].filter(Boolean).forEach(identity => {
+      operationalByIdentity.set(normalizeAttentionFieldKey(identity), field);
+    });
+  });
+  const schemaFields = rawSchemaFields.map(field => {
+    const operational = [
+      field.key,
+      field.canonicalKey,
+      field.persistedKey,
+      field.definitionKey,
+    ].filter(Boolean)
+      .map(identity => operationalByIdentity.get(normalizeAttentionFieldKey(identity)))
+      .find(Boolean);
+    return operational
+      ? { ...field, label: operational.label, category: operational.category, hint: operational.hint, sources: operational.sources }
+      : field;
+  });
   const categorySchemaGroups = {
     parties: ['parties', 'beneficial_ownership'],
     asset: ['asset_identity'],
@@ -3839,6 +3865,7 @@ function DigitalAssetReadinessSection({
           canonicalKey: field.canonicalKey || field.key,
           aliasOf: field.aliasOf || null,
           label: field.label,
+           hint: field.hint || '',
         })),
     ]),
   );
@@ -3900,16 +3927,20 @@ function DigitalAssetReadinessSection({
           : 'building';
 
      const missingLabels = missingDefs.map(d => d.label.toLowerCase());
-     const summary = missingDefs.length === 0 && awaitingDefs.length === 0
-      ? 'All key fields present'
-       : awaitingDefs.length > 0 && missingDefs.length === 0
-         ? `${awaitingDefs.length} field${awaitingDefs.length === 1 ? '' : 's'} awaiting confirmation`
-      : cat.key === 'parties' && missingLabels.some(label => label.includes('buyer'))
-        && missingLabels.some(label => label.includes('seller'))
-        ? 'Buyer and seller not identified'
-        : cat.key === 'terms' && missingLabels.some(label => label.includes('value') || label.includes('price'))
-          ? 'Transaction value missing'
-          : `${missingDefs[0].label} missing`;
+      const summary = missingDefs.length === 0 && awaitingDefs.length === 0
+       ? 'All key fields present'
+        : awaitingDefs.length > 0 && missingDefs.length === 0
+          ? `${awaitingDefs.length} field${awaitingDefs.length === 1 ? '' : 's'} awaiting confirmation`
+       : cat.key === 'parties' && missingLabels.some(label => label.includes('investor'))
+         ? 'Add the investor / agency here'
+       : cat.key === 'parties' && missingLabels.some(label => label.includes('buyer'))
+         && missingLabels.some(label => label.includes('seller'))
+         ? 'Buyer and seller not identified'
+         : cat.key === 'financial' && missingLabels.some(label => label.includes('funding request'))
+           ? 'Add the requested release amount here'
+         : cat.key === 'terms' && missingLabels.some(label => label.includes('value') || label.includes('price'))
+           ? 'Transaction value missing'
+           : `${missingDefs[0].label} missing`;
 
      return { ...cat, enriched, confirmedDefs, awaitingDefs, missingDefs, count, total, sources, st, summary };
   });
@@ -4256,7 +4287,13 @@ function DigitalAssetReadinessSection({
                                        <input
                                          value={missingValue}
                                          onChange={event => setMissingValue(event.target.value)}
-                                         placeholder="Enter value"
+                                          placeholder={
+                                            d.key === 'organization.investor_or_agency'
+                                              ? 'e.g. Freddie Mac'
+                                              : d.key === 'funding.request'
+                                                ? 'e.g. $5,500'
+                                                : 'Enter value'
+                                          }
                                          aria-label={`Enter ${d.label}`}
                                          className="w-28 rounded border border-gray-200 bg-white px-2 py-1 text-[10px] text-gray-700"
                                        />
@@ -4707,7 +4744,7 @@ function normalizeRecordCategory(value, key = '', label = '') {
   const category = raw || keyCategory || 'transaction';
   if (['transaction', 'transaction_extra', 'terms', 'deal_terms'].includes(category)) return 'transaction';
   if (['asset', 'asset_identity', 'property', 'company', 'identity'].includes(category)) return 'asset_identity';
-  if (['party', 'parties', 'counterparties'].includes(category)) return 'parties';
+  if (['party', 'parties', 'counterparties', 'organization', 'organizer'].includes(category)) return 'parties';
   if (['ownership', 'beneficial_ownership', 'cap_table'].includes(category)) return 'beneficial_ownership';
   if (['finance', 'financial', 'financials', 'economics'].includes(category)) return 'financial';
   if (['legal', 'diligence', 'regulatory'].includes(category)) return 'legal';
@@ -5171,7 +5208,7 @@ function actionTextMentionsRecordField(action, field) {
   ].filter(Boolean).join(' '));
   if (!text) return false;
   const actionTokens = new Set(text.split(' '));
-  return [
+  const directMatch = [
     field?.label,
     field?.display_label,
     field?.key,
@@ -5184,10 +5221,54 @@ function actionTextMentionsRecordField(action, field) {
     const tokens = label.split(' ').filter(token => token.length > 1);
     return tokens.length >= 2 && tokens.every(token => actionTokens.has(token));
   });
+  if (directMatch) return true;
+
+  // Briefing/task-engine actions were generated with several historical
+  // phrasings for the hazard-loss fields. Match those semantic aliases to the
+  // canonical field so a confirmed 9,000 value cannot leave an old
+  // "advance borrower funds" action in the attention feed.
+  const fieldKeys = [
+    field?.key,
+    field?.field_key,
+    field?.canonicalKey,
+    field?.persistedKey,
+    field?.definitionKey,
+  ].filter(Boolean).map(normalizeAttentionFieldKey);
+  if (fieldKeys.includes('financial.borrower_funds_advanced')) {
+    return /\b(?:borrower(?:s)?\s+)?(?:funds?|amount)\s+(?:already\s+)?advanc(?:e|ed|ing)\b/.test(text)
+      || /\badvanc(?:e|ed|ing)\s+(?:the\s+)?borrower(?:s)?\s+funds?\b/.test(text)
+      || /\bborrower(?:s)?\s+out\s+of\s+pocket\b/.test(text);
+  }
+  if (fieldKeys.includes('funding.request')) {
+    return /\b(?:funding|fund|repair)\s+(?:request|release|proceeds)\b/.test(text)
+      || /\b(?:request|release|reimburse(?:ment)?)\s+(?:additional\s+)?(?:repair\s+)?(?:funds?|proceeds?)\b/.test(text);
+  }
+  return fieldKeys.includes('organization.investor_or_agency')
+    && /\b(?:investor|agency)\b/.test(text)
+    && /\b(?:add|identify|confirm|record|provide|select)\b/.test(text);
 }
 
 function findCanonicalRecordFieldForAction(action, recordState, recordFields = []) {
   const candidates = getCanonicalRecordFieldCandidates(recordState, recordFields);
+  const preferCurrentState = matches => matches
+    .slice()
+    .sort((a, b) => {
+      const priority = status => {
+        const normalized = normalizeRecordStatus({ status });
+        return ({
+        confirmed: 0,
+        verified: 0,
+        conflict: 1,
+        conflicting: 1,
+        source_changed: 1,
+        awaiting: 2,
+        needs_review: 2,
+        extracted: 2,
+        missing: 3,
+        }[normalized] ?? 4);
+      };
+      return priority(a?.status) - priority(b?.status);
+    })[0] || null;
   const explicitKeys = [
     action?.field_key,
     action?.fieldKey,
@@ -5197,13 +5278,14 @@ function findCanonicalRecordFieldForAction(action, recordState, recordFields = [
     action?.definitionKey,
   ].filter(Boolean).map(normalizeAttentionFieldKey);
   if (explicitKeys.length > 0) {
-    const explicitMatch = candidates.find(field => {
+    const explicitMatches = candidates.filter(field => {
       const identities = getRecordFieldIdentitySet(field);
       return explicitKeys.some(key => identities.has(key));
     });
-    if (explicitMatch) return explicitMatch;
+    if (explicitMatches.length > 0) return preferCurrentState(explicitMatches);
   }
-  return candidates.find(field => actionTextMentionsRecordField(action, field)) || null;
+  const textMatches = candidates.filter(field => actionTextMentionsRecordField(action, field));
+  return textMatches.length > 0 ? preferCurrentState(textMatches) : null;
 }
 
 function filterStaleRecordActions(
@@ -5929,6 +6011,8 @@ export {
   filterLiveDocumentActions,
   filterStaleRecordActions,
   actionTextMentionsRecordField,
+  normalizeRecordCategory,
+  getTransactionRecordCategory,
   getHazardLossOperationalFieldDefinitions,
   dedupeAttentionItems,
   getCanonicalAwaitingRecordFields,

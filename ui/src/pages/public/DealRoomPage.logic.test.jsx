@@ -18,6 +18,8 @@ const {
   getCoordinatorRecordFacts,
   getRecordDefinitionState,
   mergeTransactionRecordState,
+  normalizeRecordCategory,
+  getTransactionRecordCategory,
 } = require('./DealRoomPage');
 
 describe('coordinator transaction brief logic', () => {
@@ -329,6 +331,22 @@ describe('coordinator transaction brief logic', () => {
       'Borrower Advanced Funds — confirm 90,000',
       { label: 'Borrower funds advanced', key: 'financial.borrower_funds_advanced' },
     )).toBe(true);
+  });
+
+  test('matches alternate advance-funds wording to the canonical borrower field', () => {
+    expect(actionTextMentionsRecordField(
+      'Advance borrower funds before the next review',
+      { label: 'Borrower funds advanced', key: 'financial.borrower_funds_advanced' },
+    )).toBe(true);
+  });
+
+  test('keeps investor organization fields in Identity & Parties', () => {
+    expect(normalizeRecordCategory('organization', 'organization.investor_or_agency'))
+      .toBe('parties');
+    expect(getTransactionRecordCategory({
+      field_key: 'organization.investor_or_agency',
+      display_label: 'Investor / agency',
+    })).toBe('parties');
   });
 
   test('keeps unresolved record actions tied to their canonical field', () => {
