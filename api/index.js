@@ -91,10 +91,9 @@ const {
 } = require('./lib/verifiedAssetSnapshot');
 const {
   buildDigitalAssetPreparationPackage,
-  extractPreparationValues,
+  appendDigitalAssetPreparationRevision,
   normalizePreparationValueForField,
   PREPARATION_FIELD_DEFINITIONS,
-  updateDigitalAssetPreparationPackage,
   presentStoredDigitalAssetPackage,
   digitalAssetPackagesUnavailable,
 } = require('./lib/digitalAssetPreparationPackage');
@@ -10515,6 +10514,7 @@ async function createDigitalAssetPreparationPackage(propertyId, access, {
 
 const DIGITAL_ASSET_PACKAGE_SELECT = 'id, property_id, source_snapshot_id, source_snapshot_version, source_snapshot_hash, package_hash, package, created_by, created_at';
 const DIGITAL_ASSET_PACKAGE_REVISION_SELECT = 'id, package_id, property_id, revision, source_snapshot_id, source_snapshot_version, source_snapshot_hash, package_hash, package, changed_fields, created_by, created_at';
+const PREPARATION_SAVE_REQUEST_ID_MAX_LENGTH = 128;
 
 function digitalAssetPackageRevisionsUnavailable(error) {
   const message = String(error?.message || '');
@@ -10537,6 +10537,53 @@ async function getLatestDigitalAssetPackageRevision(packageId) {
     throw error;
   }
   return data || null;
+}
+
+function normalizePreparationSaveRequestId(value) {
+  const requestId = String(value || '').trim();
+  if (!requestId || requestId.length > PREPARATION_SAVE_REQUEST_ID_MAX_LENGTH) {
+    throw packageRouteError(
+      400,
+      'PREPARATION_SAVE_REQUEST_ID_REQUIRED',
+      'A unique preparation save request ID is required. Please try saving again.',
+    );
+  }
+  if (!/^[A-Za-z0-9][A-Za-z0-9._:-]*$/.test(requestId)) {
+    throw packageRouteError(
+      400,
+      'INVALID_PREPARATION_SAVE_REQUEST_ID',
+      'The preparation save request ID is invalid. Please try saving again.',
+    );
+  }
+  return requestId;
+}
+
+async function getDigitalAssetPackageRevisionByRequestId(packageId, requestId) {
+  const { data, error } = await supabase
+    .from('digital_asset_preparation_package_revisions')
+    .select(DIGITAL_ASSET_PACKAGE_REVISION_SELECT)
+    .eq('package_id', packageId)
+    .contains('package', { save_request_id: requestId })
+    .order('revision', { ascending: true })
+    .limit(1)
+    .maybeSingle();
+  if (error) {
+    if (digitalAssetPackageRevisionsUnavailable(error)) return null;
+    throw error;
+  }
+  return data || null;
+}
+
+function presentStoredDigitalAssetPackageRevision(packageRow, revision) {
+  return presentStoredDigitalAssetPackage({
+    ...packageRow,
+    package: revision.package,
+    package_hash: revision.package_hash,
+    revision: revision.revision,
+    revision_id: revision.id,
+    created_by: revision.created_by || packageRow.created_by,
+    created_at: revision.created_at || packageRow.created_at,
+  });
 }
 
 async function presentStoredDigitalAssetPackageWithLatestRevision(row) {
@@ -10716,6 +10763,11 @@ app.patch('/api/public/deal-room/:propertyId/digital-asset-packages/:packageId/p
   if (access.mode !== 'owner') return accessDenied(res, 'Owner access required');
 
   try {
+    const saveRequestId = normalizePreparationSaveRequestId(
+      req.get('Idempotency-Key')
+        || req.get('X-Idempotency-Key')
+        || req.body?.saveRequestId,
+    );
     const updates = normalizePreparationUpdates(fields);
     const { data: packageRow, error: packageError } = await supabase
       .from('digital_asset_preparation_packages')
@@ -10734,6 +10786,24 @@ app.patch('/api/public/deal-room/:propertyId/digital-asset-packages/:packageId/p
     }
     if (!packageRow) return res.status(404).json({ error: 'Digital Asset Preparation Package not found.' });
 
+    const existingRequestRevision = await getDigitalAssetPackageRevisionByRequestId(packageId, saveRequestId);
+    if (existingRequestRevision) {
+      return res.json({
+        ok: true,
+        created: false,
+        idempotent: true,
+        package: presentStoredDigitalAssetPackageRevision(packageRow, existingRequestRevision),
+        revision: {
+          id: existingRequestRevision.id,
+          revision: existingRequestRevision.revision,
+          changed_fields: existingRequestRevision.changed_fields || [],
+          created_by: existingRequestRevision.created_by,
+          created_at: existingRequestRevision.created_at,
+          package_status: existingRequestRevision.package?.package_status || 'needs_information',
+        },
+      });
+    }
+
     const sourceSnapshot = await getSelectedVerifiedAssetSnapshot(
       propertyId,
       packageRow.source_snapshot_id,
@@ -10747,53 +10817,35 @@ app.patch('/api/public/deal-room/:propertyId/digital-asset-packages/:packageId/p
       );
     }
 
-    const latestRevision = await getLatestDigitalAssetPackageRevision(packageId);
-    const currentPayload = latestRevision?.package || packageRow.package;
-    const nextRevision = Number(latestRevision?.revision || 0) + 1;
-    const nextValues = {
-      ...extractPreparationValues(currentPayload),
-      ...updates,
-    };
-    const packagePayload = updateDigitalAssetPreparationPackage({
-      packagePayload: currentPayload,
-      preparationValues: nextValues,
-      revision: nextRevision,
-      explicitKeys: Object.keys(updates),
+    const appendResult = await appendDigitalAssetPreparationRevision({
+      packageRow,
+      updates,
+      saveRequestId,
+      createdBy: access.email || null,
+      getLatestRevision: getLatestDigitalAssetPackageRevision,
+      getRevisionByRequestId: getDigitalAssetPackageRevisionByRequestId,
+      insertRevision: values => supabase
+        .from('digital_asset_preparation_package_revisions')
+        .insert(values)
+        .select(DIGITAL_ASSET_PACKAGE_REVISION_SELECT)
+        .single(),
     });
-    const { data: revision, error: revisionError } = await supabase
-      .from('digital_asset_preparation_package_revisions')
-      .insert({
-        package_id: packageId,
-        property_id: propertyId,
-        revision: nextRevision,
-        source_snapshot_id: packageRow.source_snapshot_id,
-        source_snapshot_version: packageRow.source_snapshot_version,
-        source_snapshot_hash: packageRow.source_snapshot_hash,
-        package_hash: packagePayload.package_hash,
-        package: packagePayload,
-        changed_fields: Object.keys(updates),
-        created_by: access.email || null,
-      })
-      .select(DIGITAL_ASSET_PACKAGE_REVISION_SELECT)
-      .single();
-    if (revisionError) {
-      if (digitalAssetPackageRevisionsUnavailable(revisionError)) {
-        return res.status(503).json({
-          error: 'PACKAGE_REVISIONS_UNAVAILABLE',
-          message: 'Package editing is not available until migration 026 is applied.',
-        });
-      }
-      if (/duplicate key|unique constraint/i.test(revisionError.message || '')) {
-        const concurrent = await getLatestDigitalAssetPackageRevision(packageId);
-        if (concurrent) {
-          return res.json({
-            ok: true,
-            created: false,
-            package: await presentStoredDigitalAssetPackageWithLatestRevision(packageRow),
-          });
-        }
-      }
-      throw revisionError;
+    const { created, idempotent, revision, packagePayload } = appendResult;
+    if (!created) {
+      return res.json({
+        ok: true,
+        created: false,
+        idempotent,
+        package: presentStoredDigitalAssetPackageRevision(packageRow, revision),
+        revision: {
+          id: revision.id,
+          revision: revision.revision,
+          changed_fields: revision.changed_fields || [],
+          created_by: revision.created_by,
+          created_at: revision.created_at,
+          package_status: revision.package?.package_status || 'needs_information',
+        },
+      });
     }
 
     logEvent(
@@ -10801,10 +10853,10 @@ app.patch('/api/public/deal-room/:propertyId/digital-asset-packages/:packageId/p
       'digital_asset_preparation_package_updated',
       'owner',
       access.email || null,
-      `Digital Asset Preparation Package revision ${nextRevision} saved`,
+      `Digital Asset Preparation Package revision ${revision.revision} saved`,
       {
         package_id: packageId,
-        revision: nextRevision,
+        revision: revision.revision,
         changed_fields: Object.keys(updates),
         package_status: packagePayload.package_status,
       },
@@ -10812,21 +10864,14 @@ app.patch('/api/public/deal-room/:propertyId/digital-asset-packages/:packageId/p
     return res.status(201).json({
       ok: true,
       created: true,
-      package: presentStoredDigitalAssetPackage({
-        ...packageRow,
-        package: revision.package,
-        package_hash: revision.package_hash,
-        revision: revision.revision,
-        revision_id: revision.id,
-        created_by: revision.created_by || packageRow.created_by,
-        created_at: revision.created_at || packageRow.created_at,
-      }),
+      package: presentStoredDigitalAssetPackageRevision(packageRow, revision),
       revision: {
         id: revision.id,
         revision: revision.revision,
         changed_fields: revision.changed_fields || [],
         created_by: revision.created_by,
         created_at: revision.created_at,
+        package_status: packagePayload.package_status,
       },
     });
   } catch (err) {

@@ -16,18 +16,19 @@ const PREPARATION_FIELD_DEFINITIONS = {
   },
   jurisdiction: {
     label: 'Jurisdiction',
-    guidance: 'Choose the closest proposed legal or regulatory framework. Add the specific state, country, or counsel note when needed.',
-    description: 'The governing jurisdiction to be reviewed by qualified counsel.',
+    guidance: 'Choose the legal geography that governs the review. Add the specific state, country, or counsel note when needed; offering exemptions belong in Security Offering Structure.',
+    description: 'The country, state, or other legal geography to be reviewed by qualified counsel.',
     input_type: 'choice_with_detail',
     required: true,
     detail_label: 'Specific jurisdiction or counsel note',
     detail_placeholder: 'For example: Texas, United States',
     choices: [
-      { value: 'us_reg_d', label: 'United States — Regulation D (counsel to confirm)' },
-      { value: 'uae_adgm', label: 'UAE — ADGM / DFSA' },
-      { value: 'eu_mica', label: 'European Union — MiCA' },
-      { value: 'sg_mas', label: 'Singapore — MAS' },
-      { value: 'uk_fca', label: 'United Kingdom — FCA' },
+      { value: 'united_states', label: 'United States' },
+      { value: 'canada', label: 'Canada' },
+      { value: 'united_arab_emirates', label: 'United Arab Emirates' },
+      { value: 'european_union', label: 'European Union' },
+      { value: 'singapore', label: 'Singapore' },
+      { value: 'united_kingdom', label: 'United Kingdom' },
       { value: 'other', label: 'Other / not listed' },
     ],
     source_matchers: ['jurisdiction', 'legal.jurisdiction', 'transaction.jurisdiction'],
@@ -98,8 +99,8 @@ const PREPARATION_FIELD_DEFINITIONS = {
   },
   security_offering_structure: {
     label: 'Security Offering Structure',
-    guidance: 'Choose the closest provider-neutral structure under review. This records preparation intent, not a legal classification.',
-    description: 'The proposed provider-neutral security or participation structure.',
+    guidance: 'Choose the closest provider-neutral structure or offering framework under review. Regulation D and similar exemptions belong here, not in Jurisdiction.',
+    description: 'The proposed provider-neutral security, participation structure, or offering framework.',
     input_type: 'choice_with_detail',
     required: true,
     detail_label: 'Structure detail',
@@ -109,9 +110,19 @@ const PREPARATION_FIELD_DEFINITIONS = {
       { value: 'equity_interest', label: 'Equity interest' },
       { value: 'debt_interest', label: 'Debt interest' },
       { value: 'revenue_or_cash_flow_interest', label: 'Revenue or cash-flow interest' },
+      { value: 'regulation_d', label: 'Regulation D offering framework' },
+      { value: 'regulation_s', label: 'Regulation S offering framework' },
+      { value: 'regulation_a', label: 'Regulation A offering framework' },
       { value: 'other', label: 'Other / not listed' },
     ],
-    source_matchers: ['security_offering_structure', 'offering.structure', 'token.structure'],
+    source_matchers: [
+      'security_offering_structure',
+      'offering.structure',
+      'offering.framework',
+      'offering.exemption',
+      'security.offering_framework',
+      'token.structure',
+    ],
   },
 };
 
@@ -192,6 +203,72 @@ function choiceForValue(definition, value) {
   ) || null;
 }
 
+const LEGACY_JURISDICTION_CHOICES = Object.freeze({
+  us_reg_d: 'united_states',
+  uae_adgm: 'united_arab_emirates',
+  eu_mica: 'european_union',
+  sg_mas: 'singapore',
+  uk_fca: 'united_kingdom',
+});
+
+const OFFERING_FRAMEWORK_IN_JURISDICTION = /\b(?:regulation|reg)\s*[dsa]\b|\brule\s*(?:144a|506(?:\([a-c]\))?)\b|\b(?:mica|mas|fca|adgm|dfsa)\b/i;
+
+function stripOfferingFrameworkFromJurisdiction(value) {
+  return String(value || '')
+    .trim()
+    .replace(/\s*[\(\[\-–—|,:]?\s*(?:regulation|reg)\s*[dsa]\b(?:\s*[\)\]]|\s*\([^)]*\))?/ig, '')
+    .replace(/\s*[\(\[\-–—|,:]?\s*rule\s*(?:144a|506(?:\([a-c]\))?)\b(?:\s*[\)\]])?/ig, '')
+    .replace(/\s*[\(\[\-–—|,:]?\s*(?:mica|mas|fca|adgm|dfsa)\b(?:\s*[\)\]])?/ig, '')
+    .replace(/\s*[-–—|,:]\s*$/g, '')
+    .replace(/\s{2,}/g, ' ')
+    .replace(/\(\s*\)|\[\s*\]/g, '')
+    .trim();
+}
+
+function jurisdictionChoiceFromText(value) {
+  const text = normalized(value);
+  if (text.includes('united_states') || text === 'us' || text.startsWith('us_')) return 'united_states';
+  if (text.includes('canada')) return 'canada';
+  if (text.includes('united_arab_emirates') || text.includes('uae')) return 'united_arab_emirates';
+  if (text.includes('european_union') || text === 'eu') return 'european_union';
+  if (text.includes('singapore')) return 'singapore';
+  if (text.includes('united_kingdom') || text === 'uk') return 'united_kingdom';
+  return null;
+}
+
+function normalizeJurisdictionWithDetail(value, { strict = false } = {}) {
+  if (value == null || (typeof value === 'string' && !value.trim())) return null;
+  const raw = typeof value === 'object' && !Array.isArray(value)
+    ? value
+    : { choice: value, detail: '' };
+  const rawChoice = String(raw.choice ?? '').trim();
+  const legacyChoice = LEGACY_JURISDICTION_CHOICES[normalized(rawChoice)];
+  const selected = choiceForValue(PREPARATION_FIELD_DEFINITIONS.jurisdiction, rawChoice)
+    || (legacyChoice
+      ? choiceForValue(PREPARATION_FIELD_DEFINITIONS.jurisdiction, legacyChoice)
+      : null);
+  const rawText = typeof value === 'string' ? value.trim() : `${rawChoice} ${raw.detail || raw.details || ''}`.trim();
+  const frameworkFound = OFFERING_FRAMEWORK_IN_JURISDICTION.test(rawText);
+  const inferredGeography = jurisdictionChoiceFromText(rawText);
+  const detail = stripOfferingFrameworkFromJurisdiction(raw.detail || raw.details || (
+    typeof value === 'string' && !selected ? value : ''
+  ));
+
+  if (frameworkFound && inferredGeography) {
+    return { choice: inferredGeography, detail };
+  }
+  if (!selected) {
+    if (typeof value === 'string' && value.trim()) {
+      return { choice: 'other', detail: stripOfferingFrameworkFromJurisdiction(value) };
+    }
+    throw new Error('Choose one of the supported geographic options.');
+  }
+  if (selected.value === 'other' && strict && !detail) {
+    throw new Error('Add a specific geographic detail when choosing Other.');
+  }
+  return { choice: selected.value, detail };
+}
+
 function normalizeChoiceWithDetail(value, definition, { strict = false } = {}) {
   if (value == null || (typeof value === 'string' && !value.trim())) return null;
   const raw = typeof value === 'object' && !Array.isArray(value)
@@ -237,6 +314,9 @@ function normalizeMultiChoiceWithDetail(value, definition, { strict = false } = 
 
 function normalizePreparationValueForField(fieldKey, value, options = {}) {
   const definition = PREPARATION_FIELD_DEFINITIONS[fieldKey] || {};
+  if (fieldKey === 'jurisdiction') {
+    return normalizeJurisdictionWithDetail(value, options);
+  }
   if (definition.input_type === 'choice_with_detail') {
     return normalizeChoiceWithDetail(value, definition, options);
   }
@@ -390,6 +470,7 @@ function updateDigitalAssetPreparationPackage({
   preparationValues = {},
   revision = 1,
   explicitKeys = [],
+  revisionMetadata = null,
 } = {}) {
   if (!packagePayload || typeof packagePayload !== 'object') {
     throw new Error('A stored Digital Asset Preparation Package is required.');
@@ -407,6 +488,7 @@ function updateDigitalAssetPreparationPackage({
     eligible: next.frozen_readiness?.eligible === true,
   });
   next.package_revision = revision;
+  next.save_request_id = revisionMetadata?.save_request_id || null;
   next.preparation_fields = preparationFields;
   next.package_status = state.status;
   next.package_hash = hashPackage(buildPackageHashInput(next));
@@ -417,6 +499,71 @@ function updateDigitalAssetPreparationPackage({
     preparation_status: state.status,
   };
   return next;
+}
+
+function isPreparationRevisionConflict(error) {
+  return /duplicate key|unique constraint/i.test(error?.message || '');
+}
+
+async function appendDigitalAssetPreparationRevision({
+  packageRow,
+  updates,
+  saveRequestId,
+  createdBy = null,
+  getLatestRevision,
+  getRevisionByRequestId,
+  insertRevision,
+  maxAttempts = 5,
+} = {}) {
+  if (!packageRow?.id || typeof getLatestRevision !== 'function'
+    || typeof getRevisionByRequestId !== 'function' || typeof insertRevision !== 'function') {
+    throw new Error('A package revision repository is required.');
+  }
+
+  const existingRequestRevision = await getRevisionByRequestId(packageRow.id, saveRequestId);
+  if (existingRequestRevision) {
+    return { created: false, idempotent: true, revision: existingRequestRevision };
+  }
+
+  let lastConflict = null;
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    const latestRevision = await getLatestRevision(packageRow.id);
+    const currentPayload = latestRevision?.package || packageRow.package;
+    const nextRevision = Number(latestRevision?.revision || 0) + 1;
+    const nextValues = {
+      ...extractPreparationValues(currentPayload),
+      ...updates,
+    };
+    const packagePayload = updateDigitalAssetPreparationPackage({
+      packagePayload: currentPayload,
+      preparationValues: nextValues,
+      revision: nextRevision,
+      explicitKeys: Object.keys(updates),
+      revisionMetadata: { save_request_id: saveRequestId },
+    });
+    const { data: revision, error } = await insertRevision({
+      package_id: packageRow.id,
+      property_id: packageRow.property_id,
+      revision: nextRevision,
+      source_snapshot_id: packageRow.source_snapshot_id,
+      source_snapshot_version: packageRow.source_snapshot_version,
+      source_snapshot_hash: packageRow.source_snapshot_hash,
+      package_hash: packagePayload.package_hash,
+      package: packagePayload,
+      changed_fields: Object.keys(updates),
+      created_by: createdBy,
+    });
+    if (!error) {
+      return { created: true, idempotent: false, revision, packagePayload };
+    }
+    if (!isPreparationRevisionConflict(error)) throw error;
+    lastConflict = error;
+    const concurrentRequestRevision = await getRevisionByRequestId(packageRow.id, saveRequestId);
+    if (concurrentRequestRevision) {
+      return { created: false, idempotent: true, revision: concurrentRequestRevision };
+    }
+  }
+  throw lastConflict || new Error('Could not append the preparation revision.');
 }
 
 function buildBlockerStatus(snapshot) {
@@ -605,6 +752,8 @@ module.exports = {
   hasPreparationValue,
   preparationStatus,
   updateDigitalAssetPreparationPackage,
+  appendDigitalAssetPreparationRevision,
+  isPreparationRevisionConflict,
   presentStoredDigitalAssetPackage,
   digitalAssetPackagesUnavailable,
   hashPackage,

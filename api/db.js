@@ -42,7 +42,7 @@ if (hasLocalDb) {
       select: () => b, insert: () => b, update: () => b, delete: () => b,
       upsert: () => b, eq: () => b, neq: () => b, in: () => b, gte: () => b,
       lte: () => b, gt: () => b, lt: () => b, is: () => b, or: () => b,
-      like: () => b, limit: () => b, order: () => b, single: () => b,
+      like: () => b, contains: () => b, limit: () => b, order: () => b, single: () => b,
       then: (resolve) => resolve({ data: [], error: null }),
     };
     return b;

@@ -23,6 +23,7 @@ const {
   getTransactionRecordCategory,
   getCurrentProvenanceGap,
   preparationDraftValue,
+  preparationSaveConfirmation,
 } = require('./DealRoomPage');
 
 describe('coordinator transaction brief logic', () => {
@@ -43,6 +44,23 @@ describe('coordinator transaction brief logic', () => {
       choices: ['qualified_investors'],
       detail: 'Review with counsel',
     });
+  });
+
+  test('makes a successful preparation save visible and names the revision', () => {
+    expect(preparationSaveConfirmation({
+      revision: 2,
+      packageStatus: 'ready_for_provider_review',
+    })).toBe('Saved as Revision 2. Package status: Ready for provider review.');
+    expect(preparationSaveConfirmation({
+      revision: 2,
+      packageStatus: 'needs_information',
+      idempotent: true,
+    })).toContain('Already saved as Revision 2');
+    expect(preparationSaveConfirmation({
+      revision: 2,
+      packageStatus: 'needs_information',
+      idempotent: true,
+    })).toContain('No duplicate revision was created.');
   });
 
   test('matches a live provenance gap to the confirmed canonical field', () => {
