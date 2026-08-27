@@ -11,6 +11,7 @@ const {
   filterLiveDocumentActions,
   filterStaleRecordActions,
   actionTextMentionsRecordField,
+  isBorrowerFundsRecordAction,
   getHazardLossOperationalFieldDefinitions,
   dedupeAttentionItems,
   getCanonicalAwaitingRecordFields,
@@ -394,6 +395,16 @@ describe('coordinator transaction brief logic', () => {
       title: 'Confirm Borrower Advanced Funds',
       reason: 'Kontra extracted "90,000" from an uploaded document. Confirm this is correct.',
     }], recordState)).toEqual([]);
+  });
+
+  test('removes borrower-funds briefing copies from next actions', () => {
+    expect(isBorrowerFundsRecordAction({
+      title: 'Confirm Borrower Advanced Funds',
+      reason: 'Kontra extracted "90,000" from an uploaded document.',
+    })).toBe(true);
+    expect(isBorrowerFundsRecordAction({
+      title: 'Confirm Funding Request',
+    })).toBe(false);
   });
 
   test('keeps investor organization fields in Identity & Parties', () => {

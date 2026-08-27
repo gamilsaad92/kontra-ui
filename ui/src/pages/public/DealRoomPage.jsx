@@ -3335,7 +3335,8 @@ function WhatNeedsAttention({
       title: `Upload ${typeof document === 'string' ? document : document.label || document.name || 'required document'}`,
       document: true,
     })) : []),
-  ], documentStats), recordState, recordFields, canonicalActionKeys);
+  ], documentStats), recordState, recordFields, canonicalActionKeys)
+    .filter(action => !isBorrowerFundsRecordAction(action));
   const seenBriefingActions = new Set();
   derivedActions.forEach(item => items.push(item));
   briefingActions.forEach((item, i) => {
@@ -3371,7 +3372,7 @@ function WhatNeedsAttention({
     recordState,
     recordFields,
     canonicalActionKeys,
-  );
+  ).filter(item => !isBorrowerFundsRecordAction(item));
   rawIssues.slice(0, 3).forEach((item, i) => {
     const text = typeof item === 'string' ? item : (item.text || item.risk || item.item || item.title || '');
     const normalizedText = String(text).trim();
@@ -5307,6 +5308,27 @@ function actionTextMentionsRecordField(action, field) {
     && /\b(?:add|identify|confirm|record|provide|select)\b/.test(text);
 }
 
+function isBorrowerFundsRecordAction(action) {
+  const actionValue = typeof action === 'string'
+    ? action
+    : [
+      action?.title,
+      action?.text,
+      action?.action,
+      action?.item,
+      action?.reason,
+      action?.note,
+    ].filter(Boolean).join(' ');
+  const text = normalizeAttentionText(actionValue);
+  if (!text) return false;
+  return (
+    /\bborrower\b.*\badvanc(?:e|ed|ing)\b.*\bfunds?\b/.test(text)
+    || /\bborrower\b.*\bfunds?\b.*\badvanc(?:e|ed|ing)\b/.test(text)
+    || /\badvanc(?:e|ed|ing)\b.*\bborrower\b.*\bfunds?\b/.test(text)
+    || /\bborrower\b.*\bout\s+of\s+pocket\b/.test(text)
+  );
+}
+
 function findCanonicalRecordFieldForAction(action, recordState, recordFields = []) {
   const candidates = getCanonicalRecordFieldCandidates(recordState, recordFields);
   const preferCurrentState = matches => matches
@@ -6098,6 +6120,7 @@ export {
   filterLiveDocumentActions,
   filterStaleRecordActions,
   actionTextMentionsRecordField,
+  isBorrowerFundsRecordAction,
   normalizeRecordCategory,
   getTransactionRecordCategory,
   getHazardLossOperationalFieldDefinitions,
