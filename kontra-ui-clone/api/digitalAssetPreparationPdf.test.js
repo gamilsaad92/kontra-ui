@@ -159,8 +159,7 @@ describe('Digital Asset Preparation PDF', () => {
     expect(text).not.toContain('280000');
     expect(text).not.toContain('5500');
     expect(encoded).toContain('/Subtype /Image');
-    expect(getPdfPageCount(buffer)).toBeGreaterThanOrEqual(4);
-    expect(getPdfPageCount(buffer)).toBeLessThanOrEqual(5);
+    expect(getPdfPageCount(buffer)).toBe(7);
     expect(hashPreparationPdf(buffer)).toMatch(/^[a-f0-9]{64}$/);
   });
 
@@ -276,14 +275,16 @@ describe('Digital Asset Preparation PDF', () => {
     expect(pages[0]).toContain('Package identity and status');
     expect(pages[0]).toContain('Readiness at a glance');
     expect(pages[0]).toContain('Verified transaction and asset summary');
-    expect(pages[1]).toContain('Digital Asset Preparation fields');
-    expect(pages[2]).toContain('Verification and readiness');
-    expect(pages[2]).toContain('Required approvals satisfied — 24 approval events recorded.');
-    expect(pages.findIndex(page => page.includes('Evidence & Provenance Appendix')))
-      .toBeGreaterThanOrEqual(3);
+    expect(pages[1]).toContain('Frozen canonical Transaction Record');
+    expect(pages[2]).toContain('Digital Asset Preparation fields');
+    expect(pages[3]).toContain('Verification, approvals & exceptions');
+    expect(pages[3]).toContain('Required approvals satisfied — 24 approval events recorded.');
+    expect(pages[4]).toContain('Evidence & Provenance Appendix');
+    expect(pages[5]).toContain('Evidence event history');
+    expect(pages[6]).toContain('Technical integrity');
     expect(text).toContain('Evidence & Provenance Appendix');
     expect(text).toContain('Investor or agency');
-    expect(text).toContain('Revision');
+    expect(text).toContain('revision');
     expect(text).toContain('7');
     expect(text).toContain('evidence-org-1');
     expect(text).toContain('Required approvals satisfied — 24 approval events recorded.');

@@ -14,14 +14,19 @@ const MARGIN = 48;
 const CONTENT_WIDTH = PAGE_WIDTH - (MARGIN * 2);
 
 const COLORS = {
-  navy: '#24364b',
+  navy: '#0f172a',
   burgundy: '#800020',
-  teal: '#147d83',
   ink: '#17202a',
-  muted: '#5c6875',
-  line: '#d7e0e5',
-  pale: '#f2f6f7',
-  paleBlue: '#edf3f7',
+  brandRed: '#e5484d',
+  muted: '#64748b',
+  line: '#e5e7eb',
+  subtleLine: '#f1f5f9',
+  pale: '#f8fafc',
+  paleRed: '#fdecec',
+  paleGreen: '#f0fdf4',
+  green: '#16a34a',
+  darkGreen: '#166534',
+  paleBlue: '#eff6ff',
   white: '#ffffff',
 };
 
@@ -183,12 +188,18 @@ function formatHashForPdf(value) {
 
 function writeHeading(doc, text, level = 1) {
   doc.x = MARGIN;
-  doc.moveDown(level === 1 ? 0.65 : 0.3);
+  doc.moveDown(level === 1 ? 0.35 : 0.22);
+  const headingY = doc.y;
+  if (level === 1) {
+    doc.roundedRect(MARGIN, headingY + 2, 4, 14, 2).fill(COLORS.burgundy);
+  }
   doc.font('Helvetica-Bold')
-    .fontSize(level === 1 ? 14 : 10)
-    .fillColor(level === 1 ? COLORS.teal : COLORS.navy)
-    .text(text, MARGIN, doc.y, { width: CONTENT_WIDTH });
-  doc.moveDown(0.12);
+    .fontSize(level === 1 ? 13 : 9.5)
+    .fillColor(level === 1 ? COLORS.navy : COLORS.burgundy)
+    .text(text, MARGIN + (level === 1 ? 11 : 0), headingY, {
+      width: CONTENT_WIDTH - (level === 1 ? 11 : 0),
+    });
+  doc.y = headingY + (level === 1 ? 20 : 15);
   doc.x = MARGIN;
   doc.font('Helvetica').fontSize(9).fillColor(COLORS.ink);
 }
@@ -209,10 +220,112 @@ function writeLabelValue(doc, label, value, { allowEmpty = false } = {}) {
 function writeNote(doc, text, color = COLORS.muted) {
   if (!hasValue(text)) return;
   doc.x = MARGIN;
-  doc.font('Helvetica').fontSize(8.5).fillColor(color)
+  doc.font('Helvetica').fontSize(8).fillColor(color)
     .text(String(text), MARGIN, doc.y, { width: CONTENT_WIDTH, lineGap: 2 });
-  doc.moveDown(0.12);
+  doc.moveDown(0.16);
   doc.x = MARGIN;
+}
+
+function statusTone(value) {
+  const normalized = String(value || '').toLowerCase();
+  if (/not eligible|ineligible|not recorded|not ready|not satisfied|missing|block|unresolved|incomplete|exception|gap|error|rejected/.test(normalized)) {
+    return { text: COLORS.burgundy, fill: COLORS.paleRed, accent: COLORS.brandRed };
+  }
+  if (/eligible|confirmed|recorded|satisfied|intact|ready|approved|resolved|complete/.test(normalized)) {
+    return { text: COLORS.darkGreen, fill: COLORS.paleGreen, accent: COLORS.green };
+  }
+  return { text: COLORS.navy, fill: COLORS.pale, accent: COLORS.muted };
+}
+
+function writeMetricCards(doc, items, { columns = 4, startY = doc.y, height = 67, gap = 8 } = {}) {
+  const rows = Math.ceil(items.length / columns);
+  const width = (CONTENT_WIDTH - (gap * (columns - 1))) / columns;
+  items.forEach((item, index) => {
+    const column = index % columns;
+    const row = Math.floor(index / columns);
+    const x = MARGIN + column * (width + gap);
+    const y = startY + row * (height + gap);
+    const tone = statusTone(item.value);
+    doc.roundedRect(x, y, width, height, 5)
+      .fillAndStroke(item.tone === 'neutral' ? COLORS.white : tone.fill, COLORS.line);
+    doc.font('Helvetica-Bold').fontSize(7).fillColor(COLORS.muted)
+      .text(item.label.toUpperCase(), x + 10, y + 10, { width: width - 20 });
+    doc.font('Helvetica-Bold').fontSize(item.valueSize || 14).fillColor(item.color || tone.text)
+      .text(formatHumanValue(item.value) || '—', x + 10, y + 27, {
+        width: width - 20,
+        height: height - 35,
+        lineGap: 1,
+      });
+    if (item.detail) {
+      doc.font('Helvetica').fontSize(6.5).fillColor(COLORS.muted)
+        .text(item.detail, x + 10, y + height - 15, { width: width - 20 });
+    }
+  });
+  const totalHeight = rows * height + Math.max(0, rows - 1) * gap;
+  doc.y = startY + totalHeight;
+  doc.x = MARGIN;
+  return totalHeight;
+}
+
+function writeCallout(doc, title, body, tone = 'neutral') {
+  const palette = tone === 'success'
+    ? { fill: COLORS.paleGreen, border: '#bbf7d0', accent: COLORS.green, text: COLORS.darkGreen }
+    : tone === 'critical'
+      ? { fill: COLORS.paleRed, border: '#fecaca', accent: COLORS.brandRed, text: COLORS.burgundy }
+      : { fill: COLORS.pale, border: COLORS.line, accent: COLORS.muted, text: COLORS.navy };
+  const bodyText = String(body || '');
+  doc.font('Helvetica').fontSize(8);
+  const bodyHeight = Math.max(18, doc.heightOfString(bodyText, { width: CONTENT_WIDTH - 34, lineGap: 2 }));
+  const height = 28 + bodyHeight;
+  const y = doc.y;
+  doc.roundedRect(MARGIN, y, CONTENT_WIDTH, height, 5).fillAndStroke(palette.fill, palette.border);
+  doc.rect(MARGIN, y, 4, height).fill(palette.accent);
+  doc.font('Helvetica-Bold').fontSize(8).fillColor(palette.text)
+    .text(title, MARGIN + 14, y + 9, { width: CONTENT_WIDTH - 28 });
+  doc.font('Helvetica').fontSize(8).fillColor(COLORS.ink)
+    .text(bodyText, MARGIN + 14, y + 22, { width: CONTENT_WIDTH - 28, lineGap: 2 });
+  doc.y = y + height + 10;
+  doc.x = MARGIN;
+}
+
+function writeKeyValueGrid(doc, items, { columns = 2, rowHeight = 40, gap = 8 } = {}) {
+  const width = (CONTENT_WIDTH - gap * (columns - 1)) / columns;
+  const startY = doc.y;
+  items.forEach((item, index) => {
+    const column = index % columns;
+    const row = Math.floor(index / columns);
+    const x = MARGIN + column * (width + gap);
+    const y = startY + row * (rowHeight + gap);
+    doc.roundedRect(x, y, width, rowHeight, 4).fillAndStroke(item.fill || COLORS.white, COLORS.line);
+    doc.font('Helvetica-Bold').fontSize(7).fillColor(COLORS.muted)
+      .text(item.label.toUpperCase(), x + 10, y + 8, { width: width - 20 });
+    doc.font('Helvetica').fontSize(item.valueSize || 8.5).fillColor(item.color || COLORS.ink)
+      .text(formatHumanValue(item.value) || '—', x + 10, y + 21, {
+        width: width - 20,
+        height: rowHeight - 25,
+        lineGap: 1,
+      });
+  });
+  const rows = Math.ceil(items.length / columns);
+  doc.y = startY + rows * rowHeight + Math.max(0, rows - 1) * gap;
+  doc.x = MARGIN;
+}
+
+function drawKLockup(doc, logoImage) {
+  const x = MARGIN;
+  const y = 34;
+  const size = 18;
+  doc.roundedRect(x, y, size, size, 4).fill(COLORS.burgundy);
+  doc.save();
+  doc.lineWidth(1.5).strokeColor(COLORS.white).lineCap('round');
+  doc.moveTo(x + 5, y + 4).lineTo(x + 5, y + 14).stroke();
+  doc.moveTo(x + 6, y + 9).lineTo(x + 13, y + 4).stroke();
+  doc.moveTo(x + 6, y + 9).lineTo(x + 14, y + 14).stroke();
+  doc.restore();
+  doc.save();
+  doc.rect(x + 25, 31, 96, 23).clip();
+  doc.image(logoImage, x + 25, 29, { width: 96, height: 24 });
+  doc.restore();
 }
 
 function ensureSpace(doc, height = 40) {
@@ -234,7 +347,7 @@ function writeTable(doc, columns, rows, {
     return;
   }
 
-  const headerHeight = 25;
+  const headerHeight = 23;
   const cellPadding = 6;
   const fontForCell = (column, header) => (
     header ? 'Helvetica-Bold' : (column.font || 'Helvetica')
@@ -243,8 +356,8 @@ function writeTable(doc, columns, rows, {
     const heights = values.map((value, index) => {
       const width = columns[index].width - (cellPadding * 2);
       doc.font(fontForCell(columns[index], header))
-        .fontSize(header ? 7.5 : 7.4);
-      return Math.max(18, doc.heightOfString(value || '', { width, lineGap: 1 }) + (cellPadding * 2));
+        .fontSize(header ? 7.2 : 7.2);
+      return Math.max(17, doc.heightOfString(value || '', { width, lineGap: 1 }) + (cellPadding * 2));
     });
     return header ? headerHeight : Math.max(...heights);
   };
@@ -259,12 +372,12 @@ function writeTable(doc, columns, rows, {
     ensureSpace(doc, rowHeight + 4);
     const top = doc.y;
     let left = MARGIN;
+    const rowFill = header ? COLORS.navy : (rowIndex % 2 ? COLORS.pale : COLORS.white);
+    doc.rect(MARGIN, top, CONTENT_WIDTH, rowHeight).fill(rowFill);
     values.forEach((value, index) => {
       const column = columns[index];
-      doc.rect(left, top, column.width, rowHeight)
-        .fillAndStroke(header ? COLORS.navy : (rowIndex % 2 ? COLORS.pale : COLORS.white), COLORS.line);
       doc.font(fontForCell(column, header))
-        .fontSize(header ? 7.5 : 7.4)
+        .fontSize(header ? 7.2 : 7.2)
         .fillColor(header ? COLORS.white : COLORS.ink)
         .text(value || '', left + cellPadding, top + cellPadding, {
           width: column.width - (cellPadding * 2),
@@ -273,6 +386,11 @@ function writeTable(doc, columns, rows, {
         });
       left += column.width;
     });
+    doc.moveTo(MARGIN, top + rowHeight)
+      .lineTo(MARGIN + CONTENT_WIDTH, top + rowHeight)
+      .lineWidth(header ? 0.7 : 0.35)
+      .strokeColor(header ? COLORS.navy : COLORS.line)
+      .stroke();
     doc.y = top + rowHeight;
     doc.x = MARGIN;
   };
@@ -332,14 +450,15 @@ function provenanceRow(field, manifest = []) {
 
 function canonicalSummaryRows(canonicalFields) {
   return (Array.isArray(canonicalFields) ? canonicalFields : [])
-    .filter(field => hasValue(field?.value))
     .map(field => ({
       field: field.label || humanizeKey(field.field_key || field.definition_key),
-      frozen_value: formatDisplayValue(field.value, {
-        fieldKey: field.field_key || field.definition_key,
-        label: field.label,
-      }),
-      status: displayStatus(field.current_state || field.status),
+      frozen_value: hasValue(field?.value)
+        ? formatDisplayValue(field.value, {
+          fieldKey: field.field_key || field.definition_key,
+          label: field.label,
+        })
+        : 'Not recorded',
+      status: displayStatus(field.current_state || field.status) || 'Not recorded',
     }));
 }
 
@@ -601,21 +720,14 @@ function buildPreparationPdfBuffer({
 
     const logoImage = doc.openImage(KONTRA_LOGO);
     logoImage.embed(doc);
-    const logoScale = 72 / 192;
-    const logoWidth = 400 * logoScale;
-    const logoX = MARGIN - (14 * logoScale);
-    const logoY = 35 - (35 * logoScale);
     let pageNumber = 1;
     const addPageChrome = () => {
       doc.save();
-      doc.rect(MARGIN, 30, CONTENT_WIDTH, 3).fill(COLORS.teal);
-      doc.save();
-      doc.rect(MARGIN, 35, 72, 14).clip();
-      doc.image(logoImage, logoX, logoY, { width: logoWidth });
-      doc.restore();
+      doc.rect(MARGIN, 28, CONTENT_WIDTH, 2).fill(COLORS.burgundy);
+      drawKLockup(doc, logoImage);
       doc.font('Helvetica').fontSize(7.5).fillColor(COLORS.muted)
-        .text('DIGITAL ASSET PREPARATION', MARGIN + 82, 37, { width: (CONTENT_WIDTH / 2) - 82 });
-      doc.text(`External review artifact  ·  Page ${pageNumber}`, MARGIN + CONTENT_WIDTH / 2, 37, {
+        .text('DIGITAL ASSET PREPARATION', MARGIN + 132, 37, { width: 160 });
+      doc.text(`External Review Artifact · Page ${pageNumber}`, MARGIN + CONTENT_WIDTH / 2, 37, {
         width: CONTENT_WIDTH / 2,
         align: 'right',
       });
@@ -630,160 +742,196 @@ function buildPreparationPdfBuffer({
 
     const startNextPage = () => {
       doc.addPage();
+      doc.y = 76;
       doc.x = MARGIN;
     };
 
-    doc.font('Helvetica-Bold').fontSize(21).fillColor(COLORS.navy)
-      .text('Digital Asset Preparation Package', MARGIN, doc.y, { width: CONTENT_WIDTH });
+    doc.y = 76;
+    doc.font('Helvetica-Bold').fontSize(7).fillColor(COLORS.burgundy)
+      .text('EXTERNAL REVIEW ARTIFACT', MARGIN, doc.y, { width: CONTENT_WIDTH });
+    doc.moveDown(0.28);
+    doc.font('Helvetica-Bold').fontSize(25).fillColor(COLORS.navy)
+      .text('Digital Asset Preparation', MARGIN, doc.y, { width: CONTENT_WIDTH });
     doc.font('Helvetica').fontSize(10).fillColor(COLORS.muted)
-      .text('Provider-neutral readiness and external review artifact', MARGIN, doc.y, {
+      .text('Provider-neutral package for qualified external review', MARGIN, doc.y + 3, {
         width: CONTENT_WIDTH,
       });
-    doc.moveDown(0.22);
+    doc.y += 36;
     doc.font('Helvetica').fontSize(8.5).fillColor(COLORS.muted)
-      .text('Prepared from one immutable readiness snapshot and one saved preparation revision. This document is intended to support review by qualified external providers and professionals.', MARGIN, doc.y, {
+      .text('Prepared from one immutable readiness snapshot and one saved preparation revision. This artifact organizes verified transaction data and owner-provided preparation inputs for independent external review.', MARGIN, doc.y, {
         width: CONTENT_WIDTH,
         lineGap: 2,
       });
 
     writeHeading(doc, 'Package identity and status');
-    writeTable(doc, [
-      { label: 'Package', key: 'package', width: 160 },
-      { label: 'Status', key: 'status', width: 190 },
-      { label: 'Revision', key: 'revision', width: 70 },
-      { label: 'Revision date', key: 'revision_date', width: 146 },
-    ], [{
-      package: packageId,
-      status: displayStatus(payload.package_status),
-      revision: revisionNumber,
-      revision_date: displayDate(revisionCreatedAt),
-    }], { emptyText: 'Package identity was not recorded.' });
-    writeLabelValue(doc, 'Property / room', propertyId);
-
-    writeHeading(doc, 'Source immutable snapshot');
-    writeTable(doc, [
-      { label: 'Version', key: 'version', width: 80 },
-      { label: 'Eligibility', key: 'eligibility', width: 145 },
-      { label: 'Recorded date', key: 'recorded_at', width: 170 },
-      { label: 'Verified fields', key: 'verified_fields', width: 171 },
-    ], [{
-      version: sourceSnapshot.version,
-      eligibility: displayStatus(sourceSnapshot.eligibility_status),
-      recorded_at: displayDate(sourceSnapshot.recorded_at || frozenReadiness.snapshot_timestamp),
-      verified_fields: summary.readiness || frozenReadiness.readiness,
-    }], { emptyText: 'Source snapshot metadata was not recorded.' });
-    writeNote(doc, 'All verified facts and review references in this artifact are frozen to this snapshot. Later changes to the live Transaction Record do not alter this package.');
+    writeKeyValueGrid(doc, [
+      { label: 'Property / transaction', value: propertyId, valueSize: 9 },
+      { label: 'Package status', value: displayStatus(payload.package_status), color: statusTone(payload.package_status).text },
+      { label: 'Preparation revision', value: revisionNumber ?? 'Not recorded' },
+      { label: 'Revision date', value: displayDate(revisionCreatedAt) || 'Not recorded' },
+    ], { rowHeight: 43 });
 
     writeHeading(doc, 'Readiness at a glance');
-    writeTable(doc, [
-      { label: 'Readiness', key: 'status', width: 155 },
-      { label: 'Eligible', key: 'eligible', width: 70 },
-      { label: 'Verified fields', key: 'verified', width: 125 },
-      { label: 'Provenance', key: 'provenance', width: 105 },
-      { label: 'Open items', key: 'open_items', width: 61 },
-    ], [{
-      status: displayStatus(frozenReadiness.status),
-      eligible: frozenReadiness.eligible,
-      verified: summary.readiness || frozenReadiness.readiness,
-      provenance: provenance.intact ? 'Intact' : `${provenance.gap_count || 0} gap(s)`,
-      open_items: blockerItems.length + (blockers.blocking_count || 0),
-    }], { emptyText: 'Readiness status was not recorded.' });
+    writeMetricCards(doc, [
+      { label: 'Readiness', value: summary.readiness || frozenReadiness.readiness || 'Not recorded', valueSize: 12 },
+      { label: 'Eligibility', value: frozenReadiness.eligible ? 'Eligible' : 'Not eligible', valueSize: 12 },
+      { label: 'Verified fields', value: summary.readiness || frozenReadiness.readiness || 'Not recorded', valueSize: 11 },
+      { label: 'Provenance', value: provenance.intact ? 'Intact' : `${provenance.gap_count || 0} gap(s)`, valueSize: 12 },
+      { label: 'Blockers', value: blockerItems.length + (Number(blockers.blocking_count) || 0), valueSize: 14 },
+      { label: 'Snapshot version', value: sourceSnapshot.version ?? 'Not recorded', valueSize: 14 },
+      { label: 'Generated', value: displayDate(revisionCreatedAt || sourceSnapshot.recorded_at) || 'Not recorded', valueSize: 9 },
+      { label: 'Settlement method', value: displayStatus(frozenReadiness.settlement_mode) || 'Not recorded', valueSize: 9 },
+    ], { columns: 4, height: 62, gap: 7 });
 
     writeHeading(doc, 'Verified transaction and asset summary');
-    writeTable(doc, [
-      { label: 'Field', key: 'field', width: 175 },
-      { label: 'Frozen value', key: 'frozen_value', width: 245 },
-      { label: 'Verified state', key: 'status', width: 96 },
-    ], canonicalSummaryRows(canonicalFields), {
-      emptyText: 'No verified transaction or asset facts were recorded.',
-      keepTogether: true,
-    });
+    writeNote(doc, 'The complete frozen canonical Transaction Record is presented on page 2. Later changes to the live record do not alter this package.');
 
     startNextPage();
-    writeHeading(doc, 'Digital Asset Preparation fields');
-    writeNote(doc, 'These values are owner-provided preparation inputs or values inherited from the verified transaction record. They are presented for qualified external review and do not represent an issuance or settlement decision.');
+    doc.font('Helvetica-Bold').fontSize(7).fillColor(COLORS.burgundy)
+      .text('01 / FROZEN RECORD', MARGIN, doc.y, { width: CONTENT_WIDTH });
+    doc.moveDown(0.25);
+    doc.font('Helvetica-Bold').fontSize(19).fillColor(COLORS.navy)
+      .text('Frozen canonical Transaction Record', MARGIN, doc.y, { width: CONTENT_WIDTH });
+    doc.moveDown(0.16);
+    writeNote(doc, 'Read-only values captured in the selected immutable readiness snapshot. Verification state is shown for every recorded field.');
     writeTable(doc, [
-      { label: 'Preparation field', key: 'field', width: 150 },
-      { label: 'Prepared value', key: 'value', width: 240 },
-      { label: 'Source / origin', key: 'origin', width: 100 },
-      { label: 'Status', key: 'status', width: 66 },
+      { label: 'Canonical field', key: 'field', width: 172 },
+      { label: 'Frozen value', key: 'frozen_value', width: 252 },
+      { label: 'State', key: 'status', width: 92 },
+    ], canonicalSummaryRows(canonicalFields), {
+      emptyText: 'No canonical Transaction Record fields were recorded.',
+    });
+    writeCallout(doc, 'Snapshot boundary', `Snapshot version ${sourceSnapshot.version ?? 'not recorded'} · ${displayDate(sourceSnapshot.recorded_at || frozenReadiness.snapshot_timestamp) || 'recorded date not available'}. Values and evidence references on this page are frozen.`, 'neutral');
+
+    startNextPage();
+    doc.font('Helvetica-Bold').fontSize(7).fillColor(COLORS.burgundy)
+      .text('02 / PREPARATION INPUTS', MARGIN, doc.y, { width: CONTENT_WIDTH });
+    doc.moveDown(0.25);
+    doc.font('Helvetica-Bold').fontSize(19).fillColor(COLORS.navy)
+      .text('Digital Asset Preparation fields', MARGIN, doc.y, { width: CONTENT_WIDTH });
+    doc.moveDown(0.16);
+    writeNote(doc, 'These values are owner-provided preparation inputs or values inherited from the verified Transaction Record. They support external review and do not represent an issuance or settlement decision.');
+    writeTable(doc, [
+      { label: 'Preparation field', key: 'field', width: 136 },
+      { label: 'Prepared value', key: 'value', width: 224 },
+      { label: 'Origin', key: 'origin', width: 100 },
+      { label: 'Status', key: 'status', width: 56 },
     ], preparationRows(preparationFields), {
       emptyText: 'No preparation fields with values were recorded.',
-      keepTogether: true,
     });
     if (Array.isArray(summary.missing_preparation_field_names) && summary.missing_preparation_field_names.length > 0) {
-      writeNote(doc, `Information still required: ${summary.missing_preparation_field_names.join('; ')}`, COLORS.burgundy);
+      writeCallout(doc, 'Information still required', summary.missing_preparation_field_names.join('; '), 'critical');
+    } else {
+      writeCallout(doc, 'Preparation inputs', 'No missing required preparation fields were recorded in this revision.', 'success');
     }
+    writeNote(doc, 'Jurisdiction denotes legal geography. Regulation D/S belongs under Security Offering Structure when applicable.', COLORS.muted);
 
     startNextPage();
-    writeHeading(doc, 'Verification and readiness');
-    writeTable(doc, [
-      { label: 'Readiness status', key: 'status', width: 155 },
-      { label: 'Eligible', key: 'eligible', width: 70 },
-      { label: 'Canonical fields', key: 'canonical', width: 100 },
-      { label: 'Provenance', key: 'provenance', width: 95 },
-      { label: 'Approvals', key: 'approvals', width: 96 },
-    ], [{
-      status: displayStatus(frozenReadiness.status),
-      eligible: frozenReadiness.eligible,
-      canonical: summary.readiness || frozenReadiness.readiness,
-      provenance: provenance.intact ? 'Intact' : `${provenance.gap_count || 0} gap(s)`,
-      approvals: approvals.satisfied ? 'Satisfied' : `${approvals.missing_count || 0} missing`,
-    }], { emptyText: 'Readiness status was not recorded.' });
-    writeLabelValue(doc, 'Snapshot eligibility', displayStatus(sourceSnapshot.eligibility_status));
-    writeLabelValue(doc, 'Preparation status', displayStatus(payload.package_status));
-    writeLabelValue(doc, 'Settlement method', displayStatus(frozenReadiness.settlement_mode));
-    writeLabelValue(doc, 'Blocking item count', blockers.blocking_count);
-    writeLabelValue(doc, 'All blockers resolved', blockers.resolved);
-    writeLabelValue(doc, 'Evidence entries', provenance.evidence_entry_count);
-    writeNote(doc, approvalSummary(approvals), approvals.satisfied ? COLORS.teal : COLORS.burgundy);
-
+    doc.font('Helvetica-Bold').fontSize(7).fillColor(COLORS.burgundy)
+      .text('03 / VERIFICATION & EXCEPTIONS', MARGIN, doc.y, { width: CONTENT_WIDTH });
+    doc.moveDown(0.25);
+    doc.font('Helvetica-Bold').fontSize(19).fillColor(COLORS.navy)
+      .text('Verification, approvals & exceptions', MARGIN, doc.y, { width: CONTENT_WIDTH });
+    doc.moveDown(0.16);
+    writeMetricCards(doc, [
+      { label: 'Readiness status', value: displayStatus(frozenReadiness.status) || 'Not recorded', valueSize: 10 },
+      { label: 'Approvals', value: approvals.satisfied ? 'Satisfied' : `${approvals.missing_count || 0} missing`, valueSize: 10 },
+      { label: 'Evidence entries', value: provenance.evidence_entry_count ?? 0, valueSize: 14 },
+      { label: 'Blocking items', value: blockerItems.length + (Number(blockers.blocking_count) || 0), valueSize: 14 },
+    ], { columns: 4, height: 60, gap: 7 });
+    writeCallout(doc, 'Approval review', approvalSummary(approvals), approvals.satisfied ? 'success' : 'critical');
+    writeHeading(doc, 'Open blockers', 2);
     if (blockerItems.length > 0) {
-      writeHeading(doc, 'Open blockers and exceptions', 2);
       writeTable(doc, [
-        { label: 'Category', key: 'type', width: 125 },
-        { label: 'Item', key: 'item', width: 190 },
-        { label: 'Review detail', key: 'detail', width: 201 },
+        { label: 'Category', key: 'type', width: 120 },
+        { label: 'Item', key: 'item', width: 176 },
+        { label: 'Review detail', key: 'detail', width: 220 },
       ], blockerItems);
     } else {
-      writeNote(doc, 'No unresolved blockers, conflicts, approval gaps, or provenance gaps were recorded.', COLORS.teal);
+      writeCallout(doc, 'Clear for review', 'No unresolved blockers, conflicts, approval gaps, or provenance gaps were recorded.', 'success');
     }
-
+    writeHeading(doc, 'Approval record', 2);
+    writeTable(doc, [
+      { label: 'Action', key: 'action', width: 94 },
+      { label: 'Field', key: 'field', width: 168 },
+      { label: 'Actor', key: 'actor', width: 106 },
+      { label: 'Date', key: 'date', width: 76 },
+      { label: 'Reference', key: 'reference', width: 72 },
+    ], approvalRows(approvals), { emptyText: 'No approval manifest entries were recorded.' });
     if (exceptions.length > 0) {
-      writeHeading(doc, 'Exception and resolution register', 2);
+      writeHeading(doc, 'Exception and resolution history', 2);
       writeTable(doc, [
-        { label: 'Field', key: 'field', width: 110 },
-        { label: 'Status', key: 'status', width: 70 },
-        { label: 'Resolution / detail', key: 'detail', width: 150 },
-        { label: 'Resolved by', key: 'resolved_by', width: 75 },
-        { label: 'Resolved date', key: 'resolved_at', width: 111 },
+        { label: 'Field', key: 'field', width: 100 },
+        { label: 'Status', key: 'status', width: 68 },
+        { label: 'Resolution / detail', key: 'detail', width: 178 },
+        { label: 'Resolved by', key: 'resolved_by', width: 78 },
+        { label: 'Date', key: 'resolved_at', width: 92 },
       ], exceptionRows(exceptions));
     }
+    writeNote(doc, 'The underlying package preserves the complete approval history, confirmation history, evidence records, and immutable audit trail.', COLORS.muted);
 
-    writeNote(doc, 'The complete approval history, confirmation history, evidence records, and immutable audit trail remain preserved in the underlying Kontra package and are not reproduced in full in this external artifact.');
+    const evidenceRows = provenanceRows(canonicalFields, provenance.manifest);
+    const evidenceMidpoint = Math.ceil(evidenceRows.length / 2);
+    startNextPage();
+    doc.font('Helvetica-Bold').fontSize(7).fillColor(COLORS.burgundy)
+      .text('04 / EVIDENCE APPENDIX', MARGIN, doc.y, { width: CONTENT_WIDTH });
+    doc.moveDown(0.25);
+    doc.font('Helvetica-Bold').fontSize(19).fillColor(COLORS.navy)
+      .text('Evidence & Provenance Appendix', MARGIN, doc.y, { width: CONTENT_WIDTH });
+    doc.moveDown(0.16);
+    writeNote(doc, 'Supporting evidence references for the frozen values. Source document and page are combined when available; long references are line-broken for readability.');
+    writeTable(doc, [
+      { label: 'Field', key: 'field', width: 110 },
+      { label: 'Frozen value', key: 'frozen_value', width: 138 },
+      { label: 'Source', key: 'source', width: 120 },
+      { label: 'Evidence reference', key: 'evidence_reference', width: 80 },
+      { label: 'Verified date', key: 'date', width: 68 },
+    ], evidenceRows.slice(0, evidenceMidpoint), {
+      emptyText: 'No frozen provenance entries were recorded.',
+    });
+    writeNote(doc, `Appendix segment 1 of 2 · ${evidenceRows.length} total provenance entries.`, COLORS.muted);
 
     startNextPage();
-    writeHeading(doc, 'Evidence & Provenance Appendix');
-    writeNote(doc, 'The following single table presents the frozen provenance projection in a human-readable format. Source document and page are combined in the Source column only when they exist.');
+    doc.font('Helvetica-Bold').fontSize(7).fillColor(COLORS.burgundy)
+      .text('05 / EVIDENCE APPENDIX · CONTINUED', MARGIN, doc.y, { width: CONTENT_WIDTH });
+    doc.moveDown(0.25);
+    doc.font('Helvetica-Bold').fontSize(19).fillColor(COLORS.navy)
+      .text('Evidence & Provenance Appendix', MARGIN, doc.y, { width: CONTENT_WIDTH });
+    doc.moveDown(0.16);
     writeTable(doc, [
-      { label: 'Field', key: 'field', width: 126 },
-      { label: 'Frozen value', key: 'frozen_value', width: 150 },
-      { label: 'Source', key: 'source', width: 130 },
-      { label: 'Evidence reference', key: 'evidence_reference', width: 85 },
-      { label: 'Verified date', key: 'date', width: 81 },
-    ], provenanceRows(canonicalFields, provenance.manifest), {
-      emptyText: 'No canonical fields with frozen values were recorded.',
-      keepTogether: true,
+      { label: 'Field', key: 'field', width: 110 },
+      { label: 'Frozen value', key: 'frozen_value', width: 138 },
+      { label: 'Source', key: 'source', width: 120 },
+      { label: 'Evidence reference', key: 'evidence_reference', width: 80 },
+      { label: 'Verified date', key: 'date', width: 68 },
+    ], evidenceRows.slice(evidenceMidpoint), {
+      emptyText: 'No additional frozen provenance entries were recorded.',
     });
-
-    ensureSpace(doc, 220);
-    writeHeading(doc, 'Technical integrity');
+    writeHeading(doc, 'Evidence event history', 2);
     writeTable(doc, [
-      { label: 'Identifier or hash', key: 'label', width: 190 },
+      { label: 'Date', key: 'date', width: 66 },
+      { label: 'Field', key: 'field', width: 116 },
+      { label: 'Event', key: 'event', width: 98 },
+      { label: 'Actor', key: 'actor', width: 82 },
+      { label: 'Source document', key: 'source_document', width: 100 },
+      { label: 'Page / reference', key: 'reference', width: 54 },
+    ], historyRows(payload), { emptyText: 'No evidence event history was recorded.' });
+    writeNote(doc, `Appendix segment 2 of 2 · ${evidenceRows.length} total provenance entries.`, COLORS.muted);
+
+    startNextPage();
+    doc.font('Helvetica-Bold').fontSize(7).fillColor(COLORS.burgundy)
+      .text('06 / TECHNICAL INTEGRITY', MARGIN, doc.y, { width: CONTENT_WIDTH });
+    doc.moveDown(0.25);
+    doc.font('Helvetica-Bold').fontSize(19).fillColor(COLORS.navy)
+      .text('Technical integrity & provider-neutral use', MARGIN, doc.y, { width: CONTENT_WIDTH });
+    doc.moveDown(0.2);
+    writeCallout(doc, 'Artifact integrity', 'Identifiers and hashes below bind this PDF to the selected preparation package, revision, and immutable readiness snapshot.', 'neutral');
+    writeTable(doc, [
+      { label: 'Identifier or hash', key: 'label', width: 180 },
       {
         label: 'Recorded value',
         key: 'value',
-        width: 376,
+        width: 336,
         font: 'Courier',
         format: (value, row) => /hash/i.test(row?.label || '')
           ? formatHashForPdf(value)
@@ -800,6 +948,7 @@ function buildPreparationPdfBuffer({
     writeHeading(doc, 'Provider-neutral disclaimer');
     writeNote(doc, disclosureText);
     writeNote(doc, 'External providers and qualified professionals must perform their own review and make their own legal, regulatory, investment, KYC/AML, custody, transfer, trading, and settlement determinations. This artifact is not an offer, recommendation, approval, or execution instruction.');
+    writeNote(doc, 'Kontra coordinates, verifies, and prepares information for review; it does not issue, sell, recommend, custody, transfer, trade, or settle digital assets.', COLORS.burgundy);
 
     doc.end();
   });
