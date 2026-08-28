@@ -34,3 +34,4 @@
 - [Kontra demo performance](kontra-demo-performance.md) — demo rooms render a local shell, hydrate independently, and keep the heavy room route code-split
 - [Kontra UI Jest harness](kontra-ui-jest-harness.md) — legacy root UI tests need package-local jsdom/CSS dependencies and a test-only import.meta transform
 - [Kontra PDF hash layout](kontra-pdf-hash-layout.md) — render placeholder and final artifact hashes in fixed-width, line-stable cells so normalized PDF hashes remain deterministic
+- [Kontra shared branding asset](kontra-shared-branding.md) — live public header and preparation PDFs must consume one canonical lockup; legacy split-wordmark images are non-authoritative
