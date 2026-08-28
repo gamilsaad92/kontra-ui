@@ -1,11 +1,27 @@
 'use strict';
 
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
+const { execFileSync } = require('child_process');
 const {
   PREPARATION_PDF_SCHEMA,
   PREPARATION_PDF_VERSION,
+  ARTIFACT_HASH_PLACEHOLDER,
   buildPreparationPdfBuffer,
   hashPreparationPdf,
 } = require('./lib/digitalAssetPreparationPdf');
+
+function extractPdfText(buffer) {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'kontra-pdf-test-'));
+  const input = path.join(directory, 'artifact.pdf');
+  try {
+    fs.writeFileSync(input, buffer);
+    return execFileSync('pdftotext', [input, '-']).toString('utf8');
+  } finally {
+    fs.rmSync(directory, { recursive: true, force: true });
+  }
+}
 
 function readyPackage(value = 90000) {
   return {
@@ -119,5 +135,96 @@ describe('Digital Asset Preparation PDF', () => {
     expect(first.toString('latin1')).toContain(Buffer.from('90,000').toString('hex'));
     expect(first.toString('latin1')).not.toContain(Buffer.from('80,000').toString('hex'));
     expect(second.toString('latin1')).toContain(Buffer.from('80,000').toString('hex'));
+  });
+
+  test('renders an institutional provenance appendix without internal object syntax', async () => {
+    const packagePayload = readyPackage(90000);
+    packagePayload.frozen_readiness.canonical_fields.push({
+      field_key: 'organization.investor_or_agency',
+      label: 'Investor or agency',
+      value: 'Freddie Mac Multifamily',
+      current_state: 'confirmed',
+      confirmation: { confirmed: true, verified_at: '2026-08-27T12:04:00.000Z' },
+      provenance: {
+        source_type: 'manual_confirmation_history',
+        source_document_id: 'organization-record',
+        source_page: 12,
+        evidence_id: 'evidence-org-1',
+        extracted_at: '2026-08-27T12:03:00.000Z',
+      },
+    });
+    packagePayload.frozen_readiness.provenance_evidence.manifest.push({
+      field_key: 'organization.investor_or_agency',
+      provenance: {
+        source_type: 'manual_confirmation_history',
+        source_document_id: 'organization-record',
+        source_page: 12,
+        evidence_id: 'evidence-org-1',
+      },
+    });
+    packagePayload.frozen_readiness.blockers_exceptions.recorded_exceptions = [{
+      id: 'exception-1',
+      field_key: 'organization.investor_or_agency',
+      label: 'Investor or agency',
+      status: 'resolved',
+      resolution_note: 'Confirmed by counsel',
+      resolved_by: 'owner',
+      resolved_at: '2026-08-27T12:06:00.000Z',
+    }];
+    packagePayload.frozen_readiness.blockers_exceptions.resolved_conflicts = [
+      ...packagePayload.frozen_readiness.blockers_exceptions.recorded_exceptions,
+    ];
+    packagePayload.frozen_snapshot = {
+      created_from: {
+        confirmation_history: [{
+          field_key: 'organization.investor_or_agency',
+          event_type: 'manual_confirmation',
+          actor_role: 'owner',
+          created_at: '2026-08-27T12:06:00.000Z',
+          source_doc_id: 'organization-record',
+          source_page: 12,
+          source_file_hash: 'file-hash-1',
+        }],
+      },
+    };
+
+    const hashTemplate = await buildPreparationPdfBuffer({
+      propertyId: 'freddie-room',
+      packageId: 'package-id',
+      packagePayload,
+      revisionId: 'revision-v1-id',
+      revisionNumber: 1,
+      revisionCreatedAt: '2026-08-27T12:05:00.000Z',
+      revisionHash: 'revision-v1-hash',
+      artifactHash: ARTIFACT_HASH_PLACEHOLDER,
+    });
+    const artifactHash = hashPreparationPdf(hashTemplate);
+    const buffer = await buildPreparationPdfBuffer({
+      propertyId: 'freddie-room',
+      packageId: 'package-id',
+      packagePayload,
+      revisionId: 'revision-v1-id',
+      revisionNumber: 1,
+      revisionCreatedAt: '2026-08-27T12:05:00.000Z',
+      revisionHash: 'revision-v1-hash',
+      artifactHash,
+    });
+    const encoded = buffer.toString('latin1');
+    const text = extractPdfText(buffer);
+    const compactText = text.replace(/\s+/g, '');
+
+    expect(text).toContain('Evidence & Provenance Appendix');
+    expect(text).toContain('Investor or agency');
+    expect(text).toContain('Manual confirmation history');
+    expect(text).toContain('evidence-org-1');
+    expect(compactText).toContain(artifactHash);
+    expect(text).not.toContain('organization.investor_or_agency');
+    expect(text).not.toContain('ready_for_provider_review');
+    expect(text).not.toContain('source_document_id');
+    expect(text).not.toContain('manual_confirmation_history');
+    expect((text.match(/Confirmed by counsel/g) || []).length)
+      .toBe(1);
+    expect(encoded).toContain(Buffer.from(artifactHash).toString('hex').slice(0, 32));
+    expect(hashPreparationPdf(buffer, artifactHash)).toBe(artifactHash);
   });
 });

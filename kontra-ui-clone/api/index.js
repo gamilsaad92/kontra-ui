@@ -98,6 +98,7 @@ const {
   digitalAssetPackagesUnavailable,
 } = require('./lib/digitalAssetPreparationPackage');
 const {
+  ARTIFACT_HASH_PLACEHOLDER,
   PREPARATION_PDF_BUCKET,
   PREPARATION_PDF_SCHEMA,
   PREPARATION_PDF_VERSION,
@@ -11008,7 +11009,7 @@ app.post('/api/public/deal-room/:propertyId/digital-asset-packages/:packageId/re
       });
     }
 
-    const pdfBuffer = await buildPreparationPdfBuffer({
+    const pdfArguments = {
       propertyId,
       packageId,
       packagePayload: revision.package,
@@ -11016,8 +11017,19 @@ app.post('/api/public/deal-room/:propertyId/digital-asset-packages/:packageId/re
       revisionNumber: revision.revision,
       revisionCreatedAt: revision.created_at,
       revisionHash: revision.package_hash,
+    };
+    // The displayed hash is a self-reference. Hash a fixed-width placeholder
+    // projection, then render the final PDF with that digest. Verification
+    // normalizes the same display field before hashing.
+    const hashTemplate = await buildPreparationPdfBuffer({
+      ...pdfArguments,
+      artifactHash: ARTIFACT_HASH_PLACEHOLDER,
     });
-    const artifactHash = hashPreparationPdf(pdfBuffer);
+    const artifactHash = hashPreparationPdf(hashTemplate);
+    const pdfBuffer = await buildPreparationPdfBuffer({
+      ...pdfArguments,
+      artifactHash,
+    });
     const filename = `digital-asset-preparation-${propertyId}-revision-${revision.revision}.pdf`
       .replace(/[^a-zA-Z0-9._-]/g, '_');
     const storagePath = artifactStoragePath(propertyId, packageId, revision.revision, revision.package_hash);
@@ -11139,7 +11151,7 @@ app.get('/api/public/deal-room/:propertyId/digital-asset-packages/:packageId/art
     const buffer = Buffer.isBuffer(file)
       ? file
       : Buffer.from(await file.arrayBuffer());
-    const digest = hashPreparationPdf(buffer);
+    const digest = hashPreparationPdf(buffer, artifact.artifact_hash);
     if (digest !== artifact.artifact_hash) {
       return res.status(409).json({ error: 'PDF_ARTIFACT_HASH_MISMATCH', message: 'The stored preparation PDF failed integrity verification.' });
     }
