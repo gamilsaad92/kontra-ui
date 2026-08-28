@@ -27,6 +27,14 @@ Vercel can successfully deploy a new GitHub `main` commit while leaving an older
 
 **How to apply:** After publishing through the GitHub connector, read the Vercel deployment status URL from the commit/deployment metadata and test that hostname. Treat an old deployment-specific hostname as immutable history, not the canonical production alias.
 
+## Connector write-call stability
+
+For GitHub git-data publishes, the connector proxy is more reliable when blob uploads, tree creation, commit creation, and ref advancement are separate calls. A combined durable call can fail at the wrapper boundary with `null does not match type Pattern` even though the individual API operations succeed.
+
+**Why:** A release publish encountered this wrapper failure twice; the same authenticated calls completed successfully when split into endpoint-sized operations, with the live ref checked before the tree and before the ref update.
+
+**How to apply:** Keep each GitHub write step in its own proxy call, use a live SHA as `base_tree` and commit parent, and update the branch with `force: false`.
+
 ## Vercel webhook lag
 
 GitHub `main` can advance successfully while the Kontra production alias continues serving an older hashed bundle; verify the alias contents after each frontend publish.
