@@ -2,6 +2,7 @@
 
 const crypto = require('crypto');
 const PDFDocument = require('pdfkit');
+const KONTRA_LOGO = require('./kontraLogo');
 
 const PREPARATION_PDF_BUCKET = 'deal-documents';
 const PREPARATION_PDF_SCHEMA = 'kontra.digital-asset-preparation-pdf';
@@ -319,15 +320,9 @@ function writeKeyValueGrid(doc, items, { columns = 2, rowHeight = 40, gap = 8 } 
   doc.x = MARGIN;
 }
 
-function drawKLockup(doc) {
+function drawKLockup(doc, logoImage) {
   const x = MARGIN;
-  const y = 32;
-  const size = 22;
-  doc.roundedRect(x, y, size, size, 5).fill(COLORS.burgundy);
-  doc.font('Helvetica-Bold').fontSize(11).fillColor(COLORS.white)
-    .text('K', x, y + 4.5, { width: size, align: 'center' });
-  doc.font('Helvetica-Bold').fontSize(12).fillColor(COLORS.navy)
-    .text('Kontra', x + 31, y + 4, { width: 70 });
+  doc.image(logoImage, x, 31, { width: 96, height: 24 });
 }
 
 function ensureSpace(doc, height = 40) {
@@ -724,11 +719,13 @@ function buildPreparationPdfBuffer({
     doc.on('error', reject);
     doc.on('end', () => resolve(Buffer.concat(buffers)));
 
+    const logoImage = doc.openImage(KONTRA_LOGO);
+    logoImage.embed(doc);
     let pageNumber = 1;
     const addPageChrome = () => {
       doc.save();
       doc.rect(MARGIN, 28, CONTENT_WIDTH, 2).fill(COLORS.burgundy);
-      drawKLockup(doc);
+      drawKLockup(doc, logoImage);
       doc.font('Helvetica').fontSize(7.5).fillColor(COLORS.muted)
         .text('DIGITAL ASSET PREPARATION', MARGIN + 132, 37, { width: 160 });
       doc.text(`External Review Artifact · Page ${pageNumber}`, MARGIN + CONTENT_WIDTH / 2, 37, {

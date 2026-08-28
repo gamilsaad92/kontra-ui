@@ -158,8 +158,7 @@ describe('Digital Asset Preparation PDF', () => {
     expect(text).not.toContain('28000');
     expect(text).not.toContain('280000');
     expect(text).not.toContain('5500');
-    expect(text).toContain('Kontra');
-    expect(text).not.toContain('Kon tra');
+    expect(encoded).toContain('/Subtype /Image');
     expect(getPdfPageCount(buffer)).toBe(7);
     expect(hashPreparationPdf(buffer)).toMatch(/^[a-f0-9]{64}$/);
   });

@@ -38,9 +38,7 @@ export default function PublicLayout({ children, hideFooter = false }) {
         <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between gap-4">
           {/* Logo */}
           <Link to={isLoggedIn ? "/dashboard" : "/"} className="flex items-center gap-2.5 shrink-0">
-            <div className="w-8 h-8 rounded-lg flex items-center justify-center text-white font-bold text-sm"
-              style={{ background: "#800020" }}>K</div>
-            <span className="font-semibold text-lg text-gray-900">Kontra</span>
+            <img src="/kontra-platform-logo.svg" alt="Kontra" className="h-8 w-auto" />
           </Link>
 
           {/* Desktop nav */}
