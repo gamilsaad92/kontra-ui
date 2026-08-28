@@ -25,6 +25,7 @@ const {
   preparationDraftValue,
   preparationSaveConfirmation,
   preparationPdfConfirmation,
+  findPreparationPdfArtifact,
 } = require('./DealRoomPage');
 
 describe('coordinator transaction brief logic', () => {
@@ -71,6 +72,20 @@ describe('coordinator transaction brief logic', () => {
     expect(preparationPdfConfirmation({ revision: 3, created: false })).toBe(
       'PDF already exists for Revision 3; no duplicate artifact was created.',
     );
+  });
+
+  test('keeps generated PDFs attached when revision IDs arrive in a different scalar type', () => {
+    expect(findPreparationPdfArtifact(
+      [{ id: 'artifact-1', source_revision_id: 'revision-7', source_revision: 7 }],
+      { id: 7, revision: 7, package_hash: 'hash-7' },
+    )).toEqual(expect.objectContaining({ id: 'artifact-1' }));
+  });
+
+  test('matches an older artifact by revision number and hash when its source ID is absent', () => {
+    expect(findPreparationPdfArtifact(
+      [{ id: 'artifact-legacy', source_revision: 7, source_revision_hash: 'hash-7' }],
+      { id: 'revision-7', revision: 7, package_hash: 'hash-7' },
+    )).toEqual(expect.objectContaining({ id: 'artifact-legacy' }));
   });
 
   test('matches a live provenance gap to the confirmed canonical field', () => {

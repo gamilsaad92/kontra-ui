@@ -23,10 +23,30 @@ function extractPdfText(buffer) {
   }
 }
 
+function extractPdfPages(buffer) {
+  return extractPdfText(buffer)
+    .split('\f')
+    .map(page => page.trim())
+    .filter(Boolean);
+}
+
+function getPdfPageCount(buffer) {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'kontra-pdf-pages-'));
+  const input = path.join(directory, 'artifact.pdf');
+  try {
+    fs.writeFileSync(input, buffer);
+    const info = execFileSync('pdfinfo', [input]).toString('utf8');
+    return Number(info.match(/^Pages:\s+(\d+)/m)?.[1] || 0);
+  } finally {
+    fs.rmSync(directory, { recursive: true, force: true });
+  }
+}
+
 function readyPackage(value = 90000) {
   return {
     schema: 'kontra.digital-asset-preparation-package',
     package_status: 'ready_for_provider_review',
+    package_hash: 'package-v1-hash',
     source_snapshot: {
       id: 'snapshot-v8-id',
       version: 8,
@@ -44,6 +64,18 @@ function readyPackage(value = 90000) {
         value,
         current_state: 'confirmed',
         provenance: { source_document_id: 'closing-doc-1', source_page: 4 },
+      }, {
+        field_key: 'financial.purchase_price',
+        label: 'Purchase price',
+        value: 325000,
+        current_state: 'confirmed',
+        provenance: { source_document_id: 'closing-doc-1', source_page: 5 },
+      }, {
+        field_key: 'ownership.percentage',
+        label: 'Ownership percentage',
+        value: 100,
+        current_state: 'confirmed',
+        provenance: { source_document_id: 'closing-doc-1', source_page: 6 },
       }],
       provenance_evidence: {
         intact: true,
@@ -62,7 +94,7 @@ function readyPackage(value = 90000) {
       approvals: {
         satisfied: true,
         missing_count: 0,
-        event_count: 1,
+        event_count: 24,
         manifest: [{ action: 'approved', actor_role: 'owner' }],
       },
       settlement_mode: 'traditional',
@@ -99,9 +131,14 @@ describe('Digital Asset Preparation PDF', () => {
     expect(buffer.subarray(0, 5).toString()).toBe('%PDF-');
     expect(buffer.length).toBeGreaterThan(1000);
     const encoded = buffer.toString('latin1');
+    const text = extractPdfText(buffer);
     expect(encoded).toContain(Buffer.from('snapshot-v8-hash').toString('hex'));
     expect(encoded).toContain('revision-v1-hash');
-    expect(encoded).toContain(Buffer.from('90,000').toString('hex'));
+    expect(text).toContain('$90,000');
+    expect(text).toContain('$325,000');
+    expect(text).toContain('100%');
+    expect(getPdfPageCount(buffer)).toBeGreaterThanOrEqual(4);
+    expect(getPdfPageCount(buffer)).toBeLessThanOrEqual(5);
     expect(hashPreparationPdf(buffer)).toMatch(/^[a-f0-9]{64}$/);
   });
 
@@ -192,10 +229,10 @@ describe('Digital Asset Preparation PDF', () => {
       propertyId: 'freddie-room',
       packageId: 'package-id',
       packagePayload,
-      revisionId: 'revision-v1-id',
-      revisionNumber: 1,
+      revisionId: 'revision-v7-id',
+      revisionNumber: 7,
       revisionCreatedAt: '2026-08-27T12:05:00.000Z',
-      revisionHash: 'revision-v1-hash',
+      revisionHash: 'revision-v7-hash',
       artifactHash: ARTIFACT_HASH_PLACEHOLDER,
     });
     const artifactHash = hashPreparationPdf(hashTemplate);
@@ -203,25 +240,39 @@ describe('Digital Asset Preparation PDF', () => {
       propertyId: 'freddie-room',
       packageId: 'package-id',
       packagePayload,
-      revisionId: 'revision-v1-id',
-      revisionNumber: 1,
+      revisionId: 'revision-v7-id',
+      revisionNumber: 7,
       revisionCreatedAt: '2026-08-27T12:05:00.000Z',
-      revisionHash: 'revision-v1-hash',
+      revisionHash: 'revision-v7-hash',
       artifactHash,
     });
     const encoded = buffer.toString('latin1');
     const text = extractPdfText(buffer);
+    const pages = extractPdfPages(buffer);
     const compactText = text.replace(/\s+/g, '');
 
+    expect(pages[0]).toContain('Package identity and status');
+    expect(pages[0]).toContain('Readiness at a glance');
+    expect(pages[0]).toContain('Verified transaction and asset summary');
+    expect(pages[1]).toContain('Digital Asset Preparation fields');
+    expect(pages[2]).toContain('Verification and readiness');
+    expect(pages[2]).toContain('Required approvals satisfied — 24 approval events recorded.');
+    expect(pages.findIndex(page => page.includes('Evidence & Provenance Appendix')))
+      .toBeGreaterThanOrEqual(3);
     expect(text).toContain('Evidence & Provenance Appendix');
     expect(text).toContain('Investor or agency');
-    expect(text).toContain('Manual confirmation history');
+    expect(text).toContain('Revision');
+    expect(text).toContain('7');
     expect(text).toContain('evidence-org-1');
+    expect(text).toContain('Required approvals satisfied — 24 approval events recorded.');
     expect(compactText).toContain(artifactHash);
     expect(text).not.toContain('organization.investor_or_agency');
     expect(text).not.toContain('ready_for_provider_review');
     expect(text).not.toContain('source_document_id');
     expect(text).not.toContain('manual_confirmation_history');
+    expect(text).not.toContain('Approvals and review record');
+    expect(text).not.toContain('Evidence reference register');
+    expect(text).not.toContain('Confirmation and extraction history');
     expect((text.match(/Confirmed by counsel/g) || []).length)
       .toBe(1);
     expect(encoded).toContain(Buffer.from(artifactHash).toString('hex').slice(0, 32));

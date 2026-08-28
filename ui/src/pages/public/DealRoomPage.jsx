@@ -6168,6 +6168,7 @@ export {
   preparationDraftValue,
   preparationSaveConfirmation,
   preparationPdfConfirmation,
+  findPreparationPdfArtifact,
 };
 
 // ── Transaction Seal Summary (complete phase) ─────────────────────────────────
@@ -6884,6 +6885,22 @@ function preparationPdfConfirmation({ revision, created = true } = {}) {
     : `PDF already exists for Revision ${revisionNumber}; no duplicate artifact was created.`;
 }
 
+function findPreparationPdfArtifact(artifacts, revision) {
+  if (!Array.isArray(artifacts) || !revision) return null;
+  return artifacts.find(artifact =>
+    artifact?.source_revision_id && revision.id
+    && String(artifact.source_revision_id) === String(revision.id),
+  )
+    || artifacts.find(artifact =>
+      artifact?.source_revision != null
+      && revision.revision != null
+      && Number(artifact.source_revision) === Number(revision.revision)
+      && (!artifact.source_revision_hash || !revision.package_hash
+        || artifact.source_revision_hash === revision.package_hash),
+    )
+    || null;
+}
+
 function DigitalAssetPackageModal({
   propertyId,
   ownerToken,
@@ -6897,6 +6914,9 @@ function DigitalAssetPackageModal({
   const [saveState, setSaveState] = useState({ loading: false, error: false, message: '' });
   const [revisions, setRevisions] = useState([]);
   const [pdfArtifacts, setPdfArtifacts] = useState([]);
+  const [revisionLoadError, setRevisionLoadError] = useState('');
+  const [artifactLoadError, setArtifactLoadError] = useState('');
+  const [pdfMetadataRefreshKey, setPdfMetadataRefreshKey] = useState(0);
   const [pdfAction, setPdfAction] = useState({ loading: false, error: false, message: '', revisionId: null });
   const saveInFlightRef = useRef(false);
   const saveRequestIdRef = useRef(null);
@@ -6908,6 +6928,8 @@ function DigitalAssetPackageModal({
       setDraft({});
       setRevisions([]);
       setPdfArtifacts([]);
+      setRevisionLoadError('');
+      setArtifactLoadError('');
       setPdfAction({ loading: false, error: false, message: '', revisionId: null });
       saveRequestIdRef.current = null;
       return;
@@ -6929,34 +6951,48 @@ function DigitalAssetPackageModal({
   useEffect(() => {
     let cancelled = false;
     if (!packageRecord?.id || !propertyId) return undefined;
+    setRevisionLoadError('');
     fetch(`${API_BASE}/api/public/deal-room/${propertyId}/digital-asset-packages/${packageRecord.id}/revisions`, {
       headers: getRoomAuthHeaders(propertyId),
     })
-      .then(response => response.ok ? response.json() : { revisions: [] })
+      .then(async response => {
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(data.message || data.error || 'Preparation revision history could not be loaded.');
+        }
+        return data;
+      })
       .then(data => {
         if (!cancelled) setRevisions(Array.isArray(data?.revisions) ? data.revisions : []);
       })
-      .catch(() => {
-        if (!cancelled) setRevisions([]);
+      .catch(error => {
+        if (!cancelled) setRevisionLoadError(error.message);
       });
     return () => { cancelled = true; };
-  }, [propertyId, packageRecord?.id, packageRecord?.revision]);
+  }, [propertyId, packageRecord?.id, packageRecord?.revision, pdfMetadataRefreshKey]);
 
   useEffect(() => {
     let cancelled = false;
     if (!packageRecord?.id || !propertyId) return undefined;
+    setArtifactLoadError('');
     fetch(`${API_BASE}/api/public/deal-room/${propertyId}/digital-asset-packages/${packageRecord.id}/artifacts`, {
       headers: getRoomAuthHeaders(propertyId),
     })
-      .then(response => response.ok ? response.json() : { artifacts: [] })
+      .then(async response => {
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(data.message || data.error || 'Preparation PDF status could not be loaded.');
+        }
+        return data;
+      })
       .then(data => {
         if (!cancelled) setPdfArtifacts(Array.isArray(data?.artifacts) ? data.artifacts : []);
       })
-      .catch(() => {
-        if (!cancelled) setPdfArtifacts([]);
+      .catch(error => {
+        if (!cancelled) setArtifactLoadError(error.message);
       });
     return () => { cancelled = true; };
-  }, [propertyId, packageRecord?.id, packageRecord?.revision]);
+  }, [propertyId, packageRecord?.id, packageRecord?.revision, pdfMetadataRefreshKey]);
 
   if (!packageRecord) return null;
   const payload = packageRecord.package && typeof packageRecord.package === 'object'
@@ -6978,6 +7014,22 @@ function DigitalAssetPackageModal({
   const statusLabel = String(payload.package_status || 'needs_information')
     .replace(/_/g, ' ')
     .replace(/\b\w/g, char => char.toUpperCase());
+  const currentRevision = packageRecord.revision_id
+    ? {
+      id: packageRecord.revision_id,
+      package_id: packageRecord.id,
+      revision: packageRecord.revision ?? payload.package_revision ?? 0,
+      source_snapshot_id: packageRecord.source_snapshot_id,
+      source_snapshot_version: packageRecord.source_snapshot_version,
+      source_snapshot_hash: packageRecord.source_snapshot_hash,
+      package_hash: packageRecord.package_hash,
+      changed_fields: [],
+      created_by: packageRecord.created_by,
+      created_at: packageRecord.created_at,
+      package_status: payload.package_status || 'needs_information',
+    }
+    : null;
+  const displayedRevisions = revisions.length > 0 ? revisions : (currentRevision ? [currentRevision] : []);
 
   function updateDraft(key, value) {
     saveRequestIdRef.current = null;
@@ -7162,13 +7214,7 @@ function DigitalAssetPackageModal({
   }
 
   function artifactForRevision(revision) {
-    if (!revision?.id) return null;
-    return pdfArtifacts.find(artifact => artifact.source_revision_id === revision.id)
-      || pdfArtifacts.find(artifact =>
-        Number(artifact.source_revision) === Number(revision.revision)
-        && artifact.source_revision_hash === revision.package_hash,
-      )
-      || null;
+    return findPreparationPdfArtifact(pdfArtifacts, revision);
   }
 
   async function generatePreparationPdf(revision) {
@@ -7498,9 +7544,11 @@ function DigitalAssetPackageModal({
              <div className="mt-5">
                <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Preparation revision history</p>
                <p className="mt-1 text-xs text-gray-500">The original package stays immutable; each owner save adds a numbered revision.</p>
-               {revisions.length > 0 ? (
+                {displayedRevisions.length > 0 ? (
                  <div className="mt-3 space-y-2">
-                   {revisions.map(revision => (
+                    {displayedRevisions.map(revision => {
+                      const artifact = artifactForRevision(revision);
+                      return (
                       <div key={revision.id} className="rounded-lg border border-gray-200 bg-white px-3 py-2">
                         <div className="flex flex-wrap items-center justify-between gap-2">
                           <span className="text-xs font-semibold text-gray-800">
@@ -7510,15 +7558,15 @@ function DigitalAssetPackageModal({
                             {(revision.changed_fields || []).join(', ') || 'No field list'} · {formatSnapshotDate(revision.created_at)}
                           </span>
                         </div>
-                        {artifactForRevision(revision) ? (
+                         {artifact ? (
                           <div className="mt-2 flex flex-wrap items-center justify-between gap-2 border-t border-gray-100 pt-2">
                             <span className="text-[10px] font-semibold text-emerald-700">
-                              PDF generated · {formatSnapshotDate(artifactForRevision(revision).generated_at)}
+                               PDF generated · {formatSnapshotDate(artifact.generated_at)}
                             </span>
                             <div className="flex flex-wrap gap-2">
                               <button
                                 type="button"
-                                onClick={() => openPreparationPdf(artifactForRevision(revision), 'view')}
+                                 onClick={() => openPreparationPdf(artifact, 'view')}
                                 disabled={pdfAction.loading}
                                 className="rounded-md border border-gray-300 px-2.5 py-1 text-[10px] font-bold text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
                               >
@@ -7526,7 +7574,7 @@ function DigitalAssetPackageModal({
                               </button>
                               <button
                                 type="button"
-                                onClick={() => openPreparationPdf(artifactForRevision(revision), 'download')}
+                                 onClick={() => openPreparationPdf(artifact, 'download')}
                                 disabled={pdfAction.loading}
                                 className="rounded-md border border-[#800020] px-2.5 py-1 text-[10px] font-bold text-[#800020] hover:bg-[#800020]/5 disabled:cursor-not-allowed disabled:opacity-50"
                               >
@@ -7534,7 +7582,20 @@ function DigitalAssetPackageModal({
                               </button>
                             </div>
                           </div>
-                        ) : revision.package_status === 'ready_for_provider_review' ? (
+                         ) : artifactLoadError ? (
+                           <div className="mt-2 flex flex-wrap items-center justify-between gap-2 border-t border-gray-100 pt-2">
+                             <span className="text-[10px] text-amber-700">
+                               PDF status could not be loaded: {artifactLoadError}
+                             </span>
+                             <button
+                               type="button"
+                               onClick={() => setPdfMetadataRefreshKey(key => key + 1)}
+                               className="rounded-md border border-gray-300 px-2.5 py-1 text-[10px] font-bold text-gray-700 hover:bg-gray-50"
+                             >
+                               Retry
+                             </button>
+                           </div>
+                         ) : revision.package_status === 'ready_for_provider_review' ? (
                           <div className="mt-2 flex flex-wrap items-center justify-between gap-2 border-t border-gray-100 pt-2">
                             <span className="text-[10px] text-gray-500">
                               Ready revision; generating a PDF is a separate owner action.
@@ -7555,13 +7616,30 @@ function DigitalAssetPackageModal({
                             PDF generation unlocks when this revision is ready for provider review.
                           </p>
                         )}
-                     </div>
-                   ))}
+                      </div>
+                      );
+                    })}
                  </div>
                ) : (
-                 <p className="mt-3 text-xs text-gray-400">No preparation revisions have been saved.</p>
+                  <p className="mt-3 text-xs text-gray-400">
+                    {revisionLoadError || 'No preparation revisions have been saved.'}
+                  </p>
                )}
-                {!ownerToken && revisions.some(revision => revision.package_status === 'ready_for_provider_review') && (
+                 {revisionLoadError && (
+                   <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
+                     <span className="text-[10px] text-amber-800">
+                       Revision history could not be refreshed; the current package revision is shown when available.
+                     </span>
+                     <button
+                       type="button"
+                       onClick={() => setPdfMetadataRefreshKey(key => key + 1)}
+                       className="rounded-md border border-amber-300 px-2.5 py-1 text-[10px] font-bold text-amber-800 hover:bg-amber-100"
+                     >
+                       Retry
+                     </button>
+                   </div>
+                 )}
+                 {!ownerToken && displayedRevisions.some(revision => revision.package_status === 'ready_for_provider_review') && (
                   <p className="mt-3 text-[10px] font-semibold text-amber-700">
                     Owner authorization is required to generate a preparation PDF.
                   </p>

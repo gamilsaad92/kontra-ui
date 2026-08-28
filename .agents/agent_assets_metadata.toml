@@ -119,3 +119,45 @@ uri = "file://screenshots/acceptance-financial_advisor-overview.jpg"
 type = "image"
 title = "acceptance-financial_advisor-overview.jpg"
 description = "Authenticated Coordinator Overview acceptance screenshot."
+
+[[outputs]]
+id = "a0gyVLxNGdfAq73rwkH18"
+uri = "file://screenshots/kontra-demo-overview.jpg"
+type = "image"
+title = "CRE Acquisition demo overview"
+description = "Production coordinator workspace screenshot for /deal-room/kontra-demo."
+
+[[outputs]]
+id = "F2jxKwWwd5Imufkutvfjb"
+uri = "file://screenshots/kontra-demo-biz-overview.jpg"
+type = "image"
+title = "Business Acquisition demo overview"
+description = "Production coordinator workspace screenshot for /deal-room/kontra-demo-biz."
+
+[[outputs]]
+id = "hhKQ899zHM89fyWTGn1JU"
+uri = "file://screenshots/kontra-demo-fundraising-overview.jpg"
+type = "image"
+title = "Fundraising demo overview"
+description = "Production coordinator workspace screenshot for /deal-room/kontra-demo-fundraising."
+
+[[outputs]]
+id = "RDVBTBJvdGQsmk9qyXOPn"
+uri = "file://screenshots/local-cre-demo-final.jpg"
+type = "image"
+title = "CRE demo — coordinator overview"
+description = "Local verification screenshot for the seeded CRE Acquisition demo room."
+
+[[outputs]]
+id = "snlAUEVZYCFchLlnGCl4-"
+uri = "file://screenshots/local-business-demo-final.jpg"
+type = "image"
+title = "Business Acquisition demo — coordinator overview"
+description = "Local verification screenshot for the seeded Business Acquisition demo room."
+
+[[outputs]]
+id = "ahwiu3wG3QPkjfkUF39JO"
+uri = "file://screenshots/local-fundraising-demo-final.jpg"
+type = "image"
+title = "Fundraising demo — coordinator overview"
+description = "Local verification screenshot for the seeded Fundraising demo room."

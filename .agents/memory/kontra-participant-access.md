@@ -16,3 +16,11 @@ Tokenization is an opt-in preparation layer, not the default deal-room experienc
 **Why:** Customers buy a faster, more organized transaction workspace today; tokenization is a downstream outcome and should not introduce irrelevant regulatory language into non-tokenization deals.
 
 **How to apply:** Gate both UI and API behavior with the same tokenization-or-explicit-layer rule. Suppress stale jurisdiction values from ordinary-room responses and exports, and clear jurisdiction when an enabled layer is turned off.
+
+## Owner re-entry precedence
+
+When an owner authenticates through My Deal Rooms, rehydrate the existing room owner credential before opening the room. Owner authentication must remain authoritative over any stale participant or invite session, including direct links, refreshes, and My Deal Rooms re-entry. Do not alter this boundary or the checklist assignment resolver without an explicit request.
+
+**Why:** The validated behavior depends on the shared server-side access context resolving owner credentials before participant sessions; otherwise a stale participant session can incorrectly open the owner in a role-scoped workspace.
+
+**How to apply:** Preserve the existing owner-token storage/header convention and server-side owner-first resolution. Treat changes to owner/participant access, checklist assignment precedence, or re-entry credential hydration as explicitly scoped work only.

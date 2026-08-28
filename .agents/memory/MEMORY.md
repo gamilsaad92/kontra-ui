@@ -33,3 +33,4 @@
 - [Kontra task approval invariants](kontra-task-approval-invariants.md) — approval claims must allow NULL execution_status; dismissed tasks are resolved; failed executions need durable action_failed audit events
 - [Kontra demo performance](kontra-demo-performance.md) — demo rooms render a local shell, hydrate independently, and keep the heavy room route code-split
 - [Kontra UI Jest harness](kontra-ui-jest-harness.md) — legacy root UI tests need package-local jsdom/CSS dependencies and a test-only import.meta transform
+- [Kontra PDF hash layout](kontra-pdf-hash-layout.md) — render placeholder and final artifact hashes in fixed-width, line-stable cells so normalized PDF hashes remain deterministic
