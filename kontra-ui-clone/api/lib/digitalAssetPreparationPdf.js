@@ -2,6 +2,7 @@
 
 const crypto = require('crypto');
 const PDFDocument = require('pdfkit');
+const KONTRA_LOGO = require('./kontraLogo');
 
 const PREPARATION_PDF_BUCKET = 'deal-documents';
 const PREPARATION_PDF_SCHEMA = 'kontra.digital-asset-preparation-pdf';
@@ -111,7 +112,7 @@ function formatHumanValue(value) {
 }
 
 function isCurrencyField(fieldKey, label) {
-  return /amount|cost|price|value|funds|proceeds|revenue|ebitda|loan|debt|equity|capital|rent|budget|income|expense|consideration|valuation|cash/i
+  return /amount|cost|price|value|funds|proceeds|revenue|ebitda|loan|debt|equity|capital|rent|budget|income|expense|consideration|valuation|cash|invoice|repairs?\s+completed|fund\s+release\s+request/i
     .test(`${fieldKey || ''} ${label || ''}`);
 }
 
@@ -185,7 +186,7 @@ function writeHeading(doc, text, level = 1) {
   doc.moveDown(level === 1 ? 0.65 : 0.3);
   doc.font('Helvetica-Bold')
     .fontSize(level === 1 ? 14 : 10)
-    .fillColor(level === 1 ? COLORS.burgundy : COLORS.navy)
+    .fillColor(level === 1 ? COLORS.teal : COLORS.navy)
     .text(text, MARGIN, doc.y, { width: CONTENT_WIDTH });
   doc.moveDown(0.12);
   doc.x = MARGIN;
@@ -598,12 +599,22 @@ function buildPreparationPdfBuffer({
     doc.on('error', reject);
     doc.on('end', () => resolve(Buffer.concat(buffers)));
 
+    const logoImage = doc.openImage(KONTRA_LOGO);
+    logoImage.embed(doc);
+    const logoScale = 72 / 192;
+    const logoWidth = 400 * logoScale;
+    const logoX = MARGIN - (14 * logoScale);
+    const logoY = 35 - (35 * logoScale);
     let pageNumber = 1;
     const addPageChrome = () => {
       doc.save();
       doc.rect(MARGIN, 30, CONTENT_WIDTH, 3).fill(COLORS.teal);
+      doc.save();
+      doc.rect(MARGIN, 35, 72, 14).clip();
+      doc.image(logoImage, logoX, logoY, { width: logoWidth });
+      doc.restore();
       doc.font('Helvetica').fontSize(7.5).fillColor(COLORS.muted)
-        .text('KONTRA  /  DIGITAL ASSET PREPARATION', MARGIN, 37, { width: CONTENT_WIDTH / 2 });
+        .text('DIGITAL ASSET PREPARATION', MARGIN + 82, 37, { width: (CONTENT_WIDTH / 2) - 82 });
       doc.text(`External review artifact  ·  Page ${pageNumber}`, MARGIN + CONTENT_WIDTH / 2, 37, {
         width: CONTENT_WIDTH / 2,
         align: 'right',

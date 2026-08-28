@@ -76,6 +76,21 @@ function readyPackage(value = 90000) {
         value: 100,
         current_state: 'confirmed',
         provenance: { source_document_id: 'closing-doc-1', source_page: 6 },
+      }, {
+        field_key: 'repairs.additional_work_invoice',
+        label: 'Additional Work Invoice',
+        value: 28000,
+        current_state: 'confirmed',
+      }, {
+        field_key: 'repairs.completed',
+        label: 'Repairs Completed',
+        value: 280000,
+        current_state: 'confirmed',
+      }, {
+        field_key: 'financial.fund_release_request',
+        label: 'Fund Release Request',
+        value: 5500,
+        current_state: 'confirmed',
       }],
       provenance_evidence: {
         intact: true,
@@ -136,7 +151,14 @@ describe('Digital Asset Preparation PDF', () => {
     expect(encoded).toContain('revision-v1-hash');
     expect(text).toContain('$90,000');
     expect(text).toContain('$325,000');
+    expect(text).toContain('$28,000');
+    expect(text).toContain('$280,000');
+    expect(text).toContain('$5,500');
     expect(text).toContain('100%');
+    expect(text).not.toContain('28000');
+    expect(text).not.toContain('280000');
+    expect(text).not.toContain('5500');
+    expect(encoded).toContain('/Subtype /Image');
     expect(getPdfPageCount(buffer)).toBeGreaterThanOrEqual(4);
     expect(getPdfPageCount(buffer)).toBeLessThanOrEqual(5);
     expect(hashPreparationPdf(buffer)).toMatch(/^[a-f0-9]{64}$/);
@@ -169,9 +191,9 @@ describe('Digital Asset Preparation PDF', () => {
       revisionHash: 'revision-v2-hash',
     });
 
-    expect(first.toString('latin1')).toContain(Buffer.from('90,000').toString('hex'));
-    expect(first.toString('latin1')).not.toContain(Buffer.from('80,000').toString('hex'));
-    expect(second.toString('latin1')).toContain(Buffer.from('80,000').toString('hex'));
+    expect(extractPdfText(first)).toContain('$90,000');
+    expect(extractPdfText(first)).not.toContain('$80,000');
+    expect(extractPdfText(second)).toContain('$80,000');
   });
 
   test('renders an institutional provenance appendix without internal object syntax', async () => {
