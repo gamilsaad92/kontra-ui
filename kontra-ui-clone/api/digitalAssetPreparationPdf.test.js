@@ -158,7 +158,8 @@ describe('Digital Asset Preparation PDF', () => {
     expect(text).not.toContain('28000');
     expect(text).not.toContain('280000');
     expect(text).not.toContain('5500');
-    expect(encoded).toContain('/Subtype /Image');
+    expect(text).toContain('Kontra');
+    expect(text).not.toContain('Kon tra');
     expect(getPdfPageCount(buffer)).toBe(7);
     expect(hashPreparationPdf(buffer)).toMatch(/^[a-f0-9]{64}$/);
   });
@@ -272,9 +273,13 @@ describe('Digital Asset Preparation PDF', () => {
     const pages = extractPdfPages(buffer);
     const compactText = text.replace(/\s+/g, '');
 
-    expect(pages[0]).toContain('Package identity and status');
-    expect(pages[0]).toContain('Readiness at a glance');
-    expect(pages[0]).toContain('Verified transaction and asset summary');
+    expect(pages[0]).toContain('Executive summary');
+    expect(pages[0]).toContain('ELIGIBILITY');
+    expect(pages[0]).toContain('VERIFIED RECORD');
+    expect(pages[0]).toContain('PROVENANCE');
+    expect(pages[0]).toContain('OPEN BLOCKERS');
+    expect(pages[0]).toContain('SOURCE SNAPSHOT');
+    expect(pages[0]).toContain('Package metadata');
     expect(pages[1]).toContain('Frozen canonical Transaction Record');
     expect(pages[2]).toContain('Digital Asset Preparation fields');
     expect(pages[3]).toContain('Verification, approvals & exceptions');

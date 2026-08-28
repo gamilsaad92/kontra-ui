@@ -2,7 +2,6 @@
 
 const crypto = require('crypto');
 const PDFDocument = require('pdfkit');
-const KONTRA_LOGO = require('./kontraLogo');
 
 const PREPARATION_PDF_BUCKET = 'deal-documents';
 const PREPARATION_PDF_SCHEMA = 'kontra.digital-asset-preparation-pdf';
@@ -24,6 +23,8 @@ const COLORS = {
   pale: '#f8fafc',
   paleRed: '#fdecec',
   paleGreen: '#f0fdf4',
+  paleAmber: '#fffbeb',
+  amber: '#f59e0b',
   green: '#16a34a',
   darkGreen: '#166534',
   paleBlue: '#eff6ff',
@@ -231,6 +232,9 @@ function statusTone(value) {
   if (/not eligible|ineligible|not recorded|not ready|not satisfied|missing|block|unresolved|incomplete|exception|gap|error|rejected/.test(normalized)) {
     return { text: COLORS.burgundy, fill: COLORS.paleRed, accent: COLORS.brandRed };
   }
+  if (/warning|warn|pending|review|attention|partial|in progress/.test(normalized)) {
+    return { text: '#92400e', fill: COLORS.paleAmber, accent: COLORS.amber };
+  }
   if (/eligible|confirmed|recorded|satisfied|intact|ready|approved|resolved|complete/.test(normalized)) {
     return { text: COLORS.darkGreen, fill: COLORS.paleGreen, accent: COLORS.green };
   }
@@ -245,7 +249,9 @@ function writeMetricCards(doc, items, { columns = 4, startY = doc.y, height = 67
     const row = Math.floor(index / columns);
     const x = MARGIN + column * (width + gap);
     const y = startY + row * (height + gap);
-    const tone = statusTone(item.value);
+    const tone = item.tone && item.tone !== 'neutral'
+      ? statusTone(item.tone === 'success' ? 'complete' : item.tone === 'critical' ? 'blocker' : item.tone)
+      : statusTone(item.value);
     doc.roundedRect(x, y, width, height, 5)
       .fillAndStroke(item.tone === 'neutral' ? COLORS.white : tone.fill, COLORS.line);
     doc.font('Helvetica-Bold').fontSize(7).fillColor(COLORS.muted)
@@ -272,6 +278,8 @@ function writeCallout(doc, title, body, tone = 'neutral') {
     ? { fill: COLORS.paleGreen, border: '#bbf7d0', accent: COLORS.green, text: COLORS.darkGreen }
     : tone === 'critical'
       ? { fill: COLORS.paleRed, border: '#fecaca', accent: COLORS.brandRed, text: COLORS.burgundy }
+      : tone === 'warning'
+        ? { fill: COLORS.paleAmber, border: '#fde68a', accent: COLORS.amber, text: '#92400e' }
       : { fill: COLORS.pale, border: COLORS.line, accent: COLORS.muted, text: COLORS.navy };
   const bodyText = String(body || '');
   doc.font('Helvetica').fontSize(8);
@@ -311,21 +319,15 @@ function writeKeyValueGrid(doc, items, { columns = 2, rowHeight = 40, gap = 8 } 
   doc.x = MARGIN;
 }
 
-function drawKLockup(doc, logoImage) {
+function drawKLockup(doc) {
   const x = MARGIN;
-  const y = 34;
-  const size = 18;
-  doc.roundedRect(x, y, size, size, 4).fill(COLORS.burgundy);
-  doc.save();
-  doc.lineWidth(1.5).strokeColor(COLORS.white).lineCap('round');
-  doc.moveTo(x + 5, y + 4).lineTo(x + 5, y + 14).stroke();
-  doc.moveTo(x + 6, y + 9).lineTo(x + 13, y + 4).stroke();
-  doc.moveTo(x + 6, y + 9).lineTo(x + 14, y + 14).stroke();
-  doc.restore();
-  doc.save();
-  doc.rect(x + 25, 31, 96, 23).clip();
-  doc.image(logoImage, x + 25, 29, { width: 96, height: 24 });
-  doc.restore();
+  const y = 32;
+  const size = 22;
+  doc.roundedRect(x, y, size, size, 5).fill(COLORS.burgundy);
+  doc.font('Helvetica-Bold').fontSize(11).fillColor(COLORS.white)
+    .text('K', x, y + 4.5, { width: size, align: 'center' });
+  doc.font('Helvetica-Bold').fontSize(12).fillColor(COLORS.navy)
+    .text('Kontra', x + 31, y + 4, { width: 70 });
 }
 
 function ensureSpace(doc, height = 40) {
@@ -689,6 +691,10 @@ function buildPreparationPdfBuffer({
       : `${disclosure} ${standardDisclosure}`;
     const exceptions = uniqueExceptions(blockers);
     const blockerItems = blockerRows(blockers);
+    const recordedBlockerCount = Number(blockers.blocking_count);
+    const openBlockerCount = Number.isFinite(recordedBlockerCount)
+      ? Math.max(blockerItems.length, recordedBlockerCount)
+      : blockerItems.length;
 
     const doc = new PDFDocument({
       size: 'LETTER',
@@ -718,13 +724,11 @@ function buildPreparationPdfBuffer({
     doc.on('error', reject);
     doc.on('end', () => resolve(Buffer.concat(buffers)));
 
-    const logoImage = doc.openImage(KONTRA_LOGO);
-    logoImage.embed(doc);
     let pageNumber = 1;
     const addPageChrome = () => {
       doc.save();
       doc.rect(MARGIN, 28, CONTENT_WIDTH, 2).fill(COLORS.burgundy);
-      drawKLockup(doc, logoImage);
+      drawKLockup(doc);
       doc.font('Helvetica').fontSize(7.5).fillColor(COLORS.muted)
         .text('DIGITAL ASSET PREPARATION', MARGIN + 132, 37, { width: 160 });
       doc.text(`External Review Artifact · Page ${pageNumber}`, MARGIN + CONTENT_WIDTH / 2, 37, {
@@ -763,27 +767,35 @@ function buildPreparationPdfBuffer({
         lineGap: 2,
       });
 
-    writeHeading(doc, 'Package identity and status');
+    writeHeading(doc, 'Executive summary');
+    writeMetricCards(doc, [
+      { label: 'Eligibility', value: frozenReadiness.eligible ? 'Eligible' : 'Not eligible', valueSize: 12 },
+      { label: 'Verified Record', value: summary.readiness || frozenReadiness.readiness || 'Not recorded', valueSize: 11 },
+      { label: 'Provenance', value: provenance.intact ? 'Intact' : `${provenance.gap_count || 0} gap(s)`, valueSize: 12 },
+      {
+        label: 'Open Blockers',
+        value: openBlockerCount === 0 ? 'None' : openBlockerCount,
+        valueSize: openBlockerCount === 0 ? 11 : 14,
+        color: openBlockerCount === 0 ? COLORS.darkGreen : COLORS.burgundy,
+        tone: openBlockerCount === 0 ? 'success' : 'critical',
+      },
+      {
+        label: 'Source Snapshot',
+        value: sourceSnapshot.version == null ? 'Not recorded' : `v${sourceSnapshot.version}`,
+        valueSize: 13,
+        detail: sourceSnapshot.id || undefined,
+      },
+    ], { columns: 3, height: 64, gap: 8 });
+
+    writeHeading(doc, 'Package metadata');
     writeKeyValueGrid(doc, [
       { label: 'Property / transaction', value: propertyId, valueSize: 9 },
       { label: 'Package status', value: displayStatus(payload.package_status), color: statusTone(payload.package_status).text },
       { label: 'Preparation revision', value: revisionNumber ?? 'Not recorded' },
       { label: 'Revision date', value: displayDate(revisionCreatedAt) || 'Not recorded' },
-    ], { rowHeight: 43 });
-
-    writeHeading(doc, 'Readiness at a glance');
-    writeMetricCards(doc, [
-      { label: 'Readiness', value: summary.readiness || frozenReadiness.readiness || 'Not recorded', valueSize: 12 },
-      { label: 'Eligibility', value: frozenReadiness.eligible ? 'Eligible' : 'Not eligible', valueSize: 12 },
-      { label: 'Verified fields', value: summary.readiness || frozenReadiness.readiness || 'Not recorded', valueSize: 11 },
-      { label: 'Provenance', value: provenance.intact ? 'Intact' : `${provenance.gap_count || 0} gap(s)`, valueSize: 12 },
-      { label: 'Blockers', value: blockerItems.length + (Number(blockers.blocking_count) || 0), valueSize: 14 },
-      { label: 'Snapshot version', value: sourceSnapshot.version ?? 'Not recorded', valueSize: 14 },
-      { label: 'Generated', value: displayDate(revisionCreatedAt || sourceSnapshot.recorded_at) || 'Not recorded', valueSize: 9 },
+      { label: 'Generated', value: displayDate(revisionCreatedAt || sourceSnapshot.recorded_at) || 'Not recorded' },
       { label: 'Settlement method', value: displayStatus(frozenReadiness.settlement_mode) || 'Not recorded', valueSize: 9 },
-    ], { columns: 4, height: 62, gap: 7 });
-
-    writeHeading(doc, 'Verified transaction and asset summary');
+    ], { rowHeight: 43 });
     writeNote(doc, 'The complete frozen canonical Transaction Record is presented on page 2. Later changes to the live record do not alter this package.');
 
     startNextPage();
