@@ -328,6 +328,8 @@ function drawKLockup(doc, logoImage) {
 function ensureSpace(doc, height = 40) {
   if (doc.y + height <= PAGE_HEIGHT - MARGIN - 20) return;
   doc.addPage();
+  doc.y = 76;
+  doc.x = MARGIN;
 }
 
 function writeTable(doc, columns, rows, {
