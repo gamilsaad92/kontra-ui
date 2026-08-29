@@ -36,6 +36,37 @@ function setTransactionFieldExtractor(handler) {
   transactionFieldExtractor = typeof handler === 'function' ? handler : null;
 }
 
+function buildDocumentVersionInsertPayloads({
+  propertyId,
+  section,
+  filename,
+  analysis,
+  role,
+  storagePath,
+  sourceHash,
+}) {
+  const versionPayload = {
+    property_id: propertyId, section, filename, analysis,
+    uploaded_by_role: role || 'unknown', storage_path: storagePath,
+    source_hash: sourceHash, processing_status: 'extracted', is_active: true,
+  };
+  const rolloutPayload = { ...versionPayload };
+  delete rolloutPayload.is_active;
+  return [
+    versionPayload,
+    rolloutPayload,
+    {
+      property_id: propertyId, section, filename, analysis,
+      uploaded_by_role: role || 'unknown', storage_path: storagePath,
+      source_hash: sourceHash,
+    },
+    {
+      property_id: propertyId, section, filename, analysis,
+      uploaded_by_role: role || 'unknown', storage_path: storagePath,
+    },
+  ];
+}
+
 // AI checklist uploads use the same durable replacement boundary as lightweight
 // uploads: an earlier version remains auditable but cannot remain live evidence.
 async function persistAiDocumentVersion({ propertyId, section, filename, analysis, role, storagePath, fileBuffer, extractedText }) {
@@ -56,16 +87,21 @@ async function persistAiDocumentVersion({ propertyId, section, filename, analysi
     }
     if (!existingError && existing?.id) return existing.id;
   }
-  let { data: saved, error } = await supabase.from('deal_analyses').insert({
-    property_id: propertyId, section, filename, analysis,
-    uploaded_by_role: role || 'unknown', storage_path: storagePath,
-    source_hash: sourceHash, processing_status: 'extracted', is_active: true,
-  }).select('id').single();
+  // Keep the source hash and processing state when only the active-version
+  // columns are missing. The final payload is for older installations that
+  // predate the durable processing columns altogether.
+  const payloads = buildDocumentVersionInsertPayloads({
+    propertyId, section, filename, analysis, role, storagePath, sourceHash,
+  });
+  let { data: saved, error } = await supabase.from('deal_analyses')
+    .insert(payloads[0]).select('id').single();
   if (error && /column|schema cache/i.test(error.message || '')) {
-    ({ data: saved, error } = await supabase.from('deal_analyses').insert({
-      property_id: propertyId, section, filename, analysis,
-      uploaded_by_role: role || 'unknown', storage_path: storagePath,
-    }).select('id').single());
+    for (const payload of payloads.slice(1)) {
+      ({ data: saved, error } = await supabase.from('deal_analyses')
+        .insert(payload).select('id').single());
+      if (!error) break;
+      if (!/column|schema cache/i.test(error.message || '')) break;
+    }
   }
   if (error) throw error;
   const recordId = saved?.id;
@@ -745,5 +781,6 @@ Return only valid JSON. No extra text.`;
 });
 
 router.setTransactionFieldExtractor = setTransactionFieldExtractor;
+router.buildDocumentVersionInsertPayloads = buildDocumentVersionInsertPayloads;
 
 module.exports = router;

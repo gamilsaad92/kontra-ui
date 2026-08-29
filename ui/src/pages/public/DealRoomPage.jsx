@@ -2944,10 +2944,16 @@ function getTransactionRecordCategory(field) {
   ).split('.')[0].toLowerCase();
   return {
     transaction: 'terms',
+    transaction_extra: 'terms',
+    transaction_terms: 'terms',
+    deal_terms: 'terms',
     terms: 'terms',
      parties: 'parties',
      organization: 'parties',
      organizer: 'parties',
+    participant: 'parties',
+    participants: 'parties',
+    counterparties: 'parties',
     beneficial_ownership: 'parties',
     party: 'parties',
     asset: 'asset',
@@ -2955,6 +2961,9 @@ function getTransactionRecordCategory(field) {
     property: 'asset',
     company: 'asset',
     identity: 'asset',
+    asset_information: 'asset',
+    property_details: 'asset',
+    company_details: 'asset',
     financial: 'financial',
     finance: 'financial',
     financials: 'financial',
@@ -2967,6 +2976,8 @@ function getTransactionRecordCategory(field) {
     repair: 'financial',
     legal: 'legal',
     diligence: 'legal',
+    compliance: 'legal',
+    legal_diligence: 'legal',
     regulatory: 'legal',
     approvals: 'legal',
     approval: 'legal',
@@ -2994,6 +3005,44 @@ function getTransactionRecordCategory(field) {
         )
           ? 'terms'
           : rawCategory);
+}
+
+function getRecordActionTarget(field, definitions = [], recordState = null) {
+  const candidates = [
+    ...(Array.isArray(definitions) ? definitions : []),
+    ...(Array.isArray(recordState?.requiredFields) ? recordState.requiredFields : []),
+    ...(Array.isArray(recordState?.fields) ? recordState.fields : []),
+  ].filter(Boolean);
+  if (candidates.length === 0) return field || {};
+
+  const identities = value => [
+    value?.key,
+    value?.field_key,
+    value?.canonicalKey,
+    value?.persistedKey,
+    value?.definitionKey,
+    value?.definition_key,
+  ].filter(Boolean).map(item => String(item).trim().toLowerCase());
+  const requestedIdentities = new Set(identities(field));
+  const exact = candidates.find(candidate =>
+    identities(candidate).some(identity => requestedIdentities.has(identity))
+  );
+  if (exact) return exact;
+
+  const normalizeLabel = value => String(value || '')
+    .trim().toLowerCase().replace(/[^a-z0-9]+/g, ' ').replace(/\s+/g, ' ');
+  const requestedLabel = normalizeLabel(field?.label || field?.display_label);
+  if (requestedLabel) {
+    const labelMatch = candidates.find(candidate =>
+      normalizeLabel(candidate?.label || candidate?.display_label) === requestedLabel
+    );
+    if (labelMatch) return labelMatch;
+  }
+
+  const requestedCategory = getTransactionRecordCategory(field);
+  return candidates.find(candidate =>
+    getTransactionRecordCategory(candidate) === requestedCategory
+  ) || field || {};
 }
 
 // ── WhatNeedsAttention ────────────────────────────────────────────────────────
@@ -3404,17 +3453,18 @@ function WhatNeedsAttention({
   // system here — these are only routing affordances for the existing items.
   function goToRecord(field) {
     const normalizeLabel = value => String(value || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, ' ').replace(/\s+/g, ' ');
-    const label = field?.label || field?.display_label || '';
+    const targetField = getRecordActionTarget(field, recordSchema, recordState);
+    const label = targetField?.label || targetField?.display_label || '';
     const labelMatch = label
       ? [...recordSchema, ...(recordState?.requiredFields || [])].find(candidate =>
         normalizeLabel(candidate?.label || candidate?.display_label) === normalizeLabel(label)
       )
       : null;
-    const fieldKey = field?.key
-      || field?.field_key
-      || field?.canonicalKey
-      || field?.persistedKey
-      || field?.definitionKey
+    const fieldKey = targetField?.key
+      || targetField?.field_key
+      || targetField?.canonicalKey
+      || targetField?.persistedKey
+      || targetField?.definitionKey
       || labelMatch?.key
       || labelMatch?.field_key
       || labelMatch?.persistedKey
@@ -3422,6 +3472,13 @@ function WhatNeedsAttention({
       || '';
     const keys = [
       fieldKey,
+      ...[
+        targetField?.key,
+        targetField?.field_key,
+        targetField?.canonicalKey,
+        targetField?.persistedKey,
+        targetField?.definitionKey,
+      ].filter(Boolean),
       field?.key,
       field?.field_key,
       field?.canonicalKey,
@@ -3430,11 +3487,11 @@ function WhatNeedsAttention({
     ].filter(Boolean);
     onOverviewAction?.({
       type: 'record',
-      field: { ...field, key: fieldKey, field_key: field?.field_key || fieldKey },
+      field: { ...field, ...targetField, key: fieldKey, field_key: targetField?.field_key || fieldKey },
       keys: [...new Set(keys)],
       label,
-      autoEdit: ['missing', 'not_applicable'].includes(String(field?.status || '').toLowerCase())
-        || !String(field?.value ?? field?.value_text ?? '').trim(),
+      autoEdit: ['missing', 'not_applicable'].includes(String(targetField?.status || field?.status || '').toLowerCase())
+        || !String(targetField?.value ?? targetField?.value_text ?? field?.value ?? field?.value_text ?? '').trim(),
     });
   }
 
@@ -3465,15 +3522,18 @@ function WhatNeedsAttention({
       };
     }
     if (/(term|purchase price|transaction value|closing date|structure)/.test(value)) {
-      return { label: 'Review terms', onClick: () => goToRecord({ field_key: 'transaction.terms' }) };
+      return { label: 'Review terms', onClick: () => goToRecord(getRecordActionTarget({ field_key: 'transaction.terms' }, recordSchema, recordState)) };
     }
     if (/(financial|revenue|noi|ebitda|loan|deal value)/.test(value)) {
-      return { label: 'Review financials', onClick: () => goToRecord({ field_key: 'financial.deal_value' }) };
+      return { label: 'Review financials', onClick: () => goToRecord(getRecordActionTarget({ field_key: 'financial.deal_value' }, recordSchema, recordState)) };
     }
     if (/(title|legal|liens|encumbrance|regulatory)/.test(value)) {
-      return { label: 'Review legal', onClick: () => goToRecord({ field_key: 'legal.title_status' }) };
+      return { label: 'Review legal', onClick: () => goToRecord(getRecordActionTarget({ field_key: 'legal.title_status' }, recordSchema, recordState)) };
     }
-    return { label: 'Review record', onClick: () => onOverviewAction?.({ type: 'record', field: { field_key: 'transaction.terms' } }) };
+    return {
+      label: 'Review record',
+      onClick: () => goToRecord(getRecordActionTarget({ field_key: 'transaction.terms' }, recordSchema, recordState)),
+    };
   }
 
   function routeForItem(item) {
@@ -6157,6 +6217,7 @@ export {
   isBorrowerFundsRecordAction,
   normalizeRecordCategory,
   getTransactionRecordCategory,
+  getRecordActionTarget,
   getHazardLossOperationalFieldDefinitions,
   dedupeAttentionItems,
   getCanonicalAwaitingRecordFields,
@@ -8190,7 +8251,25 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
     }
     if (action.type === 'record') {
       onTabChange?.('overview');
+      const actionDefinitions = getEffectiveRecordDefinitions(
+        recordSchemaKey,
+        property,
+        recordFields,
+        canonicalRecordState,
+      );
+      const targetField = getRecordActionTarget(
+        action.field,
+        actionDefinitions,
+        canonicalRecordState,
+      );
       const requestedKeys = [
+        ...[
+          targetField?.key,
+          targetField?.field_key,
+          targetField?.canonicalKey,
+          targetField?.persistedKey,
+          targetField?.definitionKey,
+        ].filter(Boolean),
         ...(Array.isArray(action.keys) ? action.keys : []),
         action.field?.key,
         action.field?.field_key,
@@ -8200,6 +8279,8 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
       ].filter(Boolean);
       const keys = [...new Set(requestedKeys)];
       const requestedLabels = [
+        targetField?.label,
+        targetField?.display_label,
         action.label,
         action.field?.label,
         action.field?.display_label,
@@ -8212,7 +8293,7 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
         autoEdit: Boolean(action.autoEdit),
         nonce: Date.now(),
       });
-      const category = getTransactionRecordCategory({ ...action.field, field_key: fieldKey });
+      const category = getTransactionRecordCategory({ ...targetField, field_key: fieldKey });
       const revealRecordCategory = (attempt = 0) => {
         const target = document.getElementById(`transaction-record-category-${category}`);
         if (target) {
@@ -8240,7 +8321,14 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
       };
       revealRecordCategory();
     }
-  }, [onTabChange]);
+  }, [
+    canonicalRecordState,
+    onTabChange,
+    pack,
+    property,
+    recordFields,
+    recordSchemaKey,
+  ]);
   // The API's record_state includes the resolved schema, aliases, and the
   // not-applicable denominator. Use it as the single source for every Overview
   // count; the frontend schema is only a pre-load fallback.

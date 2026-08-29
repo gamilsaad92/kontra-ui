@@ -179,12 +179,20 @@ async function getVerificationState(propertyId) {
 }
 
 async function runVerification(propertyId, packId = null) {
-  const { data: documents, error: documentError } = await supabase
+  let { data: documents, error: documentError } = await supabase
     .from('deal_analyses')
     .select('id, section, analysis, created_at, is_active, superseded_at')
     .eq('property_id', propertyId)
     .neq('section', VERIFICATION_SECTION)
     .order('created_at', { ascending: true });
+  if (documentError && /is_active|superseded_at|superseded_by|schema cache|column .* does not exist/i.test(documentError.message || '')) {
+    ({ data: documents, error: documentError } = await supabase
+      .from('deal_analyses')
+      .select('id, section, analysis, created_at')
+      .eq('property_id', propertyId)
+      .neq('section', VERIFICATION_SECTION)
+      .order('created_at', { ascending: true }));
+  }
   if (documentError) throw documentError;
 
   const comparableDocuments = latestDocuments(documents);
@@ -228,4 +236,5 @@ module.exports = {
   VERIFICATION_SECTION,
   getVerificationState,
   runVerification,
+  latestDocuments,
 };

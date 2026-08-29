@@ -21,6 +21,7 @@ const {
   mergeTransactionRecordState,
   normalizeRecordCategory,
   getTransactionRecordCategory,
+  getRecordActionTarget,
   getCurrentProvenanceGap,
   preparationDraftValue,
   preparationSaveConfirmation,
@@ -510,6 +511,41 @@ describe('coordinator transaction brief logic', () => {
     expect(filterStaleRecordActions([
       { title: 'Review unrelated underwriting note' },
     ], recordState, [], canonicalActionKeys)).toHaveLength(1);
+  });
+
+  test('routes generated-room record actions to a real generated field', () => {
+    const generatedDefinitions = [
+      {
+        key: 'deal.asking_price',
+        label: 'Asking price',
+        category: 'transaction_extra',
+      },
+      {
+        key: 'party.primary_owner',
+        label: 'Primary owner',
+        category: 'participants',
+      },
+    ];
+
+    expect(getRecordActionTarget(
+      { field_key: 'transaction.terms' },
+      generatedDefinitions,
+    )).toEqual(generatedDefinitions[0]);
+  });
+
+  test('routes Hazard Loss Review field actions through the canonical financial category', () => {
+    const hazardDefinitions = [
+      {
+        key: 'funding.request',
+        label: 'Funding request',
+        category: 'financial',
+      },
+    ];
+
+    expect(getRecordActionTarget(
+      { field_key: 'financial.deal_value' },
+      hazardDefinitions,
+    )).toEqual(hazardDefinitions[0]);
   });
 
   test('uses canonical unresolved conflicts and deduplicates by canonical field key', () => {
