@@ -13,6 +13,10 @@ const {
   canonicalizeTransactionRecordKey,
 } = require('./transactionRecordCanonicalization');
 const {
+  extractFacts,
+  inferFactDefinition,
+} = require('./verificationEngine');
+const {
   buildTokenizationGuidance,
 } = require('./tokenizationGuidance');
 const { selectActiveDocumentVersions } = require('./documentVersions');
@@ -101,18 +105,48 @@ async function reconcileStoredDocumentConflicts(propertyId) {
   if (now - (conflictReconcileAt.get(propertyId) || 0) < 15000) return;
   conflictReconcileAt.set(propertyId, now);
   try {
-    const [{ data: documents, error: documentsError }, { data: fields, error: fieldsError }] = await Promise.all([
+    const [
+      { data: initialDocuments, error: initialDocumentsError },
+      { data: fields, error: fieldsError },
+      { data: openConflicts, error: openConflictsError },
+    ] = await Promise.all([
       supabase.from('deal_analyses')
-        .select('id, section, filename, analysis, created_at')
+        .select('id, section, filename, analysis, created_at, is_active, superseded_at')
         .eq('property_id', propertyId)
         .order('created_at', { ascending: true }),
       supabase.from('transaction_record_fields')
         .select('id, field_key, display_label, value_text, status, source_doc_id, source_page, source_excerpt')
         .eq('property_id', propertyId),
+      supabase.from('transaction_record_conflicts')
+        .select('id, field_key, display_label, canonical_source_doc_id, conflicting_source_doc_id, status')
+        .eq('property_id', propertyId)
+        .eq('status', 'unresolved'),
     ]);
+    let documents = initialDocuments;
+    let documentsError = initialDocumentsError;
+    if (documentsError && /column|schema cache/i.test(documentsError.message || '')) {
+      const legacyDocuments = await supabase.from('deal_analyses')
+        .select('id, section, filename, analysis, created_at')
+        .eq('property_id', propertyId)
+        .order('created_at', { ascending: true });
+      documents = legacyDocuments.data;
+      documentsError = legacyDocuments.error;
+    }
     if (documentsError) throw documentsError;
     if (fieldsError) throw fieldsError;
+    if (openConflictsError && !/relation|schema cache|column/i.test(openConflictsError.message || '')) {
+      throw openConflictsError;
+    }
     const sourceDocuments = selectActiveDocumentVersions(documents || []);
+    for (const conflict of openConflicts || []) {
+      if (isConflictSupportedByActiveEvidence(conflict, documents || [])) continue;
+      await supabase.from('transaction_record_conflicts').update({
+        status: 'resolved',
+        resolved_at: new Date().toISOString(),
+        resolution_note: 'Removed from live state because its sources are superseded or semantically unrelated.',
+        updated_at: new Date().toISOString(),
+      }).eq('id', conflict.id).eq('property_id', propertyId);
+    }
     const candidates = sourceDocuments.flatMap(document =>
       storedDocumentAmounts(document).map(value => ({ ...value, document }))
     );
@@ -580,6 +614,31 @@ function normalizeTransactionConflicts(conflicts) {
       createdAt: conflict.created_at || null,
       updatedAt: conflict.updated_at || conflict.created_at || null,
     }));
+}
+
+function isConflictSupportedByActiveEvidence(conflict, documents = []) {
+  const activeDocuments = selectActiveDocumentVersions(documents || []);
+  const activeIds = new Set(activeDocuments.map(document => document.id).filter(Boolean));
+  const sourceIds = [
+    conflict?.canonical_source_doc_id,
+    conflict?.conflicting_source_doc_id,
+  ].filter(Boolean);
+  // A conflict whose evidence was replaced is historical, not a live blocker.
+  if (sourceIds.some(id => !activeIds.has(id))) return false;
+  if (!sourceIds.length) return true;
+
+  const semantic = inferFactDefinition(
+    conflict?.field_key || '',
+    null,
+    conflict?.display_label || '',
+  );
+  if (!semantic || String(semantic.semanticKey || '').startsWith('metric:')) return true;
+  const referencedDocuments = activeDocuments.filter(document => sourceIds.includes(document.id));
+  const referencedFacts = referencedDocuments.flatMap(document => extractFacts(document));
+  // Lightweight/legacy analyses may not retain structured metrics. Do not
+  // discard a conflict merely because its evidence cannot be re-extracted.
+  if (!referencedFacts.length) return true;
+  return referencedFacts.some(fact => fact.semantic_key === semantic.semanticKey);
 }
 
 function recordStatusRank(field) {

@@ -2597,6 +2597,7 @@ function TransactionFindingsPanel({ propertyId, onTabChange }) {
   const [confirming, setConfirming] = useState('');
   const [expanded, setExpanded] = useState('');
   const [history, setHistory] = useState({});
+  const [showAllFindings, setShowAllFindings] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -2679,8 +2680,8 @@ function TransactionFindingsPanel({ propertyId, onTabChange }) {
     .sort((a, b) => {
       const priority = { source_changed: 0, conflicting: 1, needs_review: 2, extracted: 3 };
       return (priority[a.status] ?? 9) - (priority[b.status] ?? 9);
-    })
-    .slice(0, 5);
+    });
+  const visibleFindings = showAllFindings ? findings : findings.slice(0, 5);
 
   if (loading) {
     return (
@@ -2717,7 +2718,7 @@ function TransactionFindingsPanel({ propertyId, onTabChange }) {
         </div>
       ) : (
         <div className="divide-y divide-gray-100">
-          {findings.map(field => {
+           {visibleFindings.map(field => {
             const isConflict = field.status === 'conflicting' || field.status === 'source_changed';
             const isExpanded = expanded === field.id;
             return (
@@ -2787,6 +2788,18 @@ function TransactionFindingsPanel({ propertyId, onTabChange }) {
           })}
         </div>
       )}
+       {findings.length > 5 && (
+         <div className="border-t border-gray-100 px-5 py-3">
+           <button
+             type="button"
+             aria-expanded={showAllFindings}
+             onClick={() => setShowAllFindings(value => !value)}
+             className="text-[11px] font-semibold text-[#800020] hover:opacity-80 transition"
+           >
+             {showAllFindings ? 'Show fewer findings' : `+${findings.length - 5} more findings`}
+           </button>
+         </div>
+       )}
       {conflicts.length > 0 && (
         <div className="border-t border-red-100 bg-red-50/40 px-5 py-4">
           <p className="text-[10px] font-bold uppercase tracking-wider text-red-700">Unresolved source discrepancies</p>
@@ -3524,8 +3537,17 @@ function WhatNeedsAttention({
     if (/(term|purchase price|transaction value|closing date|structure)/.test(value)) {
       return { label: 'Review terms', onClick: () => goToRecord(getRecordActionTarget({ field_key: 'transaction.terms' }, recordSchema, recordState)) };
     }
-    if (/(financial|revenue|noi|ebitda|loan|deal value)/.test(value)) {
-      return { label: 'Review financials', onClick: () => goToRecord(getRecordActionTarget({ field_key: 'financial.deal_value' }, recordSchema, recordState)) };
+    if (/\bnoi\b|net operating income/.test(value)) {
+      return { label: 'Review record', onClick: () => goToRecord(getRecordActionTarget({ field_key: 'financial.noi', label: 'NOI' }, recordSchema, recordState)) };
+    }
+    if (/\brevenue\b/.test(value)) {
+      return { label: 'Review record', onClick: () => goToRecord(getRecordActionTarget({ field_key: 'financial.revenue', label: 'Revenue' }, recordSchema, recordState)) };
+    }
+    if (/\bebitda\b/.test(value)) {
+      return { label: 'Review record', onClick: () => goToRecord(getRecordActionTarget({ field_key: 'financial.ebitda', label: 'EBITDA' }, recordSchema, recordState)) };
+    }
+    if (/(financial|loan|deal value)/.test(value)) {
+      return { label: 'Review financials', onClick: () => goToRecord(getRecordActionTarget({ field_key: 'financial.noi', label: 'Financial information' }, recordSchema, recordState)) };
     }
     if (/(title|legal|liens|encumbrance|regulatory)/.test(value)) {
       return { label: 'Review legal', onClick: () => goToRecord(getRecordActionTarget({ field_key: 'legal.title_status' }, recordSchema, recordState)) };
@@ -3761,6 +3783,12 @@ function DigitalAssetReadinessSection({
   const [editValue, setEditValue] = useState('');
   const [mutationError, setMutationError] = useState('');
   const [focusedFieldKey, setFocusedFieldKey] = useState('');
+  const [expandedLists, setExpandedLists] = useState({});
+
+  const toggleList = (categoryKey, listKey) => {
+    const key = `${categoryKey}:${listKey}`;
+    setExpandedLists(previous => ({ ...previous, [key]: !previous[key] }));
+  };
 
   useEffect(() => {
     const requestedKeys = [
@@ -4334,7 +4362,7 @@ function DigitalAssetReadinessSection({
                          <p className="text-xs text-gray-400 italic">No unconfirmed candidates.</p>
                        ) : (
                          <ul className="space-y-1">
-                           {cat.awaitingDefs.slice(0, 4).map(d => (
+                            {(expandedLists[`${cat.key}:awaiting`] ? cat.awaitingDefs : cat.awaitingDefs.slice(0, 4)).map(d => (
                               <li key={d.key} id={`transaction-record-field-${encodeURIComponent(d.key)}`} data-transaction-record-field="true" data-transaction-record-key={d.key} data-transaction-record-label={d.label} className={`flex items-start gap-1.5 rounded-lg px-1 text-xs text-blue-700 transition-shadow ${focusedFieldKey === d.key ? 'bg-blue-50 ring-2 ring-blue-300 ring-offset-1' : ''}`}>
                                <span className="mt-0.5 text-blue-500 shrink-0">●</span>
                                <span className="flex min-w-0 flex-1 flex-col items-start gap-1">
@@ -4372,8 +4400,19 @@ function DigitalAssetReadinessSection({
                                 )}
                              </li>
                            ))}
-                           {cat.awaitingDefs.length > 4 && (
-                             <li className="text-[10px] text-gray-400">+{cat.awaitingDefs.length - 4} more</li>
+                            {cat.awaitingDefs.length > 4 && (
+                              <li>
+                                <button
+                                  type="button"
+                                  aria-expanded={Boolean(expandedLists[`${cat.key}:awaiting`])}
+                                  onClick={() => toggleList(cat.key, 'awaiting')}
+                                  className="text-[10px] font-semibold text-[#800020] hover:opacity-80"
+                                >
+                                  {expandedLists[`${cat.key}:awaiting`]
+                                    ? 'Show fewer awaiting fields'
+                                    : `+${cat.awaitingDefs.length - 4} more awaiting fields`}
+                                </button>
+                              </li>
                            )}
                          </ul>
                        )}
@@ -4385,7 +4424,7 @@ function DigitalAssetReadinessSection({
                         <p className="text-xs text-emerald-600 font-medium">All key fields present.</p>
                       ) : (
                            <ul className="space-y-1">
-                          {cat.missingDefs.slice(0, 4).map(d => (
+                           {(expandedLists[`${cat.key}:missing`] ? cat.missingDefs : cat.missingDefs.slice(0, 4)).map(d => (
                               <li key={d.key} id={`transaction-record-field-${encodeURIComponent(d.key)}`} data-transaction-record-field="true" data-transaction-record-key={d.key} data-transaction-record-label={d.label} className={`flex items-start gap-1.5 rounded-lg px-1 text-xs text-gray-500 transition-shadow ${focusedFieldKey === d.key ? 'bg-amber-50 ring-2 ring-amber-300 ring-offset-1' : ''}`}>
                               <span className="mt-0.5 text-gray-300 shrink-0">○</span>
                                <span className="flex min-w-0 flex-1 flex-wrap items-start justify-between gap-2">
@@ -4426,8 +4465,19 @@ function DigitalAssetReadinessSection({
                               </span>
                             </li>
                           ))}
-                          {cat.missingDefs.length > 4 && (
-                            <li className="text-[10px] text-gray-400">+{cat.missingDefs.length - 4} more</li>
+                           {cat.missingDefs.length > 4 && (
+                             <li>
+                               <button
+                                 type="button"
+                                 aria-expanded={Boolean(expandedLists[`${cat.key}:missing`])}
+                                 onClick={() => toggleList(cat.key, 'missing')}
+                                 className="text-[10px] font-semibold text-[#800020] hover:opacity-80"
+                               >
+                                 {expandedLists[`${cat.key}:missing`]
+                                   ? 'Show fewer missing fields'
+                                   : `+${cat.missingDefs.length - 4} more missing fields`}
+                               </button>
+                             </li>
                           )}
                         </ul>
                       )}
@@ -5590,7 +5640,6 @@ function getNextMilestoneBlockers({
     key: `next-doc-${item.id || item.section}`,
     text: `${item.label || item.name || 'Required document'} is needed before ${nextStage.label}`,
     detail: 'This requirement is tied to the next lifecycle milestone.',
-    action: { label: 'Open Documents', onClick: () => {} },
     participantKey: (Array.isArray(item.assignedTo || item.assigned_to)
       ? (item.assignedTo || item.assigned_to)
       : [item.assignedTo || item.assigned_to].filter(Boolean))[0],
@@ -5608,7 +5657,6 @@ function getNextMilestoneBlockers({
       key: `next-participant-${state.key}`,
       text: `${state.label} must be active before ${nextStage.label}`,
       detail: 'This participant owns a requirement for the next milestone.',
-      action: { label: 'Open People', onClick: () => {} },
     }));
 
   // AI briefing text is advisory and can become stale after a participant or
@@ -5720,6 +5768,13 @@ function TransactionConflictResolver({ propertyId, conflict, analyses = [], onRe
     const source = analyses.find(item => item.id === id);
     return source?.filename || source?.section || 'Source document';
   };
+  const sourceEvidence = (docId, page, excerpt) => {
+    const source = analyses.find(item => item.id === docId);
+    return {
+      page: page || source?.analysis?.source_page || null,
+      excerpt: excerpt || source?.analysis?.source_excerpt || source?.analysis?.summary || null,
+    };
+  };
   const resolve = async valueText => {
     let ownerWriteToken = '';
     try { ownerWriteToken = localStorage.getItem(`kontra_owner_token_${propertyId}`) || ''; } catch {}
@@ -5752,12 +5807,22 @@ function TransactionConflictResolver({ propertyId, conflict, analyses = [], onRe
       value: conflict.canonicalValue || conflict.canonical_value || 'Not recorded',
       label: 'Current canonical value',
       source: sourceName(conflict.canonicalSourceDocId || conflict.canonical_source_doc_id),
+      evidence: sourceEvidence(
+        conflict.canonicalSourceDocId || conflict.canonical_source_doc_id,
+        conflict.canonicalSourcePage || conflict.canonical_source_page,
+        conflict.canonicalSourceExcerpt || conflict.canonical_source_excerpt,
+      ),
       primary: true,
     },
     {
       value: conflict.conflictingValue || conflict.conflicting_value || 'Not recorded',
       label: 'Conflicting value',
       source: sourceName(conflict.conflictingSourceDocId || conflict.conflicting_source_doc_id),
+      evidence: sourceEvidence(
+        conflict.conflictingSourceDocId || conflict.conflicting_source_doc_id,
+        conflict.conflictingSourcePage || conflict.conflicting_source_page,
+        conflict.conflictingSourceExcerpt || conflict.conflicting_source_excerpt,
+      ),
       primary: false,
     },
   ];
@@ -5778,6 +5843,14 @@ function TransactionConflictResolver({ propertyId, conflict, analyses = [], onRe
               <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">{option.label}</p>
               <p className="mt-1 text-xl font-bold text-gray-900">{option.value}</p>
               <p className="mt-1 break-words text-[11px] text-gray-500">Source: {option.source}</p>
+              {option.evidence?.page && (
+                <p className="mt-1 text-[10px] font-semibold text-gray-400">Page {option.evidence.page}</p>
+              )}
+              {option.evidence?.excerpt && (
+                <p className="mt-2 break-words rounded-lg bg-white/70 px-2 py-1.5 text-[10px] leading-relaxed text-gray-500">
+                  “{option.evidence.excerpt}”
+                </p>
+              )}
               <button type="button" onClick={() => resolve(option.value)} disabled={saving} className={`mt-3 w-full rounded-lg px-3 py-2 text-[11px] font-bold disabled:opacity-50 ${option.primary ? 'bg-[#800020] text-white' : 'border border-gray-300 bg-white text-gray-700'}`}>
                 {saving ? 'Saving…' : option.primary ? 'Keep canonical value' : 'Use this value'}
               </button>
@@ -5815,6 +5888,8 @@ function TransactionBrief({
   const [stageDecision, setStageDecision] = useState('');
   const [stageActionError, setStageActionError] = useState('');
   const [advancing, setAdvancing] = useState(false);
+  const [showAllParticipants, setShowAllParticipants] = useState(false);
+  const [showAllBlockers, setShowAllBlockers] = useState(false);
 
   const participantRows = Array.isArray(coordination?.submissions)
     ? coordination.submissions
@@ -6095,7 +6170,7 @@ function TransactionBrief({
             </button>
           </div>
           <div className="mt-2 space-y-1.5">
-            {participantStatuses.slice(0, 4).map(item => (
+            {(showAllParticipants ? participantStatuses : participantStatuses.slice(0, 4)).map(item => (
               <div key={item.key} className="flex items-center justify-between gap-2 text-[11px]">
                 <span className="truncate text-gray-600">{item.label}</span>
                 <span className={`shrink-0 font-semibold ${item.complete ? 'text-emerald-600' : item.invited ? 'text-amber-600' : 'text-red-600'}`}>
@@ -6103,7 +6178,16 @@ function TransactionBrief({
                 </span>
               </div>
             ))}
-            {participantStatuses.length > 4 && <p className="text-[10px] text-gray-400">+{participantStatuses.length - 4} more participants</p>}
+            {participantStatuses.length > 4 && (
+              <button
+                type="button"
+                aria-expanded={showAllParticipants}
+                onClick={() => setShowAllParticipants(value => !value)}
+                className="text-[10px] font-semibold text-[#800020] hover:opacity-80"
+              >
+                {showAllParticipants ? 'Show fewer participants' : `+${participantStatuses.length - 4} more participants`}
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -6117,7 +6201,7 @@ function TransactionBrief({
             <span className="text-[10px] font-semibold text-red-600">{nextMilestoneBlockers.length}</span>
           </div>
           <div className="mt-2 space-y-1.5">
-            {nextMilestoneBlockers.slice(0, 4).map(blocker => (
+            {(showAllBlockers ? nextMilestoneBlockers : nextMilestoneBlockers.slice(0, 4)).map(blocker => (
               <div key={blocker.key} className="flex items-center gap-2 text-xs text-red-800">
                 <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-red-500" />
                 <span className="min-w-0 flex-1">{blocker.text}</span>
@@ -6130,6 +6214,16 @@ function TransactionBrief({
                 </button>
               </div>
             ))}
+            {nextMilestoneBlockers.length > 4 && (
+              <button
+                type="button"
+                aria-expanded={showAllBlockers}
+                onClick={() => setShowAllBlockers(value => !value)}
+                className="text-[10px] font-semibold text-red-700 underline underline-offset-2"
+              >
+                {showAllBlockers ? 'Show fewer blockers' : `+${nextMilestoneBlockers.length - 4} more blockers`}
+              </button>
+            )}
           </div>
         </div>
       )}

@@ -8,8 +8,28 @@
 const { supabase } = require('../db');
 
 const VERIFICATION_SECTION = 'cross_document_verification';
-const AMOUNT_KEY = /amount|consideration|price|proceeds|valuation|value|revenue|ebitda|income|equity|deposit|financing|purchase/i;
-const AMOUNT_PATTERN = /\$\s*([\d,]+(?:\.\d+)?)\s*(million|mm|billion|bn|thousand|k)?/gi;
+const NUMBER_PATTERN = /[$€£]?\s*([\d,]+(?:\.\d+)?)\s*(million|mm|billion|bn|thousand|k)?/gi;
+const PERCENT_PATTERN = /([\d,]+(?:\.\d+)?)\s*%/gi;
+const GENERIC_FACT_WORDS = new Set(['amount', 'value', 'total', 'number', 'balance', 'variance', 'metric', 'result']);
+const THRESHOLD_WORDS = /\b(trigger|threshold|limit|maximum|max|min(?:imum)?|cap|must\s+not\s+exceed|at\s+least|no\s+more\s+than|no\s+less\s+than)\b/i;
+const ACTUAL_WORDS = /\b(actual|current|reported|observed|measured|as\s+of|is|was|were)\b/i;
+const SEMANTIC_ALIASES = [
+  { key: 'capital.commitment', pattern: /\b(?:total\s+)?(?:loan\s+)?commitment\b|\bcommitted\s+(?:amount|balance)\b/i, type: 'amount' },
+  { key: 'financial.noi', pattern: /\b(?:net\s+operating\s+income|noi)\b/i, type: 'amount' },
+  { key: 'financial.cash_variance', pattern: /\bcash(?:\s+flow)?\s+variance\b|\bvariance\s+in\s+cash\b/i, type: 'amount' },
+  { key: 'financial.cash_balance', pattern: /\bcash\s+balance\b|\bavailable\s+cash\b/i, type: 'amount' },
+  { key: 'financial.proceeds', pattern: /\b(?:insurance|loss|net)?\s*proceeds\b/i, type: 'amount' },
+  { key: 'financial.revenue', pattern: /\b(?:gross\s+)?revenue\b|\bsales\b/i, type: 'amount' },
+  { key: 'financial.ebitda', pattern: /\bebitda\b/i, type: 'amount' },
+  { key: 'financial.equity', pattern: /\b(?:owner|borrower|investor)?\s*equity\b/i, type: 'amount' },
+  { key: 'financial.repair_costs', pattern: /\b(?:repair|restoration)\s+(?:cost|costs|amount|estimate)\b|\btotal\s+repair\b/i, type: 'amount' },
+  { key: 'transaction.purchase_price', pattern: /\b(?:purchase|sale)\s+price\b|\bconsideration\b/i, type: 'amount' },
+  { key: 'transaction.value', pattern: /\btransaction\s+value\b|\bdeal\s+value\b|\bvaluation\b/i, type: 'amount' },
+  { key: 'covenant.delinquency_rate', pattern: /\bdelinquen(?:cy|t)\b/i, type: 'percent', relationship: 'delinquency_rate' },
+  { key: 'covenant.occupancy_rate', pattern: /\boccupancy\b/i, type: 'percent', relationship: 'occupancy_rate' },
+  { key: 'covenant.ltv', pattern: /\b(?:loan[\s-]*to[\s-]*value|ltv)\b/i, type: 'percent', relationship: 'ltv' },
+  { key: 'covenant.dscr', pattern: /\b(?:debt[\s-]*service[\s-]*coverage|dscr)\b/i, type: 'ratio', relationship: 'dscr' },
+];
 
 function humanizeSection(section) {
   return String(section || 'document')
@@ -20,7 +40,9 @@ function humanizeSection(section) {
 function numericValue(value) {
   if (typeof value === 'number' && Number.isFinite(value)) return value;
   if (typeof value !== 'string') return null;
-  const parsed = Number(value.replace(/[$,\s]/g, ''));
+  const match = value.match(/-?\s*[\d,]+(?:\.\d+)?/);
+  if (!match) return null;
+  const parsed = Number(match[0].replace(/[$,\s]/g, ''));
   return Number.isFinite(parsed) ? parsed : null;
 }
 
@@ -34,6 +56,144 @@ function scaleAmount(value, unit) {
   return value * multiplier;
 }
 
+function normalizedText(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[_-]+/g, ' ')
+    .replace(/\s+/g, ' ');
+}
+
+function factContext(key, rawValue) {
+  if (rawValue && typeof rawValue === 'object') {
+    return normalizedText([
+      rawValue.key,
+      rawValue.label,
+      rawValue.name,
+      rawValue.semantic_key,
+      rawValue.semanticKey,
+      key,
+    ].filter(Boolean).join(' '));
+  }
+  return normalizedText(`${key} ${rawValue || ''}`);
+}
+
+function inferFactDefinition(key, rawValue, explicitLabel = '') {
+  const context = normalizedText(`${key} ${explicitLabel} ${rawValue && typeof rawValue === 'object'
+    ? [rawValue.label, rawValue.name, rawValue.semantic_key, rawValue.semanticKey].filter(Boolean).join(' ')
+    : ''}`);
+  const alias = SEMANTIC_ALIASES.find(item => item.pattern.test(context));
+  if (alias) {
+    const role = THRESHOLD_WORDS.test(context)
+      ? 'threshold'
+      : ACTUAL_WORDS.test(context) ? 'actual' : 'value';
+    return {
+      semanticKey: alias.key,
+      comparisonKey: alias.relationship || alias.key,
+      valueType: alias.type,
+      relationship: alias.relationship || null,
+      role,
+    };
+  }
+
+  const slug = normalizedText(key).replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+  const label = normalizedText(explicitLabel);
+  const fallbackKey = slug || label.replace(/[^a-z0-9]+/g, '_');
+  if (!fallbackKey || GENERIC_FACT_WORDS.has(fallbackKey)) return null;
+  const percent = /%|percent|percentage|rate|ratio|ltv|dscr/.test(context);
+  return {
+    semanticKey: `metric:${fallbackKey}`,
+    comparisonKey: `metric:${fallbackKey}`,
+    valueType: percent ? (/ratio|dscr/.test(context) ? 'ratio' : 'percent') : 'amount',
+    relationship: null,
+    role: THRESHOLD_WORDS.test(context) ? 'threshold' : 'value',
+  };
+}
+
+function extractNumeric(rawValue, context = '') {
+  const value = rawValue && typeof rawValue === 'object'
+    ? (rawValue.value ?? rawValue.amount ?? rawValue.number ?? rawValue.numeric_value)
+    : rawValue;
+  const unit = rawValue && typeof rawValue === 'object' ? rawValue.unit : null;
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return { value, unit: unit || (/percent|percentage|rate|%/.test(context) ? '%' : null) };
+  }
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  const match = trimmed.match(/-?\s*([\d,]+(?:\.\d+)?)\s*(million|mm|billion|bn|thousand|k)?/i);
+  if (!match) return null;
+  const parsed = Number(match[1].replace(/,/g, ''));
+  if (!Number.isFinite(parsed)) return null;
+  const parsedUnit = unit || (/%|percent|percentage|rate/.test(context) ? '%' : match[2] || null);
+  return {
+    value: parsedUnit === '%' ? parsed : scaleAmount(parsed, parsedUnit),
+    unit: parsedUnit === '%' ? '%' : 'currency',
+  };
+}
+
+function sourceExcerptFor(document, rawValue, fallback = null) {
+  return (rawValue && typeof rawValue === 'object' && (
+    rawValue.source_excerpt || rawValue.sourceExcerpt || rawValue.excerpt
+  )) || document.analysis?.source_excerpt || fallback || null;
+}
+
+function sourcePageFor(document, rawValue) {
+  return (rawValue && typeof rawValue === 'object'
+    ? (rawValue.source_page ?? rawValue.sourcePage ?? rawValue.page)
+    : null) || document.analysis?.source_page || null;
+}
+
+function makeFact(document, key, rawValue, explicitLabel = '', fallbackExcerpt = null) {
+  const definition = inferFactDefinition(key, rawValue, explicitLabel);
+  if (!definition) return null;
+  const numeric = extractNumeric(rawValue, `${key} ${explicitLabel}`);
+  if (!numeric || numeric.value < 0) return null;
+  return {
+    key: definition.semanticKey,
+    semantic_key: definition.semanticKey,
+    comparison_key: definition.comparisonKey,
+    value_type: definition.valueType,
+    unit: numeric.unit,
+    role: definition.role,
+    relationship: definition.relationship,
+    value: numeric.value,
+    raw_value: rawValue && typeof rawValue === 'object'
+      ? (rawValue.display_value ?? rawValue.value ?? rawValue.amount ?? rawValue.number)
+      : rawValue,
+    source_doc_id: document.id || null,
+    source_section: document.section,
+    source_filename: document.filename || null,
+    source_page: sourcePageFor(document, rawValue),
+    source_excerpt: sourceExcerptFor(document, rawValue, fallbackExcerpt),
+  };
+}
+
+function extractSummaryFacts(document, summary) {
+  const facts = [];
+  const summaryText = String(summary || '');
+  for (const match of summaryText.matchAll(PERCENT_PATTERN)) {
+    const start = Math.max(0, match.index - 100);
+    const context = summaryText.slice(start, match.index + match[0].length);
+    if (!SEMANTIC_ALIASES.some(item => item.pattern.test(context))) continue;
+    const fact = makeFact(document, context, {
+      value: Number(match[1].replace(/,/g, '')),
+      unit: '%',
+      source_excerpt: summaryText.slice(start, Math.min(summaryText.length, match.index + match[0].length + 80)).trim(),
+    }, context);
+    if (fact) facts.push(fact);
+  }
+  for (const match of summaryText.matchAll(NUMBER_PATTERN)) {
+    const before = summaryText.slice(Math.max(0, match.index - 100), match.index);
+    // Dollar mentions without a semantic label are evidence, but not a
+    // comparable fact. Keeping them out of groups prevents "$25m" in a
+    // commitment document from becoming NOI, proceeds, or cash variance.
+    if (!/[$€£]/.test(match[0]) || !SEMANTIC_ALIASES.some(item => item.pattern.test(before))) continue;
+    const fact = makeFact(document, before, `${match[1]} ${match[2] || ''}`, before);
+    if (fact) facts.push(fact);
+  }
+  return facts;
+}
+
 function extractFacts(document) {
   const analysis = document.analysis || {};
   const facts = [];
@@ -42,24 +202,31 @@ function extractFacts(document) {
     : {};
 
   for (const [key, rawValue] of Object.entries(metrics)) {
-    if (!AMOUNT_KEY.test(key)) continue;
-    const value = numericValue(rawValue);
-    if (value == null || value <= 0) continue;
-    facts.push({ key: `metric:${key.toLowerCase()}`, label: humanizeSection(key), value });
+    const fact = makeFact(document, key, rawValue, rawValue?.label || rawValue?.name || '');
+    if (fact) facts.push({ ...fact, label: humanizeSection(rawValue?.label || key) });
   }
 
-  // Older or lightweight document analyzers may only include the amount in
-  // their summary. Use that as a fallback when no comparable metric exists.
+  const structuredFacts = Array.isArray(analysis.normalized_facts)
+    ? analysis.normalized_facts
+    : Array.isArray(analysis.facts) ? analysis.facts : [];
+  for (const rawFact of structuredFacts) {
+    const key = rawFact?.semantic_key || rawFact?.semanticKey || rawFact?.key || rawFact?.label;
+    const fact = makeFact(document, key, rawFact, rawFact?.label || rawFact?.name || '');
+    if (fact) facts.push({ ...fact, label: rawFact.label || humanizeSection(key) });
+  }
+
   if (facts.length === 0 && typeof analysis.summary === 'string') {
-    for (const match of analysis.summary.matchAll(AMOUNT_PATTERN)) {
-      const amount = scaleAmount(Number(match[1].replace(/,/g, '')), match[2]);
-      if (Number.isFinite(amount) && amount > 0) {
-        facts.push({ key: 'summary:amount', label: 'Amount', value: amount });
-      }
-    }
+    facts.push(...extractSummaryFacts(document, analysis.summary));
   }
 
-  return facts;
+  return facts.filter((fact, index, all) =>
+    index === all.findIndex(other =>
+      other.comparison_key === fact.comparison_key
+      && other.role === fact.role
+      && other.source_section === fact.source_section
+      && other.value === fact.value
+    )
+  );
 }
 
 function latestDocuments(rows) {
@@ -79,16 +246,41 @@ function formatAmount(value) {
   return `$${Math.round(value).toLocaleString('en-US')}`;
 }
 
+function formatFactValue(fact) {
+  if (fact.value_type === 'percent') return `${Number(fact.value).toFixed(2).replace(/\.?0+$/, '')}%`;
+  if (fact.value_type === 'ratio') return Number(fact.value).toFixed(2);
+  return formatAmount(fact.value);
+}
+
+function evidencePayload(fact) {
+  return {
+    document_id: fact.source_doc_id,
+    section: fact.source_section,
+    filename: fact.source_filename,
+    page: fact.source_page,
+    excerpt: fact.source_excerpt,
+    semantic_key: fact.semantic_key,
+    value_type: fact.value_type,
+    unit: fact.unit,
+    role: fact.role,
+  };
+}
+
 function buildChecks(documents, runAt) {
   const factGroups = new Map();
+  const relationshipGroups = new Map();
   for (const document of documents) {
     for (const fact of extractFacts(document)) {
-      if (!factGroups.has(fact.key)) factGroups.set(fact.key, []);
-      factGroups.get(fact.key).push({
-        ...fact,
-        section: document.section,
-        label: humanizeSection(document.section),
-      });
+      const enriched = { ...fact, section: document.section, label: humanizeSection(document.section) };
+      if (fact.role === 'threshold' || fact.relationship) {
+        const relationKey = `${fact.relationship || fact.comparison_key}:${fact.value_type}`;
+        if (!relationshipGroups.has(relationKey)) relationshipGroups.set(relationKey, []);
+        relationshipGroups.get(relationKey).push(enriched);
+      }
+      if (fact.role === 'threshold' || fact.role === 'actual') continue;
+      const groupKey = `${fact.comparison_key}:${fact.value_type}:${fact.unit || 'none'}`;
+      if (!factGroups.has(groupKey)) factGroups.set(groupKey, []);
+      factGroups.get(groupKey).push(enriched);
     }
   }
 
@@ -106,21 +298,70 @@ function buildChecks(documents, runAt) {
         : Math.abs(candidate.value - baseline.value) / Math.abs(baseline.value) * 100;
       const matches = deltaPct <= 1;
       checks.push({
-        id: `amount:${factKey}:${baseline.section}:${candidate.section}`,
-        type: 'amount_consistency',
+        id: `fact:${factKey}:${baseline.section}:${candidate.section}`,
+        type: 'fact_consistency',
         status: matches ? 'verified' : 'discrepancy',
         ...(matches ? {} : { severity: 'warning' }),
         description: matches
-          ? `${baseline.label} and ${candidate.label} report the same amount: ${formatAmount(baseline.value)}.`
-          : `${baseline.label} reports ${formatAmount(baseline.value)} while ${candidate.label} reports ${formatAmount(candidate.value)}.`,
+          ? `${baseline.label} and ${candidate.label} report the same ${baseline.semantic_key}: ${formatFactValue(baseline)}.`
+          : `${baseline.label} reports ${formatFactValue(baseline)} for ${baseline.semantic_key} while ${candidate.label} reports ${formatFactValue(candidate)}.`,
         doc_section_a: baseline.section,
         doc_section_b: candidate.section,
         value_a: baseline.value,
         value_b: candidate.value,
         delta_pct: deltaPct,
+        fact_key: baseline.semantic_key,
+        semantic_key: baseline.semantic_key,
+        value_type: baseline.value_type,
+        unit: baseline.unit,
+        evidence_a: evidencePayload(baseline),
+        evidence_b: evidencePayload(candidate),
+        source_page_a: baseline.source_page,
+        source_page_b: candidate.source_page,
+        source_excerpt_a: baseline.source_excerpt,
+        source_excerpt_b: candidate.source_excerpt,
         run_at: runAt,
       });
     }
+  }
+
+  for (const [relationKey, facts] of relationshipGroups.entries()) {
+    const thresholds = facts.filter(fact => fact.role === 'threshold');
+    const actuals = facts.filter(fact => fact.role === 'actual' || fact.role === 'value');
+    if (!thresholds.length || !actuals.length) continue;
+    const threshold = thresholds[0];
+    const actual = actuals.find(candidate => candidate.section !== threshold.section) || actuals[0];
+    const higherIsWorse = threshold.relationship === 'delinquency_rate'
+      || threshold.relationship === 'ltv'
+      || /max|limit|threshold|trigger|cap|no\s+more/i.test(threshold.source_excerpt || '');
+    const breached = higherIsWorse ? actual.value > threshold.value : actual.value < threshold.value;
+    checks.push({
+      id: `threshold:${relationKey}:${threshold.section}:${actual.section}`,
+      type: 'threshold_relationship',
+      status: breached ? 'discrepancy' : 'verified',
+      ...(breached ? { severity: 'warning' } : {}),
+      description: breached
+        ? `${actual.label} reports ${formatFactValue(actual)} against the ${threshold.label} threshold of ${formatFactValue(threshold)} for ${threshold.relationship || threshold.semantic_key}.`
+        : `${actual.label} reports ${formatFactValue(actual)}, within the ${threshold.label} threshold of ${formatFactValue(threshold)} for ${threshold.relationship || threshold.semantic_key}.`,
+      doc_section_a: threshold.section,
+      doc_section_b: actual.section,
+      value_a: threshold.value,
+      value_b: actual.value,
+      threshold_value: threshold.value,
+      actual_value: actual.value,
+      fact_key: threshold.semantic_key,
+      semantic_key: threshold.relationship || threshold.semantic_key,
+      relationship: threshold.relationship || null,
+      value_type: threshold.value_type,
+      unit: threshold.unit,
+      evidence_a: evidencePayload(threshold),
+      evidence_b: evidencePayload(actual),
+      source_page_a: threshold.source_page,
+      source_page_b: actual.source_page,
+      source_excerpt_a: threshold.source_excerpt,
+      source_excerpt_b: actual.source_excerpt,
+      run_at: runAt,
+    });
   }
 
   if (checks.length === 0 && documents.length > 0) {
@@ -208,6 +449,7 @@ async function runVerification(propertyId, packId = null) {
     run_at: runAt,
     summary,
     checks,
+    normalized_facts: comparableDocuments.flatMap(extractFacts),
     documents_considered: comparableDocuments.map(document => document.section),
   };
 
@@ -237,4 +479,7 @@ module.exports = {
   getVerificationState,
   runVerification,
   latestDocuments,
+  extractFacts,
+  buildChecks,
+  inferFactDefinition,
 };
