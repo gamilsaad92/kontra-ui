@@ -19,6 +19,12 @@ Gotchas: `git diff-tree -r --raw <sha>` prints the commit SHA as its first line 
 
 **How to apply:** Read `/repos/gamilsaad92/kontra-ui/git/ref/heads/main` first, compare its commit to local ancestry, and publish on top of the live SHA.
 
+**Connector commit identity:** A commit created through the GitHub connector can have a different SHA from the equivalent local commit (the connector chooses its own author/committer metadata). Treat the live GitHub SHA as authoritative; if it already contains the local baseline, create the new tree as a child of that live SHA rather than attempting to push the stale local parent.
+
+**Why:** The workspace commit and the previously published baseline had identical content but different SHAs, so a strict local-parent comparison would reject a safe fast-forward.
+
+**How to apply:** Compare the live ref before publishing, use the live commit as both `base_tree` source and parent, then keep the local worktree clean even if its branch ref cannot be advanced to the connector-created object.
+
 ## Vercel deployment aliases
 
 Vercel can successfully deploy a new GitHub `main` commit while leaving an older deployment-specific `*.vercel.app` URL pointed at the previous build. A successful Vercel status on the commit includes the current deployment URL; verify that URL directly instead of assuming an older preview/deployment alias moved.
