@@ -548,6 +548,23 @@ describe('coordinator transaction brief logic', () => {
     )).toEqual(hazardDefinitions[0]);
   });
 
+  test('keeps an explicit action target exact instead of falling back to another field in its category', () => {
+    const definitions = [
+      { key: 'funding.request', label: 'Funding request', category: 'financial' },
+      { key: 'financial.repair_costs', label: 'Repair Costs', category: 'financial' },
+    ];
+
+    expect(getRecordActionTarget(
+      { field_key: 'financial.policy_limit', label: 'Policy limit' },
+      definitions,
+      null,
+      { exactOnly: true },
+    )).toEqual(expect.objectContaining({
+      field_key: 'financial.policy_limit',
+      label: 'Policy limit',
+    }));
+  });
+
   test('uses canonical unresolved conflicts and deduplicates by canonical field key', () => {
     const recordState = {
       unresolvedConflicts: [

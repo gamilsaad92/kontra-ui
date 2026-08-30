@@ -37,10 +37,18 @@ const REPAIR_CONTEXT = /repair|contractor|invoice|restoration|loss\s+proceeds|ha
 
 function parseAmount(value) {
   if (typeof value === 'number' && Number.isFinite(value) && value > 0) return value;
-  if (typeof value !== 'string') return null;
-  const match = value.match(/\$?\s*([\d,]+(?:\.\d+)?)/);
+  const raw = value && typeof value === 'object'
+    ? (value.value ?? value.amount ?? value.number ?? value.numeric_value)
+    : value;
+  if (typeof raw !== 'string') return null;
+  const match = raw.trim().match(/^\(?\s*[$€£]?\s*([\d,]+(?:\.\d+)?)\s*(million|mm|billion|bn|thousand|k|m|b)?\s*(?:dollars?|usd)?\s*\)?$/i);
   if (!match) return null;
-  const amount = Number(match[1].replace(/,/g, ''));
+  const base = Number(match[1].replace(/,/g, ''));
+  const multiplier = {
+    k: 1e3, thousand: 1e3, mm: 1e6, m: 1e6, million: 1e6,
+    b: 1e9, bn: 1e9, billion: 1e9,
+  }[String(match[2] || '').toLowerCase()] || 1;
+  const amount = base * multiplier;
   return Number.isFinite(amount) && amount > 0 ? amount : null;
 }
 
@@ -95,9 +103,18 @@ function storedDocumentAmounts(document) {
   // Old analyses often only retain a prose discrepancy/summary. Monetary
   // strings in repair-related documents are still safe candidates.
   if (!values.length) {
-    for (const match of JSON.stringify(analysis).matchAll(MONEY_PATTERN)) {
+    const serialized = JSON.stringify(analysis);
+    for (const match of serialized.matchAll(MONEY_PATTERN)) {
+      const start = Math.max(0, match.index - 140);
+      const end = Math.min(serialized.length, match.index + match[0].length + 140);
+      const nearbyContext = serialized.slice(start, end);
+      // A repair-related document can also mention policy limits, reserves,
+      // deductibles, or proceeds. Those are different facts and must never be
+      // promoted into a repair-cost candidate merely because they contain $.
+      if (!/(repair|restoration|contractor|invoice|estimated\s+(?:repair|cost)|total\s+(?:repair|cost))/i.test(nearbyContext)) continue;
+      if (/(policy|coverage|liability)\s*[_ -]*(?:limit|maximum)|limit\s*[_ -]*of\s*[_ -]*(?:coverage|liability)/i.test(nearbyContext)) continue;
       const amount = Number(match[1].replace(/,/g, ''));
-      if (amount > 0) values.push({ amount, excerpt: match[0] });
+      if (amount > 0) values.push({ amount, excerpt: nearbyContext.slice(0, 280) });
     }
   }
   return [...new Map(values.map(item => [item.amount, item])).values()];
@@ -251,10 +268,15 @@ async function reconcileStoredDocumentConflicts(propertyId) {
     const sourceBySection = new Map(sourceDocuments.map(document => [document.section, document]));
     for (const check of verification?.analysis?.checks || []) {
       if (check?.status !== 'discrepancy') continue;
-      const isRepairCheck = REPAIR_CONTEXT.test(
-        `${check.id || ''} ${check.description || ''} ${check.doc_section_a || ''} ${check.doc_section_b || ''}`
+       const checkContext = `${check.id || ''} ${check.description || ''} ${check.doc_section_a || ''} ${check.doc_section_b || ''}`;
+       const isRepairCheck = REPAIR_CONTEXT.test(
+         checkContext
       );
       if (!isRepairCheck) continue;
+       // Threshold/actual checks are valid verification relationships, but
+       // they are not same-field repair-cost discrepancies. In particular,
+       // policy limits must remain distinct from repair costs.
+       if (/\b(?:policy|coverage|liability)\s+limit\b|\blimit\s+of\s+(?:coverage|liability)\b/i.test(checkContext)) continue;
       const valueA = parseAmount(check.value_a);
       const valueB = parseAmount(check.value_b);
       if (!valueA || !valueB || valueA === valueB) continue;

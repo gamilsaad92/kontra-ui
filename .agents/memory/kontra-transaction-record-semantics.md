@@ -62,3 +62,9 @@ Action-feed suppression must match historical wording variants as well as canoni
 **Why:** persisted briefing/task text can outlive the extraction schema that produced it, so exact label or key matching alone can leave a stale action beside the authoritative record state.
 
 **How to apply:** normalize aliases and semantic word-order variants before rendering briefing actions, then prefer the confirmed/current record row when duplicate candidates share one canonical identity.
+
+Policy limits, repair costs, insurance proceeds, and borrower cash advances are separate financial concepts even when the same evidence contains all of their amounts; only explicitly related evidence may be compared.
+
+**Why:** Hazard Loss documents commonly put coverage limits beside repair estimates, and treating every nearby dollar value as repair evidence creates false blockers and stale actions.
+
+**How to apply:** give each concept its own canonical semantic identity, require strict typed amount parsing, and keep policy-limit/threshold checks in verification relationships rather than same-field Transaction Record conflict state.

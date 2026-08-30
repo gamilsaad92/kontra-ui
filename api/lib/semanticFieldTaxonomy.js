@@ -16,6 +16,7 @@ const SEMANTIC_FIELD_DEFINITIONS = [
   { key: 'transaction.loan_number', pattern: /\b(?:loan|servicing|mortgage)\s+(?:number|no\.?|id|identifier)\b|\bloan[_\s-]+number\b/i, type: 'reference', recordKey: 'transaction.loan_number' },
   { key: 'legal.document_reference', pattern: /\b(?:document|source|file)\s+(?:reference|number|no\.?|id|identifier)\b|\b(?:reference|references)\b/i, type: 'reference', recordKey: 'legal.document_reference', comparisonMode: 'none' },
   { key: 'capital.commitment', pattern: /\b(?:total\s+)?(?:loan\s+)?commitment\b|\bcommitted\s+(?:amount|balance)\b/i, type: 'amount', recordKey: 'financial.commitment' },
+  { key: 'financial.policy_limit', pattern: /\b(?:insurance|policy|coverage)\s+(?:policy\s+)?limit\b|\blimit\s+of\s+(?:liability|coverage)\b/i, type: 'amount', recordKey: 'financial.policy_limit' },
   { key: 'financial.noi', pattern: /\b(?:net\s+operating\s+income|noi)\b/i, type: 'amount', recordKey: 'financial.noi' },
   { key: 'financial.cash_variance', pattern: /\bcash(?:\s+flow)?\s+variance\b|\bvariance\s+in\s+cash\b/i, type: 'amount', recordKey: 'financial.cash_variance' },
   { key: 'financial.cash_balance', pattern: /\bcash\s+balance\b|\bavailable\s+cash\b/i, type: 'amount', recordKey: 'financial.cash_balance' },

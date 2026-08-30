@@ -6,6 +6,8 @@ const {
   isSemanticallyValidValue,
 } = require('./lib/semanticFieldTaxonomy');
 const { normalizeProposal } = require('./lib/transactionRoomGenerator');
+const { extractTransactionContext } = require('./lib/transactionRoomGenerator');
+const { canonicalizeTransactionRecordKey } = require('./lib/transactionRecordCanonicalization');
 const { extractFacts } = require('./lib/verificationEngine');
 
 describe('semantic Transaction Record field taxonomy', () => {
@@ -132,5 +134,35 @@ describe('semantic Transaction Record field taxonomy', () => {
       normalizeComparableValue('Servicing Statement.pdf', reference),
       reference,
     )).toEqual({ comparable: false, equivalent: true });
+  });
+
+  test('keeps policy limits distinct from repair costs', () => {
+    const policy = inferSemanticDefinition('insurance.policy_limit', '$2.5M', 'Policy limit');
+    const repair = inferSemanticDefinition('financial.repair_costs', '$96,480', 'Repair costs');
+
+    expect(policy).toEqual(expect.objectContaining({
+      recordKey: 'financial.policy_limit',
+      valueType: 'amount',
+    }));
+    expect(repair).toEqual(expect.objectContaining({
+      recordKey: 'financial.repair_costs',
+      valueType: 'amount',
+    }));
+    expect(policy.comparisonKey).not.toBe(repair.comparisonKey);
+  });
+
+  test('does not infer borrower funds from an unrelated approximate amount', () => {
+    expect(extractTransactionContext(
+      'The policy limit is approximately $2.5M and estimated repair costs are $96,480.',
+    )).not.toEqual(expect.arrayContaining([
+      expect.objectContaining({ key: 'financial.borrower_funds_advanced' }),
+    ]));
+  });
+
+  test('canonicalizes property and borrower address aliases independently', () => {
+    expect(canonicalizeTransactionRecordKey('property.property_address')).toBe('asset.address');
+    expect(canonicalizeTransactionRecordKey('borrower.address')).toBe('parties.borrower_address');
+    expect(canonicalizeTransactionRecordKey('property.property_address'))
+      .not.toBe(canonicalizeTransactionRecordKey('borrower.address'));
   });
 });

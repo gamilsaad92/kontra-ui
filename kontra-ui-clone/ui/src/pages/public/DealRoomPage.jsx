@@ -3020,7 +3020,7 @@ function getTransactionRecordCategory(field) {
           : rawCategory);
 }
 
-function getRecordActionTarget(field, definitions = [], recordState = null) {
+function getRecordActionTarget(field, definitions = [], recordState = null, options = {}) {
   const candidates = [
     ...(Array.isArray(definitions) ? definitions : []),
     ...(Array.isArray(recordState?.requiredFields) ? recordState.requiredFields : []),
@@ -3053,6 +3053,7 @@ function getRecordActionTarget(field, definitions = [], recordState = null) {
   }
 
   const requestedCategory = getTransactionRecordCategory(field);
+  if (options.exactOnly) return field || {};
   return candidates.find(candidate =>
     getTransactionRecordCategory(candidate) === requestedCategory
   ) || field || {};
@@ -3466,14 +3467,14 @@ function WhatNeedsAttention({
   // system here — these are only routing affordances for the existing items.
   function goToRecord(field) {
     const normalizeLabel = value => String(value || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, ' ').replace(/\s+/g, ' ');
-    const targetField = getRecordActionTarget(field, recordSchema, recordState);
+    const targetField = getRecordActionTarget(field, recordSchema, recordState, { exactOnly: true });
     const label = targetField?.label || targetField?.display_label || '';
     const labelMatch = label
       ? [...recordSchema, ...(recordState?.requiredFields || [])].find(candidate =>
         normalizeLabel(candidate?.label || candidate?.display_label) === normalizeLabel(label)
       )
       : null;
-    const fieldKey = targetField?.key
+    const fieldKey = normalizeAttentionFieldKey(targetField?.key
       || targetField?.field_key
       || targetField?.canonicalKey
       || targetField?.persistedKey
@@ -3482,7 +3483,7 @@ function WhatNeedsAttention({
       || labelMatch?.field_key
       || labelMatch?.persistedKey
       || labelMatch?.definitionKey
-      || '';
+      || '');
     const keys = [
       fieldKey,
       ...[
@@ -3497,7 +3498,7 @@ function WhatNeedsAttention({
       field?.canonicalKey,
       field?.persistedKey,
       field?.definitionKey,
-    ].filter(Boolean);
+    ].filter(Boolean).map(normalizeAttentionFieldKey);
     onOverviewAction?.({
       type: 'record',
       field: { ...field, ...targetField, key: fieldKey, field_key: targetField?.field_key || fieldKey },
@@ -3510,6 +3511,16 @@ function WhatNeedsAttention({
 
   function routeForText(text) {
     const value = String(text || '').toLowerCase();
+    if (/(reimbursement|funding|fund\s+release|additional\s+repair\s+proceeds)/.test(value)
+      && /(request|status|release|proceeds|amount)/.test(value)) {
+      return {
+        label: 'Review funding request',
+        onClick: () => goToRecord({
+          field_key: 'funding.request',
+          label: 'Funding request',
+        }),
+      };
+    }
     if (/(document|upload|file|nda|loi|agreement|checklist|esa|report|certificate|binder|commitment|rent roll|inspection)/.test(value)) {
       return { label: 'Open Documents', onClick: () => onOverviewAction?.({ type: 'tab', tab: 'documents' }) };
     }
@@ -3520,12 +3531,6 @@ function WhatNeedsAttention({
       return {
         label: 'Review record',
         onClick: () => goToRecord({ field_key: 'financial.borrower_funds_advanced', label: 'Borrower funds advanced' }),
-      };
-    }
-    if (/funding\s+request|fund\s+release\s+request/.test(value)) {
-      return {
-        label: 'Review record',
-        onClick: () => goToRecord({ field_key: 'funding.request', label: 'Funding request' }),
       };
     }
     if (/investor\s*(\/|or)\s*agency|investor.*agency|agency.*investor/.test(value)) {
@@ -5344,6 +5349,19 @@ function normalizeAttentionFieldKey(value) {
   return {
     'financial.borrower_advanced_funds': 'financial.borrower_funds_advanced',
     'financial.borrower_funds_advanced_amount': 'financial.borrower_funds_advanced',
+    'financial.insurance_policy_limit': 'financial.policy_limit',
+    'insurance.policy_limit': 'financial.policy_limit',
+    'insurance.coverage_limit': 'financial.policy_limit',
+    'financial.coverage_limit': 'financial.policy_limit',
+    'asset.property_address': 'asset.address',
+    'asset.address_line': 'asset.address',
+    'property.address': 'asset.address',
+    'property.property_address': 'asset.address',
+    'asset_identity.property_address': 'asset.address',
+    'parties.borrower_address_line': 'parties.borrower_address',
+    'borrower.address': 'parties.borrower_address',
+    'borrower.borrower_address': 'parties.borrower_address',
+    'parties.borrower_property_address': 'parties.borrower_address',
     'transaction.investor_or_agency': 'organization.investor_or_agency',
     'parties.investor_or_agency': 'organization.investor_or_agency',
   }[key] || key;
@@ -8380,6 +8398,7 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
         action.field,
         actionDefinitions,
         canonicalRecordState,
+        { exactOnly: true },
       );
       const requestedKeys = [
         ...[
@@ -8396,7 +8415,7 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
         action.field?.persistedKey,
         action.field?.definitionKey,
       ].filter(Boolean);
-      const keys = [...new Set(requestedKeys)];
+      const keys = [...new Set(requestedKeys.map(normalizeAttentionFieldKey))];
       const requestedLabels = [
         targetField?.label,
         targetField?.display_label,
@@ -8406,7 +8425,7 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
       ].filter(Boolean).map(value => String(value).trim().toLowerCase());
       const fieldKey = keys[0] || '';
       setRecordFocus({
-        key: fieldKey,
+        key: normalizeAttentionFieldKey(fieldKey),
         keys,
         label: requestedLabels[0] || '',
         autoEdit: Boolean(action.autoEdit),
@@ -10065,23 +10084,38 @@ export default function DealRoomPage() {
     if (!apiProperty || DEMO_ROOM_IDS.has(propertyId) || DEMO_PROPERTIES[propertyId]) return;
     const stored = apiProperty.workflow_pack_id;
     if (!stored || stored.startsWith('ws_')) return;
-    fetch(`${API_BASE}/api/public/classify-pack`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        name: apiProperty.property_name,
-        dealType: apiProperty.deal_type,
-        address: apiProperty.address,
-      }),
-    })
-      .then(r => r.ok ? r.json() : null)
+    const description = apiProperty.description
+      || apiProperty.metadata_values?.description
+      || apiProperty.generated_proposal?.transaction?.description
+      || '';
+    Promise.all([
+      fetch(`${API_BASE}/api/public/deal-room/${propertyId}/analyses`, {
+        headers: getRoomAuthHeaders(propertyId),
+      }).then(response => response.ok ? response.json() : { analyses: [] }).catch(() => ({ analyses: [] })),
+      Promise.resolve(),
+    ])
+      .then(([analysisPayload]) => fetch(`${API_BASE}/api/public/classify-pack`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: apiProperty.property_name,
+          dealType: apiProperty.deal_type,
+          address: apiProperty.address,
+          description,
+          documents: (analysisPayload?.analyses || []).slice(0, 12).map(analysis => ({
+            section: analysis.section,
+            filename: analysis.filename,
+            summary: analysis.analysis?.summary || analysis.analysis?.document_summary || '',
+          })),
+        }),
+      }).then(response => response.ok ? response.json() : null))
       .then(data => {
         if (data?.packId && data.packId !== stored) {
           setPackSuggestion({ suggestedPack: data.packId, currentPack: stored });
         }
       })
       .catch(() => {});
-  }, [apiProperty?.property_id]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [apiProperty?.property_id, analysesRefreshKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function handleRepack(acceptedPackId) {
     setRepackLoading(true);

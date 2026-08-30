@@ -57,7 +57,11 @@ function extractTransactionContext(description = '') {
       units[1].replace(/,/g, ''),
     );
   }
-  const advanced = text.match(/(?:advanced|advance of|approximately)\s*\$?\s*([\d,]+(?:\.\d+)?)\s*(m|million|k|thousand)?/i);
+  // "Approximately $2.5M" is not borrower cash unless the sentence also
+  // identifies an advance. Do not turn policy limits, repair estimates, or
+  // other nearby amounts into borrower_funds_advanced.
+  const advanced = text.match(/\bborrower(?:'s|s)?\b[^.;\n]{0,80}\b(?:advanced|advance|out\s+of\s+pocket)\b[^$0-9]{0,30}\$?\s*([\d,]+(?:\.\d+)?)\s*(m|million|k|thousand)?/i)
+    || text.match(/\$?\s*([\d,]+(?:\.\d+)?)\s*(m|million|k|thousand)?\s+(?:in\s+)?(?:borrower(?:'s|s)?\s+)?funds?\s+(?:already\s+)?advanced\b/i);
   if (advanced) {
     const multiplier = /million/i.test(advanced[2] || '') || advanced[2]?.toLowerCase() === 'm' ? 1000000
       : /thousand/i.test(advanced[2] || '') || advanced[2]?.toLowerCase() === 'k' ? 1000 : 1;

@@ -207,11 +207,12 @@ async function jurisdictionForTransaction(jurisdiction, packId, transactionType,
 
 // ── AI-powered pack classification ────────────────────────────────────────────
 // Uses GPT-4o-mini to select the right workflow pack from a room's name, deal
-// type, and address. Falls back to 'cre_acquisition' (the safe default) if AI
+// type, address, description, and uploaded-document context. Falls back to
+// 'cre_acquisition' (the safe default) if AI
 // is unavailable or returns an unknown value.
 // Only called when neither an explicit workflowPackId nor a mapped deal_type is
 // available — i.e. as a last resort before defaulting to CRE.
-async function classifyTransactionPack(name, dealType, address) {
+async function classifyTransactionPack(name, dealType, address, description = '', documents = []) {
   // Explicit deal_type wins if it maps to a specific non-default pack
   if (dealType && DEAL_TYPE_TO_PACK_INDEX[dealType]) {
     return DEAL_TYPE_TO_PACK_INDEX[dealType];
@@ -222,6 +223,13 @@ async function classifyTransactionPack(name, dealType, address) {
       name     && `Transaction name: ${name}`,
       dealType && `Deal type: ${dealType}`,
       address  && `Location: ${address}`,
+      description && `Transaction description: ${String(description).slice(0, 3000)}`,
+      ...(Array.isArray(documents) ? documents.slice(0, 12).map(document => [
+        document?.section && `Document section: ${String(document.section).slice(0, 120)}`,
+        document?.filename && `Document file: ${String(document.filename).slice(0, 160)}`,
+        document?.summary && `Document summary: ${String(document.summary).slice(0, 600)}`,
+        document?.text && `Document excerpt: ${String(document.text).slice(0, 900)}`,
+      ].filter(Boolean).join('\n')) : []),
     ].filter(Boolean).join('\n');
 
     const completion = await openai.chat.completions.create({
@@ -240,6 +248,7 @@ Definitions:
 - fundraising: Raising capital — seed, Series A/B/C, VC, convertible notes, SAFE, debt raise, equity raise, fund formation.
 
 Critical: any transaction involving a hotel, resort, property, or real estate asset is ALWAYS cre_acquisition, even if the word "acquisition" or "business" appears in the name.
+Ignore generic document labels or incidental words such as "fundraiser", "pool", or "project" unless the transaction description or document contents clearly identify fundraising or a pool-related transaction.
 When in doubt between CRE and business, default to cre_acquisition.`,
         },
         { role: 'user', content: context },
@@ -357,9 +366,22 @@ function verifyWorkflowProof(token, expectedKind) {
   }
 }
 
-function normalizeGeneratedWorkflowConfig(raw) {
+function normalizeGeneratedWorkflowConfig(raw, context = {}) {
+  const contextText = [
+    context.description,
+    context.transactionType,
+    context.transactionName,
+  ].filter(Boolean).join(' ').toLowerCase();
+  const isFundraising = /fundrais|seed round|series [a-c]|equity raise|debt raise|convertible note|safe\b|venture capital|capital raise/.test(contextText);
+  const isTransactionalPool = /investment pool|capital pool|fund formation|fund vehicle|syndicat(?:e|ion)|pooled investment/.test(contextText);
+  const isIrrelevant = item => {
+    const text = `${item?.key || ''} ${item?.id || ''} ${item?.label || ''} ${item?.name || ''}`.toLowerCase();
+    if (!isFundraising && /\bfund[- ]?raiser\b|\bfund[- ]?raising\b|\bseed round\b|\bseries [a-c]\b|\bconvertible note\b|\bsafe\b/.test(text)) return true;
+    if (!isTransactionalPool && /\bpool(?:ed)?\b/.test(text)) return true;
+    return false;
+  };
   return {
-    roles: (Array.isArray(raw?.roles) ? raw.roles : []).map((role, index) => ({
+    roles: (Array.isArray(raw?.roles) ? raw.roles : []).filter(role => !isIrrelevant(role)).map((role, index) => ({
       key: role?.key || `role_${index + 1}`,
       label: role?.label || '',
       icon: role?.icon || ['👤', '🏢', '⚖️', '📊'][index % 4],
@@ -369,7 +391,7 @@ function normalizeGeneratedWorkflowConfig(raw) {
       invitable: role?.invitable !== false,
       canManage: index === 0 ? true : !!role?.canManage,
     })),
-    documents: (Array.isArray(raw?.documents) ? raw.documents : []).map((document, index) => ({
+    documents: (Array.isArray(raw?.documents) ? raw.documents : []).filter(document => !isIrrelevant(document)).map((document, index) => ({
       id: document?.id || `document_${index + 1}`,
       label: document?.label || document?.name || `Document ${index + 1}`,
       section: document?.section || document?.id || `document_${index + 1}`,
@@ -381,6 +403,8 @@ function normalizeGeneratedWorkflowConfig(raw) {
           ? [document.assignedRole]
           : [],
     })),
+    // Keep stage keys stable because requirements can reference them. The
+    // relevance guard is intentionally limited to roles and documents.
     stages: (Array.isArray(raw?.stages) ? raw.stages : []).map((stage, index) => ({
       key: stage?.key || `stage_${index + 1}`,
       label: stage?.label || `Stage ${index + 1}`,
@@ -1326,7 +1350,7 @@ app.get('/api/copilot/tokenization-eligibility', (req, res) => {
 // Given a plain-language description of a transaction, returns a structured
 // workspace config (roles, documents, stages) as a starting point.
 app.post(['/api/workspace/generate', '/api/room-generator/analyze'], aiRateLimit, async (req, res) => {
-  const { description, transactionType, currentStage } = req.body || {};
+  const { description, transactionType, currentStage, sourceDocuments = [] } = req.body || {};
   if (!description || !description.trim()) {
     return res.status(400).json({ error: 'Description is required' });
   }
@@ -1437,6 +1461,16 @@ them.`,
 Infer the transaction domain from the description. If the description is
 ambiguous, ask the model to choose the least-assumptive structure rather than
 defaulting to commercial real estate.`;
+  const documentContext = (Array.isArray(sourceDocuments) ? sourceDocuments : [])
+    .slice(0, 20)
+    .map(document => [
+      document?.section && `Section: ${String(document.section).slice(0, 120)}`,
+      document?.filename && `File: ${String(document.filename).slice(0, 160)}`,
+      document?.summary && `Summary: ${String(document.summary).slice(0, 700)}`,
+      document?.text && `Text excerpt: ${String(document.text).slice(0, 1200)}`,
+    ].filter(Boolean).join('\n'))
+    .filter(Boolean)
+    .join('\n\n');
 
   try {
     const completion = await openai.chat.completions.create({
@@ -1510,11 +1544,17 @@ Rules:
 - Return transactionValue only when the description explicitly states an amount or the amount is unambiguous; never guess or calculate it from unrelated figures.
 - Return transactionStructure only when the description clearly supports it; otherwise return null with low confidence.
 - When an authoritative transaction type is supplied, every role, document, and stage must fit that type. Never copy a default CRE checklist into another type.
+- The transaction description and uploaded-document excerpts are the only transaction context. Do not add generic options (for example fundraising, pool, fundraiser, or unrelated asset classes) unless the supplied context explicitly supports them.
 ${domainRule}
 
 IMPORTANT: You are suggesting a starting point only. Do NOT claim completeness. The deal-room owner must review with qualified professional advisers.`,
         },
-        { role: 'user', content: description.trim() + typeHint + stageHint },
+         { role: 'user', content: [
+           `TRANSACTION DESCRIPTION:\n${description.trim()}`,
+           documentContext ? `UPLOADED DOCUMENT CONTEXT:\n${documentContext}` : '',
+           typeHint,
+           stageHint,
+         ].filter(Boolean).join('\n\n') },
       ],
     });
 
@@ -1544,7 +1584,11 @@ IMPORTANT: You are suggesting a starting point only. Do NOT claim completeness. 
         profile?.packId,
         generatedIdentity.label || transactionTypeLabels[resolvedTransactionType] || 'Custom Transaction',
       );
-    const generatedConfig = normalizeGeneratedWorkflowConfig(raw);
+    const generatedConfig = normalizeGeneratedWorkflowConfig(raw, {
+      description: description.trim(),
+      transactionType: resolvedTransactionType,
+      transactionName: raw.name,
+    });
     const generationId = createGenerationId();
     const generationProof = signWorkflowProof('workflow_generation', {
       generationId,
@@ -1756,9 +1800,9 @@ app.post('/api/workspace/approve', (req, res) => {
 // Lightweight endpoint used by the deal room page on first open to detect
 // when a stored pack doesn't match what the transaction actually is.
 app.post('/api/public/classify-pack', async (req, res) => {
-  const { name, dealType, address } = req.body || {};
+  const { name, dealType, address, description, documents } = req.body || {};
   try {
-    const packId = await classifyTransactionPack(name, dealType, address);
+    const packId = await classifyTransactionPack(name, dealType, address, description, documents);
     res.json({ packId });
   } catch (e) {
     console.error('[classify-pack]', e.message);
@@ -10068,6 +10112,12 @@ app.post('/api/public/deal-room/:propertyId/transaction-record/fields', async (r
   const { propertyId } = req.params;
   const { field_key, display_label, field_category, value_text, notes, status, ownerWriteToken } = req.body || {};
   if (!field_key || !field_category) return res.status(400).json({ error: 'field_key and field_category required' });
+  const canonicalFieldKey = canonicalizeTransactionRecordKey(String(field_key).trim(), 'generic');
+  const canonicalFieldCategory = {
+    asset: 'asset_identity',
+    ownership: 'beneficial_ownership',
+  }[canonicalFieldKey.split('.')[0]] || canonicalFieldKey.split('.')[0] || String(field_category).trim();
+  const canonicalAliases = aliasKeysForCanonical(canonicalFieldKey, 'generic');
   const access = await getRoomAccessContext(req, propertyId, ownerWriteToken);
   if (access.mode !== 'owner') return accessDenied(res, 'Owner access required');
 
@@ -10085,12 +10135,16 @@ app.post('/api/public/deal-room/:propertyId/transaction-record/fields', async (r
   const now = new Date().toISOString();
   try {
     // Try update first (in case a record already exists for this key)
-      const { data: existing } = await supabase
+      const { data: existingRowsData, error: existingLookupError } = await supabase
       .from('transaction_record_fields')
         .select('id, field_key, value_text, status')
       .eq('property_id', propertyId)
-      .eq('field_key', field_key)
-      .maybeSingle();
+      .in('field_key', canonicalAliases);
+    if (existingLookupError) throw existingLookupError;
+    const existingRows = existingRowsData || [];
+    const existing = existingRows
+      .slice()
+      .sort((a, b) => (a.field_key === canonicalFieldKey ? -1 : 0) - (b.field_key === canonicalFieldKey ? -1 : 0))[0] || null;
     if (existing?.id) {
       const update = { updated_at: now };
       if (value_text !== undefined) { update.value_text = String(value_text).slice(0, 2000); update.extracted_by = 'coordinator'; }
@@ -10118,8 +10172,18 @@ app.post('/api/public/deal-room/:propertyId/transaction-record/fields', async (r
           });
         }
         if (nextStatus === 'not_applicable') {
-          await markDependentTransactionFieldsNotApplicable(propertyId, field_key, access.email || 'coordinator');
+        await markDependentTransactionFieldsNotApplicable(propertyId, canonicalFieldKey, access.email || 'coordinator');
         }
+      if (existing.field_key !== canonicalFieldKey) {
+        await supabase.from('transaction_record_fields')
+          .update({ field_key: canonicalFieldKey, field_category: canonicalFieldCategory, updated_at: now })
+          .eq('id', existing.id).eq('property_id', propertyId);
+      }
+      const duplicateIds = existingRows.filter(row => row.id !== existing.id).map(row => row.id).filter(Boolean);
+      if (duplicateIds.length) {
+        await supabase.from('transaction_record_fields').delete()
+          .eq('property_id', propertyId).in('id', duplicateIds);
+      }
         await recalculateTransactionState(propertyId, {
           source: 'transaction_record_field_updated',
           actorId: access.actorId,
@@ -10130,9 +10194,9 @@ app.post('/api/public/deal-room/:propertyId/transaction-record/fields', async (r
     // Insert new
     const insert = {
       property_id:    propertyId,
-      field_key:      String(field_key).slice(0, 100),
-      display_label:  display_label ? String(display_label).slice(0, 200) : field_key,
-      field_category: String(field_category).slice(0, 100),
+      field_key:      canonicalFieldKey.slice(0, 100),
+      display_label:  display_label ? String(display_label).slice(0, 200) : canonicalFieldKey,
+      field_category: canonicalFieldCategory.slice(0, 100),
       value_text:     value_text ? String(value_text).slice(0, 2000) : null,
       notes:          notes ? String(notes).slice(0, 500) : null,
       status:         (status && ALLOWED_STATUSES.includes(status)) ? status : (value_text ? 'needs_review' : 'missing'),
@@ -10153,7 +10217,7 @@ app.post('/api/public/deal-room/:propertyId/transaction-record/fields', async (r
       newStatus: insert.status,
     });
     if (insert.status === 'not_applicable') {
-      await markDependentTransactionFieldsNotApplicable(propertyId, field_key, access.email || 'coordinator');
+      await markDependentTransactionFieldsNotApplicable(propertyId, canonicalFieldKey, access.email || 'coordinator');
     }
     await recalculateTransactionState(propertyId, {
       source: 'transaction_record_field_created',

@@ -20,6 +20,7 @@ const THRESHOLD_WORDS = /\b(trigger|threshold|limit|maximum|max|min(?:imum)?|cap
 const ACTUAL_WORDS = /\b(actual|current|reported|observed|measured|as\s+of|is|was|were)\b/i;
 const SEMANTIC_ALIASES = [
   { key: 'capital.commitment', pattern: /\b(?:total\s+)?(?:loan\s+)?commitment\b|\bcommitted\s+(?:amount|balance)\b/i, type: 'amount' },
+  { key: 'financial.policy_limit', pattern: /\b(?:insurance|policy|coverage)\s+(?:policy\s+)?limit\b|\blimit\s+of\s+(?:liability|coverage)\b/i, type: 'amount' },
   { key: 'financial.noi', pattern: /\b(?:net\s+operating\s+income|noi)\b/i, type: 'amount' },
   { key: 'financial.cash_variance', pattern: /\bcash(?:\s+flow)?\s+variance\b|\bvariance\s+in\s+cash\b/i, type: 'amount' },
   { key: 'financial.cash_balance', pattern: /\bcash\s+balance\b|\bavailable\s+cash\b/i, type: 'amount' },

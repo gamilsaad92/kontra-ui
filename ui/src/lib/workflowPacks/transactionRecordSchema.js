@@ -36,6 +36,15 @@ const UNIVERSAL_TRANSACTION_FIELDS = [
 export const RECORD_FIELD_ALIASES = Object.freeze({
   "transaction.target_close": "transaction.closing_date",
   target_close_date: "transaction.closing_date",
+  "asset.property_address": "asset.address",
+  "asset.address_line": "asset.address",
+  "property.address": "asset.address",
+  "property.property_address": "asset.address",
+  "asset_identity.property_address": "asset.address",
+  "parties.borrower_address_line": "parties.borrower_address",
+  "borrower.address": "parties.borrower_address",
+  "borrower.borrower_address": "parties.borrower_address",
+  "parties.borrower_property_address": "parties.borrower_address",
 });
 
 export function getCanonicalRecordFieldKey(fieldOrKey) {
