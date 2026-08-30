@@ -23,6 +23,8 @@ export default function DocumentsTabPanel({
   refreshKey,
   jurisdiction,
   onPeople,
+   requestTarget,
+   onRequestTargetHandled,
 }) {
   return (
     <div className="mb-6">
@@ -37,6 +39,8 @@ export default function DocumentsTabPanel({
         refreshKey={refreshKey}
         jurisdiction={jurisdiction}
         onPeople={onPeople}
+        requestTarget={requestTarget}
+        onRequestTargetHandled={onRequestTargetHandled}
       />
       <VerificationPanel
         propertyId={propertyId}

@@ -3511,6 +3511,15 @@ function WhatNeedsAttention({
 
   function routeForText(text) {
     const value = String(text || '').toLowerCase();
+    if (isDamageAssessmentRequestText(value)) {
+      return {
+        label: 'Open request',
+        onClick: () => onOverviewAction?.({
+          type: 'document',
+          target: { query: 'damage assessment report', autoRequest: true },
+        }),
+      };
+    }
     if (/(reimbursement|funding|fund\s+release|additional\s+repair\s+proceeds)/.test(value)
       && /(request|status|release|proceeds|amount)/.test(value)) {
       return {
@@ -3571,6 +3580,8 @@ function WhatNeedsAttention({
       return { label: 'Review record', onClick: () => goToRecord(item) };
     }
     if (item?.document || item?.documentId || item?.document_id) {
+      const documentText = item?.title || item?.item || item?.text || item?.action || item?.label;
+      if (isDamageAssessmentRequestText(documentText)) return routeForText(documentText);
       const assignedRoles = item.assignedTo || item.assigned_to || [];
       const coordinatorOwnsDocument = assignedRoles.some(role =>
         isRoleSatisfiedByWorkspaceOwner(roleMeta[role], { pack, isCoordinator })
@@ -5364,7 +5375,18 @@ function normalizeAttentionFieldKey(value) {
     'parties.borrower_property_address': 'parties.borrower_address',
     'transaction.investor_or_agency': 'organization.investor_or_agency',
     'parties.investor_or_agency': 'organization.investor_or_agency',
+    'organization.investor': 'organization.investor_or_agency',
+    'parties.investor': 'organization.investor_or_agency',
+    'transaction.investor': 'organization.investor_or_agency',
+    'hazard.investor_or_agency': 'organization.investor_or_agency',
+    'incident.investor_or_agency': 'organization.investor_or_agency',
   }[key] || key;
+}
+
+function isDamageAssessmentRequestText(value) {
+  const text = normalizeAttentionText(value);
+  return /\b(?:request|obtain|collect|ask\s+for|provide)\b.*\b(?:damage\s+assessment|assessment\s+report)\b/.test(text)
+    || /\b(?:damage\s+assessment|assessment\s+report)\b.*\b(?:request|obtain|collect|ask\s+for|provide)\b/.test(text);
 }
 
 function getRecordFieldIdentitySet(field) {
@@ -6355,6 +6377,7 @@ export {
   normalizeRecordCategory,
   getTransactionRecordCategory,
   getRecordActionTarget,
+  normalizeAttentionFieldKey,
   getHazardLossOperationalFieldDefinitions,
   dedupeAttentionItems,
   getCanonicalAwaitingRecordFields,
@@ -6367,6 +6390,7 @@ export {
   preparationSaveConfirmation,
   preparationPdfConfirmation,
   findPreparationPdfArtifact,
+  isDamageAssessmentRequestText,
 };
 
 // ── Transaction Seal Summary (complete phase) ─────────────────────────────────
@@ -8109,7 +8133,7 @@ function VerifiedAssetReadinessCard({
   );
 }
 
-function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, refreshKey }) {
+function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, refreshKey, onDocumentRequest }) {
   const [briefing, setBriefing]         = useState(null);
   const [coordination, setCoordination] = useState(null);
   const [checklistItems, setChecklistItems] = useState([]);
@@ -8386,6 +8410,11 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
       onTabChange?.(action.tab);
       return;
     }
+    if (action.type === 'document') {
+      onDocumentRequest?.(action.target || {});
+      onTabChange?.('documents');
+      return;
+    }
     if (action.type === 'record') {
       onTabChange?.('overview');
       const actionDefinitions = getEffectiveRecordDefinitions(
@@ -8462,6 +8491,7 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
   }, [
     canonicalRecordState,
     onTabChange,
+    onDocumentRequest,
     pack,
     property,
     recordFields,
@@ -9993,6 +10023,7 @@ export default function DealRoomPage() {
   );
   const [analysesRefreshKey, setAnalysesRefreshKey] = useState(0);
   const [activeTab, setActiveTabRaw] = useState('overview');
+  const [documentRequestTarget, setDocumentRequestTarget] = useState(null);
   const [showAdvancedSettings, setShowAdvancedSettings] = useState(false);
   // Wrap tab setter to emit analytics
   const setActiveTab = useCallback((tab) => {
@@ -10613,6 +10644,7 @@ export default function DealRoomPage() {
                     packId={packId}
                     onTabChange={setActiveTab}
                     refreshKey={analysesRefreshKey}
+                    onDocumentRequest={setDocumentRequestTarget}
                   />
               ) : (
                 <ParticipantOverview
@@ -10640,6 +10672,8 @@ export default function DealRoomPage() {
                     onAnalysisSaved={onAnalysisSaved}
                     refreshKey={analysesRefreshKey}
                     onPeople={() => setActiveTab('people')}
+                    requestTarget={documentRequestTarget}
+                    onRequestTargetHandled={() => setDocumentRequestTarget(null)}
                   />
                 </div>
               </>

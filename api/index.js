@@ -2685,7 +2685,7 @@ app.post('/api/admin/create-pilot-workspace', async (req, res) => {
               </p>
               <a href="${accessUrl}"
                 style="display:inline-block;padding:14px 28px;background:#800020;color:white;border-radius:10px;text-decoration:none;font-weight:700;font-size:15px">
-                Open my workspace →
+                Open my deal room →
               </a>
               <div style="margin-top:24px;padding:16px;background:#f9fafb;border-radius:10px;border:1px solid #eee">
                 <p style="color:#888;font-size:12px;margin:0 0 4px">What is Kontra?</p>
@@ -2747,7 +2747,7 @@ app.post('/api/admin/send-pilot-link', async (req, res) => {
           </p>
           <a href="${accessUrl}"
             style="display:inline-block;padding:14px 28px;background:#800020;color:white;border-radius:10px;text-decoration:none;font-weight:700;font-size:15px">
-            Open my workspace →
+             Open my deal room →
           </a>
           <p style="color:#bbb;font-size:11px;margin-top:24px">
             This link is unique to your workspace session. Do not share it with others.
@@ -7725,7 +7725,7 @@ app.post('/api/public/deal-room/:propertyId/request-document', async (req, res) 
         from: 'Kontra <notifications@kontraplatform.com>',
         to: email,
         subject: `Action needed: please upload "${docLabel}" — ${propName}`,
-        text: `${senderName} is requesting that you upload "${docLabel}" to the deal room for ${propName} on Kontra.\n\nOpen your workspace to upload the document:\n${roomUrl}\n\n---\nKontra transaction workspace. If you believe this was sent in error, ignore this message.`,
+        text: `${senderName} is requesting that you upload "${docLabel}" to the deal room for ${propName} on Kontra.\n\nOpen your deal room to upload the document:\n${roomUrl}\n\n---\nKontra transaction workspace. If you believe this was sent in error, ignore this message.`,
         html: `
           <div style="font-family:sans-serif;max-width:520px;margin:0 auto;padding:32px 24px">
             <h2 style="font-size:16px;font-weight:700;color:#111;margin:0 0 12px">Document requested</h2>

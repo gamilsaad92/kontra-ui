@@ -22,12 +22,15 @@ const {
   normalizeRecordCategory,
   getTransactionRecordCategory,
   getRecordActionTarget,
+  normalizeAttentionFieldKey,
   getCurrentProvenanceGap,
   preparationDraftValue,
   preparationSaveConfirmation,
   preparationPdfConfirmation,
   findPreparationPdfArtifact,
+  isDamageAssessmentRequestText,
 } = require('./DealRoomPage');
+const { TRANSACTION_TYPE_OPTIONS } = require('./CreateDealRoomPage');
 
 describe('coordinator transaction brief logic', () => {
   const stages = [
@@ -286,6 +289,18 @@ describe('coordinator transaction brief logic', () => {
     ], stats).map(item => item.title)).toEqual(['Request a missing title report']);
   });
 
+  test('recognizes damage-assessment requests as document request actions', () => {
+    expect(isDamageAssessmentRequestText('Request damage assessment report')).toBe(true);
+    expect(isDamageAssessmentRequestText('Please obtain the hail damage assessment')).toBe(true);
+    expect(isDamageAssessmentRequestText('Upload the purchase agreement')).toBe(false);
+  });
+
+  test('keeps Other available as an explicit custom transaction type', () => {
+    expect(TRANSACTION_TYPE_OPTIONS).toEqual(expect.arrayContaining([
+      { value: 'other', label: 'Other' },
+    ]));
+  });
+
   test('deduplicates repeated repair discrepancy actions without removing other actions', () => {
     expect(dedupeAttentionItems([
       { title: 'Resolve Repair Cost Discrepancy' },
@@ -495,6 +510,11 @@ describe('coordinator transaction brief logic', () => {
       field_key: 'organization.investor_or_agency',
       display_label: 'Investor / agency',
     })).toBe('parties');
+  });
+
+  test('routes investor field aliases to the exact canonical field', () => {
+    expect(normalizeAttentionFieldKey('organization.investor')).toBe('organization.investor_or_agency');
+    expect(normalizeAttentionFieldKey('hazard.investor_or_agency')).toBe('organization.investor_or_agency');
   });
 
   test('keeps unresolved record actions tied to their canonical field', () => {

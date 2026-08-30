@@ -103,7 +103,7 @@ export default function CheckoutSuccessPage() {
               <Link to={`/deal-room/${property}?role=owner`}
                 className="flex-1 inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl text-sm font-bold text-white transition hover:opacity-90"
                 style={{ background: "#800020" }}>
-                Open My Workspace →
+                Open My Deal Room →
               </Link>
             )}
             <a href="mailto:hello@kontraplatform.com"

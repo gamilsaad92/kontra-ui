@@ -533,6 +533,7 @@ export default function DocumentChecklistPanel({
   propertyId, propertyType, role, isDemo = false,
   packId = DEFAULT_PACK_ID, packReady = true, onAnalysisSaved,
   jurisdiction, onPeople,
+  requestTarget, onRequestTargetHandled,
 }) {
   const workflowPack = getWorkflowPack(packId);
   const { getInlineFacts, getCompletenessIssues, factColors: FACT_COLORS, aiUploadEndpoints: AI_UPLOAD_ENDPOINTS } = workflowPack;
@@ -567,6 +568,7 @@ export default function DocumentChecklistPanel({
   const [requestingDocSection, setRequestingDocSection] = useState(null);
   const [requestedDocSections, setRequestedDocSections] = useState(new Set());
   const [requestError, setRequestError] = useState(null);
+  const [focusedRequestSection, setFocusedRequestSection] = useState(null);
 
   // ── Role + coordinator check ─────────────────────────────────────────────
   const roleConfig = workflowPack.getRole?.(role);
@@ -621,6 +623,41 @@ export default function DocumentChecklistPanel({
       });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [propertyId, packReady, role]);
+
+  // Overview action links can land here after this panel mounts. Focus the
+  // matching checklist row so the coordinator sees the real request control
+  // instead of only arriving at the Documents tab.
+  useEffect(() => {
+    if (!requestTarget || !Array.isArray(items) || items.length === 0) return;
+    const query = String(requestTarget.query || requestTarget.label || '').trim().toLowerCase();
+    const targetSection = String(requestTarget.section || '').trim().toLowerCase();
+    const normalize = value => String(value || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, ' ').replace(/\s+/g, ' ');
+    const normalizedQuery = normalize(query);
+    const queryTerms = normalizedQuery.split(' ').filter(term => term.length > 2);
+    const match = items.find(item => {
+      const section = String(item.section || '').trim().toLowerCase();
+      if (targetSection && section === targetSection) return true;
+      const label = normalize(item.label || item.name);
+      return normalizedQuery && (
+        label.includes(normalizedQuery)
+        || normalizedQuery.includes(label)
+        || (queryTerms.length > 0 && queryTerms.every(term => label.includes(term)))
+      );
+    });
+    if (!match) return;
+    setFocusedRequestSection(match.section);
+    setExpandedItems(previous => ({ ...previous, [match.section]: true }));
+    if (requestTarget.autoRequest && !requestedDocSections.has(match.section)) {
+      void handleRequestDoc(match);
+    }
+    const timer = window.setTimeout(() => {
+      [...document.querySelectorAll('[data-document-section]')]
+        .find(element => element.dataset.documentSection === match.section)
+        ?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 50);
+    onRequestTargetHandled?.();
+    return () => window.clearTimeout(timer);
+  }, [items, onRequestTargetHandled, requestTarget, requestedDocSections]);
 
   // ── Task #143: Request a document from an invited participant ──────────────
   async function handleRequestDoc(item) {
@@ -914,7 +951,10 @@ export default function DocumentChecklistPanel({
     const canExpand = done && !isPending && (issues.length > 0 || analysis?.summary || facts.length > 0);
 
     return (
-      <div key={item.id} className="py-2.5 group/item">
+      <div
+        key={item.id}
+        data-document-section={item.section}
+        className={`py-2.5 group/item transition-colors ${focusedRequestSection === item.section ? "rounded-lg bg-amber-50/70 px-2 -mx-2 ring-1 ring-amber-200" : ""}`}>
         <div className="flex items-start gap-3">
           {/* Status icon */}
           <div className="shrink-0 mt-1">

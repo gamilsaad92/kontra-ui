@@ -39,6 +39,17 @@ const AI_TYPE_LABELS = {
   other: "Custom Transaction",
 };
 
+const TRANSACTION_TYPE_OPTIONS = [
+  { value: "business_acquisition", label: "Business Acquisition" },
+  { value: "cre_acquisition", label: "Commercial Real Estate Acquisition" },
+  { value: "fundraising", label: "Fundraising Round" },
+  { value: "tokenization", label: "Token Issuance / STO" },
+  { value: "lending", label: "Lending / Finance" },
+  { value: "licensing", label: "Licensing Transaction" },
+  { value: "joint_venture", label: "Joint Venture" },
+  { value: "other", label: "Other" },
+];
+
 function slugKey(s) {
   return String(s || "").toLowerCase().trim().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 40);
 }
@@ -814,6 +825,24 @@ export default function CreateDealRoomPage() {
                   autoFocus
                 />
 
+                <div>
+                  <label className={labelCls}>Transaction type <span className="font-normal text-gray-400">(optional)</span></label>
+                  <select
+                    className={`${inputCls} bg-white`}
+                    value={aiTransactionType}
+                    onChange={e => {
+                      setAiTransactionType(e.target.value);
+                      setAiTransactionTypeSource("owner");
+                      setAiTransactionTypeLabel(AI_TYPE_LABELS[e.target.value] || e.target.value);
+                    }}>
+                    <option value="">Let Kontra classify it</option>
+                    {TRANSACTION_TYPE_OPTIONS.map(option => (
+                      <option key={option.value} value={option.value}>{option.label}</option>
+                    ))}
+                  </select>
+                  <p className="text-xs text-gray-400 mt-1">Choose Other for a transaction that does not fit a listed type.</p>
+                </div>
+
                 {/* VTP outcome callout */}
                 <div className="flex items-start gap-2.5 bg-gray-50 border border-gray-100 rounded-xl px-3.5 py-3">
                   <span className="text-base shrink-0 mt-0.5">📦</span>
@@ -960,13 +989,13 @@ export default function CreateDealRoomPage() {
                           setAiTransactionTypeSource("owner");
                           setAiTransactionTypeLabel(AI_TYPE_LABELS[e.target.value] || e.target.value);
                         }}>
-                        <option value="other">Custom</option>
-                        <option value="business_acquisition">Business Acquisition</option>
-                        <option value="cre_acquisition">CRE Acquisition</option>
-                        <option value="fundraising">Fundraising</option>
-                        <option value="lending">Lending / Finance</option>
-                        <option value="licensing">Licensing</option>
-                        <option value="joint_venture">Joint Venture</option>
+                        {TRANSACTION_TYPE_OPTIONS
+                          .filter(option => option.value !== "tokenization")
+                          .map(option => (
+                            <option key={option.value} value={option.value}>
+                              {option.value === "cre_acquisition" ? "CRE Acquisition" : option.label}
+                            </option>
+                          ))}
                       </select>
                     )}
                   </div>
@@ -1252,3 +1281,5 @@ export default function CreateDealRoomPage() {
     </PublicLayout>
   );
 }
+
+export { AI_TYPE_LABELS, TRANSACTION_TYPE_OPTIONS };
