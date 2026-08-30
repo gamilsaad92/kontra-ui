@@ -15,6 +15,12 @@ Field history is an append-only audit stream for extraction, manual edits, confi
 
 **How to apply:** keep the current field row authoritative for reads, expose history per field, preserve verified values on `source_changed`, and apply dependency cascades as explicit N/A rows when the prerequisite is marked N/A.
 
+Active evidence comparisons must validate the value shape against the shared semantic type before creating or retaining a conflict. Identifier prose containing numbers is not an amount; unrelated values must be non-comparable and automatically removed from live conflict state during hydration.
+
+**Why:** the existing six-document Hazard Loss room confirmed that this rule removes the false facility-name/principal conflict while leaving all fields awaiting confirmation and preserving the generic pending-review notice.
+
+**How to apply:** use the shared semantic taxonomy for extraction, verification facts, and stored-conflict reconciliation; keep genuine same-concept amount discrepancies comparable.
+
 Demo and overview summaries must derive category membership and counts from the resolved pack schema plus canonical record state; never maintain a second generic field-definition list for seeded demos. Display-only aliases such as target-close must be marked non-renderable and resolve to the canonical closing-date fact.
 
 **Why:** a separate generic summary list treated valid pack-specific fields as missing and counted a target-close alias twice, causing the Overview percentage, Key Facts, and detailed Transaction Record to disagree.
