@@ -41,6 +41,14 @@ For GitHub git-data publishes, the connector proxy is more reliable when blob up
 
 **How to apply:** Keep each GitHub write step in its own proxy call, use a live SHA as `base_tree` and commit parent, and update the branch with `force: false`.
 
+## Durable runtime note
+
+The durable code-execution file-transfer budget can be exceeded when bulk-reading a multi-file change set. For connector publishes, read workspace files inside the small impure publish routine instead of loading every file through durable `readFile` first.
+
+**Why:** A publish preparation attempt exceeded the sandbox’s combined file-operation budget even though the individual source files were valid.
+
+**How to apply:** Keep the connector API calls endpoint-sized and keep large file reads inside the impure routine that uploads each blob.
+
 ## Vercel webhook lag
 
 GitHub `main` can advance successfully while the Kontra production alias continues serving an older hashed bundle; verify the alias contents after each frontend publish.
