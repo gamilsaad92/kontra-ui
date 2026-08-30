@@ -15,6 +15,7 @@ const {
 const {
   extractFacts,
   inferFactDefinition,
+  getVerificationState,
 } = require('./verificationEngine');
 const {
   buildTokenizationGuidance,
@@ -26,7 +27,6 @@ const { selectActiveDocumentVersions } = require('./documentVersions');
 // table. Reconcile those stored findings on hydration so reopening a room is
 // enough to restore its blocking state. This is deliberately deterministic and
 // never calls an LLM.
-const conflictReconcileAt = new Map();
 const recordNormalizeAt = new Map();
 const MONEY_PATTERN = /\$\s*([\d,]+(?:\.\d+)?)/g;
 const REPAIR_CONTEXT = /repair|contractor|invoice|restoration|loss\s+proceeds|hazard/i;
@@ -101,9 +101,6 @@ function storedDocumentAmounts(document) {
 
 async function reconcileStoredDocumentConflicts(propertyId) {
   if (!propertyId) return;
-  const now = Date.now();
-  if (now - (conflictReconcileAt.get(propertyId) || 0) < 15000) return;
-  conflictReconcileAt.set(propertyId, now);
   try {
     const [
       { data: initialDocuments, error: initialDocumentsError },
@@ -115,10 +112,10 @@ async function reconcileStoredDocumentConflicts(propertyId) {
         .eq('property_id', propertyId)
         .order('created_at', { ascending: true }),
       supabase.from('transaction_record_fields')
-        .select('id, field_key, display_label, value_text, status, source_doc_id, source_page, source_excerpt')
+        .select('id, field_key, display_label, value_text, status, source_doc_id, source_page, source_excerpt, conflict_candidates, verified_by, updated_at')
         .eq('property_id', propertyId),
       supabase.from('transaction_record_conflicts')
-        .select('id, field_key, display_label, canonical_source_doc_id, conflicting_source_doc_id, status')
+        .select('id, field_id, field_key, display_label, canonical_value, conflicting_value, canonical_source_doc_id, conflicting_source_doc_id, status')
         .eq('property_id', propertyId)
         .eq('status', 'unresolved'),
     ]);
@@ -140,12 +137,83 @@ async function reconcileStoredDocumentConflicts(propertyId) {
     const sourceDocuments = selectActiveDocumentVersions(documents || []);
     for (const conflict of openConflicts || []) {
       if (isConflictSupportedByActiveEvidence(conflict, documents || [])) continue;
-      await supabase.from('transaction_record_conflicts').update({
+      const resolvedAt = new Date().toISOString();
+      const { error: resolveError } = await supabase.from('transaction_record_conflicts').update({
         status: 'resolved',
-        resolved_at: new Date().toISOString(),
+        resolved_at: resolvedAt,
         resolution_note: 'Removed from live state because its sources are superseded or semantically unrelated.',
-        updated_at: new Date().toISOString(),
+        updated_at: resolvedAt,
       }).eq('id', conflict.id).eq('property_id', propertyId);
+      if (resolveError && !/relation|schema cache|column/i.test(resolveError.message || '')) {
+        throw resolveError;
+      }
+
+      // A stale conflict row often left its field in the conflicting state.
+      // Repair that projection at the same boundary so readiness and Review
+      // Record cannot continue to block on a retired comparison.
+      const field = (fields || []).find(candidate =>
+        (conflict.field_id && candidate.id === conflict.field_id)
+          || (candidate.field_key && candidate.field_key === conflict.field_key)
+      );
+      if (field && ['conflict', 'conflicting'].includes(String(field.status || '').toLowerCase())) {
+        const { error: fieldError } = await supabase.from('transaction_record_fields')
+          .update({
+            status: field.verified_by ? 'verified' : 'extracted',
+            updated_at: resolvedAt,
+          })
+          .eq('id', field.id)
+          .eq('property_id', propertyId);
+        if (fieldError && !/relation|schema cache|column/i.test(fieldError.message || '')) {
+          throw fieldError;
+        }
+      }
+    }
+
+    // Older rooms can have only a field-level conflict status. Materialize one
+    // durable row so every live blocker has the same provenance and Review
+    // Discrepancy destination as newer rooms.
+    const openFieldKeys = new Set((openConflicts || []).map(conflict => conflict.field_key).filter(Boolean));
+    const activeDocumentIds = new Set(sourceDocuments.map(document => document.id).filter(Boolean));
+    for (const field of fields || []) {
+      const rawStatus = String(field.status || '').toLowerCase();
+      if (!['conflict', 'conflicting', 'source_changed'].includes(rawStatus)) continue;
+      if (field.source_doc_id && !activeDocumentIds.has(field.source_doc_id)) {
+        const { error: staleFieldError } = await supabase.from('transaction_record_fields')
+          .update({
+            value_text: null,
+            status: 'missing',
+            source_doc_id: null,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', field.id)
+          .eq('property_id', propertyId);
+        if (staleFieldError && !/relation|schema cache|column/i.test(staleFieldError.message || '')) {
+          throw staleFieldError;
+        }
+        continue;
+      }
+      if (openFieldKeys.has(field.field_key)) continue;
+      const candidate = Array.isArray(field.conflict_candidates) ? field.conflict_candidates[0] : null;
+      const { error: backfillError } = await supabase.from('transaction_record_conflicts').insert({
+        property_id: propertyId,
+        field_id: field.id || null,
+        field_key: field.field_key,
+        display_label: field.display_label || field.field_key || 'Transaction Record field',
+        canonical_value: field.value_text || null,
+        conflicting_value: candidate?.value ?? candidate?.value_text
+          ?? (rawStatus === 'source_changed' ? 'A newer source requires review' : null),
+        canonical_source_doc_id: field.source_doc_id || null,
+        conflicting_source_doc_id: candidate?.source_doc_id || candidate?.sourceDocId || null,
+        canonical_source_page: field.source_page || null,
+        conflicting_source_page: candidate?.source_page || candidate?.sourcePage || null,
+        canonical_source_excerpt: field.source_excerpt || null,
+        conflicting_source_excerpt: candidate?.source_excerpt || candidate?.sourceExcerpt || null,
+        status: 'unresolved',
+        updated_at: new Date().toISOString(),
+      });
+      if (backfillError && !/relation|schema cache|column/i.test(backfillError.message || '')) {
+        throw backfillError;
+      }
     }
     const candidates = sourceDocuments.flatMap(document =>
       storedDocumentAmounts(document).map(value => ({ ...value, document }))
@@ -638,7 +706,30 @@ function isConflictSupportedByActiveEvidence(conflict, documents = []) {
   // Lightweight/legacy analyses may not retain structured metrics. Do not
   // discard a conflict merely because its evidence cannot be re-extracted.
   if (!referencedFacts.length) return true;
-  return referencedFacts.some(fact => fact.semantic_key === semantic.semanticKey);
+  const matchingFacts = referencedFacts.filter(fact =>
+    fact.semantic_key === semantic.semanticKey
+  );
+  // If active documents contain structured facts but none belong to the
+  // conflict's semantic key, the persisted row is an unrelated comparison.
+  if (!matchingFacts.length) return false;
+
+  const thresholdFacts = matchingFacts.filter(fact =>
+    fact.relationship === semantic.relationship
+    && ['threshold', 'actual'].includes(fact.role)
+  );
+  // A policy threshold and a reported actual are a relationship check, not a
+  // same-field Transaction Record conflict. The verification snapshot keeps
+  // that finding visible without blocking the canonical record.
+  if (semantic.relationship && thresholdFacts.length >= 2) return false;
+
+  const values = matchingFacts
+    .map(fact => fact.value)
+    .filter(value => Number.isFinite(value));
+  if (values.length >= 2) {
+    const first = values[0];
+    return values.some(value => Math.abs(value - first) > Math.max(0.01, Math.abs(first) * 0.0001));
+  }
+  return true;
 }
 
 function recordStatusRank(field) {
@@ -784,6 +875,37 @@ function computeTransactionRecordState(recordFields, schemaKey, requiredKeysOver
 
   const unresolvedConflicts = normalizeTransactionConflicts(conflicts);
   const conflictKeys = new Set(unresolvedConflicts.map(conflict => conflict.fieldKey).filter(Boolean));
+  // Some legacy rooms persisted the field as conflicting but never created the
+  // durable conflict row. Preserve that live blocker so Review Record and
+  // Review Discrepancy cannot disagree after hydration.
+  for (const field of fields) {
+    if (!['conflict', 'conflicting', 'source_changed'].includes(field.rawStatus)) continue;
+    if (conflictKeys.has(field.key)) continue;
+    unresolvedConflicts.push({
+      id: `field-conflict:${field.fieldId || field.key}`,
+      propertyId: null,
+      fieldId: field.fieldId || null,
+      fieldKey: field.key,
+      label: field.label,
+      canonicalValue: field.value,
+      conflictingValue: field.conflictCandidates?.[0]?.value
+        || field.conflictCandidates?.[0]?.value_text
+        || (field.rawStatus === 'source_changed' ? 'A newer source requires review' : null),
+      canonicalSourceDocId: field.sourceDocId || null,
+      conflictingSourceDocId: field.conflictCandidates?.[0]?.source_doc_id
+        || field.conflictCandidates?.[0]?.sourceDocId
+        || null,
+      canonicalSourcePage: field.sourcePage || null,
+      conflictingSourcePage: field.conflictCandidates?.[0]?.source_page || null,
+      canonicalSourceExcerpt: field.sourceExcerpt || null,
+      conflictingSourceExcerpt: field.conflictCandidates?.[0]?.source_excerpt || null,
+      status: 'unresolved',
+      legacyFieldOnly: true,
+      createdAt: field.updatedAt || null,
+      updatedAt: field.updatedAt || null,
+    });
+    conflictKeys.add(field.key);
+  }
   return {
     schemaKey,
     fields,
@@ -920,6 +1042,18 @@ function getHazardLossRepairGate(state) {
 }
 
 async function readTransactionState(propertyId) {
+  // Hydration is also a verification boundary. A room can outlive the
+  // verification row that was written before its active document set changed.
+  // Rebuild that projection before reconciling durable Transaction Record
+  // conflicts, while keeping a readable record state if verification is
+  // temporarily unavailable during migration.
+  try {
+    await getVerificationState(propertyId);
+  } catch (error) {
+    if (!/relation|schema cache|column/i.test(error.message || '')) {
+      console.warn('[transaction-state] verification hydration failed:', error.message);
+    }
+  }
   await reconcileStoredDocumentConflicts(propertyId);
   await reconcileConfirmedFieldHistory(propertyId);
   const roomQuery = supabase
@@ -1077,6 +1211,7 @@ module.exports = {
   resolveSchemaKey,
   computeTransactionReadiness,
   computeTransactionRecordState,
+  isConflictSupportedByActiveEvidence,
   getHazardLossRepairGate,
   isImmediateLifecycleAdvance,
   reconcileStoredDocumentConflicts,

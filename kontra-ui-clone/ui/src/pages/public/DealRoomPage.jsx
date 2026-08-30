@@ -5604,9 +5604,34 @@ function mergeTransactionRecordState(previous, incoming) {
 }
 
 function getCanonicalUnresolvedConflicts(recordState) {
-  const source = Array.isArray(recordState?.unresolvedConflicts)
+  const persisted = Array.isArray(recordState?.unresolvedConflicts)
     ? recordState.unresolvedConflicts
     : [];
+  const fieldOnly = (Array.isArray(recordState?.fields) ? recordState.fields : [])
+    .filter(field => ['conflict', 'conflicting', 'source_changed'].includes(
+      String(field?.status || field?.rawStatus || '').toLowerCase(),
+    ))
+    .map(field => ({
+      id: `field-conflict:${field.fieldId || field.id || field.key}`,
+      fieldKey: field.key || field.field_key || field.persistedKey,
+      label: field.label || field.display_label || field.key || field.field_key,
+      canonicalValue: field.value ?? field.value_text ?? null,
+      conflictingValue: field.conflictCandidates?.[0]?.value
+        || field.conflict_candidates?.[0]?.value
+        || field.conflictCandidates?.[0]?.value_text
+        || (field.rawStatus === 'source_changed' ? 'A newer source requires review' : null),
+      canonicalSourceDocId: field.sourceDocId || field.source_doc_id || null,
+      conflictingSourceDocId: field.conflictCandidates?.[0]?.source_doc_id
+        || field.conflict_candidates?.[0]?.source_doc_id
+        || null,
+      canonicalSourceExcerpt: field.sourceExcerpt || field.source_excerpt || null,
+      conflictingSourceExcerpt: field.conflictCandidates?.[0]?.source_excerpt
+        || field.conflict_candidates?.[0]?.source_excerpt
+        || null,
+      status: 'unresolved',
+      legacyFieldOnly: true,
+    }));
+  const source = [...persisted, ...fieldOnly];
   const seen = new Set();
   return source.filter(conflict => {
     const key = conflict?.fieldKey || conflict?.field_key

@@ -564,4 +564,22 @@ describe('coordinator transaction brief logic', () => {
       .toEqual([recordState.unresolvedConflicts[0], recordState.unresolvedConflicts[2]]);
     expect(getCanonicalUnresolvedConflicts(null, fallbackConflicts)).toEqual([]);
   });
+
+  test('creates a Review Discrepancy item for a legacy field-only conflict', () => {
+    expect(getCanonicalUnresolvedConflicts({
+      fields: [{
+        fieldId: 'reporting-period-field',
+        key: 'financial.reporting_period',
+        label: 'Reporting Period',
+        value: '2025',
+        status: 'conflict',
+        conflictCandidates: [{ value: '2024', source_doc_id: 'annual-report' }],
+      }],
+    })).toEqual([expect.objectContaining({
+      fieldKey: 'financial.reporting_period',
+      canonicalValue: '2025',
+      conflictingValue: '2024',
+      conflictingSourceDocId: 'annual-report',
+    })]);
+  });
 });

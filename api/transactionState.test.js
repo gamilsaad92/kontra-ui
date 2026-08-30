@@ -5,6 +5,7 @@ const {
   isImmediateLifecycleAdvance,
   latestEvidenceTimestamp,
   shouldPreserveResolvedConflict,
+  isConflictSupportedByActiveEvidence,
 } = require('./lib/transactionState');
 
 const requirements = require('../shared/transaction_record_requirements.json');
@@ -430,6 +431,73 @@ describe('transaction state recalculation', () => {
     expect(readiness.recordState.unresolvedConflictCount).toBe(1);
     expect(readiness.confirmedCount).toBe(1);
     expect(readiness.hasBlockingConflicts).toBe(true);
+  });
+
+  it('retires threshold, unrelated, and superseded evidence conflicts from live state', () => {
+    const documents = [
+      {
+        id: 'policy',
+        section: 'servicing_policy',
+        is_active: true,
+        analysis: { metrics: { delinquency_trigger: { value: 7.5, unit: '%' } } },
+      },
+      {
+        id: 'servicer',
+        section: 'servicer_report',
+        is_active: true,
+        analysis: { metrics: { actual_delinquency: { value: 8.1, unit: '%' } } },
+      },
+      {
+        id: 'commitment',
+        section: 'loan_commitment',
+        is_active: true,
+        analysis: { metrics: { total_commitment: '$25,000,000' } },
+      },
+      {
+        id: 'old-noi',
+        section: 'operating_statement',
+        is_active: false,
+        superseded_at: '2026-08-20T00:00:00.000Z',
+        analysis: { metrics: { net_operating_income: '$6,000,000' } },
+      },
+    ];
+
+    expect(isConflictSupportedByActiveEvidence({
+      field_key: 'covenant.delinquency_rate',
+      display_label: 'Delinquency Rate',
+      canonical_source_doc_id: 'policy',
+      conflicting_source_doc_id: 'servicer',
+    }, documents)).toBe(false);
+    expect(isConflictSupportedByActiveEvidence({
+      field_key: 'financial.noi',
+      display_label: 'Net Operating Income',
+      canonical_source_doc_id: 'commitment',
+      conflicting_source_doc_id: 'servicer',
+    }, documents)).toBe(false);
+    expect(isConflictSupportedByActiveEvidence({
+      field_key: 'financial.noi',
+      display_label: 'Net Operating Income',
+      canonical_source_doc_id: 'old-noi',
+      conflicting_source_doc_id: 'servicer',
+    }, documents)).toBe(false);
+  });
+
+  it('projects a field-only conflict into the canonical unresolved conflict list', () => {
+    const state = computeTransactionRecordState([{
+      id: 'reporting-period-field',
+      field_key: 'financial.reporting_period',
+      display_label: 'Reporting Period',
+      value_text: '2025',
+      status: 'conflicting',
+      conflict_candidates: [{ value: '2024', source_doc_id: 'annual-report' }],
+    }], 'generic', null, []);
+
+    expect(state.unresolvedConflicts).toEqual([expect.objectContaining({
+      fieldKey: 'financial.reporting_period',
+      canonicalValue: '2025',
+      conflictingValue: '2024',
+    })]);
+    expect(state.unresolvedConflictCount).toBe(1);
   });
 
   it('matches a persisted required field by its unique generated label when keys differ', () => {

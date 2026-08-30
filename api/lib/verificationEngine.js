@@ -5,6 +5,7 @@
  * of requiring a new table. That keeps this usable for rooms whose production
  * database has not received the newer pipeline migrations yet.
  */
+const crypto = require('crypto');
 const { supabase } = require('../db');
 
 const VERIFICATION_SECTION = 'cross_document_verification';
@@ -392,6 +393,35 @@ function summarizeChecks(checks) {
   }, { verified: 0, discrepancies: 0, pending: 0 });
 }
 
+function verificationSourceSignature(documents = []) {
+  const source = (documents || []).map(document => ({
+    id: document.id || null,
+    section: document.section || null,
+    created_at: document.created_at || null,
+    source_hash: document.source_hash || null,
+    analysis: document.analysis || {},
+  }));
+  return crypto.createHash('sha256').update(JSON.stringify(source)).digest('hex');
+}
+
+function buildVerificationResult(propertyId, packId, comparableDocuments, runAt = new Date().toISOString()) {
+  const checks = buildChecks(comparableDocuments, runAt);
+  const summary = summarizeChecks(checks);
+  return {
+    propertyId,
+    packId,
+    status: checks.some(check => check.status === 'verified' || check.status === 'discrepancy')
+      ? 'complete'
+      : 'pending',
+    run_at: runAt,
+    source_signature: verificationSourceSignature(comparableDocuments),
+    summary,
+    checks,
+    normalized_facts: comparableDocuments.flatMap(extractFacts),
+    documents_considered: comparableDocuments.map(document => document.section),
+  };
+}
+
 async function loadVerificationRows(propertyId) {
   const { data, error } = await supabase
     .from('deal_analyses')
@@ -404,29 +434,14 @@ async function loadVerificationRows(propertyId) {
   return data || [];
 }
 
-async function getVerificationState(propertyId) {
-  const rows = await loadVerificationRows(propertyId);
-  const latest = rows[0]?.analysis || {};
-  const checks = Array.isArray(latest.checks) ? latest.checks : [];
-  return {
-    status: latest.status || (checks.length ? 'complete' : 'pending'),
-    summary: latest.summary || summarizeChecks(checks),
-    // The UI renders each verification run as an object containing `checks`.
-    // Returning the checks array directly makes a pending check look like a
-    // run with zero checks (and produces the misleading "Run #1 · 0 checks").
-    runs: rows[0] ? [latest] : [],
-    run_at: latest.run_at || rows[0]?.created_at || null,
-  };
-}
-
-async function runVerification(propertyId, packId = null) {
+async function loadComparableDocuments(propertyId) {
   let { data: documents, error: documentError } = await supabase
     .from('deal_analyses')
-    .select('id, section, analysis, created_at, is_active, superseded_at')
+    .select('id, section, analysis, created_at, source_hash, is_active, superseded_at')
     .eq('property_id', propertyId)
     .neq('section', VERIFICATION_SECTION)
     .order('created_at', { ascending: true });
-  if (documentError && /is_active|superseded_at|superseded_by|schema cache|column .* does not exist/i.test(documentError.message || '')) {
+  if (documentError && /source_hash|is_active|superseded_at|superseded_by|schema cache|column .* does not exist/i.test(documentError.message || '')) {
     ({ data: documents, error: documentError } = await supabase
       .from('deal_analyses')
       .select('id, section, analysis, created_at')
@@ -435,42 +450,70 @@ async function runVerification(propertyId, packId = null) {
       .order('created_at', { ascending: true }));
   }
   if (documentError) throw documentError;
+  return latestDocuments(documents || []);
+}
 
-  const comparableDocuments = latestDocuments(documents);
-  const runAt = new Date().toISOString();
-  const checks = buildChecks(comparableDocuments, runAt);
-  const summary = summarizeChecks(checks);
-  const result = {
-    propertyId,
-    packId,
-    status: checks.some(check => check.status === 'verified' || check.status === 'discrepancy')
-      ? 'complete'
-      : 'pending',
-    run_at: runAt,
-    summary,
-    checks,
-    normalized_facts: comparableDocuments.flatMap(extractFacts),
-    documents_considered: comparableDocuments.map(document => document.section),
-  };
-
-  const { error: deleteError } = await supabase
-    .from('deal_analyses')
-    .delete()
-    .eq('property_id', propertyId)
-    .eq('section', VERIFICATION_SECTION);
-  if (deleteError) throw deleteError;
-
-  const { error: insertError } = await supabase
+async function persistVerificationResult(result) {
+  const { error } = await supabase
     .from('deal_analyses')
     .insert({
-      property_id: propertyId,
+      property_id: result.propertyId,
       section: VERIFICATION_SECTION,
       filename: 'cross-document-verification.json',
       analysis: result,
       uploaded_by_role: 'verification_engine',
     });
-  if (insertError) throw insertError;
+  if (error) throw error;
+  return result;
+}
 
+function verificationStateFromAnalysis(analysis, createdAt = null) {
+  const latest = analysis || {};
+  const checks = Array.isArray(latest.checks) ? latest.checks : [];
+  return {
+    status: latest.status || (checks.length ? 'complete' : 'pending'),
+    summary: latest.summary || summarizeChecks(checks),
+    // The UI renders each verification run as an object containing `checks`.
+    // Returning the checks array directly makes a pending check look like a
+    // run with zero checks (and produces the misleading "Run #1 · 0 checks").
+    runs: analysis ? [latest] : [],
+    run_at: latest.run_at || createdAt || null,
+  };
+}
+
+async function getVerificationState(propertyId) {
+  const [rows, comparableDocuments] = await Promise.all([
+    loadVerificationRows(propertyId),
+    loadComparableDocuments(propertyId),
+  ]);
+  const latestRow = rows[0] || null;
+  const latest = latestRow?.analysis || null;
+  const current = buildVerificationResult(
+    propertyId,
+    latest?.packId || null,
+    comparableDocuments,
+  );
+
+  // Existing rooms may have a verification row created before semantic
+  // reconciliation or before a document replacement. Recompute from the
+  // active evidence projection on hydration. Only write when the source
+  // signature changed so ordinary refreshes do not create duplicate runs.
+  if (!latest || latest.source_signature !== current.source_signature) {
+    if (comparableDocuments.length > 0) {
+      await persistVerificationResult(current);
+    }
+    return verificationStateFromAnalysis(
+      comparableDocuments.length > 0 ? current : null,
+      latestRow?.created_at || null,
+    );
+  }
+  return verificationStateFromAnalysis(latest, latestRow?.created_at || null);
+}
+
+async function runVerification(propertyId, packId = null) {
+  const comparableDocuments = await loadComparableDocuments(propertyId);
+  const result = buildVerificationResult(propertyId, packId, comparableDocuments);
+  await persistVerificationResult(result);
   return result;
 }
 
@@ -479,6 +522,8 @@ module.exports = {
   getVerificationState,
   runVerification,
   latestDocuments,
+  verificationSourceSignature,
+  buildVerificationResult,
   extractFacts,
   buildChecks,
   inferFactDefinition,
