@@ -87,6 +87,12 @@ const {
   canonicalTransactionTypeLabel,
 } = require('./lib/transactionRecordCanonicalization');
 const {
+  inferSemanticDefinition,
+  normalizeComparableValue: normalizeSemanticComparableValue,
+  compareComparableValues,
+  semanticRecordKey,
+} = require('./lib/semanticFieldTaxonomy');
+const {
   buildVerifiedAssetSnapshot,
 } = require('./lib/verifiedAssetSnapshot');
 const {
@@ -3765,7 +3771,10 @@ async function syncGeneratedProposalToTransactionRecord(propertyId, proposal, ac
   const fieldsByCanonicalKey = new Map();
   for (const field of proposalFields) {
     if (!field?.key) continue;
-    const key = canonicalizeTransactionRecordKey(String(field.key), 'generic');
+    const key = canonicalizeTransactionRecordKey(
+      semanticRecordKey(String(field.key), field.label || field.display_label || '') || String(field.key),
+      'generic',
+    );
     const existing = fieldsByCanonicalKey.get(key);
     const hasValue = field.value !== null && field.value !== undefined && String(field.value).trim() !== '';
     const existingHasValue = existing?.value !== null && existing?.value !== undefined
@@ -3778,7 +3787,10 @@ async function syncGeneratedProposalToTransactionRecord(propertyId, proposal, ac
   for (const field of fields) {
     if (!field?.key || !field?.label) continue;
     const definitionKey = String(field.definition_key || field.key).trim().slice(0, 120);
-    const fieldKey = canonicalizeTransactionRecordKey(field.key, 'generic');
+    const fieldKey = canonicalizeTransactionRecordKey(
+      semanticRecordKey(field.key, field.label || field.display_label || '') || field.key,
+      'generic',
+    );
     const canonicalCategory = {
       asset: 'asset_identity',
       ownership: 'beneficial_ownership',
@@ -4468,7 +4480,14 @@ async function upsertTransactionRecordConflict({
   canonicalSourceDocId, conflictingSourceDocId, canonicalSourcePage,
   conflictingSourcePage, canonicalSourceExcerpt, conflictingSourceExcerpt,
 }) {
-  if (!propertyId || !fieldKey || !conflictingValue || canonicalValue === conflictingValue) return null;
+  const semantic = inferSemanticDefinition(fieldKey, null, displayLabel || '');
+  const comparison = compareComparableValues(
+    normalizeSemanticComparableValue(canonicalValue, semantic),
+    normalizeSemanticComparableValue(conflictingValue, semantic),
+    semantic,
+  );
+  if (!propertyId || !fieldKey || !conflictingValue || canonicalValue === conflictingValue
+    || comparison.equivalent || !comparison.comparable) return null;
   const payload = {
     property_id: propertyId,
     field_id: fieldId || null,
@@ -4680,48 +4699,14 @@ async function extractTransactionFields(propertyId, docId, text, sectionLabel) {
     }
 
     const canonicalKeys = [];
-    const normalizeExtractedIdentity = (value) => String(value || '')
-      .trim()
-      .toLowerCase()
-      .replace(/[_-]+/g, ' ')
-      .replace(/\s+/g, ' ');
-    const normalizeComparableValue = (value, fieldKey, displayLabel) => {
-      const textValue = String(value ?? '').trim();
-      const semantic = inferFactDefinition(fieldKey, textValue, displayLabel);
-      const numeric = textValue.match(/-?\s*[\d,]+(?:\.\d+)?/);
-      if (numeric && semantic?.valueType === 'percent') {
-        return { type: 'percent', value: Number(numeric[0].replace(/,/g, '')) };
-      }
-      if (numeric && semantic?.valueType === 'amount') {
-        const amount = Number(numeric[0].replace(/,/g, ''));
-        const lower = textValue.toLowerCase();
-        const multiplier = /\b(?:billion|bn)\b/.test(lower) ? 1e9
-          : /\b(?:million|mm)\b/.test(lower) ? 1e6
-            : /\b(?:thousand|k)\b/.test(lower) ? 1e3 : 1;
-        return { type: 'amount', value: amount * multiplier };
-      }
-      return { type: 'text', value: normalizeExtractedIdentity(textValue) };
-    };
+    const normalizeComparableValue = (value, fieldKey, displayLabel) =>
+      normalizeSemanticComparableValue(
+        value,
+        inferSemanticDefinition(fieldKey, value, displayLabel),
+        displayLabel,
+      );
     const semanticFieldKey = (rawKey, displayLabel) => {
-      const semantic = inferFactDefinition(rawKey, null, displayLabel);
-      const semanticToRecordKey = {
-        'capital.commitment': 'financial.commitment',
-        'financial.noi': 'financial.noi',
-        'financial.cash_variance': 'financial.cash_variance',
-        'financial.cash_balance': 'financial.cash_balance',
-        'financial.proceeds': 'financial.proceeds',
-        'financial.revenue': 'financial.revenue',
-        'financial.ebitda': 'financial.ebitda',
-        'financial.equity': 'financial.equity',
-        'financial.repair_costs': 'financial.repair_costs',
-        'transaction.purchase_price': 'transaction.purchase_price',
-        'transaction.value': 'transaction.value',
-        'covenant.delinquency_rate': 'financial.delinquency_rate',
-        'covenant.occupancy_rate': 'financial.occupancy_rate',
-        'covenant.ltv': 'financial.ltv',
-        'covenant.dscr': 'financial.dscr',
-      };
-      return semanticToRecordKey[semantic?.semanticKey] || null;
+      return semanticRecordKey(rawKey, displayLabel);
     };
     const resolveExtractedCanonicalKey = (rawKey, displayLabel) => {
       const semanticKey = semanticFieldKey(rawKey, displayLabel);
@@ -4744,11 +4729,9 @@ async function extractTransactionFields(propertyId, docId, text, sectionLabel) {
       for (const conflict of openConflicts || []) {
         const canonical = normalizeComparableValue(conflict.canonical_value, fieldKey, '');
         const conflicting = normalizeComparableValue(conflict.conflicting_value, fieldKey, '');
-        const equivalent = canonical.type === conflicting.type
-          && (canonical.type === 'text'
-            ? canonical.value === conflicting.value
-            : Math.abs(canonical.value - conflicting.value) <= Math.max(0.01, Math.abs(canonical.value) * 0.01));
-        if (equivalent) {
+        const semantic = inferSemanticDefinition(fieldKey, null, '');
+        const comparison = compareComparableValues(canonical, conflicting, semantic);
+        if (comparison.equivalent || !comparison.comparable) {
           await supabase.from('transaction_record_conflicts').update({
             status: 'resolved',
             resolved_at: new Date().toISOString(),
@@ -4811,12 +4794,20 @@ async function extractTransactionFields(propertyId, docId, text, sectionLabel) {
         ? normalizeComparableValue(existing.value_text, canonicalKey, existing.display_label || f.display_label)
         : null;
       const nextComparable = normalizeComparableValue(f.value_text, canonicalKey, f.display_label);
-      const semanticallySame = priorComparable && priorComparable.type === nextComparable.type
-        && (priorComparable.type === 'text'
-          ? priorComparable.value === nextComparable.value
-          : Math.abs(priorComparable.value - nextComparable.value)
-            <= Math.max(0.01, Math.abs(priorComparable.value) * 0.01));
-      const differs = Boolean(existing?.value_text) && !semanticallySame;
+      const semanticDefinition = inferSemanticDefinition(
+        canonicalKey,
+        f.value_text,
+        f.display_label || existing?.display_label || '',
+      );
+      const valueComparison = compareComparableValues(
+        priorComparable,
+        nextComparable,
+        semanticDefinition,
+      );
+      const semanticallySame = priorComparable && valueComparison.equivalent;
+      const differs = Boolean(existing?.value_text)
+        && valueComparison.comparable
+        && !valueComparison.equivalent;
       const eventType = existing?.status === 'verified' && differs
         ? 'source_changed'
         : differs ? 'conflict' : 'extracted';

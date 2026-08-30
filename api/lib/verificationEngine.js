@@ -7,6 +7,7 @@
  */
 const crypto = require('crypto');
 const { supabase } = require('../db');
+const { inferSemanticDefinition } = require('./semanticFieldTaxonomy');
 
 const VERIFICATION_SECTION = 'cross_document_verification';
 const NUMBER_PATTERN = /[$€£]?\s*([\d,]+(?:\.\d+)?)\s*(million|mm|billion|bn|thousand|k)?/gi;
@@ -80,6 +81,8 @@ function factContext(key, rawValue) {
 }
 
 function inferFactDefinition(key, rawValue, explicitLabel = '') {
+  const semanticDefinition = inferSemanticDefinition(key, rawValue, explicitLabel);
+  if (semanticDefinition) return semanticDefinition;
   const context = normalizedText(`${key} ${explicitLabel} ${rawValue && typeof rawValue === 'object'
     ? [rawValue.label, rawValue.name, rawValue.semantic_key, rawValue.semanticKey].filter(Boolean).join(' ')
     : ''}`);
@@ -147,6 +150,10 @@ function sourcePageFor(document, rawValue) {
 function makeFact(document, key, rawValue, explicitLabel = '', fallbackExcerpt = null) {
   const definition = inferFactDefinition(key, rawValue, explicitLabel);
   if (!definition) return null;
+  // Periods and references are Transaction Record metadata. They are typed by
+  // the shared taxonomy for record conflict handling, but are not numeric facts
+  // that belong in cross-document amount/rate verification.
+  if (!['amount', 'percent', 'ratio'].includes(definition.valueType)) return null;
   const numeric = extractNumeric(rawValue, `${key} ${explicitLabel}`);
   if (!numeric || numeric.value < 0) return null;
   return {

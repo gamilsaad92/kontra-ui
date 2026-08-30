@@ -13,6 +13,10 @@ describe('Transaction Record canonicalization', () => {
     ['asset_identity.legal_name', 'asset.issuer', 'fundraising'],
     ['beneficial_ownership.owners', 'ownership.existing_owners', 'business_acquisition'],
     ['financial.purchase_price', 'transaction.purchase_price', 'business_acquisition'],
+    ['financial.certified_outstanding_principal', 'financial.outstanding_principal', 'cre_acquisition'],
+    ['financial.servicing_fee', 'financial.servicing_fee_amount', 'cre_acquisition'],
+    ['transaction.reporting_period', 'financial.reporting_period', 'cre_acquisition'],
+    ['legal.references', 'legal.document_reference', 'cre_acquisition'],
   ])('%s maps to %s for %s', (alias, canonical, packId) => {
     expect(canonicalizeTransactionRecordKey(alias, packId)).toBe(canonical);
   });

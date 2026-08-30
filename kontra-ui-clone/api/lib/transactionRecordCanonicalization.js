@@ -15,6 +15,18 @@ const UNIVERSAL_ALIASES = {
   'financial.total_revenue': 'financial.revenue',
   'financial.borrower_advanced_funds': 'financial.borrower_funds_advanced',
   'financial.borrower_funds_advanced_amount': 'financial.borrower_funds_advanced',
+  'financial.certified_outstanding_principal': 'financial.outstanding_principal',
+  'financial.outstanding_loan_principal': 'financial.outstanding_principal',
+  'loan.outstanding_principal': 'financial.outstanding_principal',
+  'financial.servicing_fee': 'financial.servicing_fee_amount',
+  'financial.servicing_fee_percentage': 'financial.servicing_fee_rate',
+  'financial.servicing_fee_rate': 'financial.servicing_fee_rate',
+  'financial.servicing_fee_amount': 'financial.servicing_fee_amount',
+  'transaction.reporting_period': 'financial.reporting_period',
+  'legal.references': 'legal.document_reference',
+  'legal.document_references': 'legal.document_reference',
+  'document.reference': 'legal.document_reference',
+  'document.references': 'legal.document_reference',
   // Hazard-loss fields are emitted under several namespaces by generated
   // proposals and document extraction. Keep one durable identity per fact.
   'hazard.incident_date': 'transaction.incident_date',

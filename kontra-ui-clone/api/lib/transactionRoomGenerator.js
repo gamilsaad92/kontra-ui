@@ -1,6 +1,7 @@
 'use strict';
 
 const crypto = require('crypto');
+const { semanticRecordKey } = require('./semanticFieldTaxonomy');
 
 const SOURCE_TYPES = new Set([
   'authoritative',
@@ -177,7 +178,10 @@ function normalizeProposal(raw = {}, context = {}) {
   const modelTransactionRecordFields = (Array.isArray(raw.transaction_record_fields)
     ? raw.transaction_record_fields
     : []).map((field, index) => ({
-    key: String(field.key || field.field_key || `transaction.field_${index + 1}`).trim().slice(0, 120),
+    key: semanticRecordKey(
+      String(field.key || field.field_key || `transaction.field_${index + 1}`).trim(),
+      field.label || field.display_label || '',
+    ) || String(field.key || field.field_key || `transaction.field_${index + 1}`).trim().slice(0, 120),
     label: String(field.label || field.display_label || field.key || `Transaction field ${index + 1}`).trim().slice(0, 160),
     category: String(field.category || field.field_category || String(field.key || '').split('.')[0] || 'transaction')
       .trim().toLowerCase().replace(/[^a-z0-9_]+/g, '_').slice(0, 80) || 'transaction',

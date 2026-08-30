@@ -482,6 +482,27 @@ describe('transaction state recalculation', () => {
     }, documents)).toBe(false);
   });
 
+  it.each([
+    ['financial.reporting_period', 'Reporting Period', 'monthly', 'July 2026'],
+    ['legal.document_reference', 'References', 'Loan Agreement.pdf', 'Servicing Statement.pdf'],
+  ])('does not preserve a non-conflicting %s comparison during hydration', (fieldKey, label, canonicalValue, conflictingValue) => {
+    expect(isConflictSupportedByActiveEvidence({
+      field_key: fieldKey,
+      display_label: label,
+      canonical_value: canonicalValue,
+      conflicting_value: conflictingValue,
+    }, [])).toBe(false);
+  });
+
+  it('preserves a genuine typed outstanding-principal discrepancy', () => {
+    expect(isConflictSupportedByActiveEvidence({
+      field_key: 'financial.outstanding_principal',
+      display_label: 'Certified Outstanding Principal',
+      canonical_value: '$8,100,000',
+      conflicting_value: '$8,000,000',
+    }, [])).toBe(true);
+  });
+
   it('projects a field-only conflict into the canonical unresolved conflict list', () => {
     const state = computeTransactionRecordState([{
       id: 'reporting-period-field',

@@ -18,6 +18,10 @@ const {
   getVerificationState,
 } = require('./verificationEngine');
 const {
+  compareComparableValues,
+  normalizeComparableValue,
+} = require('./semanticFieldTaxonomy');
+const {
   buildTokenizationGuidance,
 } = require('./tokenizationGuidance');
 const { selectActiveDocumentVersions } = require('./documentVersions');
@@ -194,6 +198,26 @@ async function reconcileStoredDocumentConflicts(propertyId) {
       }
       if (openFieldKeys.has(field.field_key)) continue;
       const candidate = Array.isArray(field.conflict_candidates) ? field.conflict_candidates[0] : null;
+      const semantic = inferFactDefinition(field.field_key, null, field.display_label || '');
+      const candidateComparison = compareComparableValues(
+        normalizeComparableValue(field.value_text, semantic),
+        normalizeComparableValue(candidate?.value ?? candidate?.value_text, semantic),
+        semantic,
+      );
+      if (candidate && (candidateComparison.equivalent || !candidateComparison.comparable)) {
+        const { error: compatibleFieldError } = await supabase.from('transaction_record_fields')
+          .update({
+            status: field.verified_by ? 'verified' : 'extracted',
+            conflict_candidates: [],
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', field.id)
+          .eq('property_id', propertyId);
+        if (compatibleFieldError && !/relation|schema cache|column/i.test(compatibleFieldError.message || '')) {
+          throw compatibleFieldError;
+        }
+        continue;
+      }
       const { error: backfillError } = await supabase.from('transaction_record_conflicts').insert({
         property_id: propertyId,
         field_id: field.id || null,
@@ -693,13 +717,22 @@ function isConflictSupportedByActiveEvidence(conflict, documents = []) {
   ].filter(Boolean);
   // A conflict whose evidence was replaced is historical, not a live blocker.
   if (sourceIds.some(id => !activeIds.has(id))) return false;
-  if (!sourceIds.length) return true;
 
   const semantic = inferFactDefinition(
     conflict?.field_key || '',
     null,
     conflict?.display_label || '',
   );
+  const conflictComparison = compareComparableValues(
+    normalizeComparableValue(conflict?.canonical_value, semantic),
+    normalizeComparableValue(conflict?.conflicting_value, semantic),
+    semantic,
+  );
+  // A generic document reference, or two compatible values from different
+  // metadata dimensions (for example monthly versus July 2026), is not a
+  // live Transaction Record discrepancy.
+  if (conflictComparison.equivalent || !conflictComparison.comparable) return false;
+  if (!sourceIds.length) return true;
   if (!semantic || String(semantic.semanticKey || '').startsWith('metric:')) return true;
   const referencedDocuments = activeDocuments.filter(document => sourceIds.includes(document.id));
   const referencedFacts = referencedDocuments.flatMap(document => extractFacts(document));
