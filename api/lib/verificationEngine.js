@@ -7,7 +7,10 @@
  */
 const crypto = require('crypto');
 const { supabase } = require('../db');
-const { inferSemanticDefinition } = require('./semanticFieldTaxonomy');
+const {
+  inferSemanticDefinition,
+  isSemanticallyValidValue,
+} = require('./semanticFieldTaxonomy');
 
 const VERIFICATION_SECTION = 'cross_document_verification';
 const NUMBER_PATTERN = /[$€£]?\s*([\d,]+(?:\.\d+)?)\s*(million|mm|billion|bn|thousand|k)?/gi;
@@ -154,6 +157,7 @@ function makeFact(document, key, rawValue, explicitLabel = '', fallbackExcerpt =
   // the shared taxonomy for record conflict handling, but are not numeric facts
   // that belong in cross-document amount/rate verification.
   if (!['amount', 'percent', 'ratio'].includes(definition.valueType)) return null;
+  if (!isSemanticallyValidValue(rawValue, definition)) return null;
   const numeric = extractNumeric(rawValue, `${key} ${explicitLabel}`);
   if (!numeric || numeric.value < 0) return null;
   return {

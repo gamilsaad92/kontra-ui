@@ -3,6 +3,7 @@ const {
   semanticRecordKey,
   normalizeComparableValue,
   compareComparableValues,
+  isSemanticallyValidValue,
 } = require('./lib/semanticFieldTaxonomy');
 const { normalizeProposal } = require('./lib/transactionRoomGenerator');
 const { extractFacts } = require('./lib/verificationEngine');
@@ -59,6 +60,37 @@ describe('semantic Transaction Record field taxonomy', () => {
     );
 
     expect(comparison).toEqual({ comparable: true, equivalent: false });
+  });
+
+  test('does not parse a facility identifier as certified principal', () => {
+    const definition = inferSemanticDefinition(
+      'financial.certified_outstanding_principal',
+      null,
+      'Certified Outstanding Principal',
+    );
+    const facility = normalizeComparableValue(
+      'RRF 2026-1 Residential Transition Loan Facility',
+      definition,
+    );
+    const amount = normalizeComparableValue('18,420', definition);
+
+    expect(facility).toEqual({ type: 'text', value: 'rrf 2026 1 residential transition loan facility' });
+    expect(isSemanticallyValidValue(
+      'RRF 2026-1 Residential Transition Loan Facility',
+      definition,
+    )).toBe(false);
+    expect(isSemanticallyValidValue('18,420', definition)).toBe(true);
+    expect(compareComparableValues(facility, amount, definition))
+      .toEqual({ comparable: false, equivalent: true });
+    expect(extractFacts({
+      id: 'facility-doc',
+      section: 'compliance_documents',
+      analysis: {
+        metrics: {
+          certified_outstanding_principal: 'RRF 2026-1 Residential Transition Loan Facility',
+        },
+      },
+    })).toEqual([]);
   });
 
   test('normalizes generated proposal fields before they become persisted definitions', () => {

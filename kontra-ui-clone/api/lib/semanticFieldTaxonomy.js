@@ -82,6 +82,29 @@ function numericParts(value) {
   return { value: amount * multiplier, unit: unit || match[2] || null };
 }
 
+function amountParts(value) {
+  const raw = value && typeof value === 'object'
+    ? (value.value ?? value.amount ?? value.number ?? value.numeric_value)
+    : value;
+  if (typeof raw === 'number' && Number.isFinite(raw)) return { value: raw, unit: null };
+  if (typeof raw !== 'string') return null;
+  const text = raw.trim();
+  // An amount field must contain an amount-shaped value. Do not pull years or
+  // facility identifiers out of prose such as "RRF 2026-1 Residential..."
+  // and compare that identifier with a principal balance.
+  const match = text.match(/^\(?\s*[$€£]?\s*-?\d[\d,]*(?:\.\d+)?\s*(million|mm|billion|bn|thousand|k|m|b)?\s*(?:dollars?|usd)?\s*\)?$/i);
+  if (!match) return null;
+  const numberMatch = text.match(/-?\s*([\d,]+(?:\.\d+)?)/);
+  if (!numberMatch) return null;
+  const amount = Number(numberMatch[1].replace(/,/g, ''));
+  if (!Number.isFinite(amount)) return null;
+  const multiplier = {
+    k: 1e3, thousand: 1e3, mm: 1e6, million: 1e6,
+    m: 1e6, bn: 1e9, billion: 1e9, b: 1e9,
+  }[String(match[1] || '').toLowerCase()] || 1;
+  return { value: amount * multiplier, unit: match[1] || null };
+}
+
 function normalizePeriod(value) {
   const text = normalizedText(value);
   if (!text) return null;
@@ -108,7 +131,7 @@ function normalizeComparableValue(value, definitionOrKey, explicitLabel = '') {
   if (definition?.valueType === 'reference') {
     return { type: 'reference', value: normalizedText(textValue) };
   }
-  const numeric = numericParts(value);
+  const numeric = definition?.valueType === 'amount' ? amountParts(value) : numericParts(value);
   if (numeric && definition?.valueType === 'percent') {
     return { type: 'percent', value: numeric.value };
   }
@@ -157,6 +180,14 @@ function compareComparableValues(left, right, definition) {
   };
 }
 
+function isSemanticallyValidValue(value, definitionOrKey, explicitLabel = '') {
+  const definition = typeof definitionOrKey === 'string'
+    ? inferSemanticDefinition(definitionOrKey, value, explicitLabel)
+    : definitionOrKey;
+  if (!definition || definition.valueType !== 'amount') return true;
+  return normalizeComparableValue(value, definition).type === 'amount';
+}
+
 function semanticRecordKey(rawKey, displayLabel = '') {
   return inferSemanticDefinition(rawKey, null, displayLabel)?.recordKey || null;
 }
@@ -166,6 +197,7 @@ module.exports = {
   inferSemanticDefinition,
   normalizeComparableValue,
   compareComparableValues,
+  isSemanticallyValidValue,
   semanticRecordKey,
   normalizedText,
 };

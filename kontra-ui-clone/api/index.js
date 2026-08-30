@@ -90,6 +90,7 @@ const {
   inferSemanticDefinition,
   normalizeComparableValue: normalizeSemanticComparableValue,
   compareComparableValues,
+  isSemanticallyValidValue,
   semanticRecordKey,
 } = require('./lib/semanticFieldTaxonomy');
 const {
@@ -3777,6 +3778,9 @@ async function syncGeneratedProposalToTransactionRecord(propertyId, proposal, ac
     );
     const existing = fieldsByCanonicalKey.get(key);
     const hasValue = field.value !== null && field.value !== undefined && String(field.value).trim() !== '';
+    if (hasValue && !isSemanticallyValidValue(field.value, field.key, field.label || field.display_label || '')) {
+      continue;
+    }
     const existingHasValue = existing?.value !== null && existing?.value !== undefined
       && String(existing.value).trim() !== '';
     if (!existing || (hasValue && !existingHasValue)) {
@@ -4678,7 +4682,7 @@ async function extractTransactionFields(propertyId, docId, text, sectionLabel) {
       messages: [
         {
           role: 'system',
-          content: `You are a transaction data extraction specialist. Given document text, extract key structured fields for a transaction record. Return a JSON array of field objects — only include fields explicitly present in the text. Each object must have: field_key (dotted string like "parties.buyer"), field_category (one of: asset_identity, transaction, parties, beneficial_ownership, financial, legal, approvals), display_label (human-readable label), value_text (the extracted value as a plain string), confidence (0.0 to 1.0), source_page (integer if determinable, else null), source_excerpt (the exact clause the value was extracted from, max 120 chars). Use canonical field keys when a concept has a canonical home: purchase price is "transaction.purchase_price" (never "financial.purchase_price"), and transaction value is "transaction.value" (never "financial.deal_value"). One document may populate multiple distinct fields, but do not emit duplicate keys for the same concept.`,
+          content: `You are a transaction data extraction specialist. Given document text, extract key structured fields for a transaction record. Return a JSON array of field objects — only include fields explicitly present in the text. Each object must have: field_key (dotted string like "parties.buyer"), field_category (one of: asset_identity, transaction, parties, beneficial_ownership, financial, legal, approvals), display_label (human-readable label), value_text (the extracted value as a plain string), confidence (0.0 to 1.0), source_page (integer if determinable, else null), source_excerpt (the exact clause the value was extracted from, max 120 chars). Use canonical field keys when a concept has a canonical home: purchase price is "transaction.purchase_price" (never "financial.purchase_price"), and transaction value is "transaction.value" (never "financial.deal_value"). Certified outstanding principal must be a numeric monetary balance; never map a facility name, document title, loan identifier, or other prose containing a year/number into an amount field. One document may populate multiple distinct fields, but do not emit duplicate keys for the same concept.`,
         },
         {
           role: 'user',
@@ -4691,7 +4695,12 @@ async function extractTransactionFields(propertyId, docId, text, sectionLabel) {
 
     const parsed = JSON.parse(completion.choices[0].message.content);
     const extracted = Array.isArray(parsed.fields) ? parsed.fields : [];
-    const validExtracted = extracted.filter(f => f?.field_key && f?.field_category && f?.value_text);
+    const validExtracted = extracted.filter((f) => {
+      if (!f?.field_key || !f?.field_category || !f?.value_text) return false;
+      const semantic = inferSemanticDefinition(f.field_key, f.value_text, f.display_label || '');
+      if (semantic?.valueType !== 'amount') return true;
+      return isSemanticallyValidValue(f.value_text, semantic);
+    });
     const rawKeys = validExtracted.map(f => String(f.field_key));
     console.log(`[tx-record] raw ${validExtracted.length} fields for ${propertyId} pack=${schemaKey} keys=${rawKeys.join(',') || 'none'}`);
     if (!validExtracted.length) {

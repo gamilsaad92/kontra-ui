@@ -503,6 +503,20 @@ describe('transaction state recalculation', () => {
     }, [])).toBe(true);
   });
 
+  it('retires the facility-identifier versus principal conflict automatically', () => {
+    expect(isConflictSupportedByActiveEvidence({
+      field_key: 'financial.certified_outstanding_principal',
+      display_label: 'Certified Outstanding Principal',
+      canonical_value: 'RRF 2026-1 Residential Transition Loan Facility',
+      conflicting_value: '18,420',
+      canonical_source_doc_id: 'rrf-facility-document',
+      conflicting_source_doc_id: '06_compliance_documents',
+    }, [
+      { id: 'rrf-facility-document', is_active: true },
+      { id: '06_compliance_documents', is_active: true },
+    ])).toBe(false);
+  });
+
   it('projects a field-only conflict into the canonical unresolved conflict list', () => {
     const state = computeTransactionRecordState([{
       id: 'reporting-period-field',
