@@ -281,7 +281,11 @@ describe('Ask Kontra grounding across Workflow Packs', () => {
         superseded_at: '2026-08-20T00:00:00.000Z',
       },
     ])).toEqual([
-      expect.objectContaining({ label: 'Insurance Policy' }),
+      expect.objectContaining({
+        id: 'policy',
+        label: 'Insurance Policy',
+        section: 'insurance_policy',
+      }),
     ]);
   });
 

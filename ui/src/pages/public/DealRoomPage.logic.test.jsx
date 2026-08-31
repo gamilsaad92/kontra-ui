@@ -333,9 +333,11 @@ describe('coordinator transaction brief logic', () => {
 
   test('targets a missing damage report checklist item and request workflow exactly', () => {
     expect(getDocumentRequestTarget({
+       id: 'damage-report',
       label: 'Damage Assessment Report',
       section: 'damage_assessment_report',
     }, true)).toEqual({
+       itemId: 'damage-report',
       query: 'Damage Assessment Report',
       section: 'damage_assessment_report',
       autoRequest: true,

@@ -598,6 +598,7 @@ function getLiveMissingDocuments(checklist = [], activeAnalyses = []) {
     .filter(item => item?.required && !isDocumentRequirementReceived(item, activeAnalyses))
     .slice(0, 30)
     .map(item => ({
+      id: item.id || item.document_id || item.documentId || null,
       label: item.label || item.name || item.id || 'Required document',
       section: item.section || item.category || null,
     }));

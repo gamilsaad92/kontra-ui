@@ -3402,10 +3402,19 @@ function WhatNeedsAttention({
     ...(Array.isArray(briefing?.criticalPath) ? briefing.criticalPath : []),
     ...(Array.isArray(briefing?.actions) ? briefing.actions : []),
     ...(Array.isArray(briefing?.next_actions) ? briefing.next_actions : []),
-    ...(Array.isArray(briefing?.missingDocuments) ? briefing.missingDocuments.map(document => ({
-      title: `Upload ${typeof document === 'string' ? document : document.label || document.name || 'required document'}`,
-      document: true,
-    })) : []),
+    ...(Array.isArray(briefing?.missingDocuments) ? briefing.missingDocuments.map(document => {
+      if (typeof document === 'string') {
+        return {
+          title: `Upload ${document}`,
+          document: true,
+        };
+      }
+      return {
+        ...document,
+        title: `Upload ${document.label || document.name || 'required document'}`,
+        document: true,
+      };
+    }) : []),
   ], documentStats), recordState, recordFields, canonicalActionKeys)
     .filter(action => !isBorrowerFundsRecordAction(action));
   const seenBriefingActions = new Set();
@@ -3532,7 +3541,11 @@ function WhatNeedsAttention({
         label: 'Open request',
         onClick: () => onOverviewAction?.({
           type: 'document',
-          target: getDocumentRequestTarget({ label: 'Damage Assessment Report' }, true),
+          target: getDocumentRequestTarget({
+            id: 'damage-assessment-report',
+            label: 'Damage Assessment Report',
+            section: 'damage_assessment_report',
+          }, true),
         }),
       };
     }
@@ -3609,7 +3622,11 @@ function WhatNeedsAttention({
           onClick: () => onOverviewAction?.({
             type: 'document',
             target: getDocumentRequestTarget(
-              { ...item, label: 'Damage Assessment Report' },
+                {
+                  ...item,
+                  label: 'Damage Assessment Report',
+                  section: item.section || 'damage_assessment_report',
+                },
               true,
             ),
           }),
@@ -5506,6 +5523,7 @@ function isDamageAssessmentDocumentText(value) {
 
 function getDocumentRequestTarget(item = {}, autoRequest = false) {
   return {
+    itemId: item.id || item.document_id || item.documentId || null,
     query: item.label || item.name || item.title || item.section || '',
     section: item.section || item.category || '',
     autoRequest: Boolean(autoRequest),

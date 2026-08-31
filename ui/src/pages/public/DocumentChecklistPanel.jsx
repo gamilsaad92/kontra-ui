@@ -631,6 +631,9 @@ export default function DocumentChecklistPanel({
     if (!requestTarget || !Array.isArray(items) || items.length === 0) return;
     const query = String(requestTarget.query || requestTarget.label || '').trim().toLowerCase();
     const targetSection = String(requestTarget.section || '').trim().toLowerCase();
+    const targetItemId = String(
+      requestTarget.itemId || requestTarget.id || requestTarget.document_id || requestTarget.documentId || '',
+    ).trim();
     const normalize = value => String(value || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, ' ').replace(/\s+/g, ' ');
     const normalizedQuery = normalize(query);
     const queryTerms = normalizedQuery
@@ -642,6 +645,7 @@ export default function DocumentChecklistPanel({
         'document', 'documents', 'file', 'files', 'please',
       ]).has(term));
     const match = items.find(item => {
+      if (targetItemId && String(item.id || '').trim() === targetItemId) return true;
       const section = String(item.section || '').trim().toLowerCase();
       if (targetSection && section === targetSection) return true;
       const label = normalize(item.label || item.name);
