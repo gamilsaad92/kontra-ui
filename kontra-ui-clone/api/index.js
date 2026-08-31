@@ -11671,19 +11671,31 @@ app.get('/api/public/deal-room/:propertyId/brain/facts', async (req, res) => {
   const access = await getRoomAccessContext(req, propertyId, req.body?.ownerWriteToken);
   if (access.mode === 'anonymous') return accessDenied(res, 'A verified deal-room invitation or owner access token is required');
   try {
-    const [transactionState, { count: docCount }] = await Promise.all([
+    const [transactionState, analysesResult] = await Promise.all([
       readTransactionState(propertyId),
       supabase.from('deal_analyses')
-        .select('id', { count: 'exact', head: true })
+        .select('id, section, filename, analysis, processing_status, created_at, is_active, superseded_at')
         .eq('property_id', propertyId),
     ]);
+    let analysisRows = analysesResult.data || [];
+    if (analysesResult.error) {
+      // Keep the facts endpoint usable while older workspaces are upgraded;
+      // the legacy projection still deduplicates by section and timestamp.
+      const legacyResult = await supabase.from('deal_analyses')
+        .select('id, section, filename, analysis, created_at')
+        .eq('property_id', propertyId);
+      if (legacyResult.error) throw legacyResult.error;
+      analysisRows = legacyResult.data || [];
+    }
+    const activeAnalyses = selectActiveDocumentVersions(analysisRows);
+    const docCount = activeAnalyses.length;
     const fields = transactionState.recordState.fields || [];
 
     const conflicts   = fields.filter(f => f.status === 'conflict' || f.attention === 'source_changed');
     const needsReview = fields.filter(f => f.status === 'awaiting' && f.value !== null && f.value !== undefined);
 
     // Return null only when truly nothing has been uploaded or extracted yet
-    if ((docCount || 0) === 0 && (fields || []).length === 0) {
+    if (docCount === 0 && (fields || []).length === 0) {
       return res.json(null);
     }
 
@@ -11700,7 +11712,17 @@ app.get('/api/public/deal-room/:propertyId/brain/facts', async (req, res) => {
       actions,
       risks,
       open_items: [],
-      snapshot: { document_count: docCount || 0, fact_count: (fields || []).length },
+      snapshot: {
+        document_count: docCount,
+        active_document_count: docCount,
+        fact_count: (fields || []).length,
+      },
+      active_documents: activeAnalyses.map(analysis => ({
+        id: analysis.id,
+        section: analysis.section,
+        filename: analysis.filename,
+        processing_status: analysis.processing_status || 'complete',
+      })),
       record_state: transactionState.recordState,
       // Surface the most important known values for the Overview snapshot row
       known_values: Object.fromEntries(

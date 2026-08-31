@@ -633,7 +633,14 @@ export default function DocumentChecklistPanel({
     const targetSection = String(requestTarget.section || '').trim().toLowerCase();
     const normalize = value => String(value || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, ' ').replace(/\s+/g, ' ');
     const normalizedQuery = normalize(query);
-    const queryTerms = normalizedQuery.split(' ').filter(term => term.length > 2);
+    const queryTerms = normalizedQuery
+      .split(' ')
+      .filter(term => term.length > 2)
+      .filter(term => !new Set([
+        'request', 'requested', 'upload', 'uploaded', 'provide', 'obtain',
+        'collect', 'missing', 'needed', 'required', 'review', 'open',
+        'document', 'documents', 'file', 'files', 'please',
+      ]).has(term));
     const match = items.find(item => {
       const section = String(item.section || '').trim().toLowerCase();
       if (targetSection && section === targetSection) return true;

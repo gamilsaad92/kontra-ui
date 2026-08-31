@@ -3230,9 +3230,10 @@ function WhatNeedsAttention({
    const schemaDocuments = typeof pack?.getDocumentSchema === 'function'
     ? pack.getDocumentSchema(property?.property_type || property?.type)
     : (Array.isArray(pack?.documentSchema) ? pack.documentSchema : []);
-   const documentStats = getDocumentRequirementStats(checklistItems, pack, property, analyses);
+    const documentStats = getDocumentRequirementStats(checklistItems, pack, property, analyses);
+    const liveAnalyses = documentStats.liveAnalyses;
    const missingDocuments = documentStats.missingDocuments;
-   const documentReviewItems = analyses
+    const documentReviewItems = liveAnalyses
      .filter(hasDocumentReviewFinding)
      .filter(analysis => {
        const section = String(analysis.section || '').toLowerCase();
@@ -3240,7 +3241,9 @@ function WhatNeedsAttention({
          String(item.section || '').toLowerCase() === section
        ) || documentStats.receivedDocuments.some(item =>
          String(item.section || '').toLowerCase() === section
-       );
+        ) || documentStats.receivedDocuments.some(item =>
+          documentRequirementMatchesAnalysis(item, analysis)
+        );
      })
      .slice(0, 4);
 
@@ -3274,7 +3277,16 @@ function WhatNeedsAttention({
       title: `${analysis.filename || analysis.section || 'Uploaded document'} needs review`,
       reason: result.summary || result.review_reason || result.reviewReason
         || 'AI found an item that needs coordinator review.',
-      actions: [{ label: 'Review document', onClick: () => onTabChange?.('documents') }],
+      actions: [{
+        label: 'Review document',
+        onClick: () => onOverviewAction?.({
+          type: 'document',
+          target: getDocumentRequestTarget({
+            label: analysis.filename || analysis.section || 'Uploaded document',
+            section: analysis.section,
+          }),
+        }),
+      }],
       sourcePriority: 1,
     });
   });
@@ -3410,13 +3422,17 @@ function WhatNeedsAttention({
       ? { field_key: item.field_key || item.fieldKey }
       : null;
     const matchedRecordField = findCanonicalRecordFieldForAction(item, recordState, recordFields);
-    const routeItem = structuredField || item;
+    const matchedFieldKey = matchedRecordField
+      ? [...getRecordFieldIdentitySet(matchedRecordField)][0]
+      : '';
+    const routeItem = matchedRecordField
+      ? { field_key: matchedFieldKey, key: matchedFieldKey, label: matchedRecordField.label || matchedRecordField.display_label }
+      : structuredField || item;
     const isCritical = item?.taskId || item?.chainStep || briefing?.criticalPath?.includes(item);
     items.push({
       id: `action-${i}`,
-      fieldKey: matchedRecordField
-        ? [...getRecordFieldIdentitySet(matchedRecordField)][0]
-        : normalizeAttentionFieldKey(item?.field_key || item?.fieldKey),
+      fieldKey: matchedFieldKey || normalizeAttentionFieldKey(item?.field_key || item?.fieldKey),
+      field: matchedRecordField || undefined,
       urgency: isCritical ? 'high' : i === 0 ? 'medium' : 'low',
       title: normalizedText,
       reason: typeof item === 'object' ? (item.reason || item.note || item.why || '') : '',
@@ -3511,12 +3527,12 @@ function WhatNeedsAttention({
 
   function routeForText(text) {
     const value = String(text || '').toLowerCase();
-    if (isDamageAssessmentRequestText(value)) {
+    if (isDamageAssessmentDocumentText(value)) {
       return {
         label: 'Open request',
         onClick: () => onOverviewAction?.({
           type: 'document',
-          target: { query: 'damage assessment report', autoRequest: true },
+          target: getDocumentRequestTarget({ label: 'Damage Assessment Report' }, true),
         }),
       };
     }
@@ -3531,7 +3547,13 @@ function WhatNeedsAttention({
       };
     }
     if (/(document|upload|file|nda|loi|agreement|checklist|esa|report|certificate|binder|commitment|rent roll|inspection)/.test(value)) {
-      return { label: 'Open Documents', onClick: () => onOverviewAction?.({ type: 'tab', tab: 'documents' }) };
+      return {
+        label: 'Open document',
+        onClick: () => onOverviewAction?.({
+          type: 'document',
+          target: getDocumentRequestTarget({ label: text }, false),
+        }),
+      };
     }
     if (/(invite|participant|buyer|seller|party|counsel|lender|advisor)/.test(value)) {
       return { label: 'Open People', onClick: () => onOverviewAction?.({ type: 'tab', tab: 'people' }) };
@@ -3581,12 +3603,29 @@ function WhatNeedsAttention({
     }
     if (item?.document || item?.documentId || item?.document_id) {
       const documentText = item?.title || item?.item || item?.text || item?.action || item?.label;
-      if (isDamageAssessmentRequestText(documentText)) return routeForText(documentText);
+      if (isDamageAssessmentDocumentText(documentText)) {
+        return {
+          label: 'Open request',
+          onClick: () => onOverviewAction?.({
+            type: 'document',
+            target: getDocumentRequestTarget(
+              { ...item, label: 'Damage Assessment Report' },
+              true,
+            ),
+          }),
+        };
+      }
       const assignedRoles = item.assignedTo || item.assigned_to || [];
       const coordinatorOwnsDocument = assignedRoles.some(role =>
         isRoleSatisfiedByWorkspaceOwner(roleMeta[role], { pack, isCoordinator })
       );
-      return { label: coordinatorOwnsDocument ? 'Upload' : 'Request', onClick: () => onOverviewAction?.({ type: 'tab', tab: 'documents' }) };
+      return {
+        label: coordinatorOwnsDocument ? 'Upload' : 'Request',
+        onClick: () => onOverviewAction?.({
+          type: 'document',
+          target: getDocumentRequestTarget(item, false),
+        }),
+      };
     }
     return routeForText(item?.title || item?.item || item?.text || item?.action);
   }
@@ -5295,21 +5334,92 @@ function getCoordinatorRecordFacts(schemaKey, property, recordFields = [], recor
   }));
 }
 
+function normalizeDocumentRequirementText(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .replace(/\s+/g, ' ');
+}
+
+function selectLiveDocumentAnalyses(analyses = []) {
+  const rows = Array.isArray(analyses) ? analyses.filter(Boolean) : [];
+  const hasExplicitVersionState = rows.some(analysis =>
+    Object.prototype.hasOwnProperty.call(analysis, 'is_active')
+      || Object.prototype.hasOwnProperty.call(analysis, 'superseded_at')
+  );
+  const latestBySection = new Map();
+  rows.forEach(analysis => {
+    if (analysis.section === 'cross_document_verification') return;
+    if (analysis.is_active === false || analysis.superseded_at) return;
+    const current = latestBySection.get(analysis.section);
+    const currentTime = new Date(current?.created_at || 0).getTime();
+    const nextTime = new Date(analysis.created_at || 0).getTime();
+    if (!current || nextTime >= currentTime) latestBySection.set(analysis.section, analysis);
+  });
+  // Legacy API responses can omit version columns. They still represent the
+  // live projection when they contain one row per section.
+  return hasExplicitVersionState ? [...latestBySection.values()] : [...latestBySection.values()];
+}
+
+function documentRequirementMatchesAnalysis(requirement, analysis) {
+  const requirementSection = normalizeDocumentRequirementText(
+    requirement?.section || requirement?.category,
+  );
+  const analysisSection = normalizeDocumentRequirementText(analysis?.section);
+  if (requirementSection && analysisSection && requirementSection === analysisSection) return true;
+
+  const requirementLabels = [
+    requirement?.label,
+    requirement?.name,
+    requirement?.document_type,
+    requirement?.documentType,
+  ].map(normalizeDocumentRequirementText).filter(Boolean);
+  const analysisLabels = [
+    analysis?.filename,
+    analysis?.document_type,
+    analysis?.documentType,
+    analysis?.analysis?.document_type,
+    analysis?.analysis?.documentType,
+    analysis?.analysis?.title,
+  ].map(normalizeDocumentRequirementText).filter(Boolean);
+  return requirementLabels.some(label =>
+    analysisLabels.some(candidate =>
+      label === candidate
+        || (label.length > 2 && candidate.includes(label))
+        || (candidate.length > 2 && label.includes(candidate)),
+    )
+  );
+}
+
+function isDocumentRequirementReceived(item, liveAnalyses = []) {
+  const status = String(item?.status || '').trim().toLowerCase().replace(/[\s-]+/g, '_');
+  if (['not_applicable', 'na', 'n_a'].includes(status)) return false;
+  if (item?.uploaded === true || item?.uploaded === 'true') return true;
+  if (DONE_DOCUMENT_STATUSES.has(status)
+    || ['processing', 'retrying', 'analyzing', 'received'].includes(status)) return true;
+  return liveAnalyses.some(analysis => documentRequirementMatchesAnalysis(item, analysis));
+}
+
 function getDocumentRequirementStats(checklistItems = [], pack, property, analyses = []) {
+  const liveAnalyses = selectLiveDocumentAnalyses(analyses);
   const sourceDocuments = checklistItems.length > 0
     ? checklistItems
     : (typeof pack?.getDocumentSchema === 'function'
       ? pack.getDocumentSchema(property?.property_type || property?.type)
       : (Array.isArray(pack?.documentSchema) ? pack.documentSchema : []));
-  const requiredDocuments = sourceDocuments.filter(item => item.required);
+  const requiredDocuments = sourceDocuments.filter(item =>
+    item.required
+      && !['not_applicable', 'na', 'n_a'].includes(
+        String(item.status || '').trim().toLowerCase().replace(/[\s-]+/g, '_'),
+      )
+  );
   const receivedDocuments = requiredDocuments.filter(item =>
-    DONE_DOCUMENT_STATUSES.has(String(item.status || '').toLowerCase())
-      || item.uploaded === true
-      || analyses.some(analysis => String(analysis.section || '').toLowerCase() === String(item.section || '').toLowerCase())
+    isDocumentRequirementReceived(item, liveAnalyses)
   );
   const reviewStatuses = new Set(['review', 'needs_review', 'pending_review', 'needs_attention', 'attention']);
   const reviewSections = new Set(
-    analyses
+    liveAnalyses
       .filter(hasDocumentReviewFinding)
       .map(analysis => String(analysis.section || '').toLowerCase()),
   );
@@ -5327,6 +5437,7 @@ function getDocumentRequirementStats(checklistItems = [], pack, property, analys
     receivedDocuments,
     reviewDocuments,
     missingDocuments,
+    liveAnalyses,
   };
 }
 
@@ -5387,6 +5498,18 @@ function isDamageAssessmentRequestText(value) {
   const text = normalizeAttentionText(value);
   return /\b(?:request|obtain|collect|ask\s+for|provide)\b.*\b(?:damage\s+assessment|assessment\s+report)\b/.test(text)
     || /\b(?:damage\s+assessment|assessment\s+report)\b.*\b(?:request|obtain|collect|ask\s+for|provide)\b/.test(text);
+}
+
+function isDamageAssessmentDocumentText(value) {
+  return /\bdamage\s+assessment(?:\s+report)?\b/.test(normalizeAttentionText(value));
+}
+
+function getDocumentRequestTarget(item = {}, autoRequest = false) {
+  return {
+    query: item.label || item.name || item.title || item.section || '',
+    section: item.section || item.category || '',
+    autoRequest: Boolean(autoRequest),
+  };
 }
 
 function getRecordFieldIdentitySet(field) {
@@ -5705,6 +5828,7 @@ function getNextMilestoneBlockers({
     key: `next-doc-${item.id || item.section}`,
     text: `${item.label || item.name || 'Required document'} is needed before ${nextStage.label}`,
     detail: 'This requirement is tied to the next lifecycle milestone.',
+    documentItem: item,
     participantKey: (Array.isArray(item.assignedTo || item.assigned_to)
       ? (item.assignedTo || item.assigned_to)
       : [item.assignedTo || item.assigned_to].filter(Boolean))[0],
@@ -6054,7 +6178,18 @@ function TransactionBrief({
        tone: 'amber',
        text: `Request ${item.label || item.name || 'required document'}`,
        detail: 'This required document has not been received yet.',
-       action: { label: 'Open Documents', onClick: () => onTabChange?.('documents') },
+        action: {
+          label: isDamageAssessmentDocumentText(item.label || item.name)
+            ? 'Open request'
+            : 'Open document',
+          onClick: () => onOverviewAction?.({
+            type: 'document',
+            target: getDocumentRequestTarget(
+              item,
+              isDamageAssessmentDocumentText(item.label || item.name),
+            ),
+          }),
+        },
      })),
   ].slice(0, 5);
 
@@ -6272,7 +6407,17 @@ function TransactionBrief({
                 <span className="min-w-0 flex-1">{blocker.text}</span>
                  <button
                   type="button"
-                  onClick={() => onTabChange?.(blocker.participantKey ? 'people' : 'documents')}
+                   onClick={() => blocker.participantKey
+                     ? onTabChange?.('people')
+                     : onOverviewAction?.({
+                       type: 'document',
+                       target: getDocumentRequestTarget(
+                         blocker.documentItem || { label: blocker.text },
+                         isDamageAssessmentDocumentText(
+                           blocker.documentItem?.label || blocker.text,
+                         ),
+                       ),
+                     })}
                    className="relative z-10 cursor-pointer shrink-0 text-[10px] font-bold underline underline-offset-2"
                 >
                   {blocker.participantKey ? 'Open People' : 'Review'}
@@ -6369,7 +6514,9 @@ export {
   getNextMilestoneBlockers,
   getOpenIssueCount,
   hasDocumentReviewFinding,
+  selectLiveDocumentAnalyses,
   getDocumentRequirementStats,
+  getDocumentRequestTarget,
   filterLiveDocumentActions,
   filterStaleRecordActions,
   actionTextMentionsRecordField,
@@ -8316,17 +8463,18 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
     ));
   }, []);
 
-  const processingDocuments = analyses.filter(analysis =>
+  const liveAnalyses = selectLiveDocumentAnalyses(analyses);
+  const processingDocuments = liveAnalyses.filter(analysis =>
     ['uploaded', 'processing', 'retrying'].includes(analysis.processing_status)
       || analysis.analysis?.pending === true,
   );
-  const failedDocuments = analyses.filter(analysis =>
+  const failedDocuments = liveAnalyses.filter(analysis =>
     analysis.processing_status === 'failed',
   );
   const replacementDocuments = processingDocuments.filter(analysis =>
     analysis.is_replacement === true || (analysis.versionHistory || []).length > 1,
   );
-  const processedImpact = analyses
+  const processedImpact = liveAnalyses
     .filter(analysis => {
       const impact = analysis.analysis?.processing_impact;
       return impact && (Number(impact.overallDelta || 0) !== 0 || Number(impact.confirmedDelta || 0) > 0);
@@ -8369,9 +8517,9 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
   const effectiveStageIndex = Math.max(0, effectiveStages.findIndex(stage => stage.key === currentStageKey));
   const nextLifecycleStage = effectiveStages[effectiveStageIndex + 1] || null;
   const milestoneEvidenceSections = getLifecycleEvidenceSections(currentStage);
-  const documentStats = getDocumentRequirementStats(checklistItems, pack, property, analyses);
+  const documentStats = getDocumentRequirementStats(checklistItems, pack, property, liveAnalyses);
   const supportingDocumentPresent = milestoneEvidenceSections
-    ? analyses.some(analysis => milestoneEvidenceSections.includes(analysis.section))
+    ? liveAnalyses.some(analysis => milestoneEvidenceSections.includes(analysis.section))
       || (documentStats.requiredDocuments.length > 0 && documentStats.missingDocuments.length === 0)
     : null;
 
@@ -8635,7 +8783,7 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
             briefing={briefing}
             coordination={coordination}
             checklistItems={checklistItems}
-            analyses={analyses}
+             analyses={liveAnalyses}
             recordFields={recordFields}
             recordState={canonicalRecordState}
             conflicts={readiness?.conflicts || canonicalRecordState?.unresolvedConflicts || []}
@@ -8677,7 +8825,7 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
 
           <WhatNeedsAttention
             briefing={briefing}
-             analyses={analyses}
+             analyses={liveAnalyses}
             recordFields={recordFields}
             recordState={canonicalRecordState}
             conflicts={readiness?.conflicts || canonicalRecordState?.unresolvedConflicts || []}
@@ -8832,7 +8980,7 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
       <TransactionConflictResolver
         propertyId={propertyId}
         conflict={selectedConflict}
-        analyses={analyses}
+             analyses={liveAnalyses}
         onResolved={load}
         onClose={() => setSelectedConflict(null)}
       />

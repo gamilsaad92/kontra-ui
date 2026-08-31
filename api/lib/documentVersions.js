@@ -10,6 +10,7 @@
  */
 function selectActiveDocumentVersions(analyses = []) {
   const activeBySection = new Map();
+  const fallbackBySection = new Map();
   const hasExplicitVersionState = (analyses || []).some(analysis =>
     analysis && Object.prototype.hasOwnProperty.call(analysis, 'is_active')
   );
@@ -19,8 +20,18 @@ function selectActiveDocumentVersions(analyses = []) {
     if (!isActiveDocumentVersion(analysis)) continue;
     // During rollout, some databases expose the processing columns but not
     // the version columns. A failed or still-pending row must not hide the
-    // previously successful version in that legacy projection.
-    if (!hasExplicitVersionState && !isSuccessfulDocumentVersion(analysis)) continue;
+    // previously successful version in that legacy projection. If there is no
+    // prior successful version, however, the upload is still live evidence
+    // and must remain visible as received rather than appearing missing.
+    if (!hasExplicitVersionState && !isSuccessfulDocumentVersion(analysis)) {
+      const existingFallback = fallbackBySection.get(analysis.section);
+      const currentTime = new Date(analysis.created_at || 0).getTime();
+      const existingTime = new Date(existingFallback?.created_at || 0).getTime();
+      if (!existingFallback || currentTime >= existingTime) {
+        fallbackBySection.set(analysis.section, analysis);
+      }
+      continue;
+    }
 
     const existing = activeBySection.get(analysis.section);
     const currentTime = new Date(analysis.created_at || 0).getTime();
@@ -30,6 +41,9 @@ function selectActiveDocumentVersions(analyses = []) {
     }
   }
 
+  for (const [section, analysis] of fallbackBySection.entries()) {
+    if (!activeBySection.has(section)) activeBySection.set(section, analysis);
+  }
   return [...activeBySection.values()];
 }
 

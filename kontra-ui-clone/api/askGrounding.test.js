@@ -30,7 +30,11 @@ jest.mock('openai', () => jest.fn().mockImplementation(() => ({
 
 process.env.OPENAI_API_KEY = 'ask-grounding-test-key';
 
-const { askQuestion, buildGroundedContext } = require('./lib/operationsManager');
+const {
+  askQuestion,
+  buildGroundedContext,
+  getLiveMissingDocuments,
+} = require('./lib/operationsManager');
 
 const PACKS = Object.keys(workflowStages).filter(key => !key.startsWith('_'));
 const QUESTIONS = [
@@ -238,5 +242,105 @@ describe('Ask Kontra grounding across Workflow Packs', () => {
 
     expect(context.readiness).toEqual(readiness);
     expect(context.transactionContext.transaction.digitalAssetEnabled).toBe(false);
+  });
+
+  test('does not call an uploaded or processing active document missing', () => {
+    const checklist = [
+      {
+        id: 'damage-report',
+        section: 'damage_assessment_report',
+        label: 'Damage Assessment Report',
+        required: true,
+        status: 'missing',
+        uploaded: false,
+      },
+      {
+        id: 'policy',
+        section: 'insurance_policy',
+        label: 'Insurance Policy',
+        required: true,
+        status: 'missing',
+        uploaded: false,
+      },
+    ];
+
+    expect(getLiveMissingDocuments(checklist, [
+      {
+        id: 'damage-upload',
+        section: 'damage_assessment_report',
+        filename: 'damage-report.pdf',
+        processing_status: 'processing',
+        is_active: true,
+      },
+      {
+        id: 'old-policy',
+        section: 'insurance_policy',
+        filename: 'old-policy.pdf',
+        processing_status: 'complete',
+        is_active: false,
+        superseded_at: '2026-08-20T00:00:00.000Z',
+      },
+    ])).toEqual([
+      expect.objectContaining({ label: 'Insurance Policy' }),
+    ]);
+  });
+
+  test('uses the live transaction checklist plus active analyses for briefing grounding', async () => {
+    const recordState = {
+      schemaKey: 'cre_acquisition',
+      fields: [{ key: 'transaction.type', label: 'Transaction type', value: 'acquisition', status: 'confirmed' }],
+      requiredFields: [],
+      requiredCount: 0,
+      confirmedCount: 0,
+      awaitingRequiredCount: 0,
+      conflictRequiredCount: 0,
+      notApplicableCount: 0,
+    };
+    mockReadTransactionState.mockResolvedValue({
+      packId: 'cre_acquisition',
+      room: {
+        property_name: 'Live evidence room',
+        workflow_pack_id: 'cre_acquisition',
+        deal_type: 'acquisition',
+        checklist_items: [{
+          section: 'purchase_agreement',
+          label: 'Purchase Agreement',
+          required: true,
+          status: 'missing',
+          uploaded: false,
+        }],
+      },
+      recordState,
+      readiness: {},
+    });
+    mockListTasksForRoom.mockResolvedValue([]);
+    mockSupabaseFrom.mockImplementation(table => {
+      const result = table === 'deal_analyses'
+        ? [{
+            id: 'purchase-upload',
+            section: 'purchase_agreement',
+            filename: 'purchase-agreement.pdf',
+            analysis: { pending: true },
+            processing_status: 'uploaded',
+            created_at: '2026-08-30T00:00:00.000Z',
+            is_active: true,
+          }]
+        : completedParticipants('cre_acquisition');
+      const chain = {
+        select: () => chain,
+        eq: () => chain,
+        order: () => chain,
+        limit: () => chain,
+        then: resolve => resolve({ data: result, error: null }),
+      };
+      return chain;
+    });
+
+    const context = await buildGroundedContext('live-evidence-room');
+    expect(context.missingDocuments).toEqual([]);
+    expect(context.documentFindings).toEqual([
+      expect.objectContaining({ filename: 'purchase-agreement.pdf' }),
+    ]);
+    expect(context.transactionContext.evidence.missingDocuments).toEqual([]);
   });
 });

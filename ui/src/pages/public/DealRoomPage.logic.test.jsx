@@ -8,6 +8,7 @@ const {
   getOpenIssueCount,
   hasDocumentReviewFinding,
   getDocumentRequirementStats,
+  getDocumentRequestTarget,
   filterLiveDocumentActions,
   filterStaleRecordActions,
   actionTextMentionsRecordField,
@@ -293,6 +294,52 @@ describe('coordinator transaction brief logic', () => {
     expect(isDamageAssessmentRequestText('Request damage assessment report')).toBe(true);
     expect(isDamageAssessmentRequestText('Please obtain the hail damage assessment')).toBe(true);
     expect(isDamageAssessmentRequestText('Upload the purchase agreement')).toBe(false);
+  });
+
+  test('keeps a newly uploaded active replacement received while it processes', () => {
+    const item = {
+      id: 'damage-report',
+      section: 'damage_assessment_report',
+      label: 'Damage Assessment Report',
+      required: true,
+      status: 'missing',
+      uploaded: false,
+    };
+    const stats = getDocumentRequirementStats([item], null, {}, [
+      {
+        id: 'old-report',
+        section: item.section,
+        filename: 'old-report.pdf',
+        created_at: '2026-08-29T00:00:00.000Z',
+        processing_status: 'complete',
+        is_active: false,
+        superseded_at: '2026-08-30T00:00:00.000Z',
+      },
+      {
+        id: 'new-report',
+        section: item.section,
+        filename: 'new-report.pdf',
+        created_at: '2026-08-30T00:00:00.000Z',
+        processing_status: 'processing',
+        analysis: { pending: true },
+        is_active: true,
+      },
+    ]);
+
+    expect(stats.receivedDocuments).toEqual([item]);
+    expect(stats.missingDocuments).toEqual([]);
+    expect(stats.liveAnalyses.map(analysis => analysis.id)).toEqual(['new-report']);
+  });
+
+  test('targets a missing damage report checklist item and request workflow exactly', () => {
+    expect(getDocumentRequestTarget({
+      label: 'Damage Assessment Report',
+      section: 'damage_assessment_report',
+    }, true)).toEqual({
+      query: 'Damage Assessment Report',
+      section: 'damage_assessment_report',
+      autoRequest: true,
+    });
   });
 
   test('keeps Other available as an explicit custom transaction type', () => {

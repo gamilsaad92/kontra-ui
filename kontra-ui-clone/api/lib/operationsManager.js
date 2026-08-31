@@ -270,7 +270,7 @@ async function buildGroundedContext(propertyId) {
     listTasksForRoom(propertyId),
     supabase
       .from('deal_analyses')
-      .select('id, section, filename, analysis, created_at, is_active, superseded_at')
+      .select('id, section, filename, analysis, created_at, processing_status, is_active, superseded_at')
       .eq('property_id', propertyId)
       .order('created_at', { ascending: false })
       .limit(30),
@@ -310,14 +310,7 @@ async function buildGroundedContext(propertyId) {
 
   const chainStatus = computeChainStatus(packId, tasks.map(t => ({ ...t, ownerRole: t.owner_role })));
   const checklist = Array.isArray(room?.checklist_items) ? room.checklist_items : [];
-  const doneStatuses = new Set(['uploaded', 'approved', 'ai_complete']);
-  const missingDocuments = checklist
-    .filter(item => item.required && !doneStatuses.has(item.status) && !item.uploaded)
-    .slice(0, 30)
-    .map(item => ({
-      label: item.label || item.name || item.id || 'Required document',
-      section: item.section || item.category || null,
-    }));
+  const missingDocuments = getLiveMissingDocuments(checklist, activeAnalyses);
   const populatedRecordFields = (recordState.fields || [])
     .filter(field => field.value !== null && field.value !== undefined
       && String(field.value).trim()
@@ -336,10 +329,13 @@ async function buildGroundedContext(propertyId) {
     .map(item => {
       const analysis = item.analysis && typeof item.analysis === 'object' ? item.analysis : {};
       return {
+        id: item.id || null,
         section: item.section || null,
         filename: item.filename || null,
         summary: String(analysis.summary || analysis.overview || analysis.text || '').slice(0, 1000),
         confidence: analysis.confidence ?? null,
+        processingStatus: item.processing_status || (analysis.pending === true ? 'processing' : 'complete'),
+        active: true,
         createdAt: item.created_at || null,
       };
     })
@@ -415,6 +411,16 @@ async function buildGroundedContext(propertyId) {
     },
     evidence: {
       documents: documentFindings,
+      activeDocumentState: {
+        count: activeAnalyses.length,
+        documents: activeAnalyses.map(item => ({
+          id: item.id || null,
+          section: item.section || null,
+          filename: item.filename || null,
+          processingStatus: item.processing_status || (item.analysis?.pending === true ? 'processing' : 'complete'),
+        })),
+        missingRequirements: missingDocuments,
+      },
       missingDocuments,
       conflicts,
     },
@@ -487,6 +493,7 @@ function contextToPrompt(ctx) {
       open_tasks: ctx.openTasks,
       recently_resolved_tasks: ctx.recentlyResolved,
       missing_documents: ctx.missingDocuments,
+      active_document_state: ctx.transactionContext.evidence.activeDocumentState,
       transaction_record_facts: ctx.recordFacts,
       document_findings: ctx.documentFindings,
       transaction_record_conflicts: ctx.conflicts,
@@ -519,6 +526,7 @@ function askContextToPrompt(ctx) {
         })),
       recently_resolved_tasks: ctx.recentlyResolved,
       missing_documents: ctx.missingDocuments,
+      active_document_state: ctx.transactionContext.evidence.activeDocumentState,
       transaction_record_facts: ctx.recordFacts,
       document_findings: ctx.documentFindings,
       transaction_record_conflicts: ctx.conflicts,
@@ -527,10 +535,81 @@ function askContextToPrompt(ctx) {
     2
   );
 }
+
+// A checklist row describes a requirement, while deal_analyses describes the
+// evidence that has actually arrived. A requirement is not missing merely
+// because its latest analysis is still being processed.
+const DOCUMENT_RECEIVED_STATUSES = new Set([
+  'uploaded', 'processing', 'retrying', 'analyzing', 'analyzed',
+  'complete', 'completed', 'approved', 'ai_complete', 'received',
+]);
+
+function normalizedDocumentText(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .replace(/\s+/g, ' ');
+}
+
+function documentRequirementMatchesAnalysis(requirement, analysis) {
+  const requirementSection = normalizedDocumentText(requirement?.section || requirement?.category);
+  const analysisSection = normalizedDocumentText(analysis?.section);
+  if (requirementSection && analysisSection && requirementSection === analysisSection) return true;
+
+  const requirementLabels = [
+    requirement?.label,
+    requirement?.name,
+    requirement?.document_type,
+    requirement?.documentType,
+  ].map(normalizedDocumentText).filter(Boolean);
+  const analysisLabels = [
+    analysis?.filename,
+    analysis?.document_type,
+    analysis?.documentType,
+    analysis?.analysis?.document_type,
+    analysis?.analysis?.documentType,
+    analysis?.analysis?.title,
+  ].map(normalizedDocumentText).filter(Boolean);
+  return requirementLabels.some(label =>
+    analysisLabels.some(candidate =>
+      label === candidate
+        || (label.length > 2 && candidate.includes(label))
+        || (candidate.length > 2 && label.includes(candidate)),
+    )
+  );
+}
+
+function isDocumentRequirementReceived(requirement, activeAnalyses = []) {
+  const status = String(requirement?.status || '').trim().toLowerCase().replace(/[\s-]+/g, '_');
+  if (['not_applicable', 'na', 'n_a'].includes(status)) return false;
+  if (requirement?.uploaded === true || requirement?.uploaded === 'true') return true;
+  if (DOCUMENT_RECEIVED_STATUSES.has(status)) return true;
+  return activeAnalyses.some(analysis =>
+    analysis
+      && analysis.is_active !== false
+      && !analysis.superseded_at
+      && documentRequirementMatchesAnalysis(requirement, analysis)
+  );
+}
+
+function getLiveMissingDocuments(checklist = [], activeAnalyses = []) {
+  return (Array.isArray(checklist) ? checklist : [])
+    .filter(item => item?.required && !isDocumentRequirementReceived(item, activeAnalyses))
+    .slice(0, 30)
+    .map(item => ({
+      label: item.label || item.name || item.id || 'Required document',
+      section: item.section || item.category || null,
+    }));
+}
+
 const GROUNDING_RULES = `You are Kontra AI Copilot inside a specific transaction deal room (which may be CRE acquisition, business acquisition, or fundraising — follow the deal context provided).
-You reason ONLY from the JSON context provided (transaction_context, closing_chain, open_tasks, recently_resolved_tasks, deal, missing_documents, transaction_record_facts, document_findings). Never invent
+You reason ONLY from the JSON context provided (transaction_context, closing_chain, open_tasks, recently_resolved_tasks, deal, missing_documents, active_document_state, transaction_record_facts, document_findings). Never invent
 facts, people, dates, or documents not present in that context. If the context does not contain
 enough information to answer, say so plainly instead of guessing.
+Treat active_document_state as the source of truth for document receipt: an active uploaded,
+processing, retrying, or completed document has been received and must not be described as missing.
+Only list a document as missing when it appears in missing_documents.
 
 Answer as a quiet transaction-workspace guide: explain findings, summarize what is missing, identify the next action, and give concise daily briefs when asked. Cite the specific task, document finding, record fact, or checklist item behind every claim.
 This is AI-prepared operational guidance, not legal, regulatory, tax, investment, or settlement advice. Never claim that Kontra verified a legal or regulatory requirement, determined an exemption, approved an offering, or established eligibility. Use preparation, coordination, professional-review, and external-provider-handoff language instead.
@@ -987,6 +1066,8 @@ module.exports = {
   buildGroundedContext,
   buildPackLifecycle,
   buildGroundedBlockers,
+  getLiveMissingDocuments,
+  isDocumentRequirementReceived,
   askContextToPrompt,
   getBriefing,
   getStandup,
