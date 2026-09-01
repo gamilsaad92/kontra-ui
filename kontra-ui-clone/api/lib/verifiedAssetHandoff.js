@@ -1,6 +1,7 @@
 'use strict';
 
 const crypto = require('crypto');
+const { buildVerifiedAssetSnapshot } = require('./verifiedAssetSnapshot');
 
 const HANDOFF_SCHEMA = 'kontra.verified-asset-handoff';
 const HANDOFF_VERSION = '1.0.0';
@@ -88,14 +89,38 @@ function buildVerifiedAssetHandoff({
     if (!approvalsByField.has(id)) approvalsByField.set(id, []);
     approvalsByField.get(id).push(approval);
   }
-  const serialized = fields.map(field => serializeField(field, approvalsByField));
+  const foundationSnapshot = buildVerifiedAssetSnapshot({
+    propertyId,
+    room: { settlement_mode: closingContext.settlement_mode || null },
+    recordState,
+    approvals,
+    confirmationHistory: history,
+    conflicts,
+    sourceStateAt,
+  });
+  const foundationFields = foundationSnapshot.created_from?.transaction_record?.canonical_fields || [];
+  const serialized = fields.map(field => {
+    const identity = field?.fieldId || field?.field_id || field?.id || field?.key || field?.field_key;
+    const foundationField = foundationFields.find(candidate => (
+      identity
+      && (
+        identity === candidate.field_id
+        || identity === candidate.field_key
+        || identity === candidate.definition_key
+      )
+    ));
+    return {
+      ...serializeField(field, approvalsByField),
+      evidence_lineage: foundationField?.evidence_lineage || null,
+    };
+  });
   const verifiedData = serialized
     .filter(field => field.current_state === 'confirmed' && field.value !== null && field.value !== '')
-    .map(({ field_key, definition_key, label, category, value, confirmation, approval_context, provenance: source }) => ({
-      field_key, definition_key, label, category, value, confirmation, approval_context, provenance: source,
+    .map(({ field_key, definition_key, label, category, value, confirmation, approval_context, provenance: source, evidence_lineage }) => ({
+      field_key, definition_key, label, category, value, confirmation, approval_context, provenance: source, evidence_lineage,
     }));
-  const stateManifest = serialized.map(({ field_key, definition_key, label, category, current_state, provenance: source }) => ({
-    field_key, definition_key, label, category, current_state, provenance: source,
+  const stateManifest = serialized.map(({ field_key, definition_key, label, category, current_state, provenance: source, evidence_lineage }) => ({
+    field_key, definition_key, label, category, current_state, provenance: source, evidence_lineage,
   }));
   const exceptions = [
     ...serialized
@@ -106,6 +131,7 @@ function buildVerifiedAssetHandoff({
         label: field.label,
         current_state: field.current_state,
         provenance: field.provenance,
+        evidence_lineage: field.evidence_lineage,
       })),
     ...conflicts.filter(conflict => conflict?.status === 'unresolved').map(conflict => ({
       type: 'unresolved_conflict',
@@ -128,6 +154,39 @@ function buildVerifiedAssetHandoff({
       field_key: field.field_key,
       provenance: field.provenance,
     })),
+    history_manifest: history.map(event => ({
+      id: event?.id || null,
+      field_id: event?.field_id || event?.fieldId || null,
+      field_key: event?.field_key || event?.fieldKey || null,
+      event_type: event?.event_type || event?.eventType || null,
+      actor_email: event?.actor_email || event?.actorEmail || null,
+      actor_role: event?.actor_role || event?.actorRole || null,
+      prior_value: event?.prior_value ?? null,
+      new_value: event?.new_value ?? null,
+      prior_status: event?.prior_status || null,
+      new_status: event?.new_status || null,
+      source_document_id: event?.source_doc_id || event?.sourceDocId || null,
+      source_page: event?.source_page ?? event?.sourcePage ?? null,
+      source_excerpt: event?.source_excerpt || event?.sourceExcerpt || null,
+      metadata: event?.metadata || null,
+      created_at: event?.created_at || event?.createdAt || null,
+    })),
+    exception_history: conflicts.map(conflict => ({
+      id: conflict?.id || null,
+      field_id: conflict?.field_id || conflict?.fieldId || null,
+      field_key: conflict?.field_key || conflict?.fieldKey || null,
+      status: conflict?.status || 'unresolved',
+      canonical_value: conflict?.canonical_value ?? null,
+      conflicting_value: conflict?.conflicting_value ?? null,
+      canonical_source_doc_id: conflict?.canonical_source_doc_id || null,
+      conflicting_source_doc_id: conflict?.conflicting_source_doc_id || null,
+      resolution_value: conflict?.resolution_value ?? null,
+      resolution_note: conflict?.resolution_note || null,
+      resolved_by: conflict?.resolved_by || null,
+      resolved_at: conflict?.resolved_at || null,
+      created_at: conflict?.created_at || null,
+      updated_at: conflict?.updated_at || null,
+    })),
     approval_manifest: approvals.map(approval => ({
       field_id: approval.field_id || null,
       field_key: fields.find(field => (field.fieldId || field.id) === approval.field_id)?.key || null,
@@ -139,6 +198,8 @@ function buildVerifiedAssetHandoff({
     exception_manifest: exceptions,
     closing_context: closingContext,
     digital_asset_readiness: readiness || null,
+    verified_asset: foundationSnapshot.verified_asset,
+    digital_asset_readiness_export: foundationSnapshot.digital_asset_readiness,
   };
   return {
     ...base,

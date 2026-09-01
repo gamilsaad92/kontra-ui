@@ -10473,6 +10473,34 @@ app.get('/api/public/deal-room/:propertyId/verified-asset/readiness', async (req
   }
 });
 
+// Provider-neutral JSON export for downstream review and future adapters. This
+// is derived live from the canonical Transaction Record and its existing
+// evidence tables; it does not create a snapshot or call an external provider.
+app.get('/api/public/deal-room/:propertyId/verified-asset/readiness/export', async (req, res) => {
+  try {
+    const context = await getVerifiedAssetSnapshotContext(req.params.propertyId);
+    if (!context) return res.status(404).json({ error: 'room not found' });
+    const snapshot = context.snapshot;
+    return res.json({
+      schema: 'kontra.digital-asset-readiness-export',
+      schema_version: '1.0.0',
+      property_id: req.params.propertyId,
+      source: {
+        workflow_pack: context.state.packId || null,
+        transaction_record_schema: context.state.recordState?.schemaKey || null,
+        state_at: snapshot.source_state_at || null,
+        current_stage: context.state.stage || null,
+      },
+      verified_asset: snapshot.verified_asset,
+      digital_asset_readiness: snapshot.digital_asset_readiness,
+      disclosure: snapshot.disclosure,
+    });
+  } catch (err) {
+    console.error('[verified-asset/readiness/export]', err.message);
+    return res.status(500).json({ error: 'Failed to export Digital Asset Readiness' });
+  }
+});
+
 // Append a new immutable snapshot. Identical canonical state returns the
 // existing version; any changed source state gets a new version.
 app.post('/api/public/deal-room/:propertyId/verified-asset/snapshots', async (req, res) => {

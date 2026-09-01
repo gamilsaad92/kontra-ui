@@ -34,7 +34,7 @@ function state(overrides = {}) {
 function build(overrides = {}) {
   return buildVerifiedAssetSnapshot({
     propertyId: 'room-1',
-    room: { settlement_mode: 'traditional' },
+    room: { settlement_mode: 'traditional', ...(overrides.room || {}) },
     recordState: state(overrides.recordState),
     conflicts: overrides.conflicts || [],
     approvals: overrides.approvals || [],
@@ -168,6 +168,135 @@ describe('Verified Asset snapshot foundation', () => {
     expect(snapshot.digital_asset_readiness.provenance.gaps).toHaveLength(0);
     expect(snapshot.created_from.transaction_record.fields[0].provenance.source_type)
       .toBe('manual_confirmation_history');
+  });
+
+  test('preserves complete evidence lineage for a verified canonical fact', () => {
+    const field = {
+      ...state().fields[0],
+      value: 'Final Asset Name',
+      sourceDocId: 'document-1',
+      sourcePage: 4,
+      sourceExcerpt: 'Final Asset Name',
+    };
+    const snapshot = build({
+      recordState: state({
+        fields: [field],
+        requiredFields: [field],
+      }),
+      approvals: [{
+        id: 'approval-1',
+        field_id: 'field-1',
+        action: 'approved',
+        actor_email: 'coordinator@example.com',
+        actor_role: 'Deal Coordinator',
+        is_manual: true,
+        prior_value: 'Extracted Asset Name',
+        new_value: 'Final Asset Name',
+        source_doc_id: 'document-1',
+        created_at: '2026-08-27T00:00:00.000Z',
+      }],
+      confirmationHistory: [
+        {
+          field_id: 'field-1',
+          event_type: 'extracted',
+          new_value: 'Extracted Asset Name',
+          new_status: 'extracted',
+          source_doc_id: 'document-1',
+          source_page: 3,
+          source_excerpt: 'Extracted Asset Name',
+          created_at: '2026-08-26T00:00:00.000Z',
+        },
+        {
+          field_id: 'field-1',
+          event_type: 'confirmed',
+          actor_email: 'coordinator@example.com',
+          actor_role: 'Deal Coordinator',
+          new_value: 'Final Asset Name',
+          new_status: 'verified',
+          created_at: '2026-08-27T00:00:00.000Z',
+        },
+      ],
+      conflicts: [{
+        id: 'resolved-1',
+        field_key: 'asset.name',
+        display_label: 'Asset name',
+        status: 'resolved',
+        canonical_value: 'Final Asset Name',
+        conflicting_value: 'Prior Asset Name',
+        conflicting_source_doc_id: 'document-2',
+        resolution_note: 'Coordinator selected the current canonical value.',
+        resolved_by: 'coordinator@example.com',
+        resolved_at: '2026-08-27T00:00:00.000Z',
+      }],
+    });
+
+    const lineage = snapshot.verified_asset.canonical_facts[0].evidence_lineage;
+    expect(lineage.source_document).toEqual(expect.objectContaining({
+      id: 'document-1',
+      page: 4,
+      excerpt: 'Final Asset Name',
+    }));
+    expect(lineage.extracted).toEqual(expect.objectContaining({
+      value: 'Extracted Asset Name',
+    }));
+    expect(lineage.human_confirmation).toEqual(expect.objectContaining({
+      actor: 'coordinator@example.com',
+      actor_role: 'Deal Coordinator',
+      confirmed: true,
+    }));
+    expect(lineage.approvals[0]).toEqual(expect.objectContaining({
+      id: 'approval-1',
+      action: 'approved',
+      prior_value: 'Extracted Asset Name',
+      new_value: 'Final Asset Name',
+    }));
+    expect(lineage.exception_history[0]).toEqual(expect.objectContaining({
+      id: 'resolved-1',
+      status: 'resolved',
+      conflicting_source_doc_id: 'document-2',
+    }));
+    expect(lineage.final_canonical).toEqual(expect.objectContaining({
+      value: 'Final Asset Name',
+      state: 'confirmed',
+    }));
+  });
+
+  test('projects the provider-neutral Digital Asset Readiness model', () => {
+    const fields = [
+      { id: 'asset', key: 'asset.name', label: 'Underlying asset', category: 'asset_identity', value: 'Harbor View', status: 'confirmed', sourceDocId: 'doc-asset' },
+      { id: 'owner', key: 'parties.legal_owner', label: 'Legal owner', category: 'parties', value: 'Harbor View Owner LLC', status: 'confirmed', sourceDocId: 'doc-owner' },
+      { id: 'jurisdiction', key: 'transaction.jurisdiction', label: 'Jurisdiction', category: 'transaction', value: 'United States', status: 'confirmed', sourceDocId: 'doc-jurisdiction' },
+      { id: 'governing', key: 'legal.governing_documents', label: 'Governing documents', category: 'legal', value: 'Recorded deed', status: 'confirmed', sourceDocId: 'doc-legal' },
+      { id: 'restriction', key: 'legal.transfer_restrictions', label: 'Transfer restrictions', category: 'legal', value: 'Review required', status: 'confirmed', sourceDocId: 'doc-restrictions' },
+      { id: 'issuance', key: 'external.issuance_reference_id', label: 'Future external issuance reference ID', category: 'transaction', value: 'REF-001', status: 'confirmed', sourceDocId: 'doc-issuance' },
+    ];
+    const snapshot = build({
+      recordState: state({
+        fields,
+        requiredFields: fields,
+        requiredCount: fields.length,
+        confirmedCount: fields.length,
+      }),
+    });
+    expect(snapshot.digital_asset_readiness.asset.underlying_asset)
+      .toEqual(expect.arrayContaining([expect.objectContaining({ field_key: 'asset.name', value: 'Harbor View' })]));
+    expect(snapshot.digital_asset_readiness.asset.legal_owner_rights)
+      .toEqual(expect.arrayContaining([expect.objectContaining({ field_key: 'parties.legal_owner' })]));
+    expect(snapshot.digital_asset_readiness.asset.jurisdiction)
+      .toEqual(expect.arrayContaining([expect.objectContaining({ field_key: 'transaction.jurisdiction' })]));
+    expect(snapshot.digital_asset_readiness.asset.governing_documents)
+      .toEqual(expect.arrayContaining([expect.objectContaining({ field_key: 'legal.governing_documents' })]));
+    expect(snapshot.digital_asset_readiness.asset.restrictions)
+      .toEqual(expect.arrayContaining([expect.objectContaining({ field_key: 'legal.transfer_restrictions' })]));
+    expect(snapshot.digital_asset_readiness.future_external_issuance_reference_id)
+      .toEqual(expect.objectContaining({ value: 'REF-001' }));
+    expect(snapshot.digital_asset_readiness.settlement_mode).toBe('traditional');
+    expect(snapshot.verified_asset).toEqual(expect.objectContaining({
+      schema: 'kontra.verified-asset-state',
+      verification_status: expect.objectContaining({
+        status: 'verified_for_external_review',
+      }),
+    }));
   });
 
   test('clears persisted confirmation evidence after a later incompatible field change', () => {

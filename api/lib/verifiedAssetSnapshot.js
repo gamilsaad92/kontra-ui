@@ -3,7 +3,9 @@
 const crypto = require('crypto');
 
 const SNAPSHOT_SCHEMA = 'kontra.verified-asset';
-const SNAPSHOT_VERSION = '1.0.0';
+const SNAPSHOT_VERSION = '1.1.0';
+const VERIFIED_ASSET_SCHEMA = 'kontra.verified-asset-state';
+const VERIFIED_ASSET_VERSION = '1.0.0';
 const CONFIRMED = new Set(['confirmed', 'verified']);
 const NON_APPLICABLE = 'not_applicable';
 
@@ -198,6 +200,7 @@ function fieldProvenance(field, approval = null, historyEvidence = null) {
     source_page: field?.sourcePage ?? field?.source_page ?? historyEvidence?.source_page ?? null,
     source_excerpt: field?.sourceExcerpt || field?.source_excerpt || historyEvidence?.source_excerpt || null,
     extracted_at: field?.extractionTimestamp || field?.extraction_timestamp || historyEvidence?.created_at || null,
+    extracted_by: field?.extractedBy || field?.extracted_by || null,
     source_type: field?.sourceType || field?.source_type
       || (approval ? (approval.is_manual !== false ? 'manual_confirmation' : 'provider_confirmation') : null)
       || (historyEvidence
@@ -248,6 +251,143 @@ function approvalEvidence(field, approvals = []) {
   return approval;
 }
 
+function latestExtractionEvidence(field, confirmationHistory = []) {
+  return (Array.isArray(confirmationHistory) ? confirmationHistory : [])
+    .filter(event =>
+      historyMatchesField(field, event)
+      && normalizedIdentity(event?.event_type || event?.eventType) === 'extracted',
+    )
+    .sort((a, b) => new Date(a.created_at || a.createdAt || 0) - new Date(b.created_at || b.createdAt || 0))
+    .at(-1) || null;
+}
+
+function conflictMatchesField(field, conflict) {
+  const fieldId = field?.fieldId || field?.field_id || field?.id;
+  const conflictFieldId = conflict?.field_id || conflict?.fieldId;
+  if (fieldId && conflictFieldId) {
+    return normalizedIdentity(fieldId) === normalizedIdentity(conflictFieldId);
+  }
+  const identities = [
+    field?.key,
+    field?.field_key,
+    field?.definitionKey,
+    field?.definition_key,
+    field?.label,
+    field?.display_label,
+  ].filter(Boolean).map(normalizedIdentity);
+  return [
+    conflict?.field_key,
+    conflict?.fieldKey,
+    conflict?.display_label,
+  ].filter(Boolean).some(value => identities.includes(normalizedIdentity(value)));
+}
+
+function serializeConflict(conflict) {
+  return {
+    id: conflict?.id || null,
+    field_id: conflict?.field_id || conflict?.fieldId || null,
+    field_key: conflict?.field_key || conflict?.fieldKey || null,
+    label: conflict?.display_label || conflict?.label || conflict?.field_key || 'Transaction Record exception',
+    status: conflict?.status || 'unresolved',
+    canonical_value: conflict?.canonical_value ?? null,
+    conflicting_value: conflict?.conflicting_value ?? null,
+    canonical_source_doc_id: conflict?.canonical_source_doc_id || null,
+    conflicting_source_doc_id: conflict?.conflicting_source_doc_id || null,
+    canonical_source_page: conflict?.canonical_source_page ?? null,
+    conflicting_source_page: conflict?.conflicting_source_page ?? null,
+    canonical_source_excerpt: conflict?.canonical_source_excerpt || null,
+    conflicting_source_excerpt: conflict?.conflicting_source_excerpt || null,
+    resolution_value: conflict?.resolution_value ?? null,
+    resolution_note: conflict?.resolution_note || null,
+    resolved_by: conflict?.resolved_by || null,
+    resolved_at: conflict?.resolved_at || null,
+    created_at: conflict?.created_at || null,
+    updated_at: conflict?.updated_at || null,
+  };
+}
+
+function serializeHistoryException(event) {
+  return {
+    type: normalizedIdentity(event?.event_type || event?.eventType) || 'history_exception',
+    field_id: event?.field_id || event?.fieldId || null,
+    field_key: event?.field_key || event?.fieldKey || null,
+    status: event?.new_status || event?.newStatus || null,
+    prior_value: event?.prior_value ?? null,
+    new_value: event?.new_value ?? null,
+    prior_status: event?.prior_status || null,
+    new_status: event?.new_status || null,
+    source_document_id: event?.source_doc_id || event?.sourceDocId || null,
+    source_page: event?.source_page ?? event?.sourcePage ?? null,
+    source_excerpt: event?.source_excerpt || event?.sourceExcerpt || null,
+    metadata: event?.metadata || null,
+    created_at: event?.created_at || event?.createdAt || null,
+  };
+}
+
+function fieldEvidenceLineage(field, approvals = [], confirmationHistory = [], conflicts = []) {
+  const approval = approvalEvidence(field, approvals);
+  const historyEvidence = latestHistoryEvidence(field, confirmationHistory);
+  const extraction = latestExtractionEvidence(field, confirmationHistory);
+  const source = fieldProvenance(field, approval, historyEvidence);
+  const currentValue = fieldValue(field);
+  const extractedValue = extraction?.new_value
+    ?? extraction?.value
+    ?? (source.source_document_id || source.source_file_hash ? currentValue : null);
+  const status = field?.status || 'missing';
+
+  return {
+    source_document: {
+      id: source.source_document_id,
+      version: source.source_document_version,
+      file_hash: source.source_file_hash,
+      page: source.source_page,
+      excerpt: source.source_excerpt,
+    },
+    extracted: {
+      value: extractedValue,
+      at: extraction?.created_at || extraction?.createdAt || field?.extractionTimestamp || field?.extraction_timestamp || null,
+      by: field?.extractedBy || field?.extracted_by || extraction?.actor_email || extraction?.actorEmail || null,
+    },
+    human_confirmation: {
+      confirmed: CONFIRMED.has(status),
+      actor: field?.verifiedBy || field?.verified_by || historyEvidence?.actor_email || historyEvidence?.actorEmail || null,
+      actor_role: field?.verifiedRole || field?.verified_role || historyEvidence?.actor_role || historyEvidence?.actorRole || null,
+      at: field?.verifiedAt || field?.verified_at || historyEvidence?.created_at || historyEvidence?.createdAt || null,
+    },
+    approvals: approvals.map(item => ({
+      id: item?.id || null,
+      action: item?.action || null,
+      actor_email: item?.actor_email || null,
+      actor_role: item?.actor_role || null,
+      is_manual: item?.is_manual !== false,
+      prior_value: item?.prior_value ?? null,
+      new_value: item?.new_value ?? null,
+      source_document_id: item?.source_doc_id || null,
+      source_file_hash: item?.source_file_hash || null,
+      note: item?.note || null,
+      approved_at: item?.created_at || null,
+    })),
+    exception_history: [
+      ...confirmationHistory
+        .filter(event =>
+          historyMatchesField(field, event)
+          && ['conflict', 'source_changed'].includes(
+            normalizedIdentity(event?.event_type || event?.eventType),
+          ),
+        )
+        .map(serializeHistoryException),
+      ...conflicts
+        .filter(conflict => conflictMatchesField(field, conflict))
+        .map(serializeConflict),
+    ],
+    final_canonical: {
+      value: currentValue,
+      state: status,
+      updated_at: field?.updatedAt || field?.updated_at || null,
+    },
+  };
+}
+
 function stable(value) {
   if (Array.isArray(value)) return value.map(stable);
   if (!value || typeof value !== 'object') return value;
@@ -261,7 +401,7 @@ function hashSnapshot(value) {
   return crypto.createHash('sha256').update(JSON.stringify(stable(value))).digest('hex');
 }
 
-function serializeField(field, approvals = [], confirmationHistory = []) {
+function serializeField(field, approvals = [], confirmationHistory = [], conflicts = []) {
   const status = field?.status || 'missing';
   const confirmed = CONFIRMED.has(status);
   const approval = approvalEvidence(field, approvals);
@@ -282,17 +422,25 @@ function serializeField(field, approvals = [], confirmationHistory = []) {
     },
     provenance: fieldProvenance(field, approval, historyEvidence),
     approvals: approvals.map(approval => ({
+        id: approval.id || null,
       action: approval.action,
+        actor_email: approval.actor_email || null,
       actor_role: approval.actor_role || null,
       approved_at: approval.created_at || null,
       is_manual: approval.is_manual !== false,
+        prior_value: approval.prior_value ?? null,
+        new_value: approval.new_value ?? null,
+        source_document_id: approval.source_doc_id || null,
+        source_file_hash: approval.source_file_hash || null,
+        note: approval.note || null,
     })),
+    evidence_lineage: fieldEvidenceLineage(field, approvals, confirmationHistory, conflicts),
   };
 }
 
-function serializeCanonicalField(field, approvals = [], confirmationHistory = []) {
+function serializeCanonicalField(field, approvals = [], confirmationHistory = [], conflicts = []) {
   return {
-    ...serializeField(field, approvals, confirmationHistory),
+    ...serializeField(field, approvals, confirmationHistory, conflicts),
     // The handoff projection intentionally redacts values that are not
     // confirmed. Snapshot inspection must preserve the exact canonical value
     // that existed when the snapshot was recorded, regardless of state.
@@ -312,15 +460,17 @@ function buildDigitalAssetReadiness({
     approval?.field_id && approval.field_id === (field?.fieldId || field?.field_id || field?.id),
   );
   const historyFor = field => confirmationHistory.filter(event => historyMatchesField(field, event));
+  const conflictsFor = field => conflicts.filter(conflict => conflictMatchesField(field, conflict));
   const serialized = fields.map(field => serializeField(
     field,
     approvalsFor(field),
     historyFor(field),
+    conflictsFor(field),
   ));
   const byCategory = category => serialized.filter(field => field.category === category);
   const required = requiredFields.map(requiredField => {
     const field = backingFieldFor(requiredField, fields);
-    return serializeField(field, approvalsFor(field), historyFor(field));
+    return serializeField(field, approvalsFor(field), historyFor(field), conflictsFor(field));
   });
   const requiredApprovalFields = required.filter(field =>
     field.category === 'approvals' || String(field.field_key || '').startsWith('approval.'),
@@ -350,6 +500,51 @@ function buildDigitalAssetReadiness({
         || 'none',
     }));
   const missingApprovals = approvalResults.filter(item => !item.satisfied);
+  const selectFields = predicate => serialized.filter(predicate);
+  const assetFields = selectFields(field =>
+    field.category === 'asset_identity'
+    || /underlying[_ .-]?asset|property|asset[_ .-]?name/i.test(`${field.field_key} ${field.label}`),
+  );
+  const ownerRightsFields = selectFields(field =>
+    ['parties', 'beneficial_ownership'].includes(field.category)
+    || /\b(?:legal owner|owner|ownership|rights?|title)\b/i.test(`${field.field_key} ${field.label}`),
+  );
+  const jurisdictionFields = selectFields(field =>
+    /jurisdiction|governing[_ .-]?law|legal[_ .-]?geography/i.test(`${field.field_key} ${field.label}`),
+  );
+  const governingDocumentFields = selectFields(field =>
+    field.category === 'legal'
+    && /document|agreement|deed|title|opinion|governing/i.test(`${field.field_key} ${field.label}`),
+  );
+  const restrictionFields = selectFields(field =>
+    /restriction|encumbrance|limitation|transfer|participation|investor/i.test(`${field.field_key} ${field.label}`),
+  );
+  const futureIssuanceField = serialized.find(field =>
+    /(?:future|external|issuance|reference)[_ .-]*(?:issuance|external|reference|id)/i.test(
+      `${field.field_key} ${field.label}`,
+    ),
+  ) || null;
+  const unresolvedExceptions = [
+    ...blockingFields.map(field => ({
+      type: 'incomplete_required_field',
+      field_key: field.field_key,
+      label: field.label,
+      state: field.current_state,
+      evidence_lineage: field.evidence_lineage,
+    })),
+    ...unresolvedConflicts.map(conflict => ({
+      type: 'unresolved_conflict',
+      ...serializeConflict(conflict),
+    })),
+    ...missingApprovals.map(approval => ({
+      type: 'missing_approval',
+      ...approval,
+    })),
+    ...provenanceGaps.map(gap => ({
+      type: 'provenance_gap',
+      ...gap,
+    })),
+  ];
   const sections = {
     asset: byCategory('asset_identity'),
     parties: byCategory('parties'),
@@ -369,6 +564,36 @@ function buildDigitalAssetReadiness({
       && missingApprovals.length === 0
       && provenanceGaps.length === 0
       && required.length > 0,
+    verification_status: {
+      status: blockingFields.length || unresolvedConflicts.length || missingApprovals.length || provenanceGaps.length
+        ? 'verification_incomplete'
+        : 'verified_for_external_review',
+      eligible: blockingFields.length === 0
+        && unresolvedConflicts.length === 0
+        && missingApprovals.length === 0
+        && provenanceGaps.length === 0
+        && required.length > 0,
+      confirmed_fact_count: required.filter(field => field.current_state === 'confirmed').length,
+      required_fact_count: required.length,
+    },
+    canonical_facts: serialized.filter(field =>
+      field.current_state === 'confirmed' && meaningful(field.value),
+    ),
+    asset: {
+      underlying_asset: assetFields,
+      legal_owner_rights: ownerRightsFields,
+      jurisdiction: jurisdictionFields,
+      governing_documents: governingDocumentFields,
+      restrictions: restrictionFields,
+    },
+    unresolved_exceptions: unresolvedExceptions,
+    settlement_mode: room?.settlement_mode || null,
+    future_external_issuance_reference_id: futureIssuanceField
+      ? {
+        value: futureIssuanceField.current_state === 'confirmed' ? futureIssuanceField.value : null,
+        evidence_lineage: futureIssuanceField.evidence_lineage,
+      }
+      : { value: null, evidence_lineage: null },
     sections,
     provenance: {
       intact: provenanceGaps.length === 0,
@@ -397,6 +622,36 @@ function buildDigitalAssetReadiness({
     },
   };
   return readiness;
+}
+
+function buildVerifiedAssetState({
+  propertyId,
+  recordState = {},
+  readiness = {},
+  fields = [],
+} = {}) {
+  const canonicalFacts = Array.isArray(readiness.canonical_facts)
+    ? readiness.canonical_facts
+    : fields
+      .filter(field => CONFIRMED.has(field?.status || ''))
+      .filter(field => meaningful(fieldValue(field)));
+  return {
+    schema: VERIFIED_ASSET_SCHEMA,
+    schema_version: VERIFIED_ASSET_VERSION,
+    asset_id: propertyId || null,
+    status: readiness.status || 'preparation_incomplete',
+    verification_status: readiness.verification_status || null,
+    canonical_facts: canonicalFacts,
+    approvals: readiness.approvals || { required: [], satisfied: false, missing: [] },
+    provenance: readiness.provenance || { intact: false, confirmed_field_count: 0, gaps: [] },
+    unresolved_exceptions: readiness.unresolved_exceptions || [],
+    source: {
+      transaction_record_schema: recordState.schemaKey || null,
+      confirmed_fact_count: recordState.confirmedCount || 0,
+      required_fact_count: recordState.requiredCount || 0,
+    },
+    disclosure: 'Kontra coordinates and prepares facts for external review. This state is not legal, regulatory, investment, issuance, custody, KYC, or settlement approval.',
+  };
 }
 
 function buildVerifiedAssetSnapshot({
@@ -433,12 +688,14 @@ function buildVerifiedAssetSnapshot({
             field,
             approvals.filter(approval => approval.field_id === (field.fieldId || field.field_id || field.id)),
             confirmationHistory.filter(event => historyMatchesField(field, event)),
+            conflicts.filter(conflict => conflictMatchesField(field, conflict)),
           );
         }),
         canonical_fields: fields.map(field => serializeCanonicalField(
           field,
           approvals.filter(approval => approval.field_id === (field.fieldId || field.field_id || field.id)),
           confirmationHistory.filter(event => historyMatchesField(field, event)),
+          conflicts.filter(conflict => conflictMatchesField(field, conflict)),
         )),
       },
       provenance_manifest: fields.map(field => ({
@@ -496,6 +753,12 @@ function buildVerifiedAssetSnapshot({
       },
     },
     digital_asset_readiness: digitalAssetReadiness,
+    verified_asset: buildVerifiedAssetState({
+      propertyId,
+      recordState,
+      readiness: digitalAssetReadiness,
+      fields,
+    }),
     disclosure: 'Kontra coordinates and prepares information for external review. This snapshot is not legal, regulatory, investment, issuance, custody, KYC, or settlement approval.',
   };
   const sourceFields = [...fields, ...requiredFields];
@@ -504,6 +767,7 @@ function buildVerifiedAssetSnapshot({
     .filter(Boolean)
     .concat(approvals.map(approval => approval?.created_at).filter(Boolean))
     .concat(confirmationHistory.map(event => event?.created_at || event?.createdAt).filter(Boolean))
+    .concat(conflicts.map(conflict => conflict?.updated_at || conflict?.updatedAt || conflict?.created_at).filter(Boolean))
     .sort();
   return {
     ...snapshot,
@@ -515,7 +779,10 @@ function buildVerifiedAssetSnapshot({
 module.exports = {
   SNAPSHOT_SCHEMA,
   SNAPSHOT_VERSION,
+  VERIFIED_ASSET_SCHEMA,
+  VERIFIED_ASSET_VERSION,
   buildVerifiedAssetSnapshot,
+  buildVerifiedAssetState,
   hashSnapshot,
   provenanceIsIntact,
 };

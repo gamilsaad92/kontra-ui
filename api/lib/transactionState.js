@@ -1120,7 +1120,7 @@ async function readTransactionState(propertyId) {
     roomQuery,
     supabase
       .from('transaction_record_fields')
-       .select('id, field_key, definition_key, field_category, display_label, value_text, value_json, status, is_required, source_type, conflict_candidates, source_doc_id, source_doc_version, source_file_hash, source_page, source_excerpt, extraction_timestamp, verified_by, verified_role, verified_at, confidence, updated_at, created_at')
+       .select('id, field_key, definition_key, field_category, display_label, value_text, value_json, status, is_required, source_type, conflict_candidates, source_doc_id, source_doc_version, source_file_hash, source_page, source_excerpt, extraction_timestamp, extracted_by, verified_by, verified_role, verified_at, confidence, updated_at, created_at')
       .eq('property_id', propertyId),
     supabase
       .from('transaction_record_conflicts')
@@ -1134,7 +1134,7 @@ async function readTransactionState(propertyId) {
   if (fieldsError && /column|schema cache/i.test(fieldsError.message || '')) {
     const legacyFields = await supabase
       .from('transaction_record_fields')
-      .select('id, field_key, field_category, display_label, value_text, status, source_doc_id, source_page, source_excerpt, confidence, updated_at, created_at')
+       .select('id, field_key, field_category, display_label, value_text, status, source_doc_id, source_page, source_excerpt, extracted_by, confidence, updated_at, created_at')
       .eq('property_id', propertyId);
     recordFields = legacyFields.data;
     fieldsError = legacyFields.error;
