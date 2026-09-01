@@ -292,6 +292,8 @@ describe('Ask Kontra grounding across Workflow Packs', () => {
       'property_owner',
       'insurance_agent',
     ]);
+    expect(context.openTasks).toEqual([]);
+    expect(context.transactionContext.operations.openTasks).toEqual([]);
     expect(JSON.stringify(context)).not.toContain('Buyer');
     expect(JSON.stringify(context)).not.toContain('Seller');
     expect(JSON.stringify(context)).not.toContain('Legal Advisor');

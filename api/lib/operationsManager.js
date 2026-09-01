@@ -236,6 +236,20 @@ function hasMeaningfulRecordValue(field) {
   return value !== null && value !== undefined && String(value).trim().length > 0;
 }
 
+function isParticipantTask(task) {
+  return task?.task_type === 'missing_participant'
+    || task?.task_type === 'pending_submission'
+    || task?.source_type === 'party_role'
+    || task?.source_type === 'party_submission';
+}
+
+function filterTasksToLiveParticipants(tasks, participantDefinitions) {
+  const liveParticipantKeys = new Set((participantDefinitions || []).map(role => role.key));
+  return (Array.isArray(tasks) ? tasks : []).filter(task =>
+    !isParticipantTask(task) || liveParticipantKeys.has(subjectRoleOf(task))
+  );
+}
+
 function buildGroundedBlockers({
   packId, recordState, missingDocuments, participants, tasks, participantDefinitions, conflicts = [],
 }) {
@@ -415,8 +429,8 @@ async function buildGroundedContext(propertyId) {
   const stageLabel = generatedStage?.name
     || (room?.deal_stage ? getPackStageLabel(packId, room.deal_stage) : null);
 
-  const openTasks = tasks.filter(t => ['pending', 'in_progress', 'escalated'].includes(t.status));
-  const recentlyResolved = tasks
+  const allOpenTasks = tasks.filter(t => ['pending', 'in_progress', 'escalated'].includes(t.status));
+  const allRecentlyResolved = tasks
     .filter(t => ['completed', 'dismissed'].includes(t.status))
     .slice(0, 10);
 
@@ -433,7 +447,6 @@ async function buildGroundedContext(propertyId) {
     createdAt: t.created_at,
   });
 
-  const chainStatus = computeChainStatus(packId, tasks.map(t => ({ ...t, ownerRole: t.owner_role })));
   const checklist = Array.isArray(room?.checklist_items) ? room.checklist_items : [];
   const missingDocuments = getLiveMissingDocuments(checklist, activeAnalyses);
   const populatedRecordFields = (recordState.fields || [])
@@ -494,6 +507,10 @@ async function buildGroundedContext(propertyId) {
         submittedAt: submission?.submitted_at || null,
       };
     });
+  const groundedTasks = filterTasksToLiveParticipants(tasks, participantDefinitions);
+  const openTasks = allOpenTasks.filter(task => groundedTasks.includes(task));
+  const recentlyResolved = allRecentlyResolved.filter(task => groundedTasks.includes(task));
+  const chainStatus = computeChainStatus(packId, groundedTasks.map(t => ({ ...t, ownerRole: t.owner_role })));
   const recordStateFields = recordState.fields || [];
   const meaningfulRecordField = key => recordStateFields.find(field =>
     field.key === key
