@@ -20,6 +20,7 @@ const {
 const {
   selectActiveDocumentVersions,
 } = require('../lib/documentVersions');
+const { clearBriefingCache } = require('../lib/operationsManager');
 
 const router = express.Router();
 let transactionFieldExtractor = null;
@@ -105,6 +106,7 @@ async function persistAiDocumentVersion({ propertyId, section, filename, analysi
   }
   if (error) throw error;
   const recordId = saved?.id;
+  clearBriefingCache(propertyId);
   const { data: prior } = await supabase.from('deal_analyses').select('id')
     .eq('property_id', propertyId).eq('section', section).neq('id', recordId);
   const priorIds = (prior || []).map(row => row.id);
@@ -132,6 +134,7 @@ async function persistAiDocumentVersion({ propertyId, section, filename, analysi
   await runVerification(propertyId);
   await recalculateTransactionState(propertyId, { source: 'ai_document_replacement' });
   await evaluateDealRoomForTasks(propertyId, { source: 'ai_document_replacement' });
+  clearBriefingCache(propertyId);
   return recordId;
 }
 

@@ -34,6 +34,8 @@ const {
   askQuestion,
   buildGroundedContext,
   getLiveMissingDocuments,
+  getBriefing,
+  clearBriefingCache,
 } = require('./lib/operationsManager');
 
 const PACKS = Object.keys(workflowStages).filter(key => !key.startsWith('_'));
@@ -448,5 +450,82 @@ describe('Ask Kontra grounding across Workflow Packs', () => {
       .filter(blocker => blocker.sourceType === 'required_document')
       .map(blocker => blocker.label))
       .toEqual(['Damage Assessment Report', 'Insurance Claim Form']);
+  });
+
+  test('clearing the briefing cache makes the next briefing reflect new evidence', async () => {
+    const propertyId = 'briefing-cache-room';
+    const checklist = [
+      { id: 'loss_report', section: 'loss_report', label: 'Loss Report', required: true, status: 'missing' },
+    ];
+    let analyses = [];
+    const recordState = {
+      schemaKey: 'cre_acquisition',
+      fields: [],
+      requiredFields: [],
+      requiredCount: 0,
+      confirmedCount: 0,
+      awaitingRequiredCount: 0,
+      conflictRequiredCount: 0,
+      notApplicableCount: 0,
+    };
+
+    mockReadTransactionState.mockResolvedValue({
+      packId: 'cre_acquisition',
+      room: {
+        property_name: 'Briefing Cache Room',
+        workflow_pack_id: 'cre_acquisition',
+        deal_type: 'cre_acquisition',
+        deal_stage: 'due_diligence',
+        checklist_items: checklist,
+      },
+      recordState,
+      readiness: {},
+    });
+    mockListTasksForRoom.mockResolvedValue([]);
+    mockSupabaseFrom.mockImplementation(table => {
+      const result = table === 'deal_analyses' ? analyses : completedParticipants('cre_acquisition');
+      const chain = {
+        select: () => chain,
+        eq: () => chain,
+        order: () => chain,
+        limit: () => chain,
+        then: resolve => resolve({ data: result, error: null }),
+      };
+      return chain;
+    });
+    mockOpenAICompletion.mockResolvedValue({
+      choices: [{
+        message: {
+          content: JSON.stringify({
+            status: 'on_track',
+            statusLabel: 'On Track',
+            narrative: 'The workspace is progressing normally.',
+            parallelNote: null,
+            prepared: [],
+          }),
+        },
+      }],
+    });
+
+    clearBriefingCache(propertyId);
+    const first = await getBriefing(propertyId);
+    expect(first.missingDocuments).toEqual([
+      expect.objectContaining({ section: 'loss_report', label: 'Loss Report' }),
+    ]);
+
+    analyses = [{
+      id: 'loss-upload',
+      section: 'loss_report',
+      filename: 'loss-report.pdf',
+      processing_status: 'extracted',
+      analysis: { summary: 'Loss report received.' },
+      created_at: '2026-08-31T20:00:00.000Z',
+    }];
+    expect((await getBriefing(propertyId)).missingDocuments).toHaveLength(1);
+
+    clearBriefingCache(propertyId);
+    const second = await getBriefing(propertyId);
+    expect(second.missingDocuments).toEqual([]);
+    expect(mockOpenAICompletion).toHaveBeenCalledTimes(2);
   });
 });

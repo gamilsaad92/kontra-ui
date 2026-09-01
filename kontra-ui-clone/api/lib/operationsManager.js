@@ -54,6 +54,10 @@ function setCache(propertyId, data) {
   briefingCache.set(propertyId, { data, expiresAt: Date.now() + BRIEFING_TTL_MS });
 }
 
+function clearBriefingCache(propertyId) {
+  if (propertyId) briefingCache.delete(propertyId);
+}
+
 // ── Dependency chain computation ──────────────────────────────────────────────
 // Given a pack's closing chain and the current task list, determine:
 //   • Which step is the active blocker
@@ -1083,7 +1087,7 @@ Respond as JSON:
 }
 
 function clearCache(propertyId) {
-  briefingCache.delete(propertyId);
+  clearBriefingCache(propertyId);
   standupCache.delete(propertyId);
 }
 
@@ -1095,6 +1099,7 @@ module.exports = {
   isDocumentRequirementReceived,
   askContextToPrompt,
   getBriefing,
+  clearBriefingCache,
   getStandup,
   askQuestion,
   clearCache,

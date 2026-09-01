@@ -66,6 +66,7 @@ const {
 const aiDealReviewRouter = require('./routers/aiDealReview');
 const tasksRouter = require('./routers/tasks');
 const operationsManagerRouter = require('./routers/operationsManager');
+const { clearBriefingCache } = require('./lib/operationsManager');
 const verificationRouter = require('./routers/verification');
 const { runVerification, inferFactDefinition } = require('./lib/verificationEngine');
 const verifiedAssetPackageRouter = require('./routers/verifiedAssetPackage');
@@ -5264,6 +5265,7 @@ app.put('/api/public/deal-room/:propertyId/checklist', async (req, res) => {
       .update({ checklist_items: clean })
       .eq('property_id', propertyId);
     if (error) throw error;
+    clearBriefingCache(propertyId);
     recalculateTransactionState(propertyId, {
       source: 'checklist_updated',
       actorId: access.actorId,
@@ -5650,6 +5652,7 @@ app.post('/api/public/deal-room/:propertyId/track-document', upload.single('file
     const insertRes = await insertAnalysis();
     if (insertRes.error) throw insertRes.error;
     const recordId = insertRes.data?.id;
+    clearBriefingCache(propertyId);
     const replacement = !isPostCompletion
       ? await supersedePriorDocumentVersions(propertyId, section, recordId, correlationId)
       : { replaced: false, priorIds: [] };
@@ -5747,6 +5750,7 @@ app.post('/api/public/deal-room/:propertyId/track-document', upload.single('file
           failure_reason: null,
           processing_completed_at: new Date().toISOString(),
         }, { analysis: { ...completedAnalysis, processing_impact: impact }, storage_path: storagePath });
+        clearBriefingCache(propertyId);
         emitInternalEvent('document.extracted', {
           propertyId, documentId: recordId, section, filename,
           extractedFieldCount: extractionResult.savedCount || 0,
@@ -5770,6 +5774,7 @@ app.post('/api/public/deal-room/:propertyId/track-document', upload.single('file
             failure_reason: null,
             processing_completed_at: new Date().toISOString(),
           }, { analysis: { ...analysis, pending: false, processing_impact: impact }, storage_path: storagePath });
+          clearBriefingCache(propertyId);
           emitInternalEvent('document.extracted', {
             propertyId, documentId: recordId, section, filename, impact, correlationId,
           }, { correlationId, source: 'document-agent', actorId: access.actorId, actorType: access.actorType });
@@ -5894,6 +5899,7 @@ app.post('/api/public/deal-room/:propertyId/track-document', upload.single('file
              failure_reason: aiErr.message,
              processing_completed_at: new Date().toISOString(),
            }, { analysis: { summary, documentType: SECTION_LABELS[section], confidence: 0, pending: false }, storage_path: storagePath });
+           clearBriefingCache(propertyId);
            emitInternalEvent('document.failed', {
              propertyId, documentId: recordId, section, filename,
              failureReason: aiErr.message, correlationId,
@@ -5919,6 +5925,7 @@ app.post('/api/public/deal-room/:propertyId/track-document', upload.single('file
               failure_reason: err.message,
               processing_completed_at: new Date().toISOString(),
             }, { analysis: { summary: `${SECTION_LABELS[section]} uploaded. Analysis timed out — try re-uploading.`, documentType: SECTION_LABELS[section], confidence: 0, pending: false }, storage_path: storagePath }).catch(() => {});
+            clearBriefingCache(propertyId);
             emitInternalEvent('document.failed', {
               propertyId, documentId: recordId, section, filename,
               failureReason: err.message, correlationId,
