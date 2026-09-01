@@ -2,7 +2,7 @@
 
 const crypto = require('crypto');
 const { supabase } = require('../db');
-const { getRoomPackId, resolvePackIdFromRoom, logEvent } = require('./dealRoomHelpers');
+const { resolvePackIdFromRoom, logEvent } = require('./dealRoomHelpers');
 const { emit } = require('./eventBus');
 const {
   listTasksForRoom,
@@ -1157,7 +1157,7 @@ async function readTransactionState(propertyId) {
   const conflicts = conflictsResult?.error
     ? (/relation|schema cache|column/i.test(conflictsResult.error.message || '') ? [] : (() => { throw conflictsResult.error; })())
     : (conflictsResult?.data || []);
-  const packId = await getRoomPackId(propertyId);
+  const packId = resolvePackIdFromRoom(room);
   let schemaKey = await resolveSchemaKey(room, packId);
   const generatedProposal = generatedProposalFromRoom(room);
   // A legacy generated room may have lost its proposal JSON but still retain
