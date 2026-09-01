@@ -934,7 +934,7 @@ The closing_chain in context shows which step is active. Focus only on the EARLI
       statusLabel:     deterministicStatusLabel,
       expectedClosing: parsed.expectedClosing || ctx.room?.closingDate || null,
       narrative:       parsed.narrative || null,
-      parallelNote:    parsed.parallelNote || null,
+      parallelNote:    nonBlockingDetermined.length > 0 ? (parsed.parallelNote || null) : null,
       prepared:        parsed.prepared || [],
       // Always use deterministic values, never LLM-computed ones
       criticalPath:    allCriticalPath,

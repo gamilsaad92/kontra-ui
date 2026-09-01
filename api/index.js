@@ -66,7 +66,7 @@ const {
 const aiDealReviewRouter = require('./routers/aiDealReview');
 const tasksRouter = require('./routers/tasks');
 const operationsManagerRouter = require('./routers/operationsManager');
-const { clearBriefingCache } = require('./lib/operationsManager');
+const { clearBriefingCache, askQuestion } = require('./lib/operationsManager');
 const verificationRouter = require('./routers/verification');
 const { runVerification, inferFactDefinition } = require('./lib/verificationEngine');
 const verifiedAssetPackageRouter = require('./routers/verifiedAssetPackage');
@@ -11583,6 +11583,18 @@ app.post('/api/public/deal-room/:propertyId/brain/ask', async (req, res) => {
   const { propertyId } = req.params;
   const { question } = req.body || {};
   if (!question) return res.status(400).json({ error: 'question required' });
+
+  // Keep this legacy route aligned with the canonical Operations Manager
+  // handler. Without this delegation, dynamic rooms could fall through to the
+  // older fact-count prompt and invent participants from generic CRE context.
+  try {
+    const access = await getRoomAccessContext(req, propertyId, req.body?.ownerWriteToken);
+    if (access.mode === 'anonymous') return accessDenied(res);
+    return res.json(await askQuestion(propertyId, String(question).slice(0, 2000)));
+  } catch (err) {
+    console.error('[brain/ask]', err.message);
+    return res.status(500).json({ error: 'AI assistant error', answer: 'Kontra could not reach the transaction workspace. Try again in a moment.' });
+  }
 
   try {
     const access = await getRoomAccessContext(req, propertyId, req.body?.ownerWriteToken);
