@@ -1157,7 +1157,7 @@ async function readTransactionState(propertyId) {
   const conflicts = conflictsResult?.error
     ? (/relation|schema cache|column/i.test(conflictsResult.error.message || '') ? [] : (() => { throw conflictsResult.error; })())
     : (conflictsResult?.data || []);
-  const packId = await getRoomPackId(room);
+  const packId = await getRoomPackId(propertyId);
   let schemaKey = await resolveSchemaKey(room, packId);
   const generatedProposal = generatedProposalFromRoom(room);
   // A legacy generated room may have lost its proposal JSON but still retain
