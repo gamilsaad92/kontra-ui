@@ -291,6 +291,7 @@ describe('Verified Asset snapshot foundation', () => {
     expect(snapshot.digital_asset_readiness.future_external_issuance_reference_id)
       .toEqual(expect.objectContaining({ value: 'REF-001' }));
     expect(snapshot.digital_asset_readiness.settlement_mode).toBe('traditional');
+    expect(build().digital_asset_readiness.future_external_issuance_reference_id).toBeNull();
     expect(snapshot.verified_asset).toEqual(expect.objectContaining({
       schema: 'kontra.verified-asset-state',
       verification_status: expect.objectContaining({

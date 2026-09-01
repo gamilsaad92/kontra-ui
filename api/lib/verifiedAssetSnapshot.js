@@ -593,7 +593,7 @@ function buildDigitalAssetReadiness({
         value: futureIssuanceField.current_state === 'confirmed' ? futureIssuanceField.value : null,
         evidence_lineage: futureIssuanceField.evidence_lineage,
       }
-      : { value: null, evidence_lineage: null },
+      : null,
     sections,
     provenance: {
       intact: provenanceGaps.length === 0,
