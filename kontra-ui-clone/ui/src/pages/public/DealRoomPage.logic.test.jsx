@@ -9,6 +9,7 @@ const {
   hasDocumentReviewFinding,
   getDocumentRequirementStats,
   getDocumentRequestTarget,
+  getDamageAssessmentDocumentRequestTarget,
   filterLiveDocumentActions,
   filterStaleRecordActions,
   actionTextMentionsRecordField,
@@ -340,6 +341,25 @@ describe('coordinator transaction brief logic', () => {
        itemId: 'damage-report',
       query: 'Damage Assessment Report',
       section: 'damage_assessment_report',
+      autoRequest: true,
+    });
+  });
+
+  test('resolves a damage-report action to the live checklist row', () => {
+    expect(getDamageAssessmentDocumentRequestTarget(
+      { title: 'Request Damage Assessment Report', document: true },
+      [
+        {
+          id: 'damage_assessment',
+          label: 'Damage Assessment Report',
+          section: 'damage_assessment',
+          required: true,
+        },
+      ],
+    )).toEqual({
+      itemId: 'damage_assessment',
+      query: 'Damage Assessment Report',
+      section: 'damage_assessment',
       autoRequest: true,
     });
   });

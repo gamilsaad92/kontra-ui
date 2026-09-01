@@ -3541,11 +3541,7 @@ function WhatNeedsAttention({
         label: 'Open request',
         onClick: () => onOverviewAction?.({
           type: 'document',
-          target: getDocumentRequestTarget({
-            id: 'damage-assessment-report',
-            label: 'Damage Assessment Report',
-            section: 'damage_assessment_report',
-          }, true),
+          target: getDamageAssessmentDocumentRequestTarget({}, missingDocuments),
         }),
       };
     }
@@ -3621,14 +3617,7 @@ function WhatNeedsAttention({
           label: 'Open request',
           onClick: () => onOverviewAction?.({
             type: 'document',
-            target: getDocumentRequestTarget(
-                {
-                  ...item,
-                  label: 'Damage Assessment Report',
-                  section: item.section || 'damage_assessment_report',
-                },
-              true,
-            ),
+            target: getDamageAssessmentDocumentRequestTarget(item, missingDocuments),
           }),
         };
       }
@@ -5530,6 +5519,27 @@ function getDocumentRequestTarget(item = {}, autoRequest = false) {
   };
 }
 
+function getDamageAssessmentDocumentRequestTarget(source = {}, missingDocuments = []) {
+  const sourceId = source.id || source.document_id || source.documentId;
+  const matchingDocument = (Array.isArray(missingDocuments) ? missingDocuments : []).find(document => {
+    const documentId = document.id || document.document_id || document.documentId;
+    if (sourceId && documentId && String(sourceId) === String(documentId)) return true;
+    return isDamageAssessmentDocumentText(
+      `${document.label || document.name || ''} ${document.section || document.category || ''}`,
+    );
+  });
+  return getDocumentRequestTarget({
+    ...source,
+    ...(matchingDocument || {}),
+    id: matchingDocument?.id || sourceId || 'damage_assessment_report',
+    label: 'Damage Assessment Report',
+    section: matchingDocument?.section
+      || source.section
+      || source.category
+      || 'damage_assessment_report',
+  }, true);
+}
+
 function getRecordFieldIdentitySet(field) {
   return new Set([
     field?.key,
@@ -6535,6 +6545,7 @@ export {
   selectLiveDocumentAnalyses,
   getDocumentRequirementStats,
   getDocumentRequestTarget,
+  getDamageAssessmentDocumentRequestTarget,
   filterLiveDocumentActions,
   filterStaleRecordActions,
   actionTextMentionsRecordField,

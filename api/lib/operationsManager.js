@@ -263,23 +263,47 @@ function buildGroundedBlockers({
   return blockers;
 }
 
-// ── Grounding context ─────────────────────────────────────────────────────────
-async function buildGroundedContext(propertyId) {
-  const [transactionState, tasks, { data: analyses }, { data: participants }] = await Promise.all([
-    readTransactionState(propertyId),
-    listTasksForRoom(propertyId),
-    supabase
+// The grounding path must tolerate rooms created before document-version
+// columns were added. The public analyses endpoint has the same compatibility
+// requirement; never treat a schema mismatch as an empty live evidence set.
+async function loadGroundingAnalyses(propertyId) {
+  const selects = [
+    'id, section, filename, analysis, created_at, processing_status, is_active, superseded_at',
+    'id, section, filename, analysis, created_at, processing_status',
+    'id, section, filename, analysis, created_at',
+  ];
+  let lastError = null;
+
+  for (const select of selects) {
+    const result = await supabase
       .from('deal_analyses')
-      .select('id, section, filename, analysis, created_at, processing_status, is_active, superseded_at')
+      .select(select)
       .eq('property_id', propertyId)
       .order('created_at', { ascending: false })
-      .limit(30),
+      .limit(30);
+    if (!result.error) return result.data || [];
+    lastError = result.error;
+    if (!/column|schema cache|does not exist|could not find/i.test(result.error.message || '')) break;
+  }
+
+  if (lastError) {
+    console.warn('[operationsManager] could not load document evidence:', lastError.message);
+  }
+  return [];
+}
+
+// ── Grounding context ─────────────────────────────────────────────────────────
+async function buildGroundedContext(propertyId) {
+  const [transactionState, tasks, analyses, { data: participants }] = await Promise.all([
+    readTransactionState(propertyId),
+    listTasksForRoom(propertyId),
+    loadGroundingAnalyses(propertyId),
     supabase
       .from('party_submissions')
       .select('role, name, status, doc_count, submitted_at')
       .eq('property_id', propertyId),
   ]);
-  const activeAnalyses = selectActiveDocumentVersions(analyses || []);
+  const activeAnalyses = selectActiveDocumentVersions(analyses);
   const room = transactionState.room;
   const packId = transactionState.packId || DEFAULT_PACK_ID;
   const generatedProposal = room?.generated_proposal || null;

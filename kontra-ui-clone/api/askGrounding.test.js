@@ -347,4 +347,106 @@ describe('Ask Kontra grounding across Workflow Packs', () => {
     ]);
     expect(context.transactionContext.evidence.missingDocuments).toEqual([]);
   });
+
+  test('falls back to legacy analysis columns and reports only live missing documents', async () => {
+    const checklist = [
+      { id: 'loss_report', section: 'loss_report', label: 'Loss Report', required: true, status: 'missing' },
+      { id: 'insurance_policy', section: 'insurance_policy', label: 'Insurance Policy', required: true, status: 'missing' },
+      { id: 'damage_assessment', section: 'damage_assessment', label: 'Damage Assessment Report', required: true, status: 'missing' },
+      { id: 'repair_estimate', section: 'repair_estimate', label: 'Repair Estimate', required: true, status: 'missing' },
+      { id: 'claim_form', section: 'claim_form', label: 'Insurance Claim Form', required: true, status: 'missing' },
+    ];
+    const analyses = [
+      {
+        id: 'policy-upload',
+        section: 'insurance_policy',
+        filename: '01_Insurance_Policy.pdf',
+        processing_status: 'extracted',
+        analysis: { summary: 'Insurance policy received.' },
+        created_at: '2026-08-30T22:51:57.384Z',
+      },
+      {
+        id: 'loss-upload',
+        section: 'loss_report',
+        filename: '03_Damage_Report.pdf',
+        processing_status: 'extracted',
+        analysis: { summary: 'Loss report received.' },
+        created_at: '2026-08-30T22:53:54.623Z',
+      },
+      {
+        id: 'repair-upload',
+        section: 'repair_estimate',
+        filename: '02_Repair_Invoices.pdf',
+        processing_status: 'extracted',
+        analysis: { summary: 'Repair estimate received.' },
+        created_at: '2026-08-30T22:54:24.293Z',
+      },
+      {
+        id: 'cross-document-check',
+        section: 'cross_document_verification',
+        filename: 'cross-document-verification.json',
+        processing_status: 'extracted',
+        analysis: { summary: 'Cross-document check.' },
+        created_at: '2026-08-30T22:54:29.855Z',
+      },
+    ];
+    const recordState = {
+      schemaKey: 'cre_acquisition',
+      fields: [],
+      requiredFields: [],
+      requiredCount: 0,
+      confirmedCount: 0,
+      awaitingRequiredCount: 0,
+      conflictRequiredCount: 0,
+      notApplicableCount: 0,
+    };
+
+    mockReadTransactionState.mockResolvedValue({
+      packId: 'cre_acquisition',
+      room: {
+        property_name: 'Cedar Grove Apartment Hazard Loss',
+        workflow_pack_id: 'cre_acquisition',
+        deal_type: 'other',
+        deal_stage: 'claim_filing',
+        checklist_items: checklist,
+      },
+      recordState,
+      readiness: {},
+    });
+    mockListTasksForRoom.mockResolvedValue([]);
+    mockSupabaseFrom.mockImplementation(table => {
+      const result = table === 'deal_analyses' ? analyses : completedParticipants('cre_acquisition');
+      const chain = {
+        queryError: null,
+        select: fields => {
+          if (table === 'deal_analyses' && /is_active|superseded_at/.test(fields)) {
+            chain.queryError = { message: 'column deal_analyses.is_active does not exist' };
+          }
+          return chain;
+        },
+        eq: () => chain,
+        order: () => chain,
+        limit: () => chain,
+        then: resolve => resolve({ data: chain.queryError ? null : result, error: chain.queryError }),
+      };
+      return chain;
+    });
+
+    const context = await buildGroundedContext('cedar-grove-apartment-hazard-loss--1cdce74a');
+
+    expect(context.missingDocuments).toEqual([
+      expect.objectContaining({ id: 'damage_assessment', label: 'Damage Assessment Report', section: 'damage_assessment' }),
+      expect.objectContaining({ id: 'claim_form', label: 'Insurance Claim Form', section: 'claim_form' }),
+    ]);
+    expect(context.transactionContext.evidence.activeDocumentState.documents)
+      .toEqual(expect.arrayContaining([
+        expect.objectContaining({ id: 'policy-upload', section: 'insurance_policy' }),
+        expect.objectContaining({ id: 'loss-upload', section: 'loss_report' }),
+        expect.objectContaining({ id: 'repair-upload', section: 'repair_estimate' }),
+      ]));
+    expect(context.groundedBlockers
+      .filter(blocker => blocker.sourceType === 'required_document')
+      .map(blocker => blocker.label))
+      .toEqual(['Damage Assessment Report', 'Insurance Claim Form']);
+  });
 });
