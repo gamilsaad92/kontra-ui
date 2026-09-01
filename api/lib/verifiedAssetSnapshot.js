@@ -589,8 +589,11 @@ function buildDigitalAssetReadiness({
     unresolved_exceptions: unresolvedExceptions,
     settlement_mode: room?.settlement_mode || null,
     future_external_issuance_reference_id: futureIssuanceField
+      && futureIssuanceField.current_state === 'confirmed'
+      && futureIssuanceField.value !== null
+      && futureIssuanceField.value !== ''
       ? {
-        value: futureIssuanceField.current_state === 'confirmed' ? futureIssuanceField.value : null,
+        value: futureIssuanceField.value,
         evidence_lineage: futureIssuanceField.evidence_lineage,
       }
       : null,
