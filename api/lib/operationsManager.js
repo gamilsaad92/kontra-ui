@@ -172,6 +172,70 @@ function buildPackLifecycle(packId, stageKey, generatedProposal = null) {
   };
 }
 
+const ACTIVE_PARTICIPANT_INVITE_STATUSES = new Set([
+  'pending', 'invited', 'sent', 'accepted', 'joined', 'active',
+]);
+const JOINED_PARTICIPANT_INVITE_STATUSES = new Set(['accepted', 'joined', 'active']);
+
+function isCoordinatorRoleDefinition(role) {
+  return role?.invitable === false || role?.canManage === true;
+}
+
+function normalizeParticipantDefinitions(roles) {
+  return (Array.isArray(roles) ? roles : [])
+    .filter(role => role && role.key)
+    .map(role => ({
+      key: role.key,
+      label: role.label || role.shortLabel || role.key,
+      required: role.required !== false,
+      invitable: role.invitable !== false,
+      canManage: role.canManage === true,
+      legacyOnly: role.legacyOnly === true,
+    }));
+}
+
+async function loadLiveParticipantDefinitions(room, packId) {
+  if (Array.isArray(room?.workflow_pack_config?.roles)) {
+    return normalizeParticipantDefinitions(room.workflow_pack_config.roles);
+  }
+
+  if (String(packId || '').startsWith('ws_')) {
+    try {
+      const { data, error } = await supabase
+        .from('custom_workflow_packs')
+        .select('config')
+        .eq('id', packId)
+        .maybeSingle();
+      if (error) throw error;
+      return normalizeParticipantDefinitions(data?.config?.roles);
+    } catch (error) {
+      // A custom room must never fall back to the built-in CRE roles. If its
+      // live pack cannot be read, omit participant blockers rather than invent
+      // requirements from a different template.
+      console.warn('[operationsManager] live participant configuration unavailable:', error.message);
+      return [];
+    }
+  }
+
+  // Generated AI rooms without a persisted custom pack keep their approved
+  // People configuration in the room proposal. This is room state, not the
+  // generic built-in role registry.
+  const proposal = room?.generated_proposal || room?.metadata_values?.generated_proposal;
+  if (packId === 'generated_ai' && Array.isArray(proposal?.participants)) {
+    return normalizeParticipantDefinitions(proposal.participants.map(participant => ({
+      ...participant,
+      key: participant.role || participant.key,
+    })));
+  }
+
+  return normalizeParticipantDefinitions(getPackRoleConfig(packId)?.roles);
+}
+
+function hasMeaningfulRecordValue(field) {
+  const value = field?.value ?? field?.value_text ?? field?.value_json;
+  return value !== null && value !== undefined && String(value).trim().length > 0;
+}
+
 function buildGroundedBlockers({
   packId, recordState, missingDocuments, participants, tasks, participantDefinitions, conflicts = [],
 }) {
@@ -179,6 +243,15 @@ function buildGroundedBlockers({
   const requiredFields = Array.isArray(recordState?.requiredFields) ? recordState.requiredFields : [];
   const participantRows = Array.isArray(participants) ? participants : [];
   const openTasks = Array.isArray(tasks) ? tasks.filter(hasOpenTaskStatus) : [];
+  const effectiveParticipantDefinitions = participantDefinitions !== undefined
+    ? participantDefinitions
+    : String(packId || '').startsWith('ws_')
+      ? []
+      : (getPackRoleConfig(packId)?.roles || []);
+  const liveRequiredParticipantKeys = new Set(effectiveParticipantDefinitions
+    .filter(role => role.required && role.invitable !== false
+      && !role.legacyOnly && !isCoordinatorRoleDefinition(role))
+    .map(role => role.key));
 
   (Array.isArray(conflicts) ? conflicts : []).forEach(conflict => {
     const fieldKey = conflict.fieldKey || conflict.field_key || '';
@@ -211,16 +284,19 @@ function buildGroundedBlockers({
     });
   });
 
-  (participantDefinitions || getPackRoleConfig(packId)?.roles || [])
-    .filter(role => role.required && role.invitable !== false)
+  effectiveParticipantDefinitions
+    .filter(role => role.required && role.invitable !== false
+      && !role.legacyOnly && !isCoordinatorRoleDefinition(role))
     .forEach(role => {
       const participant = participantRows.find(row => row.role === role.key);
       const participantStatus = String(participant?.status || '').toLowerCase();
-      const submitted = ['submitted', 'complete', 'completed'].includes(participantStatus)
+      const inviteStatus = String(participant?.inviteStatus || '').toLowerCase();
+      const submitted = JOINED_PARTICIPANT_INVITE_STATUSES.has(inviteStatus)
+        || ['submitted', 'complete', 'completed'].includes(participantStatus)
         || Number(participant?.documentCount || participant?.doc_count || 0) > 0;
       if (submitted) return;
 
-      const roleLabel = getPackRoleLabel(packId, role.key);
+      const roleLabel = role.label || getPackRoleLabel(packId, role.key);
       blockers.push({
         sourceType: 'required_participant',
         role: role.key,
@@ -228,32 +304,47 @@ function buildGroundedBlockers({
         status: participant?.status || 'missing',
         evidence: [
           participant
-            ? `${roleLabel} status is "${participant.status || 'unknown'}" with ${Number(participant.documentCount || participant.doc_count || 0)} submitted document(s).`
+            ? `${roleLabel} status is "${participant.status || participant.inviteStatus || 'unknown'}" with ${Number(participant.documentCount || participant.doc_count || 0)} submitted document(s).`
             : `No participant submission exists for required role "${role.key}".`,
         ],
       });
     });
 
   requiredFields
-    .filter(field => ['missing', 'awaiting', 'conflict'].includes(field.status)
-      || field.attention === 'source_changed')
+    .filter(field => {
+      const status = String(field.status || '').toLowerCase();
+      const populated = hasMeaningfulRecordValue(field);
+      return field.attention === 'source_changed'
+        || status === 'conflict'
+        || status === 'missing'
+        || (!populated && status === 'awaiting');
+    })
     .forEach(field => {
+      const status = String(field.status || '').toLowerCase();
       blockers.push({
         sourceType: 'transaction_record',
         key: field.key,
         label: field.label || field.key,
-        status: field.status,
+        status,
         attention: field.attention || null,
         evidence: [
           field.attention === 'source_changed'
             ? `${field.label || field.key} changed source and requires coordinator review.`
-            : `${field.label || field.key} is ${field.status}.`,
+            : `${field.label || field.key} is ${status === 'missing' ? 'missing' : 'incomplete'}.`,
         ],
       });
     });
 
   openTasks
     .filter(task => (task.blocking === true || task.blocking === 'true') && taskEvidence(task).length > 0)
+    .filter(task => {
+      const participantTask = task.task_type === 'missing_participant'
+        || task.task_type === 'pending_submission'
+        || task.source_type === 'party_role'
+        || task.source_type === 'party_submission';
+      if (!participantTask) return true;
+      return liveRequiredParticipantKeys.has(subjectRoleOf(task));
+    })
     .forEach(task => {
       blockers.push({
         sourceType: 'explicit_blocking_task',
@@ -298,7 +389,7 @@ async function loadGroundingAnalyses(propertyId) {
 
 // ── Grounding context ─────────────────────────────────────────────────────────
 async function buildGroundedContext(propertyId) {
-  const [transactionState, tasks, analyses, { data: participants }] = await Promise.all([
+  const [transactionState, tasks, analyses, { data: participants }, { data: participantInvites }] = await Promise.all([
     readTransactionState(propertyId),
     listTasksForRoom(propertyId),
     loadGroundingAnalyses(propertyId),
@@ -306,11 +397,17 @@ async function buildGroundedContext(propertyId) {
       .from('party_submissions')
       .select('role, name, status, doc_count, submitted_at')
       .eq('property_id', propertyId),
+    supabase
+      .from('deal_room_invites')
+      .select('role_key, status, expires_at, revoked_at')
+      .eq('property_id', propertyId),
   ]);
   const activeAnalyses = selectActiveDocumentVersions(analyses);
   const room = transactionState.room;
   const packId = transactionState.packId || DEFAULT_PACK_ID;
-  const generatedProposal = room?.generated_proposal || null;
+  const generatedProposal = room?.generated_proposal
+    || room?.metadata_values?.generated_proposal
+    || null;
   const generatedTransaction = generatedProposal?.transaction || {};
   const recordState = transactionState.recordState;
   const conflicts = transactionState.conflicts || recordState.unresolvedConflicts || [];
@@ -370,19 +467,33 @@ async function buildGroundedContext(propertyId) {
     .filter(item => item.summary || item.filename)
     .slice(0, 20);
 
-  const participantDefinitions = generatedProposal?.participants?.map(participant => ({
-    key: participant.role,
-    label: participant.label,
-    required: participant.required !== false,
-    invitable: true,
-  }));
-  const participantContext = (participants || []).map(participant => ({
-    role: participant.role || null,
-    name: participant.name || null,
-    status: participant.status || null,
-    documentCount: Number(participant.doc_count || 0),
-    submittedAt: participant.submitted_at || null,
-  }));
+  const participantDefinitions = await loadLiveParticipantDefinitions(room, packId);
+  const liveParticipantKeys = new Set(participantDefinitions.map(role => role.key));
+  const liveInvites = (participantInvites || []).filter(invite => {
+    const status = String(invite?.status || '').toLowerCase();
+    if (!ACTIVE_PARTICIPANT_INVITE_STATUSES.has(status)) return false;
+    if (['pending', 'invited', 'sent'].includes(status)
+      && invite?.expires_at
+      && new Date(invite.expires_at).getTime() <= Date.now()) return false;
+    return liveParticipantKeys.has(invite.role_key);
+  });
+  const participantContext = participantDefinitions
+    .filter(role => role.invitable !== false && !role.legacyOnly)
+    .map(role => {
+      const submission = (participants || []).find(item =>
+        item?.role === role.key
+      );
+      const invite = liveInvites.find(item => item.role_key === role.key);
+      return {
+        role: role.key,
+        name: submission?.name || null,
+        status: submission?.status || invite?.status || null,
+        inviteStatus: invite?.status || null,
+        invited: !!invite,
+        documentCount: Number(submission?.doc_count || 0),
+        submittedAt: submission?.submitted_at || null,
+      };
+    });
   const recordStateFields = recordState.fields || [];
   const meaningfulRecordField = key => recordStateFields.find(field =>
     field.key === key
@@ -426,6 +537,16 @@ async function buildGroundedContext(propertyId) {
       facts: populatedRecordFields,
       factCount: populatedRecordFields.length,
       confirmedFactCount: recordStateFields.filter(field => field.status === 'confirmed').length,
+      awaitingConfirmation: populatedRecordFields
+        .filter(field => field.status === 'awaiting')
+        .map(field => ({
+          key: field.key,
+          label: field.label,
+          value: field.value,
+          status: 'awaiting_confirmation',
+        })),
+      awaitingConfirmationCount: populatedRecordFields
+        .filter(field => field.status === 'awaiting').length,
       state: {
         schema: recordState.schemaKey,
         fields: recordStateFields,
@@ -523,6 +644,7 @@ function contextToPrompt(ctx) {
       missing_documents: ctx.missingDocuments,
       active_document_state: ctx.transactionContext.evidence.activeDocumentState,
       transaction_record_facts: ctx.recordFacts,
+      transaction_record_review: ctx.transactionContext.record.awaitingConfirmation,
       document_findings: ctx.documentFindings,
       transaction_record_conflicts: ctx.conflicts,
     },
@@ -556,6 +678,7 @@ function askContextToPrompt(ctx) {
       missing_documents: ctx.missingDocuments,
       active_document_state: ctx.transactionContext.evidence.activeDocumentState,
       transaction_record_facts: ctx.recordFacts,
+      transaction_record_review: ctx.transactionContext.record.awaitingConfirmation,
       document_findings: ctx.documentFindings,
       transaction_record_conflicts: ctx.conflicts,
     },
@@ -639,6 +762,10 @@ enough information to answer, say so plainly instead of guessing.
 Treat active_document_state as the source of truth for document receipt: an active uploaded,
 processing, retrying, or completed document has been received and must not be described as missing.
 Only list a document as missing when it appears in missing_documents.
+The participants array is the live People state for this room. Do not import roles from a
+generic template or from outside this room. A populated Transaction Record field with status
+"awaiting_confirmation" is a known fact awaiting coordinator confirmation, not a missing or
+incomplete field; do not describe it as awaiting completion.
 
 Answer as a quiet transaction-workspace guide: explain findings, summarize what is missing, identify the next action, and give concise daily briefs when asked. Cite the specific task, document finding, record fact, or checklist item behind every claim.
 This is AI-prepared operational guidance, not legal, regulatory, tax, investment, or settlement advice. Never claim that Kontra verified a legal or regulatory requirement, determined an exemption, approved an offering, or established eligibility. Use preparation, coordination, professional-review, and external-provider-handoff language instead.
@@ -663,6 +790,10 @@ BLOCKER RULE: The blockers array is the complete factual blocker list. It contai
 document gaps, required participant state, canonical required Transaction Record gaps/conflicts,
 and explicit blocking tasks with evidence. A non_blocking_open_tasks item is not a blocker. If the
 blockers array is empty, say that no blocker is recorded instead of inferring one.
+The transaction_context.participants array is the live People state for this room. Never add
+Buyer, Seller, Legal Advisor, Financial Advisor, or any other role unless it is present there.
+The transaction_record_review array contains populated facts awaiting coordinator confirmation;
+these are not missing or incomplete and must not be described as awaiting completion.
 
 TOKENIZATION RULE: Digital-asset preparation is optional and downstream. Use the transaction_context
 facts first, then tokenization-specific guidance if supplied. Already-known transaction type, pack,

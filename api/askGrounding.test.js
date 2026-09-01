@@ -63,12 +63,35 @@ function setupSupabaseQueries(packId) {
   mockSupabaseFrom.mockImplementation(table => {
     const result = table === 'party_submissions'
       ? participantRows
+      : table === 'deal_room_invites'
+        ? []
       : [];
     const chain = {
       select: () => chain,
       eq: () => chain,
       order: () => chain,
       limit: () => chain,
+      then: resolve => resolve({ data: result, error: null }),
+    };
+    return chain;
+  });
+}
+
+function setupCustomRoomQueries(roles, participantRows = [], invites = []) {
+  mockSupabaseFrom.mockImplementation(table => {
+    const result = table === 'custom_workflow_packs'
+      ? { config: { roles } }
+      : table === 'party_submissions'
+        ? participantRows
+        : table === 'deal_room_invites'
+          ? invites
+          : [];
+    const chain = {
+      select: () => chain,
+      eq: () => chain,
+      order: () => chain,
+      limit: () => chain,
+      maybeSingle: () => Promise.resolve({ data: result, error: null }),
       then: resolve => resolve({ data: result, error: null }),
     };
     return chain;
@@ -205,6 +228,154 @@ describe('Ask Kontra grounding across Workflow Packs', () => {
         taskId: 'real-blocker',
       }),
     ]);
+  });
+
+  test('uses the live custom People roles instead of stale proposal or template roles', async () => {
+    const customPackId = 'ws_cedar_grove_hazard';
+    const liveRoles = [
+      { key: 'deal_coordinator', label: 'Deal Coordinator', required: true, invitable: true, canManage: true, needsDocs: true },
+      { key: 'property_owner', label: 'Property Owner', required: true, invitable: true, needsDocs: true },
+      { key: 'insurance_agent', label: 'Insurance Agent', required: true, invitable: true, needsDocs: true },
+    ];
+    const recordState = {
+      schemaKey: 'generated_ai',
+      fields: [],
+      requiredFields: [],
+      requiredCount: 0,
+      confirmedCount: 0,
+      awaitingRequiredCount: 0,
+      conflictRequiredCount: 0,
+      notApplicableCount: 0,
+      unresolvedConflicts: [],
+    };
+    mockReadTransactionState.mockResolvedValue({
+      packId: customPackId,
+      room: {
+        property_id: 'cedar-grove-hazard',
+        property_name: 'Cedar Grove Apartment Hazard Loss',
+        workflow_pack_id: customPackId,
+        deal_type: 'other',
+        deal_stage: 'claim_filing',
+        checklist_items: [],
+        generated_proposal: {
+          participants: [
+            { role: 'buyer', label: 'Buyer', required: true },
+            { role: 'seller', label: 'Seller', required: true },
+            { role: 'legal_advisor', label: 'Legal Advisor', required: true },
+            { role: 'financial_advisor', label: 'Financial Advisor', required: true },
+          ],
+        },
+        metadata_values: { digital_asset_enabled: false },
+      },
+      recordState,
+      conflicts: [],
+      readiness: { digitalAssetEnabled: false, digitalAssetOptional: true },
+    });
+    mockListTasksForRoom.mockResolvedValue([
+      {
+        id: 'stale-buyer-task',
+        task_type: 'missing_participant',
+        source_id: 'missing-role:buyer',
+        source_type: 'party_role',
+        status: 'pending',
+        blocking: true,
+        evidence: ['stale role evidence'],
+      },
+    ]);
+    setupCustomRoomQueries(liveRoles);
+
+    const context = await buildGroundedContext('cedar-grove-hazard');
+    const participantBlockers = context.groundedBlockers
+      .filter(blocker => blocker.sourceType === 'required_participant');
+
+    expect(participantBlockers.map(blocker => blocker.role)).toEqual([
+      'property_owner',
+      'insurance_agent',
+    ]);
+    expect(JSON.stringify(context)).not.toContain('Buyer');
+    expect(JSON.stringify(context)).not.toContain('Seller');
+    expect(JSON.stringify(context)).not.toContain('Legal Advisor');
+    expect(JSON.stringify(context)).not.toContain('Financial Advisor');
+  });
+
+  test('does not turn populated awaiting-confirmation fields into missing blockers', async () => {
+    const recordState = {
+      schemaKey: 'generated_ai',
+      fields: [
+        {
+          key: 'financial.repair_costs',
+          label: 'Repair Costs',
+          value: '$325,000',
+          status: 'awaiting',
+          rawStatus: 'extracted',
+          required: true,
+        },
+        {
+          key: 'transaction.incident_date',
+          label: 'Incident Date',
+          value: null,
+          status: 'missing',
+          rawStatus: null,
+          required: true,
+        },
+      ],
+      requiredFields: [
+        {
+          key: 'financial.repair_costs',
+          label: 'Repair Costs',
+          value: '$325,000',
+          status: 'awaiting',
+          rawStatus: 'extracted',
+          required: true,
+        },
+        {
+          key: 'transaction.incident_date',
+          label: 'Incident Date',
+          value: null,
+          status: 'missing',
+          rawStatus: null,
+          required: true,
+        },
+      ],
+      requiredCount: 2,
+      confirmedCount: 0,
+      awaitingRequiredCount: 1,
+      conflictRequiredCount: 0,
+      notApplicableCount: 0,
+      unresolvedConflicts: [],
+    };
+    mockReadTransactionState.mockResolvedValue({
+      packId: 'cre_acquisition',
+      room: {
+        property_id: 'awaiting-room',
+        property_name: 'Awaiting Confirmation Room',
+        workflow_pack_id: 'cre_acquisition',
+        deal_type: 'cre_acquisition',
+        deal_stage: 'uploading',
+        checklist_items: [],
+        metadata_values: { digital_asset_enabled: false },
+      },
+      recordState,
+      conflicts: [],
+      readiness: { digitalAssetEnabled: false, digitalAssetOptional: true },
+    });
+    mockListTasksForRoom.mockResolvedValue([]);
+    setupSupabaseQueries('cre_acquisition');
+
+    const context = await buildGroundedContext('awaiting-room');
+    const recordBlockers = context.groundedBlockers
+      .filter(blocker => blocker.sourceType === 'transaction_record');
+
+    expect(recordBlockers).toEqual([
+      expect.objectContaining({ key: 'transaction.incident_date', status: 'missing' }),
+    ]);
+    expect(context.transactionContext.record.awaitingConfirmation).toEqual([
+      expect.objectContaining({
+        key: 'financial.repair_costs',
+        status: 'awaiting_confirmation',
+      }),
+    ]);
+    expect(JSON.stringify(recordBlockers)).not.toContain('Repair Costs');
   });
 
   test('leaves normal readiness unchanged when digital-asset preparation is disabled', async () => {

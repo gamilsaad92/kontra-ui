@@ -109,6 +109,25 @@ function getPg() {
 }
 getPg();
 
+async function getLiveRoleConfig(packId) {
+  if (!String(packId || '').startsWith('ws_')) return getPackRoleConfig(packId);
+  try {
+    const { data, error } = await supabase
+      .from('custom_workflow_packs')
+      .select('config')
+      .eq('id', packId)
+      .maybeSingle();
+    if (error) throw error;
+    return data?.config && Array.isArray(data.config.roles)
+      ? data.config
+      : { roles: [] };
+  } catch (error) {
+    // Never evaluate a custom room against the built-in CRE participant list.
+    console.warn('[taskEngine] live participant configuration unavailable:', error.message);
+    return { roles: [] };
+  }
+}
+
 // ── CRUD ─────────────────────────────────────────────────────────────────
 async function listTasksForRoom(propertyId) {
   const { data, error } = await supabase
@@ -412,7 +431,7 @@ async function dismissTask(taskId) {
 async function evaluateDealRoomForTasks(propertyId, options = {}) {
   const { readTransactionState } = require('./transactionState');
   const packId = await getRoomPackId(propertyId);
-  const roleConfig = getPackRoleConfig(packId);
+  const roleConfig = await getLiveRoleConfig(packId);
 
   const [existingRes, submissionsRes, analysesRes] = await Promise.all([
     supabase.from('deal_room_tasks').select('*').eq('property_id', propertyId),
@@ -421,7 +440,10 @@ async function evaluateDealRoomForTasks(propertyId, options = {}) {
   ]);
 
   const existing = existingRes.data || [];
-  const submissions = submissionsRes.data || [];
+  const liveRoleKeys = new Set((roleConfig.roles || []).map(role => role.key));
+  const submissions = (submissionsRes.data || []).filter(submission =>
+    liveRoleKeys.has(submission.role)
+  );
   const analyses = selectActiveDocumentVersions(analysesRes.data || []);
   const transactionState = await readTransactionState(propertyId);
 
@@ -437,13 +459,15 @@ async function evaluateDealRoomForTasks(propertyId, options = {}) {
   ));
 
   // 1) Missing required party — required role never invited/submitted.
-  const requiredRoles = (roleConfig.roles || []).filter(r => r.required && r.needsDocs);
+  const requiredRoles = (roleConfig.roles || []).filter(r =>
+    r.required && r.needsDocs && r.invitable !== false && r.canManage !== true && !r.legacyOnly
+  );
   for (const role of requiredRoles) {
     const sub = submissions.find(s => s.role === role.key);
     if (sub) continue;
     const sourceId = `missing-role:${role.key}`;
     if (hasExistingTask('missing_participant', sourceId)) continue;
-    const roleLabel = getPackRoleLabel(packId, role.key);
+    const roleLabel = role.label || getPackRoleLabel(packId, role.key);
     const task = await createTask(propertyId, {
       taskType: 'missing_participant',
       title: `${roleLabel} has not been invited or submitted documents yet`,
@@ -467,7 +491,8 @@ async function evaluateDealRoomForTasks(propertyId, options = {}) {
     if (sub.status !== 'pending' && sub.status !== 'invited') continue;
     const sourceId = `pending-submission:${sub.role}`;
     if (hasExistingTask('pending_submission', sourceId)) continue;
-    const roleLabel = getPackRoleLabel(packId, sub.role);
+    const roleLabel = roleConfig.roles.find(role => role.key === sub.role)?.label
+      || getPackRoleLabel(packId, sub.role);
     const task = await createTask(propertyId, {
       taskType: 'pending_submission',
       title: `${roleLabel} invited but hasn't submitted yet`,
