@@ -114,14 +114,14 @@ function CreateForm({ password, onCreated }) {
   return (
     <form onSubmit={handleSubmit} className="bg-white rounded-2xl border border-gray-200 p-6 space-y-5">
       <div>
-        <h2 className="text-sm font-bold text-gray-900 mb-0.5">Create pilot deal room</h2>
-        <p className="text-xs text-gray-400">Creates an active deal room and generates a one-click access link. No payment required.</p>
+        <h2 className="text-sm font-bold text-gray-900 mb-0.5">Create pilot workspace</h2>
+        <p className="text-xs text-gray-400">Creates an active workspace and generates a one-click access link. No payment required.</p>
       </div>
 
       <div className="grid sm:grid-cols-2 gap-4">
         {/* Workspace name */}
         <div className="sm:col-span-2">
-          <label className="text-xs font-semibold text-gray-600 block mb-1">Deal room name</label>
+          <label className="text-xs font-semibold text-gray-600 block mb-1">Workspace name</label>
           <input type="text" required
             value={form.workspaceName}
             onChange={e => set("workspaceName", e.target.value)}
@@ -183,7 +183,7 @@ function CreateForm({ password, onCreated }) {
 
       <button type="submit" disabled={!canSubmit || loading}
         className="w-full py-2.5 rounded-xl text-sm font-bold text-white bg-gray-900 hover:bg-gray-800 disabled:opacity-40 transition">
-        {loading ? "Creating deal room…" : "Create & generate link →"}
+        {loading ? "Creating workspace…" : "Create & generate link →"}
       </button>
     </form>
   );
@@ -237,7 +237,7 @@ function AccessLinkCard({ result, password, onDismiss }) {
         <div>
           <div className="flex items-center gap-2 mb-1">
             <span className="text-lg">✅</span>
-            <p className="text-sm font-bold text-green-900">Deal room created</p>
+            <p className="text-sm font-bold text-green-900">Workspace created</p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <p className="text-xs text-green-700">
@@ -281,7 +281,7 @@ function AccessLinkCard({ result, password, onDismiss }) {
       {resendErr && <p className="text-xs text-red-500 mb-2">{resendErr}</p>}
 
       <p className="text-[10px] text-green-600">
-        When {result.pilotName} clicks this link, they land directly in the active deal room as coordinator — no payment or setup required.
+        When {result.pilotName} clicks this link, they land directly in the active workspace as coordinator — no payment or setup required.
       </p>
     </div>
   );
@@ -315,7 +315,7 @@ function PilotList({ password, refreshKey }) {
     <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
       <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
         <div>
-          <h2 className="text-sm font-bold text-gray-900">Pilot deal rooms</h2>
+          <h2 className="text-sm font-bold text-gray-900">Pilot workspaces</h2>
           <p className="text-xs text-gray-400 mt-0.5">{pilots?.length ?? 0} total</p>
         </div>
         <button onClick={load} className="text-xs text-gray-400 hover:text-gray-700 transition px-2 py-1 rounded-lg hover:bg-gray-50">
@@ -327,7 +327,7 @@ function PilotList({ password, refreshKey }) {
 
       {pilots && pilots.length === 0 && (
         <div className="px-5 py-8 text-center">
-          <p className="text-sm text-gray-400">No pilot deal rooms yet.</p>
+          <p className="text-sm text-gray-400">No pilot workspaces yet.</p>
           <p className="text-xs text-gray-300 mt-1">Create your first one above.</p>
         </div>
       )}
@@ -337,7 +337,7 @@ function PilotList({ password, refreshKey }) {
           {/* Header */}
           <div className="hidden sm:grid px-5 py-2 bg-gray-50 text-[10px] font-bold uppercase tracking-wider text-gray-400"
             style={{ gridTemplateColumns: "1fr 120px 80px 80px 80px" }}>
-            <span>Deal Room</span>
+            <span>Workspace</span>
             <span>Pack</span>
             <span>Docs</span>
             <span>Created</span>
@@ -396,7 +396,7 @@ export default function PilotAdminPage() {
             <span className="text-gray-200">|</span>
             <div>
               <h1 className="text-sm font-bold text-gray-900">Pilot Admin</h1>
-              <p className="text-[10px] text-gray-400">Internal — create deal rooms for real users without payment</p>
+              <p className="text-[10px] text-gray-400">Internal — create workspaces for real users without payment</p>
             </div>
           </div>
           <button onClick={() => { sessionStorage.removeItem("pilot_admin_pwd"); setPassword(""); }}
